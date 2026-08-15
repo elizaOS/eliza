@@ -2,9 +2,15 @@
  * Normalizes X/Twitter timestamps to epoch milliseconds, inferring the source
  * unit (seconds / millis / micros) from digit count so tweet times from
  * different API surfaces compare correctly.
+ *
+ * Missing values (undefined or 0) fall back to "now" for callers that treat
+ * absence as freshly observed. A PRESENT but non-finite or negative timestamp
+ * fails closed to undefined instead of masquerading as "now" (#18965) —
+ * callers must skip age filtering and omit memory createdAt in that case.
  */
-export function getEpochMs(ts: number | undefined): number {
-  if (!ts) return Date.now();
+export function getEpochMs(ts: number | undefined): number | undefined {
+  if (ts === undefined || ts === 0) return Date.now();
+  if (!Number.isFinite(ts) || ts < 0) return undefined;
   // Possible formats:
   //  • seconds  (10 digits)  e.g., 1710969600
   //  • millis   (13 digits)  e.g., 1710969600000

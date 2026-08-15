@@ -125,7 +125,7 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "MCP_READ_RESOURCE",
     "MCP_SEARCH_ACTIONS",
   ],
-  "@elizaos/plugin-workflow": ["EVAL_CODE", "WORKFLOW"],
+  "@elizaos/plugin-workflow": ["WORKFLOW"],
   "@elizaos/plugin-github": [
     "GITHUB",
     "GITHUB_ISSUE_ASSIGN",
@@ -213,8 +213,6 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "SKILL_INSTALL",
   "SKILL_SEARCH",
   "SKILL_SYNC",
-  // New workflow code-eval action (#8914); no deterministic keyless scenario yet.
-  "EVAL_CODE",
   // App-control agent/model switchers; dispatched through dashboard
   // affordances, no deterministic keyless scenarios yet. (SETTINGS left this
   // baseline with deterministic-settings-voice-actions, #16942.)

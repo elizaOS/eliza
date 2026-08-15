@@ -1,9 +1,11 @@
 /** Builds the container control-plane mock HTTP app: route handlers over the in-memory mock store. */
+import { chatSseFrame } from "@elizaos/cloud-shared/lib/services/chat-sse-frames";
 import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
   ControlPlaneStore,
   type ImportedMessage,
+  type ImportedScheduledTask,
   type Job,
   type Sandbox,
 } from "./store";
@@ -1070,7 +1072,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     };
     if (body?.jsonrpc !== "2.0" || typeof body.method !== "string") {
       return new Response(
-        `event: error\ndata: ${JSON.stringify({ message: "Invalid JSON-RPC stream request" })}\n\n`,
+        chatSseFrame("error", { message: "Invalid JSON-RPC stream request" }),
         { status: 400, headers: streamHeaders },
       );
     }
@@ -1334,6 +1336,16 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     return out;
   };
 
+  const normalizeImportTasks = (raw: unknown): ImportedScheduledTask[] => {
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(
+      (entry): entry is ImportedScheduledTask =>
+        !!entry &&
+        typeof entry === "object" &&
+        typeof (entry as Record<string, unknown>).taskId === "string",
+    );
+  };
+
   app.post(
     "/api/compat/agents/:id/api/conversations/:convId/import",
     async (c) => {
@@ -1348,10 +1360,22 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         return c.json({ error: "Body must include a `messages` array" }, 400);
       }
       const messages = normalizeImportMessages(body.messages);
+      const scheduledTasks = normalizeImportTasks(body.scheduledTasks);
+      const cutoverToken =
+        typeof body.cutoverToken === "string" ? body.cutoverToken : "";
+      if (scheduledTasks.length > 0 && !cutoverToken) {
+        return c.json(
+          { error: "Scheduled task import requires a cutover token" },
+          400,
+        );
+      }
       const result = store.importConversation(
         sandboxId,
         conversationId,
         messages,
+        scheduledTasks,
+        cutoverToken,
+        body.activateScheduledTasks === true,
       );
       return c.json(result);
     },
@@ -1365,6 +1389,35 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       const conversationId = decodeURIComponent(c.req.param("convId"));
       const messages = store.getConversation(sandboxId, conversationId);
       return c.json({ messages });
+    },
+  );
+
+  app.post(
+    "/api/compat/agents/:id/api/conversations/:convId/messages",
+    async (c) => {
+      await latency();
+      const sandboxId = c.req.param("id");
+      const conversationId = decodeURIComponent(c.req.param("convId"));
+      const body = (await c.req.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null;
+      const text = typeof body?.text === "string" ? body.text.trim() : "";
+      if (!text) return c.json({ error: "Message text is required" }, 400);
+      const result = store.appendConversationTurn(
+        sandboxId,
+        conversationId,
+        text,
+        typeof body?.clientMessageId === "string"
+          ? body.clientMessageId
+          : undefined,
+      );
+      if (!result) return c.json({ error: "Conversation not found" }, 404);
+      return c.json({
+        text: result.reply,
+        agentName: "Mock Agent",
+        replayed: result.replayed,
+      });
     },
   );
 

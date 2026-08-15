@@ -1,4 +1,7 @@
-// Coordinates cloud service eliza managed launch behavior behind route handlers.
+/**
+ * Coordinates managed agent launch, credential refresh, provisioning, and
+ * onboarding behind Cloud route handlers.
+ */
 import type { AgentSandbox } from "../../db/schemas/agent-sandboxes";
 import { cache } from "../cache/client";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
@@ -73,6 +76,42 @@ function resolveManagedAgentApiBase(sandbox: AgentSandbox): string | null {
   }
 
   return null;
+}
+
+/**
+ * Reads the connection already installed on a running managed agent without
+ * rotating credentials or invoking any sandbox lifecycle operation.
+ */
+export async function readManagedElizaAgentConnection(params: {
+  agentId: string;
+  organizationId: string;
+}): Promise<ManagedLaunchConnection> {
+  const sandbox = await elizaSandboxService.getAgent(params.agentId, params.organizationId);
+  if (!sandbox) {
+    throw new ManagedElizaLaunchError("Agent not found", 404);
+  }
+  if (sandbox.status !== "running") {
+    throw new ManagedElizaLaunchError("Managed agent is not running", 409);
+  }
+  if (sandbox.claimed_at && !hasReadyWarmClaimCredential(sandbox)) {
+    throw new ManagedElizaLaunchError("Agent credential recovery is still in progress", 409);
+  }
+
+  const apiBase = resolveManagedAgentApiBase(sandbox);
+  if (!apiBase) {
+    throw new ManagedElizaLaunchError(
+      "Managed connection is unavailable because no agent web endpoint is configured",
+      503,
+    );
+  }
+
+  const materialized = await decryptAgentEnvVars(sandbox.environment_vars);
+  const token = materialized.ELIZA_API_TOKEN?.trim();
+  if (!token) {
+    throw new ManagedElizaLaunchError("Managed connection credential is unavailable", 409);
+  }
+
+  return { apiBase, token };
 }
 
 async function requestManagedAgent(
@@ -209,6 +248,21 @@ export async function launchManagedElizaAgent(params: {
     }
     launchEnvironment = { apiToken, agentApiKey };
   } else {
+    // A running process must be stopped while its current credential is still
+    // valid. Shutdown can refuse when its fail-closed snapshot cannot be
+    // captured; rotating first would then strand that live process with a
+    // revoked key even though the launch itself failed.
+    if (sandbox.status === "running") {
+      const shutdownResult = await elizaSandboxService.shutdown(sandbox.id, params.organizationId);
+      if (!shutdownResult.success) {
+        throw new ManagedElizaLaunchError(
+          shutdownResult.error || "Failed to refresh sandbox environment",
+          shutdownResult.error === "Agent not found" ? 404 : 409,
+        );
+      }
+      sandbox = (await elizaSandboxService.getAgent(sandbox.id, params.organizationId)) ?? sandbox;
+    }
+
     const prepared = await elizaSandboxService.prepareManagedLaunchEnvironment({
       agentId: sandbox.id,
       organizationId: params.organizationId,
@@ -218,22 +272,6 @@ export async function launchManagedElizaAgent(params: {
       throw new ManagedElizaLaunchError("Agent lifecycle changed during launch", 409);
     }
     sandbox = prepared.sandbox;
-    if (prepared.environment.changed) {
-      if (sandbox.status === "running") {
-        const shutdownResult = await elizaSandboxService.shutdown(
-          sandbox.id,
-          params.organizationId,
-        );
-        if (!shutdownResult.success) {
-          throw new ManagedElizaLaunchError(
-            shutdownResult.error || "Failed to refresh sandbox environment",
-            shutdownResult.error === "Agent not found" ? 404 : 409,
-          );
-        }
-        sandbox =
-          (await elizaSandboxService.getAgent(sandbox.id, params.organizationId)) ?? sandbox;
-      }
-    }
     launchEnvironment = prepared.environment;
   }
 

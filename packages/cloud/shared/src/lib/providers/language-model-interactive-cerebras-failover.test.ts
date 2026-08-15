@@ -1,13 +1,9 @@
-// Exercises the interactive-turn Cerebras failover (COLDPATH-FIX-2026-07-21).
-//
-// The cold-path stall-B fix: the shared/interactive turn's default Cerebras
-// route had NO cross-provider fallback (withRateLimitFailFast only short-circuits
-// 429), so a transient 5xx made the AI SDK SLEEP `initialDelayInMs=2000` before
-// retrying the SAME dead provider (+2s/+6s of pure backoff before first token).
-// getInteractiveCerebrasLanguageModel wraps the cerebras-direct model so a
-// retryable upstream error (402/429/5xx) fails over to OpenRouter IMMEDIATELY
-// (no backoff) for the same model. These tests prove the failover fires on a
-// 5xx, is a no-op without an OpenRouter key, and never touches a non-Cerebras id.
+/**
+ * Exercises the interactive-turn Cerebras failover with deterministic provider
+ * responses. The suite proves retryable errors switch immediately to the mapped
+ * OpenRouter model, while healthy, non-retryable, and unconfigured paths retain
+ * their original provider behavior.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -37,6 +33,11 @@ function hostOf(url: RequestInfo | URL): "openrouter" | "cerebras" | "other" {
   if (u.includes("openrouter.ai")) return "openrouter";
   if (u.includes("cerebras.ai")) return "cerebras";
   return "other";
+}
+
+function requestedModel(init?: RequestInit): string | undefined {
+  if (typeof init?.body !== "string") return undefined;
+  return (JSON.parse(init.body) as { model?: string }).model;
 }
 
 function completion(model: string, content: string): Response {
@@ -115,11 +116,14 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
     // maxRetries:0 mirrors the interactive turn's config — the ONLY retry is the
     // wrapper's instant cross-provider failover, so exactly one cerebras attempt
     // then exactly one openrouter attempt.
-    globalThis.fetch = (async (url: RequestInfo | URL) => {
+    const models: string[] = [];
+    globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
       const host = hostOf(url);
       hosts.push(host);
+      const model = requestedModel(init);
+      if (model) models.push(model);
       if (host === "cerebras") return serverError();
-      return completion("gemma-4-31b", "from-openrouter-failover");
+      return completion("google/gemma-4-31b-it", "from-openrouter-failover");
     }) as typeof fetch;
 
     const result = await generateText({
@@ -131,6 +135,7 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
     expect(result.text).toBe("from-openrouter-failover");
     // Exactly one cerebras attempt (no SDK backoff loop) then the failover.
     expect(hosts).toEqual(["cerebras", "openrouter"]);
+    expect(models).toEqual(["gemma-4-31b", "google/gemma-4-31b-it"]);
   });
 
   test("a decorated cerebras id (:nitro) also fails over on 5xx", async () => {
@@ -154,11 +159,14 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
   test("a streamed transient 5xx fails over to OpenRouter WITHOUT retrying cerebras", async () => {
     // Same fix, streaming path: exercises the middleware wrapStream branch. The
     // interactive chat turn streams, so this is the branch users actually hit.
-    globalThis.fetch = (async (url: RequestInfo | URL) => {
+    const models: string[] = [];
+    globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
       const host = hostOf(url);
       hosts.push(host);
+      const model = requestedModel(init);
+      if (model) models.push(model);
       if (host === "cerebras") return serverError();
-      return streamedCompletion("gemma-4-31b", "streamed-from-openrouter");
+      return streamedCompletion("google/gemma-4-31b-it", "streamed-from-openrouter");
     }) as typeof fetch;
 
     const { textStream } = streamText({
@@ -171,6 +179,7 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
 
     expect(out).toBe("streamed-from-openrouter");
     expect(hosts).toEqual(["cerebras", "openrouter"]);
+    expect(models).toEqual(["gemma-4-31b", "google/gemma-4-31b-it"]);
   });
 
   test("a non-retryable 400 surfaces via cerebras only (no failover)", async () => {

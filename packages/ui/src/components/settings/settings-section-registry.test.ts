@@ -10,9 +10,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { resetUiRegistryHostForTests } from "../../registry-host";
 import {
   getSettingsSection,
+  getSettingsSectionRegistryVersion,
   listSettingsSections,
   registerSettingsSection,
   type SettingsSectionDef,
+  subscribeSettingsSections,
 } from "./settings-section-registry";
 
 function makeSection(
@@ -63,5 +65,19 @@ describe("settings-section-registry", () => {
     expect(ordered.indexOf("order-early")).toBeLessThan(
       ordered.indexOf("order-late"),
     );
+  });
+
+  it("notifies live consumers when a section registers", () => {
+    const versions: number[] = [];
+    const unsubscribe = subscribeSettingsSections(() => {
+      versions.push(getSettingsSectionRegistryVersion());
+    });
+
+    registerSettingsSection(makeSection("live-plugin-section"));
+    unsubscribe();
+    registerSettingsSection(makeSection("after-unsubscribe"));
+
+    expect(versions).toHaveLength(1);
+    expect(versions[0]).toBeGreaterThan(0);
   });
 });

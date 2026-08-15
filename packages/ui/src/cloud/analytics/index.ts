@@ -1,7 +1,7 @@
 /**
  * Analytics cloud domain — per-user usage + cost view.
  *
- * Mounts at `/dashboard/analytics` (the canonical org-level analytics home;
+ * Mounts at `/cloud/analytics` (the canonical org-level analytics home;
  * per-app analytics live in the app detail route). The route is code-split via
  * `React.lazy` so the recharts/date-fns chart bundle only loads when the view
  * is opened.
@@ -13,7 +13,7 @@
 import { lazy } from "react";
 import { registerCloudRoute } from "../shell/cloud-route-registry";
 
-export const ANALYTICS_ROUTE_PATH = "dashboard/analytics";
+export const ANALYTICS_ROUTE_PATH = "cloud/analytics";
 
 const AnalyticsPage = lazy(() => import("./Page"));
 
@@ -33,5 +33,5 @@ export { AnalyticsPage };
 registerCloudRoute({
   path: ANALYTICS_ROUTE_PATH,
   element: AnalyticsPage,
-  group: "dashboard",
+  group: "cloud",
 });

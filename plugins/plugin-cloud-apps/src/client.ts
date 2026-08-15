@@ -4,7 +4,7 @@
  * The agent reaches Eliza Cloud with the same credentials plugin-elizacloud
  * uses: the `ELIZAOS_CLOUD_API_KEY` setting (sent as the bearer/API key) and the
  * `ELIZAOS_CLOUD_BASE_URL` setting (the API base, e.g.
- * `https://elizacloud.ai/api/v1`). We mirror plugin-elizacloud's
+ * `https://api.eliza.app/api/v1`). We mirror plugin-elizacloud's
  * `createElizaCloudClient` construction shape: the configured value is the API
  * base (it ends at `/api/v1`), so it is passed as `apiBaseUrl`; the site
  * `baseUrl` is the same origin with the `/api/v1` suffix stripped.
@@ -16,7 +16,7 @@ import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { unwrapUserMessageText } from "@elizaos/core";
 
 /** Default Eliza Cloud API base URL (matches the cloud runtime default). */
-export const DEFAULT_CLOUD_API_BASE_URL = "https://elizacloud.ai/api/v1";
+export const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
 
 /** Settings key holding the Eliza Cloud API key. */
 export const CLOUD_API_KEY_SETTING = "ELIZAOS_CLOUD_API_KEY";
@@ -56,7 +56,7 @@ export function resolveCloudApiBaseUrl(runtime: IAgentRuntime): string {
 
 /**
  * Resolve the Eliza Cloud dashboard (site) origin — the API base with a trailing
- * `/api/v1` stripped (e.g. `https://www.elizacloud.ai`). Used to build the
+ * `/api/v1` stripped (e.g. `https://api.eliza.app`). Used to build the
  * connector-agnostic CTA URLs the paid actions hand back so the user finishes a
  * money/credential step in the browser, never over the connector.
  */

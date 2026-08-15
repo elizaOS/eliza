@@ -34,7 +34,7 @@ Containers are billed daily at ${{dailyCost}}/day (${{monthlyCost}}/month).
 Add at least ${{minimumRecommended}} to keep your container running for the next week.
 
 ---
-Questions? Reply to this email or visit your dashboard: {{dashboardUrl}}
+Questions? Reply to this email or open Eliza Cloud: {{dashboardUrl}}
 
 © {{currentYear}} Eliza Cloud. All rights reserved.
 

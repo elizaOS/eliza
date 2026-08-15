@@ -10,6 +10,12 @@ import { evaluateConnectorAccountPolicies } from "../connectors/account-manager"
 import { ElizaError } from "../errors";
 import { checkSenderRole } from "../roles";
 import {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticArgs,
+	projectToolDiagnosticValue,
+	type ToolDiagnosticTextRedactor,
+} from "../security/tool-diagnostics";
+import {
 	authorizeOwnerExclusiveDisclosure,
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
@@ -341,12 +347,17 @@ export async function executePlannedToolCall(
 	options: ExecutePlannedToolCallOptions = {},
 ): Promise<ActionResult> {
 	options.abortSignal?.throwIfAborted();
+	// Diagnostic projection for every copy of the arguments that leaves the
+	// execution path (streaming observers, lifecycle events, trajectories).
+	// The handler itself receives the exact validated values.
+	const redactDiagnosticText = composeToolDiagnosticRedactor(runtime);
 	const action = (options.actions ?? runtime.actions).find(
 		(candidate) => candidate.name === toolCall.name,
 	);
 	if (!action) {
 		return emitToolResult(
 			toolCall,
+			redactDiagnosticText,
 			failureResult(toolCall.name, `Action not found: ${toolCall.name}`),
 		);
 	}
@@ -354,7 +365,11 @@ export async function executePlannedToolCall(
 	const executorCtx = await withResolvedUserRoles(runtime, ctx);
 	const gateFailure = actionGateFailure(action, executorCtx);
 	if (gateFailure) {
-		return emitToolResult(toolCall, failureResult(action.name, gateFailure));
+		return emitToolResult(
+			toolCall,
+			redactDiagnosticText,
+			failureResult(action.name, gateFailure),
+		);
 	}
 	if (action.disclosureGate?.require === "owner_exclusive") {
 		const disclosure = await authorizeOwnerExclusiveDisclosure(
@@ -364,6 +379,7 @@ export async function executePlannedToolCall(
 		if (!disclosure.allowed) {
 			return emitToolResult(
 				toolCall,
+				redactDiagnosticText,
 				failureResult(
 					action.name,
 					`Owner-private disclosure denied: ${disclosure.reason}`,
@@ -392,6 +408,7 @@ export async function executePlannedToolCall(
 		const invalidParameterNames = validation.invalidParameterNames ?? [];
 		return emitToolResult(
 			toolCall,
+			redactDiagnosticText,
 			failureResult(
 				action.name,
 				validation.errors.join("; ") ||
@@ -442,12 +459,14 @@ export async function executePlannedToolCall(
 			// planner-visible failed tool result with the original error attached.
 			return emitToolResult(
 				toolCall,
+				redactDiagnosticText,
 				failureResult(action.name, stringifyError(error), { error }),
 			);
 		}
 		if (!valid) {
 			return emitToolResult(
 				toolCall,
+				redactDiagnosticText,
 				failureResult(
 					action.name,
 					`Action ${action.name} is not available for the current state`,
@@ -467,6 +486,7 @@ export async function executePlannedToolCall(
 	if (!accountPolicy.allowed) {
 		return emitToolResult(
 			toolCall,
+			redactDiagnosticText,
 			failureResult(
 				action.name,
 				accountPolicy.reason ??
@@ -599,6 +619,9 @@ export async function executePlannedToolCall(
 						},
 					}),
 				{
+					// Raw here by design: completeActionTrajectoryStep owns the
+					// diagnostic projection for every settlement, so the handler-adjacent
+					// copy stays exact and the egress copy is projected once.
 					parameters: isContentRecord(validation.args) ? validation.args : {},
 					projectResult: (result) =>
 						projectSettledResultForObserver(action, result),
@@ -633,16 +656,21 @@ export async function executePlannedToolCall(
 				roomId,
 				world: worldId,
 				content: {
-					text: resultForEvent.text ?? `Action ${action.name} completed`,
+					text: redactDiagnosticText(
+						resultForEvent.text ?? `Action ${action.name} completed`,
+					),
 					actions: [action.name],
 					actionStatus: resultForEvent.success ? "completed" : "failed",
-					actionResult: actionResultToContentRecord(resultForEvent, {
-						suppressData: suppressActionResult,
-					}),
+					actionResult: projectToolDiagnosticValue(
+						actionResultToContentRecord(resultForEvent, {
+							suppressData: suppressActionResult,
+						}),
+						redactDiagnosticText,
+					) as Record<string, ContentValue>,
 					source: executorCtx.message.content.source,
 					error:
 						typeof resultForEvent.error === "string"
-							? resultForEvent.error
+							? redactDiagnosticText(resultForEvent.error)
 							: undefined,
 				},
 			})
@@ -676,13 +704,14 @@ export async function executePlannedToolCall(
 			});
 		}
 	}
-	return emitToolResult(toolCall, resultForEvent, {
+	return emitToolResult(toolCall, redactDiagnosticText, resultForEvent, {
 		suppressData: suppressActionResult,
 	});
 }
 
 async function emitToolResult(
 	toolCall: PlannerToolCall | PlannedToolCall,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
 	result: ActionResult,
 	options: { suppressData?: boolean } = {},
 ): Promise<ActionResult> {
@@ -691,8 +720,12 @@ async function emitToolResult(
 	const streamingToolCall = plannedToolCallToStreamingToolCall(
 		toolCall,
 		status,
+		redactDiagnosticText,
 	);
-	streamingToolCall.result = actionResultToStreamingResult(result, options);
+	streamingToolCall.result = projectToolDiagnosticValue(
+		actionResultToStreamingResult(result, options),
+		redactDiagnosticText,
+	) as ToolCall["result"];
 	await emitStreamingHook(streamingContext, "onToolResult", {
 		toolCall: streamingToolCall,
 		toolCallId: streamingToolCall.id,
@@ -756,11 +789,18 @@ async function resolveToolCallUserRoles(
 function plannedToolCallToStreamingToolCall(
 	toolCall: PlannerToolCall | PlannedToolCall,
 	status: "completed" | "failed",
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
 ): ToolCall {
+	// The raw call id/name survive for correlation with the pending-phase
+	// stream event; argument values are projected because stream observers are
+	// a diagnostic surface, not the execution path.
 	return {
 		id: toolCall.id ?? toolCall.name,
 		name: toolCall.name,
-		arguments: normalizeToolArgs(toolCall) as ToolCall["arguments"],
+		arguments: (projectToolDiagnosticArgs(
+			normalizeToolArgs(toolCall),
+			redactDiagnosticText,
+		) ?? {}) as ToolCall["arguments"],
 		status,
 	};
 }

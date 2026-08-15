@@ -157,7 +157,7 @@ export const getAppAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: "Acme Bot (acme-bot)\nURL: https://acme.elizacloud.ai\nStatus: deployed\nCredits used: $12.40",
+          text: "Acme Bot (acme-bot)\nURL: https://acme.apps.eliza.app\nStatus: deployed\nCredits used: $12.40",
           actions: ["GET_APP"],
         },
       },

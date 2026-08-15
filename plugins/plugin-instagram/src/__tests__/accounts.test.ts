@@ -3,7 +3,7 @@
  * mocked runtime — legacy default account, named `INSTAGRAM_ACCOUNTS`, and
  * character-settings sources. No live Instagram API.
  */
-import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
+import { type Content, ElizaError, type IAgentRuntime, type TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   listInstagramAccountIds,
@@ -12,9 +12,12 @@ import {
 } from "../accounts.js";
 import { InstagramService } from "../service.js";
 
-function runtime(settings: Record<string, string>): IAgentRuntime {
+function runtime(
+  settings: Record<string, string>,
+  characterSettings: Record<string, unknown> = {}
+): IAgentRuntime {
   return {
-    character: { settings: {} },
+    character: { settings: characterSettings },
     getSetting: vi.fn((key: string) => settings[key] ?? null),
   } as IAgentRuntime;
 }
@@ -45,6 +48,119 @@ describe("Instagram account config", () => {
     const config = resolveInstagramAccountConfig(rt);
     expect(config.accountId).toBe("brand");
     expect(config.username).toBe("brand");
+  });
+});
+
+describe("INSTAGRAM_ACCOUNTS fail-closed parsing (#18969)", () => {
+  it("throws a typed config error on malformed JSON instead of an empty map", () => {
+    const rt = runtime({ INSTAGRAM_ACCOUNTS: "{not json" });
+
+    try {
+      listInstagramAccountIds(rt);
+      throw new Error("expected malformed INSTAGRAM_ACCOUNTS to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe("INSTAGRAM_CONFIG_INVALID");
+      expect((error as ElizaError).severity).toBe("fatal");
+      expect((error as ElizaError).context).toEqual({
+        setting: "INSTAGRAM_ACCOUNTS",
+      });
+      expect((error as Error).cause).toBeInstanceOf(SyntaxError);
+    }
+  });
+
+  it("throws a typed config error on every valid-JSON primitive", () => {
+    for (const value of ["just-a-string", 7, null, true]) {
+      const rt = runtime({ INSTAGRAM_ACCOUNTS: JSON.stringify(value) });
+      try {
+        listInstagramAccountIds(rt);
+        throw new Error("expected primitive INSTAGRAM_ACCOUNTS to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ElizaError);
+        expect((error as ElizaError).code).toBe("INSTAGRAM_CONFIG_INVALID");
+        expect((error as ElizaError).severity).toBe("fatal");
+        expect((error as ElizaError).context).toEqual({
+          setting: "INSTAGRAM_ACCOUNTS",
+          valueType: value === null ? "null" : typeof value,
+        });
+      }
+    }
+  });
+
+  it("normalizes padded object keys so listing and lookup agree", () => {
+    const rt = runtime({
+      INSTAGRAM_DEFAULT_ACCOUNT_ID: "brand",
+      INSTAGRAM_ACCOUNTS: JSON.stringify({
+        " brand ": { username: "brand-user", password: "brand-password" },
+      }),
+    });
+
+    expect(listInstagramAccountIds(rt)).toContain("brand");
+    const config = resolveInstagramAccountConfig(rt);
+    expect(config.accountId).toBe("brand");
+    // Pre-#18969 the padded key listed as `brand` but resolved to an empty
+    // config (no username) because lookup used the raw map key.
+    expect(config.username).toBe("brand-user");
+  });
+
+  it("keeps well-formed object and array shapes working", () => {
+    const objectRt = runtime({
+      INSTAGRAM_ACCOUNTS: JSON.stringify({ a: { username: "a-user" } }),
+    });
+    expect(listInstagramAccountIds(objectRt)).toContain("a");
+
+    const arrayRt = runtime({
+      INSTAGRAM_ACCOUNTS: JSON.stringify([{ accountId: "b", username: "b-user" }]),
+    });
+    expect(listInstagramAccountIds(arrayRt)).toContain("b");
+  });
+
+  it("normalizes padded array ids and skips junk entries in both shapes", () => {
+    const arrayRt = runtime({
+      INSTAGRAM_ACCOUNTS: JSON.stringify([
+        null,
+        "junk",
+        [],
+        { id: " work ", username: "work-user" },
+      ]),
+    });
+    expect(listInstagramAccountIds(arrayRt)).toEqual(["work"]);
+    expect(resolveInstagramAccountConfig(arrayRt, "work").username).toBe("work-user");
+
+    const objectRt = runtime({
+      INSTAGRAM_ACCOUNTS: JSON.stringify({
+        junk: "not-an-account",
+        nestedArray: [],
+        " brand ": { username: "brand-user" },
+      }),
+    });
+    expect(listInstagramAccountIds(objectRt)).toEqual(["brand"]);
+    expect(resolveInstagramAccountConfig(objectRt, "brand").username).toBe("brand-user");
+  });
+
+  it("fails closed when distinct entries normalize to the same id", () => {
+    const rt = runtime({
+      INSTAGRAM_ACCOUNTS: JSON.stringify({
+        brand: { username: "first" },
+        " brand ": { username: "second" },
+      }),
+    });
+    expect(() => listInstagramAccountIds(rt)).toThrowError(/duplicate account id "brand"/);
+  });
+
+  it("normalizes character account keys before listing and lookup", () => {
+    const rt = runtime(
+      {},
+      {
+        instagram: {
+          accounts: {
+            " brand ": { username: "character-brand" },
+          },
+        },
+      }
+    );
+    expect(listInstagramAccountIds(rt)).toEqual(["brand"]);
+    expect(resolveInstagramAccountConfig(rt, "brand").username).toBe("character-brand");
   });
 });
 

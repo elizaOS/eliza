@@ -9,9 +9,83 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { resolveRequireEvidence } from "./capture-output.mjs";
+import {
+  DEFAULT_CAPTURE_DURATION_SECONDS,
+  MAX_CAPTURE_DURATION_SECONDS,
+  parseFlags,
+  resolveCaptureDurationSeconds,
+  resolveRequireEvidence,
+} from "./capture-output.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+describe("resolveCaptureDurationSeconds (#18622)", () => {
+  it("defaults to 6 seconds when --duration is omitted", () => {
+    expect(resolveCaptureDurationSeconds({})).toBe(
+      DEFAULT_CAPTURE_DURATION_SECONDS,
+    );
+    expect(resolveCaptureDurationSeconds(parseFlags([]))).toBe(
+      DEFAULT_CAPTURE_DURATION_SECONDS,
+    );
+    expect(DEFAULT_CAPTURE_DURATION_SECONDS).toBe(6);
+  });
+
+  it("accepts complete positive integers in the safe timer range", () => {
+    expect(resolveCaptureDurationSeconds({ duration: "1" })).toBe(1);
+    expect(resolveCaptureDurationSeconds({ duration: "6" })).toBe(6);
+    expect(resolveCaptureDurationSeconds({ duration: "180" })).toBe(180);
+    expect(
+      resolveCaptureDurationSeconds({
+        duration: String(MAX_CAPTURE_DURATION_SECONDS),
+      }),
+    ).toBe(MAX_CAPTURE_DURATION_SECONDS);
+    expect(
+      resolveCaptureDurationSeconds(parseFlags(["--duration", "30"])),
+    ).toBe(30);
+  });
+
+  it("rejects bare --duration (boolean true from parseFlags)", () => {
+    expect(() =>
+      resolveCaptureDurationSeconds(parseFlags(["--duration"])),
+    ).toThrow(/--duration requires an integer/);
+    expect(() => resolveCaptureDurationSeconds({ duration: true })).toThrow(
+      /--duration requires an integer/,
+    );
+  });
+
+  it("rejects zero, negative, fractional, partial, and non-numeric values", () => {
+    for (const bad of [
+      "0",
+      "-1",
+      "-3",
+      "1.5",
+      "6junk",
+      "junk",
+      "NaN",
+      "Infinity",
+      "",
+      " 6",
+      "6 ",
+      "+6",
+      "0x10",
+      "1e2",
+    ]) {
+      expect(() => resolveCaptureDurationSeconds({ duration: bad })).toThrow(
+        /--duration must be an integer/,
+      );
+    }
+  });
+
+  it("rejects values that would overflow a Node millisecond timer", () => {
+    const over = String(MAX_CAPTURE_DURATION_SECONDS + 1);
+    expect(() => resolveCaptureDurationSeconds({ duration: over })).toThrow(
+      /--duration must be an integer/,
+    );
+    expect(MAX_CAPTURE_DURATION_SECONDS * 1000).toBeLessThanOrEqual(
+      2_147_483_647,
+    );
+  });
+});
 
 describe("resolveRequireEvidence (#13624)", () => {
   it("defaults to false for a local ad-hoc run (no flag, no env, no CI)", () => {

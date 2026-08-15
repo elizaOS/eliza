@@ -9,6 +9,23 @@
 
 ### Changed
 
+- **Optimized-prompt artifact compatibility decision:** The retired
+  `OptimizedPromptContextConfig` channel and its provider-selection helpers
+  (`resolveOptimizedContextConfigForRuntime` and
+  `applyOptimizedProviderSelection`) remain removed; no deprecated shims are
+  restored because their training consumer was removed and the settings were
+  inert at runtime. The removed context-config portions of the
+  `./services/optimized-prompt-resolver` source surface are likewise no longer
+  supported. Migrate callers by removing those imports and omit `contextConfig`
+  from generated artifacts; remaining prompt resolution uses
+  `OptimizedPromptService` and `resolveOptimizedPromptForRuntime`. Artifacts
+  carrying `contextConfig`, even when the own-property value is `undefined`,
+  are rejected at parse and write boundaries.
+  - **Why:** A retired field cannot be allowed to cross the signed persistence
+    boundary or appear to control provider selection. An explicit migration
+    note makes the intentional source break reviewable instead of preserving
+    an inert compatibility API.
+
 - **Documentation:** Removed `docs/OUTGOING_CONTENT_HOOKS.md` and `docs/PIPELINE_MODEL_STREAMING_AND_DPE.md` in favor of [docs/PIPELINE_HOOKS.md](./docs/PIPELINE_HOOKS.md).
   - **Why:** One hooks guide is easier to discover and update than parallel granular files.
 

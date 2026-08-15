@@ -275,6 +275,11 @@ async function driveDiscordTurn(options: {
 			ownerDiscordUserIds,
 			accountPool: { get: () => null, getDefault: () => null },
 			turnDrainRegistry: createTurnDrainRegistry(),
+			// The shutdown cordon field is a constructor-initialized class field;
+			// `Object.create` skips the constructor, and `admitInboundMessage`
+			// treats anything other than exactly `null` as a closed ingress, so
+			// the harness must open it explicitly.
+			ingressClosedReason: null,
 		},
 	);
 

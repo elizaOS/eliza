@@ -135,7 +135,7 @@ export function generateCharacterMetadata(
     title: `${name} - AI Character`,
     description,
     keywords: [name, "AI character", "AI agent", "elizaOS", ...tags],
-    path: `/dashboard/my-agents/${id}`,
+    path: `/cloud/my-agents/${id}`,
     ogImage: avatarUrl || "/og-image.png",
     type: "profile",
     entityId: id,

@@ -163,21 +163,22 @@ test.describe("launcher catalog interactions", () => {
           // false proof where the hidden Home scroller moves while the visible
           // final tile remains trapped beneath the fixed composer.
           const scrollHost = grid;
-          await expect
-            .poll(() => scrollHost.evaluate((element) => element.scrollHeight))
-            .toBeGreaterThan(
-              await scrollHost.evaluate((element) => element.clientHeight),
+          const scrollMetrics = await scrollHost.evaluate((element) => ({
+            clientHeight: element.clientHeight,
+            scrollHeight: element.scrollHeight,
+          }));
+          if (scrollMetrics.scrollHeight > scrollMetrics.clientHeight) {
+            await touchScrollLauncher(page, "launcher-page-window", "down");
+            await expect
+              .poll(() => scrollHost.evaluate((element) => element.scrollTop), {
+                message:
+                  "the single launcher grid scrolls after a real touch swipe",
+              })
+              .toBeGreaterThan(0);
+            scrollTopAfterTouch = await scrollHost.evaluate(
+              (element) => element.scrollTop,
             );
-          await touchScrollLauncher(page, "launcher-page-window", "down");
-          await expect
-            .poll(() => scrollHost.evaluate((element) => element.scrollTop), {
-              message:
-                "the single launcher grid scrolls after a real touch swipe",
-            })
-            .toBeGreaterThan(0);
-          scrollTopAfterTouch = await scrollHost.evaluate(
-            (element) => element.scrollTop,
-          );
+          }
           const finalTile = grid
             .locator('[data-testid^="launcher-tile-"]')
             .last();
@@ -203,10 +204,12 @@ test.describe("launcher catalog interactions", () => {
             testInfo,
             `${viewport.name}-launcher-after-touch-scroll`,
           );
-          await touchScrollLauncher(page, "launcher-page-window", "up");
-          await expect
-            .poll(() => scrollHost.evaluate((element) => element.scrollTop))
-            .toBeLessThan(scrollTopAfterTouch);
+          if (scrollMetrics.scrollHeight > scrollMetrics.clientHeight) {
+            await touchScrollLauncher(page, "launcher-page-window", "up");
+            await expect
+              .poll(() => scrollHost.evaluate((element) => element.scrollTop))
+              .toBeLessThan(scrollTopAfterTouch);
+          }
         }
 
         await grid

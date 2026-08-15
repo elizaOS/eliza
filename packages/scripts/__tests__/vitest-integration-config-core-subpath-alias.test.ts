@@ -6,9 +6,10 @@
  * (`importee === find || importee.startsWith(find + "/")`), so a string
  * "@elizaos/core" alias rewrote "@elizaos/core/node" (imported by plugin
  * dists), "@elizaos/core/testing" (imported by real-runtime tests), and
- * "@elizaos/core/connectors" (imported by connector plugins) into
+ * "@elizaos/core/connectors" (imported by connector plugins), and
+ * "@elizaos/core/client-public" (imported by shared browser-safe facades) into
  * "<core entry file>/<subpath>" — a path nested under a *file*, which fails
- * with ENOTDIR and killed every plugins/*\/test integration test in the lane.
+ * with ENOTDIR and kills the importing test suite.
  *
  * This test replays rollup's documented alias-matching semantics against the
  * config's actual alias list and asserts each core specifier lands on a real
@@ -67,6 +68,7 @@ describe("integration.config.ts @elizaos/core alias (#11047)", () => {
     "@elizaos/core/node",
     "@elizaos/core/testing",
     "@elizaos/core/connectors",
+    "@elizaos/core/client-public",
   ] as const;
 
   it.each(coreSpecifiers)("resolves %s to a real file", (specifier) => {

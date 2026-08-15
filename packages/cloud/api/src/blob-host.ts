@@ -1,11 +1,11 @@
 /**
- * Public R2 object serving for the blob host (`blob.elizacloud.ai` /
+ * Public R2 object serving for the blob host (`blob.eliza.app` /
  * `R2_PUBLIC_HOST`).
  *
  * Every public URL the cloud mints for an R2 object points at this host
  * (`publicUrlForR2Key`, `uploadToBlob` — avatars, image/music generations,
  * voice-clone samples). The host was meant to serve the
- * bucket directly, but the wildcard `*.elizacloud.ai/*` Worker route shadows
+ * bucket directly, but the managed-agent wildcard Worker route shadows
  * it — same disease the feed host has (see FEED_ALIAS_HOST) — so every such
  * URL 404'd on this worker's JSON router, and anything that CONSUMES those
  * URLs broke with it: OpenAI's moderation-by-URL cannot download generated
@@ -64,7 +64,7 @@ function isPublicBlobKey(key: string): boolean {
 /** The only bindings this handler reads — narrow so tests need no casts. */
 type BlobHostBindings = Pick<AppEnv["Bindings"], "BLOB" | "R2_PUBLIC_HOST">;
 
-const DEFAULT_BLOB_HOST = "blob.elizacloud.ai";
+const DEFAULT_BLOB_HOST = "blob.eliza.app";
 
 /**
  * The slice of the native Workers R2 API this handler reads. The shared

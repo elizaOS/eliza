@@ -1,6 +1,6 @@
 /**
- * Exercises the Blooio iMessage adapter with deterministic signature,
- * malformed-delivery, deduplication, and outbound idempotency coverage.
+ * Exercises the multi-channel Blooio adapter with deterministic signature,
+ * malformed-delivery, channel affinity, and outbound idempotency coverage.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import crypto from "node:crypto";
@@ -181,6 +181,9 @@ describe("blooio extractEvent", () => {
     expect(event?.messageId).toBe("msg_v4_abc123");
     expect(event?.chatId).toBe("+15551234567");
     expect(event?.senderId).toBe("+15551234567");
+    expect(event?.channelId).toBe("ch_abc123");
+    expect(event?.channelType).toBe("blooio");
+    expect(event?.protocol).toBe("imessage");
     expect(event?.text).toBe("hey from v4");
     expect(event?.rawPayload).toEqual(JSON.parse(body));
   });
@@ -194,6 +197,20 @@ describe("blooio extractEvent", () => {
     );
 
     expect(event?.senderId).toBe("+15557654321");
+  });
+
+  test("preserves a v4 WhatsApp channel for the outbound reply", async () => {
+    const event = await blooioAdapter.extractEvent(
+      v4InboundPayload({
+        channel_id: "ch_whatsapp_123",
+        channel_type: "whatsapp_business",
+        protocol: "whatsapp",
+      }),
+    );
+
+    expect(event?.channelId).toBe("ch_whatsapp_123");
+    expect(event?.channelType).toBe("whatsapp_business");
+    expect(event?.protocol).toBe("whatsapp");
   });
 
   test("skips an event with no sender instead of emitting an unroutable ChatEvent", async () => {
@@ -291,7 +308,7 @@ describe("blooio sendReply", () => {
     rawPayload: {},
   };
 
-  test("POSTs to the chat with bearer auth, from-number, and an idempotency key", async () => {
+  test("POSTs through v4 with bearer auth, a fallback sender, and an idempotency key", async () => {
     let captured: { url: string; init: RequestInit } | null = null;
     globalThis.fetch = (async (
       url: string | URL | Request,
@@ -310,23 +327,51 @@ describe("blooio sendReply", () => {
       url: string;
       init: RequestInit;
     };
-    expect(url).toBe(
-      "https://api.blooio.com/v2/api/chats/%2B15551234567/messages",
-    );
+    expect(url).toBe("https://api.blooio.com/v4/messages");
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer bl_live_test");
-    expect(headers["X-From-Number"]).toBe("+15550001111");
     expect(headers["Idempotency-Key"]).toBe("gw-reply-msg_abc123");
-    expect(JSON.parse(String(init.body))).toEqual({ text: "hello back" });
+    expect(JSON.parse(String(init.body))).toEqual({
+      to: "+15551234567",
+      from: "+15550001111",
+      text: "hello back",
+    });
   });
 
-  test("omits X-From-Number when no fromNumber is configured", async () => {
-    let headers: Record<string, string> = {};
+  test("pins a v4 reply to the exact inbound WhatsApp channel", async () => {
+    let body: Record<string, unknown> = {};
     globalThis.fetch = (async (
       _url: string | URL | Request,
       init?: RequestInit,
     ) => {
-      headers = (init?.headers ?? {}) as Record<string, string>;
+      body = JSON.parse(String(init?.body));
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    await blooioAdapter.sendReply(
+      makeConfig(),
+      {
+        ...chatEvent,
+        channelId: "ch_whatsapp_123",
+        channelType: "whatsapp_business",
+        protocol: "whatsapp",
+      },
+      "hi",
+    );
+    expect(body).toEqual({
+      to: "+15551234567",
+      from: "ch_whatsapp_123",
+      text: "hi",
+    });
+  });
+
+  test("allows v4 priority routing when no channel or fromNumber is available", async () => {
+    let body: Record<string, unknown> = {};
+    globalThis.fetch = (async (
+      _url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      body = JSON.parse(String(init?.body));
       return new Response("{}", { status: 200 });
     }) as typeof fetch;
 
@@ -335,7 +380,7 @@ describe("blooio sendReply", () => {
       chatEvent,
       "hi",
     );
-    expect(headers["X-From-Number"]).toBeUndefined();
+    expect(body).toEqual({ to: "+15551234567", text: "hi" });
   });
 
   test("throws when the API key is missing", async () => {

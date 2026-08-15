@@ -1,0 +1,497 @@
+/**
+ * Guards the protected gateway-webhook deploy workflow's exact source,
+ * Railway identity, canonical routing, secret-name, and live smoke contracts.
+ */
+import { describe, expect, test } from "bun:test";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, sep } from "node:path";
+
+const repoRoot = new URL("../../../", import.meta.url);
+const workflowPath = new URL(
+  ".github/workflows/deploy-gateway-webhook.yml",
+  repoRoot,
+);
+const source = readFileSync(workflowPath, "utf8");
+const workflowReadme = readFileSync(
+  new URL(".github/workflows/README.md", repoRoot),
+  "utf8",
+);
+interface WorkflowStep {
+  env?: Record<string, string>;
+  id?: string;
+  name?: string;
+  run?: string;
+  uses?: string;
+  with?: Record<string, string | number | boolean>;
+}
+
+interface WorkflowJob {
+  env?: Record<string, string>;
+  environment?: string;
+  steps?: WorkflowStep[];
+}
+
+interface Workflow {
+  concurrency?: {
+    "cancel-in-progress"?: boolean;
+    group?: string;
+  };
+  jobs?: Record<string, WorkflowJob>;
+  on?: {
+    workflow_dispatch?: {
+      inputs?: {
+        environment?: {
+          options?: string[];
+          required?: boolean;
+          type?: string;
+        };
+      };
+    };
+  };
+  permissions?: Record<string, string>;
+}
+
+const workflow = Bun.YAML.parse(source) as Workflow;
+const deploy = workflow.jobs?.deploy;
+const steps = deploy?.steps ?? [];
+
+function step(name: string): WorkflowStep {
+  const found = steps.find((candidate) => candidate.name === name);
+  if (!found) throw new Error(`Missing gateway-webhook workflow step: ${name}`);
+  return found;
+}
+
+function githubExpression(body: string): string {
+  return ["$", "{{ ", body, " }}"].join("");
+}
+
+const expectedJobEnvironment = {
+  TARGET_ENVIRONMENT: githubExpression("inputs.environment"),
+  DEPLOY_BRANCH: githubExpression(
+    "inputs.environment == 'production' && 'main' || 'develop'",
+  ),
+  EXPECTED_SERVICE_NAME: githubExpression(
+    "inputs.environment == 'production' && 'gateway-webhook' || 'gateway-webhook-stg'",
+  ),
+  EXPECTED_CLOUD_URL: githubExpression(
+    "inputs.environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app'",
+  ),
+  EXPECTED_ROUTER_ORIGIN: githubExpression(
+    "inputs.environment == 'production' && 'eliza-production-1.eliza.app' || 'eliza-staging-1.eliza.app'",
+  ),
+  EXPECTED_AGENT_BASE_DOMAIN: githubExpression(
+    "inputs.environment == 'production' && 'cloud.eliza.app' || 'cloud-staging.eliza.app'",
+  ),
+  EXPECTED_GATEWAY_URL: githubExpression(
+    "inputs.environment == 'production' && 'https://gateway-webhook-production.up.railway.app' || 'https://gateway-webhook-stg-staging.up.railway.app'",
+  ),
+  GATEWAY_WEBHOOK_URL: githubExpression("vars.ELIZA_APP_WEBHOOK_GATEWAY_URL"),
+  RAILWAY_PROJECT_ID: githubExpression("vars.RAILWAY_PROJECT_ID"),
+  RAILWAY_ENVIRONMENT_ID: githubExpression("vars.RAILWAY_ENVIRONMENT_ID"),
+  RAILWAY_SERVICE_ID: githubExpression(
+    "vars.RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK",
+  ),
+  RAILWAY_TOKEN: githubExpression("secrets.RAILWAY_TOKEN"),
+};
+
+function assertExactProtectedRouting(job: WorkflowJob | undefined): void {
+  if (job?.environment !== githubExpression("inputs.environment")) {
+    throw new Error("protected environment expression drifted");
+  }
+  for (const [name, expected] of Object.entries(expectedJobEnvironment)) {
+    if (job.env?.[name] !== expected) {
+      throw new Error(`${name} mapping drifted`);
+    }
+  }
+}
+
+function railwayUpPathArgument(run: string): string | undefined {
+  const normalized = run.replace(/\\\n/g, " ");
+  const invocation = normalized.match(/(?:^|\n)\s*railway up(?:\s+(\S+))?/);
+  if (!invocation) throw new Error("Missing Railway up invocation");
+  const firstArgument = invocation[1];
+  return firstArgument && !firstArgument.startsWith("-")
+    ? firstArgument
+    : undefined;
+}
+
+/**
+ * Reproduces Railway CLI v5.38.0's pre-upload path contract from
+ * `commands/up.rs::get_deploy_paths` and
+ * `controllers/upload.rs::create_deploy_tarball`.
+ */
+function pinnedRailwayV538ArchiveMembers(
+  cwd: string,
+  pathArgument: string | undefined,
+  relativeMembers: string[],
+): string[] {
+  const projectPath = pathArgument ?? cwd;
+  const archivePrefixPath = cwd;
+  return relativeMembers.map((member) => {
+    const walkedPath = join(projectPath, member);
+    if (isAbsolute(walkedPath) !== isAbsolute(archivePrefixPath)) {
+      throw new Error("prefix not found");
+    }
+    const stripped = relative(archivePrefixPath, walkedPath);
+    if (
+      stripped === ".." ||
+      stripped.startsWith(`..${sep}`) ||
+      isAbsolute(stripped)
+    ) {
+      throw new Error("prefix not found");
+    }
+    return stripped;
+  });
+}
+
+function assertExactForwarderAuthReadinessProbe(run: string): void {
+  const required = {
+    route: '"$GATEWAY_WEBHOOK_URL/ready/forwarder-auth/eliza-app"',
+    status: '"$forwarder_probe_status" != "401"',
+    keys: 'keys == ["error", "project", "status"]',
+    error: '.error == "unauthorized"',
+    readiness: '.status == "enforced"',
+    project: '.project == "eliza-app"',
+  } as const;
+  for (const [contract, fragment] of Object.entries(required)) {
+    if (!run.includes(fragment)) {
+      throw new Error(`forwarder readiness ${contract} contract drifted`);
+    }
+  }
+  for (const forbidden of [
+    "X-Eliza-Webhook-Forwarder-Secret",
+    "--request POST",
+    "--data '{}'",
+    "/webhook/eliza-app/telegram",
+  ]) {
+    if (run.includes(forbidden)) {
+      throw new Error("forwarder readiness probe entered a forbidden path");
+    }
+  }
+  if (
+    run.indexOf("assert_active_deployment after") < run.indexOf(required.route)
+  ) {
+    throw new Error("forwarder readiness active-deployment recheck drifted");
+  }
+}
+
+describe("protected gateway-webhook deployment workflow", () => {
+  test("is manual, least-privileged, protected, and serialized per environment", () => {
+    expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_dispatch"]);
+    expect(workflow.on?.workflow_dispatch?.inputs?.environment).toEqual({
+      description: "Protected environment to deploy",
+      required: true,
+      type: "choice",
+      options: ["staging", "production"],
+    });
+    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(deploy?.environment).toBe(githubExpression("inputs.environment"));
+    expect(workflow.concurrency?.group).toContain("inputs.environment");
+    expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
+
+    expect(deploy?.env).toEqual(expectedJobEnvironment);
+    expect(() => assertExactProtectedRouting(deploy)).not.toThrow();
+
+    expect(() =>
+      assertExactProtectedRouting({
+        ...deploy,
+        environment: `unsafe-${deploy?.environment}`,
+      }),
+    ).toThrow("protected environment expression drifted");
+
+    const reversedMappings = {
+      EXPECTED_CLOUD_URL: githubExpression(
+        "inputs.environment == 'production' && 'https://api-staging.eliza.app' || 'https://api.eliza.app'",
+      ),
+      EXPECTED_ROUTER_ORIGIN: githubExpression(
+        "inputs.environment == 'production' && 'eliza-staging-1.eliza.app' || 'eliza-production-1.eliza.app'",
+      ),
+      EXPECTED_AGENT_BASE_DOMAIN: githubExpression(
+        "inputs.environment == 'production' && 'cloud-staging.eliza.app' || 'cloud.eliza.app'",
+      ),
+      EXPECTED_GATEWAY_URL: githubExpression(
+        "inputs.environment == 'production' && 'https://gateway-webhook-stg-staging.up.railway.app' || 'https://gateway-webhook-production.up.railway.app'",
+      ),
+    };
+    for (const [name, reversed] of Object.entries(reversedMappings)) {
+      expect(() =>
+        assertExactProtectedRouting({
+          ...deploy,
+          env: { ...deploy?.env, [name]: reversed },
+        }),
+      ).toThrow(`${name} mapping drifted`);
+    }
+    expect(workflowReadme).toContain(
+      "| `staging` | `develop` | `gateway-webhook-stg` |",
+    );
+    expect(workflowReadme).toContain(
+      "| `production` | `main` | `gateway-webhook` |",
+    );
+
+    const checkout = steps.find((candidate) =>
+      candidate.uses?.startsWith("actions/checkout@"),
+    );
+    expect(checkout?.uses).toBe(
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    );
+    expect(checkout?.with?.ref).toContain("github.sha");
+    expect(checkout?.with?.["persist-credentials"]).toBe(false);
+  });
+
+  test("fails closed on branch, exact SHA, canonical URLs, and protected ids", () => {
+    const preflight = step("Validate protected canonical configuration");
+    for (const name of [
+      "TARGET_ENVIRONMENT",
+      "DEPLOY_BRANCH",
+      "EXPECTED_CLOUD_URL",
+      "EXPECTED_ROUTER_ORIGIN",
+      "EXPECTED_AGENT_BASE_DOMAIN",
+      "EXPECTED_GATEWAY_URL",
+      "GATEWAY_WEBHOOK_URL",
+      "RAILWAY_PROJECT_ID",
+      "RAILWAY_ENVIRONMENT_ID",
+      "RAILWAY_SERVICE_ID",
+      "RAILWAY_TOKEN",
+    ]) {
+      expect(preflight.run).toContain(`\n  ${name}\n`);
+    }
+    expect(preflight.run).toContain('"refs/heads/$DEPLOY_BRANCH"');
+    expect(preflight.run).toContain('"$(git rev-parse HEAD)" "$GITHUB_SHA"');
+    expect(preflight.run).toContain(
+      "git status --porcelain --untracked-files=all",
+    );
+    expect(preflight.run).toContain("Unsupported protected environment");
+    expect(preflight.run).not.toContain('echo "$actual"');
+
+    for (const canonical of [
+      "https://api.eliza.app",
+      "https://api-staging.eliza.app",
+      "eliza-production-1.eliza.app",
+      "eliza-staging-1.eliza.app",
+      "cloud.eliza.app",
+      "cloud-staging.eliza.app",
+      "https://gateway-webhook-production.up.railway.app",
+      "https://gateway-webhook-stg-staging.up.railway.app",
+    ]) {
+      expect(source).toContain(canonical);
+    }
+  });
+
+  test("pins Railway and resolves the exact project, environment, service, and domain", () => {
+    const install = step("Install pinned Railway CLI");
+    expect(install.run).toContain("v5.38.0");
+    expect(install.run).toContain(
+      "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e",
+    );
+    expect(install.run).toContain("sha256sum --check --status");
+
+    const target = step("Verify exact Railway target and public domain");
+    expect(target.run).toContain("railway status");
+    expect(target.run).toContain('--project "$RAILWAY_PROJECT_ID"');
+    expect(target.run).toContain('--environment "$RAILWAY_ENVIRONMENT_ID"');
+    expect(target.run).toContain(".node.id == $id and .node.name == $name");
+    expect(target.run).toContain("railway domain list");
+    expect(target.run).toContain('--service "$RAILWAY_SERVICE_ID"');
+    expect(target.run).toContain(".domain == $domain");
+  });
+
+  test("checks sensitive variable names through private files without publishing values", () => {
+    const variables = step(
+      "Verify canonical Railway variables and sensitive names",
+    );
+    expect(variables.run).toContain("umask 077");
+    expect(variables.run).toContain("railway variable list");
+    expect(variables.run).toContain("nonblank_sensitive_names");
+    expect(variables.run).toContain('shred -u "$variables_raw_path"');
+    expect(variables.run).toContain("GATEWAY_BOOTSTRAP_SECRET");
+    expect(variables.run).toContain("GATEWAY_INTERNAL_SECRET");
+    expect(variables.run).toContain("AGENT_SERVER_SHARED_SECRET");
+    expect(variables.run).toContain("ELIZA_APP_WEBHOOK_GATEWAY_SECRET");
+    expect(variables.run).toContain("REDIS_URL");
+    expect(variables.run).toContain("KV_REST_API_URL");
+    expect(variables.run).toContain("KV_REST_API_TOKEN");
+    expect(variables.run).toContain("AGENT_ROUTER_ORIGIN_HOST");
+    expect(variables.run).toContain("ELIZA_CLOUD_AGENT_BASE_DOMAIN");
+    expect(source).not.toContain("railway variable set");
+    expect(source).not.toContain('cat "$variables_path"');
+    expect(source).not.toContain('echo "$RAILWAY_TOKEN"');
+  });
+
+  test("binds the exact root source and manifest to its new deployment id", () => {
+    const exactSource = step("Deploy exact gateway-webhook source");
+    expect(exactSource.run).toContain(
+      '"$(git rev-parse HEAD)" != "$GITHUB_SHA"',
+    );
+    expect(exactSource.run).toContain(
+      "git status --porcelain --untracked-files=all",
+    );
+    expect(railwayUpPathArgument(exactSource.run ?? "")).toBeUndefined();
+    expect(exactSource.run).toContain(
+      "cp packages/cloud/services/gateway-webhook/railway.toml railway.toml",
+    );
+    expect(exactSource.run).toContain("cmp --silent");
+    expect(exactSource.run).toContain('!= "?? railway.toml"');
+    expect(exactSource.run).toContain('--project "$RAILWAY_PROJECT_ID"');
+    expect(exactSource.run).toContain(
+      '--environment "$RAILWAY_ENVIRONMENT_ID"',
+    );
+    expect(exactSource.run).toContain('--service "$RAILWAY_SERVICE_ID"');
+    expect(exactSource.run).toContain("--detach");
+    expect(exactSource.run).toContain("--yes");
+    expect(exactSource.run).toContain(
+      '--message "gateway-webhook $GITHUB_SHA ($TARGET_ENVIRONMENT)"',
+    );
+    expect(exactSource.run).toContain(
+      "gateway-webhook-deployment-baseline.json",
+    );
+    expect(exactSource.run).toContain("deployment_id=$deployment_id");
+
+    const fixtureRoot = mkdtempSync(
+      join(tmpdir(), "gateway-webhook-railway-v538-"),
+    );
+    try {
+      const dockerfilePath =
+        "packages/cloud/services/gateway-webhook/Dockerfile";
+      mkdirSync(join(fixtureRoot, "packages/cloud/services/gateway-webhook"), {
+        recursive: true,
+      });
+      writeFileSync(join(fixtureRoot, "railway.toml"), "[build]\n");
+      writeFileSync(join(fixtureRoot, dockerfilePath), "FROM scratch\n");
+
+      expect(() =>
+        pinnedRailwayV538ArchiveMembers(fixtureRoot, ".", [
+          "railway.toml",
+          dockerfilePath,
+        ]),
+      ).toThrow("prefix not found");
+
+      const archiveMembers = pinnedRailwayV538ArchiveMembers(
+        fixtureRoot,
+        railwayUpPathArgument(exactSource.run ?? ""),
+        ["railway.toml", dockerfilePath],
+      );
+      expect(archiveMembers).toEqual(["railway.toml", dockerfilePath]);
+
+      const archivePath = join(fixtureRoot, "gateway-webhook-source.tar.gz");
+      const createArchive = Bun.spawnSync([
+        "tar",
+        "-czf",
+        archivePath,
+        "-C",
+        fixtureRoot,
+        ...archiveMembers,
+      ]);
+      expect(createArchive.exitCode).toBe(0);
+      const listArchive = Bun.spawnSync(["tar", "-tzf", archivePath]);
+      expect(listArchive.exitCode).toBe(0);
+      const listed = listArchive.stdout.toString().trim().split("\n");
+      expect(listed).toContain("railway.toml");
+      expect(listed).toContain(dockerfilePath);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+
+    const wait = step("Wait for the exact Railway deployment");
+    expect(wait.env?.DEPLOYMENT_ID).toContain(
+      "steps.railway_deploy.outputs.deployment_id",
+    );
+    expect(wait.run).toContain("railway deployment list");
+    expect(wait.run).toContain(".id == $id");
+    expect(wait.run).toContain("SUCCESS");
+    expect(wait.run).toContain("FAILED | CRASHED | REMOVED");
+    expect(wait.run).toContain("CANCELED | CANCELLED");
+  });
+
+  test("proves live health and the startup-required canonical fallback pair", () => {
+    const verify = step(
+      "Verify deployed health and canonical fallback configuration",
+    );
+    expect(verify.env?.DEPLOYMENT_ID).toContain(
+      "steps.railway_deploy.outputs.deployment_id",
+    );
+    expect(verify.run).toContain('.meta.configFile == "/railway.toml"');
+    expect(verify.run).toContain(".meta.fileServiceManifest.build.builder");
+    expect(verify.run).toContain(".meta.serviceManifest.build.builder");
+    expect(verify.run).toContain(
+      "packages/cloud/services/gateway-webhook/Dockerfile",
+    );
+    expect(verify.run).toContain(
+      ".meta.fileServiceManifest.deploy.healthcheckPath",
+    );
+    expect(verify.run).toContain("railway service status");
+    expect(
+      verify.run?.match(/^assert_active_deployment (before|after)$/gm)?.length,
+    ).toBe(2);
+    expect(verify.run).toContain(".deploymentId == $id");
+    expect(verify.run).toContain('"$GATEWAY_WEBHOOK_URL/health"');
+    expect(verify.run).toContain('.status == "healthy"');
+    expect(verify.run).toContain("railway variable list");
+    expect(verify.run).toContain(".AGENT_ROUTER_ORIGIN_HOST == $router");
+    expect(verify.run).toContain(".ELIZA_CLOUD_AGENT_BASE_DOMAIN == $domain");
+    const verifyRun = verify.run ?? "";
+    expect(() =>
+      assertExactForwarderAuthReadinessProbe(verifyRun),
+    ).not.toThrow();
+    const readinessMutations = [
+      [
+        "/ready/forwarder-auth/eliza-app",
+        "/webhook/eliza-app/telegram",
+        "forwarder readiness route contract drifted",
+      ],
+      [
+        '"$forwarder_probe_status" != "401"',
+        '"$forwarder_probe_status" != "200"',
+        "forwarder readiness status contract drifted",
+      ],
+      [
+        '.status == "enforced"',
+        '.status == "ready"',
+        "forwarder readiness readiness contract drifted",
+      ],
+      [
+        '.project == "eliza-app"',
+        '.project == "another-project"',
+        "forwarder readiness project contract drifted",
+      ],
+    ] as const;
+    for (const [from, to, error] of readinessMutations) {
+      const mutated = verifyRun.replace(from, to);
+      expect(mutated).not.toBe(verifyRun);
+      expect(() => assertExactForwarderAuthReadinessProbe(mutated)).toThrow(
+        error,
+      );
+    }
+    expect(() =>
+      assertExactForwarderAuthReadinessProbe(
+        verifyRun.replace(
+          "--max-time 15",
+          "--max-time 15 --header X-Eliza-Webhook-Forwarder-Secret:guess",
+        ),
+      ),
+    ).toThrow("forwarder readiness probe entered a forbidden path");
+
+    const summary = step("Write deployment summary");
+    expect(summary.run).toContain("$GITHUB_SHA");
+    expect(summary.run).toContain("$DEPLOYMENT_ID");
+    expect(summary.run).toContain("Canonical fallback pair: verified");
+
+    const cleanup = step("Remove temporary deployment files");
+    expect(cleanup.run).toContain("shred -u");
+    expect(cleanup.run).toContain("shred -u railway.toml");
+    expect(cleanup.run).toContain("gateway-webhook-active-deployment.json");
+    expect(cleanup.run).toContain(
+      "gateway-webhook-forwarder-auth-readiness.json",
+    );
+    expect(cleanup.run).toContain("gateway-webhook-railway-variables-raw.json");
+    expect(cleanup.run).toContain(
+      "gateway-webhook-postdeploy-variables-raw.json",
+    );
+  });
+});

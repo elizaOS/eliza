@@ -20,7 +20,9 @@
  * git sha / build timestamp of THIS deploy. That makes `dist/sw.js` byte-change
  * on every deploy, so the browser's SW byte-diff detects a new worker and runs
  * install -> skipWaiting -> activate (drop-stale-caches + claim + navigate
- * windows) automatically. Before this, `public/sw.js` was copied verbatim and
+ * each ordinary window once) automatically. The worker is the only navigation
+ * owner; the page registration seam must never add a competing controllerchange
+ * reload. Before this, `public/sw.js` was copied verbatim and
  * was byte-identical across deploys, so the update machinery below was DEAD CODE
  * and users needed a manual clear-data ritual to pick up a new renderer. The
  * cache-name suffixes are derived from BUILD_REV too, so `activate`'s stale-cache
@@ -83,11 +85,28 @@ const HERO_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 h
 const ASSETS_CACHE_MAX_ENTRIES = 220;
 const KNOWN_CACHES = [VIEWS_CACHE_NAME, SHELL_CACHE_NAME, ASSETS_CACHE_NAME];
 
+// Snapshot this while the new worker is still installing. On an update the
+// registration points at the previous active worker; on a first install it is
+// null. Reading it later during `activate` would see this worker instead and
+// could not distinguish the two cases.
+const IS_SERVICE_WORKER_UPDATE = Boolean(self.registration.active);
+
 const VIEW_BUNDLE_RE = /^\/api\/views\/[^/]+\/bundle\.js$/;
 const VIEW_HERO_RE = /^\/api\/views\/[^/]+\/hero$/;
+const AUTH_NAVIGATION_PATH_RE =
+  /^\/(?:login(?:\/|$)|auth(?:\/|$)|oidc\/continue(?:\/|$))/;
 // Vite emits content-hashed static build output under /assets/. The hash makes
 // these safe to treat as immutable (cache-first, never revalidate).
 const IMMUTABLE_ASSET_RE = /^\/assets\/[^/]+\.(?:js|mjs|css|woff2?|json|wasm)$/;
+
+function isAuthNavigationUrl(rawUrl) {
+  try {
+    return AUTH_NAVIGATION_PATH_RE.test(new URL(rawUrl).pathname);
+  } catch {
+    // An unparseable client URL is not safe to replay during activation.
+    return true;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -123,21 +142,26 @@ self.addEventListener("activate", (event) => {
 
       await self.clients.claim();
 
-      // A newly activated worker means a new renderer was deployed. Existing
-      // tabs still execute their old JS indefinitely (notably across an OAuth
-      // app-pause/resume), so navigate same-origin windows once to load the
-      // current content-hashed renderer.
-      const windows = await self.clients.matchAll({
-        type: "window",
-        includeUncontrolled: true,
-      });
-      await Promise.all(
-        windows.map((client) =>
-          typeof client.navigate === "function"
-            ? client.navigate(client.url).catch(() => undefined)
-            : undefined,
-        ),
-      );
+      if (IS_SERVICE_WORKER_UPDATE) {
+        // A replacement worker means a new renderer was deployed. Existing
+        // tabs still execute their old JS indefinitely (notably across an OAuth
+        // app-pause/resume), so navigate same-origin windows once to load the
+        // current content-hashed renderer. Never navigate on first install:
+        // replaying an in-flight cross-origin auth bridge erases its referrer
+        // and makes the bridge correctly reject the now-unverifiable request.
+        const windows = await self.clients.matchAll({
+          type: "window",
+          includeUncontrolled: true,
+        });
+        await Promise.all(
+          windows.map((client) =>
+            typeof client.navigate === "function" &&
+            !isAuthNavigationUrl(client.url)
+              ? client.navigate(client.url).catch(() => undefined)
+              : undefined,
+          ),
+        );
+      }
     })(),
   );
 });

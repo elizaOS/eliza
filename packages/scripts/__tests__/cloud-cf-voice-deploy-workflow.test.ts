@@ -24,11 +24,17 @@ interface WorkflowStep {
 }
 
 interface Workflow {
-  jobs?: Record<string, { steps?: WorkflowStep[] }>;
+  jobs?: Record<string, { if?: string; steps?: WorkflowStep[] }>;
 }
 
-const workflowSource = read(".github/workflows/cloud-cf-deploy.yml");
+// The Worker `deploy-api` job lives in the reusable release workflow that
+// `cloud-cf-deploy.yml` calls after admission; the pull-request entry workflow
+// still owns the credential-free preview frontend build. Both files are read so
+// no expression in either escapes the balance and realtime-flag contracts.
+const entrySource = read(".github/workflows/cloud-cf-deploy.yml");
+const workflowSource = read(".github/workflows/cloud-cf-release.yml");
 const workflow = Bun.YAML.parse(workflowSource) as Workflow;
+const entryWorkflow = Bun.YAML.parse(entrySource) as Workflow;
 const publishStep = workflow.jobs?.["deploy-api"]?.steps?.find(
   (step) => step.name === "Publish Worker AI secrets",
 );
@@ -73,6 +79,8 @@ function runPreflight(env: Record<string, string>) {
       DEPLOY_ENVIRONMENT: "staging",
       DEEPGRAM_API_KEY: "deepgram-test",
       CARTESIA_API_KEY: "cartesia-test",
+      CARTESIA_STT_USD_PER_CREDIT: "0.00005",
+      CARTESIA_BATCH_STT_TIMEOUT_MS: "120000",
       FISH_AUDIO_API_KEY: "fish-test",
       FISH_AUDIO_REFERENCE_ID: "fish-reference-test",
       ELIZA_TTS_FISH_ENABLED: "false",
@@ -101,6 +109,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
         "{{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZACLOUD_API_KEY || '' }}",
     );
     expect(workflowSource).not.toContain("format('Bearer {0}'");
+    expect(entrySource).not.toContain("format('Bearer {0}'");
   });
 
   test("gates realtime secret publication behind explicit opt-in", () => {
@@ -108,7 +117,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
       "is gated by VOICE_REALTIME_WS_ENABLED; skipping",
     );
     expect(publishStep.run).toContain(
-      "CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION",
+      "realtime voice or VOICE_BATCH_STT_PROVIDER=cartesia",
     );
     expect(publishStep.run).toContain(
       "is gated by VOICE_BATCH_STT_PROVIDER=deepgram; skipping",
@@ -119,6 +128,17 @@ describe("Cloud CF realtime voice deploy contract", () => {
     expect(publishStep.run).toContain(
       "is gated by realtime voice, Fish enablement, and data-governance approval; skipping",
     );
+  });
+
+  test("publishes deployment-owned Cartesia batch billing and timeout config", () => {
+    expect(publishStep.env?.CARTESIA_STT_USD_PER_CREDIT).toBe(
+      "$" + "{{ vars.CARTESIA_STT_USD_PER_CREDIT }}",
+    );
+    expect(publishStep.env?.CARTESIA_BATCH_STT_TIMEOUT_MS).toBe(
+      "$" + "{{ vars.CARTESIA_BATCH_STT_TIMEOUT_MS }}",
+    );
+    expect(publishStep.run).toContain("CARTESIA_STT_USD_PER_CREDIT");
+    expect(publishStep.run).toContain("CARTESIA_BATCH_STT_TIMEOUT_MS");
   });
 
   test("passes a production-off Fish opt-in and exact realtime format to the Worker", () => {
@@ -144,6 +164,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
 
   test("keeps production wrangler vars and workflow env realtime-off with no dedicated-secret advertisement", () => {
     const wrangler = read("packages/cloud/api/wrangler.toml");
+    expect(wrangler).toMatch(/^keep_vars = true$/m);
     const stagingVars = wrangler.slice(
       wrangler.indexOf("[env.staging.vars]"),
       wrangler.indexOf("[env.production.vars]"),
@@ -154,7 +175,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     // Staging realtime is intentionally ON (#16809: toml aligned with the live
     // staging worker); production remains explicitly off until its own gated flip.
     expect(stagingVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
-    expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "false"');
+    expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
     expect(stagingVars).toContain('ELIZA_TTS_FISH_ENABLED = "false"');
     expect(productionVars).toContain('ELIZA_TTS_FISH_ENABLED = "false"');
     expect(stagingVars).toContain(
@@ -199,7 +220,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     // Staging is intentionally on (#16809); the production-safe invariant is
     // that production's own var stays "false".
     expect(stagingVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
-    expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "false"');
+    expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
     expect(deployStep.env?.VOICE_REALTIME_WS_ENABLED).toBe(
       publishStep.env?.VOICE_REALTIME_WS_ENABLED,
     );
@@ -207,15 +228,39 @@ describe("Cloud CF realtime voice deploy contract", () => {
       "&& 'true' || 'false'",
     );
 
-    const frontendRealtimeFlags = workflowSource.match(
-      /VITE_VOICE_REALTIME_WS: \$\{\{[^}]*vars\.VOICE_REALTIME_WS_ENABLED[^}]*&& '1' \|\| '0' \}\}/g,
-    );
-    expect(frontendRealtimeFlags?.length).toBeGreaterThanOrEqual(2);
-    for (const flag of frontendRealtimeFlags ?? []) {
-      expect(flag).toContain("inputs.environment == 'production'");
-      expect(flag).toContain("github.ref == 'refs/heads/main'");
+    // Every frontend build in either workflow must resolve the realtime flag
+    // from the repository variable and must not be able to reach production
+    // with it on. The canonical release build carries the production guard in
+    // the expression itself; the pull-request preview build has no production
+    // path at all because its whole environment is pinned to staging.
+    const flagPattern =
+      /VITE_VOICE_REALTIME_WS: \$\{\{[^}]*vars\.VOICE_REALTIME_WS_ENABLED[^}]*&& '1' \|\| '0' \}\}/g;
+    const releaseRealtimeFlags = workflowSource.match(flagPattern) ?? [];
+    expect(releaseRealtimeFlags.length).toBeGreaterThanOrEqual(1);
+    for (const flag of releaseRealtimeFlags) {
+      expect(flag).toContain("!(inputs.target_environment == 'production')");
       expect(flag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
     }
+
+    const entryRealtimeFlags = entrySource.match(flagPattern) ?? [];
+    expect(entryRealtimeFlags.length).toBeGreaterThanOrEqual(1);
+    for (const flag of entryRealtimeFlags) {
+      expect(flag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
+    }
+    const previewBuild = entryWorkflow.jobs?.["build-pages"]?.steps?.find(
+      (step) => step.name === "Build consolidated frontend artifact",
+    );
+    expect(previewBuild?.env?.VITE_VOICE_REALTIME_WS).toBe(
+      entryRealtimeFlags[0]?.replace("VITE_VOICE_REALTIME_WS: ", ""),
+    );
+    expect(previewBuild?.env?.VITE_ENVIRONMENT).toBe("staging");
+    expect(previewBuild?.env?.VITE_API_URL).toBe(
+      "https://api-staging.eliza.app",
+    );
+    expect(previewBuild?.env?.VITE_APP_URL).toBe("https://staging.eliza.app");
+    expect(entryWorkflow.jobs?.["build-pages"]?.if).toContain(
+      "github.event_name == 'pull_request'",
+    );
   });
 
   test("every GitHub expression in the deploy workflow has balanced parentheses", () => {
@@ -223,7 +268,10 @@ describe("Cloud CF realtime voice deploy contract", () => {
     // the GitHub layer (instant run failure with zero jobs) while remaining
     // invisible to the substring/regex assertions above. Balance-check every
     // expression so the parse error fails HERE, in a reviewable unit test.
-    const expressions = workflowSource.match(/\$\{\{[\s\S]*?\}\}/g) ?? [];
+    const expressions = [
+      ...(workflowSource.match(/\$\{\{[\s\S]*?\}\}/g) ?? []),
+      ...(entrySource.match(/\$\{\{[\s\S]*?\}\}/g) ?? []),
+    ];
     expect(expressions.length).toBeGreaterThan(0);
     for (const expression of expressions) {
       let depth = 0;
@@ -254,6 +302,30 @@ executedDescribe(
       });
       expect(result.status).toBe(0);
       expect(result.stdout).not.toContain("Bearer repo-key-must-not-be-used");
+    });
+
+    test("requires and publishes Cartesia batch provider billing authority independently of realtime", () => {
+      const missingKey = runPreflight({
+        CARTESIA_API_KEY: "",
+        VOICE_BATCH_STT_PROVIDER: "cartesia",
+        VOICE_REALTIME_WS_ENABLED: "false",
+      });
+      expect(missingKey.status).toBe(1);
+      expect(missingKey.stdout).toContain("CARTESIA_API_KEY");
+
+      const missingPrice = runPreflight({
+        CARTESIA_STT_USD_PER_CREDIT: "",
+        VOICE_BATCH_STT_PROVIDER: "cartesia",
+        VOICE_REALTIME_WS_ENABLED: "false",
+      });
+      expect(missingPrice.status).toBe(1);
+      expect(missingPrice.stdout).toContain("CARTESIA_STT_USD_PER_CREDIT");
+
+      const configured = runPreflight({
+        VOICE_BATCH_STT_PROVIDER: "cartesia",
+        VOICE_REALTIME_WS_ENABLED: "false",
+      });
+      expect(configured.status).toBe(0);
     });
 
     test("requires every realtime provider and bridge secret in opted-in staging", () => {

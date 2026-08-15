@@ -15,7 +15,7 @@
       "required": true,
       "sensitive": true,
       "label": "Cloud Api Key",
-      "help": "API key used to authenticate requests to ElizaOS Cloud API (format: eliza_xxxxx). Get it from https://www.elizacloud.ai/dashboard/api-keys",
+      "help": "API key used to authenticate requests to the Eliza Cloud API (format: eliza_xxxxx). Manage it inside Eliza at https://cloud.eliza.app/cloud/api-keys",
       "advanced": false,
       "autoEnableProvider": true
     },
@@ -23,7 +23,7 @@
       "type": "url",
       "required": false,
       "sensitive": false,
-      "default": "https://elizacloud.ai/api/v1",
+      "default": "https://api.eliza.app/api/v1",
       "label": "Cloud Base Url",
       "help": "Base URL for all ElizaOS Cloud API requests.",
       "advanced": false

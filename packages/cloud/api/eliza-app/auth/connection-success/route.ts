@@ -196,7 +196,7 @@ app.get("/", (c) => {
 
   const platform = c.req.query("platform") || "web";
   if (platform === "web") {
-    return c.redirect(new URL("/dashboard/chat", c.req.url).toString());
+    return c.redirect(new URL("/cloud/chat", c.req.url).toString());
   }
 
   return c.body(buildHtml(platform), 200, {

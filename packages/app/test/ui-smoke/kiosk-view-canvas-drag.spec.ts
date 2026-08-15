@@ -1,19 +1,9 @@
-// Real-gesture coverage for the kiosk shell's in-canvas view manager
-// (#10722 item 5): KioskViewCanvas / FloatingViewWindow title-bar drag had
-// ZERO tests anywhere. The kiosk shell (`?shellMode=kiosk`) is the locked
-// appliance surface — agent-spawned dynamic views mount as in-window iframes,
-// and a `floating` (alwaysOnTop) view is a movable panel dragged by its
-// title bar (pointer capture on the header, position state on the wrapper).
-//
-// The DRAG under test is fully real (staged Playwright mouse through the
-// browser's hit-test + pointer-capture pipeline against the real component).
-// Only the native-host event SOURCE is seeded: kiosk surfaces arrive over the
-// Electrobun `kioskViewEvent` renderer-RPC channel
-// (`useKioskViewSurfaces` → `subscribeDesktopBridgeEvent` →
-// `window.__ELIZA_ELECTROBUN_RPC__`), which does not exist in a browser
-// context — so the spec installs a minimal RPC bridge before boot and emits
-// the same `mount`/`unmount` payloads the Electrobun KioskCanvas sends. This
-// is the seam's real injection point, not a mock of the component under test.
+/**
+ * Exercises the kiosk shell's in-canvas view manager with real browser pointer
+ * gestures. A minimal Electrobun RPC bridge supplies the native-host event
+ * source; the real useKioskViewSurfaces subscription, canvas, iframe, pointer
+ * capture, and position state remain under test.
+ */
 
 import { expect, type Page, test } from "@playwright/test";
 import { installDefaultAppRoutes, seedAppStorage } from "./helpers";
@@ -67,6 +57,18 @@ function floatingMountEvent(windowId: string, title: string) {
   };
 }
 
+async function waitForKioskSubscriber(page: Page): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () => window.__kioskTestEmit?.({ kind: "readiness-probe" }) ?? 0,
+        ),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(0);
+}
+
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
@@ -93,6 +95,7 @@ test("kiosk canvas: empty state, floating mount, REAL title-bar drag moves the w
   await expect(
     page.getByText("Ask Eliza below to open something."),
   ).toBeVisible({ timeout: 15_000 });
+  await waitForKioskSubscriber(page);
 
   // Mount a floating view through the real bridge seam. At least one
   // subscriber (useKioskViewSurfaces) must have registered — 0 listeners
@@ -157,6 +160,7 @@ test("kiosk canvas: empty state, floating mount, REAL title-bar drag moves the w
 test("kiosk canvas: newest floating view wins, malformed events are ignored, remount replaces by windowId", async ({
   page,
 }) => {
+  await waitForKioskSubscriber(page);
   // Adversarial input on the seam: malformed payloads must be dropped
   // without breaking the canvas (isKioskViewEvent guard).
   await page.evaluate(() => {

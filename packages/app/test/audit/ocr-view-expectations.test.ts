@@ -76,10 +76,6 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
     ).toEqual([
       { slug: "builtin-camera", applicability: "native-platform-gated" },
       {
-        slug: "plugin-cloud-gui",
-        applicability: "unregistered-remote-bundle",
-      },
-      {
         slug: "plugin-documents-gui",
         applicability: "unregistered-remote-bundle",
       },
@@ -99,6 +95,17 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
           (exemption.fallbackExpectation.requireAny?.length ?? 0),
       ).toBeGreaterThanOrEqual(3);
     }
+  });
+
+  it("expects the local-agent Cloud route to return to the launcher", () => {
+    const policy = resolveViewOcrPolicy("plugin-cloud-gui");
+    expect(policy).toEqual({
+      kind: "expectation",
+      expectation: {
+        requireAll: ["Settings", "Wallet"],
+        requireAny: ["Projects", "Calendar", "Automations"],
+      },
+    });
   });
 
   it("recognizes Contacts by stable empty-state content rather than a removed heading", () => {

@@ -7,10 +7,13 @@ import {
   allocatePort,
   buildAgentContainerLabelArgs,
   buildAgentContainerLabelFlags,
+  CONTAINER_DURABLE_STATE_DIR,
   dockerPlatformFlag,
+  ensureVolumeVaultPassphrase,
   extractDockerCreateContainerId,
   getContainerName,
   getVolumePath,
+  getVolumeVaultPassphrasePath,
   inferArchitectureFromHetznerServerType,
   isArchitectureCompatibleWithPlatform,
   normalizeDockerArchitecture,
@@ -246,5 +249,143 @@ describe("resolveVpnTeardown (#16565)", () => {
 
   test("plain provisions without an id keep the historical by-name cleanup", () => {
     expect(resolveVpnTeardown({})).toEqual({ kind: "by-name" });
+  });
+});
+
+describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
+  // Runs the EXACT shell command the provider sends over SSH, against a real
+  // local /bin/sh and a real temp "agent volume" directory — the same
+  // read-or-create the deployed node executes.
+  const shExec = async (cmd: string, _timeoutMs: number): Promise<string> => {
+    const { execFile } = await import("node:child_process");
+    return await new Promise<string>((resolve, reject) => {
+      execFile("/bin/sh", ["-c", cmd], (err, stdout) => (err ? reject(err) : resolve(stdout)));
+    });
+  };
+
+  async function makeVolume(): Promise<string> {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    return fs.mkdtempSync(path.join(os.tmpdir(), "eliza-agent-volume-"));
+  }
+
+  test("container A creates a 64-hex key file with 0600 on the volume", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const key = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
+    expect(key).toMatch(/^[0-9a-f]{64}$/);
+    const keyPath = getVolumeVaultPassphrasePath(volume);
+    expect(fs.readFileSync(keyPath, "utf-8")).toBe(key);
+    expect(fs.statSync(keyPath).mode & 0o777).toBe(0o600);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("replacement container B over the same volume derives the SAME key from a newly constructed env", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    // Two independent provisions (A then its replacement B): each runs the
+    // read-or-create against the shared agent volume, nothing is copied from
+    // A's environment.
+    const keyA = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
+    const keyB = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
+    expect(keyB).toBe(keyA);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("distinct agent volumes get distinct random keys — never derived from an identifier", async () => {
+    const fs = await import("node:fs");
+    const volumeA = await makeVolume();
+    const volumeB = await makeVolume();
+    const keyA = await ensureVolumeVaultPassphrase(shExec, volumeA, 5_000);
+    const keyB = await ensureVolumeVaultPassphrase(shExec, volumeB, 5_000);
+    expect(keyA).not.toBe(keyB);
+    fs.rmSync(volumeA, { recursive: true, force: true });
+    fs.rmSync(volumeB, { recursive: true, force: true });
+  });
+
+  test("an operator-provisioned key file is honored as-is", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    fs.writeFileSync(getVolumeVaultPassphrasePath(volume), "operator-supplied-passphrase\n");
+    await expect(ensureVolumeVaultPassphrase(shExec, volume, 5_000)).resolves.toBe(
+      "operator-supplied-passphrase",
+    );
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("A with operator override, replacement B without it: B derives A's key from the volume", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    // Launch A injects ELIZA_VAULT_PASSPHRASE; the override must seed the
+    // persisted key file instead of bypassing the volume lifecycle.
+    const keyA = await ensureVolumeVaultPassphrase(shExec, volume, 5_000, "dummy-operator-key-A");
+    expect(keyA).toBe("dummy-operator-key-A");
+    const keyPath = getVolumeVaultPassphrasePath(volume);
+    expect(fs.readFileSync(keyPath, "utf-8")).toBe("dummy-operator-key-A");
+    expect(fs.statSync(keyPath).mode & 0o777).toBe(0o600);
+    // Replacement B is launched over the same volume with NO override — the
+    // regression: it must read A's key, not mint a fresh local fallback.
+    const keyB = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
+    expect(keyB).toBe(keyA);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("relaunching with the same override over the seeded volume is idempotent", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    await ensureVolumeVaultPassphrase(shExec, volume, 5_000, "dummy-operator-key-A");
+    await expect(
+      ensureVolumeVaultPassphrase(shExec, volume, 5_000, "dummy-operator-key-A"),
+    ).resolves.toBe("dummy-operator-key-A");
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("fails closed when the override conflicts with an already-persisted key", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    // The volume already has a durable key (e.g. generated by a prior
+    // no-override launch); a different injected override must not silently
+    // win OR silently lose — either guess can orphan ciphertext.
+    const persisted = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
+    await expect(
+      ensureVolumeVaultPassphrase(shExec, volume, 5_000, "dummy-other-override"),
+    ).rejects.toThrow(/durable source of truth/);
+    // The persisted key survives the refusal untouched.
+    expect(fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf-8")).toBe(persisted);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("fails closed on an unusable override BEFORE seeding the key file", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    await expect(ensureVolumeVaultPassphrase(shExec, volume, 5_000, "short")).rejects.toThrow(
+      /refusing to seed/,
+    );
+    // Nothing was written — the next launch can still establish a good key.
+    expect(fs.existsSync(getVolumeVaultPassphrasePath(volume))).toBe(false);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("an empty or whitespace-only override falls through to the volume lifecycle", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const key = await ensureVolumeVaultPassphrase(shExec, volume, 5_000, "  ");
+    expect(key).toMatch(/^[0-9a-f]{64}$/);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("fails closed on an unusable persisted key instead of minting a fresh per-launch key", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    fs.writeFileSync(getVolumeVaultPassphrasePath(volume), "short\n");
+    await expect(ensureVolumeVaultPassphrase(shExec, volume, 5_000)).rejects.toThrow(
+      /refusing to mint a fresh per-launch key/,
+    );
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("the durable state root lands on the /root/.eliza mount", () => {
+    expect(CONTAINER_DURABLE_STATE_DIR).toBe("/root/.eliza");
   });
 });

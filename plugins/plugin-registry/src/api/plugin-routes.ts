@@ -42,6 +42,11 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+import {
+  bridgePluginParamsToRuntime,
+  clearPluginParamValues,
+  collectAgentScopedPluginParamValues,
+} from "./bridge-plugin-settings.ts";
 
 /** Normalize npm names to list/toggle ids. Handles both `@elizaos/plugin-*` (current) and legacy `@elizaos/app-*`. */
 function optionalPluginListId(npmName: string): string {
@@ -57,6 +62,46 @@ const ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID: Partial<
   experience: "EXPERIENCE",
   personality: "CHARACTER_MANAGEMENT",
 };
+
+function createRuntimeSettingReader(
+  runtime: AgentRuntime | null,
+): ((key: string) => string | boolean | number | undefined) | undefined {
+  if (
+    !runtime ||
+    typeof (runtime as unknown as { getSetting?: unknown }).getSetting !==
+      "function"
+  ) {
+    return undefined;
+  }
+  return (key: string) => {
+    const value = (runtime as AgentRuntime).getSetting(key);
+    if (typeof value === "string") {
+      return value.trim() || undefined;
+    }
+    return typeof value === "boolean" || typeof value === "number"
+      ? value
+      : undefined;
+  };
+}
+
+function resolveDiscordServiceHealth(
+  runtime: AgentRuntime | null,
+): boolean | null {
+  if (
+    !runtime ||
+    typeof (runtime as unknown as { getService?: unknown }).getService !==
+      "function"
+  ) {
+    return null;
+  }
+  const service = (runtime as AgentRuntime).getService("discord") as {
+    isHealthy?: () => boolean;
+  } | null;
+  if (!service || typeof service.isHealthy !== "function") {
+    return false;
+  }
+  return service.isHealthy();
+}
 
 // ---------------------------------------------------------------------------
 // Types — kept lean to avoid circular deps with server.ts
@@ -269,7 +314,7 @@ export interface PluginRouteContext {
   scheduleRuntimeRestart: (reason: string) => void;
   restartRuntime?: (reason: string) => Promise<boolean>;
   // Server.ts internal helpers
-  BLOCKED_ENV_KEYS: Set<string>;
+  isBlockedEnvKey: (key: string) => boolean;
   discoverInstalledPlugins: (
     config: ElizaConfig,
     bundledIds: Set<string>,
@@ -405,7 +450,7 @@ export async function handlePluginRoutes(
     readJsonBody,
     scheduleRuntimeRestart,
     restartRuntime,
-    BLOCKED_ENV_KEYS,
+    isBlockedEnvKey,
     discoverInstalledPlugins,
     maskValue,
     aggregateSecrets,
@@ -595,34 +640,71 @@ export async function handlePluginRoutes(
       }
     }
 
+    const readRuntimeSetting = createRuntimeSettingReader(state.runtime);
     for (const plugin of allPlugins) {
       for (const param of plugin.parameters) {
-        const envValue = process.env[param.key];
-        param.isSet = Boolean(envValue?.trim());
-        param.currentValue = param.isSet
+        const envValue = process.env[param.key]?.trim() || undefined;
+        const runtimeValue = readRuntimeSetting?.(param.key);
+        // When a runtime exists, getSetting is authoritative: connector
+        // services do not fall through to the process-wide environment.
+        const isSet = readRuntimeSetting
+          ? runtimeValue !== undefined
+          : Boolean(envValue);
+        param.isSet = isSet;
+        const displayValue = String(
+          (readRuntimeSetting ? runtimeValue : envValue) ?? "",
+        );
+        param.currentValue = isSet
           ? param.sensitive
-            ? maskValue(envValue ?? "")
-            : (envValue ?? "")
+            ? maskValue(displayValue)
+            : displayValue
           : null;
       }
-      const paramInfos: PluginParamInfo[] = plugin.parameters.map((p) => ({
-        key: p.key,
-        required: p.required,
-        sensitive: p.sensitive,
-        type: p.type,
-        description: p.description,
-        default: p.default,
-      }));
+      // Validate against effective isSet, not stale process.env. This keeps
+      // `configured` honest when getSetting is empty but process.env is set (#18713).
+      const validationErrors = plugin.parameters
+        .filter((p) => p.required && !p.default && !p.isSet)
+        .map((p) => ({
+          field: p.key,
+          message: `${p.key} is required but not set`,
+        }));
       const validation = validatePluginConfig(
         plugin.id,
         plugin.category,
         plugin.envKey,
         plugin.configKeys,
         undefined,
-        paramInfos,
+        plugin.parameters.map((p) => ({
+          key: p.key,
+          required: p.required,
+          sensitive: p.sensitive,
+          type: p.type,
+          description: p.description,
+          default: p.default,
+        })),
       );
-      plugin.validationErrors = validation.errors;
+      // Format/default diagnostics remain warnings. Required-field errors use
+      // the authoritative runtime-backed presence calculated above.
+      plugin.validationErrors = validationErrors;
       plugin.validationWarnings = validation.warnings;
+      plugin.configured = validationErrors.length === 0;
+    }
+    // A loaded Discord package is not an active connector until its service
+    // exists and the Discord client reports ready. Other plugins retain their
+    // existing loaded-package semantics; they do not share this health API.
+    for (const plugin of allPlugins) {
+      if (plugin.id !== "discord" || !plugin.isActive) continue;
+      if (resolveDiscordServiceHealth(state.runtime) === false) {
+        plugin.isActive = false;
+        plugin.validationWarnings = [
+          ...(plugin.validationWarnings ?? []),
+          {
+            field: "DISCORD_API_TOKEN",
+            message:
+              "Discord is loaded but not connected. Check credentials and connectivity.",
+          },
+        ];
+      }
     }
 
     applyWhatsAppQrOverride(allPlugins, resolveDefaultAgentWorkspaceDir());
@@ -879,10 +961,11 @@ export async function handlePluginRoutes(
         : {};
       let touchedPluginConfig = false;
 
+      const bridgedValues: Record<string, string | undefined> = {};
       for (const [key, value] of Object.entries(body.config)) {
         if (
           allowedParamKeys.has(key) &&
-          !BLOCKED_ENV_KEYS.has(key.toUpperCase()) &&
+          !isBlockedEnvKey(key) &&
           typeof value === "string"
         ) {
           touchedPluginConfig = true;
@@ -890,18 +973,61 @@ export async function handlePluginRoutes(
             process.env[key] = value;
             (state.config.env as Record<string, unknown>)[key] = value;
             nextPluginConfig[key] = value;
+            bridgedValues[key] = value;
           } else if (!allowedParamsByKey.get(key)?.required) {
             delete process.env[key];
             delete (state.config.env as Record<string, unknown>)[key];
             delete nextPluginConfig[key];
+            bridgedValues[key] = undefined;
           }
         }
       }
       if (touchedPluginConfig) {
         pluginEntry.config = nextPluginConfig;
         entries[pluginId] = pluginEntry;
+        // Catalog isSet reads process.env; Discord/Telegram init read
+        // runtime.getSetting(). Fold agent-scoped values before hot reload
+        // so live secrets match what the UI just saved (#18713).
+        bridgePluginParamsToRuntime(
+          state.runtime,
+          plugin.parameters,
+          bridgedValues,
+          { isBlockedKey: isBlockedEnvKey },
+        );
+        // Refresh plugin param isSet from authoritative getSetting so
+        // configured/isSet matches what gateway will see
+        const rtReader = createRuntimeSettingReader(state.runtime);
+        for (const param of plugin.parameters) {
+          const rtVal = rtReader?.(param.key);
+          const envVal = process.env[param.key]?.trim() || undefined;
+          const isSet = rtReader ? rtVal !== undefined : Boolean(envVal);
+          param.isSet = isSet;
+          const eff = String((rtReader ? rtVal : envVal) ?? "");
+          param.currentValue = isSet
+            ? param.sensitive
+              ? maskValue(eff)
+              : eff
+            : null;
+        }
+        const errs = plugin.parameters
+          .filter((p) => p.required && !p.default && !p.isSet)
+          .map((p) => ({
+            field: p.key,
+            message: `${p.key} is required but not set`,
+          }));
+        plugin.validationErrors = errs;
+        plugin.configured = errs.length === 0;
+      } else {
+        // No config touched, but still recompute configured from current isSet
+        const errs = plugin.parameters
+          .filter((p) => p.required && !p.default && !p.isSet)
+          .map((p) => ({
+            field: p.key,
+            message: `${p.key} is required but not set`,
+          }));
+        if (errs.length > 0) plugin.validationErrors = errs;
+        plugin.configured = (plugin.validationErrors?.length ?? 0) === 0;
       }
-      plugin.configured = true;
 
       // Save config even when only config values changed (no enable toggle)
       if (body.enabled === undefined) {
@@ -915,7 +1041,26 @@ export async function handlePluginRoutes(
       }
     }
 
-    // Refresh validation
+    // Refresh validation — authoritative via getSetting when runtime exists
+    const rtReader2 = createRuntimeSettingReader(state.runtime);
+    for (const param of plugin.parameters) {
+      const rtVal = rtReader2?.(param.key);
+      const envVal = process.env[param.key]?.trim() || undefined;
+      param.isSet = rtReader2 ? rtVal !== undefined : Boolean(envVal);
+      const eff = String((rtReader2 ? rtVal : envVal) ?? "");
+      param.currentValue = param.isSet
+        ? param.sensitive
+          ? maskValue(eff)
+          : eff
+        : null;
+    }
+    const requiredErrs = plugin.parameters
+      .filter((p) => p.required && !p.default && !p.isSet)
+      .map((p) => ({
+        field: p.key,
+        message: `${p.key} is required but not set`,
+      }));
+    // Preserve format warnings from validatePluginConfig but use authoritative required errors
     const refreshParamInfos: PluginParamInfo[] = plugin.parameters.map((p) => ({
       key: p.key,
       required: p.required,
@@ -932,8 +1077,9 @@ export async function handlePluginRoutes(
       undefined,
       refreshParamInfos,
     );
-    plugin.validationErrors = updated.errors;
+    plugin.validationErrors = requiredErrs;
     plugin.validationWarnings = updated.warnings;
+    plugin.configured = requiredErrs.length === 0;
 
     // Update config.plugins.entries so the runtime loads/skips this plugin
     if (body.enabled !== undefined) {
@@ -960,7 +1106,12 @@ export async function handlePluginRoutes(
 
         const entries = (state.config.plugins as Record<string, unknown>)
           .entries as Record<string, Record<string, unknown>>;
-        entries[pluginId] = { enabled: body.enabled };
+        // Preserve any previously saved entry.config — replacing the whole
+        // object with `{ enabled }` wiped Discord tokens on enable (#18713).
+        entries[pluginId] = {
+          ...(entries[pluginId] ?? {}),
+          enabled: body.enabled,
+        };
 
         // Keep plugins.allow aligned with entries[pluginId].enabled so the
         // enable-state drift check in buildCoreToggleDiagnostics() stays clean.
@@ -970,9 +1121,32 @@ export async function handlePluginRoutes(
           if (!allow.includes(pluginId) && !allow.includes(packageName)) {
             allow.push(pluginId);
           }
+          // Fold previously saved agent-scoped credentials into getSetting
+          // before the plugin graph reload (never bare process.env).
+          const agentScoped = collectAgentScopedPluginParamValues(
+            plugin.parameters,
+            {
+              entryConfig: asRecord(entries[pluginId]?.config),
+              configEnv: asRecord(state.config.env),
+            },
+          );
+          bridgePluginParamsToRuntime(
+            state.runtime,
+            plugin.parameters,
+            agentScoped,
+            { isBlockedKey: isBlockedEnvKey },
+          );
         } else {
           state.config.plugins.allow = allow.filter(
             (p: string) => p !== pluginId && p !== packageName,
+          );
+          // Revoke folded credentials so getSetting cannot keep serving a
+          // token after the plugin is disabled (#18713).
+          bridgePluginParamsToRuntime(
+            state.runtime,
+            plugin.parameters,
+            clearPluginParamValues(plugin.parameters),
+            { isBlockedKey: isBlockedEnvKey },
           );
         }
 
@@ -1107,7 +1281,7 @@ export async function handlePluginRoutes(
     for (const [key, value] of Object.entries(body.secrets)) {
       if (typeof value !== "string" || !value.trim()) continue;
       if (!allowedKeys.has(key)) continue;
-      if (BLOCKED_ENV_KEYS.has(key.toUpperCase())) continue;
+      if (isBlockedEnvKey(key)) continue;
       process.env[key] = value;
       updatedKeys.push(key);
     }

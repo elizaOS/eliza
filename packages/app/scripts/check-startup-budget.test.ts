@@ -18,6 +18,8 @@ import {
   evaluateMetric,
   extractTtiMark,
   METRIC_STATUS,
+  parseArgs,
+  parseTolerancePct,
   selectColdRun,
   shouldPassAfterBaselineUpdate,
 } from "./check-startup-budget.mjs";
@@ -271,6 +273,69 @@ describe("shouldPassAfterBaselineUpdate", () => {
   });
 });
 
+describe("parseTolerancePct", () => {
+  it("accepts non-negative integers and fractional decimals", () => {
+    expect(parseTolerancePct("0")).toBe(0);
+    expect(parseTolerancePct("15")).toBe(15);
+    expect(parseTolerancePct("12.5")).toBe(12.5);
+    expect(parseTolerancePct(".5")).toBe(0.5);
+  });
+
+  it.each([
+    undefined,
+    "",
+    "--json",
+    "junk",
+    "10junk",
+    "-1",
+    "-0.1",
+    "1e2",
+    "Infinity",
+    "NaN",
+    "15%",
+    " 15",
+  ] as Array<string | undefined>)(
+    "rejects invalid input %j at the boundary",
+    (raw) => {
+      expect(() => parseTolerancePct(raw)).toThrow(/--tolerance-pct/);
+    },
+  );
+});
+
+describe("parseArgs --tolerance-pct", () => {
+  it("records a valid override and leaves omission as null", () => {
+    expect(
+      parseArgs(["node", "check-startup-budget.mjs", "--tolerance-pct", "12.5"])
+        .tolerancePct,
+    ).toBe(12.5);
+    expect(
+      parseArgs(["node", "check-startup-budget.mjs"]).tolerancePct,
+    ).toBeNull();
+  });
+
+  it("fails closed when the value is missing or malformed", () => {
+    expect(() =>
+      parseArgs(["node", "check-startup-budget.mjs", "--tolerance-pct"]),
+    ).toThrow(/--tolerance-pct/);
+    expect(() =>
+      parseArgs([
+        "node",
+        "check-startup-budget.mjs",
+        "--tolerance-pct",
+        "10junk",
+      ]),
+    ).toThrow(/10junk/);
+    expect(() =>
+      parseArgs([
+        "node",
+        "check-startup-budget.mjs",
+        "--tolerance-pct",
+        "--json",
+      ]),
+    ).toThrow(/--tolerance-pct/);
+  });
+});
+
 describe("CLI baseline recording", () => {
   it("does not partially write baselines when one requested metric has no budget", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "startup-budget-"));
@@ -306,5 +371,45 @@ describe("CLI baseline recording", () => {
     expect(result.stderr).toContain("Refusing to update baselines");
     const budgets = JSON.parse(readFileSync(budgetsPath, "utf8"));
     expect(budgets.tti["ci-web"].baselineMs).toBeNull();
+  });
+});
+
+describe("CLI --tolerance-pct fail-closed", () => {
+  function runCli(extraArgs: string[]) {
+    return spawnSync(
+      process.execPath,
+      [SCRIPT_PATH, "--metric", "build:rebuild-loop=100", ...extraArgs],
+      { encoding: "utf8" },
+    );
+  }
+
+  it("rejects malformed and missing values with a non-zero exit", () => {
+    for (const args of [
+      ["--tolerance-pct", "junk"],
+      ["--tolerance-pct", "10junk"],
+      ["--tolerance-pct", "-1"],
+      ["--tolerance-pct"],
+      ["--tolerance-pct", "--json"],
+    ]) {
+      const result = runCli(args);
+      expect(result.status, args.join(" ")).not.toBe(0);
+      expect(result.stderr, args.join(" ")).toMatch(/tolerance-pct/i);
+      expect(result.stdout, args.join(" ")).not.toMatch(/Budget gate: PASS/);
+    }
+  });
+
+  it("accepts a valid override and reports it in --json output", () => {
+    const result = runCli(["--tolerance-pct", "12.5", "--json"]);
+    expect(result.status).toBe(0);
+    const report = JSON.parse(result.stdout);
+    expect(report.tolerancePct).toBe(12.5);
+    expect(report.ok).toBe(true);
+  });
+
+  it("keeps the budgets-file default when the flag is omitted", () => {
+    const result = runCli(["--json"]);
+    expect(result.status).toBe(0);
+    const report = JSON.parse(result.stdout);
+    expect(report.tolerancePct).toBe(15);
   });
 });

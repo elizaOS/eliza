@@ -33,16 +33,16 @@ export {
 } from "./data/use-admin-gate";
 
 /** Stable cloud-route paths (no compat redirect; safe to self-register). */
-export const ADMIN_MODERATION_ROUTE_PATH = "dashboard/admin";
-export const ADMIN_REDEMPTIONS_ROUTE_PATH = "dashboard/admin/redemptions";
-export const ADMIN_RPC_STATUS_ROUTE_PATH = "dashboard/admin/rpc-status";
+export const ADMIN_MODERATION_ROUTE_PATH = "cloud/admin";
+export const ADMIN_REDEMPTIONS_ROUTE_PATH = "cloud/admin/redemptions";
+export const ADMIN_RPC_STATUS_ROUTE_PATH = "cloud/admin/rpc-status";
 
 /** Lazy page elements (code-split). The shell applies the `admin` gate. */
 const ModerationPageLazy = lazy(() => import("./ModerationPage"));
 const RedemptionsPageLazy = lazy(() => import("./RedemptionsPage"));
 const RpcStatusPageLazy = lazy(() => import("./RpcStatusPage"));
 
-/** Cloud-route definition for the moderation panel (`dashboard/admin`). */
+/** Cloud-route definition for the moderation panel (`cloud/admin`). */
 export const adminModerationCloudRoute: CloudRouteDef = {
   path: ADMIN_MODERATION_ROUTE_PATH,
   element: ModerationPageLazy,
@@ -50,7 +50,7 @@ export const adminModerationCloudRoute: CloudRouteDef = {
   gate: ADMIN_ROUTE_GATE,
 };
 
-/** Cloud-route definition for redemptions (`dashboard/admin/redemptions`). */
+/** Cloud-route definition for redemptions (`cloud/admin/redemptions`). */
 export const adminRedemptionsCloudRoute: CloudRouteDef = {
   path: ADMIN_REDEMPTIONS_ROUTE_PATH,
   element: RedemptionsPageLazy,
@@ -58,7 +58,7 @@ export const adminRedemptionsCloudRoute: CloudRouteDef = {
   gate: ADMIN_ROUTE_GATE,
 };
 
-/** Cloud-route definition for RPC status (`dashboard/admin/rpc-status`). */
+/** Cloud-route definition for RPC status (`cloud/admin/rpc-status`). */
 export const adminRpcStatusCloudRoute: CloudRouteDef = {
   path: ADMIN_RPC_STATUS_ROUTE_PATH,
   element: RpcStatusPageLazy,

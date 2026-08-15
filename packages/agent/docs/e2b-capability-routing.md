@@ -89,7 +89,7 @@ ELIZA_CLOUD_SANDBOX_REQUEST_TIMEOUT_MS
 
 If no direct remote runner URL is set, `eliza-cloud` uses the Cloud API at
 `ELIZA_CLOUD_SANDBOX_API_BASE_URL` or the default
-`https://api.elizacloud.ai/api/v1`, then posts to
+`https://api.eliza.app/api/v1`, then posts to
 `/coding-containers` with `ELIZA_CLOUD_SANDBOX_TOKEN`, `ELIZA_CLOUD_API_KEY`,
 `ELIZAOS_CLOUD_API_KEY`, or `ELIZACLOUD_API_KEY`. The returned container URL is
 then treated as the remote runner HTTP runner URL.

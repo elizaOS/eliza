@@ -31,7 +31,7 @@ export const MAX_FOLLOWUPS = 4;
 const FOLLOWUP_KINDS = new Set<FollowupKind>(["reply", "navigate", "prompt"]);
 
 export const FOLLOWUPS_RE =
-  /\[FOLLOWUPS(?:\s+id=(\S+))?\]\n([\s\S]*?)\n\[\/FOLLOWUPS\]/g;
+  /\[[ \t]*FOLLOWUPS(?:[ \t]+id=([^\s\]]+))?[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*FOLLOWUPS[ \t]*\]/g;
 
 export function generateFollowupsId(): string {
   if (

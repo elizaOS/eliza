@@ -77,6 +77,12 @@ export interface SettingsSectionDef {
    */
   hideOnCloud?: boolean;
   /**
+   * Show only while the active runtime target is a managed Eliza Cloud agent.
+   * This is independent from role/view-kind authorization: local and VPS
+   * runtimes must not expose management controls they cannot fulfill.
+   */
+  cloudOnly?: boolean;
+  /**
    * Four-tier visibility category. Supersedes `developerOnly` when set:
    * `system`/`release` always show; `developer`/`preview` follow the Settings
    * toggles. See `ViewKind` in `@elizaos/core`.
@@ -96,6 +102,7 @@ interface SettingsSectionRegistryStore {
 }
 
 const SETTINGS_SECTION_REGISTRY_STORE = "settings-sections";
+const registryListeners = new Set<() => void>();
 
 function getStore(): SettingsSectionRegistryStore {
   return getUiRegistryStore(SETTINGS_SECTION_REGISTRY_STORE, () => ({
@@ -113,6 +120,18 @@ export function registerSettingsSection(section: SettingsSectionDef): void {
   const order = section.order ?? store.seq;
   store.seq += 1;
   store.entries.set(section.id, { ...section, order });
+  for (const listener of registryListeners) listener();
+}
+
+/** Monotonic snapshot used by React consumers of the dynamic registry. */
+export function getSettingsSectionRegistryVersion(): number {
+  return getStore().seq;
+}
+
+/** Re-render subscribers after a host or lazy domain registers a section. */
+export function subscribeSettingsSections(listener: () => void): () => void {
+  registryListeners.add(listener);
+  return () => registryListeners.delete(listener);
 }
 
 /** All registered sections, sorted by `order` then registration sequence. */

@@ -1,0 +1,131 @@
+name: Cloud CF PR Preview Deploy
+
+# Privileged consumer for the unprivileged pull_request build in
+# cloud-cf-deploy.yml. This workflow is loaded from the default branch, never
+# checks out the pull-request ref, and treats downloaded build artifacts as
+# untrusted data. It deploys static output only: PR-authored Functions and
+# Wrangler configuration never reach Cloudflare bindings. Repository secrets
+# are exposed only to the final Wrangler process after the source run and
+# immutable PR identity have been validated.
+
+on:
+  workflow_run:
+    workflows: [Cloud CF Deploy]
+    types: [completed]
+
+permissions:
+  actions: read
+
+concurrency:
+  group: cloud-cf-pr-preview-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    name: Deploy consolidated frontend preview
+    if: >-
+      ${{
+        github.event.workflow_run.event == 'pull_request' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.pull_requests[0].number > 0 &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.actor.login != 'dependabot[bot]'
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate trusted source and resolve Pages branch
+        id: source
+        env:
+          ACTOR: ${{ github.event.workflow_run.actor.login }}
+          HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          if [ "$SOURCE_EVENT" != "pull_request" ] || [ "$SOURCE_CONCLUSION" != "success" ]; then
+            echo "::error::Preview deployment requires a successful pull_request producer run"
+            exit 1
+          fi
+          if [ "$HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ] || [ "$ACTOR" = "dependabot[bot]" ]; then
+            echo "::error::Fork and Dependabot producer runs are not trusted for preview deployment"
+            exit 1
+          fi
+          for value in "$SOURCE_RUN_ID" "$SOURCE_RUN_ATTEMPT" "$PR_NUMBER"; do
+            if ! [[ "$value" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Preview deployment requires valid immutable run and PR identities"
+              exit 1
+            fi
+          done
+
+          pages_branch="pr-${PR_NUMBER}"
+          case "$pages_branch" in
+            main|develop)
+              echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
+              exit 1
+              ;;
+          esac
+          echo "branch=$pages_branch" >> "$GITHUB_OUTPUT"
+          echo "artifact=pages-app-${SOURCE_RUN_ID}-${SOURCE_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Download immutable untrusted Pages artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ${{ steps.source.outputs.artifact }}
+          path: preview-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Stage static artifact without PR Functions or configuration
+        env:
+          ARTIFACT_DIR: ${{ github.workspace }}/preview-artifact
+          STATIC_DIR: ${{ github.workspace }}/preview-static
+        run: |
+          set -euo pipefail
+          if [ ! -d "$ARTIFACT_DIR/dist" ]; then
+            echo "::error::Pages artifact is missing dist/"
+            exit 1
+          fi
+          if find "$ARTIFACT_DIR/dist" -type l -print -quit | grep -q .; then
+            echo "::error::Pages static artifact may not contain symbolic links"
+            exit 1
+          fi
+          if find "$ARTIFACT_DIR/dist" -name _worker.js -print -quit | grep -q .; then
+            echo "::error::Pages static artifact may not contain executable _worker.js content"
+            exit 1
+          fi
+          mkdir -p "$STATIC_DIR"
+          cp -R "$ARTIFACT_DIR/dist" "$STATIC_DIR/dist"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+
+      - name: Deploy to isolated Cloudflare Pages branch
+        working-directory: preview-static
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PAGES_BRANCH: ${{ steps.source.outputs.branch }}
+          PAGES_PROJECT: eliza-app
+        run: |
+          set -euo pipefail
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Cloudflare Pages preview credentials are not configured"
+            exit 1
+          fi
+          for attempt in 1 2 3; do
+            if bunx wrangler@4.100.0 pages deploy ./dist --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH"; then
+              exit 0
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "::error::Cloudflare Pages preview deploy failed after ${attempt} attempts"
+              exit 1
+            fi
+            echo "::warning::Cloudflare Pages preview deploy attempt ${attempt} failed; retrying"
+            sleep $((attempt * 20))
+          done

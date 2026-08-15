@@ -6,6 +6,7 @@
  * allocation, and node configuration parsing.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 
@@ -431,6 +432,108 @@ export function getVolumePath(agentId: string): string {
   const volumePath = `/data/agents/${agentId}`;
   validateVolumePath(volumePath);
   return volumePath;
+}
+
+// ---------------------------------------------------------------------------
+// Durable per-agent vault state (#18080 / #19225)
+// ---------------------------------------------------------------------------
+
+/**
+ * In-container state root injected as `ELIZA_STATE_DIR` on every provisioned
+ * container. `/root/.eliza` is the `${volumePath}/eliza` bind mount, so the
+ * state-dir vault (`.vault-pglite`), config, and media survive container
+ * replacement/reschedule; without it the runtime resolves state to
+ * `/root/.local/state/eliza` in the container's writable layer and every
+ * replacement silently drops stored connector credentials.
+ */
+export const CONTAINER_DURABLE_STATE_DIR = "/root/.eliza";
+
+/** Host-side path of the persisted per-agent vault master passphrase. */
+export function getVolumeVaultPassphrasePath(volumePath: string): string {
+  return `${volumePath}/.vault-passphrase`;
+}
+
+/**
+ * Shell command that reads the per-agent vault master passphrase persisted on
+ * the agent's host volume, creating it once (mode 0600 via umask, tmp+rename)
+ * when absent — from `seedValue` when the operator injected one, otherwise 64
+ * hex chars from /dev/urandom. Replacement container B over the same volume
+ * therefore derives the same vault master key container A used — the key is
+ * per agent, never derived from agent/org identifiers. A generated key never
+ * transits a shell argument; an operator seed does, over the same ssh.exec
+ * channel that already carries it inside `docker create -e`.
+ */
+export function buildVolumeVaultPassphraseCommand(volumePath: string, seedValue?: string): string {
+  const keyFile = shellQuote(getVolumeVaultPassphrasePath(volumePath));
+  const tmpFile = shellQuote(`${getVolumeVaultPassphrasePath(volumePath)}.tmp`);
+  const writeKey =
+    seedValue !== undefined
+      ? `printf %s ${shellQuote(seedValue)} > ${tmpFile}`
+      : `head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > ${tmpFile}`;
+  // ponytail: tmp+mv is last-writer-wins on a concurrent FIRST provision;
+  // upstream lifecycle locks serialize per-agent provisioning, and once the
+  // file exists every later provision only reads it.
+  return `test -s ${keyFile} || { umask 077; ${writeKey} && mv ${tmpFile} ${keyFile}; }; cat ${keyFile}`;
+}
+
+/**
+ * Run {@link buildVolumeVaultPassphraseCommand} through `exec` (the node's
+ * shell, e.g. over SSH) and validate the result. Fails closed on a short or
+ * empty read — a fresh random per-launch key would silently orphan every
+ * credential already encrypted on the volume.
+ *
+ * `operatorOverride` (an injected `ELIZA_VAULT_PASSPHRASE`) is not allowed to
+ * bypass this lifecycle: the persisted key file stays the single source of
+ * truth across container replacement. A first provision seeds the file with
+ * the override, so a later replacement launched WITHOUT the override reads
+ * the same key instead of minting a fresh one that cannot decrypt the
+ * volume's existing vault ciphertext. If the file already holds a different
+ * key, provisioning fails closed rather than guessing which key encrypted
+ * the ciphertext.
+ */
+export async function ensureVolumeVaultPassphrase(
+  exec: (cmd: string, timeoutMs: number) => Promise<string>,
+  volumePath: string,
+  timeoutMs: number,
+  operatorOverride?: string,
+): Promise<string> {
+  // Empty/whitespace-only override means "not set" — same as the historical
+  // `environmentVars.ELIZA_VAULT_PASSPHRASE?.trim() ||` fallthrough.
+  const override = operatorOverride?.trim() || undefined;
+  if (override !== undefined && (override.length < 12 || /\s/.test(override))) {
+    // Validate BEFORE seeding: persisting an unusable override would brick
+    // every subsequent launch on the post-write length check below.
+    throw new ElizaError(
+      `[docker-sandbox] injected ELIZA_VAULT_PASSPHRASE is unusable (length ${override.length}); refusing to seed ${getVolumeVaultPassphrasePath(volumePath)} with a key the vault would reject`,
+      {
+        code: "SANDBOX_VAULT_PASSPHRASE_OVERRIDE_UNUSABLE",
+        context: { volumePath, passphraseLength: override.length },
+      },
+    );
+  }
+  const output = await exec(buildVolumeVaultPassphraseCommand(volumePath, override), timeoutMs);
+  const passphrase = output.trim();
+  // 12 chars is the vault's own passphraseMasterKey minimum; generated keys
+  // are 64 hex chars, but an operator-provisioned key file is honored as-is.
+  if (passphrase.length < 12 || /\s/.test(passphrase)) {
+    throw new ElizaError(
+      `[docker-sandbox] persisted vault passphrase at ${getVolumeVaultPassphrasePath(volumePath)} is unusable (length ${passphrase.length}); refusing to mint a fresh per-launch key that would orphan the volume's vault ciphertext`,
+      {
+        code: "SANDBOX_VAULT_PASSPHRASE_UNUSABLE",
+        context: { volumePath, passphraseLength: passphrase.length },
+      },
+    );
+  }
+  if (override !== undefined && passphrase !== override) {
+    throw new ElizaError(
+      `[docker-sandbox] injected ELIZA_VAULT_PASSPHRASE does not match the key persisted at ${getVolumeVaultPassphrasePath(volumePath)}; that file is the durable source of truth for the volume's vault ciphertext — remove the override or rotate the key file deliberately`,
+      {
+        code: "SANDBOX_VAULT_PASSPHRASE_OVERRIDE_MISMATCH",
+        context: { volumePath },
+      },
+    );
+  }
+  return passphrase;
 }
 
 // ---------------------------------------------------------------------------

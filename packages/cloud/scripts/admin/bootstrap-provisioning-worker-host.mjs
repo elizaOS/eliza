@@ -395,12 +395,12 @@ function buildRemoteEnv(raw, parsed) {
     ENVIRONMENT: environment,
     NEXT_PUBLIC_API_URL:
       environment === "production"
-        ? "https://api.elizacloud.ai"
-        : "https://api-staging.elizacloud.ai",
+        ? "https://api.eliza.app"
+        : "https://api-staging.eliza.app",
     NEXT_PUBLIC_APP_URL:
       environment === "production"
-        ? "https://elizacloud.ai"
-        : "https://staging.elizacloud.ai",
+        ? "https://eliza.app"
+        : "https://staging.eliza.app",
   };
   if (!parsed.HCLOUD_TOKEN) {
     overlays.HCLOUD_TOKEN = hcloudToken;
@@ -437,7 +437,7 @@ async function deployWorker(host) {
       'git fetch origin "$DEPLOY_BRANCH"',
       'git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"',
       "sudo chown -R deploy:deploy /opt/eliza",
-      "if ! command -v bun >/dev/null 2>&1 || [ \"$(bun --version)\" != \"1.3.14\" ]; then",
+      'if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.3.14" ]; then',
       '  curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"',
       "fi",
       'export BUN_INSTALL="$HOME/.bun"',

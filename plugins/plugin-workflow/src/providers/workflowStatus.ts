@@ -53,7 +53,7 @@ export const workflowStatusProvider: Provider = {
       for (const workflow of workflows.slice(0, 10)) {
         const statusEmoji = workflow.active ? '✅' : '⏸️';
         status += `${statusEmoji} ${workflow.name} (ID: ${workflow.id})\n`;
-        status += `   Nodes: ${workflow.nodes.length || 0}\n`;
+        status += `   Smithers steps: ${workflow.steps?.length ?? 0}\n`;
 
         // Try to get last execution (if possible)
         try {
@@ -61,7 +61,7 @@ export const workflowStatusProvider: Provider = {
           if (executions.length > 0) {
             const lastExec = executions[0];
             const execEmoji =
-              lastExec.status === 'success' ? '✅' : lastExec.status === 'error' ? '❌' : '⏳';
+              lastExec.status === 'finished' ? '✅' : lastExec.status === 'failed' ? '❌' : '⏳';
             status += `   Last run: ${execEmoji} ${lastExec.status} at ${new Date(lastExec.startedAt).toLocaleString()}\n`;
           }
         } catch (error) {

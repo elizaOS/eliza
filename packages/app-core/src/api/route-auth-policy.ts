@@ -108,6 +108,17 @@ const sessionRegex = (
   matcher: { kind: "regex", pattern },
 });
 
+const publicRegex = (
+  id: string,
+  method: keyof typeof METHODS,
+  pattern: RegExp,
+): CompatRouteAuthPolicy => ({
+  id,
+  tier: "public",
+  methods: METHODS[method],
+  matcher: { kind: "regex", pattern },
+});
+
 export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   publicExact("i18n.locale", "GET", "/api/i18n/locale"),
   publicExact("cloud.pair-popup", "GET", "/pair"),
@@ -190,6 +201,21 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   sessionExact("first-run.submit", "POST", "/api/first-run"),
   sessionRegex("plugins.ui-spec", "GET", /^\/api\/plugins\/[^/]+\/ui-spec$/),
   sessionExact("agents.list", "GET", "/api/agents"),
+  // Per-agent message/event endpoints are OWNED by the upstream agent server
+  // (packages/agent chat-routes.ts / misc-routes.ts), whose shared auth gate
+  // (server.ts `isAuthorized`) accepts the full credential vocabulary for
+  // these routes: ELIZA_API_TOKEN bearer, trusted loopback, and the cloud
+  // gateway's `X-Server-Token` (AGENT_SERVER_SHARED_SECRET). The compat
+  // dispatcher manages the "/api/agents" prefix fail-closed, so without these
+  // declarations every POST /api/agents/:id/message returned 401 for ALL
+  // callers — including a valid ELIZA_API_TOKEN bearer — because the
+  // undeclared-managed-route branch rejects before any credential is examined
+  // (sol-dev cutover QA 2026-08-11). Declared pass-through (same pattern as
+  // `internal.device-secret` above) so the owning handler's auth gate runs;
+  // this does NOT expose the routes unauthenticated — the agent server 401s
+  // any caller its own gate does not recognize.
+  publicRegex("agents.message", "POST", /^\/api\/agents\/[^/]+\/message$/),
+  publicRegex("agents.event", "POST", /^\/api\/agents\/[^/]+\/event$/),
   sessionExact("config.read", "GET", "/api/config"),
   sessionExact("config.schema", "GET", "/api/config/schema"),
   ownerExact("config.write", "PUT", "/api/config"),

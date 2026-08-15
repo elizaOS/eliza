@@ -13,15 +13,20 @@ let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
 let turnError: Error | null;
 let streamTurnError: Error | null;
+let turnCalls = 0;
+let lastTurnInput: Record<string, unknown> | undefined;
+let streamTurnCalls = 0;
 let admissionError: Error | null;
 let billError: Error | null;
 let billingGate: Promise<void> | null;
 let releaseBilling = () => {};
 let streamAbortSignal: AbortSignal | undefined;
+let lastTurnRole: "system" | "user" | undefined;
 const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
 let characterReads = 0;
+const loggerWarn = mock(() => undefined);
 
 class ApiInsufficientCreditsError extends Error {}
 
@@ -46,7 +51,7 @@ mock.module("../../pricing", () => ({
 
 mock.module("../../utils/logger", () => ({
   logger: {
-    warn: mock(() => undefined),
+    warn: loggerWarn,
     error: mock(() => undefined),
   },
 }));
@@ -152,7 +157,14 @@ mock.module("../../../db/repositories/characters", () => ({
 }));
 mock.module("./run-shared-agent-turn", () => ({
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
-  runSharedAgentTurn: async (input: { messageIds?: { user: string; assistant: string } }) => {
+  runSharedAgentTurn: async (input: {
+    messageIds?: { user: string; assistant: string };
+    messageRole?: "system" | "user";
+    [key: string]: unknown;
+  }) => {
+    turnCalls++;
+    lastTurnRole = input.messageRole;
+    lastTurnInput = input;
     if (turnError) throw turnError;
     const history = Array.isArray(turn.history)
       ? turn.history.map((message, index) =>
@@ -166,6 +178,7 @@ mock.module("./run-shared-agent-turn", () => ({
     return { ...turn, history };
   },
   runSharedAgentTurnStream: async (input: { abortSignal?: AbortSignal }) => {
+    streamTurnCalls++;
     if (streamTurnError) throw streamTurnError;
     streamAbortSignal = input.abortSignal;
     return streamTurn;
@@ -318,7 +331,11 @@ beforeEach(() => {
   billError = null;
   turnError = null;
   streamTurnError = null;
+  turnCalls = 0;
+  lastTurnInput = undefined;
+  streamTurnCalls = 0;
   characterReads = 0;
+  loggerWarn.mockClear();
   enforceOrgRateLimit.mockClear();
   getInferenceAdmissionSnapshotCacheOnly.mockClear();
   admitOrganizationInference.mockClear();
@@ -347,6 +364,7 @@ beforeEach(() => {
       };
     })(),
   };
+  lastTurnRole = undefined;
 });
 
 function wrappedProviderError(statusCode: number): Error {
@@ -378,6 +396,23 @@ describe("SharedRuntimeChatService", () => {
     ).toBe(-32602);
   });
 
+  test("ignores untrusted RPC roles and accepts only the server option", async () => {
+    const service = new SharedRuntimeChatService();
+    const untrustedRpc = {
+      ...rpc,
+      params: { ...rpc.params, messageRole: "system" },
+    };
+
+    await service.bridge(agent, untrustedRpc, harness());
+    expect(lastTurnRole).toBe("user");
+
+    await service.bridge(agent, rpc, {
+      ...harness(),
+      trustedMessageRole: "system",
+    });
+    expect(lastTurnRole).toBe("system");
+  });
+
   test("returns before billing and persists ordered cache-local history", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
@@ -407,6 +442,87 @@ describe("SharedRuntimeChatService", () => {
     expect(billCalls).toHaveLength(1);
     expect((billCalls[0] as unknown[])[2]).toBe(payoutAwareReservation);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("platform-funded personal Shared rate-limits without touching account credits", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    const response = await service.bridge(agent, rpc, {
+      ...h,
+      funding: "platform",
+    });
+
+    expect(response.result?.text).toBe("hello back");
+    expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
+      cacheOnly: true,
+      executionCtx: h.executionCtx,
+      config: { windowMs: 60_000, maxRequests: 60 },
+    });
+    expect(getInferenceAdmissionSnapshotCacheOnly).not.toHaveBeenCalled();
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(billCalls).toHaveLength(0);
+    expect(settleCalls).toHaveLength(0);
+    expect(h.history()).toHaveLength(3);
+  });
+
+  test("passes the explicit AgentRuntime transition gate without changing identity", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    await service.bridge(agent, rpc, {
+      ...h,
+      funding: "platform",
+      executionEngine: "eliza-runtime",
+    });
+
+    expect(lastTurnInput?.execution).toEqual({
+      engine: "eliza-runtime",
+      agentKey: agent.id,
+    });
+  });
+
+  test("enables reminders only for platform-funded turns with trusted Telegram delivery", async () => {
+    const service = new SharedRuntimeChatService();
+    const trustedRpc = {
+      ...rpc,
+      params: {
+        ...rpc.params,
+        trustedDelivery: {
+          platform: "telegram",
+          project: "eliza-app",
+          chatId: "123456789",
+        },
+      },
+    };
+
+    await service.bridge(agent, trustedRpc, {
+      ...harness(),
+      funding: "platform",
+      executionEngine: "eliza-runtime",
+    });
+    expect(lastTurnInput?.execution).toEqual({
+      engine: "eliza-runtime",
+      agentKey: agent.id,
+      reminders: {
+        runner: expect.any(Object),
+        delivery: {
+          platform: "telegram",
+          project: "eliza-app",
+          chatId: "123456789",
+        },
+      },
+    });
+
+    await service.bridge(agent, trustedRpc, {
+      ...harness(),
+      funding: "organization-credits",
+      executionEngine: "eliza-runtime",
+    });
+    expect(lastTurnInput?.execution).toEqual({
+      engine: "eliza-runtime",
+      agentKey: agent.id,
+    });
   });
 
   test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {
@@ -546,6 +662,59 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
+  test("no-model degradation remains a complete canonical SSE turn", async () => {
+    streamTurn = {
+      degraded: true,
+      reply: "Eliza is temporarily unavailable (no shared model configured).",
+    };
+
+    const body = await (await new SharedRuntimeChatService().stream(agent, rpc, harness())).text();
+    const frames = body
+      .split("\n\n")
+      .filter(Boolean)
+      .map((frame) => {
+        const lines = frame.split("\n");
+        return {
+          event: lines.find((line) => line.startsWith("event: "))?.slice(7),
+          data: JSON.parse(lines.find((line) => line.startsWith("data: "))?.slice(6) ?? "{}"),
+        };
+      });
+
+    expect(frames.map((frame) => frame.event)).toEqual(["chunk", "done"]);
+    expect(frames.map((frame) => frame.data.type)).toEqual(["token", "done"]);
+    expect(frames[1]?.data.fullText).toBe(
+      "Eliza is temporarily unavailable (no shared model configured).",
+    );
+    expect(frames[1]?.data.messageId).toBe(frames[0]?.data.messageId);
+    expect(frames[1]?.data.userMessageId).toBe(frames[0]?.data.userMessageId);
+    expect(settleCalls).toEqual([0]);
+  });
+
+  test("every SSE frame carries the canonical JSON type and done carries authoritative fullText (#17122)", async () => {
+    const service = new SharedRuntimeChatService();
+    const response = await service.stream(agent, rpc, harness());
+    const frames = (await response.text())
+      .split("\n\n")
+      .filter((frame) => frame.trim().length > 0)
+      .map((frame) => {
+        const lines = frame.split("\n");
+        const event = lines.find((line) => line.startsWith("event: "))?.slice("event: ".length);
+        const data = JSON.parse(
+          lines.find((line) => line.startsWith("data: "))?.slice("data: ".length) ?? "{}",
+        ) as Record<string, unknown>;
+        return { event, data };
+      });
+    expect(frames.length).toBeGreaterThanOrEqual(2);
+    for (const frame of frames) {
+      expect(frame.event).toBeDefined();
+      expect(frame.data.type).toBe(frame.event === "chunk" ? "token" : frame.event);
+    }
+    const doneData = frames.find((frame) => frame.event === "done")?.data ?? {};
+    const fullText = doneData.fullText;
+    expect(fullText).toBe(doneData.text);
+    expect(typeof fullText === "string" && fullText.length > 0).toBe(true);
+  });
+
   test("stream error and no-parts paths conservatively settle unknown usage", async () => {
     const service = new SharedRuntimeChatService();
     streamTurn = { degraded: false };
@@ -591,23 +760,33 @@ describe("SharedRuntimeChatService", () => {
     expect(settleUnknownCalls).toBe(1);
   });
 
-  test("stream response-body cancellation awaits interrupted history persistence", async () => {
+  test("stream cancellation persists interrupted history without waiting for provider teardown", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
-    let releaseProvider = () => {};
-    const providerGate = new Promise<void>((resolve) => {
-      releaseProvider = resolve;
+    let releaseProviderStream = () => {};
+    const providerStreamGate = new Promise<void>((resolve) => {
+      releaseProviderStream = resolve;
+    });
+    let releaseProviderCancellation = () => {};
+    const providerCancellationGate = new Promise<void>((resolve) => {
+      releaseProviderCancellation = resolve;
     });
     let providerCancelReason: unknown;
     streamTurn = {
       degraded: false,
       cancel: async (reason: unknown) => {
         providerCancelReason = reason;
-        releaseProvider();
+        await providerCancellationGate;
       },
       parts: (async function* () {
         yield { type: "text-delta", text: "partial " };
-        await providerGate;
+        await providerStreamGate;
+        yield { type: "text-delta", text: "late" };
+        yield {
+          type: "finish",
+          text: "partial late",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
       })(),
     };
 
@@ -615,7 +794,16 @@ describe("SharedRuntimeChatService", () => {
     const reader = response.body!.getReader();
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toContain("partial");
-    await reader.cancel("barge-in");
+    const cancellation = reader.cancel("barge-in");
+    let guardTimer: ReturnType<typeof setTimeout> | undefined;
+    const cancellationOutcome = await Promise.race([
+      cancellation.then(() => "persisted" as const),
+      new Promise<"stuck_on_provider">((resolve) => {
+        guardTimer = setTimeout(() => resolve("stuck_on_provider"), 1_000);
+      }),
+    ]);
+    if (guardTimer !== undefined) clearTimeout(guardTimer);
+    expect(cancellationOutcome).toBe("persisted");
 
     expect(h.history()).toHaveLength(3);
     expect(h.history()[1]).toMatchObject({
@@ -633,7 +821,102 @@ describe("SharedRuntimeChatService", () => {
     expect(streamAbortSignal?.reason).toBe("barge-in");
     expect(providerCancelReason).toBe("barge-in");
     expect(settleUnknownCalls).toBe(1);
+
+    // Provider teardown remains observed under waitUntil, but it is no longer
+    // part of the room-lock release condition. Let both mocked provider tasks
+    // finish so the test leaves no pending async work.
+    releaseProviderCancellation();
+    releaseProviderStream();
+    await cancellation;
+    await Promise.all(h.background);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(h.history()).toHaveLength(3);
+    expect(h.history().at(-1)).toMatchObject({
+      role: "assistant",
+      content: "partial",
+      interrupted: true,
+    });
+    expect(settleUnknownCalls).toBe(1);
   });
+
+  test("stream cancellation observes provider teardown failures off the room-lock path", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    let releaseProviderStream = () => {};
+    const providerStreamGate = new Promise<void>((resolve) => {
+      releaseProviderStream = resolve;
+    });
+    streamTurn = {
+      degraded: false,
+      cancel: async () => {
+        releaseProviderStream();
+        throw new Error("provider cancel failed");
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "partial " };
+        await providerStreamGate;
+      })(),
+    };
+
+    const response = await service.stream(agent, rpc, h);
+    const reader = response.body!.getReader();
+    await reader.read();
+    await reader.cancel("barge-in");
+    await Promise.all(h.background);
+
+    expect(h.history().at(-1)).toMatchObject({
+      role: "assistant",
+      content: "partial",
+      interrupted: true,
+    });
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[SharedRuntimeChatService] provider stream cancellation did not settle cleanly",
+      expect.objectContaining({
+        agentId: agent.id,
+        outcome: "rejected",
+        error: "provider cancel failed",
+      }),
+    );
+  });
+
+  test("stream cancellation reports provider teardown that never settles", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    let releaseProviderStream = () => {};
+    const providerStreamGate = new Promise<void>((resolve) => {
+      releaseProviderStream = resolve;
+    });
+    streamTurn = {
+      degraded: false,
+      cancel: async () => {
+        await new Promise<void>(() => undefined);
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "partial " };
+        await providerStreamGate;
+      })(),
+    };
+
+    const response = await service.stream(agent, rpc, h);
+    const reader = response.body!.getReader();
+    await reader.read();
+    await reader.cancel("barge-in");
+    releaseProviderStream();
+    await Promise.all(h.background);
+
+    expect(h.history().at(-1)).toMatchObject({
+      role: "assistant",
+      content: "partial",
+      interrupted: true,
+    });
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[SharedRuntimeChatService] provider stream cancellation did not settle cleanly",
+      expect.objectContaining({
+        agentId: agent.id,
+        outcome: "timed_out",
+      }),
+    );
+  }, 10_000);
 
   test("stream finalization retries after a failed history write", async () => {
     const service = new SharedRuntimeChatService();
@@ -688,5 +971,138 @@ describe("SharedRuntimeChatService", () => {
       interrupted: true,
     });
     expect(settleUnknownCalls).toBe(1);
+  });
+
+  // ---- durable claim/replay/conflict boundary for clientMessageId (#18045) ----
+
+  type ClaimRecord = { hash: string; result?: Record<string, unknown> };
+
+  function memoryTurnClaims() {
+    const claims = new Map<string, ClaimRecord>();
+    return {
+      claims,
+      store: {
+        claim: async (key: string, hash: string) => {
+          const existing = claims.get(key);
+          if (existing) {
+            if (existing.hash !== hash) return { state: "conflict" as const };
+            if (existing.result) {
+              return { state: "replay" as const, result: existing.result as never };
+            }
+            return { state: "claimed" as const };
+          }
+          claims.set(key, { hash });
+          return { state: "claimed" as const };
+        },
+        complete: async (key: string, result: Record<string, unknown>) => {
+          const existing = claims.get(key);
+          if (existing) existing.result = result;
+        },
+      },
+    };
+  }
+
+  const keyedRpc = {
+    jsonrpc: "2.0" as const,
+    id: "client-key-1",
+    method: "message.send",
+    params: { text: "hello", roomId: "room-1", clientMessageId: "client-key-1" },
+  };
+
+  test("a replayed clientMessageId admits, dispatches, and bills exactly once (#18045)", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const options = { ...h, turnClaims: store };
+
+    const first = await service.bridge(agent, keyedRpc, options);
+    await Promise.all(h.background);
+    const historyAfterFirst = h.history().length;
+    const second = await service.bridge(agent, keyedRpc, options);
+    await Promise.all(h.background);
+
+    expect(turnCalls).toBe(1);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    expect(billCalls).toHaveLength(1);
+    expect(settleCalls).toEqual([0.004]);
+    expect(second.result).toEqual(first.result);
+    expect(second.id).toBe("client-key-1");
+    expect(h.history()).toHaveLength(historyAfterFirst);
+  });
+
+  test("a reused clientMessageId with different text is rejected before admission", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const options = { ...h, turnClaims: store };
+
+    await service.bridge(agent, keyedRpc, options);
+    await Promise.all(h.background);
+    const historyAfterFirst = h.history().length;
+
+    await expect(
+      service.bridge(
+        agent,
+        { ...keyedRpc, params: { ...keyedRpc.params, text: "edited text" } },
+        options,
+      ),
+    ).rejects.toMatchObject({ name: "SharedTurnConflictError" });
+
+    expect(turnCalls).toBe(1);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    expect(h.history()).toHaveLength(historyAfterFirst);
+  });
+
+  test("a failed keyed turn re-executes under the SAME billing identities", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const options = { ...h, turnClaims: store };
+
+    turnError = new Error("provider connection lost");
+    await expect(service.bridge(agent, keyedRpc, options)).rejects.toThrow(
+      "provider connection lost",
+    );
+    await Promise.all(h.background);
+
+    turnError = null;
+    const retried = await service.bridge(agent, keyedRpc, options);
+    expect(retried.result?.text).toBe("hello back");
+    expect(turnCalls).toBe(2);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(2);
+
+    const firstContext = admitOrganizationInference.mock.calls[0]?.[0].context;
+    const secondContext = admitOrganizationInference.mock.calls[1]?.[0].context;
+    expect(firstContext?.requestId).toBe(secondContext?.requestId);
+    expect(firstContext?.metadata?.idempotencyKey).toBe(secondContext?.metadata?.idempotencyKey);
+    expect(firstContext?.metadata?.idempotencyKey).toBe(
+      `shared-runtime:${agent.id}:${firstContext?.metadata?.channelId}:client-key-1`,
+    );
+  });
+
+  test("a completed keyed stream turn replays its terminal frames without re-dispatch", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const options = { ...h, turnClaims: store };
+
+    const first = await service.stream(agent, keyedRpc, options);
+    const firstBody = await first.text();
+    await Promise.all(h.background);
+    const second = await service.stream(agent, keyedRpc, options);
+    const secondBody = await second.text();
+
+    expect(streamTurnCalls).toBe(1);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    const doneFrame = (body: string) => {
+      const match = body.match(/event: done\ndata: (.*)\n/);
+      expect(match).toBeTruthy();
+      return JSON.parse(match![1]) as Record<string, unknown>;
+    };
+    const firstDone = doneFrame(firstBody);
+    const secondDone = doneFrame(secondBody);
+    expect(secondDone.fullText).toBe("hello back");
+    expect(secondDone.messageId).toBe(firstDone.messageId);
+    expect(secondDone.userMessageId).toBe(firstDone.userMessageId);
   });
 });

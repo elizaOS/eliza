@@ -30,13 +30,13 @@ afterEach(() => {
 describe("cloudBillingConsoleUrl", () => {
   it("builds the console URL from an explicit cloud base", () => {
     expect(cloudBillingConsoleUrl("https://elizacloud.ai")).toBe(
-      "https://elizacloud.ai/dashboard/billing",
+      "https://cloud.eliza.app/cloud/billing",
     );
   });
 
   it("trims a trailing slash so the path never doubles up", () => {
     expect(cloudBillingConsoleUrl("https://api.elizacloud.ai/")).toBe(
-      "https://api.elizacloud.ai/dashboard/billing",
+      "https://cloud.eliza.app/cloud/billing",
     );
   });
 
@@ -46,14 +46,14 @@ describe("cloudBillingConsoleUrl", () => {
       cloudApiBase: "https://staging.elizacloud.ai",
     });
     expect(cloudBillingConsoleUrl()).toBe(
-      "https://staging.elizacloud.ai/dashboard/billing",
+      "https://cloud-staging.eliza.app/cloud/billing",
     );
   });
 
-  it("defaults to elizacloud.ai when no base is configured", () => {
+  it("defaults to the canonical production Cloud app", () => {
     setBootConfig({ branding: {}, cloudApiBase: undefined });
     expect(cloudBillingConsoleUrl()).toBe(
-      "https://elizacloud.ai/dashboard/billing",
+      "https://cloud.eliza.app/cloud/billing",
     );
   });
 });
@@ -62,7 +62,7 @@ describe("openCloudBillingConsole", () => {
   it("opens the resolved console URL via the platform opener", async () => {
     await openCloudBillingConsole("https://elizacloud.ai");
     expect(openExternalUrlMock).toHaveBeenCalledWith(
-      "https://elizacloud.ai/dashboard/billing",
+      "https://cloud.eliza.app/cloud/billing",
     );
   });
 });

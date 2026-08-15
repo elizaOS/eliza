@@ -568,7 +568,7 @@ describe("BUY_APP_DOMAIN server outcomes", () => {
     expect(result?.success).toBe(false);
     expect(result?.data?.reason).toBe("insufficient_credits");
     expect(result?.userFacingText).toContain("nothing was purchased");
-    expect(result?.userFacingText).toContain("/dashboard/billing");
+    expect(result?.userFacingText).toContain("/cloud/billing");
   });
 
   it("409 idempotency_retry → retries exactly once and succeeds", async () => {

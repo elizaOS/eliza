@@ -30,7 +30,6 @@ test.describe("bun run dev onboarding chat smoke", () => {
 
     await seedCompletedFirstRunStorage(page);
     await page.goto("/");
-    await seedCompletedFirstRunStorage(page);
 
     // Wait until the deferred model provider is registered and produces a real
     // reply, so the asserted turn below is not racing plugin boot.

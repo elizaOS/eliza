@@ -206,7 +206,8 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 		//   2. the evaluator violates its protocol (unlicensed envelope field),
 		//   3. the replanned weak model repeats the tool text's exact head as
 		//      its REPLY,
-		//   4. the forced no-tools synthesis pass repeats the full tool text.
+		//   4. the forced no-tools synthesis pass repeats the full tool text,
+		//   5. the last-resort TEXT_LARGE rescue synthesis echoes it again.
 		// Every model-channel candidate is a verbatim echo, so the turn must
 		// fall through to the safe ack — never the raw text.
 		const runtime = makeRuntime({
@@ -244,6 +245,10 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: { text: RAW_TOOL_TEXT },
 				},
+				{
+					expectModelType: ModelType.TEXT_LARGE,
+					body: RAW_TOOL_TEXT,
+				},
 			],
 		});
 
@@ -266,15 +271,17 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 		// grounded ack, not tool internals.
 		expect(delivered.length).toBeGreaterThan(0);
 
-		// The weak model got its replan AND the forced synthesis pass — and
-		// both echoes were refused. 5 calls: stage1, planner, evaluator
-		// (protocol failure), replanned REPLY echo, forced synthesis echo.
+		// The weak model got its replan, the forced synthesis pass, AND the
+		// last-resort rescue synthesis — and every echo was refused. 6 calls:
+		// stage1, planner, evaluator (protocol failure), replanned REPLY echo,
+		// forced synthesis echo, TEXT_LARGE rescue echo.
 		expect(modelCallTypes(runtime)).toEqual([
 			String(ModelType.RESPONSE_HANDLER),
 			String(ModelType.ACTION_PLANNER),
 			String(ModelType.RESPONSE_HANDLER),
 			String(ModelType.ACTION_PLANNER),
 			String(ModelType.ACTION_PLANNER),
+			String(ModelType.TEXT_LARGE),
 		]);
 
 		// The recorded trajectory carries the protocol failure — this test IS

@@ -7,6 +7,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
 import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
+import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.mjs";
+import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(appDir, "../..");
@@ -17,12 +19,21 @@ const uiSmokeLiveStack = path.join(
   "scripts",
   "playwright-ui-live-stack.ts",
 );
-const uiSmokeApiPort = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
-const uiSmokePort = Number(process.env.ELIZA_UI_SMOKE_PORT || "2138");
-const nodeExecutable =
-  process.env.ELIZA_NODE_PATH?.trim() ||
-  process.env.npm_node_execpath?.trim() ||
-  process.execPath;
+// Fail closed on explicit port typos before baseURL/webServer wiring.
+const uiSmokeApiPort = resolvePlaywrightPortEnv(
+  process.env,
+  "ELIZA_UI_SMOKE_API_PORT",
+  31337,
+);
+const uiSmokePort = resolvePlaywrightPortEnv(
+  process.env,
+  "ELIZA_UI_SMOKE_PORT",
+  2138,
+);
+// Fail-fast Node runtime resolution: the shared app-core validator throws at
+// config load — before the webServer command spawns — when ELIZA_NODE_PATH is
+// invalid or no real Node.js 24+ executable can be found.
+const nodeExecutable = resolvePlaywrightNodeRuntime();
 
 const fakeAudioWav = path.join(
   appDir,

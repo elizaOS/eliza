@@ -39,6 +39,7 @@ import { generateText } from "./llm.ts";
 import type {
 	DocumentFragmentMemoryMetadata,
 	DocumentMemoryMetadata,
+	ModelConfig,
 	PreChunkedFragmentInput,
 } from "./types.ts";
 import {
@@ -72,29 +73,33 @@ function getCtxDocumentsEnabled(runtime?: IAgentRuntime): boolean {
 	return result;
 }
 
-function shouldUseCustomLLM(): boolean {
-	const textProvider = process.env.TEXT_PROVIDER;
-	const textModel = process.env.TEXT_MODEL;
+function shouldUseCustomLLM(config: ModelConfig): boolean {
+	const textProvider = config.TEXT_PROVIDER;
+	const textModel = config.TEXT_MODEL;
 
 	if (!textProvider || !textModel) {
 		return false;
 	}
 
-	switch (textProvider.toLowerCase()) {
+	// config values are validated strings; guard toLowerCase to string-only
+	// so non-string can never throw (see #19147 P1). Blank/whitespace and
+	// model-gateway transformations are already resolved by validateModelConfig.
+	const normalizedProvider =
+		typeof textProvider === "string" ? textProvider.toLowerCase() : "";
+
+	switch (normalizedProvider) {
 		case "openrouter":
-			return !!process.env.OPENROUTER_API_KEY;
+			return !!config.OPENROUTER_API_KEY;
 		case "openai":
-			return !!process.env.OPENAI_API_KEY;
+			return !!config.OPENAI_API_KEY;
 		case "anthropic":
-			return !!process.env.ANTHROPIC_API_KEY;
+			return !!config.ANTHROPIC_API_KEY;
 		case "google":
-			return !!process.env.GOOGLE_API_KEY;
+			return !!config.GOOGLE_API_KEY;
 		default:
 			return false;
 	}
 }
-
-const useCustomLLM = shouldUseCustomLLM();
 
 /** Whether vector enrichment is available for newly ingested documents. */
 export function hasDocumentEmbeddingModel(runtime: IAgentRuntime): boolean {
@@ -463,7 +468,28 @@ export async function preparePreChunkedFragmentMemories({
 			unique: false,
 		};
 		if (hasDocumentEmbeddingModel(runtime)) {
-			await runtime.addEmbeddingToMemory(memory);
+			try {
+				await runtime.addEmbeddingToMemory(memory);
+			} catch (error) {
+				// error-policy:J2 addEmbeddingToMemory rejects unusable provider
+				// output itself (#18900), and its error identifies only a memory
+				// id. Ingestion is per-document, so re-throw with the document and
+				// fragment position this failure belongs to and keep the provider
+				// error as `cause`. Without this the caller sees a bare
+				// EMBEDDING_MODEL_OUTPUT_INVALID and cannot say which document or
+				// which fragment refused to embed.
+				throw new ElizaError(
+					"Pre-chunked document fragment embedding is unavailable",
+					{
+						code: "DOCUMENT_FRAGMENT_EMBED_FAILED",
+						context: { documentId, position },
+						cause: error,
+					},
+				);
+			}
+			// Still reachable when the runtime skips generation instead of
+			// throwing (no provider survived the dimension probe), which returns
+			// the memory unchanged rather than rejecting.
 			if (!memory.embedding || memory.embedding.length === 0) {
 				throw new ElizaError(
 					"Pre-chunked document fragment embedding is unavailable",
@@ -961,6 +987,10 @@ async function generateContextsInBatch(
 	);
 
 	const config = validateModelConfig(runtime);
+	// Resolved once per batch: the gate is configuration, not per-chunk state, so
+	// deriving it inside generateTextOperation below re-ran it for every chunk
+	// AND every rate-limit retry.
+	const useCustomLLM = shouldUseCustomLLM(config);
 	const isUsingOpenRouter = config.TEXT_PROVIDER === "openrouter";
 	const isUsingCacheCapableModel =
 		isUsingOpenRouter &&

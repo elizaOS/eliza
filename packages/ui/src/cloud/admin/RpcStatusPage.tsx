@@ -1,5 +1,5 @@
 /**
- * /dashboard/admin/rpc-status — verify the worker can reach each chain's RPC.
+ * /cloud/admin/rpc-status — verify the worker can reach each chain's RPC.
  * The route-level {@link AdminGate} owns the role gate and page chrome.
  */
 

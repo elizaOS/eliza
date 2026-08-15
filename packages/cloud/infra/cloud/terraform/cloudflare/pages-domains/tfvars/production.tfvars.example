@@ -1,3 +1,111 @@
 environment           = "production"
 cloudflare_account_id = "<cloudflare-account-id>"
-cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
+eliza_app_zone_id     = "<zone-id-for-eliza.app>"
+elizacloud_ai_zone_id = "<zone-id-for-elizacloud.ai>"
+
+# Inventory every record that already exists. Omit only genuinely new records.
+dns_record_import_ids = {
+  "pages/marketing"        = "<record-id-for-eliza.app>"
+  "pages/cloud_app"        = "<record-id-for-cloud.eliza.app>"
+  "pages/marketing_www"    = "<record-id-for-www.eliza.app>"
+  "pages/console"          = "<record-id-for-elizacloud.ai>"
+  "pages/app"              = "<record-id-for-app.elizacloud.ai>"
+  "pages/legacy_www"       = "<record-id-for-www.elizacloud.ai>"
+  "pages/legacy_docs"      = "<record-id-for-docs.elizacloud.ai>"
+  "pages/legacy_api"       = "<record-id-for-api.elizacloud.ai>"
+  "pages/legacy_blob"      = "<record-id-for-blob.elizacloud.ai>"
+  "pages/legacy_plugins"   = "<record-id-for-plugins.elizacloud.ai>"
+  "pages/legacy_relay"     = "<record-id-for-relay.elizacloud.ai>"
+  "pages/legacy_x402"      = "<record-id-for-x402.elizacloud.ai>"
+  "canonical-edge/*.cloud.eliza.app|<first-reviewed-origin-ipv4>" = "<record-id-for-first-canonical-agent-origin>"
+  "canonical-edge/*.cloud.eliza.app|<second-reviewed-origin-ipv4>" = "<record-id-for-second-canonical-agent-origin>"
+  "canonical-edge/*.sites.eliza.app|<first-reviewed-origin-ipv4>" = "<record-id-for-first-canonical-site-origin>"
+  "canonical-edge/*.sites.eliza.app|<second-reviewed-origin-ipv4>" = "<record-id-for-second-canonical-site-origin>"
+  "canonical-service/api.eliza.app|<first-reviewed-origin-ipv4>" = "<record-id-for-first-api-origin>"
+  "canonical-service/api.eliza.app|<second-reviewed-origin-ipv4>" = "<record-id-for-second-api-origin>"
+  "canonical-service/blob.eliza.app|<first-reviewed-origin-ipv4>" = "<record-id-for-first-blob-origin>"
+  "canonical-service/blob.eliza.app|<second-reviewed-origin-ipv4>" = "<record-id-for-second-blob-origin>"
+  "canonical-service/plugins.eliza.app|<first-reviewed-origin-ipv4>" = "<record-id-for-first-plugins-origin>"
+  "canonical-service/plugins.eliza.app|<second-reviewed-origin-ipv4>" = "<record-id-for-second-plugins-origin>"
+  "canonical-service/relay.eliza.app|<first-reviewed-origin-ipv4>" = "<record-id-for-first-relay-origin>"
+  "canonical-service/relay.eliza.app|<second-reviewed-origin-ipv4>" = "<record-id-for-second-relay-origin>"
+  "canonical-service/x402.eliza.app|<first-reviewed-origin-ipv4>" = "<record-id-for-first-x402-origin>"
+  "canonical-service/x402.eliza.app|<second-reviewed-origin-ipv4>" = "<record-id-for-second-x402-origin>"
+  "railway-tunnel/apex-routing"                                      = "<record-id-for-tunnel-apex-cname>"
+  "railway-tunnel/shared-verification"                               = "<record-id-for-shared-tunnel-verification-txt>"
+  "railway-tunnel/wildcard-routing"                                  = "<record-id-for-tunnel-wildcard-cname>"
+  "railway-tunnel/wildcard-certificate"                              = "<record-id-for-tunnel-wildcard-acme-cname>"
+  "legacy-edge/*.elizacloud.ai|<reviewed-redirect-origin-ipv4>" = "<record-id-for-legacy-agent-wildcard>"
+  "legacy-edge/*.sites.elizacloud.ai|<reviewed-redirect-origin-ipv4>" = "<record-id-for-legacy-sites-wildcard>"
+  "legacy-edge/*.tunnel.elizacloud.ai|<reviewed-redirect-origin-ipv4>" = "<record-id-for-legacy-tunnel-wildcard>"
+}
+
+canonical_edge_wildcard_origins = [
+  "<first-reviewed-origin-ipv4>",
+  "<second-reviewed-origin-ipv4>",
+]
+
+canonical_service_origins = {
+  "api.eliza.app"     = ["<first-reviewed-origin-ipv4>", "<second-reviewed-origin-ipv4>"]
+  "blob.eliza.app"    = ["<first-reviewed-origin-ipv4>", "<second-reviewed-origin-ipv4>"]
+  "plugins.eliza.app" = ["<first-reviewed-origin-ipv4>", "<second-reviewed-origin-ipv4>"]
+  "relay.eliza.app"   = ["<first-reviewed-origin-ipv4>", "<second-reviewed-origin-ipv4>"]
+  "x402.eliza.app"    = ["<first-reviewed-origin-ipv4>", "<second-reviewed-origin-ipv4>"]
+}
+
+# Copy these names and values exactly from Railway after attaching
+# tunnel.eliza.app and *.tunnel.eliza.app. The generated targets and
+# verification tokens are mutable provider inventory, not values Terraform can
+# derive from the Railway service id.
+railway_tunnel_dns_records = {
+  "apex-routing" = {
+    name    = "tunnel.eliza.app"
+    type    = "CNAME"
+    content = "<exact-railway-apex-routing-target>"
+    roles   = ["apex-routing"]
+  }
+  "shared-verification" = {
+    name    = "<exact-railway-shared-verification-name>.tunnel.eliza.app"
+    type    = "TXT"
+    content = "<exact-railway-shared-verification-token>"
+    roles   = ["apex-verification", "wildcard-verification"]
+  }
+  "wildcard-routing" = {
+    name    = "*.tunnel.eliza.app"
+    type    = "CNAME"
+    content = "<exact-railway-wildcard-routing-target>"
+    roles   = ["wildcard-routing"]
+  }
+  "wildcard-certificate" = {
+    name    = "<exact-railway-acme-name>.tunnel.eliza.app"
+    type    = "CNAME"
+    content = "<exact-railway-acme-target>"
+    roles   = ["wildcard-certificate"]
+  }
+}
+
+canonical_edge_certificate_packs = {
+  "canonical-production-2026-08" = {
+    hosts = [
+      "eliza.app",
+      "*.cloud.eliza.app",
+      "*.sites.eliza.app",
+    ]
+  }
+}
+
+legacy_redirect_wildcard_origins = {
+  "*.elizacloud.ai"        = ["<reviewed-redirect-origin-ipv4>"]
+  "*.sites.elizacloud.ai"  = ["<reviewed-redirect-origin-ipv4>"]
+  "*.tunnel.elizacloud.ai" = ["<reviewed-redirect-origin-ipv4>"]
+}
+
+legacy_redirect_certificate_packs = {
+  "legacy-production-redirect-2026-08" = {
+    hosts = [
+      "elizacloud.ai",
+      "*.sites.elizacloud.ai",
+      "*.tunnel.elizacloud.ai",
+    ]
+  }
+}

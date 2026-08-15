@@ -13,6 +13,7 @@
 
 import type { TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
+import { toHuman } from "./decimals.js";
 
 type SolanaWeb3Module = typeof import("@solana/web3.js");
 type SplTokenModule = typeof import("@solana/spl-token");
@@ -145,6 +146,21 @@ export interface SolanaTxResult {
 }
 
 /**
+ * Format a raw on-chain SPL token amount into a human-readable string.
+ *
+ * Delegates to the bigint-safe `toHuman` in ./decimals.js so every balance is
+ * exact: 0-decimal tokens no longer lose significant trailing zeros
+ * (100 became "1"), and positive-decimal `u64` values above
+ * Number.MAX_SAFE_INTEGER are no longer silently rounded by a Number()
+ * conversion. `toHuman` keeps a single trailing ".0" for whole positive-decimal
+ * amounts; the existing wallet spelling drops it ("1.0" -> "1", "0.0" -> "0").
+ */
+export function formatSplBalance(rawBalance: bigint, decimals: number): string {
+  const formatted = toHuman(rawBalance, decimals);
+  return formatted.endsWith(".0") ? formatted.slice(0, -2) : formatted;
+}
+
+/**
  * Solana wallet for native SOL and SPL token operations.
  * Uses @solana/web3.js (optional peer dependency, dynamically imported).
  */
@@ -258,10 +274,7 @@ export class SolanaWallet {
       // Token account doesn't exist — balance is 0
     }
 
-    const humanBalance =
-      (Number(rawBalance) / 10 ** decimals)
-        .toFixed(decimals)
-        .replace(/\.?0+$/, "") || "0";
+    const humanBalance = formatSplBalance(rawBalance, decimals);
 
     return { mint: mintAddress, rawBalance, humanBalance, decimals };
   }

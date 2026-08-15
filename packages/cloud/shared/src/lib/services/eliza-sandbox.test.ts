@@ -20,6 +20,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 
 import { decryptField, encryptField } from "../../db/crypto/field-crypto";
 import { resetKmsClientForTests } from "../../db/crypto/kms-client";
+import * as realEnsureSchemaNs from "../../db/ensure-agent-sandbox-schema";
 import * as realHelpersNs from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import type { AgentSandbox, AgentSandboxBackup } from "../../db/repositories/agent-sandboxes";
@@ -100,6 +101,12 @@ type UpgradeTransactionOutcome =
 // patch the SHARED live binding — building the restore (or this override's
 // spread) from the live namespace after a mock landed would capture the mock.
 const realHelpers = { ...realHelpersNs };
+// Same VALUE-snapshot rule for the self-healing DDL guard: prepareAgentDelete
+// awaits ensureAgentSandboxSchema() before its transaction, and this file's
+// swapped `dbWrite` forwards `.execute` to the real connection — so the real
+// guard would attempt live DDL here. This is a mocked-database suite; the
+// guard itself is covered by the PGlite tests.
+const realEnsureSchema = { ...realEnsureSchemaNs };
 let upgradeTransactionImpl: (<T>(fn: (tx: UpgradeTx) => Promise<T>) => Promise<T>) | null = null;
 let upgradeTransactionOutcome: UpgradeTransactionOutcome = null;
 const realDbWrite = realHelpers.dbWrite as unknown as object;
@@ -346,6 +353,10 @@ beforeAll(async () => {
     ...realHelpers,
     dbWrite: upgradeDbWrite,
   }));
+  mock.module("../../db/ensure-agent-sandbox-schema", () => ({
+    ...realEnsureSchema,
+    ensureAgentSandboxSchema: async () => {},
+  }));
 
   const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
   const prototype = ElizaSandboxService.prototype as unknown as ReplacementLifecycleHarnessService;
@@ -516,6 +527,7 @@ beforeAll(async () => {
 afterAll(() => {
   restoreReplacementLifecycleHarness?.();
   mock.module("../../db/helpers", () => realHelpers);
+  mock.module("../../db/ensure-agent-sandbox-schema", () => realEnsureSchema);
 });
 
 // provision()'s success path now re-enters the billable set via
@@ -564,6 +576,14 @@ function customSandbox(): AgentSandbox {
     status: "running",
     deletion_attempt_id: null,
     deletion_started_at: null,
+    deletion_previous_status: null,
+    deletion_previous_billing_status: null,
+    deletion_previous_shutdown_warning_sent_at: null,
+    deletion_previous_scheduled_shutdown_at: null,
+    pre_delete_capture_waiver_attempt_id: null,
+    pre_delete_capture_waiver_environment_revision: null,
+    pre_delete_capture_waiver_sandbox_id: null,
+    pre_delete_capture_waiver_bridge_url: null,
     execution_tier: "custom",
     bridge_url: "https://legacy-bridge.example",
     health_url: "https://legacy-bridge.example/health",
@@ -719,6 +739,70 @@ describe("buildAgentSandboxInsertValues", () => {
       },
       environment_vars: { ELIZA_API_TOKEN: "encrypted-token" },
     });
+  });
+
+  test("seeds the canonical cloud character when a managed create brings no persona", async () => {
+    const { buildAgentSandboxInsertValues } = await import("./eliza-sandbox.ts?actual");
+    const { buildDefaultAgentCharacterConfig } = await import("./default-agent-character");
+    const seed = buildDefaultAgentCharacterConfig();
+
+    for (const executionTier of ["shared", "dedicated-always"] as const) {
+      const config = buildAgentSandboxInsertValues({
+        organizationId: "22222222-2222-4222-8222-222222222222",
+        userId: "33333333-3333-4333-8333-333333333333",
+        agentName: "bnancy",
+        executionTier,
+      }).agent_config as Record<string, unknown>;
+
+      expect(config.system).toBe(seed.system);
+      expect(config.bio).toEqual(seed.bio);
+      expect(config.style).toEqual(seed.style);
+      expect(config.messageExamples).toEqual(seed.messageExamples);
+      // The agent's own name stays in the `agent_name` column so a later rename
+      // still reaches every reader; the seed must not pin it into the config.
+      expect(config.name).toBeUndefined();
+      expect(config.system).not.toBe("You are bnancy, a helpful assistant.");
+    }
+  });
+
+  test("leaves a caller-supplied or character-linked create unseeded", async () => {
+    const { agentConfigForProvision, buildAgentSandboxInsertValues } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const base = {
+      organizationId: "22222222-2222-4222-8222-222222222222",
+      userId: "33333333-3333-4333-8333-333333333333",
+      agentName: "bnancy",
+    };
+
+    expect(
+      buildAgentSandboxInsertValues({
+        ...base,
+        agentConfig: { system: "You are bnancy, the caller's own persona." },
+      }).agent_config,
+    ).toEqual({ system: "You are bnancy, the caller's own persona." });
+
+    expect(
+      buildAgentSandboxInsertValues({
+        ...base,
+        agentConfig: { character: { system: "nested caller persona" } },
+      }).agent_config,
+    ).toEqual({ character: { system: "nested caller persona" } });
+
+    expect(
+      buildAgentSandboxInsertValues({
+        ...base,
+        characterId: "44444444-4444-4444-8444-444444444444",
+      }).agent_config,
+    ).toEqual({ __agentCharacterOwnership: "reuse-existing" });
+
+    const custom = buildAgentSandboxInsertValues({
+      ...base,
+      dockerImage: "ghcr.io/dexploarer/bnancy:latest",
+      executionTier: "custom",
+    });
+    expect(custom.agent_config).toEqual({});
+    expect(agentConfigForProvision(custom)).toBeUndefined();
   });
 });
 
@@ -1601,6 +1685,42 @@ describe("ElizaSandboxService shutdown fails closed without a current capture (#
       fetchSnap.mockRestore();
     }
   });
+
+  test("a transient capture refusal is retryable and leaves the agent running", async () => {
+    const { ElizaSandboxService, SNAPSHOT_CAPTURE_TRANSIENT } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const rec = customSandbox();
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider);
+    const getForWrite = spyOn(
+      svc as unknown as { getAgentForWrite: () => Promise<unknown> },
+      "getAgentForWrite",
+    ).mockResolvedValue(rec);
+    const fetchSnap = spyOn(
+      svc as unknown as { fetchSnapshotState: () => Promise<never> },
+      "fetchSnapshotState",
+    ).mockRejectedValue(new Error(SNAPSHOT_CAPTURE_TRANSIENT));
+    try {
+      await expect(svc.shutdown(rec.id, rec.organization_id)).resolves.toEqual({
+        success: false,
+        retryable: true,
+        error: `Refusing to stop without a current backup: ${SNAPSHOT_CAPTURE_TRANSIENT}`,
+      });
+      expect(provider.stopForDeletion).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+    }
+  });
 });
 
 describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 §3)", () => {
@@ -1969,6 +2089,62 @@ describe("ElizaSandboxService snapshot — endpoint capability", () => {
     } finally {
       findRunningSpy.mockRestore();
       createBackupSpy.mockRestore();
+    }
+  });
+
+  test("a 503 from /api/snapshot remains a retryable transient sentinel", async () => {
+    const { ElizaSandboxService, SNAPSHOT_CAPTURE_TRANSIENT } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const rec = customSandbox();
+    const findRunningSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      rec,
+    );
+    const createBackupSpy = spyOn(agentSandboxesRepository, "createBackup");
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: "PGlite snapshot temporarily unavailable (connection closing)",
+            code: "PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT",
+          }),
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    try {
+      await expect(
+        new ElizaSandboxService().snapshot(rec.id, rec.organization_id, "auto"),
+      ).resolves.toEqual({
+        success: false,
+        error: SNAPSHOT_CAPTURE_TRANSIENT,
+        retryable: true,
+      });
+      expect(createBackupSpy).not.toHaveBeenCalled();
+    } finally {
+      findRunningSpy.mockRestore();
+      createBackupSpy.mockRestore();
+    }
+  });
+
+  test("an unrelated 503 remains an ordinary snapshot failure", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = customSandbox();
+    const findRunningSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      rec,
+    );
+    globalThis.fetch = mock(
+      async () =>
+        new Response(JSON.stringify({ error: "Runtime not ready" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    try {
+      await expect(
+        new ElizaSandboxService().snapshot(rec.id, rec.organization_id, "auto"),
+      ).rejects.toThrow("Snapshot fetch failed: HTTP 503");
+    } finally {
+      findRunningSpy.mockRestore();
     }
   });
 });
@@ -3054,6 +3230,36 @@ describe("ElizaSandboxService deletion-state guards (resume/wake/restart)", () =
       }
     });
   }
+
+  test("executeRestart propagates a transient fail-closed snapshot result", async () => {
+    const { ElizaSandboxService, SNAPSHOT_CAPTURE_TRANSIENT } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const svc = new ElizaSandboxService();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      row("running"),
+    );
+    const shutdownSpy = spyOn(svc, "shutdown").mockResolvedValue({
+      success: false,
+      retryable: true,
+      error: `Refusing to stop without a current backup: ${SNAPSHOT_CAPTURE_TRANSIENT}`,
+    });
+    const provisionSpy = spyOn(svc, "provision");
+    try {
+      const res = await svc.executeRestart(AGENT, ORG);
+      expect(res).toMatchObject({
+        success: false,
+        retryable: true,
+        containerStopped: false,
+        containerStarted: false,
+      });
+      expect(provisionSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      shutdownSpy.mockRestore();
+      provisionSpy.mockRestore();
+    }
+  });
 });
 
 describe("replacement lifecycle teardown is absence-proof", () => {
@@ -3571,6 +3777,684 @@ describe("replacement lifecycle teardown is absence-proof", () => {
 // in shared-runtime-history.test.ts: the post-commit deletion is a best-effort
 // call to sharedRuntimeHistoryRepository.deleteByAgent.
 
+// Fail-closed pre-deletion capture (#18517): deleteAgent mirrors shutdown's
+// pre-stop discipline — a live dedicated agent is never deleted without a
+// current backup, and a refusal happens BEFORE deletion intent is stamped so
+// the reconciler cannot re-arm a delete that skipped the capture.
+describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#18517)", () => {
+  type CaptureSpyTarget = {
+    getAgentForWrite: (agentId: string, orgId: string) => Promise<unknown>;
+    fetchSnapshotState: (rec: unknown) => Promise<unknown>;
+    prepareAgentDelete: (...args: unknown[]) => Promise<unknown>;
+    persistSnapshotWithinTransaction: (
+      ...args: unknown[]
+    ) => Promise<{ backupId: string; lifecycleRevision: number }>;
+    lockLifecycle: (...args: unknown[]) => Promise<void>;
+    getAgentForLifecycleMutation: (...args: unknown[]) => Promise<unknown>;
+    hasActiveProvisionJobTx: (...args: unknown[]) => Promise<boolean>;
+    hasActiveReplacementJobTx: (...args: unknown[]) => Promise<boolean>;
+  };
+
+  async function makeCaptureSvc() {
+    const mod = await import("./eliza-sandbox.ts?actual");
+    const svc = new mod.ElizaSandboxService();
+    return { mod, svc, spyTarget: svc as unknown as CaptureSpyTarget };
+  }
+
+  test("a failing pre-deletion capture refuses the delete before deletion intent", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = customSandbox();
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState").mockRejectedValue(
+      new Error("bridge returned 500"),
+    );
+    const prepare = spyOn(spyTarget, "prepareAgentDelete");
+    try {
+      const result = await svc.deleteAgent(rec.id, rec.organization_id, {
+        authorization: "user_request",
+      });
+      expect(result.success).toBe(false);
+      expect(result.success === false && result.error).toContain(
+        "Refusing to delete without a current backup",
+      );
+      expect(result.success === false && result.error).toContain("bridge returned 500");
+      expect(prepare).not.toHaveBeenCalled();
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("a transient capture failure refuses the delete with the transient message", async () => {
+    const { mod, svc, spyTarget } = await makeCaptureSvc();
+    const rec = customSandbox();
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState").mockRejectedValue(
+      new Error(mod.SNAPSHOT_CAPTURE_TRANSIENT),
+    );
+    const prepare = spyOn(spyTarget, "prepareAgentDelete");
+    try {
+      await expect(
+        svc.deleteAgent(rec.id, rec.organization_id, { authorization: "user_request" }),
+      ).resolves.toEqual({
+        success: false,
+        retryable: true,
+        error: `Refusing to delete without a current backup: ${mod.SNAPSHOT_CAPTURE_TRANSIENT}`,
+      });
+      expect(prepare).not.toHaveBeenCalled();
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("an image without a snapshot endpoint proceeds, flagged as capture-unsupported", async () => {
+    const { mod, svc, spyTarget } = await makeCaptureSvc();
+    const rec = customSandbox();
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState").mockRejectedValue(
+      new Error(mod.SNAPSHOT_ENDPOINT_UNSUPPORTED),
+    );
+    const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+      ok: false,
+      error: "halted by test after capture phase",
+    });
+    try {
+      await expect(
+        svc.deleteAgent(rec.id, rec.organization_id, { authorization: "user_request" }),
+      ).resolves.toEqual({ success: false, error: "halted by test after capture phase" });
+      expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "user_request", {
+        snapshot: null,
+        captureUnsupportedGeneration: {
+          bridgeUrl: rec.bridge_url,
+          environmentRevision: rec.environment_revision,
+          sandboxId: rec.sandbox_id,
+        },
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      });
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("a persisted no-snapshot waiver lets the same deletion retry converge", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const deletionAttemptId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const rec = {
+      ...customSandbox(),
+      status: "deletion_pending" as const,
+      deletion_attempt_id: deletionAttemptId,
+      deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
+      pre_delete_capture_waiver_attempt_id: deletionAttemptId,
+      pre_delete_capture_waiver_environment_revision: 0,
+      pre_delete_capture_waiver_sandbox_id: "sandbox-e06bb509",
+      pre_delete_capture_waiver_bridge_url: "https://legacy-bridge.example",
+    };
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const priorBackup = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+      undefined,
+    );
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState");
+    const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+      ok: false,
+      error: "halted by test after capture phase",
+    });
+    try {
+      await svc.deleteAgent(rec.id, rec.organization_id);
+      expect(fetchSnap).not.toHaveBeenCalled();
+      expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
+        snapshot: null,
+        captureUnsupportedGeneration: null,
+        captureWaiverAlreadyPersisted: true,
+        existingBackup: null,
+      });
+    } finally {
+      getForWrite.mockRestore();
+      priorBackup.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("a no-snapshot waiver does not survive a bridge generation change", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const deletionAttemptId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const live = {
+      ...customSandbox(),
+      status: "deletion_pending" as const,
+      bridge_url: "https://replacement-bridge.example",
+      deletion_attempt_id: deletionAttemptId,
+      deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
+      pre_delete_capture_waiver_attempt_id: deletionAttemptId,
+      pre_delete_capture_waiver_environment_revision: 0,
+      pre_delete_capture_waiver_sandbox_id: "sandbox-e06bb509",
+      pre_delete_capture_waiver_bridge_url: "https://legacy-bridge.example",
+    };
+    const lockLifecycle = spyOn(spyTarget, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(spyTarget, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(spyTarget, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(spyTarget, "hasActiveReplacementJobTx").mockResolvedValue(
+      false,
+    );
+    const persist = spyOn(spyTarget, "persistSnapshotWithinTransaction");
+    const update = mock(() => ({
+      set: mock(() => ({ where: mock(() => ({ returning: mock(async () => []) })) })),
+    }));
+    upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }), update });
+    try {
+      await expect(
+        (
+          svc as unknown as {
+            prepareAgentDelete: (...args: unknown[]) => Promise<unknown>;
+          }
+        ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
+          snapshot: null,
+          captureUnsupportedGeneration: null,
+          captureWaiverAlreadyPersisted: true,
+          existingBackup: null,
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        error:
+          "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
+      });
+      expect(update).not.toHaveBeenCalled();
+      expect(persist).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+      persist.mockRestore();
+    }
+  });
+
+  test("a data-bearing error row with no reachable bridge fails closed", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = { ...customSandbox(), status: "error" as const, bridge_url: null };
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState");
+    const prepare = spyOn(spyTarget, "prepareAgentDelete");
+    try {
+      await expect(
+        svc.deleteAgent(rec.id, rec.organization_id, { authorization: "user_request" }),
+      ).resolves.toEqual({
+        success: false,
+        error:
+          "Refusing to delete without a current backup: the agent's container has no reachable bridge to capture from",
+      });
+      expect(fetchSnap).not.toHaveBeenCalled();
+      expect(prepare).not.toHaveBeenCalled();
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("a stopped-origin deletion continuation does not recapture a dead container", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = {
+      ...customSandbox(),
+      status: "deletion_pending" as const,
+      bridge_url: null,
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
+      deletion_allocation_counted: false,
+    };
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState");
+    const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+      ok: false,
+      error: "halted by test after capture phase",
+    });
+    try {
+      await svc.deleteAgent(rec.id, rec.organization_id);
+      expect(fetchSnap).not.toHaveBeenCalled();
+      expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
+        snapshot: null,
+        captureUnsupportedGeneration: null,
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      });
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("shared-tier rows skip the capture entirely", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = { ...customSandbox(), execution_tier: "shared" as const };
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState");
+    const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+      ok: false,
+      error: "halted by test after capture phase",
+    });
+    try {
+      await svc.deleteAgent(rec.id, rec.organization_id);
+      expect(fetchSnap).not.toHaveBeenCalled();
+      expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
+        snapshot: null,
+        captureUnsupportedGeneration: null,
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      });
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("the primary v1 path (row already deletion_pending at enqueue) still captures", async () => {
+    // The v1 DELETE route stamps `deletion_pending` at enqueue time and only
+    // later runs deleteAgent from the job worker — the container is still
+    // live, so the capture must fire there too, not only on the synchronous
+    // compat path that still sees `running`.
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = {
+      ...customSandbox(),
+      status: "deletion_pending" as const,
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
+    };
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const priorBackup = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+      undefined,
+    );
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState").mockRejectedValue(
+      new Error("bridge unreachable"),
+    );
+    const prepare = spyOn(spyTarget, "prepareAgentDelete");
+    try {
+      const result = await svc.deleteAgent(rec.id, rec.organization_id, {
+        authorization: "user_request",
+      });
+      expect(fetchSnap).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(false);
+      expect(result.success === false && result.error).toContain(
+        "Refusing to delete without a current backup",
+      );
+      expect(prepare).not.toHaveBeenCalled();
+    } finally {
+      getForWrite.mockRestore();
+      priorBackup.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("a deletion retry with a capture already persisted for this intent skips re-capturing", async () => {
+    // After a successful capture the teardown may still fail; the retry then
+    // faces a dead bridge and must not refuse forever — the pre-delete backup
+    // taken at or after this deletion's start already satisfies the guarantee.
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = {
+      ...customSandbox(),
+      status: "deletion_pending" as const,
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
+    };
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const priorBackupId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const priorBackup = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue({
+      id: priorBackupId,
+      created_at: new Date("2026-08-13T00:05:00.000Z"),
+    } as never);
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState");
+    const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+      ok: false,
+      error: "halted by test after capture phase",
+    });
+    try {
+      await svc.deleteAgent(rec.id, rec.organization_id, { authorization: "user_request" });
+      expect(fetchSnap).not.toHaveBeenCalled();
+      expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "user_request", {
+        snapshot: null,
+        captureUnsupportedGeneration: null,
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: {
+          id: priorBackupId,
+          deletionAttemptId: rec.deletion_attempt_id,
+        },
+      });
+    } finally {
+      getForWrite.mockRestore();
+      priorBackup.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("an unauthorized delete of a running agent never pays the capture round-trip", async () => {
+    // The pre-existing running-row gate refuses unauthorized deletes anyway,
+    // so a capture (or a capture OUTAGE) must not run first — the caller keeps
+    // the original "suspend it before deletion" refusal, covered by the
+    // teardown-cap tests above.
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = customSandbox();
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState");
+    const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+      ok: false,
+      error: "Agent is running; suspend it before deletion",
+    });
+    try {
+      await expect(svc.deleteAgent(rec.id, rec.organization_id)).resolves.toEqual({
+        success: false,
+        error: "Agent is running; suspend it before deletion",
+      });
+      expect(fetchSnap).not.toHaveBeenCalled();
+      expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
+        snapshot: null,
+        captureUnsupportedGeneration: null,
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      });
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("the reconciler's unauthorized re-enqueue of a deletion_pending row still captures", async () => {
+    // ProvisioningJobService.reEnqueueFailedDeletions re-arms stuck deletes with
+    // NO authorization (the original job's grant is not carried through). Gating
+    // phase 0 on `options.authorization` sent those jobs into prepareAgentDelete
+    // with `snapshot: null` against a capture-requiring row, so every attempt was
+    // refused as "lifecycle generation moved" — deadlocking exactly the stuck
+    // deletions this guard protects. Only the still-`running` unauthorized case
+    // may skip the capture.
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = {
+      ...customSandbox(),
+      status: "deletion_pending" as const,
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
+    };
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const priorBackup = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+      undefined,
+    );
+    const snapshot = {
+      stateData: { tables: { memories: 1 } },
+      sizeBytes: 21,
+      bridgeUrl: rec.bridge_url as string,
+    };
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState").mockResolvedValue(snapshot);
+    const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+      ok: false,
+      error: "halted by test after capture phase",
+    });
+    try {
+      await svc.deleteAgent(rec.id, rec.organization_id);
+      expect(fetchSnap).toHaveBeenCalledTimes(1);
+      expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
+        snapshot,
+        captureUnsupportedGeneration: null,
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      });
+    } finally {
+      getForWrite.mockRestore();
+      priorBackup.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("prepareAgentDelete refuses when the lifecycle generation moved after the capture", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const live = customSandbox();
+    const lockLifecycle = spyOn(spyTarget, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(spyTarget, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(spyTarget, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(spyTarget, "hasActiveReplacementJobTx").mockResolvedValue(
+      false,
+    );
+    const persist = spyOn(spyTarget, "persistSnapshotWithinTransaction");
+    const update = mock(() => ({
+      set: mock(() => ({ where: mock(() => ({ returning: mock(async () => []) })) })),
+    }));
+    upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }), update });
+    try {
+      await expect(
+        (
+          svc as unknown as {
+            prepareAgentDelete: (...args: unknown[]) => Promise<unknown>;
+          }
+        ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
+          snapshot: {
+            stateData: { tables: {} },
+            sizeBytes: 12,
+            bridgeUrl: "https://a-different-generation.example",
+          },
+          captureUnsupportedGeneration: null,
+          captureWaiverAlreadyPersisted: false,
+          existingBackup: null,
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        error:
+          "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
+      });
+      expect(persist).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+      persist.mockRestore();
+    }
+  });
+
+  test("prepareAgentDelete persists the pre-delete snapshot inside the deletion transaction", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const live = customSandbox();
+    const lockLifecycle = spyOn(spyTarget, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(spyTarget, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(spyTarget, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(spyTarget, "hasActiveReplacementJobTx").mockResolvedValue(
+      false,
+    );
+    const persistedBackupId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const order: string[] = [];
+    const persist = spyOn(spyTarget, "persistSnapshotWithinTransaction").mockImplementation(
+      async () => {
+        order.push("backup");
+        return { backupId: persistedBackupId, lifecycleRevision: 8 };
+      },
+    );
+    const stateData = { tables: { memories: 3 } };
+    const update = mock(() => ({
+      set: mock(() => ({
+        where: mock(() => ({
+          returning: mock(async () => {
+            order.push("intent");
+            return [
+              {
+                id: live.id,
+                deletionAttemptId: "attempt-18517",
+                deletionStartedAt: new Date(),
+                lifecycleRevision: 7,
+              },
+            ];
+          }),
+        })),
+      })),
+    }));
+    upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }), update });
+    try {
+      const result = (await (
+        svc as unknown as {
+          prepareAgentDelete: (...args: unknown[]) => Promise<{ ok: boolean }>;
+        }
+      ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
+        snapshot: { stateData, sizeBytes: 34, bridgeUrl: live.bridge_url as string },
+        captureUnsupportedGeneration: null,
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      })) as { ok: boolean };
+      expect(result.ok).toBe(true);
+      expect(result).toMatchObject({
+        preDeleteBackupId: persistedBackupId,
+        lifecycleRevision: 8,
+      });
+      expect(order).toEqual(["intent", "backup"]);
+      expect(persist).toHaveBeenCalledTimes(1);
+      const call = persist.mock.calls[0] as unknown[];
+      expect(call.slice(1)).toEqual([live.id, live.organization_id, "pre-delete", stateData, 34]);
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+      persist.mockRestore();
+    }
+  });
+
+  test("prepareAgentDelete persists an unsupported-endpoint waiver for the exact generation", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const live = customSandbox();
+    const lockLifecycle = spyOn(spyTarget, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(spyTarget, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(spyTarget, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(spyTarget, "hasActiveReplacementJobTx").mockResolvedValue(
+      false,
+    );
+    const persist = spyOn(spyTarget, "persistSnapshotWithinTransaction");
+    const set = mock((values: Record<string, unknown>) => ({
+      where: mock(() => ({
+        returning: mock(async () => [
+          {
+            id: live.id,
+            deletionAttemptId: values.deletion_attempt_id,
+            deletionStartedAt: new Date(),
+            lifecycleRevision: 7,
+          },
+        ]),
+      })),
+    }));
+    const update = mock(() => ({ set }));
+    upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }), update });
+    try {
+      const result = (await (
+        svc as unknown as {
+          prepareAgentDelete: (...args: unknown[]) => Promise<{ ok: boolean }>;
+        }
+      ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
+        snapshot: null,
+        captureUnsupportedGeneration: {
+          bridgeUrl: live.bridge_url,
+          environmentRevision: live.environment_revision,
+          sandboxId: live.sandbox_id,
+        },
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      })) as { ok: boolean };
+      expect(result.ok).toBe(true);
+      expect(persist).not.toHaveBeenCalled();
+      expect(set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pre_delete_capture_waiver_attempt_id: expect.any(String),
+          pre_delete_capture_waiver_environment_revision: live.environment_revision,
+          pre_delete_capture_waiver_sandbox_id: live.sandbox_id,
+          pre_delete_capture_waiver_bridge_url: live.bridge_url,
+        }),
+      );
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+      persist.mockRestore();
+    }
+  });
+
+  test("prepareAgentDelete revalidates an unlocked backup candidate under the lifecycle lock", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const deletionAttemptId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const backupId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const live = {
+      ...customSandbox(),
+      status: "deletion_pending" as const,
+      deletion_attempt_id: deletionAttemptId,
+      deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
+    };
+    const lockLifecycle = spyOn(spyTarget, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(spyTarget, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(spyTarget, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(spyTarget, "hasActiveReplacementJobTx").mockResolvedValue(
+      false,
+    );
+    const validate = spyOn(
+      agentSandboxesRepository,
+      "validateAttachedPreDeleteBackupForDeletion",
+    ).mockResolvedValue(true);
+    const persist = spyOn(spyTarget, "persistSnapshotWithinTransaction");
+    const update = mock(() => ({
+      set: mock(() => ({
+        where: mock(() => ({
+          returning: mock(async () => [
+            {
+              id: live.id,
+              deletionAttemptId,
+              deletionStartedAt: live.deletion_started_at,
+              lifecycleRevision: 7,
+            },
+          ]),
+        })),
+      })),
+    }));
+    upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }), update });
+    try {
+      await expect(
+        (
+          svc as unknown as {
+            prepareAgentDelete: (...args: unknown[]) => Promise<unknown>;
+          }
+        ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
+          snapshot: null,
+          captureUnsupportedGeneration: null,
+          captureWaiverAlreadyPersisted: false,
+          existingBackup: { id: backupId, deletionAttemptId },
+        }),
+      ).resolves.toMatchObject({ ok: true, preDeleteBackupId: backupId });
+      expect(validate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          backupId,
+          sandboxRecordId: live.id,
+          deletionStartedAt: live.deletion_started_at,
+        }),
+      );
+      expect(persist).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+      validate.mockRestore();
+      persist.mockRestore();
+    }
+  });
+});
+
 // The anti-wedge teardown cap (PR #9066). deleteAgent now runs its three short
 // DB phases (precheck → bounded teardown OUTSIDE the lock/txn → row delete) so
 // we can spy each seam and assert the three-way teardown classification without
@@ -3586,6 +4470,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     executeDeletion(
       agentId: string,
       orgId: string,
+      authorization?: "user_request" | "billing_request",
     ): Promise<{
       success: boolean;
       containerStopped: boolean;
@@ -3595,6 +4480,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     prepareAgentDelete(
       agentId: string,
       orgId: string,
+      authorization?: "user_request" | "billing_request",
     ): Promise<
       | {
           ok: true;
@@ -3604,15 +4490,134 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
         }
       | { ok: false; error: string }
     >;
-    commitAgentRowDelete(agentId: string, orgId: string): Promise<unknown>;
+    commitAgentRowDelete(agentId: string, orgId: string, ownership?: unknown): Promise<unknown>;
     commitAgentReconciliationPending(agentId: string, orgId: string): Promise<unknown>;
     runBoundedSandboxStop(sandboxId: string): Promise<unknown>;
   };
 
   async function makeSvc(): Promise<Svc> {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    return new ElizaSandboxService() as unknown as Svc;
+    const svc = new ElizaSandboxService();
+    // Phase 0 of deleteAgent (#18517) consults the live row before stamping
+    // deletion intent; these tests exercise the later teardown phases, so the
+    // capture sees no row and skips. Instance-scoped, so no cross-test leak.
+    spyOn(
+      svc as unknown as { getAgentForWrite: () => Promise<undefined> },
+      "getAgentForWrite",
+    ).mockResolvedValue(undefined);
+    return svc as unknown as Svc;
   }
+
+  test("prepareAgentDelete refuses an unauthorized running agent before deletion intent", async () => {
+    const svc = await makeSvc();
+    const live = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      last_heartbeat_at: new Date(Date.now() - 30_000),
+    };
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(svc, "hasActiveReplacementJobTx").mockResolvedValue(false);
+    const update = mock(() => ({
+      set: mock(() => ({
+        where: mock(() => ({
+          returning: mock(async () => [{ ...live, status: "deletion_pending" }]),
+        })),
+      })),
+    }));
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => ({ rows: [] }),
+        update,
+      });
+
+    try {
+      await expect(svc.prepareAgentDelete(AGENT, ORG)).resolves.toEqual({
+        ok: false,
+        error: "Agent is running; suspend it before deletion",
+      });
+      expect(update).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+    }
+  });
+
+  test("prepareAgentDelete allows an explicitly authorized running agent", async () => {
+    const svc = await makeSvc();
+    const live = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      last_heartbeat_at: null,
+    };
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(svc, "hasActiveReplacementJobTx").mockResolvedValue(false);
+    // An authorized live-row delete must carry a current-generation capture
+    // (#18517); persistence itself is covered by the dedicated capture tests.
+    const persist = spyOn(
+      svc as unknown as {
+        persistSnapshotWithinTransaction: (
+          ...args: unknown[]
+        ) => Promise<{ backupId: string; lifecycleRevision: number }>;
+      },
+      "persistSnapshotWithinTransaction",
+    ).mockResolvedValue({
+      backupId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      lifecycleRevision: 2,
+    });
+    const update = mock(() => ({
+      set: mock(() => ({
+        where: mock(() => ({
+          returning: mock(async () => [
+            {
+              id: AGENT,
+              deletionAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              deletionStartedAt: new Date("2026-06-04T12:00:00.000Z"),
+              lifecycleRevision: 1,
+            },
+          ]),
+        })),
+      })),
+    }));
+    upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }), update });
+
+    try {
+      await expect(
+        (
+          svc as unknown as {
+            prepareAgentDelete: (...args: unknown[]) => Promise<unknown>;
+          }
+        ).prepareAgentDelete(AGENT, ORG, "user_request", {
+          snapshot: {
+            stateData: { tables: {} },
+            sizeBytes: 1,
+            bridgeUrl: live.bridge_url,
+          },
+          captureUnsupportedGeneration: null,
+          captureWaiverAlreadyPersisted: false,
+          existingBackup: null,
+        }),
+      ).resolves.toMatchObject({
+        ok: true,
+      });
+      expect(update).toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+      persist.mockRestore();
+    }
+  });
 
   test("linked character cleanup waits until the reconciliation tombstone is removed", async () => {
     const svc = await makeSvc();
@@ -3868,13 +4873,19 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     const svc = await makeSvc();
     const order: string[] = [];
     const sourcePoolId = "44444444-4444-4444-8444-444444444444";
+    const preDeleteBackupId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const prepare = spyOn(svc, "prepareAgentDelete").mockImplementation(async () => {
       order.push("prepare");
       return {
         ok: true,
         sandboxId: SANDBOX_ID,
+        nodeId: null,
         status: "running",
         sourcePoolId,
+        environmentRevision: 4,
+        lifecycleRevision: 9,
+        deletionAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        preDeleteBackupId,
       };
     });
     const stop = spyOn(svc, "runBoundedSandboxStop").mockImplementation(async () => {
@@ -3906,9 +4917,64 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
         `revoke:${sourcePoolId}`,
         "commit",
       ]);
+      expect(commit).toHaveBeenCalledWith(
+        AGENT,
+        ORG,
+        expect.objectContaining({ preDeleteBackupId }),
+      );
     } finally {
       prepare.mockRestore();
       stop.mockRestore();
+      commit.mockRestore();
+      apiKeySpy.mockRestore();
+      historySpy.mockRestore();
+    }
+  });
+
+  test("allocation release carries its post-trigger revision into the delete CAS", async () => {
+    const svc = await makeSvc();
+    const deletionAttemptId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+      ok: true,
+      sandboxId: SANDBOX_ID,
+      nodeId: "node-1",
+      status: "running",
+      sourcePoolId: null,
+      environmentRevision: 4,
+      lifecycleRevision: 9,
+      deletionAttemptId,
+      deletionStartedAt: new Date("2026-08-13T12:00:00.000Z"),
+      preDeleteBackupId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    });
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      kind: "not-running-proven",
+    });
+    const release = spyOn(
+      agentSandboxesRepository,
+      "tryReleaseDeletionAllocationForCommit",
+    ).mockResolvedValue({ outcome: "released", lifecycleRevision: 10 });
+    const commit = spyOn(svc, "commitAgentRowDelete").mockResolvedValue({
+      success: true,
+      rowDeleted: true,
+      deletedSandbox: { ...customSandbox(), id: AGENT },
+    });
+    const apiKeySpy = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined as never);
+    const historySpy = spyOn(sharedRuntimeHistoryRepository, "deleteByAgent").mockResolvedValue(0);
+    try {
+      await expect(svc.deleteAgent(AGENT, ORG)).resolves.toMatchObject({
+        success: true,
+        rowDeleted: true,
+      });
+      expect(release).toHaveBeenCalledWith(AGENT, ORG, deletionAttemptId, "node-1", 9);
+      expect(commit).toHaveBeenCalledWith(
+        AGENT,
+        ORG,
+        expect.objectContaining({ lifecycleRevision: 10, deletionAttemptId }),
+      );
+    } finally {
+      prepare.mockRestore();
+      stop.mockRestore();
+      release.mockRestore();
       commit.mockRestore();
       apiKeySpy.mockRestore();
       historySpy.mockRestore();
@@ -4511,6 +5577,30 @@ describe("buildRuntimeBootstrapAgent persona seed", () => {
     expect(agent.system).toBe("You are shared-nancy.");
     expect(agent.bio).toEqual(["a real bio"]);
     expect(agent.style).toEqual({ all: ["terse"] });
+  });
+
+  test("boots a freshly created agent on the seeded default character", async () => {
+    const { buildAgentSandboxInsertValues } = await import("./eliza-sandbox.ts?actual");
+    const { buildDefaultAgentCharacterConfig } = await import("./default-agent-character");
+    const seed = buildDefaultAgentCharacterConfig();
+
+    const agent = await buildBootstrap({
+      ...baseRec,
+      agent_config: buildAgentSandboxInsertValues({
+        organizationId: "22222222-2222-4222-8222-222222222222",
+        userId: "33333333-3333-4333-8333-333333333333",
+        agentName: "bnancy",
+        executionTier: "dedicated-always",
+      }).agent_config as Record<string, unknown>,
+    });
+
+    // The stub fallback is now unreachable for a fresh agent: the persona comes
+    // from the row, while the NAME still comes from the agent_name column.
+    expect(agent.name).toBe("bnancy");
+    expect(agent.system).toBe(seed.system);
+    expect(agent.bio).toEqual(seed.bio as string[]);
+    expect(agent.style).toEqual(seed.style as { all?: string[] });
+    expect(agent.system).not.toBe("You are bnancy, a helpful assistant.");
   });
 });
 
@@ -6205,6 +7295,13 @@ describe("isUnrecoverableSnapshotError (permanent-vs-transient classification)",
     expect(isUnrecoverableSnapshotError(new Error("State restore failed: HTTP 429 "))).toBe(false);
     expect(isUnrecoverableSnapshotError(new Error("Snapshot fetch failed: HTTP 500"))).toBe(false);
     expect(isUnrecoverableSnapshotError(new Error("Snapshot fetch failed: HTTP 503"))).toBe(false);
+    // #18228: a diagnostic body suffix must not change transient-vs-permanent
+    // classification — the regex is anchored at the status prefix.
+    expect(
+      isUnrecoverableSnapshotError(
+        new Error("Snapshot fetch failed: HTTP 500 Durable Object storage quota exceeded"),
+      ),
+    ).toBe(false);
   });
 
   test("matches only this file's snapshot throw shapes — anchored, exact status", async () => {
@@ -6837,9 +7934,16 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     }
   });
 
-  test("(h1) preserved live VPN node: create gets reclaimStaleVpnNode=false, node deleted BY ID only after the swap (#16565)", async () => {
+  test("(h1) upgrade forces a stored direct-relay opt-in off while preserving the live VPN node (#16565)", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const agent = liveAgentRow();
+    const liveAgent = liveAgentRow();
+    const agent = {
+      ...liveAgent,
+      environment_vars: {
+        ...(liveAgent.environment_vars as Record<string, string>),
+        ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+      },
+    };
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, create, stopOnSpecificNode } = await makeDockerProvider({
@@ -6884,9 +7988,13 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(res.success).toBe(true);
       // Blue was provisioned in preserve mode.
       const createConfig = create.mock.calls[0]?.[0] as
-        | { reclaimStaleVpnNode?: boolean }
+        | {
+            reclaimStaleVpnNode?: boolean;
+            environmentVars?: Record<string, string>;
+          }
         | undefined;
       expect(createConfig?.reclaimStaleVpnNode).toBe(false);
+      expect(createConfig?.environmentVars?.ELIZA_CLOUD_PAIR_DIRECT_RELAY).toBe("0");
       expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
       expect(stopOnSpecificNode).toHaveBeenCalledWith(
         "node-old",
@@ -7166,7 +8274,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
 
   test("admin canary requires reported blue digest and uses the primary exact-pair read", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const SOURCE_IMAGE = `ghcr.io/elizaos/eliza-demo@${FROM_DIGEST}`;
     const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
     const agent: AgentSandbox = { ...liveAgentRow(), docker_image: SOURCE_IMAGE };
     const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
@@ -7610,10 +8718,13 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
     runtimeStatus?: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
     runtimeHealth?: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
     environmentVars?: Record<string, string>;
+    targetImage?: string;
+    targetDigest?: string;
   }) {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const SOURCE_IMAGE = `ghcr.io/elizaos/eliza-demo@${CURRENT_DIGEST}`;
-    const TARGET_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_IMAGE = options.targetImage ?? "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_DIGEST = options.targetDigest ?? PREV_DIGEST;
     const agent: AgentSandbox = {
       ...upgradedAgentRow(),
       docker_image: SOURCE_IMAGE,
@@ -7639,7 +8750,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
     const lifecycleEvents: string[] = [];
     const { provider, stop, stopOnSpecificNode, runtimeFetch } = await makeDockerProvider({
       create: async () =>
-        blueHandle(PREV_DIGEST, options.failPostCutoverCleanup ? "vpn-old-rollback" : undefined),
+        blueHandle(TARGET_DIGEST, options.failPostCutoverCleanup ? "vpn-old-rollback" : undefined),
       checkHealth: async () => true,
       runtimeStatus: async (input, init) => {
         lifecycleEvents.push("status");
@@ -7693,7 +8804,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
         sourceImage: SOURCE_IMAGE,
         sourceDigest: CURRENT_DIGEST,
         targetImage: TARGET_IMAGE,
-        targetDigest: PREV_DIGEST,
+        targetDigest: TARGET_DIGEST,
         onCutoverInTx: options.onCutoverInTx,
         onConvergedInTx: async () => {},
       });
@@ -8112,9 +9223,17 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
     });
   }
 
-  test("happy path with empty persisted image ref → restores pre-upgrade snapshot then swaps back onto PREV_DIGEST", async () => {
+  test("rollback forces a stored direct-relay opt-in off while restoring the pre-upgrade snapshot", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const agent: AgentSandbox = { ...upgradedAgentRow(), previous_docker_image: "" };
+    const upgradedAgent = upgradedAgentRow();
+    const agent: AgentSandbox = {
+      ...upgradedAgent,
+      previous_docker_image: "",
+      environment_vars: {
+        ...(upgradedAgent.environment_vars as Record<string, string>),
+        ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+      },
+    };
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(curNode());
     // The pre-upgrade restore point + its reconstruction.
@@ -8181,6 +9300,9 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       expect(params).toContain(PREV_DIGEST); // image_digest := previous
       expect(create.mock.calls[0]?.[0]).toMatchObject({
         dockerImage: `ghcr.io/elizaos/eliza-agent@${PREV_DIGEST}`,
+        environmentVars: {
+          ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
+        },
       });
       expect(create).toHaveBeenCalledTimes(1);
       expect(checkHealth).toHaveBeenCalledTimes(1);
@@ -8347,6 +9469,18 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       }),
     );
     expect(stop).not.toHaveBeenCalled();
+  });
+
+  test("admin canary rollback restores an immutable demo target from a prior canary", async () => {
+    const targetImage = `ghcr.io/elizaos/eliza-demo@${PREV_DIGEST}`;
+    const { result, transactionCalled } = await runAdminCanaryRollback({
+      onCutoverInTx: async () => {},
+      targetImage,
+      targetDigest: PREV_DIGEST,
+    });
+
+    expect(result.success).toBe(true);
+    expect(transactionCalled).toBe(true);
   });
 });
 
@@ -8677,6 +9811,108 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
   });
 });
 
+// Snapshot fetch error-body excerpt (#18228 / #18336).
+describe("readErrorBodyExcerpt (snapshot transfer diagnostics)", () => {
+  function errorResponse(
+    body: string,
+    init?: { contentType?: string; splitAtBytes?: number[] },
+  ): Response {
+    const bytes = new TextEncoder().encode(body);
+    const splitAt = init?.splitAtBytes ?? [bytes.length];
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        let offset = 0;
+        for (const end of splitAt) {
+          if (offset >= bytes.length) break;
+          controller.enqueue(bytes.subarray(offset, Math.min(end, bytes.length)));
+          offset = end;
+        }
+        if (offset < bytes.length) {
+          controller.enqueue(bytes.subarray(offset));
+        }
+        controller.close();
+      },
+    });
+    const headers = new Headers();
+    if (init?.contentType) {
+      headers.set("content-type", init.contentType);
+    }
+    return new Response(stream, { status: 500, headers });
+  }
+
+  test("returns null for an empty body", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    expect(await readErrorBodyExcerpt(errorResponse(""))).toBeNull();
+    expect(await readErrorBodyExcerpt(new Response(null, { status: 500 }))).toBeNull();
+  });
+
+  test("returns null for whitespace-only bodies", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    expect(await readErrorBodyExcerpt(errorResponse("   \n\t  "))).toBeNull();
+  });
+
+  test("extracts JSON {error} and {message} fields from short bodies", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    expect(
+      await readErrorBodyExcerpt(
+        errorResponse('{"error":"Durable Object storage quota exceeded"}', {
+          contentType: "application/json",
+        }),
+      ),
+    ).toBe("Durable Object storage quota exceeded");
+    expect(
+      await readErrorBodyExcerpt(
+        errorResponse('{"message":"Internal agent error during snapshot serialization"}', {
+          contentType: "application/json",
+        }),
+      ),
+    ).toBe("Internal agent error during snapshot serialization");
+  });
+
+  test("returns trimmed plain-text and proxy error pages", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    expect(
+      await readErrorBodyExcerpt(
+        errorResponse("  Worker exceeded CPU time limit  ", { contentType: "text/plain" }),
+      ),
+    ).toBe("Worker exceeded CPU time limit");
+    expect(
+      await readErrorBodyExcerpt(
+        errorResponse("<html>Bad Gateway: upstream timeout</html>", {
+          contentType: "text/html",
+        }),
+      ),
+    ).toBe("<html>Bad Gateway: upstream timeout</html>");
+  });
+
+  test("truncates bodies past the 512-byte excerpt budget", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    const body = "y".repeat(600);
+    const excerpt = await readErrorBodyExcerpt(
+      errorResponse(body, { contentType: "text/plain", splitAtBytes: [256, 512, 700] }),
+    );
+    expect(excerpt).toBe("y".repeat(512));
+    expect(Buffer.byteLength(excerpt ?? "", "utf-8")).toBe(512);
+  });
+
+  test("flushes a multi-byte UTF-8 character split across stream chunks", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    const excerpt = await readErrorBodyExcerpt(
+      errorResponse("😀", { contentType: "text/plain", splitAtBytes: [2] }),
+    );
+    expect(excerpt).toBe("😀");
+  });
+
+  test("truncates at the byte budget without a garbled trailing character", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    const body = `${"x".repeat(510)}😀`;
+    const excerpt = await readErrorBodyExcerpt(
+      errorResponse(body, { contentType: "text/plain", splitAtBytes: [512] }),
+    );
+    expect(excerpt).toBe("x".repeat(510));
+  });
+});
+
 describe("snapshot hydration budgets (#16639)", () => {
   const prevRaw = process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES;
 
@@ -8865,5 +10101,354 @@ describe("snapshot hydration budgets (#16639)", () => {
         },
       }),
     ).toThrow("file budget");
+  });
+});
+
+describe("ElizaSandboxService.transferStateForRelocation", () => {
+  // A blue/green replacement moves the CONTAINER, not the state: agent volumes
+  // are host bind-mounts, so the pglite directory does not follow a container
+  // to another machine. The caller retires the source placement on the strength
+  // of this answer, so the contract is that `transferred: true` is reported
+  // only after a completed push — anything else is a move that did not happen.
+  const SOURCE_SNAPSHOT = {
+    memories: [{ id: "m1" }],
+    config: { agentName: "probe" },
+    workspaceFiles: {},
+    manifest: { version: 1, tables: ["memories"] },
+  };
+
+  function bridgeStub(opts: { snapshotStatus?: number; restoreStatus?: number; body?: unknown }) {
+    const calls: string[] = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = fetchUrl(input);
+      calls.push(url);
+      if (url.endsWith("/api/snapshot")) {
+        const status = opts.snapshotStatus ?? 200;
+        if (status !== 200) return new Response("nope", { status });
+        return Response.json(opts.body ?? SOURCE_SNAPSHOT);
+      }
+      if (url.endsWith("/api/restore")) {
+        const status = opts.restoreStatus ?? 200;
+        if (status !== 200) return new Response("refused", { status });
+        return Response.json({ ok: true });
+      }
+      return Response.json({ ok: true });
+    });
+    return calls;
+  }
+
+  async function runTransfer(sandbox: AgentSandbox) {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    return (
+      new ElizaSandboxService() as unknown as {
+        transferStateForRelocation: (o: {
+          agentId: string;
+          orgId: string;
+          targetBridgeUrl: string;
+          authRec: Pick<AgentSandbox, "id" | "environment_vars">;
+        }) => Promise<{ transferred: boolean; reason?: string; detail?: string }>;
+      }
+    ).transferStateForRelocation({
+      agentId: sandbox.id,
+      orgId: sandbox.organization_id,
+      targetBridgeUrl: "https://blue.example",
+      authRec: sandbox,
+    });
+  }
+
+  test("an image with no snapshot endpoint is unrelocatable, and nothing is pushed", async () => {
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      sandbox as never,
+    );
+    const calls = bridgeStub({ snapshotStatus: 404 });
+    try {
+      const outcome = await runTransfer(sandbox);
+      expect(outcome.transferred).toBe(false);
+      expect(outcome.reason).toBe("capture-unsupported");
+      // The decisive assertion: the replacement was never given a state, so a
+      // caller that retired the source here would destroy the only copy.
+      expect(calls.some((u) => u.endsWith("/api/restore"))).toBe(false);
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
+  test("a capture without a full manifest is refused before anything is pushed", async () => {
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      sandbox as never,
+    );
+    // Same shape minus the manifest: a partial capture would survive as silent
+    // data loss once the source container is destroyed.
+    const calls = bridgeStub({ body: { ...SOURCE_SNAPSHOT, manifest: undefined } });
+    try {
+      const outcome = await runTransfer(sandbox);
+      expect(outcome.transferred).toBe(false);
+      expect(outcome.reason).toBe("capture-failed");
+      expect(outcome.detail).toContain("manifest");
+      expect(calls.some((u) => u.endsWith("/api/restore"))).toBe(false);
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
+  test("a refused restore is never reported as transferred", async () => {
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      sandbox as never,
+    );
+    const backupSpy = spyOn(agentSandboxesRepository, "createBackup").mockResolvedValue({
+      id: "backup-1",
+      size_bytes: 4096,
+    } as never);
+    const stateSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue(SOURCE_SNAPSHOT as never);
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(null as never);
+    const pruneSpy = spyOn(agentSandboxesRepository, "pruneBackups").mockResolvedValue(
+      undefined as never,
+    );
+    // No parent chain: forces a full backup, which is the shape a relocation
+    // must carry anyway.
+    const latestSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined as never,
+    );
+    bridgeStub({ restoreStatus: 500 });
+    try {
+      const outcome = await runTransfer(sandbox);
+      expect(outcome.transferred).toBe(false);
+      expect(outcome.reason).toBe("push-failed");
+    } finally {
+      for (const s of [findSpy, backupSpy, stateSpy, updateSpy, pruneSpy, latestSpy])
+        s.mockRestore();
+    }
+  });
+
+  test("reports transferred only after the restore actually completed", async () => {
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      sandbox as never,
+    );
+    const backupSpy = spyOn(agentSandboxesRepository, "createBackup").mockResolvedValue({
+      id: "backup-1",
+      size_bytes: 4096,
+    } as never);
+    const stateSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue(SOURCE_SNAPSHOT as never);
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(null as never);
+    const pruneSpy = spyOn(agentSandboxesRepository, "pruneBackups").mockResolvedValue(
+      undefined as never,
+    );
+    // No parent chain: forces a full backup, which is the shape a relocation
+    // must carry anyway.
+    const latestSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined as never,
+    );
+    const calls = bridgeStub({});
+    try {
+      const outcome = await runTransfer(sandbox);
+      expect(outcome.transferred).toBe(true);
+      expect(calls.some((u) => u.endsWith("/api/snapshot"))).toBe(true);
+      expect(calls.some((u) => u.endsWith("/api/restore"))).toBe(true);
+    } finally {
+      for (const s of [findSpy, backupSpy, stateSpy, updateSpy, pruneSpy, latestSpy])
+        s.mockRestore();
+    }
+  });
+});
+
+// Reversible deletion_pending (#18517 suggestion 3): cancelAgentDeletion turns
+// the one-way door back into a running row while the container is still alive
+// — atomically cancelling queued agent_delete jobs so the reconciler has
+// nothing to re-arm — and refuses whenever teardown may already have begun.
+// Drives the transaction body against a fake lifecycle tx (mocked-database
+// suite; the transaction wrapper itself is exercised by the PGlite lane).
+describe("ElizaSandboxService.cancelAgentDeletion (#18517 reversibility)", () => {
+  type CancelSpyTarget = {
+    lockLifecycle: (...args: unknown[]) => Promise<void>;
+    getAgentForLifecycleMutation: (...args: unknown[]) => Promise<unknown>;
+    cancelAgentDeletionTx: (
+      tx: unknown,
+      agentId: string,
+      orgId: string,
+    ) => Promise<{ success: boolean; error?: string }>;
+  };
+
+  async function makeCancelSvc() {
+    const mod = await import("./eliza-sandbox.ts?actual");
+    const svc = new mod.ElizaSandboxService();
+    return { svc, spyTarget: svc as unknown as CancelSpyTarget };
+  }
+
+  function pendingDeletionSandbox(overrides: Partial<AgentSandbox> = {}): AgentSandbox {
+    return {
+      ...customSandbox(),
+      status: "deletion_pending",
+      deletion_attempt_id: "44444444-4444-4444-8444-444444444444",
+      deletion_started_at: new Date("2026-08-14T00:00:00.000Z"),
+      deletion_previous_status: "running",
+      deletion_previous_billing_status: "active",
+      deletion_previous_shutdown_warning_sent_at: null,
+      deletion_previous_scheduled_shutdown_at: null,
+      billing_status: "suspended",
+      ...overrides,
+    };
+  }
+
+  /** Fake LifecycleTx capturing each executed statement's rendered SQL + params. */
+  function fakeCancelTx(results: Array<{ rows: Array<{ id: string }> }>) {
+    const executed: Array<{ sql: string; params: unknown[] }> = [];
+    let call = 0;
+    const tx = {
+      execute: async (query: unknown) => {
+        const rendered = new PgDialect().sqlToQuery(query as SQL);
+        executed.push({ sql: rendered.sql.toLowerCase(), params: rendered.params });
+        const result = results[call] ?? { rows: [] };
+        call += 1;
+        return result;
+      },
+    };
+    return { tx, executed };
+  }
+
+  async function runCancel(
+    rec: AgentSandbox | undefined,
+    results: Array<{ rows: Array<{ id: string }> }>,
+  ) {
+    const { spyTarget } = await makeCancelSvc();
+    const lock = spyOn(spyTarget, "lockLifecycle").mockResolvedValue(undefined as never);
+    const getRec = spyOn(spyTarget, "getAgentForLifecycleMutation").mockResolvedValue(rec);
+    const { tx, executed } = fakeCancelTx(results);
+    try {
+      const outcome = await spyTarget.cancelAgentDeletionTx(
+        tx,
+        rec?.id ?? "missing-agent",
+        rec?.organization_id ?? "org-x",
+      );
+      const lockCalls = lock.mock.calls.length;
+      return { outcome, executed, lockCalls };
+    } finally {
+      lock.mockRestore();
+      getRec.mockRestore();
+    }
+  }
+
+  test("cancel-and-restore: queued job cancelled and the row returned to running, atomically", async () => {
+    const rec = pendingDeletionSandbox();
+    const { outcome, executed, lockCalls } = await runCancel(rec, [
+      { rows: [] }, // no in_progress agent_delete job
+      { rows: [] }, // pending-job cancellation
+      { rows: [{ id: rec.id }] }, // row restore CAS
+    ]);
+
+    expect(outcome).toEqual({ success: true });
+    expect(lockCalls).toBe(1);
+    expect(executed).toHaveLength(3);
+    // 1: only an in_progress agent_delete blocks cancellation.
+    expect(executed[0]?.sql).toContain("'in_progress'");
+    expect(executed[0]?.params).toContain("agent_delete");
+    // 2: queued delete jobs are cancelled inside the same transaction.
+    expect(executed[1]?.sql).toContain("status = 'cancelled'");
+    expect(executed[1]?.sql).toContain("status = 'pending'");
+    expect(executed[1]?.params).toContain("agent_delete");
+    expect(executed[1]?.params).toContain(rec.id);
+    // 3: the restore clears every deletion-intent column and reactivates billing,
+    // CAS-guarded on the observed status + attempt id.
+    const restore = executed[2];
+    expect(restore?.params).toContain("running");
+    expect(restore?.params).toContain("active");
+    expect(restore?.sql).toContain("deletion_attempt_id = null");
+    expect(restore?.sql).toContain("deletion_started_at = null");
+    expect(restore?.sql).toContain("deletion_previous_status = null");
+    expect(restore?.sql).toContain("deletion_previous_billing_status = null");
+    expect(restore?.sql).toContain("deletion_previous_shutdown_warning_sent_at = null");
+    expect(restore?.sql).toContain("deletion_previous_scheduled_shutdown_at = null");
+    expect(restore?.sql).toContain("deletion_allocation_counted = null");
+    expect(restore?.sql).toContain("status = 'deletion_pending'");
+    expect(restore?.params).toContain(rec.deletion_attempt_id);
+  });
+
+  test("refuses while an agent_delete job is executing — teardown may already be running", async () => {
+    const rec = pendingDeletionSandbox();
+    const { outcome, executed } = await runCancel(rec, [{ rows: [{ id: "job-1" }] }]);
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("already executing");
+    // Nothing was cancelled and nothing was restored.
+    expect(executed).toHaveLength(1);
+  });
+
+  test("refuses when the bridge is gone — no live workload for `running` to describe", async () => {
+    const rec = pendingDeletionSandbox({ bridge_url: null });
+    const { outcome, executed } = await runCancel(rec, []);
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("no longer reachable");
+    expect(executed).toHaveLength(0);
+  });
+
+  test("restores the captured billing warning and shutdown schedule instead of guessing healthy defaults", async () => {
+    const warningSentAt = new Date("2026-08-13T10:00:00.000Z");
+    const shutdownAt = new Date("2026-08-16T10:00:00.000Z");
+    const rec = pendingDeletionSandbox({
+      deletion_previous_billing_status: "warning",
+      deletion_previous_shutdown_warning_sent_at: warningSentAt,
+      deletion_previous_scheduled_shutdown_at: shutdownAt,
+    });
+    const { outcome, executed } = await runCancel(rec, [
+      { rows: [] },
+      { rows: [] },
+      { rows: [{ id: rec.id }] },
+    ]);
+
+    expect(outcome).toEqual({ success: true });
+    expect(executed[2]?.params).toContain("warning");
+    expect(executed[2]?.params).toContain(warningSentAt);
+    expect(executed[2]?.params).toContain(shutdownAt);
+  });
+
+  test("refuses legacy deletion rows that have no prior-state receipt", async () => {
+    const rec = pendingDeletionSandbox({
+      deletion_previous_status: null,
+      deletion_previous_billing_status: null,
+    });
+    const { outcome, executed } = await runCancel(rec, []);
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("reversible running-state receipt");
+    expect(executed).toHaveLength(0);
+  });
+
+  test("refuses rows that are not deletion_pending (running and deletion_failed unchanged)", async () => {
+    for (const status of ["running", "deletion_failed"] as const) {
+      const rec = pendingDeletionSandbox({ status });
+      const { outcome, executed } = await runCancel(rec, []);
+      expect(outcome.success).toBe(false);
+      expect(outcome.error).toContain("not pending deletion");
+      expect(executed).toHaveLength(0);
+    }
+  });
+
+  test("missing rows refuse without touching jobs", async () => {
+    const { outcome, executed } = await runCancel(undefined, []);
+    expect(outcome).toEqual({ success: false, error: "Agent not found" });
+    expect(executed).toHaveLength(0);
+  });
+
+  test("a concurrent ownership move fails the CAS instead of overwriting", async () => {
+    const rec = pendingDeletionSandbox();
+    const { outcome, executed } = await runCancel(rec, [
+      { rows: [] },
+      { rows: [] },
+      { rows: [] }, // CAS matched nothing: attempt id / status moved underneath
+    ]);
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("ownership changed");
+    expect(executed).toHaveLength(3);
   });
 });

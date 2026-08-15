@@ -39,6 +39,10 @@ export interface ElizaSseBridgeRequest {
   model: string;
   /** The authoritative user turn (from stt_final). */
   transcript: string;
+  /** Trusted in-process voice lifecycle turns may enter history as system events. */
+  messageRole?: "system";
+  /** Stable provider lifecycle id used by the room's durable replay ledger. */
+  clientMessageId?: string;
   /** Agent this session is scoped to (from the verified token claims). */
   agentId: string;
   /** Conversation this session writes into (from the verified token claims). */
@@ -127,6 +131,8 @@ export async function streamElizaConversation(
       // sharedRestMessageSend/bridgeStream executes and persists this turn.
       body: JSON.stringify({
         text: request.transcript,
+        ...(request.messageRole ? { messageRole: request.messageRole } : {}),
+        ...(request.clientMessageId ? { clientMessageId: request.clientMessageId } : {}),
         metadata: {
           clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
         },

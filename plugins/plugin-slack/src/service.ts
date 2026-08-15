@@ -1872,19 +1872,29 @@ export class SlackService extends Service implements ISlackService {
     const ids = [
       createUniqueUuid(
         this.runtime,
-        this.scopedSlackKey("slack", event.item.ts, accountId),
-      ),
-      createUniqueUuid(
-        this.runtime,
-        this.scopedSlackKey("slack-mention", event.item.ts, accountId),
-      ),
-      createUniqueUuid(
-        this.runtime,
         this.scopedSlackKey(
           "slack",
           `${event.item.channel}-${event.item.ts}`,
           accountId,
         ),
+      ),
+      createUniqueUuid(
+        this.runtime,
+        this.scopedSlackKey(
+          "slack-mention",
+          `${event.item.channel}-${event.item.ts}`,
+          accountId,
+        ),
+      ),
+      // Legacy inbound rows omitted the channel from their IDs. Keep these
+      // fallbacks for existing installations while preferring unambiguous IDs.
+      createUniqueUuid(
+        this.runtime,
+        this.scopedSlackKey("slack", event.item.ts, accountId),
+      ),
+      createUniqueUuid(
+        this.runtime,
+        this.scopedSlackKey("slack-mention", event.item.ts, accountId),
       ),
     ];
     const candidates = (
@@ -2121,7 +2131,11 @@ export class SlackService extends Service implements ISlackService {
     const memory: Memory = {
       id: createUniqueUuid(
         this.runtime,
-        this.scopedSlackKey("slack", message.ts, accountId),
+        this.scopedSlackKey(
+          "slack",
+          `${message.channel}-${message.ts}`,
+          accountId,
+        ),
       ),
       agentId: this.runtime.agentId,
       roomId,
@@ -2197,7 +2211,11 @@ export class SlackService extends Service implements ISlackService {
     const memory: Memory = {
       id: createUniqueUuid(
         this.runtime,
-        this.scopedSlackKey("slack-mention", event.ts, accountId),
+        this.scopedSlackKey(
+          "slack-mention",
+          `${event.channel}-${event.ts}`,
+          accountId,
+        ),
       ),
       agentId: this.runtime.agentId,
       roomId,

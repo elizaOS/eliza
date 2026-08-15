@@ -1,7 +1,6 @@
 package ai.elizaos.app;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -9,10 +8,7 @@ import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -36,29 +32,18 @@ import org.json.JSONObject;
  * </ul>
  *
  * <p>The hard timeout is 25 seconds, just under the 30s deadline a typical
- * WorkManager constraint allows. The remote handler is given a deadline of
+ * WorkManager constraint allows. The local handler is given a deadline of
  * {@code now + 25s} so it returns before WorkManager kills us.
  */
 public class ElizaTasksWorker extends Worker {
 
     private static final String TAG = "ElizaTasksWorker";
 
-    // Mirrors Capacitor Preferences default group used by GatewayConnectionService.
-    private static final String CAPACITOR_PREFS_GROUP = "CapacitorStorage";
-
-    // Capacitor Preferences keys consumed by the worker. The JS layer writes
-    // these via @capacitor/preferences during onboarding / runtime bootstrap.
-    private static final String KEY_DEVICE_SECRET = "eliza:device-secret";
-    private static final String KEY_AGENT_BASE = "eliza:agent-base";
-
-    private static final String DEFAULT_AGENT_BASE = "http://127.0.0.1:31337";
-    private static final String IPC_AGENT_BASE = "eliza-local-agent://ipc";
     private static final String WAKE_PATH = "/api/internal/wake";
 
     // Hard worker budget. The OS gives WorkManager more, but the wake handler
     // is designed to bail at deadlineMs and we want margin to flush the
     // response before returning.
-    private static final int CONNECT_TIMEOUT_MS = 5_000;
     private static final int READ_TIMEOUT_MS = 25_000;
     private static final long DEADLINE_MS = 25_000L;
 
@@ -70,20 +55,14 @@ public class ElizaTasksWorker extends Worker {
     @Override
     public Result doWork() {
         Context context = getApplicationContext();
-        SharedPreferences prefs = context.getSharedPreferences(
-            CAPACITOR_PREFS_GROUP,
-            Context.MODE_PRIVATE
-        );
-
-        String deviceSecret = prefs.getString(KEY_DEVICE_SECRET, null);
-        if (deviceSecret == null || deviceSecret.isEmpty()) {
-            Log.w(TAG, "device secret not provisioned; skipping wake (permanent failure until JS writes it)");
+        ElizaWorkScheduler.Decision decision = ElizaWorkScheduler.readDecision(context);
+        if (!decision.shouldSchedule) {
+            // A stale invocation can race a mode/background change. Cancel the
+            // unique periodic work and retain failure semantics: unavailable
+            // credentials are not fabricated into a successful wake.
+            ElizaWorkScheduler.reconcile(context);
+            Log.w(TAG, "wake ownership invalid reason=" + decision.reason + "; periodic work cancelled");
             return Result.failure();
-        }
-
-        String agentBase = prefs.getString(KEY_AGENT_BASE, DEFAULT_AGENT_BASE);
-        if (agentBase == null || agentBase.isEmpty()) {
-            agentBase = DEFAULT_AGENT_BASE;
         }
         long deadlineMs = System.currentTimeMillis() + DEADLINE_MS;
         String body;
@@ -99,66 +78,7 @@ public class ElizaTasksWorker extends Worker {
             return Result.failure();
         }
 
-        if (isLocalAgentBase(agentBase)) {
-            return deliverWakeViaAgentService(deviceSecret, body);
-        }
-
-        String endpoint = trimTrailingSlash(agentBase) + WAKE_PATH;
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(endpoint);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            conn.setReadTimeout(READ_TIMEOUT_MS);
-            conn.setDoOutput(true);
-            conn.setUseCaches(false);
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Authorization", "Bearer " + deviceSecret);
-
-            try (OutputStream out = conn.getOutputStream()) {
-                out.write(body.getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            }
-
-            int status = conn.getResponseCode();
-            if (status >= 200 && status < 300) {
-                Log.i(TAG, "wake delivered ok status=" + status);
-                return Result.success();
-            }
-            if (status == HttpURLConnection.HTTP_UNAUTHORIZED
-                || (status >= 400 && status < 500 && status != HttpURLConnection.HTTP_CLIENT_TIMEOUT)) {
-                Log.w(TAG, "wake rejected with permanent status=" + status + "; not retrying");
-                return Result.failure();
-            }
-            Log.w(TAG, "wake transient failure status=" + status + "; will retry");
-            return Result.retry();
-        } catch (IOException e) {
-            Log.w(TAG, "wake network failure; will retry", e);
-            return Result.retry();
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
-        }
-    }
-
-    private static String trimTrailingSlash(String value) {
-        if (value == null) return "";
-        int end = value.length();
-        while (end > 0 && value.charAt(end - 1) == '/') {
-            end--;
-        }
-        return value.substring(0, end);
-    }
-
-    private static boolean isLocalAgentBase(String value) {
-        if (value == null) return true;
-        String normalized = trimTrailingSlash(value.trim()).toLowerCase(java.util.Locale.US);
-        return normalized.isEmpty()
-            || IPC_AGENT_BASE.equals(normalized)
-            || "http://127.0.0.1:31337".equals(normalized)
-            || "http://localhost:31337".equals(normalized);
+        return deliverWakeViaAgentService(decision.deviceSecret, body);
     }
 
     private static Result deliverWakeViaAgentService(String deviceSecret, String body) {

@@ -261,7 +261,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         ocrLine(
           "mobile-portrait",
           "plugin-cloud-gui",
-          "Views Refresh 24/24 ready views",
+          "Settings Wallet Projects",
         ),
         ocrLine(
           "ipad-portrait",
@@ -288,9 +288,9 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
 
     expect(result.summary).toEqual({
       total: 3,
-      verified: 1,
+      verified: 2,
       broken: 1,
-      needsEyeball: 1,
+      needsEyeball: 0,
       regressions: 1,
       knownRegressions: 1,
       newRegressions: 0,
@@ -300,9 +300,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       "builtin-settings",
       "plugin-cloud-gui",
     ]);
-    expect(result.entries.at(-1)?.reasons.join(" ")).toMatch(
-      /semantic OCR exemption.*Cloud GUI/,
-    );
+    expect(result.entries.at(-1)?.ocrVerdict).toBe("verified");
     expect(
       JSON.parse(readFileSync(join(dir, "ocr-triage.json"), "utf8")),
     ).toEqual(result);
@@ -337,19 +335,19 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
   it("invalidates a missing-bundle exemption once that remote bundle loads", async () => {
     const rows: ReportEntry[] = [
       {
-        slug: "plugin-cloud-gui",
+        slug: "plugin-documents-gui",
         viewport: "desktop-landscape",
         verdict: "good",
         bundleProvenance: "real-dist",
       },
     ];
-    shot(dir, "desktop-landscape", "plugin-cloud-gui");
+    shot(dir, "desktop-landscape", "plugin-documents-gui");
     writeFileSync(join(dir, "report.json"), JSON.stringify(rows));
     writeFileSync(
       join(dir, "ocr.ndjson"),
       ocrLine(
         "desktop-landscape",
-        "plugin-cloud-gui",
+        "plugin-documents-gui",
         "Views Refresh 24/24 ready views",
       ),
     );
@@ -357,7 +355,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     await expect(
       runOcrTriage(["--audit-dir", dir, "--ocr", join(dir, "ocr.ndjson")]),
     ).rejects.toThrow(
-      /exemption for plugin-cloud-gui no longer applies.*real-dist/,
+      /exemption for plugin-documents-gui no longer applies.*real-dist/,
     );
   });
 

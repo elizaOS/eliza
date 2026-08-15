@@ -41,17 +41,30 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Default pre-auth key TTL (minutes) when `HEADSCALE_PREAUTH_TTL_MIN` is unset. */
+export const DEFAULT_PREAUTH_TTL_MIN = 1440;
+
 /**
  * Pre-auth key TTL window (ms): how long a freshly-created key stays valid for a
  * container to boot AND finish VPN enrollment. 10 min proved too tight on slow
  * boots — the key could expire before headscale registration completed, looping
  * the container on re-auth (one prod agent hit 176 restarts before this was
- * raised on the box). Default 60 min (verified healthy in prod); env-overridable
- * via `HEADSCALE_PREAUTH_TTL_MIN` so it survives a daemon redeploy.
+ * raised on the box).
+ *
+ * Default raised 60m -> 1440m (24h) after the prod-2 hard-reset outage: the key
+ * is baked into the container's Docker env at create time and is the ONLY
+ * credential a de-authorized node can present after a reboot. A 60-min key is
+ * expired the moment such a reboot happens (hours/days/months later), so the
+ * container can never rejoin the mesh and crash-loops. A 24h default does not
+ * fix an already-baked expired key on its own (the durable fix is the
+ * reconnect-first + re-key entrypoint), but it widens the window in which a
+ * freshly provisioned agent can survive a delayed first boot or an early
+ * reboot. Env-overridable via `HEADSCALE_PREAUTH_TTL_MIN` so it survives a
+ * daemon redeploy and ops can retune without a code change.
  */
 export function resolvePreAuthTtlMs(): number {
   const minutes = Number.parseInt(process.env.HEADSCALE_PREAUTH_TTL_MIN ?? "", 10);
-  return (Number.isFinite(minutes) && minutes > 0 ? minutes : 60) * 60 * 1000;
+  return (Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_PREAUTH_TTL_MIN) * 60 * 1000;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,7 +277,7 @@ export class HeadscaleClient {
    *
    * @param opts.reusable   Allow the key to be used more than once (default false)
    * @param opts.ephemeral  Node will be removed once it goes offline (default false)
-   * @param opts.expiration ISO-8601 expiration timestamp (default: now + HEADSCALE_PREAUTH_TTL_MIN, 60 min)
+   * @param opts.expiration ISO-8601 expiration timestamp (default: now + HEADSCALE_PREAUTH_TTL_MIN, 24h)
    * @param opts.aclTags    ACL tags to attach to the key (default: ["tag:agent"])
    */
   async createPreAuthKey(opts?: {
@@ -286,7 +299,7 @@ export class HeadscaleClient {
 
     // The key must stay valid long enough for the container to boot AND finish
     // VPN enrollment; 10 min was too tight on slow boots (key expired mid-
-    // registration -> container re-auth loop). Default 60 min, env-overridable
+    // registration -> container re-auth loop). Default 24h, env-overridable
     // via HEADSCALE_PREAUTH_TTL_MIN (see resolvePreAuthTtlMs).
     const expirationTime = expiration ?? new Date(Date.now() + resolvePreAuthTtlMs()).toISOString();
 

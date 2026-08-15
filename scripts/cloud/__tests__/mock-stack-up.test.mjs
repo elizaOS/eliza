@@ -60,6 +60,62 @@ describe("mock-stack-up orchestrator", () => {
     expect(combined).toContain("Usage:");
   });
 
+  test.each([
+    ["--port-frontend", "3000junk"],
+    ["--port-api", "0"],
+    ["--port-cp", "-1"],
+    ["--port-hetzner", "65536"],
+  ])("%s rejects an invalid override before boot", async (flag, value) => {
+    const r = await redirectedRun([flag, value, "--help"]);
+    expect(r.code).toBe(1);
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain(
+      `${flag} requires a decimal port between 1 and 65535`,
+    );
+    expect(combined).toContain("Usage:");
+    expect(combined).not.toContain("Eliza cloud mock stack — ready");
+  });
+
+  test.each([
+    ["non-numeric", ["not-a-port"]],
+    ["empty", [""]],
+    ["trailing junk", ["23456junk"]],
+    ["fractional", ["1.5"]],
+    ["whitespace-padded", [" 1"]],
+    ["oversized", ["999999999999999999999999"]],
+  ])("--port-api rejects %s operands", async (_case, operands) => {
+    const r = await redirectedRun(["--port-api", ...operands, "--help"]);
+    expect(r.code).toBe(1);
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain(
+      "--port-api requires a decimal port between 1 and 65535",
+    );
+    expect(combined).not.toContain("Eliza cloud mock stack — ready");
+  });
+
+  test("--port-api rejects a missing operand", async () => {
+    const r = await redirectedRun(["--port-api"]);
+    expect(r.code).toBe(1);
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain(
+      "--port-api requires a decimal port between 1 and 65535",
+    );
+    expect(combined).toContain("Usage:");
+    expect(combined).not.toContain("Eliza cloud mock stack — ready");
+  });
+
+  test.each([
+    ["--port-frontend", "23456"],
+    ["--port-api", "1"],
+    ["--port-api", "65535"],
+    ["--port-cp", "23456"],
+    ["--port-hetzner", "23456"],
+  ])("accepts valid %s override %s", async (flag, port) => {
+    const r = await redirectedRun([flag, port, "--help"]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("Usage:");
+  });
+
   test("skip-everything boot reaches ready banner and SIGINT shuts down cleanly", async () => {
     const started = Date.now();
     const r = await redirectedRun(

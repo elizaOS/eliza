@@ -1,7 +1,6 @@
 /**
- * Shared shell for the standalone console pages mounted by the cloud router at
- * the apex console (elizacloud.ai), where the in-app Settings view never
- * mounts. Every one of these pages was an independent thin wrapper that
+ * Shared content frame for Cloud management pages mounted inside the normal
+ * Eliza app shell at cloud.eliza.app. Every page was an independent wrapper that
  * repeated the exact same container (`mx-auto w-full max-w-4xl px-4 py-6
  * md:px-6 md:py-8`) around a self-loading surface, and most also repeated the
  * `useDocumentTitle(t(key, { defaultValue }))` boilerplate. Two copies of one
@@ -12,8 +11,8 @@
  * `titleDefault`; pages whose surface sets its own title (or which have no
  * title) simply omit them — the title effect is not mounted at all in that
  * case, exactly as before (those pages never called `useDocumentTitle`). No
- * local `PageHeaderProvider` is introduced — the surface's `useSetPageHeader`
- * must reach `ConsoleShell`'s provider, exactly as before.
+ * local `PageHeaderProvider` is introduced; the in-app Cloud page owns that
+ * provider for every nested management surface.
  */
 
 import type { ReactNode } from "react";

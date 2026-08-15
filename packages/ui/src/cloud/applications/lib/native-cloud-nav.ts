@@ -2,7 +2,7 @@
  * Native cross-domain navigation helpers for the Applications studio.
  *
  * The native mount (`NativeAppsStudio`) runs the Applications pages in a
- * `MemoryRouter` that only mounts the `/dashboard/apps` routes. The Applications
+ * `MemoryRouter` that only mounts the `/cloud/apps` routes. The Applications
  * components — shared verbatim with the web dashboard — also link to OTHER cloud
  * dashboard surfaces (ad-account connections, the agents list, the org earnings
  * page) and to fully external URLs (an app's verified custom domain, its
@@ -18,6 +18,10 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import {
+  DEFAULT_DIRECT_CLOUD_API_BASE_URL,
+  resolveDirectCloudAppBase,
+} from "../../../api/direct-cloud-endpoints";
 import { isElectrobunRuntime } from "../../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../../config/boot-config";
 import { openExternalUrl } from "../../../utils/openExternalUrl";
@@ -33,21 +37,16 @@ export function isNativeAppsStudioRuntime(): boolean {
 }
 
 /**
- * Resolve an apex-console URL for a `/dashboard/*` route. Derives the web
- * console host from the configured cloud API base, normalizing an `api.` /
- * `api-staging.` API host back to its apex console host (the console serves the
- * dashboard; the API host does not). Falls back to production apex.
+ * Resolve the canonical managed Cloud app URL for a `/cloud/*` route. Login
+ * continues to use the marketing origin; management always uses cloud.eliza.app
+ * (or its staging peer).
  */
 export function resolveCloudConsoleUrl(path: string): string {
-  const base = getBootConfig().cloudApiBase?.trim() || "https://elizacloud.ai";
-  let host = "elizacloud.ai";
-  try {
-    host = new URL(base).hostname.toLowerCase().replace(/^api[.-]/, "");
-  } catch {
-    host = "elizacloud.ai";
-  }
+  const base =
+    getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_API_BASE_URL;
+  const cloudAppBase = resolveDirectCloudAppBase(base);
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `https://${host}${normalizedPath}`;
+  return `${cloudAppBase}${normalizedPath}`;
 }
 
 /**

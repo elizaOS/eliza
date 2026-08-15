@@ -22,7 +22,7 @@ Generate vector embeddings for the provided text.
   <Tab title="cURL">
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/embeddings" \
+curl -X POST "https://api.eliza.app/api/v1/embeddings" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -34,7 +34,7 @@ curl -X POST "https://elizacloud.ai/api/v1/embeddings" \
   <Tab title="JavaScript">
 
 ```javascript
-const response = await fetch('https://elizacloud.ai/api/v1/embeddings', {
+const response = await fetch('https://api.eliza.app/api/v1/embeddings', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY',
@@ -57,7 +57,7 @@ console.log(data.data[0].embedding);
 import requests
 
 response = requests.post(
-    'https://elizacloud.ai/api/v1/embeddings',
+    'https://api.eliza.app/api/v1/embeddings',
     headers={
         'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
@@ -140,7 +140,7 @@ current catalog.
 
 ```javascript
 // Embed your query
-const queryResponse = await fetch("https://elizacloud.ai/api/v1/embeddings", {
+const queryResponse = await fetch("https://api.eliza.app/api/v1/embeddings", {
   method: "POST",
   headers: {
     Authorization: "Bearer YOUR_API_KEY",

@@ -161,8 +161,8 @@ async function processSandboxBilling(
           minute: "2-digit",
           timeZoneName: "short",
         }),
-        billingUrl: `${appUrl}/dashboard/billing`,
-        dashboardUrl: `${appUrl}/dashboard/agents`,
+        billingUrl: `${appUrl}/cloud/billing`,
+        dashboardUrl: `${appUrl}/cloud/agents`,
       });
 
       logger.info(
@@ -430,7 +430,7 @@ async function handleAgentBilling(c: AppContext): Promise<Response> {
   const rebillCutoff = new Date(now.getTime() - REBILL_GUARD_MINUTES * 60_000);
   try {
     requireCronSecret(c);
-    const appUrl = c.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+    const appUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
 
     logger.info("[Agent Billing] Starting hourly billing run");
     // ── 1. Running agents (always billed) ───────────────────────────

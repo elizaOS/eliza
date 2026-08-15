@@ -77,7 +77,7 @@ const route = resolveFeatureCloudRoute(toRuntimeSettings(runtime), "llm", SPEC);
 |---|---|---|
 | `ELIZAOS_CLOUD_API_KEY` | for cloud proxy | Eliza Cloud API key |
 | `ELIZAOS_CLOUD_ENABLED` | for cloud proxy | Must be `"true"` or `"1"` |
-| `ELIZAOS_CLOUD_BASE_URL` | no | Override cloud base URL (default: `https://www.elizacloud.ai/api/v1`) |
+| `ELIZAOS_CLOUD_BASE_URL` | no | Override cloud base URL (default: `https://api.eliza.app/api/v1`) |
 
 ## Building
 

@@ -81,7 +81,7 @@ vi.mock("../../lib/steward-session", () => ({
 }));
 
 vi.mock("../../lib/login-return-to", () => ({
-  resolveLoginReturnTo: () => "/dashboard",
+  resolveLoginReturnTo: () => "/cloud",
   consumePendingOAuthReturnTo: () => null,
   storePendingOAuthReturnTo: () => undefined,
 }));

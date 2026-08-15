@@ -28,7 +28,7 @@ type PrivacySafeObservedTier =
   | "custom"
   | "other";
 
-const STAGING_BASE_URL = "https://api-staging.elizacloud.ai";
+const STAGING_BASE_URL = "https://api-staging.eliza.app";
 const CANARY_NAME_PREFIX = "managed-dedicated-canary-";
 const EXPECTED_TIER = "dedicated-always";
 const HEARTBEAT_MAX_AGE_MS = 120_000;

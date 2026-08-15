@@ -67,6 +67,11 @@ const localOnly = new Set([
   // Connector source names/aliases registered into the in-process runtime source
   // map; connector plugins run direct, so this is not a remote-mirrored surface.
   "connectorSources",
+  // Connector-policy default read in-process by core's passive-connector
+  // resolver and the agent host's plugin-collector loading policy (#18531);
+  // connector plugins run direct, so the capability never crosses the remote
+  // manifest.
+  "passiveConnectorsByDefault",
   "mode",
   "remote",
 ]);

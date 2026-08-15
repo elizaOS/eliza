@@ -368,9 +368,6 @@ export const recentMessagesProvider: Provider = {
 	contextGate: { anyOf: ["memory", "messaging"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	// Conversation history is correctness-critical and may span several indexed
-	// reads on remote adapters. Extend its deadline without allowing partial state.
-	timeoutMs: 8_000,
 	// GUEST floor: this is the CURRENT room's transcript — content every
 	// participant can already read in their client. Gating it at USER made the
 	// agent-host role gate (packages/agent plugin-role-gating) withhold the

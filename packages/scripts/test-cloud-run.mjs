@@ -1,23 +1,18 @@
 #!/usr/bin/env node
 
-// Cross-platform replacement for the previous `test:cloud` shell pipeline,
-// which used `printf '...\n'` (broken under bun's embedded shell on Windows
-// — outputs literal `n` instead of newlines) and required POSIX-shell
-// `$OLDPWD` semantics.
-//
-// The pure helpers below (walkTests, chunkByBudget, formatBatchFiles,
-// writeSyncAll, ensureCloudTestRuntime) are exported so
-// test-cloud-run.test.mjs and the *.self-test.mjs files can exercise them
-// directly; the batch-orchestration side effects (spawning `bun test`,
-// writing bunfig.toml, building missing runtime artifacts) only run when this
-// file is invoked as the entry script, guarded by the `main()` call at the
-// bottom.
+/**
+ * Runs the cross-platform Cloud test batches with bounded process lifetimes,
+ * streamed diagnostics, and whole-tree teardown. Pure helpers are exported
+ * for unit and self-test coverage; spawning tests and preparing runtime
+ * artifacts occur only when this module is invoked as the entry script.
+ */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   statSync,
   writeFileSync,
   writeSync,
@@ -55,13 +50,38 @@ export function walkTests(dir, excluded) {
 // Batch size bounds per-process memory. Windows uses a smaller process lifetime
 // because native/PGlite state from a large mixed suite can keep Bun alive after
 // the tests finish; fresh processes make that state reclaimable. The char cap
-// also keeps each argv under Windows' ~8 KiB cmd.exe command-line ceiling (the
-// spawn goes through cmd.exe there — `shell: true` below — to resolve bun's
-// `.cmd` shim). Whichever limit a file hits first closes the current batch.
+// also keeps each argv below conservative Windows command-line limits.
+// setup-bun installs bun.exe, so the runner invokes it directly with no shell.
+// Whichever limit a file hits first closes the current batch.
 export const MAX_FILES_PER_BATCH = 80;
 export const MAX_FILES_PER_BATCH_WIN32 = 16;
 export const MAX_ARGS_CHARS_WIN32 = 6000;
 export const MAX_ARGS_CHARS_POSIX = 100000;
+export const DEFAULT_BATCH_TIMEOUT_MS = 10 * 60 * 1000;
+export const DEFAULT_BATCH_KILL_GRACE_MS = 2000;
+export const MAX_CLASSIFICATION_OUTPUT_CHARS = 1024 * 1024;
+const MAX_TIMER_MS = 2_147_483_647;
+const POSIX_PROCESS_GROUP_SUPERVISOR = `
+terminating=0
+trap 'terminating=1' TERM INT
+"$@" 3>&- 4>&- &
+child_pid=$!
+wait "$child_pid"
+status=$?
+printf '%s\\n' "$status" >&3
+exec 3>&- 1>&- 2>&-
+if [ "$terminating" -eq 0 ]; then
+  IFS= read -r release <&4 || true
+fi
+exec 4>&-
+if [ "$terminating" -ne 0 ]; then
+  while :; do
+    sleep 3600 &
+    wait $!
+  done
+fi
+exit "$status"
+`;
 
 export function chunkByBudget(files, maxFilesPerBatch, maxArgsChars) {
   const batches = [];
@@ -109,6 +129,657 @@ export function writeSyncAll(fd, text) {
       throw error;
     }
   }
+}
+
+export function parsePositiveDuration(value, name, fallback) {
+  if (value === undefined || value === "") return fallback;
+  if (!/^\d+$/.test(value)) {
+    throw new Error(
+      `[test:cloud] ${name} must be a positive integer in milliseconds`,
+    );
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > MAX_TIMER_MS) {
+    throw new Error(
+      `[test:cloud] ${name} must be between 1 and ${MAX_TIMER_MS} milliseconds`,
+    );
+  }
+  return parsed;
+}
+
+export function parseBatchTimeoutArg(argv) {
+  const prefix = "--batch-timeout-ms=";
+  const timeoutArgs = argv.filter((arg) => arg.startsWith(prefix));
+  if (timeoutArgs.length > 1) {
+    throw new Error(
+      "[test:cloud] --batch-timeout-ms may be provided only once",
+    );
+  }
+  const unexpected = argv.filter((arg) => !arg.startsWith(prefix));
+  if (unexpected.length > 0) {
+    throw new Error(`[test:cloud] unexpected argument: ${unexpected[0]}`);
+  }
+  if (timeoutArgs.length === 0) return DEFAULT_BATCH_TIMEOUT_MS;
+  const value = timeoutArgs[0].slice(prefix.length);
+  if (value === "") {
+    throw new Error(
+      "[test:cloud] --batch-timeout-ms must include a positive integer value",
+    );
+  }
+  return parsePositiveDuration(
+    value,
+    "--batch-timeout-ms",
+    DEFAULT_BATCH_TIMEOUT_MS,
+  );
+}
+
+export function windowsTaskkillInvocation(pid, force) {
+  return {
+    command: "taskkill",
+    args: ["/PID", String(pid), "/T", ...(force ? ["/F"] : [])],
+  };
+}
+
+function runTreeKillCommand(pid, force, spawnFn, commandTimeoutMs) {
+  const { command, args } = windowsTaskkillInvocation(pid, force);
+  return new Promise((resolve, reject) => {
+    let killer;
+    try {
+      killer = spawnFn(command, args, {
+        stdio: "ignore",
+        windowsHide: true,
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    let settled = false;
+    let timer;
+    const finish = (error, result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(result);
+    };
+    killer.once("error", finish);
+    killer.once("close", (code, signal) => {
+      if (code === 0) finish(undefined, { exitCode: code, signal });
+      else {
+        const error = new Error(
+          `taskkill ${force ? "/F " : ""}/T failed ` +
+            `(status=${code ?? "null"}, signal=${signal ?? "none"})`,
+        );
+        error.exitCode = code;
+        finish(error);
+      }
+    });
+    timer = setTimeout(() => {
+      killer.kill?.("SIGKILL");
+      finish(
+        new Error(`taskkill did not settle within ${commandTimeoutMs} ms`),
+      );
+    }, commandTimeoutMs);
+  });
+}
+
+function readPosixProcessIdentity(pid, spawnSyncFn) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const endOfCommand = stat.lastIndexOf(")");
+    if (endOfCommand > 0) {
+      const fields = stat
+        .slice(endOfCommand + 1)
+        .trim()
+        .split(/\s+/);
+      const startTime = fields[19];
+      if (startTime) return `proc-start:${startTime}`;
+    }
+  } catch {
+    // macOS and other POSIX systems do not expose Linux's /proc stat file.
+  }
+
+  let result;
+  try {
+    result = spawnSyncFn("ps", ["-p", String(pid), "-o", "lstart="], {
+      encoding: "utf8",
+      maxBuffer: 4096,
+    });
+  } catch {
+    return undefined;
+  }
+  if (result?.error || result?.status !== 0) return undefined;
+  const startTime = result.stdout?.trim();
+  return startTime ? `ps-start:${startTime}` : undefined;
+}
+
+function readPosixProcessGroup(pid, spawnSyncFn) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const endOfCommand = stat.lastIndexOf(")");
+    if (endOfCommand > 0) {
+      const fields = stat
+        .slice(endOfCommand + 1)
+        .trim()
+        .split(/\s+/);
+      const processGroup = Number(fields[2]);
+      if (Number.isInteger(processGroup) && processGroup > 0) {
+        return processGroup;
+      }
+    }
+  } catch {
+    // macOS and other POSIX systems do not expose Linux's /proc stat file.
+  }
+
+  let result;
+  try {
+    result = spawnSyncFn("ps", ["-p", String(pid), "-o", "pgid="], {
+      encoding: "utf8",
+      maxBuffer: 4096,
+    });
+  } catch {
+    return undefined;
+  }
+  if (result?.error || result?.status !== 0) return undefined;
+  const processGroup = Number(result.stdout?.trim());
+  return Number.isInteger(processGroup) && processGroup > 0
+    ? processGroup
+    : undefined;
+}
+
+function readWindowsProcessIdentity(pid, spawnSyncFn) {
+  const command = [
+    `$process = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"`,
+    "if ($null -eq $process) { exit 3 }",
+    "[Console]::Write($process.CreationDate.ToUniversalTime().Ticks)",
+  ].join("; ");
+  let result;
+  try {
+    result = spawnSyncFn(
+      "powershell.exe",
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
+      {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 1000,
+        maxBuffer: 4096,
+      },
+    );
+  } catch {
+    return undefined;
+  }
+  if (result?.error || result?.status !== 0) return undefined;
+  const creationTicks = result.stdout?.trim();
+  return creationTicks ? `win-creation:${creationTicks}` : undefined;
+}
+
+export function readProcessIdentity(
+  pid,
+  { platform = process.platform, spawnSyncFn = spawnSync } = {},
+) {
+  if (!Number.isInteger(pid) || pid <= 0) return undefined;
+  return platform === "win32"
+    ? readWindowsProcessIdentity(pid, spawnSyncFn)
+    : readPosixProcessIdentity(pid, spawnSyncFn);
+}
+
+export function readProcessGroup(
+  pid,
+  { platform = process.platform, spawnSyncFn = spawnSync } = {},
+) {
+  if (!Number.isInteger(pid) || pid <= 0 || platform === "win32") {
+    return undefined;
+  }
+  return readPosixProcessGroup(pid, spawnSyncFn);
+}
+
+function processIdentityError(pid, platform, expected, actual) {
+  const error = new Error(
+    `${platform === "win32" ? "Windows PID" : "POSIX process-group"} ${pid} ` +
+      "identity changed or could not be proven before forced termination",
+  );
+  error.code = "PROCESS_IDENTITY_UNPROVEN";
+  error.pid = pid;
+  error.expectedIdentity = expected;
+  error.actualIdentity = actual;
+  return error;
+}
+
+function processGroupError(pid, actual) {
+  const error = new Error(
+    `POSIX process ${pid} no longer owns detached process group ${pid} ` +
+      "before forced termination",
+  );
+  error.code = "PROCESS_GROUP_UNPROVEN";
+  error.pid = pid;
+  error.expectedProcessGroup = pid;
+  error.actualProcessGroup = actual;
+  return error;
+}
+
+async function requireStableProcessIdentity(
+  pid,
+  platform,
+  expectedIdentity,
+  identityFn,
+) {
+  const actualIdentity = await identityFn(pid);
+  if (
+    !expectedIdentity ||
+    !actualIdentity ||
+    actualIdentity !== expectedIdentity
+  ) {
+    throw processIdentityError(pid, platform, expectedIdentity, actualIdentity);
+  }
+  return actualIdentity;
+}
+
+function signalPosixProcessGroup(pid, signal, signalFn) {
+  try {
+    signalFn(-pid, signal);
+  } catch (error) {
+    if (error?.code === "ESRCH") return;
+    // Detached children must own a process group with their PID. Falling back
+    // to the direct child could strand descendants, so fail closed instead.
+    throw error;
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// A timed-out batch owns a complete process tree. POSIX children are spawned
+// in their own process group, so negative-PID signals reach every descendant.
+// Windows uses taskkill /T, escalating to /F after the same bounded grace.
+export async function terminateProcessTree(
+  pid,
+  {
+    platform = process.platform,
+    graceMs = DEFAULT_BATCH_KILL_GRACE_MS,
+    spawnFn = spawn,
+    signalFn = process.kill,
+    delayFn = delay,
+    identityFn = (identityPid) =>
+      readProcessIdentity(identityPid, { platform }),
+    processGroupFn = (groupPid) => readProcessGroup(groupPid, { platform }),
+    expectedIdentity,
+    identityCaptured = false,
+  } = {},
+) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+
+  // A numeric PID/PGID is not an ownership handle. Capture a stable process
+  // creation identity before the graceful pass so a reused identifier can
+  // never receive the forced escalation below. If the platform cannot prove
+  // identity, fail closed before sending any destructive signal.
+  const stableIdentity = identityCaptured
+    ? expectedIdentity
+    : await identityFn(pid);
+  if (!stableIdentity) {
+    throw processIdentityError(pid, platform, stableIdentity, undefined);
+  }
+  if (identityCaptured) {
+    await requireStableProcessIdentity(
+      pid,
+      platform,
+      stableIdentity,
+      identityFn,
+    );
+  }
+
+  if (platform === "win32") {
+    let softError;
+    let softResult;
+    try {
+      softResult = await runTreeKillCommand(pid, false, spawnFn, graceMs);
+    } catch (error) {
+      softError = error;
+    }
+
+    // taskkill reports success (0) or an already-gone process (128) when a
+    // forced pass may be unnecessary. Wait through the same bounded grace and
+    // re-check identity for every result: if the original process is still
+    // present, force escalation is safe; if it disappeared, never issue a
+    // second PID-only command because the number may already be reusable.
+    const softExitCode = softResult?.exitCode ?? softError?.exitCode;
+    await delayFn(graceMs);
+    let currentIdentity;
+    try {
+      currentIdentity = await identityFn(pid);
+    } catch (error) {
+      throw processIdentityError(pid, platform, stableIdentity, error);
+    }
+    if (currentIdentity !== stableIdentity) {
+      // A successful/already-gone soft pass plus an absent PID proves there is
+      // no safe forced target. A different live identity is an active reuse
+      // race and must fail closed so the replacement is never touched.
+      if (
+        currentIdentity === undefined &&
+        (softExitCode === 0 || softExitCode === 128)
+      ) {
+        return;
+      }
+      throw processIdentityError(
+        pid,
+        platform,
+        stableIdentity,
+        currentIdentity,
+      );
+    }
+
+    let forceError;
+    let forceResult;
+    try {
+      forceResult = await runTreeKillCommand(pid, true, spawnFn, graceMs);
+    } catch (error) {
+      forceError = error;
+    }
+    // taskkill exits 128 when the process tree disappeared between the child
+    // state check and either termination pass. Normalize each pass before
+    // deciding whether teardown failed; this race means the desired state was
+    // already reached.
+    if (softError?.exitCode === 128) softError = undefined;
+    if (forceError?.exitCode === 128) forceError = undefined;
+    if (forceError) {
+      throw new AggregateError(
+        [softError, forceError].filter(Boolean),
+        `failed to terminate Windows process tree rooted at PID ${pid}`,
+      );
+    }
+    // A soft-pass error followed by a successful forced pass still proves the
+    // complete tree was removed, so it is not a teardown failure.
+    return forceResult;
+  }
+
+  const requireOwnedProcessGroup = async () => {
+    const actualProcessGroup = await processGroupFn(pid);
+    if (actualProcessGroup !== pid) {
+      throw processGroupError(pid, actualProcessGroup);
+    }
+  };
+
+  // runCommandWithWatchdog makes an owned supervisor the detached group
+  // leader. Stop that supervisor before signaling its group, then recheck its
+  // immutable identity and group ownership. SIGSTOP is uncatchable, so the
+  // supervisor pins the original PGID while the actual command and descendants
+  // remain runnable and receive TERM. Recheck the stopped anchor before KILL so
+  // the forced negative-PID target can never silently become a reused group.
+  await requireOwnedProcessGroup();
+  try {
+    signalFn(pid, "SIGSTOP");
+  } catch (error) {
+    throw processIdentityError(pid, platform, stableIdentity, error);
+  }
+  await requireStableProcessIdentity(pid, platform, stableIdentity, identityFn);
+  await requireOwnedProcessGroup();
+  let softError;
+  try {
+    signalPosixProcessGroup(pid, "SIGTERM", signalFn);
+  } catch (error) {
+    softError = error;
+  }
+  await delayFn(graceMs);
+  await requireStableProcessIdentity(pid, platform, stableIdentity, identityFn);
+  await requireOwnedProcessGroup();
+  try {
+    signalPosixProcessGroup(pid, "SIGKILL", signalFn);
+  } catch (forceError) {
+    throw new AggregateError(
+      [softError, forceError].filter(Boolean),
+      `failed to terminate POSIX process group ${pid}`,
+    );
+  }
+  if (softError) {
+    throw new AggregateError(
+      [softError],
+      `POSIX process group ${pid} required forced termination`,
+    );
+  }
+}
+
+export function appendClassificationOutput(current, chunk) {
+  const combined = current + chunk;
+  return combined.length <= MAX_CLASSIFICATION_OUTPUT_CHARS
+    ? combined
+    : combined.slice(-MAX_CLASSIFICATION_OUTPUT_CHARS);
+}
+
+export function runCommandWithWatchdog(
+  command,
+  args,
+  {
+    cwd,
+    env,
+    shell = false,
+    timeoutMs = DEFAULT_BATCH_TIMEOUT_MS,
+    terminationGraceMs = DEFAULT_BATCH_KILL_GRACE_MS,
+    forceKillSettleMs = 1000,
+    writeOut,
+    writeErr,
+    onTimeout = () => {},
+    platform = process.platform,
+    spawnFn = spawn,
+    terminateTree = terminateProcessTree,
+    signalSource = process,
+    identityFn = (identityPid) =>
+      readProcessIdentity(identityPid, { platform }),
+  },
+) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      const spawnCommand = platform === "win32" ? command : "/bin/sh";
+      const spawnArgs =
+        platform === "win32"
+          ? args
+          : [
+              "-c",
+              POSIX_PROCESS_GROUP_SUPERVISOR,
+              "test-cloud-run-supervisor",
+              command,
+              ...args,
+            ];
+      child = spawnFn(spawnCommand, spawnArgs, {
+        cwd,
+        env,
+        shell: platform === "win32" ? shell : false,
+        detached: true,
+        windowsHide: platform === "win32",
+        stdio:
+          platform === "win32"
+            ? ["ignore", "pipe", "pipe"]
+            : ["ignore", "pipe", "pipe", "pipe", "pipe"],
+      });
+    } catch (error) {
+      resolve({ error, stdout: "", stderr: "", streamed: true });
+      return;
+    }
+
+    let childIdentity;
+    try {
+      childIdentity = identityFn(child.pid);
+    } catch {
+      childIdentity = undefined;
+    }
+
+    let stdout = "";
+    let stderr = "";
+    let outputTruncated = false;
+    let timedOut = false;
+    let terminationFinished = false;
+    let terminationError;
+    let terminationPromise;
+    let terminationReason;
+    let parentSignal;
+    let closeResult;
+    let settled = false;
+    let forceSettleTimer;
+    let watchdog;
+    const supervisorStatus =
+      platform === "win32" ? undefined : child.stdio?.[3];
+    const supervisorControl =
+      platform === "win32" ? undefined : child.stdio?.[4];
+    let supervisorStatusOutput = "";
+    let commandCompletionObserved = platform === "win32";
+    let stdoutEnded = !child.stdout;
+    let stderrEnded = !child.stderr;
+    let supervisorReleased = false;
+
+    const parentSignalHandlers = new Map();
+    const removeParentSignalHandlers = () => {
+      for (const [signal, handler] of parentSignalHandlers) {
+        signalSource.removeListener(signal, handler);
+      }
+      parentSignalHandlers.clear();
+    };
+
+    const releaseDrainedSupervisor = () => {
+      if (
+        platform === "win32" ||
+        supervisorReleased ||
+        terminationReason ||
+        !commandCompletionObserved ||
+        !stdoutEnded ||
+        !stderrEnded
+      ) {
+        return;
+      }
+      supervisorReleased = true;
+      supervisorControl?.end("release\n");
+    };
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(watchdog);
+      clearTimeout(forceSettleTimer);
+      removeParentSignalHandlers();
+      resolve({
+        ...result,
+        pid: child.pid,
+        stdout,
+        stderr,
+        outputTruncated,
+        streamed: true,
+        timedOut,
+        parentSignal,
+        terminationError,
+      });
+    };
+
+    const finishAfterTermination = () => {
+      terminationFinished = true;
+      if (closeResult) {
+        finish(closeResult);
+        return;
+      }
+      forceSettleTimer = setTimeout(() => {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        child.unref?.();
+        finish({ status: null, signal: null });
+      }, forceKillSettleMs);
+    };
+
+    const beginTermination = (reason) => {
+      if (settled || terminationReason) {
+        return terminationPromise ?? Promise.resolve();
+      }
+      terminationReason = reason;
+      if (reason === "timeout") {
+        timedOut = true;
+        onTimeout();
+      } else {
+        parentSignal = reason;
+        clearTimeout(watchdog);
+      }
+      const leaderExited =
+        (child.exitCode !== undefined && child.exitCode !== null) ||
+        (child.signalCode !== undefined && child.signalCode !== null);
+      if (platform === "win32" && leaderExited) {
+        // Windows tree termination is rooted in a live PID. After `exit` but
+        // before `close`, inherited pipes may still be held by descendants,
+        // while the leader PID is already eligible for reuse. Never taskkill a
+        // possibly unrelated process: bound the drain, fail closed, and let the
+        // CI runner's job boundary reap any orphan.
+        terminationError = new Error(
+          `batch leader PID ${child.pid} exited before its stdio closed; ` +
+            "Windows process-tree teardown cannot be proven safely",
+        );
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        child.unref?.();
+        finish({ status: child.exitCode ?? null, signal: child.signalCode });
+        terminationPromise = Promise.resolve();
+        return terminationPromise;
+      }
+      if (!terminationPromise) {
+        terminationPromise = terminateTree(child.pid, {
+          platform,
+          graceMs: terminationGraceMs,
+          expectedIdentity: childIdentity,
+          identityCaptured: true,
+          identityFn,
+        })
+          .catch((error) => {
+            terminationError = error;
+          })
+          .finally(finishAfterTermination);
+      }
+      return terminationPromise;
+    };
+
+    child.stdout?.on("data", (chunk) => {
+      const text = chunk.toString("utf8");
+      if (stdout.length + text.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
+        outputTruncated = true;
+      }
+      stdout = appendClassificationOutput(stdout, text);
+      writeOut(text);
+    });
+    child.stdout?.once("end", () => {
+      stdoutEnded = true;
+      releaseDrainedSupervisor();
+    });
+    child.stderr?.on("data", (chunk) => {
+      const text = chunk.toString("utf8");
+      if (stderr.length + text.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
+        outputTruncated = true;
+      }
+      stderr = appendClassificationOutput(stderr, text);
+      writeErr(text);
+    });
+    child.stderr?.once("end", () => {
+      stderrEnded = true;
+      releaseDrainedSupervisor();
+    });
+    supervisorStatus?.on("data", (chunk) => {
+      supervisorStatusOutput += chunk.toString("utf8");
+    });
+    supervisorStatus?.once("end", () => {
+      commandCompletionObserved = /^\d+\n$/.test(supervisorStatusOutput);
+      releaseDrainedSupervisor();
+    });
+    supervisorControl?.once("error", (error) => {
+      terminationError ??= error;
+    });
+    child.once("error", (error) => finish({ error }));
+    child.once("close", (status, signal) => {
+      closeResult = { status, signal };
+      if ((!timedOut && !parentSignal) || terminationFinished) {
+        finish(closeResult);
+      }
+    });
+
+    for (const signal of ["SIGINT", "SIGTERM"]) {
+      const handler = () => void beginTermination(signal);
+      parentSignalHandlers.set(signal, handler);
+      signalSource.once(signal, handler);
+    }
+
+    watchdog = setTimeout(() => void beginTermination("timeout"), timeoutMs);
+  });
 }
 
 // The unit lane runs with NO database service (Cloud Tests → unit-tests calls
@@ -311,23 +982,49 @@ export function ensureCloudTestRuntime({
 // (status/signal handling, the pglite status-99 normalization, spawn errors)
 // without shelling out to a real `bun test` run. Returns true if any batch's
 // failure should fail the overall gate.
-export function runBatches(
+export async function runBatches(
   batches,
-  { spawnBatch, stagingDir, env, repoRoot, writeOut, writeErr },
+  {
+    spawnBatch,
+    stagingDir,
+    env,
+    repoRoot,
+    writeOut,
+    writeErr,
+    timeoutMs = DEFAULT_BATCH_TIMEOUT_MS,
+    terminationGraceMs = DEFAULT_BATCH_KILL_GRACE_MS,
+  },
 ) {
   let anyFailed = false;
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
+    const files = formatBatchFiles(batch, repoRoot);
     writeOut(
-      `[test:cloud] batch ${i + 1}/${batches.length} — ${batch.length} files\n`,
+      `[test:cloud] batch ${i + 1}/${batches.length} — ${batch.length} files\n` +
+        `[test:cloud] files in batch:\n${files}\n`,
     );
-    const result = spawnBatch(batch, { cwd: stagingDir, env });
+    let timeoutReported = false;
+    const reportTimeout = () => {
+      if (timeoutReported) return;
+      timeoutReported = true;
+      writeErr(
+        `[test:cloud] batch ${i + 1}/${batches.length} exceeded its ${timeoutMs} ms wall-clock deadline; ` +
+          `terminating the process tree\n[test:cloud] files in timed-out batch:\n${files}\n`,
+      );
+    };
+    const result = await spawnBatch(batch, {
+      cwd: stagingDir,
+      env,
+      writeOut,
+      writeErr,
+      timeoutMs,
+      terminationGraceMs,
+      onTimeout: reportTimeout,
+    });
     const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-    if (result.stdout) writeOut(result.stdout);
-    if (result.stderr) writeErr(result.stderr);
+    if (!result.streamed && result.stdout) writeOut(result.stdout);
+    if (!result.streamed && result.stderr) writeErr(result.stderr);
     if (result.error) {
-      // spawnSync failure (e.g. ENOBUFS from maxBuffer, spawn ENOENT). Surface it
-      // and keep the exit deferred so the drained batch output is not truncated.
       writeErr(
         `[test:cloud] batch ${i + 1}/${batches.length} spawn error: ${
           result.error.stack ?? String(result.error)
@@ -335,12 +1032,34 @@ export function runBatches(
       );
       return true;
     }
+    if (result.terminationError) {
+      writeErr(
+        `[test:cloud] batch ${i + 1}/${batches.length} process-tree teardown failed: ` +
+          `${result.terminationError.stack ?? String(result.terminationError)}\n`,
+      );
+      return true;
+    }
+    if (result.parentSignal) {
+      writeErr(
+        `[test:cloud] batch ${i + 1}/${batches.length} interrupted by parent ${result.parentSignal}; ` +
+          "the process tree was terminated\n",
+      );
+      return true;
+    }
+    if (result.timedOut) {
+      reportTimeout();
+      anyFailed = true;
+      continue;
+    }
     // Run every batch even after a failure so one broken suite doesn't mask the
     // rest; aggregate into a single non-zero exit for the gate.
     const status = result.status;
     const signal = result.signal;
     if ((status ?? 1) !== 0 || signal) {
-      if (shouldNormalizeBunStatus99({ status, signal, output })) {
+      if (
+        !result.outputTruncated &&
+        shouldNormalizeBunStatus99({ status, signal, output })
+      ) {
         writeErr(
           `[test:cloud] batch ${i + 1}/${batches.length} exited with Bun status ${status} ` +
             "after reporting no failed tests; treating as pass (known Bun/PGlite exitCode pollution).\n",
@@ -358,7 +1077,8 @@ export function runBatches(
   return anyFailed;
 }
 
-function main() {
+async function main() {
+  const timeoutMs = parseBatchTimeoutArg(process.argv.slice(2));
   try {
     ensureCloudTestRuntime({
       requiredArtifacts: computeRequiredRuntimeArtifacts(repoRoot),
@@ -463,24 +1183,41 @@ function main() {
 
   const writeOut = (text) => writeSyncAll(1, text);
   const writeErr = (text) => writeSyncAll(2, text);
-
-  const spawnBatch = (batch, { cwd, env: batchEnv }) =>
-    spawnSync("bun", ["test", ...batch, "--timeout", "120000", "--isolate"], {
+  const spawnBatch = (
+    batch,
+    {
       cwd,
       env: batchEnv,
-      encoding: "utf8",
-      maxBuffer: 128 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: process.platform === "win32",
-    });
+      writeOut,
+      writeErr,
+      timeoutMs,
+      terminationGraceMs,
+      onTimeout,
+    },
+  ) =>
+    runCommandWithWatchdog(
+      "bun",
+      ["test", ...batch, "--timeout", "120000", "--isolate"],
+      {
+        cwd,
+        env: batchEnv,
+        shell: false,
+        timeoutMs,
+        terminationGraceMs,
+        writeOut,
+        writeErr,
+        onTimeout,
+      },
+    );
 
-  const anyFailed = runBatches(batches, {
+  const anyFailed = await runBatches(batches, {
     spawnBatch,
     stagingDir,
     env,
     repoRoot,
     writeOut,
     writeErr,
+    timeoutMs,
   });
 
   // Use process.exitCode + natural return instead of process.exit(): the latter
@@ -492,5 +1229,12 @@ function main() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main();
+  try {
+    await main();
+  } catch (error) {
+    const message =
+      error instanceof Error ? (error.stack ?? error.message) : String(error);
+    writeSyncAll(2, `${message}\n`);
+    process.exitCode = 1;
+  }
 }

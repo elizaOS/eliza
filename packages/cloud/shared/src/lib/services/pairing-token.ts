@@ -18,6 +18,21 @@ export interface PairingToken {
   createdAt: number;
 }
 
+export interface BrowserPairingBinding {
+  agentId: string;
+  expectedOrigin: string;
+}
+
+export type BrowserPairingClaim =
+  | {
+      status: "claimed";
+      pairingToken: PairingToken;
+      apiKey: string;
+      agentName: string | null;
+    }
+  | { status: "invalid" }
+  | { status: "sandbox-credential-unavailable" };
+
 export interface AuthenticatedNativePairingBinding {
   userId: string;
   orgId: string;
@@ -136,10 +151,10 @@ class PairingTokenService {
     // Try the exact origin first
     let row = await agentPairingTokensRepository.consumeValidToken(tokenHash, normalizedOrigin);
 
-    // If no match, try each alternate domain in the same alias group. The
-    // dashboard may rewrite the agent URL between any two aliased domains
-    // (waifu.fun ↔ eliza.ai ↔ elizacloud.ai), and we cannot predict which
-    // one is stored as `expected_origin` for a given token row.
+    // If no match, try each alternate domain in the same environment-scoped
+    // alias group. The dashboard may rewrite the agent URL between canonical
+    // and compatibility hosts, and we cannot predict which one is stored as
+    // `expected_origin` for a given token row.
     if (!row) {
       for (const alternateOrigin of getAlternateDomainOrigins(normalizedOrigin)) {
         row = await agentPairingTokensRepository.consumeValidToken(tokenHash, alternateOrigin);
@@ -155,11 +170,47 @@ class PairingTokenService {
   }
 
   /**
+   * Atomically claim a browser pairing token for the agent selected by the
+   * public Worker hostname. Rebrand aliases may substitute only the origin;
+   * every database attempt retains the same URL-bound agent identity.
+   */
+  async claimBrowserToken(
+    token: string,
+    binding: BrowserPairingBinding,
+  ): Promise<BrowserPairingClaim> {
+    const normalizedOrigin = normalizeHttpOrigin(binding.expectedOrigin);
+    if (!normalizedOrigin) {
+      return { status: "invalid" };
+    }
+
+    const tokenHash = await hashToken(token);
+    const candidateOrigins = [normalizedOrigin, ...getAlternateDomainOrigins(normalizedOrigin)];
+
+    for (const expectedOrigin of candidateOrigins) {
+      const claim = await agentPairingTokensRepository.consumeValidBrowserToken(tokenHash, {
+        agentId: binding.agentId,
+        expectedOrigin,
+      });
+      if (claim.status === "invalid") continue;
+      if (claim.status === "sandbox-credential-unavailable") return claim;
+
+      return {
+        status: "claimed",
+        pairingToken: toPairingToken(claim.token),
+        apiKey: claim.apiKey,
+        agentName: claim.agentName,
+      };
+    }
+
+    return { status: "invalid" };
+  }
+
+  /**
    * Claim the explicit native exchange. Unlike the browser relay, native
    * WebViews may omit Origin, so the Cloud bearer identity and the origin
    * carried by the authenticated mint response are part of the atomic claim.
-   * This path intentionally uses the exact minted origin; browser-only domain
-   * alias compatibility remains confined to validateToken().
+   * This path intentionally uses the exact minted origin; domain-alias
+   * compatibility remains confined to the browser validation and claim paths.
    */
   async claimAuthenticatedNativeToken(
     token: string,

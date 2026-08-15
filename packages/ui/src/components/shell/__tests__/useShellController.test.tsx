@@ -2130,6 +2130,82 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     }
   });
 
+  it("routes programmatic converse capture to one realtime session", async () => {
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.startRecording("converse");
+      result.current.startRecording("converse");
+      await Promise.resolve();
+    });
+
+    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+    expect(realtimeVoiceMock.startedConversationIds).toEqual([conversationId]);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(result.current.handsFree).toBe(true);
+  });
+
+  it("routes repeated programmatic stops through one realtime teardown", async () => {
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.startRecording("converse");
+      await Promise.resolve();
+    });
+    expect(result.current.handsFree).toBe(true);
+    expect(
+      window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+    ).toBe("always-on");
+
+    await act(async () => {
+      result.current.stopRecording();
+      result.current.stopRecording();
+      await Promise.resolve();
+    });
+
+    expect(realtimeVoiceMock.stop).toHaveBeenCalledTimes(1);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(result.current.handsFree).toBe(false);
+    expect(
+      window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+    ).toBe("off");
+  });
+
+  it.each(["active", "connecting"] as const)(
+    "routes an %s realtime owner through realtime teardown",
+    async (ownerState) => {
+      realtimeVoiceMock.state[ownerState] = true;
+      const { result } = renderHook(() => useShellController());
+
+      await act(async () => {
+        result.current.stopRecording();
+        await Promise.resolve();
+      });
+
+      expect(realtimeVoiceMock.stop).toHaveBeenCalledTimes(1);
+      expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps idle realtime mode from stealing legacy dictation teardown", async () => {
+    captureHandles = [];
+    installFakeCapture();
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.startRecording("dictate");
+      await Promise.resolve();
+    });
+    await act(async () => {
+      result.current.stopRecording();
+      await Promise.resolve();
+    });
+
+    expect(realtimeVoiceMock.stop).not.toHaveBeenCalled();
+    expect(captureHandles[0]?.stop).toHaveBeenCalledTimes(1);
+    expect(captureHandles[0]?.dispose).toHaveBeenCalledTimes(1);
+  });
+
   it("parks Talk visibly OFF when a LIVE session dies past the client's recovery budget", async () => {
     const { result, rerender } = renderHook(() => useShellController());
 

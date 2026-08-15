@@ -1,8 +1,9 @@
 /**
  * Pure helpers backing `ConnectorModeSelector`: resolves a connector's ordered
  * setup modes from the connector-mode registry, appends the plugin-managed mode
- * from the connector-account catalog when applicable, filters cloud-only modes
- * by Eliza Cloud connectivity, and maps a selected mode to its setup plugin id.
+ * from the connector-account catalog when applicable, filters modes by cloud
+ * connectivity and managed-container availability, and maps a selected mode to
+ * its setup plugin id.
  */
 
 import {
@@ -57,7 +58,8 @@ function withPluginManagedMode(
 /**
  * Returns available modes for a connector, rendered generically from the modes
  * the connector plugin declared in the connector-mode registry. Cloud-only
- * modes are filtered out when Eliza Cloud is not connected. When a global
+ * modes are filtered out when Eliza Cloud is not connected, and co-located
+ * desktop modes can opt out of managed Cloud containers. When a global
  * `channelMode` lens is given, declared modes classified into the *other* lens
  * are filtered out too, and plugin-managed injection follows the same
  * `connectorSupportsChannelMode` policy used by the index/detail surfaces.
@@ -66,13 +68,16 @@ export function getConnectorModes(
   connectorId: string,
   options?: {
     elizaCloudConnected?: boolean;
+    cloudProvisioned?: boolean;
     channelMode?: ConnectorChannelMode;
   },
 ): ConnectorMode[] {
   const cloud = options?.elizaCloudConnected ?? false;
+  const managedCloud = options?.cloudProvisioned ?? false;
   const lens = options?.channelMode;
   const modes: ConnectorMode[] = getDeclaredConnectorModes(connectorId)
     .filter((mode) => cloud || !mode.cloudOnly)
+    .filter((mode) => !managedCloud || !mode.hideOnManagedCloud)
     .filter(
       (mode) =>
         lens === undefined ||

@@ -490,9 +490,15 @@ export class InMemoryTaskStore {
   async updateSession(
     sessionId: string,
     patch: Partial<OrchestratorTaskSession>,
+    taskId?: string,
   ): Promise<void> {
     await this.enqueue(async () => {
-      for (const doc of this.docs.values()) {
+      const documents = taskId
+        ? [this.docs.get(taskId)].filter(
+            (doc): doc is OrchestratorTaskDocument => doc !== undefined,
+          )
+        : this.docs.values();
+      for (const doc of documents) {
         const session = doc.sessions.find((s) => s.sessionId === sessionId);
         if (!session) continue;
         Object.assign(session, patch, {
@@ -511,13 +517,28 @@ export class InMemoryTaskStore {
 
   async findSession(
     sessionId: string,
+    taskId?: string,
   ): Promise<{ taskId: string; session: OrchestratorTaskSession } | null> {
-    for (const doc of this.docs.values()) {
+    const documents = taskId
+      ? [this.docs.get(taskId)].filter(
+          (doc): doc is OrchestratorTaskDocument => doc !== undefined,
+        )
+      : this.docs.values();
+    let fallback: { taskId: string; session: OrchestratorTaskSession } | null =
+      null;
+    for (const doc of documents) {
       const session = doc.sessions.find((s) => s.sessionId === sessionId);
-      if (session)
-        return { taskId: doc.task.id, session: structuredClone(session) };
+      if (!session) continue;
+      const match = { taskId: doc.task.id, session: structuredClone(session) };
+      if (taskId || session.currentOwner) return match;
+      if (
+        !fallback ||
+        Date.parse(session.updatedAt) > Date.parse(fallback.session.updatedAt)
+      ) {
+        fallback = match;
+      }
     }
-    return null;
+    return fallback;
   }
 
   async addEvent(event: OrchestratorTaskEvent): Promise<void> {
@@ -696,13 +717,14 @@ export class FileTaskStore extends InMemoryTaskStore {
   override async updateSession(
     sessionId: string,
     patch: Partial<OrchestratorTaskSession>,
+    taskId?: string,
   ) {
     await this.ensureLoaded();
-    return super.updateSession(sessionId, patch);
+    return super.updateSession(sessionId, patch, taskId);
   }
-  override async findSession(sessionId: string) {
+  override async findSession(sessionId: string, taskId?: string) {
     await this.ensureLoaded();
-    return super.findSession(sessionId);
+    return super.findSession(sessionId, taskId);
   }
   override async addEvent(event: OrchestratorTaskEvent) {
     await this.ensureLoaded();
@@ -1121,21 +1143,31 @@ export class RuntimeDbTaskStore {
   async updateSession(
     sessionId: string,
     patch: Partial<OrchestratorTaskSession>,
+    taskId?: string,
   ): Promise<void> {
     return this.enqueue(async () => {
       await this.ensureInitialized();
-      const found = await this.findSession(sessionId);
+      const found = await this.findSession(sessionId, taskId);
       if (!found) return;
       const current = await this.loadOne(found.taskId);
       this.cache.hydrate(current ? [current] : []);
-      await this.cache.updateSession(sessionId, patch);
+      await this.cache.updateSession(sessionId, patch, found.taskId);
       const next = await this.cache.getTask(found.taskId);
       if (next) await this.persist(next);
     });
   }
 
-  async findSession(sessionId: string) {
+  async findSession(sessionId: string, taskId?: string) {
     await this.ensureInitialized();
+    if (taskId) {
+      const current = await this.loadOne(taskId);
+      const session = current?.sessions.find(
+        (candidate) => candidate.sessionId === sessionId,
+      );
+      return current && session
+        ? { taskId, session: structuredClone(session) }
+        : null;
+    }
     // Portable, targeted session-id lookup. The old `WHERE document LIKE ?`
     // used the serialized JSON `document` column as a text haystack, which:
     //   * fails outright on pglite/postgres — the drizzle/pglite driver does
@@ -1201,12 +1233,24 @@ export class RuntimeDbTaskStore {
   }
 
   private matchSession(rows: unknown[], sessionId: string) {
+    let fallback: {
+      taskId: string;
+      session: OrchestratorTaskSession;
+    } | null = null;
     for (const row of rows) {
       const doc = this.parseDoc(row);
       const session = doc?.sessions.find((s) => s.sessionId === sessionId);
-      if (doc && session) return { taskId: doc.task.id, session };
+      if (!doc || !session) continue;
+      const match = { taskId: doc.task.id, session };
+      if (session.currentOwner) return match;
+      if (
+        !fallback ||
+        Date.parse(session.updatedAt) > Date.parse(fallback.session.updatedAt)
+      ) {
+        fallback = match;
+      }
     }
-    return null;
+    return fallback;
   }
 
   async addEvent(event: OrchestratorTaskEvent) {
@@ -1286,11 +1330,15 @@ export class OrchestratorTaskStore {
   addSession(session: OrchestratorTaskSession) {
     return this.delegate.addSession(session);
   }
-  updateSession(sessionId: string, patch: Partial<OrchestratorTaskSession>) {
-    return this.delegate.updateSession(sessionId, patch);
+  updateSession(
+    sessionId: string,
+    patch: Partial<OrchestratorTaskSession>,
+    taskId?: string,
+  ) {
+    return this.delegate.updateSession(sessionId, patch, taskId);
   }
-  findSession(sessionId: string) {
-    return this.delegate.findSession(sessionId);
+  findSession(sessionId: string, taskId?: string) {
+    return this.delegate.findSession(sessionId, taskId);
   }
   addEvent(event: OrchestratorTaskEvent) {
     return this.delegate.addEvent(event);

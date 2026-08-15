@@ -27,7 +27,8 @@ Failure diffs go to `test-results/` (gitignored).
 ## Routes covered
 
 `tests/e2e/visual-routes.ts` is the single source of truth: `/`, `/downloads`,
-`/login`, `/connected`, `/get-started`, `/leaderboard`, and the `*` catch-all
+`/login`, `/connected`, `/get-started`, `/leaderboard`, `/profile/edit`, and the
+`*` catch-all
 (exercised as `/this-page-does-not-exist`) at desktop (1280×720) and mobile
 (390×844 — iPhone 14 Pro).
 

@@ -17,7 +17,18 @@ const mocks = vi.hoisted(() => ({
   getPermission: vi.fn(),
   requestPermission: vi.fn(),
   openPermissionSettings: vi.fn(async () => undefined),
+  checkDesktopPermissionFresh: vi.fn(),
 }));
+
+vi.mock("../../platform", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../platform")>();
+  return {
+    ...actual,
+    isDesktopPlatform: () => true,
+    isNative: false,
+    checkDesktopPermissionFresh: mocks.checkDesktopPermissionFresh,
+  };
+});
 
 vi.mock("../../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../api/client")>();
@@ -138,7 +149,7 @@ describe("usePermissionPriming", () => {
     expect(result.current.done).toBe(true);
   });
 
-  it("surfaces a thrown request as denied instead of a dead card", async () => {
+  it("surfaces a thrown request as a retryable error instead of a user denial", async () => {
     seedStatuses({ microphone: "not-determined" });
     mocks.getPermission.mockImplementation(async (id: PermissionId) =>
       state(id, id === "microphone" ? "not-determined" : "granted"),
@@ -152,7 +163,10 @@ describe("usePermissionPriming", () => {
       await result.current.request("microphone");
     });
 
-    expect(result.current.active?.status).toBe("denied");
+    expect(result.current.active?.status).toBe("unknown");
+    expect(result.current.active?.requestError).toBe(true);
+    expect(result.current.active?.recheckError).toBe(false);
+    expect(result.current.active?.canRequest).toBe(true);
     expect(result.current.active?.requesting).toBe(false);
   });
 
@@ -186,9 +200,52 @@ describe("usePermissionPriming", () => {
     mocks.getPermission.mockImplementation(async (id: PermissionId) =>
       state(id, "granted", false),
     );
+    mocks.checkDesktopPermissionFresh.mockResolvedValue(
+      state("microphone", "granted", false),
+    );
     await act(async () => {
       await result.current.recheck("microphone");
     });
+    expect(mocks.checkDesktopPermissionFresh).toHaveBeenCalledWith(
+      "microphone",
+    );
     expect(result.current.done).toBe(true);
+  });
+
+  it("propagates a Settings launch failure to the recovery UI boundary", async () => {
+    seedStatuses({ notifications: "denied" });
+    mocks.getPermission.mockImplementation(async (id: PermissionId) =>
+      state(id, id === "notifications" ? "denied" : "granted", false),
+    );
+    mocks.openPermissionSettings.mockRejectedValueOnce(
+      new Error("native settings launch failed"),
+    );
+
+    const { result } = renderHook(() => usePermissionPriming(IDS));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    await expect(result.current.openSettings("notifications")).rejects.toThrow(
+      "native settings launch failed",
+    );
+  });
+
+  it("surfaces a failed forced re-check instead of preserving a silent stale state", async () => {
+    seedStatuses({ notifications: "denied" });
+    mocks.getPermission.mockImplementation(async (id: PermissionId) =>
+      state(id, id === "notifications" ? "denied" : "granted", false),
+    );
+    const { result } = renderHook(() => usePermissionPriming(IDS));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    mocks.checkDesktopPermissionFresh.mockRejectedValueOnce(
+      new Error("bridge down"),
+    );
+
+    await act(async () => {
+      await result.current.recheck("notifications");
+    });
+
+    expect(result.current.active?.status).toBe("denied");
+    expect(result.current.active?.recheckError).toBe(true);
+    expect(mocks.getPermission).toHaveBeenCalledTimes(3);
   });
 });

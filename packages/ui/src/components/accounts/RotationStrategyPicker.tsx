@@ -10,7 +10,7 @@ import { Check } from "lucide-react";
 import type { AccountStrategy } from "../../api/client-agent";
 import { CONFIG_SELECT_FLOATING_LAYER_NAME } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Select, SelectTrigger, SelectValue } from "../ui/select";
 
 interface RotationStrategyPickerProps {

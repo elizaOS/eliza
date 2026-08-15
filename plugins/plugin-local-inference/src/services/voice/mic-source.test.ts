@@ -153,24 +153,24 @@ describe("DesktopMicSource", () => {
 		});
 		const frames: PcmFrame[] = [];
 		src.onFrame((f) => frames.push(f));
-		const errors: Error[] = [];
-		src.onError((e) => errors.push(e));
-		await src.start();
+		const recorderExited = new Promise<void>((resolve) => {
+			const unsub = src.onError(() => {
+				unsub();
+				resolve();
+			});
+		});
 		// `cat` writes the file to stdout then exits. (A real `arecord`/`sox`
 		// streams forever, so the source treats that exit as an error — fine
 		// for this test, which only cares that the byte→frame path works.)
 		// Wait for cat's exit to propagate: the exit event fires *after* all
 		// stdout data events, so once the error listener fires we know every
-		// frame has been emitted. A 2 s safety-net timeout prevents a hang if
-		// cat somehow never exits.
+		// frame has been emitted. Subscribe before start so a fast `cat` cannot
+		// exit between the spawn and listener registration. A bounded safety
+		// timeout prevents a hang if cat somehow never exits.
+		await src.start();
 		await Promise.race([
-			new Promise<void>((resolve) => {
-				const unsub = src.onError(() => {
-					unsub();
-					resolve();
-				});
-			}),
-			new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+			recorderExited,
+			new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
 		]);
 		await src.stop();
 
@@ -181,7 +181,7 @@ describe("DesktopMicSource", () => {
 		expect(frames[0].pcm[2]).toBeCloseTo(-0.5, 2);
 		expect(frames[0].pcm[3]).toBeCloseTo(1, 1);
 		expect(frames[0].sampleRate).toBe(16_000);
-	});
+	}, 15_000);
 
 	it("surfaces a missing recorder binary as an error (no silent capture)", async () => {
 		const src = new DesktopMicSource({

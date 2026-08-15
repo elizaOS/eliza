@@ -91,12 +91,34 @@ function parseSince(since: string | undefined): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-function formatLogPreview(entries: LogEntry[], limit: number): string {
-  const slice = entries.slice(0, limit);
-  if (slice.length === 0) {
+/**
+ * The server hands back at most the newest `SERVER_TAIL_CAP` buffered entries
+ * of a larger ring buffer, and the action then caps again by `limit`. Neither
+ * narrowing is visible in a bare entry dump, so "no errors from discord in the
+ * last hour" read as "no errors happened" and "the last 20 errors" returned
+ * the twenty OLDEST of that window. Every search result carries this line.
+ *
+ * Mirrors `entries.slice(-200)` in `api/diagnostics-routes.ts` (GET /api/logs);
+ * change both together.
+ */
+const SERVER_TAIL_CAP = 200;
+
+function describeLogFilters(params: LogsParams, tagFilter: string[]): string {
+  const parts: string[] = [];
+  if (params.source) parts.push(`source=${params.source}`);
+  if (params.level && SEARCH_LEVELS.includes(params.level)) {
+    parts.push(`level=${params.level}`);
+  }
+  if (tagFilter.length > 0) parts.push(`tags=${tagFilter.join("+")}`);
+  if (params.since) parts.push(`since=${params.since}`);
+  return parts.length > 0 ? parts.join(", ") : "none";
+}
+
+function formatLogPreview(entries: LogEntry[]): string {
+  if (entries.length === 0) {
     return "No log entries match.";
   }
-  return slice
+  return entries
     .map((entry) => {
       const ts = new Date(entry.timestamp).toISOString();
       const tagPart = entry.tags.length > 0 ? ` [${entry.tags.join(",")}]` : "";
@@ -150,16 +172,33 @@ async function searchLogs(params: LogsParams): Promise<ActionResult> {
         )
       : data.entries;
 
+  // "last N" has to mean the newest N. The head slice returned the oldest
+  // entries of the server's recent tail and the model presented them as the
+  // latest; take the tail on both the preview and the structured payload.
+  const shown = entries.slice(-limit);
+  const filterNote = describeLogFilters(params, tagFilter);
+  const windowNote = `Searched only the server's most recent buffered log entries (server returns at most ${SERVER_TAIL_CAP}); older entries were not scanned. Filters applied: ${filterNote}.`;
+  const header =
+    shown.length === 0
+      ? `No log entries match. ${windowNote} An empty result here is not proof nothing was logged — widen by dropping a filter or raising limit.`
+      : `Showing ${shown.length} of ${entries.length} matching entr${entries.length === 1 ? "y" : "ies"}, newest last (limit=${limit}). ${windowNote}`;
+
   return {
     success: true,
-    text: formatLogPreview(entries, limit),
-    values: { count: entries.length, totalSources: data.sources.length },
+    text: shown.length === 0 ? header : `${header}\n${formatLogPreview(shown)}`,
+    values: {
+      count: entries.length,
+      shown: shown.length,
+      totalSources: data.sources.length,
+    },
     data: {
       actionName: "LOGS",
       op: "search",
-      entries: entries.slice(0, limit),
+      matchedCount: entries.length,
+      entries: shown,
       sources: data.sources,
       tags: data.tags,
+      filters: filterNote,
     },
   };
 }

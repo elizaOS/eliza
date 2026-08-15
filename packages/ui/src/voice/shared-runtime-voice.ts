@@ -109,7 +109,7 @@ export function sharedRuntimeTtsUrl(origin: string): string {
  * forced-cloud voice that must bypass the on-device proxy (#16116).
  *
  * Boot config carries the cloud SITE base (`cloudApiBase`, e.g.
- * `https://elizacloud.ai`, or a staging/custom origin). The provider-agnostic
+ * `https://api.eliza.app`, or a staging/custom origin). The provider-agnostic
  * v1 voice routes hang off the bare origin, so we strip a trailing `/api/v1`
  * (some hosts pass the API base with the version path) and any trailing
  * slashes. Returns `null` when boot config has no usable https origin — the

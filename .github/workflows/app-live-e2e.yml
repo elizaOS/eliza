@@ -101,7 +101,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n
@@ -184,10 +184,10 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Install ffmpeg (recording stitch)
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        run: .github/scripts/install-apt-packages.sh ffmpeg
 
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n
@@ -271,7 +271,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n
@@ -403,7 +403,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright runner
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       # Build the packaged desktop app (catches build/packaging breaks). Run from
       # the repo root so desktop-build.mjs resolves packages/app.

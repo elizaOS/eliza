@@ -79,11 +79,51 @@ describe("subAgentFailureResponseEvaluator", () => {
     }
   });
 
-  it("does NOT fire for task_complete (that is the completion evaluator's job)", () => {
+  it("does NOT fire for a clean task_complete (that is the completion evaluator's job)", () => {
     const context = makeContext({
       metadata: { subAgentEvent: "task_complete" },
     });
     expect(subAgentFailureResponseEvaluator.shouldRun(context)).toBe(false);
+  });
+
+  it("fires for a verify-failed task_complete with no URL that probed live", () => {
+    // The completion evaluator's gate steps aside for this shape (it requires
+    // at least one live URL to relay a caveated deliverable), so without the
+    // failure twin the outcome rides on the planner volunteering a reply.
+    const context = makeContext({
+      text: "[sub-agent: bean-bar (claude) — task_complete]\nBuild finished.\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live]\n  - https://example.org/apps/bean-bar/ → HTTP 404",
+      metadata: { subAgentEvent: "task_complete", subAgentLabel: "bean-bar" },
+    });
+    expect(subAgentFailureResponseEvaluator.shouldRun(context)).toBe(true);
+    const result = subAgentFailureResponseEvaluator.evaluate(context);
+    expect(result.reply).toContain(`Couldn't finish the "bean-bar" task`);
+  });
+
+  it("does NOT fire for a verify-failed task_complete that still has a live URL", () => {
+    // A caveated deliverable exists — the completion evaluator owns that turn.
+    const context = makeContext({
+      text: "[sub-agent: bean-bar (claude) — task_complete]\nBuild finished.\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live]\n  - https://example.org/apps/bean-bar/style.css → HTTP 404",
+      metadata: {
+        subAgentEvent: "task_complete",
+        subAgentLabel: "bean-bar",
+        subAgentVerifiedUrls: ["https://example.org/apps/bean-bar/"],
+      },
+    });
+    expect(subAgentFailureResponseEvaluator.shouldRun(context)).toBe(false);
+  });
+
+  it("fires when every metadata-verified URL is in the completion's dead list", () => {
+    // Route-alias expansion can stamp a public URL as "verified" even though
+    // its direct probe was dead; a dead-listed URL is not a deliverable.
+    const context = makeContext({
+      text: "[sub-agent: bean-bar (claude) — task_complete]\nBuild finished.\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live]\n  - https://example.org/apps/bean-bar/ → HTTP 404",
+      metadata: {
+        subAgentEvent: "task_complete",
+        subAgentLabel: "bean-bar",
+        subAgentVerifiedUrls: ["https://example.org/apps/bean-bar/"],
+      },
+    });
+    expect(subAgentFailureResponseEvaluator.shouldRun(context)).toBe(true);
   });
 
   it("does NOT fire for non sub-agent messages", () => {

@@ -15,6 +15,10 @@ import {
   type ResponseHandlerEvaluator,
   SIMPLE_CONTEXT_ID,
 } from "@elizaos/core";
+import {
+  completionHasVerificationFailure,
+  verifiedUrlsExcludingDead,
+} from "./sub-agent-completion.js";
 
 const SUB_AGENT_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 
@@ -84,7 +88,19 @@ function isTerminalSubAgentFailure(message: Memory): boolean {
   if (!content || !metadata) return false;
   const source = textOf(content.source).toLowerCase();
   if (source !== SUB_AGENT_SOURCE && metadata.subAgent !== true) return false;
-  return TERMINAL_FAILURE_EVENTS.has(textOf(metadata.subAgentEvent));
+  const event = textOf(metadata.subAgentEvent);
+  if (TERMINAL_FAILURE_EVENTS.has(event)) return true;
+  // A task_complete stamped with the router's verification-failure annotation
+  // and no URL that actually probed live delivered nothing usable — in user
+  // terms a terminal failure. The completion evaluator steps aside for this
+  // shape (its gate requires a live URL to relay), so without this twin the
+  // outcome rides on the planner model volunteering a reply.
+  if (event !== "task_complete") return false;
+  const text = textOf(content.text);
+  return (
+    completionHasVerificationFailure(text) &&
+    verifiedUrlsExcludingDead(message, text).length === 0
+  );
 }
 
 // Trim the router's error narration to a single short, user-readable clause:

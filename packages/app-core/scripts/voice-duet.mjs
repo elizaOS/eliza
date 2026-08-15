@@ -59,6 +59,37 @@ const __filename = fileURLToPath(import.meta.url);
 // CLI
 // ---------------------------------------------------------------------------
 
+function requireFlagValue(argv, i, flag) {
+  const value = argv[i + 1];
+  if (value === undefined || value.startsWith("--")) {
+    throw new Error(`${flag} requires a value`);
+  }
+  return value;
+}
+
+/**
+ * Accept only a complete positive decimal integer string (>= 1).
+ * Rejects missing, fractional, signed, partial, zero, and non-finite values.
+ */
+function parsePositiveInteger(raw, flag) {
+  if (raw === undefined || raw === null) {
+    throw new Error(`${flag} requires a positive integer >= 1`);
+  }
+  const value = String(raw);
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error(
+      `${flag} must be a positive integer >= 1 (received ${JSON.stringify(value)})`,
+    );
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new Error(
+      `${flag} must be a positive integer >= 1 (received ${JSON.stringify(value)})`,
+    );
+  }
+  return parsed;
+}
+
 function parseArgs(argv) {
   const out = {
     model: "eliza-1-2b",
@@ -87,42 +118,96 @@ function parseArgs(argv) {
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-    if (a === "--model") out.model = argv[++i] ?? out.model;
-    else if (a === "--turns") {
-      const n = Number(argv[++i]);
-      out.turns = Number.isFinite(n) && n > 0 ? Math.floor(n) : Infinity;
-    } else if (a === "--character-a") out.characterA = argv[++i] ?? null;
-    else if (a === "--character-b") out.characterB = argv[++i] ?? null;
-    else if (a === "--seed-text") out.seedText = argv[++i] ?? out.seedText;
-    else if (a === "--report") out.report = argv[++i] ?? null;
-    else if (a === "--ring-ms") {
-      const n = Number(argv[++i]);
-      if (Number.isFinite(n) && n > 0) out.ringMs = Math.floor(n);
+    if (a === "--model") {
+      out.model = requireFlagValue(argv, i, "--model");
+      i += 1;
+    } else if (a === "--turns") {
+      out.turns = parsePositiveInteger(
+        requireFlagValue(argv, i, "--turns"),
+        "--turns",
+      );
+      i += 1;
+    } else if (a === "--character-a") {
+      out.characterA = requireFlagValue(argv, i, "--character-a");
+      i += 1;
+    } else if (a === "--character-b") {
+      out.characterB = requireFlagValue(argv, i, "--character-b");
+      i += 1;
+    } else if (a === "--seed-text") {
+      out.seedText = requireFlagValue(argv, i, "--seed-text");
+      i += 1;
+    } else if (a === "--report") {
+      out.report = requireFlagValue(argv, i, "--report");
+      i += 1;
+    } else if (a === "--ring-ms") {
+      out.ringMs = parsePositiveInteger(
+        requireFlagValue(argv, i, "--ring-ms"),
+        "--ring-ms",
+      );
+      i += 1;
     } else if (a === "--two-process") out.twoProcess = true;
     else if (a === "--list-active") out.listActive = true;
     else if (a === "--platform-report" || a === "--list-active-platforms")
       out.platformReport = true;
-    else if (a === "--parallel") out.parallel = intArg(argv[++i]);
-    else if (a === "--draft-max") out.draftMax = intArg(argv[++i]);
-    else if (a === "--draft-min") out.draftMin = intArg(argv[++i]);
-    else if (a === "--ctx-size-draft") out.ctxSizeDraft = intArg(argv[++i]);
-    else if (a === "--prewarm-lead-ms") out.prewarmLeadMs = intArg(argv[++i]);
-    else if (a === "--chunk-words") out.chunkWords = intArg(argv[++i]);
-    else if (a === "--kv-cache-type") out.kvCacheType = argv[++i] ?? null;
-    else if (a === "--backend") out.backend = argv[++i] ?? null;
-    else if (a === "--as-peer-b") out.asPeerB = true;
+    else if (a === "--parallel") {
+      out.parallel = parsePositiveInteger(
+        requireFlagValue(argv, i, "--parallel"),
+        "--parallel",
+      );
+      i += 1;
+    } else if (a === "--draft-max") {
+      out.draftMax = parsePositiveInteger(
+        requireFlagValue(argv, i, "--draft-max"),
+        "--draft-max",
+      );
+      i += 1;
+    } else if (a === "--draft-min") {
+      out.draftMin = parsePositiveInteger(
+        requireFlagValue(argv, i, "--draft-min"),
+        "--draft-min",
+      );
+      i += 1;
+    } else if (a === "--ctx-size-draft") {
+      out.ctxSizeDraft = parsePositiveInteger(
+        requireFlagValue(argv, i, "--ctx-size-draft"),
+        "--ctx-size-draft",
+      );
+      i += 1;
+    } else if (a === "--prewarm-lead-ms") {
+      // allow 0 for prewarm lead (issue: positive for other knobs; prewarm 0 is valid)
+      const raw = requireFlagValue(argv, i, "--prewarm-lead-ms");
+      if (!/^(0|[1-9]\d*)$/.test(String(raw))) {
+        throw new Error(
+          `--prewarm-lead-ms must be an integer >= 0 (received ${JSON.stringify(String(raw))})`,
+        );
+      }
+      const n = Number(raw);
+      if (!Number.isSafeInteger(n) || n < 0) {
+        throw new Error(
+          `--prewarm-lead-ms must be an integer >= 0 (received ${JSON.stringify(String(raw))})`,
+        );
+      }
+      out.prewarmLeadMs = n;
+      i += 1;
+    } else if (a === "--chunk-words") {
+      out.chunkWords = parsePositiveInteger(
+        requireFlagValue(argv, i, "--chunk-words"),
+        "--chunk-words",
+      );
+      i += 1;
+    } else if (a === "--kv-cache-type") {
+      out.kvCacheType = requireFlagValue(argv, i, "--kv-cache-type");
+      i += 1;
+    } else if (a === "--backend") {
+      out.backend = requireFlagValue(argv, i, "--backend");
+      i += 1;
+    } else if (a === "--as-peer-b") out.asPeerB = true;
     else if (a === "--help" || a === "-h") out.help = true;
     else {
-      console.error(`[voice-duet] unknown argument: ${a}`);
-      out.help = true;
+      throw new Error(`unknown argument: ${a}`);
     }
   }
   return out;
-}
-
-function intArg(s) {
-  const n = Number(s);
-  return Number.isFinite(n) ? Math.floor(n) : null;
 }
 
 const USAGE = `Usage: bun run --cwd packages/app-core voice:duet [-- <options>]
@@ -1341,7 +1426,15 @@ async function runAsPeerB(args) {
 // ---------------------------------------------------------------------------
 
 if (import.meta.main) {
-  const parsed = parseArgs(process.argv.slice(2));
+  let parsed;
+  try {
+    parsed = parseArgs(process.argv.slice(2));
+  } catch (err) {
+    console.error(
+      `[voice-duet] ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exit(1);
+  }
   if (parsed.asPeerB) {
     runAsPeerB(parsed).catch((err) => {
       process.stderr.write(
@@ -1371,4 +1464,5 @@ export {
   extractEmotionFromTranscript,
   loadCharacter,
   parseArgs,
+  parsePositiveInteger,
 };

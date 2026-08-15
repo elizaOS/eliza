@@ -48,7 +48,7 @@
     "build": "node ../../packages/scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.json",
     "dev": "tsc6 --watch",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "test": "node ../../packages/scripts/run-with-flake-retry.mjs 'EEXIST[^\\n]*epoll_ctl|error: Failed to connect' -- node ../../packages/scripts/run-with-deadline.mjs 1500000 -- bun test --isolate",
+    "test": "node ../../packages/scripts/run-with-flake-retry.mjs 'EEXIST[^\\n]*epoll_ctl|error: Failed to connect' -- node ../../packages/scripts/run-with-deadline.mjs 1500000 -- node scripts/run-isolated-tests.mjs",
     "test:unit": "bun test --isolate __tests__/unit/",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -79,7 +79,7 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.6",
+    "@biomejs/biome": "2.5.7",
     "@electric-sql/pglite": "^0.2.17",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
@@ -101,9 +101,9 @@
   },
   "dependencies": {
     "@elizaos/shared": "workspace:*",
-    "@smithers-orchestrator/engine": "0.29.0",
+    "smthrs": "0.34.0",
+    "zod": "^4.4.3",
     "drizzle-orm": "0.45.2",
-    "effect": "^3.21.1",
-    "quickjs-emscripten": "0.32.0"
+    "effect": "4.0.0-beta.105"
   }
 }

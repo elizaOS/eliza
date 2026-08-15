@@ -30,6 +30,20 @@ const EMOJI_QUEUED = "⏳";
 const EMOJI_THINKING = "🤔";
 const EMOJI_ERROR = "❌";
 
+/**
+ * The non-terminal markers a turn shows while it is still being processed.
+ * A bot-authored reaction from this set that survives a process death is
+ * unambiguous crash residue: every live path either advances it (`transition`
+ * removes the previous emoji), clears it (`setDone`), or replaces it with the
+ * terminal ❌ (`setError` / `abandon`). The startup reconcile scan removes
+ * exactly this set and must never touch ❌, which is deliberate terminal
+ * state. Exported so the scan cannot drift from the controller's emojis.
+ */
+export const IN_PROGRESS_STATUS_EMOJIS: readonly string[] = [
+	EMOJI_QUEUED,
+	EMOJI_THINKING,
+];
+
 export function shouldShowStatusReaction(
 	scope: StatusReactionScope,
 	message: DiscordMessage,

@@ -18,7 +18,7 @@ import { normalizeCloudSiteUrl, readAliasedEnv } from "@elizaos/shared";
 
 export interface CloudLinkAdapterDeps {
   /**
-   * Resolves the cloud site base URL (e.g. `https://www.elizacloud.ai`) when
+   * Resolves the cloud site base URL (for example, `https://cloud.eliza.app`) when
    * the user has paired Eliza Cloud. Returns `null` when cloud is not
    * configured. Defaults to a runtime-aware resolver that consults
    * `runtime.getSetting("ELIZAOS_CLOUD_API_KEY")` /

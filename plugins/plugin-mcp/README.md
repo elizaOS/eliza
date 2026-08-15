@@ -59,6 +59,7 @@ Transport config (see `src/types.ts`):
 - **Action `MCP`** — single entry point for all MCP operations. `action=call_tool` invokes a server tool, `action=read_resource` reads a server resource (`search_actions` / `list_connections` are cloud-runtime-only). Similes include `CALL_MCP_TOOL`, `READ_MCP_RESOURCE`, `USE_TOOL`.
 - **Provider `MCP`** — injects a summary of connected servers, their status, tools, and resources into agent context.
 - **`handleMcpRoutes`** (exported) — HTTP handler for `/api/mcp/*` (config CRUD, marketplace search, runtime status), wired up by the host server, not by the plugin object. The `McpRouteContext` type is also exported.
+- **Marketplace client** (exported) — `searchMcpMarketplace` and `getMcpServerDetails` query the public MCP Registry with caller cancellation, a 10-second default deadline, a 2 MiB response limit, and stable `McpMarketplaceError` codes. Override those limits with `McpMarketplaceRequestOptions` when needed.
 
 ## src layout
 

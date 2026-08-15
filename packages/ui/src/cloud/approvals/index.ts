@@ -9,9 +9,9 @@
  *  - {@link ApprovalsSurface} is the zero-prop component a settings section /
  *    sidebar host can embed.
  *  - {@link approvalsCloudRoute} is registered **at import time** at
- *    `dashboard/approvals`. This path has no `CloudRouterShell` redirect to
+ *    `cloud/approvals`. This path has no `CloudRouterShell` redirect to
  *    shadow, so eager registration is safe and keeps the standalone deep link
- *    live (same precedent as `dashboard/documents`).
+ *    live (same precedent as `cloud/documents`).
  *    {@link registerApprovalsCloudRoute} is also exported for re-registration at
  *    a custom path if needed.
  */
@@ -40,7 +40,7 @@ export {
 
 /** Stable view/section id + URL path slug for the Approvals surface. */
 export const APPROVALS_SECTION_ID = "approvals";
-export const APPROVALS_ROUTE_PATH = "dashboard/approvals";
+export const APPROVALS_ROUTE_PATH = "cloud/approvals";
 
 /** Lazy route element for the standalone Approvals pane (code-split). */
 const ApprovalsRouteLazy = lazy(() => import("./ApprovalsRoute"));
@@ -49,13 +49,13 @@ const ApprovalsRouteLazy = lazy(() => import("./ApprovalsRoute"));
 export const approvalsCloudRoute: CloudRouteDef = {
   path: APPROVALS_ROUTE_PATH,
   element: ApprovalsRouteLazy,
-  group: "dashboard",
+  group: "cloud",
 };
 
 /**
  * Register (or re-register) the standalone Approvals route. Exported for an
  * explicit custom-path mount; the default registration below runs at import time
- * since `dashboard/approvals` has no shell redirect to collide with.
+ * since `cloud/approvals` has no shell redirect to collide with.
  */
 export function registerApprovalsCloudRoute(
   override?: Partial<CloudRouteDef>,

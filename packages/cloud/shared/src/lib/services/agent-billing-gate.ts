@@ -8,11 +8,21 @@
 import { organizationsRepository } from "../../db/repositories";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
+import {
+  readWelcomeBonusWithheldSettings,
+  type SignupGrantWithheldReason,
+} from "./signup-grant-guard";
 
 export interface CreditGateResult {
   allowed: boolean;
   balance: number;
   error?: string;
+  /**
+   * Set only for organizations carrying historical welcome-credit withholding
+   * metadata. New accounts start at zero and never write this legacy state.
+   */
+  welcomeBonusWithheldReason?: SignupGrantWithheldReason;
+  welcomeBonusWithheldMessage?: string;
 }
 
 /**
@@ -93,10 +103,20 @@ async function runCreditGate(
     const balance = parseGateCreditBalance(org.credit_balance);
 
     if (balance <= minimumBalance) {
+      // A successful credit transaction removes this marker atomically with
+      // its balance increase. If it remains at zero, the org has never been
+      // funded since signup and the original withheld reason is still honest.
+      const withheld = balance <= 0 ? readWelcomeBonusWithheldSettings(org.settings) : null;
       return {
         allowed: false,
         balance,
         error: insufficientMessage(balance),
+        ...(withheld
+          ? {
+              welcomeBonusWithheldReason: withheld.reason,
+              ...(withheld.message ? { welcomeBonusWithheldMessage: withheld.message } : {}),
+            }
+          : {}),
       };
     }
 
@@ -141,7 +161,7 @@ async function runCreditGate(
 export async function checkAgentCreditGate(organizationId: string): Promise<CreditGateResult> {
   return runCreditGate(organizationId, AGENT_PRICING.MINIMUM_DEPOSIT, (balance) => {
     const deficit = Math.max(AGENT_PRICING.MINIMUM_DEPOSIT - balance, 0.01);
-    return `Insufficient credits. A balance greater than $${AGENT_PRICING.MINIMUM_DEPOSIT.toFixed(2)} is required to create or run Eliza agents. Please add at least $${deficit.toFixed(2)} to your account at /dashboard/billing.`;
+    return `Insufficient credits. A balance greater than $${AGENT_PRICING.MINIMUM_DEPOSIT.toFixed(2)} is required to create or run Eliza agents. Please add at least $${deficit.toFixed(2)} to your account at /cloud/billing.`;
   });
 }
 
@@ -159,6 +179,6 @@ export async function checkAgentTierUpgradeCreditGate(
   const minimum = AGENT_PRICING.UPGRADE_MINIMUM_BALANCE;
   return runCreditGate(organizationId, minimum, (balance) => {
     const deficit = Math.max(minimum - balance, 0.01);
-    return `Insufficient credits to upgrade. A dedicated agent costs $${AGENT_PRICING.DAILY_RUNNING_COST.toFixed(2)}/day of hosting, and upgrading requires a balance above $${minimum.toFixed(2)} (${AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS} days of hosting). Please add at least $${deficit.toFixed(2)} to your account at /dashboard/billing.`;
+    return `Insufficient credits to upgrade. A dedicated agent costs $${AGENT_PRICING.DAILY_RUNNING_COST.toFixed(2)}/day of hosting, and upgrading requires a balance above $${minimum.toFixed(2)} (${AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS} days of hosting). Please add at least $${deficit.toFixed(2)} to your account at /cloud/billing.`;
   });
 }

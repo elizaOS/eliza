@@ -1,5 +1,5 @@
 /**
- * Cloud TTS helpers — proxy to Eliza Cloud (`elizacloud.ai`).
+ * Cloud TTS helpers — proxy to the canonical Eliza Cloud API.
  *
  * Upstream routes (see eliza-cloud-v2): `POST /api/v1/voice/tts` and legacy
  * `POST /api/elevenlabs/tts`. Both accept `{ text, voiceId?, modelId? }` with
@@ -182,7 +182,7 @@ export function resolveCloudTtsBaseUrl(
   const fromConfig =
     fromEnv.length > 0 ? null : resolveCloudBaseUrlFromConfig();
   const configured = fromEnv.length > 0 ? fromEnv : (fromConfig?.trim() ?? "");
-  const fallback = "https://elizacloud.ai/api/v1";
+  const fallback = "https://api.eliza.app/api/v1";
   const base = configured.length > 0 ? configured : fallback;
 
   try {
@@ -199,11 +199,10 @@ export function resolveCloudTtsBaseUrl(
 }
 
 /**
- * A cloud base URL plus its `www`/apex sibling, so a base written either way
- * still resolves. `elizacloud.ai` and `www.elizacloud.ai` are the same origin
- * upstream; a user who configured one should still reach the other. The single
- * `URL` parse lives here so the TTS and STT candidate resolvers share one
- * validated fan-out instead of each carrying its own parse-guarded copy.
+ * A cloud base URL plus its `www`/apex sibling when the configured host is
+ * itself an apex or `www` host. Service subdomains such as `api.eliza.app`
+ * must never grow invalid `www.api.*` retry candidates. The single URL parse
+ * lives here so TTS and STT share one validated fan-out.
  */
 function resolveWwwApexBaseSiblings(base: string): string[] {
   const trimmed = base.replace(/\/+$/, "");
@@ -213,6 +212,10 @@ function resolveWwwApexBaseSiblings(base: string): string[] {
   } catch {
     // A custom base URL may be a bare path the resolver already validated;
     // without a parsable host there is no sibling to add.
+    return [trimmed];
+  }
+  const labels = parsed.hostname.split(".");
+  if (!parsed.hostname.startsWith("www.") && labels.length > 2) {
     return [trimmed];
   }
   parsed.hostname = parsed.hostname.startsWith("www.")
@@ -255,8 +258,8 @@ export function resolveCloudTtsCandidateUrls(
  * same base URL as TTS. Interactive web capture posts a WAV here through the
  * agent proxy (`/api/asr/cloud`) so `eliza-cloud` ASR is the real transcriber
  * instead of the engine-dependent browser SpeechRecognition. The `www`/apex
- * pairing mirrors the TTS resolver (both use `resolveWwwApexBaseSiblings`) so a
- * base URL written either way still resolves; there is no ElevenLabs-shaped
+ * pairing mirrors the TTS resolver for apex/`www` bases; service subdomains
+ * stay exact. There is no ElevenLabs-shaped
  * legacy STT compat route (unlike TTS), so only the canonical `/voice/stt` path
  * is queued.
  */

@@ -181,7 +181,7 @@ export const getAppDeployStatusAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: '"Acme Bot" is live at https://acme.elizacloud.ai.',
+          text: '"Acme Bot" is live at https://acme.apps.eliza.app.',
           actions: ["GET_APP_DEPLOY_STATUS"],
         },
       },

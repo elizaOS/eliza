@@ -5,10 +5,14 @@ feature.
 
 ## Pull requests
 
-`.github/workflows/ci.yml` is the only pull-request workflow. Its `Tests` and
-`Smoke` jobs call the repository-level package sweeps and deterministic E2E
-suite. Path classification can skip unaffected groups, while the stable
-`Required` job remains the only status intended for branch protection.
+`.github/workflows/ci.yml` is the canonical required pull-request workflow. Its
+`Tests` and `Smoke` jobs call the repository-level package sweeps and
+deterministic E2E suite. Path classification can skip unaffected groups, while
+the stable `Required` job remains the only status intended for branch
+protection. Specialized branch-scoped and path-scoped PR gates such as
+`develop-pr.yml`, `quality.yml`, `scenario-pr.yml`, `ui-e2e-gate.yml`,
+`ui-fixture-e2e.yml`, and `gitleaks.yml` run alongside it for specific
+surfaces; none replaces the `CI / Required` status.
 
 The pull-request lane is credential-free. It uses deterministic model fixtures,
 local services, and checked-in browser fixtures. A test that requires a hosted
@@ -23,10 +27,12 @@ infrastructure.
 
 ## Live services
 
-`.github/workflows/live-smoke.yml` is manual-only. The dispatch input selects
-`app`, `scenarios`, `cloud`, `voice`, or `all`. Credential-backed failures are
-therefore visible without making ordinary repository health depend on secret
-availability or third-party uptime.
+`.github/workflows/live-smoke.yml` is the general credential-backed dispatcher.
+The dispatch input selects `app`, `scenarios`, `cloud`, `voice`, or `all`.
+Credential-backed failures are therefore visible without making ordinary
+repository health depend on secret availability or third-party uptime.
+Specialized app and voice evidence also flows through `app-live-e2e.yml` and
+`voice-live-e2e.yml`, which run on schedule or dispatch.
 
 ## Platform and release evidence
 

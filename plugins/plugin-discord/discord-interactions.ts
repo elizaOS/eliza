@@ -646,14 +646,21 @@ export async function onReady(
 				service.discordSettings,
 			);
 		} catch (error) {
+			// error-policy:J7 profile sync is a best-effort startup step and must not
+			// abort connector readiness. Flattening it to `error.message` discarded
+			// the typed code, context, and cause that say WHICH failure this was, so
+			// hand the error itself to the serializer and to runtime diagnostics.
 			service.runtime.logger.warn(
 				{
 					src: "plugin:discord",
 					agentId: service.runtime.agentId,
-					error: error instanceof Error ? error.message : String(error),
+					err: error,
 				},
 				"Failed to synchronize Discord bot profile from connector settings",
 			);
+			service.runtime.reportError("DiscordService.syncProfile", error, {
+				diagnosticOnly: true,
+			});
 		}
 	}
 	const inviteUrl = readyClientUser?.id

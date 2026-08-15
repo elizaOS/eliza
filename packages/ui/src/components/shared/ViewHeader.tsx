@@ -36,9 +36,9 @@ export function navigateBackToLauncher(): void {
  * affordance is icon-only, with no border/background/circle at rest). Fixing
  * the primitive fixes every consumer at once. A subtle neutral `bg-hover` chip
  * (square-cornered `rounded-md`, NOT the old `rounded-full` disc) only appears
- * on hover for affordance, never in the resting state. Focus styling is NOT
- * sprinkled here: it is centralized in CSS (`--focus`) per the no-focus-ring
- * gate, so this primitive carries no `focus`/`ring` utilities.
+ * on hover for affordance, never in the resting state. Focus rings are banned
+ * globally; `keyboard-focus-surface` is the filled accent `:focus-visible`
+ * treatment that keeps keyboard position visible without a ring.
  */
 export function ViewBackButton({
   onBack,
@@ -71,7 +71,7 @@ export function ViewBackButton({
       onClick={handleBack}
       aria-label={label}
       className={cn(
-        "group -m-1 inline-flex h-11 w-11 items-center justify-center bg-transparent text-txt",
+        "keyboard-focus-surface group -m-1 inline-flex h-11 w-11 items-center justify-center bg-transparent text-txt",
         className,
       )}
       {...agentProps}

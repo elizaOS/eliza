@@ -436,7 +436,7 @@ describe("managed dedicated canary", () => {
       `bridge-${SUFFIX}`,
       `sse-${SUFFIX}`,
       "100.64.0.21",
-      "api-staging.elizacloud.ai",
+      "api-staging.eliza.app",
       "A real reply",
     ]) {
       expect(serialized).not.toContain(forbidden);
@@ -511,7 +511,7 @@ describe("managed dedicated canary", () => {
     const fixture = createFixture();
     const evidence = await runManagedDedicatedCanary({
       apiKey: SECRET,
-      baseUrl: "https://api.elizacloud.ai",
+      baseUrl: "https://api.eliza.app",
       suffix: SUFFIX,
       fetch: fixture.fetch,
       now: fixture.now,
@@ -528,7 +528,7 @@ describe("managed dedicated canary", () => {
     const fixture = createFixture();
     const evidence = await runManagedDedicatedCanary({
       apiKey: SECRET,
-      baseUrl: "https://user:password@api-staging.elizacloud.ai",
+      baseUrl: "https://user:password@api-staging.eliza.app",
       suffix: SUFFIX,
       fetch: fixture.fetch,
       now: fixture.now,

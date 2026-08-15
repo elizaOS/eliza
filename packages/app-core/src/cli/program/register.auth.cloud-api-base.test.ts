@@ -3,12 +3,9 @@
  * auth commands use to decide WHICH Eliza Cloud deployment they authenticate
  * against.
  *
- * The environment boundary is the whole point: a blanket "any *.elizacloud.ai →
- * api.elizacloud.ai" rewrite sent staging hosts to PRODUCTION, so
- * `dev-login --cloud https://api-staging.elizacloud.ai` minted a prod key and
- * reported success — a staging credential was unobtainable and you could not
- * tell. These cases pin each environment to itself so that cannot regress
- * silently.
+ * The environment boundary is the whole point: these cases pin canonical and
+ * transitional hosts to their own environment so auth can never cross-wire
+ * staging and production.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveCloudApiBase } from "./register.auth";
@@ -23,6 +20,10 @@ afterEach(() => {
 describe("resolveCloudApiBase", () => {
   it("maps every production web host to the production API host", () => {
     for (const host of [
+      "eliza.app",
+      "www.eliza.app",
+      "cloud.eliza.app",
+      "api.eliza.app",
       "elizacloud.ai",
       "www.elizacloud.ai",
       "app.elizacloud.ai",
@@ -30,38 +31,41 @@ describe("resolveCloudApiBase", () => {
       "api.elizacloud.ai",
     ]) {
       expect(resolveCloudApiBase(`https://${host}`)).toBe(
-        "https://api.elizacloud.ai",
+        "https://api.eliza.app",
       );
     }
   });
 
   it("keeps staging hosts on staging instead of redirecting to production", () => {
     for (const host of [
+      "staging.eliza.app",
+      "cloud-staging.eliza.app",
+      "api-staging.eliza.app",
       "staging.elizacloud.ai",
       "app-staging.elizacloud.ai",
       "api-staging.elizacloud.ai",
     ]) {
       expect(resolveCloudApiBase(`https://${host}`)).toBe(
-        "https://api-staging.elizacloud.ai",
+        "https://api-staging.eliza.app",
       );
     }
   });
 
   it("never crosses the staging/production boundary in either direction", () => {
-    expect(resolveCloudApiBase("https://api-staging.elizacloud.ai")).not.toBe(
-      "https://api.elizacloud.ai",
+    expect(resolveCloudApiBase("https://api-staging.eliza.app")).not.toBe(
+      "https://api.eliza.app",
     );
-    expect(resolveCloudApiBase("https://elizacloud.ai")).not.toBe(
-      "https://api-staging.elizacloud.ai",
+    expect(resolveCloudApiBase("https://eliza.app")).not.toBe(
+      "https://api-staging.eliza.app",
     );
   });
 
   it("strips a trailing /api/v1 — SIWE endpoints live at the origin", () => {
-    expect(
-      resolveCloudApiBase("https://api-staging.elizacloud.ai/api/v1"),
-    ).toBe("https://api-staging.elizacloud.ai");
+    expect(resolveCloudApiBase("https://api-staging.eliza.app/api/v1")).toBe(
+      "https://api-staging.eliza.app",
+    );
     expect(resolveCloudApiBase("https://elizacloud.ai/api/v1/")).toBe(
-      "https://api.elizacloud.ai",
+      "https://api.eliza.app",
     );
   });
 
@@ -76,17 +80,17 @@ describe("resolveCloudApiBase", () => {
   });
 
   it("falls back to ELIZAOS_CLOUD_BASE_URL, then production, when no input is given", () => {
-    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.elizacloud.ai";
-    expect(resolveCloudApiBase()).toBe("https://api-staging.elizacloud.ai");
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app";
+    expect(resolveCloudApiBase()).toBe("https://api-staging.eliza.app");
 
     delete process.env.ELIZAOS_CLOUD_BASE_URL;
-    expect(resolveCloudApiBase()).toBe("https://api.elizacloud.ai");
+    expect(resolveCloudApiBase()).toBe("https://api.eliza.app");
   });
 
   it("an explicit argument outranks the environment variable", () => {
-    process.env.ELIZAOS_CLOUD_BASE_URL = "https://elizacloud.ai";
-    expect(resolveCloudApiBase("https://api-staging.elizacloud.ai")).toBe(
-      "https://api-staging.elizacloud.ai",
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://eliza.app";
+    expect(resolveCloudApiBase("https://api-staging.eliza.app")).toBe(
+      "https://api-staging.eliza.app",
     );
   });
 

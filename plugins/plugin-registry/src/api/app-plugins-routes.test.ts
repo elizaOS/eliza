@@ -1,3 +1,8 @@
+/**
+ * Exercises the app-core compatibility routes against persisted plugin state,
+ * including the invariants shared with the canonical core toggle surface.
+ */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -77,6 +82,7 @@ vi.mock("@elizaos/vault", () => ({
 }));
 
 import {
+  analyzePluginStateDrift,
   buildPluginListResponse,
   handlePluginsCompatRoutes,
   persistCompatPluginMutation,
@@ -219,6 +225,7 @@ describe("app plugin compatibility routes", () => {
 
     expect(result.status).toBe(200);
     expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-discord"],
       entries: {
         discord: {
           enabled: true,
@@ -228,6 +235,385 @@ describe("app plugin compatibility routes", () => {
     expect(savedConfig?.connectors).toEqual({
       discord: {
         enabled: true,
+      },
+    });
+  });
+
+  it("removes every plugin alias from the allowlist when disabling", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["discord", "@elizaos/plugin-discord", "@elizaos/plugin-openai"],
+        entries: {
+          discord: { enabled: true },
+        },
+      },
+    };
+
+    const result = persistCompatPluginMutation(
+      "discord",
+      { enabled: false },
+      makePlugin(),
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai"],
+      entries: {
+        discord: {
+          enabled: false,
+        },
+      },
+    });
+    expect(savedConfig?.connectors).toEqual({
+      discord: {
+        enabled: false,
+      },
+    });
+  });
+
+  it("keeps app plugin entries and the canonical allowlist aligned", () => {
+    const personalAssistant = makePlugin({
+      id: "personal-assistant",
+      name: "Personal Assistant",
+      category: "app",
+      npmName: "@elizaos/plugin-personal-assistant",
+    });
+    const result = persistCompatPluginMutation(
+      "personal-assistant",
+      { enabled: true },
+      personalAssistant,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-personal-assistant"],
+      entries: {
+        "personal-assistant": {
+          enabled: true,
+        },
+      },
+    });
+    expect(savedConfig?.connectors).toBeUndefined();
+
+    const drift = analyzePluginStateDrift(
+      [{ ...personalAssistant, enabled: true }],
+      savedConfig ?? {},
+      { "personal-assistant": { enabled: true } },
+      new Set(["@elizaos/plugin-personal-assistant"]),
+    );
+    expect(drift.plugins[0]?.drift_flags).not.toContain("entries_vs_allowlist");
+  });
+
+  it("canonicalizes mismatched runtime and package identities when disabling", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: [
+          "google",
+          "@elizaos/plugin-google-workspace",
+          "@elizaos/plugin-openai",
+        ],
+        entries: {
+          google: { enabled: true },
+          "google-workspace": { enabled: true },
+        },
+      },
+    };
+    const google = makePlugin({
+      id: "google",
+      name: "Google Workspace",
+      category: "feature",
+      npmName: "@elizaos/plugin-google-workspace",
+      enabled: false,
+    });
+
+    const result = persistCompatPluginMutation(
+      "google",
+      { enabled: false },
+      google,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai"],
+      entries: {
+        "google-workspace": { enabled: false },
+      },
+    });
+
+    const savedPlugins = savedConfig?.plugins as {
+      allow: string[];
+      entries: Record<string, { enabled?: unknown }>;
+    };
+    const drift = analyzePluginStateDrift(
+      [google],
+      {},
+      savedPlugins.entries,
+      new Set(savedPlugins.allow),
+    );
+    expect(drift.plugins[0]?.drift_flags).not.toContain("entries_vs_allowlist");
+  });
+
+  it("keeps a canonical disabled entry disabled when the runtime plugin is loaded", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: [],
+        entries: {
+          "google-workspace": { enabled: false },
+        },
+      },
+    };
+    const googleEntry = {
+      id: "google",
+      name: "Google Workspace",
+      npmName: "@elizaos/plugin-google-workspace",
+      description: "",
+      tags: [],
+      kind: "connector",
+      subtype: "email",
+      config: {},
+      render: {},
+      resources: {},
+      version: "1.0.0",
+    };
+    mocks.loadRegistry.mockReturnValue({
+      all: [googleEntry],
+      byId: new Map([["google", googleEntry]]),
+    });
+
+    const response = buildPluginListResponse({
+      plugins: [{ name: "google" }],
+    } as never);
+
+    expect(response.plugins.find((plugin) => plugin.id === "google")).toEqual(
+      expect.objectContaining({ enabled: false, isActive: true }),
+    );
+  });
+
+  it("replaces a stale compatibility alias with the canonical package on enable", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["google", "@elizaos/plugin-openai"],
+        entries: {
+          google: { enabled: false },
+        },
+      },
+    };
+    const google = makePlugin({
+      id: "google",
+      name: "Google Workspace",
+      category: "feature",
+      npmName: "@elizaos/plugin-google-workspace",
+      enabled: true,
+    });
+
+    const result = persistCompatPluginMutation(
+      "google",
+      { enabled: true },
+      google,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai", "@elizaos/plugin-google-workspace"],
+      entries: {
+        "google-workspace": { enabled: true },
+      },
+    });
+  });
+
+  it("migrates allow aliases during a config-only update", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["google", "@elizaos/plugin-openai"],
+        entries: { google: { enabled: true } },
+      },
+    };
+    const google = makePlugin({
+      id: "google",
+      name: "Google Workspace",
+      category: "feature",
+      npmName: "@elizaos/plugin-google-workspace",
+      enabled: true,
+      parameters: [
+        {
+          key: "GOOGLE_CLIENT_ID",
+          required: false,
+          sensitive: false,
+          type: "string",
+        },
+      ],
+    });
+
+    const result = persistCompatPluginMutation(
+      "google",
+      { config: { GOOGLE_CLIENT_ID: "client-id" } },
+      google,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai", "@elizaos/plugin-google-workspace"],
+      entries: {
+        "google-workspace": {
+          enabled: true,
+          config: { GOOGLE_CLIENT_ID: "client-id" },
+        },
+      },
+    });
+    const savedPlugins = savedConfig?.plugins as {
+      allow: string[];
+      entries: Record<string, { enabled?: unknown }>;
+    };
+    expect(
+      analyzePluginStateDrift(
+        [google],
+        {},
+        savedPlugins.entries,
+        new Set(savedPlugins.allow),
+      ).plugins[0]?.drift_flags,
+    ).not.toContain("entries_vs_allowlist");
+  });
+
+  it("preserves the registry id for config-only bundled feature updates", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["@elizaos/core"],
+        entries: { core: { enabled: true } },
+      },
+    };
+    const orchestrator = makePlugin({
+      id: "agent-orchestrator",
+      name: "Agent Orchestrator",
+      category: "feature",
+      npmName: "@elizaos/core",
+      enabled: true,
+      parameters: [
+        {
+          key: "ORCHESTRATOR_MODE",
+          required: false,
+          sensitive: false,
+          type: "string",
+        },
+      ],
+    });
+
+    const result = persistCompatPluginMutation(
+      "agent-orchestrator",
+      { config: { ORCHESTRATOR_MODE: "enabled" } },
+      orchestrator,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["agent-orchestrator"],
+      entries: {
+        "agent-orchestrator": {
+          enabled: true,
+          config: { ORCHESTRATOR_MODE: "enabled" },
+        },
+      },
+    });
+  });
+
+  it("falls back to the registry id for non-plugin package metadata", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["@elizaos/core"],
+        entries: {
+          core: { enabled: false },
+        },
+      },
+    };
+    const orchestrator = makePlugin({
+      id: "agent-orchestrator",
+      name: "Agent Orchestrator",
+      category: "feature",
+      npmName: "@elizaos/core",
+      enabled: true,
+    });
+
+    const result = persistCompatPluginMutation(
+      "agent-orchestrator",
+      { enabled: true },
+      orchestrator,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["agent-orchestrator"],
+      entries: {
+        "agent-orchestrator": { enabled: true },
+      },
+    });
+
+    currentConfig = clone(savedConfig ?? {});
+    savedConfig = undefined;
+    const disabled = persistCompatPluginMutation(
+      "agent-orchestrator",
+      { enabled: false },
+      orchestrator,
+    );
+
+    expect(disabled.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: [],
+      entries: {
+        "agent-orchestrator": { enabled: false },
+      },
+    });
+  });
+
+  it("canonicalizes legacy app-package identities in both directions", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["log-viewer", "@elizaos/plugin-openai"],
+        entries: {
+          "log-viewer": { enabled: false },
+        },
+      },
+    };
+    const logViewer = makePlugin({
+      id: "log-viewer",
+      name: "Log Viewer",
+      category: "app",
+      npmName: "@elizaos/app-log-viewer",
+      enabled: false,
+    });
+
+    const enabledResult = persistCompatPluginMutation(
+      "log-viewer",
+      { enabled: true },
+      logViewer,
+    );
+
+    expect(enabledResult.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai", "@elizaos/app-log-viewer"],
+      entries: {
+        "app-log-viewer": { enabled: true },
+      },
+    });
+
+    currentConfig = savedConfig ?? {};
+    const disabledResult = persistCompatPluginMutation(
+      "log-viewer",
+      { enabled: false },
+      logViewer,
+    );
+
+    expect(disabledResult.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai"],
+      entries: {
+        "app-log-viewer": { enabled: false },
       },
     });
   });
@@ -298,6 +684,283 @@ describe("app plugin compatibility routes", () => {
           expect.objectContaining({ id: "discord" }),
         ]),
       }),
+    );
+  });
+
+  function makeDiscordRegistryEntry() {
+    return {
+      id: "discord",
+      name: "Discord",
+      npmName: "@elizaos/plugin-discord",
+      description: "",
+      tags: [],
+      kind: "connector",
+      subtype: "chat",
+      config: {
+        DISCORD_API_TOKEN: {
+          type: "secret",
+          label: "Bot token",
+          required: true,
+          sensitive: true,
+        },
+      },
+      render: {},
+      resources: {},
+      version: "1.0.0",
+    };
+  }
+
+  function useDiscordRegistry() {
+    const discordEntry = makeDiscordRegistryEntry();
+    mocks.loadRegistry.mockReturnValue({
+      all: [discordEntry],
+      byId: new Map([["discord", discordEntry]]),
+    });
+  }
+
+  it("marks a required param set from runtime.getSetting without process.env", () => {
+    useDiscordRegistry();
+
+    const response = buildPluginListResponse({
+      plugins: [],
+      getSetting: (key: string) =>
+        key === "DISCORD_API_TOKEN" ? "runtime-token" : undefined,
+      getService: () => null,
+    } as never);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord).toEqual(
+      expect.objectContaining({ configured: true, validationErrors: [] }),
+    );
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({ key: "DISCORD_API_TOKEN", isSet: true }),
+    );
+  });
+
+  it("marks a required param set from the saved plugin entry config", () => {
+    useDiscordRegistry();
+    currentConfig = {
+      env: {},
+      plugins: {
+        entries: {
+          discord: {
+            enabled: true,
+            config: { DISCORD_API_TOKEN: "saved-token" },
+          },
+        },
+      },
+    };
+
+    const response = buildPluginListResponse(null);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord).toEqual(expect.objectContaining({ configured: true }));
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({ key: "DISCORD_API_TOKEN", isSet: true }),
+    );
+  });
+
+  it("keeps a live runtime miss unset even when process.env has the token", () => {
+    useDiscordRegistry();
+    process.env.DISCORD_API_TOKEN = "stale-host-token";
+
+    const response = buildPluginListResponse({
+      plugins: [],
+      getSetting: () => null,
+      getService: () => null,
+    } as never);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({
+        key: "DISCORD_API_TOKEN",
+        isSet: false,
+        currentValue: null,
+      }),
+    );
+    expect(discord).toEqual(expect.objectContaining({ configured: false }));
+    expect(discord?.validationErrors).toEqual([
+      expect.objectContaining({ field: "DISCORD_API_TOKEN" }),
+    ]);
+  });
+
+  it("keeps a live runtime miss unset even when config.env and the saved entry have tokens", () => {
+    useDiscordRegistry();
+    currentConfig = {
+      env: { DISCORD_API_TOKEN: "stale-config-env-token" },
+      plugins: {
+        entries: {
+          discord: {
+            enabled: true,
+            config: { DISCORD_API_TOKEN: "stale-saved-token" },
+          },
+        },
+      },
+    };
+
+    const response = buildPluginListResponse({
+      plugins: [],
+      getSetting: () => null,
+      getService: () => null,
+    } as never);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({
+        key: "DISCORD_API_TOKEN",
+        isSet: false,
+        currentValue: null,
+      }),
+    );
+    expect(discord).toEqual(expect.objectContaining({ configured: false }));
+  });
+
+  it("reports a required param unset when no env, saved, or runtime value exists", () => {
+    useDiscordRegistry();
+
+    const response = buildPluginListResponse(null);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord).toEqual(expect.objectContaining({ configured: false }));
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({ isSet: false }),
+    );
+  });
+
+  it("does not report a loaded plugin active when its service is unhealthy", () => {
+    useDiscordRegistry();
+
+    const response = buildPluginListResponse({
+      plugins: [{ name: "@elizaos/plugin-discord" }],
+      getSetting: (key: string) =>
+        key === "DISCORD_API_TOKEN" ? "invalid-token" : undefined,
+      getService: (name: string) =>
+        name === "discord" ? { isHealthy: () => false } : null,
+    } as never);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord).toEqual(
+      expect.objectContaining({ configured: true, isActive: false }),
+    );
+    expect(discord?.validationWarnings).toEqual([
+      expect.objectContaining({
+        message: expect.stringContaining("unhealthy"),
+      }),
+    ]);
+  });
+
+  it("reports a loaded plugin active when its service is healthy", () => {
+    useDiscordRegistry();
+
+    const response = buildPluginListResponse({
+      plugins: [{ name: "@elizaos/plugin-discord" }],
+      getSetting: (key: string) =>
+        key === "DISCORD_API_TOKEN" ? "valid-token" : undefined,
+      getService: (name: string) =>
+        name === "discord" ? { isHealthy: () => true } : null,
+    } as never);
+
+    expect(response.plugins.find((plugin) => plugin.id === "discord")).toEqual(
+      expect.objectContaining({
+        configured: true,
+        isActive: true,
+        validationWarnings: [],
+      }),
+    );
+  });
+
+  it("keeps loaded-name activity for plugins without a health surface", () => {
+    useDiscordRegistry();
+
+    const response = buildPluginListResponse({
+      plugins: [{ name: "@elizaos/plugin-discord" }],
+      getSetting: () => undefined,
+      getService: () => null,
+    } as never);
+
+    expect(response.plugins.find((plugin) => plugin.id === "discord")).toEqual(
+      expect.objectContaining({ isActive: true }),
+    );
+  });
+
+  it("reflects a save into catalog isSet while login failure stays inactive", () => {
+    useDiscordRegistry();
+    const runtimeSettings: Record<string, string> = {};
+
+    const saveResult = persistCompatPluginMutation(
+      "discord",
+      { config: { DISCORD_API_TOKEN: "typo-token" } },
+      makePlugin(),
+    );
+    expect(saveResult.status).toBe(200);
+    // The settings bridge (#18718) folds the save into runtime.getSetting.
+    runtimeSettings.DISCORD_API_TOKEN = "typo-token";
+    currentConfig = clone(savedConfig ?? currentConfig);
+    delete process.env.DISCORD_API_TOKEN;
+
+    const response = buildPluginListResponse({
+      plugins: [{ name: "@elizaos/plugin-discord" }],
+      getSetting: (key: string) => runtimeSettings[key],
+      getService: (name: string) =>
+        name === "discord" ? { isHealthy: () => false } : null,
+    } as never);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({ isSet: true }),
+    );
+    expect(discord).toEqual(
+      expect.objectContaining({ configured: true, isActive: false }),
+    );
+  });
+
+  it("returns 422 from the test probe when the service reports unhealthy", async () => {
+    const handled = await handlePluginsCompatRoutes(
+      {
+        method: "POST",
+        url: "/api/plugins/discord/test",
+      } as never,
+      {} as never,
+      {
+        current: {
+          plugins: [{ name: "@elizaos/plugin-discord" }],
+          getSetting: () => undefined,
+          getService: (name: string) =>
+            name === "discord" ? { isHealthy: () => false } : null,
+        },
+      } as never,
+    );
+
+    expect(handled).toBe(true);
+    expect(mocks.sendJson).toHaveBeenCalledWith(
+      expect.anything(),
+      422,
+      expect.objectContaining({ success: false, pluginId: "discord" }),
+    );
+  });
+
+  it("returns success from the test probe when the service reports healthy", async () => {
+    const handled = await handlePluginsCompatRoutes(
+      {
+        method: "POST",
+        url: "/api/plugins/discord/test",
+      } as never,
+      {} as never,
+      {
+        current: {
+          plugins: [{ name: "@elizaos/plugin-discord" }],
+          getSetting: () => undefined,
+          getService: (name: string) =>
+            name === "discord" ? { isHealthy: () => true } : null,
+        },
+      } as never,
+    );
+
+    expect(handled).toBe(true);
+    expect(mocks.sendJson).toHaveBeenCalledWith(
+      expect.anything(),
+      200,
+      expect.objectContaining({ success: true, pluginId: "discord" }),
     );
   });
 

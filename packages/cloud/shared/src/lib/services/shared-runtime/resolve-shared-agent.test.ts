@@ -21,6 +21,11 @@ const requireUserOrApiKeyWithOrgLookup = mock(
   }),
 );
 const findByIdAndOrg = mock(async () => null);
+const requireUserOrApiKeyWithOrg = mock(async () => ({
+  id: "user-1",
+  organization_id: "org-1",
+  created_at: new Date("2026-01-01T00:00:00.000Z"),
+}));
 
 // Scope-cache key derivation for the CURRENT request. Default: an API-key
 // request whose hash-prefix is stable, so hit/miss can be exercised.
@@ -32,15 +37,20 @@ const apiKeyScopeHashPrefix = mock(() => scopeHashPrefixBehavior());
 let sessionHashPrefixBehavior: () => Promise<string | null> = async () => null;
 const sessionScopeHashPrefix = mock(() => sessionHashPrefixBehavior());
 let sessionRevalidateBehavior: (cachedStewardUserId: string) => Promise<boolean> = async () => true;
-const revalidateSessionScope = mock((_: unknown, cachedStewardUserId: string) =>
-  sessionRevalidateBehavior(cachedStewardUserId),
+const revalidateSessionScope = mock(
+  (_: unknown, cachedStewardUserId: string, _cachedOrganizationId?: string) =>
+    sessionRevalidateBehavior(cachedStewardUserId),
 );
+let stagingSessionCandidateBehavior = false;
+const isStagingSessionScopeCandidate = mock(() => stagingSessionCandidateBehavior);
 
 mock.module("../../auth/workers-hono-auth", () => ({
+  requireUserOrApiKeyWithOrg,
   requireUserOrApiKeyWithOrgLookup,
   apiKeyScopeHashPrefix,
   sessionScopeHashPrefix,
   revalidateSessionScope,
+  isStagingSessionScopeCandidate,
 }));
 
 mock.module("../../../db/repositories/agent-sandboxes", () => ({
@@ -108,9 +118,9 @@ mock.module("../../utils/logger", () => ({
   logger: { debug: () => {}, warn: () => {}, error: () => {}, info: () => {} },
 }));
 
-const { resolveSharedAgent, resetSharedAgentScopeMemoryCacheForTests } = await import(
-  "./resolve-shared-agent"
-);
+const { resolveSharedAgent, resetSharedAgentScopeMemoryCacheForTests, seedSharedAgentScopeCache } =
+  await import("./resolve-shared-agent");
+const { personalSharedAgentId } = await import("./personal-shared-agent");
 const { CacheTTL, CacheKeys } = await import("../../cache/keys");
 
 function contextWithAgentId(agentId?: string, headers: Record<string, string> = {}) {
@@ -155,6 +165,7 @@ function agent(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   resetSharedAgentScopeMemoryCacheForTests();
+  requireUserOrApiKeyWithOrg.mockClear();
   requireUserOrApiKeyWithOrgLookup.mockReset();
   requireUserOrApiKeyWithOrgLookup.mockImplementation(
     async <T>(_: unknown, lookup: (organizationId: string) => Promise<T>) => ({
@@ -174,9 +185,11 @@ beforeEach(() => {
   cacheStore.clear();
   sessionScopeHashPrefix.mockClear();
   revalidateSessionScope.mockClear();
+  isStagingSessionScopeCandidate.mockClear();
   scopeHashPrefixBehavior = async () => "keyhashpref0000";
   sessionHashPrefixBehavior = async () => null;
   sessionRevalidateBehavior = async () => true;
+  stagingSessionCandidateBehavior = false;
   validateBehavior = async () => ({ is_active: true, organization_id: "org-1", expires_at: null });
 });
 
@@ -201,6 +214,36 @@ describe("resolveSharedAgent", () => {
     expect(findByIdAndOrg).toHaveBeenCalledWith("agent-1", "org-1");
   });
 
+  test("resolves the account's namespaced personal identity without a sandbox row", async () => {
+    const agentId = personalSharedAgentId({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+
+    await expect(resolveSharedAgent(contextWithAgentId(agentId) as never)).resolves.toMatchObject({
+      agentId,
+      orgId: "org-1",
+      agentName: "Eliza",
+      agentKind: "personal",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+    expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+  });
+
+  test("hides another account's personal identity as not found", async () => {
+    const otherAccountId = personalSharedAgentId({
+      userId: "user-2",
+      organizationId: "org-2",
+    });
+
+    await expect(resolveSharedAgent(contextWithAgentId(otherAccountId) as never)).resolves.toEqual({
+      error: "Agent not found",
+      status: 404,
+    });
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+  });
+
   test("cache-only miss warms in waitUntil and performs no inline DB hydration", async () => {
     findByIdAndOrg.mockResolvedValue(agent());
     const waited: Promise<unknown>[] = [];
@@ -212,6 +255,8 @@ describe("resolveSharedAgent", () => {
     ).resolves.toEqual({
       error: "Agent authorization cache is warming. Retry shortly.",
       status: 503,
+      code: "agent_cache_warming",
+      retryAfterSeconds: 1,
     });
     expect(waited).toHaveLength(1);
     await waited[0];
@@ -775,6 +820,31 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
     // But the credential gate STILL ran (JWT re-verified against the cached user).
     expect(revalidateSessionScope).toHaveBeenCalledTimes(1);
     expect(revalidateSessionScope.mock.calls[0][1]).toBe("steward-user-1");
+    expect(revalidateSessionScope.mock.calls[0][2]).toBe("org-1");
+  });
+
+  test("a QA session cache hit uses primary-bound revalidation instead of a Steward user cache", async () => {
+    scopeHashPrefixBehavior = async () => null;
+    sessionHashPrefixBehavior = async () => "qa-sesshash00000";
+    stagingSessionCandidateBehavior = true;
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+    findByIdAndOrg.mockClear();
+    revalidateSessionScope.mockClear();
+    // No generic user:steward cache is seeded: the QA verifier itself owns the
+    // primary user/org check and must not depend on that rollback-era cache.
+    const result = await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+
+    expect(result).toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    expect(requireUserOrApiKeyWithOrgLookup).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(revalidateSessionScope).toHaveBeenCalledWith(
+      expect.anything(),
+      "steward-user-1",
+      "org-1",
+    );
   });
 
   test("a session hit whose token no longer verifies falls back to the full gate", async () => {
@@ -949,5 +1019,106 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
         value: "not-a-timestamp",
       });
     });
+  });
+});
+
+describe("seedSharedAgentScopeCache (fresh-create -> immediate-send)", () => {
+  const validationKey = () =>
+    CacheKeys.apiKey.validation(
+      createHash("sha256").update("eliza_testkey").digest("hex").substring(0, 16),
+    );
+
+  test("API-key path: a seeded fresh create takes an immediate cache-only send without 503 or DB hydration", async () => {
+    // The create request's own auth already validated the key (and cached it);
+    // the seeder writes the scope entry that same request derives.
+    cacheStore.set(validationKey(), {
+      is_active: true,
+      organization_id: "org-1",
+      expires_at: null,
+    });
+    await seedSharedAgentScopeCache(apiKeyContext("agent-1") as never, agent() as never);
+
+    // The immediate send may land on a DIFFERENT isolate: only the distributed
+    // entry may carry the hit.
+    resetSharedAgentScopeMemoryCacheForTests();
+
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: () => undefined },
+      }),
+    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(requireUserOrApiKeyWithOrgLookup).not.toHaveBeenCalled();
+  });
+
+  test("session path: the seeded entry carries the steward user id and serves the immediate send", async () => {
+    scopeHashPrefixBehavior = async () => null;
+    sessionHashPrefixBehavior = async () => "sesshashpref0000";
+    // The create request's auth hydrated the lifecycle-invalidated user entry.
+    cacheStore.set(CacheKeys.user.byStewardId("steward-user-1"), {
+      is_active: true,
+      organization_id: "org-1",
+      organization: { is_active: true },
+    });
+    await seedSharedAgentScopeCache(
+      contextWithAgentId("agent-1") as never,
+      agent() as never,
+      "steward-user-1",
+    );
+    const seeded = cacheStore.get(
+      CacheKeys.sharedAgentScope.resolve("s:sesshashpref0000", "agent-1"),
+    ) as { stewardUserId?: string };
+    expect(seeded.stewardUserId).toBe("steward-user-1");
+
+    resetSharedAgentScopeMemoryCacheForTests();
+
+    await expect(
+      resolveSharedAgent(contextWithAgentId("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: () => undefined },
+      }),
+    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    expect(revalidateSessionScope).toHaveBeenCalledWith(
+      expect.anything(),
+      "steward-user-1",
+      "org-1",
+    );
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+  });
+
+  test("seeding does NOT bypass the per-request credential gate: a re-scoped key falls back to warming", async () => {
+    await seedSharedAgentScopeCache(apiKeyContext("agent-1") as never, agent() as never);
+    resetSharedAgentScopeMemoryCacheForTests();
+    // The presented key now validates to a DIFFERENT org (revoke/re-scope).
+    cacheStore.set(validationKey(), {
+      is_active: true,
+      organization_id: "org-2",
+      expires_at: null,
+    });
+
+    const waited: Promise<unknown>[] = [];
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toMatchObject({ status: 503 });
+    await Promise.all(waited);
+  });
+
+  test("a request with no supported credential seeds nothing", async () => {
+    scopeHashPrefixBehavior = async () => null;
+    sessionHashPrefixBehavior = async () => null;
+    await seedSharedAgentScopeCache(contextWithAgentId("agent-1") as never, agent() as never);
+    expect(cacheSet).not.toHaveBeenCalled();
+  });
+
+  test("a non-shared agent is never seeded", async () => {
+    await seedSharedAgentScopeCache(
+      apiKeyContext("agent-1") as never,
+      agent({ execution_tier: "dedicated-lazy" }) as never,
+    );
+    expect(cacheSet).not.toHaveBeenCalled();
   });
 });

@@ -16,7 +16,8 @@ const TRAJECTORY_JSON_BUDGET_SLACK_BYTES = 1024;
 const TRAJECTORY_JSON_TRUNCATION_SUFFIX = "...[truncated]";
 const utf8Encoder = new TextEncoder();
 
-type SanitizationState = {
+/** @internal Exposed only through the opaque {@link TrajectoryJsonBudget}. */
+export type SanitizationState = {
 	seen: WeakSet<object>;
 	visitedNodes: number;
 	remainingBytes: number;
@@ -308,6 +309,36 @@ export function sanitizeTrajectoryJsonValue(
 		},
 		0,
 	);
+}
+
+/**
+ * Opaque handle for callers that must bound SEVERAL values under one shared
+ * node/byte budget (e.g. every payload field of a persisted trajectory step
+ * competes for the same row-size allowance). The internal state is not part
+ * of the public contract.
+ */
+export interface TrajectoryJsonBudget {
+	/** @internal */
+	state: SanitizationState;
+}
+
+export function createTrajectoryJsonBudget(): TrajectoryJsonBudget {
+	return {
+		state: {
+			seen: new WeakSet<object>(),
+			visitedNodes: 0,
+			remainingBytes:
+				TRAJECTORY_JSON_MAX_OUTPUT_BYTES - TRAJECTORY_JSON_BUDGET_SLACK_BYTES,
+			exhausted: false,
+		},
+	};
+}
+
+export function sanitizeTrajectoryJsonValueInBudget(
+	value: unknown,
+	budget: TrajectoryJsonBudget,
+): JsonValue | undefined {
+	return sanitizeTrajectoryJsonValueInternal(value, budget.state, 0);
 }
 
 export function sanitizeTrajectoryJsonObject(

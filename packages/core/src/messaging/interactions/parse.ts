@@ -33,11 +33,14 @@ export const MAX_FOLLOWUPS = 4;
 export const MAX_TASK_TITLE_LEN = 200;
 
 // Group 2 captures the header attributes (`id=…`, `allow_custom`) in any order.
-const CHOICE_RE = /\[CHOICE:([\w-]+)([^\]]*)\]\n([\s\S]*?)\n\[\/CHOICE\]/g;
+const CHOICE_RE =
+	/\[[ \t]*CHOICE[ \t]*:[ \t]*([\w-]+)([^\]]*)\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*CHOICE[ \t]*\]/g;
 const FOLLOWUPS_RE =
-	/\[FOLLOWUPS(?:\s+id=(\S+))?\]\n([\s\S]*?)\n\[\/FOLLOWUPS\]/g;
-const FORM_RE = /\[FORM\]\n([\s\S]*?)\n\[\/FORM\]/g;
-const TASK_RE = /\[TASK:([a-f0-9-]{8,64})\]([\s\S]*?)\[\/TASK\]/g;
+	/\[[ \t]*FOLLOWUPS(?:[ \t]+id=([^\s\]]+))?[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*FOLLOWUPS[ \t]*\]/g;
+const FORM_RE =
+	/\[[ \t]*FORM[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*FORM[ \t]*\]/g;
+const TASK_RE =
+	/\[[ \t]*TASK[ \t]*:[ \t]*([a-f0-9-]{8,64})[ \t]*\]([\s\S]*?)\[[ \t]*\/[ \t]*TASK[ \t]*\]/g;
 
 const FIELD_TYPES: ReadonlySet<InteractionFieldType> = new Set([
 	"text",
@@ -290,6 +293,93 @@ export interface ParsedInteractions {
 	cleanedText: string;
 }
 
+const UNCLAIMED_BLOCK_OPEN_RE =
+	/^[ \t]*\[[ \t]*(?:FOLLOWUPS|CHOICE)\b[^\]]*\][ \t]*\r?$/i;
+const UNCLAIMED_TASK_RE = /^[ \t]*\[[ \t]*TASK\b[^\]]*\][^\r\n]*\r?$/i;
+const UNCLAIMED_MARKER_RE =
+	/^[ \t]*\[[ \t]*\/?[ \t]*[A-Z][A-Z_-]*(?:\s*:[^\]]*)?[ \t]*\][ \t]*\r?$/;
+const UNCLAIMED_OPTION_RE =
+	/^[ \t]*(?:(?:reply|navigate|prompt|value|action|url)[ \t]*:)?[^=\r\n]{1,256}=.+\r?$/i;
+
+interface SourceLine {
+	start: number;
+	end: number;
+	text: string;
+	inFence: boolean;
+}
+
+function sourceLines(text: string): SourceLine[] {
+	const lines: SourceLine[] = [];
+	const lineRe = /[^\n]*(?:\n|$)/g;
+	let fence: "`" | "~" | null = null;
+	let match: RegExpExecArray | null = lineRe.exec(text);
+	while (match !== null && match[0].length > 0) {
+		const line = match[0].endsWith("\n") ? match[0].slice(0, -1) : match[0];
+		const fenceMatch = line.match(/^[ \t]*(`{3,}|~{3,})/);
+		const marker = fenceMatch?.[1]?.[0] as "`" | "~" | undefined;
+		const inFence = fence !== null || marker !== undefined;
+		lines.push({
+			start: match.index,
+			end: match.index + match[0].length,
+			text: line,
+			inFence,
+		});
+		if (marker !== undefined) {
+			fence = fence === null ? marker : fence === marker ? null : fence;
+		}
+		match = lineRe.exec(text);
+	}
+	return lines;
+}
+
+/**
+ * Remove only a terminal, unclaimed interaction suffix from model output.
+ * Valid blocks remain untouched for renderers, FORM residue is preserved
+ * because it can contain user data, and fenced examples are never rewritten.
+ */
+function stripUnclaimedInteractionMarkupTail(text: string): string {
+	if (!/\[[ \t]*(?:FOLLOWUPS|CHOICE|TASK)\b/i.test(text)) return text;
+	const lines = sourceLines(text);
+	let suffixStart = lines.length;
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		const line = lines[index];
+		if (line.inFence) break;
+		if (
+			line.text.trim().length === 0 ||
+			UNCLAIMED_OPTION_RE.test(line.text) ||
+			UNCLAIMED_MARKER_RE.test(line.text)
+		) {
+			suffixStart = index;
+			continue;
+		}
+		break;
+	}
+	if (suffixStart >= lines.length) return text;
+	let opening = -1;
+	for (let index = suffixStart; index < lines.length; index += 1) {
+		const line = lines[index];
+		if (
+			!line.inFence &&
+			(UNCLAIMED_BLOCK_OPEN_RE.test(line.text) ||
+				UNCLAIMED_TASK_RE.test(line.text))
+		) {
+			opening = index;
+			break;
+		}
+	}
+	if (opening < 0) return text;
+	return text.slice(0, lines[opening].start).trimEnd();
+}
+
+/** Preserve claimable controls while removing a terminal unclaimed suffix. */
+export function stripUnclaimedInteractionMarkup(text: string): string {
+	if (!/\[[ \t]*(?:FOLLOWUPS|CHOICE|TASK)\b/i.test(text)) return text;
+	const terminalClaim = findInteractionRegions(text).some(
+		(region) => text.slice(region.end).trim().length === 0,
+	);
+	return terminalClaim ? text : stripUnclaimedInteractionMarkupTail(text);
+}
+
 /**
  * Parse `text` into its interaction blocks plus the human-readable text with
  * the markers stripped. The cleaned text is what a connector shows above the
@@ -297,7 +387,9 @@ export interface ParsedInteractions {
  */
 export function parseInteractionBlocks(text: string): ParsedInteractions {
 	const regions = findInteractionRegions(text);
-	if (regions.length === 0) return { blocks: [], cleanedText: text };
+	if (regions.length === 0) {
+		return { blocks: [], cleanedText: stripUnclaimedInteractionMarkup(text) };
+	}
 	const blocks: InteractionBlock[] = [];
 	const parts: string[] = [];
 	let cursor = 0;
@@ -307,8 +399,7 @@ export function parseInteractionBlocks(text: string): ParsedInteractions {
 		cursor = r.end;
 	}
 	if (cursor < text.length) parts.push(text.slice(cursor));
-	const cleanedText = parts
-		.join("")
+	const cleanedText = stripUnclaimedInteractionMarkup(parts.join(""))
 		.replace(/\n{3,}/g, "\n\n")
 		.trim();
 	return { blocks, cleanedText };

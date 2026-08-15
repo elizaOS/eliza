@@ -28,10 +28,10 @@ function getBrowserHostname(): string | undefined {
  * lives behind a CDN we do not always control).
  */
 const ELIZA_CLOUD_DIRECT_API_BY_HOST: Record<string, string> = {
-  "elizacloud.ai": "https://api.elizacloud.ai",
-  "www.elizacloud.ai": "https://api.elizacloud.ai",
-  "dev.elizacloud.ai": "https://api.elizacloud.ai",
-  "staging.elizacloud.ai": "https://api-staging.elizacloud.ai",
+  "eliza.app": "https://api.eliza.app",
+  "cloud.eliza.app": "https://api.eliza.app",
+  "staging.eliza.app": "https://api-staging.eliza.app",
+  "cloud-staging.eliza.app": "https://api-staging.eliza.app",
 };
 
 export type StewardUrlEnv = Record<string, unknown>;
@@ -46,7 +46,7 @@ export function resolveBrowserStewardApiUrl(origin?: string): string {
     return trimTrailingSlash(process.env.NEXT_PUBLIC_STEWARD_API_URL);
   }
 
-  // When the SPA is loaded from a known elizacloud.ai host, skip the
+  // When the SPA is loaded from a known managed eliza.app host, skip the
   // same-origin Pages Functions proxy and hit the Workers API directly.
   // The Workers API allowlists these origins for CORS + credentials.
   const browserHost = getBrowserHostname();

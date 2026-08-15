@@ -24,6 +24,17 @@ export async function seedStewardToken(page: Page): Promise<void> {
   await page.addInitScript(
     ({ key, value }) => {
       localStorage.setItem(key, value);
+      localStorage.setItem("eliza:first-run-complete", "1");
+      localStorage.setItem("eliza:setup:step", "activate");
+      localStorage.setItem(
+        "elizaos:active-server",
+        JSON.stringify({
+          id: "cloud:6f9619ff-8b86-4d01-b42d-00c04fc964ff",
+          kind: "cloud",
+          label: "Eliza Cloud",
+          accessToken: "ui-smoke-agent-access-token",
+        }),
+      );
     },
     { key: STEWARD_TOKEN_KEY, value: token },
   );
@@ -152,6 +163,67 @@ const prefix = (p: string) => (pathname: string) => pathname.startsWith(p);
 
 // NOTE: table order matters — first match wins.
 const STUB_RULES: StubRule[] = [
+  // Normal app-shell hydration follows the selected managed agent's dedicated
+  // origin. Keep that real request path deterministic while Cloud management
+  // pages mount inside the shell.
+  { match: path_("/api/conversations"), body: { conversations: [] } },
+  {
+    method: "POST",
+    match: path_("/api/conversations"),
+    body: {
+      conversation: {
+        id: "cloud-management-smoke-conversation",
+        roomId: "cloud-management-smoke-room",
+        title: "New Conversation",
+        createdAt: NOW_ISO,
+        updatedAt: NOW_ISO,
+      },
+    },
+  },
+  {
+    method: "POST",
+    match: prefix(
+      "/api/conversations/cloud-management-smoke-conversation/greeting",
+    ),
+    body: { text: "Hello from Eliza" },
+  },
+  {
+    match: path_("/api/agent/events"),
+    body: {
+      events: [],
+      latestEventId: null,
+      totalBuffered: 0,
+      replayed: true,
+    },
+  },
+  {
+    match: path_("/api/character"),
+    body: {
+      character: {
+        name: "Eliza",
+        bio: ["Cloud management smoke agent"],
+        system: "You are Eliza",
+        adjectives: ["helpful"],
+        style: { all: [], chat: [], post: [] },
+        postExamples: [],
+        messageExamples: [],
+      },
+    },
+  },
+  {
+    match: path_("/api/stream/settings"),
+    body: { ok: true, settings: { theme: "dark", avatarIndex: 1 } },
+  },
+  {
+    method: "POST",
+    match: path_("/api/stream/settings"),
+    body: { ok: true, settings: { theme: "dark", avatarIndex: 1 } },
+  },
+  {
+    method: "POST",
+    match: path_("/api/apps/overlay-presence"),
+    body: { ok: true, app: null, present: false },
+  },
   // instances/ — sandbox agents list + detail (use-sandbox-status-poll.ts,
   // AgentsPage/AgentDetailPage read `json.data`).
   {
@@ -463,21 +535,12 @@ const STUB_RULES: StubRule[] = [
       success: true,
       paymentRequest: {
         id: "payreq-smoke-1",
-        organizationId: "org-smoke-1",
-        agentId: "agent-smoke-1",
         provider: "stripe",
         amountCents: 500,
         currency: "usd",
-        paymentContext: {},
         status: "pending",
         reason: "Smoke-test payment request",
         expiresAt: FUTURE_ISO,
-        callbackUrl: null,
-        payerIdentityId: null,
-        settlementTxRef: null,
-        metadata: null,
-        createdAt: NOW_ISO,
-        updatedAt: NOW_ISO,
         hostedUrl: "https://example.com/checkout/smoke",
       },
     },

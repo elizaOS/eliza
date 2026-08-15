@@ -4,10 +4,11 @@
  * again (issue #9942). Scans package.json scripts and fails CI when it finds:
  *
  *   (a) ORPHAN root scripts — a root-package.json script that nothing invokes
- *       (no reference in .github/workflows/**, in any other script body, or in
- *       the docs / scripts source) AND that is not a recognised human/CI
- *       entrypoint. New scripts dumped into an ad-hoc namespace, or left behind
- *       after the tool they wrapped was deleted, get caught here.
+ *       (no reference in .github/workflows/** or .github/actions/**, in any
+ *       other script body, or in the docs / scripts source) AND that is not a
+ *       recognised human/CI entrypoint. New scripts dumped into an ad-hoc
+ *       namespace, or left behind after the tool they wrapped was deleted, get
+ *       caught here.
  *
  *   (b) FAKE-SUCCESS no-ops — a `lint` / `typecheck` / `test` / `build` script
  *       whose body is just `echo "...skip..."`. Those report success while
@@ -233,9 +234,7 @@ const ROOT_CWD_WRAPPER_ALLOWLIST = new Map([
 const NOOP_GATE_KEYS = /^(lint|typecheck|test|build)(:|$)/;
 // Demo / vendored / scaffold subtrees that legitimately ship placeholder scripts
 // or reference paths that only exist after scaffolding. Out of the no-op gate.
-const EXCLUDED_SUBTREES = [
-  "packages/elizaos/templates",
-];
+const EXCLUDED_SUBTREES = ["packages/elizaos/templates"];
 const SKIP_DIRS = new Set([
   "node_modules",
   "dist",
@@ -294,12 +293,20 @@ function collectPackageJsons(root) {
   return found.filter(existsSync);
 }
 
+/** GitHub Actions workflow and composite-action YAML under `.github`. */
+function collectGitHubYaml(root) {
+  const chunks = [];
+  for (const dir of ["workflows", "actions"]) {
+    walk(path.join(root, ".github", dir), (file) => {
+      if (/\.(ya?ml)$/.test(file)) chunks.push(readTextIfReadable(file));
+    });
+  }
+  return chunks;
+}
+
 /** Text corpus used to decide whether a root script name is referenced. */
 function buildReferenceCorpus(root) {
-  const chunks = [];
-  walk(path.join(root, ".github", "workflows"), (file) => {
-    if (/\.(ya?ml)$/.test(file)) chunks.push(readTextIfReadable(file));
-  });
+  const chunks = collectGitHubYaml(root);
   // Every package.json's script bodies (no exclusions — broad reference coverage).
   const seenPkg = new Set([path.join(root, "package.json")]);
   for (const base of ["packages", "plugins", "apps"]) {
@@ -389,10 +396,7 @@ function existsAsDirFrom(bases, token) {
  * body) so a script naming itself in a usage comment does not look "referenced".
  */
 function buildNonScriptCorpus(root) {
-  const chunks = [];
-  walk(path.join(root, ".github", "workflows"), (file) => {
-    if (/\.(ya?ml)$/.test(file)) chunks.push(readTextIfReadable(file));
-  });
+  const chunks = collectGitHubYaml(root);
   const seenPkg = new Set([path.join(root, "package.json")]);
   for (const base of ["packages", "plugins", "apps"]) {
     walk(path.join(root, base), (file) => {
@@ -438,9 +442,9 @@ function auditScriptFiles(root) {
     if (referencedBySibling) continue;
     failures.push(
       `[orphan-file] packages/scripts/${name} is referenced by nothing (no ` +
-        `root script, CI workflow, docs, or other reachable script). Wire it ` +
-        `to a caller, add it to ORPHAN_SCRIPT_FILE_ALLOWLIST with a reason, or ` +
-        `delete it.`,
+        `root script, CI workflow, composite action, docs, or other reachable ` +
+        `script). Wire it to a caller, add it to ORPHAN_SCRIPT_FILE_ALLOWLIST ` +
+        `with a reason, or delete it.`,
     );
   }
   return failures;

@@ -5,6 +5,7 @@
  */
 
 import { expect, test } from "bun:test";
+import type { Bindings } from "@/types/cloud-worker-env";
 
 const { createApp, isRedisIndependentInferencePath } = await import(
   "./bootstrap-app"
@@ -12,14 +13,54 @@ const { createApp, isRedisIndependentInferencePath } = await import(
 
 function environment(limiter: {
   limit(options: { key: string }): Promise<{ success: boolean }>;
-}) {
+}): Bindings {
   return {
     ENVIRONMENT: "staging",
     NODE_ENV: "production",
     REDIS_RATE_LIMITING: "false",
+    GOOGLE_CLIENT_ID: "configured",
+    GOOGLE_CLIENT_SECRET: "configured",
     GLOBAL_RATE_LIMITER: limiter,
-  } as never;
+  } as unknown as Bindings;
 }
+
+test("missing required OAuth credentials are logged once per app isolate", async () => {
+  const app = createApp();
+  const calls: unknown[][] = [];
+  const originalConsoleError = console.error;
+  console.error = (...args: unknown[]) => calls.push(args);
+
+  try {
+    const env = {
+      ...environment({
+        async limit() {
+          return { success: true };
+        },
+      }),
+      GOOGLE_CLIENT_ID: "",
+      GOOGLE_CLIENT_SECRET: "",
+    } as never;
+    for (let index = 0; index < 2; index += 1) {
+      const response = await app.fetch(
+        new Request("https://api.example.test/api/i18n/locale"),
+        env,
+      );
+      expect(response.status).toBe(200);
+    }
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  const diagnostics = calls.filter(
+    (args) =>
+      args[0] === "[bootstrap-app] Required OAuth provider is not configured",
+  );
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]?.[1]).toMatchObject({
+    providerId: "google",
+    missingEnvVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
+  });
+});
 
 test("the global native limiter rejects before auth and generated routes", async () => {
   const keys: string[] = [];
@@ -109,6 +150,8 @@ test("production inference remains reachable when Railway Redis is unavailable",
       ENVIRONMENT: "production",
       NODE_ENV: "production",
       REDIS_RATE_LIMITING: "true",
+      GOOGLE_CLIENT_ID: "configured",
+      GOOGLE_CLIENT_SECRET: "configured",
       GLOBAL_RATE_LIMITER: {
         async limit() {
           return { success: true };

@@ -255,7 +255,7 @@ export const deployAppAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: '"Acme Bot" is live at https://acme.elizacloud.ai 🎉',
+          text: '"Acme Bot" is live at https://acme.apps.eliza.app 🎉',
           actions: ["DEPLOY_APP"],
         },
       },

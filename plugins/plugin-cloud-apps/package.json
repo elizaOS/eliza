@@ -90,7 +90,7 @@
       },
       "ELIZAOS_CLOUD_BASE_URL": {
         "type": "string",
-        "description": "Eliza Cloud API base URL (defaults to https://www.elizacloud.ai/api/v1).",
+        "description": "Eliza Cloud API base URL (defaults to https://api.eliza.app/api/v1).",
         "required": false,
         "sensitive": false
       }

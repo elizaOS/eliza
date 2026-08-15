@@ -11,6 +11,100 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const githubRoot = join(repoRoot, ".github");
 
+type WorkflowStep = {
+  if?: string;
+  name?: string;
+  run?: string;
+};
+
+const smokeBrowserInstallCommand =
+  "PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit";
+
+// The e2e lane is split across two jobs: `smoke` shards the Playwright suite in
+// packages/app, and `smoke_lanes` runs the tasks that cannot be sharded — one of
+// which (@elizaos/ui#test:e2e) launches its own Chromium. Each job must install
+// the engines it launches; a job that inherits none dies at browserType.launch.
+const smokeLanesBrowserInstallCommand =
+  "PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium";
+
+const smokeShardE2eCommand = "bun run --cwd packages/app test:e2e";
+const smokeLanesE2eCommand =
+  "bun run test:e2e --filter='^(?!.*packages/app\\)#test:e2e)'";
+
+const zeroKeyCondition = "needs.changes.outputs.zero_key == 'true'";
+const smokeLanesCoreBuildCondition =
+  "needs.changes.outputs.cloud == 'true' || needs.changes.outputs.zero_key == 'true'";
+
+function assertJobBrowserBootstrap(
+  steps: WorkflowStep[],
+  { job, install, e2e }: { job: string; install: string; e2e: string },
+): void {
+  const installIndex = steps.findIndex((step) => step.run === install);
+  const e2eIndex = steps.findIndex((step) => step.run === e2e);
+
+  if (installIndex < 0) {
+    throw new Error(`${job} must install the browser engines it launches`);
+  }
+  if (e2eIndex < 0) {
+    throw new Error(`${job} must retain the deterministic E2E command`);
+  }
+  if (installIndex >= e2eIndex) {
+    throw new Error(`${job} must install browsers before running E2E`);
+  }
+  if (
+    steps[installIndex]?.if !== zeroKeyCondition ||
+    steps[e2eIndex]?.if !== zeroKeyCondition
+  ) {
+    throw new Error(
+      `${job} browser bootstrap and E2E must share the zero-key condition`,
+    );
+  }
+}
+
+function assertSmokeE2eBrowserBootstrap(source: string): void {
+  const workflow = Bun.YAML.parse(source) as {
+    jobs?: {
+      smoke?: { steps?: WorkflowStep[] };
+      smoke_lanes?: { steps?: WorkflowStep[] };
+    };
+  };
+
+  assertJobBrowserBootstrap(workflow.jobs?.smoke?.steps ?? [], {
+    job: "Smoke",
+    install: smokeBrowserInstallCommand,
+    e2e: smokeShardE2eCommand,
+  });
+  assertJobBrowserBootstrap(workflow.jobs?.smoke_lanes?.steps ?? [], {
+    job: "Smoke lanes",
+    install: smokeLanesBrowserInstallCommand,
+    e2e: smokeLanesE2eCommand,
+  });
+}
+
+function assertSmokeLanesCoreBootstrap(source: string): void {
+  const workflow = Bun.YAML.parse(source) as {
+    jobs?: { smoke_lanes?: { steps?: WorkflowStep[] } };
+  };
+  const steps = workflow.jobs?.smoke_lanes?.steps ?? [];
+  const buildIndex = steps.findIndex(
+    (step) =>
+      step.name === "Build core contract" && step.run === "bun run build:core",
+  );
+  const e2eIndex = steps.findIndex((step) => step.run === smokeLanesE2eCommand);
+
+  if (
+    buildIndex < 0 ||
+    steps[buildIndex]?.if !== smokeLanesCoreBuildCondition
+  ) {
+    throw new Error(
+      "Smoke lanes must build the core contract for cloud and zero-key work",
+    );
+  }
+  if (e2eIndex < 0 || buildIndex >= e2eIndex) {
+    throw new Error("Smoke lanes must build the core contract before E2E");
+  }
+}
+
 function collectYamlFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -125,20 +219,78 @@ describe("GitHub action supply-chain references", () => {
     expect(source).toContain(
       "ELIZA_VAULT_PASSPHRASE: dev-smoke-headless-vault-only",
     );
+    expect(source.match(/cache-bun-install: "false"/g)).toHaveLength(2);
   });
 
-  test("provisions homepage Chromium without requiring self-hosted sudo", () => {
+  test("installs both app browser engines before deterministic smoke E2E", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "ci.yml"),
+      "utf8",
+    );
+
+    expect(() => assertSmokeE2eBrowserBootstrap(source)).not.toThrow();
+    expect(() =>
+      assertSmokeE2eBrowserBootstrap(
+        source.replace(
+          smokeBrowserInstallCommand,
+          "echo browser-install-removed",
+        ),
+      ),
+    ).toThrow("Smoke must install the browser engines it launches");
+
+    expect(() =>
+      assertSmokeE2eBrowserBootstrap(
+        source.replace(
+          smokeLanesBrowserInstallCommand,
+          "echo lanes-browser-install-removed",
+        ),
+      ),
+    ).toThrow("Smoke lanes must install the browser engines it launches");
+
+    const installStep = `      - name: Install Playwright browsers
+        if: needs.changes.outputs.zero_key == 'true'
+        run: ${smokeBrowserInstallCommand}
+
+`;
+    const afterE2e = source
+      .replace(installStep, "")
+      .replace(
+        `        run: ${smokeShardE2eCommand}\n`,
+        (command) => `${command}\n${installStep}`,
+      );
+    expect(() => assertSmokeE2eBrowserBootstrap(afterE2e)).toThrow(
+      "Smoke must install browsers before running E2E",
+    );
+  });
+
+  test("builds workspace contracts before unshardable smoke E2E", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "ci.yml"),
+      "utf8",
+    );
+
+    expect(() => assertSmokeLanesCoreBootstrap(source)).not.toThrow();
+    expect(() =>
+      assertSmokeLanesCoreBootstrap(
+        source.replace(
+          `        if: ${smokeLanesCoreBuildCondition}\n        run: bun run build:core`,
+          `        if: ${zeroKeyCondition}\n        run: bun run build:core`,
+        ),
+      ),
+    ).toThrow(
+      "Smoke lanes must build the core contract for cloud and zero-key work",
+    );
+  });
+
+  test("builds the consolidated frontend on a hosted runner", () => {
     const source = readFileSync(
       join(githubRoot, "workflows", "quality.yml"),
       "utf8",
     );
     const workflow = Bun.YAML.parse(source) as {
-      jobs?: Record<
-        string,
-        { "runs-on"?: string; "timeout-minutes"?: number }
-      >;
+      jobs?: Record<string, { "runs-on"?: string; "timeout-minutes"?: number }>;
     };
-    const job = workflow.jobs?.["homepage-build"];
+    const job = workflow.jobs?.["consolidated-frontend-build"];
     const formatGate = workflow.jobs?.["format-check"];
     const staticGate = workflow.jobs?.["develop-static-gate"];
 
@@ -147,53 +299,73 @@ describe("GitHub action supply-chain references", () => {
     expect(formatGate?.["runs-on"]).toBe("ubuntu-24.04");
     expect(staticGate?.["runs-on"]).toBe("ubuntu-24.04");
     expect(staticGate?.["timeout-minutes"]).toBeGreaterThanOrEqual(15);
-    expect(source).toContain(
-      "PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium",
-    );
+    expect(source).toContain("Build the only deployable frontend");
+    expect(source).toContain("working-directory: packages/app");
+    expect(source).not.toContain("PLAYWRIGHT_INSTALL_CWD=packages/homepage");
     expect(source).not.toContain("playwright install --with-deps chromium");
   });
 
-  test("keeps production homepage deploys read-only and fully gated", () => {
+  test("leaves the zero-key harness enough time after fleet setup", () => {
     const source = readFileSync(
-      join(githubRoot, "workflows", "deploy-homepage.yml"),
+      join(githubRoot, "workflows", "test.yml"),
       "utf8",
     );
     const workflow = Bun.YAML.parse(source) as {
-      permissions?: { contents?: string };
+      jobs?: Record<string, { "timeout-minutes"?: number }>;
     };
 
-    expect(workflow.permissions?.contents).toBe("read");
-    expect(source).toContain("bun run test");
-    expect(source).toContain("bun run typecheck");
-    expect(source).toContain("bun run lint:check");
-    expect(source).toContain("bun run check:snapshot-inventory");
-    expect(source).toContain("bun run test:e2e");
-    expect(source).toContain(
-      "PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium",
-    );
-    expect(source).not.toContain("playwright install --with-deps chromium");
-    expect(source).not.toContain("--update-snapshots");
-    expect(source).not.toContain("git push");
-    expect(source).not.toContain("continue-on-error");
-
-    const e2e = source.indexOf("bun run test:e2e");
-    const deploy = source.indexOf("wrangler@4.116.0 pages deploy dist");
-    expect(e2e).toBeGreaterThan(-1);
-    expect(deploy).toBeGreaterThan(e2e);
+    expect(
+      workflow.jobs?.["zero-key-model-provider-e2e"]?.["timeout-minutes"],
+    ).toBeGreaterThanOrEqual(30);
   });
 
-  test("keeps the Docker smoke on a runner with a Docker daemon", () => {
+  test("routes homepage deploys through the consolidated Cloudflare workflow", () => {
+    // The entry workflow owns the homepage trigger paths and the unprivileged
+    // preview build; the Pages project it deploys into is bound in the reusable
+    // release workflow it calls.
+    const source = readFileSync(
+      join(githubRoot, "workflows", "cloud-cf-deploy.yml"),
+      "utf8",
+    );
+    const releaseSource = readFileSync(
+      join(githubRoot, "workflows", "cloud-cf-release.yml"),
+      "utf8",
+    );
+    expect(source).toContain('      - "packages/homepage/**"');
+    expect(source).toContain("Build consolidated frontend artifact");
+    expect(releaseSource).toContain("Build consolidated frontend artifact");
+    expect(releaseSource).toContain("PAGES_PROJECT: eliza-app");
+    for (const workflowSource of [source, releaseSource]) {
+      expect(workflowSource).not.toContain("PAGES_PROJECT: eliza-app-home");
+      expect(workflowSource).not.toContain("git push");
+    }
+  });
+
+  test("keeps the Docker smoke classifier unconditionally hosted (SPOF guard)", () => {
     const source = readFileSync(
       join(githubRoot, "workflows", "docker-ci-smoke.yml"),
       "utf8",
     );
     const workflow = Bun.YAML.parse(source) as {
-      jobs?: Record<string, { "runs-on"?: string }>;
+      jobs?: Record<
+        string,
+        { "runs-on"?: string; uses?: string; with?: Record<string, unknown> }
+      >;
     };
     const classifier = workflow.jobs?.changes;
     const job = workflow.jobs?.["docker-ci-smoke"];
 
-    expect(classifier?.["runs-on"]).toBe("ubuntu-24.04");
+    // docker-ci-smoke.yml delegates to the reusable classify-paths workflow.
+    expect(classifier?.uses).toContain("classify-paths.yml");
+
+    // The classifier must pass force_hosted: true — docker-ci-smoke.yml was
+    // unconditionally ubuntu-24.04 before consolidation and has no
+    // pull_request trigger, so ALL its events are non-PR. Without
+    // force_hosted, the reusable workflow's fleet-aware conditional would
+    // route the classifier to self-hosted (#13617 SPOF regression).
+    expect(classifier?.with?.force_hosted).toBe(true);
+
+    // The actual smoke job stays on hosted runners (needs a Docker daemon).
     expect(job?.["runs-on"]).toBe("ubuntu-24.04");
   });
 });

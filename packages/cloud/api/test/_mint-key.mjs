@@ -4,7 +4,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 
 const j = async (m, p, b) => {
-  const r = await fetch(`https://api.elizacloud.ai${p}`, {
+  const r = await fetch(`https://api.eliza.app${p}`, {
     method: m,
     headers: { "content-type": "application/json" },
     body: b ? JSON.stringify(b) : undefined,

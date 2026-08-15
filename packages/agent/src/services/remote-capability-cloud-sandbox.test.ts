@@ -64,8 +64,8 @@ describe("cloud capability sandbox provisioner", () => {
     });
 
     expect(calls.map((call) => call.url)).toEqual([
-      "https://api.elizacloud.ai/api/v1/eliza/agents",
-      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/provision",
+      "https://api.eliza.app/api/v1/eliza/agents",
+      "https://api.eliza.app/api/v1/eliza/agents/agent-1/provision",
     ]);
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
       agentName: "Capability Sandbox",
@@ -106,7 +106,7 @@ describe("cloud capability sandbox provisioner", () => {
     });
 
     const resultPromise = provisionCloudCapabilitySandbox({
-      cloudApiBase: "https://api.elizacloud.ai",
+      cloudApiBase: "https://api.eliza.app",
       authToken: "cloud-token",
       name: "Capability Sandbox",
       pollIntervalMs: 1,
@@ -144,7 +144,7 @@ describe("cloud capability sandbox provisioner", () => {
 
     await expect(
       provisionCloudCapabilitySandbox({
-        cloudApiBase: "https://api.elizacloud.ai",
+        cloudApiBase: "https://api.eliza.app",
         authToken: "cloud-token",
         name: "Legacy Bridge Sandbox",
         token: "override-token",
@@ -244,7 +244,7 @@ describe("cloud capability sandbox provisioner", () => {
     });
 
     const resultPromise = provisionCloudCapabilitySandbox({
-      cloudApiBase: "https://api.elizacloud.ai",
+      cloudApiBase: "https://api.eliza.app",
       authToken: "cloud-token",
       name: "Broken Sandbox",
       pollIntervalMs: 1,
@@ -494,7 +494,7 @@ describe("cloud capability sandbox provisioner", () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const result = await connectCloudCapabilitySandbox(runtime, {
-      cloudApiBase: "https://api.elizacloud.ai",
+      cloudApiBase: "https://api.eliza.app",
       authToken: "cloud-token",
       name: "Cloud Capability",
       allowedModuleIds: ["cloud-capability-plugin"],

@@ -243,6 +243,7 @@
       "outputs": []
     },
     "@elizaos/cloud-api#typecheck": {
+      "dependsOn": ["@elizaos/cloud-shared#typecheck"],
       "outputs": []
     },
     "@elizaos/cloud-shared#typecheck": {
@@ -254,7 +255,7 @@
       "outputs": []
     },
     "@elizaos/plugin-calendar#typecheck": {
-      "dependsOn": [],
+      "dependsOn": ["@elizaos/plugin-scheduling#build"],
       "outputs": []
     },
     "@elizaos/plugin-personal-assistant#typecheck": {
@@ -287,7 +288,11 @@
       "outputs": []
     },
     "@elizaos/scenario-runner#typecheck": {
-      "dependsOn": ["@elizaos/plugin-browser#build", "^build"],
+      "dependsOn": [
+        "@elizaos/capacitor-bun-runtime#build",
+        "@elizaos/plugin-browser#build",
+        "^build"
+      ],
       "outputs": []
     },
     "format": {

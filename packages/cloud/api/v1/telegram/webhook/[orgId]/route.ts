@@ -5,6 +5,7 @@
  * Each organization has their own webhook URL with their orgId.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
 import { Telegraf } from "telegraf";
 import type { ChatMemberUpdated, Message, Update } from "telegraf/types";
@@ -156,32 +157,25 @@ async function handleTelegramWebhook(
 
     setupBotHandlers(bot, orgId, activeApps);
 
-    try {
-      await bot.handleUpdate(update);
-    } catch (error) {
-      // Telegraf handler errors are intentionally swallowed (a bad single
-      // handler shouldn't force endless provider retries); the update was still
-      // "seen", so the dedupe marker stays.
-      logger.error("[Telegram Webhook] Error processing update", {
-        orgId,
-        updateId: update.update_id,
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
+    await bot.handleUpdate(update);
   } catch (error) {
     if (dedupeEventId) {
-      await webhookEventsRepository
-        .deleteByEventId(dedupeEventId, "telegram")
-        .catch((rollbackError) => {
-          logger.error("[Telegram Webhook] Dedupe rollback failed", {
-            orgId,
-            updateId: update.update_id,
-            error:
-              rollbackError instanceof Error
-                ? rollbackError.message
-                : String(rollbackError),
-          });
-        });
+      try {
+        await webhookEventsRepository.deleteByEventId(
+          dedupeEventId,
+          "telegram",
+        );
+      } catch (rollbackError) {
+        // error-policy:J2 Preserve both failures for the transport boundary.
+        throw new ElizaError(
+          "Telegram webhook handling and dedupe rollback both failed",
+          {
+            code: "TELEGRAM_WEBHOOK_ROLLBACK_FAILED",
+            context: { orgId, updateId: update.update_id },
+            cause: new AggregateError([error, rollbackError]),
+          },
+        );
+      }
     }
     throw error;
   }
@@ -376,6 +370,11 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
     const telegramUserId = String(ctx.from?.id ?? chatId);
     const telegramUsername = ctx.from?.username ?? `telegram-${telegramUserId}`;
     const isPrivateChat = ctx.chat?.type === "private";
+    const matchingApp = activeApps.find(
+      (app) =>
+        app.telegram_automation?.channelId === String(chatId) ||
+        app.telegram_automation?.groupId === String(chatId),
+    );
 
     if (isPrivateChat) {
       const routed = await agentGatewayRouterService.routeTelegramMessage({
@@ -388,6 +387,10 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
           username: telegramUsername,
           ...(userName ? { displayName: userName } : {}),
         },
+        // An explicitly configured app automation owns unknown first-contact
+        // traffic. Known users still route to their agent because the router
+        // consults this flag only after identity resolution returns no owner.
+        onboardUnknownOwner: !matchingApp?.telegram_automation?.autoReply,
       });
 
       if (routed.handled) {
@@ -397,33 +400,37 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
         }
         return;
       }
+
+      if (routed.reason === "owner_org_mismatch") {
+        logger.warn(
+          "[Telegram Webhook] Refusing cross-organization owner fallback",
+          { orgId, chatId, telegramUserId },
+        );
+        return;
+      }
     }
 
     // Route to app automation
-    const matchingApp = activeApps.find(
-      (app) =>
-        app.telegram_automation?.channelId === String(chatId) ||
-        app.telegram_automation?.groupId === String(chatId),
-    );
-
     if (matchingApp?.telegram_automation?.autoReply) {
-      try {
-        await telegramAppAutomationService.handleIncomingMessage(
-          orgId,
-          matchingApp.id,
-          {
-            chatId,
-            messageId: message.message_id,
-            text,
-            userName,
-          },
-        );
-      } catch (error) {
-        logger.error("[Telegram Webhook] Error handling message", {
-          orgId,
-          appId: matchingApp.id,
+      const result = await telegramAppAutomationService.handleIncomingMessage(
+        orgId,
+        matchingApp.id,
+        {
           chatId,
-          error: error instanceof Error ? error.message : "Unknown error",
+          messageId: message.message_id,
+          text,
+          userName,
+        },
+      );
+      if (!result.success) {
+        throw new ElizaError("Telegram app automation reply failed", {
+          code: "TELEGRAM_APP_AUTOMATION_REPLY_FAILED",
+          context: {
+            orgId,
+            appId: matchingApp.id,
+            chatId,
+            error: result.error,
+          },
         });
       }
     } else if (!matchingApp) {

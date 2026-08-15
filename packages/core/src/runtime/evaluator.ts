@@ -4,8 +4,14 @@
  * decision (FINISH / CONTINUE / NEXT_RECOMMENDED) before the loop acts on it.
  * Also records each evaluation as a trajectory stage for offline review.
  */
+import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
+import {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticValue,
+	type ToolDiagnosticTextRedactor,
+} from "../security/tool-diagnostics";
 import {
 	emitStreamingHook,
 	getStreamingContext,
@@ -25,6 +31,7 @@ import {
 	renderContextObject,
 } from "./context-renderer";
 import { extractJsonObjects, parseJsonObject } from "./json-output";
+import { DEFAULT_MAX_KEPT_STEP_CHARS } from "./limits";
 import {
 	buildModelInputBudget,
 	withModelInputBudgetProviderOptions,
@@ -92,19 +99,68 @@ export async function runEvaluator(
 	params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
 	const streamingContext = getStreamingContext();
-	const renderedInput = renderEvaluatorModelInput({
+	const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
+	const EVALUATOR_MIN_TOOL_RESULT_CHARS = 2_000;
+	let toolResultCap = DEFAULT_MAX_KEPT_STEP_CHARS;
+	let renderedInput = renderEvaluatorModelInput({
 		context: params.context,
 		trajectory: params.trajectory,
+		redactText: redactDiagnosticText,
 	});
+	let modelInputBudget = buildModelInputBudget({
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+	});
+	// Degrade, don't fail: when the assembled input would exceed the window
+	// (threshold = window - output reserve), shrink only the rendered tool
+	// results and re-estimate. Stable/context segments (system instructions,
+	// current user message) are never modified or dropped. Bounded: 30k -> 7.5k
+	// -> 2k. Live incident 2026-08: one oversized tool result rendered verbatim
+	// pushed the evaluator call to 2.28M tokens and the provider hard-400'd the
+	// whole turn with context_length_exceeded instead of answering.
+	while (
+		modelInputBudget.shouldCompact &&
+		toolResultCap > EVALUATOR_MIN_TOOL_RESULT_CHARS
+	) {
+		toolResultCap = Math.max(
+			EVALUATOR_MIN_TOOL_RESULT_CHARS,
+			Math.floor(toolResultCap / 4),
+		);
+		renderedInput = renderEvaluatorModelInput({
+			context: params.context,
+			trajectory: params.trajectory,
+			maxToolResultChars: toolResultCap,
+			redactText: redactDiagnosticText,
+		});
+		modelInputBudget = buildModelInputBudget({
+			messages: renderedInput.messages,
+			promptSegments: renderedInput.promptSegments,
+		});
+	}
+	// Bottom-out guard: if the input is still over the compaction threshold at
+	// the 2k floor, the overflow lives in the stable/context segments this loop
+	// deliberately never touches. Calling the provider anyway is a guaranteed
+	// context_length_exceeded 400 that burns a round trip and surfaces as an
+	// opaque provider error — fail fast with a typed error instead so the
+	// planner-loop's degrade/propagate policy sees the real cause.
+	if (modelInputBudget.shouldCompact) {
+		throw new ElizaError(
+			"Evaluator model input exceeds the context budget even after tool results were compacted to the floor",
+			{
+				code: "EVALUATOR_INPUT_OVER_BUDGET",
+				context: {
+					estimatedInputTokens: modelInputBudget.estimatedInputTokens,
+					compactionThresholdTokens: modelInputBudget.compactionThresholdTokens,
+					toolResultCap,
+				},
+			},
+		);
+	}
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
 		cachePrefixHashes[cachePrefixHashes.length - 1]?.hash ??
 		"no-context-segments";
-	const modelInputBudget = buildModelInputBudget({
-		messages: renderedInput.messages,
-		promptSegments: renderedInput.promptSegments,
-	});
 	const providerOptions = withModelInputBudgetProviderOptions(
 		cacheProviderOptions({
 			prefixHash,
@@ -186,6 +242,16 @@ export async function runEvaluator(
 		throw error;
 	}
 	const endedAt = Date.now();
+	const usage = extractEvaluatorUsage(raw);
+	if (
+		usage?.promptTokens !== undefined &&
+		usage.completionTokens !== undefined
+	) {
+		params.onUsage?.({
+			promptTokens: usage.promptTokens,
+			completionTokens: usage.completionTokens,
+		});
+	}
 	const output = sanitizeOutputMessage(
 		repairFinishedToolTurnWithoutUserMessage(
 			repairMissingEvaluatorMessage(
@@ -206,7 +272,10 @@ export async function runEvaluator(
 		),
 	);
 	await emitStreamingHook(streamingContext, "onEvaluation", {
-		evaluation: output,
+		evaluation: projectToolDiagnosticValue(
+			output,
+			redactDiagnosticText,
+		) as EvaluatorOutput,
 		messageId: streamingContext?.messageId,
 	});
 	await applyEvaluatorEffects(output, params.effects);
@@ -375,6 +444,15 @@ function renderEvaluatorModelInput(params: {
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
 	template?: string;
+	redactText: ToolDiagnosticTextRedactor;
+	/**
+	 * Per-tool-result render cap (chars) applied via
+	 * `trajectoryStepsToMessages`. Defaults to `DEFAULT_MAX_KEPT_STEP_CHARS`
+	 * so a single pathological tool result can never blow the evaluator
+	 * call's context window on its own; `runEvaluator` passes tighter caps
+	 * when the total estimate still exceeds the compaction threshold.
+	 */
+	maxToolResultChars?: number;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -385,7 +463,11 @@ function renderEvaluatorModelInput(params: {
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
-	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
+	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
+		maxToolResultChars:
+			params.maxToolResultChars ?? DEFAULT_MAX_KEPT_STEP_CHARS,
+		redactText: params.redactText,
+	});
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking
 	// the segment `stable: true` makes them cacheable on Anthropic's wire path.
@@ -743,9 +825,32 @@ function recoverEvaluatorTextOutput(
 	}
 
 	if (!hasSuccessfulToolResult(trajectory)) return output;
+
+	const envelopeMessage = trailingFinishEnvelopeMessage(text);
+	if (envelopeMessage) {
+		return {
+			success: true,
+			decision: "FINISH",
+			thought:
+				"Recovered the terminal evaluator envelope's answer from surrounding debris.",
+			messageToUser: envelopeMessage,
+			raw: { recoverySource: "trailing_finish_envelope_message" },
+		};
+	}
 	if (!looksLikeUserFacingAnswer(text)) return output;
 
 	const userFacing = stripTrailingEvaluatorEnvelope(text);
+	if (!looksLikeUserFacingAnswer(userFacing)) {
+		return {
+			...output,
+			success: false,
+			decision: "CONTINUE",
+			thought:
+				"Evaluator prose was only debris around a structured envelope; replanning from recorded tool results.",
+			parseError: undefined,
+			raw: { recoverySource: "debris_only_text" },
+		};
+	}
 
 	return {
 		success: true,
@@ -755,6 +860,35 @@ function recoverEvaluatorTextOutput(
 		messageToUser: userFacing,
 		raw: { recoverySource: "prose_after_successful_tool" },
 	};
+}
+
+/**
+ * Recover the user-facing answer from a valid trailing terminal envelope.
+ * Nonterminal envelopes remain planner control flow and must never be promoted
+ * into a finished user reply merely because noisy text preceded them.
+ */
+function trailingFinishEnvelopeMessage(text: string): string | null {
+	const trimmed = text.trimEnd();
+	if (!trimmed.endsWith("}")) return null;
+	const candidate = extractJsonObjects(trimmed).at(-1);
+	if (!candidate || !trimmed.endsWith(candidate)) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(candidate);
+	} catch {
+		// error-policy:J3 malformed model output is not a recoverable envelope.
+		return null;
+	}
+	if (!isEvaluatorEnvelopeObject(parsed)) return null;
+	const record = parsed as Record<string, unknown>;
+	const decision = String(record.decision ?? record.route)
+		.trim()
+		.toUpperCase();
+	if (decision !== "FINISH") return null;
+	const message = record.messageToUser;
+	return typeof message === "string" && message.trim().length > 0
+		? message.trim()
+		: null;
 }
 
 function containsInvocationDsl(text: string): boolean {

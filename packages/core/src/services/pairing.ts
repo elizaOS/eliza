@@ -11,10 +11,14 @@ import {
 	type ApprovePairingParams,
 	type ApprovePairingResult,
 	DEFAULT_PAIRING_CONFIG,
+	normalizePairingPageOptions,
 	PAIRING_CODE_ALPHABET,
 	type PairingAllowlistEntry,
 	type PairingChannel,
 	type PairingConfig,
+	type PairingPage,
+	type PairingPageInfo,
+	type PairingPageOptions,
 	type PairingRequest,
 	type UpsertPairingRequestParams,
 	type UpsertPairingRequestResult,
@@ -108,32 +112,33 @@ export class PairingService extends Service {
 	 * Check if a pairing request is expired.
 	 */
 	private isExpired(request: PairingRequest): boolean {
+		return this.isExpiredAt(request, Date.now());
+	}
+
+	private isExpiredAt(request: PairingRequest, now: number): boolean {
 		const createdAt =
 			request.createdAt instanceof Date
 				? request.createdAt.getTime()
 				: new Date(request.createdAt).getTime();
-		return Date.now() - createdAt > this.pairingConfig.requestTtlMs;
+		return now - createdAt > this.pairingConfig.requestTtlMs;
 	}
 
-	/**
-	 * List all pending pairing requests for a channel.
-	 * Expired requests are automatically filtered out.
-	 */
-	async listPendingRequests(
-		channel: PairingChannel,
-	): Promise<PairingRequest[]> {
-		const [result] = await this.runtime.getPairingRequests([
-			{ channel, agentId: this.runtime.agentId },
-		]);
-		const requests = result.requests;
+	private requestExpiryCutoff(now = Date.now()): Date {
+		return new Date(now - this.pairingConfig.requestTtlMs);
+	}
 
-		// Filter out expired requests
-		const validRequests = requests.filter((r) => !this.isExpired(r));
+	private cleanupExpiredRequests(requests: PairingRequest[]): PairingRequest[] {
+		const validRequests: PairingRequest[] = [];
+		const expiredIds: PairingRequest["id"][] = [];
 
-		// Clean up expired requests in the background
-		const expiredIds = requests
-			.filter((r) => this.isExpired(r))
-			.map((r) => r.id);
+		for (const request of requests) {
+			if (this.isExpired(request)) {
+				expiredIds.push(request.id);
+			} else {
+				validRequests.push(request);
+			}
+		}
+
 		if (expiredIds.length > 0) {
 			Promise.all(
 				expiredIds.map((id) => this.runtime.deletePairingRequest(id)),
@@ -150,10 +155,99 @@ export class PairingService extends Service {
 			});
 		}
 
+		return validRequests;
+	}
+
+	private newestFirst<T extends { createdAt: Date; id: PairingRequest["id"] }>(
+		items: T[],
+	): T[] {
+		return [...items].sort((a, b) => {
+			const timeDifference =
+				new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+			if (timeDifference !== 0) {
+				return timeDifference;
+			}
+			const aId = String(a.id);
+			const bId = String(b.id);
+			return aId === bId ? 0 : aId < bId ? 1 : -1;
+		});
+	}
+
+	private pageInfo(
+		limit: number,
+		offset: number,
+		hasMore: boolean,
+	): PairingPageInfo {
+		return {
+			limit,
+			offset,
+			hasMore,
+			nextOffset: hasMore ? offset + limit : null,
+		};
+	}
+
+	/**
+	 * List all pending pairing requests for a channel.
+	 * Expired requests are automatically filtered out.
+	 */
+	async listPendingRequests(
+		channel: PairingChannel,
+	): Promise<PairingRequest[]> {
+		const [result] = await this.runtime.getPairingRequests([
+			{ channel, agentId: this.runtime.agentId },
+		]);
+		const validRequests = this.cleanupExpiredRequests(result.requests);
+
 		return validRequests.sort(
 			(a, b) =>
 				new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
 		);
+	}
+
+	/**
+	 * List one bounded page of pending pairing requests, newest first.
+	 *
+	 * Existing {@link listPendingRequests} callers keep the legacy complete-array
+	 * contract. This page API is intended for operator surfaces and carries the
+	 * bounds into database adapters that support the extended batch query.
+	 */
+	async listPendingRequestsPage(
+		channel: PairingChannel,
+		options: PairingPageOptions = {},
+	): Promise<PairingPage<PairingRequest>> {
+		const { limit, offset } = normalizePairingPageOptions(options);
+		const now = Date.now();
+		const [result] = await this.runtime.getPairingRequests([
+			{
+				channel,
+				agentId: this.runtime.agentId,
+				limit,
+				offset,
+				order: "newest",
+				createdAfter: this.requestExpiryCutoff(now),
+			},
+		]);
+		const validRequests = (result?.requests ?? []).filter(
+			(request) => !this.isExpiredAt(request, now),
+		);
+
+		if (result?.pageInfo) {
+			return {
+				items: this.newestFirst(validRequests),
+				...result.pageInfo,
+			};
+		}
+
+		// Compatibility fallback for third-party adapters that have not adopted
+		// the optional page query fields yet. Official adapters return pageInfo
+		// and perform the bound in storage.
+		const ordered = this.newestFirst(validRequests);
+		const page = ordered.slice(offset, offset + limit + 1);
+		const hasMore = page.length > limit;
+		return {
+			items: page.slice(0, limit),
+			...this.pageInfo(limit, offset, hasMore),
+		};
 	}
 
 	/**
@@ -301,6 +395,38 @@ export class PairingService extends Service {
 			{ channel, agentId: this.runtime.agentId },
 		]);
 		return result.entries;
+	}
+
+	/** Get one bounded page of allowlist entries, newest first. */
+	async getAllowlistPage(
+		channel: PairingChannel,
+		options: PairingPageOptions = {},
+	): Promise<PairingPage<PairingAllowlistEntry>> {
+		const { limit, offset } = normalizePairingPageOptions(options);
+		const [result] = await this.runtime.getPairingAllowlists([
+			{
+				channel,
+				agentId: this.runtime.agentId,
+				limit,
+				offset,
+				order: "newest",
+			},
+		]);
+
+		if (result?.pageInfo) {
+			return {
+				items: this.newestFirst(result.entries),
+				...result.pageInfo,
+			};
+		}
+
+		const ordered = this.newestFirst(result?.entries ?? []);
+		const page = ordered.slice(offset, offset + limit + 1);
+		const hasMore = page.length > limit;
+		return {
+			items: page.slice(0, limit),
+			...this.pageInfo(limit, offset, hasMore),
+		};
 	}
 
 	/**

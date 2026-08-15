@@ -57,7 +57,12 @@ interface InventorySite {
 const CANONICAL = "1.3.14";
 const SHA = "0c5077e51419868618aeaa5fe8019c62421857d6";
 
-const GATE_WORKFLOWS = ["test.yml", "develop-pr.yml", "cloud-cf-deploy.yml"];
+const GATE_WORKFLOWS = [
+  "test.yml",
+  "develop-pr.yml",
+  "cloud-cf-deploy.yml",
+  "cloud-cf-release.yml",
+];
 
 // A gate stub that pins via a BUN_VERSION env literal and references it from
 // the step by expression — the shape the real gates use. The comment naming
@@ -213,6 +218,16 @@ describe("ci-bun-version-contract", () => {
     expectViolation(
       buildRepo({ overrides: { "cloud-cf-deploy.yml": null } }),
       /cloud-cf-deploy\.yml/,
+    );
+  });
+
+  test("fails loudly when the canonical release workflow is missing (#19183)", () => {
+    // After #18996 split the canary deploy from the canonical release, the
+    // release workflow publishes to production. A missing release gate must
+    // fail loudly the same way a missing canary gate does, not silently pass.
+    expectViolation(
+      buildRepo({ overrides: { "cloud-cf-release.yml": null } }),
+      /cloud-cf-release\.yml/,
     );
   });
 
@@ -463,6 +478,81 @@ jobs:
       (s) => s.surface === "shell-install" && s.file === "runner/Dockerfile",
     );
     expect(install?.classification).toBe("canonical");
+  });
+
+  test("fails a base image reached through a non-BUN_VERSION ARG", () => {
+    // The shape the deployed cloud services use. The image reference never
+    // touches a FROM line, so the `FROM oven/bun:` matcher never sees it, and
+    // the ARG is not named BUN_VERSION, so the ARG scan skips it too — a
+    // floating canary rode into three production images past a contract whose
+    // headline promise is that no floating tag survives (#17044).
+    expectViolation(
+      buildRepo({
+        files: {
+          "services/gw/Dockerfile": [
+            "ARG BUN_BASE=oven/bun:canary-alpine",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: Dockerfile ARG interpolation, not a JS template
+            "FROM ${BUN_BASE} AS base",
+            "",
+          ].join("\n"),
+        },
+      }),
+      /ARG BUN_BASE=oven\/bun:canary-alpine/,
+    );
+    expectViolation(
+      buildRepo({
+        files: {
+          "services/gw/Dockerfile": [
+            "ENV BUN_IMAGE=oven/bun:latest",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: Dockerfile ARG interpolation, not a JS template
+            "FROM ${BUN_IMAGE}",
+            "",
+          ].join("\n"),
+        },
+      }),
+      /oven\/bun:latest/,
+    );
+  });
+
+  test("accepts a canonical base image reached through an ARG, variant included", () => {
+    const inventory = inventoryOf(
+      buildRepo({
+        files: {
+          "services/gw/Dockerfile": [
+            `ARG BUN_BASE=oven/bun:${CANONICAL}-alpine`,
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: Dockerfile ARG interpolation, not a JS template
+            "FROM ${BUN_BASE} AS base",
+            "",
+          ].join("\n"),
+        },
+      }),
+    );
+    const arg = inventory.find(
+      (s) => s.surface === "dockerfile-base-image-arg",
+    );
+    expect(arg?.classification).toBe("canonical");
+    expect(arg?.value).toBe(`${CANONICAL}-alpine`);
+  });
+
+  test("leaves a non-oven ARG default alone (local RISC-V build override)", () => {
+    // riscv64 has no upstream oven/bun image, so these Dockerfiles document a
+    // locally built tag passed via --build-arg. It declares no oven/bun
+    // runtime and must not be forced onto the canonical pin.
+    const inventory = inventoryOf(
+      buildRepo({
+        files: {
+          "services/gw/Dockerfile": [
+            "ARG BUN_BASE=local/bun-riscv64:dev",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: Dockerfile ARG interpolation, not a JS template
+            "FROM ${BUN_BASE} AS base",
+            "",
+          ].join("\n"),
+        },
+      }),
+    );
+    expect(
+      inventory.filter((s) => s.surface === "dockerfile-base-image-arg"),
+    ).toEqual([]);
   });
 
   test("fails a divergent oven-sh release download URL", () => {

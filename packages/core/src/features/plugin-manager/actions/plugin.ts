@@ -420,7 +420,11 @@ function buildResolverOptions(
 
 export function createPluginAction(deps: PluginActionDeps = {}): Action {
 	const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
-	const repoRoot = deps.repoRoot ?? defaultRepoRoot();
+	// Resolved lazily: createPluginAction runs at module scope when the action
+	// registry is assembled, and edge isolates (workerd) have no process.cwd.
+	// The repo root only matters once a handler actually runs on a host.
+	let resolvedRepoRoot = deps.repoRoot;
+	const repoRootLazy = (): string => (resolvedRepoRoot ??= defaultRepoRoot());
 
 	const canManagePlugins = async (
 		runtime: IAgentRuntime,
@@ -488,7 +492,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 					intent: params.intent ?? readStringOption(options, "intent"),
 					choice: readStringOption(options, "choice"),
 					editTarget: readStringOption(options, "editTarget"),
-					repoRoot,
+					repoRoot: repoRootLazy(),
 				});
 		}
 	};
@@ -649,7 +653,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 						options,
 						callback,
 						choice: text.trim(),
-						repoRoot,
+						repoRoot: repoRootLazy(),
 					});
 				}
 			}

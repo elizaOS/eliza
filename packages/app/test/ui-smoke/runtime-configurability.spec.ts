@@ -85,8 +85,9 @@ test("in-chat first-run exposes cloud and local runtimes and Local is configurab
   await injectFullCapabilityHost(page);
   await seedAppStorage(page, {
     "eliza:first-run-complete": "",
-    // These specs drive the Local/on-device runtime cards; the chooser is off
-    // by default since cloud-only onboarding (#13377/#15532) - opt back in.
+    // This suite serves the production renderer bundle, so opt into the
+    // retained local/remote paths explicitly. The Vite-development default is
+    // exercised against `bun run dev` in the dev-smoke lane.
     "eliza:enable-runtime-chooser": "1",
   });
 
@@ -137,8 +138,6 @@ test("in-chat first-run survives browser back and forward while it churns", asyn
   await injectFullCapabilityHost(page);
   await seedAppStorage(page, {
     "eliza:first-run-complete": "",
-    // These specs drive the Local/on-device runtime cards; the chooser is off
-    // by default since cloud-only onboarding (#13377/#15532) - opt back in.
     "eliza:enable-runtime-chooser": "1",
   });
 

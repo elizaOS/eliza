@@ -21,7 +21,7 @@ async function __hono_GET(
   env?: Pick<AppEnv["Bindings"], "NEXT_PUBLIC_APP_URL">,
 ) {
   const searchParams = new URL(request.url).searchParams;
-  const baseUrl = env?.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+  const baseUrl = env?.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
   const githubConnected = searchParams.get("github_connected");
   const githubError = searchParams.get("github_error");
   const connectionId = searchParams.get("connection_id");
@@ -30,7 +30,7 @@ async function __hono_GET(
   const postMessage = searchParams.get("post_message") === "1";
   const returnUrl = searchParams.get("return_url");
   const target = rawTarget === "agent" && agentId ? "agent" : "owner";
-  const dashboardUrl = `${baseUrl}/dashboard/settings?tab=${
+  const dashboardUrl = `${baseUrl}/cloud/settings?tab=${
     target === "agent" ? "agents" : "connections"
   }`;
 

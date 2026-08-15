@@ -86,6 +86,30 @@
 			"label": "Listen Channel Ids",
 			"help": "Comma-separated list of Discord channel IDs where the bot will only listen (not respond).",
 			"advanced": false
+		},
+		"ELIZA_DISCORD_OWNER_USER_IDS_JSON": {
+			"type": "string",
+			"required": false,
+			"sensitive": false,
+			"label": "Owner User IDs (JSON)",
+			"help": "JSON array of Discord user snowflakes that alias to the canonical Eliza owner entity (e.g. [\"123456789012345678\"]). Use when ownership cannot be inferred from the Discord application team.",
+			"advanced": false
+		},
+		"DISCORD_DM_POLICY": {
+			"type": "string",
+			"required": false,
+			"sensitive": false,
+			"label": "DM Policy",
+			"help": "Direct-message access policy: open, allowlist, pairing (default), or disabled.",
+			"advanced": false
+		},
+		"DISCORD_ALLOW_FROM": {
+			"type": "string",
+			"required": false,
+			"sensitive": false,
+			"label": "DM Allow From",
+			"help": "Comma-separated Discord user snowflakes allowed to DM the bot under the allowlist policy (also seeds the pairing allowlist).",
+			"advanced": false
 		}
 	},
 	"render": {

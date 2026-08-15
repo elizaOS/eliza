@@ -24,6 +24,12 @@ describe("resolveElizaAppOrigin", () => {
   });
 
   it("resolves the staging api + app hosts to the staging app", () => {
+    expect(resolveElizaAppOrigin("api-staging.eliza.app")).toBe(
+      STAGING_ELIZA_APP_ORIGIN,
+    );
+    expect(resolveElizaAppOrigin("cloud-staging.eliza.app")).toBe(
+      STAGING_ELIZA_APP_ORIGIN,
+    );
     expect(resolveElizaAppOrigin("api-staging.elizacloud.ai")).toBe(
       STAGING_ELIZA_APP_ORIGIN,
     );
@@ -45,6 +51,9 @@ describe("resolveElizaAppOrigin", () => {
       "app.elizacloud.ai",
       "api.elizacloud.ai",
       "dev.elizacloud.ai",
+      "eliza.app",
+      "cloud.eliza.app",
+      "api.eliza.app",
     ]) {
       expect(resolveElizaAppOrigin(host)).toBe(PROD_ELIZA_APP_ORIGIN);
     }

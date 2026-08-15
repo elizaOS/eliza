@@ -82,6 +82,7 @@ export interface TriggerSummary {
   scheduledAtIso?: string;
   cronExpression?: string;
   eventKind?: string;
+  eventFilter?: Record<string, unknown>;
   maxRuns?: number;
   runCount: number;
   nextRunAtMs?: number;
@@ -117,6 +118,7 @@ export interface CreateTriggerRequest {
   scheduledAtIso?: string;
   cronExpression?: string;
   eventKind?: string;
+  eventFilter?: Record<string, unknown>;
   maxRuns?: number;
   kind?: TriggerKind;
   workflowId?: string;
@@ -134,6 +136,7 @@ export interface UpdateTriggerRequest {
   scheduledAtIso?: string;
   cronExpression?: string;
   eventKind?: string;
+  eventFilter?: Record<string, unknown>;
   maxRuns?: number;
   kind?: TriggerKind;
   workflowId?: string;

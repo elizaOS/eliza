@@ -377,6 +377,16 @@ describe("LifeOps package boundaries", () => {
     ).toBe(false);
   });
 
+  it("resolves the Google Calendar runtime subpath to source in src integration", () => {
+    const vitestConfig = readPackageFile("vitest.config.ts");
+
+    expect(vitestConfig).toContain(
+      "find: /^@elizaos\\/plugin-google-workspace\\/calendar$/",
+    );
+    expect(vitestConfig).toContain('"plugin-google-workspace",');
+    expect(vitestConfig).toContain('"calendar.ts",');
+  });
+
   it("does not keep local message transport adapter source files", () => {
     const adapterFiles = existsSync(localMessagingAdaptersDir)
       ? readdirSync(localMessagingAdaptersDir).filter((file) =>

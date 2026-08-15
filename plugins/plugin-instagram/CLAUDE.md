@@ -4,9 +4,9 @@ Instagram DM and public-comment connector for elizaOS agents.
 
 ## Purpose / role
 
-Adds Instagram integration to an Eliza agent: DM sending (via the `MESSAGE` connector), public
-media-comment posting (via the `POST` connector), and workflow credential supply for Meta Graph
-API-based nodes. Loaded opt-in — add `@elizaos/plugin-instagram` to the agent's `plugins` array.
+Adds Instagram integration to an Eliza agent: DM sending (via the `MESSAGE` connector) and public
+media-comment posting (via the `POST` connector). Loaded opt-in — add
+`@elizaos/plugin-instagram` to the agent's `plugins` array.
 Requires credentials to do anything useful; the service degrades gracefully when they are absent.
 
 ## Plugin surface
@@ -17,9 +17,6 @@ Requires credentials to do anything useful; the service degrades gracefully when
   accounts. On `start()` it reads config, validates credentials, and registers both the DM
   `MessageConnector` and the feed `PostConnector` with the runtime. Exposes methods for sending DMs,
   posting/replying to comments, liking media, following/unfollowing users, and fetching threads.
-- `InstagramWorkflowCredentialProvider` (`serviceType = "workflow_credential_provider"`) — supplies
-  a `facebookGraphApi` credential object (`{ accessToken }`) to the workflow plugin via duck-typed
-  `resolve(userId, credType)`. Reads `INSTAGRAM_PAGE_ACCESS_TOKEN`.
 
 **Actions:** none registered — DMs route through `MESSAGE`, comments through `POST`.
 
@@ -42,7 +39,6 @@ hooks (`getChatContext`, `getUserContext`, `resolveTargets`, `listRooms`, `fetch
 src/
   index.ts                       Plugin object, init() hook, re-exports
   service.ts                     InstagramService class — connector registration + API backend boundary
-  workflow-credential-provider.ts InstagramWorkflowCredentialProvider — Meta Graph API token supply
   connector-account-provider.ts  ConnectorAccountProvider impl for ConnectorAccountManager
   accounts.ts                    Config resolution: env vars, character.settings.instagram, multi-account
   constants.ts                   INSTAGRAM_SERVICE_NAME, MAX_*, SUPPORTED_MEDIA_TYPES, EVENT_PREFIX
@@ -84,8 +80,7 @@ apply when `accountId === "default"` (the single-account case). Multi-account de
 | `INSTAGRAM_POLLING_INTERVAL` | No | Poll interval in seconds (default `60`) |
 | `INSTAGRAM_ACCOUNT_ID` | No | Override default account ID |
 | `INSTAGRAM_DEFAULT_ACCOUNT_ID` | No | Alias for `INSTAGRAM_ACCOUNT_ID` |
-| `INSTAGRAM_ACCOUNTS` | No | JSON array/object of additional account configs |
-| `INSTAGRAM_PAGE_ACCESS_TOKEN` | No | Meta Graph API page access token for workflow nodes |
+| `INSTAGRAM_ACCOUNTS` | No | JSON array/object of additional account configs. Malformed JSON or a primitive fails startup with `INSTAGRAM_CONFIG_INVALID`; junk entries are skipped and IDs are normalized. |
 
 Character-level config goes in `character.settings.instagram`:
 ```json
@@ -126,14 +121,16 @@ pattern).
   `src/service.ts`.
 - **Multi-account:** Each configured account gets its own `InstagramService` instance. The `start()`
   static method iterates `listInstagramAccountIds()` and registers one connector pair per account.
+  `INSTAGRAM_ACCOUNTS` is fail-closed: malformed/non-collection JSON is fatal, non-object entries
+  are skipped, padded object keys and array `accountId`/`id` values are normalized before lookup,
+  and duplicate normalized IDs are rejected rather than silently overwriting credentials. The same
+  key normalization applies to `character.settings.instagram.accounts`.
 - **Length caps:** `MAX_COMMENT_LENGTH = 1000` and `MAX_DM_LENGTH = 1000` are enforced in
   `service.ts` — DMs over the cap throw in `sendDirectMessage`, and `contentShaping.postProcess`
   auto-truncates comments via the module-local `truncateInstagramComment`. `MAX_CAPTION_LENGTH = 2200`
   is reserved for a caption-posting path.
 - **PostConnector target:** `POST operation=send` requires `mediaId`, `target`, or `replyTo` in
   `content.metadata`; throws without one.
-- **WorkflowCredentialProvider is duck-typed** — it does not import `@elizaos/plugin-workflow` at
-  compile time; the `serviceType = "workflow_credential_provider"` string is the only coupling.
 - **No `console.*`** — use `runtime.logger.*` or the imported `logger` from `@elizaos/core`.
 - **ESM only** — `"type": "module"` in `package.json`; all imports must use explicit `.js`
   extensions in compiled output.

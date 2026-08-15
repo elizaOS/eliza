@@ -45,7 +45,7 @@ function getOpenApiServerUrl(env: { NEXT_PUBLIC_APP_URL?: string }): string {
   return configuredUrl &&
     /^https:\/\/www\.(dev\.)?elizacloud\.ai$/.test(configuredUrl)
     ? configuredUrl
-    : "https://www.elizacloud.ai";
+    : "https://api.eliza.app";
 }
 
 const app = new Hono<AppEnv>();
@@ -110,7 +110,7 @@ function createOpenApiResponse(env: {
       version: "1.0.0",
       description:
         "AI agent infrastructure API. Supports REST, MCP, and A2A protocols with API key authentication.",
-      contact: { name: "Eliza Cloud", url: "https://www.elizacloud.ai" },
+      contact: { name: "Eliza Cloud", url: "https://eliza.app" },
       license: { name: "MIT", url: "https://opensource.org/licenses/MIT" },
     },
     servers: [{ url: baseUrl, description: "Production server" }],
@@ -134,7 +134,7 @@ function createOpenApiResponse(env: {
     tags: [],
     externalDocs: {
       description: "Eliza Cloud Documentation",
-      url: "https://www.elizacloud.ai/docs",
+      url: "https://eliza.app/docs",
     },
   };
 

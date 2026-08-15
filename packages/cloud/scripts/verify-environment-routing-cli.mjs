@@ -5,7 +5,7 @@
  * Probes each live custom domain's `/api/health` and asserts the environment
  * that answered matches the environment the domain is supposed to serve -
  * catching "staging is pointing at prod CF" (a staging subdomain that fell into
- * the prod `*.elizacloud.ai/*` Worker wildcard, or a Pages deployment reattached
+ * a production route, or a Pages deployment reattached
  * to the wrong environment). See `verify-environment-routing.mjs` for the why.
  *
  * Usage:

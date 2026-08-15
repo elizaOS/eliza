@@ -21,7 +21,7 @@ Upload one or more documents to your knowledge base using multipart form data.
 Use `multipart/form-data` with the `files` field:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/documents/upload-file" \
+curl -X POST "https://api.eliza.app/api/v1/documents/upload-file" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -F "files=@document.pdf" \
   -F "characterId=optional_agent_id"

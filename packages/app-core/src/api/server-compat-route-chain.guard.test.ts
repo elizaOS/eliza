@@ -132,7 +132,6 @@ describe("compat-route registry drift guard (#12089 item 5)", () => {
       "background-tasks",
       "internal-wake",
       "local-inference",
-      "automations",
       "secrets",
       "drop-status",
       "agent-reset",

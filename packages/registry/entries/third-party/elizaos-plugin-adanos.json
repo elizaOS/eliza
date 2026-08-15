@@ -1,0 +1,15 @@
+{
+  "package": "elizaos-plugin-adanos",
+  "repository": "github:adanos-software/elizaos-plugin-adanos",
+  "kind": "plugin",
+  "description": "Read-only Adanos stock and crypto market sentiment for elizaOS agents.",
+  "homepage": "https://adanos.org/",
+  "version": "0.1.0",
+  "tags": [
+    "market-sentiment",
+    "stocks",
+    "crypto",
+    "alternative-data",
+    "adanos"
+  ]
+}

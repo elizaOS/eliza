@@ -196,8 +196,20 @@ async function runHandler(args: {
   service: StubService;
   text: string;
   parameters: Record<string, unknown>;
+  extractedUpdate?: Record<string, unknown>;
 }) {
-  const action = createCalendarActionRunner(fakeDeps(args.service));
+  const actionDeps = fakeDeps(args.service);
+  if (args.extractedUpdate) {
+    actionDeps.runJsonModel = vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_update_event"
+        ? {
+            rawResponse: JSON.stringify(args.extractedUpdate),
+            parsed: args.extractedUpdate,
+          }
+        : null,
+    );
+  }
+  const action = createCalendarActionRunner(actionDeps);
   return (await action.handler(
     fakeRuntime(args.service),
     message(args.text),
@@ -297,6 +309,40 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const request = service.modifyApproval.mock.calls[0]?.[0]
       ?.request as Record<string, unknown>;
     expect(request.recurrenceScope).toBe("series");
+  });
+
+  it("planner debris in the explicit scope falls back to user phrasing", async () => {
+    const result = await runHandler({
+      service,
+      text: "move just this standup to 10am",
+      parameters: {
+        subaction: "update_event",
+        query: "standup",
+        details: { recurrenceScope: ',time_max:"' },
+      },
+    });
+    expect(result.success).toBe(true);
+    const request = service.modifyApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
+    expect(request.recurrenceScope).toBe("instance");
+  });
+
+  it("planner debris from update-field extraction reaches clarification, not a 400", async () => {
+    const result = await runHandler({
+      service,
+      text: "move my standup",
+      parameters: { subaction: "update_event", query: "standup" },
+      extractedUpdate: {
+        startAt: "2026-07-08T19:00:00.000Z",
+        recurrenceScope: ",series:",
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      requiresInput: true,
+      missing: ["recurrenceScope"],
+    });
+    expect(service.modifyApproval).not.toHaveBeenCalled();
   });
 
   it("a recurrence-rule change is implicitly a series edit", async () => {
@@ -417,6 +463,22 @@ describe("CALENDAR delete_event on a recurring occurrence", () => {
     expect(request.eventId).toBe("standup_20260708T170000Z");
     expect(request.recurrenceScope).toBe("series");
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("planner debris in delete scope falls back to explicit user phrasing", async () => {
+    const result = await runHandler({
+      service,
+      text: "delete just this standup",
+      parameters: {
+        subaction: "delete_event",
+        query: "standup",
+        details: { recurrenceScope: ",series:" },
+      },
+    });
+    expect(result.success).toBe(true);
+    const request = service.cancelApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
+    expect(request.recurrenceScope).toBe("instance");
   });
 
   it("non-recurring events delete without a scope round-trip", async () => {

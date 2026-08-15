@@ -104,15 +104,14 @@ rl = [
   # FSDP+Megatron training backends, and verifiable-reward registry. Stage 2
   # of RL_STRATEGY.md uses the python-callable reward path
   # (`custom_reward_function`) to invoke scripts/eliza_reward_fn.py:compute_score
-  # per rollout. Pin a known-good window — the 0.5.x → 0.7.x line introduced
-  # `custom_reward_function` as a top-level config field; older releases used
-  # `reward_score.compute_score` registry imports. Both still work with the
-  # script we ship; the upper bound is just paranoid.
-  "verl>=0.5.0,<0.8.0",
+  # per rollout. Keep the RL stack on the 0.8 line so the rollout server can
+  # move past the old vLLM 0.7.2 / torch 2.5.1 lock pair.
+  "verl>=0.8.0,<0.9.0",
   # GRPO trainer needs vLLM for rollouts; pin separately so users running RL
   # without serving don't have to install the full `serve` extra (which has
-  # an incompatible torch ABI). vllm>=0.6 is what verl 0.5+ requires.
-  "vllm>=0.6.0,<0.8.0",
+  # an incompatible torch ABI). vLLM 0.8.5 is the latest 0.8-series wheel and
+  # avoids the older 0.7.2 / torch 2.5.1 pair flagged by dependency scanning.
+  "vllm>=0.8.5,<0.9.0",
   # Atropos — continuous RL environment server. Drives the GRPO loop in
   # scripts/rl/atropos_trainer.py against eliza-native trajectory JSONL
   # exports under $ELIZA_STATE_DIR/trajectories. Config:
@@ -147,13 +146,13 @@ reward = [
 # resolution graph; install with `uv tool install vastai` and
 # `pip install heretic-llm` on the abliteration box.
 serve = [
-  # vLLM 0.18+ ships EAGLE-3 speculative decoding (PR #38280 era), the
+  # vLLM 0.21+ ships EAGLE-3 speculative decoding (PR #38280 era), the
   # TurboQuant K/V quantization plugin, FP8 KV cache via FlashAttention 3
   # on sm_90, and continuous batching needed by the Gemma-era serve harness.
   # Pin a minor floor that captures all of these. See
   # scripts/inference/serve_vllm.py for the canonical flag set per model +
   # GPU target.
-  "vllm>=0.20.0,<0.21.0",
+  "vllm>=0.21.0,<0.22.0",
   # `vllm-flash-attn` is bundled with vLLM 0.20+; add explicitly so the
   # constraint solver doesn't pull a stale wheel from a transitive dep.
   "transformers>=4.46.0",

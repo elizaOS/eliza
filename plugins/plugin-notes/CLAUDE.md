@@ -32,6 +32,8 @@ views or event state to this package.
 - `src/store.ts` — atomic per-agent JSON persistence with a shared in-process
   write barrier.
 - `src/service.ts` — `NotesService`, the only layer allowed to mutate state.
+- `src/action.ts` — owner-only chat CRUD over the same service.
+- `src/provider.ts` — owner-only saved-note context for chat recall.
 - `src/interact.ts` — server capability broker (`serverInteract`).
 - `src/capabilities.ts` — planner-visible capability declarations.
 - `src/routes.ts` — authenticated `GET /api/notes/state`.
@@ -43,3 +45,5 @@ views or event state to this package.
 - The server owns all state; the view renders the authoritative snapshot.
 - Loading, designed-empty, and error are three distinguishable renders.
 - Failures throw typed `ElizaError`s; nothing fabricates a healthy empty state.
+- All chat action and provider exposure is OWNER-gated because storage is
+  per-agent rather than per-sender.

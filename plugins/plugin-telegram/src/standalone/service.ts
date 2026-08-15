@@ -69,7 +69,7 @@ export class TelegramStandaloneService extends Service {
     runtime: IAgentRuntime,
   ): Promise<TelegramStandaloneService> {
     const service = new TelegramStandaloneService(runtime);
-    if (!shouldStartTelegramStandaloneBot()) {
+    if (!shouldStartTelegramStandaloneBot(process.env, runtime)) {
       return service;
     }
     await service.launch();

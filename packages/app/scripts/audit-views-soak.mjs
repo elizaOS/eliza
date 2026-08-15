@@ -11,13 +11,22 @@
  * `usedJSHeapSize`. It fails (non-zero) on a render-storm, an unbounded module
  * cache, or unbounded heap growth across the churn.
  *
+ * Timing and churn env knobs must be complete positive safe-integer decimals.
+ * Bare `Number(...)` previously turned typos into `NaN`: `ROUNDS=NaN` makes the
+ * churn loop iterate zero times (false pass), and NaN navigation timeouts feed
+ * Playwright wait helpers unpredictably. Invalid overrides fail closed before
+ * `/api/views` fetch or Chromium launch.
+ *
  * Assumes the stack is already up (boot it with the dev server). Env:
- *   UI=http://127.0.0.1:2138  API=http://127.0.0.1:31337  ROUNDS=6  OUT=<dir>
+ *   UI=http://127.0.0.1:2138  API=http://127.0.0.1:31337
+ *   ROUNDS=6  NAV_WAIT_MS=700  NAV_TIMEOUT_MS=10000  OUT=<dir>
  *
  * Run under Node on Windows (Playwright's CDP pipe is dead under Bun there).
  */
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import path, { join } from "node:path";
+import process from "node:process";
+import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import {
   finalizeSoakEvidence,
@@ -31,16 +40,129 @@ import {
   isExpectedUnavailableBrowserBridgeCompanionsResponse,
 } from "./browser-failure-policy.mjs";
 
+/** Default view-churn rounds when `ROUNDS` is unset. */
+export const DEFAULT_ROUNDS = 6;
+
+/** Default post-navigation settle wait (ms). */
+export const DEFAULT_NAV_WAIT_MS = 700;
+
+/** Default cold-load navigation timeout (ms). */
+export const DEFAULT_NAV_TIMEOUT_MS = 10_000;
+
+/** Node clamps `setTimeout` / Playwright timer delays above this to 1 ms. */
+export const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/** Largest settle wait whose three-times navigation allowance remains safe. */
+export const MAX_NAV_WAIT_MS = Math.floor(MAX_TIMER_DELAY_MS / 3);
+
+/**
+ * Accept only complete positive safe-integer decimal strings (or numbers).
+ * Rejects partial numbers, signed values, fractions, zero, and values above
+ * an optional max (defaults to Number.MAX_SAFE_INTEGER).
+ * @param {string | number} value
+ * @param {string} label
+ * @param {{ max?: number }} [options]
+ * @returns {number}
+ */
+export function parsePositiveSafeInteger(value, label, options = {}) {
+  const max = options.max ?? Number.MAX_SAFE_INTEGER;
+  const rangeHint =
+    max === Number.MAX_SAFE_INTEGER
+      ? "a positive safe-integer decimal"
+      : `a positive safe-integer decimal from 1 to ${max}`;
+  const received = (v) =>
+    typeof v === "number" ? JSON.stringify(v) : JSON.stringify(String(v ?? ""));
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 1 || value > max) {
+      throw new Error(
+        `${label} must be ${rangeHint} (received ${received(value)})`,
+      );
+    }
+    return value;
+  }
+  const raw = String(value ?? "");
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(
+      `${label} must be ${rangeHint} (received ${received(value)})`,
+    );
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 1 ||
+    parsed > max ||
+    String(parsed) !== raw
+  ) {
+    throw new Error(
+      `${label} must be ${rangeHint} (received ${received(value)})`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Resolve soak churn and navigation timing from env. Unset/empty/whitespace
+ * keep historical defaults. Explicit overrides fail closed on typos so a bad
+ * `ROUNDS` cannot silently run zero churn cycles.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {{ rounds: number, navWaitMs: number, navTimeoutMs: number }}
+ */
+export function resolveSoakTiming(env = process.env) {
+  const roundsRaw = env.ROUNDS;
+  const navWaitRaw = env.NAV_WAIT_MS;
+  const navTimeoutRaw = env.NAV_TIMEOUT_MS;
+
+  const rounds =
+    roundsRaw == null || String(roundsRaw).trim() === ""
+      ? DEFAULT_ROUNDS
+      : parsePositiveSafeInteger(roundsRaw, "ROUNDS");
+
+  const navWaitMs =
+    navWaitRaw == null || String(navWaitRaw).trim() === ""
+      ? DEFAULT_NAV_WAIT_MS
+      : parsePositiveSafeInteger(navWaitRaw, "NAV_WAIT_MS", {
+          max: MAX_NAV_WAIT_MS,
+        });
+
+  const navTimeoutMs =
+    navTimeoutRaw == null || String(navTimeoutRaw).trim() === ""
+      ? DEFAULT_NAV_TIMEOUT_MS
+      : parsePositiveSafeInteger(navTimeoutRaw, "NAV_TIMEOUT_MS", {
+          max: MAX_TIMER_DELAY_MS,
+        });
+
+  return { rounds, navWaitMs, navTimeoutMs };
+}
+
+/**
+ * Resolve the exact Playwright navigation timeout without exceeding Node's
+ * timer ceiling when the settle wait contributes a three-times allowance.
+ * @param {number} navTimeoutMs
+ * @param {number} navWaitMs
+ * @returns {number}
+ */
+export function resolveNavigationTimeoutMs(navTimeoutMs, navWaitMs) {
+  const timeoutMs = Math.max(navTimeoutMs, navWaitMs * 3);
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs > MAX_TIMER_DELAY_MS) {
+    throw new Error(
+      `derived navigation timeout must be at most ${MAX_TIMER_DELAY_MS} ms`,
+    );
+  }
+  return timeoutMs;
+}
+
 const UI = process.env.UI || "http://127.0.0.1:2138";
 const API = process.env.API || "http://127.0.0.1:31337";
-const ROUNDS = Number(process.env.ROUNDS || 6);
-const NAV_WAIT_MS = Number(process.env.NAV_WAIT_MS || 700);
-const NAV_TIMEOUT_MS = Number(process.env.NAV_TIMEOUT_MS || 10_000);
+/** @type {number} */
+let ROUNDS = DEFAULT_ROUNDS;
+/** @type {number} */
+let NAV_WAIT_MS = DEFAULT_NAV_WAIT_MS;
+/** @type {number} */
+let NAV_TIMEOUT_MS = DEFAULT_NAV_TIMEOUT_MS;
 const VIDEO = process.env.VIDEO !== "0";
 const SETUP_FIRST_RUN = process.env.SETUP_FIRST_RUN !== "0";
 const OUT =
   process.env.OUT || join(process.cwd(), "capture-output", "10196-views-state");
-mkdirSync(OUT, { recursive: true });
 
 let fails = 0;
 const checks = [];
@@ -629,7 +751,7 @@ async function main() {
           return normalized === target;
         },
         targetPath,
-        { timeout: Math.max(NAV_TIMEOUT_MS, NAV_WAIT_MS * 3) },
+        { timeout: resolveNavigationTimeoutMs(NAV_TIMEOUT_MS, NAV_WAIT_MS) },
       );
     } catch (cause) {
       // error-policy:J2 Preserve Playwright's timeout while identifying the
@@ -916,12 +1038,37 @@ async function main() {
   }
 }
 
-// error-policy:J1 the process boundary translates any required-check or
-// evidence-finalization failure into cleanup, diagnostics, and a non-zero exit.
-await main().catch(async (error) => {
-  await cleanupAfterFailure();
-  console.error(
-    `[soak] fatal: ${error instanceof Error ? error.stack : error}`,
-  );
-  process.exitCode = 1;
-});
+const isDirectRun =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+
+if (isDirectRun) {
+  let timing;
+  try {
+    timing = resolveSoakTiming(process.env);
+  } catch (error) {
+    // error-policy:J1 CLI boundary — invalid soak timing env fails before
+    // output-dir creation, /api/views fetch, or Chromium launch so a typo
+    // cannot silently run zero churn rounds or feed NaN to Playwright waits.
+    console.error(
+      error instanceof Error
+        ? error.message
+        : "[soak] invalid timing environment",
+    );
+    process.exit(1);
+  }
+  ROUNDS = timing.rounds;
+  NAV_WAIT_MS = timing.navWaitMs;
+  NAV_TIMEOUT_MS = timing.navTimeoutMs;
+  mkdirSync(OUT, { recursive: true });
+
+  // error-policy:J1 the process boundary translates any required-check or
+  // evidence-finalization failure into cleanup, diagnostics, and a non-zero exit.
+  await main().catch(async (error) => {
+    await cleanupAfterFailure();
+    console.error(
+      `[soak] fatal: ${error instanceof Error ? error.stack : error}`,
+    );
+    process.exitCode = 1;
+  });
+}

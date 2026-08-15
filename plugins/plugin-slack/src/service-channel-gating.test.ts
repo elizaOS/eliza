@@ -348,6 +348,22 @@ describe("persisted Slack policy through Bolt handlers", () => {
     expect(harness.app.client.chat.postMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps equal Slack timestamps in different channels as distinct messages", async () => {
+    const harness = await startHarness();
+    const first = await harness.buildRawMessageMemory(
+      message({ user: undefined, bot_id: "B0123ABCD", channel: OPS }),
+      "default",
+    );
+    const second = await harness.buildRawMessageMemory(
+      message({ user: undefined, bot_id: "B0123ABCD", channel: UNKNOWN }),
+      "default",
+    );
+
+    expect(first?.id).toBeDefined();
+    expect(second?.id).toBeDefined();
+    expect(first?.id).not.toBe(second?.id);
+  });
+
   it("projects canonical connector config and enforces name-resolved policy", async () => {
     const harness = await startHarness();
     expect(harness.runtime.character.settings?.slack).toMatchObject({

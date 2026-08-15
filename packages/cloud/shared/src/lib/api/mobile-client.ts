@@ -40,7 +40,7 @@ export function isAndroid(): boolean {
 export function getApiBaseUrl(): string {
   // Mobile always uses production API
   if (isMobileApp()) {
-    return process.env.NEXT_PUBLIC_API_URL || "https://www.elizacloud.ai";
+    return process.env.NEXT_PUBLIC_API_URL || "https://api.eliza.app";
   }
 
   // Server-side rendering

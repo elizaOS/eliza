@@ -59,7 +59,7 @@ app.get("/", (c) => {
   <text x="112" y="150" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="0">${label}</text>
   <text x="112" y="302" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="72" font-weight="800" letter-spacing="0">${title}</text>
   <text x="116" y="374" fill="#e5e7eb" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="500" letter-spacing="0">${description}</text>
-  <text x="112" y="514" fill="#cbd5e1" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="600" letter-spacing="0">elizacloud.ai</text>
+  <text x="112" y="514" fill="#cbd5e1" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="600" letter-spacing="0">eliza.app</text>
 </svg>`;
 
   return new Response(svg, {

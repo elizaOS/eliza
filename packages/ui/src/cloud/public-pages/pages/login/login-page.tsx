@@ -6,25 +6,32 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
+import { isElizaManagedCloudUiHostname } from "@elizaos/shared/elizacloud";
 import { CheckCircle2 } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
+import { isAppModeHost } from "../../../app-mode/app-mode";
 import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
+import {
+  redirectToSsoBridge,
+  sanitizeBridgeReturnTo,
+  shouldAutoBridgeToSso,
+} from "../../../sso-bridge/sso-bridge";
 import { usePageTitle } from "../../lib/use-page-title";
+import { LoginOptionsSkeleton } from "./login-section-skeleton";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
+const MANAGED_CLOUD_HANDOFF_TIMEOUT_MS = 5_000;
 
+// Chunk-load fallback with the SAME geometry as the section's own
+// provider-discovery skeleton and the final option stack, so the card holds
+// one height from first paint through hydration to interactive (#18256).
 function StewardLoginSectionFallback() {
   return (
-    <div className="space-y-4" aria-busy="true" aria-hidden="true">
-      <div className="h-touch w-full rounded-md bg-bg-muted" />
-      <div className="flex gap-2">
-        <div className="h-touch flex-1 rounded-md bg-bg-muted" />
-        <div className="h-touch flex-1 rounded-md bg-bg-muted" />
-      </div>
-      <div className="mx-auto h-3 w-3/4 rounded-full bg-bg-muted" />
+    <div aria-busy="true" aria-hidden="true">
+      <LoginOptionsSkeleton />
     </div>
   );
 }
@@ -86,7 +93,55 @@ function sessionIdFromLoginReturnTo(returnTo: string | null): string | null {
   }
 }
 
-export default function LoginPage() {
+function ManagedCloudLoginHandoff(): React.JSX.Element {
+  const [searchParams] = useSearchParams();
+  const [handoffRequired] = useState(() => shouldAutoBridgeToSso());
+  const [failed, setFailed] = useState(false);
+  const attemptRef = useRef<Promise<boolean> | null>(null);
+  const returnTo = sanitizeBridgeReturnTo(searchParams.get("returnTo"));
+
+  useEffect(() => {
+    if (!handoffRequired) return;
+    let attempt = attemptRef.current;
+    if (!attempt) {
+      attempt = redirectToSsoBridge(returnTo);
+      attemptRef.current = attempt;
+    }
+
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      if (!active) return;
+      active = false;
+      setFailed(true);
+    }, MANAGED_CLOUD_HANDOFF_TIMEOUT_MS);
+
+    void attempt
+      .then((started) => {
+        if (active && !started) setFailed(true);
+      })
+      .catch(() => {
+        // error-policy:J4 bridge initiation failed before navigation; keep
+        // sign-in available on this host through the normal Steward form.
+        if (active) setFailed(true);
+      });
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [handoffRequired, returnTo]);
+
+  if (!handoffRequired || failed) return <PublicLoginPage />;
+  return (
+    <LoginBackground>
+      <p className="text-center font-mono text-[11px] uppercase tracking-[0.32em] text-muted">
+        Taking you to Eliza sign in
+      </p>
+    </LoginBackground>
+  );
+}
+
+function PublicLoginPage(): React.JSX.Element {
   const t = useCloudT();
   const [searchParams] = useSearchParams();
   const handoffSessionId = sessionIdFromLoginReturnTo(
@@ -94,9 +149,7 @@ export default function LoginPage() {
   );
   const [handoffComplete, setHandoffComplete] = useState(false);
 
-  usePageTitle(
-    t("cloud.login.metaTitle", { defaultValue: "Sign In | Eliza Cloud" }),
-  );
+  usePageTitle(t("cloud.login.metaTitle", { defaultValue: "Sign In | Eliza" }));
 
   useEffect(() => {
     if (!handoffSessionId) return;
@@ -151,15 +204,15 @@ export default function LoginPage() {
       <main className="space-y-8">
         <div className="space-y-3 text-center">
           <img
-            src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudWhite}`}
-            alt="Eliza Cloud"
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaLockupWhite}`}
+            alt="Eliza"
             className="mx-auto h-8 w-auto"
             draggable={false}
           />
           <div className="space-y-1.5">
             <h1 className="font-sans text-2xl font-semibold tracking-tight text-txt-strong">
               {t("cloud.login.signIn", {
-                defaultValue: "Sign in to Eliza Cloud",
+                defaultValue: "Sign in to Eliza",
               })}
             </h1>
             <p className="text-sm text-muted">
@@ -178,14 +231,14 @@ export default function LoginPage() {
           })}{" "}
           <Link
             to="/terms-of-service"
-            className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,color] hover:underline hover:opacity-80"
+            className="hosted-signin-focus-emphasis inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm border border-transparent px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,border-color,color] hover:underline hover:opacity-80"
           >
             {t("cloud.login.termsLink", { defaultValue: "Terms" })}
           </Link>{" "}
           {t("cloud.login.and", { defaultValue: "and" })}{" "}
           <Link
             to="/privacy-policy"
-            className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,color] hover:underline hover:opacity-80"
+            className="hosted-signin-focus-emphasis inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm border border-transparent px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,border-color,color] hover:underline hover:opacity-80"
           >
             {t("cloud.login.privacyPolicy", { defaultValue: "Privacy Policy" })}
           </Link>
@@ -193,4 +246,12 @@ export default function LoginPage() {
       </main>
     </LoginBackground>
   );
+}
+
+export default function LoginPage(): React.JSX.Element {
+  const managedCloudHost =
+    isAppModeHost() ||
+    (typeof window !== "undefined" &&
+      isElizaManagedCloudUiHostname(window.location.hostname));
+  return managedCloudHost ? <ManagedCloudLoginHandoff /> : <PublicLoginPage />;
 }

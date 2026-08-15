@@ -4,7 +4,7 @@
  * runtime-mode changes, and representative OS deep links.
  */
 import { Capacitor } from "@capacitor/core";
-import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core";
+import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core/desktop-shell";
 import { listenForConnectRequests } from "@elizaos/ui/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

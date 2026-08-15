@@ -15,7 +15,7 @@ Messages render through the `MessageContent` component, which supports:
 - **UI Spec rendering** — fenced JSON code blocks containing UiSpec objects render as interactive UI elements via `UiRenderer`.
 - **Code blocks** — syntax-highlighted fenced code blocks.
 - **Streaming** — agent responses stream in token-by-token with a visible typing indicator. The `chatFirstTokenReceived` flag tracks when the first token arrives.
-- **Action progress (replace semantics)** — When an action calls its callback several times (same idea as Discord progressive messages), the API sends **snapshot** SSE updates so the **latest** callback text replaces the previous one after the model’s streamed prefix, instead of concatenating every status line into one blob. **Why:** Real-time status should feel like **live edits**, not appended noise. See [Action callbacks and SSE streaming](/runtime/action-callback-streaming).
+- **Action progress (replace semantics)** — When an action calls its callback several times (same idea as Discord progressive messages), the API sends **snapshot** SSE updates so the **latest** callback text replaces the previous one after the model’s streamed prefix, instead of concatenating every status line into one blob. **Why:** Real-time status should feel like **live edits**, not appended noise.
 
 ## Input Area
 

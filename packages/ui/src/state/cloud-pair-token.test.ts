@@ -1,18 +1,15 @@
-/** Verifies clearCloudPairApiToken through the package's configured test harness. */
+/**
+ * Exercises Cloud-pair credential deletion against real jsdom storage. Scoped
+ * clears must preserve unrelated agents, while global clears remove every
+ * scoped/legacy credential and loopback owner hint.
+ */
 // @vitest-environment jsdom
 
-/**
- * Delete channel for the durable cloud-pair API token (#16666): the clear must
- * empty BOTH storages the write channel targets, or the boot adopter
- * re-adopts the dead credential on the next launch — and the agent-scoped
- * purge must destroy ONLY the proven agent's credentials, never unrelated
- * profiles. Per-agent keys (#17579) are cleared for the target agent only.
- * The legacy global key (unknown owner on a pre-migration install) is purged
- * only by the GLOBAL clear — an agent-scoped clear must never destroy what
- * may be another agent's only bearer. jsdom + real storages; no network.
- */
+import {
+  CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
+  cloudPairTokenKeyForAgent,
+} from "@elizaos/shared/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
-import { cloudPairTokenKeyForAgent } from "../components/auth/CloudPairRelay";
 import {
   clearCloudPairApiToken,
   clearStalePairCredentialsForAgent,
@@ -99,6 +96,8 @@ describe("clearCloudPairApiToken", () => {
     // Another agent's scoped key must survive an explicit sign-out for agent-a.
     const otherAgentKey = cloudPairTokenKeyForAgent("agent-b");
     localStorage.setItem(otherAgentKey, "keep-agent-b");
+    localStorage.setItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY, "agent-b");
+    sessionStorage.setItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY, "agent-b");
     localStorage.setItem("eliza:unrelated", "keep-me");
 
     clearCloudPairApiToken("agent-a");
@@ -108,6 +107,12 @@ describe("clearCloudPairApiToken", () => {
     expect(localStorage.getItem(LEGACY_KEY)).toBe("legacy-key");
     expect(sessionStorage.getItem(LEGACY_KEY)).toBe("legacy-key");
     expect(localStorage.getItem(otherAgentKey)).toBe("keep-agent-b");
+    expect(localStorage.getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY)).toBe(
+      "agent-b",
+    );
+    expect(sessionStorage.getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY)).toBe(
+      "agent-b",
+    );
     expect(localStorage.getItem("eliza:unrelated")).toBe("keep-me");
   });
 
@@ -118,6 +123,8 @@ describe("clearCloudPairApiToken", () => {
     const agentBKey = cloudPairTokenKeyForAgent("agent-b");
     localStorage.setItem(agentAKey, "key-a");
     sessionStorage.setItem(agentBKey, "key-b");
+    localStorage.setItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY, "agent-a");
+    sessionStorage.setItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY, "agent-a");
 
     clearCloudPairApiToken();
 
@@ -125,6 +132,18 @@ describe("clearCloudPairApiToken", () => {
     expect(sessionStorage.getItem(LEGACY_KEY)).toBeNull();
     expect(localStorage.getItem(agentAKey)).toBeNull();
     expect(sessionStorage.getItem(agentBKey)).toBeNull();
+    expect(localStorage.getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY)).toBeNull();
+    expect(sessionStorage.getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY)).toBeNull();
+  });
+
+  it("clears a scoped loopback owner hint only for the matching agent", () => {
+    localStorage.setItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY, "agent-a");
+    sessionStorage.setItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY, "agent-a");
+
+    clearCloudPairApiToken("agent-a");
+
+    expect(localStorage.getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY)).toBeNull();
+    expect(sessionStorage.getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY)).toBeNull();
   });
 
   it("is a safe no-op when the key is absent", () => {

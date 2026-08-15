@@ -61,6 +61,12 @@ import type {
 
 export const CHECKIN_REPORTS_TABLE = "app_lifeops.life_checkin_reports";
 
+export function getCheckinSummaryTrajectoryPurpose(
+  kind: CheckinKind,
+): "morning_brief" | "health_checkin" {
+  return kind === "morning" ? "morning_brief" : "health_checkin";
+}
+
 const ACK_WINDOW_MS = 72 * 60 * 60 * 1000;
 const INTERNAL_URL = new URL("http://127.0.0.1/");
 
@@ -1380,7 +1386,7 @@ export class CheckinService {
     const prompt = buildCheckinSummaryPrompt(report);
     try {
       const response = await runWithTrajectoryPurpose(
-        "lifeops-checkin-summary",
+        getCheckinSummaryTrajectoryPurpose(report.kind),
         () =>
           this.runtime.useModel(ModelType.TEXT_LARGE, {
             prompt,

@@ -57,7 +57,7 @@ export const containers = pgTable(
     load_balancer_url: text("load_balancer_url"),
     /**
      * Stable per-container hostname under CONTAINERS_PUBLIC_BASE_DOMAIN
-     * (e.g. `xyz123.containers.elizacloud.ai`). Used by the ingress map
+     * (e.g. `xyz123.cloud.eliza.app`). Used by the ingress map
      * endpoint to wire reverse-proxy / DNS configuration.
      */
     public_hostname: text("public_hostname"),

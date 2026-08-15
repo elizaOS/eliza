@@ -2,7 +2,7 @@
  * Registry Client for Eliza.
  *
  * Provides a 3-tier cached registry (memory → file → network) that works
- * offline, in .app bundles, and in dev. Fetches from plugins.elizacloud.ai.
+ * offline, in .app bundles, and in dev. Fetches from plugins.eliza.app.
  *
  * @module services/registry-client
  */
@@ -53,8 +53,8 @@ import type {
 // ---------------------------------------------------------------------------
 
 const GENERATED_REGISTRY_URL =
-  "https://plugins.elizacloud.ai/generated-registry.json";
-const INDEX_REGISTRY_URL = "https://plugins.elizacloud.ai/index.json";
+  "https://plugins.eliza.app/generated-registry.json";
+const INDEX_REGISTRY_URL = "https://plugins.eliza.app/index.json";
 const CACHE_TTL_MS = 3_600_000; // 1 hour
 
 // ---------------------------------------------------------------------------

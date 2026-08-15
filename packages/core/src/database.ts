@@ -45,8 +45,9 @@ import type {
 	Metadata,
 	OAuthFlowRecord,
 	PairingAllowlistEntry,
-	PairingChannel,
+	PairingAllowlistQuery,
 	PairingRequest,
+	PairingRequestQuery,
 	Participant,
 	ParticipantUpdateFields,
 	ParticipantUserState,
@@ -624,11 +625,11 @@ export abstract class DatabaseAdapter<DB extends object = object>
 
 	// ── Pairing CRUD (batch-only for mutations) ─────────────────────────
 	abstract getPairingRequests(
-		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+		queries: PairingRequestQuery[],
 	): Promise<import("./types").PairingRequestsResult>;
 
 	abstract getPairingAllowlists(
-		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+		queries: PairingAllowlistQuery[],
 	): Promise<import("./types").PairingAllowlistsResult>;
 
 	abstract createPairingRequests(requests: PairingRequest[]): Promise<UUID[]>;

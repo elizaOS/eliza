@@ -27,7 +27,7 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <MemoryRouter initialEntries={["/dashboard"]}>
+      <MemoryRouter initialEntries={["/cloud"]}>
         <div
           className="max-w-2xl space-y-4 p-6"
           style={{ background: "#0a0a0a" }}

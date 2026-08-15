@@ -151,6 +151,12 @@ export interface RuntimeStopOptions {
 	 * for signal handlers, reset/restart paths, and development shutdown.
 	 */
 	fast?: boolean;
+	/**
+	 * Override the aggregate service-stop ceiling used by fast shutdown. A value
+	 * of zero waits without a runtime-level cap; callers should supply a positive
+	 * bound when an outer supervisor cannot guarantee escalation.
+	 */
+	serviceStopTimeoutMs?: number;
 }
 
 export const ConnectorAccountPurpose = {

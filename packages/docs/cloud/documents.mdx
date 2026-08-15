@@ -29,7 +29,7 @@ Manage your knowledge base from the **Knowledge** surface in the elizaOS app (pe
 
 ```bash
 # Upload a document
-curl -X POST "https://elizacloud.ai/api/v1/documents/upload-file" \
+curl -X POST "https://api.eliza.app/api/v1/documents/upload-file" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -F "files=@document.pdf" \
   -F "characterId=agent_abc123"
@@ -42,7 +42,7 @@ const formData = new FormData();
 formData.append('files', file);
 formData.append('characterId', 'agent_abc123');
 
-const response = await fetch('https://elizacloud.ai/api/v1/documents/upload-file', {
+const response = await fetch('https://api.eliza.app/api/v1/documents/upload-file', {
 method: 'POST',
 headers: {
 'Authorization': 'Bearer YOUR_API_KEY',
@@ -62,7 +62,7 @@ import requests
 
 with open('document.pdf', 'rb') as f:
     response = requests.post(
-        'https://elizacloud.ai/api/v1/documents/upload-file',
+        'https://api.eliza.app/api/v1/documents/upload-file',
         headers={'Authorization': 'Bearer YOUR_API_KEY'},
         files={'files': f},
         data={'characterId': 'agent_abc123'},
@@ -132,7 +132,7 @@ Link the knowledge base to your agent for RAG.
 ### Check Processing Status
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/documents/check?documentId=doc_abc123" \
+curl -X GET "https://api.eliza.app/api/v1/documents/check?documentId=doc_abc123" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -150,7 +150,7 @@ curl -X GET "https://elizacloud.ai/api/v1/documents/check?documentId=doc_abc123"
 Search your knowledge base:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/documents/query" \
+curl -X POST "https://api.eliza.app/api/v1/documents/query" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -192,21 +192,21 @@ curl -X POST "https://elizacloud.ai/api/v1/documents/query" \
 ### List Documents
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/documents?agentId=agent_abc123" \
+curl -X GET "https://api.eliza.app/api/v1/documents?agentId=agent_abc123" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 ### Get Document Details
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/documents/doc_abc123" \
+curl -X GET "https://api.eliza.app/api/v1/documents/doc_abc123" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 ### Delete Document
 
 ```bash
-curl -X DELETE "https://elizacloud.ai/api/v1/documents/doc_abc123" \
+curl -X DELETE "https://api.eliza.app/api/v1/documents/doc_abc123" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -240,7 +240,7 @@ When knowledge is connected to an agent, relevant context is automatically retri
 
 ```javascript
 // Agent with knowledge base
-const response = await fetch("https://elizacloud.ai/api/v1/chat/completions", {
+const response = await fetch("https://api.eliza.app/api/v1/chat/completions", {
   method: "POST",
   headers: {
     Authorization: "Bearer YOUR_API_KEY",
@@ -261,7 +261,7 @@ Query knowledge and inject context manually:
 
 ```javascript
 // 1. Query knowledge
-const knowledge = await fetch("https://elizacloud.ai/api/v1/documents/query", {
+const knowledge = await fetch("https://api.eliza.app/api/v1/documents/query", {
   method: "POST",
   headers: {
     Authorization: "Bearer YOUR_API_KEY",
@@ -276,7 +276,7 @@ const knowledge = await fetch("https://elizacloud.ai/api/v1/documents/query", {
 // 2. Include in chat
 const context = knowledge.results.map((r) => r.content).join("\n\n");
 
-const response = await fetch("https://elizacloud.ai/api/v1/chat/completions", {
+const response = await fetch("https://api.eliza.app/api/v1/chat/completions", {
   method: "POST",
   headers: {
     Authorization: "Bearer YOUR_API_KEY",

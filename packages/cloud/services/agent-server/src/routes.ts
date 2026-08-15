@@ -4,13 +4,6 @@
  * internal headers and return typed, non-enumerating errors across tenants.
  */
 import { ElizaError } from "@elizaos/core";
-import {
-  applyResolutions,
-  buildCatalogSnapshot,
-  type CatalogLike,
-  coerceClarifications,
-  pruneResolvedClarifications,
-} from "@elizaos/plugin-workflow/lib/workflow-clarification";
 import { Elysia } from "elysia";
 import type { AgentManager } from "./agent-manager";
 import { EventBodySchema } from "./handlers/event";
@@ -62,9 +55,14 @@ function requireInternalAuth(
 type WorkflowDefinitionPayload = {
   id?: string;
   name: string;
-  nodes: unknown[];
-  connections: Record<string, unknown>;
-  _meta?: Record<string, unknown>;
+  description?: string;
+  source: string;
+  language: "tsx" | "typescript";
+  active?: boolean;
+  inputSchema?: Record<string, unknown>;
+  steps?: unknown[];
+  widgets?: unknown[];
+  schedule?: Record<string, unknown>;
 };
 
 type WorkflowServiceLike = {
@@ -82,9 +80,9 @@ type WorkflowServiceLike = {
   activateWorkflow: (workflowId: string, userId: string) => Promise<void>;
   deactivateWorkflow: (workflowId: string, userId: string) => Promise<void>;
   deleteWorkflow: (workflowId: string, userId: string) => Promise<void>;
-  runWorkflow: (
+  startWorkflow: (
     workflowId: string,
-    options: { mode?: "manual"; throwOnError?: boolean } | undefined,
+    options: { mode?: "manual"; input?: Record<string, unknown> } | undefined,
     userId: string,
   ) => Promise<unknown>;
   listExecutions: (
@@ -92,7 +90,21 @@ type WorkflowServiceLike = {
     userId: string,
   ) => Promise<{ data: unknown[]; nextCursor?: string }>;
   getExecutionDetail: (executionId: string, userId: string) => Promise<unknown>;
-  listWorkflowRevisions: (
+  cancelExecution: (executionId: string, userId: string) => Promise<unknown>;
+  decideApproval: (
+    executionId: string,
+    nodeId: string,
+    iteration: number,
+    approved: boolean,
+    options?: { note?: string; decidedBy?: string; decision?: unknown },
+  ) => Promise<unknown>;
+  signalExecution: (
+    executionId: string,
+    signal: string,
+    payload: unknown,
+    receivedBy?: string,
+  ) => Promise<unknown>;
+  getWorkflowRevisions: (
     workflowId: string,
     limit: number | undefined,
     userId: string,
@@ -127,17 +139,13 @@ function asWorkflow(value: unknown): WorkflowDefinitionPayload | null {
   if (!isRecord(value)) return null;
   if (
     typeof value.name !== "string" ||
-    !Array.isArray(value.nodes) ||
-    !isRecord(value.connections) ||
+    typeof value.source !== "string" ||
+    (value.language !== "tsx" && value.language !== "typescript") ||
     (value.id !== undefined && typeof value.id !== "string")
   ) {
     return null;
   }
   return value as WorkflowDefinitionPayload;
-}
-
-function isCatalogLike(value: unknown): value is CatalogLike {
-  return isRecord(value) && typeof value.listGroups === "function";
 }
 
 function requireWorkflowPrincipal(
@@ -649,13 +657,14 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         .useRuntime(params.id, async (runtime) => {
           const service = runtime.getService?.("workflow");
           return {
-            mode: service ? "local" : "disabled",
-            host: "in-process",
+            mode: service ? "cloud" : "disabled",
+            host: service ? "eliza-cloud" : null,
             status: service ? "ready" : "error",
             cloudConnected: true,
-            localEnabled: Boolean(service),
+            localEnabled: false,
             platform: "cloud",
-            cloudHealth: "ok",
+            cloudHealth: service ? "healthy" : "unknown",
+            engine: "smthrs",
             errorMessage: service ? null : "Workflow service is not registered",
           };
         })
@@ -756,187 +765,14 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
           manager,
           params.id,
           set,
-          async (service, runtime) => {
-            const requestedWorkflowId =
-              typeof body.workflowId === "string"
-                ? body.workflowId.trim() || null
-                : null;
-            let desiredActive =
-              typeof body.activate === "boolean" ? body.activate : false;
-            if (requestedWorkflowId) {
-              const previousActive = workflowActiveState(
-                await getOwnedWorkflow(service, userId, requestedWorkflowId),
-              );
-              desiredActive =
-                typeof body.activate === "boolean"
-                  ? body.activate
-                  : previousActive;
-            }
+          async (service) => {
             const draft = await service.generateWorkflowDraft(prompt, {
               userId,
             });
             if (typeof body.name === "string" && body.name.trim()) {
               draft.name = body.name.trim();
             }
-            if (requestedWorkflowId) draft.id = requestedWorkflowId;
-            else delete draft.id;
-
-            const clarifications = coerceClarifications(
-              draft._meta?.requiresClarification,
-            );
-            if (clarifications.length > 0) {
-              const rawCatalog = runtime.getService?.(
-                "connector_target_catalog",
-              );
-              const catalog = isCatalogLike(rawCatalog) ? rawCatalog : null;
-              return {
-                status: "needs_clarification",
-                draft,
-                clarifications,
-                catalog: catalog
-                  ? await buildCatalogSnapshot(catalog, clarifications)
-                  : [],
-              };
-            }
-
-            const deployed = await service.deployWorkflow(draft, userId, {
-              activate:
-                typeof body.activate === "boolean" ? body.activate : undefined,
-            });
-            return finalizeWorkflowDeployment({
-              service,
-              userId,
-              deployed,
-              requestedWorkflowId,
-              active: desiredActive,
-            });
-          },
-        );
-      },
-    )
-
-    .post(
-      "/agents/:id/workflows/resolve-clarification",
-      async ({ params, body, headers, set }) => {
-        const headerMap = headers as HeaderMap;
-        const denial = requireInternalAuth(headerMap, set, sharedSecret);
-        if (denial) return denial;
-        const userId = requireWorkflowPrincipal(headerMap, set);
-        if (typeof userId !== "string") return userId;
-        if (
-          !isRecord(body) ||
-          !isRecord(body.draft) ||
-          !Array.isArray(body.resolutions)
-        ) {
-          set.status = 400;
-          return { error: "draft and resolutions required" };
-        }
-
-        const draftRecord = body.draft;
-        const resolutions = body.resolutions;
-        const draft = asWorkflow(draftRecord);
-        if (!draft) {
-          set.status = 400;
-          return { error: "valid draft workflow required" };
-        }
-
-        return await withWorkflowService(
-          manager,
-          params.id,
-          set,
-          async (service, runtime) => {
-            const bodyWorkflowId =
-              typeof body.workflowId === "string"
-                ? body.workflowId.trim() || null
-                : null;
-            const draftWorkflowId = draft.id?.trim() || null;
-            if (
-              bodyWorkflowId &&
-              draftWorkflowId &&
-              bodyWorkflowId !== draftWorkflowId
-            ) {
-              set.status = 400;
-              return { error: "workflowId does not match draft id" };
-            }
-            const requestedWorkflowId = bodyWorkflowId ?? draftWorkflowId;
-            let desiredActive =
-              typeof body.activate === "boolean" ? body.activate : false;
-            if (requestedWorkflowId) {
-              const previousActive = workflowActiveState(
-                await getOwnedWorkflow(service, userId, requestedWorkflowId),
-              );
-              desiredActive =
-                typeof body.activate === "boolean"
-                  ? body.activate
-                  : previousActive;
-            }
-
-            const resolutionResult = applyResolutions(draftRecord, resolutions);
-            if (!resolutionResult.ok) {
-              set.status = 400;
-              return {
-                error: resolutionResult.error,
-                ...(resolutionResult.paramPath
-                  ? { paramPath: resolutionResult.paramPath }
-                  : {}),
-              };
-            }
-
-            const resolvedPaths = new Set(
-              resolutions
-                .map((resolution) =>
-                  isRecord(resolution) ? resolution.paramPath : undefined,
-                )
-                .filter(
-                  (path): path is string =>
-                    typeof path === "string" && path.length > 0,
-                ),
-            );
-            const freeFormCount = resolutions.filter(
-              (resolution) =>
-                isRecord(resolution) && resolution.paramPath === "",
-            ).length;
-            pruneResolvedClarifications(
-              draftRecord,
-              resolvedPaths,
-              freeFormCount,
-            );
-
-            if (typeof body.name === "string" && body.name.trim()) {
-              draft.name = body.name.trim();
-            }
-            if (requestedWorkflowId) draft.id = requestedWorkflowId;
-            else delete draft.id;
-
-            const remaining = coerceClarifications(
-              draft._meta?.requiresClarification,
-            );
-            if (remaining.length > 0) {
-              const rawCatalog = runtime.getService?.(
-                "connector_target_catalog",
-              );
-              const catalog = isCatalogLike(rawCatalog) ? rawCatalog : null;
-              return {
-                status: "needs_clarification",
-                draft,
-                clarifications: remaining,
-                catalog: catalog
-                  ? await buildCatalogSnapshot(catalog, remaining)
-                  : [],
-              };
-            }
-
-            const deployed = await service.deployWorkflow(draft, userId, {
-              activate:
-                typeof body.activate === "boolean" ? body.activate : undefined,
-            });
-            return finalizeWorkflowDeployment({
-              service,
-              userId,
-              deployed,
-              requestedWorkflowId,
-              active: desiredActive,
-            });
+            return { workflow: draft };
           },
         );
       },
@@ -1066,7 +902,7 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
 
     .post(
       "/agents/:id/workflows/:workflowId/run",
-      async ({ params, headers, set }) => {
+      async ({ params, body, headers, set }) => {
         const headerMap = headers as HeaderMap;
         const denial = requireInternalAuth(headerMap, set, sharedSecret);
         if (denial) return denial;
@@ -1079,14 +915,17 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
           set,
           async (service) => {
             await requireWorkflowOwnership(service, userId, params.workflowId);
-            const execution = await service.runWorkflow(
+            const execution = await service.startWorkflow(
               params.workflowId,
               {
                 mode: "manual",
-                throwOnError: false,
+                ...(isRecord(body) && isRecord(body.input)
+                  ? { input: body.input }
+                  : {}),
               },
               userId,
             );
+            set.status = 202;
             return { execution };
           },
         );
@@ -1170,6 +1009,100 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
       },
     )
 
+    .post(
+      "/agents/:id/workflows/executions/:executionId/cancel",
+      async ({ params, headers, set }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            await getOwnedExecution(service, userId, params.executionId);
+            return {
+              execution: await service.cancelExecution(
+                params.executionId,
+                userId,
+              ),
+            };
+          },
+        );
+      },
+    )
+
+    .post(
+      "/agents/:id/workflows/executions/:executionId/approvals/:nodeId/:iteration",
+      async ({ params, body, headers, set }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
+        if (
+          !isRecord(body) ||
+          (body.approved !== true && body.approved !== false)
+        ) {
+          set.status = 400;
+          return { success: false, error: "approved must be a boolean" };
+        }
+        const approved = body.approved;
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            await getOwnedExecution(service, userId, params.executionId);
+            return {
+              execution: await service.decideApproval(
+                params.executionId,
+                params.nodeId,
+                Number(params.iteration),
+                approved,
+                {
+                  decidedBy: userId,
+                  ...(typeof body.note === "string" ? { note: body.note } : {}),
+                  ...(body.decision !== undefined
+                    ? { decision: body.decision }
+                    : {}),
+                },
+              ),
+            };
+          },
+        );
+      },
+    )
+
+    .post(
+      "/agents/:id/workflows/executions/:executionId/signals/:signal",
+      async ({ params, body, headers, set }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            await getOwnedExecution(service, userId, params.executionId);
+            return {
+              execution: await service.signalExecution(
+                params.executionId,
+                params.signal,
+                isRecord(body) ? body.payload : undefined,
+                userId,
+              ),
+            };
+          },
+        );
+      },
+    )
+
     .get(
       "/agents/:id/workflows/:workflowId/revisions",
       async ({ params, query, headers, set }) => {
@@ -1196,7 +1129,7 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
                 "Workflow is missing its current revision",
               );
             }
-            const revisions = await service.listWorkflowRevisions(
+            const revisions = await service.getWorkflowRevisions(
               params.workflowId,
               boundedLimit(query.limit, 20),
               userId,

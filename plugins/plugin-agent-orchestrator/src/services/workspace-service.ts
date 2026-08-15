@@ -61,6 +61,9 @@ type GitHubPatProviderClient = Pick<
   "branchExists" | "createPullRequest"
 >;
 
+const DEFAULT_SCRATCH_DECISION_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_SCRATCH_DECISION_TTL_MS = 2_147_483_647;
+
 interface GitHubRepoParts {
   owner: string;
   repo: string;
@@ -1208,7 +1211,7 @@ export class CodingWorkspaceService {
     repo: string,
     issueNumber: number,
     labels: string[],
-  ): Promise<void> {
+  ): Promise<IssueInfo> {
     return ghAddLabels(this.getGitHubContext(), repo, issueNumber, labels);
   }
 
@@ -1324,6 +1327,11 @@ export class CodingWorkspaceService {
       return null;
     }
 
+    const scratchDecisionTtlMs =
+      policy === "pending_decision"
+        ? this.getScratchDecisionTtlMs()
+        : undefined;
+
     const record: ScratchWorkspaceRecord = {
       ...base,
       label,
@@ -1336,9 +1344,14 @@ export class CodingWorkspaceService {
     this.scratchBySession.set(sessionId, record);
 
     if (record.status === "pending_decision") {
-      const ttlMs = this.getScratchDecisionTtlMs();
-      record.expiresAt = now + ttlMs;
-      this.scheduleScratchCleanup(sessionId, ttlMs);
+      if (scratchDecisionTtlMs === undefined) {
+        throw new ElizaError("Scratch decision TTL was not resolved", {
+          code: "SCRATCH_DECISION_TTL_UNAVAILABLE",
+          context: { sessionId, policy },
+        });
+      }
+      record.expiresAt = now + scratchDecisionTtlMs;
+      this.scheduleScratchCleanup(sessionId, scratchDecisionTtlMs);
       // Prompt user via chat: "Want to keep this code?"
       if (this.scratchDecisionCallback) {
         this.log(`Firing scratch decision prompt for "${label}" at ${dirPath}`);
@@ -1501,13 +1514,59 @@ export class CodingWorkspaceService {
   }
 
   private getScratchDecisionTtlMs(): number {
-    const setting = this.runtime.getSetting("ELIZA_SCRATCH_DECISION_TTL_MS") as
-      | string
-      | number
-      | undefined;
-    const parsed = Number(setting ?? process.env.ELIZA_SCRATCH_DECISION_TTL_MS);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    return 24 * 60 * 60 * 1000;
+    // runtime.getSetting() is typed string | boolean | number | null (see
+    // IAgentRuntime.getSetting in packages/core/src/types/runtime.ts) - it
+    // really can return a boolean, and even normalizes a decrypted string
+    // "true"/"false" into that same boolean. A prior version of this
+    // resolver cast the result to `string | number | undefined`, discarding
+    // the boolean case at the type level while it could still occur at
+    // runtime: Number(true) === 1, which passes the range check below and
+    // silently produced a destructive 1ms TTL instead of throwing.
+    const setting = this.runtime.getSetting("ELIZA_SCRATCH_DECISION_TTL_MS");
+    const configured =
+      setting === null || setting === undefined
+        ? process.env.ELIZA_SCRATCH_DECISION_TTL_MS
+        : setting;
+    if (configured === undefined) return DEFAULT_SCRATCH_DECISION_TTL_MS;
+
+    if (typeof configured === "boolean") {
+      throw new ElizaError(
+        `ELIZA_SCRATCH_DECISION_TTL_MS must be an integer from 1 through ${MAX_SCRATCH_DECISION_TTL_MS} milliseconds, not a boolean`,
+        {
+          code: "INVALID_SCRATCH_DECISION_TTL",
+          context: {
+            configured,
+            minimum: 1,
+            maximum: MAX_SCRATCH_DECISION_TTL_MS,
+          },
+        },
+      );
+    }
+
+    const normalized =
+      typeof configured === "string" ? configured.trim() : configured;
+    if (normalized === "") return DEFAULT_SCRATCH_DECISION_TTL_MS;
+
+    const parsed =
+      typeof normalized === "number" ? normalized : Number(normalized);
+    if (
+      !Number.isSafeInteger(parsed) ||
+      parsed < 1 ||
+      parsed > MAX_SCRATCH_DECISION_TTL_MS
+    ) {
+      throw new ElizaError(
+        `ELIZA_SCRATCH_DECISION_TTL_MS must be an integer from 1 through ${MAX_SCRATCH_DECISION_TTL_MS} milliseconds`,
+        {
+          code: "INVALID_SCRATCH_DECISION_TTL",
+          context: {
+            configured,
+            minimum: 1,
+            maximum: MAX_SCRATCH_DECISION_TTL_MS,
+          },
+        },
+      );
+    }
+    return parsed;
   }
 
   private requireScratchWorkspace(sessionId: string): ScratchWorkspaceRecord {

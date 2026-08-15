@@ -164,7 +164,7 @@ app.get("/", async (c) => {
     return c.json({ error: "MCP not found" }, 404);
   }
 
-  const baseUrl = c.env.NEXT_PUBLIC_APP_URL ?? "https://www.elizacloud.ai";
+  const baseUrl = c.env.NEXT_PUBLIC_APP_URL ?? "https://cloud.eliza.app";
 
   return c.json({
     id: mcp.id,

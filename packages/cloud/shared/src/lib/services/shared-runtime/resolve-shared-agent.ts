@@ -13,6 +13,7 @@ import type { AppEnv, RuntimeDurableObjectNamespace } from "../../../types/cloud
 import { ApiError } from "../../api/cloud-worker-errors";
 import {
   apiKeyScopeHashPrefix,
+  isStagingSessionScopeCandidate,
   requireUserOrApiKeyWithOrgLookup,
   revalidateSessionScope,
   sessionScopeHashPrefix,
@@ -23,6 +24,8 @@ import { CacheKeys, CacheTTL } from "../../cache/keys";
 import { logger } from "../../utils/logger";
 import { type CachedAgentSandbox, rehydrateCachedAgentDates } from "./cached-agent-dates";
 import { isDedicatedBootstrapWindow } from "./dedicated-bootstrap";
+import { isPersonalSharedAgentId, personalSharedAgent } from "./personal-shared-agent";
+import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 
 export { type CachedAgentSandbox, rehydrateCachedAgentDates } from "./cached-agent-dates";
 
@@ -47,6 +50,22 @@ export type ResolvedSharedAgent =
       error: string;
       status: 400 | 401 | 403 | 404 | 503;
       refusal?: SharedAgentRefusal;
+      /**
+       * Stable machine code for the 503 family (#18045). `agent_cache_warming`
+       * is the ONLY state clients may absorb with a bounded automatic retry;
+       * `agent_cache_unavailable` is a cache outage and stays a manual retry.
+       */
+      code?: "agent_cache_warming" | "agent_cache_unavailable";
+      /** Advertised retry delay for warming responses; render as `Retry-After`. */
+      retryAfterSeconds?: number;
+    }
+  | {
+      agent: SharedRuntimeAgent;
+      agentId: string;
+      orgId: string;
+      agentName: string;
+      agentKind: "personal";
+      createdAt: Date;
     }
   | { agent: AgentSandbox; agentId: string; orgId: string; agentName: string };
 
@@ -275,6 +294,37 @@ export async function resolveSharedAgent(
     };
   }
 
+  // A reserved personal id is a rowless account identity, not an
+  // agent_sandboxes lookup. Authenticate the account first, then require the
+  // requested deterministic id to match it exactly; another account's id is
+  // indistinguishable from a missing agent.
+  if (isPersonalSharedAgentId(agentId)) {
+    try {
+      const { requireUserOrApiKeyWithOrg } = await import("../../auth/workers-hono-auth");
+      const user = await requireUserOrApiKeyWithOrg(c);
+      const agent = personalSharedAgent({
+        userId: user.id,
+        organizationId: user.organization_id,
+      });
+      if (agent.id !== agentId) {
+        return { error: "Agent not found", status: 404 };
+      }
+      return {
+        agent,
+        agentId,
+        orgId: user.organization_id,
+        agentName: agent.agent_name ?? "Eliza",
+        agentKind: "personal",
+        createdAt: user.created_at ? new Date(user.created_at) : new Date(0),
+      };
+    } catch (error) {
+      if (error instanceof ApiError && isSharedAgentResolutionStatus(error.status)) {
+        return { error: error.message, status: error.status };
+      }
+      throw error;
+    }
+  }
+
   // COLD-PATH fast lane (COLDPATH-FIX-2026-07-21): on the API-key path, a fresh
   // browser session pays 2 serial cold Hyperdrive waves here (key validation +
   // user/org hydration + agent lookup) = the measured 1–4.4s pre-inference
@@ -289,6 +339,7 @@ export async function resolveSharedAgent(
   const apiKeyPrefix = await apiKeyScopeHashPrefix(c);
   const sessionPrefix = apiKeyPrefix ? null : await sessionScopeHashPrefix(c);
   const isSessionScope = apiKeyPrefix == null && sessionPrefix != null;
+  const isStagingSessionScope = isSessionScope && isStagingSessionScopeCandidate(c);
   const scopeKeyPrefix = apiKeyPrefix ?? (sessionPrefix ? `s:${sessionPrefix}` : null);
   const scopeCacheKey = scopeKeyPrefix
     ? CacheKeys.sharedAgentScope.resolve(scopeKeyPrefix, agentId)
@@ -328,8 +379,9 @@ export async function resolveSharedAgent(
     try {
       stillAuthorized = isSessionScope
         ? cached.stewardUserId != null &&
-          (await revalidateSessionScope(c, cached.stewardUserId)) &&
-          (await revalidateSessionUserState(cached.orgId, cached.stewardUserId))
+          (await revalidateSessionScope(c, cached.stewardUserId, cached.orgId)) &&
+          (isStagingSessionScope ||
+            (await revalidateSessionUserState(cached.orgId, cached.stewardUserId)))
         : await revalidateCachedScope(c, cached.orgId, options.cacheOnly === true);
     } catch (error) {
       // error-policy:J4 a cache credential dependency failure cannot authorize
@@ -411,6 +463,7 @@ export async function resolveSharedAgent(
           return {
             error: "Agent authorization cache is unavailable. Retry shortly.",
             status: 503,
+            code: "agent_cache_unavailable",
           };
         }
       }
@@ -531,6 +584,8 @@ export async function resolveSharedAgent(
     return {
       error: "Agent authorization cache is warming. Retry shortly.",
       status: 503,
+      code: "agent_cache_warming",
+      retryAfterSeconds: 1,
     };
   }
 
@@ -606,5 +661,47 @@ export async function resolveSharedAgent(
     else void write;
   }
 
-  return { agent, agentId, orgId: entry.orgId, agentName: agent.agent_name ?? "Eliza" };
+  return {
+    agent,
+    agentId,
+    orgId: entry.orgId,
+    agentName: agent.agent_name ?? "Eliza",
+  };
+}
+
+/**
+ * Seed the credential-scoped authorization entry the cache-only turn gate
+ * consults, from a request that ALREADY passed the authoritative create gate
+ * for this exact agent (CHAT-CORE-LATENCY §6: the fresh-create → immediate-send
+ * path otherwise misses `CacheKeys.sharedAgentScope.resolve` and bounces off
+ * "Agent authorization cache is warming" 503s). Derives the key with the SAME
+ * prefix functions `resolveSharedAgent` uses, so the seeded entry is the one
+ * the first message reads.
+ *
+ * This cannot weaken authorization: the entry is keyed by the creator's own
+ * credential, carries the org the agent row itself belongs to, and every hit
+ * still re-runs the per-request credential gate (`revalidateResolvedScope`)
+ * before being served. Requests carrying no supported credential seed nothing.
+ * `stewardUserId` must be the creating user's steward id on the session path;
+ * without it a session hit safely falls back to authoritative hydration.
+ */
+export async function seedSharedAgentScopeCache(
+  c: Context<AppEnv>,
+  agent: AgentSandbox,
+  stewardUserId?: string,
+): Promise<void> {
+  if (agent.execution_tier !== "shared") return;
+  const apiKeyPrefix = await apiKeyScopeHashPrefix(c);
+  const sessionPrefix = apiKeyPrefix ? null : await sessionScopeHashPrefix(c);
+  const scopeKeyPrefix = apiKeyPrefix ?? (sessionPrefix ? `s:${sessionPrefix}` : null);
+  if (!scopeKeyPrefix) return;
+  const scopeCacheKey = CacheKeys.sharedAgentScope.resolve(scopeKeyPrefix, agent.id);
+  const entry: CachedSharedAgentScope = {
+    orgId: agent.organization_id,
+    agent,
+    ...(apiKeyPrefix == null && stewardUserId ? { stewardUserId } : {}),
+    firstWrittenAtMs: Date.now(),
+  };
+  sharedAgentScopeMemoryCache.set(scopeCacheKey, entry);
+  await cache.set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve);
 }

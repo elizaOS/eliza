@@ -6,7 +6,7 @@
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 
-const API = process.env.CLOUD_API || "https://api.elizacloud.ai";
+const API = process.env.CLOUD_API || "https://api.eliza.app";
 const log = (...a) => console.log(...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function j(method, path, { token, body, base } = {}) {

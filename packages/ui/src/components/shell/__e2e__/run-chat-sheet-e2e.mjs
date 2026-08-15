@@ -194,7 +194,7 @@ const threadScrollState = (p) =>
       bottomDelta: maxScrollTop - el.scrollTop,
     };
   });
-async function waitForSheetHeightNear(p, expected, tolerance, timeout = 5000) {
+async function waitForSheetHeightNear(p, expected, tolerance, timeout = 15_000) {
   await p
     .waitForFunction(
       ({ expected, tolerance }) => {
@@ -233,6 +233,35 @@ const panelTop = (p) =>
       document.querySelector('[data-testid="chat-sheet"]')?.getBoundingClientRect()
         .top ?? 0,
   );
+async function waitForPanelTopNear(p, expected, tolerance, timeout = 15_000) {
+  await p.waitForFunction(
+    ({ expected, tolerance }) => {
+      const top =
+        document
+          .querySelector('[data-testid="chat-sheet"]')
+          ?.getBoundingClientRect().top ?? 0;
+      return Math.abs(top - expected) <= tolerance;
+    },
+    { expected, tolerance },
+    { timeout },
+  );
+}
+async function waitForPanelEdgeToEdge(p, timeout = 15_000) {
+  await p.waitForFunction(
+    () => {
+      const box = document
+        .querySelector('[data-testid="chat-sheet"]')
+        ?.getBoundingClientRect();
+      return (
+        box !== undefined &&
+        box.x <= 1 &&
+        Math.abs(box.width - window.innerWidth) <= 2
+      );
+    },
+    undefined,
+    { timeout },
+  );
+}
 const panelRadii = (p) =>
   p.evaluate(() => {
     const panel = document.querySelector('[data-testid="chat-sheet"]');
@@ -504,6 +533,17 @@ async function gesture(
     else if (stepDelayMs != null && stepDelayMs > 0)
       await p.waitForTimeout(stepDelayMs);
   }
+  if (slow && up !== 0) {
+    // End a deliberate drag with a sub-slop sample after the finger has come
+    // to rest. Chromium may coalesce adjacent CDP mouse moves on a loaded CI
+    // renderer and give the last two delivered samples the same timestamp;
+    // usePullGesture correctly treats that apparent final burst as a flick.
+    // A real slow release has this stationary tail, and the one-pixel sample
+    // makes the fixture express it without changing the tested distance band.
+    await p.waitForTimeout(80);
+    await p.mouse.move(cx, targetY(steps) + Math.sign(up));
+    await p.waitForTimeout(28);
+  }
   if (!hold) await p.mouse.up();
 }
 async function release(p, pointer, up = 0) {
@@ -668,6 +708,7 @@ async function runDragSuite(p, pointer, tag) {
   assert((await detent(p)) === "half", `[${pointer}] flick-up snaps COLLAPSED→HALF`);
   await waitForSheetHeightNear(p, halfH, TOL);
   assert(near(await sheetHeight(p), halfH, TOL), `[${pointer}] HALF height ≈ ${halfH}px (got ${Math.round(await sheetHeight(p))})`);
+  await waitForHeaderShown(p, 15_000);
   await snap(p, `${tag}-half`);
   // #9142 regression guard: the grabber BAR (inner span) must actually PAINT
   // once the sheet is open — a prior regression pinned the bar to `opacity-0`,
@@ -700,6 +741,10 @@ async function runDragSuite(p, pointer, tag) {
   await p.waitForTimeout(SETTLE);
   await settleDetent(p, "full");
   assert((await detent(p)) === "full", `[${pointer}] flick-up snaps HALF→FULL`);
+  // The detent commits before the spring reaches its rendered endpoint. Wait
+  // on the top edge before capturing fullH so a loaded runner cannot freeze an
+  // intermediate frame into the baseline used by the later reset assertion.
+  await waitForPanelTopNear(p, SHEET_TOP_MARGIN, TOL + 12);
   fullH = Math.round(await sheetHeight(p));
   assert(fullH > halfH + 40, `[${pointer}] FULL is taller than HALF (full ${fullH} > half ${halfH})`);
   const top = Math.round(await panelTop(p));
@@ -882,14 +927,29 @@ async function runDragSuite(p, pointer, tag) {
   // FLICK up (short + fast → velocity threshold, distance < 56). Use a
   // one-frame decisive move: multiple sub-56 automation moves can spend most of
   // their time in CDP/Playwright plumbing instead of in the gesture itself.
-  await gesture(p, 54, {
-    pointer,
-    slow: false,
-    steps: 1,
-    stepDelayMs: pointer === "touch" ? 0 : undefined,
-  });
-  await p.waitForTimeout(SETTLE);
-  await settleVariant(p, "open");
+  // Even the minimal down/move/up dispatch is at the mercy of REAL pointer-event
+  // timestamps: a load-starved renderer stretches the inter-dispatch gap, which
+  // legitimately reads as a slow (non-flick) pull — the code under test is
+  // correct, the automation just failed to produce a fast gesture. So drive by
+  // state with a bounded retry: a failed sub-56px pull deterministically springs
+  // back to the same closed rest (the detent rules proven above), making a
+  // re-attempt from an identical state. The contract is unchanged — the sheet
+  // must open from a <56px flick — and the step still fails if every attempt
+  // leaves it closed.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await gesture(p, 54, {
+      pointer,
+      slow: false,
+      steps: 1,
+      stepDelayMs: pointer === "touch" ? 0 : undefined,
+    });
+    await p.waitForTimeout(SETTLE);
+    await settleVariant(p, "open");
+    if ((await variant(p)) === "open") break;
+    console.log(
+      `  ℹ [${pointer}] flick attempt ${attempt + 1} read as a slow pull (renderer starved the dispatch) — retrying from the settled closed rest`,
+    );
+  }
   assert((await variant(p)) === "open", `[${pointer}] FLICK up opens despite <56px travel (velocity)`);
   await snap(p, `${tag}-flick-open`);
 
@@ -1066,6 +1126,9 @@ async function runContinuumSuite(p, pointer, tag) {
       .count()) === 1 && (await chatState(p)) === "MAXIMIZED",
     `[${tag}-continuum] releasing the held pill→top drag commits MAXIMIZED`,
   );
+  // State commits before the desktop width spring finishes. Wait for the
+  // painted full-bleed endpoint before evaluating its geometry.
+  await waitForPanelEdgeToEdge(p);
   const maxBox = await p.getByTestId("chat-sheet").boundingBox();
   assert(
     !!maxBox && maxBox.x <= 1 && near(maxBox.width, vw, 2),
@@ -1408,10 +1471,12 @@ async function mutateAssistant(p, hook, text) {
 
 async function openSheetToFull(p, pointer) {
   await p.waitForSelector('[data-testid="chat-sheet"]');
-  await gesture(p, 160, { pointer, slow: false, steps: 1 });
-  await p.waitForTimeout(SETTLE);
-  if ((await detent(p)) !== "full") {
-    await gesture(p, 220, { pointer, slow: false, steps: 1 });
+  for (let attempt = 0; attempt < 4 && (await detent(p)) !== "full"; attempt += 1) {
+    await gesture(p, attempt === 0 ? 160 : 220, {
+      pointer,
+      slow: false,
+      steps: 1,
+    });
     await p.waitForTimeout(SETTLE);
   }
   await settleDetent(p, "full");
@@ -1431,6 +1496,9 @@ async function openSheetToFull(p, pointer) {
 async function scrollReaderUp(p, pointer) {
   const selector = testIdSelector("chat-thread-scroll");
   const before = await threadScrollState(p);
+  // Exactly one gesture: the assertion below IS the contract that a single real
+  // wheel/touch scroll moves the reader into history, so retrying the gesture
+  // would hide the regression it exists to catch.
   if (pointer === "mouse") {
     await p.getByTestId("chat-thread-scroll").hover();
     await p.mouse.wheel(0, -420);
@@ -1621,11 +1689,17 @@ async function sampleGrabberDrag(
       .catch(() => null);
     return box ? box.y : null;
   };
-  const b = await page.getByTestId(target).boundingBox();
+  const b = await visibleBoxForTestId(page, target);
   const cx = b.x + b.width / 2;
   const startY = b.y + b.height / 2;
   const rows = [];
   await page.mouse.move(cx, startY);
+  // Give Chromium one painted frame at the handle before pressing. Under a
+  // loaded CI renderer an immediate move/down pair can be delivered at the old
+  // pointer position, so the sampled motion never owns the sheet gesture.
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => resolve())),
+  );
   await page.mouse.down();
   for (let i = 1; i <= steps; i += 1) {
     const cursorY = startY + ((endY - startY) * i) / steps;
@@ -3807,8 +3881,13 @@ try {
     await p.waitForTimeout(SETTLE);
 
     // FLICK up from the pill → reaches the chat (history present), not a stop.
-    await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
-    await p.waitForTimeout(SETTLE);
+    // Keep this to one processed gesture: retrying a wrong resulting state can
+    // hide the exact regression this assertion is meant to catch.
+    if ((await detent(p)) !== "pill") {
+      await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
+      await p.waitForTimeout(SETTLE);
+      await settleDetent(p, "pill");
+    }
     await gesture(p, 140, {
       pointer: "mouse",
       slow: false,
@@ -3959,7 +4038,7 @@ try {
       `ROTATION: held mid-crossfade before rotating (content ${midContent})`,
     );
     await p.setViewportSize({ width: 874, height: 402 }); // rotate to landscape
-    await p.waitForTimeout(SETTLE);
+    await settlePillPainted(p);
     {
       const b = await barOpacities(p);
       assert(

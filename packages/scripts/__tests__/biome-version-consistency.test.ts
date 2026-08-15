@@ -2,7 +2,13 @@
  * Proves the Biome consistency guard accepts the repository and rejects drift in every governed layer.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +20,8 @@ const REPO_ROOT = path.resolve(
   "../../..",
 );
 const temporaryRoots: string[] = [];
+// Fixture writes hit real disk; a loaded CI host has pushed this past Vitest's default timeout.
+const DISK_FIXTURE_TIMEOUT_MS = 60_000;
 const PLATFORMS = [
   "@biomejs/cli-darwin-arm64",
   "@biomejs/cli-darwin-x64",
@@ -34,7 +42,7 @@ function makeLock(version: string): string {
   ).join(",\n");
   return `{
   "workspaces": { "": { "devDependencies": { "@biomejs/biome": "${version}" } } },
-  "overrides": { "@biomejs/biome": "${version}" },
+  "overrides": {},
   "packages": {
     "@biomejs/biome": ["@biomejs/biome@${version}", "", { "optionalDependencies": { ${optionalDependencies} } }],
     ${platformResolutions}
@@ -50,7 +58,7 @@ function makeFixture(): string {
     path.join(root, "package.json"),
     JSON.stringify({
       devDependencies: { "@biomejs/biome": "2.5.4" },
-      overrides: { "@biomejs/biome": "2.5.4" },
+      overrides: {},
     }),
   );
   writeFileSync(
@@ -79,16 +87,20 @@ describe("Biome version consistency", () => {
     expect(collectBiomeVersionProblems(REPO_ROOT)).toEqual([]);
   });
 
-  it("accepts an aligned synthetic repository", () => {
-    const root = makeFixture();
-    expect(
-      collectBiomeVersionProblems(root, {
-        packageFiles: ["package.json", "nested/package.json"],
-        configFiles: ["biome.json"],
-        lockFiles: ["bun.lock", "nested/bun.lock"],
-      }),
-    ).toEqual([]);
-  });
+  it(
+    "accepts an aligned synthetic repository",
+    () => {
+      const root = makeFixture();
+      expect(
+        collectBiomeVersionProblems(root, {
+          packageFiles: ["package.json", "nested/package.json"],
+          configFiles: ["biome.json"],
+          lockFiles: ["bun.lock", "nested/bun.lock"],
+        }),
+      ).toEqual([]);
+    },
+    DISK_FIXTURE_TIMEOUT_MS,
+  );
 
   it("accepts a CRLF lockfile from a Windows checkout", () => {
     const root = makeFixture();
@@ -139,5 +151,29 @@ describe("Biome version consistency", () => {
       lockFiles: ["bun.lock", "nested/bun.lock"],
     }).join("\n");
     expect(problems).toContain("nested/bun.lock: resolved Biome version 2.4.4");
+  });
+
+  it("rejects a Biome override that would neuter dependency updates", () => {
+    const root = makeFixture();
+    const manifest = JSON.parse(
+      readFileSync(path.join(root, "package.json"), "utf8"),
+    );
+    manifest.overrides["@biomejs/biome"] = "2.5.4";
+    writeFileSync(path.join(root, "package.json"), JSON.stringify(manifest));
+    writeFileSync(
+      path.join(root, "bun.lock"),
+      makeLock("2.5.4").replace(
+        '"overrides": {},',
+        '"overrides": { "@biomejs/biome": "2.5.4" },',
+      ),
+    );
+
+    const problems = collectBiomeVersionProblems(root, {
+      packageFiles: ["package.json", "nested/package.json"],
+      configFiles: ["biome.json"],
+      lockFiles: ["bun.lock", "nested/bun.lock"],
+    }).join("\n");
+    expect(problems).toContain("package.json overrides");
+    expect(problems).toContain("bun.lock override");
   });
 });

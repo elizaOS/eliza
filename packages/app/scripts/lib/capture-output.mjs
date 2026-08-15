@@ -2,9 +2,10 @@
 //
 // One place owns: resolving the repo root, choosing the generated capture
 // output directory, the `<issue#>-<slug>-<platform>.<ext>` naming convention,
-// CLI flag parsing, the skip-with-reason exit, and a best-effort backend-log
-// pull. The iOS and Android capture helpers both build on this so the path math
-// and conventions live here, not duplicated per platform.
+// CLI flag parsing, fail-closed `--duration` resolution, the skip-with-reason
+// exit, and a best-effort backend-log pull. The iOS and Android capture helpers
+// both build on this so the path math and conventions live here, not
+// duplicated per platform.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -113,6 +114,55 @@ export function parseFlags(argv = process.argv.slice(2)) {
     }
   }
   return flags;
+}
+
+/** Default recording length (seconds) when `--duration` is omitted. */
+export const DEFAULT_CAPTURE_DURATION_SECONDS = 6;
+
+/**
+ * Largest whole-second duration whose millisecond delay stays inside Node's
+ * signed 32-bit timer range (`setTimeout` / `delay(ms)` clamp above 2^31-1).
+ */
+export const MAX_CAPTURE_DURATION_SECONDS = Math.floor(2_147_483_647 / 1000);
+
+/**
+ * Resolve capture `--duration` from parsed flags. Unset keeps the documented
+ * default; an explicit value must be a complete positive integer whose
+ * millisecond form still fits a Node timer. Rejects bare `--duration` (boolean
+ * true), fractions, partial numbers, zero, negatives, and overflows so device
+ * / ffmpeg work never starts with NaN or a silent wrong length.
+ *
+ * @param {Record<string, unknown>} flags output of {@link parseFlags}
+ * @returns {number} recording length in whole seconds
+ */
+export function resolveCaptureDurationSeconds(flags = {}) {
+  const raw = flags?.duration;
+  if (raw === undefined || raw === null) {
+    return DEFAULT_CAPTURE_DURATION_SECONDS;
+  }
+  // parseFlags sets true for a bare `--duration` with no value.
+  if (raw === true) {
+    throw new Error(
+      `--duration requires an integer from 1 to ${MAX_CAPTURE_DURATION_SECONDS}`,
+    );
+  }
+  const value = String(raw);
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error(
+      `--duration must be an integer from 1 to ${MAX_CAPTURE_DURATION_SECONDS} (received ${JSON.stringify(value)})`,
+    );
+  }
+  const parsed = Number(value);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 1 ||
+    parsed > MAX_CAPTURE_DURATION_SECONDS
+  ) {
+    throw new Error(
+      `--duration must be an integer from 1 to ${MAX_CAPTURE_DURATION_SECONDS} (received ${JSON.stringify(value)})`,
+    );
+  }
+  return parsed;
 }
 
 function timestamp() {

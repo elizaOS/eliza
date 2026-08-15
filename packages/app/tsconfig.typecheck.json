@@ -3,6 +3,8 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "paths": {
+      "@homepage/*": ["../homepage/src/*"],
+      "@/*": ["../homepage/src/*"],
       "@elizaos/app-core": ["../app-core/dist/index.d.ts"],
       "@elizaos/app-core/*": ["../app-core/dist/*"],
       "@elizaos/app-core/first-run/first-run-config": [
@@ -79,13 +81,6 @@
       "csstype": [
         "../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
       ],
-      "react": ["../../node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
-      "react/jsx-dev-runtime": [
-        "../../node_modules/@types/react/jsx-dev-runtime.d.ts"
-      ],
-      "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
-      "react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"],
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/dist/index.d.ts"
       ],
@@ -139,6 +134,9 @@
       ],
       "@elizaos/capacitor-contacts/*": [
         "../../plugins/plugin-native-contacts/src/*"
+      ],
+      "@elizaos/capacitor-mobile-agent-bridge": [
+        "../../plugins/plugin-native-mobile-agent-bridge/src/index.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
         "../../plugins/plugin-native-mobile-signals/src/index.ts"

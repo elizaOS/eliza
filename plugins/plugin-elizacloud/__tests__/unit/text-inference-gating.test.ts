@@ -90,7 +90,7 @@ describe("registerTextInferenceModels — chat-brain arbitration (#10819)", () =
     expect(models).toHaveProperty(String(ModelType.IMAGE));
     expect(models).toHaveProperty(String(ModelType.IMAGE_DESCRIPTION));
     expect(models).toHaveProperty(String(ModelType.TEXT_TO_SPEECH));
-    expect(models).toHaveProperty(String(ModelType.RESEARCH));
+    expect(models).not.toHaveProperty(String(ModelType.RESEARCH));
     // Embeddings moved OUT of the static map in #11063: they init-register via
     // registerCloudEmbeddingModels so an explicit ELIZAOS_CLOUD_USE_EMBEDDINGS=false
     // lets a BYO embedding provider own TEXT_EMBEDDING (a static registration

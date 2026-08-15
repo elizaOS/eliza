@@ -4,6 +4,8 @@
  * message to the `onMessage` callback. Sits between `callback-server` (which
  * normalizes proxy payloads) and the channel's dispatch into the runtime.
  */
+
+import { hasCommittedWechatSideEffect } from "./delivery-error";
 import type { WechatMessageContext } from "./types";
 
 const DEFAULT_DEDUP_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
@@ -20,6 +22,7 @@ export interface BotOptions {
 
 export class Bot {
   private readonly seen = new Map<string, number>();
+  private readonly inFlight = new Map<string, Promise<void>>();
   private readonly onMessage: (
     msg: WechatMessageContext,
   ) => void | Promise<void>;
@@ -40,12 +43,7 @@ export class Bot {
     );
   }
 
-  handleIncoming(message: WechatMessageContext): void {
-    // Deduplication
-    if (this.isDuplicate(message.id)) {
-      return;
-    }
-
+  async handleIncoming(message: WechatMessageContext): Promise<void> {
     // Feature gate: groups
     if (message.group && !this.featuresGroups) {
       return;
@@ -61,9 +59,39 @@ export class Bot {
       return;
     }
 
-    void Promise.resolve(this.onMessage(message)).catch((error: unknown) => {
-      console.error("[wechat] Failed to process inbound message:", error);
-    });
+    const owner = this.inFlight.get(message.id);
+    if (owner) {
+      await owner;
+      return;
+    }
+    if (this.isDuplicate(message.id)) {
+      return;
+    }
+
+    const delivery = this.deliver(message);
+    this.inFlight.set(message.id, delivery);
+    try {
+      await delivery;
+    } finally {
+      if (this.inFlight.get(message.id) === delivery) {
+        this.inFlight.delete(message.id);
+      }
+    }
+  }
+
+  private async deliver(message: WechatMessageContext): Promise<void> {
+    try {
+      await this.onMessage(message);
+    } catch (error) {
+      // error-policy:J2 preserve the delivery failure for the webhook boundary
+      // after restoring retryability; do not convert it into acknowledged work.
+      // A delivery acknowledged with HTTP 500 must remain retryable. The
+      // request boundary reports this failure after it propagates upward.
+      if (!hasCommittedWechatSideEffect(error)) {
+        this.seen.delete(message.id);
+      }
+      throw error;
+    }
   }
 
   private isDuplicate(messageId: string): boolean {
@@ -97,5 +125,6 @@ export class Bot {
       this.cleanupTimer = null;
     }
     this.seen.clear();
+    this.inFlight.clear();
   }
 }

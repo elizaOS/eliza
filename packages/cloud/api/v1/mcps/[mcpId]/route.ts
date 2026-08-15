@@ -102,8 +102,7 @@ async function __hono_GET(
   }
 
   // Get endpoint URL
-  const baseUrl =
-    process.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
   const endpointUrl = isOwner
     ? userMcpsService.getEndpointUrl(mcp, baseUrl)
     : userMcpsService.getPublicProxyUrl(mcp, baseUrl);

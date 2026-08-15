@@ -924,28 +924,71 @@ function isBlobLike(value: unknown): value is {
   );
 }
 
+/**
+ * Recognizable sentinel for a snapshot that failed because the underlying
+ * PGlite connection was closing/closed while `dumpDataDir()` ran — a TRANSIENT
+ * teardown-race condition, not data corruption. The 2026-08-11 fleet incident
+ * wedged agent restarts because a `dumpDataDir()` against a closing PGlite
+ * threw an opaque error that surfaced as `POST /api/snapshot` → HTTP 500,
+ * which tripped the cloud restart's fail-closed "Refusing to stop without a
+ * current backup" gate and left healthy agents unrestartable. Surfacing this as
+ * a distinct condition lets the caller degrade/retry instead of hard-failing.
+ */
+export const PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT =
+  "PGlite snapshot temporarily unavailable (connection closing)";
+export const PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE =
+  "PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT";
+
+/**
+ * A PGlite handle that is mid-close throws with these shapes. Kept narrow so a
+ * genuine dump failure (corruption, OOM) still hard-fails rather than being
+ * silently treated as transient.
+ */
+function isPgliteClosingError(err: unknown): boolean {
+  const message = (err instanceof Error ? err.message : String(err))
+    .trim()
+    .toLowerCase();
+  return (
+    message === "closing" ||
+    /\b(?:pglite|database|connection)\s+(?:is\s+)?(?:closed|closing)\b/.test(
+      message,
+    )
+  );
+}
+
 async function capturePgliteDump(
   runtime: IAgentRuntime | AgentRuntime,
   budget?: SnapshotBudget,
 ): Promise<AgentBackupPgliteDump | null> {
-  const raw = (
-    runtime.adapter as
-      | {
-          getRawConnection?: () => unknown;
-        }
-      | undefined
-  )?.getRawConnection?.();
-  if (!raw || typeof raw !== "object") return null;
-  const connection = raw as {
-    dumpDataDir?: (compression?: "gzip") => Promise<unknown>;
-    runExclusive?: <T>(operation: () => Promise<T>) => Promise<T>;
-  };
-  const dumpDataDir = connection.dumpDataDir;
-  if (typeof dumpDataDir !== "function") return null;
+  const adapter = runtime.adapter as
+    | {
+        dumpPgliteDataDir?: (compression?: "gzip") => Promise<unknown>;
+        getRawConnection?: () => unknown;
+      }
+    | undefined;
+  const managedDump = adapter?.dumpPgliteDataDir;
+  const raw = adapter?.getRawConnection?.();
+  const rawDump =
+    raw && typeof raw === "object"
+      ? (raw as { dumpDataDir?: (compression?: "gzip") => Promise<unknown> })
+          .dumpDataDir
+      : undefined;
+  if (typeof managedDump !== "function" && typeof rawDump !== "function") {
+    return null;
+  }
 
-  const dump = connection.runExclusive
-    ? await connection.runExclusive(() => dumpDataDir.call(connection, "gzip"))
-    : await dumpDataDir.call(connection, "gzip");
+  let dump: unknown;
+  try {
+    dump = managedDump
+      ? await managedDump.call(adapter, "gzip")
+      : await rawDump?.call(raw, "gzip");
+  } catch (err) {
+    if (isPgliteClosingError(err)) {
+      throw new Error(PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT);
+    } else {
+      throw err;
+    }
+  }
   if (!isBlobLike(dump)) {
     throw new Error("PGlite dumpDataDir() did not return a Blob/File");
   }

@@ -110,6 +110,15 @@ export interface OAuthProviderConfig {
   envVars: string[];
 
   /**
+   * Alternative complete credential sets. A provider is configured when any
+   * one set is present; diagnostics report the smallest missing set.
+   */
+  envVarAlternatives?: string[][];
+
+  /** Missing credentials for this provider degrade deployment health. */
+  requiredForDeployment?: boolean;
+
+  /**
    * OAuth endpoints for authorization flow.
    * Required for oauth2 and oauth1a types.
    */
@@ -231,6 +240,7 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     description: "Gmail, Calendar, and Contacts",
     type: "oauth2",
     envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
+    requiredForDeployment: true,
     endpoints: {
       authorization: "https://accounts.google.com/o/oauth2/v2/auth",
       token: "https://oauth2.googleapis.com/token",
@@ -658,6 +668,7 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     description: "Post tweets, read timeline",
     type: "oauth1a",
     envVars: ["TWITTER_API_KEY", "TWITTER_API_SECRET_KEY"],
+    envVarAlternatives: [["TWITTER_API_KEY", "TWITTER_API_SECRET_KEY"], ["TWITTER_CLIENT_ID"]],
     endpoints: {
       authorization: "https://api.twitter.com/oauth/authorize",
       token: "https://api.twitter.com/oauth/access_token",
@@ -775,13 +786,31 @@ export function getProvider(platformId: string): OAuthProviderConfig | null {
   return OAUTH_PROVIDERS[platformId.toLowerCase()] || null;
 }
 
-/** Check if provider has required env vars (API key providers always return true). */
+function hasNonBlankEnvValue(env: NodeJS.ProcessEnv, variable: string): boolean {
+  const value = env[variable];
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function getCredentialAlternatives(provider: OAuthProviderConfig): string[][] {
+  return provider.envVarAlternatives ?? [provider.envVars];
+}
+
+function getMissingEnvVars(provider: OAuthProviderConfig, env: NodeJS.ProcessEnv): string[] {
+  const alternatives = getCredentialAlternatives(provider);
+  if (alternatives.some((set) => set.every((v) => hasNonBlankEnvValue(env, v)))) {
+    return [];
+  }
+  return (
+    alternatives
+      .map((set) => set.filter((v) => !hasNonBlankEnvValue(env, v)))
+      .sort((a, b) => a.length - b.length)[0] ?? []
+  );
+}
+
+/** Check if one complete provider credential set is present. */
 export function isProviderConfigured(provider: OAuthProviderConfig): boolean {
   const env = getCloudAwareEnv();
-  if (provider.id === "twitter") {
-    return Boolean((env.TWITTER_API_KEY && env.TWITTER_API_SECRET_KEY) || env.TWITTER_CLIENT_ID);
-  }
-  return provider.envVars.length === 0 || provider.envVars.every((v) => !!env[v]);
+  return getMissingEnvVars(provider, env).length === 0;
 }
 
 /** Get all providers with required env vars configured. */
@@ -792,6 +821,42 @@ export function getConfiguredProviders(): OAuthProviderConfig[] {
 /** Get configured OAuth providers (oauth2 or oauth1a, not api_key). */
 export function getConfiguredOAuthProviders(): OAuthProviderConfig[] {
   return getConfiguredProviders().filter((p) => p.type === "oauth2" || p.type === "oauth1a");
+}
+
+/**
+ * Per-provider env-var diagnostic for boot-time and health surfaces.
+ *
+ * The registry knows every provider's required `envVars`, so missing keys
+ * are cheap to detect without a live OAuth round-trip. Returns one entry
+ * per provider with the `configured` boolean and the list of missing env
+ * var names — never their values.
+ *
+ * `configured` mirrors the canonical `isProviderConfigured`. Providers with
+ * alternative credential paths report no missing variables when any complete
+ * path is present; otherwise `missingEnvVars` is the shortest actionable set.
+ */
+export interface ProviderEnvDiagnostic {
+  id: string;
+  name: string;
+  type: OAuthProviderType;
+  configured: boolean;
+  missingEnvVars: string[];
+  requiredForDeployment: boolean;
+}
+
+export function getProviderEnvDiagnostics(): ProviderEnvDiagnostic[] {
+  const env = getCloudAwareEnv();
+  return Object.values(OAUTH_PROVIDERS).map((provider) => {
+    const missingEnvVars = getMissingEnvVars(provider, env);
+    return {
+      id: provider.id,
+      name: provider.name,
+      type: provider.type,
+      configured: missingEnvVars.length === 0,
+      missingEnvVars,
+      requiredForDeployment: provider.requiredForDeployment === true,
+    };
+  });
 }
 
 function normalizeScopes(scopes: string[] | undefined): string[] {

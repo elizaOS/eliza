@@ -53,11 +53,14 @@ import {
   type MemoryMetadata,
   type MessageSearchHit,
   type Metadata,
+  normalizePairingPageOptions,
   type OAuthFlowRecord,
   type PairingAllowlistEntry,
+  type PairingAllowlistQuery,
   type PairingAllowlistsResult,
   type PairingChannel,
   type PairingRequest,
+  type PairingRequestQuery,
   type PairingRequestsResult,
   type Participant,
   type ParticipantsForRoomsResult,
@@ -5751,31 +5754,56 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   /**
    * Get all pending pairing requests for a channel and agent.
    */
-  async getPairingRequests(
-    queries: Array<{ channel: PairingChannel; agentId: UUID }>
-  ): Promise<PairingRequestsResult> {
+  async getPairingRequests(queries: PairingRequestQuery[]): Promise<PairingRequestsResult> {
     return this.withDatabase(async () => {
       if (queries.length === 0) {
         return [];
       }
 
       return Promise.all(
-        queries.map(async ({ channel, agentId }) => {
-          const results = await this.db
+        queries.map(async (query) => {
+          const { channel, agentId } = query;
+          const isPaged = query.limit !== undefined || query.offset !== undefined;
+          const pageOptions = isPaged ? normalizePairingPageOptions(query) : null;
+          const filteredQuery = this.db
             .select()
             .from(pairingRequestTable)
             .where(
               and(
                 eq(pairingRequestTable.channel, channel),
-                eq(pairingRequestTable.agentId, agentId)
+                eq(pairingRequestTable.agentId, agentId),
+                query.createdAfter
+                  ? gte(pairingRequestTable.createdAt, query.createdAfter)
+                  : undefined
               )
-            )
-            .orderBy(pairingRequestTable.createdAt);
+            );
+          const orderedQuery =
+            query.order === "newest"
+              ? filteredQuery.orderBy(
+                  desc(pairingRequestTable.createdAt),
+                  desc(pairingRequestTable.id)
+                )
+              : query.order === "oldest"
+                ? filteredQuery.orderBy(
+                    asc(pairingRequestTable.createdAt),
+                    asc(pairingRequestTable.id)
+                  )
+                : isPaged
+                  ? filteredQuery.orderBy(
+                      asc(pairingRequestTable.createdAt),
+                      asc(pairingRequestTable.id)
+                    )
+                  : filteredQuery.orderBy(pairingRequestTable.createdAt);
+          const results = pageOptions
+            ? await orderedQuery.limit(pageOptions.limit + 1).offset(pageOptions.offset)
+            : await orderedQuery;
+          const hasMore = pageOptions ? results.length > pageOptions.limit : false;
+          const rows = pageOptions ? results.slice(0, pageOptions.limit) : results;
 
           return {
             channel,
             agentId,
-            requests: results.map((row) => ({
+            requests: rows.map((row) => ({
               id: row.id as UUID,
               channel: row.channel as PairingChannel,
               senderId: row.senderId,
@@ -5785,6 +5813,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               metadata: (row.metadata as Record<string, string>) || undefined,
               agentId: row.agentId as UUID,
             })),
+            ...(pageOptions
+              ? {
+                  pageInfo: {
+                    limit: pageOptions.limit,
+                    offset: pageOptions.offset,
+                    hasMore,
+                    nextOffset: hasMore ? pageOptions.offset + pageOptions.limit : null,
+                  },
+                }
+              : {}),
           };
         })
       );
@@ -6631,15 +6669,72 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   // ── Pairing batch methods ─────────────────────────────────────────────
 
-  async getPairingAllowlists(
-    queries: Array<{ channel: PairingChannel; agentId: UUID }>
-  ): Promise<PairingAllowlistsResult> {
-    const result: PairingAllowlistsResult = [];
-    for (const { channel, agentId } of queries) {
-      const entries = await this.getPairingAllowlist(channel, agentId);
-      result.push({ channel, agentId, entries });
-    }
-    return result;
+  async getPairingAllowlists(queries: PairingAllowlistQuery[]): Promise<PairingAllowlistsResult> {
+    return this.withDatabase(async () => {
+      if (queries.length === 0) return [];
+
+      return Promise.all(
+        queries.map(async (query) => {
+          const { channel, agentId } = query;
+          const isPaged = query.limit !== undefined || query.offset !== undefined;
+          const pageOptions = isPaged ? normalizePairingPageOptions(query) : null;
+          const filteredQuery = this.db
+            .select()
+            .from(pairingAllowlistTable)
+            .where(
+              and(
+                eq(pairingAllowlistTable.channel, channel),
+                eq(pairingAllowlistTable.agentId, agentId)
+              )
+            );
+          const orderedQuery =
+            query.order === "newest"
+              ? filteredQuery.orderBy(
+                  desc(pairingAllowlistTable.createdAt),
+                  desc(pairingAllowlistTable.id)
+                )
+              : query.order === "oldest"
+                ? filteredQuery.orderBy(
+                    asc(pairingAllowlistTable.createdAt),
+                    asc(pairingAllowlistTable.id)
+                  )
+                : isPaged
+                  ? filteredQuery.orderBy(
+                      asc(pairingAllowlistTable.createdAt),
+                      asc(pairingAllowlistTable.id)
+                    )
+                  : filteredQuery.orderBy(pairingAllowlistTable.createdAt);
+          const results = pageOptions
+            ? await orderedQuery.limit(pageOptions.limit + 1).offset(pageOptions.offset)
+            : await orderedQuery;
+          const hasMore = pageOptions ? results.length > pageOptions.limit : false;
+          const rows = pageOptions ? results.slice(0, pageOptions.limit) : results;
+
+          return {
+            channel,
+            agentId,
+            entries: rows.map((row) => ({
+              id: row.id as UUID,
+              channel: row.channel as PairingChannel,
+              senderId: row.senderId,
+              createdAt: row.createdAt,
+              metadata: (row.metadata as Record<string, string>) || undefined,
+              agentId: row.agentId as UUID,
+            })),
+            ...(pageOptions
+              ? {
+                  pageInfo: {
+                    limit: pageOptions.limit,
+                    offset: pageOptions.offset,
+                    hasMore,
+                    nextOffset: hasMore ? pageOptions.offset + pageOptions.limit : null,
+                  },
+                }
+              : {}),
+          };
+        })
+      );
+    });
   }
 
   async createPairingRequests(requests: PairingRequest[]): Promise<UUID[]> {

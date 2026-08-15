@@ -25,7 +25,8 @@ const config = {
   orgName: "elizaos",
   repoName: "eliza",
   cliName: "eliza",
-  description: "Open-source AI agents for everyone",
+  description:
+    "Eliza manages your digital life so you can focus on what matters.",
   envPrefix: "ELIZA",
   namespace: "eliza",
   defaultApps: ["@elizaos/plugin-personal-assistant"],
@@ -48,7 +49,9 @@ const config = {
     // --brand-orange and is intentionally separate from these launch surfaces.
     themeColor: "#000000",
     backgroundColor: "#000000",
-    shareImagePath: "/brand/ogembeds/eliza_ogembed.svg",
+    // PNG, not SVG: link-preview scrapers (X, Discord, iMessage, Slack) do
+    // not render SVG share images.
+    shareImagePath: "/brand/ogembeds/eliza_ogembed.png",
   },
 
   branding: {

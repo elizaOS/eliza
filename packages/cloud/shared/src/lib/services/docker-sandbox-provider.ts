@@ -46,7 +46,9 @@ import {
   BRIDGE_PORT_MIN,
   buildAgentContainerLabelFlags,
   buildEnsureNetworkCmd,
+  CONTAINER_DURABLE_STATE_DIR,
   dockerPlatformFlag,
+  ensureVolumeVaultPassphrase,
   extractDockerCreateContainerId,
   getContainerName,
   getVolumePath,
@@ -64,9 +66,15 @@ import {
   WEBUI_PORT_MIN,
 } from "./docker-sandbox-utils";
 import { classifyDockerSshProbeError, DockerSSHClient } from "./docker-ssh";
+import {
+  classifyMeshAuthStatus,
+  TS_AUTHKEY_EXPIRED_EXIT_CODE,
+  TS_AUTHKEY_EXPIRED_MARKER_BASENAME,
+} from "./headscale-auth-status";
 import { headscaleClient } from "./headscale-client";
 import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";
 import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
+import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 import type {
   SandboxCreateConfig,
   SandboxDeletionStopOutcome,
@@ -283,7 +291,7 @@ function resolveElizaCloudPublicUrl(): string {
     if (typeof candidate !== "string" || !candidate.trim()) continue;
     return trimTrailingSlash(candidate.trim());
   }
-  return "https://elizacloud.ai/api";
+  return "https://api.eliza.app/api";
 }
 
 function resolveStewardRefreshUrl(): string {
@@ -954,14 +962,21 @@ export class DockerSandboxProvider implements SandboxProvider {
   async create(config: SandboxCreateConfig): Promise<SandboxHandle> {
     const MAX_ATTEMPTS = 3;
     let lastError: Error | undefined;
+    // This is the last caller-visible boundary before remote placement. Stored
+    // rows, warm claims, and image replays may carry historical values, but no
+    // remote create attempt may opt back into the container-owned pair relay.
+    const createConfig: SandboxCreateConfig = {
+      ...config,
+      environmentVars: applyRemoteDockerRuntimeMode(config.environmentVars),
+    };
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
-        return await this._createOnce(config);
+        return await this._createOnce(createConfig);
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         if (
-          config.onReplacementCreateIntent ||
+          createConfig.onReplacementCreateIntent ||
           lastError instanceof SandboxReplacementCleanupUnresolvedError
         ) {
           throw lastError;
@@ -1046,9 +1061,16 @@ export class DockerSandboxProvider implements SandboxProvider {
     // getAvailableNode + incrementAllocated + getUsedDockerHostPorts are three sequential
     // DB round-trips without a transaction boundary; the UNIQUE port index and
     // retry logic provide safety against concurrent capacity changes.
+    // The ceiling admitted here is the same value applied to `docker create`
+    // below, so a node can never be accepted against one number and loaded with
+    // another. Zero means the operator disabled ceilings entirely, which opts
+    // this container out of memory admission rather than admitting it for free.
+    const containerMemoryMb =
+      config.container?.memoryMb ?? containersEnv.agentContainerMemoryLimitMb();
     let dbNode = await dockerNodeManager.getAvailableNode({
       requiredPlatform: imagePlatform,
       excludeNodeId: config.excludeNodeId,
+      ...(containerMemoryMb > 0 ? { requiredMemoryMb: containerMemoryMb } : {}),
     });
     if (!dbNode) {
       dbNode = await this.provisionAutoscaledNodeForAgent({
@@ -1285,6 +1307,21 @@ export class DockerSandboxProvider implements SandboxProvider {
         DOCKER_CMD_TIMEOUT_MS,
       );
 
+      // Resolve the per-agent vault master passphrase BEFORE building the
+      // container env. The key persisted on the agent volume is the single
+      // source of truth so a replacement container derives the SAME master
+      // key and can decrypt the vault ciphertext it inherits (#18080 /
+      // #19225). A caller-injected ELIZA_VAULT_PASSPHRASE does not bypass
+      // that lifecycle: it seeds the persisted key on first provision and
+      // must match it afterwards (fail-closed on mismatch), so a later
+      // replacement launched without the override still reads the same key.
+      const vaultPassphrase = await ensureVolumeVaultPassphrase(
+        (cmd, timeoutMs) => ssh.exec(cmd, timeoutMs),
+        volumePath,
+        DOCKER_CMD_TIMEOUT_MS,
+        environmentVars.ELIZA_VAULT_PASSPHRASE,
+      );
+
       // Pull image (may take a while on first run). Log in when registry
       // credentials are configured; otherwise rely on anonymous public pulls.
       logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
@@ -1352,7 +1389,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         stewardAuthToken: stewardJwt || stewardAgentToken,
       });
 
-      const allEnv: Record<string, string> = {
+      const allEnv: Record<string, string> = applyRemoteDockerRuntimeMode({
         ...baseEnv,
         STEWARD_AGENT_TOKEN: stewardAgentToken,
         ...(stewardJwt
@@ -1382,10 +1419,18 @@ export class DockerSandboxProvider implements SandboxProvider {
         AGENT_DISABLE_AUTO_API_TOKEN: "1",
         ELIZA_DISABLE_AUTO_API_TOKEN: "1",
         // V2 image refuses to boot on headless Linux without a passphrase
-        // (no D-Bus keychain). Generate one per container — the vault state
-        // lives only in the per-container PGlite, so a unique per-launch key
-        // is fine.
-        ELIZA_VAULT_PASSPHRASE: environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
+        // (no D-Bus keychain). The key must be STABLE across container
+        // replacement over the same agent volume: the state-dir vault
+        // ciphertext survives on the mount, so a fresh per-launch key would
+        // orphan every stored credential (#18080 / #19225). Always the key
+        // persisted on the agent volume; a caller-injected value only seeds
+        // that key on first provision and must match it afterwards.
+        ELIZA_VAULT_PASSPHRASE: vaultPassphrase,
+        // Durable state root on the `${volumePath}/eliza:/root/.eliza` mount.
+        // Without it the runtime resolves state (including the vault) to
+        // /root/.local/state/eliza in the container's writable layer, which
+        // is lost on the normal container replacement/reschedule path.
+        ELIZA_STATE_DIR: environmentVars.ELIZA_STATE_DIR?.trim() || CONTAINER_DURABLE_STATE_DIR,
         // Gateway service discovery — see SandboxRegistry in app-core.
         // SANDBOX_PUBLIC_URL targets the public Docker host (not the headscale
         // VPN IP set later at line ~653) because the gateways on Railway can't
@@ -1404,7 +1449,7 @@ export class DockerSandboxProvider implements SandboxProvider {
               SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}/api`,
             }
           : {}),
-      };
+      });
 
       // Validate env keys/values before they are interpolated into remote shell commands.
       // Internal env vars must also remain UPPER_SNAKE_CASE so validation stays
@@ -1447,9 +1492,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         // an explicit per-agent `container.memory` wins; otherwise the
         // env-tunable fleet default applies so a boot-looping agent can never
         // OOM-starve its co-tenants again (staging fleet incident 2026-08-05).
-        ...buildAgentContainerMemoryFlags(
-          config.container?.memoryMb ?? containersEnv.agentContainerMemoryLimitMb(),
-        ),
+        ...buildAgentContainerMemoryFlags(containerMemoryMb),
         // Escape-hardening (#12230/#12302): drop ALL kernel capabilities, forbid
         // privilege escalation, and bound the process count — then, under
         // headscale only, re-add exactly NET_ADMIN + /dev/net/tun for the VPN.
@@ -1612,10 +1655,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         if (!allEnv.ELIZAOS_CLOUD_BASE_URL) {
           throw new Error(
             "[docker-sandbox] ELIZAOS_CLOUD_BASE_URL is not set in container env. " +
-              "Refusing to fall back to the hardcoded prod URL (https://elizacloud.ai/api/v1) — " +
+              "Refusing to fall back to the hardcoded prod URL (https://api.eliza.app/api/v1) — " +
               "this caused staging containers to silently call prod. " +
               "Configure ELIZAOS_CLOUD_BASE_URL in the daemon/Worker env (e.g. " +
-              "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",
+              "https://api-staging.eliza.app/api/v1 for staging, https://api.eliza.app/api/v1 for prod).",
           );
         }
         const elizaConfig = JSON.stringify(buildManagedElizaRuntimeConfig(allEnv));
@@ -2435,7 +2478,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
       if (unreachable) {
-        outcome = { kind: "not-running-unresolved", reason: "node-unreachable" };
+        outcome = {
+          kind: "not-running-unresolved",
+          reason: "node-unreachable",
+        };
         logger.warn(
           `[docker-sandbox] Node ${meta.hostname} unreachable during stop of ${meta.containerName}; ` +
             `completing delete while retaining its capacity until reconciliation — ` +
@@ -2763,6 +2809,12 @@ export class DockerSandboxProvider implements SandboxProvider {
         [
           `echo '--- inspect ---'`,
           `docker inspect --format 'state={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{end}} exit={{.State.ExitCode}} error={{.State.Error}}' ${shellQuote(current.containerName)} || true`,
+          `echo '--- authkey marker ---'`,
+          // The entrypoint drops this marker in TS_STATE_DIR when it hits the
+          // auth-expired terminal state; a present marker is an unambiguous
+          // "needs re-key" signal even if logs have rotated. TS_STATE_DIR is a
+          // bind-mounted volume so this survives the container exit.
+          `docker exec ${shellQuote(current.containerName)} sh -c 'test -f "\${TS_STATE_DIR:-/var/lib/tailscale}/${TS_AUTHKEY_EXPIRED_MARKER_BASENAME}" && echo authkey-marker=present || echo authkey-marker=absent' 2>/dev/null || echo authkey-marker=unknown`,
           `echo '--- ports ---'`,
           `docker port ${shellQuote(current.containerName)} || true`,
           `echo '--- logs ---'`,
@@ -2775,6 +2827,30 @@ export class DockerSandboxProvider implements SandboxProvider {
         nodeId: current.nodeId,
         diagnostics: diagnostics.slice(-12_000),
       });
+
+      // Promote a distinct auth_expired signal when the diagnostics show the
+      // container is crash-looping specifically on expired mesh auth. This is
+      // observability-only here (the verdict below stays not_ready so existing
+      // recreate paths are unchanged), but it gives the control plane a
+      // greppable, unambiguous line to drive re-key/recreate instead of
+      // treating the loop as a generic health failure.
+      const exitMatch = /\bexit=(-?\d+)\b/.exec(diagnostics);
+      const meshAuthVerdict = classifyMeshAuthStatus({
+        exitCode: exitMatch ? Number.parseInt(exitMatch[1]!, 10) : undefined,
+        markerPresent: diagnostics.includes("authkey-marker=present"),
+        logs: diagnostics,
+      });
+      if (meshAuthVerdict === "auth_expired") {
+        logger.error(
+          "[docker-sandbox] Container failed mesh join: headscale auth key expired/rejected — needs re-key",
+          {
+            containerName: current.containerName,
+            nodeId: current.nodeId,
+            meshAuthVerdict,
+            authExpiredExitCode: TS_AUTHKEY_EXPIRED_EXIT_CODE,
+          },
+        );
+      }
     } catch (diagnosticsError) {
       logger.warn("[docker-sandbox] Failed to collect health timeout diagnostics", {
         containerName: current.containerName,

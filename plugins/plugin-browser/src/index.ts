@@ -42,6 +42,13 @@ export {
 } from "./browser-service.js";
 export * from "./companion-auth.js";
 export * from "./contracts.js";
+export {
+  BROWSER_DISPATCH_FAILURE_KINDS,
+  BrowserDispatchFailure,
+  type BrowserDispatchFailureKind,
+  isBrowserDispatchFailure,
+  isIdempotentBrowserSubaction,
+} from "./dispatch-types.js";
 export { BrowserBridgeAdapter } from "./message-adapter.js";
 export * from "./packaging.js";
 export * from "./parity/index.js";

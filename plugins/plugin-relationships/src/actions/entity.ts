@@ -38,7 +38,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { describeUserReference, logger } from "@elizaos/core";
 import type { Entity, EntityIdentity } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 
@@ -130,6 +130,34 @@ function entitySummary(entity: Entity): {
 }
 
 const ENTITY_KINDS_DEFAULT = "person";
+
+function entityCount(count: number, hasMore: boolean): string {
+  return `${count}${hasMore ? "+" : ""} entit${count === 1 && !hasMore ? "y" : "ies"}`;
+}
+
+function listScopeText(args: {
+  entities: readonly Entity[];
+  kind: string | null;
+  limit: number;
+  hasMore: boolean;
+  unfiltered: { count: number; hasMore: boolean } | null;
+}): string {
+  const kindLabel = args.kind
+    ? describeUserReference(args.kind, "that entity kind")
+    : null;
+  if (args.entities.length > 0) {
+    const scope = kindLabel ? ` of kind ${kindLabel}` : "";
+    const cap = args.hasMore
+      ? ` (capped at ${args.limit}; raise limit to see more)`
+      : "";
+    return `${entityCount(args.entities.length, args.hasMore)}${scope} in the graph${cap}.`;
+  }
+  if (!kindLabel) return "No entities in the graph yet.";
+  if (!args.unfiltered || args.unfiltered.count === 0) {
+    return `No entities of kind ${kindLabel}; the graph has no entities of any kind yet.`;
+  }
+  return `No entities of kind ${kindLabel}. The graph has ${entityCount(args.unfiltered.count, args.unfiltered.hasMore)} of other kinds; list without kind to see them.`;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -303,17 +331,37 @@ export const entityAction: Action = {
           typeof params.limit === "number" && params.limit > 0
             ? Math.floor(params.limit)
             : 50;
-        const entities = await entityStore.list({
+        const page = await entityStore.list({
           ...(kind ? { type: kind } : {}),
-          limit,
+          limit: limit + 1,
         });
+        const hasMore = page.length > limit;
+        const entities = hasMore ? page.slice(0, limit) : page;
+        const unfilteredPage =
+          kind && entities.length === 0
+            ? await entityStore.list({ limit: limit + 1 })
+            : null;
         return reply({
           success: true,
-          text:
-            entities.length === 0
-              ? "No entities in the graph yet."
-              : `${entities.length} entit${entities.length === 1 ? "y" : "ies"} in the graph.`,
-          data: { op, entities: entities.map(entitySummary) },
+          text: listScopeText({
+            entities,
+            kind,
+            limit,
+            hasMore,
+            unfiltered: unfilteredPage
+              ? {
+                  count: Math.min(unfilteredPage.length, limit),
+                  hasMore: unfilteredPage.length > limit,
+                }
+              : null,
+          }),
+          data: {
+            op,
+            entities: entities.map(entitySummary),
+            kind,
+            limit,
+            hasMore,
+          },
         });
       }
 

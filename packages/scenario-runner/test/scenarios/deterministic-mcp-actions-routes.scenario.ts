@@ -7,6 +7,11 @@ import type http from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
+import {
+  matchesScenarioInput,
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -22,11 +27,6 @@ import {
   MCP_SERVICE_NAME,
   type McpServer,
 } from "../../../../plugins/plugin-mcp/src/types.ts";
-import {
-  matchesScenarioInput,
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 
 const MCP_SERVER_NAME = "scenario_mcp";
 const TOOL_NAME = "echo_code";
@@ -521,6 +521,9 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
       response: RESOURCE_ANALYSIS_TEXT,
       times: 1,
     },
+    // Optional since plugin-mcp's direct tool selection (#18218): when the
+    // planner already names the server/tool in the action parameters, the
+    // model selection call is skipped entirely.
     {
       name: "mcp-tool-selection-name",
       match: {
@@ -539,7 +542,7 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
           "The user asked to echo alpha-42 through the deterministic MCP fixture.",
         noToolAvailable: false,
       }),
-      times: 1,
+      times: { min: 0, max: 1 },
     },
     {
       name: "mcp-tool-selection-arguments",

@@ -112,6 +112,17 @@ describe("embedded Steward proxy — Origin forwarding (SIWE nonce fix)", () => 
     expect(lastUpstreamOrigin).toBe("https://app-staging.elizacloud.ai");
   });
 
+  it("preserves the browser origin stamped before the Pages service binding rewrite", async () => {
+    const app = makeApp();
+    const res = await app.request(
+      "https://api-staging.eliza.app/steward/auth/nonce",
+      { headers: { origin: "https://cloud-staging.eliza.app" } },
+    );
+
+    expect(res.status).toBe(200);
+    expect(lastUpstreamOrigin).toBe("https://cloud-staging.eliza.app");
+  });
+
   it("uses the prod host on a prod-origin request", async () => {
     const app = makeApp();
     const res = await app.request("https://elizacloud.ai/steward/auth/nonce");

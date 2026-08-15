@@ -69,6 +69,10 @@ interface SeedOpts {
   bridgeUrl?: string | null;
   poolStatus?: string | null;
   lastBackupAt?: Date | null;
+  lastHeartbeatAt?: Date | null;
+  lastBackupAttemptAt?: Date | null;
+  backupUnsupportedReason?: string | null;
+  environmentVars?: Record<string, string>;
 }
 
 async function seedSandbox(opts: SeedOpts = {}): Promise<string> {
@@ -85,6 +89,10 @@ async function seedSandbox(opts: SeedOpts = {}): Promise<string> {
       bridge_url: opts.bridgeUrl === undefined ? REACHABLE_BRIDGE : opts.bridgeUrl,
       pool_status: (opts.poolStatus ?? null) as never,
       last_backup_at: opts.lastBackupAt ?? null,
+      last_heartbeat_at: opts.lastHeartbeatAt ?? null,
+      last_backup_attempt_at: opts.lastBackupAttemptAt ?? null,
+      backup_unsupported_reason: opts.backupUnsupportedReason ?? null,
+      environment_vars: opts.environmentVars ?? {},
     })
     .returning();
   return sandbox.id;
@@ -139,7 +147,7 @@ describe("enqueueScheduledBackups — sentinel-bridge exclusion (#15737)", () =>
 
     // Both rows are `running` with a non-null bridge_url; only the reachable one
     // survives the scan predicate and gets a real `agent_snapshot` job row.
-    expect(res).toEqual({ scanned: 1, enqueued: 1 });
+    expect(res).toMatchObject({ scanned: 1, enqueued: 1 });
 
     const reachableJobs = await snapshotJobsFor(reachableId);
     expect(reachableJobs).toHaveLength(1);
@@ -156,7 +164,7 @@ describe("enqueueScheduledBackups — sentinel-bridge exclusion (#15737)", () =>
 
     const res = await provisioningJobService.enqueueScheduledBackups();
 
-    expect(res).toEqual({ scanned: 0, enqueued: 0 });
+    expect(res).toMatchObject({ scanned: 0, enqueued: 0 });
     for (const id of [a, b, c]) {
       expect(await snapshotJobsFor(id)).toHaveLength(0);
     }
@@ -171,7 +179,7 @@ describe("enqueueScheduledBackups — eligibility predicate", () => {
 
     const res = await provisioningJobService.enqueueScheduledBackups();
 
-    expect(res).toEqual({ scanned: 1, enqueued: 1 });
+    expect(res).toMatchObject({ scanned: 1, enqueued: 1 });
     expect(await snapshotJobsFor(running)).toHaveLength(1);
     expect(await snapshotJobsFor(sleeping)).toHaveLength(0);
     expect(await snapshotJobsFor(pending)).toHaveLength(0);
@@ -183,7 +191,7 @@ describe("enqueueScheduledBackups — eligibility predicate", () => {
 
     const res = await provisioningJobService.enqueueScheduledBackups();
 
-    expect(res).toEqual({ scanned: 1, enqueued: 1 });
+    expect(res).toMatchObject({ scanned: 1, enqueued: 1 });
     expect(await snapshotJobsFor(owned)).toHaveLength(1);
     expect(await snapshotJobsFor(warm)).toHaveLength(0);
   });
@@ -194,7 +202,7 @@ describe("enqueueScheduledBackups — eligibility predicate", () => {
 
     const res = await provisioningJobService.enqueueScheduledBackups();
 
-    expect(res).toEqual({ scanned: 1, enqueued: 1 });
+    expect(res).toMatchObject({ scanned: 1, enqueued: 1 });
     expect(await snapshotJobsFor(bridged)).toHaveLength(1);
     expect(await snapshotJobsFor(bridgeless)).toHaveLength(0);
   });
@@ -210,7 +218,7 @@ describe("enqueueScheduledBackups — eligibility predicate", () => {
 
     const res = await provisioningJobService.enqueueScheduledBackups({ minIntervalMs });
 
-    expect(res).toEqual({ scanned: 2, enqueued: 2 });
+    expect(res).toMatchObject({ scanned: 2, enqueued: 2 });
     expect(await snapshotJobsFor(neverBackedUp)).toHaveLength(1);
     expect(await snapshotJobsFor(staleBackup)).toHaveLength(1);
     expect(await snapshotJobsFor(freshBackup)).toHaveLength(0);
@@ -236,12 +244,12 @@ describe("enqueueScheduledBackups — enqueue behavior", () => {
     const agentId = await seedSandbox({ bridgeUrl: REACHABLE_BRIDGE });
 
     const first = await provisioningJobService.enqueueScheduledBackups();
-    expect(first).toEqual({ scanned: 1, enqueued: 1 });
+    expect(first).toMatchObject({ scanned: 1, enqueued: 1 });
 
     // The row is still due (last_backup_at unchanged) and the snapshot job is
     // still pending, so in-flight idempotency must reuse it — one job row total.
     const second = await provisioningJobService.enqueueScheduledBackups();
-    expect(second).toEqual({ scanned: 1, enqueued: 1 });
+    expect(second).toMatchObject({ scanned: 1, enqueued: 1 });
 
     expect(await snapshotJobsFor(agentId)).toHaveLength(1);
   });
@@ -286,7 +294,9 @@ describe("enqueueScheduledBackups — enqueue behavior", () => {
  * predicate is a red test rather than a silent bad row on the queue.
  */
 describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
-  async function seedAgent(): Promise<{
+  async function seedAgent(
+    opts: { status?: string; lastHeartbeatAt?: Date | null; executionTier?: string } = {},
+  ): Promise<{
     agentId: string;
     orgId: string;
     userId: string;
@@ -299,8 +309,10 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         organization_id: orgId,
         user_id: userId,
         agent_name: uniq("agent"),
-        status: "running" as never,
+        status: (opts.status ?? "running") as never,
+        execution_tier: (opts.executionTier ?? "shared") as never,
         bridge_url: REACHABLE_BRIDGE,
+        last_heartbeat_at: opts.lastHeartbeatAt ?? null,
       })
       .returning();
     return {
@@ -511,7 +523,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
   });
 
   test("delete flips the sandbox to deletion_pending and cancels other in-flight jobs", async () => {
-    const { agentId, orgId, userId } = await seedAgent();
+    const { agentId, orgId, userId } = await seedAgent({ status: "running" });
     // A queued suspend that the delete must supersede.
     await provisioningJobService.enqueueAgentSuspendOnce({
       agentId,
@@ -523,21 +535,54 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       agentId,
       organizationId: orgId,
       userId,
+      authorization: "user_request",
     });
     expect(del.created).toBe(true);
     expect(del.job.type).toBe(JOB_TYPES.AGENT_DELETE);
+    expect((del.job.data as { authorization?: string }).authorization).toBe("user_request");
 
     const [sandbox] = await dbWrite
       .select()
       .from(agentSandboxes)
       .where(eq(agentSandboxes.id, agentId));
     expect(sandbox?.status).toBe("deletion_pending");
+    expect(sandbox?.deletion_previous_status).toBe("running");
+    expect(sandbox?.deletion_previous_billing_status).toBe("active");
 
     // The superseded suspend is cancelled (delete wins), the delete itself is not.
     const suspendRows = await jobsOfType(agentId, JOB_TYPES.AGENT_SUSPEND);
     expect(suspendRows[0]?.status).toBe("cancelled");
     const deleteRows = await jobsOfType(agentId, JOB_TYPES.AGENT_DELETE);
     expect(deleteRows[0]?.status).toBe("pending");
+  });
+
+  test("delete refuses a running sandbox before recording deletion intent", async () => {
+    const { agentId, orgId, userId } = await seedAgent({
+      status: "running",
+      lastHeartbeatAt: new Date(Date.now() - 5 * 60_000),
+      executionTier: "dedicated-always",
+    });
+
+    await expect(
+      provisioningJobService.enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "session_not_ready",
+      message: "Agent is running; suspend it before deletion",
+    });
+
+    const [sandbox] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, agentId));
+    expect(sandbox?.status).toBe("running");
+    expect(sandbox?.deletion_attempt_id).toBeNull();
+    expect(sandbox?.deletion_started_at).toBeNull();
+    expect(await jobsOfType(agentId, JOB_TYPES.AGENT_DELETE)).toHaveLength(0);
   });
 
   test("conditional delete atomically owns the exact stale provisioning identity", async () => {
@@ -902,5 +947,90 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         userId,
       }),
     ).rejects.toThrow("Agent not found");
+  });
+});
+
+describe("enqueueScheduledBackups — sweep fairness + capability tracking (#15783)", () => {
+  const HOUR = 60 * 60 * 1000;
+
+  test("the capped window is ordered oldest-successful-backup-first, never-backed-up leading", async () => {
+    const neverBacked = await seedSandbox({ lastBackupAt: null });
+    const oldest = await seedSandbox({ lastBackupAt: new Date(Date.now() - 48 * HOUR) });
+    const newerButDue = await seedSandbox({ lastBackupAt: new Date(Date.now() - 7 * HOUR) });
+
+    const res = await provisioningJobService.enqueueScheduledBackups({ maxAgents: 2 });
+
+    // Cap of 2 must take the NULL row and the 48h row; the merely-7h-stale row
+    // waits for the next tick instead of a planner-order lottery.
+    expect(res).toMatchObject({ scanned: 2, enqueued: 2 });
+    expect(await snapshotJobsFor(neverBacked)).toHaveLength(1);
+    expect(await snapshotJobsFor(oldest)).toHaveLength(1);
+    expect(await snapshotJobsFor(newerButDue)).toHaveLength(0);
+  });
+
+  test("snapshot-incapable rows stop competing for the window until their slow re-probe", async () => {
+    // An unsupported population AT the cap used to be able to consume the
+    // whole window every tick, starving the one healthy agent indefinitely.
+    const healthy = await seedSandbox({ lastBackupAt: new Date(Date.now() - 7 * HOUR) });
+    const unsupportedRecentProbe = [] as string[];
+    for (let i = 0; i < 2; i++) {
+      unsupportedRecentProbe.push(
+        await seedSandbox({
+          lastBackupAt: null,
+          backupUnsupportedReason: "Snapshot endpoint not supported by agent image",
+          lastBackupAttemptAt: new Date(Date.now() - 1 * HOUR),
+        }),
+      );
+    }
+
+    const res = await provisioningJobService.enqueueScheduledBackups({ maxAgents: 2 });
+
+    expect(res).toMatchObject({ scanned: 1, enqueued: 1 });
+    expect(await snapshotJobsFor(healthy)).toHaveLength(1);
+    for (const id of unsupportedRecentProbe) {
+      expect(await snapshotJobsFor(id)).toHaveLength(0);
+    }
+  });
+
+  test("a snapshot-incapable row is re-probed once its last attempt ages past the recheck interval", async () => {
+    const stalledProbe = await seedSandbox({
+      lastBackupAt: null,
+      backupUnsupportedReason: "Snapshot endpoint not supported by agent image",
+      lastBackupAttemptAt: new Date(Date.now() - 25 * HOUR),
+    });
+
+    const res = await provisioningJobService.enqueueScheduledBackups();
+
+    // Default recheck is 24h; a 25h-old attempt re-enters the due set so an
+    // image upgrade is noticed within one recheck interval.
+    expect(res).toMatchObject({ scanned: 1, enqueued: 1 });
+    expect(await snapshotJobsFor(stalledProbe)).toHaveLength(1);
+  });
+
+  test("the fleet report measures route-less, incapable, never-backed-up, and stale local-state populations", async () => {
+    await seedSandbox({ bridgeUrl: null }); // route-less
+    await seedSandbox({
+      backupUnsupportedReason: "Snapshot endpoint not supported by agent image",
+      lastBackupAttemptAt: new Date(),
+    }); // incapable, never backed up
+    await seedSandbox({
+      environmentVars: { ELIZA_AGENT_LOCAL_STATE: "1" },
+      lastBackupAt: new Date(Date.now() - 48 * HOUR),
+    }); // local-state, stale
+    await seedSandbox({
+      environmentVars: { ELIZA_AGENT_LOCAL_STATE: "1" },
+      lastBackupAt: new Date(Date.now() - 1 * HOUR),
+    }); // local-state, fresh
+
+    const res = await provisioningJobService.enqueueScheduledBackups();
+
+    expect(res.fleet).toMatchObject({
+      running: 4,
+      routeless: 1,
+      snapshotUnsupported: 1,
+      neverBackedUp: 2,
+      localState: 2,
+      localStateStale: 1,
+    });
   });
 });

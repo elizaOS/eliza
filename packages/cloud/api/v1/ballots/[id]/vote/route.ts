@@ -19,6 +19,7 @@ import {
 import { createSecretBallotsService } from "@/lib/services/secret-ballots";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { parseBallotIdParam } from "../../ballot-id";
 
 const VoteSchema = z.object({
   scopedToken: z.string().min(8).max(512),
@@ -30,10 +31,11 @@ app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
   try {
-    const id = c.req.param("id");
-    if (!id) {
-      return c.json({ success: false, error: "Missing ballot id" }, 400);
+    const parsedId = parseBallotIdParam(c.req.param("id"));
+    if (!parsedId.ok) {
+      return c.json({ success: false, error: parsedId.error }, 400);
     }
+    const { id } = parsedId;
     const body = await c.req.json().catch(() => null);
     const parsed = VoteSchema.safeParse(body);
     if (!parsed.success) {

@@ -377,14 +377,28 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         autonomousStoreRef.current,
       ).slice(0, 4);
 
-      for (const request of gapReplays) {
-        const gapReplay = await client.getAgentEvents({
-          runId: request.runId,
-          fromSeq: request.fromSeq,
-          limit: 300,
-        });
-        if (gapReplay.events.length > 0) {
-          applyAutonomyEventMerge(gapReplay.events);
+      // All gap requests are independent — run them in parallel to collapse the
+      // serial round-trips into a single wall-clock wait. allSettled so one
+      // failed gap replay doesn't discard the others' results.
+      const gapResults = await Promise.allSettled(
+        gapReplays.map((request) =>
+          client.getAgentEvents({
+            runId: request.runId,
+            fromSeq: request.fromSeq,
+            limit: 300,
+          }),
+        ),
+      );
+      for (const result of gapResults) {
+        if (result.status === "rejected") {
+          logger.debug(
+            { error: result.reason },
+            "[useDataLoaders] autonomy gap replay failed; retried on next poll cycle",
+          );
+          continue;
+        }
+        if (result.value.events.length > 0) {
+          applyAutonomyEventMerge(result.value.events);
         }
       }
 

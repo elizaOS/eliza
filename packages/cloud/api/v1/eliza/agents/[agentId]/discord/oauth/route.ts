@@ -29,7 +29,7 @@ const oauthLinkSchema = z.object({
 
 function resolveManagedReturnUrl(rawValue: string | undefined): string {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  const defaultPath = "/dashboard/settings?tab=agents";
+  const defaultPath = "/cloud/settings?tab=agents";
 
   if (!rawValue) {
     return new URL(defaultPath, baseUrl).toString();

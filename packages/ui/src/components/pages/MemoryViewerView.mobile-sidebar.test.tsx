@@ -147,8 +147,9 @@ describe("MemoryViewerView mobile sidebar header trigger", () => {
     fireEvent.click(screen.getByTestId("page-layout-mobile-sidebar-trigger"));
 
     const drawer = screen.getByTestId("page-layout-mobile-sidebar-drawer");
+    fireEvent.click(within(drawer).getByTestId("memory-person-picker-trigger"));
     await waitFor(() =>
-      expect(within(drawer).getByText("Ada Lovelace")).not.toBeNull(),
+      expect(screen.getByText("Ada Lovelace")).not.toBeNull(),
     );
     // Drawer open → the header control steps aside (drawer owns closing).
     expect(

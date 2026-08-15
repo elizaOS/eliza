@@ -614,7 +614,7 @@ Attribution status: self-reported
       ),
     ].map((match) => match[1]);
     const ecosystemRefs = {
-      npm: "dependabot/npm_and_yarn/*",
+      bun: "dependabot/bun/*",
       "github-actions": "dependabot/github_actions/*",
     };
     assert.deepEqual(

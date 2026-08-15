@@ -19,10 +19,25 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runPool } from "./lib/test-task-pool.mjs";
 
-function positiveInteger(value, flag) {
-  if (!/^[1-9]\d*$/.test(value))
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+function positiveInteger(
+  value,
+  flag,
+  { maximum = Number.MAX_SAFE_INTEGER } = {},
+) {
+  if (!/^[1-9]\d*$/.test(value)) {
     throw new Error(`${flag} requires a positive integer`);
-  return Number(value);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed > maximum) {
+    const bound =
+      maximum === Number.MAX_SAFE_INTEGER
+        ? "a positive safe integer"
+        : `a positive integer no greater than ${maximum}`;
+    throw new Error(`${flag} requires ${bound}`);
+  }
+  return parsed;
 }
 
 export function parseIsolatedScriptTestArgs(argv) {
@@ -42,7 +57,9 @@ export function parseIsolatedScriptTestArgs(argv) {
     } else if (arg.startsWith("--junit=")) {
       options.junit = arg.slice(8);
     } else if (arg.startsWith("--timeout-ms=")) {
-      options.timeoutMs = positiveInteger(arg.slice(13), "--timeout-ms");
+      options.timeoutMs = positiveInteger(arg.slice(13), "--timeout-ms", {
+        maximum: MAX_TIMER_DELAY_MS,
+      });
     } else {
       throw new Error(`unknown argument: ${arg}`);
     }

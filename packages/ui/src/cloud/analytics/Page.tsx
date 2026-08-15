@@ -1,5 +1,5 @@
 /**
- * `/dashboard/analytics` — per-user usage metrics + cost projections.
+ * `/cloud/analytics` — per-user usage metrics + cost projections.
  *
  * THE "WEEKLY BUG" FIX: the original hardcoded `timeRange = "weekly"` in local
  * state and never read the filter UI, so the `AnalyticsFilters` control (which

@@ -18,11 +18,7 @@ import { computeDomainPrice } from "@/lib/services/domain-pricing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const SearchSchema = z.object({
-  query: z
-    .string()
-    .min(1)
-    .max(100)
-    .transform((s) => s.trim()),
+  query: z.string().trim().min(1).max(100),
   limit: z.number().int().min(1).max(20).optional(),
 });
 

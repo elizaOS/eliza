@@ -42,7 +42,10 @@ const coreMocks = vi.hoisted(() => {
   };
   type TestProvider = {
     provider: string;
-    startOAuth?: (request: { flow: TestFlow }) => Promise<{ authUrl: string }>;
+    startOAuth?: (request: {
+      flow: TestFlow;
+      servedOrigin?: string;
+    }) => Promise<{ authUrl: string }>;
     completeOAuth?: (request: {
       flow: TestFlow;
       code?: string;
@@ -184,7 +187,7 @@ const coreMocks = vi.hoisted(() => {
 
     async startOAuth(
       provider: string,
-      input?: { metadata?: Record<string, unknown> },
+      input?: { servedOrigin?: string; metadata?: Record<string, unknown> },
     ) {
       const normalized = provider.toLowerCase();
       const registered = this.providers.get(normalized);
@@ -200,7 +203,12 @@ const coreMocks = vi.hoisted(() => {
         metadata: input?.metadata,
       };
       await this.storage.createOAuthFlow(flow);
-      const started = await registered.startOAuth({ flow });
+      // Mirror the real manager: the served origin captured at the HTTP
+      // boundary is forwarded to the provider's start handler.
+      const started = await registered.startOAuth({
+        flow,
+        servedOrigin: input?.servedOrigin,
+      });
       return (
         (await this.storage.updateOAuthFlow(normalized, flow.id, {
           authUrl: started.authUrl,
@@ -321,10 +329,14 @@ type Captured = {
 
 type TestStorage = InstanceType<typeof InMemoryConnectorAccountStorage>;
 
-function createRuntime(storage: TestStorage) {
+function createRuntime(
+  storage: TestStorage,
+  settings: Record<string, string> = {},
+) {
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
     adapter: undefined as unknown,
+    getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn((type: string) =>
       type === "connector_account_storage" ? storage : null,
     ),
@@ -344,16 +356,19 @@ function createConnectorAccountHarness(options: {
   method: string;
   pathname: string;
   body?: Record<string, unknown>;
+  headers?: Record<string, string>;
+  settings?: Record<string, string>;
   storage?: TestStorage;
   adapter?: unknown;
   authorize?: ConnectorAccountRouteContext["authorize"] | null;
 }) {
   const captured: Captured = { status: 200, body: null };
   const storage = options.storage ?? new InMemoryConnectorAccountStorage();
-  const runtime = createRuntime(storage);
+  const runtime = createRuntime(storage, options.settings);
   runtime.adapter = options.adapter;
   const req = {
     url: options.pathname,
+    headers: options.headers ?? {},
     on: vi.fn(),
   } as unknown as IncomingMessage;
   const res = {
@@ -537,6 +552,87 @@ describe("connector account routes", () => {
     });
   });
 
+  it("uses the configured external base as the trusted proxy origin", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "POST",
+      pathname: "/api/connectors/google/oauth/start",
+      body: {},
+      headers: {
+        host: "127.0.0.1:2138",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "attacker.example",
+      },
+      settings: { ELIZA_EXTERNAL_BASE_URL: "https://eliza.example" },
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    const seen: Array<string | undefined> = [];
+    manager.registerProvider({
+      provider: "google",
+      startOAuth: async ({ flow, servedOrigin }) => {
+        seen.push(servedOrigin);
+        return {
+          authUrl: `https://accounts.google.example/?state=${flow.state}`,
+        };
+      },
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+    expect(captured.status, JSON.stringify(captured.body)).toBe(201);
+    expect(seen).toEqual(["https://eliza.example"]);
+  });
+
+  it("ignores untrusted forwarded origins when no external base is configured", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "POST",
+      pathname: "/api/connectors/google/oauth/start",
+      body: {},
+      headers: {
+        host: "127.0.0.1:2138",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "attacker.example",
+      },
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    const seen: Array<string | undefined> = [];
+    manager.registerProvider({
+      provider: "google",
+      startOAuth: async ({ flow, servedOrigin }) => {
+        seen.push(servedOrigin);
+        return {
+          authUrl: `https://accounts.google.example/?state=${flow.state}`,
+        };
+      },
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+    expect(captured.status, JSON.stringify(captured.body)).toBe(201);
+    expect(seen).toEqual(["http://127.0.0.1:2138"]);
+  });
+
+  it("derives the served origin from the Host header when no proxy metadata exists", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "POST",
+      pathname: "/api/connectors/google/oauth/start",
+      body: {},
+      headers: { host: "127.0.0.1:2138" },
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    const seen: Array<string | undefined> = [];
+    manager.registerProvider({
+      provider: "google",
+      startOAuth: async ({ flow, servedOrigin }) => {
+        seen.push(servedOrigin);
+        return {
+          authUrl: `https://accounts.google.example/?state=${flow.state}`,
+        };
+      },
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+    expect(captured.status, JSON.stringify(captured.body)).toBe(201);
+    expect(seen).toEqual(["http://127.0.0.1:2138"]);
+  });
+
   it("persists OAuth start state through the connector account storage contract", async () => {
     const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
       method: "POST",
@@ -559,7 +655,7 @@ describe("connector account routes", () => {
     });
 
     await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
-    expect(captured.status).toBe(201);
+    expect(captured.status, JSON.stringify(captured.body)).toBe(201);
     const startBody = captured.body as {
       flow: {
         id: string;

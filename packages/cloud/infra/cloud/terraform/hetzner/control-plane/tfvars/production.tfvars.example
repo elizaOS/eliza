@@ -5,12 +5,14 @@ hcloud_location       = "fsn1"
 # state — it needs the cloud-init arm64 fix first.
 hcloud_server_type    = "cpx32"
 control_plane_count   = 1
-cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
+cloudflare_zone_id    = "<legacy-zone-id-for-elizacloud.ai>"
+eliza_app_zone_id     = "<canonical-zone-id-for-eliza.app>"
 
 # Public headscale coordination hostname for this env's CP. Prod drops the
 # `-staging` suffix. Must match HEADSCALE_PUBLIC_URL in the
 # arm-headscale-control-plane workflow.
 headscale_hostname    = "headscale.elizacloud.ai"
+canonical_headscale_hostname = "headscale.eliza.app"
 
 ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"

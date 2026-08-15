@@ -11,7 +11,7 @@ Configure custom domains for your multi-tenant applications with automatic SSL a
 
 Domain management in elizaOS Cloud supports:
 
-- **Wildcard Subdomains**: Automatic `*.apps.elizacloud.ai` subdomains for every app
+- **Wildcard Subdomains**: Automatic `*.apps.eliza.app` subdomains for every app
 - **Custom Domains**: Bring your own domain like `myapp.com` or `app.example.com`
 - **Automatic SSL**: Free TLS certificates provisioned automatically
 - **DNS Verification**: Easy domain ownership verification
@@ -21,13 +21,13 @@ Domain management in elizaOS Cloud supports:
 
 ### Dashboard
 
-Navigate to [Dashboard → Apps](/dashboard/apps) and select an app to manage its domains.
+Navigate to [Cloud → Apps](/cloud/apps) and select an app to manage its domains.
 
 ### API
 
 ```bash
 # Add a custom domain to your app
-curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
+curl -X POST "https://api.eliza.app/api/v1/apps/{appId}/domains" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -40,7 +40,7 @@ curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
 <Steps>
 <Step title="App Deployment">
 
-When you deploy an app, it automatically receives a subdomain like `myapp.apps.elizacloud.ai`.
+When you deploy an app, it automatically receives a subdomain like `myapp.apps.eliza.app`.
 
 </Step>
 
@@ -65,10 +65,10 @@ Requests are routed to your app based on the incoming domain.
 
 ## Using Wildcard Subdomains
 
-Every deployed app automatically gets a subdomain under `apps.elizacloud.ai`:
+Every deployed app automatically gets a subdomain under `apps.eliza.app`:
 
 ```
-https://myapp.apps.elizacloud.ai
+https://myapp.apps.eliza.app
 ```
 
 This works immediately with no DNS configuration required.
@@ -99,7 +99,7 @@ Custom domains let you use your own branded URLs like `myapp.com` or `app.compan
 ### Add Domain via API
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
+curl -X POST "https://api.eliza.app/api/v1/apps/{appId}/domains" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -162,7 +162,7 @@ If your domain is already registered elsewhere on Vercel, you'll need to add a T
 ### Verify via API
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/verify" \
+curl -X POST "https://api.eliza.app/api/v1/apps/{appId}/domains/verify" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -193,7 +193,7 @@ curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/verify" \
 Monitor your domain's DNS and SSL status:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/status" \
+curl -X POST "https://api.eliza.app/api/v1/apps/{appId}/domains/status" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -248,7 +248,7 @@ curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/status" \
 Refresh all domain statuses for an app:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/sync" \
+curl -X POST "https://api.eliza.app/api/v1/apps/{appId}/domains/sync" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -261,7 +261,7 @@ curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/sync" \
     {
       "id": "dom_abc123",
       "subdomain": "myapp",
-      "subdomainUrl": "https://myapp.apps.elizacloud.ai",
+      "subdomainUrl": "https://myapp.apps.eliza.app",
       "customDomain": "myapp.example.com",
       "customDomainUrl": "https://myapp.example.com",
       "customDomainVerified": true,
@@ -278,7 +278,7 @@ curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/sync" \
 Remove a custom domain from your app:
 
 ```bash
-curl -X DELETE "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
+curl -X DELETE "https://api.eliza.app/api/v1/apps/{appId}/domains" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -288,7 +288,7 @@ curl -X DELETE "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
 
 <Warning>
   After removing a domain, users will no longer be able to access your app via
-  that URL. The subdomain at `*.apps.elizacloud.ai` remains active.
+  that URL. The subdomain at `*.apps.eliza.app` remains active.
 </Warning>
 
 ## Apex and WWW Redirects
@@ -425,7 +425,7 @@ All domains are validated for:
 
 ## Best Practices
 
-- **Use Subdomains First** — Test with `*.apps.elizacloud.ai` before adding custom domains
+- **Use Subdomains First** — Test with `*.apps.eliza.app` before adding custom domains
 - **Add Both Apex + WWW** — Configure both versions with redirects for consistency
 - **Monitor SSL Expiry** — Check `sslExpiresAt` in status responses (auto-renewed)
 - **Canonical URLs** — Set canonical tags to avoid duplicate content issues

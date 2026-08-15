@@ -163,6 +163,16 @@ export function useStartupCoordinator(
   const [state, dispatch] = useReducer(startupReducer, INITIAL_STARTUP_STATE);
   const policy = useRef(detectPlatformPolicy()).current;
   const effectRunRef = useRef(0);
+  // The reducer only carries `target` through phases that actively use it to
+  // configure/start the runtime. Shell consumers still need the resolved
+  // topology after hydration (for example, to expose Cloud management only
+  // for a managed Cloud agent), so retain it until a fresh restore begins.
+  const resolvedTargetRef = useRef<RuntimeTarget | null>(null);
+  if (state.phase === "restoring-session") {
+    resolvedTargetRef.current = null;
+  } else if ("target" in state && state.target) {
+    resolvedTargetRef.current = state.target;
+  }
 
   // Deps ref — effects always access latest deps without re-triggering
   const depsRef = useRef(deps);
@@ -433,11 +443,6 @@ export function useStartupCoordinator(
     [],
   );
 
-  let target: RuntimeTarget | null = null;
-  if (state.phase === "resolving-target") target = state.target;
-  else if (state.phase === "polling-backend") target = state.target;
-  else if (state.phase === "starting-runtime") target = state.target;
-
   return {
     state,
     dispatch,
@@ -452,7 +457,7 @@ export function useStartupCoordinator(
     isInteractive: isStartupInteractive(state),
     statusMessageKey: getStartupStatusMessageKey(state),
     error: state.phase === "error" ? state : null,
-    target,
+    target: resolvedTargetRef.current,
     phase: state.phase,
   };
 }

@@ -316,12 +316,12 @@ export function generateOpenAPISpec(baseUrl?: string): OpenAPISpec {
       version: "1.0.0",
       contact: {
         name: "Eliza Cloud",
-        url: "https://www.elizacloud.ai",
+        url: "https://api.eliza.app",
       },
     },
     servers: [
       {
-        url: baseUrl || "https://www.elizacloud.ai",
+        url: baseUrl || "https://api.eliza.app",
         description: "Production server",
       },
     ],

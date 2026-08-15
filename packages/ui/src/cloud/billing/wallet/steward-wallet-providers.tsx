@@ -17,6 +17,11 @@
  * `Could not resolve "<pkg>" imported by "@wagmi/connectors"` at click time
  * (#15600 — MetaMask). package.json therefore declares `@metamask/connect-evm`
  * even though no source file imports it (guarded by wallet-connector-deps.test.ts).
+ *
+ * WalletConnect project id (#18459): when the public project id is missing or
+ * still a placeholder, this module never substitutes `YOUR_WC_PROJECT_ID`.
+ * Injected-wallet connectors still mount so browser extensions work; QR /
+ * deep-link WalletConnect stays unavailable rather than false-green.
  */
 
 import { BRAND_COLORS } from "@elizaos/shared/brand";
@@ -34,11 +39,56 @@ import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
-import { type Config, http, WagmiProvider } from "wagmi";
+import { type Config, createConfig, http, WagmiProvider } from "wagmi";
 import { base, bsc } from "wagmi/chains";
+import { injected } from "wagmi/connectors";
+import { readWalletConnectProjectIdFromEnv } from "./wallet-connect-project-id";
 
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
-const FALLBACK_WALLETCONNECT_PROJECT_ID = "YOUR_WC_PROJECT_ID";
+
+function buildEvmTransports(alchemyKey: string | undefined) {
+  return {
+    [base.id]: alchemyKey
+      ? http(`https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`)
+      : http("https://base-rpc.publicnode.com"),
+    [bsc.id]: http("https://bsc-dataseed.binance.org"),
+  } as const;
+}
+
+/**
+ * Build the EVM wagmi config. When a real WalletConnect project id is present,
+ * RainbowKit's full connector set (including WalletConnect QR) is used. When
+ * it is not, only the injected connector is registered so extension wallets
+ * keep working without a false-green WalletConnect configuration.
+ */
+export function buildStewardEvmConfig(options: {
+  appUrl: string;
+  walletConnectProjectId: string | null;
+  alchemyKey: string | undefined;
+}): Config {
+  const transports = buildEvmTransports(options.alchemyKey);
+
+  if (options.walletConnectProjectId) {
+    return getDefaultConfig({
+      appName: "Eliza Cloud",
+      appDescription:
+        "Sign in to chat with your Eliza Cloud agent and manage your account",
+      appUrl: options.appUrl,
+      projectId: options.walletConnectProjectId,
+      chains: [base, bsc],
+      transports,
+      ssr: false,
+    });
+  }
+
+  return createConfig({
+    chains: [base, bsc],
+    connectors: [injected({ shimDisconnect: true })],
+    transports,
+    ssr: false,
+    multiInjectedProviderDiscovery: true,
+  });
+}
 
 export function StewardWalletProviders({ children }: { children: ReactNode }) {
   const appUrl =
@@ -46,9 +96,7 @@ export function StewardWalletProviders({ children }: { children: ReactNode }) {
     (typeof window !== "undefined"
       ? window.location.origin
       : "http://localhost:3000");
-  const walletConnectProjectId =
-    process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim() ||
-    FALLBACK_WALLETCONNECT_PROJECT_ID;
+  const walletConnectProjectId = readWalletConnectProjectIdFromEnv();
   const alchemyKey = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY?.trim();
   const heliusKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY?.trim();
   const solanaEndpoint =
@@ -59,20 +107,10 @@ export function StewardWalletProviders({ children }: { children: ReactNode }) {
 
   const evmConfig = useMemo<Config>(
     () =>
-      getDefaultConfig({
-        appName: "Eliza Cloud",
-        appDescription:
-          "Sign in to chat with your Eliza Cloud agent and manage your account",
+      buildStewardEvmConfig({
         appUrl,
-        projectId: walletConnectProjectId,
-        chains: [base, bsc],
-        transports: {
-          [base.id]: alchemyKey
-            ? http(`https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`)
-            : http("https://base-rpc.publicnode.com"),
-          [bsc.id]: http("https://bsc-dataseed.binance.org"),
-        },
-        ssr: false,
+        walletConnectProjectId,
+        alchemyKey: alchemyKey || undefined,
       }),
     [alchemyKey, appUrl, walletConnectProjectId],
   );

@@ -529,14 +529,6 @@ export type AutomationStatus =
   | "completed"
   | "draft"
   | "system";
-// The automation-node catalog contract is owned by @elizaos/shared so the Node
-// API can type its route handlers without importing this React-adjacent module.
-export type {
-  AutomationNodeCatalogResponse,
-  AutomationNodeClass,
-  AutomationNodeDescriptor,
-} from "@elizaos/shared";
-
 export interface AutomationRoomBinding {
   conversationId: string | null;
   roomId: string;

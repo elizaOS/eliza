@@ -124,16 +124,12 @@ describe("resolveSlackAccount role wiring", () => {
     expect(resolveSlackAccount(runtime).config.groupPolicy).toBeUndefined();
   });
 
-  it("normalizes and deduplicates configured account IDs", () => {
+  it("normalizes configured account IDs", () => {
     const runtime = createRuntime({
       accounts: {
         " Owner ": {
           botToken: "xoxb-owner",
           appToken: "xapp-owner",
-        },
-        owner: {
-          botToken: "xoxb-owner-2",
-          appToken: "xapp-owner-2",
         },
         TEAM: {
           botToken: "xoxb-team",
@@ -155,6 +151,19 @@ describe("resolveSlackAccount role wiring", () => {
     });
     expect(resolveSlackAccount(whitespaceOnly, "team").botToken).toBe(
       "xoxb-team",
+    );
+  });
+
+  it("rejects account identifiers that collide after normalization", () => {
+    const runtime = createRuntime({
+      accounts: {
+        " Owner ": { botToken: "xoxb-owner", appToken: "xapp-owner" },
+        owner: { botToken: "xoxb-owner-2", appToken: "xapp-owner-2" },
+      },
+    });
+
+    expect(() => listSlackAccountIds(runtime)).toThrowError(
+      expect.objectContaining({ code: "SLACK_ACCOUNT_ID_COLLISION" }),
     );
   });
 

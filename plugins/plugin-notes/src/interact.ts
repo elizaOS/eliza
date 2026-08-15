@@ -5,7 +5,7 @@
  */
 
 import {
-  type AppliedEffectReceipt,
+  type EffectReceipt,
   ElizaError,
   type IAgentRuntime,
   isElizaError,
@@ -20,7 +20,7 @@ export interface NotesInteractResult {
   text: string;
   state?: NotesSnapshot;
   data?: unknown;
-  effectReceipts?: readonly AppliedEffectReceipt[];
+  effectReceipts?: readonly EffectReceipt[];
   userFacingEffectReceiptIds?: readonly string[];
   error?: {
     code: string;
@@ -104,12 +104,73 @@ function summarizeNotes(notes: StickyNote[]): string {
 
 type NoteSelector =
   | { selector: "id"; value: string }
-  | { selector: "query"; value: string };
+  | { selector: "query"; value: string }
+  | { selector: "title"; value: string };
+
+function parseClearNotesConfirmation(
+  params: Record<string, unknown>,
+  currentRevision: number,
+): void {
+  assertOnlyParams(params, ["confirm", "expectedRevision"]);
+  if (!Object.hasOwn(params, "confirm")) {
+    throw new ElizaError("clear-notes requires confirm: true.", {
+      code: "NOTES_VALIDATION_FAILED",
+      context: { field: "confirm" },
+      severity: "ephemeral",
+    });
+  }
+  if (params.confirm !== true) {
+    throw new ElizaError("clear-notes confirm must be the boolean true.", {
+      code: "NOTES_VALIDATION_FAILED",
+      context: { field: "confirm", value: params.confirm },
+      severity: "ephemeral",
+    });
+  }
+  if (!Object.hasOwn(params, "expectedRevision")) {
+    throw new ElizaError(
+      "clear-notes requires expectedRevision matching the current notes revision.",
+      {
+        code: "NOTES_VALIDATION_FAILED",
+        context: { field: "expectedRevision" },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const expectedRevision = params.expectedRevision;
+  if (
+    typeof expectedRevision !== "number" ||
+    !Number.isSafeInteger(expectedRevision) ||
+    expectedRevision < 0
+  ) {
+    throw new ElizaError(
+      "clear-notes expectedRevision must be a non-negative integer.",
+      {
+        code: "NOTES_VALIDATION_FAILED",
+        context: { field: "expectedRevision", value: expectedRevision },
+        severity: "ephemeral",
+      },
+    );
+  }
+  if (expectedRevision !== currentRevision) {
+    throw new ElizaError(
+      "clear-notes expectedRevision is stale; refresh the notes snapshot and try again.",
+      {
+        code: "NOTES_VALIDATION_FAILED",
+        context: {
+          field: "expectedRevision",
+          expectedRevision,
+          currentRevision,
+        },
+        severity: "ephemeral",
+      },
+    );
+  }
+}
 
 function parseLookupTarget(
   params: Record<string, unknown>,
   capability: string,
-  selectorNames: readonly ("id" | "query")[],
+  selectorNames: readonly ("id" | "query" | "title")[],
 ): NoteSelector {
   const providedSelectors = selectorNames.filter((name) =>
     Object.hasOwn(params, name),
@@ -167,23 +228,33 @@ function mutationSuccess(
   resource: { kind: string; id: string },
   text: string,
   data?: unknown,
+  replayed = false,
 ): NotesInteractResult {
   const observedAt = new Date().toISOString();
   const receiptId = `notes:${capability}:${resource.id}:${state.revision}`;
-  const receipt: AppliedEffectReceipt = {
+  const base = {
     receiptId,
     operation: `notes.${capability}`,
     resource: { ...resource, version: String(state.revision) },
     artifacts: [],
-    idempotency: { key: null, replayed: false },
+    idempotency: { key: replayed ? resource.id : null, replayed },
     observedAt,
-    outcome: "applied",
-    commit: {
-      kind: "durable",
-      id: `notes:revision:${state.revision}`,
-      committedAt: observedAt,
-    },
   };
+  const receipt: EffectReceipt = replayed
+    ? {
+        ...base,
+        outcome: "noop",
+        reason: "An identical note already exists.",
+      }
+    : {
+        ...base,
+        outcome: "applied",
+        commit: {
+          kind: "durable",
+          id: `notes:revision:${state.revision}`,
+          committedAt: observedAt,
+        },
+      };
   return {
     success: true,
     text,
@@ -212,8 +283,12 @@ async function dispatchCapability(
     return success(service, summarizeNotes(notes), { notes });
   }
   if (capability === "get-note") {
-    assertOnlyParams(params, ["id", "query"]);
-    const target = parseLookupTarget(params, capability, ["id", "query"]);
+    assertOnlyParams(params, ["id", "title", "query"]);
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
     const note =
       target.selector === "id"
         ? service.getNote(target.value)
@@ -226,25 +301,36 @@ async function dispatchCapability(
       ...parseNoteContent(params.content),
       ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
     };
-    const { value: note, snapshot } = await service.createNoteWithCommit(input);
+    const {
+      value: note,
+      snapshot,
+      replayed,
+    } = await service.createNoteWithCommit(input);
     return mutationSuccess(
       snapshot,
       capability,
       { kind: "notes.note", id: note.id },
-      `Created note ${quoted(note.title)}.`,
-      { note },
+      replayed
+        ? `Note ${quoted(note.title)} already exists.`
+        : `Created note ${quoted(note.title)}.`,
+      { note, replayed },
+      replayed,
     );
   }
   if (capability === "update-note") {
-    assertOnlyParams(params, ["id", "query", "content", "color"]);
-    const target = parseLookupTarget(params, capability, ["id", "query"]);
+    assertOnlyParams(params, ["id", "title", "query", "content", "color"]);
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
     const patch: Record<string, unknown> = {
       ...(Object.hasOwn(params, "content")
         ? parseNoteContent(params.content)
         : {}),
       ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
     };
-    const { value: note, snapshot } =
+    const updated =
       target.selector === "id"
         ? await service.updateNoteWithCommit(target.value, patch)
         : await service.updateNoteByLookupWithCommit(
@@ -252,34 +338,44 @@ async function dispatchCapability(
             target.value,
             patch,
           );
+    const { value: note, snapshot, consolidatedIds } = updated;
     return mutationSuccess(
       snapshot,
       capability,
       { kind: "notes.note", id: note.id },
-      `Updated note ${quoted(note.title)}.`,
-      { note },
+      consolidatedIds.length > 0
+        ? `Updated note ${quoted(note.title)} and consolidated ${consolidatedIds.length + 1} identical copies.`
+        : `Updated note ${quoted(note.title)}.`,
+      { note, consolidatedCount: consolidatedIds.length, consolidatedIds },
     );
   }
   if (capability === "delete-note") {
-    assertOnlyParams(params, ["id", "query"]);
-    const target = parseLookupTarget(params, capability, ["id", "query"]);
-    const { value: note, snapshot } =
+    assertOnlyParams(params, ["id", "query", "title"]);
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "query",
+      "title",
+    ]);
+    const removed =
       target.selector === "id"
         ? await service.deleteNoteWithCommit(target.value)
         : await service.deleteNoteByLookupWithCommit(
             target.selector,
             target.value,
           );
+    const { value: note, snapshot, removedIds } = removed;
     return mutationSuccess(
       snapshot,
       capability,
       { kind: "notes.note", id: note.id },
-      `Deleted note ${quoted(note.title)}.`,
-      { note },
+      removedIds.length > 1
+        ? `Deleted note ${quoted(note.title)} and removed ${removedIds.length} identical copies.`
+        : `Deleted note ${quoted(note.title)}.`,
+      { note, removedCount: removedIds.length, removedIds },
     );
   }
   if (capability === "clear-notes") {
-    assertOnlyParams(params, []);
+    parseClearNotesConfirmation(params, service.snapshot().revision);
     const { value: cleared, snapshot } = await service.clearNotesWithCommit();
     return mutationSuccess(
       snapshot,

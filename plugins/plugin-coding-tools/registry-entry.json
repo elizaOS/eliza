@@ -29,9 +29,10 @@
       "required": false,
       "sensitive": false,
       "label": "Shell timeout",
-      "help": "Default SHELL timeout in milliseconds.",
+      "help": "Default SHELL timeout in milliseconds. Must be a canonical decimal integer from 100 through 600000; invalid values fail before execution.",
       "advanced": false,
-      "min": 0,
+      "min": 100,
+      "max": 600000,
       "unit": "ms"
     },
     "CODING_TOOLS_SHELL_BG_BUDGET_MS": {

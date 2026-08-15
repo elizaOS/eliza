@@ -7,7 +7,7 @@ set -a; source .eliza-local/bluebubbles-bridge.env; set +a
 export ELIZA_MOBILE_SKIP_WEB_BUILD=1
 export ELIZA_ANDROID_SMS_GATEWAY_ENABLED=true
 export ELIZA_ANDROID_SMS_GATEWAY_SECRET="$BLUEBUBBLES_GATEWAY_SECRET"
-export ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL='https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles'
+export ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL='https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles'
 export ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER='+14159611510'
 export ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL='Eliza Cloud Gateway (+14159611510)'
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home

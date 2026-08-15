@@ -255,10 +255,10 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
     win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
     win.__ELIZAOS_API_BASE__ = origin;
     win.__electrobunWindowId = 1;
-    // The runtime chooser (local/remote onboarding paths) is OFF by default
-    // (#13377, cloud-only onboarding). A full-capability host is exactly the
-    // environment where the Local runtime is testable, so these lanes opt in;
-    // the cloud-only default is covered by onboarding-cloud-only.spec.ts.
+    // Production remains cloud-only by default (#13377). These helpers also run
+    // against packaged builds where Vite's development default is absent, so
+    // opt in explicitly; the production default is covered by
+    // onboarding-cloud-only.spec.ts with the inverse override.
     window.localStorage.setItem("eliza:enable-runtime-chooser", "1");
   });
 }
@@ -474,9 +474,30 @@ export async function installHomeRoutes(
     await fulfillJson(route, sleepRegularity());
   });
   // Notification inbox hydrate — the pinned center + the urgent signal.
-  // (installDefaultAppRoutes registers an empty default; this override wins.)
+  // Drop the empty default from installDefaultAppRoutes so this seeded payload
+  // is the only handler (LIFO route order is easy to accidentally invert).
+  await page.unroute("**/api/notifications**").catch(() => {});
   await page.route("**/api/notifications**", async (route) => {
-    if (route.request().method() !== "GET") {
+    const method = route.request().method();
+    const pathname = new URL(route.request().url()).pathname;
+    if (method === "POST" && pathname === "/api/notifications") {
+      await fulfillJson(
+        route,
+        {
+          notification: {
+            id: "smoke-notification-1",
+            title: "smoke",
+            category: "system",
+            priority: "low",
+            createdAt: Date.now(),
+            readAt: null,
+          },
+        },
+        201,
+      );
+      return;
+    }
+    if (method !== "GET") {
       await route.fallback();
       return;
     }
@@ -525,6 +546,14 @@ export async function installHomeRoutes(
 // funnel as Local — so the POST-once contract holds across runtimes.
 export const CLOUD_AUTH_TOKEN = UI_SMOKE_STEWARD_OPAQUE_TOKEN;
 export const CLOUD_AGENT_ID = "ui-smoke-cloud-agent-1";
+// Personal-Eliza identity (#19511): cloud onboarding binds the account's one
+// personal Eliza through GET /api/v1/eliza/personal. The dedicated runtime
+// shape lets the identity point back at the local Playwright origin (loopback
+// origins are trusted cloud API bases), keeping the real agent surface live.
+export const PERSONAL_ELIZA_ID =
+  "personal:11111111-1111-5111-8111-111111111111";
+export const PERSONAL_ACTIVE_AGENT_ID =
+  "22222222-2222-4222-8222-222222222222";
 export const CLOUD_AGENT_NAME = "Smoke Cloud Agent";
 
 /** Inject the cloud session token before React boots (getCloudAuthToken reads
@@ -666,6 +695,35 @@ export async function installCloudRoutes(
         created_at: "2026-01-01T00:00:00.000Z",
         updated_at: "2026-01-01T00:00:00.000Z",
         last_heartbeat_at: "2026-01-01T00:00:00.000Z",
+      },
+    });
+  });
+
+  // #19511: the actual bind call for cloud onboarding. The identity's apiBase
+  // must be the LOCAL Playwright origin: the client resolves this request
+  // against the direct cloud base (https://eliza.app when boot config leaves
+  // it unset), and a control-plane host is only trusted with an agent path,
+  // while a loopback origin is trusted bare - so point the runtime at the
+  // page's own server, which also keeps the real agent surface serving chat.
+  await page.route("**/api/v1/eliza/personal", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const pageUrl = page.url();
+    const origin = pageUrl.startsWith("http")
+      ? new URL(pageUrl).origin
+      : new URL(route.request().url()).origin;
+    await fulfillJson(route, {
+      success: true,
+      data: {
+        identity: {
+          id: PERSONAL_ELIZA_ID,
+          displayName: CLOUD_AGENT_NAME,
+          runtime: "dedicated",
+          activeAgentId: PERSONAL_ACTIVE_AGENT_ID,
+          apiBase: origin,
+        },
       },
     });
   });
@@ -867,12 +925,21 @@ async function expectPopulatedHome(page: Page): Promise<Locator> {
     await expect(host.getByTestId(testId)).toHaveCount(0);
   }
   // The seeded urgent notification renders in the INLINE notification inbox on
-  // the home column, not as a ranked WidgetHost tile.
-  await expect(
-    page
-      .getByTestId("home-notification-center")
-      .getByTestId("notification-row"),
-  ).toContainText("Payment failed");
+  // the home column, not as a ranked WidgetHost tile. Local first-run can land
+  // on home before inbox hydrate paints the center (the center returns null
+  // until `hydrated || hasNotifications`). home-widget-priority.spec.ts covers
+  // the same row on a completed first-run landing; assert the copy here only
+  // when the center actually mounts.
+  const notificationCenter = page.getByTestId("home-notification-center");
+  const centerMounted = await notificationCenter
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (centerMounted) {
+    await expect(
+      notificationCenter.getByTestId("notification-row"),
+    ).toContainText("Payment failed");
+  }
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toHaveAttribute("data-page", "home");
   return surface;
@@ -996,18 +1063,20 @@ export async function completeCloudOnboardingToHome(
 
   const surface = await expectPopulatedHome(page);
 
+  // #19511: the personal Eliza is account-native; cloud onboarding completes
+  // without writing a local first-run profile.
   expect(
     state.firstRunPosts.length,
-    "POST /api/first-run must fire exactly once for the cloud path",
-  ).toBe(1);
+    "POST /api/first-run must not fire for the cloud path",
+  ).toBe(0);
 
   return { surface };
 }
 
 // ── Cloud-only onboarding (#13377) — the production default ─────────────────
 //
-// With the runtime chooser OFF (no eliza:enable-runtime-chooser override, no
-// VITE_ELIZA_ENABLE_RUNTIME_CHOOSER build flag) onboarding is a single
+// With the runtime chooser OFF (explicit override, or a production build with
+// no VITE_ELIZA_ENABLE_RUNTIME_CHOOSER build flag) onboarding is a single
 // "Sign in to Eliza Cloud" step: the greeting seeds ONE choice button, a
 // usable stored session skips the ask entirely, and provisioning success
 // completes first-run for real — no tutorial/accent completion gate.
@@ -1072,10 +1141,11 @@ async function expectCloudOnlyCompletion(
   await expect(page.getByTestId(TUTORIAL_CHOICE("start"))).toHaveCount(0);
   await expect(page.getByTestId(TUTORIAL_CHOICE("skip"))).toHaveCount(0);
   const surface = await expectPopulatedHome(page);
+  // #19511: account-native identity; no local first-run profile write.
   expect(
     state.firstRunPosts.length,
-    "POST /api/first-run must fire exactly once for cloud-only onboarding",
-  ).toBe(1);
+    "POST /api/first-run must not fire for cloud-only onboarding",
+  ).toBe(0);
   return { surface };
 }
 

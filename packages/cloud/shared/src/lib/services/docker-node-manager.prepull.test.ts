@@ -25,6 +25,9 @@ const mocks = {
 mock.module("../../db/repositories/docker-nodes", () => ({
   dockerNodesRepository: {
     findEnabled: () => Promise.resolve(mocks.nodes),
+    // Placement reads the placeable set; no node here is cordoned,
+    // so it mirrors findEnabled.
+    findPlaceable: () => Promise.resolve(mocks.nodes),
   },
 }));
 

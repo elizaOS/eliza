@@ -196,6 +196,16 @@ export function CameraPageView(): React.JSX.Element {
             settingsLabel={t("camera.openSettings", {
               defaultValue: "Open Settings",
             })}
+            settingsErrorLabel={t("camera.settingsOpenFailed", {
+              defaultValue:
+                "Couldn’t open Settings. Open System Settings manually, then re-check.",
+            })}
+            openingLabel={t("camera.openingSettings", {
+              defaultValue: "Opening…",
+            })}
+            checkingLabel={t("camera.checkingPermission", {
+              defaultValue: "Checking…",
+            })}
             onRetry={retryStart}
             className="max-w-sm border-white/20 bg-bg/95"
             testId="camera-permission-callout"

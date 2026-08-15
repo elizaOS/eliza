@@ -160,7 +160,7 @@ jobs:
             exit 1
           fi
           case "$HEAD_REF" in
-            dependabot/npm_and_yarn/*|dependabot/github_actions/*|dependabot/uv/*) ;;
+            dependabot/bun/*|dependabot/github_actions/*|dependabot/uv/*) ;;
             *)
               echo "::error::unexpected Dependabot ecosystem ref: $HEAD_REF"
               exit 1

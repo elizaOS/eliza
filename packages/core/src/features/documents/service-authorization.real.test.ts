@@ -1,24 +1,34 @@
 /**
  * Exercises document authorization against a real AgentRuntime and PGLite store,
- * including same-turn membership revocation before update and delete mutations.
+ * including same-turn membership revocation and knowledge-context provider
+ * composition across user and agent-tenant boundaries.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { filterByContextGate } from "../../runtime/context-gates.ts";
 import type { AgentRuntime } from "../../runtime.ts";
 import { createTestRuntime } from "../../testing/pglite-runtime.ts";
 import { runWithTrajectoryContext } from "../../trajectory-context.ts";
 import {
+	type Agent,
 	ChannelType,
 	type Memory,
 	MemoryType,
+	type State,
 	type UUID,
 } from "../../types/index.ts";
+import { documentsProvider } from "./provider.ts";
 import { DocumentService } from "./service.ts";
 
 const USER_ID = "f4300000-0000-4000-8000-000000000001" as UUID;
+const OTHER_USER_ID = "f4300000-0000-4000-8000-000000000007" as UUID;
+const OTHER_AGENT_ID = "f4300000-0000-4000-8000-000000000008" as UUID;
 const WORLD_ID = "f4300000-0000-4000-8000-000000000002" as UUID;
 const ROOM_ID = "f4300000-0000-4000-8000-000000000003" as UUID;
 const UPDATE_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000004" as UUID;
 const DELETE_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000005" as UUID;
+const VISIBLE_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000009" as UUID;
+const HIDDEN_USER_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000010" as UUID;
+const FOREIGN_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000011" as UUID;
 
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
@@ -38,12 +48,22 @@ function message(): Memory {
 	};
 }
 
-function userPrivateDocument(id: UUID, text: string): Memory {
+function userPrivateDocument(
+	id: UUID,
+	text: string,
+	options: {
+		agentId?: UUID;
+		entityId?: UUID;
+		title?: string;
+	} = {},
+): Memory {
+	const agentId = options.agentId ?? runtime.agentId;
+	const entityId = options.entityId ?? USER_ID;
 	const filename = `${id}.txt`;
 	return {
 		id,
-		agentId: runtime.agentId,
-		entityId: USER_ID,
+		agentId,
+		entityId,
 		roomId: ROOM_ID,
 		worldId: WORLD_ID,
 		createdAt: 1_000,
@@ -53,13 +73,13 @@ function userPrivateDocument(id: UUID, text: string): Memory {
 			documentId: id,
 			documentRevision: 0,
 			scope: "user-private",
-			scopedToEntityId: USER_ID,
-			addedBy: USER_ID,
+			scopedToEntityId: entityId,
+			addedBy: entityId,
 			addedByRole: "USER",
 			addedFrom: "upload",
 			addedAt: 1_000,
 			source: "test",
-			title: "Private document",
+			title: options.title ?? "Private document",
 			filename,
 			originalFilename: filename,
 			fileExt: "txt",
@@ -68,6 +88,20 @@ function userPrivateDocument(id: UUID, text: string): Memory {
 			fileSize: Buffer.byteLength(text, "utf8"),
 			textBacked: true,
 			timestamp: 1_000,
+		},
+	};
+}
+
+function documentFragment(document: Memory, text: string, id: UUID): Memory {
+	return {
+		...document,
+		id,
+		content: { text },
+		metadata: {
+			...document.metadata,
+			type: MemoryType.FRAGMENT,
+			documentId: document.id,
+			position: 0,
 		},
 	};
 }
@@ -86,15 +120,53 @@ beforeAll(async () => {
 		source: "test",
 		type: ChannelType.DM,
 	});
+	await runtime.ensureConnection({
+		entityId: OTHER_USER_ID,
+		roomId: ROOM_ID,
+		worldId: WORLD_ID,
+		worldName: "Document authorization",
+		userName: "Other document owner",
+		name: "Other document owner",
+		source: "test",
+		type: ChannelType.DM,
+	});
 	await runtime.ensureWorldExists({
 		id: WORLD_ID,
 		name: "Document authorization",
 		agentId: runtime.agentId,
 		metadata: {
-			roles: { [USER_ID]: "USER" },
-			roleSources: { [USER_ID]: "manual" },
+			roles: { [USER_ID]: "USER", [OTHER_USER_ID]: "USER" },
+			roleSources: { [USER_ID]: "manual", [OTHER_USER_ID]: "manual" },
 		},
 	});
+	await runtime.adapter.createAgent({
+		id: OTHER_AGENT_ID,
+		name: "Foreign document tenant",
+		createdAt: 1_000,
+		updatedAt: 1_000,
+	} as Agent);
+	const visibleDocument = userPrivateDocument(
+		VISIBLE_DOCUMENT_ID,
+		"visible owner launch knowledge",
+		{
+			entityId: OTHER_USER_ID,
+			title: "VISIBLE_OWNER_DOCUMENT",
+		},
+	);
+	const hiddenUserDocument = userPrivateDocument(
+		HIDDEN_USER_DOCUMENT_ID,
+		"hidden other-user launch knowledge",
+		{ title: "HIDDEN_OTHER_USER_DOCUMENT" },
+	);
+	const foreignDocument = userPrivateDocument(
+		FOREIGN_DOCUMENT_ID,
+		"hidden foreign-tenant launch knowledge",
+		{
+			agentId: OTHER_AGENT_ID,
+			entityId: OTHER_USER_ID,
+			title: "HIDDEN_FOREIGN_TENANT_DOCUMENT",
+		},
+	);
 	await runtime.createMemories([
 		{
 			memory: userPrivateDocument(UPDATE_DOCUMENT_ID, "Original update body"),
@@ -104,6 +176,33 @@ beforeAll(async () => {
 			memory: userPrivateDocument(DELETE_DOCUMENT_ID, "Original delete body"),
 			tableName: "documents",
 		},
+		{ memory: visibleDocument, tableName: "documents" },
+		{ memory: hiddenUserDocument, tableName: "documents" },
+		{ memory: foreignDocument, tableName: "documents" },
+		{
+			memory: documentFragment(
+				visibleDocument,
+				"VISIBLE_OWNER_FRAGMENT launch knowledge",
+				"f4300000-0000-4000-8000-000000000012" as UUID,
+			),
+			tableName: "document_fragments",
+		},
+		{
+			memory: documentFragment(
+				hiddenUserDocument,
+				"HIDDEN_OTHER_USER_FRAGMENT launch knowledge",
+				"f4300000-0000-4000-8000-000000000013" as UUID,
+			),
+			tableName: "document_fragments",
+		},
+		{
+			memory: documentFragment(
+				foreignDocument,
+				"HIDDEN_FOREIGN_TENANT_FRAGMENT launch knowledge",
+				"f4300000-0000-4000-8000-000000000014" as UUID,
+			),
+			tableName: "document_fragments",
+		},
 	]);
 }, 120_000);
 
@@ -112,6 +211,45 @@ afterAll(async () => {
 }, 120_000);
 
 describe("DocumentService requester authorization", () => {
+	it("composes knowledge context with requester-scoped user and tenant visibility", async () => {
+		const selected = filterByContextGate(
+			[documentsProvider],
+			["knowledge"],
+			["USER"],
+		);
+		expect(selected).toEqual([documentsProvider]);
+
+		const service = new DocumentService(runtime);
+		const getService = vi
+			.spyOn(runtime, "getService")
+			.mockImplementation((serviceType) =>
+				serviceType === DocumentService.serviceType ? service : null,
+			);
+		const request: Memory = {
+			...message(),
+			id: "f4300000-0000-4000-8000-000000000015" as UUID,
+			entityId: OTHER_USER_ID,
+			content: {
+				text: "launch knowledge",
+				source: "test",
+				channelType: ChannelType.DM,
+			},
+		};
+
+		try {
+			const result = await documentsProvider.get(runtime, request, {} as State);
+			expect(result.text).toContain("VISIBLE_OWNER_FRAGMENT");
+			expect(result.text).toContain("VISIBLE_OWNER_DOCUMENT");
+			expect(result.text).not.toContain("HIDDEN_OTHER_USER");
+			expect(result.text).not.toContain("HIDDEN_FOREIGN_TENANT");
+			expect(result.values?.documents).toEqual([
+				expect.objectContaining({ id: VISIBLE_DOCUMENT_ID }),
+			]);
+		} finally {
+			getService.mockRestore();
+		}
+	});
+
 	it("denies same-turn update and delete after room membership is revoked", async () => {
 		const service = new DocumentService(runtime);
 		const membershipReads = vi.spyOn(

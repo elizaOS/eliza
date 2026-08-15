@@ -85,6 +85,19 @@ export class SsoBridgeRepository {
   }
 
   /**
+   * Read a logout marker from the primary connection for a security decision
+   * that must observe a just-committed logout without replica lag.
+   */
+  async getLogoutMarkerForWrite(stewardUserId: string): Promise<SsoBridgeLogoutMarker | undefined> {
+    const [marker] = await dbWrite
+      .select()
+      .from(ssoBridgeLogoutMarkers)
+      .where(eq(ssoBridgeLogoutMarkers.steward_user_id, stewardUserId))
+      .limit(1);
+    return marker;
+  }
+
+  /**
    * Drop markers older than `olderThan`. A marker only needs to outlive the
    * access-token lifetime — every pre-logout token has expired by then.
    */

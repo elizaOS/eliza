@@ -53,7 +53,7 @@ const mockUser = {
 };
 
 async function installCloudMocks(page: Page) {
-  await page.route("https://www.elizacloud.ai/api/eliza-app/**", (route) => {
+  await page.route("https://api.eliza.app/api/eliza-app/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/eliza-app/user/me") {
       return route.fulfill({
@@ -69,44 +69,41 @@ async function installCloudMocks(page: Page) {
     }
     return route.fulfill({ status: 404, json: { error: "Unhandled mock" } });
   });
-  await page.route(
-    "https://www.elizacloud.ai/api/auth/siws/**",
-    async (route) => {
-      const u = new URL(route.request().url());
-      if (u.pathname === "/api/auth/siws/nonce") {
-        return route.fulfill({
-          json: {
-            nonce: "test-nonce-abcdef",
-            domain: "www.elizacloud.ai",
-            uri: "https://www.elizacloud.ai",
-            chainId: "solana:mainnet",
-            version: "1",
-            statement: "Sign in to Eliza Cloud",
+  await page.route("https://elizacloud.ai/api/auth/siws/**", async (route) => {
+    const u = new URL(route.request().url());
+    if (u.pathname === "/api/auth/siws/nonce") {
+      return route.fulfill({
+        json: {
+          nonce: "test-nonce-abcdef",
+          domain: "www.elizacloud.ai",
+          uri: "https://www.elizacloud.ai",
+          chainId: "solana:mainnet",
+          version: "1",
+          statement: "Sign in to Eliza Cloud",
+        },
+      });
+    }
+    if (u.pathname === "/api/auth/siws/verify") {
+      return route.fulfill({
+        json: {
+          apiKey: TEST_TOKEN,
+          address: "11111111111111111111111111111111",
+          isNewAccount: true,
+          user: {
+            id: "user_siws_audit",
+            wallet_address: "11111111111111111111111111111111",
+            organization_id: "org_siws_audit",
           },
-        });
-      }
-      if (u.pathname === "/api/auth/siws/verify") {
-        return route.fulfill({
-          json: {
-            apiKey: TEST_TOKEN,
-            address: "11111111111111111111111111111111",
-            isNewAccount: true,
-            user: {
-              id: "user_siws_audit",
-              wallet_address: "11111111111111111111111111111111",
-              organization_id: "org_siws_audit",
-            },
-            organization: {
-              id: "org_siws_audit",
-              name: "SIWS Audit Org",
-              slug: "siws-audit",
-            },
+          organization: {
+            id: "org_siws_audit",
+            name: "SIWS Audit Org",
+            slug: "siws-audit",
           },
-        });
-      }
-      return route.fulfill({ status: 404 });
-    },
-  );
+        },
+      });
+    }
+    return route.fulfill({ status: 404 });
+  });
 }
 
 async function seedAuthed(page: Page) {

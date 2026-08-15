@@ -30,6 +30,7 @@ function stubWebSocket(): string[] {
 }
 
 interface FakeWs {
+  url: string;
   readyState: number;
   onopen: (() => void) | null;
   onclose: (() => void) | null;
@@ -49,7 +50,7 @@ function stubWebSocketWithInstances(): FakeWs[] {
     onclose: (() => void) | null = null;
     onerror: (() => void) | null = null;
     onmessage: ((event: { data: string }) => void) | null = null;
-    constructor(_url: string) {
+    constructor(readonly url: string) {
       instances.push(this);
     }
     send(): void {}
@@ -324,6 +325,7 @@ describe("ElizaClient websocket connection policy", () => {
       client.connectWs();
       for (let i = 0; i < 15; i++) {
         instances[instances.length - 1].onclose?.();
+        if (i < 14) vi.runOnlyPendingTimers();
       }
       expect(client.getConnectionState().state).toBe("failed");
     } finally {
@@ -471,6 +473,21 @@ describe("ElizaClient websocket connection policy", () => {
     expect(instances).toHaveLength(before);
   });
 
+  it("repointBaseUrl installs the selected bearer before opening the replacement socket", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://old.example.test", "old-token");
+    client.connectWs();
+
+    client.repointBaseUrl("https://new.example.test", "new-token");
+
+    expect(instances).toHaveLength(2);
+    const replacementUrl = new URL(instances[1].url);
+    expect(replacementUrl.origin).toBe("wss://new.example.test");
+    expect(replacementUrl.searchParams.get("token")).toBe("new-token");
+    expect(replacementUrl.searchParams.get("token")).not.toBe("old-token");
+    expect(client.getRestAuthToken()).toBe("new-token");
+  });
+
   it("resetConnection leaves a healthy websocket connected without a disconnected flap", () => {
     const instances = stubWebSocketWithInstances();
     const client = new ElizaClient("https://agent.example.test", "agent-token");
@@ -517,5 +534,36 @@ describe("ElizaClient websocket connection policy", () => {
 
     expect(instances).toHaveLength(1);
     expect(client.getConnectionState().state).toBe("disconnected");
+  });
+
+  it("drops a queued frame from a socket closed by setBaseUrl", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://agent-a.example.test", "token");
+    const handler = vi.fn();
+    client.onWsEvent("agent_event", handler);
+    client.connectWs();
+    const staleMessage = instances[0].onmessage;
+
+    client.setBaseUrl("https://agent-b.example.test");
+    staleMessage?.({
+      data: JSON.stringify({ type: "agent_event", payload: "stale" }),
+    });
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(instances[0].onmessage).toBeNull();
+  });
+
+  it("rotates an open anonymous socket when an API token is installed", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://agent.example.test");
+    client.connectWs();
+    instances[0].readyState = 1;
+    instances[0].onopen?.();
+
+    client.setToken("new-token");
+
+    expect(instances).toHaveLength(2);
+    expect(instances[0].onmessage).toBeNull();
+    expect(instances[1].url).toContain("token=new-token");
   });
 });

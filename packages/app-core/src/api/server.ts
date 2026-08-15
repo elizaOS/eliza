@@ -55,7 +55,6 @@ import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
 } from "./auth.ts";
-import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
 import {
   type CompatRouteChainEntry,
   type CompatRouteContext,
@@ -740,11 +739,6 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     },
   },
   {
-    id: "automations",
-    handler: ({ req, res, state }) =>
-      handleAutomationsCompatRoutes(req, res, state),
-  },
-  {
     // Workbench todos CRUD is owned by @elizaos/plugin-workflow and served on
     // the runtime plugin route system (`/api/workbench/todos*`).
     //
@@ -1100,10 +1094,6 @@ export async function startApiServer(
     },
     configureServer: async (httpServer) => {
       await callerOptions?.configureServer?.(httpServer);
-      const { deviceBridge } = await import(
-        "@elizaos/plugin-local-inference/services"
-      );
-      deviceBridge.attachToHttpServer(httpServer);
     },
   });
   logger.info(

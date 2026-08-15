@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // --- collaborator doubles (hoisted so vi.mock factories can close over them) ---
@@ -351,14 +352,26 @@ describe("CliLoginPage", () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it("renders the error panel when the session id is missing — no POST, no redirect, no dead close button", async () => {
+  it("renders a safe keyboard-reachable recovery action when the session id is missing", async () => {
+    const user = userEvent.setup();
     searchParamsRef.current = new URLSearchParams("");
 
     render(<CliLoginPage />);
 
+    expect(screen.getByRole("main")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "Authentication Error",
+      }),
+    ).toBeTruthy();
     expect(
       screen.getByText("Invalid authentication link. Missing session ID."),
     ).toBeTruthy();
+    const recovery = screen.getByRole("link", { name: "Sign In Again" });
+    expect(recovery.getAttribute("href")).toBe("/login");
+    await user.tab();
+    expect(document.activeElement).toBe(recovery);
     expect(apiFetchMock).not.toHaveBeenCalled();
     expect(navigateMock).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();

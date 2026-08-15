@@ -409,14 +409,23 @@ function ConnectorPluginCard({
   testResults,
   togglingPlugins,
 }: ConnectorPluginCardProps) {
-  const { elizaCloudConnected, setActionNotice, setState, setTab } =
-    useAppSelectorShallow((s) => ({
-      elizaCloudConnected: s.elizaCloudConnected,
-      setActionNotice: s.setActionNotice,
-      setState: s.setState,
-      setTab: s.setTab,
-    }));
-  const connectorMode = useConnectorMode(plugin.id, { elizaCloudConnected });
+  const {
+    cloudProvisioned,
+    elizaCloudConnected,
+    setActionNotice,
+    setState,
+    setTab,
+  } = useAppSelectorShallow((s) => ({
+    cloudProvisioned: s.firstRunCloudProvisionedContainer,
+    elizaCloudConnected: s.elizaCloudConnected,
+    setActionNotice: s.setActionNotice,
+    setState: s.setState,
+    setTab: s.setTab,
+  }));
+  const connectorMode = useConnectorMode(plugin.id, {
+    cloudProvisioned,
+    elizaCloudConnected,
+  });
   const [managedDiscordBusy, setManagedDiscordBusy] = useState(false);
   // Keyed by role so the "agent" and "your account" buttons can each show
   // their own loading state — clicking one no longer disables the other.
@@ -988,6 +997,7 @@ function ConnectorPluginCard({
             selectedMode={connectorMode.selectedMode}
             onModeChange={connectorMode.setSelectedMode}
             elizaCloudConnected={elizaCloudConnected}
+            cloudProvisioned={cloudProvisioned}
           />
         )}
 

@@ -65,16 +65,6 @@
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/plugin-signal": ["../plugin-signal/src/index.ts"],
       "@elizaos/plugin-signal/*": ["../plugin-signal/src/*"],
-      "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": [
-        "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
-      ],
-      "react/jsx-dev-runtime": [
-        "../../packages/app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
-      ],
-      "react-dom": [
-        "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
-      ],
       "@elizaos/capacitor-phone": [
         "../../plugins/plugin-native-phone/src/index.ts"
       ],

@@ -4,7 +4,7 @@
  * JSON map, and `character.settings.instagram` — merging per field. Supplies
  * `InstagramService` the account id list and credentials for each configured account.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { InstagramConfig } from "./types";
 
 export const DEFAULT_INSTAGRAM_ACCOUNT_ID = "default";
@@ -29,32 +29,86 @@ function characterConfig(runtime: IAgentRuntime): InstagramMultiAccountConfig {
   return raw && typeof raw === "object" ? (raw as InstagramMultiAccountConfig) : {};
 }
 
+function isAccountConfig(value: unknown): value is InstagramAccountConfig {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function invalidAccountsConfig(
+  message: string,
+  context: Record<string, unknown>,
+  cause?: unknown
+): ElizaError {
+  return new ElizaError(message, {
+    code: "INSTAGRAM_CONFIG_INVALID",
+    ...(cause === undefined ? {} : { cause }),
+    context,
+    severity: "fatal",
+  });
+}
+
+function indexAccountConfigs(
+  entries: Iterable<readonly [unknown, unknown]>,
+  setting: string
+): Record<string, InstagramAccountConfig> {
+  const configs = new Map<string, InstagramAccountConfig>();
+  for (const [rawId, value] of entries) {
+    if (!isAccountConfig(value)) continue;
+    const accountId = normalizeInstagramAccountId(rawId);
+    if (configs.has(accountId)) {
+      throw invalidAccountsConfig(
+        `Instagram accounts config contains duplicate account id ${JSON.stringify(accountId)} after normalization.`,
+        { setting, accountId }
+      );
+    }
+    configs.set(accountId, value);
+  }
+  return Object.fromEntries(configs);
+}
+
 function parseAccountsJson(runtime: IAgentRuntime): Record<string, InstagramAccountConfig> {
   const raw = stringSetting(runtime, "INSTAGRAM_ACCOUNTS");
   if (!raw) return {};
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      return Object.fromEntries(
-        parsed
-          .filter(
-            (item): item is InstagramAccountConfig => Boolean(item) && typeof item === "object"
-          )
-          .map((item) => [normalizeInstagramAccountId(item.accountId ?? item.id), item])
-      );
-    }
-    return parsed && typeof parsed === "object"
-      ? (parsed as Record<string, InstagramAccountConfig>)
-      : {};
-  } catch {
-    return {};
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    // error-policy:J2 preserve the JSON parse cause and identify the setting
+    // whose invalid value must not degrade into an empty account collection.
+    throw invalidAccountsConfig(
+      "Instagram accounts config is not valid JSON.",
+      { setting: "INSTAGRAM_ACCOUNTS" },
+      error
+    );
   }
+  if (Array.isArray(parsed)) {
+    return indexAccountConfigs(
+      parsed.map((item) => [isAccountConfig(item) ? (item.accountId ?? item.id) : undefined, item]),
+      "INSTAGRAM_ACCOUNTS"
+    );
+  }
+  if (!isAccountConfig(parsed)) {
+    throw invalidAccountsConfig("Instagram accounts config must be a JSON object or array.", {
+      setting: "INSTAGRAM_ACCOUNTS",
+      valueType: parsed === null ? "null" : typeof parsed,
+    });
+  }
+  // Normalize object-form keys at parse time so listInstagramAccountIds()
+  // (which trims when building the id list) and accountConfig() (which looks
+  // up the map key) agree: a padded " brand " key otherwise lists as `brand`
+  // but resolves to an empty config.
+  return indexAccountConfigs(Object.entries(parsed), "INSTAGRAM_ACCOUNTS");
 }
 
 function allAccountConfigs(runtime: IAgentRuntime): Record<string, InstagramAccountConfig> {
+  const characterAccounts = characterConfig(runtime).accounts;
   return {
-    ...(characterConfig(runtime).accounts ?? {}),
+    ...(characterAccounts && isAccountConfig(characterAccounts)
+      ? indexAccountConfigs(
+          Object.entries(characterAccounts),
+          "character.settings.instagram.accounts"
+        )
+      : {}),
     ...parseAccountsJson(runtime),
   };
 }

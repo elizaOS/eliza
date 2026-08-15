@@ -25,6 +25,13 @@ export function validateActionKeywords(
 		return false;
 	}
 
+	const normalizedKeywords = keywords
+		.filter((keyword) => keyword.trim().length > 0)
+		.map((keyword) => keyword.toLowerCase());
+	if (normalizedKeywords.length === 0) {
+		return false;
+	}
+
 	const relevantText: string[] = [];
 
 	// 1. Current message content
@@ -50,8 +57,8 @@ export function validateActionKeywords(
 
 	const combinedText = relevantText.join("\n").toLowerCase();
 
-	for (const keyword of keywords) {
-		if (combinedText.includes(keyword.toLowerCase())) {
+	for (const keyword of normalizedKeywords) {
+		if (combinedText.includes(keyword)) {
 			return true;
 		}
 	}
@@ -103,5 +110,5 @@ export function validateActionRegex(
 	}
 
 	const combinedText = relevantText.join("\n");
-	return regex.test(combinedText);
+	return new RegExp(regex.source, regex.flags).test(combinedText);
 }

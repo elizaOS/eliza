@@ -2,14 +2,14 @@
  * `/auth/bridge` — the SSO handshake route, registered on every host and
  * role-switched by hostname (see `./sso-bridge` for the security model):
  *
- *  - mint role (elizacloud.ai / www / staging): a signed-in dashboard visit
+ *  - mint role (eliza.app / staging.eliza.app): a signed-in auth-origin visit
  *    that arrived FROM the paired app origin (referrer-gated — a public GET
  *    that mints on any cross-site navigation would be a CSRF-triggerable
  *    minting oracle) mints a one-time code bound to the app origin's PKCE
  *    challenge and bounces to the paired app host; anything else bounces to
  *    the app host's own login (signed out) or home (not app-initiated).
- *    Nothing here changes dashboard behavior on any other path.
- *  - exchange role (app.elizacloud.ai / app-staging): verifies-and-consumes
+ *    Nothing here changes public-site behavior on any other path.
+ *  - exchange role (cloud.eliza.app / cloud-staging.eliza.app): verifies and consumes
  *    the state nonce BEFORE any network call, exchanges the code with the
  *    stored verifier, hydrates this origin's session, and lands on the
  *    sanitized returnTo. A handshake this origin refuses (state mismatch,
@@ -39,9 +39,45 @@ import {
   mintSsoCode,
   pairedAppOrigin,
   performSsoExchange,
+  SSO_BRIDGE_PATH,
   sanitizeBridgeReturnTo,
   ssoBridgeRoleForHostname,
 } from "./sso-bridge";
+
+const MINT_INTENT_PREFIX = "eliza.sso.mint-intent.";
+
+function mintIntentKey(state: string): string {
+  return `${MINT_INTENT_PREFIX}${state}`;
+}
+
+function rememberMintIntent(state: string): boolean {
+  try {
+    sessionStorage.setItem(mintIntentKey(state), "1");
+    return true;
+  } catch {
+    // error-policy:J4 a browser that cannot retain the referrer-approved
+    // intent cannot safely resume minting after a same-origin login.
+    return false;
+  }
+}
+
+function hasRememberedMintIntent(state: string): boolean {
+  try {
+    return sessionStorage.getItem(mintIntentKey(state)) === "1";
+  } catch {
+    // error-policy:J4 unreadable storage fails the referrer gate closed.
+    return false;
+  }
+}
+
+function forgetMintIntent(state: string): void {
+  try {
+    sessionStorage.removeItem(mintIntentKey(state));
+  } catch {
+    // error-policy:J6 the intent is scoped to this tab and nonce and expires
+    // with the tab even when best-effort cleanup is unavailable.
+  }
+}
 
 function BridgeNotice({ label }: { label: string }): React.JSX.Element {
   return (
@@ -100,21 +136,33 @@ function MintLeg({
     const appOrigin = pairedAppOrigin(hostname);
     if (!appOrigin) return;
 
-    if (!referrerIsPairedAppOrigin(appOrigin)) {
+    const appInitiated = referrerIsPairedAppOrigin(appOrigin);
+    const remembered = hasRememberedMintIntent(state);
+    if (!appInitiated && !remembered) {
       // Not a handshake the app origin initiated (direct visit, or a
       // third-party page forcing a signed-in user here): mint nothing.
       setNotInitiated(true);
       return;
     }
 
-    if (!hasHydratableStewardToken()) {
-      // No dashboard session to bridge FROM (signed out here, or logout just
-      // cleared it): hand the visitor to the app host's own login. The app
-      // side's loop guard keeps this from ping-ponging.
+    if (appInitiated && !remembered && !rememberMintIntent(state)) {
       appModeNavigation.replace(appLoginUrl(appOrigin, returnTo));
       return;
     }
 
+    if (!hasHydratableStewardToken()) {
+      // Login is owned by this public/auth origin. Preserve the exact bridge
+      // leg as a same-origin returnTo; once Steward succeeds, the remembered
+      // referrer-approved intent permits minting and sends the user back to
+      // the managed app. No credential is ever entered on the app host.
+      const bridgeReturnTo = `${SSO_BRIDGE_PATH}?state=${encodeURIComponent(state)}&challenge=${encodeURIComponent(challenge)}&returnTo=${encodeURIComponent(returnTo)}`;
+      appModeNavigation.replace(
+        `/login?returnTo=${encodeURIComponent(bridgeReturnTo)}`,
+      );
+      return;
+    }
+
+    forgetMintIntent(state);
     void mintSsoCode(hostname, challenge).then((result) => {
       const url = result.ok
         ? buildBridgeExchangeUrl(hostname, result.code, state, returnTo)
@@ -204,7 +252,7 @@ export function SsoBridgeRoute({
     const challenge = params.get("challenge");
     if (!isWellFormedSsoState(state) || !isWellFormedSsoChallenge(challenge)) {
       // A mint visit without a well-formed nonce + challenge was not initiated
-      // by the app origin — treat it as any other unknown dashboard path.
+      // by the app origin — treat it as any other unknown public-site path.
       return <Navigate to="/" replace />;
     }
     return (

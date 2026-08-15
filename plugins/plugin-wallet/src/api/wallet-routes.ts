@@ -1493,7 +1493,7 @@ export async function handleWalletRoutes(
     const apiKey = resolveCloudApiKey(config, ctx.runtime ?? null) ?? "";
     const baseUrl = cloud?.baseUrl
       ? normalizeCloudSiteUrl(cloud.baseUrl)
-      : "https://elizacloud.ai";
+      : "https://api.eliza.app";
     if (!apiKey) {
       error(res, "Cloud not linked — sign in to Eliza Cloud first", 400);
       return true;

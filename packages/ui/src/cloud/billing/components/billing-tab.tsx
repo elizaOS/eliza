@@ -221,7 +221,7 @@ export function BillingTab({ user }: BillingTabProps) {
   };
 
   const handleViewInvoice = (invoice: InvoiceDisplay) => {
-    navigate(`/dashboard/invoices/${invoice.id}`);
+    navigate(`/cloud/invoices/${invoice.id}`);
   };
 
   const parsedAmountValue = Number.parseFloat(purchaseAmount);

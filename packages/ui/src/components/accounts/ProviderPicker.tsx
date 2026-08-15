@@ -21,7 +21,7 @@ import {
   useState,
 } from "react";
 import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import {
   ACCOUNT_PROVIDER_OPTIONS,
   type AccountProviderCategory,

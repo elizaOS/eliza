@@ -49,7 +49,7 @@ const SAMPLE = {
  *   "spa"      → HTML 200 carrying the SPA shell (the common case)
  *   "redirect" → a 3xx redirect (server- or edge-issued) is acceptable too;
  *                an SPA 200 that client-redirects is ALSO accepted (the app
- *                does /dashboard → my-agents as a client <Navigate>, which a
+ *                does /dashboard → /cloud as a compatibility redirect, which a
  *                static fetch sees as an SPA 200).
  */
 const REQUIRED_PATHS = [
@@ -112,7 +112,7 @@ const REQUIRED_PATHS = [
     note: "public sensitive-request link",
   },
   {
-    path: "/dashboard",
+    path: "/cloud",
     expect: "redirect",
     note: "redirect → my-agents (client <Navigate> = SPA 200, or 3xx)",
   },

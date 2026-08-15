@@ -14,13 +14,13 @@ import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { getBootConfig } from "../../../config/boot-config";
 
 /** Fallback direct-cloud origin used when boot config carries no `cloudApiBase`. */
-const DEFAULT_CLOUD_API_BASE = "https://elizacloud.ai";
+const DEFAULT_CLOUD_API_BASE = "https://api.eliza.app";
 
 /**
  * The resolved direct-cloud origin the join flow provisions against. Prefers the
  * boot-config `cloudApiBase` (host app injects it); falls back to the public
  * Eliza Cloud origin. `selectOrProvisionCloudAgent` re-normalizes this to the
- * `api.elizacloud.ai` auth base internally, so passing the web origin is fine.
+ * `api.eliza.app` auth base internally, so passing the web origin is fine.
  */
 export function resolveJoinCloudApiBase(): string {
   const configured = getBootConfig().cloudApiBase?.trim();

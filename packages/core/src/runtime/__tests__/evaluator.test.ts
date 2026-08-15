@@ -1039,6 +1039,46 @@ describe("malformed envelope recovery (#18240 class — the 2026-08-10 leak)", (
 		expect(result.messageToUser).toContain("42 open issues");
 	});
 
+	it("prefers a terminal envelope answer over debris wrapped around it", async () => {
+		const raw = `None${JSON.stringify({
+			success: false,
+			decision: "FINISH",
+			thought: "The search window did not reach the requested day.",
+			messageToUser:
+				"I couldn't reach yesterday's messages in the available search window.",
+		})}`;
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toContain("available search window");
+		expect(result.messageToUser).not.toBe("None");
+	});
+
+	it("does not promote a debris-wrapped CONTINUE envelope to FINISH", async () => {
+		const raw = `None${JSON.stringify({
+			success: false,
+			decision: "CONTINUE",
+			thought: "Another search is required.",
+			messageToUser: "I need to search again.",
+		})}`;
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.success).toBe(false);
+		expect(result.messageToUser).toBeUndefined();
+	});
+
+	it("replans instead of shipping debris when a terminal envelope has no answer", async () => {
+		const raw = `None${JSON.stringify({
+			success: false,
+			decision: "FINISH",
+			thought: "No answer was produced.",
+			messageToUser: "",
+		})}`;
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.success).toBe(false);
+		expect(result.messageToUser).toBeUndefined();
+	});
+
 	it("does not classify a user-asked-for JSON payload as a malformed envelope", async () => {
 		// A JSON payload without the envelope discriminator keys must not be
 		// captured by the malformed-envelope branch; it keeps the pre-existing

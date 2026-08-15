@@ -93,12 +93,20 @@ export interface ChainingLoopConfig {
 	 * single-step pathology without touching the trajectory's
 	 * archival/replay fidelity.
 	 *
-	 * Default: undefined (no cap). Recommended
+	 * Default: undefined (no cap) — the planner path is unchanged. The
+	 * evaluator applies `DEFAULT_MAX_KEPT_STEP_CHARS` directly (see
+	 * evaluator.ts) so the fix stays out of the planner loop. Recommended
 	 * for tight-context models: ~8000 (one tool result still gets
 	 * roughly two pages of head + a half page of tail context).
 	 */
 	compactionMaxKeptStepChars?: number;
 }
+
+/** Default per-tool-result render cap (chars). ~8.6k tokens at 3.5 chars/token:
+ * large enough to keep head+tail structure of any real result, small enough that
+ * no single step can approach the 128k default window (live incident: one 5MB
+ * grep result rendered verbatim = 2.28M tokens vs cerebras's 131,072 limit). */
+export const DEFAULT_MAX_KEPT_STEP_CHARS = 30_000;
 
 export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 	maxToolCalls: 16,

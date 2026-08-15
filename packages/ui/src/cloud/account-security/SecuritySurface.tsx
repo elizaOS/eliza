@@ -11,6 +11,7 @@ import { ActiveSessionsPanel } from "./components/active-sessions-panel";
 import { ApiKeysLink } from "./components/api-keys-link";
 import { IncidentReportPanel } from "./components/incident-report-panel";
 import { MfaPanel } from "./components/mfa-panel";
+import { PluginPermissionsLink } from "./components/plugin-permissions-link";
 import { PrivacyPanel } from "./components/privacy-panel";
 import { RecentAuditEvents } from "./components/recent-audit-events";
 
@@ -29,18 +30,7 @@ export function SecuritySurface() {
   return (
     <DashboardPageContainer>
       <div className="space-y-6">
-        <nav className="flex flex-wrap gap-2 text-xs">
-          {/* Plain anchor: an in-settings hash change fires `hashchange`,
-              which is what SettingsView listens to for section switches. */}
-          <a
-            href="#cloud-plugin-grants"
-            className="rounded-sm bg-surface px-3 py-1 text-txt hover:bg-bg-hover"
-          >
-            {t("cloud.security.pluginPermissionsLink", {
-              defaultValue: "Plugin permissions →",
-            })}
-          </a>
-        </nav>
+        <PluginPermissionsLink />
         <ActiveSessionsPanel />
         <ApiKeysLink />
         <MfaPanel />

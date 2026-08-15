@@ -150,9 +150,8 @@ export interface VoiceSessionClientOptions {
   getConsentNonce: () => Promise<string | null>;
 
   /**
-   * Injectable mint fetch. Defaults to the CSRF/bearer dashboard fetch
-   * (`fetchWithCsrf`), lazily imported so this module's static graph stays lean
-   * (the dashboard fetch pulls the boot-config/core chain). A caller in a
+   * Injectable mint fetch. Defaults to the voice-session control-plane fetch,
+   * lazily imported so this module's static graph stays lean. A caller in a
    * non-dashboard host (or a test) supplies its own.
    */
   fetch?: (url: string, init?: RequestInit) => Promise<Response>;
@@ -292,8 +291,8 @@ export function createVoiceSessionClient(
   const doFetch =
     options.fetch ??
     (async (url: string, init?: RequestInit) => {
-      const { fetchWithCsrf } = await import("../api/csrf-client");
-      return fetchWithCsrf(url, init);
+      const { fetchVoiceSession } = await import("./voice-session-fetch");
+      return fetchVoiceSession(url, init);
     });
   const wsFactory =
     options.webSocketFactory ??

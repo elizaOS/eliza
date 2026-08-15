@@ -5,7 +5,7 @@
  * Cookie creation is owned by the Hono route `apps/api/auth/anonymous-session`.
  *
  * Flow:
- * 1. User visits /dashboard/chat without auth
+ * 1. User visits a public `/chat/:characterRef` route without auth
  * 2. System creates anonymous user + session (via API + Set-Cookie)
  * 3. Session cookie tracks the user (7 day expiry)
  * 4. User gets a limited number of free messages (tracked per session, NOT via credits)

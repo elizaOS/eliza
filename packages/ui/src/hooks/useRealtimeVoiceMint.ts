@@ -39,8 +39,8 @@ export function isRealtimeVoiceForceEnabled(): boolean {
   }
 }
 
-// NOTE ON MODULE GRAPH: `../api/csrf-client` (the default consent fetch) pulls
-// the full native transport chain. We import it LAZILY (dynamic import inside
+// NOTE ON MODULE GRAPH: the default consent fetch pulls the full native/cloud
+// transport chain. We import it LAZILY (dynamic import inside
 // `defaultConsentFetch`) so a surface that renders this hook doesn't eagerly
 // load that chain, and a test that injects `fetch` never touches it at all.
 // `agent-session-recovery` + `persistence` ARE imported statically because the
@@ -48,15 +48,15 @@ export function isRealtimeVoiceForceEnabled(): boolean {
 // still exercises the real UUID guard on the injected value.
 
 /**
- * The default consent fetch = the same CSRF/bearer helper every other dashboard
- * /api/v1 call uses.
+ * The default consent fetch shares the voice-session control-plane policy with
+ * minting, so both legs always use the same origin and credential.
  */
 async function defaultConsentFetch(
   url: string,
   init?: RequestInit,
 ): Promise<Response> {
-  const { fetchWithCsrf } = await import("../api/csrf-client");
-  return fetchWithCsrf(url, init);
+  const { fetchVoiceSession } = await import("../voice/voice-session-fetch");
+  return fetchVoiceSession(url, init);
 }
 
 /** UUID v-any shape guard so we never mint with a non-UUID id (the route 400s). */

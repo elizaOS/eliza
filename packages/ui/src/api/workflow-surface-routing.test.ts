@@ -227,8 +227,8 @@ describe("workflowSurfaceClient", () => {
     expect(fetchSpy).toHaveBeenNthCalledWith(
       2,
       "/api/workflow/workflows/wf-1/run",
-      { method: "POST" },
-      { timeoutMs: 11 * 60_000 },
+      { method: "POST", body: JSON.stringify({ input: {} }) },
+      { timeoutMs: 30_000, skipResume: true },
     );
   });
 

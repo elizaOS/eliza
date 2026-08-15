@@ -20,6 +20,7 @@ import {
   ChannelType,
   type Content,
   createUniqueUuid,
+  ElizaError,
   type IAgentRuntime,
   lifeOpsPassiveConnectorsEnabled,
   type Media,
@@ -29,17 +30,24 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  assertUniqueWhatsAppAccountIds,
   checkWhatsAppUserAccess,
   DEFAULT_ACCOUNT_ID,
-  getMultiAccountConfig,
   listWhatsAppAccountIds,
   normalizeAccountId as normalizeWhatsAppAccountId,
   resolveDefaultWhatsAppAccountId,
   resolveWhatsAppAccount,
-  type WhatsAppAccountRuntimeConfig,
+  resolveWhatsAppAccountConfig,
 } from "./accounts";
 import { WhatsAppClient } from "./client";
 import { BaileysClient } from "./clients/baileys-client";
+import {
+  completeClaim,
+  createInboundClaimId,
+  failClaim,
+  type InboundClaimState,
+  tryClaim,
+} from "./inbound-claim";
 import {
   buildWhatsAppUserJid,
   chunkWhatsAppText,
@@ -161,33 +169,13 @@ function resolveRuntimeConfig(runtime: IAgentRuntime): RuntimeServiceConfig | nu
   return null;
 }
 
-function configuredAccountForId(
-  config: ReturnType<typeof getMultiAccountConfig>,
-  accountId: string
-): WhatsAppAccountRuntimeConfig {
-  const normalized = normalizeWhatsAppAccountId(accountId);
-  const accountConfig =
-    config.accounts?.[accountId] ??
-    Object.entries(config.accounts ?? {}).find(
-      ([key]) => normalizeWhatsAppAccountId(key) === normalized
-    )?.[1] ??
-    {};
-  return {
-    ...config,
-    accounts: undefined,
-    groups: undefined,
-    ...accountConfig,
-  } as WhatsAppAccountRuntimeConfig;
-}
-
 function resolveRuntimeConfigs(runtime: IAgentRuntime): RuntimeServiceConfig[] {
-  const multiConfig = getMultiAccountConfig(runtime);
   const accountIds = listWhatsAppAccountIds(runtime);
   const configs: RuntimeServiceConfig[] = [];
 
   for (const accountId of accountIds) {
     const normalizedAccountId = normalizeWhatsAppAccountId(accountId);
-    const accountConfig = configuredAccountForId(multiConfig, normalizedAccountId);
+    const accountConfig = resolveWhatsAppAccountConfig(runtime, normalizedAccountId);
     const authDir = accountConfig.authDir?.trim();
     const transport = accountConfig.transport ?? (authDir ? "baileys" : "cloudapi");
 
@@ -225,11 +213,38 @@ function resolveRuntimeConfigs(runtime: IAgentRuntime): RuntimeServiceConfig[] {
   }
 
   if (configs.length > 0) {
+    assertUniqueCloudApiPhoneNumberIds(configs);
     return configs;
   }
 
   const legacy = resolveRuntimeConfig(runtime);
   return legacy ? [legacy] : [];
+}
+
+/**
+ * Rejects startup when two or more Cloud API accounts share the same
+ * `phoneNumberId`. A duplicate would let an inbound webhook (which is scoped by
+ * `metadata.phone_number_id`) resolve to the wrong account, cross-pollinating
+ * credentials, rooms, and identity. Throws before any client connects.
+ */
+function assertUniqueCloudApiPhoneNumberIds(configs: RuntimeServiceConfig[]): void {
+  const seen = new Map<string, string>();
+  for (const config of configs) {
+    if (config.transport !== "cloudapi") {
+      continue;
+    }
+    const phoneId = config.phoneNumberId.trim();
+    if (!phoneId) {
+      continue;
+    }
+    const existingAccountId = seen.get(phoneId);
+    if (existingAccountId !== undefined && existingAccountId !== config.accountId) {
+      throw new Error(
+        `WhatsApp Cloud API accounts "${existingAccountId}" and "${config.accountId}" share the same phone_number_id "${phoneId}"; each Cloud API account must resolve to one canonical phone number`
+      );
+    }
+    seen.set(phoneId, config.accountId);
+  }
 }
 
 function toTimestampMs(value: number | string | undefined): number {
@@ -595,6 +610,17 @@ export class WhatsAppConnectorService extends Service {
   config: RuntimeServiceConfig | undefined = undefined;
   private knownTargets: Map<string, KnownWhatsAppTarget> = new Map();
 
+  /**
+   * In-process inbound delivery guard for concurrent redelivery within one
+   * process lifetime. Meta redelivers a webhook when it does not see a 200
+   * quickly, and a single webhook batch can repeat a message id. This set
+   * is the fast path — it collapses concurrent redelivery before any side
+   * effect fires. The durable staged claim in `processIncomingMessage`
+   * (`inbound-claim.ts`) covers restarts and multi-host scenarios. Bounded:
+   * entries are cleared once the turn finishes.
+   */
+  private inflightInboundMessageIds: Set<string> = new Set();
+
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     if (runtime) {
@@ -871,6 +897,7 @@ export class WhatsAppConnectorService extends Service {
   }
 
   async initialize(): Promise<void> {
+    assertUniqueWhatsAppAccountIds(this.runtime);
     this.defaultAccountId = resolveDefaultWhatsAppAccountId(this.runtime);
     const configs = resolveRuntimeConfigs(this.runtime);
     if (configs.length === 0) {
@@ -936,6 +963,25 @@ export class WhatsAppConnectorService extends Service {
         const phoneNumberId =
           typeof metadata.phone_number_id === "string" ? metadata.phone_number_id : undefined;
         const accountId = this.resolveWebhookAccountId(phoneNumberId);
+
+        // Fail closed: when Cloud API accounts are configured, a webhook whose
+        // phone_number_id does not match any of them is rejected before any
+        // side effect. This prevents cross-account misattribution — an unknown
+        // or cross-account sender must never inherit the default account's
+        // credentials, rooms, or identity. display_phone_number is only trusted
+        // once the webhook has been bound to a known account.
+        if (accountId === null) {
+          this.runtime.logger.warn(
+            {
+              src: "plugin:whatsapp",
+              agentId: this.runtime.agentId,
+              phoneNumberId: phoneNumberId ?? null,
+            },
+            "WhatsApp webhook phone_number_id does not match any configured Cloud API account; dropping webhook to prevent cross-account misattribution"
+          );
+          continue;
+        }
+
         if (typeof metadata.display_phone_number === "string") {
           this.phoneNumbers.set(accountId, metadata.display_phone_number);
           if (accountId === this.defaultAccountId) {
@@ -981,9 +1027,19 @@ export class WhatsAppConnectorService extends Service {
     return null;
   }
 
-  private resolveWebhookAccountId(phoneNumberId?: string | null): string {
+  /**
+   * Resolves a webhook's account from its `metadata.phone_number_id`.
+   *
+   * Fail-closed: when at least one Cloud API account is configured, a webhook
+   * whose phone_number_id matches none of them returns `null` so `handleWebhook`
+   * can drop it before side effects. Only the single-account, env-only, or
+   * Baileys-only deployments (where the webhook carries no scoping id) fall back
+   * to the default account — and only when that default is the sole possibility.
+   */
+  private resolveWebhookAccountId(phoneNumberId?: string | null): string | null {
     const normalizedPhoneNumberId =
       typeof phoneNumberId === "string" && phoneNumberId.trim() ? phoneNumberId.trim() : undefined;
+
     if (normalizedPhoneNumberId) {
       for (const [accountId, config] of this.configs) {
         if (config.transport === "cloudapi" && config.phoneNumberId === normalizedPhoneNumberId) {
@@ -991,7 +1047,21 @@ export class WhatsAppConnectorService extends Service {
         }
       }
     }
-    return this.defaultAccountId;
+
+    // No Cloud API accounts are configured at all (Baileys-only, or the service
+    // is unconfigured). The webhook cannot be account-scoped, so the default is
+    // the only resolution. This path is not reached for real Cloud API traffic.
+    const hasCloudApiAccount = Array.from(this.configs.values()).some(
+      (config) => config.transport === "cloudapi"
+    );
+    if (!hasCloudApiAccount) {
+      return this.defaultAccountId;
+    }
+
+    // Cloud API account(s) are configured but the webhook's phone_number_id did
+    // not match any of them (or was missing). Fail closed rather than inherit
+    // the default account.
+    return null;
   }
 
   private bindClientEvents(client: BaileysClient | WhatsAppClient, accountId: string): void {
@@ -1124,216 +1194,338 @@ export class WhatsAppConnectorService extends Service {
     const isGroup = isWhatsAppGroupJid(params.chatId);
     const normalizedSender = normalizeWhatsAppTarget(params.senderId) ?? params.senderId;
 
-    const accountConfig = {
-      dmPolicy: config?.dmPolicy,
-      groupPolicy: config?.groupPolicy,
-      allowFrom: config?.allowFrom,
-      groupAllowFrom: config?.groupAllowFrom,
-    };
-
-    const access = await checkWhatsAppUserAccess({
-      runtime: this.runtime,
-      identifier: normalizedSender,
-      accountConfig,
-      isGroup,
-      ...(isGroup ? { groupId: params.chatId } : {}),
-      metadata: { accountId, senderId: normalizedSender },
-    });
-
-    if (!access.allowed) {
-      if (access.replyMessage) {
-        await this.sendTextMessage(params.chatId, access.replyMessage, undefined, accountId);
-      }
+    // Delivery idempotency: Meta redelivers a webhook when it does not see a
+    // 200 quickly, and a single batch can repeat a message id. Guard three
+    // layers, all before ensureConnection / room / reply side effects:
+    //   1. in-process set — fast path for concurrent redelivery within one
+    //      process, cleared once the turn completes;
+    //   2. durable staged claim (`inbound-claim.ts`) — survives restarts and
+    //      multi-host deployments with generation fencing and restart
+    //      convergence;
+    //   3. inbound message existence — the deterministic message id catches
+    //      a prior successful delivery that pre-dates the claim table.
+    const chatKey =
+      accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`;
+    const dedupeKey = `${accountId}:${params.externalMessageId}`;
+    if (this.inflightInboundMessageIds.has(dedupeKey)) {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:whatsapp",
+          agentId: this.runtime.agentId,
+          accountId,
+          externalMessageId: params.externalMessageId,
+        },
+        "WhatsApp inbound message is already being processed in-process; skipping duplicate delivery"
+      );
       return;
     }
-
-    const channelType = isGroup ? ChannelType.GROUP : ChannelType.DM;
-    const roomId = this.roomIdFor(params.chatId, accountId);
-    const worldId = this.worldIdFor(params.chatId, accountId);
-    const entityId = this.entityIdFor(normalizedSender, accountId);
-    const inboundMemoryId = toMemoryId(
-      this.runtime,
-      accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`,
-      params.externalMessageId
-    );
-
-    await this.runtime.ensureConnection({
-      entityId,
-      roomId,
-      userId: normalizedSender,
-      userName: normalizedSender,
-      name: normalizedSender,
-      source: "whatsapp",
-      channelId: params.chatId,
-      type: channelType,
-      worldId,
-      worldName: resolveWhatsAppSystemLocation({
-        chatType: isGroup ? "group" : "user",
-        chatId: params.chatId,
-      }),
-      metadata: {
+    this.inflightInboundMessageIds.add(dedupeKey);
+    let claim: InboundClaimState | null = null;
+    let claimHandled = false;
+    const inboundMemoryId = toMemoryId(this.runtime, chatKey, params.externalMessageId);
+    const claimId = createInboundClaimId(this.runtime, accountId, params.externalMessageId);
+    try {
+      // Durable staged claim: atomically acquire a processing claim in the
+      // memory store. Returns won=false if another host or prior delivery
+      // already completed or is actively processing this message.
+      const claimResult = await tryClaim(
+        this.runtime,
+        claimId,
         accountId,
-        chatId: params.chatId,
+        params.externalMessageId
+      );
+      if (!claimResult.won) {
+        this.runtime.logger.debug(
+          {
+            src: "plugin:whatsapp",
+            agentId: this.runtime.agentId,
+            accountId,
+            externalMessageId: params.externalMessageId,
+            claimStage: claimResult.state?.stage,
+          },
+          "WhatsApp inbound message already claimed or processed; skipping duplicate delivery"
+        );
+        return;
+      }
+      if (!claimResult.state) {
+        throw new ElizaError("WhatsApp claim acquisition returned no ownership state", {
+          code: "WHATSAPP_INBOUND_CLAIM_INVALID",
+          context: { accountId, externalMessageId: params.externalMessageId, claimId },
+        });
+      }
+      claim = claimResult.state;
+
+      // A previous host may have persisted the real inbound message and died
+      // before committing its claim. Converge on that durable side effect
+      // before creating connections, rooms, replies, or another model turn.
+      const existingInbound = await this.runtime.getMemoryById(inboundMemoryId);
+      const existingMetadata = existingInbound?.metadata as Record<string, unknown> | undefined;
+      if (
+        existingInbound &&
+        existingMetadata?.type === "message" &&
+        existingMetadata.source === "whatsapp"
+      ) {
+        await completeClaim(this.runtime, claimId, claimResult.state);
+        claimHandled = true;
+        return;
+      }
+
+      const accountConfig = {
+        dmPolicy: config?.dmPolicy,
+        groupPolicy: config?.groupPolicy,
+        allowFrom: config?.allowFrom,
+        groupAllowFrom: config?.groupAllowFrom,
+      };
+
+      const access = await checkWhatsAppUserAccess({
+        runtime: this.runtime,
+        identifier: normalizedSender,
+        accountConfig,
         isGroup,
-      },
-    });
-    if (typeof this.runtime.ensureRoomExists === "function") {
-      await this.runtime.ensureRoomExists({
-        id: roomId,
-        name: resolveWhatsAppSystemLocation({
+        ...(isGroup ? { groupId: params.chatId } : {}),
+        metadata: { accountId, senderId: normalizedSender },
+      });
+
+      if (!access.allowed) {
+        if (access.replyMessage) {
+          await this.sendTextMessage(params.chatId, access.replyMessage, undefined, accountId);
+        }
+        return;
+      }
+
+      const channelType = isGroup ? ChannelType.GROUP : ChannelType.DM;
+      const roomId = this.roomIdFor(params.chatId, accountId);
+      const worldId = this.worldIdFor(params.chatId, accountId);
+      const entityId = this.entityIdFor(normalizedSender, accountId);
+
+      await this.runtime.ensureConnection({
+        entityId,
+        roomId,
+        userId: normalizedSender,
+        userName: normalizedSender,
+        name: normalizedSender,
+        source: "whatsapp",
+        channelId: params.chatId,
+        type: channelType,
+        worldId,
+        worldName: resolveWhatsAppSystemLocation({
           chatType: isGroup ? "group" : "user",
           chatId: params.chatId,
         }),
-        agentId: this.runtime.agentId,
-        source: "whatsapp",
-        type: channelType,
-        channelId: params.chatId,
-        worldId,
         metadata: {
           accountId,
           chatId: params.chatId,
           isGroup,
         },
-      } as Room);
-    }
-
-    this.rememberTarget({
-      accountId,
-      chatId: params.chatId,
-      senderId: normalizedSender,
-      label: resolveWhatsAppSystemLocation({
-        chatType: isGroup ? "group" : "user",
-        chatId: params.chatId,
-      }),
-      isGroup,
-      lastMessageAt: params.createdAt,
-      roomId,
-    });
-
-    const inboundMemory: Memory = {
-      id: inboundMemoryId,
-      entityId,
-      agentId: this.runtime.agentId,
-      roomId,
-      content: {
-        text: params.text,
-        source: "whatsapp",
-        channelType,
-        from: normalizedSender,
-        messageId: params.externalMessageId,
-        ...(params.replyToExternalMessageId
-          ? {
-              inReplyTo: toMemoryId(
-                this.runtime,
-                accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`,
-                params.replyToExternalMessageId
-              ),
-            }
-          : {}),
-      },
-      metadata: {
-        type: "message",
-        source: "whatsapp",
-        provider: "whatsapp",
-        accountId,
-        timestamp: params.createdAt,
-        entityName: normalizedSender,
-        entityUserName: normalizedSender,
-        fromBot: false,
-        fromId: normalizedSender,
-        sourceId: entityId,
-        chatType: channelType,
-        messageIdFull: params.externalMessageId,
-        sender: {
-          id: normalizedSender,
-          name: normalizedSender,
-          username: normalizedSender,
-        },
-        whatsapp: {
-          contactId: normalizedSender,
-          messageId: params.externalMessageId,
-        },
-        rawChatId: params.chatId,
-        rawSenderId: params.senderId,
-      } satisfies Memory["metadata"],
-      createdAt: params.createdAt,
-    };
-
-    const callback = async (content: Content): Promise<Memory[]> => {
-      const text = typeof content.text === "string" ? content.text.trim() : "";
-      if (!text) {
-        return [];
-      }
-
-      const chunks = chunkWhatsAppText(text);
-      const responseMemories: Memory[] = [];
-
-      for (const [index, chunk] of chunks.entries()) {
-        const response = await this.sendTextMessage(
-          params.chatId,
-          chunk,
-          params.externalMessageId,
-          accountId
-        );
-        const externalResponseId =
-          response.messages[0]?.id ?? `${params.externalMessageId}:response:${index}:${Date.now()}`;
-
-        responseMemories.push({
-          id: toMemoryId(
-            this.runtime,
-            accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`,
-            externalResponseId
-          ),
-          entityId: this.runtime.agentId,
+      });
+      if (typeof this.runtime.ensureRoomExists === "function") {
+        await this.runtime.ensureRoomExists({
+          id: roomId,
+          name: resolveWhatsAppSystemLocation({
+            chatType: isGroup ? "group" : "user",
+            chatId: params.chatId,
+          }),
           agentId: this.runtime.agentId,
-          roomId,
-          content: {
-            ...content,
-            text: chunk,
-            source: "whatsapp",
-            channelType,
-            inReplyTo: inboundMemoryId,
-          },
+          source: "whatsapp",
+          type: channelType,
+          channelId: params.chatId,
+          worldId,
           metadata: {
-            type: "message",
-            source: "whatsapp",
-            provider: "whatsapp",
             accountId,
-            timestamp: Date.now(),
-            fromBot: true,
-            fromId: this.runtime.agentId,
-            sourceId: this.runtime.agentId,
-            chatType: channelType,
-            messageIdFull: externalResponseId,
-            whatsapp: {
-              contactId: params.chatId,
-              messageId: externalResponseId,
-            },
-            rawChatId: params.chatId,
-            externalMessageId: externalResponseId,
-          } satisfies Memory["metadata"],
-          createdAt: Date.now(),
-        });
+            chatId: params.chatId,
+            isGroup,
+          },
+        } as Room);
       }
 
-      return responseMemories;
-    };
+      this.rememberTarget({
+        accountId,
+        chatId: params.chatId,
+        senderId: normalizedSender,
+        label: resolveWhatsAppSystemLocation({
+          chatType: isGroup ? "group" : "user",
+          chatId: params.chatId,
+        }),
+        isGroup,
+        lastMessageAt: params.createdAt,
+        roomId,
+      });
 
-    // Inbound messages are always ingested into memory. The agent only
-    // auto-generates a reply when WHATSAPP_AUTO_REPLY is explicitly enabled —
-    // default-off prevents the runtime from speaking on the user's behalf to
-    // real WhatsApp contacts.
-    const autoReplyRaw = this.runtime.getSetting("WHATSAPP_AUTO_REPLY");
-    const autoReply =
-      !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
-      (autoReplyRaw === true || autoReplyRaw === "true");
+      const inboundMemory: Memory = {
+        id: inboundMemoryId,
+        entityId,
+        agentId: this.runtime.agentId,
+        roomId,
+        content: {
+          text: params.text,
+          source: "whatsapp",
+          channelType,
+          from: normalizedSender,
+          messageId: params.externalMessageId,
+          ...(params.replyToExternalMessageId
+            ? {
+                inReplyTo: toMemoryId(
+                  this.runtime,
+                  accountId === DEFAULT_ACCOUNT_ID
+                    ? params.chatId
+                    : `${accountId}:${params.chatId}`,
+                  params.replyToExternalMessageId
+                ),
+              }
+            : {}),
+        },
+        metadata: {
+          type: "message",
+          source: "whatsapp",
+          provider: "whatsapp",
+          accountId,
+          timestamp: params.createdAt,
+          entityName: normalizedSender,
+          entityUserName: normalizedSender,
+          fromBot: false,
+          fromId: normalizedSender,
+          sourceId: entityId,
+          chatType: channelType,
+          messageIdFull: params.externalMessageId,
+          sender: {
+            id: normalizedSender,
+            name: normalizedSender,
+            username: normalizedSender,
+          },
+          whatsapp: {
+            contactId: normalizedSender,
+            messageId: params.externalMessageId,
+          },
+          rawChatId: params.chatId,
+          rawSenderId: params.senderId,
+        } satisfies Memory["metadata"],
+        createdAt: params.createdAt,
+      };
 
-    if (!autoReply) {
-      await this.runtime.createMemory(inboundMemory, "messages");
-      return;
+      const callback = async (content: Content): Promise<Memory[]> => {
+        const text = typeof content.text === "string" ? content.text.trim() : "";
+        if (!text) {
+          return [];
+        }
+
+        const chunks = chunkWhatsAppText(text);
+        const responseMemories: Memory[] = [];
+
+        for (const [index, chunk] of chunks.entries()) {
+          const response = await this.sendTextMessage(
+            params.chatId,
+            chunk,
+            params.externalMessageId,
+            accountId
+          );
+          const externalResponseId =
+            response.messages[0]?.id ??
+            `${params.externalMessageId}:response:${index}:${Date.now()}`;
+
+          responseMemories.push({
+            id: toMemoryId(
+              this.runtime,
+              accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`,
+              externalResponseId
+            ),
+            entityId: this.runtime.agentId,
+            agentId: this.runtime.agentId,
+            roomId,
+            content: {
+              ...content,
+              text: chunk,
+              source: "whatsapp",
+              channelType,
+              inReplyTo: inboundMemoryId,
+            },
+            metadata: {
+              type: "message",
+              source: "whatsapp",
+              provider: "whatsapp",
+              accountId,
+              timestamp: Date.now(),
+              fromBot: true,
+              fromId: this.runtime.agentId,
+              sourceId: this.runtime.agentId,
+              chatType: channelType,
+              messageIdFull: externalResponseId,
+              whatsapp: {
+                contactId: params.chatId,
+                messageId: externalResponseId,
+              },
+              rawChatId: params.chatId,
+              externalMessageId: externalResponseId,
+            } satisfies Memory["metadata"],
+            createdAt: Date.now(),
+          });
+        }
+
+        return responseMemories;
+      };
+
+      // Inbound messages are always ingested into memory. The agent only
+      // auto-generates a reply when WHATSAPP_AUTO_REPLY is explicitly enabled —
+      // default-off prevents the runtime from speaking on the user's behalf to
+      // real WhatsApp contacts.
+      const autoReplyRaw = this.runtime.getSetting("WHATSAPP_AUTO_REPLY");
+      const autoReply =
+        !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
+        (autoReplyRaw === true || autoReplyRaw === "true");
+
+      if (!autoReply) {
+        await this.runtime.createMemory(inboundMemory, "messages");
+        return;
+      }
+
+      await this.runtime.messageService.handleMessage(this.runtime, inboundMemory, callback);
+    } catch (err) {
+      // Transition the durable claim to failed before re-throwing, so a
+      // restart or second host can retry. Generation fencing prevents a
+      // zombie from overwriting a successor's state.
+      claimHandled = true;
+      if (claim) {
+        try {
+          await failClaim(
+            this.runtime,
+            claimId,
+            claim,
+            err instanceof Error ? err.message : String(err)
+          );
+        } catch (transitionError) {
+          // error-policy:J2 Report the ownership failure and preserve the
+          // original processing error as the cause returned to the boundary.
+          this.runtime.reportError("plugin:whatsapp:inbound-claim", transitionError, {
+            accountId,
+            externalMessageId: params.externalMessageId,
+            claimId,
+          });
+          throw new ElizaError("WhatsApp inbound processing and claim transition failed", {
+            code: "WHATSAPP_INBOUND_CLAIM_TRANSITION_FAILED",
+            context: {
+              accountId,
+              externalMessageId: params.externalMessageId,
+              claimId,
+              transitionError:
+                transitionError instanceof Error
+                  ? transitionError.message
+                  : String(transitionError),
+            },
+            cause: err,
+          });
+        }
+      }
+      throw err;
+    } finally {
+      // On the success path, transition the claim to processed. The error
+      // path is handled by the catch block above (claimHandled flag).
+      try {
+        if (!claimHandled && claim) {
+          await completeClaim(this.runtime, claimId, claim);
+        }
+      } finally {
+        this.inflightInboundMessageIds.delete(dedupeKey);
+      }
     }
-
-    await this.runtime.messageService.handleMessage(this.runtime, inboundMemory, callback);
   }
 
   private async sendTextMessage(

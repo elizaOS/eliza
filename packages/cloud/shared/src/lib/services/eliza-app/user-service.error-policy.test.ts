@@ -6,14 +6,23 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const findByDiscordIdWithOrganization = mock();
+const findByCanonicalDiscordIdWithOrganization = mock();
 const findByPhoneNumberWithOrganization = mock();
 const update = mock();
 const linkVerifiedPhone = mock();
+const findOrCreatePhonePersonalAccount = mock();
 const linkTelegramAndPhoneIdentity = mock();
+const refreshDiscordProjectionForWrite = mock();
+const linkDiscordIdentity = mock();
+const createUser = mock();
+const createOrganization = mock();
+const createApiKey = mock();
+const addCredits = mock();
 
 mock.module("../../../db/repositories/users", () => ({
   usersRepository: {
     findByDiscordIdWithOrganization,
+    findByCanonicalDiscordIdWithOrganization,
     findByPhoneNumberWithOrganization,
     findByTelegramIdWithOrganization: mock(),
     findByEmailWithOrganization: mock(),
@@ -21,15 +30,18 @@ mock.module("../../../db/repositories/users", () => ({
     findWithOrganization: mock(),
     update,
     linkVerifiedPhone,
+    findOrCreatePhonePersonalAccount,
     linkTelegramAndPhoneIdentity,
-    create: mock(),
+    refreshDiscordProjectionForWrite,
+    linkDiscordIdentity,
+    create: createUser,
   },
 }));
 
 mock.module("../../../db/repositories/organizations", () => ({
   organizationsRepository: {
     findBySlug: mock(async () => undefined),
-    create: mock(),
+    create: createOrganization,
   },
 }));
 
@@ -44,11 +56,12 @@ mock.module("../../utils/logger", () => ({
 
 mock.module("../../utils/phone-normalization", () => ({
   normalizePhoneNumber: mock((phone: string) => phone),
+  isValidE164: mock(() => true),
 }));
 
-mock.module("../api-keys", () => ({ apiKeysService: { create: mock() } }));
+mock.module("../api-keys", () => ({ apiKeysService: { create: createApiKey } }));
 mock.module("../credits", () => ({
-  creditsService: { addCredits: mock() },
+  creditsService: { addCredits },
   InsufficientCreditsError: class InsufficientCreditsError extends Error {},
 }));
 mock.module("../signup-code", () => ({ redeemSignupCode: mock() }));
@@ -56,6 +69,34 @@ mock.module("../signup-code", () => ({ redeemSignupCode: mock() }));
 const { elizaAppUserService } = await import(
   `./user-service.ts?test=user-service-error-policy-${Date.now()}`
 );
+
+describe("ElizaAppUserService account opening balance", () => {
+  beforeEach(() => {
+    findOrCreatePhonePersonalAccount.mockReset();
+    findByPhoneNumberWithOrganization.mockReset();
+    createOrganization.mockReset();
+    createUser.mockReset();
+    createApiKey.mockReset();
+    addCredits.mockReset();
+  });
+
+  test("creates a phone-first personal account at zero without an automatic credit transaction", async () => {
+    findOrCreatePhonePersonalAccount.mockResolvedValue({
+      user: { id: "user-new", phone_number: "+15551234567" },
+      organization: { id: "org-new", credit_balance: "0.00" },
+      isNew: true,
+    });
+
+    const result = await elizaAppUserService.findOrCreateByPhone("+15551234567");
+
+    expect(result.isNew).toBe(true);
+    expect(result.organization.credit_balance).toBe("0.00");
+    expect(findOrCreatePhonePersonalAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ phoneNumber: "+15551234567" }),
+    );
+    expect(addCredits).not.toHaveBeenCalled();
+  });
+});
 
 function uniqueConstraintError(): Error {
   return Object.assign(new Error("duplicate key value violates unique constraint"), {
@@ -66,11 +107,33 @@ function uniqueConstraintError(): Error {
 describe("ElizaAppUserService.findOrCreateByDiscordId error policy", () => {
   beforeEach(() => {
     findByDiscordIdWithOrganization.mockReset();
+    findByCanonicalDiscordIdWithOrganization.mockReset();
     findByPhoneNumberWithOrganization.mockReset();
     update.mockReset();
     linkVerifiedPhone.mockReset();
+    refreshDiscordProjectionForWrite.mockReset();
+    refreshDiscordProjectionForWrite.mockResolvedValue(undefined);
+    // No canonical-only legacy link by default.
+    findByCanonicalDiscordIdWithOrganization.mockResolvedValue(undefined);
     // Phone is unowned by default so the phone-link branch is reachable.
     findByPhoneNumberWithOrganization.mockResolvedValue(undefined);
+  });
+
+  test("converges a canonical-only legacy Discord link into the projection instead of forking a second account", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue(undefined);
+    findByCanonicalDiscordIdWithOrganization.mockResolvedValue({
+      id: "legacy-user",
+      discord_id: "d-legacy",
+      organization: { id: "org-legacy" },
+    });
+
+    const result = await elizaAppUserService.findOrCreateByDiscordId("d-legacy", {
+      username: "legacy",
+    });
+
+    expect(result.isNew).toBe(false);
+    expect(result.user.id).toBe("legacy-user");
+    expect(refreshDiscordProjectionForWrite).toHaveBeenCalledWith("legacy-user");
   });
 
   test("propagates a real DB failure while linking a phone (fail closed)", async () => {
@@ -239,5 +302,50 @@ describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
     );
 
     expect(result).toEqual({ success: false, error: "The account no longer exists" });
+  });
+});
+
+describe("ElizaAppUserService.linkDiscordToUser", () => {
+  beforeEach(() => {
+    linkDiscordIdentity.mockReset();
+  });
+
+  test("uses the atomic canonical-plus-projection repository boundary", async () => {
+    linkDiscordIdentity.mockResolvedValue({ id: "user-1" });
+    const result = await elizaAppUserService.linkDiscordToUser("user-1", {
+      discordId: "d-100",
+      username: "sam",
+    });
+    expect(result).toEqual({ success: true });
+    expect(linkDiscordIdentity).toHaveBeenCalledWith("user-1", {
+      discord_id: "d-100",
+      discord_username: "sam",
+      discord_global_name: null,
+      discord_avatar_url: null,
+    });
+  });
+
+  test("reports a concurrent uniqueness conflict as a real decline", async () => {
+    linkDiscordIdentity.mockRejectedValue(
+      Object.assign(new Error("duplicate key"), { code: "23505" }),
+    );
+    const result = await elizaAppUserService.linkDiscordToUser("user-1", {
+      discordId: "d-100",
+      username: "sam",
+    });
+    expect(result).toEqual({
+      success: false,
+      error: "This Discord account is already linked to another account",
+    });
+  });
+
+  test("propagates atomic transaction infrastructure failures", async () => {
+    linkDiscordIdentity.mockRejectedValue(new Error("connection terminated unexpectedly"));
+    await expect(
+      elizaAppUserService.linkDiscordToUser("user-1", {
+        discordId: "d-100",
+        username: "sam",
+      }),
+    ).rejects.toThrow("connection terminated unexpectedly");
   });
 });

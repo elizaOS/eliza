@@ -177,20 +177,18 @@ function ChatModelGroup({
         // The provider follows the active intelligence selection above; a free
         // dropdown here would let models be picked from a provider the runtime
         // isn't routing chat through (dead keys, confusing pairings).
-        <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
-          <span className="text-muted">
-            {t("modelconfig.provider", { defaultValue: "Provider" })}
-          </span>
-          <span>
-            {group.providerOptions.find((o) => o.value === group.provider)
-              ?.label ?? group.provider}{" "}
-            <span className="text-muted">
-              {t("modelconfig.providerFollowsActive", {
-                defaultValue: "(follows your active provider)",
-              })}
+        <SettingsRow
+          label={t("modelconfig.provider", { defaultValue: "Provider" })}
+          description={t("modelconfig.providerFollowsActive", {
+            defaultValue: "Follows your active provider.",
+          })}
+          control={
+            <span className="text-sm text-txt">
+              {group.providerOptions.find((o) => o.value === group.provider)
+                ?.label ?? group.provider}
             </span>
-          </span>
-        </div>
+          }
+        />
       ) : (
         <SettingsSelectRow
           agentId={`models-${target}-provider`}

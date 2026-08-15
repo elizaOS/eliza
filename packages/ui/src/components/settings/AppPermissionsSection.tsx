@@ -15,12 +15,10 @@ import {
 } from "@elizaos/shared";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import { useAppSelector } from "../../state";
-import { Switch } from "../ui/switch";
-import { SettingsActionButton } from "./settings-agent-rows";
-import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
+import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
+import { SettingsGroup, SettingsStack } from "./settings-layout";
 
 const NAMESPACE_LABELS: Record<RecognisedPermissionNamespace, string> = {
   fs: "Filesystem",
@@ -296,20 +294,12 @@ function AppPermissionToggle({
   ) => void;
 }) {
   const toggleId = `appperm-${slug}-${ns}`;
-  const label = `Toggle ${NAMESPACE_LABELS[ns]} for ${slug}`;
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: toggleId,
-    role: "toggle",
-    label,
-    group: "app-permissions",
-    status: granted ? "on" : "off",
-    getValue: () => granted,
-    onActivate: disabled ? undefined : () => onToggle(slug, ns, !granted),
-  });
   return (
-    <SettingsRow
-      htmlFor={toggleId}
+    <SettingsSwitchRow
+      agentId={toggleId}
+      group="app-permissions"
       label={NAMESPACE_LABELS[ns]}
+      agentLabel={`Toggle ${NAMESPACE_LABELS[ns]} for ${slug}`}
       description={
         summary ? (
           <span className="block truncate font-mono text-xs text-txt">
@@ -317,17 +307,9 @@ function AppPermissionToggle({
           </span>
         ) : undefined
       }
-      control={
-        <Switch
-          ref={ref}
-          id={toggleId}
-          checked={granted}
-          disabled={disabled}
-          onCheckedChange={(checked) => onToggle(slug, ns, checked)}
-          aria-label={label}
-          {...agentProps}
-        />
-      }
+      checked={granted}
+      disabled={disabled}
+      onCheckedChange={(checked) => onToggle(slug, ns, checked)}
     />
   );
 }

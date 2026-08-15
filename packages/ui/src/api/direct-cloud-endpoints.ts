@@ -1,35 +1,106 @@
 /**
- * Canonicalizes Eliza Cloud web and API endpoints. Browser navigation and API
- * transport deliberately use different hosts, and both production and staging
- * aliases resolve through this single table.
+ * Canonicalizes Eliza marketing/auth, managed Cloud app, and API endpoints.
+ * Browser login, management navigation, and API transport deliberately use
+ * different hosts, with production and staging aliases resolved here.
  */
 
-export const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://elizacloud.ai";
-export const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
-export const STAGING_DIRECT_CLOUD_BASE_URL = "https://staging.elizacloud.ai";
+import {
+  ELIZA_DOMAIN_CONTRACTS,
+  LEGACY_ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/shared/elizacloud";
+
+export const DEFAULT_DIRECT_CLOUD_BASE_URL =
+  ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin;
+export const DEFAULT_DIRECT_CLOUD_APP_BASE_URL =
+  ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin;
+export const DEFAULT_DIRECT_CLOUD_API_BASE_URL =
+  ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin;
+export const STAGING_DIRECT_CLOUD_BASE_URL =
+  ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin;
+export const STAGING_DIRECT_CLOUD_APP_BASE_URL =
+  ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin;
 export const STAGING_DIRECT_CLOUD_API_BASE_URL =
-  "https://api-staging.elizacloud.ai";
+  ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin;
 
 export const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
-  ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
-  ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
-  ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
-  ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
-  ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
-  ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
-  ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
-  ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
+  ["api.eliza.app", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["eliza.app", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["cloud.eliza.app", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["api-staging.eliza.app", STAGING_DIRECT_CLOUD_API_BASE_URL],
+  ["staging.eliza.app", STAGING_DIRECT_CLOUD_API_BASE_URL],
+  ["cloud-staging.eliza.app", STAGING_DIRECT_CLOUD_API_BASE_URL],
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.marketingHostnames.map(
+    (hostname) => [hostname, DEFAULT_DIRECT_CLOUD_API_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.cloudAppHostnames.map(
+    (hostname) => [hostname, DEFAULT_DIRECT_CLOUD_API_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.cloudApiHostnames.map(
+    (hostname) => [hostname, DEFAULT_DIRECT_CLOUD_API_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.marketingHostnames.map(
+    (hostname) => [hostname, STAGING_DIRECT_CLOUD_API_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.cloudAppHostnames.map(
+    (hostname) => [hostname, STAGING_DIRECT_CLOUD_API_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.cloudApiHostnames.map(
+    (hostname) => [hostname, STAGING_DIRECT_CLOUD_API_BASE_URL] as const,
+  ),
 ]);
 
 const DIRECT_ELIZA_CLOUD_WEB_BY_HOST = new Map([
-  ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
-  ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
-  ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
-  ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
-  ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
-  ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
-  ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
-  ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
+  ["api.eliza.app", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["eliza.app", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["cloud.eliza.app", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["api-staging.eliza.app", STAGING_DIRECT_CLOUD_BASE_URL],
+  ["staging.eliza.app", STAGING_DIRECT_CLOUD_BASE_URL],
+  ["cloud-staging.eliza.app", STAGING_DIRECT_CLOUD_BASE_URL],
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.marketingHostnames.map(
+    (hostname) => [hostname, DEFAULT_DIRECT_CLOUD_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.cloudAppHostnames.map(
+    (hostname) => [hostname, DEFAULT_DIRECT_CLOUD_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.cloudApiHostnames.map(
+    (hostname) => [hostname, DEFAULT_DIRECT_CLOUD_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.marketingHostnames.map(
+    (hostname) => [hostname, STAGING_DIRECT_CLOUD_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.cloudAppHostnames.map(
+    (hostname) => [hostname, STAGING_DIRECT_CLOUD_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.cloudApiHostnames.map(
+    (hostname) => [hostname, STAGING_DIRECT_CLOUD_BASE_URL] as const,
+  ),
+]);
+
+const DIRECT_ELIZA_CLOUD_APP_BY_HOST = new Map([
+  ["api.eliza.app", DEFAULT_DIRECT_CLOUD_APP_BASE_URL],
+  ["eliza.app", DEFAULT_DIRECT_CLOUD_APP_BASE_URL],
+  ["cloud.eliza.app", DEFAULT_DIRECT_CLOUD_APP_BASE_URL],
+  ["api-staging.eliza.app", STAGING_DIRECT_CLOUD_APP_BASE_URL],
+  ["staging.eliza.app", STAGING_DIRECT_CLOUD_APP_BASE_URL],
+  ["cloud-staging.eliza.app", STAGING_DIRECT_CLOUD_APP_BASE_URL],
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.marketingHostnames.map(
+    (hostname) => [hostname, DEFAULT_DIRECT_CLOUD_APP_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.cloudAppHostnames.map(
+    (hostname) => [hostname, DEFAULT_DIRECT_CLOUD_APP_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.cloudApiHostnames.map(
+    (hostname) => [hostname, DEFAULT_DIRECT_CLOUD_APP_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.marketingHostnames.map(
+    (hostname) => [hostname, STAGING_DIRECT_CLOUD_APP_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.cloudAppHostnames.map(
+    (hostname) => [hostname, STAGING_DIRECT_CLOUD_APP_BASE_URL] as const,
+  ),
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.cloudApiHostnames.map(
+    (hostname) => [hostname, STAGING_DIRECT_CLOUD_APP_BASE_URL] as const,
+  ),
 ]);
 
 export function resolveDirectCloudWebBase(cloudBase: string): string {
@@ -37,6 +108,19 @@ export function resolveDirectCloudWebBase(cloudBase: string): string {
   try {
     const host = new URL(normalized).hostname.toLowerCase();
     return DIRECT_ELIZA_CLOUD_WEB_BY_HOST.get(host) ?? normalized;
+  } catch {
+    // error-policy:J3 malformed configured URLs remain explicit unchanged
+    // input; the eventual navigation boundary will reject them.
+    return normalized;
+  }
+}
+
+/** Resolve the browser origin that owns authenticated Cloud management. */
+export function resolveDirectCloudAppBase(cloudBase: string): string {
+  const normalized = cloudBase.replace(/\/+$/, "");
+  try {
+    const host = new URL(normalized).hostname.toLowerCase();
+    return DIRECT_ELIZA_CLOUD_APP_BY_HOST.get(host) ?? normalized;
   } catch {
     // error-policy:J3 malformed configured URLs remain explicit unchanged
     // input; the eventual navigation boundary will reject them.

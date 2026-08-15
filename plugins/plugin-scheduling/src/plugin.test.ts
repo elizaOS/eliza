@@ -1,6 +1,6 @@
 /**
  * Scheduling plugin boot tests cover the seed hook's lifecycle barrier against
- * the runtime service registry.
+ * the runtime service registry and the core TaskService fallback registration.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -71,11 +71,17 @@ describe("scheduling plugin boot", () => {
   });
 
   it("seeds after the registration barrier and registers the fallback pack", async () => {
+    const registerTaskWorker = vi.fn();
+    const createTask = vi.fn(async () => "driver-task-id");
     const runtime = {
       agentId: "agent-1",
       initPromise: Promise.resolve(),
       hasService: () => true,
       getServiceLoadPromise: vi.fn(async () => ({})),
+      getTaskWorker: () => undefined,
+      registerTaskWorker,
+      getTasks: vi.fn(async () => []),
+      createTask,
     } as unknown as IAgentRuntime;
 
     await schedulingPlugin.init?.({}, runtime);
@@ -86,5 +92,14 @@ describe("scheduling plugin boot", () => {
       expect.objectContaining({ id: "fallback-agent-1", fallback: true }),
     );
     expect(mocks.seedPacks).toHaveBeenCalledWith(runtime, mocks.runner);
+    expect(registerTaskWorker).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "SCHEDULED_TASK_RUNNER" }),
+    );
+    expect(createTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "SCHEDULED_TASK_RUNNER",
+        tags: ["queue", "repeat", "scheduling"],
+      }),
+    );
   });
 });

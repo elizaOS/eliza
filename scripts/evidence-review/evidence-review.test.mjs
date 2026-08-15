@@ -4,15 +4,23 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "./generate.mjs";
 import { analyzeImageFile, classifyArtifactPath, inferSource } from "./lib.mjs";
 
 const WHITE_PIXEL_PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQI12P4////fwAJ+wP90YOM8AAAAABJRU5ErkJggg==",
   "base64",
 );
 
@@ -198,6 +206,84 @@ test("--bundle fails fast when a manifest lists a missing file", async () => {
     ]);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /missing from the bundle/);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("rejects malformed numeric limits before creating output", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "evidence-review-args-"));
+  try {
+    const invalidArguments = [
+      "--max-images=1junk",
+      "--max-images=1.5",
+      "--max-images=-1",
+      "--max-images=+1",
+      "--max-images=01",
+      "--max-images=",
+      "--max-images= ",
+      "--max-images=9007199254740992",
+      "--max-artifacts=99",
+      "--max-artifacts=100oops",
+      "--max-files-per-dir=99",
+      "--max-files-per-dir=100.5",
+    ];
+
+    for (const [index, argument] of invalidArguments.entries()) {
+      const outDir = path.join(tmpDir, `out-${index}`);
+      const result = runGenerate([
+        `--out=${outDir}`,
+        "--source=/definitely/missing",
+        "--ocr=off",
+        "--no-open",
+        argument,
+      ]);
+
+      assert.notEqual(result.status, 0, argument);
+      assert.match(result.stderr, /must be|requires a non-empty value/);
+      await assert.rejects(() => stat(outDir));
+    }
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("rejects empty path options during argument parsing", () => {
+  for (const argument of [
+    "--out=",
+    "--out= ",
+    "--source=",
+    "--source= ",
+    "--bundle=",
+    "--bundle= ",
+  ]) {
+    assert.throws(
+      () => parseArgs([argument]),
+      /requires a non-empty value/,
+      argument,
+    );
+  }
+});
+
+test("preserves valid numeric boundary values", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "evidence-review-args-"));
+  try {
+    const outDir = path.join(tmpDir, "out");
+    const result = runGenerate([
+      `--out=${outDir}`,
+      "--source=/definitely/missing",
+      "--ocr=off",
+      "--no-open",
+      "--max-images=0",
+      "--max-artifacts=100",
+      "--max-files-per-dir=100",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const manifest = JSON.parse(
+      await readFile(path.join(outDir, "manifest.json"), "utf8"),
+    );
+    assert.deepEqual(manifest.artifacts, []);
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }

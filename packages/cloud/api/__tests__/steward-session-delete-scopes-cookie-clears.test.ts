@@ -2,7 +2,8 @@
  * Steward session cookie clears must respect environment ownership. Production
  * owns the historical unsuffixed names on the shared parent domain; staging/dev
  * own only their suffixed names and must never delete production's live legacy
- * cookies while their bounded read fallback remains active.
+ * cookies. Post-migration (#14130), the separate legacy clear block is removed
+ * because production's cookieNames already resolve to the unsuffixed names.
  */
 
 import { describe, expect, it } from "vitest";

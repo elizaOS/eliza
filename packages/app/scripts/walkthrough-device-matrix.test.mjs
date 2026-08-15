@@ -3,15 +3,20 @@
 // an attempted lane errors while keeping honest-`n/a` unavailable hosts green
 // (#13573). No device is touched — matrices are fabricated in-process.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   captureIos,
   captureIosDevice,
   computeExitCode,
+  DEFAULT_DURATION_SECONDS,
   erroredLanes,
   iosDeviceConnectionState,
   isLaneRequired,
+  MAX_NODE_TIMER_MS,
   parseArgs,
+  parsePositiveInteger,
   requiredLaneFailures,
   selectIosDevice,
 } from "./walkthrough-device-matrix.mjs";
@@ -82,6 +87,62 @@ describe("walkthrough device matrix required lanes", () => {
 
     assert.equal(args.serial, "device-1");
     assert.equal(args.driveAndroid, false);
+  });
+
+  it("keeps default duration and accepts valid overrides", () => {
+    assert.equal(parseArgs([], {}).duration, DEFAULT_DURATION_SECONDS);
+    assert.equal(parseArgs(["--duration", "1"], {}).duration, 1);
+    assert.equal(parseArgs(["--duration", "30"], {}).duration, 30);
+  });
+
+  it("rejects invalid --duration before any device work", () => {
+    for (const bad of [
+      "",
+      "0",
+      "-3",
+      "1.5",
+      "10junk",
+      "NaN",
+      "Infinity",
+      String(MAX_NODE_TIMER_MS + 1),
+    ]) {
+      assert.throws(() => parseArgs(["--duration", bad], {}), /--duration/);
+    }
+    assert.throws(
+      () => parseArgs(["--duration", "--platform", "ios"], {}),
+      /--duration requires an integer/,
+    );
+  });
+});
+
+describe("parsePositiveInteger", () => {
+  it("accepts complete positive integers in range", () => {
+    assert.equal(parsePositiveInteger("1", "--duration"), 1);
+    assert.equal(
+      parsePositiveInteger(String(MAX_NODE_TIMER_MS), "--duration"),
+      MAX_NODE_TIMER_MS,
+    );
+  });
+});
+
+describe("real CLI rejection for --duration", () => {
+  const scriptPath = fileURLToPath(
+    new URL("./walkthrough-device-matrix.mjs", import.meta.url),
+  );
+
+  it("exits non-zero with a named flag before creating reports", () => {
+    const result = spawnSync(
+      process.execPath,
+      [scriptPath, "--duration", "junk"],
+      {
+        encoding: "utf8",
+        env: { PATH: process.env.PATH ?? "" },
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /--duration/);
+    assert.doesNotMatch(result.stdout, /=== walkthrough device matrix ===/);
+    assert.doesNotMatch(result.stdout + result.stderr, /reports\/walkthrough/);
   });
 });
 

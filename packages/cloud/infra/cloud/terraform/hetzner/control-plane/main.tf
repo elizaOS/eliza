@@ -100,12 +100,12 @@ resource "cloudflare_dns_record" "control_plane" {
   name    = "${var.control_plane_hostname_prefix}-${var.environment}-${each.key}.elizacloud.ai"
   type    = "A"
   content = each.value.ipv4_address
-  # CF Workers fetch `https://eliza-${env}-N.elizacloud.ai` to proxy agent
+  # CF Workers fetch `https://eliza-${env}-N.eliza.app` to proxy agent
   # traffic to the agent-router on this VM (cloud-api Worker
   # AGENT_ROUTER_ORIGIN_HOST). With proxied=true, CF terminates TLS with the
   # visitor and accepts whatever cert the origin presents (zone SSL = "Full"
   # — see cloud-init/bootstrap.yaml.tftpl which generates a self-signed
-  # *.elizacloud.ai cert at boot). With proxied=false the Worker hits the
+  # *.eliza.app cert at boot). With proxied=false the Worker hits the
   # origin directly and verifies the self-signed cert — that fails, and
   # dashboard chat bridge calls return "Sandbox bridge is unreachable".
   # TTL must be 1 ("Auto") when proxied=true per Cloudflare API.
@@ -126,6 +126,24 @@ resource "cloudflare_dns_record" "control_plane" {
   #     which causes a ~5s NXDOMAIN window during destroy+create. The TTL=1
   #     ("Auto", proxied) edge cache mostly masks it, but not zero-risk;
   #     prefer the dashboard edit for prod cutovers.
+  lifecycle {
+    ignore_changes = [content]
+  }
+}
+
+# Add the canonical control-plane host without mutating the address of the
+# existing legacy DNS resource in Terraform state.
+resource "cloudflare_dns_record" "canonical_control_plane" {
+  for_each = hcloud_server.control_plane
+
+  zone_id = var.eliza_app_zone_id
+  name    = "${var.control_plane_hostname_prefix}-${var.environment}-${each.key}.eliza.app"
+  type    = "A"
+  content = each.value.ipv4_address
+  ttl     = 1
+  proxied = true
+  comment = "canonical eliza control-plane ingress for ${each.value.name} (managed by terraform/hetzner/control-plane)"
+
   lifecycle {
     ignore_changes = [content]
   }
@@ -168,6 +186,22 @@ resource "cloudflare_dns_record" "headscale" {
   # the operator cuts over deliberately (dashboard edit, or
   # `terraform apply -replace=cloudflare_dns_record.headscale["1"]`) once the
   # new CP's headscale is armed and healthy.
+  lifecycle {
+    ignore_changes = [content]
+  }
+}
+
+resource "cloudflare_dns_record" "canonical_headscale" {
+  for_each = { for k, v in hcloud_server.control_plane : k => v if k == "1" }
+
+  zone_id = var.eliza_app_zone_id
+  name    = var.canonical_headscale_hostname
+  type    = "A"
+  content = each.value.ipv4_address
+  ttl     = 300
+  proxied = false
+  comment = "canonical eliza headscale coordination server on ${each.value.name} (managed by terraform/hetzner/control-plane)"
+
   lifecycle {
     ignore_changes = [content]
   }

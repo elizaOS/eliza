@@ -24,7 +24,7 @@ app.get("/", async (c) => {
     }
 
     const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const defaultReturnPath = "/dashboard/settings?tab=connections";
+    const defaultReturnPath = "/cloud/settings?tab=connections";
     const safeReturnTarget = resolveSafeRedirectTarget(
       c.req.query("returnUrl"),
       baseUrl,

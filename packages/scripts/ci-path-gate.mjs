@@ -6,7 +6,7 @@
 import { spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 
-const CONFIGS = {
+export const CONFIGS = {
   test: {
     title: "Tests path gate",
     outputs: [
@@ -72,6 +72,7 @@ const CONFIGS = {
           ".github/workflows/test.yml",
           ".github/actions/setup-bun-workspace/**",
           "packages/scripts/ci-path-gate.mjs",
+          ".github/workflows/classify-paths.yml",
         ],
         reason: "test workflow or shared CI setup",
       },
@@ -171,11 +172,7 @@ const CONFIGS = {
     failSafe: {
       lanes: ["server"],
       codeRoots: ["packages/**", "plugins/**"],
-      ignore: [
-        "packages/docs/**",
-        "packages/homepage/**",
-        "packages/cloud/docs-redirect/**",
-      ],
+      ignore: ["packages/docs/**", "packages/homepage/**"],
       reason:
         "unmapped code path - no lane rule matched; running the server lane as a fail-safe so a code change can never skip every test lane",
     },
@@ -208,6 +205,7 @@ const CONFIGS = {
           ".github/workflows/scenario-pr.yml",
           ".github/actions/setup-bun-workspace/**",
           "packages/scripts/ci-path-gate.mjs",
+          ".github/workflows/classify-paths.yml",
         ],
         reason: "scenario workflow or shared CI setup",
       },
@@ -263,6 +261,7 @@ const CONFIGS = {
           ".github/workflows/docker-ci-smoke.yml",
           ".github/actions/setup-bun-workspace/**",
           "packages/scripts/ci-path-gate.mjs",
+          ".github/workflows/classify-paths.yml",
           "package.json",
           "bun.lock",
           "bunfig.toml",
@@ -302,6 +301,7 @@ const CONFIGS = {
           ".github/workflows/dev-smoke.yml",
           ".github/actions/setup-bun-workspace/**",
           "packages/scripts/ci-path-gate.mjs",
+          ".github/workflows/classify-paths.yml",
           "package.json",
           "bun.lock",
           "packages/app/**",
@@ -460,7 +460,10 @@ function applyFailSafe(config, changedFiles, matchedPaths, matchesByLane) {
   }
 }
 
-function evaluate(config, { eventName, labels, base, head, changedFilesPath }) {
+export function evaluate(
+  config,
+  { eventName, labels, base, head, changedFilesPath },
+) {
   const matchesByLane = new Map(config.outputs.map((output) => [output, []]));
   let changedFiles = [];
 

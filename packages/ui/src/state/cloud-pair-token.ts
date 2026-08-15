@@ -1,24 +1,20 @@
 /**
- * Delete channel for the durable cloud-pair API token (#16666).
+ * Removes durable Cloud-pair credentials from both browser storage channels.
  *
- * `persistCloudPairApiToken` (CloudPairRelay) writes the key into BOTH
- * sessionStorage and localStorage so an installed PWA survives relaunch; boot
- * adoption (packages/app main.tsx) then re-adopts whatever it finds on every
- * launch. Until this module existed there was no remover anywhere, so a
- * rotated/revoked agent credential was re-adopted forever. Kept as its own
- * module (not folded into the persistence grab-bag) because future explicit
- * flows — sign-out, unpair, agent deletion — need the same clear.
+ * The write path mirrors each owner-scoped key into sessionStorage and
+ * localStorage, so sign-out, unpairing, and agent deletion must clear both.
  *
- * `clearStalePairCredentialsForAgent` is the only purge callers should reach
- * for: it demands a target agent and clears nothing unless the persisted state
- * actually belongs to that agent. The raw `clearCloudPairApiToken` stays
- * exported for the explicit-flow clears above.
+ * Targeted stale-credential purges require a proven agent owner and preserve
+ * every unrelated profile, active-server credential, and loopback owner hint.
  */
 
 import {
+  CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
+  cloudPairTokenKeyForAgent,
+} from "@elizaos/shared/contracts";
+import {
   CLOUD_PAIR_LOCAL_STORAGE_KEY,
   CLOUD_PAIR_SESSION_STORAGE_KEY,
-  cloudPairTokenKeyForAgent,
 } from "../components/auth/CloudPairRelay";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
@@ -67,6 +63,38 @@ function removePairKeyFromBothStorages(key: string): void {
       window.sessionStorage.removeItem(key);
     }
   }, key);
+}
+
+/** Remove a loopback owner hint only when it names the credential being purged. */
+function clearLocalOwnerHintForAgent(agentId: string): void {
+  try {
+    if (
+      window.localStorage.getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY) === agentId
+    ) {
+      shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
+    }
+  } catch (storageError) {
+    // error-policy:J6 a storage backend that cannot be read cannot safely have
+    // its possibly unrelated owner hint removed.
+    console.warn(
+      "Could not inspect localStorage for the cloud-pair owner-hint purge.",
+      storageError,
+    );
+  }
+  try {
+    if (
+      window.sessionStorage.getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY) === agentId
+    ) {
+      window.sessionStorage.removeItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
+    }
+  } catch (storageError) {
+    // error-policy:J6 preserve an unreadable hint rather than deleting another
+    // agent's in-flight loopback owner selection.
+    console.warn(
+      "Could not inspect sessionStorage for the cloud-pair owner-hint purge.",
+      storageError,
+    );
+  }
 }
 
 /** Prefix for all per-agent cloud-pair token keys */
@@ -154,11 +182,13 @@ export function clearCloudPairApiToken(agentId?: string): void {
 
   if (scopedKey) {
     removePairKeyFromBothStorages(scopedKey);
+    clearLocalOwnerHintForAgent(agentId?.trim() ?? "");
   } else {
     // No agentId resolved — explicit disconnect with global intent.
     // Clear ALL scoped keys + legacy key from both storages.
     clearAllScopedCloudPairKeys();
     clearAllScopedCloudPairKeysSession();
+    removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
   }
 }
 

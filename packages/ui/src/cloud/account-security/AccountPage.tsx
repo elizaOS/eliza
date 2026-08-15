@@ -1,7 +1,7 @@
 /**
  * Standalone Account console page mounted by the cloud router shell at
  * `dashboard/account` — profile/identity management on the apex console
- * (elizacloud.ai), where the in-app Settings view never mounts. Thin wrapper
+ * (`cloud.eliza.app`). Thin wrapper
  * around the self-loading {@link AccountSurface} (the same body the
  * `cloud-account` Settings section renders in the app).
  *
@@ -26,7 +26,7 @@ export function AccountPage() {
       {/* Security lost its sidebar slot in the launch nav cut; keep it one
           click away from the account it belongs to. */}
       <Link
-        to="/dashboard/security"
+        to="/cloud/security"
         className="mt-6 flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-4 transition-colors hover:border-accent/40 hover:bg-surface"
       >
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent/12 text-accent">

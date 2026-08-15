@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildOidcResumeTarget,
   configuredOidcIssuerUrl,
+  prepareOidcResumeTarget,
   resolveOidcIssuerOrigin,
 } from "./oidc-continue";
 
@@ -98,6 +99,17 @@ describe("resolveOidcIssuerOrigin", () => {
     ).toBeNull();
   });
 
+  it.each(["javascript:alert(1)", "data:text/plain,issuer", "file:///api"])(
+    "rejects a non-HTTP issuer scheme: %s",
+    (issuer) => {
+      withIssuer(issuer);
+      expect(resolveOidcIssuerOrigin("staging.eliza.app")).toBeNull();
+      expect(buildOidcResumeTarget(RID, "staging.eliza.app")).toEqual({
+        status: "issuer_unconfigured",
+      });
+    },
+  );
+
   it("reads only the VITE_ name Vite actually exposes to the bundle", () => {
     // The Next-era name was accepted here as a fallback, but Vite only inlines
     // `VITE_`-prefixed members, so that branch could never fire in a real build
@@ -171,5 +183,69 @@ describe("buildOidcResumeTarget", () => {
     expect(buildOidcResumeTarget("nope", "console.example").status).toBe(
       "invalid_request_id",
     );
+  });
+});
+
+describe("prepareOidcResumeTarget", () => {
+  it("syncs the stored session to the configured staging issuer before resume", async () => {
+    withIssuer("https://api-staging.eliza.app");
+    const events: string[] = [];
+
+    const target = await prepareOidcResumeTarget(
+      RID,
+      "staging.eliza.app",
+      "https://staging.eliza.app",
+      {
+        readToken: () => "  steward-access-token  ",
+        syncSession: async (token, endpoint) => {
+          events.push(`${token} ${endpoint}`);
+        },
+      },
+    );
+
+    expect(events).toEqual([
+      "steward-access-token https://api-staging.eliza.app/api/auth/steward-session",
+    ]);
+    expect(target).toEqual({
+      status: "ok",
+      url: `https://api-staging.eliza.app/api/oidc/authorize/resume?rid=${RID}`,
+    });
+  });
+
+  it("does not sync an invalid request id", async () => {
+    withIssuer("https://api-staging.eliza.app");
+    const syncSession = vi.fn(() => Promise.resolve());
+
+    await expect(
+      prepareOidcResumeTarget("invalid", "staging.eliza.app", undefined, {
+        readToken: () => "token",
+        syncSession,
+      }),
+    ).resolves.toEqual({ status: "invalid_request_id" });
+    expect(syncSession).not.toHaveBeenCalled();
+  });
+
+  it("does not consume the request without a stored Steward session", async () => {
+    withIssuer("https://api-staging.eliza.app");
+    const syncSession = vi.fn(() => Promise.resolve());
+
+    await expect(
+      prepareOidcResumeTarget(RID, "staging.eliza.app", undefined, {
+        readToken: () => "  ",
+        syncSession,
+      }),
+    ).resolves.toEqual({ status: "session_missing" });
+    expect(syncSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps the parked request unconsumed when issuer session sync fails", async () => {
+    withIssuer("https://api-staging.eliza.app");
+
+    await expect(
+      prepareOidcResumeTarget(RID, "staging.eliza.app", undefined, {
+        readToken: () => "token",
+        syncSession: () => Promise.reject(new Error("network unavailable")),
+      }),
+    ).resolves.toEqual({ status: "session_sync_failed" });
   });
 });

@@ -10,7 +10,7 @@
  *
  * Connect-link intent (#11332 design §5): when the link carries `connect=1`,
  * accepting routes straight to the org Credentials tab with the contribute
- * modal open (`/dashboard/organization?tab=credentials&contribute=1`) so the
+ * modal open (`/cloud/organization?tab=credentials&contribute=1`) so the
  * teammate can pool their API key immediately. The param is preserved through
  * the login returnTo round-trip.
  */
@@ -160,7 +160,7 @@ export default function InviteAcceptPage() {
         // connect=1 → land on the Credentials tab with the contribute modal
         // open so the new member can pool their API key immediately (#11332).
         const destination = connectIntent
-          ? "/dashboard/organization?tab=credentials&contribute=1"
+          ? "/cloud/organization?tab=credentials&contribute=1"
           : defaultLoginReturnTo();
         setTimeout(() => navigate(destination), 1500);
       } else {

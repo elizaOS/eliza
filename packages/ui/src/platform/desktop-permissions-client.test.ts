@@ -1,15 +1,22 @@
 /**
- * Unit coverage for the desktop permission client's runtime-permission merge.
- *
- * Focus: the security-relevant `website-blocking` control must NOT keep an
- * optimistic bridged snapshot when its authoritative runtime check fails.
- * A failed check has to fail closed to an explicit unverified state so the
- * permissions UI cannot advertise a blocking control as enforced when the
- * runtime could not confirm it.
+ * Covers desktop permission authority, focused native refreshes, and runtime
+ * merge behavior. Security controls fail closed when their authoritative
+ * source cannot verify them, while non-macOS notifications retain the renderer
+ * API that supplies their concrete platform state.
  */
 import type { AllPermissionsState, PermissionState } from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mergeRuntimePermissions } from "./desktop-permissions-client";
+
+const invokeDesktopBridgeRequestMock = vi.hoisted(() => vi.fn());
+vi.mock("../bridge/electrobun-rpc", () => ({
+  invokeDesktopBridgeRequest: invokeDesktopBridgeRequestMock,
+}));
+
+import {
+  checkDesktopPermissionFresh,
+  installDesktopPermissionsClientPatch,
+  mergeRuntimePermissions,
+} from "./desktop-permissions-client";
 
 const warnSpy = vi.fn();
 vi.mock("@elizaos/logger", () => ({
@@ -44,6 +51,8 @@ function baseSnapshot(websiteBlocking: PermissionState): AllPermissionsState {
 
 afterEach(() => {
   warnSpy.mockClear();
+  invokeDesktopBridgeRequestMock.mockReset();
+  vi.unstubAllGlobals();
 });
 
 describe("mergeRuntimePermissions", () => {
@@ -119,5 +128,159 @@ describe("mergeRuntimePermissions", () => {
 
     expect(merged["website-blocking"].platform).toBe("win32");
     expect(merged["website-blocking"].status).toBe("not-determined");
+  });
+});
+
+describe("installDesktopPermissionsClientPatch", () => {
+  it("force-refreshes only the permission being re-checked", async () => {
+    const fresh = permissionState({
+      id: "notifications",
+      status: "granted",
+      canRequest: false,
+    });
+    invokeDesktopBridgeRequestMock.mockResolvedValue(fresh);
+
+    await expect(checkDesktopPermissionFresh("notifications")).resolves.toEqual(
+      fresh,
+    );
+    expect(invokeDesktopBridgeRequestMock).toHaveBeenCalledWith({
+      rpcMethod: "permissionsCheck",
+      ipcChannel: "permissions:check",
+      params: { id: "notifications", forceRefresh: true },
+    });
+  });
+
+  it("keeps native notification authorization authoritative when WKWebView misreports its platform", async () => {
+    vi.stubGlobal("navigator", { platform: "Linux x86_64" });
+    const requestRendererPermission = vi.fn().mockResolvedValue("denied");
+    vi.stubGlobal("Notification", {
+      permission: "denied",
+      requestPermission: requestRendererPermission,
+    });
+    const bridged = permissionState({
+      id: "notifications",
+      status: "not-determined",
+      canRequest: true,
+    });
+    invokeDesktopBridgeRequestMock.mockResolvedValue(bridged);
+    const requestPermission = vi.fn(async (_id: PermissionState["id"]) =>
+      permissionState({ id: "notifications", status: "denied" }),
+    );
+    const client = {
+      getPermissions: vi.fn(),
+      getPermission: vi.fn(),
+      requestPermission,
+      openPermissionSettings: vi.fn(),
+      refreshPermissions: vi.fn(),
+      setShellEnabled: vi.fn(),
+      isShellEnabled: vi.fn(),
+    };
+
+    const restore = installDesktopPermissionsClientPatch(client as never);
+    try {
+      await expect(client.getPermission("notifications")).resolves.toEqual(
+        bridged,
+      );
+      await expect(client.requestPermission("notifications")).resolves.toEqual(
+        bridged,
+      );
+      expect(invokeDesktopBridgeRequestMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rpcMethod: "permissionsRequest",
+          params: { id: "notifications" },
+        }),
+      );
+      expect(requestRendererPermission).not.toHaveBeenCalled();
+      expect(requestPermission).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps the renderer notification fallback on non-macOS desktops", async () => {
+    vi.stubGlobal("navigator", { platform: "Win32" });
+    const requestPermission = vi.fn().mockResolvedValue("granted");
+    vi.stubGlobal("Notification", {
+      permission: "default",
+      requestPermission,
+    });
+    invokeDesktopBridgeRequestMock.mockResolvedValue(
+      permissionState({
+        id: "notifications",
+        status: "not-determined",
+        canRequest: true,
+        platform: "win32",
+      }),
+    );
+    const originalRequestPermission = vi.fn();
+    const client = {
+      getPermissions: vi.fn(),
+      getPermission: vi.fn(),
+      requestPermission: originalRequestPermission,
+      openPermissionSettings: vi.fn(),
+      refreshPermissions: vi.fn(),
+      setShellEnabled: vi.fn(),
+      isShellEnabled: vi.fn(),
+    };
+
+    const restore = installDesktopPermissionsClientPatch(client as never);
+    try {
+      await expect(client.requestPermission("notifications")).resolves.toEqual(
+        expect.objectContaining({
+          id: "notifications",
+          status: "granted",
+          canRequest: false,
+          platform: "win32",
+        }),
+      );
+      expect(requestPermission).toHaveBeenCalledTimes(1);
+      expect(originalRequestPermission).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps the renderer notification fallback in a macOS web browser", async () => {
+    vi.stubGlobal("navigator", { platform: "MacIntel" });
+    const requestPermission = vi.fn().mockResolvedValue("granted");
+    vi.stubGlobal("Notification", {
+      permission: "default",
+      requestPermission,
+    });
+    invokeDesktopBridgeRequestMock.mockResolvedValue(null);
+    const originalGetPermission = vi.fn();
+    const originalRequestPermission = vi.fn();
+    const client = {
+      getPermissions: vi.fn(),
+      getPermission: originalGetPermission,
+      requestPermission: originalRequestPermission,
+      openPermissionSettings: vi.fn(),
+      refreshPermissions: vi.fn(),
+      setShellEnabled: vi.fn(),
+      isShellEnabled: vi.fn(),
+    };
+
+    const restore = installDesktopPermissionsClientPatch(client as never);
+    try {
+      await expect(client.getPermission("notifications")).resolves.toEqual(
+        expect.objectContaining({
+          id: "notifications",
+          status: "not-determined",
+          platform: "darwin",
+        }),
+      );
+      await expect(client.requestPermission("notifications")).resolves.toEqual(
+        expect.objectContaining({
+          id: "notifications",
+          status: "granted",
+          platform: "darwin",
+        }),
+      );
+      expect(requestPermission).toHaveBeenCalledTimes(1);
+      expect(originalGetPermission).not.toHaveBeenCalled();
+      expect(originalRequestPermission).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
   });
 });

@@ -2,6 +2,18 @@
  * Exchanges one-time Cloud pairing links, persists the resulting agent
  * credential, and renders the browser/native recovery surfaces.
  */
+import {
+  CLOUD_PAIR_LEGACY_STORAGE_KEY,
+  type CloudPairRelaySession,
+  cloudPairTokenKeyForAgent,
+  parseCloudPairRelaySession,
+} from "@elizaos/shared/contracts";
+import {
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+  isElizaCloudControlPlaneHostname,
+  isElizaDedicatedAgentHostname,
+} from "@elizaos/shared/elizacloud";
 import { useEffect, useState } from "react";
 import { getBootConfig, setBootConfig } from "../../config/boot-config";
 import {
@@ -10,20 +22,14 @@ import {
 } from "../../utils/cloud-agent-base";
 import { setElizaApiToken } from "../../utils/eliza-globals";
 
-export const CLOUD_PAIR_SESSION_STORAGE_KEY = "eliza:cloud-pair:api-token";
+export { cloudPairTokenKeyForAgent };
+
+export const CLOUD_PAIR_SESSION_STORAGE_KEY = CLOUD_PAIR_LEGACY_STORAGE_KEY;
 export const CLOUD_PAIR_LOCAL_STORAGE_KEY = CLOUD_PAIR_SESSION_STORAGE_KEY;
 
-/**
- * Per-agent storage key for the durable cloud-pair credential (#17579). The
- * key embeds the owning agent id so a token persisted for agent A can never be
- * read, adopted, or mirrored by a boot targeting agent B — the boot adopter
- * only ever looks up the key for the agent it resolved from the origin.
- */
-export function cloudPairTokenKeyForAgent(agentId: string): string {
-  return `eliza:cloud-pair:api-token:${agentId}`;
-}
-
 interface PairExchangeResponse {
+  agentId?: unknown;
+  agentName?: unknown;
   apiKey?: unknown;
   code?: unknown;
   error?: unknown;
@@ -63,25 +69,21 @@ export function isElizaCloudHostedLocation(
     return false;
   }
   const hostname = locationLike.hostname.trim().toLowerCase();
-  return hostname === "elizacloud.ai" || hostname.endsWith(".elizacloud.ai");
+  return (
+    isElizaCloudControlPlaneHostname(hostname) ||
+    isElizaDedicatedAgentHostname(hostname)
+  );
 }
 
 export function resolveCloudPairExchangeUrl(cloudApiBase?: string): string {
   const configured = cloudApiBase?.trim() || getBootConfig().cloudApiBase;
-  const base = (configured || "https://elizacloud.ai")
+  const base = (configured || ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin)
     .replace(/\/+$/, "")
     .replace(/\/api\/v1\/?$/, "");
   const url = new URL(`${base}/api/auth/pair`);
-  const apiHost = new Map([
-    ["elizacloud.ai", "api.elizacloud.ai"],
-    ["www.elizacloud.ai", "api.elizacloud.ai"],
-    ["app.elizacloud.ai", "api.elizacloud.ai"],
-    ["dev.elizacloud.ai", "api.elizacloud.ai"],
-    ["staging.elizacloud.ai", "api-staging.elizacloud.ai"],
-    ["app-staging.elizacloud.ai", "api-staging.elizacloud.ai"],
-  ]).get(url.hostname.toLowerCase());
-  if (apiHost) {
-    url.hostname = apiHost;
+  const environment = classifyElizaHostname(url.hostname).environment;
+  if (environment) {
+    url.host = new URL(ELIZA_DOMAIN_CONTRACTS[environment].cloudApiOrigin).host;
   }
   return url.toString();
 }
@@ -94,7 +96,9 @@ export function resolveNativeCloudPairExchangeUrl(
   return url.toString();
 }
 
-async function readCloudPairResponse(response: Response): Promise<string> {
+async function readCloudPairResponse(
+  response: Response,
+): Promise<CloudPairRelaySession> {
   // error-policy:J3 malformed dependency responses are handled by the same
   // typed failure path as a successful response missing its required API key.
   const body = (await response
@@ -113,7 +117,8 @@ async function readCloudPairResponse(response: Response): Promise<string> {
     throw new CloudPairExchangeError(message, response.status, code);
   }
 
-  if (typeof body?.apiKey !== "string" || !body.apiKey.trim()) {
+  const session = parseCloudPairRelaySession(body);
+  if (!session) {
     throw new CloudPairExchangeError(
       "Cloud did not return an agent session.",
       502,
@@ -121,7 +126,7 @@ async function readCloudPairResponse(response: Response): Promise<string> {
     );
   }
 
-  return body.apiKey.trim();
+  return session;
 }
 
 export async function exchangeCloudPairToken(
@@ -131,7 +136,7 @@ export async function exchangeCloudPairToken(
     fetchFn?: typeof fetch;
     cloudApiBase?: string;
   } = {},
-): Promise<string> {
+): Promise<CloudPairRelaySession> {
   const fetchFn = options.fetchFn ?? fetch;
   const response = await fetchFn(
     resolveCloudPairExchangeUrl(options.cloudApiBase),
@@ -161,7 +166,7 @@ export async function exchangeAuthenticatedNativeCloudPairToken(
     fetchFn?: typeof fetch;
     cloudApiBase?: string;
   },
-): Promise<string> {
+): Promise<CloudPairRelaySession> {
   const fetchFn = options.fetchFn ?? fetch;
   const response = await fetchFn(
     resolveNativeCloudPairExchangeUrl(options.cloudApiBase),
@@ -289,18 +294,10 @@ export function resolveCloudHostedAgentUrl(
     : window.location,
 ): string {
   const hostname = locationLike?.hostname.trim().toLowerCase() ?? "";
-  const staging =
-    hostname === "staging.elizacloud.ai" ||
-    hostname === "app-staging.elizacloud.ai" ||
-    hostname.endsWith(".staging.elizacloud.ai");
-  const base = staging
-    ? "https://staging.elizacloud.ai"
-    : "https://elizacloud.ai";
-  const agentId = hostname.endsWith(".staging.elizacloud.ai")
-    ? hostname.slice(0, -".staging.elizacloud.ai".length)
-    : hostname.endsWith(".elizacloud.ai")
-      ? hostname.slice(0, -".elizacloud.ai".length)
-      : "";
+  const classified = classifyElizaHostname(hostname);
+  const environment = classified.environment ?? "production";
+  const base = ELIZA_DOMAIN_CONTRACTS[environment].cloudAppOrigin;
+  const agentId = classified.agentId ?? "";
   const agentPath =
     agentId &&
     !["www", "app", "app-staging", "api", "api-staging", "staging"].includes(
@@ -308,7 +305,7 @@ export function resolveCloudHostedAgentUrl(
     )
       ? `/${encodeURIComponent(agentId)}`
       : "";
-  return `${base}/dashboard/agents${agentPath}`;
+  return `${base}/cloud/agents${agentPath}`;
 }
 
 type CloudPairStatus =
@@ -319,7 +316,7 @@ type CloudPairStatus =
 export type CloudPairExchangeFn = (
   token: string,
   options?: { signal?: AbortSignal },
-) => Promise<string>;
+) => Promise<CloudPairRelaySession>;
 
 export interface CloudPairRelayProps {
   token: string;
@@ -485,39 +482,22 @@ export function CloudPairRelay({
     let active = true;
 
     exchangeFn(token, { signal: controller.signal })
-      .then((apiToken) => {
+      .then(({ apiKey, agentId }) => {
         if (!active) return;
-        // Resolve the owning agent the same way the boot adopter (main.tsx)
-        // does: the app can be served from a non-dedicated origin while
-        // targeting a dedicated agent via the boot apiBase. Mirror that
-        // resolution so the persisted key is bound to the true owner and the
-        // writer never hard-fails on a resolvable target (#17579).
         const origin =
           typeof window === "undefined" ? null : window.location.origin;
-        const apiBase = isDedicatedCloudAgentBase(origin)
-          ? origin
-          : getBootConfig().apiBase?.trim();
-        const owner = isDedicatedCloudAgentBase(apiBase)
-          ? dedicatedCloudAgentIdFromBase(apiBase)
+        const originOwner = isDedicatedCloudAgentBase(origin)
+          ? dedicatedCloudAgentIdFromBase(origin)
           : null;
-        if (owner) {
-          persistFn(apiToken, owner);
-          onPaired();
-          return;
+        if (originOwner && originOwner !== agentId) {
+          throw new CloudPairExchangeError(
+            "Cloud returned a session for a different agent.",
+            502,
+            "pairing_owner_mismatch",
+          );
         }
-        // A pairing target that cannot be resolved to a dedicated cloud
-        // agent is not one we may stamp or mirror the credential durably.
-        // The one-time token is already spent, so the exchanged bearer is
-        // installed for THIS page session only (no storage write) and the
-        // user sees a visibly distinct session-only state — never a plain
-        // success that silently dropped the credential.
-        console.warn(
-          "Cloud pair exchange succeeded but no owning agent could be " +
-            "resolved from origin or boot base; credential installed for " +
-            "this session only, not persisted.",
-        );
-        installCloudPairApiTokenForSession(apiToken);
-        setStatus({ phase: "session-only" });
+        persistFn(apiKey, agentId);
+        onPaired();
       })
       .catch((error) => {
         if (!active || controller.signal.aborted) return;

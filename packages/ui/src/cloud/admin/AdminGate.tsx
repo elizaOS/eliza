@@ -1,7 +1,7 @@
 /**
  * Role gate + chrome for the in-app Eliza Cloud admin surfaces.
  *
- * Every admin route (`/dashboard/admin*`) wraps its body in {@link AdminGate}.
+ * Every admin route (`/cloud/admin*`) wraps its body in {@link AdminGate}.
  * The app shell mounts each cloud route flat against the route registry (no
  * shared `<Outlet>` parent), so the gate is a component each route composes
  * with instead of a nested-route layout.
@@ -25,17 +25,17 @@ const ADMIN_NAV: ReadonlyArray<{
   fallback: string;
 }> = [
   {
-    path: "/dashboard/admin",
+    path: "/cloud/admin",
     labelKey: "cloud.admin.nav.moderation",
     fallback: "Moderation",
   },
   {
-    path: "/dashboard/admin/redemptions",
+    path: "/cloud/admin/redemptions",
     labelKey: "cloud.admin.nav.redemptions",
     fallback: "Redemptions",
   },
   {
-    path: "/dashboard/admin/rpc-status",
+    path: "/cloud/admin/rpc-status",
     labelKey: "cloud.admin.nav.rpcStatus",
     fallback: "RPC status",
   },
@@ -57,7 +57,7 @@ function AdminSubNav(): React.JSX.Element {
     <nav className="flex flex-wrap gap-2 text-xs">
       {ADMIN_NAV.map((item) => {
         const active =
-          item.path === "/dashboard/admin"
+          item.path === "/cloud/admin"
             ? location.pathname === item.path
             : location.pathname.startsWith(item.path);
         return (
@@ -113,7 +113,7 @@ export function AdminGate({ children }: AdminGateProps): React.JSX.Element {
           })}
         </p>
         <Link
-          to="/login?returnTo=%2Fdashboard%2Fadmin"
+          to="/login?returnTo=%2Fcloud%2Fadmin"
           className="rounded-sm bg-accent px-4 py-2 text-sm font-medium text-accent-foreground hover:bg-accent-hover"
         >
           {t("cloud.admin.gate.signInCta", { defaultValue: "Sign in" })}

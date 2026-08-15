@@ -45,10 +45,13 @@ import {
   StaleJobExecutionError,
 } from "../../db/repositories/jobs";
 import {
+  type AgentBillingStatus,
   type AgentExecutionTier,
+  type AgentSandboxPoolStatus,
   type AgentSandboxStatus,
   agentSandboxes,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
+  WARM_POOL_ORG_ID,
 } from "../../db/schemas/agent-sandboxes";
 import { apps } from "../../db/schemas/apps";
 import { containers } from "../../db/schemas/containers";
@@ -90,6 +93,7 @@ import {
 } from "./eliza-provision-lock";
 import {
   AdminCanaryCleanupExpectationError,
+  type DeleteAuthorization,
   elizaSandboxService,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
@@ -101,6 +105,7 @@ import {
   JOB_TYPES,
   type ProvisioningJobType,
 } from "./provisioning-job-types";
+import { sendProvisioningWorkerAlert } from "./provisioning-worker-health-monitor";
 import {
   isWaifuWebhookTargetUrl,
   resolveWaifuWebhookTarget,
@@ -111,6 +116,33 @@ import {
   type WakeRestoreIntegrityFailure,
 } from "./wake-restore-integrity";
 import { hasReadyWarmClaimCredential } from "./warm-claim-key-push";
+
+/**
+ * Phase 0 fleet measurement emitted by every scheduled-backup sweep (#15783):
+ * of the running non-pool fleet, how many rows are route-less (no bridge or
+ * the loopback sentinel), snapshot-incapable (image 404s POST /api/snapshot),
+ * never backed up, or older than the staleness threshold — split out for
+ * local-state agents, whose whole state lives on one node's disk.
+ */
+export interface ScheduledBackupFleetReport {
+  running: number;
+  routeless: number;
+  snapshotUnsupported: number;
+  neverBackedUp: number;
+  staleBackup: number;
+  localState: number;
+  localStateStale: number;
+}
+
+const EMPTY_SCHEDULED_BACKUP_FLEET_REPORT: ScheduledBackupFleetReport = {
+  running: 0,
+  routeless: 0,
+  snapshotUnsupported: 0,
+  neverBackedUp: 0,
+  staleBackup: 0,
+  localState: 0,
+  localStateStale: 0,
+};
 
 // ---------------------------------------------------------------------------
 // Job data shapes (hydrated from object storage when jobs.data is offloaded)
@@ -127,6 +159,7 @@ export interface AgentDeleteJobData {
   agentId: string;
   organizationId: string;
   userId: string;
+  authorization?: DeleteAuthorization;
 }
 
 export interface AgentSuspendJobData {
@@ -254,6 +287,11 @@ export interface AgentDeleteJobResult {
   containerStopped: boolean;
   rowDeleted: boolean;
   error?: string;
+  /** Free (attempt-preserving) requeues this delete has spent waiting for a
+   *  transient pre-deletion capture. Persisted on the job result because
+   *  `retryLaterWithoutIncrementingAttempts` deliberately leaves `attempts`
+   *  untouched, so this is the only record that bounds the loop. */
+  captureRetryCount?: number;
 }
 
 export interface AgentSuspendJobResult {
@@ -341,6 +379,17 @@ function agentDeleteJobDataToRecord(data: AgentDeleteJobData): Record<string, un
 
 function agentDeleteJobResultToRecord(result: AgentDeleteJobResult): Record<string, unknown> {
   return { ...result };
+}
+
+/**
+ * Reads the free-requeue tally off a persisted agent_delete result. The stored
+ * value is untrusted JSON, so anything that is not a non-negative integer reads
+ * as zero rather than as a fabricated budget.
+ */
+function readAgentDeleteCaptureRetryCount(result: unknown): number {
+  if (!result || typeof result !== "object") return 0;
+  const value = (result as { captureRetryCount?: unknown }).captureRetryCount;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
 function agentSuspendJobDataToRecord(data: AgentSuspendJobData): Record<string, unknown> {
@@ -449,12 +498,19 @@ function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData
 }
 
 function isAgentDeleteJobData(value: unknown): value is AgentDeleteJobData {
+  const authorization =
+    typeof value === "object" && value !== null
+      ? (value as { authorization?: unknown }).authorization
+      : undefined;
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { agentId?: unknown }).agentId === "string" &&
     typeof (value as { organizationId?: unknown }).organizationId === "string" &&
-    typeof (value as { userId?: unknown }).userId === "string"
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    (authorization === undefined ||
+      authorization === "user_request" ||
+      authorization === "billing_request")
   );
 }
 
@@ -768,6 +824,10 @@ interface LifecycleSandboxRow {
   replacement_cleanup_sandbox_id: string | null;
   deletion_attempt_id: string | null;
   deletion_started_at: Date | null;
+  billing_status: AgentBillingStatus;
+  shutdown_warning_sent_at: Date | null;
+  scheduled_shutdown_at: Date | null;
+  pool_status: AgentSandboxPoolStatus | null;
 }
 
 interface LifecycleJobOptions<TData extends object> {
@@ -806,6 +866,7 @@ interface LifecycleJobOptions<TData extends object> {
    * provision's lifecycle-revision race check).
    */
   validateSandbox?: (sandbox: LifecycleSandboxRow) => void;
+  deleteAuthorization?: DeleteAuthorization;
   /**
    * Called with the hydrated existing job when an active pending/in_progress
    * job of the same type would be reused instead of inserting a new row.
@@ -897,6 +958,12 @@ export const PER_JOB_TIMEOUT_MS = parsePositiveIntEnv(
  *  operators enable the lane. */
 const SNAPSHOT_GATE_RETRY_DELAY_MS = 10 * 60 * 1000;
 const PROVISION_TRANSPORT_RETRY_DELAY_MS = 2 * 60 * 1000;
+/** How many times a transient pre-deletion capture may requeue WITHOUT
+ *  consuming the delete's attempt budget. At the transport retry delay above
+ *  this is ~20 minutes of tolerance for a capture outage; past it the failure
+ *  escalates to an attempt-consuming one so a user-requested delete cannot
+ *  become an immortal (still billed) agent. */
+const PRE_DELETE_CAPTURE_MAX_FREE_RETRIES = 10;
 const WARM_CLAIM_RECOVERY_ORPHAN_GRACE_MS = 2 * 60 * 1000;
 const EXECUTION_LEASE_MS = 60_000;
 const EXECUTION_LEASE_HEARTBEAT_MS = 15_000;
@@ -1010,6 +1077,22 @@ class RetryableProvisionTransportError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "RetryableProvisionTransportError";
+  }
+}
+
+/**
+ * A pre-deletion capture stayed transient past its free-requeue budget. The
+ * free requeue exists so a momentary capture outage does not burn the delete's
+ * finite attempts, but an outage that never clears would requeue forever and
+ * keep a user-requested delete alive (and billed) indefinitely. Past the cap
+ * the failure escalates to an ordinary attempt-consuming failure, so the job
+ * ends in `deletion_failed` where the stuck-delete reconciler and ops can see
+ * it — fail closed, never a fabricated success.
+ */
+class PreDeleteCaptureExhaustedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PreDeleteCaptureExhaustedError";
   }
 }
 
@@ -1250,6 +1333,10 @@ export class ProvisioningJobService {
         replacement_cleanup_sandbox_id: agentSandboxes.replacement_cleanup_sandbox_id,
         deletion_attempt_id: agentSandboxes.deletion_attempt_id,
         deletion_started_at: agentSandboxes.deletion_started_at,
+        billing_status: agentSandboxes.billing_status,
+        shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
+        scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
+        pool_status: agentSandboxes.pool_status,
       })
       .from(agentSandboxes)
       .where(
@@ -1295,6 +1382,23 @@ export class ProvisioningJobService {
     }
 
     opts.validateSandbox?.(sandbox);
+
+    // Mirrors prepareAgentDelete's admission policy in eliza-sandbox.ts: an
+    // unqualified delete of a running dedicated agent fails closed, while
+    // shared-runtime rows and unclaimed warm-pool rows stay deletable by
+    // cleanup paths. The row lookup above is scoped to opts.organizationId,
+    // so that value is the row's organization_id.
+    const isUnclaimedWarmPoolEntry =
+      opts.organizationId === WARM_POOL_ORG_ID && sandbox.pool_status === "unclaimed";
+    if (
+      opts.jobType === JOB_TYPES.AGENT_DELETE &&
+      sandbox.status === "running" &&
+      sandbox.execution_tier !== "shared" &&
+      !isUnclaimedWarmPoolEntry &&
+      !opts.deleteAuthorization
+    ) {
+      throw new ApiError(409, "session_not_ready", "Agent is running; suspend it before deletion");
+    }
 
     const configuredConflicts = opts.mutuallyExclusiveJobTypes ?? [];
     const symmetricConflicts =
@@ -1487,6 +1591,7 @@ export class ProvisioningJobService {
     organizationId: string;
     userId: string;
     webhookUrl?: string;
+    authorization?: DeleteAuthorization;
     expectedIdentity?: {
       agentName: string;
       createdAt: Date | string;
@@ -1508,12 +1613,14 @@ export class ProvisioningJobService {
         agentId: params.agentId,
         organizationId: params.organizationId,
         userId: params.userId,
+        authorization: params.authorization,
       },
       toRecord: agentDeleteJobDataToRecord,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
       webhookUrl: params.webhookUrl,
+      deleteAuthorization: params.authorization,
       maxAttempts: 3,
       // SSH stop is fast (~10s graceful + ~5s force kill), DB cascade is
       // sub-second. 30s matches the Docker deletion-stop command timeout.
@@ -1551,9 +1658,14 @@ export class ProvisioningJobService {
         }
         // A pending row is either unclaimed or was made retryable only after its
         // prior execution acknowledged quiescence.
+        const cancelledAt = new Date();
         const cancelled = await tx
           .update(jobs)
-          .set({ status: "cancelled", updated_at: new Date() })
+          .set({
+            status: "cancelled",
+            completed_at: cancelledAt,
+            updated_at: cancelledAt,
+          })
           .where(
             and(
               eq(jobs.organization_id, params.organizationId),
@@ -1646,6 +1758,14 @@ export class ProvisioningJobService {
             status: "deletion_pending" as const,
             deletion_attempt_id: deletionAttemptId,
             ...(continuesEarlierDeletion ? {} : { deletion_started_at: new Date() }),
+            ...(isRecoveryReEnqueue
+              ? {}
+              : {
+                  deletion_previous_status: sandbox.status,
+                  deletion_previous_billing_status: sandbox.billing_status,
+                  deletion_previous_shutdown_warning_sent_at: sandbox.shutdown_warning_sent_at,
+                  deletion_previous_scheduled_shutdown_at: sandbox.scheduled_shutdown_at,
+                }),
             // Gated on the BROADER continuation signal than the start time is.
             // `continuesEarlierDeletion` only checks `deletion_started_at`, and
             // nothing ties that column to `status`, so a row already sitting in
@@ -2573,20 +2693,84 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Stamp `last_backup_attempt_at` and set/clear `backup_unsupported_reason`
+   * after a snapshot capture attempt (#15783). Best-effort bookkeeping: a
+   * marker write failure must not fail (or retry) the snapshot job itself —
+   * the markers only tune sweep fairness and staleness measurement, and the
+   * next attempt rewrites them.
+   */
+  private async recordSnapshotAttemptMarkers(
+    agentId: string,
+    outcome: "success" | "unsupported" | "other",
+  ): Promise<void> {
+    try {
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          last_backup_attempt_at: new Date(),
+          // "other" failures (agent not running, transport blip) neither prove
+          // nor disprove snapshot capability — leave the marker as it stands.
+          ...(outcome === "unsupported"
+            ? { backup_unsupported_reason: SNAPSHOT_ENDPOINT_UNSUPPORTED }
+            : {}),
+          ...(outcome === "success" ? { backup_unsupported_reason: null } : {}),
+        })
+        .where(eq(agentSandboxes.id, agentId));
+    } catch (error) {
+      // error-policy:J7 attempt-marker bookkeeping must not kill the snapshot
+      // job; the condition it records is re-observed on the next attempt.
+      logger.warn("[provisioning-jobs] failed to record snapshot attempt markers", {
+        agentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
    * Scan running agents and enqueue an `auto` snapshot for any whose last
    * backup is older than `minIntervalMs` (or who have never been backed up).
    * Drives the scheduled-backups cron. Per-agent dedup is handled by the
    * snapshot job's in-flight idempotency, so overlapping ticks are safe.
    * Warm-pool rows (`pool_status IS NOT NULL`) are excluded — they have no
    * user state worth backing up.
+   *
+   * Fairness (#15783): the due set is ordered oldest-successful-backup-first
+   * (never-backed-up rows first), so a due population larger than `maxAgents`
+   * degrades to round-robin-by-staleness instead of planner-dependent
+   * starvation. Rows marked snapshot-incapable (`backup_unsupported_reason`,
+   * set when the agent image 404s POST /api/snapshot) are re-probed only
+   * every `unsupportedRecheckMs` instead of consuming the capped window on
+   * every tick; `last_backup_at` stays success-only throughout so staleness
+   * measurement remains honest.
+   *
+   * The returned `fleet` block is the Phase 0 measurement: how much of the
+   * running non-pool fleet is route-less, snapshot-incapable, never backed
+   * up, or stale — and how many LOCAL-STATE agents (whose entire DB lives on
+   * one node's disk) currently have no backup younger than the staleness
+   * threshold. A non-zero local-state count triggers the ops staleness alert.
    */
   async enqueueScheduledBackups(params?: {
     minIntervalMs?: number;
     maxAgents?: number;
-  }): Promise<{ scanned: number; enqueued: number }> {
+    /** How often a snapshot-incapable row is re-probed. Default 24h. */
+    unsupportedRecheckMs?: number;
+    /**
+     * Age past which a running agent's newest successful backup counts as
+     * stale for alerting. Default 4× `minIntervalMs` (24h at the 6h cadence).
+     */
+    staleAfterMs?: number;
+  }): Promise<{
+    scanned: number;
+    enqueued: number;
+    fleet: ScheduledBackupFleetReport;
+  }> {
     const minIntervalMs = params?.minIntervalMs ?? 6 * 60 * 60 * 1000; // 6h
     const maxAgents = params?.maxAgents ?? 200;
+    const unsupportedRecheckMs = params?.unsupportedRecheckMs ?? 24 * 60 * 60 * 1000;
+    const staleAfterMs = params?.staleAfterMs ?? 4 * minIntervalMs;
     const cutoff = new Date(Date.now() - minIntervalMs);
+    const unsupportedRecheckCutoff = new Date(Date.now() - unsupportedRecheckMs);
+    const staleCutoff = new Date(Date.now() - staleAfterMs);
 
     const due = await dbWrite
       .select({
@@ -2610,9 +2794,50 @@ export class ProvisioningJobService {
           // URL is the loopback sentinel, so it must never be re-enqueued.
           ne(agentSandboxes.bridge_url, UNREACHABLE_BRIDGE_SENTINEL),
           sql`(${agentSandboxes.last_backup_at} IS NULL OR ${agentSandboxes.last_backup_at} < ${cutoff})`,
+          // A row whose image proved snapshot-incapable is only re-probed at
+          // the slow recheck cadence, so it cannot permanently occupy the
+          // capped window (#15783 starvation, worst case 3). An image upgrade
+          // is still noticed within one recheck interval, and any successful
+          // snapshot clears the marker immediately.
+          sql`(${agentSandboxes.backup_unsupported_reason} IS NULL OR ${agentSandboxes.last_backup_attempt_at} IS NULL OR ${agentSandboxes.last_backup_attempt_at} < ${unsupportedRecheckCutoff})`,
         ),
       )
+      // Oldest successful backup first; rows that have NEVER been backed up
+      // lead. Attempt time tiebreaks so equally-stale rows rotate instead of
+      // repeating in planner order.
+      .orderBy(
+        sql`${agentSandboxes.last_backup_at} ASC NULLS FIRST`,
+        sql`${agentSandboxes.last_backup_attempt_at} ASC NULLS FIRST`,
+      )
       .limit(maxAgents);
+
+    const [fleet = EMPTY_SCHEDULED_BACKUP_FLEET_REPORT] = (await dbWrite
+      .select({
+        running: sql<number>`count(*)::int`,
+        routeless: sql<number>`count(*) filter (where ${agentSandboxes.bridge_url} IS NULL OR ${agentSandboxes.bridge_url} = ${UNREACHABLE_BRIDGE_SENTINEL})::int`,
+        snapshotUnsupported: sql<number>`count(*) filter (where ${agentSandboxes.backup_unsupported_reason} IS NOT NULL)::int`,
+        neverBackedUp: sql<number>`count(*) filter (where ${agentSandboxes.last_backup_at} IS NULL)::int`,
+        staleBackup: sql<number>`count(*) filter (where ${agentSandboxes.last_backup_at} IS NULL OR ${agentSandboxes.last_backup_at} < ${staleCutoff})::int`,
+        localState: sql<number>`count(*) filter (where ${agentSandboxes.environment_vars}->>'ELIZA_AGENT_LOCAL_STATE' = '1')::int`,
+        localStateStale: sql<number>`count(*) filter (where ${agentSandboxes.environment_vars}->>'ELIZA_AGENT_LOCAL_STATE' = '1' AND (${agentSandboxes.last_backup_at} IS NULL OR ${agentSandboxes.last_backup_at} < ${staleCutoff}))::int`,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(eq(agentSandboxes.status, "running"), sql`${agentSandboxes.pool_status} IS NULL`),
+      )) as ScheduledBackupFleetReport[];
+
+    if (fleet.localStateStale > 0) {
+      // Local-state agents keep their ENTIRE state (PGlite DB, media, vault)
+      // on one node's local disk; a stale backup there is an unbounded-loss
+      // exposure, not a cosmetic gap. Loud by design; the fixed dedup key
+      // keeps a sustained condition to one PagerDuty incident.
+      await sendProvisioningWorkerAlert({
+        title: "Local-state agents with stale or missing off-box backups",
+        message: `${fleet.localStateStale} running local-state agent(s) have no successful backup within ${Math.round(staleAfterMs / 60_000)} minutes; node loss would exceed the backup RPO (#15783).`,
+        details: { ...fleet, staleAfterMs, minIntervalMs },
+        dedupKey: "agent-backup-staleness",
+      });
+    }
 
     let enqueued = 0;
     for (const agent of due) {
@@ -2635,8 +2860,9 @@ export class ProvisioningJobService {
     logger.info("[provisioning-jobs] Scheduled backups enqueued", {
       scanned: due.length,
       enqueued,
+      fleet,
     });
-    return { scanned: due.length, enqueued };
+    return { scanned: due.length, enqueued, fleet };
   }
 
   /**
@@ -3992,6 +4218,11 @@ export class ProvisioningJobService {
           error: result.error,
         }),
       });
+      if (result.retryable) {
+        throw new RetryableProvisionTransportError(
+          result.error ?? "Snapshot capture temporarily unavailable",
+        );
+      }
       throw new Error(result.error ?? "Unknown agent_restart failure");
     }
 
@@ -4750,6 +4981,21 @@ export class ProvisioningJobService {
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
+    // Attempt bookkeeping (#15783): record that a capture was tried regardless
+    // of outcome, and keep the snapshot-capability marker current —
+    // `last_backup_at` stays success-only so staleness stays honest, while
+    // `backup_unsupported_reason` moves incapable images out of the sweep's
+    // hot window until their slow re-probe. A successful capture always
+    // clears the marker (the image evidently serves the route now).
+    await this.recordSnapshotAttemptMarkers(
+      data.agentId,
+      result.success
+        ? "success"
+        : result.error === SNAPSHOT_ENDPOINT_UNSUPPORTED
+          ? "unsupported"
+          : "other",
+    );
+
     // Scheduled (auto) backups run across every non-pool sandbox, but an idle
     // agent (stopped/sleeping/disconnected — no bridge_url) legitimately has no
     // live state to snapshot. Treating that as a hard failure burned three
@@ -4788,6 +5034,11 @@ export class ProvisioningJobService {
           error: result.error,
         }),
       });
+      if (result.retryable) {
+        throw new RetryableProvisionTransportError(
+          result.error ?? "Snapshot capture temporarily unavailable",
+        );
+      }
       throw new Error(result.error ?? "Unknown agent_snapshot failure");
     }
 
@@ -4833,9 +5084,22 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    const delResult = await elizaSandboxService.executeDeletion(data.agentId, data.organizationId);
+    const delResult = await elizaSandboxService.executeDeletion(
+      data.agentId,
+      data.organizationId,
+      data.authorization,
+    );
 
     if (!delResult.success) {
+      // The free requeue is bounded. `retryLaterWithoutIncrementingAttempts`
+      // leaves `attempts` alone by design, so a capture failure that stays
+      // transient would requeue forever and a user-requested delete would
+      // become an immortal — still billed — agent. Count the free requeues on
+      // the job result and escalate past the cap.
+      const priorCaptureRetries = readAgentDeleteCaptureRetryCount(job.result);
+      const captureRetryExhausted =
+        delResult.retryable && priorCaptureRetries >= PRE_DELETE_CAPTURE_MAX_FREE_RETRIES;
+      const captureRetryCount = delResult.retryable ? priorCaptureRetries + 1 : priorCaptureRetries;
       // Persist a partial result and rethrow so the jobs runner counts an
       // attempt and retries (or marks failed on exhaustion).
       await this.updateClaimedExecution(job, {
@@ -4844,8 +5108,35 @@ export class ProvisioningJobService {
           containerStopped: delResult.containerStopped,
           rowDeleted: false,
           error: delResult.error,
+          ...(captureRetryCount > 0 ? { captureRetryCount } : {}),
         }),
       });
+      if (delResult.retryable && !captureRetryExhausted) {
+        // A transient pre-deletion capture failure retries for free (same
+        // rule the restart/snapshot handlers apply to shutdown's identical
+        // signal) so the PGlite-closing race cannot exhaust the attempt
+        // budget and strand the deletion (#18517).
+        throw new RetryableProvisionTransportError(
+          delResult.error ?? "Pre-deletion capture temporarily unavailable",
+        );
+      }
+      if (captureRetryExhausted) {
+        logger.error(
+          "[provisioning-jobs] agent_delete pre-deletion capture exhausted its free-retry budget",
+          {
+            jobId: job.id,
+            agentId: data.agentId,
+            captureRetryCount: priorCaptureRetries,
+            maxFreeRetries: PRE_DELETE_CAPTURE_MAX_FREE_RETRIES,
+            error: delResult.error,
+          },
+        );
+        throw new PreDeleteCaptureExhaustedError(
+          `Pre-deletion capture stayed unavailable across ${priorCaptureRetries} attempt-preserving retries: ${
+            delResult.error ?? "unknown capture failure"
+          }`,
+        );
+      }
       throw new Error(delResult.error ?? "Unknown agent_delete failure");
     }
 

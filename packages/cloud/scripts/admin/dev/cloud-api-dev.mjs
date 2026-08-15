@@ -228,9 +228,9 @@ async function main() {
   const registrarStub = process.env.ELIZA_CF_REGISTRAR_DEV_STUB ?? "1";
   // In e2e/test mode, neutralize the dedicated-agent public subdomain. The agent
   // detail route synthesizes `web_ui_url = https://<id>.<ELIZA_CLOUD_AGENT_BASE_DOMAIN>`
-  // (wrangler.toml pins `elizacloud.ai`), and the client's readiness probe prefers
+  // (wrangler.toml pins `cloud.eliza.app`), and the client's readiness probe prefers
   // that web_ui_url over the agent's `bridge_url`. There is no Worker-fronted
-  // `*.elizacloud.ai` ingress in the local mock stack, so that subdomain is
+  // `*.cloud.eliza.app` ingress in the local mock stack, so that subdomain is
   // unreachable — the dedicated agent's reachable base IS its `bridge_url` (the
   // control-plane mock). The detail route feeds `containersEnv.publicBaseDomain()`
   // into `getElizaAgentPublicWebUiUrl` as the EXPLICIT `{baseDomain}` option; a

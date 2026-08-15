@@ -4,7 +4,7 @@ WhatsApp connector for elizaOS agents — supports WhatsApp Cloud API (Meta Busi
 
 ## Purpose / Role
 
-Adds WhatsApp messaging to any Eliza agent. The plugin registers `WhatsAppConnectorService` (the main send/receive engine) and `WhatsAppWorkflowCredentialProvider` (supplies credentials to the workflow plugin). It is **opt-in**: the plugin auto-enables when a `connectors.whatsapp` block is present in agent config and not explicitly disabled, or it can be loaded manually in a character file.
+Adds WhatsApp messaging to any Eliza agent. The plugin registers `WhatsAppConnectorService` as the main send/receive engine. It is **opt-in**: the plugin auto-enables when a `connectors.whatsapp` block is present in agent config and not explicitly disabled, or it can be loaded manually in a character file.
 
 ## Plugin Surface
 
@@ -12,7 +12,6 @@ Adds WhatsApp messaging to any Eliza agent. The plugin registers `WhatsAppConnec
 | Name | Class | Description |
 |------|-------|-------------|
 | `whatsapp` | `WhatsAppConnectorService` | Manages Cloud API and Baileys clients, routes inbound messages through `runtime.messageService`, exposes `sendMessage`, webhook verification, and the full `MessageConnector` protocol |
-| `workflow_credential_provider` | `WhatsAppWorkflowCredentialProvider` | Resolves `whatsAppApi` credentials (access token + phone number ID) for the workflow plugin |
 
 ### Routes (registered with `rawPath: true`)
 | Method | Path | Description |
@@ -39,7 +38,6 @@ plugins/plugin-whatsapp/
     runtime-service.ts         WhatsAppConnectorService — core send/receive engine, multi-account support
     setup-routes.ts            HTTP routes for webhook + QR pairing
     connector-account-provider.ts  ConnectorAccountManager adapter (list/create/patch/delete accounts)
-    workflow-credential-provider.ts  Supplies whatsAppApi credentials to workflow plugin
     config.ts                  TypeScript config types (WhatsAppChannelConfig, WhatsAppAccountConfig, etc.)
     accounts.ts                Multi-account resolution: resolveWhatsAppAccount, listEnabledWhatsAppAccounts
     pairing-service.ts         WhatsAppPairingSession — Baileys QR pairing state machine

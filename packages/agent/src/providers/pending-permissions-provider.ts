@@ -7,15 +7,18 @@
  *
  * Surfaces only when `registry.pending()` is non-empty so we never bloat the
  * prompt for the steady state. Each line names the permission, current status,
- * and the most recent feature that was blocked.
+ * and the most recent feature that was blocked. Denied-age labels fail closed
+ * on non-finite timestamps so provider text never shows "NaN days ago".
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
+import {
+  type IAgentRuntime,
+  type Memory,
+  OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  type Provider,
+  type ProviderResult,
+  revalidateOwnerExclusiveDisclosure,
+  type State,
 } from "@elizaos/core";
 import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
@@ -53,7 +56,12 @@ const RELATIVE_TIME_MIN = 60_000;
 const RELATIVE_TIME_HOUR = 60 * RELATIVE_TIME_MIN;
 const RELATIVE_TIME_DAY = 24 * RELATIVE_TIME_HOUR;
 
+/**
+ * Coarse English age for a denied-feature stamp. Non-finite `now` or `then`
+ * return empty so callers can omit the age clause rather than emit "NaN days ago".
+ */
 function formatRelativeTime(now: number, then: number): string {
+  if (!Number.isFinite(now) || !Number.isFinite(then)) return "";
   const delta = Math.max(0, now - then);
   if (delta < RELATIVE_TIME_MIN) return "just now";
   if (delta < RELATIVE_TIME_HOUR) {
@@ -76,7 +84,12 @@ export function formatPendingPermissionLine(
   const block = state.lastBlockedFeature;
   if (state.status === "denied" && block) {
     const when = formatRelativeTime(now, block.at);
-    return `- ${id}: denied ${when} (${block.app}.${block.action})`;
+    const feature = `${block.app}.${block.action}`;
+    // Omit the age clause when the stamp is non-finite; still name the feature.
+    if (when) {
+      return `- ${id}: denied ${when} (${feature})`;
+    }
+    return `- ${id}: denied (${feature})`;
   }
   if (state.status === "denied") {
     return `- ${id}: denied`;
@@ -108,15 +121,30 @@ export const pendingPermissionsProvider: Provider = {
     "Surfaces permissions blocked or not-yet-granted so the planner can decide whether to re-request.",
   descriptionCompressed: "surface blocked permission for planner",
   dynamic: true,
+  // Pending permission state is a cheap, empty-when-healthy planner signal.
+  // It must survive narrow context routing so a blocked capability is visible
+  // on the very turn that needs it instead of being materialized as `general`
+  // and filtered out before the model call.
+  alwaysInResponseState: true,
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   position: -5,
   cacheStable: false,
   cacheScope: "turn",
 
   async get(
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
+    // Keep the provider fail-closed even when invoked directly outside the
+    // central composeState disclosure gate (tests, plugins, or future callers).
+    const disclosure = await revalidateOwnerExclusiveDisclosure(
+      runtime,
+      message,
+    );
+    if (!disclosure.allowed) {
+      return { text: "", values: {}, data: {} };
+    }
     const registry = resolveRegistry(runtime);
     if (!registry) return { text: "", values: {}, data: {} };
 

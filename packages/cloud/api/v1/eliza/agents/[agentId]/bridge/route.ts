@@ -9,7 +9,6 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse, ValidationError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
@@ -20,6 +19,7 @@ import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
 } from "@/lib/services/shared-runtime/resolve-shared-agent";
+import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import type {
   AppEnv,
@@ -48,7 +48,8 @@ async function __hono_POST(
   request: Request,
   _route: { params: Promise<{ agentId: string }> },
   resolved: {
-    agent: AgentSandbox;
+    agent: SharedRuntimeAgent;
+    agentKind?: "sandbox" | "personal";
     namespace: RuntimeDurableObjectNamespace;
     executionCtx: BridgeExecutionContext;
   },
@@ -80,6 +81,7 @@ async function __hono_POST(
     const response = await coordinateSharedBridge(resolved.agent, rpcRequest, {
       executionCtx: resolved.executionCtx,
       namespace: resolved.namespace,
+      agentKind: resolved.agentKind,
     });
 
     return applyCorsHeaders(Response.json(response), CORS_METHODS);
@@ -93,9 +95,26 @@ async function __hono_POST(
           {
             success: false,
             error: error.message,
+            code: "shared_runtime_cache_warming",
             retryable: true,
           },
           { status: 503, headers: { "Retry-After": "1" } },
+        ),
+        CORS_METHODS,
+      );
+    }
+    // A reused clientMessageId with different text must not replace the landed
+    // turn — non-retryable; the caller picks a new id (#18045).
+    if (error instanceof Error && error.name === "SharedTurnConflictError") {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: error.message,
+            code: "client_message_conflict",
+            retryable: false,
+          },
+          { status: 409 },
         ),
         CORS_METHODS,
       );
@@ -183,6 +202,7 @@ __hono_app.post("/", async (c) => {
         {
           success: false,
           error: scope.error,
+          ...(scope.code ? { code: scope.code } : {}),
           ...(scope.status === 503 ? { retryable: true } : {}),
         },
         {
@@ -198,6 +218,7 @@ __hono_app.post("/", async (c) => {
     { params: Promise.resolve({ agentId: c.req.param("agentId")! }) },
     {
       agent: scope.agent,
+      ...("agentKind" in scope ? { agentKind: scope.agentKind } : {}),
       namespace: worker.namespace,
       executionCtx: worker.executionCtx,
     },

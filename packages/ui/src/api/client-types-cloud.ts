@@ -1085,6 +1085,7 @@ export interface CodingAgentTaskEventRecord {
   id: string;
   threadId: string;
   sessionId: string | null;
+  turnId: string | null;
   eventType: string;
   timestamp: number;
   summary: string;

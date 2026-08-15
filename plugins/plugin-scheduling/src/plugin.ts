@@ -22,6 +22,11 @@ import {
   registerDefaultTaskPack,
   seedRegisteredTaskPacks,
 } from "./scheduled-task/seed-registry.js";
+import {
+  disposeStandaloneTick,
+  ensureStandaloneTickTask,
+  registerStandaloneTickWorker,
+} from "./scheduled-task/standalone-tick.js";
 
 export async function waitForScheduledTaskRunnerService(
   runtime: IAgentRuntime,
@@ -74,6 +79,7 @@ export const schedulingPlugin: Plugin = {
     },
   ],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    registerStandaloneTickWorker(runtime);
     // Seed registered default-task packs once init has finished so the runner
     // service (and any consumer's injected deps + packs) are registered before
     // the seed runs. Failures are non-fatal to plugin load.
@@ -100,6 +106,13 @@ export const schedulingPlugin: Plugin = {
             agentId: runtime.agentId,
           });
           await seedRegisteredTaskPacks(runtime, runner);
+          // Fallback TaskService worker: without this, a runtime with no
+          // consumer host (plugin-personal-assistant) accepts scheduled
+          // tasks over REST but never fires them — `once`/`cron`/`interval`
+          // rows sat `scheduled` forever (sol-dev cutover QA 2026-08-11).
+          // The worker defers per-invocation when a consumer host's deps are
+          // registered. Core TaskService remains the only wall clock.
+          await ensureStandaloneTickTask(runtime);
         } catch (error) {
           logger.warn(
             { src: "scheduling:boot-seed", agentId: runtime.agentId, error },
@@ -110,5 +123,17 @@ export const schedulingPlugin: Plugin = {
       .catch(() => {
         /* initPromise rejection is surfaced elsewhere */
       });
+  },
+  dispose: async (runtime: IAgentRuntime) => {
+    try {
+      await disposeStandaloneTick(runtime);
+    } catch (error) {
+      // error-policy:J6 Plugin unload is best-effort; surface cleanup failure
+      // without turning an otherwise successful runtime shutdown into a crash.
+      logger.warn(
+        { src: "scheduling:dispose", agentId: runtime.agentId, error },
+        "[scheduling] Failed to remove the standalone tick task during teardown.",
+      );
+    }
   },
 };

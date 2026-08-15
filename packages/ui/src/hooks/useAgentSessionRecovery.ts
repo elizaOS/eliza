@@ -215,8 +215,7 @@ export function useAgentSessionRecovery(
       reason,
       activeServer,
       cloudToken,
-      cloudApiBase:
-        getBootConfig().cloudApiBase?.trim() || "https://elizacloud.ai",
+      cloudApiBase: getBootConfig().cloudApiBase?.trim() || "https://eliza.app",
       alreadyAttempted,
     });
 
@@ -351,9 +350,9 @@ export function useAgentSessionRecovery(
 
     // Re-pair-shaped in every dimension EXCEPT the app-origin cloud token: this
     // is the returning-PWA "Open this agent from Eliza Cloud" dead-end. The user
-    // IS signed in to Eliza Cloud (shared HttpOnly `.elizacloud.ai` cookie), but
-    // this origin's token mirror is empty. Recover the session from the cookie
-    // silently and re-pair, instead of dropping to the terminal notice.
+    // IS signed in to Eliza (through the canonical host's HttpOnly cookie), but
+    // this origin's token mirror is empty. Recover the session through the
+    // same-origin refresh bridge and re-pair instead of dropping to the notice.
     attemptedRef.current = true;
     setStatus("recovering");
 

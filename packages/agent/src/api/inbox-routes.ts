@@ -1564,12 +1564,22 @@ async function resolveDiscordRoomProfile(
  * Eliza install this is bounded by the number of connector chats the
  * agent participates in; for multi-tenant it would need a tenant scope
  * but Eliza's runtime is single-tenant per process.
+ *
+ * Internal scratch worlds (autonomy self-talk, advanced memory,
+ * relationships graph) are excluded, mirroring collectAgentWorlds.
+ * Including them starves the feed: getMemoriesByRoomIds orders
+ * newest-first across ALL scanned rooms with a bounded limit, and an
+ * active autonomy loop emits messages continuously, so its synthetic
+ * rooms monopolize the fetch window. Every row is then dropped by the
+ * connector source filter and the inbox reads empty even though real
+ * connector messages exist just past the window.
  */
 async function collectAgentRoomIds(runtime: AgentRuntime): Promise<UUID[]> {
   const worlds = await runtime.getAllWorlds();
   if (worlds.length === 0) return [];
 
   const worldIds = worlds
+    .filter((w) => !isInternalWorld(w))
     .map((w) => w.id)
     .filter((id): id is UUID => typeof id === "string");
 

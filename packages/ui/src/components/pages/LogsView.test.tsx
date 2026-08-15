@@ -119,4 +119,33 @@ describe("LogsView", () => {
     expect(panel.hasAttribute(LAYOUT_SHIFT_INTENT_ATTR)).toBe(false);
     expect(skeleton?.isConnected).toBe(false);
   });
+
+  it("clears the settling flag when a filter changes during the settle window", async () => {
+    const loadLogs = vi.fn(async () => {});
+    appMock.value = makeContext({ loadLogs });
+
+    const view = render(<LogsView />);
+    const panel = screen.getByTestId("logs-entry-panel");
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(panel.getAttribute(LAYOUT_SHIFT_INTENT_ATTR)).toBe(
+      LAYOUT_SHIFT_INTENT_TRANSIENT,
+    );
+
+    // Change a dropdown filter mid-settle: the hydration effect re-runs, its
+    // cleanup cancels the settle timeout, and hydratedRef skips the gated
+    // block — the flag must still reset instead of sticking true.
+    appMock.value = makeContext({ loadLogs, logTagFilter: "agent" });
+    await act(async () => {
+      view.rerender(<LogsView />);
+      await Promise.resolve();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(1200);
+    });
+    expect(panel.hasAttribute(LAYOUT_SHIFT_INTENT_ATTR)).toBe(false);
+  });
 });

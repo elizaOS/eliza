@@ -10,7 +10,7 @@
  * bundle elsewhere.
  *
  * The Stripe Checkout cancel URL points back here with `?canceled=true` (it
- * targets `/dashboard/billing`, the standalone console page that mounts this
+ * targets `/cloud/billing`, the standalone console page that mounts this
  * same body), so the canceled banner renders at the top of the body.
  */
 

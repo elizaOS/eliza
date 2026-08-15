@@ -28,6 +28,9 @@ loaded as an Eliza plugin.
 - `src/voice-message-handler.ts` — downloads Discord voice attachments, uploads
   them to the Cloud API storage proxy, and produces pre-signed URLs
   (`VoiceMessageHandler`, `hasVoiceAttachments`).
+- `src/managed-guild-voice.ts` — leader-owned, guild-only `/voice join|leave`,
+  live Opus receive/playback, and the authenticated Cloud voice-turn bridge.
+  It records only the canonical invoker and never reuses the private DM room.
 - `src/logger.ts` — `createServiceLogger("gateway-discord")` from
   `@elizaos/cloud-services-common`.
 - `tests/` — Vitest/`bun test` specs (hash-router, leader-election,
@@ -58,7 +61,7 @@ Required at startup (the process `exit(1)`s if missing):
 
 Connection / routing:
 
-- `ELIZA_CLOUD_URL` (falls back to `NEXT_PUBLIC_APP_URL`, then `https://elizacloud.ai`)
+- `ELIZA_CLOUD_URL` (falls back to `NEXT_PUBLIC_APP_URL`, then `https://api.eliza.app`)
 - `REDIS_URL` (or `KV_REST_API_URL`) and `KV_REST_API_TOKEN` — Redis/Upstash.
 - `AGENT_SERVER_SHARED_SECRET` — sent as `X-Server-Token` when forwarding to agent-servers.
 - `POD_NAME` — required in production (K8s downward API); falls back to `gateway-<hostname>`
@@ -71,6 +74,11 @@ Optional features / toggles:
 - `ELIZA_APP_DISCORD_BOT_ENABLED=true` + `ELIZA_APP_DISCORD_BOT_TOKEN` — run the
   Eliza App system bot; `ELIZA_APP_LEADER_KEY` (default `discord:eliza-app-bot:leader`)
   for leader election.
+- `ELIZA_APP_DISCORD_PUBLIC_KEY` — recommended local Ed25519 verification key
+  for the signed install webhook; avoids a bounded first-request key lookup.
+- `ELIZA_APP_DISCORD_GUILD_VOICE_ENABLED=true` — register guild-only voice
+  controls and enable live audio on the system-bot leader. The Cloud Worker must
+  have its Shared runtime, ElevenLabs STT/TTS, and internal auth configured.
 - `VOICE_MESSAGE_ENABLED` (`"false"` disables the voice path),
   `VOICE_AUDIO_TTL_SECONDS`, `VOICE_CLEANUP_INTERVAL_MS`,
   `CLOUD_API_BASE_URL`/`ELIZAOS_CLOUD_BASE_URL`, `BLOB_READ_WRITE_TOKEN` — voice upload.

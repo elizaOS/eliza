@@ -15,6 +15,10 @@ import {
   registerChannelRegistry,
 } from "../channels/registry.js";
 import { reportSuppressedSleepCycleMorningCheckin } from "../checkin/morning-checkin-ownership.js";
+import {
+  type OwnerFactStore,
+  registerOwnerFactStore,
+} from "../owner/fact-store.js";
 import { createProductionScheduledTaskDispatcher } from "./runtime-wiring.js";
 
 const agentMocks = vi.hoisted(() => ({
@@ -88,6 +92,9 @@ function makeRuntime(
         }
       : {}),
   } as unknown as IAgentRuntime;
+  registerOwnerFactStore(runtime, {
+    read: async () => ({}),
+  } as unknown as OwnerFactStore);
   return { runtime, modelPrompts };
 }
 
@@ -108,11 +115,13 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
 
     const result = await dispatcher.dispatch({
       taskId: record.taskId,
+      kind: record.kind,
       firedAtIso: "2026-07-06T03:00:00.000Z",
       channelKey: "in_app",
       intensity: "soft",
       promptInstructions: record.promptInstructions,
       contextRequest: record.contextRequest,
+      ownerVisible: record.ownerVisible,
       output: record.output,
       metadata: record.metadata,
     });
@@ -152,11 +161,13 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
 
     await dispatcher.dispatch({
       taskId: record.taskId,
+      kind: record.kind,
       firedAtIso: "2026-07-06T14:00:00.000Z",
       channelKey: "in_app",
       intensity: "normal",
       promptInstructions: record.promptInstructions,
       contextRequest: record.contextRequest,
+      ownerVisible: record.ownerVisible,
       output: record.output,
       metadata: record.metadata,
     });
@@ -203,11 +214,13 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
 
     const result = await dispatcher.dispatch({
       taskId: record.taskId,
+      kind: record.kind,
       firedAtIso: "2026-07-06T14:00:00.000Z",
       channelKey: "in_app",
       intensity: "normal",
       promptInstructions: record.promptInstructions,
       contextRequest: record.contextRequest,
+      ownerVisible: record.ownerVisible,
       output: record.output,
       metadata: record.metadata,
     });
@@ -255,11 +268,13 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
 
     await dispatcher.dispatch({
       taskId: record.taskId,
+      kind: record.kind,
       firedAtIso: "2026-07-06T14:00:00.000Z",
       channelKey: "telegram",
       intensity: "soft",
       promptInstructions: record.promptInstructions,
       contextRequest: record.contextRequest,
+      ownerVisible: record.ownerVisible,
       output: record.output,
       metadata: record.metadata,
     });
@@ -273,7 +288,7 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     expect(send.mock.calls[0]?.[0].message).not.toBe(record.promptInstructions);
   });
 
-  it("fails closed when no model surface exists — nothing is emitted, never the raw instruction", async () => {
+  it("uses authored deterministic copy when no model surface exists", async () => {
     const notify = vi.fn().mockResolvedValue(undefined);
     const reportError = vi.fn();
     const { runtime } = makeRuntime({ notify, reportError, model: null });
@@ -283,26 +298,35 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
 
     const result = await dispatcher.dispatch({
       taskId: "task-custom",
+      kind: "reminder",
       firedAtIso: "2026-07-06T16:00:00.000Z",
       channelKey: "in_app",
       intensity: "normal",
       promptInstructions,
       contextRequest: undefined,
+      ownerVisible: true,
+      output: {
+        destination: "in_app_card",
+        fallback: {
+          title: "Medication",
+          body: "It's time to take your medication.",
+        },
+      },
       metadata: { packKey: "custom-pack", recordKey: "custom" },
     });
 
-    expect(result).toMatchObject({
-      ok: false,
-      reason: "transport_error",
-      retryAfterMinutes: 5,
-    });
-    expect(agentMocks.eventService.emit).not.toHaveBeenCalled();
-    expect(notify).not.toHaveBeenCalled();
-    expect(reportError).toHaveBeenCalledWith(
-      "lifeops:scheduled-task:dispatch-render",
-      expect.any(Error),
-      expect.objectContaining({ taskId: "task-custom" }),
+    expect(result).toMatchObject({ ok: true });
+    expect(agentMocks.eventService.emit).toHaveBeenCalledTimes(1);
+    expect(agentMocks.eventService.emit.mock.calls[0]?.[0].data.text).toBe(
+      "It's time to take your medication.",
     );
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Medication",
+        body: "It's time to take your medication.",
+      }),
+    );
+    expect(reportError).not.toHaveBeenCalled();
   });
 
   it("degrades honestly when the delegated assembler fails — never the raw instruction", async () => {
@@ -318,11 +342,13 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
 
     const result = await dispatcher.dispatch({
       taskId: record.taskId,
+      kind: record.kind,
       firedAtIso: "2026-07-06T14:00:00.000Z",
       channelKey: "in_app",
       intensity: "normal",
       promptInstructions: record.promptInstructions,
       contextRequest: record.contextRequest,
+      ownerVisible: record.ownerVisible,
       output: record.output,
       metadata: record.metadata,
     });

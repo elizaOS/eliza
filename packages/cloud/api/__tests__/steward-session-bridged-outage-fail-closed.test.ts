@@ -33,6 +33,8 @@ const syncUserFromSteward = mock(async () => ({
   welcomeBonusWithheldReason: undefined,
   welcomeBonusWithheldMessage: undefined,
 }));
+class MockStewardPhoneAccountConflictError extends Error {}
+class MockStewardTelegramAccountClaimError extends Error {}
 const isBlockedBySsoBridgeLogout = mock(async () => {
   throw new Error("connect ECONNREFUSED: postgres down");
 });
@@ -48,6 +50,8 @@ mock.module("@/lib/auth/steward-client", () => ({
 mock.module("@/lib/steward-sync", () => ({
   describeSyncError: (error: unknown) =>
     error instanceof Error ? error.message : String(error),
+  StewardPhoneAccountConflictError: MockStewardPhoneAccountConflictError,
+  StewardTelegramAccountClaimError: MockStewardTelegramAccountClaimError,
   syncUserFromSteward,
 }));
 

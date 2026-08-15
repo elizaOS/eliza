@@ -20,13 +20,14 @@ which talks to the Hetzner Cloud API directly. See
 ## Prerequisites
 
 1. **Hetzner Cloud project** with API token (`HCLOUD_TOKEN`).
-2. **Cloudflare account** with API token + DNS edit on `elizacloud.ai`
+2. **Cloudflare account** with API token + DNS edit on `eliza.app` and the
+   transitional `elizacloud.ai` zone
    (`CLOUDFLARE_API_TOKEN`).
 3. **Cloudflare R2 bucket** `eliza-terraform-state` for remote state. Generate
    an R2 API token, edit `backend-staging.hcl` / `backend-production.hcl`
    with your CF account ID, then export the R2 token as
    `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` before `terraform init`.
-4. **Terraform >= 1.5.0** locally.
+4. **Terraform >= 1.10.0** locally.
 
 ## Bootstrap a brand-new control-plane VM (staging)
 
@@ -69,8 +70,8 @@ re-run.
 ## Operational notes
 
 **SSH to the CP — always by public IP, never by hostname.** The Cloudflare DNS
-record (`eliza-${env}-N.elizacloud.ai`) is proxied (orange-cloud); CF does not
-pass TCP/22, so `ssh root@eliza-staging-1.elizacloud.ai` silently fails. Get the
+canonical record (`eliza-${env}-N.eliza.app`) is proxied (orange-cloud); CF does not
+pass TCP/22, so `ssh root@eliza-staging-1.eliza.app` silently fails. Get the
 IP from terraform output:
 
 ```bash
@@ -80,7 +81,8 @@ terraform output ssh_login_commands
 ```
 
 **Cloudflare zone SSL mode MUST stay on "Full"** (not "Full (Strict)"). The
-control-plane uses a self-signed `*.elizacloud.ai` cert; CF only accepts that
+control-plane uses a self-signed certificate covering `*.eliza.app` and the
+temporary legacy zone; CF only accepts that
 on "Full". Flipping to Strict in the CF dashboard breaks every dashboard
 chat call silently with HTTP 526.
 
@@ -106,13 +108,17 @@ For the normal staging/prod path, use the idempotent workflow:
 
 ```bash
 gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza --ref main \
-  -f environment=production \
-  -f headscale_api_url=http://127.0.0.1:8081 \
-  -f listen_addr=127.0.0.1:8081
+  -f environment=production -f operation=converge
 ```
 
-That workflow installs the committed ACL, converges `server_url` and
-`listen_addr`, ensures the `agent`/`tunnel` users exist, upserts the daemon's
+Staging legacy-vhost retirement is a separate two-run operation documented in
+`packages/cloud/services/headscale/DEPLOY.md`. The retirement dispatch must
+include the exact lowercase SHA-256 printed by its preceding read-only
+inspection; do not retire against an unbound or stale review.
+
+That workflow installs the committed ACL, converges `server_url` and the fixed
+environment-specific loopback `listen_addr`, ensures the `agent`/`tunnel`
+users exist, upserts the daemon's
 Headscale env in `/opt/eliza/cloud/.env.local`, restarts both services, and
 checks local `/health`. It also converges the last-mile public-edge bits that
 used to be hand-run on every CP (and lost on a rebuild — a DR gap):
@@ -120,16 +126,18 @@ used to be hand-run on every CP (and lost on a rebuild — a DR gap):
 - the **nginx vhost + Let's Encrypt cert** that front the public headscale URL
   (`/etc/nginx/conf.d/headscale.conf` → `127.0.0.1:<listen-port>`), as a
   no-http2 vhost with `Upgrade`/`Connection` passthrough + 86400s timeouts (the
-  TS2021/noise control protocol needs it). Renewal rides certbot's own
-  `certbot.timer`. Cert issuance is idempotent (`certbot certonly`, skipped when
-  a valid cert already exists).
+  TS2021/noise control protocol needs it). Renewal rides the required
+  `certbot.timer`; a root-owned deploy hook verifies the renewed leaf still has
+  both exact SANs and validates nginx before reloading it. Cert issuance is
+  idempotent (`certbot certonly`, skipped when a valid cert already exists).
 - the **`cp-<env>-router` tailscale self-enrollment** (`tag:eliza-proxy`, owned
   by the `tunnel` user) so the daemon on the CP can reach agent `tag:agent`
   `100.64.x` IPs. Idempotent (skips if already enrolled).
 
-The matching **DNS record** (`headscale[-staging].elizacloud.ai` → CP ipv4,
-`proxied=false`) is managed by this Terraform module (`cloudflare_dns_record.headscale`
-in `main.tf`), set the env's FQDN via the `headscale_hostname` tfvar. So the
+The matching canonical **DNS record** (`headscale[-staging].eliza.app` → CP
+ipv4, `proxied=false`) is managed by this Terraform module
+(`cloudflare_dns_record.canonical_headscale` in `main.tf`), set via the
+`canonical_headscale_hostname` tfvar. The legacy record remains during cutover. So the
 full chain — DNS, nginx, cert, cp-router — now reproduces from IaC on a clean CP
 rebuild (`terraform apply` for DNS, then the arm workflow for the rest). See
 [`../../../../../services/headscale/DEPLOY.md`](../../../../../services/headscale/DEPLOY.md)

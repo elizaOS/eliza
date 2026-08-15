@@ -31,7 +31,7 @@ export const appDomains = pgTable(
       .notNull()
       .references(() => apps.id, { onDelete: "cascade" }),
 
-    // Subdomain (under *.apps.elizacloud.ai)
+    // Subdomain (under *.apps.eliza.app)
     subdomain: text("subdomain").notNull(),
 
     // Custom domain (optional)

@@ -299,7 +299,7 @@ describe("C1 — availability=true happy path", () => {
     expect(result?.apiKey).toBe("eliza_test_key_C1");
     expect(result?.agentId).toBe("agent-id-c1");
     expect(result?.bridgeUrl).toBe("https://bridge.example/agent-c1");
-    expect(result?.baseUrl).toMatch(/^https:\/\/elizacloud\.ai/);
+    expect(result?.baseUrl).toMatch(/^https:\/\/cloud\.eliza\.app/);
 
     // Availability success surfaced via observer event.
     expect(observer.onAvailabilityChecked).toHaveBeenCalledWith({ ok: true });

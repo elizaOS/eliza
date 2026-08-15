@@ -10,7 +10,7 @@
  *
  * Usage:
  *   node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
- *     --served-url https://app.elizacloud.ai \
+ *     --served-url https://cloud.eliza.app \
  *     --dist packages/app/dist \
  *     --require-text "Signing in to your agent"
  */

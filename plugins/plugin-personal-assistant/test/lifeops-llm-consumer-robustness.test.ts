@@ -60,6 +60,7 @@ function runtimeWithModel(
     logger: { warn: vi.fn(), debug: vi.fn(), error: vi.fn(), info: vi.fn() },
     getService: () => null,
     getMemories: vi.fn(async () => []),
+    reportError: vi.fn(),
     useModel: vi.fn(useModel),
   } as unknown as IAgentRuntime;
 }

@@ -19,10 +19,18 @@ const ENV_KEYS = [
 const saved: Record<string, string | undefined> = {};
 
 function fakeRuntime() {
-	return {
+	const runtime = {
+		hasService: vi.fn(() => false),
 		registerModel: vi.fn(),
+		registerService: vi.fn(async () => undefined),
+		registerPlugin: vi.fn(async (plugin: { services?: unknown[] }) => {
+			for (const service of plugin.services ?? []) {
+				await runtime.registerService(service);
+			}
+		}),
 		getModel: vi.fn(() => undefined),
 	};
+	return runtime;
 }
 
 describe("ensureMobileDeviceBridgeInferenceHandlers — dead-bridge gating (#11277)", () => {

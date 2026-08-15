@@ -13,7 +13,7 @@ homepage, and many plugin UI packages (`plugin-wallet`,
 `plugin-messages`, `plugin-notes`, etc.).
 Plugins consume the agent-surface hooks, the registries (`app-shell-registry`,
 widgets, overlay-apps), and the component/primitive exports. React/react-dom are
-**peer** deps (19.2.5) — the host owns React; plugin view bundles externalise
+**peer** deps (19.2.7) — the host owns React; plugin view bundles externalise
 `@elizaos/ui` + `react` so hooks resolve to the host singleton.
 
 ## Layout
@@ -235,6 +235,10 @@ interaction geometry**, **safe-area clearance**, and **tap-target minimums**
 
 This package mostly reads config injected by the host, not raw env vars:
 
+- `E2E_RECORD=1` with `E2E_RECORDING_DIR=<absolute path>` — sends isolated
+  browser-runner artifacts to the canonical repository recording tree. Direct
+  runner invocations without the explicit destination keep their fixture-local
+  output directory.
 - `__ELIZA_BUILD_VARIANT__` — Vite `define` consumed by `build-variant.ts`
   (`"store"` | `"direct"`, default `"direct"`).
 - Eliza API base/token are runtime values managed via the api client helpers

@@ -4,18 +4,19 @@ Capacitor WebSocket bridge enabling stock iOS and Android Eliza builds to run lo
 
 ## Purpose / role
 
-This package is the agent-side half of the native Capacitor inference path. It is NOT a standard elizaOS plugin that exports a `Plugin` object; instead it exports lower-level bootstrap utilities consumed by the agent bundle at startup. On stock (non-AOSP) mobile builds, llama.cpp is exposed to the WebView through a Capacitor native plugin; this package bridges that native layer back to the elizaOS runtime's model-handler system.
+This package is the agent-side half of the native Capacitor inference path. Its `mobileDeviceBridgePlugin` owns per-runtime registration and subscriptions, while the Node HTTP server owns the process-global WebSocket transport so an outgoing runtime cannot disconnect its replacement. Lower-level bootstrap utilities consumed by the agent bundle attach that transport and defer model-handler registration until a serving device exists. On stock (non-AOSP) mobile builds, llama.cpp is exposed to the WebView through a Capacitor native plugin; this package bridges that native layer back to the elizaOS runtime's model-handler system.
 
 It is loaded explicitly by the agent bundle CLI — not auto-enabled. Android and iOS entry points differ (see Layout below).
 
 ## Plugin surface
 
-This package has no `Plugin` object. It registers model handlers directly on `AgentRuntime`:
+The plugin owns service lifecycle; its bootstrap registers model handlers directly on `AgentRuntime`:
 
 | Export | Description |
 |---|---|
-| `ensureMobileDeviceBridgeInferenceHandlers(runtime)` | Registers `TEXT_SMALL`, `TEXT_LARGE`, and `TEXT_EMBEDDING` model handlers on the runtime. Android path only (iOS uses native IPC). Gated by `ELIZA_DEVICE_BRIDGE_ENABLED=1`. |
-| `attachMobileDeviceBridgeToServer(httpServer)` | Attaches the WebSocket upgrade handler at `/api/local-inference/device-bridge` to an existing Node `http.Server`. |
+| `mobileDeviceBridgePlugin` | Registers the canonical `MobileDeviceBridgeService`; the pre-initialize bootstrap installs this same plugin so later plugin registration remains idempotent. |
+| `ensureMobileDeviceBridgeInferenceHandlers(runtime)` | Registers the canonical `MobileDeviceBridgeService` before initialization, then registers `TEXT_SMALL`, `TEXT_LARGE`, and `TEXT_EMBEDDING` handlers only after a bionic host or real device can serve them. Android path only (iOS uses native IPC). Gated by `ELIZA_DEVICE_BRIDGE_ENABLED=1`. |
+| `attachMobileDeviceBridgeToServer(httpServer)` | Attaches the canonical singleton's WebSocket upgrade handler at `/api/local-inference/device-bridge` to an existing Node `http.Server`. The server close boundary removes the hook, closes clients, cancels pending calls, and clears heartbeat timers; runtime stop releases only that runtime's subscription. |
 | `getMobileDeviceBridgeStatus()` | Returns `MobileDeviceBridgeStatus`: enabled, connected devices, loaded model path, pending request counts. |
 | `loadMobileDeviceBridgeModel(modelPath, modelId?)` | Imperatively load a GGUF into the connected Android device. |
 | `unloadMobileDeviceBridgeModel()` | Unload the current model from the connected Android device. |
@@ -111,11 +112,24 @@ bun run --cwd plugins/plugin-capacitor-bridge clean           # rm -rf dist .tur
 | `TEXT_EMBEDDING_DIMENSIONS` | Fallback for embedding dimension override. |
 
 ### Timeouts
+All timeout vars accept a canonical decimal integer from 1 through 2147483647 (the max
+`setTimeout` delay); anything else (blank/unset falls back to the default; malformed or
+out-of-range throws `ElizaError` with `code: "INVALID_DEVICE_BRIDGE_TIMEOUT"`).
+
+The three device settings are resolved once in `attachToHttpServer`, before any transport
+or device state is created, and cached on the `MobileDeviceBridge` instance — a malformed
+value fails at attach time, not on the first live RPC. The two bionic settings are module-level
+(no per-instance attach hook) and resolved lazily on first use, then cached — a malformed
+value fails on the first bionic call, not at import time regardless of whether the bridge
+is even enabled.
+
 | Var | Default | Description |
 |---|---|---|
 | `ELIZA_DEVICE_LOAD_TIMEOUT_MS` | 600000 | ms to wait for model load / formatChat. |
 | `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | 600000 | ms to wait for generate / unload. |
 | `ELIZA_DEVICE_EMBED_TIMEOUT_MS` | 600000 | ms to wait for embed. |
+| `ELIZA_BIONIC_REQUEST_TIMEOUT_MS` | 300000 | ms to wait for a bionic-host generate/generateStream call. |
+| `ELIZA_BIONIC_PROBE_TIMEOUT_MS` | 2000 | ms to wait for a bionic host socket probe. |
 
 ### Android-specific
 | Var | Description |

@@ -18,6 +18,7 @@
  *    skip: pause suppresses proactive behavior, and chaining is proactive.
  */
 
+import { stableStringify } from "@elizaos/core/edge";
 import { decideDispatchPolicy } from "../dispatch-policy.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
@@ -168,6 +169,12 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
     async claimForFire({ taskId, firedAtIso, expected }) {
       const existing = map.get(taskId);
       if (!existing) return { kind: "raced" };
+      const cutoverStatus = (
+        existing.metadata?.sharedCutoverImport as
+          | { status?: unknown }
+          | undefined
+      )?.status;
+      if (cutoverStatus === "reserved") return { kind: "raced" };
       if (expected) {
         if (
           existing.state.status !== expected.status ||
@@ -232,11 +239,18 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
 
 export interface ScheduledTaskDispatchRecord {
   taskId: string;
+  /** Added additively; legacy host dispatchers may omit it. */
+  kind?: ScheduledTask["kind"];
   firedAtIso: string;
   channelKey: string;
   intensity?: "soft" | "normal" | "urgent";
   promptInstructions: string;
   contextRequest: ScheduledTask["contextRequest"];
+  subject?: ScheduledTask["subject"];
+  /** Added additively; omitted legacy records never receive owner context. */
+  ownerVisible?: boolean;
+  eventPayload?: unknown;
+  resolvedContext?: import("./types.js").ScheduledTaskResolvedContext;
   consolidationBatchId?: string;
   output?: ScheduledTask["output"];
   metadata?: ScheduledTask["metadata"];
@@ -365,6 +379,22 @@ function setEscalationCursor(
  * in an infinite retry loop.
  */
 const MAX_DISPATCH_RETRIES_PER_STEP = 3;
+const DISPATCH_EVENT_PAYLOAD_LIMIT = 16_000;
+
+function normalizeDispatchEventPayload(value: unknown): unknown {
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) return { unavailable: "not_serializable" };
+    if (serialized.length > DISPATCH_EVENT_PAYLOAD_LIMIT) {
+      return { unavailable: "payload_too_large" };
+    }
+    return JSON.parse(serialized) as unknown;
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — retries persist an explicit
+    // unavailable marker instead of retaining a non-serializable payload.
+    return { unavailable: "not_serializable" };
+  }
+}
 
 /**
  * Continuation marker for a dispatch that failed with a typed
@@ -377,6 +407,7 @@ const MAX_DISPATCH_RETRIES_PER_STEP = 3;
 interface PendingDispatch {
   stepIndex: number;
   attempt: number;
+  eventPayload?: unknown;
 }
 
 function readPendingDispatch(task: ScheduledTask): PendingDispatch | null {
@@ -395,6 +426,9 @@ function readPendingDispatch(task: ScheduledTask): PendingDispatch | null {
       typeof attempt === "number" && Number.isInteger(attempt) && attempt >= 0
         ? attempt
         : 0,
+    ...(Object.hasOwn(raw, "eventPayload")
+      ? { eventPayload: (raw as Record<string, unknown>).eventPayload }
+      : {}),
   };
 }
 
@@ -494,6 +528,26 @@ export type ScheduledTaskFireResult =
   | { kind: "dispatch_failed"; task: ScheduledTask; error: Error };
 
 export interface ScheduledTaskRunnerExtras {
+  /**
+   * Land one server-authorized task with its existing identity and state.
+   * Exact retries carrying the same transfer receipt are idempotent; a task id
+   * already owned by another import is a hard conflict.
+   */
+  importTask(
+    task: ScheduledTask,
+    receipt: {
+      sourceAgentId: string;
+      cutoverToken: string;
+    },
+  ): Promise<{ task: ScheduledTask; imported: boolean }>;
+  /** Activate an exact imported task only after its server-owned cutover commits. */
+  activateImportedTask(
+    taskId: string,
+    receipt: {
+      sourceAgentId: string;
+      cutoverToken: string;
+    },
+  ): Promise<{ task: ScheduledTask; activated: boolean }>;
   /**
    * Convenience wrapper around {@link ScheduledTaskRunnerExtras.fireWithResult}
    * that flattens the discriminated union into a `ScheduledTask`. Returns
@@ -800,6 +854,87 @@ export function createScheduledTaskRunner(
       });
     }
     return task;
+  }
+
+  async function importTask(
+    task: ScheduledTask,
+    receipt: { sourceAgentId: string; cutoverToken: string },
+  ): Promise<{ task: ScheduledTask; imported: boolean }> {
+    const existing = await deps.store.get(task.taskId);
+    const existingReceipt = existing?.metadata?.sharedCutoverImport;
+    const taskDigest = stableStringify(task);
+    if (existing) {
+      if (
+        existingReceipt !== null &&
+        typeof existingReceipt === "object" &&
+        "sourceAgentId" in existingReceipt &&
+        existingReceipt.sourceAgentId === receipt.sourceAgentId &&
+        "cutoverToken" in existingReceipt &&
+        existingReceipt.cutoverToken === receipt.cutoverToken &&
+        "taskDigest" in existingReceipt &&
+        existingReceipt.taskDigest === taskDigest
+      ) {
+        return { task: existing, imported: false };
+      }
+      throw new Error(
+        `Scheduled task ${task.taskId} already exists with another owner`,
+      );
+    }
+
+    const { taskId: _taskId, state: _state, ...input } = task;
+    const validationIssues = validateScheduledTaskInput(input, deps);
+    if (validationIssues.length > 0) {
+      throw new ScheduledTaskValidationError(validationIssues, "importedTask");
+    }
+    const imported = structuredClone(task);
+    imported.metadata = {
+      ...(imported.metadata ?? {}),
+      sharedCutoverImport: {
+        sourceAgentId: receipt.sourceAgentId,
+        cutoverToken: receipt.cutoverToken,
+        taskDigest,
+        status: "reserved",
+      },
+    };
+    await persist(imported);
+    return { task: imported, imported: true };
+  }
+
+  async function activateImportedTask(
+    taskId: string,
+    receipt: { sourceAgentId: string; cutoverToken: string },
+  ): Promise<{ task: ScheduledTask; activated: boolean }> {
+    const existing = await deps.store.get(taskId);
+    const importedReceipt = existing?.metadata?.sharedCutoverImport;
+    if (
+      !existing ||
+      importedReceipt === null ||
+      typeof importedReceipt !== "object" ||
+      !("sourceAgentId" in importedReceipt) ||
+      importedReceipt.sourceAgentId !== receipt.sourceAgentId ||
+      !("cutoverToken" in importedReceipt) ||
+      importedReceipt.cutoverToken !== receipt.cutoverToken ||
+      !("status" in importedReceipt) ||
+      (importedReceipt.status !== "reserved" &&
+        importedReceipt.status !== "active")
+    ) {
+      throw new Error(
+        `Scheduled task ${taskId} does not carry the expected cutover receipt`,
+      );
+    }
+    if (importedReceipt.status === "active") {
+      return { task: existing, activated: false };
+    }
+    const activated = structuredClone(existing);
+    activated.metadata = {
+      ...(activated.metadata ?? {}),
+      sharedCutoverImport: {
+        ...importedReceipt,
+        status: "active",
+      },
+    };
+    await persist(activated);
+    return { task: activated, activated: true };
   }
 
   function applyApprovalCompletionDefault(
@@ -1295,7 +1430,11 @@ export function createScheduledTaskRunner(
     }
 
     await logger.log(task.taskId, "fire_attempt", {
-      detail: { eventPayload: args?.eventPayload ? "present" : "absent" },
+      detail: {
+        eventPayload: Object.hasOwn(args ?? {}, "eventPayload")
+          ? "present"
+          : "absent",
+      },
     });
 
     // Global-pause check.
@@ -1426,6 +1565,19 @@ export function createScheduledTaskRunner(
     // dispatch failure) routes this attempt through its recorded ladder
     // step; a fresh fire starts at the initial channel (cursor -1).
     const pending = readPendingDispatch(claimed);
+    if (!pending && !recoveryClaim) {
+      // A fresh occurrence owns a new durable dispatch identity. Persist it
+      // before rendering/provider egress so retries and crash recovery reuse
+      // the same connector dedupe key and exact prepared payload. Never trust
+      // caller-supplied values in these internal metadata fields.
+      claimed.metadata = {
+        ...(claimed.metadata ?? {}),
+        dispatchIdempotencyKey: `${claimed.taskId}:${fireAtIso}`,
+      };
+      delete claimed.metadata.dispatchPreparedMessage;
+      delete claimed.metadata.dispatchAttempt;
+      delete claimed.metadata.recoveredDispatchAtIso;
+    }
     const ladder = resolveEffectiveLadder(claimed, deps.ladders);
     const pendingStep =
       pending && pending.stepIndex >= 0
@@ -1463,15 +1615,27 @@ export function createScheduledTaskRunner(
       });
     }
 
+    const hasDispatchEventPayload = Object.hasOwn(args ?? {}, "eventPayload")
+      ? true
+      : Boolean(pending && Object.hasOwn(pending, "eventPayload"));
+    const dispatchEventPayload = Object.hasOwn(args ?? {}, "eventPayload")
+      ? normalizeDispatchEventPayload(args?.eventPayload)
+      : pending?.eventPayload;
     let dispatchResult: DispatchResult | undefined;
     try {
       dispatchResult = await dispatcher.dispatch({
         taskId: claimed.taskId,
+        kind: claimed.kind,
         firedAtIso: fireAtIso,
         channelKey: dispatchChannelKey,
         intensity: pendingStep?.intensity ?? pickIntensity(claimed),
         promptInstructions: claimed.promptInstructions,
         contextRequest: claimed.contextRequest,
+        ...(claimed.subject ? { subject: claimed.subject } : {}),
+        ownerVisible: claimed.ownerVisible,
+        ...(hasDispatchEventPayload
+          ? { eventPayload: dispatchEventPayload }
+          : {}),
         output: claimed.output,
         metadata: claimed.metadata,
       });
@@ -1492,6 +1656,9 @@ export function createScheduledTaskRunner(
           pending,
           ladder,
           fireAtIso,
+          ...(hasDispatchEventPayload
+            ? { eventPayload: dispatchEventPayload }
+            : {}),
         });
       }
       const pendingPromptRoomId = claimed.completionCheck
@@ -1552,8 +1719,10 @@ export function createScheduledTaskRunner(
     pending: PendingDispatch | null;
     ladder: ReturnType<typeof resolveEffectiveLadder>;
     fireAtIso: string;
+    eventPayload?: unknown;
   }): Promise<ScheduledTaskFireResult> {
     const { task, failure, pending, ladder, fireAtIso } = args;
+    const hasEventPayload = Object.hasOwn(args, "eventPayload");
     // Policy step space: index 0 = the initial/default-channel attempt,
     // 1..n = ladder steps. `pending.stepIndex` is in ladder space (-1 =
     // initial attempt), hence the +1 shift.
@@ -1588,6 +1757,7 @@ export function createScheduledTaskRunner(
         setPendingDispatch(task, {
           stepIndex: ladderIndex,
           attempt: attempt + 1,
+          ...(hasEventPayload ? { eventPayload: args.eventPayload } : {}),
         });
         await persist(task);
         await logger.log(task.taskId, "dispatch_retried", {
@@ -1622,7 +1792,11 @@ export function createScheduledTaskRunner(
         task.state.status = "scheduled";
         task.state.firedAt = nextAttemptAtIso;
         task.state.lastDecisionLog = `dispatch advanced to ladder step ${nextLadderIndex} (${nextStep.channelKey}) after ${decision.reason}`;
-        setPendingDispatch(task, { stepIndex: nextLadderIndex, attempt: 0 });
+        setPendingDispatch(task, {
+          stepIndex: nextLadderIndex,
+          attempt: 0,
+          ...(hasEventPayload ? { eventPayload: args.eventPayload } : {}),
+        });
         if (decision.kind === "surface_degraded") {
           recordConnectorDegradation(task, decision, fireAtIso);
         }
@@ -1815,6 +1989,8 @@ export function createScheduledTaskRunner(
 
   return {
     schedule,
+    importTask,
+    activateImportedTask,
     list,
     apply,
     pipeline,

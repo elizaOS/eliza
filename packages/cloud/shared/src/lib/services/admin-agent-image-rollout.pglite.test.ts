@@ -2237,6 +2237,68 @@ describe("admin agent image rollout on primary PGlite", () => {
     }
   });
 
+  test("a reentrant canary rolls back to its recorded demo source pair", async () => {
+    const seeded = await seedAgents(1);
+    const firstTarget = seeded.targets[0]!;
+    const nextImage = `ghcr.io/elizaos/eliza-demo@${NEXT_DIGEST}`;
+    const first = await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
+    const [firstJob] = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.id, first.targets[0]!.jobId!));
+    await completeUpgradeJob(firstJob!);
+
+    const second = await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targetImage: nextImage,
+      targets: [
+        {
+          ...firstTarget,
+          expectedSourceImage: TARGET_IMAGE,
+          expectedSourceDigest: TARGET_DIGEST,
+        },
+      ],
+    });
+
+    expect(second.targets).toEqual([
+      expect.objectContaining({
+        sourceImage: TARGET_IMAGE,
+        sourceDigest: TARGET_DIGEST,
+        targetImage: nextImage,
+        targetDigest: NEXT_DIGEST,
+      }),
+    ]);
+    const [secondJob] = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.id, second.targets[0]!.jobId!));
+    expect(readAdminCanaryImageJobData(secondJob!)).toMatchObject({
+      sourceImage: TARGET_IMAGE,
+      sourceDigest: TARGET_DIGEST,
+      targetImage: nextImage,
+      targetDigest: NEXT_DIGEST,
+    });
+    await completeUpgradeJob(secondJob!);
+
+    const rollback = await executeRollbackCanary({
+      actorUserId: seeded.actorUserId,
+      source: { jobId: secondJob!.id },
+    });
+
+    expect(rollback.targets).toEqual([
+      expect.objectContaining({
+        operation: "rollback",
+        sourceImage: nextImage,
+        sourceDigest: NEXT_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TARGET_DIGEST,
+      }),
+    ]);
+  });
+
   test("one conflicting fifth target rolls back every canary insert", async () => {
     const seeded = await seedAgents(5);
     const blocked = seeded.targets[4]!;

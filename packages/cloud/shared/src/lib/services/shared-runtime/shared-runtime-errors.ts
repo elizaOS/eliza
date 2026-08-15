@@ -13,3 +13,16 @@ export class SharedRuntimeCacheWarmingError extends Error {
     this.name = "SharedRuntimeCacheWarmingError";
   }
 }
+
+/**
+ * A `clientMessageId` was reused with a different payload (#18045). The prior
+ * turn's transcript pair must never be silently replaced, so the submission is
+ * rejected rather than executed. Non-retryable by contract: the caller must
+ * pick a new id for new content.
+ */
+export class SharedTurnConflictError extends Error {
+  constructor(message = "clientMessageId was already used with a different message.") {
+    super(message);
+    this.name = "SharedTurnConflictError";
+  }
+}

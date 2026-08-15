@@ -90,6 +90,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./desktop-shell": {
+      "types": "./dist/desktop-shell.d.ts",
+      "eliza-source": {
+        "types": "./src/desktop-shell.ts",
+        "import": "./src/desktop-shell.ts",
+        "default": "./src/desktop-shell.ts"
+      },
+      "import": "./dist/desktop-shell.js",
+      "default": "./dist/desktop-shell.js"
+    },
     "./entry": {
       "types": "./dist/entry.d.ts",
       "import": "./dist/entry.js",
@@ -293,7 +303,7 @@
     "jose": "^6.2.2",
     "json5": "^2.2.3",
     "saxes": "^6.0.0",
-    "ws": "^8.19.0",
+    "ws": "^8.21.3",
     "zod": "^4.4.3",
     "@elizaos/auth": "workspace:*"
   },

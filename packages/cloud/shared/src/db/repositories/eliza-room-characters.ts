@@ -1,5 +1,5 @@
-// Persists eliza room characters records for cloud services through the shared DB boundary.
-import { count, eq, inArray, sql } from "drizzle-orm";
+/** Persists room-to-character authority mappings for Cloud services. */
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "../../lib/utils/logger";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -99,22 +99,23 @@ export const elizaRoomCharactersRepository = {
   },
 
   /**
-   * Resolves the owning organization of a room via its mapped character.
-   *
-   * `eliza_room_characters.room_id → character_id → user_characters.organization_id`
-   * is the authority for which org a conversation room belongs to. Used to
-   * confirm a payment-callback channel targets a room the charge creator owns
-   * before writing an agent message into it (cross-tenant guard, #10253).
-   *
-   * Returns `undefined` when the room has no character mapping (callers must
-   * treat that as unverifiable and fail closed).
+   * Resolves a room's organization only when it is mapped to the requested
+   * character. Callback channels must authorize the room and agent as a pair.
    */
-  async findOrganizationIdByRoomId(roomId: string): Promise<string | undefined> {
+  async findOrganizationIdByRoomAndCharacterId(
+    roomId: string,
+    characterId: string,
+  ): Promise<string | undefined> {
     const [row] = await dbRead
       .select({ organizationId: userCharacters.organization_id })
       .from(elizaRoomCharactersTable)
       .innerJoin(userCharacters, eq(userCharacters.id, elizaRoomCharactersTable.character_id))
-      .where(eq(elizaRoomCharactersTable.room_id, roomId))
+      .where(
+        and(
+          eq(elizaRoomCharactersTable.room_id, roomId),
+          eq(elizaRoomCharactersTable.character_id, characterId),
+        ),
+      )
       .limit(1);
 
     return row?.organizationId ?? undefined;

@@ -201,6 +201,17 @@ export class AppsRepository {
     });
   }
 
+  /**
+   * Primary-store lookup for authorization boundaries that must reject an app
+   * credential immediately after it is attached, without a replica/cache gap.
+   */
+  async findByApiKeyIdForWrite(apiKeyId: string): Promise<Pick<App, "id"> | undefined> {
+    return await dbWrite.query.apps.findFirst({
+      columns: { id: true },
+      where: eq(apps.api_key_id, apiKeyId),
+    });
+  }
+
   async findActiveApprovedById(id: string): Promise<Pick<App, "id" | "name"> | undefined> {
     const [app] = await dbRead
       .select({ id: apps.id, name: apps.name })

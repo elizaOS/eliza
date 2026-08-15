@@ -38,30 +38,24 @@ function isElectrobunHost(): boolean {
 
 /**
  * When a NEW service worker reaches `installed` while an existing controller is
- * present, a fresh renderer was just deployed. The new SW's own `activate`
- * already skips-waiting + claims + navigates windows, but wiring the client side
- * of the update makes the transition immediate and observable: tell the waiting
- * worker to take over (SKIP_WAITING), then reload once it becomes the controller.
- * Guarded so the FIRST install (no prior controller) does NOT reload — that is a
- * normal first paint, not an update (CONVERSATIONS-500-2026-07-22 fix #1).
+ * present, a fresh renderer was just deployed. Tell the waiting worker to take
+ * over; its `activate` handler is the SINGLE navigation owner: it claims clients,
+ * skips auth routes, and navigates each ordinary window once. A second page-side
+ * `controllerchange` reload races that navigation and can refresh the same login
+ * journey twice, so this registration seam deliberately never reloads a page.
  */
-function wireServiceWorkerUpdateReload(
+export function wireServiceWorkerUpdateActivation(
   registration: ServiceWorkerRegistration,
+  serviceWorkers: ServiceWorkerContainer = navigator.serviceWorker,
 ): void {
-  let reloading = false;
-  const reloadOnControllerChange = () => {
-    if (reloading) return;
-    reloading = true;
-    // The new worker is now controlling this page → load the new renderer.
-    globalThis.location.reload();
-  };
+  const isUpdate = Boolean(serviceWorkers.controller);
 
   const trackInstalling = (worker: ServiceWorker | null) => {
     if (!worker) return;
     worker.addEventListener("statechange", () => {
       // A worker reaching `installed` with an existing controller = an UPDATE
       // (not the first install). Ask it to activate immediately.
-      if (worker.state === "installed" && navigator.serviceWorker.controller) {
+      if (worker.state === "installed" && isUpdate) {
         try {
           worker.postMessage({ type: "SKIP_WAITING" });
         } catch {
@@ -72,7 +66,7 @@ function wireServiceWorkerUpdateReload(
   };
 
   // A worker already waiting at registration time (installed between sessions).
-  if (registration.waiting && navigator.serviceWorker.controller) {
+  if (registration.waiting && serviceWorkers.controller) {
     try {
       registration.waiting.postMessage({ type: "SKIP_WAITING" });
     } catch {
@@ -83,12 +77,6 @@ function wireServiceWorkerUpdateReload(
   registration.addEventListener("updatefound", () => {
     trackInstalling(registration.installing);
   });
-
-  // Reload exactly once when control passes to the new worker.
-  navigator.serviceWorker.addEventListener(
-    "controllerchange",
-    reloadOnControllerChange,
-  );
 }
 
 /**
@@ -110,9 +98,9 @@ export function registerViewServiceWorker(): void {
       // `.scope` off it would throw and masquerade as a registration error.
       if (!registration) return;
       console.info("[SW] Registered, scope:", registration.scope);
-      // Auto-reload into a new renderer when a deploy ships a new worker
-      // (the per-deploy build rev makes sw.js byte-change so this actually fires).
-      wireServiceWorkerUpdateReload(registration);
+      // Activate a new worker immediately; its activation owns the one safe
+      // renderer navigation for each non-auth window.
+      wireServiceWorkerUpdateActivation(registration);
     })
     // error-policy:J4 the service worker is a PWA enhancement — the app
     // works without it; the failure is logged for triage

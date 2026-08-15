@@ -18,7 +18,7 @@
  * Optional env:
  *   BLUEBUBBLES_SERVER_URL      default http://127.0.0.1:1234
  *   BLUEBUBBLES_PASSWORD        default read from BlueBubbles config.db
- *   ELIZA_CLOUD_BLUEBUBBLES_URL default https://api.elizacloud.ai/api/webhooks/bluebubbles
+ *   ELIZA_CLOUD_BLUEBUBBLES_URL default https://api.eliza.app/api/webhooks/bluebubbles
  *   BLUEBUBBLES_BRIDGE_PORT     default 8795
  */
 
@@ -222,8 +222,8 @@ const bridgeId =
 const cloudWebhookUrl =
   process.env.ELIZA_CLOUD_BLUEBUBBLES_URL ??
   (gatewayToken && bridgeId
-    ? `https://api.elizacloud.ai/api/webhooks/bluebubbles/${encodeURIComponent(bridgeId)}`
-    : "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles");
+    ? `https://api.eliza.app/api/webhooks/bluebubbles/${encodeURIComponent(bridgeId)}`
+    : "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles");
 const gatewaySecret = process.env.BLUEBUBBLES_GATEWAY_SECRET ?? "";
 const hasCloudGatewayCredential = Boolean(gatewayToken || gatewaySecret);
 const gatewayPhoneNumber = (

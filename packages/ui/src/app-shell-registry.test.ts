@@ -4,6 +4,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  appShellPageIsAvailable,
+  appShellPageMatchesPath,
   getAppShellPageRegistrySnapshot,
   listAppShellPages,
   registerAppShellPage,
@@ -53,5 +55,44 @@ describe("app-shell-registry", () => {
     });
 
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("matches a page's concrete path and nested route patterns", () => {
+    const page = {
+      id: "cloud",
+      pluginId: "test-plugin",
+      label: "Cloud",
+      path: "/dashboard",
+      pathPatterns: ["/dashboard/*", "/invoices/:id"],
+    };
+
+    expect(appShellPageMatchesPath(page, "/dashboard")).toBe(true);
+    expect(appShellPageMatchesPath(page, "/dashboard/agents/agent-1")).toBe(
+      true,
+    );
+    expect(
+      appShellPageMatchesPath(page, "/invoices/invoice-1?download=1"),
+    ).toBe(true);
+    expect(appShellPageMatchesPath(page, "/dashboardish")).toBe(false);
+    expect(appShellPageMatchesPath(page, "/invoices/a/extra")).toBe(false);
+  });
+
+  it("enforces managed-cloud availability from one registration contract", () => {
+    const page = {
+      id: "cloud",
+      pluginId: "test-plugin",
+      label: "Cloud",
+      path: "/cloud",
+      availability: "managed-cloud" as const,
+    };
+
+    expect(appShellPageIsAvailable(page, { managedCloud: false })).toBe(false);
+    expect(appShellPageIsAvailable(page, { managedCloud: true })).toBe(true);
+    expect(
+      appShellPageIsAvailable(
+        { ...page, availability: "always" },
+        { managedCloud: false },
+      ),
+    ).toBe(true);
   });
 });

@@ -131,7 +131,7 @@ const ANDROID_SMS_GATEWAY_SECRET = String(
 );
 const ANDROID_SMS_GATEWAY_WEBHOOK_URL = String(
   import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ??
-    "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
+    "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles",
 );
 const ANDROID_SMS_GATEWAY_PHONE_NUMBER = String(
   import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ?? "+14159611510",

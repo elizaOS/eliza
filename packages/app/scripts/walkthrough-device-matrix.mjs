@@ -45,6 +45,37 @@ import {
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const APP_DIR = resolve(dirname(SCRIPT_PATH), "..");
 const REPO_ROOT = resolve(APP_DIR, "../..");
+/** Largest delay Node accepts without clamping (2^31-1). */
+export const MAX_NODE_TIMER_MS = 2_147_483_647;
+export const DEFAULT_DURATION_SECONDS = 30;
+
+/**
+ * Accept only a complete positive decimal integer in [min, max]. Rejects
+ * missing, fractional, signed, partial, zero (when min>=1), and overflow values
+ * so mistyped matrix flags fail before device probes or capture spawns.
+ */
+export function parsePositiveInteger(
+  raw,
+  flag,
+  { min = 1, max = MAX_NODE_TIMER_MS } = {},
+) {
+  if (raw === undefined || raw === null) {
+    throw new Error(`${flag} requires an integer from ${min} to ${max}`);
+  }
+  const value = String(raw);
+  if (!/^[1-9]\d*$/.test(value) && !(min === 0 && value === "0")) {
+    throw new Error(
+      `${flag} must be an integer from ${min} to ${max} (received ${JSON.stringify(value)})`,
+    );
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(
+      `${flag} must be an integer from ${min} to ${max} (received ${JSON.stringify(value)})`,
+    );
+  }
+  return parsed;
+}
 
 export function parseArgs(argv, env = process.env) {
   const a = {
@@ -52,23 +83,60 @@ export function parseArgs(argv, env = process.env) {
     serial: env.ANDROID_SERIAL || null,
     avd: null,
     iosDevice: null,
-    duration: 30,
+    duration: DEFAULT_DURATION_SECONDS,
     require: parseRequiredPlatforms(env.WALKTHROUGH_REQUIRE),
     driveAndroid: env.WALKTHROUGH_ANDROID_DRIVE !== "0",
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === "--platform") a.platform = argv[++i];
-    else if (arg === "--serial") a.serial = argv[++i];
-    else if (arg === "--avd") a.avd = argv[++i];
-    else if (arg === "--ios-device") a.iosDevice = argv[++i];
-    else if (arg === "--duration") a.duration = Number(argv[++i]);
-    else if (arg === "--require") {
-      for (const platform of parseRequiredPlatforms(argv[++i])) {
+    if (arg === "--platform") {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith("--")) {
+        throw new Error("--platform requires a value");
+      }
+      a.platform = value;
+    } else if (arg === "--serial") {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith("--")) {
+        throw new Error("--serial requires a value");
+      }
+      a.serial = value;
+    } else if (arg === "--avd") {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith("--")) {
+        throw new Error("--avd requires a value");
+      }
+      a.avd = value;
+    } else if (arg === "--ios-device") {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith("--")) {
+        throw new Error("--ios-device requires a value");
+      }
+      a.iosDevice = value;
+    } else if (arg === "--duration") {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith("--")) {
+        throw new Error(
+          `--duration requires an integer from 1 to ${MAX_NODE_TIMER_MS}`,
+        );
+      }
+      a.duration = parsePositiveInteger(value, "--duration", {
+        min: 1,
+        max: MAX_NODE_TIMER_MS,
+      });
+    } else if (arg === "--require") {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith("--")) {
+        throw new Error("--require requires a value");
+      }
+      for (const platform of parseRequiredPlatforms(value)) {
         a.require.add(platform);
       }
     } else if (arg === "--drive-android") a.driveAndroid = true;
     else if (arg === "--skip-android-drive") a.driveAndroid = false;
+    else {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
   }
   return a;
 }

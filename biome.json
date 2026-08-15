@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.6/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
   "root": true,
   "assist": {
     "actions": {
@@ -203,16 +203,6 @@
         "rules": {
           "style": {
             "noNonNullAssertion": "error"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["packages/homepage/src/pages/landing.tsx"],
-      "linter": {
-        "rules": {
-          "a11y": {
-            "noStaticElementInteractions": "off"
           }
         }
       }

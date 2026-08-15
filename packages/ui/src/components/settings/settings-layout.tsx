@@ -247,8 +247,10 @@ export function SettingsRow({
 
   return (
     <div
+      aria-current={active ? "true" : undefined}
       className={cn(
         "flex min-h-[3rem] flex-col justify-center py-2.5",
+        active && "rounded-lg bg-accent/10",
         className,
       )}
     >

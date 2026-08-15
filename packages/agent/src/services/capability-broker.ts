@@ -106,6 +106,13 @@ const RECENT_DECISION_BUFFER = 256;
  * surfaces are reachable. Any host outside this list must be denied.
  */
 const CLOUD_NET_ALLOWED_HOSTS: readonly string[] = [
+  "eliza.app",
+  "cloud.eliza.app",
+  "api.eliza.app",
+  "staging.eliza.app",
+  "cloud-staging.eliza.app",
+  "api-staging.eliza.app",
+  // Temporary redirect ingress during the elizacloud.ai retirement window.
   "elizacloud.ai",
   "api.elizacloud.ai",
   "www.elizacloud.ai",

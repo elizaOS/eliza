@@ -96,7 +96,14 @@ describe("anti-larp test discovery", () => {
   });
 
   test("surfaces a discovered source that cannot be read", () => {
-    expect(() => readTestSources(["missing.test.ts"], tempDir())).toThrow();
+    // This failure path does not need a real temporary directory. Avoiding a
+    // create/remove round trip also keeps the assertion independent of a busy
+    // or remotely mounted CI temp directory.
+    const missingRoot = path.join(
+      os.tmpdir(),
+      `focused-audit-missing-${process.pid}-${Date.now()}`,
+    );
+    expect(() => readTestSources(["missing.test.ts"], missingRoot)).toThrow();
   });
 
   test("rejects a discovered source or ancestor reached through a symlink", () => {

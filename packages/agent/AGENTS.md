@@ -145,6 +145,14 @@ supervisor relaunches) — never a silent `process.exit`.
 - `ELIZA_MEMORY_WATCHDOG_INTERVAL_MS` — sample interval (default `30000`, floor `1000`).
 - `ELIZA_MEMORY_WATCHDOG_SUSTAINED` — consecutive over-threshold samples before a restart, to debounce transient spikes (default `3`, floor `1`).
 
+Connector health monitoring (`api/connector-health.ts`): the interval is validated
+  synchronously by `startApiServer` before the HTTP server is created or bound, then
+  passed into the monitor's post-listen deferred construction. The deferred catch
+  therefore cannot hide malformed owner configuration or disable monitoring.
+- `CONNECTOR_HEALTH_INTERVAL_MS` — poll interval in ms (default `60000`, floor `10000`,
+  ceiling `2147483647`). Configured values must be exact decimal integers; malformed,
+  non-canonical, below-floor, or above-ceiling values fail API startup before readiness.
+
 ## How to extend
 
 - **Add an Eliza action/provider to the agent plugin:** add the file under `src/actions/` or `src/providers/`, export it through the directory barrel (`actions/index.ts`), then wire it into the `actions`/`providers` arrays in `createElizaPlugin()` (`runtime/eliza-plugin.ts`). Parent actions with subactions are flattened via `promoteSubactionsToActions(...)`.

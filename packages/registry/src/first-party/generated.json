@@ -44,6 +44,7 @@
       "source": "bundled",
       "tags": [
         "agent-skills",
+        "clawhub",
         "otto",
         "skills",
         "agents",
@@ -65,6 +66,14 @@
           "sensitive": false,
           "label": "Auto Load",
           "help": "Automatically load installed skills on startup",
+          "advanced": false
+        },
+        "SKILLS_REGISTRY": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Registry",
+          "help": "Skill registry URL (default: https://clawhub.ai)",
           "advanced": false
         },
         "BUNDLED_SKILLS_DIRS": {
@@ -903,9 +912,10 @@
           "required": false,
           "sensitive": false,
           "label": "Shell timeout",
-          "help": "Default SHELL timeout in milliseconds.",
+          "help": "Default SHELL timeout in milliseconds. Must be a canonical decimal integer from 100 through 600000; invalid values fail before execution.",
           "advanced": false,
-          "min": 0,
+          "min": 100,
+          "max": 600000,
           "unit": "ms"
         },
         "CODING_TOOLS_SHELL_BG_BUDGET_MS": {
@@ -1401,6 +1411,30 @@
           "label": "Listen Channel Ids",
           "help": "Comma-separated list of Discord channel IDs where the bot will only listen (not respond).",
           "advanced": false
+        },
+        "ELIZA_DISCORD_OWNER_USER_IDS_JSON": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Owner User IDs (JSON)",
+          "help": "JSON array of Discord user snowflakes that alias to the canonical Eliza owner entity (e.g. [\"123456789012345678\"]). Use when ownership cannot be inferred from the Discord application team.",
+          "advanced": false
+        },
+        "DISCORD_DM_POLICY": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "DM Policy",
+          "help": "Direct-message access policy: open, allowlist, pairing (default), or disabled.",
+          "advanced": false
+        },
+        "DISCORD_ALLOW_FROM": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "DM Allow From",
+          "help": "Comma-separated Discord user snowflakes allowed to DM the bot under the allowlist policy (also seeds the pairing allowlist).",
+          "advanced": false
         }
       },
       "render": {
@@ -1488,7 +1522,7 @@
           "required": true,
           "sensitive": true,
           "label": "Cloud Api Key",
-          "help": "API key used to authenticate requests to ElizaOS Cloud API (format: eliza_xxxxx). Get it from https://www.elizacloud.ai/dashboard/api-keys",
+          "help": "API key used to authenticate requests to the Eliza Cloud API (format: eliza_xxxxx). Manage it inside Eliza at https://cloud.eliza.app/cloud/api-keys",
           "advanced": false,
           "autoEnableProvider": true
         },
@@ -1496,7 +1530,7 @@
           "type": "url",
           "required": false,
           "sensitive": false,
-          "default": "https://elizacloud.ai/api/v1",
+          "default": "https://api.eliza.app/api/v1",
           "label": "Cloud Base Url",
           "help": "Base URL for all ElizaOS Cloud API requests.",
           "advanced": false
@@ -5691,7 +5725,7 @@
           "type": "url",
           "required": false,
           "sensitive": false,
-          "default": "https://elizacloud.ai/api/v1/twitter",
+          "default": "https://api.eliza.app/api/v1/twitter",
           "label": "Broker URL",
           "help": "Eliza Cloud X (Twitter) broker base URL. Override only to point at a self-hosted broker; otherwise leave the default.",
           "advanced": true,

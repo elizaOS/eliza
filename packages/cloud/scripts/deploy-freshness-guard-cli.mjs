@@ -5,7 +5,7 @@
  * Usage (in a deploy job, BEFORE the wrangler deploy step):
  *   node packages/cloud/scripts/deploy-freshness-guard-cli.mjs \
  *     --run-sha "$GITHUB_SHA" \
- *     --served-url "https://staging.elizacloud.ai" \
+ *     --served-url "https://staging.eliza.app" \
  *     [--served-path "/api/health"] \
  *     [--force]
  *

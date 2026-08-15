@@ -15,6 +15,7 @@ import {
   cloudTokenSecsRemaining,
   getCloudAuthToken,
   refreshCloudStewardSession,
+  resolveDirectCloudAppBase,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
 } from "./client-cloud";
@@ -121,13 +122,13 @@ describe("cloudTokenSecsRemaining", () => {
 describe("resolveDirectCloudWebBase / resolveDirectCloudAuthApiBase", () => {
   it("maps a known API host to the browser-navigable web host", () => {
     expect(resolveDirectCloudWebBase("https://api.elizacloud.ai")).toBe(
-      "https://elizacloud.ai",
+      "https://eliza.app",
     );
   });
 
   it("maps a staging API host to the staging web host", () => {
     expect(resolveDirectCloudWebBase("https://api-staging.elizacloud.ai")).toBe(
-      "https://staging.elizacloud.ai",
+      "https://staging.eliza.app",
     );
   });
 
@@ -143,7 +144,7 @@ describe("resolveDirectCloudWebBase / resolveDirectCloudAuthApiBase", () => {
 
   it("maps a known site host to its API host", () => {
     expect(resolveDirectCloudAuthApiBase("https://www.elizacloud.ai")).toBe(
-      "https://api.elizacloud.ai",
+      "https://api.eliza.app",
     );
   });
 
@@ -155,6 +156,15 @@ describe("resolveDirectCloudWebBase / resolveDirectCloudAuthApiBase", () => {
 
   it("falls back to the raw input for an unparseable auth API base", () => {
     expect(resolveDirectCloudAuthApiBase("not a url")).toBe("not a url");
+  });
+
+  it("keeps management navigation on the canonical Cloud app host", () => {
+    expect(resolveDirectCloudAppBase("https://api.elizacloud.ai")).toBe(
+      "https://cloud.eliza.app",
+    );
+    expect(resolveDirectCloudAppBase("https://staging.elizacloud.ai")).toBe(
+      "https://cloud-staging.eliza.app",
+    );
   });
 });
 

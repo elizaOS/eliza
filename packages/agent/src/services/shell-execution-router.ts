@@ -153,11 +153,17 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
   return await new Promise<ShellResult>((resolve) => {
     const timeoutMs = req.timeoutMs ?? 30_000;
     const useDetachedProcessGroup = process.platform !== "win32";
+    // Sanitize the FULL merged environment (trusted process.env + untrusted
+    // caller overlay) so injection primitives that reached process.env via
+    // config writes are also stripped at the spawn boundary.  This matches the
+    // coding-tools path (processQueue.ts) and closes the config→env→spawn
+    // bypass: both spawn consumers now apply the same predicate to the same
+    // trust boundary.
+    const mergedEnv =
+      req.env != null ? { ...process.env, ...req.env } : { ...process.env };
     const child = spawn(req.command, req.args.slice(), {
       cwd: req.cwd,
-      env: req.env
-        ? { ...process.env, ...sanitizeChildEnv(req.env) }
-        : process.env,
+      env: sanitizeChildEnv(mergedEnv as Record<string, string>),
       detached: useDetachedProcessGroup,
       stdio: ["ignore", "pipe", "pipe"],
     });

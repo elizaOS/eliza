@@ -8,13 +8,43 @@
  * byte-order or prefix-stripping bug here corrupts every ASR/vision frame
  * silently (the host just gets garbage), so this pins the exact wire format.
  *
+ * URL-kind images load through the shared `fetchRemoteMedia` SSRF guard so a
+ * caller-supplied private or loopback host cannot be reached from vision.
+ *
  * `ensure-local-inference-handler` has heavy import side-effects (the service
  * layer), so — like its sibling `ensure-local-inference-handler.test.ts` — the
  * service modules are stubbed before the import so the two encoders can be
  * exercised in isolation.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mediaMocks = vi.hoisted(() => ({
+	fetchRemoteMedia: vi.fn(),
+	useRealFetchRemoteMedia: false,
+	realFetchRemoteMedia: null as
+		| null
+		| ((...args: unknown[]) => Promise<unknown>),
+}));
+
+vi.mock("@elizaos/core", async (importActual) => {
+	const actual = await importActual<typeof import("@elizaos/core")>();
+	mediaMocks.realFetchRemoteMedia = actual.fetchRemoteMedia as (
+		...args: unknown[]
+	) => Promise<unknown>;
+	return {
+		...actual,
+		fetchRemoteMedia: (...args: unknown[]) => {
+			if (
+				mediaMocks.useRealFetchRemoteMedia &&
+				mediaMocks.realFetchRemoteMedia
+			) {
+				return mediaMocks.realFetchRemoteMedia(...args);
+			}
+			return mediaMocks.fetchRemoteMedia(...args);
+		},
+	};
+});
 
 vi.mock("../services/active-model", () => ({
 	resolveLocalInferenceLoadArgs: vi.fn(async (t) => t),
@@ -65,10 +95,10 @@ import {
 	imageRequestToBase64,
 } from "./ensure-local-inference-handler";
 
-const originalFetch = globalThis.fetch;
 afterEach(() => {
-	globalThis.fetch = originalFetch;
+	mediaMocks.useRealFetchRemoteMedia = false;
 	vi.restoreAllMocks();
+	vi.clearAllMocks();
 });
 
 describe("float32ToBase64LE", () => {
@@ -107,6 +137,7 @@ describe("imageRequestToBase64", () => {
 				dataUrl: `data:image/png;base64,${payload}`,
 			}),
 		).resolves.toBe(payload);
+		expect(mediaMocks.fetchRemoteMedia).not.toHaveBeenCalled();
 	});
 
 	it("returns a comma-less dataUrl verbatim", async () => {
@@ -115,28 +146,45 @@ describe("imageRequestToBase64", () => {
 		).resolves.toBe("rawbase64nocomma");
 	});
 
-	it("fetches a url and base64-encodes the response bytes", async () => {
-		const bytes = new Uint8Array([1, 2, 3, 4]);
-		globalThis.fetch = vi.fn(
-			async () => new Response(bytes, { status: 200 }),
-		) as unknown as typeof fetch;
+	it("loads a url through fetchRemoteMedia bounds then base64-encodes the bytes", async () => {
+		const bytes = Buffer.from([1, 2, 3, 4]);
+		mediaMocks.fetchRemoteMedia.mockResolvedValue({
+			buffer: bytes,
+			contentType: "image/png",
+			fileName: "i.png",
+		});
 
 		await expect(
 			imageRequestToBase64({ kind: "url", url: "https://example.test/i.png" }),
-		).resolves.toBe(Buffer.from(bytes).toString("base64"));
+		).resolves.toBe(bytes.toString("base64"));
+		expect(mediaMocks.fetchRemoteMedia).toHaveBeenCalledWith(
+			expect.objectContaining({
+				url: "https://example.test/i.png",
+				maxBytes: 20 * 1024 * 1024,
+				timeoutMs: 15_000,
+				maxRedirects: 5,
+			}),
+		);
 	});
 
-	it("throws when the url fetch is not ok", async () => {
-		globalThis.fetch = vi.fn(
-			async () => new Response("nope", { status: 404 }),
-		) as unknown as typeof fetch;
+	it("throws when the image URL is empty or whitespace instead of fetching", async () => {
+		await expect(
+			imageRequestToBase64({ kind: "url", url: "   " }),
+		).rejects.toThrow("IMAGE_DESCRIPTION requires a valid image URL");
+		expect(mediaMocks.fetchRemoteMedia).not.toHaveBeenCalled();
+	});
+
+	it("throws when the guarded image fetch fails", async () => {
+		mediaMocks.fetchRemoteMedia.mockRejectedValue(
+			new Error("Failed to fetch media from https://example.test/missing: 404"),
+		);
 
 		await expect(
 			imageRequestToBase64({
 				kind: "url",
 				url: "https://example.test/missing",
 			}),
-		).rejects.toThrow(/404/);
+		).rejects.toThrow(/failed to fetch.*missing/i);
 	});
 
 	it("throws when neither a dataUrl nor a url is resolvable", async () => {
@@ -144,4 +192,32 @@ describe("imageRequestToBase64", () => {
 			/could not resolve image bytes/,
 		);
 	});
+});
+
+describe("imageRequestToBase64 SSRF policy (real fetchRemoteMedia)", () => {
+	beforeEach(() => {
+		mediaMocks.useRealFetchRemoteMedia = true;
+	});
+
+	it.each([
+		"http://127.0.0.1/secret.png",
+		"http://[::1]/secret.png",
+		"http://169.254.169.254/latest/meta-data/",
+		"http://localhost/internal.png",
+		"http://10.0.0.5/intranet.png",
+		"http://192.168.1.1/router.png",
+	])(
+		"fails closed for blocked image URL %s without calling global fetch",
+		async (url) => {
+			const fetchMock = vi.fn();
+			vi.spyOn(globalThis, "fetch").mockImplementation(
+				fetchMock as typeof fetch,
+			);
+
+			await expect(imageRequestToBase64({ kind: "url", url })).rejects.toThrow(
+				/Failed to fetch media|not allowed|blocked|private|loopback|link-local|Invalid URL|SSRF/i,
+			);
+			expect(fetchMock).not.toHaveBeenCalled();
+		},
+	);
 });

@@ -43,6 +43,7 @@ import { TwitterPostClient } from "../post";
 import { TwitterTimelineClient } from "../timeline";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import { getSetting } from "../utils/settings";
+import { getEpochMs } from "../utils/time";
 import { TwitterPostService } from "./PostService";
 
 const X_CONNECTOR_CONTEXTS = ["social", "connectors"];
@@ -773,7 +774,7 @@ export class XService extends Service {
       userId: post.userId || runtime.agentId,
       username: post.username || base.profile?.username || "agent",
       text: post.text,
-      timestamp: post.timestamp,
+      createdAt: post.timestamp,
       inReplyTo: post.inReplyTo,
       roomId: post.roomId,
       metadata: post.metadata,
@@ -943,7 +944,7 @@ export class XService extends Service {
         userId: post.userId,
         username: post.username,
         text: post.text,
-        timestamp: post.timestamp,
+        createdAt: post.timestamp,
         inReplyTo: post.inReplyTo,
         roomId: post.roomId,
         metadata: post.metadata,
@@ -975,23 +976,35 @@ export class XService extends Service {
       SearchMode.Latest,
       params.cursor,
     );
-    return result.tweets.map((tweet) =>
-      this.buildXPostMemory(runtime, {
-        id: tweet.id ?? "unknown",
-        userId: tweet.userId ?? "unknown",
-        username: tweet.username ?? undefined,
-        text: tweet.text ?? "",
-        timestamp: tweet.timestamp,
-        inReplyTo: tweet.inReplyToStatusId,
-        metrics: {
-          likes: tweet.likes,
-          reposts: tweet.retweets,
-          replies: tweet.replies,
-          quotes: tweet.quotes,
-        },
-        accountId,
-      }),
-    );
+    return result.tweets.flatMap((tweet) => {
+      // Normalize once per row: a present-but-unusable timestamp fails the
+      // row closed instead of surfacing a healthy-looking memory with an
+      // undefined or "now" creation time (#18965).
+      const createdAt = getEpochMs(tweet.timestamp);
+      if (createdAt === undefined) {
+        logger.debug(
+          `X searchPosts: skipping tweet ${tweet.id ?? "unknown"} with unusable timestamp`,
+        );
+        return [];
+      }
+      return [
+        this.buildXPostMemory(runtime, {
+          id: tweet.id ?? "unknown",
+          userId: tweet.userId ?? "unknown",
+          username: tweet.username ?? undefined,
+          text: tweet.text ?? "",
+          createdAt,
+          inReplyTo: tweet.inReplyToStatusId,
+          metrics: {
+            likes: tweet.likes,
+            reposts: tweet.retweets,
+            replies: tweet.replies,
+            quotes: tweet.quotes,
+          },
+          accountId,
+        }),
+      ];
+    });
   }
 
   async fetchConnectorMessages(
@@ -1334,6 +1347,12 @@ export class XService extends Service {
     return messages;
   }
 
+  /**
+   * `createdAt` must be an already-validated epoch-milliseconds value: each
+   * caller normalizes its raw timestamp exactly once at the row boundary and
+   * skips rows that fail, so this builder can never emit a healthy-looking
+   * memory with an undefined or unit-drifted timestamp (#18965).
+   */
   private buildXPostMemory(
     runtime: IAgentRuntime,
     post: {
@@ -1341,7 +1360,7 @@ export class XService extends Service {
       userId?: string;
       username?: string;
       text: string;
-      timestamp?: number;
+      createdAt: number;
       inReplyTo?: string;
       roomId?: UUID;
       metrics?: unknown;
@@ -1353,9 +1372,7 @@ export class XService extends Service {
       post.accountId ?? this.defaultAccountId,
     );
     const authorId = post.userId || "unknown";
-    const createdAt = Number.isFinite(post.timestamp)
-      ? post.timestamp
-      : Date.now();
+    const createdAt = post.createdAt;
     const entityId =
       authorId === runtime.agentId
         ? runtime.agentId

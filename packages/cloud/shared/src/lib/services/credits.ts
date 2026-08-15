@@ -25,6 +25,7 @@ import { getRouteTimeoutMs } from "../utils/request-timeout";
 import type { AffiliateBillingAttribution } from "./affiliate-billing-attribution";
 import { enqueueCollectedAffiliatePayout } from "./affiliate-payout-outbox";
 import type { PricingBillingSource } from "./ai-pricing-definitions";
+import { resolveCostBuffer } from "./credits-config";
 import { emailService } from "./email";
 import { organizationsService } from "./organizations";
 import { userSessionsService } from "./user-sessions";
@@ -39,7 +40,7 @@ import {
 // ============================================================================
 
 /** Buffer multiplier for cost estimation (default 50%). Configurable via env. */
-export const COST_BUFFER = Number(process.env.CREDIT_COST_BUFFER) || 1.5;
+export const COST_BUFFER = resolveCostBuffer();
 /** Minimum reservation amount in USD */
 export const MIN_RESERVATION = 0.000001;
 /** Epsilon for reconcile float comparisons — 10% of MIN_RESERVATION */
@@ -446,6 +447,11 @@ export class CreditsService {
           UPDATE organizations AS o
           SET
             credit_balance = org.current_balance + ${String(amount)}::numeric,
+            settings = CASE
+              WHEN ${transactionType} = 'credit'
+                THEN COALESCE(o.settings, '{}'::jsonb) - 'welcomeBonusWithheld'
+              ELSE o.settings
+            END,
             updated_at = NOW()
           FROM org
           WHERE o.id = org.id
@@ -994,7 +1000,7 @@ export class CreditsService {
         organizationName: org.name,
         currentBalance,
         threshold,
-        billingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing`,
+        billingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/cloud/billing`,
       });
 
       if (sent) {

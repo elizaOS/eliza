@@ -4,7 +4,7 @@ description: "Call Eliza Cloud through OpenAI-compatible clients or its native H
 ---
 
 Eliza Cloud exposes OpenAI-compatible model, chat-completions, and embeddings
-routes under `https://elizacloud.ai/api/v1`. Use an OpenAI-compatible client
+routes under `https://api.eliza.app/api/v1`. Use an OpenAI-compatible client
 for those operations and direct HTTP requests for Cloud-specific APIs.
 
 ## Discover models first
@@ -13,7 +13,7 @@ Do not hard-code a model from an old example. Query the authenticated model
 catalog and use an ID returned for your account:
 
 ```bash
-curl "https://elizacloud.ai/api/v1/models" \
+curl "https://api.eliza.app/api/v1/models" \
   -H "Authorization: Bearer $ELIZA_API_KEY"
 ```
 
@@ -28,7 +28,7 @@ import OpenAI from "openai";
 
 const client = new OpenAI({
   apiKey: process.env.ELIZA_API_KEY,
-  baseURL: "https://elizacloud.ai/api/v1",
+  baseURL: "https://api.eliza.app/api/v1",
 });
 
 const response = await client.chat.completions.create({
@@ -54,7 +54,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key=os.environ["ELIZA_API_KEY"],
-    base_url="https://elizacloud.ai/api/v1",
+    base_url="https://api.eliza.app/api/v1",
 )
 
 response = client.chat.completions.create(
@@ -70,7 +70,7 @@ print(response.choices[0].message.content)
 The same chat route works without an SDK:
 
 ```bash
-curl "https://elizacloud.ai/api/v1/chat/completions" \
+curl "https://api.eliza.app/api/v1/chat/completions" \
   -H "Authorization: Bearer $ELIZA_API_KEY" \
   -H "Content-Type: application/json" \
   -d "{\"model\":\"$ELIZA_MODEL_ID\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}"

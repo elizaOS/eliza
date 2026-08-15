@@ -223,30 +223,41 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     );
   });
 
-  it("falls back from session/cancel request to notification when rejected", async () => {
+  it("sends session/cancel as a notification and settles from the original prompt result", async () => {
     const { client, p } = await startClient();
 
-    const cancelled = client.cancel("session-1");
+    const prompted = client.prompt("session-1", "keep going");
     await waitForWrites(p, 2);
-    expect(writeAt(p, 1)).toEqual({
+    expect(writeAt(p, 1)).toMatchObject({
       jsonrpc: "2.0",
       id: 2,
-      method: "session/cancel",
+      method: "session/prompt",
       params: { sessionId: "session-1" },
     });
 
-    emitJson(p, {
-      jsonrpc: "2.0",
-      id: 2,
-      error: { code: -32601, message: "Method not found" },
-    });
+    const cancelled = client.cancel("session-1");
     await waitForWrites(p, 3);
     expect(writeAt(p, 2)).toEqual({
       jsonrpc: "2.0",
       method: "session/cancel",
       params: { sessionId: "session-1" },
     });
-    await expect(cancelled).resolves.toBeUndefined();
+    let settled = false;
+    void cancelled.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    // Official ACP wire shape: cancellation is confirmed by the terminal
+    // response to the original prompt id, not a response to session/cancel.
+    emitJson(p, {
+      jsonrpc: "2.0",
+      id: 2,
+      result: { stopReason: "cancelled" },
+    });
+    await expect(prompted).resolves.toEqual({ stopReason: "cancelled" });
+    await expect(cancelled).resolves.toEqual({ stopReason: "cancelled" });
   });
 
   it("triggers cancellation when a prompt request times out", async () => {
@@ -267,7 +278,6 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     await waitForWrites(p, 3);
     expect(writeAt(p, 2)).toEqual({
       jsonrpc: "2.0",
-      id: 3,
       method: "session/cancel",
       params: { sessionId: "session-1" },
     });
@@ -276,7 +286,6 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     expect((timeoutError as Error).message).toBe(
       "ACP request timed out: session/prompt",
     );
-    emitJson(p, { jsonrpc: "2.0", id: 3, result: {} });
   });
 
   it("uses a 5-minute default timeout when none is configured (was 30s, raised after live 30-200s sub-agent runs hit the limit)", async () => {
@@ -312,7 +321,6 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     expect((timeoutError as Error).message).toBe(
       "ACP request timed out: session/prompt",
     );
-    emitJson(p, { jsonrpc: "2.0", id: 3, result: {} });
   });
 
   it("initialize honors the configured session timeout instead of the 300s default", async () => {

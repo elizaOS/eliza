@@ -98,26 +98,6 @@ const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>([
   // which ships @octokit/rest@22 at the runtime root. Re-copying the private
   // Bun fallback produces tar-unsafe nested paths on Windows.
   ["git-workspace-service", new Set(["@octokit/rest"])],
-  // @smithers-orchestrator/aws declares the AWS cloud-orchestration clients
-  // (CodeBuild, ECS, CloudWatch Logs) as optionalDependencies for its
-  // server-side sandbox runners. Those APIs are never exercised by the
-  // packaged desktop app, yet the optional-dependency walk drags in their
-  // full private @aws-sdk trees. client-codebuild in particular nests a
-  // credential-provider chain
-  // (client-codebuild → credential-provider-node → credential-provider-sso →
-  //  nested-clients → dist-es/submodules/sso-oidc/...) whose relative paths
-  // exceed the Electrobun self-extractor tar-safe limit and hard-fail
-  // assertTarSafeRuntimePaths. @aws-sdk/client-s3 stays bundled because it is
-  // already hoisted at the runtime root (see ALWAYS_HOISTED_PACKAGES) and is
-  // consumed broadly; only the unused infra clients are dropped here.
-  [
-    "@smithers-orchestrator/aws",
-    new Set([
-      "@aws-sdk/client-codebuild",
-      "@aws-sdk/client-ecs",
-      "@aws-sdk/client-cloudwatch-logs",
-    ]),
-  ],
 ]);
 const RUNTIME_COPY_PRUNED_DIR_NAMES = new Set([
   ".git",

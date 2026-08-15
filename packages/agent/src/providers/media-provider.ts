@@ -1957,7 +1957,7 @@ export function createVisionProvider(
     );
   }
   return new ElizaCloudVisionProvider(
-    options.elizaCloudBaseUrl ?? "https://elizacloud.ai/api/v1",
+    options.elizaCloudBaseUrl ?? "https://api.eliza.app/api/v1",
     options.elizaCloudApiKey,
   );
 }

@@ -1,5 +1,5 @@
 /**
- * /dashboard/apps — the Applications list (cloud OAuth apps). Under the app
+ * /cloud/apps — the Applications list (cloud OAuth apps). Under the app
  * shell the document head is owned by the host, not per-cloud-route. Auth
  * gating uses `useSessionAuth()` (Steward session).
  */
@@ -21,7 +21,7 @@ import { useCloudT } from "../shell/CloudI18nProvider";
 import { AppsTable } from "./components/apps-table";
 import { useApps } from "./lib/apps";
 
-/** /dashboard/apps */
+/** /cloud/apps */
 export default function ApplicationsPage() {
   const t = useCloudT();
   const session = useSessionAuth();

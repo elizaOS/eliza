@@ -30,7 +30,7 @@ Two formats live here:
    `elizaos plugins submit --dry-run` author. One file per package.
 2. **Generated wire registry** (`generated-registry.json`) — the
    `{ registry: { "<package>": { … } } }` shape the runtime consumes from
-   `plugins.elizacloud.ai/generated-registry.json`. Produced by `generate.ts`;
+   `plugins.eliza.app/generated-registry.json`. Produced by `generate.ts`;
    never hand-edited.
 
 ## Commands

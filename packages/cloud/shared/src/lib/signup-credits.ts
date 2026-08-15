@@ -1,20 +1,12 @@
 /**
- * Signup welcome-credit amount.
+ * Canonical opening-balance policy for every Cloud account-creation path.
  *
- * Lives in its own module (not steward-sync.ts) so services that steward-sync
- * itself imports — e.g. the invites service, which compares a solo org's
- * balance against the grant (#11332) — can read it without an import cycle.
+ * Shared personal Eliza is platform-funded and does not mint user credits.
+ * Purchased top-ups, promotion codes, referrals, and historical balances are
+ * separate ledger paths and must never be derived from this policy.
  */
 
-export const DEFAULT_INITIAL_CREDITS = 5.0;
-
-export const getInitialCredits = (): number => {
-  const envValue = process.env.INITIAL_FREE_CREDITS;
-  if (envValue) {
-    const parsed = parseFloat(envValue);
-    if (!isNaN(parsed) && parsed >= 0) {
-      return parsed;
-    }
-  }
-  return DEFAULT_INITIAL_CREDITS;
-};
+export const SIGNUP_CREDIT_POLICY = {
+  automaticGrantUsd: 0,
+  openingBalanceUsd: "0.00",
+} as const;

@@ -53,7 +53,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.6",
+    "@biomejs/biome": "2.5.7",
     "@capacitor/core": "^8.3.1",
     "rollup": "^4.60.2",
     "@typescript/native": "npm:typescript@^7.0.2",

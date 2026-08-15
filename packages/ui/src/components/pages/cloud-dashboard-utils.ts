@@ -14,9 +14,9 @@ import type {
 import { pathForTab } from "../../navigation";
 import { isCloudStatusReasonApiKeyOnly } from "../../utils/cloud-status";
 
-export const ELIZA_CLOUD_INSTANCES_URL = "https://elizacloud.ai/dashboard/app";
+export const ELIZA_CLOUD_INSTANCES_URL = "https://cloud.eliza.app/cloud/agents";
 /** Marketing / docs site — "Learn more" when not connected (in-app browser on desktop). */
-export const ELIZA_CLOUD_WEB_URL = "https://elizacloud.ai";
+export const ELIZA_CLOUD_WEB_URL = "https://eliza.app";
 export const BILLING_PRESET_AMOUNTS = [10, 25, 100];
 export const MANAGED_DISCORD_GATEWAY_AGENT_NAME = "Discord Gateway";
 

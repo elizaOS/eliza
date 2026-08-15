@@ -11,10 +11,40 @@ on:
   push:
     branches: [develop, main]
     paths:
+      - "bun.lock"
+      - "bunfig.toml"
+      - "package.json"
+      - "patches/**"
+      - "plugins/**"
+      - "tsconfig.base.json"
+      - "tsconfig.build.template.json"
+      - "tsconfig.json"
+      - "turbo.json"
+      - "packages/auth/**"
+      - "packages/cloud/routing/**"
+      - "packages/cloud/shared/**"
+      - "packages/evidence/**"
+      - "packages/elizaos/**"
+      - "packages/logger/**"
+      - "packages/prompts/**"
+      - "packages/registry/**"
+      - "packages/scripts/build-private-workspace-packages.mjs"
+      - "packages/scripts/build-core-packages.mjs"
+      - "packages/scripts/build-core.mjs"
+      - "packages/scripts/ensure-workspace-symlinks.mjs"
+      - "packages/scripts/lib/repository-file-integrity.mjs"
+      - "packages/scripts/lib/script-metadata.mjs"
+      - "packages/scripts/lib/workspaces.mjs"
+      - "packages/scripts/patch-llama-cpp-capacitor.mjs"
+      - "packages/scripts/patch-nested-core-dist.mjs"
+      - "packages/scripts/patch-punycode-deprecation.mjs"
+      - "packages/scripts/run-turbo.mjs"
+      - "packages/scripts/sync-artifacts.mjs"
+      - "packages/shared/**"
+      - "packages/skills/**"
+      - "packages/ui/**"
+      - "packages/vault/**"
       - "packages/app-core/deploy/Dockerfile.ci"
-      - "plugins/plugin-sql/**"
-      - "plugins/plugin-elizacloud/**"
-      - "plugins/plugin-local-inference/**"
       - "packages/agent/**"
       - "packages/core/**"
       - "packages/app/**"
@@ -436,7 +466,7 @@ jobs:
 
       - name: Generate artifact attestation
         if: ${{ steps.push.outputs.digest != '' }}
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-name: ${{ steps.image.outputs.name }}
           subject-digest: ${{ steps.push.outputs.digest }}
@@ -487,56 +517,36 @@ jobs:
 
       - name: Generate demo artifact attestation
         if: ${{ steps.image.outputs.publication_target == 'demo' }}
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-name: ${{ steps.promote-demo.outputs.name }}
           subject-digest: ${{ steps.promote-demo.outputs.digest }}
           push-to-registry: true
 
-      - name: Make Docker image public
+      - name: Verify canonical image is anonymously pullable
         if: ${{ steps.image.outputs.publication_target == 'canonical' }}
-        # Idempotent — patching to public when already public is a no-op.
-        # Previously lived in image.yaml; folded in here on consolidation.
+        env:
+          EXPECTED_DIGEST: ${{ steps.push.outputs.digest }}
+          EXPECTED_IMAGE_ID: ${{ steps.push.outputs.image_id }}
+          GHCR_REPOSITORY: elizaos/eliza
+        # Package visibility is an organization setting; GitHub's Packages
+        # REST API exposes no visibility mutation. Prove the actual contract
+        # after bounded propagation retries instead of trusting the historical
+        # unsupported package-visibility request.
         run: |
-          curl \
-            -X PATCH \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/user/packages/container/${{ env.IMAGE_NAME }}/visibility \
-            -d '{"visibility":"public"}'
+          node packages/scripts/verify-ghcr-anonymous-manifest.mjs \
+            --repository "$GHCR_REPOSITORY" \
+            --digest "$EXPECTED_DIGEST" \
+            --image-id "$EXPECTED_IMAGE_ID"
 
       - name: Verify demo image is anonymously pullable
         if: ${{ steps.image.outputs.publication_target == 'demo' }}
         env:
           EXPECTED_DIGEST: ${{ steps.promote-demo.outputs.digest }}
           EXPECTED_IMAGE_ID: ${{ steps.push.outputs.image_id }}
+          GHCR_REPOSITORY: elizaos/eliza-demo
         run: |
-          set -euo pipefail
-          manifest_file="$(mktemp)"
-          headers_file="$(mktemp)"
-          trap 'rm -f "$manifest_file" "$headers_file"' EXIT
-          token="$(
-            curl --fail-with-body --silent --show-error \
-              'https://ghcr.io/token?scope=repository%3Aelizaos%2Feliza-demo%3Apull' |
-              jq -er '.token'
-          )"
-          curl --fail-with-body --silent --show-error \
-            --dump-header "$headers_file" \
-            --output "$manifest_file" \
-            -H 'Accept: application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json' \
-            -H "Authorization: Bearer $token" \
-            "https://ghcr.io/v2/elizaos/eliza-demo/manifests/$EXPECTED_DIGEST"
-          remote_digest="$(
-            tr -d '\r' < "$headers_file" |
-              awk 'tolower($1) == "docker-content-digest:" { print $2 }' |
-              tail -n 1
-          )"
-          remote_image_id="$(jq -er '.config.digest' "$manifest_file")"
-          if [ "$remote_digest" != "$EXPECTED_DIGEST" ]; then
-            echo "::error::Anonymous GHCR read returned a different manifest digest." >&2
-            exit 1
-          fi
-          if [ "$remote_image_id" != "$EXPECTED_IMAGE_ID" ]; then
-            echo "::error::Published demo manifest does not reference the boot-verified image config." >&2
-            exit 1
-          fi
+          node packages/scripts/verify-ghcr-anonymous-manifest.mjs \
+            --repository "$GHCR_REPOSITORY" \
+            --digest "$EXPECTED_DIGEST" \
+            --image-id "$EXPECTED_IMAGE_ID"

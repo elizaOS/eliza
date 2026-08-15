@@ -53,9 +53,10 @@ import type {
 	Metadata,
 	OAuthFlowRecord,
 	PairingAllowlistEntry,
+	PairingAllowlistQuery,
 	PairingAllowlistsResult,
-	PairingChannel,
 	PairingRequest,
+	PairingRequestQuery,
 	PairingRequestsResult,
 	Participant,
 	ParticipantsForRoomsResult,
@@ -72,6 +73,7 @@ import type {
 	World,
 } from "../types";
 import { MemoryType } from "../types";
+import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
 import { isPlainObject } from "../utils/type-guards";
 import {
@@ -97,6 +99,19 @@ function randomUuid(): UUID {
 
 function roomTableKey(tableName: string, roomId: UUID): string {
 	return `${tableName}:${String(roomId)}`;
+}
+
+function memoryMatchesMetadata(
+	memory: Memory,
+	filter: Record<string, unknown>,
+): boolean {
+	if (!memory.metadata) return false;
+	const metadata = memory.metadata as Record<string, unknown>;
+	for (const [key, value] of Object.entries(filter)) {
+		if (!(key in metadata)) return false;
+		if (JSON.stringify(metadata[key]) !== JSON.stringify(value)) return false;
+	}
+	return true;
 }
 
 function connectorAccountKey(params: {
@@ -961,24 +976,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			});
 		}
 
-		// WHY: In-memory metadata filtering uses deep equality check for each
-		// filter key. This is less efficient than SQL containment operators but
-		// correct for nested objects/arrays. Matches PG @> and MySQL JSON_CONTAINS semantics.
+		// In-memory metadata filtering compares each requested top-level value by
+		// JSON representation. Keep get/count on this shared matcher so their
+		// pagination totals cannot drift apart.
 		if (params.metadata) {
 			const filterMeta = params.metadata as Record<string, unknown>;
-			all = all.filter((memory) => {
-				if (!memory.metadata) return false;
-				const memMeta = memory.metadata as Record<string, unknown>;
-				// Check if memory.metadata contains all key-value pairs from params.metadata
-				for (const [key, value] of Object.entries(filterMeta)) {
-					if (!(key in memMeta)) return false;
-					// Deep equality check for nested objects/arrays
-					if (JSON.stringify(memMeta[key]) !== JSON.stringify(value)) {
-						return false;
-					}
-				}
-				return true;
-			});
+			all = all.filter((memory) => memoryMatchesMetadata(memory, filterMeta));
 		}
 
 		// Keyword filter — same case-insensitive `includes` semantics the SQL
@@ -1324,6 +1327,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		const roomIds = params.roomIds ?? [];
 		const tbl = params.tableName ?? "messages";
 		const u = params.unique;
+		const filterMeta = params.metadata as Record<string, unknown> | undefined;
 		let total = 0;
 		if (roomIds.length === 0) {
 			// No room filter: count all memories matching tableName and other filters (consistent with SQL/store behavior)
@@ -1335,6 +1339,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 					list = list.filter((m) => m.entityId === params.entityId);
 				if (params.agentId)
 					list = list.filter((m) => m.agentId === params.agentId);
+				if (filterMeta)
+					list = list.filter((memory) =>
+						memoryMatchesMetadata(memory, filterMeta),
+					);
 				total += u ? list.filter((m) => m.unique).length : list.length;
 			}
 			return total;
@@ -1347,6 +1355,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				list = list.filter((m) => m.entityId === params.entityId);
 			if (params.agentId)
 				list = list.filter((m) => m.agentId === params.agentId);
+			if (filterMeta)
+				list = list.filter((memory) =>
+					memoryMatchesMetadata(memory, filterMeta),
+				);
 			total += u ? list.filter((m) => m.unique).length : list.length;
 		}
 		return total;
@@ -1875,21 +1887,63 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	// ===============================
 
 	async getPairingRequests(
-		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+		queries: PairingRequestQuery[],
 	): Promise<PairingRequestsResult> {
 		const result: PairingRequestsResult = [];
-		for (const { channel, agentId } of queries) {
+		for (const query of queries) {
+			const { channel, agentId } = query;
 			const requests: PairingRequest[] = [];
 			for (const request of this.pairingRequests.values()) {
-				if (request.channel === channel && request.agentId === agentId) {
+				if (
+					request.channel === channel &&
+					request.agentId === agentId &&
+					(!query.createdAfter ||
+						new Date(request.createdAt).getTime() >=
+							query.createdAfter.getTime())
+				) {
 					requests.push(request);
 				}
 			}
-			requests.sort(
-				(a, b) =>
-					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-			);
-			result.push({ channel, agentId, requests });
+			const isPaged = query.limit !== undefined || query.offset !== undefined;
+			const direction = query.order === "newest" ? -1 : 1;
+			if (!isPaged && query.order === undefined) {
+				// Keep the legacy complete-array contract: chronological ordering with
+				// stable insertion order for records sharing a timestamp.
+				requests.sort(
+					(a, b) =>
+						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+				);
+				result.push({ channel, agentId, requests });
+				continue;
+			}
+
+			requests.sort((a, b) => {
+				const timeDifference =
+					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+				if (timeDifference !== 0) return timeDifference * direction;
+				const aId = String(a.id);
+				const bId = String(b.id);
+				return aId === bId ? 0 : aId < bId ? -direction : direction;
+			});
+			if (!isPaged) {
+				result.push({ channel, agentId, requests });
+				continue;
+			}
+
+			const { limit, offset } = normalizePairingPageOptions(query);
+			const page = requests.slice(offset, offset + limit + 1);
+			const hasMore = page.length > limit;
+			result.push({
+				channel,
+				agentId,
+				requests: page.slice(0, limit),
+				pageInfo: {
+					limit,
+					offset,
+					hasMore,
+					nextOffset: hasMore ? offset + limit : null,
+				},
+			});
 		}
 		return result;
 	}
@@ -1929,21 +1983,57 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}
 
 	async getPairingAllowlists(
-		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+		queries: PairingAllowlistQuery[],
 	): Promise<PairingAllowlistsResult> {
 		const result: PairingAllowlistsResult = [];
-		for (const { channel, agentId } of queries) {
+		for (const query of queries) {
+			const { channel, agentId } = query;
 			const entries: PairingAllowlistEntry[] = [];
 			for (const entry of this.pairingAllowlist.values()) {
 				if (entry.channel === channel && entry.agentId === agentId) {
 					entries.push(entry);
 				}
 			}
-			entries.sort(
-				(a, b) =>
-					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-			);
-			result.push({ channel, agentId, entries });
+			const isPaged = query.limit !== undefined || query.offset !== undefined;
+			const direction = query.order === "newest" ? -1 : 1;
+			if (!isPaged && query.order === undefined) {
+				// Keep the legacy complete-array contract: chronological ordering with
+				// stable insertion order for records sharing a timestamp.
+				entries.sort(
+					(a, b) =>
+						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+				);
+				result.push({ channel, agentId, entries });
+				continue;
+			}
+
+			entries.sort((a, b) => {
+				const timeDifference =
+					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+				if (timeDifference !== 0) return timeDifference * direction;
+				const aId = String(a.id);
+				const bId = String(b.id);
+				return aId === bId ? 0 : aId < bId ? -direction : direction;
+			});
+			if (!isPaged) {
+				result.push({ channel, agentId, entries });
+				continue;
+			}
+
+			const { limit, offset } = normalizePairingPageOptions(query);
+			const page = entries.slice(offset, offset + limit + 1);
+			const hasMore = page.length > limit;
+			result.push({
+				channel,
+				agentId,
+				entries: page.slice(0, limit),
+				pageInfo: {
+					limit,
+					offset,
+					hasMore,
+					nextOffset: hasMore ? offset + limit : null,
+				},
+			});
 		}
 		return result;
 	}

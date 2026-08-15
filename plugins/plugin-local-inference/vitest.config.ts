@@ -1,8 +1,8 @@
 /**
  * Vitest config: aliases the `@elizaos/*` packages to their workspace sources and
- * runs both the legacy `__tests__/**` suites and the co-located `src/**`
- * `.test.ts` siblings. Real-FFI / real-model `*.real.test.ts` files run only in
- * the post-merge lane (`TEST_LANE=post-merge`).
+ * runs the package's TypeScript and deterministic script-contract suites.
+ * Real-FFI / real-model `*.real.test.ts` files run only in the post-merge lane
+ * (`TEST_LANE=post-merge`).
  */
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -100,12 +100,23 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: "node",
+		// CI plugin shards run many packages concurrently on shared runners;
+		// under that starvation the vitest 5s default fails healthy suites
+		// (tts-cache N×N sweeps, GGUF fuzz passes). Explicit generous budget —
+		// real hangs still fail, just later.
+		testTimeout: 120_000,
+		hookTimeout: 120_000,
 		// I7/I8/I9 tests live next to their sources under `src/` (voice-budget,
 		// device-tier, active-model co-locate `.test.ts` siblings). Keep the
 		// `__tests__/**` glob for legacy suites and ALSO pick up co-located
 		// `.test.ts` files under `src/` so they actually run via
 		// `bun --filter @elizaos/plugin-local-inference verify`.
-		include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
+		include: [
+			"__tests__/**/*.test.ts",
+			"src/**/*.test.ts",
+			"scripts/**/*.test.mjs",
+			"native/verify/voice_duet_sweep.test.mjs",
+		],
 		exclude: [
 			"dist/**",
 			"node_modules/**",

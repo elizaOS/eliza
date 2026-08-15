@@ -45,9 +45,14 @@ const CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 
 const app = new Hono<AppEnv>();
 
-function json(c: Context<AppEnv>, data: unknown, status?: number): Response {
+function json(
+  c: Context<AppEnv>,
+  data: unknown,
+  status?: number,
+  headers?: Record<string, string>,
+): Response {
   return applyCorsHeaders(
-    status ? Response.json(data, { status }) : Response.json(data),
+    status ? Response.json(data, { status, headers }) : Response.json(data),
     CORS_METHODS,
     c.req.header("origin"),
   );
@@ -146,9 +151,13 @@ app.get("/", async (c) => {
         {
           success: false,
           error: characterAgent.error,
+          ...(characterAgent.code ? { code: characterAgent.code } : {}),
           ...(characterAgent.status === 503 ? { retryable: true } : {}),
         },
         characterAgent.status,
+        characterAgent.retryAfterSeconds
+          ? { "Retry-After": String(characterAgent.retryAfterSeconds) }
+          : undefined,
       );
     }
     try {
@@ -176,6 +185,7 @@ app.get("/", async (c) => {
             retryable: true,
           },
           503,
+          { "Retry-After": "1" },
         );
       }
       throw error;

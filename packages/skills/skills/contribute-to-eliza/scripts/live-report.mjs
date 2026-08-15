@@ -87,6 +87,7 @@ const CLOCK_SKEW_MS = 5 * 60 * 1000;
 const FULL_COMMIT_RE = /^[a-f0-9]{40}$/i;
 const GH_READ_MAX_ATTEMPTS = 3;
 const GH_READ_RETRY_BASE_DELAY_MS = 250;
+const GH_READ_TIMEOUT_MS = 15_000;
 // Rate limits are intentionally excluded: HTTP 403/429 require honoring the
 // server's retry window, while this short transport backoff would amplify them.
 const RETRYABLE_GH_READ_FAILURE_RE =
@@ -326,6 +327,12 @@ function waitSynchronously(durationMs) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, durationMs);
 }
 
+function isTimeoutError(error) {
+  return (
+    error instanceof Error && "code" in error && error.code === "ETIMEDOUT"
+  );
+}
+
 export function readGhPages(
   endpoint,
   spawn = spawnSync,
@@ -350,9 +357,21 @@ export function readGhPages(
   while (true) {
     const result = spawn("gh", args, {
       encoding: "utf8",
+      // A synchronous child that handles SIGTERM can keep the caller blocked
+      // after its timeout. SIGKILL makes the per-read limit a hard boundary.
+      killSignal: "SIGKILL",
       maxBuffer: 64 * 1024 * 1024,
+      timeout: GH_READ_TIMEOUT_MS,
       windowsHide: true,
     });
+    if (isTimeoutError(result.error)) {
+      // A timed-out paginated read may contain only a prefix of the inventory.
+      // Fail immediately instead of multiplying the full timeout budget.
+      throw new Error(
+        `gh api timed out for ${endpoint} on attempt ${attempt} after ${GH_READ_TIMEOUT_MS}ms; timeout failures are not retried and partial output was discarded`,
+        { cause: result.error },
+      );
+    }
     if (result.error) {
       throw new Error(`gh api could not start for ${endpoint}`, {
         cause: result.error,

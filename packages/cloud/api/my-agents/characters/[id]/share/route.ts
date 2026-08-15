@@ -32,7 +32,7 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Character not found" }, 404);
     }
 
-    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
     return c.json({
       success: true,
       data: {
@@ -43,7 +43,7 @@ app.get("/", async (c) => {
         shareInfo: character.is_public
           ? {
               chatUrl: `${baseUrl}/chat/${character.id}`,
-              dashboardChatUrl: `${baseUrl}/dashboard/chat?characterId=${character.id}`,
+              dashboardChatUrl: `${baseUrl}/cloud/chat?characterId=${character.id}`,
               a2aEndpoint: `${baseUrl}/api/agents/${character.id}/a2a`,
               mcpEndpoint: `${baseUrl}/api/agents/${character.id}/mcp`,
             }
@@ -104,7 +104,7 @@ app.put("/", async (c) => {
       cache.delPattern(CacheKeys.discovery.pattern()),
     ]);
 
-    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
     return c.json({
       success: true,
       data: {
@@ -118,7 +118,7 @@ app.put("/", async (c) => {
         shareInfo: updated.is_public
           ? {
               chatUrl: `${baseUrl}/chat/${updated.id}`,
-              dashboardChatUrl: `${baseUrl}/dashboard/chat?characterId=${updated.id}`,
+              dashboardChatUrl: `${baseUrl}/cloud/chat?characterId=${updated.id}`,
             }
           : null,
       },

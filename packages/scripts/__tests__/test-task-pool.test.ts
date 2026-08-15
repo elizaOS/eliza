@@ -5,6 +5,7 @@ import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 import {
   isParallelSafeTask,
+  MAX_TASK_CONCURRENCY,
   normalizeConcurrency,
   parseShardSpec,
   partitionTasks,
@@ -163,16 +164,40 @@ describe("runPool", () => {
 });
 
 describe("normalizeConcurrency", () => {
-  test("defaults to 1 (fully serial) for empty/invalid input", () => {
-    for (const value of [undefined, null, "", "abc", "0", "-3", 0, -1]) {
+  test("defaults to 1 (fully serial) only when the value is absent", () => {
+    for (const value of [undefined, null, ""]) {
       expect(normalizeConcurrency(value)).toBe(1);
     }
   });
 
-  test("parses positive integers from string or number", () => {
+  test("parses canonical positive integers from string or number", () => {
     expect(normalizeConcurrency("4")).toBe(4);
     expect(normalizeConcurrency(8)).toBe(8);
-    expect(normalizeConcurrency("3.9")).toBe(3);
+    expect(normalizeConcurrency(String(MAX_TASK_CONCURRENCY))).toBe(
+      MAX_TASK_CONCURRENCY,
+    );
+  });
+
+  test("throws on present-but-malformed values instead of degrading to serial", () => {
+    // "1e3" and "8abc" used to silently become 1 and 8 via parseInt; "3.9"
+    // used to truncate; zero/negative/overflow used to fall back to 1.
+    for (const value of [
+      "abc",
+      "0",
+      "-3",
+      0,
+      -1,
+      "1e3",
+      "8abc",
+      "3.9",
+      "08",
+      " 4 ",
+      "0x10",
+      String(MAX_TASK_CONCURRENCY + 1),
+      "999999",
+    ]) {
+      expect(() => normalizeConcurrency(value)).toThrow(/concurrency/);
+    }
   });
 });
 
@@ -181,6 +206,7 @@ describe("parseShardSpec", () => {
     expect(parseShardSpec("2/4")).toEqual({ index: 2, total: 4 });
     expect(parseShardSpec("1/1")).toEqual({ index: 1, total: 1 });
     expect(parseShardSpec("4/4")).toEqual({ index: 4, total: 4 });
+    expect(parseShardSpec("02/04")).toEqual({ index: 2, total: 4 });
   });
 
   test("returns null for absent specs", () => {
@@ -197,9 +223,22 @@ describe("parseShardSpec", () => {
       "5/4", // index > total
       "2/0", // total <= 0
       "-1/4", // negative index
+      "+1/4", // signed index
+      "1/-4", // negative total
+      "1/+4", // signed total
       "1/2/3", // too many parts
       "/4", // empty index
       "2/", // empty total
+      "1junk/2", // partial index
+      "1/2junk", // partial total
+      "1.5/2", // decimal index
+      "1/2.5", // decimal total
+      "1e0/2", // exponent index
+      "1/2e0", // exponent total
+      " 1/2", // leading whitespace
+      "1/2 ", // trailing whitespace
+      "9007199254740992/9007199254740992", // unsafe index and total
+      "1/9007199254740992", // unsafe total
     ]) {
       expect(parseShardSpec(bad)).toBeNull();
     }
@@ -279,7 +318,6 @@ describe("plugin test command contract", () => {
     expect(script).toContain("--no-cloud");
     expect(script).toContain("--concurrency=3");
   });
-
 });
 
 describe("run-all-tests plan mode", () => {
@@ -296,6 +334,7 @@ describe("run-all-tests plan mode", () => {
         TEST_SCRIPT_FILTER: "",
         TEST_SHARD: "",
         TEST_START_AT: "",
+        TEST_CONCURRENCY: "",
         ...env,
       },
     });
@@ -336,6 +375,42 @@ describe("run-all-tests plan mode", () => {
       },
     ]);
     expect(plan.cloudStep).toBeNull();
+  });
+
+  test("warns and preserves the unsharded plan for a partially numeric TEST_SHARD", () => {
+    const result = runPlan(
+      [
+        "--plan=json",
+        "--only=test",
+        "--no-cloud",
+        "--filter=^@elizaos/core \\(packages/core\\)#test$",
+      ],
+      { TEST_SHARD: "1junk/2" },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain(
+      'WARN invalid TEST_SHARD "1junk/2" — expected N/M (1-indexed). Ignoring.',
+    );
+    const plan = JSON.parse(result.stdout);
+    expect(plan.summary).toMatchObject({ shard: null, taskCount: 1 });
+    expect(plan.tasks).toEqual([
+      expect.objectContaining({
+        packageName: "@elizaos/core",
+        relativeDir: "packages/core",
+        scriptName: "test",
+      }),
+    ]);
+  });
+
+  test("keeps the source-only homepage visual harness out of root PR smoke", () => {
+    const prResult = runPlan([
+      "--plan=json",
+      "--only=e2e",
+      "--filter=^@elizaos/homepage-source \\(packages/homepage\\)#test:e2e$",
+    ]);
+    expect(prResult.status).toBe(0);
+    expect(JSON.parse(prResult.stdout).tasks).toEqual([]);
   });
 
   test("bare --plan prints text and keeps the cloud step visible", () => {

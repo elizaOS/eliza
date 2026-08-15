@@ -160,6 +160,27 @@ for (const [label, make] of normalizers) {
       expect(done?.data.text).toBe("Hello");
     });
 
+    test("preserves authoritative terminal IDs, action, usage, and failure metadata", async () => {
+      const body =
+        'data: {"type":"token","text":"Open notes"}\n\n' +
+        'data: {"type":"done","messageId":"assistant-1","userMessageId":"user-1","fullText":"Opened notes","actionResults":[{"actionName":"VIEWS","success":true}],"usage":{"totalTokens":3},"failureKind":"provider_gate","accountConnect":{"provider":"openai"},"untrustedExtra":"drop"}\n\n';
+      const events = await readEvents(make().normalizeBridgeSseResponse(sseResponse(body)));
+
+      const done = events.find((event) => event.event === "done")?.data;
+      expect(done).toMatchObject({
+        type: "done",
+        messageId: "assistant-1",
+        userMessageId: "user-1",
+        text: "Opened notes",
+        fullText: "Opened notes",
+        actionResults: [{ actionName: "VIEWS", success: true }],
+        usage: { totalTokens: 3 },
+        failureKind: "provider_gate",
+        accountConnect: { provider: "openai" },
+      });
+      expect(done?.untrustedExtra).toBeUndefined();
+    });
+
     test("buffers split SSE frames before parsing and accumulating", async () => {
       const events = await readEvents(
         make().normalizeBridgeSseResponse(

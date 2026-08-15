@@ -95,12 +95,11 @@ describe("computeOrphanContainersToReap (agent diff)", () => {
 
   test("keeps both primary and replacement placements owned by one sandbox row", () => {
     const rows: LiveContainerRef[] = [
-      { key: "same", status: "running", nodeId: "node-old", updatedAtMs: 1 },
+      { key: "same", status: "running", nodeId: "node-old" },
       {
         key: "same",
         status: "replacement_cleanup_owned",
         nodeId: "node-new",
-        updatedAtMs: 1,
       },
     ];
     const config = { ...AGENT_DIFF, nodeAware: true, nodeMoveGraceMs: 1 };

@@ -37,6 +37,7 @@ bun add @elizaos/plugin-imessage
 | `IMESSAGE_CLI_PATH` | Path to iMessage CLI tool | No |
 | `IMESSAGE_DB_PATH` | Path to iMessage database | No |
 | `IMESSAGE_POLL_INTERVAL_MS` | Polling interval in ms | No |
+| `IMESSAGE_HEARTBEAT_INTERVAL_MS` | Heartbeat health-check interval in ms (default `60000`) | No |
 | `IMESSAGE_DM_POLICY` | DM policy: open, pairing, allowlist, disabled | No |
 | `IMESSAGE_GROUP_POLICY` | Group policy: open, allowlist, disabled | No |
 | `IMESSAGE_ALLOW_FROM` | Comma-separated handles for allowlist | No |
@@ -176,4 +177,3 @@ bun run --cwd plugins/plugin-imessage test
 1. Check that iMessage is signed in and working
 2. Verify the recipient has iMessage enabled
 3. Check for rate limiting (try again later)
-

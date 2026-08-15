@@ -48,11 +48,20 @@ This package is used by the elizaOS agent bundle. It is not a standard elizaOS p
 
 If no model path is set and auto-download is enabled, the bridge downloads recommended eliza-1 GGUFs from `elizaos/eliza-1` on HuggingFace into `$ELIZA_STATE_DIR/local-inference/models/`.
 
-### Timeouts (all optional, default 600000 ms)
+### Timeouts
 
-- `ELIZA_DEVICE_LOAD_TIMEOUT_MS`
-- `ELIZA_DEVICE_GENERATE_TIMEOUT_MS`
-- `ELIZA_DEVICE_EMBED_TIMEOUT_MS`
+Timeout values must be canonical decimal integers from 1 through 2147483647.
+Blank or unset values use the defaults; malformed or out-of-range values fail
+with `INVALID_DEVICE_BRIDGE_TIMEOUT`. Device timeouts are validated when the
+enabled bridge attaches. Bionic timeouts are validated lazily on first use.
+
+| Variable | Default (ms) |
+|---|---:|
+| `ELIZA_DEVICE_LOAD_TIMEOUT_MS` | 600000 |
+| `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | 600000 |
+| `ELIZA_DEVICE_EMBED_TIMEOUT_MS` | 600000 |
+| `ELIZA_BIONIC_REQUEST_TIMEOUT_MS` | 300000 |
+| `ELIZA_BIONIC_PROBE_TIMEOUT_MS` | 2000 |
 
 ## Filesystem sandbox
 

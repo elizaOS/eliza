@@ -8,10 +8,10 @@ description: Manage API keys for elizaOS Cloud.
 Create and manage API keys for authentication.
 
 <Info>
-  Listing and creating API keys require a Steward browser session. Updating,
-  deleting, and regenerating existing keys can use a Steward session or an API
-  key from the same organization; use a different key than the one you are
-  changing.
+  Every API-key management route requires a Steward browser session. API keys
+  can authenticate product APIs, but cannot list, create, update, delete, or
+  regenerate credentials. This prevents one leaked or lower-privilege key from
+  taking over other keys in the organization.
 </Info>
 
 ## List API Keys
@@ -98,21 +98,10 @@ Create a new API key.
 
 ---
 
-## Get API Key
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/api-keys/{"{id}"}</span>
-</div>
-
-Get API key details (without the secret).
-
----
-
 ## Update API Key
 
 <div className="api-endpoint">
-  <span className="method-badge method-badge-put">PUT</span>
+  <span className="method-badge method-badge-patch">PATCH</span>
   <span className="path">/api/v1/api-keys/{"{id}"}</span>
 </div>
 
@@ -150,6 +139,12 @@ Revoke (delete) an API key.
 </div>
 
 Generate a new secret for an existing key.
+
+<Warning>
+  Updating, revoking, and regenerating keys requires a Steward session. Calls
+  authenticated with `Authorization: Bearer eliza_…` return `401`, even when
+  the key belongs to the same organization.
+</Warning>
 
 ### Response
 

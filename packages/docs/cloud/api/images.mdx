@@ -22,7 +22,7 @@ Create images from text descriptions.
   <Tab title="cURL">
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/generate-image" \
+curl -X POST "https://api.eliza.app/api/v1/generate-image" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -36,7 +36,7 @@ curl -X POST "https://elizacloud.ai/api/v1/generate-image" \
   <Tab title="JavaScript">
 
 ```javascript
-const response = await fetch('https://elizacloud.ai/api/v1/generate-image', {
+const response = await fetch('https://api.eliza.app/api/v1/generate-image', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY',
@@ -61,7 +61,7 @@ console.log(data.images[0].url);
 import requests
 
 response = requests.post(
-    'https://elizacloud.ai/api/v1/generate-image',
+    'https://api.eliza.app/api/v1/generate-image',
     headers={
         'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json',
@@ -157,7 +157,7 @@ the current image model list and defaults.
 Transform existing images by providing a `sourceImage` parameter:
 
 ```javascript
-const response = await fetch("https://elizacloud.ai/api/v1/generate-image", {
+const response = await fetch("https://api.eliza.app/api/v1/generate-image", {
   method: "POST",
   headers: {
     Authorization: "Bearer YOUR_API_KEY",
@@ -238,7 +238,7 @@ Enhance your prompts with these style modifiers:
 Generate multiple images in a single request (up to 4):
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/generate-image" \
+curl -X POST "https://api.eliza.app/api/v1/generate-image" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{

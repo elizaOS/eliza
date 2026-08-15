@@ -193,7 +193,7 @@ describe("action tiering", () => {
 		);
 	});
 
-	it("keeps rank-one WEB_FETCH for a real weather retrieval when Stage-1 omits it", () => {
+	it("keeps WEB_FETCH exposed for a real weather retrieval when Stage-1 omits it", () => {
 		const catalog = buildActionCatalog([
 			{
 				name: "WEB_FETCH",
@@ -221,7 +221,7 @@ describe("action tiering", () => {
 			(result) => result.name === "WEB_FETCH",
 		);
 
-		expect(webFetch).toMatchObject({ rank: 1, score: 1 });
+		expect(webFetch).toMatchObject({ score: 1 });
 		expect(webFetch?.stageScores.bm25).toBeLessThan(0.99);
 
 		const surface = tierActionResults({
@@ -238,6 +238,36 @@ describe("action tiering", () => {
 		expect(surface.exposedActionNames).toEqual(
 			expect.arrayContaining(["VIEWS", "WEB_FETCH"]),
 		);
+	});
+
+	it("does not count a wrong exact candidate as message evidence in a saturated tie", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "QUASAR_LOOKUP",
+				description: "Inspect quasar telemetry and measurements.",
+				contexts: ["general"],
+			},
+			{
+				name: "VIEWS",
+				description: "Open app views and arrange panels.",
+				contexts: ["general"],
+			},
+		]);
+		const retrieval = retrieveActions({
+			catalog,
+			messageText: "quasar",
+			candidateActions: ["VIEWS"],
+			selectedContexts: ["general"],
+		});
+
+		expect(retrieval.results.slice(0, 2)).toMatchObject([
+			{ name: "QUASAR_LOOKUP", rank: 1, score: 1 },
+			{ name: "VIEWS", rank: 2, score: 1 },
+		]);
+		expect(retrieval.results[1]?.stageScores).toMatchObject({
+			exact: 1,
+			bm25: 1,
+		});
 	});
 
 	it("does not let tied perfect keyword matches flood a routed candidate", () => {

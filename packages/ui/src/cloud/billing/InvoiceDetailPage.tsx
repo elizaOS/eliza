@@ -1,5 +1,5 @@
 /**
- * /dashboard/invoices/:id — single invoice detail.
+ * /cloud/invoices/:id — single invoice detail.
  */
 
 import {

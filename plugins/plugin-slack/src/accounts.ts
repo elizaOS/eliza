@@ -12,6 +12,7 @@ import {
   type ConnectorAccountRole,
   connectorAccountCredentialSettingKey,
   connectorBaseCredentialSettingKey,
+  ElizaError,
   type IAgentRuntime,
 } from "@elizaos/core";
 import type {
@@ -247,13 +248,25 @@ export function listSlackAccountIds(runtime: IAgentRuntime): string[] {
     return [DEFAULT_ACCOUNT_ID];
   }
 
-  const ids = Array.from(
-    new Set(
-      Object.keys(accounts)
-        .map((id) => normalizeAccountId(id))
-        .filter(Boolean),
-    ),
-  );
+  const normalizedToConfigured = new Map<string, string>();
+  for (const configuredId of Object.keys(accounts)) {
+    const normalized = normalizeAccountId(configuredId);
+    const existing = normalizedToConfigured.get(normalized);
+    if (existing !== undefined && existing !== configuredId) {
+      throw new ElizaError(
+        "Slack account identifiers collide after normalization",
+        {
+          code: "SLACK_ACCOUNT_ID_COLLISION",
+          context: {
+            normalizedAccountId: normalized,
+            configuredIds: [existing, configuredId],
+          },
+        },
+      );
+    }
+    normalizedToConfigured.set(normalized, configuredId);
+  }
+  const ids = Array.from(normalizedToConfigured.keys());
   if (ids.length === 0) {
     return [DEFAULT_ACCOUNT_ID];
   }

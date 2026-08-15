@@ -26,35 +26,99 @@ Set these on each GitHub Environment (`staging`, `production`):
 |---|---|---|
 | `ELIZA_PROVISIONING_HOST` | secret | Public IP of the control-plane host; SSH hostnames are Cloudflare-proxied and do not carry TCP/22. |
 | `ELIZA_PROVISIONING_SSH_KEY` | secret | Deploy-user SSH key used by the provisioning-worker deploy workflow. |
+| `ELIZA_PROVISIONING_SSH_KNOWN_HOSTS` | secret | Independently verified host-key line for `ELIZA_PROVISIONING_HOST`; obtain the fingerprint from the Hetzner console or an existing trusted operator inventory, never from deployment-time `ssh-keyscan` alone. |
 | `HEADSCALE_API_KEY` | secret | Existing Headscale API key; create/rotate on the host with `headscale apikeys create --expiration=8760h`. |
 | `AGENT_TOKEN_PRIVATE_KEY_PEM` | secret | Optional but launch-critical when steward agent JWT auth is enabled; must match the Worker secret. |
 | `ELIZA_LOCAL_ROOT_KEY` | secret | Optional but launch-critical for local root-token paths; must match the Worker secret. |
-| `HEADSCALE_PUBLIC_URL` | variable | `https://headscale-staging.elizacloud.ai` or `https://headscale.elizacloud.ai`. |
+| `HEADSCALE_PUBLIC_URL` | variable | `https://headscale-staging.eliza.app` or `https://headscale.eliza.app`. |
+
+`HEADSCALE_PUBLIC_URL` is always the canonical Eliza URL and remains the only
+value written to Headscale `server_url` and the provisioning daemon. During the
+domain migration, the arm workflow derives the matching legacy exact hostname
+from the selected environment. Operators do not provide or override that alias.
 
 ### Run the arm workflow
 
 ```bash
 gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza --ref main \
-  -f environment=production \
-  -f headscale_api_url=http://127.0.0.1:8081 \
-  -f listen_addr=127.0.0.1:8081
+  -f environment=production -f operation=converge
 ```
 
 > `workflow_dispatch` runs the copy of the workflow on the dispatched ref, so
-> `--ref main` only works once this workflow has merged to `main`. Before then,
-> dispatch against the branch that already carries it (e.g. `--ref develop`).
+> production is accepted only from `main`, while staging is accepted only from
+> `develop`. Checkout is pinned to the dispatched `github.sha` with persisted
+> Git credentials disabled. Test the change on staging after it merges to
+> `develop`; do not dispatch a feature branch.
 
 The workflow:
 
 1. writes the committed `acl.hujson` to `/etc/headscale/acl.hujson`;
-2. converges `server_url`, `listen_addr`, metrics, and gRPC addresses in
-   `/etc/headscale/config.yaml`;
-3. ensures Headscale users `agent` and `tunnel` exist;
-4. upserts `HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`,
+2. ensures the package-compatible `headscale` system user and group exist,
+   including on legacy hosts where the binary was installed manually;
+3. converges `server_url`, `listen_addr`, metrics, and gRPC addresses in
+   `/etc/headscale/config.yaml`; the canonical hostname selects fixed loopback
+   API/listen values, and dispatch callers cannot override them;
+4. ensures Headscale users `agent` and `tunnel` exist;
+5. upserts `HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`,
    `HEADSCALE_API_KEY`, `HEADSCALE_USER`, and optional agent-token secrets into
    `/opt/eliza/cloud/.env.local`;
-5. restarts `headscale` and `eliza-provisioning-worker.service`;
-6. fails if local `/health` is not green.
+6. obtains or expands one Let's Encrypt certificate whose SANs cover both the
+   canonical and legacy exact hostnames, then serves both names from the same
+   no-http2 nginx vhost; after the ACME vhost is gone, `nginx -T` must report no
+   conflicting-name warning and only `/etc/nginx/conf.d/headscale.conf` may own
+   either exact hostname, exactly once on HTTP and HTTPS; every arm also
+   installs a root-owned certbot deploy hook that requires both SANs and a valid
+   nginx config before reload, and fails unless `certbot.timer` is enabled and
+   active;
+7. restarts `headscale` and `eliza-provisioning-worker.service`;
+8. fails unless local health and both public HTTPS health endpoints are green,
+   and both public SNI names serve the same leaf fingerprint whose SANs contain
+   both exact hostnames, with normal certificate verification.
+
+The ACME and final vhost bytes are staged before installation. Rollback traps
+are installed before either loaded config path is changed. If `nginx -t`,
+reload, effective ownership, or exact-SAN validation fails, the script restores
+the prior file bytes and reloads the prior valid config. An ownership failure
+prints only the conflicting config paths and hostnames, leaves unknown nginx
+files untouched, and fails the workflow. Review the explicit conflict path and
+land a separate targeted cleanup; do not add a generic config deletion rule.
+Certificate expansion can succeed before a later vhost ownership failure, but
+the prior active vhost is still restored.
+
+Staging has one separately reviewed retirement path for the legacy manual
+vhost discovered by the fail-closed ownership audit:
+`/etc/nginx/conf.d/headscale-staging.conf`. Inspect it first without changing
+the host:
+
+```bash
+gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza \
+  --ref develop -f environment=staging -f operation=inspect-legacy-vhost
+```
+
+The inspection requires a regular, root-owned, non-group/world-writable file,
+exactly two server blocks that name only `headscale-staging.elizacloud.ai`, and
+exactly two loaded nginx owners from that path. It reports file metadata,
+SHA-256, directive-name counts, and the validated server-block/name shape for
+review without printing directive literal values. Only after that run is
+reviewed may an operator select the retirement operation and supply that exact
+lowercase digest:
+
+```bash
+gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza \
+  --ref develop -f environment=staging \
+  -f operation=retire-legacy-vhost-and-converge \
+  -f reviewed_legacy_vhost_sha256=<LOWERCASE_SHA256_FROM_INSPECTION>
+```
+
+The digest makes the reviewed bytes the retirement authority; any intervening
+file change fails closed. The arm backs up the exact file,
+installs the canonical dual-name vhost, removes the legacy file only after the
+rollback trap is active, then validates ownership, SANs, nginx, and public
+health before converging router enrollment, environment writes, the worker
+restart, and final service liveness. Any failure before all remote convergence
+passes restores both prior files and reloads the previous valid configuration.
+Production has no registered cleanup path and rejects both legacy-file
+operations.
 
 The matching Cloudflare Worker secrets still need to be set through the normal
 Worker secret path. Keep host and Worker values identical for
@@ -74,9 +138,9 @@ because that GitHub Environment requires deployment approval.
 node packages/cloud/scripts/admin/arm-headscale-control-plane.mjs \
   --host <control-plane-ip> \
   --ssh-key <deploy-key> \
-  --headscale-public-url https://headscale.elizacloud.ai \
-  --headscale-api-url http://127.0.0.1:8081 \
-  --listen-addr 127.0.0.1:8081 \
+  --ssh-known-hosts <verified-known-hosts-file> \
+  --headscale-public-url https://headscale.eliza.app \
+  --headscale-legacy-public-url https://headscale.elizacloud.ai \
   --headscale-api-key "$HEADSCALE_API_KEY"
 ```
 
@@ -104,42 +168,65 @@ Hetzner provisioning-worker host.
 
 ## 1. DNS
 
-- `headscale.elizacloud.ai` / `headscale-staging.elizacloud.ai` → A-record → the
+- `headscale.eliza.app` / `headscale-staging.eliza.app` → A-record → the
   Hetzner control-plane VM (`eliza-production-1` / `eliza-staging-1`), with
-  nginx + Let's Encrypt terminating TLS in front of local headscale. NOT a CNAME
-  to Railway — the Railway headscale service was removed (see note above).
-- `tunnel.elizacloud.ai` AND `*.tunnel.elizacloud.ai` → CNAME/ALIAS → Railway public domain for the tunnel-proxy service.
+  nginx + Let's Encrypt terminating TLS in front of local headscale. The
+  matching `headscale.elizacloud.ai` / `headscale-staging.elizacloud.ai` record
+  remains pointed at the same VM during migration and is covered by the same
+  certificate. These are NOT CNAMEs to Railway — the Railway headscale service
+  was removed (see note above).
+- `tunnel.eliza.app` AND `*.tunnel.eliza.app` → CNAME/ALIAS → Railway public domain for the tunnel-proxy service.
 - Railway terminates public TLS for the tunnel-proxy custom domains; the proxy then uses `tsnet` to reach private tailnet hosts.
 
-## 2. Long-lived headscale preauth key for the proxy
+### Retiring the legacy Headscale hostname
 
-```
-# Run on the control-plane VM (where headscale lives)
-headscale preauthkeys create --reusable --expiration 8760h --tags tag:eliza-proxy
-```
+Legacy retirement is a separate reviewed operation after Worker, tunnel proxy,
+agent, and access-log evidence shows no remaining legacy clients. Remove the
+legacy nginx `server_name`, certificate SAN, and DNS record together; then
+re-run the arm and public-health proofs using the retirement-aware workflow
+revision. Do not delete the DNS record or legacy SAN while this overlap contract
+is active, and do not change `HEADSCALE_PUBLIC_URL` away from the canonical
+Eliza URL.
 
-Save the returned key as Railway secret `TUNNEL_PROXY_TS_AUTHKEY` on the tunnel-proxy service.
+## 2. Protected tunnel-proxy convergence
 
-## 3. Tunnel-proxy Railway service
+Dispatch `.github/workflows/deploy-tunnel-proxy.yml` against `develop` for
+staging or `main` for production. GitHub Environment approvals protect the
+Railway token, control-plane SSH identity, and shared tunnel signer. The
+workflow resolves the numeric `tunnel` user on the control-plane VM, mints a
+reusable one-year `tag:eliza-proxy` preauth key, and publishes it to Railway
+through stdin without logging or persisting it as a GitHub secret.
+`ELIZA_PROVISIONING_SSH_KNOWN_HOSTS` must contain the independently verified
+host-key line for `ELIZA_PROVISIONING_HOST`; the workflow uses strict host-key
+checking and never learns trust from the deployment connection itself.
 
-```
-cd packages/cloud/services/tunnel-proxy
-railway up
-```
-
-Required env vars on the proxy service:
+The workflow converges these service variables:
 
 | Var | Value |
 |---|---|
-| `HEADSCALE_PUBLIC_URL` | `https://headscale.elizacloud.ai` |
-| `TUNNEL_PROXY_TS_AUTHKEY` | (from step 3) |
-| `TUNNEL_PROXY_HOST` | `tunnel.elizacloud.ai` |
+| `HEADSCALE_PUBLIC_URL` | `https://headscale.eliza.app` |
+| `TUNNEL_PROXY_TS_AUTHKEY` | workflow-minted reusable `tag:eliza-proxy` key |
+| `TUNNEL_PROXY_HOST` | `tunnel.eliza.app` |
 | `TUNNEL_TAILNET_DOMAIN` | `tunnel.eliza.local` |
 | `TUNNEL_HOSTNAME_SIGNING_SECRET` | shared HMAC secret also set as a Worker secret |
 
 Mount a Railway volume at `/var/lib/tunnel-proxy` so the `tsnet` node identity persists across restarts.
 
-## 4. API Worker secrets
+It also attaches and verifies both `tunnel.eliza.app` and
+`*.tunnel.eliza.app` (or the staging pair), deploys the committed service
+directory, proves `/health`, proves arbitrary unsigned wildcard labels return
+404, and only then expires superseded reusable proxy keys. If the Railway
+domains are not DNS-verified, the workflow stops before live smoke and retains
+the old keys. Copy the exact reviewed inventory from the workflow summary into
+the protected `RAILWAY_TUNNEL_DNS_RECORDS_JSON` environment variable, add each
+existing Cloudflare record ID to `DNS_RECORD_IMPORT_IDS_JSON` under its
+`railway-tunnel/<logical-key>` import key, and apply the `Infrastructure
+pages-domains` workflow. Rerun the tunnel deployment after Terraform owns the
+records. The tunnel apex, wildcard route, wildcard certificate challenge, and
+verification records remain DNS-only so Railway terminates TLS; this path does
+not require Cloudflare Advanced Certificate Manager.
+
+## 3. API Worker secrets
 
 On the cloud-api Worker (Cloudflare):
 
@@ -150,9 +237,16 @@ wrangler secret put HEADSCALE_INTERNAL_TOKEN   # same value as CLOUD_INTERNAL_TO
 wrangler secret put TUNNEL_HOSTNAME_SIGNING_SECRET
 ```
 
+For normal protected deployments, store one value as the
+`TUNNEL_HOSTNAME_SIGNING_SECRET` GitHub Environment secret instead of entering
+it independently at each provider. `cloud-cf-deploy.yml` publishes it to the
+Worker and `deploy-tunnel-proxy.yml` publishes the same value to Railway. A
+first adoption still requires an intentional rotation because existing
+provider-side secret values cannot be read back for comparison.
+
 `HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`, `HEADSCALE_USER`, `TUNNEL_PROXY_HOST`, `TUNNEL_TAILNET_DOMAIN`, and `TUNNEL_AUTH_KEY_COST_USD` are non-secret Worker vars in `apps/api/wrangler.toml`. The tunnel cost is a small on-demand org-credit debit per successful auth-key provisioning, not a subscription. Do not set `TUNNEL_ALLOW_UNSIGNED_HOSTNAMES` in production.
 
-## 5. Worker deploy
+## 4. Worker deploy
 
 ```
 cd cloud
@@ -161,7 +255,7 @@ bun run build:api
 bun run deploy:api -- --env production
 ```
 
-## 6. Smoke test
+## 5. Smoke test
 
 From a machine with the tailscale CLI installed and `@elizaos/plugin-tailscale` enabled with `ELIZAOS_CLOUD_API_KEY` set:
 
@@ -172,10 +266,10 @@ From a machine with the tailscale CLI installed and `@elizaos/plugin-tailscale` 
 
 You should see:
 - The agent host appear under `headscale nodes list`
-- A 200 response from `https://<sessionId>.tunnel.elizacloud.ai`
+- A 200 response from `https://<sessionId>.tunnel.eliza.app`
 - An immediate debit row in `credit_transactions` with `metadata.type = "tunnel"` and `metadata.billing_model = "on_demand"`
 
-## 7. Verify ACL isolation
+## 6. Verify ACL isolation
 
 The agent fleet (`tag:agent`) must NOT be reachable from a customer tunnel (`tag:eliza-tunnel`). After a tunnel is up, run from the tunnel node:
 

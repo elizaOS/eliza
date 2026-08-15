@@ -1,8 +1,7 @@
 /**
  * Plugin entry point: assembles the `slack` `Plugin` object and re-exports the
- * package's public surface. Declares `SlackService` and
- * `SlackWorkflowCredentialProvider` as services, a passive `slack` connector
- * source, and a self-declared auto-enable keyed on the `slack` connector.
+ * package's public surface. Declares `SlackService`, a passive `slack`
+ * connector source, and a self-declared auto-enable keyed on the `slack` connector.
  *
  * `init()` registers the `ConnectorAccountProvider` with the runtime's
  * `ConnectorAccountManager` and validates/masks the configured Slack tokens
@@ -18,7 +17,6 @@ import {
 import { createSlackConnectorAccountProvider } from "./connector-account-provider";
 
 import { SlackService } from "./service";
-import { SlackWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const slackPlugin: Plugin = {
   name: "slack",
@@ -31,7 +29,7 @@ const slackPlugin: Plugin = {
       isPassive: true,
     },
   ],
-  services: [SlackService, SlackWorkflowCredentialProvider],
+  services: [SlackService],
   actions: [],
   providers: [],
   // Self-declared auto-enable: activate when the "slack" connector is

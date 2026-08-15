@@ -1,6 +1,6 @@
 // Exercises headscale client behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HeadscaleClient, resolvePreAuthTtlMs } from "./headscale-client";
+import { DEFAULT_PREAUTH_TTL_MIN, HeadscaleClient, resolvePreAuthTtlMs } from "./headscale-client";
 
 const originalFetch = globalThis.fetch;
 
@@ -9,9 +9,15 @@ const originalFetch = globalThis.fetch;
  * key must outlive container boot + VPN enrollment. A 10-min hardcoded window
  * was too tight on slow boots — the key expired mid-registration and the
  * container looped on re-auth (one prod agent hit 176 restarts). The box was
- * bumped to 60 min via HEADSCALE_PREAUTH_TTL_MIN, but the source still hardcoded
- * 10 min, so a daemon redeploy would regress it. This locks the durable repo
- * behavior: 60-min default + the env override that survives a redeploy.
+ * bumped via HEADSCALE_PREAUTH_TTL_MIN, but the source still hardcoded a short
+ * window, so a daemon redeploy would regress it. This locks the durable repo
+ * behavior: a 24h default + the env override that survives a redeploy.
+ *
+ * The default was raised 60m -> 1440m (24h) after the prod-2 hard-reset outage:
+ * the baked key is the ONLY credential a de-authorized node can present after a
+ * reboot, and a 60-min key is expired the moment such a reboot happens. 24h
+ * widens the window a freshly provisioned agent can survive a delayed/early
+ * reboot (the durable reconnect-first + re-key fix lives in the entrypoint).
  */
 describe("resolvePreAuthTtlMs (headscale pre-auth key TTL)", () => {
   const original = process.env.HEADSCALE_PREAUTH_TTL_MIN;
@@ -20,9 +26,10 @@ describe("resolvePreAuthTtlMs (headscale pre-auth key TTL)", () => {
     else process.env.HEADSCALE_PREAUTH_TTL_MIN = original;
   });
 
-  it("defaults to 60 minutes (prod-verified; 10 min looped slow boots)", () => {
+  it("defaults to 24h (raised from 60m so a reboot key isn't already expired)", () => {
     delete process.env.HEADSCALE_PREAUTH_TTL_MIN;
-    expect(resolvePreAuthTtlMs()).toBe(60 * 60 * 1000);
+    expect(DEFAULT_PREAUTH_TTL_MIN).toBe(1440);
+    expect(resolvePreAuthTtlMs()).toBe(1440 * 60 * 1000);
   });
 
   it("honors HEADSCALE_PREAUTH_TTL_MIN so the box override survives a redeploy", () => {
@@ -30,10 +37,10 @@ describe("resolvePreAuthTtlMs (headscale pre-auth key TTL)", () => {
     expect(resolvePreAuthTtlMs()).toBe(90 * 60 * 1000);
   });
 
-  it("falls back to the 60-min default for non-positive / non-numeric values", () => {
+  it("falls back to the 24h default for non-positive / non-numeric values", () => {
     for (const bad of ["0", "-5", "abc", "", "  "]) {
       process.env.HEADSCALE_PREAUTH_TTL_MIN = bad;
-      expect(resolvePreAuthTtlMs()).toBe(60 * 60 * 1000);
+      expect(resolvePreAuthTtlMs()).toBe(DEFAULT_PREAUTH_TTL_MIN * 60 * 1000);
     }
   });
 });

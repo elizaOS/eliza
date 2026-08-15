@@ -168,7 +168,47 @@ describe("shared agent messages route", () => {
       "Eliza",
       expect.objectContaining({ waitUntil: expect.any(Function) }),
       DEFAULT_NAMESPACE,
+      undefined,
+      "organization-credits",
     );
+  });
+
+  test("a client-supplied clientMessageId rides the send to the adapter (retry idempotency, #18045)", async () => {
+    sharedRestMessageSend.mockResolvedValue({
+      text: "hello",
+      agentName: "Eliza",
+    });
+
+    const res = await postMessage({
+      text: "say hi",
+      clientMessageId: "client-id-4",
+    });
+
+    expect(res.status).toBe(200);
+    expect(sharedRestMessageSend).toHaveBeenCalledWith(
+      DEFAULT_AGENT,
+      AGENT,
+      "say hi",
+      "Eliza",
+      expect.objectContaining({ waitUntil: expect.any(Function) }),
+      DEFAULT_NAMESPACE,
+      "client-id-4",
+      "organization-credits",
+    );
+  });
+
+  test("a non-string or oversized clientMessageId is ignored, not forwarded", async () => {
+    sharedRestMessageSend.mockResolvedValue({
+      text: "hello",
+      agentName: "Eliza",
+    });
+
+    await postMessage({ text: "say hi", clientMessageId: 42 });
+    await postMessage({ text: "say hi", clientMessageId: "x".repeat(129) });
+
+    for (const call of sharedRestMessageSend.mock.calls) {
+      expect((call as unknown[])[6]).toBeUndefined();
+    }
   });
 
   test("passes the resolved agent and Durable Object namespace on the Worker path", async () => {
@@ -209,6 +249,8 @@ describe("shared agent messages route", () => {
       "Eliza",
       expect.objectContaining({ waitUntil: expect.any(Function) }),
       namespace,
+      undefined,
+      "organization-credits",
     );
   });
 
@@ -291,12 +333,49 @@ describe("shared agent messages route", () => {
     const res = await postMessage({ text: "hello" });
 
     expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("1");
     await expect(res.json()).resolves.toEqual({
       success: false,
       error: "Conversation cache is warming. Retry shortly.",
       code: "shared_runtime_cache_warming",
       retryable: true,
     });
+  });
+
+  test("authorization-scope warming renders its stable code and Retry-After (#18045)", async () => {
+    resolveSharedAgent.mockResolvedValueOnce({
+      error: "Agent authorization cache is warming. Retry shortly.",
+      status: 503,
+      code: "agent_cache_warming",
+      retryAfterSeconds: 1,
+    });
+
+    const res = await postMessage({ text: "hello" });
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("1");
+    await expect(res.json()).resolves.toEqual({
+      success: false,
+      error: "Agent authorization cache is warming. Retry shortly.",
+      code: "agent_cache_warming",
+      retryable: true,
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("a generic resolver 503 stays uncoded (never classified as warming)", async () => {
+    resolveSharedAgent.mockResolvedValueOnce({
+      error: "Agent authorization cache context is unavailable. Retry shortly.",
+      status: 503,
+    });
+
+    const res = await postMessage({ text: "hello" });
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBeNull();
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.retryable).toBe(true);
+    expect(body.code).toBeUndefined();
   });
 
   test("preserves coordinator rate denial as a retryable 429", async () => {

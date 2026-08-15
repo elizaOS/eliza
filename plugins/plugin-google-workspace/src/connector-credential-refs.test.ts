@@ -259,18 +259,18 @@ describe("connector credential persist → restart → resolve round-trip", () =
     }
   });
 
-  it("documents the SECRETS-only fallback as volatile: the persisted ref dangles after a restart", async () => {
+  it("fails closed when only the in-memory SECRETS service exists: no writer, nothing persisted", async () => {
     const state = newDurableState();
     state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
     const storage = createStorage(state);
     const secrets = createVolatileSecretsService();
 
-    const vaultRef = await persistTokens(createRuntime(storage, { SECRETS: secrets }));
-    expect(secrets.entries.get(vaultRef)).toBe(TOKENS_JSON);
-
-    await expect(
-      resolveAfterRestart(state, { SECRETS: createVolatileSecretsService() })
-    ).rejects.toThrow(/could not be read/);
+    await expect(persistTokens(createRuntime(storage, { SECRETS: secrets }))).rejects.toThrow(
+      /No durable connector credential store or vault writer/
+    );
+    // SECRETS is not a writer: no token material lands there, no ref is recorded.
+    expect(secrets.entries.size).toBe(0);
+    expect(state.credentialRefs.size).toBe(0);
   });
 });
 

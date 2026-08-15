@@ -103,7 +103,7 @@ function domainsCta(
   runtime: IAgentRuntime,
   app: { id: string; name: string },
 ): ConnectorCta {
-  const url = `${resolveCloudSiteBaseUrl(runtime)}/dashboard/apps/${app.id}?tab=domains`;
+  const url = `${resolveCloudSiteBaseUrl(runtime)}/cloud/apps/${app.id}?tab=domains`;
   try {
     return buildConnectorCta(`Open "${app.name}"'s domains`, url, "link");
   } catch (err) {
@@ -547,7 +547,7 @@ export const buyAppDomainAction: Action = {
         );
 
         if (info.status === 402) {
-          const billingUrl = `${resolveCloudSiteBaseUrl(runtime)}/dashboard/billing`;
+          const billingUrl = `${resolveCloudSiteBaseUrl(runtime)}/cloud/billing`;
           const msg =
             `Not enough credits to buy ${domain} — nothing was purchased. ` +
             `Add credits and ask me again: ${billingUrl}`;

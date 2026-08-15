@@ -154,7 +154,7 @@ describe("public hosted-frontend serve", () => {
   let app: Hono<AppEnv>;
   beforeEach(() => {
     app = buildApp();
-    process.env.ELIZA_FRONTEND_HOST_SUFFIX = "sites.elizacloud.ai";
+    process.env.ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app";
     getBySlugImpl = async () => undefined;
     getByIdImpl = async () => undefined;
     getDomainByNameImpl = async () => undefined;
@@ -167,7 +167,7 @@ describe("public hosted-frontend serve", () => {
     getActiveImpl = async (id) =>
       id === "app_1" ? activeDeployment : undefined;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=cool.sites.elizacloud.ai",
+      "/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
       {},
       ENV,
     );
@@ -184,7 +184,7 @@ describe("public hosted-frontend serve", () => {
     getActiveImpl = async (id) =>
       id === "app_1" ? activeDeployment : undefined;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=cool.sites.elizacloud.ai",
+      "/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
       {
         headers: {
           cookie:
@@ -216,7 +216,7 @@ describe("public hosted-frontend serve", () => {
     getActiveImpl = async (id) =>
       id === "app_1" ? activeDeployment : undefined;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=cool.sites.elizacloud.ai",
+      "/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
       { headers: { cookie: "eliza_visitor_id=%E0%A4%A" } },
       ENV,
     );
@@ -238,7 +238,7 @@ describe("public hosted-frontend serve", () => {
     getBySlugImpl = async (slug) => (slug === "cool" ? APP : undefined);
     getActiveImpl = async () => activeDeployment;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve/robots.txt?host=cool.sites.elizacloud.ai",
+      "/api/v1/hosted-frontend/serve/robots.txt?host=cool.sites.eliza.app",
       {},
       ENV,
     );
@@ -246,16 +246,14 @@ describe("public hosted-frontend serve", () => {
     expect(res.headers.get("content-type")).toContain("text/plain");
     const body = await res.text();
     expect(body).toContain("User-agent: *");
-    expect(body).toContain(
-      "Sitemap: https://cool.sites.elizacloud.ai/sitemap.xml",
-    );
+    expect(body).toContain("Sitemap: https://cool.sites.eliza.app/sitemap.xml");
   });
 
   test("synthesizes sitemap.xml for a hosted frontend", async () => {
     getBySlugImpl = async (slug) => (slug === "cool" ? APP : undefined);
     getActiveImpl = async () => activeDeployment;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve/sitemap.xml?host=cool.sites.elizacloud.ai",
+      "/api/v1/hosted-frontend/serve/sitemap.xml?host=cool.sites.eliza.app",
       {},
       ENV,
     );
@@ -263,7 +261,7 @@ describe("public hosted-frontend serve", () => {
     expect(res.headers.get("content-type")).toContain("application/xml");
     const body = await res.text();
     expect(body).toContain("<urlset");
-    expect(body).toContain("<loc>https://cool.sites.elizacloud.ai/</loc>");
+    expect(body).toContain("<loc>https://cool.sites.eliza.app/</loc>");
   });
 
   test("serves a verified, active custom domain", async () => {
@@ -287,7 +285,7 @@ describe("public hosted-frontend serve", () => {
       slug === "cool" ? { ...APP, is_approved: false } : undefined;
     getActiveImpl = async () => activeDeployment;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=cool.sites.elizacloud.ai",
+      "/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
       {},
       ENV,
     );
@@ -321,7 +319,7 @@ describe("public hosted-frontend serve", () => {
     getBySlugImpl = async () => APP;
     getActiveImpl = async () => undefined;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=cool.sites.elizacloud.ai",
+      "/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
       {},
       ENV,
     );
@@ -332,7 +330,7 @@ describe("public hosted-frontend serve", () => {
     getBySlugImpl = async () => ({ ...APP, is_approved: false });
     getActiveImpl = async () => activeDeployment;
     const res = await app.request(
-      "/api/v1/hosted-frontend/serve?host=cool.sites.elizacloud.ai",
+      "/api/v1/hosted-frontend/serve?host=cool.sites.eliza.app",
       {},
       ENV,
     );

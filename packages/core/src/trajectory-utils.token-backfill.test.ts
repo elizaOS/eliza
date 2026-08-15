@@ -7,7 +7,10 @@
  * backfill from `result.usage` would silently lose token/cost attribution.
  */
 import { describe, expect, it } from "vitest";
-import { runWithTrajectoryContext } from "./trajectory-context";
+import {
+	runWithTrajectoryContext,
+	runWithTrajectoryPurpose,
+} from "./trajectory-context";
 import { type RecordLlmCallDetails, recordLlmCall } from "./trajectory-utils";
 import type { IAgentRuntime } from "./types";
 
@@ -41,6 +44,19 @@ function fakeRuntime(logLlmCall: (params: Record<string, unknown>) => void) {
 }
 
 describe("recordLlmCall — token backfill from result.usage (#17532)", () => {
+	it("preserves the call-site purpose over a provider's generic label", async () => {
+		const captured: Record<string, unknown>[] = [];
+		const runtime = fakeRuntime((p) => captured.push(p));
+
+		await runWithTrajectoryContext({ trajectoryStepId: "step-purpose" }, () =>
+			runWithTrajectoryPurpose("approval_notice", () =>
+				recordLlmCall(runtime, details(), async () => "approved"),
+			),
+		);
+
+		expect(captured[0]?.purpose).toBe("approval_notice");
+	});
+
 	it("backfills missing promptTokens/completionTokens from result.usage", async () => {
 		const captured: Record<string, unknown>[] = [];
 		const runtime = fakeRuntime((p) => captured.push(p));

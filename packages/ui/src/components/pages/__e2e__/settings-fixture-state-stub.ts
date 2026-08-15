@@ -23,6 +23,10 @@ const fixtureState: Record<string, unknown> = {
   uiLanguage: "en",
   loadPlugins: async () => {},
   walletEnabled: false,
+  // SettingsView gates `cloudOnly` sections on the resolved runtime target.
+  // The fixture covers the managed-Cloud surface (the Cloud group and its
+  // "Connect Eliza Cloud" handoff), so it must boot as a managed target.
+  startupCoordinator: { target: "cloud-managed" },
   plugins: [],
   pluginsLoaded: true,
   elizaCloudConnected: false,

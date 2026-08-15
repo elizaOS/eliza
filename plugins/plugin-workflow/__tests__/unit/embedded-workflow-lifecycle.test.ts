@@ -1,0 +1,234 @@
+/** Exercises native workflow persistence, scheduling, revision restore, and deletion against real SQL. */
+
+import { afterEach, describe, expect, test } from 'bun:test';
+import { PGlite } from '@electric-sql/pglite';
+import type { IAgentRuntime, Task, UUID } from '@elizaos/core';
+import { drizzle } from 'drizzle-orm/pglite';
+import * as schema from '../../src/db/schema';
+import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
+import type {
+  WorkflowDefinition,
+  WorkflowDefinitionResponse,
+  WorkflowExecution,
+} from '../../src/types/index';
+
+const clients: PGlite[] = [];
+
+function definition(name: string): WorkflowDefinition {
+  return {
+    name,
+    description: `${name} description`,
+    language: 'tsx',
+    source: `import { createSmithers } from 'smthrs/create';
+const api = createSmithers({}, { dbPath: process.env.ELIZA_SMTHRS_DB_PATH });
+export default api.smithers(() => api.Workflow({ name: '${name}' }));`,
+    active: true,
+    schedule: { cron: '0 * * * *', timezone: 'UTC', enabled: true },
+    steps: [{ id: 'run', label: 'Run', kind: 'task', agent: 'elizaOS' }],
+  };
+}
+
+async function harness() {
+  const client = new PGlite();
+  clients.push(client);
+  await client.exec(`
+    CREATE SCHEMA workflow;
+    CREATE TABLE workflow.embedded_workflows (
+      agent_id text NOT NULL,
+      id text NOT NULL,
+      name text NOT NULL,
+      active boolean NOT NULL DEFAULT false,
+      workflow jsonb NOT NULL,
+      created_at text NOT NULL,
+      updated_at text NOT NULL,
+      version_id text NOT NULL,
+      PRIMARY KEY (agent_id, id)
+    );
+    CREATE TABLE workflow.workflow_revisions (
+      agent_id text NOT NULL,
+      id text NOT NULL,
+      workflow_id text NOT NULL,
+      version_id text NOT NULL,
+      name text NOT NULL,
+      active boolean NOT NULL DEFAULT false,
+      workflow jsonb NOT NULL,
+      created_at text NOT NULL,
+      updated_at text NOT NULL,
+      captured_at text NOT NULL,
+      operation text NOT NULL,
+      PRIMARY KEY (agent_id, id),
+      UNIQUE (agent_id, workflow_id, version_id)
+    );
+    CREATE TABLE workflow.embedded_executions (
+      agent_id text NOT NULL,
+      id text NOT NULL,
+      workflow_id text NOT NULL,
+      status text NOT NULL,
+      mode text NOT NULL,
+      finished boolean NOT NULL DEFAULT false,
+      started_at text NOT NULL,
+      stopped_at text,
+      execution jsonb NOT NULL,
+      idempotency_key text,
+      PRIMARY KEY (agent_id, id)
+    );
+  `);
+  const tasks: Task[] = [];
+  const runtime = {
+    agentId: '00000000-0000-4000-8000-000000000001' as UUID,
+    db: drizzle(client, { schema }),
+    getTasks: async () => tasks,
+    createTask: async (task: Task) => {
+      tasks.push({
+        ...task,
+        id: `00000000-0000-4000-8000-${String(tasks.length + 1).padStart(12, '0')}` as UUID,
+      });
+      return tasks.at(-1)?.id;
+    },
+    deleteTask: async (id: UUID) => {
+      const index = tasks.findIndex((task) => task.id === id);
+      if (index >= 0) tasks.splice(index, 1);
+    },
+  } as unknown as IAgentRuntime;
+  return {
+    service: await EmbeddedWorkflowService.start(runtime),
+    tasks,
+    client,
+    runtime,
+  };
+}
+
+afterEach(async () => {
+  await Promise.all(clients.splice(0).map((client) => client.close()));
+});
+
+describe('embedded native workflow lifecycle', () => {
+  test('creates, schedules, revises, restores, and deletes a Smithers workflow', async () => {
+    const { service, tasks } = await harness();
+    const created = await service.createWorkflow({ ...definition('Original'), id: 'review' });
+    expect((await service.listWorkflows()).data).toHaveLength(1);
+    expect(tasks).toHaveLength(1);
+
+    const updated = await service.updateWorkflow('review', {
+      ...created,
+      name: 'Revised',
+      schedule: { cron: '0 * * * *', timezone: 'UTC', enabled: false },
+    });
+    expect(updated.versionId).not.toBe(created.versionId);
+    expect(tasks).toHaveLength(0);
+    expect((await service.listWorkflowRevisions('review')).data[0]).toMatchObject({
+      versionId: created.versionId,
+      operation: 'update',
+    });
+
+    const restored = await service.restoreWorkflowRevision('review', created.versionId);
+    expect(restored.name).toBe('Original');
+    expect(tasks).toHaveLength(1);
+    expect((await service.listWorkflowRevisions('review')).data[0]).toMatchObject({
+      versionId: updated.versionId,
+      operation: 'restore',
+    });
+
+    await service.deleteWorkflow('review');
+    expect((await service.listWorkflows()).data).toHaveLength(0);
+    expect(tasks).toHaveLength(0);
+    expect((await service.listWorkflowRevisions('review')).data[0].operation).toBe('delete');
+  });
+
+  test('preserves user-created triggers while synchronizing the owned cron schedule', async () => {
+    const { service, tasks, runtime } = await harness();
+    const created = await service.createWorkflow({ ...definition('Triggered'), id: 'triggered' });
+    const eventTaskId = await runtime.createTask({
+      name: 'TRIGGER_DISPATCH',
+      description: 'Message trigger',
+      tags: ['queue', 'repeat', 'trigger'],
+      metadata: {
+        updatedAt: Date.now(),
+        updateInterval: 31_536_000_000,
+        trigger: {
+          version: 1,
+          triggerId: '00000000-0000-4000-8000-000000000099',
+          displayName: 'Message',
+          instructions: 'Run workflow Triggered',
+          triggerType: 'event',
+          enabled: true,
+          wakeMode: 'inject_now',
+          createdBy: 'workflow.studio',
+          eventKind: 'MESSAGE_RECEIVED',
+          runCount: 0,
+          kind: 'workflow',
+          workflowId: created.id,
+          workflowName: created.name,
+        },
+      },
+    } as Task);
+
+    await service.activateWorkflow(created.id);
+    expect(tasks).toHaveLength(2);
+    expect(tasks.some((task) => task.id === eventTaskId)).toBe(true);
+
+    await service.updateWorkflow(created.id, {
+      ...created,
+      schedule: { cron: '0 * * * *', timezone: 'UTC', enabled: false },
+    });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.id).toBe(eventTaskId);
+
+    await service.deleteWorkflow(created.id);
+    expect(tasks).toHaveLength(0);
+  });
+
+  test('resumes an unfinished persisted run with its exact workflow version', async () => {
+    const { service, client, runtime } = await harness();
+    const workflow = await service.createWorkflow({
+      ...definition('Recovery'),
+      id: 'recovery',
+      schedule: undefined,
+    });
+    const execution: WorkflowExecution = {
+      id: 'persisted-run',
+      workflowId: workflow.id,
+      workflowVersionId: workflow.versionId,
+      workflowName: workflow.name,
+      mode: 'manual',
+      status: 'running',
+      finished: false,
+      startedAt: '2026-08-13T00:00:00.000Z',
+      input: { topic: 'resume' },
+      events: [],
+    };
+    await client.query(
+      `INSERT INTO workflow.embedded_executions
+       (agent_id, id, workflow_id, status, mode, finished, started_at, execution)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+      [
+        runtime.agentId,
+        execution.id,
+        execution.workflowId,
+        execution.status,
+        execution.mode,
+        execution.finished,
+        execution.startedAt,
+        JSON.stringify(execution),
+      ]
+    );
+
+    const resumedVersions: string[] = [];
+    const restarted = new EmbeddedWorkflowService(runtime);
+    const internals = restarted as unknown as {
+      runInBackground: (
+        workflow: WorkflowDefinitionResponse,
+        pending: WorkflowExecution
+      ) => Promise<WorkflowExecution>;
+      resumeInterruptedExecutions: () => Promise<void>;
+    };
+    internals.runInBackground = async (definition, pending) => {
+      resumedVersions.push(definition.versionId);
+      return { ...pending, status: 'finished', finished: true };
+    };
+    await internals.resumeInterruptedExecutions();
+    await Bun.sleep(0);
+
+    expect(resumedVersions).toEqual([workflow.versionId]);
+  });
+});

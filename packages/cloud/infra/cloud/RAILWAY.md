@@ -17,18 +17,17 @@ config wins — fix this file.
 
 | Surface | Runtime | Source path | Deploy mechanism | Public/private role |
 |---|---|---|---|---|
-| `eliza-cloud` Pages project (cloud console: lander + dashboard) | Cloudflare Pages | `packages/app/` (`build:web`) | `.github/workflows/cloud-cf-deploy.yml` `deploy-console` job | Public: `elizacloud.ai` apex (staging: `staging.elizacloud.ai`) |
-| `eliza-app` Pages project (Eliza agent app: chat + views) | Cloudflare Pages | `packages/app/` (`build:web`) | same workflow, `deploy-app` job | Public: `app.elizacloud.ai` (staging: `app-staging.elizacloud.ai`) |
-| `eliza-cloud-api` — REST API, auth, billing, **model gateway**, dedicated-agent proxy, batch voice routes, cron | Cloudflare Worker (`eliza-cloud-api-prod` / `eliza-cloud-api-staging`) | `packages/cloud/api/` | [`wrangler.toml`](../../api/wrangler.toml) via `cloud-cf-deploy.yml` `deploy-api` job (schema-gated on `migrate-db`) | Public: `api.elizacloud.ai/*`, `x402.elizacloud.ai/*`, and the `*.elizacloud.ai/*` wildcard (staging Worker: `staging.elizacloud.ai/*`, `app-staging.…`, `api-staging.…`, `*.staging.…`, `blob-staging.…`) |
+| `eliza-app` Pages project (homepage, auth, cloud management, and managed agent app) | Cloudflare Pages | `packages/app/` (`build:web`, embedding `packages/homepage`) | `.github/workflows/cloud-cf-deploy.yml` `deploy-app` job | Public: `eliza.app` + `cloud.eliza.app` (staging: `staging.eliza.app` + `cloud-staging.eliza.app`) |
+| `eliza-cloud-api` — REST API, auth, billing, **model gateway**, dedicated-agent proxy, batch voice routes, cron | Cloudflare Worker (`eliza-cloud-api-prod` / `eliza-cloud-api-staging`) | `packages/cloud/api/` | [`wrangler.toml`](../../api/wrangler.toml) via `cloud-cf-deploy.yml` `deploy-api` job (schema-gated on `migrate-db`) | Public: `api.eliza.app`, `x402.eliza.app`, and `*.cloud.eliza.app` (staging uses `*-staging.eliza.app`); legacy elizacloud.ai routes issue 308 redirects |
 | PostgreSQL | **Railway managed Postgres** (one instance per environment) | n/a (managed service) | env-scoped `DATABASE_URL` secret in the `staging`/`production` GitHub Environments; the Worker reaches it through the `HYPERDRIVE` binding (`wrangler.toml` `[[env.*.hyperdrive]]`) | Private |
 | Redis | **Railway managed Redis** (TCP, `REDIS_URL`) | n/a (managed service) | `REDIS_URL` Worker secret; in-Worker SocketRedis speaks RESP2 over `cloudflare:sockets` (`wrangler.toml` cache/queue notes). Upstash REST (`KV_REST_API_*`) is a **legacy fallback only** | Private |
 | Database migrations | GitHub Actions → Railway Postgres | `packages/cloud/shared/src/db/migrations/` | `cloud-cf-deploy.yml` `migrate-db` job (`bun run db:cloud:migrate`); every deploy job `needs: migrate-db` | n/a |
 | `gateway-discord` (multi-tenant Discord WS gateway) | Railway (Docker) | `packages/cloud/services/gateway-discord/` | `railway.toml` + `Dockerfile`; Railway auto-deploys on push — `cloud-gateway-discord.yml` runs tests only | Discord-facing; `/internal/*` shared-secret routes |
-| `gateway-webhook` (Telegram / Blooio / Twilio / WhatsApp) | Railway (Docker) | `packages/cloud/services/gateway-webhook/` | `railway.toml` + `Dockerfile`; `cloud-gateway-webhook.yml` runs tests only | Public webhook ingress |
+| `gateway-webhook` (Telegram / Blooio / Twilio / WhatsApp) | Railway (Docker) | `packages/cloud/services/gateway-webhook/` | protected `.github/workflows/deploy-gateway-webhook.yml` using `railway.toml` + `Dockerfile` | Public webhook ingress |
 | `voice-kokoro-tts` (free-cloud TTS) | Railway (Docker) | `packages/cloud/services/voice-kokoro-tts/` | `railway.toml`; its URL is injected at Worker deploy time as `KOKORO_TTS_URL` (GitHub var `ELIZA_VOICE_KOKORO_TTS_URL` in `cloud-cf-deploy.yml`) | **Private origin** behind the Worker's `POST /api/v1/voice/tts` — unauthenticated at the service boundary, so its URL must not be published |
 | `voice-whisper-stt` (free-cloud STT) | Railway (Docker) | `packages/cloud/services/voice-whisper-stt/` | `railway.toml`; consumed via the `WHISPER_STT_URL` env var | **Private origin** behind the Worker's `POST /api/v1/voice/stt` (same posture as Kokoro) |
-| `tunnel-proxy` (public HTTPS → tailnet bridge, customer-tunnel path) | Railway (Docker, Go) | `packages/cloud/services/tunnel-proxy/` | `railway.toml` + `Dockerfile` | Public: `tunnel.elizacloud.ai` + `*.tunnel.elizacloud.ai` |
-| `headscale` (Tailscale coordination server: agents + customer tunnels) | Hetzner control-plane VM (systemd) | `packages/cloud/services/headscale/` | armed by `arm-headscale-control-plane.yml` (ACL [`acl.hujson`](../../services/headscale/acl.hujson)); its DNS record is Terraform-managed ([`terraform/hetzner/control-plane/`](./terraform/hetzner/control-plane/README.md)) | Public: `headscale[-staging].elizacloud.ai`, served by nginx + Let's Encrypt on the CP VM (DNS-only record, not CF-proxied) |
+| `tunnel-proxy` (public HTTPS → tailnet bridge, customer-tunnel path) | Railway (Docker, Go) | `packages/cloud/services/tunnel-proxy/` | protected `.github/workflows/deploy-tunnel-proxy.yml` using `railway.toml` + `Dockerfile` | Public: `tunnel.eliza.app` (staging: `tunnel-staging.eliza.app`) |
+| `headscale` (Tailscale coordination server: agents + customer tunnels) | Hetzner control-plane VM (systemd) | `packages/cloud/services/headscale/` | armed by `arm-headscale-control-plane.yml` (ACL [`acl.hujson`](../../services/headscale/acl.hujson)); its DNS record is Terraform-managed ([`terraform/hetzner/control-plane/`](./terraform/hetzner/control-plane/README.md)) | Public: `headscale.eliza.app` / `headscale-staging.eliza.app`, served by nginx + Let's Encrypt on the CP VM |
 | `eliza-provisioning-worker` (job-queue consumer) + `eliza-agent-router` (subdomain HTTP routing) | Hetzner control-plane VM (systemd) | `packages/cloud/scripts/admin/daemons/` | `deploy-eliza-provisioning-worker.yml` (SSH deploy on push to `develop`/`main`) | Control-plane internals; agent-router is the nginx-fronted origin the Worker proxies agent subdomains to |
 | `agent-server` (per-customer dedicated agent runtime) | Docker containers on Hetzner **data-plane** nodes | `packages/cloud/services/agent-server/` | provisioned by the provisioning worker off the jobs queue; dedicated nodes live in the `docker_nodes` table, burst capacity is minted by `node-autoscaler.ts` | Reached only through the Worker's dedicated-agent proxy (request path below) |
 | `container-control-plane` (Node sidecar for container mutations) | Node/Bun sidecar reached via `CONTAINER_CONTROL_PLANE_URL` | `packages/cloud/services/container-control-plane/` | env-driven | Private Worker→sidecar; its remaining cron paths are being folded into the daemon-queue pattern ([`terraform/hetzner/ARCHITECTURE.md`](./terraform/hetzner/ARCHITECTURE.md) followups) |
@@ -53,7 +52,7 @@ routes or docs.
 
 ### Chat (shared runtime)
 
-Browser/app (Pages bundle built from `packages/app`) → `api.elizacloud.ai`
+Browser/app (Pages bundle built from `packages/app`) → `api.eliza.app`
 (Worker) → auth + billing → **the Worker itself is the model gateway**: it
 calls native providers directly (Cerebras/OpenAI/Anthropic/Groq/Vast) and uses
 OpenRouter (BYOK, `OPENROUTER_API_KEY`) as the backup for models with no
@@ -62,12 +61,12 @@ Hyperdrive, Railway Redis, KV cache, R2 blobs.
 
 ### Dedicated agents
 
-`https://<agentId>.elizacloud.ai/*` falls into the Worker's
-`*.elizacloud.ai/*` wildcard route →
+`https://<agentId>.cloud.eliza.app/*` falls into the Worker's
+`*.cloud.eliza.app/*` wildcard route →
 `packages/cloud/api/src/dedicated-agent-proxy.ts` validates the cloud token
 (swapping in the per-container `ELIZA_API_TOKEN` only for a validated owner) →
-proxies to `AGENT_ROUTER_ORIGIN_HOST` (`eliza-production-1.elizacloud.ai` /
-`eliza-staging-1.elizacloud.ai`, set in `wrangler.toml`) → **nginx on the
+proxies to `AGENT_ROUTER_ORIGIN_HOST` (`eliza-production-1.eliza.app` /
+`eliza-staging-1.eliza.app`, set in `wrangler.toml`) → **nginx on the
 control-plane VM** (self-signed wildcard cert; the CF zone stays on SSL mode
 "Full") → `eliza-agent-router` → headscale tailnet → the agent's container on
 a data-plane node. `cloudflared` is **not** part of this request path — the
@@ -123,17 +122,41 @@ was decommissioned on 2026-06-17.
 - Builder: Dockerfile (Go binary).
 - Healthcheck: `GET /health` (served by [`main.go`](../../services/tunnel-proxy/main.go)).
 - Volume: `/var/lib/tunnel-proxy` (tsnet node identity).
-- Public domain: `tunnel.elizacloud.ai` + wildcard `*.tunnel.elizacloud.ai`.
+- Public domain: `tunnel.eliza.app` + wildcard `*.tunnel.eliza.app` (staging
+  uses `tunnel-staging.eliza.app`).
+- Deploy authority: the protected `deploy-tunnel-proxy.yml` workflow validates
+  the exact Railway IDs and canonical host variables, rotates the Headscale
+  proxy preauth key, converges variables/volume/domains, deploys this service,
+  and runs live health plus unsigned-host rejection checks. Railway domain
+  attachment is handled there; Cloudflare CNAME/TXT is a separate credential
+  boundary. The workflow normalizes and deduplicates Railway's exact DNS
+  response, then requires it to match the protected
+  `RAILWAY_TUNNEL_DNS_RECORDS_JSON` inventory. The `pages-domains` Terraform
+  root owns/imports that inventory as DNS-only records so Railway terminates
+  nested-wildcard TLS without Cloudflare Advanced Certificate Manager.
 - Provisioning runbook: [`packages/cloud/services/headscale/DEPLOY.md`](../../services/headscale/DEPLOY.md) (covers both services).
 
 ### `gateway-discord` / `gateway-webhook`
 
-Docker/Bun services with `railway.toml` manifests; Railway auto-deploys on
-push to the watched branch. Their GitHub workflows
-(`cloud-gateway-discord.yml`, `cloud-gateway-webhook.yml`) run tests only —
-the AWS EKS/Terraform/Helm deploy jobs were removed with the AWS retirement
-([`AWS_RETIREMENT.md`](./AWS_RETIREMENT.md)). Required env vars are documented
-in each service's `railway.toml` header.
+Docker/Bun services with `railway.toml` manifests. `gateway-discord` retains
+its Railway watched-branch deployment and `cloud-gateway-discord.yml` runs its
+repository tests. `gateway-webhook` has no Railway repo trigger: the protected
+`deploy-gateway-webhook.yml` dispatcher is its only deployment authority. It
+binds staging to `develop` and production to `main`, validates the exact
+Railway identities and canonical routing variables, uploads the exact dispatch
+SHA from the repository root with a byte-identical root copy of the
+tracked service manifest, and verifies the returned deployment id, applied
+Dockerfile/health metadata, active-deployment identity around the public
+probes, live `/health`, and the dedicated headerless
+`/ready/forwarder-auth/eliza-app` contract. That read-only route returns its
+exact 401 only when the forwarding secret gate is active for `eliza-app`;
+disabled or project-mismatched configurations fail with distinct non-401
+states without entering provider handling. Required runtime variables are
+documented in each service's `railway.toml` header; the names-only sensitive
+inventory includes the mandatory `ELIZA_APP_WEBHOOK_GATEWAY_SECRET` forwarding
+trust gate. The old AWS EKS/Terraform/Helm deploy jobs were
+removed with the AWS retirement
+([`AWS_RETIREMENT.md`](./AWS_RETIREMENT.md)).
 
 ### `voice-kokoro-tts` / `voice-whisper-stt`
 

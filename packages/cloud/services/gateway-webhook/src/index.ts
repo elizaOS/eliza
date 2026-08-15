@@ -1,4 +1,4 @@
-// Handles webhook gateway index behavior for authenticated connector fan-in.
+/** Assembles and starts the authenticated multi-platform webhook gateway. */
 import { Hono } from "hono";
 import { blooioAdapter } from "./adapters/blooio";
 import { telegramAdapter } from "./adapters/telegram";
@@ -6,11 +6,17 @@ import { twilioAdapter } from "./adapters/twilio";
 import type { Platform, PlatformAdapter } from "./adapters/types";
 import { whatsappAdapter } from "./adapters/whatsapp";
 import { getAuthHeader, initAuth, shutdownAuth } from "./auth";
-import { enforceForwarderSecret } from "./internal-auth";
+import { registerForwarderAuthReadinessRoute } from "./forwarder-auth-readiness";
+import {
+  enforceForwarderSecret,
+  validateInternalSecret,
+} from "./internal-auth";
+import { deliverInternalMessage } from "./internal-delivery";
 import { handleInternalEvent } from "./internal-event-handler";
 import { logger } from "./logger";
 import { initProjectConfig, shutdownProjectConfig } from "./project-config";
 import { createRedis } from "./redis";
+import { requireCanonicalAgentRoutingConfiguration } from "./server-router";
 import {
   getSharedWhatsAppVerifyToken,
   resolveWebhookConfig,
@@ -54,16 +60,28 @@ app.get("/ready", (c) => {
   if (draining) return c.json({ status: "draining" }, 503);
   return c.json({ status: "ready" });
 });
+registerForwarderAuthReadinessRoute(app);
 app.post("/drain", (c) => {
   draining = true;
   logger.info("Drain requested");
   return c.json({ status: "draining" });
 });
 
-// ── Internal event delivery (K8s CronJobs, matcher, notifier) ──
+// ── Internal event and connector delivery ──
 
 app.post("/internal/event", async (c) => {
   return handleInternalEvent(c.req.raw, { redis });
+});
+
+app.post("/internal/deliver", async (c) => {
+  if (!validateInternalSecret(c.req.raw)) {
+    return c.json({ success: false, error: "unauthorized" }, 401);
+  }
+  return deliverInternalMessage(c.req.raw, {
+    redis,
+    cloudBaseUrl: ELIZA_CLOUD_URL,
+    getAuthHeader,
+  });
 });
 
 // ── Platform webhooks ──
@@ -161,6 +179,7 @@ app.post("/webhook/:project/:platform/:agentId", async (c) => {
 });
 
 async function start() {
+  requireCanonicalAgentRoutingConfiguration();
   logger.info("Starting webhook gateway", { pod: POD_NAME, port: PORT });
 
   await initProjectConfig();
@@ -177,7 +196,7 @@ async function start() {
 
   if (!process.env.GATEWAY_INTERNAL_SECRET) {
     logger.warn(
-      "GATEWAY_INTERNAL_SECRET is not configured — POST /internal/event will reject all requests",
+      "GATEWAY_INTERNAL_SECRET is not configured — internal delivery routes will reject all requests",
     );
   }
 

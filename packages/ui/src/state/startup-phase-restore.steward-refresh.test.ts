@@ -1,19 +1,22 @@
-/** Verifies applyRestoredConnection — cloud Steward token refresh at restore through the package's configured test harness. */
+/**
+ * Exercises Cloud session restoration with real jsdom storage and a bounded
+ * fetch double. Steward JWT refresh and agent-local loopback credentials stay
+ * isolated so neither credential is sent to the wrong trust boundary.
+ */
 // @vitest-environment jsdom
-//
-// #10231 launch-blocker #4 — a returning cloud user whose stored Steward JWT
-// expired while the app was closed must NOT boot into a permanently-401ing
-// session. `applyRestoredConnection`'s cloud branch refreshes an expired /
-// near-expiry stored JWT BEFORE handing it to the client, so the first authed
-// call carries a live token (or, if the refresh fails, the session restores
-// unauthenticated rather than dialing with a known-dead credential).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PersistedActiveServer } from "./persistence";
+import {
+  loadPersistedActiveServer,
+  type PersistedActiveServer,
+  savePersistedActiveServer,
+} from "./persistence";
 import { applyRestoredConnection } from "./startup-phase-restore";
 
 const STEWARD_TOKEN_KEY = "steward_session_token";
 const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
+const CLOUD_AGENT_ID = "11111111-1111-4111-8111-111111111111";
+const CLOUD_AGENT_API_BASE = `https://api.eliza.app/api/v1/eliza/agents/${CLOUD_AGENT_ID}`;
 
 /** Build a minimal (unsigned) JWT whose payload carries the given `exp`. */
 function makeJwt(expSecondsFromNow: number | null): string {
@@ -37,10 +40,10 @@ function cloudServer(
   overrides: Partial<PersistedActiveServer> = {},
 ): PersistedActiveServer {
   return {
-    id: "cloud:agent-123",
+    id: `cloud:${CLOUD_AGENT_ID}`,
     kind: "cloud",
     label: "Eliza Cloud",
-    apiBase: "https://agent-123.example.com",
+    apiBase: CLOUD_AGENT_API_BASE,
     ...overrides,
   };
 }
@@ -120,9 +123,7 @@ describe("applyRestoredConnection — cloud Steward token refresh at restore", (
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(client.setBaseUrl).toHaveBeenCalledWith(
-      "https://agent-123.example.com",
-    );
+    expect(client.setBaseUrl).toHaveBeenCalledWith(CLOUD_AGENT_API_BASE);
     expect(client.setToken).toHaveBeenCalledWith(valid);
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(valid);
   });
@@ -140,22 +141,69 @@ describe("applyRestoredConnection — cloud Steward token refresh at restore", (
     expect(client.setToken).toHaveBeenCalledWith("opaque-device-code-token");
   });
 
-  it("leaves the session UNAUTHENTICATED (and clears the token) when refresh fails, without looping", async () => {
+  it("keeps a local-Docker paired bearer ahead of the Cloud Steward session", async () => {
+    const steward = makeJwt(3600);
+    localStorage.setItem(STEWARD_TOKEN_KEY, steward);
+    const client = fakeClient();
+
+    await applyRestoredConnection({
+      restoredActiveServer: cloudServer({
+        apiBase: "http://127.0.0.1:43123",
+        accessToken: "paired-agent-token",
+      }),
+      clientRef: client,
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(client.setBaseUrl).toHaveBeenCalledWith("http://127.0.0.1:43123");
+    expect(client.setToken).toHaveBeenCalledWith("paired-agent-token");
+  });
+
+  it("never sends a Steward session to a tokenless loopback target", async () => {
+    const steward = makeJwt(3600);
+    localStorage.setItem(STEWARD_TOKEN_KEY, steward);
+    const client = fakeClient();
+
+    await applyRestoredConnection({
+      restoredActiveServer: cloudServer({
+        apiBase: "http://localhost:43123",
+        accessToken: undefined,
+      }),
+      clientRef: client,
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(client.setBaseUrl).toHaveBeenCalledWith("http://localhost:43123");
+    expect(client.setToken).toHaveBeenCalledWith(null);
+    expect(client.setToken).not.toHaveBeenCalledWith(steward);
+  });
+
+  it("leaves the session UNAUTHENTICATED and drops the shared selection when refresh fails", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(-60));
+    savePersistedActiveServer(
+      cloudServer({ accessToken: "expired-steward-token" }),
+    );
     fetchMock.mockResolvedValue({ ok: false, json: async () => ({}) });
 
     const client = fakeClient();
     await applyRestoredConnection({
-      // No provision-time accessToken to fall back to.
-      restoredActiveServer: cloudServer({ accessToken: undefined }),
+      // A normal persisted record mirrors the now-expired Steward bearer.
+      restoredActiveServer: cloudServer({
+        accessToken: "expired-steward-token",
+      }),
       clientRef: client,
     });
 
     // Exactly one refresh attempt — no retry loop.
     expect(fetchMock).toHaveBeenCalledTimes(1);
     // The dead credential is dropped and the client is left unauthenticated.
-    expect(client.setToken).toHaveBeenCalledWith(null);
+    expect(client.setToken).toHaveBeenLastCalledWith(null);
+    expect(client.setBaseUrl).toHaveBeenLastCalledWith(null);
+    expect(client.setToken).not.toHaveBeenLastCalledWith(
+      "expired-steward-token",
+    );
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(loadPersistedActiveServer()).toBeNull();
   });
 
   it("falls back to the provision-time token when refresh fails but the JWT is still (barely) alive", async () => {

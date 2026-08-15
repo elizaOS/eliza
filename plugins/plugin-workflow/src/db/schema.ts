@@ -1,15 +1,12 @@
 /**
  * Drizzle schema for the plugin's Postgres tables, grouped under the `workflow`
- * pgSchema: credential mappings, workflows, workflow revisions, executions,
- * embedded credentials, and tags.
+ * pgSchema: workflows, workflow revisions, executions, and tags.
  *
  * Registered on the plugin's `schema` field so the runtime provisions and
  * migrates these tables. EmbeddedWorkflowService reads and writes them directly
- * as both the CRUD store and the execution log; WorkflowCredentialStore owns the
- * agent-scoped (userId, credType) → credential-id mappings table. Every table
- * carries `agent_id`; legacy rows are quarantined under a sentinel tenant.
+ * as both the CRUD store and the execution log. Every table carries `agent_id`;
+ * legacy rows are quarantined under a sentinel tenant.
  */
-import { sql } from 'drizzle-orm';
 import {
   boolean,
   index,
@@ -17,9 +14,7 @@ import {
   pgSchema,
   primaryKey,
   text,
-  timestamp,
   uniqueIndex,
-  uuid,
 } from 'drizzle-orm/pg-core';
 import type { WorkflowDefinition, WorkflowExecution } from '../types/index';
 
@@ -31,30 +26,6 @@ export const workflowSchema = pgSchema('workflow');
  * rows here instead of letting the first runtime that boots claim their data.
  */
 export const LEGACY_UNSCOPED_WORKFLOW_AGENT_ID = '__legacy_unscoped__';
-
-export const credentialMappings = workflowSchema.table(
-  'credential_mappings',
-  {
-    agentId: text('agent_id').notNull().default(LEGACY_UNSCOPED_WORKFLOW_AGENT_ID),
-    id: uuid('id').notNull().defaultRandom(),
-    userId: text('user_id').notNull(),
-    credType: text('cred_type').notNull(),
-    workflowCredentialId: text('workflow_credential_id').notNull(),
-    createdAt: timestamp('created_at').default(sql`now()`).notNull(),
-    updatedAt: timestamp('updated_at').default(sql`now()`).notNull(),
-  },
-  (table) => ({
-    tenantPk: primaryKey({
-      name: 'credential_mappings_tenant_pkey',
-      columns: [table.agentId, table.id],
-    }),
-    userCredIdx: uniqueIndex('idx_credential_mappings_agent_user_cred').on(
-      table.agentId,
-      table.userId,
-      table.credType
-    ),
-  })
-);
 
 export const embeddedWorkflows = workflowSchema.table(
   'embedded_workflows',
@@ -154,27 +125,6 @@ export const embeddedExecutions = workflowSchema.table(
       table.agentId,
       table.idempotencyKey
     ),
-  })
-);
-
-export const embeddedCredentials = workflowSchema.table(
-  'embedded_credentials',
-  {
-    agentId: text('agent_id').notNull().default(LEGACY_UNSCOPED_WORKFLOW_AGENT_ID),
-    id: text('id').notNull(),
-    name: text('name').notNull(),
-    type: text('type').notNull(),
-    data: jsonb('data').$type<Record<string, unknown>>().notNull(),
-    isResolvable: boolean('is_resolvable').default(true).notNull(),
-    createdAt: text('created_at').notNull(),
-    updatedAt: text('updated_at').notNull(),
-  },
-  (table) => ({
-    tenantPk: primaryKey({
-      name: 'embedded_credentials_tenant_pkey',
-      columns: [table.agentId, table.id],
-    }),
-    typeIdx: index('idx_embedded_credentials_agent_type').on(table.agentId, table.type),
   })
 );
 

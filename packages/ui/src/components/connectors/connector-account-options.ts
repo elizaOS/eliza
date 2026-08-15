@@ -14,6 +14,7 @@
 import {
   CONNECTOR_ACCOUNT_CATALOG,
   type ConnectorAccountCatalogEntry,
+  type ConnectorOAuthCapabilityDeclaration,
   getConnectorAccountCatalogEntry,
   normalizeConnectorCatalogId as normalizeConnectorCatalogIdShared,
 } from "@elizaos/shared/connector-account-catalog";
@@ -56,6 +57,7 @@ export interface ConnectorPluginManagedAccountOption
   defaultRole: ConnectorAccountRole;
   defaultPurpose: readonly ConnectorAccountPurpose[];
   supportsOAuth: boolean;
+  oauthCapabilities?: readonly ConnectorOAuthCapabilityDeclaration[];
   aliases?: readonly string[];
 }
 
@@ -175,6 +177,9 @@ function toPluginManagedAccountOption(
     defaultRole: entry.defaultRole,
     defaultPurpose: entry.defaultPurpose,
     supportsOAuth: entry.supportsOAuth,
+    ...(entry.oauthCapabilities
+      ? { oauthCapabilities: entry.oauthCapabilities }
+      : {}),
     ...(entry.aliases ? { aliases: entry.aliases } : {}),
   };
 }

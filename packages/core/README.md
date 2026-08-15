@@ -13,6 +13,33 @@
 - **Plugin system:** `Plugin` objects contribute actions/providers/evaluators/services to the runtime.
 - **Built-in bundle:** Foundational capabilities ship as `basicCapabilities` (and `basicActions` / `basicProviders` / `basicEvaluators` / `basicServices`); there is no `corePlugin` singleton.
 
+### Bounded pairing operator reads
+
+`PairingService` keeps its existing complete-array methods (`listPendingRequests`
+and `getAllowlist`) for compatibility. Operator surfaces should use the bounded
+page methods instead:
+
+```ts
+const pending = await pairingService.listPendingRequestsPage("discord", {
+  limit: 25,
+  offset: 0,
+});
+
+const allowed = await pairingService.getAllowlistPage("discord", {
+  limit: 25,
+  offset: 0,
+});
+```
+
+Both methods return `PairingPage<T>`: `{ items, limit, offset, hasMore,
+nextOffset }`. Results are deterministically newest-first (record ID breaks equal
+timestamps), `nextOffset` is `null` on the final page, the default limit is 50,
+and the maximum is 100. Pending-request pages push the configured request TTL
+cutoff into official database adapters so expired rows do not consume page
+slots. Official SQL and in-memory adapters apply the limit and offset at their
+storage boundary; third-party adapters that have not adopted the optional query
+fields remain compatible through a service-level bounded fallback.
+
 ## Installation
 
 1.  Add `@elizaos/core` to your `agent/package.json` dependencies:

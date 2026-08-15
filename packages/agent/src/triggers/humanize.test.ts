@@ -136,4 +136,12 @@ describe("describeIntervalMs", () => {
     expect(describeIntervalMs(1500)).toBe("every 2 seconds");
     expect(describeIntervalMs(10)).toBe("every second");
   });
+
+  it("fails closed on non-finite and non-positive intervals", () => {
+    expect(describeIntervalMs(Number.NaN)).toBeNull();
+    expect(describeIntervalMs(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(describeIntervalMs(Number.NEGATIVE_INFINITY)).toBeNull();
+    expect(describeIntervalMs(0)).toBeNull();
+    expect(describeIntervalMs(-1000)).toBeNull();
+  });
 });

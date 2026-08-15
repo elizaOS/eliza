@@ -57,6 +57,7 @@ export {
 	type FetchedDocumentUrlKind,
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
+	normalizeDocumentContentType,
 } from "./features/documents/index";
 export type {
 	DeferredMessageScheduleCommit,
@@ -108,6 +109,14 @@ export * from "./model-gateway";
 // Canonical owner is `@elizaos/core`; `@elizaos/shared` re-exports them from
 // this barrel so browser consumers resolve the same implementation.
 export * from "./name-tokens";
+// Literal-host SSRF policy helpers are pure string/IP logic (no Node deps).
+// Browser-target consumers use them to fail closed before fetching
+// caller-supplied media URLs (#18702); DNS pinning itself stays Node-only.
+export {
+	isBlockedHostname,
+	isPrivateIpAddress,
+	SsrfBlockedError,
+} from "./network/ssrf";
 export * from "./prompts";
 export * from "./recent-messages-state";
 export * from "./roles";

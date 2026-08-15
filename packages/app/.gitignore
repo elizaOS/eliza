@@ -28,6 +28,20 @@ screenshots/
 # never commit a stale local sha).
 public/build-info.json
 
+# Marketing assets copied from packages/homepage by sync-homepage-assets.mjs.
+public/.well-known/
+public/eliza-logo.webp
+public/elizapfp.webp
+public/elizawallpaper.webp
+public/geist-sans-latin-ext.woff2
+public/geist-sans-latin.woff2
+public/grain.webp
+public/install.ps1
+public/install.sh
+public/models/iphone-meshopt.glb
+public/product/elizaos-usb-key-concept.png
+public/tbg.webp
+
 # Aesthetic audit screenshot output (generated, not source of truth; reviewed
 # cloud-audit evidence is committed under test-results/evidence/10725-*)
 aesthetic-audit-output/

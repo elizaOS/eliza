@@ -6,8 +6,8 @@ name: Tests
 # build+core-test gate; this workflow adds the broader integration surface.
 
 on:
-  # Post-merge integration surface. PRs to `develop` run the lightweight
-  # lint/typecheck/build gate (develop-pr.yml); the full suite runs here once
+  # Post-merge integration surface. Canonical CI calls the lightweight
+  # lint/typecheck/build gate for `develop` PRs; the full suite runs here once
   # changes land on `develop`, plus nightly and on demand.
   push:
     branches: [develop]
@@ -794,7 +794,7 @@ jobs:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"

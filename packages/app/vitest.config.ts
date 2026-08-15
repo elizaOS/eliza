@@ -32,6 +32,13 @@ export default defineConfig({
     ...baseConfig.resolve,
     alias: [
       {
+        // The renderer imports the public marketing entrypoints through the
+        // same source boundary as the Vite build. Keep unit entrypoint tests
+        // independent of a separately built homepage package.
+        find: /^@homepage\//,
+        replacement: `${path.resolve(here, "../homepage/src")}/`,
+      },
+      {
         // Entrypoint tests exercise the shipped iOS bridge import in source mode;
         // the changed-test lane intentionally builds core only, so they cannot
         // depend on a pre-existing app-core dist directory.

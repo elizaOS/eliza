@@ -35,7 +35,7 @@ const meta = {
   },
   args: {
     variant: "slide",
-    pathname: "/dashboard",
+    pathname: "/cloud",
   },
 } satisfies Meta<typeof PageTransition>;
 
@@ -45,7 +45,7 @@ type Story = StoryObj<typeof meta>;
 export const Slide: Story = {
   args: {
     variant: "slide",
-    pathname: "/dashboard",
+    pathname: "/cloud",
     children: (
       <SamplePanel
         title="Dashboard"
@@ -58,7 +58,7 @@ export const Slide: Story = {
 export const Fade: Story = {
   args: {
     variant: "fade",
-    pathname: "/settings",
+    pathname: "/cloud/account",
     children: (
       <SamplePanel
         title="Settings"
@@ -71,7 +71,7 @@ export const Fade: Story = {
 export const Scale: Story = {
   args: {
     variant: "scale",
-    pathname: "/billing",
+    pathname: "/cloud/billing",
     children: (
       <SamplePanel
         title="Billing"
@@ -87,9 +87,17 @@ export const Interactive: Story = {
   },
   render: (args) => {
     const pages = [
-      { path: "/overview", title: "Overview", body: "Your account overview." },
-      { path: "/agents", title: "Agents", body: "Manage running agents." },
-      { path: "/logs", title: "Logs", body: "Inspect recent activity." },
+      { path: "/cloud", title: "Overview", body: "Your account overview." },
+      {
+        path: "/cloud/agents",
+        title: "Agents",
+        body: "Manage running agents.",
+      },
+      {
+        path: "/cloud/agents/demo/logs",
+        title: "Logs",
+        body: "Inspect recent activity.",
+      },
     ];
     const [index, setIndex] = useState(0);
     const current = pages[index];

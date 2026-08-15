@@ -100,7 +100,7 @@ export function registerCapabilityRouterCommand(program: Command) {
     .option(
       "--cloud-api-base <url>",
       "Eliza Cloud API base URL",
-      "https://api.elizacloud.ai",
+      "https://api.eliza.app",
     )
     .option("--cloud-auth-token <token>", "Eliza Cloud API token")
     .option("--cloud-name <name>", "Name for the provisioned Cloud agent")

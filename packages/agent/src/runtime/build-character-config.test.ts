@@ -104,6 +104,21 @@ describe("connector credential setting keys", () => {
   });
 });
 
+describe("last-resort character system prompt", () => {
+  it("keeps the configured identity conversational without changing it", () => {
+    const character = buildCharacterFromConfig({
+      agents: { list: [{ name: "Zzyzx Quorra" }] },
+    } as ElizaConfig);
+
+    expect(character.system?.split("\n\n", 1)[0]).toBe(
+      "You are {{name}}, an autonomous AI agent powered by elizaOS.",
+    );
+    expect(character.system).not.toMatch(
+      /JSON only|Return one JSON object|No prose|fences|markdown/,
+    );
+  });
+});
+
 describe("agent entry character passthrough", () => {
   it("keeps runtime capability hints idempotent across config rebuilds", () => {
     const workflowHint =

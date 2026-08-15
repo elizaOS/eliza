@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { TurnControllerRegistry } from "../runtime/turn-controller";
+import { getStreamingContext } from "../streaming-context";
 import { createMockRuntime } from "../testing/mock-runtime";
 import type { Room } from "../types/environment";
 import type { Memory } from "../types/memory";
@@ -235,6 +236,107 @@ describe("v5 runtime failure before a respond decision", () => {
 		).toEqual(["RESPONSE_HANDLER"]);
 		expect(deliveries).toEqual([]);
 	});
+
+	it("keeps a cancellation-only route turn off streaming while propagating abort", async () => {
+		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+		const controller = new AbortController();
+		const abortReason = new DOMException("route disconnected", "AbortError");
+		const deliveries: Content[] = [];
+		let releaseEntered: (() => void) | undefined;
+		const entered = new Promise<void>((resolve) => {
+			releaseEntered = resolve;
+		});
+		const observed: { stream: boolean; hasSignal: boolean }[] = [];
+		const service = new DefaultMessageService();
+		const serviceProbe = service as unknown as {
+			processMessage: (...args: unknown[]) => Promise<never>;
+		};
+
+		serviceProbe.processMessage = vi.fn(async () => {
+			const context = getStreamingContext();
+			observed.push({
+				stream: context?.onStreamChunk !== undefined,
+				hasSignal: context?.abortSignal !== undefined,
+			});
+			releaseEntered?.();
+			if (!context?.abortSignal) {
+				throw new Error("expected the route-owned abort signal");
+			}
+			await new Promise<never>((_resolve, reject) => {
+				context.abortSignal?.addEventListener(
+					"abort",
+					() => reject(context.abortSignal?.reason),
+					{ once: true },
+				);
+			});
+			throw new Error("unreachable");
+		});
+
+		const turn = service.handleMessage(
+			runtime,
+			makeMessage({ channelType: ChannelType.DM }),
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+			{ abortSignal: controller.signal },
+		);
+		await entered;
+		controller.abort(abortReason);
+
+		await expect(turn).rejects.toBe(abortReason);
+		expect(observed).toEqual([{ stream: false, hasSignal: true }]);
+		expect(deliveries).toEqual([]);
+	});
+
+	it("keeps a turn-owned cancellation scope off streaming and abortable", async () => {
+		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+		const observed: { stream: boolean; hasSignal: boolean }[] = [];
+		let releaseEntered: (() => void) | undefined;
+		const entered = new Promise<void>((resolve) => {
+			releaseEntered = resolve;
+		});
+		const service = new DefaultMessageService();
+		const serviceProbe = service as unknown as {
+			processMessage: (...args: unknown[]) => Promise<never>;
+		};
+
+		serviceProbe.processMessage = vi.fn(async () => {
+			const context = getStreamingContext();
+			observed.push({
+				stream: context?.onStreamChunk !== undefined,
+				hasSignal: context?.abortSignal !== undefined,
+			});
+			releaseEntered?.();
+			if (!context?.abortSignal) {
+				throw new Error("expected the turn-owned abort signal");
+			}
+			await new Promise<never>((_resolve, reject) => {
+				context.abortSignal?.addEventListener(
+					"abort",
+					() => reject(context.abortSignal?.reason),
+					{ once: true },
+				);
+			});
+			throw new Error("unreachable");
+		});
+
+		const turn = service.handleMessage(
+			runtime,
+			makeMessage({ channelType: ChannelType.DM }),
+			async () => [],
+		);
+		await entered;
+		expect(runtime.turnControllers.abortTurn(ROOM, "turn cancelled")).toBe(
+			true,
+		);
+
+		await expect(turn).rejects.toMatchObject({
+			code: "TURN_ABORTED",
+			reason: "turn cancelled",
+		});
+		expect(observed).toEqual([{ stream: false, hasSignal: true }]);
+	});
 });
 
 describe("planner failure after a promoted stage-1 answer", () => {
@@ -357,5 +459,109 @@ describe("planner failure after a promoted stage-1 answer", () => {
 			"lalalune",
 		);
 		expect(visibleTexts.join("\n").toLowerCase()).not.toContain("rate-limit");
+	});
+
+	it("delivers the failure reply on an unaddressed group turn once stage-1 committed to respond", async () => {
+		// Stage 1 commits to RESPOND on a bare group message but produces no
+		// preservable answer (empty replyText, promoted to planning), and the
+		// planner then dies. The deterministic addressing gate alone would
+		// suppress the failure reply — the model's own RESPOND decision must
+		// qualify the turn for a visible failure instead of dead silence.
+		const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
+		for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+			responseHandlerFieldRegistry.register(evaluator);
+		}
+		let stage1Served = false;
+		const runtime = createMockRuntime({
+			agentId: AGENT,
+			character: { name: "Remilio", bio: "test agent" },
+			logger: {
+				debug: vi.fn(),
+				info: vi.fn(),
+				warn: vi.fn(),
+				error: vi.fn(),
+				trace: vi.fn(),
+			} as unknown as IAgentRuntime["logger"],
+			getSetting: vi.fn(() => undefined),
+			getService: vi.fn(() => null),
+			getModel: vi.fn(() => async () => {
+				throw RATE_LIMIT_ERROR;
+			}),
+			useModel: vi.fn(async (modelType: unknown) => {
+				if (String(modelType) === "RESPONSE_HANDLER" && !stage1Served) {
+					stage1Served = true;
+					return {
+						text: "",
+						toolCalls: [
+							{
+								id: "handle-response-1",
+								name: "HANDLE_RESPONSE",
+								arguments: {
+									shouldRespond: "RESPOND",
+									thought: "",
+									contexts: ["general"],
+									intents: [],
+									candidateActionNames: [],
+									replyText: "",
+									facts: [],
+									relationships: [],
+									addressedTo: [],
+								},
+							},
+						],
+					};
+				}
+				throw RATE_LIMIT_ERROR;
+			}),
+			composeState: vi.fn(async () => makeState()),
+			runActionsByMode: vi.fn(async () => undefined),
+			applyPipelineHooks: vi.fn(async () => undefined),
+			emitEvent: vi.fn(async () => undefined),
+			reportError: vi.fn(),
+			startRun: vi.fn(() => RUN_ID),
+			getCurrentRunId: vi.fn(() => RUN_ID),
+			endRun: vi.fn(),
+			getMemoryById: vi.fn(async () => null),
+			createMemory: vi.fn(async () => asUUID(v4())),
+			updateMemory: vi.fn(async () => true),
+			queueEmbeddingGeneration: vi.fn(async () => undefined),
+			getParticipantUserState: vi.fn(async () => null),
+			getRoom: vi.fn(async () => makeRoom(ChannelType.GROUP)),
+			getRoomsByIds: vi.fn(async () => [makeRoom(ChannelType.GROUP)]),
+			getMemories: vi.fn(async () => []),
+			isCheckShouldRespondEnabled: vi.fn(() => true),
+			turnControllers: new TurnControllerRegistry(),
+			responseHandlerFieldRegistry,
+			responseHandlerFieldEvaluators: [
+				...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+			],
+			responseHandlerEvaluators: [
+				{
+					name: "test-clobber-to-ack",
+					priority: 100,
+					shouldRun: () => true,
+					evaluate: () => ({ reply: "On it.", requiresTool: true }),
+				},
+			],
+		} as never);
+
+		const service = new DefaultMessageService();
+		const deliveries: Content[] = [];
+		const result = await service.handleMessage(
+			runtime,
+			makeMessage({}),
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+		);
+
+		const visibleTexts = deliveries
+			.map((content) => (typeof content.text === "string" ? content.text : ""))
+			.filter((text) => text.trim().length > 0);
+
+		expect(result.didRespond).toBe(true);
+		expect(visibleTexts).toHaveLength(1);
+		expect(visibleTexts[0].toLowerCase()).toContain("rate-limit");
 	});
 });

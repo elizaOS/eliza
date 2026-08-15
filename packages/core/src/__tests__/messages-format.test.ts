@@ -1,11 +1,12 @@
 /**
- * Coverage for `formatMessages` conversation-history rendering: attachment
- * read-advertisement gating, reacted-to message restoration, and bot-sender
- * tagging. Pure formatter test — no runtime or model.
+ * Coverage for `formatMessages` and `formatPosts` conversation-history
+ * rendering: attachment read-advertisement gating, reacted-to message
+ * restoration, bot-sender tagging, and timestamp tense in the rendered
+ * transcript. Pure formatter test — no runtime or model.
  */
-import { describe, expect, it } from "vitest";
-import type { Media, Memory, UUID } from "../types/index.ts";
-import { formatMessages } from "../utils.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Entity, Media, Memory, UUID } from "../types/index.ts";
+import { formatMessages, formatPosts } from "../utils.ts";
 
 const roomId = "00000000-0000-0000-0000-000000000001" as UUID;
 
@@ -185,5 +186,71 @@ describe("formatMessages", () => {
 		expect(rendered).toContain(
 			"Stored content available via ATTACHMENT action=read",
 		);
+	});
+});
+
+describe("transcript timestamp tense", () => {
+	// These transcripts are rendered into prompt text the model reads, so a
+	// future-dated memory (clock skew, a scheduled item) must not be described
+	// as having already happened. The clock is frozen to pin exact offsets.
+	const NOW = 1768478400000;
+	const entityId = "00000000-0000-0000-0000-000000000002" as UUID;
+	const agentId = "00000000-0000-0000-0000-000000000003" as UUID;
+	const entities: Entity[] = [{ id: entityId, names: ["Ada"], agentId }];
+
+	function messageAt(createdAt: number): Memory {
+		return {
+			id: "00000000-0000-0000-0000-000000000031" as UUID,
+			entityId,
+			roomId,
+			createdAt,
+			content: { text: "the demo starts soon", source: "discord" },
+		} as Memory;
+	}
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("formatMessages renders a future createdAt as 'in …', not '… ago'", () => {
+		const rendered = formatMessages({
+			messages: [messageAt(NOW + 5 * 60_000)],
+			entities,
+		});
+
+		expect(rendered).toContain("(in 5 minutes)");
+		expect(rendered).not.toContain("ago)");
+	});
+
+	it("formatMessages keeps rendering a past createdAt as '… ago'", () => {
+		const rendered = formatMessages({
+			messages: [messageAt(NOW - 5 * 60_000)],
+			entities,
+		});
+
+		expect(rendered).toContain("(5 minutes ago)");
+	});
+
+	it("formatPosts renders a future createdAt as 'in …', not '… ago'", () => {
+		const rendered = formatPosts({
+			messages: [messageAt(NOW + 5 * 60_000)],
+			entities,
+		});
+
+		expect(rendered).toContain("Date: in 5 minutes");
+	});
+
+	it("formatPosts keeps rendering a past createdAt as '… ago'", () => {
+		const rendered = formatPosts({
+			messages: [messageAt(NOW - 5 * 60_000)],
+			entities,
+		});
+
+		expect(rendered).toContain("Date: 5 minutes ago");
 	});
 });

@@ -86,7 +86,10 @@ async function fetchRuntimeCharacters(
 interface DiscordConnectionPatch {
   characterId: string | null;
   isActive: boolean;
-  metadata: { responseMode: "always" | "mention" | "keyword" };
+  metadata: {
+    responseMode: "always" | "mention" | "keyword";
+    ownerDiscordUserId?: string;
+  };
   botToken?: string;
 }
 
@@ -106,6 +109,7 @@ interface DiscordGatewayConnection {
     keywords?: string[];
     enabledChannels?: string[];
     disabledChannels?: string[];
+    ownerDiscordUserId?: string;
   } | null;
   connectedAt: string | null;
   lastHeartbeat: string | null;
@@ -188,6 +192,7 @@ export function DiscordGatewayConnection() {
   const [responseMode, setResponseMode] = useState<
     "always" | "mention" | "keyword"
   >("always");
+  const [ownerDiscordUserId, setOwnerDiscordUserId] = useState("");
 
   // Edit state for existing connections
   const [editState, setEditState] = useState<
@@ -196,6 +201,7 @@ export function DiscordGatewayConnection() {
       {
         characterId: string;
         responseMode: "always" | "mention" | "keyword";
+        ownerDiscordUserId: string;
         botToken: string;
         isActive: boolean;
       }
@@ -333,7 +339,12 @@ export function DiscordGatewayConnection() {
             applicationId: applicationId.trim(),
             botToken: botToken.trim(),
             characterId,
-            metadata: { responseMode },
+            metadata: {
+              responseMode,
+              ...(ownerDiscordUserId.trim()
+                ? { ownerDiscordUserId: ownerDiscordUserId.trim() }
+                : {}),
+            },
           },
         },
       );
@@ -349,6 +360,7 @@ export function DiscordGatewayConnection() {
         setBotToken("");
         setCharacterId("");
         setResponseMode("always");
+        setOwnerDiscordUserId("");
         setShowForm(false);
         void fetchConnections();
       } else {
@@ -399,6 +411,9 @@ export function DiscordGatewayConnection() {
         isActive: edit.isActive,
         metadata: {
           responseMode: edit.responseMode,
+          ...(edit.ownerDiscordUserId.trim()
+            ? { ownerDiscordUserId: edit.ownerDiscordUserId.trim() }
+            : {}),
         },
       };
 
@@ -484,6 +499,7 @@ export function DiscordGatewayConnection() {
         [conn.id]: {
           characterId: conn.characterId || "",
           responseMode: conn.metadata?.responseMode || "always",
+          ownerDiscordUserId: conn.metadata?.ownerDiscordUserId || "",
           botToken: "",
           isActive: conn.isActive,
         },
@@ -748,6 +764,30 @@ export function DiscordGatewayConnection() {
                                     </SelectItem>
                                   </SelectContent>
                                 </Select>
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label>
+                                  {t("cloud.discord.ownerDiscordUserId", {
+                                    defaultValue: "Discord Owner ID",
+                                  })}
+                                </Label>
+                                <Input
+                                  placeholder={t(
+                                    "cloud.discord.ownerDiscordUserIdPlaceholder",
+                                    {
+                                      defaultValue: "Your Discord user snowflake",
+                                    },
+                                  )}
+                                  value={edit.ownerDiscordUserId}
+                                  onChange={(e) =>
+                                    updateEditState(
+                                      conn.id,
+                                      "ownerDiscordUserId",
+                                      e.target.value,
+                                    )
+                                  }
+                                />
                               </div>
                             </div>
 
@@ -1245,6 +1285,22 @@ export function DiscordGatewayConnection() {
               })}
             </p>
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="ownerDiscordUserId">
+            {t("cloud.discord.ownerDiscordUserId", {
+              defaultValue: "Discord Owner ID",
+            })}
+          </Label>
+          <Input
+            id="ownerDiscordUserId"
+            placeholder={t("cloud.discord.ownerDiscordUserIdPlaceholder", {
+              defaultValue: "Your Discord user snowflake",
+            })}
+            value={ownerDiscordUserId}
+            onChange={(e) => setOwnerDiscordUserId(e.target.value)}
+          />
         </div>
 
         <Button

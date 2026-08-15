@@ -13,7 +13,7 @@
  *
  * Configured via:
  *   ELIZA_CLOUD_WRITE_BASE_URL — base URL of the cloud API, e.g.
- *     https://api.elizacloud.ai. The agentId is appended at runtime:
+ *     https://api.eliza.app. The agentId is appended at runtime:
  *     {base}/api/v1/eliza/agents/{agentId}/write
  *   ELIZA_CLOUD_SERVICE_KEY — X-Service-Key value (WAIFU_SERVICE_KEY)
  *

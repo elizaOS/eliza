@@ -44,13 +44,6 @@ export interface LiveContainerRef {
    * that moved the workload (see `wrong_node`). Absent for apps.
    */
   nodeId?: string;
-  /**
-   * When this row was last written (epoch ms). Node-aware reaping only trusts a
-   * `nodeId` mismatch once the row has been stable for `nodeMoveGraceMs`, so a
-   * container observed mid-provision (its healthy on node X before the row is
-   * updated to X) is never mistaken for a stale twin. Absent for apps.
-   */
-  updatedAtMs?: number;
 }
 
 /** A container the reconciler has decided to forcibly remove. */
@@ -63,7 +56,7 @@ export interface OrphanContainer {
   key: string;
   /**
    * Why it was flagged: no DB row at all, every row in a terminal state, or —
-   * for node-aware reconcilers — a live row that has stably pointed at a
+   * for node-aware reconcilers — an old container whose live row points at a
    * DIFFERENT node (`wrong_node`, the re-provision-left-a-twin case).
    */
   reason: "no_db_row" | "terminal_db_row" | "wrong_node";
@@ -79,8 +72,7 @@ export type RetainedContainerReason =
   | "live_on_node"
   | "wrong_node_evidence_incomplete"
   | "wrong_node_age_unknown"
-  | "wrong_node_container_within_grace"
-  | "wrong_node_row_within_grace";
+  | "wrong_node_container_within_grace";
 
 /** Complete, observable classification for one container in a node listing. */
 export type ContainerReconcileDecision =
@@ -158,8 +150,8 @@ export interface OrphanReconcilerConfig {
    * Opt in to node-aware reaping: also reap a container on node X when the
    * workload has a live row but every live row points at a DIFFERENT node (a
    * re-provision moved the workload and left this twin behind). Requires
-   * `loadStatuses` to populate `nodeId` + `updatedAtMs`. Agents set this;
-   * apps (which legitimately fan a name across rows) leave it off.
+   * `loadStatuses` to populate `nodeId`. Agents set this; apps (which
+   * legitimately fan a name across rows) leave it off.
    */
   nodeAware?: boolean;
   /**
@@ -170,10 +162,10 @@ export interface OrphanReconcilerConfig {
    */
   rowlessGraceMs?: number;
   /**
-   * How long a `nodeId` mismatch must persist before the twin is reaped
-   * (epoch-ms delta against the row's `updatedAtMs`). Guards the provision race
-   * where a container is healthy on its new node before the DB row catches up.
-   * Defaults to `DEFAULT_NODE_MOVE_GRACE_MS` when node-aware and unset.
+   * How old a wrong-node container must be before the twin is reaped (epoch-ms
+   * delta against its immutable Docker `createdAtMs`). Guards the provision
+   * race where a new container is healthy before the DB row catches up. Defaults
+   * to `DEFAULT_NODE_MOVE_GRACE_MS` when node-aware and unset.
    */
   nodeMoveGraceMs?: number;
 
@@ -189,9 +181,9 @@ export interface OrphanReconcilerConfig {
 }
 
 /**
- * A stale twin must have been "wrong-noded" for at least this long before it is
+ * A wrong-node container must have existed for at least this long before it is
  * reaped — long enough that a normal provision (create container → confirm
- * healthy → update row's node_id) has written the row, so the freshly-healthy
+ * healthy → update row's node_id) has written the row, so the freshly healthy
  * NEW container is never mistaken for the twin during its own creation window.
  */
 export const DEFAULT_NODE_MOVE_GRACE_MS = 5 * 60_000;
@@ -231,11 +223,12 @@ export const DEFAULT_ROWLESS_GRACE_MS = 5 * 60_000;
  * sits on. That is the re-provision-left-a-twin case (#15228): the worker moved
  * the agent to a new node and never tore down the old container, which then
  * holds the headscale identity and makes the new registration flap. We reap the
- * twin ONLY when EVERY live row for the key points elsewhere AND the newest such
- * row has been stable for `nodeMoveGraceMs` — so a container that is merely
- * healthy-before-its-own-row-updates during a normal provision is protected.
- * When any live row points at THIS node, the container is the canonical one and
- * is kept.
+ * twin ONLY when EVERY live row for the key points elsewhere AND the container
+ * itself is older than `nodeMoveGraceMs` — so a newly created container that
+ * is healthy before its own row updates during a normal provision is protected.
+ * Database `updated_at` is deliberately not a clock for this decision because
+ * healthy-agent heartbeats rewrite it continuously. When any live row points at
+ * THIS node, the container is the canonical one and is kept.
  *
  * `nowMs` is injected so classification remains deterministic. Missing time is
  * treated as incomplete evidence and therefore retains the container.
@@ -343,8 +336,9 @@ export function classifyContainersForReconciliation(
 
     // A live (non-terminal) row exists. In node-aware mode, this container is a
     // stale twin iff NONE of the live rows point at this node — the canonical
-    // container lives elsewhere. Require the newest such mismatching row to have
-    // been stable past the grace window before reaping.
+    // container lives elsewhere. The immutable Docker creation time protects a
+    // newly created container while its row catches up; mutable row timestamps
+    // cannot, because healthy-agent heartbeats refresh them indefinitely.
     if (!config.nodeAware) {
       decisions.push({
         action: "retain",
@@ -378,15 +372,7 @@ export function classifyContainersForReconciliation(
       continue;
     }
     const completePlacements = liveRows_.filter(
-      (
-        row,
-      ): row is LiveContainerRef & {
-        nodeId: string;
-        updatedAtMs: number;
-      } =>
-        row.nodeId !== undefined &&
-        row.updatedAtMs !== undefined &&
-        Number.isFinite(row.updatedAtMs),
+      (row): row is LiveContainerRef & { nodeId: string } => row.nodeId !== undefined,
     );
     if (completePlacements.length !== liveRows_.length) {
       decisions.push({
@@ -420,17 +406,6 @@ export function classifyContainersForReconciliation(
         id: container.id,
         key,
         reason: "wrong_node_container_within_grace",
-      });
-      continue;
-    }
-    const newest = Math.max(...completePlacements.map((row) => row.updatedAtMs));
-    if (nowMs - newest < nodeMoveGraceMs) {
-      decisions.push({
-        action: "retain",
-        name: container.name,
-        id: container.id,
-        key,
-        reason: "wrong_node_row_within_grace",
       });
       continue;
     }

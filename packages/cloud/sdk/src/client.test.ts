@@ -359,7 +359,7 @@ describe("ElizaCloudClient CLI login", () => {
     }) as typeof fetch;
 
     const client = new ElizaCloudClient({
-      baseUrl: "https://api.elizacloud.ai",
+      baseUrl: "https://api.eliza.app",
       fetchImpl,
     });
 
@@ -367,9 +367,9 @@ describe("ElizaCloudClient CLI login", () => {
       sessionId: "cli-test-session",
     });
 
-    expect(requestedUrl).toBe("https://api.elizacloud.ai/api/auth/cli-session");
+    expect(requestedUrl).toBe("https://api.eliza.app/api/auth/cli-session");
     expect(result.browserUrl).toBe(
-      "https://elizacloud.ai/auth/cli-login?session=cli-test-session",
+      "https://eliza.app/auth/cli-login?session=cli-test-session",
     );
   });
 });

@@ -106,7 +106,7 @@ Pick the narrowest money surface:
 
 - **App monetization** (`PUT /api/v1/apps/{id}/monetization`) sets ongoing inference markup and app-credit purchase share. The inference markup is added to the cost debited from the caller's ORG credit balance and earned via `recordCreatorEarnings`; the purchase-share applies to the (currently stranded) per-app pool. It is not a one-off invoice. **Turning monetization ON is compliance-gated:** a newly created app is a review draft, and `monetizationEnabled: true` is refused with `403` (`review_status` in the body) until the app reaches `approved`. Submit it for review first; markup/share values and `monetizationEnabled: false` are always accepted.
 - **App charge requests** (`POST /api/v1/apps/{id}/charges`) ask a user to pay an exact USD amount through Stripe or OxaPay. The payer receives app credits; creator earnings flow through the app-credit earnings ledger.
-- **x402 payment requests** (`POST /api/v1/x402/requests`) ask for direct crypto settlement. Use these when the payer already has crypto or the flow is wallet-native. Current settlement support includes Base, Ethereum, BSC, and Solana; defaults point at `https://x402.elizacloud.ai`.
+- **x402 payment requests** (`POST /api/v1/x402/requests`) ask for direct crypto settlement. Use these when the payer already has crypto or the flow is wallet-native. Current settlement support includes Base, Ethereum, BSC, and Solana; defaults point at `https://x402.eliza.app`.
 - **App-credit checkout** (`POST /api/v1/app-credits/checkout`) buys into the per-app pre-purchased credit pool (`app_credit_balances`). Note: inference billing was migrated to the org balance, so these purchases are currently stranded (issue #8253) — prefer org-credit checkout for spendable balance. Use app charge requests when the agent needs a durable request, metadata, callbacks, and a reusable payment URL.
 - **Org-credit checkout** (`POST /api/v1/credits/checkout`) tops up the user's organization. It is not creator pricing.
 - **Cloud tunnel provisioning** (`POST /api/v1/apis/tunnels/tailscale/auth-key`) debits org credits once per successful tunnel auth-key mint. It is on-demand infrastructure usage, not SaaS/subscription billing.
@@ -163,7 +163,7 @@ This is the catch-all skill for any user request about apps they already own. En
 | `show app analytics / usage` | `/api/v1/apps/{id}/analytics` | GET |
 | `regenerate my api key` | `/api/v1/apps/{id}/regenerate-api-key` | POST |
 | `list app users` | `/api/v1/apps/{id}/users` | GET |
-| `top up org credits` | `/api/v1/credits/checkout` or `/dashboard/billing` | POST / hosted |
+| `top up org credits` | `/api/v1/credits/checkout` or `/cloud/billing` | POST / hosted |
 | `top up app credits` | `/api/v1/app-credits/checkout` | POST |
 | `start/provision a cloud tunnel` | `/api/v1/apis/tunnels/tailscale/auth-key` via `@elizaos/plugin-tailscale` | POST |
 | `dashboard overview` | `/api/v1/dashboard` | GET |

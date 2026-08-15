@@ -128,6 +128,23 @@ export function decideRollout(
 // Pool manager (I/O — runs in container-control-plane).
 // ---------------------------------------------------------------------------
 
+/**
+ * The deployed policy: `DEFAULT_WARM_POOL_POLICY` with the operator-tunable
+ * floor/ceiling read from `WARM_POOL_MIN_SIZE` / `WARM_POOL_MAX_SIZE` (via
+ * `containersEnv`). Every production `WarmPoolManager` must be constructed
+ * with this — constructing with the bare default silently pins the floor to 1
+ * and makes the env vars inert.
+ *
+ * The ceiling is the hard cost cap, so a floor configured above it clamps
+ * down to the ceiling instead of tripping the `computeForecast`
+ * min<=max invariant.
+ */
+export function envWarmPoolPolicy(): WarmPoolPolicy {
+  const maxPoolSize = containersEnv.warmPoolMaxSize();
+  const minPoolSize = Math.min(containersEnv.warmPoolMinSize(), maxPoolSize);
+  return { ...DEFAULT_WARM_POOL_POLICY, minPoolSize, maxPoolSize };
+}
+
 export interface PoolContainerCreator {
   /**
    * Create a new pre-warmed agent container. Implementation lives in the
@@ -197,6 +214,8 @@ export class WarmPoolManager {
     private readonly creator: PoolContainerCreator,
     private readonly policy: WarmPoolPolicy = DEFAULT_WARM_POOL_POLICY,
     private readonly nowFn: () => number = () => Date.now(),
+    private readonly sleepFn: (ms: number) => Promise<void> = (ms) =>
+      new Promise((resolve) => setTimeout(resolve, ms)),
   ) {}
 
   /**
@@ -333,6 +352,11 @@ export class WarmPoolManager {
     const removed: Array<{ id: string; reason: string }> = [...reconciliation.reaped];
     let alive = reconciliation.promoted.length;
 
+    // A single missed probe no longer reaps a row: the probe crosses the
+    // headscale mesh, whose routine >5s transient hiccups made one-strike
+    // reaping destroy every ready entry within a couple of sweeps. Rows that
+    // miss the first probe get a bounded, spaced retry round instead.
+    const suspects: Array<{ id: string }> = [];
     for (const row of rows) {
       // `healthProbe` is contracted to return false for an unreachable
       // container and only throws on an internal failure (its lookup/DB read).
@@ -344,15 +368,24 @@ export class WarmPoolManager {
         alive++;
         continue;
       }
+      suspects.push({ id: row.id });
+    }
+
+    const confirmedDead = await this.retrySuspectProbes(suspects);
+    alive += suspects.length - confirmedDead.length;
+    const attempts = Math.max(1, this.policy.healthProbeAttempts);
+    const deadReason =
+      attempts === 1 ? "health probe failed" : `health probe failed after ${attempts} attempts`;
+    for (const row of confirmedDead) {
       try {
         await this.creator.destroyPoolContainer(row.id);
-        removed.push({ id: row.id, reason: "health probe failed" });
+        removed.push({ id: row.id, reason: deadReason });
       } catch (err) {
         // error-policy:J6 best-effort teardown — destroy is idempotent and the
         // next health-check pass retries; record the failure in the reason.
         removed.push({
           id: row.id,
-          reason: `probe failed; destroy errored: ${err instanceof Error ? err.message : String(err)}`,
+          reason: `${deadReason}; destroy errored: ${err instanceof Error ? err.message : String(err)}`,
         });
       }
     }
@@ -398,6 +431,42 @@ export class WarmPoolManager {
       reconciliation,
       removed,
     };
+  }
+
+  /**
+   * Re-probe ready entries that missed their first health probe, up to
+   * `healthProbeAttempts - 1` extra times spaced `healthProbeRetryDelayMs`
+   * apart, and return only the rows that failed every attempt. Suspects retry
+   * concurrently so the sweep's worst case stays (attempts - 1) × (delay +
+   * probe timeout) regardless of row count — bounded inside the daemon's
+   * phase budget. `healthProbe`'s contract is preserved: an internal throw
+   * from any attempt propagates (via allSettled + rethrow, so a sibling row's
+   * in-flight probe can never become an unhandled rejection) and NOTHING is
+   * reaped from an indeterminate sweep.
+   */
+  private async retrySuspectProbes(
+    suspects: Array<{ id: string }>,
+  ): Promise<Array<{ id: string }>> {
+    if (suspects.length === 0) return [];
+    const retries = Math.max(0, this.policy.healthProbeAttempts - 1);
+    if (retries === 0) return suspects;
+
+    const outcomes = await Promise.allSettled(
+      suspects.map(async (row) => {
+        for (let attempt = 0; attempt < retries; attempt++) {
+          await this.sleepFn(this.policy.healthProbeRetryDelayMs);
+          if (await this.creator.healthProbe(row.id)) return null;
+        }
+        return row;
+      }),
+    );
+    const rejection = outcomes.find(
+      (outcome): outcome is PromiseRejectedResult => outcome.status === "rejected",
+    );
+    if (rejection) throw rejection.reason;
+    return outcomes.flatMap((outcome) =>
+      outcome.status === "fulfilled" && outcome.value !== null ? [outcome.value] : [],
+    );
   }
 
   async rollout(image: string): Promise<RolloutResult> {

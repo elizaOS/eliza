@@ -1,5 +1,6 @@
 node_modules
 /out
+/output/
 
 # triage-tests generated outputs (regenerate via packages/scripts/triage-tests.mjs)
 /coverage-matrix.csv

@@ -43,6 +43,7 @@ vi.mock("@capacitor/core", () => ({
 
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
 import { ElizaClient } from "./client-base";
+import { DIRECT_ELIZA_CLOUD_API_BY_HOST } from "./direct-cloud-endpoints";
 // Side-effect imports: patch the cloud + chat domains onto the prototype.
 import "./client-cloud";
 import "./client-chat";
@@ -396,6 +397,7 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
 
   afterAll(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    DIRECT_ELIZA_CLOUD_API_BY_HOST.delete("127.0.0.1");
     setBootConfig(DEFAULT_BOOT_CONFIG);
   });
 
@@ -404,8 +406,10 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
     state.conversations.clear();
     state.requests.length = 0;
     state.resumeCalls.length = 0;
-    // Make the mock origin the recognized direct-cloud base for both
-    // isDirectCloudBase() (client-base origin match) and the native fallback.
+    // The production resolver trusts only the canonical host table. This
+    // explicit test-only entry makes the real local server a recognized
+    // control plane without weakening the configured-origin boundary.
+    DIRECT_ELIZA_CLOUD_API_BY_HOST.set("127.0.0.1", base);
     setBootConfig({ ...DEFAULT_BOOT_CONFIG, cloudApiBase: base });
   });
 

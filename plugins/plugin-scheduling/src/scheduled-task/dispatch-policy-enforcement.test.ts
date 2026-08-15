@@ -297,6 +297,51 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     expect(h.dispatches).toHaveLength(2);
   });
 
+  it("persists an event payload across retry and escalation dispatches", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(
+      reminderInput({
+        contextRequest: { includeEventPayload: true },
+        escalation: {
+          steps: [{ delayMinutes: 5, channelKey: "push", intensity: "urgent" }],
+        },
+      }),
+    );
+    const eventPayload = { documentTitle: "Board packet" };
+    h.queueDispatchResults(
+      {
+        ok: false,
+        reason: "disconnected",
+        userActionable: false,
+      },
+      { ok: true },
+    );
+
+    const first = await h.runner.fireWithResult(task.taskId, { eventPayload });
+    expect(first.kind).toBe("dispatch_deferred");
+    if (first.kind !== "dispatch_deferred") throw new Error("unreachable");
+    h.setNow(first.nextAttemptAtIso);
+    await h.runner.fireWithResult(task.taskId);
+
+    expect(h.dispatches).toHaveLength(2);
+    expect(h.dispatches[0]?.record.eventPayload).toEqual(eventPayload);
+    expect(h.dispatches[1]?.record.eventPayload).toEqual(eventPayload);
+    expect(h.dispatches[1]?.record.channelKey).toBe("push");
+  });
+
+  it("marks non-serializable event payloads unavailable before persistence", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(reminderInput());
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    await h.runner.fireWithResult(task.taskId, { eventPayload: circular });
+
+    expect(h.dispatches[0]?.record.eventPayload).toEqual({
+      unavailable: "not_serializable",
+    });
+  });
+
   it("retry budget is bounded: rate_limited forever fails after max retries on a ladderless task", async () => {
     const h = makeHarness();
     const task = await h.runner.schedule(reminderInput());

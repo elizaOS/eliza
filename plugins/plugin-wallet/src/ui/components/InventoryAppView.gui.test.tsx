@@ -73,6 +73,9 @@ vi.mock("@elizaos/ui", () => ({
   Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement("button", { type: "button", ...props }),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
+  // Pass through to navigator.clipboard so the copy-button tests keep
+  // asserting the address that reaches the platform clipboard boundary.
+  copyTextToClipboard: (text: string) => navigator.clipboard.writeText(text),
   useActivityEvents: () => appHooks.activityEvents,
   useApp: appHooks.useApp,
   useAppSelector: (selector: (s: Record<string, unknown>) => unknown) =>

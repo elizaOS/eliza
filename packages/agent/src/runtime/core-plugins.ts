@@ -280,6 +280,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.
   "@elizaos/plugin-scheduling", // always-loaded ScheduledTask runtime primitive (runner host + REST surface + seed registry); personal-assistant enriches it when present
+  "@elizaos/plugin-documents", // Knowledge CRUD/search routes required by the web and desktop Knowledge surface
   // Built-in runtime capabilities (no longer external plugins):
   // - experience, todos, personality: advanced capabilities (advancedCapabilities: true)
   // - form: standalone @elizaos/plugin-form
@@ -306,6 +307,7 @@ export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
   "@elizaos/plugin-app-control", // VIEWS navigation in the app chat surface
   "@elizaos/plugin-notes", // managed Cloud Notes data and capabilities
+  "@elizaos/plugin-documents", // Knowledge CRUD/search routes exposed to hosted web clients
   // ScheduledTask primitive. Calendar is already always selected on lean-chat
   // via MOBILE_VIEW_PLUGINS (viewEveryPlatform) and declares a hard dependency
   // on scheduling in plugin-calendar. Seeding it here is not a new surface:

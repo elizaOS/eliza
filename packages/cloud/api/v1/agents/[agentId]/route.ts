@@ -21,25 +21,19 @@ app.get("/", async (c) => {
     // Look up cross-org first so cross-org access surfaces as 403 (with audit)
     // rather than ambiguous 404. Falls back to 404 only when the agent does
     // not exist anywhere.
-    const agentAnyOrg = await userCharactersRepository.findById(agentId);
-    if (!agentAnyOrg) {
+    const agent = await userCharactersRepository.findById(agentId);
+    if (!agent) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
-    await assertOrgMembership(user, agentAnyOrg.organization_id, {
+    await assertOrgMembership(user, agent.organization_id, {
       resourceType: "agent",
       resourceId: agentId,
       c,
     });
 
-    const agent = await userCharactersRepository.findByIdInOrganization(
-      agentId,
-      user.organization_id,
-    );
-
-    if (!agent) {
-      return c.json({ success: false, error: "Agent not found" }, 404);
-    }
-
+    // assertOrgMembership throws 403 on cross-org access, so reaching here
+    // guarantees agent.organization_id === user.organization_id — no second
+    // DB lookup needed.
     return c.json({ success: true, data: agent });
   } catch (error) {
     return failureResponse(c, error);

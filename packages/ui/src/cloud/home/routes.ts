@@ -9,7 +9,7 @@ import { lazy } from "react";
 import { registerCloudRoute } from "../shell/cloud-route-registry";
 
 registerCloudRoute({
-  path: "dashboard",
-  group: "dashboard",
+  path: "cloud",
+  group: "cloud",
   element: lazy(() => import("./DashboardHomePage")),
 });

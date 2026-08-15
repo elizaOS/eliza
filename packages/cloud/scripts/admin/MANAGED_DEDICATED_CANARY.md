@@ -2,7 +2,9 @@
 
 `managed-dedicated-canary.ts` is the canonical live proof for the managed
 Cloud dedicated-agent path. It is an explicit operator-run diagnostic and is
-not part of routine pull-request or scheduled CI.
+not part of routine pull-request or scheduled CI. Dispatch `Live Smoke` with
+the `dedicated` suite (`all` also includes it); the consolidated
+`.github/workflows/live-smoke.yml` is its only workflow owner.
 
 The lane deliberately does not call Hetzner. It presents the existing
 repository Cloud bearer to the staging Worker; the deployed managed
@@ -14,7 +16,7 @@ disposable identity row to leak or clean separately.
 
 ## Safety and pass contract
 
-- Target is hard-pinned to `https://api-staging.elizacloud.ai`; production is
+- Target is hard-pinned to `https://api-staging.eliza.app`; production is
   refused even when a valid credential is supplied.
 - Fixed workflow concurrency plus a prefix scan allows at most one canary. A
   leftover canary makes the next run red before another create can spend.
@@ -22,8 +24,9 @@ disposable identity row to leak or clean separately.
   caps control-plane calls at 30 seconds and has a 45-minute hard cap that
   leaves room for `finally` cleanup.
 - A maintainer may recover one investigated leftover by dispatching with its
-  exact deterministic suffix (`r<run-id>a<attempt>`). Recovery requires exactly
-  one prefix match, verifies ID, full name, creation timestamp, and
+  exact deterministic suffix (`r<run-id>a<attempt>`) in the
+  `stale_canary_suffix` input. Recovery requires exactly one prefix match,
+  verifies ID, full name, creation timestamp, and
   `dedicated-always` tier with a fresh GET, then sends those immutable identity
   fields through the normal authenticated DELETE/job path. The lifecycle
   transaction rechecks them under the per-agent lock and atomically refuses

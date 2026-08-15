@@ -861,7 +861,7 @@ class MessageRouterService {
       canVoice?: boolean;
     };
   }): Promise<{ id: string; webhookUrl: string }> {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://elizacloud.ai";
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
     const webhookUrl = `${baseUrl}/api/webhooks/${params.provider}/${params.organizationId}`;
 
     const [record] = await dbWrite

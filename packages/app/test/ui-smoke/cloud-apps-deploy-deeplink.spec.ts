@@ -14,7 +14,7 @@
  * serves the Applications surfaces via CloudRouterShell), so the Electrobun
  * runtime marker is injected BEFORE boot — the same desktop-platform signal the
  * packaged shell provides (precedent: voice-desktop-selftest.spec.ts). Eliza
- * Cloud API traffic (`https://api.elizacloud.ai/**`) is route-mocked: this lane
+ * Cloud API traffic (`https://api.eliza.app/**`) is route-mocked: this lane
  * proves the SHELL wiring; the cloud API contract itself is covered by the
  * packages/ui mock-cloud client e2e and the cloud API's own suites.
  *
@@ -101,7 +101,7 @@ async function installCloudApiMocks(
   unmocked: string[],
   deployRequests: unknown[],
 ): Promise<void> {
-  await page.route("https://api.elizacloud.ai/**", async (route) => {
+  await page.route("https://api.eliza.app/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
     const method = route.request().method();

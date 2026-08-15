@@ -63,7 +63,7 @@ const mockUser = {
 };
 
 async function installCloudMocks(page: Page) {
-  await page.route("https://www.elizacloud.ai/api/eliza-app/**", (route) => {
+  await page.route("https://api.eliza.app/api/eliza-app/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/eliza-app/user/me") {
       return route.fulfill({

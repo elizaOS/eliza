@@ -1,0 +1,530 @@
+name: Deploy Gateway Webhook
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected environment to deploy
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-gateway-webhook-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy gateway webhook (${{ inputs.environment }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: ${{ inputs.environment }}
+    env:
+      TARGET_ENVIRONMENT: ${{ inputs.environment }}
+      DEPLOY_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      EXPECTED_SERVICE_NAME: ${{ inputs.environment == 'production' && 'gateway-webhook' || 'gateway-webhook-stg' }}
+      EXPECTED_CLOUD_URL: ${{ inputs.environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+      EXPECTED_ROUTER_ORIGIN: ${{ inputs.environment == 'production' && 'eliza-production-1.eliza.app' || 'eliza-staging-1.eliza.app' }}
+      EXPECTED_AGENT_BASE_DOMAIN: ${{ inputs.environment == 'production' && 'cloud.eliza.app' || 'cloud-staging.eliza.app' }}
+      EXPECTED_GATEWAY_URL: ${{ inputs.environment == 'production' && 'https://gateway-webhook-production.up.railway.app' || 'https://gateway-webhook-stg-staging.up.railway.app' }}
+      GATEWAY_WEBHOOK_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
+      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+      RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+      RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate protected canonical configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_settings=(
+            TARGET_ENVIRONMENT
+            DEPLOY_BRANCH
+            EXPECTED_SERVICE_NAME
+            EXPECTED_CLOUD_URL
+            EXPECTED_ROUTER_ORIGIN
+            EXPECTED_AGENT_BASE_DOMAIN
+            EXPECTED_GATEWAY_URL
+            GATEWAY_WEBHOOK_URL
+            RAILWAY_PROJECT_ID
+            RAILWAY_ENVIRONMENT_ID
+            RAILWAY_SERVICE_ID
+            RAILWAY_TOKEN
+          )
+          missing=()
+          for name in "${required_settings[@]}"; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required gateway-webhook setting name(s) on the protected $TARGET_ENVIRONMENT environment: ${missing[*]}"
+            exit 1
+          fi
+
+          case "$TARGET_ENVIRONMENT" in
+            staging | production) ;;
+            *)
+              echo "::error::Unsupported protected environment"
+              exit 1
+              ;;
+          esac
+
+          require_exact() {
+            local name="$1"
+            local actual="$2"
+            local expected="$3"
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::$name does not match the canonical $TARGET_ENVIRONMENT gateway-webhook contract"
+              exit 1
+            fi
+          }
+
+          require_exact GITHUB_REF "$GITHUB_REF" "refs/heads/$DEPLOY_BRANCH"
+          require_exact GATEWAY_WEBHOOK_URL "$GATEWAY_WEBHOOK_URL" "$EXPECTED_GATEWAY_URL"
+          require_exact CHECKED_OUT_SHA "$(git rev-parse HEAD)" "$GITHUB_SHA"
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "::error::The checkout is not an exact clean source tree"
+            exit 1
+          fi
+
+          for name in RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID RAILWAY_SERVICE_ID; do
+            value="${!name}"
+            if [[ ! "$value" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+              echo "::error::$name must be a Railway UUID on the protected $TARGET_ENVIRONMENT environment"
+              exit 1
+            fi
+          done
+          echo "Canonical protected setting names, branch, and exact source SHA are valid; secret values were not printed."
+
+      - name: Install pinned Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli_root="$RUNNER_TEMP/railway-cli"
+          archive="$RUNNER_TEMP/railway-v5.38.0.tar.gz"
+          mkdir -p "$cli_root"
+          curl \
+            --fail \
+            --location \
+            --silent \
+            --show-error \
+            --retry 3 \
+            --output "$archive" \
+            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
+          printf '%s  %s\n' \
+            "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e" \
+            "$archive" | sha256sum --check --status
+          tar -xzf "$archive" -C "$cli_root" railway
+          chmod 0755 "$cli_root/railway"
+          echo "$cli_root" >> "$GITHUB_PATH"
+          "$cli_root/railway" --version | grep -F "railway 5.38.0"
+
+      - name: Verify exact Railway target and public domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          status_path="$RUNNER_TEMP/gateway-webhook-railway-status.json"
+          domains_path="$RUNNER_TEMP/gateway-webhook-railway-domains.json"
+          railway status \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --json > "$status_path"
+
+          jq -e --arg id "$RAILWAY_PROJECT_ID" '.id == $id' "$status_path" >/dev/null || {
+            echo "::error::RAILWAY_PROJECT_ID did not resolve to the selected project"
+            exit 1
+          }
+          jq -e \
+            --arg id "$RAILWAY_ENVIRONMENT_ID" \
+            --arg name "$TARGET_ENVIRONMENT" \
+            'any(.environments.edges[]; .node.id == $id and .node.name == $name)' \
+            "$status_path" >/dev/null || {
+            echo "::error::RAILWAY_ENVIRONMENT_ID is not the canonical $TARGET_ENVIRONMENT Railway environment"
+            exit 1
+          }
+          jq -e \
+            --arg id "$RAILWAY_SERVICE_ID" \
+            --arg name "$EXPECTED_SERVICE_NAME" \
+            'any(.services.edges[]; .node.id == $id and .node.name == $name)' \
+            "$status_path" >/dev/null || {
+            echo "::error::RAILWAY_SERVICE_ID is not the canonical $EXPECTED_SERVICE_NAME service"
+            exit 1
+          }
+
+          railway domain list \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --json > "$domains_path"
+          gateway_host="${GATEWAY_WEBHOOK_URL#https://}"
+          jq -e --arg domain "$gateway_host" \
+            'any(.domains[]; .domain == $domain)' \
+            "$domains_path" >/dev/null || {
+            echo "::error::The selected service does not own the protected canonical gateway domain"
+            exit 1
+          }
+          echo "Railway project, environment, service, and public domain identities match."
+
+      - name: Verify canonical Railway variables and sensitive names
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          variables_raw_path="$RUNNER_TEMP/gateway-webhook-railway-variables-raw.json"
+          variables_path="$RUNNER_TEMP/gateway-webhook-railway-variable-inventory.json"
+          railway variable list \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --json > "$variables_raw_path"
+          jq '{
+            canonical: {
+              ELIZA_CLOUD_URL: .ELIZA_CLOUD_URL,
+              AGENT_ROUTER_ORIGIN_HOST: .AGENT_ROUTER_ORIGIN_HOST,
+              ELIZA_CLOUD_AGENT_BASE_DOMAIN: .ELIZA_CLOUD_AGENT_BASE_DOMAIN
+            },
+            nonblank_sensitive_names: [
+              to_entries[] |
+              select(.value | type == "string" and length > 0) |
+              .key
+            ]
+          }' "$variables_raw_path" > "$variables_path"
+          shred -u "$variables_raw_path"
+
+          require_exact_variable() {
+            local name="$1"
+            local expected="$2"
+            if ! jq -e --arg name "$name" --arg expected "$expected" \
+              '.canonical[$name] == $expected' "$variables_path" >/dev/null; then
+              echo "::error::$name does not match the canonical $TARGET_ENVIRONMENT Railway value"
+              exit 1
+            fi
+          }
+          require_sensitive_name() {
+            local name="$1"
+            if ! jq -e --arg name "$name" \
+              '.nonblank_sensitive_names | index($name) != null' \
+              "$variables_path" >/dev/null; then
+              echo "::error::Required sensitive Railway variable name is absent or blank: $name"
+              exit 1
+            fi
+          }
+
+          require_exact_variable ELIZA_CLOUD_URL "$EXPECTED_CLOUD_URL"
+          require_exact_variable AGENT_ROUTER_ORIGIN_HOST "$EXPECTED_ROUTER_ORIGIN"
+          require_exact_variable ELIZA_CLOUD_AGENT_BASE_DOMAIN "$EXPECTED_AGENT_BASE_DOMAIN"
+          for name in \
+            GATEWAY_BOOTSTRAP_SECRET \
+            GATEWAY_INTERNAL_SECRET \
+            AGENT_SERVER_SHARED_SECRET \
+            ELIZA_APP_WEBHOOK_GATEWAY_SECRET; do
+            require_sensitive_name "$name"
+          done
+          if ! jq -e '.nonblank_sensitive_names as $names |
+            (($names | index("REDIS_URL")) != null or
+             ((($names | index("KV_REST_API_URL")) != null) and
+              (($names | index("KV_REST_API_TOKEN")) != null)))' \
+            "$variables_path" >/dev/null; then
+            echo "::error::Required sensitive Railway variable names must include REDIS_URL or the KV_REST_API_URL/KV_REST_API_TOKEN pair"
+            exit 1
+          fi
+          echo "Canonical routing values and required sensitive variable names are present; sensitive values were not printed or changed."
+
+      - name: Capture deployment baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          railway deployment list \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --limit 50 \
+            --json > "$RUNNER_TEMP/gateway-webhook-deployment-baseline.json"
+
+      - name: Deploy exact gateway-webhook source
+        id: railway_deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ] || \
+            [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "::error::Refusing to deploy anything other than the exact clean dispatch SHA"
+            exit 1
+          fi
+          git ls-files --error-unmatch \
+            packages/cloud/services/gateway-webhook/Dockerfile \
+            packages/cloud/services/gateway-webhook/railway.toml \
+            packages/cloud/services/gateway-webhook/src/index.ts >/dev/null
+          if [ -e railway.toml ] || [ -L railway.toml ]; then
+            echo "::error::The checkout root already contains an unexpected Railway config"
+            exit 1
+          fi
+          cp packages/cloud/services/gateway-webhook/railway.toml railway.toml
+          if ! cmp --silent \
+            packages/cloud/services/gateway-webhook/railway.toml \
+            railway.toml; then
+            echo "::error::The materialized root Railway config differs from the tracked service manifest"
+            exit 1
+          fi
+          if [ "$(git status --porcelain --untracked-files=all)" != "?? railway.toml" ]; then
+            echo "::error::Only the byte-identical root Railway config may differ from the exact dispatch SHA"
+            exit 1
+          fi
+          grep -Fx 'dockerfilePath = "packages/cloud/services/gateway-webhook/Dockerfile"' \
+            railway.toml >/dev/null
+          grep -Fx 'healthcheckPath = "/health"' \
+            railway.toml >/dev/null
+
+          umask 077
+          result_path="$RUNNER_TEMP/gateway-webhook-deployment-start.json"
+          railway up \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --detach \
+            --yes \
+            --json \
+            --message "gateway-webhook $GITHUB_SHA ($TARGET_ENVIRONMENT)" > "$result_path"
+          deployment_id=$(jq -er '.deploymentId' "$result_path")
+          if [[ ! "$deployment_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+            echo "::error::Railway did not return a valid deployment id"
+            exit 1
+          fi
+          if jq -e --arg id "$deployment_id" \
+            'any(.[]; .id == $id)' "$RUNNER_TEMP/gateway-webhook-deployment-baseline.json" >/dev/null; then
+            echo "::error::Railway returned a deployment id that predates this exact-SHA upload"
+            exit 1
+          fi
+          echo "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
+          echo "Railway accepted the exact clean dispatch SHA as deployment $deployment_id."
+
+      - name: Wait for the exact Railway deployment
+        shell: bash
+        env:
+          DEPLOYMENT_ID: ${{ steps.railway_deploy.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+          umask 077
+          deployments_path="$RUNNER_TEMP/gateway-webhook-deployments.json"
+          deployment_status=""
+          for _ in $(seq 1 90); do
+            railway deployment list \
+              --project "$RAILWAY_PROJECT_ID" \
+              --environment "$RAILWAY_ENVIRONMENT_ID" \
+              --service "$RAILWAY_SERVICE_ID" \
+              --limit 50 \
+              --json > "$deployments_path"
+            deployment_status=$(jq -r --arg id "$DEPLOYMENT_ID" \
+              '[.[] | select(.id == $id)] | if length == 1 then .[0].status else "" end' \
+              "$deployments_path")
+            case "$deployment_status" in
+              SUCCESS) break ;;
+              FAILED | CRASHED | REMOVED | REMOVING | SKIPPED | CANCELED | CANCELLED)
+                echo "::error::Exact Railway deployment entered terminal status $deployment_status"
+                exit 1
+                ;;
+              *) sleep 10 ;;
+            esac
+          done
+          if [ "$deployment_status" != "SUCCESS" ]; then
+            echo "::error::Exact Railway deployment did not reach SUCCESS before timeout"
+            exit 1
+          fi
+          echo "Exact Railway deployment $DEPLOYMENT_ID reached SUCCESS."
+
+      - name: Verify deployed health and canonical fallback configuration
+        shell: bash
+        env:
+          DEPLOYMENT_ID: ${{ steps.railway_deploy.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+          umask 077
+          deployment_meta_path="$RUNNER_TEMP/gateway-webhook-postdeploy-deployment.json"
+          railway deployment list \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --limit 50 \
+            --json > "$deployment_meta_path"
+          jq -e --arg id "$DEPLOYMENT_ID" '
+            [.[] | select(.id == $id)] |
+            length == 1 and
+            .[0].status == "SUCCESS" and
+            .[0].meta.configFile == "/railway.toml" and
+            .[0].meta.fileServiceManifest.build.builder == "DOCKERFILE" and
+            .[0].meta.fileServiceManifest.build.dockerfilePath ==
+              "packages/cloud/services/gateway-webhook/Dockerfile" and
+            .[0].meta.fileServiceManifest.deploy.healthcheckPath == "/health" and
+            .[0].meta.fileServiceManifest.deploy.healthcheckTimeout == 30 and
+            .[0].meta.fileServiceManifest.deploy.restartPolicyType == "ON_FAILURE" and
+            .[0].meta.fileServiceManifest.deploy.restartPolicyMaxRetries == 10 and
+            .[0].meta.serviceManifest.build.builder == "DOCKERFILE" and
+            .[0].meta.serviceManifest.build.dockerfilePath ==
+              "packages/cloud/services/gateway-webhook/Dockerfile" and
+            .[0].meta.serviceManifest.deploy.healthcheckPath == "/health" and
+            .[0].meta.serviceManifest.deploy.healthcheckTimeout == 30 and
+            .[0].meta.serviceManifest.deploy.restartPolicyType == "ON_FAILURE" and
+            .[0].meta.serviceManifest.deploy.restartPolicyMaxRetries == 10
+          ' "$deployment_meta_path" >/dev/null || {
+            echo "::error::Exact deployment metadata does not prove the root config, Dockerfile, and health manifest"
+            exit 1
+          }
+
+          active_path="$RUNNER_TEMP/gateway-webhook-active-deployment.json"
+          assert_active_deployment() {
+            local phase="$1"
+            railway service status \
+              --project "$RAILWAY_PROJECT_ID" \
+              --environment "$RAILWAY_ENVIRONMENT_ID" \
+              --service "$RAILWAY_SERVICE_ID" \
+              --json > "$active_path"
+            jq -e \
+              --arg id "$DEPLOYMENT_ID" \
+              --arg service "$RAILWAY_SERVICE_ID" \
+              --arg name "$EXPECTED_SERVICE_NAME" \
+              '.id == $service and
+               .name == $name and
+               .deploymentId == $id and
+               .status == "SUCCESS" and
+               .stopped == false' \
+              "$active_path" >/dev/null || {
+              echo "::error::Exact deployment is not the active service deployment $phase public verification"
+              exit 1
+            }
+          }
+
+          assert_active_deployment before
+          health_path="$RUNNER_TEMP/gateway-webhook-health.json"
+          health_status=""
+          for _ in $(seq 1 60); do
+            health_status=$(curl \
+              --silent \
+              --show-error \
+              --max-time 15 \
+              --output "$health_path" \
+              --write-out '%{http_code}' \
+              "$GATEWAY_WEBHOOK_URL/health" || true)
+            if [ "$health_status" = "200" ] && \
+              jq -e '.status == "healthy"' "$health_path" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 10
+          done
+          if [ "$health_status" != "200" ] || \
+            ! jq -e '.status == "healthy"' "$health_path" >/dev/null; then
+            echo "::error::Canonical gateway-webhook health did not become ready"
+            exit 1
+          fi
+
+          variables_raw_path="$RUNNER_TEMP/gateway-webhook-postdeploy-variables-raw.json"
+          variables_path="$RUNNER_TEMP/gateway-webhook-postdeploy-canonical.json"
+          railway variable list \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --json > "$variables_raw_path"
+          jq '{
+            ELIZA_CLOUD_URL,
+            AGENT_ROUTER_ORIGIN_HOST,
+            ELIZA_CLOUD_AGENT_BASE_DOMAIN
+          }' "$variables_raw_path" > "$variables_path"
+          shred -u "$variables_raw_path"
+          jq -e \
+            --arg cloud "$EXPECTED_CLOUD_URL" \
+            --arg router "$EXPECTED_ROUTER_ORIGIN" \
+            --arg domain "$EXPECTED_AGENT_BASE_DOMAIN" \
+            '.ELIZA_CLOUD_URL == $cloud and
+             .AGENT_ROUTER_ORIGIN_HOST == $router and
+             .ELIZA_CLOUD_AGENT_BASE_DOMAIN == $domain' \
+            "$variables_path" >/dev/null || {
+            echo "::error::Postdeploy canonical cloud/fallback routing pair does not match the selected environment"
+            exit 1
+          }
+
+          forwarder_probe_path="$RUNNER_TEMP/gateway-webhook-forwarder-auth-readiness.json"
+          if ! forwarder_probe_status=$(curl \
+            --silent \
+            --show-error \
+            --max-time 15 \
+            --output "$forwarder_probe_path" \
+            --write-out '%{http_code}' \
+            "$GATEWAY_WEBHOOK_URL/ready/forwarder-auth/eliza-app"); then
+            echo "::error::Forwarder-auth readiness probe failed to complete"
+            exit 1
+          fi
+          if [ "$forwarder_probe_status" != "401" ] || \
+            ! jq -e \
+              'type == "object" and
+               keys == ["error", "project", "status"] and
+               .error == "unauthorized" and
+               .status == "enforced" and
+               .project == "eliza-app"' \
+              "$forwarder_probe_path" >/dev/null; then
+            echo "::error::Gateway did not prove the exact enforced eliza-app forwarder-auth contract"
+            exit 1
+          fi
+          assert_active_deployment after
+          echo "Exact manifest, active deployment identity, live health, canonical fallback, and forwarder-auth readiness passed."
+
+      - name: Write deployment summary
+        shell: bash
+        env:
+          DEPLOYMENT_ID: ${{ steps.railway_deploy.outputs.deployment_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Gateway webhook deployment"
+            echo
+            echo "- Environment: \`$TARGET_ENVIRONMENT\`"
+            echo "- Source SHA: \`$GITHUB_SHA\`"
+            echo "- Railway deployment: \`$DEPLOYMENT_ID\`"
+            echo "- Service: \`$EXPECTED_SERVICE_NAME\`"
+            echo "- Canonical health: passed"
+            echo "- Canonical fallback pair: verified"
+            echo "- Forwarder-auth readiness: enforced for eliza-app with exact headerless 401"
+            echo "- Root Railway manifest: verified"
+            echo "- Active deployment identity: verified before and after probes"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary deployment files
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            "$RUNNER_TEMP/gateway-webhook-railway-status.json" \
+            "$RUNNER_TEMP/gateway-webhook-railway-domains.json" \
+            "$RUNNER_TEMP/gateway-webhook-railway-variables-raw.json" \
+            "$RUNNER_TEMP/gateway-webhook-railway-variable-inventory.json" \
+            "$RUNNER_TEMP/gateway-webhook-deployment-baseline.json" \
+            "$RUNNER_TEMP/gateway-webhook-deployment-start.json" \
+            "$RUNNER_TEMP/gateway-webhook-deployments.json" \
+            "$RUNNER_TEMP/gateway-webhook-health.json" \
+            "$RUNNER_TEMP/gateway-webhook-postdeploy-deployment.json" \
+            "$RUNNER_TEMP/gateway-webhook-active-deployment.json" \
+            "$RUNNER_TEMP/gateway-webhook-forwarder-auth-readiness.json" \
+            "$RUNNER_TEMP/gateway-webhook-postdeploy-variables-raw.json" \
+            "$RUNNER_TEMP/gateway-webhook-postdeploy-canonical.json"; do
+            if [ -f "$path" ]; then
+              shred -u "$path"
+            fi
+          done
+          if [ -f railway.toml ]; then
+            shred -u railway.toml
+          fi

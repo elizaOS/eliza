@@ -5,7 +5,7 @@ output "control_plane_vms" {
       name     = v.name
       ipv4     = v.ipv4_address
       ipv6     = v.ipv6_address
-      hostname = "${var.control_plane_hostname_prefix}-${var.environment}-${k}.elizacloud.ai"
+      hostname = "${var.control_plane_hostname_prefix}-${var.environment}-${k}.eliza.app"
     }
   }
 }
@@ -19,7 +19,7 @@ output "ssh_login_commands" {
 
 output "headscale_url" {
   description = "Public headscale coordination URL for this env's CP. Wire this as HEADSCALE_PUBLIC_URL (workflow var) + the tailscale --login-server for agent nodes. The arm-headscale-control-plane workflow serves it via nginx + a Let's Encrypt cert on the CP."
-  value       = "https://${var.headscale_hostname}"
+  value       = "https://${var.canonical_headscale_hostname}"
 }
 
 output "data_plane_network_id" {

@@ -1,10 +1,13 @@
 /**
- * Tests for parseFrontmatter: valid YAML blocks, absent/empty frontmatter, CRLF
- * line endings, and a missing closing delimiter. Deterministic string parsing.
+ * Deterministic unit coverage for parseFrontmatter and skill frontmatter
+ * resolvers: valid blocks, absent/empty/malformed YAML, non-object and
+ * non-plain collection roots, CRLF, and metadata/policy extraction.
  */
 import assert from "node:assert";
 import { describe, it } from "node:test";
+import { ElizaError } from "@elizaos/core";
 import {
+  INVALID_SKILL_FRONTMATTER_YAML,
   parseFrontmatter,
   resolveSkillInvocationPolicy,
   resolveSkillMetadata,
@@ -89,6 +92,81 @@ Body`;
     assert.strictEqual(result.frontmatter["disable-model-invocation"], true);
     assert.strictEqual(result.frontmatter["user-invocable"], false);
   });
+
+  it("throws a typed error for malformed YAML and preserves the parser cause", () => {
+    const content = `---
+invalid: : : yaml syntax error
+---
+Body content`;
+    assert.throws(
+      () => parseFrontmatter(content),
+      (error: unknown) => {
+        assert.ok(error instanceof ElizaError);
+        assert.strictEqual(error.code, INVALID_SKILL_FRONTMATTER_YAML);
+        assert.strictEqual(
+          error.message,
+          "Skill frontmatter contains invalid YAML",
+        );
+        assert.ok(error.cause instanceof Error);
+        return true;
+      },
+    );
+  });
+
+  it("returns empty frontmatter for non-object YAML frontmatter blocks", () => {
+    const scalarContent = `---
+"just a string scalar"
+---
+Body content`;
+    const scalarResult = parseFrontmatter(scalarContent);
+    assert.deepStrictEqual(scalarResult.frontmatter, {});
+    assert.strictEqual(scalarResult.body, "Body content");
+
+    const arrayContent = `---
+- item1
+- item2
+---
+Body content`;
+    const arrayResult = parseFrontmatter(arrayContent);
+    assert.deepStrictEqual(arrayResult.frontmatter, {});
+    assert.strictEqual(arrayResult.body, "Body content");
+  });
+
+  it("returns empty frontmatter for YAML Set and Map collection roots", () => {
+    const setContent = `---
+!!set
+? alpha
+? beta
+---
+Body content`;
+    const setResult = parseFrontmatter(setContent);
+    assert.deepStrictEqual(setResult.frontmatter, {});
+    assert.strictEqual(setResult.body, "Body content");
+    assert.ok(!(setResult.frontmatter instanceof Set));
+
+    const omapContent = `---
+!!omap
+- alpha: 1
+- beta: 2
+---
+Body content`;
+    const omapResult = parseFrontmatter(omapContent);
+    assert.deepStrictEqual(omapResult.frontmatter, {});
+    assert.strictEqual(omapResult.body, "Body content");
+    assert.ok(!(omapResult.frontmatter instanceof Map));
+  });
+
+  it("accepts plain and null-prototype-equivalent mapping roots", () => {
+    const content = `---
+name: plain-skill
+description: mapping root
+---
+Body`;
+    const result = parseFrontmatter<SkillFrontmatter>(content);
+    assert.strictEqual(result.frontmatter.name, "plain-skill");
+    assert.strictEqual(result.frontmatter.description, "mapping root");
+    assert.strictEqual(result.body, "Body");
+  });
 });
 
 describe("stripFrontmatter", () => {
@@ -112,6 +190,15 @@ name: test
 ---`;
     const body = stripFrontmatter(content);
     assert.strictEqual(body, "");
+  });
+
+  it("does not hide malformed YAML while stripping frontmatter", () => {
+    assert.throws(
+      () => stripFrontmatter("---\ninvalid: : : yaml syntax error\n---\nBody"),
+      (error: unknown) =>
+        error instanceof ElizaError &&
+        error.code === INVALID_SKILL_FRONTMATTER_YAML,
+    );
   });
 });
 

@@ -30,6 +30,22 @@ type AgentRecord = typeof sandbox;
 
 type AgentRouterHarness = {
   fetchAgentApi(rec: AgentRecord, path: string, init?: RequestInit): Promise<Response>;
+  importCanonicalConversation(
+    agentId: string,
+    orgId: string,
+    conversationId: string,
+    messages: Array<{
+      sourceId: string;
+      role: "user" | "assistant";
+      text: string;
+      timestamp?: number;
+    }>,
+  ): Promise<{
+    complete: true;
+    sourceMessageCount: number;
+    inserted: number;
+    skipped: number;
+  } | null>;
   ensureRuntimeAgentStarted(rec: AgentRecord): Promise<{
     id?: string;
     name?: string;
@@ -189,6 +205,59 @@ describe("ElizaSandboxService Worker agent-router fetch", () => {
       "x-forwarded-proto": "https",
     });
     expect(requests[0]?.redirect).toBe("manual");
+  });
+
+  test("reimports a missing canonical conversation through the Worker router", async () => {
+    enterWorkerRuntime();
+    const findRunning = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      sandbox as never,
+    );
+    const requests: Array<{ url: string; headers: Headers; body: string }> = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        url: typeof input === "string" ? input : input.toString(),
+        headers: new Headers(init?.headers),
+        body: String(init?.body ?? ""),
+      });
+      return Response.json({
+        conversationId: "personal:user-1",
+        inserted: 1,
+        skipped: 0,
+      });
+    });
+
+    try {
+      const receipt = await runWithCloudBindings(
+        {
+          ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai",
+          AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.elizacloud.ai",
+          AGENT_SERVER_SHARED_SECRET: "server-secret",
+        },
+        () =>
+          service().importCanonicalConversation(sandbox.id, "org-1", "personal:user-1", [
+            { sourceId: "source-1", role: "user", text: "hello", timestamp: 123 },
+          ]),
+      );
+
+      expect(receipt).toEqual({
+        complete: true,
+        sourceMessageCount: 1,
+        inserted: 1,
+        skipped: 0,
+      });
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.url).toBe(
+        "https://eliza-production-1.elizacloud.ai/api/conversations/personal%3Auser-1/import",
+      );
+      expect(requests[0]?.headers.get("authorization")).toBe("Bearer agent-token");
+      expect(requests[0]?.headers.get("x-server-token")).toBe("server-secret");
+      expect(requests[0]?.headers.get("x-forwarded-host")).toBe(`${sandbox.id}.elizacloud.ai`);
+      expect(JSON.parse(requests[0]!.body)).toEqual({
+        messages: [{ sourceId: "source-1", role: "user", text: "hello", timestamp: 123 }],
+      });
+    } finally {
+      findRunning.mockRestore();
+    }
   });
 
   test("fails closed before fetch when the agent credential is missing", async () => {

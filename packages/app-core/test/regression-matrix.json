@@ -43,7 +43,7 @@
       ]
     },
     "release-contract": {
-      "files": [".github/workflows/test-electrobun-release.yml"],
+      "files": [".github/workflows/electrobun-contract.yml"],
       "scheduledSuites": [
         "release-contract",
         "regression-matrix-release-contract"

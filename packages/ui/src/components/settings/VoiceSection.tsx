@@ -19,6 +19,7 @@ import { Input } from "../ui/input";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { PendantSettingsCard } from "./PendantSettingsCard";
+import { SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { VoiceProfileSection } from "./VoiceProfileSection";
 import { DEFAULT_VAD_AUTO_STOP_PREFS } from "./VoiceSection.helpers";
@@ -180,45 +181,6 @@ export function VoiceSection({
     [prefs.vadAutoStop, updatePrefs],
   );
 
-  const { ref: wakeWordRef, agentProps: wakeWordAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "voice-section-wake-toggle",
-      role: "toggle",
-      label: t("voicesection.toggleWakeWord", {
-        defaultValue: "Toggle wake word",
-      }),
-      group: "voice-section",
-      status: wakeWordEnabled ? "active" : "inactive",
-      onActivate: () => onWakeWordToggle?.(!wakeWordEnabled),
-    });
-  const { ref: intentVoiceRef, agentProps: intentVoiceAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "voice-section-intent-autostart-voice",
-      role: "toggle",
-      label: t("voicesection.intentAutoStartVoice", {
-        defaultValue: "Allow voice shortcuts to start the microphone",
-      }),
-      group: "voice-section",
-      status: prefs.osIntentAutoStartVoice ? "active" : "inactive",
-      onActivate: () =>
-        updatePrefs({ osIntentAutoStartVoice: !prefs.osIntentAutoStartVoice }),
-    });
-  const {
-    ref: intentTranscriptionRef,
-    agentProps: intentTranscriptionAgentProps,
-  } = useAgentElement<HTMLInputElement>({
-    id: "voice-section-intent-autostart-transcription",
-    role: "toggle",
-    label: t("voicesection.intentAutoStartTranscription", {
-      defaultValue: "Allow transcription shortcuts to start the microphone",
-    }),
-    group: "voice-section",
-    status: prefs.osIntentAutoStartTranscription ? "active" : "inactive",
-    onActivate: () =>
-      updatePrefs({
-        osIntentAutoStartTranscription: !prefs.osIntentAutoStartTranscription,
-      }),
-  });
   return (
     <section data-testid="voice-section" className={cn(className)}>
       <SettingsStack>
@@ -253,99 +215,53 @@ export function VoiceSection({
             </div>
           </SettingsRow>
 
-          <SettingsRow
+          <SettingsSwitchRow
+            agentId="voice-section-wake-toggle"
+            testId="voice-section-wake-toggle"
+            group="voice-section"
             icon={Sliders}
             label={t("voicesection.wakeWord", { defaultValue: "Wake word" })}
-            control={
-              <label
-                htmlFor="voice-section-wake-toggle"
-                className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 text-sm"
-                data-testid="voice-section-wake-row"
-              >
-                <Input
-                  id="voice-section-wake-toggle"
-                  ref={wakeWordRef}
-                  type="checkbox"
-                  checked={wakeWordEnabled}
-                  onChange={(e) => onWakeWordToggle?.(e.target.checked)}
-                  data-testid="voice-section-wake-toggle"
-                  className="h-5 w-5 rounded-sm border-border p-0 accent-accent"
-                  aria-current={wakeWordEnabled ? "true" : undefined}
-                  aria-label={t("voicesection.toggleWakeWord", {
-                    defaultValue: "Toggle wake word",
-                  })}
-                  {...wakeWordAgentProps}
-                />
-                <span className="text-muted">
-                  {wakeWordEnabled
-                    ? t("voicesection.on", { defaultValue: "On" })
-                    : t("voicesection.off", { defaultValue: "Off" })}
-                </span>
-              </label>
-            }
+            checked={wakeWordEnabled}
+            disabled={!onWakeWordToggle}
+            agentStatus={wakeWordEnabled ? "active" : "inactive"}
+            onCheckedChange={(checked) => onWakeWordToggle?.(checked)}
           />
 
-          <SettingsRow
+          <SettingsSwitchRow
+            agentId="voice-section-intent-autostart-voice"
+            testId="voice-section-intent-autostart-voice"
+            group="voice-section"
             icon={Mic}
-            label={t("voicesection.intentAutoStart", {
-              defaultValue: "Shortcut auto-start",
+            label={t("voicesection.intentAutoStartVoice", {
+              defaultValue: "Allow voice shortcuts to start the microphone",
             })}
-            stacked
-          >
-            <div className="flex flex-col gap-2 text-sm text-muted">
-              <label
-                htmlFor="voice-section-intent-autostart-voice"
-                className="inline-flex min-h-11 cursor-pointer items-center gap-2"
-              >
-                <Input
-                  ref={intentVoiceRef}
-                  id="voice-section-intent-autostart-voice"
-                  type="checkbox"
-                  checked={prefs.osIntentAutoStartVoice}
-                  onChange={(event) =>
-                    updatePrefs({
-                      osIntentAutoStartVoice: event.target.checked,
-                    })
-                  }
-                  className="h-5 w-5 rounded-sm border-border p-0 accent-accent"
-                  data-testid="voice-section-intent-autostart-voice"
-                  {...intentVoiceAgentProps}
-                />
-                {t("voicesection.intentAutoStartVoice", {
-                  defaultValue: "Allow voice shortcuts to start the microphone",
-                })}
-              </label>
-              <label
-                htmlFor="voice-section-intent-autostart-transcription"
-                className="inline-flex min-h-11 cursor-pointer items-center gap-2"
-              >
-                <Input
-                  ref={intentTranscriptionRef}
-                  id="voice-section-intent-autostart-transcription"
-                  type="checkbox"
-                  checked={prefs.osIntentAutoStartTranscription}
-                  onChange={(event) =>
-                    updatePrefs({
-                      osIntentAutoStartTranscription: event.target.checked,
-                    })
-                  }
-                  className="h-5 w-5 rounded-sm border-border p-0 accent-accent"
-                  data-testid="voice-section-intent-autostart-transcription"
-                  {...intentTranscriptionAgentProps}
-                />
-                {t("voicesection.intentAutoStartTranscription", {
-                  defaultValue:
-                    "Allow transcription shortcuts to start the microphone",
-                })}
-              </label>
-              <span>
-                {t("voicesection.intentAutoStartHint", {
-                  defaultValue:
-                    "Off by default. Turn either option off here at any time.",
-                })}
-              </span>
-            </div>
-          </SettingsRow>
+            checked={prefs.osIntentAutoStartVoice}
+            agentStatus={prefs.osIntentAutoStartVoice ? "active" : "inactive"}
+            onCheckedChange={(checked) =>
+              updatePrefs({ osIntentAutoStartVoice: checked })
+            }
+          />
+          <SettingsSwitchRow
+            agentId="voice-section-intent-autostart-transcription"
+            testId="voice-section-intent-autostart-transcription"
+            group="voice-section"
+            icon={Mic}
+            label={t("voicesection.intentAutoStartTranscription", {
+              defaultValue:
+                "Allow transcription shortcuts to start the microphone",
+            })}
+            description={t("voicesection.intentAutoStartHint", {
+              defaultValue:
+                "Off by default. Turn either option off here at any time.",
+            })}
+            checked={prefs.osIntentAutoStartTranscription}
+            agentStatus={
+              prefs.osIntentAutoStartTranscription ? "active" : "inactive"
+            }
+            onCheckedChange={(checked) =>
+              updatePrefs({ osIntentAutoStartTranscription: checked })
+            }
+          />
         </SettingsGroup>
 
         <SettingsGroup

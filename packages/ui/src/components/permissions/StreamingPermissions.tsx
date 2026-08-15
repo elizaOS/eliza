@@ -6,9 +6,10 @@
  * Capacitor plugin on mobile; the `mode` ("web" | "mobile") also gates which rows
  * show (Screen is web-only). Falls back to a "Not Set" state when those APIs are absent.
  */
-import { Check, Cloud, Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useAppSelector } from "../../state";
+import { SettingsGroup, SettingsRow } from "../settings/settings-layout";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/status-badge";
 import { PermissionIcon } from "./PermissionIcon";
@@ -337,65 +338,50 @@ export function StreamingPermissionsSettingsView({
   }
 
   return (
-    <div className="space-y-6" data-testid={testId}>
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Cloud className="w-4 h-4 text-accent" />
-          <div className="font-bold text-sm">{title}</div>
-        </div>
-        {description ? (
-          <div className="text-xs-tight text-muted mb-3">{description}</div>
-        ) : null}
-        <div className="flex flex-col">
-          {MEDIA_PERMISSIONS.filter((def) =>
-            isStreamingPermissionVisibleForMode(def, mode),
-          ).map((def) => {
-            const status = permStates[def.id] ?? "unknown";
-            const isGranted = status === "granted";
-            const isRequesting = requestingId === def.id;
-            const name = translateWithFallback(t, def.nameKey, def.name);
-            const error =
-              permissionErrors[def.id] ??
-              (status === "denied"
-                ? `${name} is blocked for this site. Allow it in browser site settings, then try again.`
-                : null);
+    <SettingsGroup title={title} description={description} data-testid={testId}>
+      {MEDIA_PERMISSIONS.filter((def) =>
+        isStreamingPermissionVisibleForMode(def, mode),
+      ).map((def) => {
+        const status = permStates[def.id] ?? "unknown";
+        const isGranted = status === "granted";
+        const isRequesting = requestingId === def.id;
+        const name = translateWithFallback(t, def.nameKey, def.name);
+        const error =
+          permissionErrors[def.id] ??
+          (status === "denied"
+            ? `${name} is blocked for this site. Allow it in browser site settings, then try again.`
+            : null);
 
-            return (
-              <div
-                key={def.id}
-                data-permission-id={def.id}
-                className="flex items-center gap-3 py-2.5"
-              >
-                <PermissionIcon icon={def.icon} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm">{name}</span>
-                    <StatusBadge
-                      label={translateWithFallback(
-                        t,
-                        status === "granted"
-                          ? "permissionssection.badge.granted"
-                          : status === "denied"
-                            ? "permissionssection.badge.denied"
-                            : "permissionssection.badge.notDetermined",
-                        getBadgeLabel(status),
-                      )}
-                      variant={getBadgeTone(status)}
-                      withDot
-                      className="rounded-full font-semibold"
-                    />
-                  </div>
-                  {error ? (
-                    <div className="mt-1 text-xs-tight text-danger">
-                      {error}
-                    </div>
-                  ) : null}
-                </div>
-                {!isGranted ? (
+        return (
+          <div key={def.id} data-permission-id={def.id}>
+            <SettingsRow
+              icon={() => <PermissionIcon icon={def.icon} />}
+              label={
+                <span className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span>{name}</span>
+                  <StatusBadge
+                    label={translateWithFallback(
+                      t,
+                      status === "granted"
+                        ? "permissionssection.badge.granted"
+                        : status === "denied"
+                          ? "permissionssection.badge.denied"
+                          : "permissionssection.badge.notDetermined",
+                      getBadgeLabel(status),
+                    )}
+                    variant={getBadgeTone(status)}
+                    withDot
+                    className="rounded-full font-semibold"
+                  />
+                </span>
+              }
+              description={error}
+              control={
+                !isGranted ? (
                   <Button
                     variant="surfaceAccent"
                     size="sm"
-                    className="h-auto text-xs-tight py-1 px-2.5"
+                    className="h-11 text-xs-tight"
                     disabled={isRequesting}
                     onClick={() => void requestPermission(def.id)}
                     aria-label={`${translateWithFallback(t, "permissionssection.Grant", "Grant")} ${name}`}
@@ -416,13 +402,13 @@ export function StreamingPermissionsSettingsView({
                         )}
                   </Button>
                 ) : (
-                  <Check className="w-4 h-4 text-ok" />
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
+                  <Check className="h-4 w-4 text-ok" aria-hidden />
+                )
+              }
+            />
+          </div>
+        );
+      })}
+    </SettingsGroup>
   );
 }

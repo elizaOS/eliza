@@ -9,6 +9,7 @@ import {
   type DockerNodeStatus,
   dockerNodes,
   type NewDockerNode,
+  PLACEABLE_NODE_STATE,
 } from "../schemas/docker-nodes";
 
 export type { DockerNode, DockerNodeStatus, NewDockerNode };
@@ -40,6 +41,11 @@ function currentEnvironmentPredicate() {
   )`;
 }
 
+/** Provisional autoscaler capacity must never count as schedulable authority. */
+function capacityAttestedPredicate() {
+  return sql`COALESCE(${dockerNodes.metadata}->>'capacityProvisional', 'false') <> 'true'`;
+}
+
 export class DockerNodesRepository {
   // ============================================================================
   // READ OPERATIONS
@@ -49,11 +55,42 @@ export class DockerNodesRepository {
     return dbRead.select().from(dockerNodes).orderBy(asc(dockerNodes.node_id));
   }
 
+  /**
+   * Every operationally live node, INCLUDING cordoned ones.
+   *
+   * This is the operational set, not the placement set: health checks,
+   * allocated-count sync, disk monitoring, image pre-pull, and the orphan
+   * reconciler all read it, and every one of them must keep watching a node
+   * that is being emptied — that is exactly when its residents move, fail, or
+   * strand a container. Use {@link findPlaceable} to pick a home for new work.
+   */
   async findEnabled(): Promise<DockerNode[]> {
     return dbRead
       .select()
       .from(dockerNodes)
       .where(and(eq(dockerNodes.enabled, true), currentEnvironmentPredicate()))
+      .orderBy(asc(dockerNodes.node_id));
+  }
+
+  /**
+   * Nodes that may receive NEW placements: enabled and not cordoned.
+   *
+   * Kept separate from {@link findEnabled} rather than added as a flag,
+   * because the two sets diverge exactly when it matters and a boolean
+   * argument makes the wrong one a typo away.
+   */
+  async findPlaceable(): Promise<DockerNode[]> {
+    return dbRead
+      .select()
+      .from(dockerNodes)
+      .where(
+        and(
+          eq(dockerNodes.enabled, true),
+          eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
+          capacityAttestedPredicate(),
+          currentEnvironmentPredicate(),
+        ),
+      )
       .orderBy(asc(dockerNodes.node_id));
   }
 
@@ -82,7 +119,9 @@ export class DockerNodesRepository {
       .where(
         and(
           eq(dockerNodes.enabled, true),
+          eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
           eq(dockerNodes.status, "healthy"),
+          capacityAttestedPredicate(),
           currentEnvironmentPredicate(),
           sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
         ),
@@ -107,6 +146,38 @@ export class DockerNodesRepository {
       .update(dockerNodes)
       .set({ ...data, updated_at: new Date() })
       .where(eq(dockerNodes.id, id))
+      .returning();
+    return r ?? null;
+  }
+
+  /**
+   * Replace an autoscaler's provisional capacity with its first hardware
+   * attestation. The metadata predicate is the exactly-once fence: concurrent
+   * or later callbacks cannot consume the marker twice or overwrite a tune.
+   */
+  async reconcileProvisionalCapacity(
+    id: string,
+    data: {
+      capacity: number;
+      hostname: string;
+      ssh_port: number;
+      ssh_user: string;
+      host_key_fingerprint: string;
+      status: DockerNodeStatus;
+    },
+    metadataPatch: Record<string, unknown>,
+  ): Promise<DockerNode | null> {
+    const patch = JSON.stringify(metadataPatch);
+    const [r] = await dbWrite
+      .update(dockerNodes)
+      .set({
+        ...data,
+        metadata: sql`(${dockerNodes.metadata} - 'capacityProvisional') || ${patch}::jsonb`,
+        updated_at: new Date(),
+      })
+      .where(
+        and(eq(dockerNodes.id, id), sql`${dockerNodes.metadata}->>'capacityProvisional' = 'true'`),
+      )
       .returning();
     return r ?? null;
   }

@@ -44,11 +44,11 @@ const storyApi: BlueBubblesCloudGatewayApi = {
         phoneNumber: request.phoneNumber,
         routingMode: "sender-owned",
         agentId: null,
-        webhookUrl: "https://api.elizacloud.ai/api/webhooks/bluebubbles/bb-new",
+        webhookUrl: "https://api.eliza.app/api/webhooks/bluebubbles/bb-new",
         token: "bbg_one_time_example",
         relayEnvironment: {
           ELIZA_CLOUD_BLUEBUBBLES_URL:
-            "https://api.elizacloud.ai/api/webhooks/bluebubbles/bb-new",
+            "https://api.eliza.app/api/webhooks/bluebubbles/bb-new",
           BLUEBUBBLES_BRIDGE_ID: "bb-new",
           BLUEBUBBLES_GATEWAY_TOKEN: "bbg_one_time_example",
           BLUEBUBBLES_GATEWAY_PHONE_NUMBER: request.phoneNumber,

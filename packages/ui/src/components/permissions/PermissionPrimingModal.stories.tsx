@@ -2,7 +2,8 @@
  * Storybook states for the post-login PermissionPrimingModal, driven by injected
  * controller stubs: the per-permission soft-ask cards (microphone / location /
  * notifications), the requesting state, the two denied variants (retryable vs
- * settings-only), and the initial loading state.
+ * settings-only), explicit request/re-check failures, and the initial loading
+ * state.
  */
 import type { PermissionId } from "@elizaos/shared/contracts/permissions";
 import type { Meta, StoryObj } from "@storybook/react";
@@ -35,7 +36,15 @@ function item(
   status: PrimingItemStatus,
   canRequest = false,
 ): PrimingItem {
-  return { id, status, canRequest, requesting: false, resolved: false };
+  return {
+    id,
+    status,
+    canRequest,
+    requesting: false,
+    requestError: false,
+    recheckError: false,
+    resolved: false,
+  };
 }
 
 function controller(
@@ -108,6 +117,8 @@ export const Requesting: Story = {
       status: "not-determined",
       canRequest: true,
       requesting: true,
+      requestError: false,
+      recheckError: false,
       resolved: false,
     }),
   },
@@ -128,6 +139,30 @@ export const DeniedSettingsOnly: Story = {
     open: true,
     onComplete: noop,
     controllerOverride: controller(item("microphone", "denied", false)),
+  },
+};
+
+export const RequestFailed: Story = {
+  args: {
+    ids: ["notifications"],
+    open: true,
+    onComplete: noop,
+    controllerOverride: controller({
+      ...item("notifications", "unknown", true),
+      requestError: true,
+    }),
+  },
+};
+
+export const RecheckFailed: Story = {
+  args: {
+    ids: ["notifications"],
+    open: true,
+    onComplete: noop,
+    controllerOverride: controller({
+      ...item("notifications", "denied", false),
+      recheckError: true,
+    }),
   },
 };
 

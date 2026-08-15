@@ -48,7 +48,7 @@ const ADMIN_SECTIONS = [
     descriptionKey: "cloud.myAgents.sectionRuntimeDesc",
     defaultDescription:
       "Monitor the hosted process, logs, health, and deployments.",
-    to: "/dashboard/agents",
+    to: "/cloud/agents",
     icon: Server,
   },
   {
@@ -56,7 +56,7 @@ const ADMIN_SECTIONS = [
     defaultTitle: "API keys",
     descriptionKey: "cloud.myAgents.sectionApiKeysDesc",
     defaultDescription: "Create and rotate keys for programmatic access.",
-    to: "/dashboard/api-keys",
+    to: "/cloud/api-keys",
     icon: KeyRound,
   },
   {
@@ -72,7 +72,7 @@ const ADMIN_SECTIONS = [
     defaultTitle: "App devices",
     descriptionKey: "cloud.myAgents.sectionAppDevicesDesc",
     defaultDescription: "Manage connected apps and device-facing integrations.",
-    to: "/dashboard/apps",
+    to: "/cloud/apps",
     icon: MonitorSmartphone,
   },
   {
@@ -87,7 +87,7 @@ const ADMIN_SECTIONS = [
 ] as const;
 
 function getAgentChatPath(agent: AgentWithOwnership | null): string {
-  if (!agent) return "/dashboard/agents";
+  if (!agent) return "/cloud/agents";
   return agent.username ? `/chat/@${agent.username}` : `/chat/${agent.id}`;
 }
 
@@ -434,7 +434,7 @@ export function MyAgentsClient() {
   );
 
   const handleCreateNew = useCallback(() => {
-    navigate("/dashboard/agents");
+    navigate("/cloud/agents");
   }, [navigate]);
 
   const handleRemoveSaved = useCallback((characterId: string) => {

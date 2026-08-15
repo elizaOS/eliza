@@ -19,7 +19,7 @@ export function createAdapterReadinessError(
   error: unknown,
   context: {
     agentId: UUID;
-    entrypoint: "browser" | "default" | "node";
+    entrypoint: "browser" | "default" | "node" | "workerd";
   }
 ): ElizaError {
   return new ElizaError("Database adapter readiness check failed", {

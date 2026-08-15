@@ -37,10 +37,15 @@ Headscale is armed on the Hetzner control-plane VM by
 `arm-headscale-control-plane.yml` / `packages/cloud/scripts/admin/arm-headscale-control-plane.mjs`,
 which writes this directory's `acl.hujson` to the host, converges
 `/etc/headscale/config.yaml`, ensures the `agent` and `tunnel` users, and
-upserts the Worker-facing env. Full checklist + required GitHub Environment
-values are in [`DEPLOY.md`](./DEPLOY.md). The `HEADSCALE_API_KEY` is generated on
-the host and stored as a GitHub/Worker secret — never pasted into issues or
-workflow inputs.
+upserts the Worker-facing env. During the eliza.app migration it also serves the
+canonical and legacy exact hostnames from one explicitly verified TLS
+certificate while keeping the canonical URL authoritative inside Headscale.
+The protected workflow fixes API/listen values to environment-specific loopback
+constants, fails on any competing loaded nginx owner, and proves both public
+SNI names return the same exact dual-SAN leaf before it succeeds.
+Full checklist + required GitHub Environment values are in
+[`DEPLOY.md`](./DEPLOY.md). The `HEADSCALE_API_KEY` is generated on the host and
+stored as a GitHub/Worker secret — never pasted into issues or workflow inputs.
 
 ## Local dev
 

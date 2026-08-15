@@ -181,7 +181,7 @@ export function parseServedCommit(body) {
  * Fetch the served deploy stamp and return its recorded commit, or null on any
  * failure (fail-open — an unreachable stamp must not block deploys).
  *
- * @param {string} baseUrl e.g. "https://staging.elizacloud.ai"
+ * @param {string} baseUrl e.g. "https://staging.eliza.app"
  * @param {object} [opts]
  * @param {typeof fetch} [opts.fetchImpl]
  * @param {string} [opts.stampPath]

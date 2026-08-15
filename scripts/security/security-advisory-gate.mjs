@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 
+/**
+ * Gates security-sensitive pull requests on the canonical deterministic secret
+ * scan and reports approval-held workflows before polling can time out.
+ */
+
 import {
   awaitingApprovalMessage,
   loadActionRequiredWorkflowPaths,
@@ -20,7 +25,7 @@ const PATHS = [
   /(^|\/)(contracts?|migrations)(\/|$)/i,
 ];
 const REQUIRED_CHECKS = ["gitleaks"];
-const REQUIRED_WORKFLOW_PATHS = [".github/workflows/gitleaks.yml"];
+const REQUIRED_WORKFLOW_PATHS = [".github/workflows/ci.yml"];
 const SUCCESS = new Set(["success"]);
 const TERMINAL = new Set([
   "success",

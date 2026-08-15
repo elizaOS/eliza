@@ -63,7 +63,10 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <div className="bg-black p-6" style={{ minWidth: 800 }}>
+      <div
+        className="bg-black p-3 sm:p-6"
+        style={{ minWidth: "min(800px, 100%)" }}
+      >
         <Story />
       </div>
     ),
@@ -98,6 +101,49 @@ export const StructuredEntries: Story = {
     onRefresh: noop,
     onCopyAll: noop,
     onCopyEntry: noop,
+  },
+};
+
+export const InvalidTimestamps: Story = {
+  render: () => (
+    <LogViewer
+      title="timestamp.validation"
+      subtitle="Malformed values remain visible as intentionally unavailable"
+      fetchedAt="2026-02-31T00:00:00Z"
+      badges={[{ label: "validation", variant: "outline" }]}
+      entries={[
+        { id: "missing", message: "Missing timestamp is omitted" },
+        {
+          id: "malformed",
+          timestamp: "not-a-date",
+          message: "Malformed string",
+        },
+        { id: "nan", timestamp: Number.NaN, message: "Numeric NaN" },
+        {
+          id: "invalid-date",
+          timestamp: new Date(Number.NaN),
+          message: "Invalid object input",
+        },
+        {
+          id: "time-clip",
+          timestamp: 8.64e15 + 1,
+          message: "Outside TimeClip range",
+        },
+        {
+          id: "calendar-invalid",
+          timestamp: "2026-02-31T00:00:00Z",
+          message: "Calendar-invalid ISO timestamp",
+        },
+        {
+          id: "valid",
+          timestamp: "2026-06-05T10:00:00Z",
+          message: "Valid control timestamp",
+        },
+      ]}
+    />
+  ),
+  args: {
+    title: "timestamp.validation",
   },
 };
 

@@ -93,6 +93,26 @@ function feed(events: LifeOpsCalendarEvent[] = [EVENT]): LifeOpsCalendarFeed {
   };
 }
 
+function requireOrderedCalendarWindow(
+  request: Record<string, unknown> | undefined,
+): void {
+  const min = request?.timeMin;
+  const max = request?.timeMax;
+  if (
+    typeof min !== "string" ||
+    typeof max !== "string" ||
+    !Number.isFinite(Date.parse(min)) ||
+    !Number.isFinite(Date.parse(max)) ||
+    Date.parse(min) >= Date.parse(max)
+  ) {
+    throw new CalendarServiceError(
+      400,
+      "Calendar windows require an ordered pair.",
+      "CALENDAR_WINDOW_INVALID",
+    );
+  }
+}
+
 function message(text: string): Memory {
   return {
     id: MESSAGE_ID,
@@ -235,19 +255,21 @@ describe("CALENDAR effect receipt settlement", () => {
       text: "Approval request calendar-approval-request-1 is ready.",
     };
     const schedule = vi.fn(async () => approval);
+    const getCalendarFeed = vi.fn(async () => feed([]));
+    const prepareCalendarEventCreate = vi.fn(
+      async (_url: URL, request: Record<string, unknown>) => ({
+        ...request,
+        side: "owner" as const,
+        grantId: "connector-account:calendar-owner",
+        calendarId: "primary",
+        startAt: "2026-07-28T22:00:00.000Z",
+        endAt: "2026-07-28T22:30:00.000Z",
+        timeZone: "UTC",
+      }),
+    );
     const service = {
-      getCalendarFeed: vi.fn(async () => feed([])),
-      prepareCalendarEventCreate: vi.fn(
-        async (_url: URL, request: Record<string, unknown>) => ({
-          ...request,
-          side: "owner" as const,
-          grantId: "connector-account:calendar-owner",
-          calendarId: "primary",
-          startAt: "2026-07-28T22:00:00.000Z",
-          endAt: "2026-07-28T22:30:00.000Z",
-          timeZone: "UTC",
-        }),
-      ),
+      getCalendarFeed,
+      prepareCalendarEventCreate,
     };
     const action = createCalendarActionRunner(
       deps({
@@ -268,6 +290,7 @@ describe("CALENDAR effect receipt settlement", () => {
         subaction: "create_event",
         title: "School pickup",
         details: {
+          calendarId: "  Default  ",
           startAt: "2026-07-28T22:00:00.000Z",
           endAt: "2026-07-28T22:30:00.000Z",
           timeZone: "UTC",
@@ -277,6 +300,14 @@ describe("CALENDAR effect receipt settlement", () => {
     });
 
     expect(schedule, JSON.stringify(result)).toHaveBeenCalledOnce();
+    expect(getCalendarFeed).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ calendarId: undefined }),
+    );
+    expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ calendarId: undefined }),
+    );
     expect(result.effectReceipts, JSON.stringify(result)).toEqual([
       expect.objectContaining({
         operation: "calendar.approval.schedule_event",
@@ -442,7 +473,14 @@ describe("CALENDAR effect receipt settlement", () => {
       title: "Eat two sandwiches",
       metadata: { etag: '"eliza-2"', version: 2 },
     };
-    const getCalendarFeed = vi.fn(async () => feed([ELIZA_EVENT]));
+    const lookupRequests: Record<string, unknown>[] = [];
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        lookupRequests.push(request ?? {});
+        return feed([ELIZA_EVENT]);
+      },
+    );
     const getConditionalCalendarMutationTarget = vi.fn();
     const updateCalendarEvent = vi.fn(async () => updatedEvent);
     const service = {
@@ -466,6 +504,8 @@ describe("CALENDAR effect receipt settlement", () => {
         details: {
           eventId: "unknown",
           grantId: "unknown",
+          timeMin: "2026-08-05T10:00:00Z",
+          timeMax: "2026-08-05T09:00:00Z",
           oldTitle: "Eat a sandwich",
           newTitle: "Eat two sandwiches",
         },
@@ -474,6 +514,17 @@ describe("CALENDAR effect receipt settlement", () => {
     });
 
     expect(getCalendarFeed).toHaveBeenCalledOnce();
+    // A rejected planner window is ABSENT, not "provided but unusable": the
+    // lookup has to fall through to the wide by-title range (-365d..+5y), not
+    // the 30-day search default, or an event a couple of months out silently
+    // resolves to "not found".
+    expect(
+      Date.parse(lookupRequests[0]?.timeMax as string) -
+        Date.parse(lookupRequests[0]?.timeMin as string),
+    ).toBeGreaterThan(365 * 24 * 60 * 60 * 1000);
+    expect(Date.parse(lookupRequests[0]?.timeMin as string)).toBeLessThan(
+      Date.now(),
+    );
     expect(getConditionalCalendarMutationTarget).not.toHaveBeenCalled();
     expect(updateCalendarEvent).toHaveBeenCalledWith(
       expect.any(URL),
@@ -547,90 +598,157 @@ describe("CALENDAR effect receipt settlement", () => {
     expectBoundDelivery(delivered, result);
   });
 
-  it("uses timezone-grounded calendar extraction instead of a contradictory outer-planner instant", async () => {
-    const approval = {
-      requestId: "calendar-timezone-approval",
-      action: "schedule_event" as const,
-      state: "pending" as const,
-      acceptedAt: APPROVAL_ACCEPTED_AT,
-      idempotencyKey: "calendar-timezone-proof",
-      replayed: false,
-      text: "Approval request calendar-timezone-approval is ready.",
-    };
-    let extractionPrompt = "";
-    const runJsonModel = vi.fn(async (args: { prompt: string }) => {
-      if (!args.prompt.includes("Extract calendar event creation fields")) {
-        return null;
-      }
-      extractionPrompt = args.prompt;
-      return {
-        rawResponse: JSON.stringify({
-          title: "Demo",
-          startAt: "2026-08-05T09:00:00-07:00",
-          endAt: "2026-08-05T10:00:00-07:00",
-          timeZone: "America/Los_Angeles",
-        }),
-        parsed: {
-          title: "Demo",
-          startAt: "2026-08-05T09:00:00-07:00",
-          endAt: "2026-08-05T10:00:00-07:00",
-          timeZone: "America/Los_Angeles",
-        },
-      };
-    });
-    const prepareCalendarEventCreate = vi.fn(
-      async (_url: URL, request: Record<string, unknown>) => ({
-        ...request,
-        side: "owner" as const,
-        grantId: "connector-account:calendar-owner",
-        calendarId: "primary",
-      }),
+  it("drops a partial planner window before resolving a built-in delete by title", async () => {
+    const lookupRequests: Record<string, unknown>[] = [];
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        lookupRequests.push(request ?? {});
+        return feed([ELIZA_EVENT]);
+      },
     );
-    const service = {
-      getCalendarFeed: vi.fn(async () => feed([])),
-      prepareCalendarEventCreate,
-    };
-    const action = createCalendarActionRunner(
-      deps({
-        runJsonModel,
-        mutationGateway: {
-          schedule: vi.fn(async () => approval),
-          modify: vi.fn(),
-          cancel: vi.fn(),
-        },
-      }),
-    );
+    const deleteCalendarEvent = vi.fn(async () => undefined);
+    const service = { getCalendarFeed, deleteCalendarEvent };
+    const action = createCalendarActionRunner(deps());
     const delivered: Content[] = [];
 
     const result = await execute({
       action,
       service,
-      actor: message("Add demo tomorrow at 9am."),
+      actor: message('Delete the calendar event "Eat a sandwich".'),
       parameters: {
-        subaction: "create_event",
-        title: "Demo",
+        subaction: "delete_event",
+        query: "Eat a sandwich",
         details: {
-          startAt: "2026-08-05T09:00:00Z",
-          endAt: "2026-08-05T10:00:00Z",
-          timeZone: "America/Los_Angeles",
+          eventId: "unknown",
+          timeMin: "2026-08-05T09:00:00Z",
+          timeMax: "not-a-date",
         },
       },
       delivered,
     });
 
-    expect(result.success, JSON.stringify(result)).toBe(true);
-    expect(extractionPrompt).toContain(
-      "for 9am in America/Los_Angeles emit 09:00 with the applicable -07:00/-08:00 offset, never 09:00Z",
+    expect(getCalendarFeed).toHaveBeenCalledOnce();
+    // A rejected planner window is ABSENT, not "provided but unusable": the
+    // lookup has to fall through to the wide by-title range (-365d..+5y), not
+    // the 30-day search default, or an event a couple of months out silently
+    // resolves to "not found".
+    expect(
+      Date.parse(lookupRequests[0]?.timeMax as string) -
+        Date.parse(lookupRequests[0]?.timeMin as string),
+    ).toBeGreaterThan(365 * 24 * 60 * 60 * 1000);
+    expect(Date.parse(lookupRequests[0]?.timeMin as string)).toBeLessThan(
+      Date.now(),
     );
-    expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
+    expect(deleteCalendarEvent).toHaveBeenCalledWith(
       expect.any(URL),
       expect.objectContaining({
-        startAt: "2026-08-05T09:00:00-07:00",
-        endAt: "2026-08-05T10:00:00-07:00",
-        timeZone: "America/Los_Angeles",
+        eventId: ELIZA_EVENT.externalId,
+        grantId: ELIZA_EVENT.grantId,
       }),
     );
+    expect(result).toMatchObject({
+      success: true,
+      data: { approvalRequired: false, deleted: true },
+    });
     expectBoundDelivery(delivered, result);
+  });
+
+  it("uses timezone-grounded calendar extraction instead of a contradictory outer-planner instant", async () => {
+    // The fixture's extraction says "tomorrow" is Aug 5, which is only
+    // coherent when today is Aug 4 in the event's zone. The stated-day guard
+    // now enforces exactly that coherence at the create boundary, so an
+    // unpinned clock would (correctly) snap the fixture's date to the real
+    // tomorrow and the assertion would drift with the wall clock.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-04T19:00:00.000Z"));
+    try {
+      const approval = {
+        requestId: "calendar-timezone-approval",
+        action: "schedule_event" as const,
+        state: "pending" as const,
+        acceptedAt: APPROVAL_ACCEPTED_AT,
+        idempotencyKey: "calendar-timezone-proof",
+        replayed: false,
+        text: "Approval request calendar-timezone-approval is ready.",
+      };
+      let extractionPrompt = "";
+      const runJsonModel = vi.fn(async (args: { prompt: string }) => {
+        if (!args.prompt.includes("Extract calendar event creation fields")) {
+          return null;
+        }
+        extractionPrompt = args.prompt;
+        return {
+          rawResponse: JSON.stringify({
+            title: "Demo",
+            startAt: "2026-08-05T09:00:00-07:00",
+            endAt: "2026-08-05T10:00:00-07:00",
+            timeZone: "America/Los_Angeles",
+          }),
+          parsed: {
+            title: "Demo",
+            startAt: "2026-08-05T09:00:00-07:00",
+            endAt: "2026-08-05T10:00:00-07:00",
+            timeZone: "America/Los_Angeles",
+          },
+        };
+      });
+      const prepareCalendarEventCreate = vi.fn(
+        async (_url: URL, request: Record<string, unknown>) => ({
+          ...request,
+          side: "owner" as const,
+          grantId: "connector-account:calendar-owner",
+          calendarId: "primary",
+        }),
+      );
+      const service = {
+        getCalendarFeed: vi.fn(async () => feed([])),
+        prepareCalendarEventCreate,
+      };
+      const action = createCalendarActionRunner(
+        deps({
+          runJsonModel,
+          mutationGateway: {
+            schedule: vi.fn(async () => approval),
+            modify: vi.fn(),
+            cancel: vi.fn(),
+          },
+        }),
+      );
+      const delivered: Content[] = [];
+
+      const result = await execute({
+        action,
+        service,
+        actor: message("Add demo tomorrow at 9am."),
+        parameters: {
+          subaction: "create_event",
+          title: "Demo",
+          details: {
+            startAt: "2026-08-05T09:00:00Z",
+            endAt: "2026-08-05T10:00:00Z",
+            timeZone: "America/Los_Angeles",
+          },
+        },
+        delivered,
+      });
+
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      expect(extractionPrompt).toContain(
+        "for 9am in America/Los_Angeles emit 09:00 with the applicable -07:00/-08:00 offset, never 09:00Z",
+      );
+      expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({
+          startAt: "2026-08-05T09:00:00-07:00",
+          endAt: "2026-08-05T10:00:00-07:00",
+          timeZone: "America/Los_Angeles",
+        }),
+      );
+      expectBoundDelivery(delivered, result);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports an authoritative queue replay as a no-op", async () => {
@@ -760,6 +878,7 @@ describe("CALENDAR effect receipt settlement", () => {
           mode: "read",
           side: "owner",
           grantId: "primary",
+          calendarId: "default",
           timeZone: "UTC",
           timeMin: "2026-07-27T00:00:00.000Z",
           timeMax: "2026-08-03T00:00:00.000Z",
@@ -782,11 +901,75 @@ describe("CALENDAR effect receipt settlement", () => {
     // window reaches the service well-formed.
     expect(request.mode).toBeUndefined();
     expect(request.grantId).toBeUndefined();
+    expect(request.calendarId).toBeUndefined();
     expect(request.side).toBe("owner");
     expect(request.timeZone).toBe("UTC");
     expect(request.timeMin).toBe("2026-07-27T00:00:00.000Z");
     expect(request.timeMax).toBe("2026-08-03T00:00:00.000Z");
   });
+
+  it.each([
+    {
+      label: "valid+invalid",
+      timeMin: "2026-08-05T09:00:00Z",
+      timeMax: "not-a-date",
+    },
+    {
+      label: "invalid+valid",
+      timeMin: "not-a-date",
+      timeMax: "2026-08-05T10:00:00Z",
+    },
+    {
+      label: "reversed",
+      timeMin: "2026-08-05T10:00:00Z",
+      timeMax: "2026-08-05T09:00:00Z",
+    },
+    {
+      label: "valid offset pair",
+      timeMin: "2026-08-05T09:00:00-07:00",
+      timeMax: "2026-08-05T10:00:00-07:00",
+      expected: {
+        timeMin: "2026-08-05T16:00:00.000Z",
+        timeMax: "2026-08-05T17:00:00.000Z",
+      },
+    },
+  ])(
+    "sends only a complete ordered service window for $label planner bounds",
+    async ({ timeMin, timeMax, expected }) => {
+      const requests: Record<string, unknown>[] = [];
+      const getCalendarFeed = vi.fn(
+        async (_url: URL, request?: Record<string, unknown>) => {
+          requireOrderedCalendarWindow(request);
+          requests.push(request ?? {});
+          return feed();
+        },
+      );
+      const action = createCalendarActionRunner(deps());
+
+      const result = await execute({
+        action,
+        service: { getCalendarFeed },
+        actor: message("Show my calendar."),
+        parameters: {
+          subaction: "feed",
+          details: { timeMin, timeMax, timeZone: "UTC" },
+        },
+        delivered: [],
+      });
+
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      expect(requests).toHaveLength(1);
+      const request = requests[0];
+      if (expected) {
+        expect(request).toMatchObject(expected);
+      } else {
+        expect(
+          Date.parse(request.timeMax as string) -
+            Date.parse(request.timeMin as string),
+        ).toBe(24 * 60 * 60 * 1000);
+      }
+    },
+  );
 
   it("passes a real grant id through untouched", async () => {
     const getCalendarFeed = vi.fn(
@@ -811,6 +994,113 @@ describe("CALENDAR effect receipt settlement", () => {
       unknown
     >;
     expect(request.grantId).toBe("connector-account:calendar-owner");
+  });
+
+  it("drops planner key debris only from structured routing controls", async () => {
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, _request?: Record<string, unknown>) => feed(),
+    );
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service: { getCalendarFeed },
+      actor: message("whats on my calendar tomorrow"),
+      parameters: {
+        subaction: "feed",
+        details: {
+          calendar_id: ",calendar_id:",
+          grantId: "grantId",
+          mode: "mode",
+          side: "side",
+          timeZone: "timeZone",
+        },
+      },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(getCalendarFeed).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({
+        calendarId: undefined,
+        grantId: undefined,
+        mode: undefined,
+        side: undefined,
+      }),
+    );
+  });
+
+  it("preserves a search query literally equal to its field name", async () => {
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service: { getCalendarFeed: vi.fn(async () => feed([])) },
+      actor: message("find query"),
+      parameters: {
+        subaction: "search_events",
+        details: { query: "query" },
+      },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(result.userFacingText).toContain('"query"');
+  });
+
+  it("preserves event content literally equal to its field names", async () => {
+    const literalEvent: LifeOpsCalendarEvent = {
+      ...ELIZA_EVENT,
+      title: "title",
+      location: "location",
+    };
+    const prepareCalendarEventCreate = vi.fn(
+      async (_url: URL, request: Record<string, unknown>) => ({
+        ...request,
+        side: "owner" as const,
+        grantId: "eliza-calendar",
+        calendarId: "primary",
+      }),
+    );
+    const createCalendarEvent = vi.fn(async () => literalEvent);
+    const action = createCalendarActionRunner(
+      deps({
+        mutationGateway: {
+          schedule: vi.fn(),
+          modify: vi.fn(),
+          cancel: vi.fn(),
+        },
+      }),
+    );
+
+    const result = await execute({
+      action,
+      service: {
+        getCalendarFeed: vi.fn(async () => feed([])),
+        prepareCalendarEventCreate,
+        createCalendarEvent,
+      },
+      actor: message("add title at location"),
+      parameters: {
+        subaction: "create_event",
+        details: {
+          title: "title",
+          location: "location",
+          startAt: ELIZA_EVENT.startAt,
+          endAt: ELIZA_EVENT.endAt,
+          timeZone: "UTC",
+        },
+      },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ title: "title", location: "location" }),
+    );
+    expect(createCalendarEvent).toHaveBeenCalledOnce();
   });
 
   it("reports the swallowed service-rejection detail with the request hints", async () => {

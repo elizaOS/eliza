@@ -1,6 +1,6 @@
-/** SSO auto-bridge behavior of the app-mode entry gate, with the jsdom document origin pinned to the REAL app host (app.elizacloud.ai) so the hostname-gated bridge decision runs exactly as deployed — real render, hand-rolled fetch/navigation stubs. The localhost-origin suite (AppModeEntryRoute.test.tsx) proves the same paths stay inert off the app hosts. */
+/** SSO auto-bridge behavior of the app-mode entry gate, with the jsdom document origin pinned to the canonical managed-app host so the hostname-gated bridge decision runs exactly as deployed — real render, hand-rolled fetch/navigation stubs. The localhost-origin suite proves the same paths stay inert off managed hosts. */
 // @vitest-environment jsdom
-// @vitest-environment-options {"url": "https://app.elizacloud.ai/"}
+// @vitest-environment-options {"url": "https://cloud.eliza.app/"}
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -113,14 +113,14 @@ afterEach(() => {
   appModeNavigation.replace = realReplace;
 });
 
-describe("AppModeEntryRoute — SSO auto-bridge (app host origin)", () => {
-  it("signed out + domain session marker → full-page bounce to the dashboard mint leg with a stored state nonce + PKCE challenge", async () => {
+describe("AppModeEntryRoute — SSO auto-bridge (managed app origin)", () => {
+  it("signed out + domain session marker → full-page bounce to the eliza.app mint leg with a stored state nonce + PKCE challenge", async () => {
     document.cookie = "steward-authed=1; path=/";
     renderEntry("/chat?x=1");
 
     await waitFor(() => expect(replacedUrls).toHaveLength(1));
     const url = new URL(replacedUrls[0]);
-    expect(url.origin).toBe("https://elizacloud.ai");
+    expect(url.origin).toBe("https://eliza.app");
     expect(url.pathname).toBe("/auth/bridge");
     expect(url.searchParams.get("returnTo")).toBe("/chat?x=1");
     // The echoed state is exactly the nonce persisted for the return leg.
@@ -148,7 +148,7 @@ describe("AppModeEntryRoute — SSO auto-bridge (app host origin)", () => {
     expect(replacedUrls).toEqual([]);
   });
 
-  it("logout-then-visit does NOT re-bridge: the explicit logged-out marker wins over a live dashboard session", async () => {
+  it("logout-then-visit does NOT re-bridge: the explicit logged-out marker wins over a live eliza.app session", async () => {
     document.cookie = "steward-authed=1; path=/";
     localStorage.setItem(SSO_LOGGED_OUT_KEY, "1");
     renderEntry("/");

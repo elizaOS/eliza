@@ -114,6 +114,20 @@ describe("os-intent pipeline", () => {
     expect(calls).toEqual(["open", "startRecording:converse"]);
   });
 
+  it("drives one realtime teardown from a redelivered StopVoice link", () => {
+    const store = new IntentDedupeStore();
+    const { controller, calls } = spyController();
+    const url =
+      "elizaos://voice?source=ios-app-shortcuts&action=stop-voice&assistant.launchId=siri-stop-1";
+
+    expect(launch(url, healthyContext(), store, controller)).toBe("routed");
+    expect(launch(url, healthyContext({ now: 1_100 }), store, controller)).toBe(
+      "duplicate",
+    );
+
+    expect(calls).toEqual(["stopRecording"]);
+  });
+
   it("does not touch the controller when the launch is blocked", () => {
     const store = new IntentDedupeStore();
     const { controller, calls } = spyController();

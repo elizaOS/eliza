@@ -9,7 +9,7 @@ so the `ActiveModelCoordinator` in `@elizaos/ui`
 
 ## What it does
 
-- Registers as the runtime's `localInferenceLoader` service during the
+- Registers a runtime-owned `localInferenceLoader` service class during the
   Capacitor bootstrap via `registerCapacitorLlamaLoader(runtime)`.
 - Maps `load({ modelPath })` → `initContext` (one native context per adapter
   instance; chat and embedding run on separate instances to avoid context
@@ -55,8 +55,13 @@ Two ways to wire the adapter into a runtime:
   ```ts
   import { registerCapacitorLlamaLoader } from "@elizaos/capacitor-llama";
 
-  registerCapacitorLlamaLoader(runtime);
+  await registerCapacitorLlamaLoader(runtime);
   ```
+
+  Registration is safe before `runtime.initialize()`. A caller registering
+  after initialization and synchronously probing the service should first
+  await `runtime.getServiceLoadPromise("localInferenceLoader")`. Runtime stop
+  disposes both native role contexts.
 
 - **`capacitorLlama`** — the default singleton `LlamaAdapter`, used directly by
   callers that don't need per-role context separation.

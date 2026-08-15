@@ -164,7 +164,7 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		});
 	});
 
-	it("strict parser preserves a valid contextConfig channel", () => {
+	it("rejects the orphaned contextConfig channel", () => {
 		const parsed = parseOptimizedPromptArtifact({
 			...makeArtifact(1),
 			contextConfig: {
@@ -181,16 +181,72 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 			},
 		});
 
-		expect(parsed?.contextConfig).toEqual({
-			providerSet: ["RECENT_MESSAGES", "FACTS"],
-			providerOrder: ["FACTS", "RECENT_MESSAGES"],
-			renderTemplates: {
-				RECENT_MESSAGES: "{{role}}: {{text}}",
+		expect(parsed).toBeNull();
+	});
+
+	it("rejects contextConfig even when the own-property value is undefined", () => {
+		const parsed = parseOptimizedPromptArtifact({
+			...makeArtifact(1),
+			contextConfig: undefined,
+		} as unknown);
+
+		expect(parsed).toBeNull();
+	});
+
+	it("rejects invalid public artifacts before signing, persistence, or caching", async () => {
+		const invalidArtifacts = [
+			{
+				...makeArtifact(1),
+				contextConfig: { providerSet: ["RECENT_MESSAGES"] },
 			},
-			budgetVector: {
-				RECENT_MESSAGES: 1200,
+			{
+				...makeArtifact(1),
+				unsupportedExtra: "must not cross the artifact boundary",
 			},
-		});
+		] as OptimizedPromptArtifact[];
+
+		for (const invalidArtifact of invalidArtifacts) {
+			await expect(
+				service.setPrompt("action_planner", invalidArtifact),
+			).rejects.toMatchObject({
+				name: "ElizaError",
+				code: "OPTIMIZED_PROMPT_ARTIFACT_INVALID",
+			});
+		}
+
+		expect(existsSync(join(storeRoot, "action_planner"))).toBe(false);
+		expect(service.getPrompt("action_planner")).toBeNull();
+	});
+
+	it("rejects an artifact task mismatch with typed expected/actual context", async () => {
+		const artifact = makeArtifact(1);
+		await expect(service.setPrompt("response", artifact)).rejects.toMatchObject(
+			{
+				name: "ElizaError",
+				code: "OPTIMIZED_PROMPT_ARTIFACT_TASK_MISMATCH",
+				context: {
+					expectedTask: "response",
+					actualTask: "action_planner",
+				},
+			},
+		);
+		expect(existsSync(join(storeRoot, "response"))).toBe(false);
+		expect(service.getPrompt("response")).toBeNull();
+	});
+
+	it("preserves valid artifacts across set, get, and a fresh-service reload", async () => {
+		const artifact = makeArtifact(1);
+		const path = await service.setPrompt("action_planner", artifact);
+
+		expect(path).toBe(join(storeRoot, "action_planner", "v1.json"));
+		expect(service.getPrompt("action_planner")?.prompt).toBe(artifact.prompt);
+
+		const restartedService = createService();
+		restartedService.setStoreRoot(storeRoot);
+		await restartedService.refresh();
+		expect(restartedService.getPrompt("action_planner")?.prompt).toBe(
+			artifact.prompt,
+		);
 	});
 
 	it("retains the most recent OPTIMIZED_PROMPT_RETAIN_VERSIONS artifacts", async () => {

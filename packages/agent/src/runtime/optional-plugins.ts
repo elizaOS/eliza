@@ -55,6 +55,7 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-app-control",
   "@elizaos/plugin-notes",
+  "@elizaos/plugin-documents",
   "@elizaos/plugin-calendar",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
@@ -177,6 +178,11 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   "@elizaos/plugin-notes": {
     importSubpath: "./plugin",
   },
+  "@elizaos/plugin-documents": {
+    importSubpath: "./plugin",
+    suppressTypeResolutionReason:
+      "documents is peer-linked to avoid the documents -> agent runtime dependency cycle; the deferred import runs after agent module initialization.",
+  },
   "@elizaos/plugin-calendar": {
     importSubpath: "./plugin",
     suppressTypeResolutionReason:
@@ -216,10 +222,13 @@ export function renderOptionalPluginImportsModule(
       const specifier = optionalPluginImportSpecifier(pkg);
       const suppression =
         OPTIONAL_STATIC_PLUGIN_OVERRIDES[pkg]?.suppressTypeResolutionReason;
-      const comments = suppression
-        ? `  // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.\n  // @ts-ignore: ${suppression}\n`
-        : "";
-      return `${comments}  "${pkg}": () => import("${specifier}"),`;
+      if (suppression) {
+        return `  "${pkg}": () =>
+    // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
+    // @ts-ignore: ${suppression}
+    import("${specifier}"),`;
+      }
+      return `  "${pkg}": () => import("${specifier}"),`;
     })
     .join("\n");
   return `/**

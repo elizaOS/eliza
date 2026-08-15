@@ -61,6 +61,51 @@ describe("insufficientCreditsBody", () => {
   });
 });
 
+describe("insufficientCreditsBody — gate-carried withheld reason", () => {
+  test("uses the reason the credit gate read from the org's settings (no route plumbing)", () => {
+    const body = insufficientCreditsBody({
+      balance: 0,
+      error: "Insufficient credits",
+      welcomeBonusWithheldReason: "ip_daily_cap",
+      welcomeBonusWithheldMessage:
+        "Welcome credit unavailable because this network reached the daily free-credit limit. Add funds to start an agent.",
+    });
+
+    expect(body.welcomeBonusWithheld).toBe(true);
+    expect(body.welcomeBonusWithheldReason).toBe("ip_daily_cap");
+    expect(body.error).toContain("daily free-credit limit");
+  });
+
+  test("explicit route context wins over the gate-carried reason", () => {
+    const body = insufficientCreditsBody(
+      {
+        balance: 0,
+        error: "Insufficient credits",
+        welcomeBonusWithheldReason: "count_unavailable",
+        welcomeBonusWithheldMessage: "gate message",
+      },
+      {
+        welcomeBonusWithheldReason: "ip_daily_cap",
+        welcomeBonusWithheldMessage: "route message",
+      },
+    );
+
+    expect(body.welcomeBonusWithheldReason).toBe("ip_daily_cap");
+    expect(body.error).toBe("route message");
+  });
+
+  test("positive balance suppresses the withheld explanation (stale record)", () => {
+    const body = insufficientCreditsBody({
+      balance: 0.05,
+      error: "Insufficient credits.",
+      welcomeBonusWithheldReason: "ip_daily_cap",
+    });
+
+    expect(body.welcomeBonusWithheld).toBeUndefined();
+    expect(body.error).toBe("Insufficient credits.");
+  });
+});
+
 describe("insufficientCredits402", () => {
   const warnSpy = spyOn(logger, "warn").mockImplementation(() => undefined);
 

@@ -30,39 +30,14 @@ jobs:
   changes:
     name: Classify changed paths
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')
-    # Path classifier is a git-diff + node script: no self-hosted resources.
-    # Keep it on GitHub-hosted so a drained hetzner fleet cannot leave it
-    # queued indefinitely and pile up runs (#13617/#8501).
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    outputs:
-      docker: ${{ steps.filter.outputs.docker }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-          submodules: false
-
-      - name: Setup Node.js for path gate
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24.15.0"
-
-      - name: Determine affected Docker smoke surface
-        id: filter
-        shell: bash
-        env:
-          PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
-        run: |
-          set -euo pipefail
-          node packages/scripts/ci-path-gate.mjs \
-            --config docker \
-            --event "${{ github.event_name }}" \
-            --base "${{ github.event.pull_request.base.sha }}" \
-            --head "${{ github.event.pull_request.head.sha }}" \
-            --labels "$PR_LABELS" \
-            --output "$GITHUB_OUTPUT" \
-            --summary "$GITHUB_STEP_SUMMARY"
+    uses: ./.github/workflows/classify-paths.yml
+    with:
+      config: docker
+      # docker-ci-smoke.yml was unconditionally hosted before consolidation
+      # and has no pull_request trigger — ALL its events are non-PR (push,
+      # schedule, dispatch). force_hosted preserves the pre-consolidation
+      # invariant that the classifier never goes to the self-hosted fleet.
+      force_hosted: true
 
   docker-ci-smoke:
     name: Build production Docker image (+ smoke boot)

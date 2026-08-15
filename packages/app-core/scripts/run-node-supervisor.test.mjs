@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
   type: "json",
 };
+import { readSpawnCountForSupervisorTest } from "./lib/run-node-supervisor-spawn-count.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUN_NODE = path.join(SCRIPT_DIR, "run-node.mjs");
@@ -82,24 +83,24 @@ function runSupervisor(restartUntil) {
     });
     child.on("error", reject);
     child.on("exit", (code) => {
-      const spawnCount = Number(
-        fs.readFileSync(counterFile, "utf8").trim() || "0",
-      );
-      resolve({ code, spawnCount, stdout, stderr });
+      try {
+        const spawnCount = readSpawnCountForSupervisorTest(counterFile, {
+          code,
+          stderr,
+        });
+        resolve({ code, spawnCount, stdout, stderr });
+      } catch (error) {
+        reject(error);
+      }
     });
   });
 }
 
-// Windows-ci only: the supervisor-spawned fake child never writes its
-// `spawn-count.txt`, so this test's own `child.on("exit")` handler throws
-// `ENOENT` reading it and the run Promise never resolves → both cases hit the
-// 30s timeout. The spawn (`spawn(<full node exec path>, ["fake-child.mjs"],
-// { cwd: workDir, stdio: "inherit" })`) and the child's absolute-path
-// `fs.writeFileSync` are Windows-portable and pass on Linux (2/2, ~1.2s); the
-// runner-specific failure (the child process never runs/writes) is not
-// reproducible off the GitHub-hosted Windows runner. Gated there pending a
-// Windows-box root-cause — a likely hardening is pinning `ELIZA_NODE_PATH` to
-// the current node so the supervisor skips runtime-resolution/PATH probing.
+// Windows-ci only: when the supervisor aborts before spawning, the fake child
+// never writes `spawn-count.txt`. The exit handler now rejects immediately with
+// captured stderr via `readSpawnCountForSupervisorTest` instead of hanging on a
+// missing-file `ENOENT` inside the `exit` callback. Gated on Windows pending a
+// runner-specific root-cause for why the child never runs there.
 describe.skipIf(process.platform === "win32")(
   "run-node.mjs supervisor (real processes)",
   () => {

@@ -99,6 +99,16 @@ export interface WarmPoolPolicy {
   replenishCooldownMs: number;
   /** Max pool entries created in a single replenish tick. */
   replenishBurstLimit: number;
+  /**
+   * Health probes per ready entry per sweep before it is declared dead. The
+   * probe crosses the headscale mesh, which routinely has >5s transient
+   * hiccups — the creator's own birth-polling observes several consecutive
+   * misses before the first success on the same URL — so a single missed
+   * probe must never reap a healthy container.
+   */
+  healthProbeAttempts: number;
+  /** Spacing between those retry probes for a still-failing entry. */
+  healthProbeRetryDelayMs: number;
 }
 
 export const DEFAULT_WARM_POOL_POLICY: WarmPoolPolicy = {
@@ -111,4 +121,9 @@ export const DEFAULT_WARM_POOL_POLICY: WarmPoolPolicy = {
   stuckProvisioningMs: 10 * 60 * 1000,
   replenishCooldownMs: 60 * 1000,
   replenishBurstLimit: 3,
+  // Retries run concurrently across failing rows, so the sweep's worst-case
+  // extra time is (attempts - 1) × (delay + 5s probe timeout) = 18s — well
+  // inside the provisioning worker's 60s phase budget.
+  healthProbeAttempts: 3,
+  healthProbeRetryDelayMs: 4 * 1000,
 };

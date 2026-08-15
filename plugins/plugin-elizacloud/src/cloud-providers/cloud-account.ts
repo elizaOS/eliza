@@ -28,7 +28,7 @@ import { logger } from "@elizaos/core";
 import type { CloudAuthService } from "../services/cloud-auth";
 import { createElizaCloudClient } from "../utils/sdk-client";
 
-const TOP_UP_URL = "https://www.elizacloud.ai/dashboard/settings?tab=billing";
+const TOP_UP_URL = "https://cloud.eliza.app/cloud/billing";
 const TTL = 60_000;
 const MAX_AGENTS_RENDERED = 8;
 

@@ -101,13 +101,16 @@ describe("createDeepLinkHandler — top-level-surface navigation intents", () =>
     });
   });
 
-  it("maps the connectors deep path from a universal link to the Settings connectors section", () => {
+  it("maps the connectors deep path from a universal link to the per-connector Settings detail page", () => {
+    // Connectors nest a detail segment since the per-connector Settings pages
+    // (56cee4c21f0): the slug must survive into the subview so settings-route
+    // can open the connector's own page instead of the flat index.
     const { handle, dispatchNavigationIntent } = makeHandler();
     handle("https://eliza.app/settings/connectors/discord");
     expect(dispatchNavigationIntent).toHaveBeenCalledWith({
       viewId: "settings",
       viewPath: "/settings",
-      subview: "connectors",
+      subview: "connectors/discord",
     });
     expect(window.location.hash).toBe("");
   });

@@ -2,6 +2,12 @@
  * Applies a browser/deep-link launch: creates or activates the target agent
  * profile and persists the active-server record so the app opens pointed at it.
  */
+
+import { isCloudPairAgentId } from "@elizaos/shared/contracts";
+import {
+  isElizaCloudControlPlaneHostname,
+  isElizaDedicatedAgentHostname,
+} from "@elizaos/shared/elizacloud";
 import { client } from "../api";
 import { getBootConfig } from "../config/boot-config-store";
 import { upsertAndActivateAgentProfile } from "../state/agent-profiles";
@@ -9,15 +15,11 @@ import {
   createPersistedActiveServer,
   savePersistedActiveServer,
 } from "../state/persistence";
-import { isTrustedRestoreApiBaseUrl } from "../state/runtime-url-trust";
+import {
+  isTrustedCloudApiBaseUrl,
+  isTrustedRestoreApiBaseUrl,
+} from "../state/runtime-url-trust";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
-
-const TRUSTED_CLOUD_LAUNCH_HOSTS = new Set([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "app.elizacloud.ai",
-  "api.elizacloud.ai",
-]);
 
 function getSearchParams(): URLSearchParams {
   if (typeof window === "undefined") {
@@ -44,7 +46,8 @@ function isConfiguredCloudHost(host: string): boolean {
 function isTrustedCloudLaunchHost(host: string): boolean {
   const normalized = host.toLowerCase();
   return (
-    TRUSTED_CLOUD_LAUNCH_HOSTS.has(normalized) ||
+    isElizaCloudControlPlaneHostname(normalized) ||
+    isElizaDedicatedAgentHostname(normalized) ||
     isConfiguredCloudHost(normalized)
   );
 }
@@ -115,7 +118,7 @@ function stripLaunchParams(): void {
 async function exchangeCloudLaunchSession(
   cloudBaseUrl: string,
   sessionId: string,
-): Promise<{ apiBase: string; token: string }> {
+): Promise<{ agentId: string; apiBase: string; token: string }> {
   const sessionPath = encodeURIComponent(sessionId);
   const launchSessionUrls = [
     `${cloudBaseUrl}/api/v1/eliza/launch-sessions/${sessionPath}`,
@@ -149,6 +152,7 @@ async function exchangeCloudLaunchSession(
     const payload = (await response.json()) as {
       success?: boolean;
       data?: {
+        agentId?: string;
         connection?: { apiBase?: string; token?: string };
       };
       error?: string;
@@ -162,11 +166,21 @@ async function exchangeCloudLaunchSession(
     if (!token) {
       throw new Error("Launch session did not include an access token");
     }
+    const agentId = payload.data.agentId?.trim();
+    if (!isCloudPairAgentId(agentId)) {
+      throw new Error("Launch session did not include a valid agent id");
+    }
+
+    const apiBase = normalizeLaunchApiBase(payload.data.connection.apiBase, {
+      kind: "cloud",
+    });
+    if (!isTrustedCloudApiBaseUrl(apiBase, agentId)) {
+      throw new Error("Launch session agent owner does not match its API base");
+    }
 
     return {
-      apiBase: normalizeLaunchApiBase(payload.data.connection.apiBase, {
-        kind: "cloud",
-      }),
+      agentId,
+      apiBase,
       token,
     };
   }
@@ -178,17 +192,29 @@ export function applyLaunchConnection(args: {
   apiBase: string;
   token?: string | null;
   kind?: "cloud" | "remote";
+  cloudAgentId?: string | null;
 }): { apiBase: string; token: string | null } {
   const kind = args.kind ?? "remote";
   const normalizedApiBase = normalizeLaunchApiBase(args.apiBase, {
     kind,
   });
   const token = args.token?.trim() || null;
+  const cloudAgentId =
+    kind === "cloud" ? args.cloudAgentId?.trim() || null : null;
+  if (
+    kind === "cloud" &&
+    (!isCloudPairAgentId(cloudAgentId) ||
+      !isTrustedCloudApiBaseUrl(normalizedApiBase, cloudAgentId))
+  ) {
+    throw new Error("Cloud launch owner does not match its API base");
+  }
 
+  client.setToken(null);
   client.setBaseUrl(normalizedApiBase);
-  client.setToken(token);
+  if (token) client.setToken(token);
   const persisted = createPersistedActiveServer({
     kind,
+    ...(cloudAgentId ? { id: `cloud:${cloudAgentId}` } : {}),
     apiBase: normalizedApiBase,
     ...(token ? { accessToken: token } : {}),
   });
@@ -200,6 +226,7 @@ export function applyLaunchConnection(args: {
   upsertAndActivateAgentProfile({
     kind,
     label: persisted.label,
+    ...(cloudAgentId ? { cloudAgentId } : {}),
     ...(persisted.apiBase !== undefined ? { apiBase: persisted.apiBase } : {}),
     ...(token ? { accessToken: token } : {}),
   });
@@ -221,6 +248,7 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
     );
     applyLaunchConnection({
       kind: "cloud",
+      cloudAgentId: connection.agentId,
       apiBase: connection.apiBase,
       token: connection.token,
     });

@@ -102,6 +102,8 @@ const HIDDEN_VIEWS = [
 const ALL_VIEWS = [...DOCK_VIEWS, ...PAGE_VIEWS, ...HIDDEN_VIEWS];
 
 beforeEach(() => {
+  clock = 1000;
+  vi.spyOn(performance, "now").mockImplementation(() => clock);
   resetShellSurfaceForTests();
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
@@ -133,6 +135,12 @@ function renderComposed() {
   return screen.getByTestId("home-launcher-surface");
 }
 
+// The pager reads flick velocity from performance.now() deltas, so gestures
+// ride the pinned clock (advanced explicitly here) instead of wall-clock time;
+// on a loaded CI host a real-time gap between fireEvent calls reads as a slow
+// drag and the flick snaps back.
+let clock = 1000;
+
 function flick(testid: string, dx: number, dy = 4): void {
   const el = screen.getByTestId(testid);
   fireEvent.pointerDown(el, {
@@ -141,12 +149,14 @@ function flick(testid: string, dx: number, dy = 4): void {
     clientX: 260,
     clientY: 300,
   });
+  clock += 10;
   fireEvent.pointerMove(el, {
     isPrimary: true,
     pointerId: 1,
     clientX: 260 + dx,
     clientY: 300 + dy,
   });
+  clock += 10;
   fireEvent.pointerUp(el, {
     isPrimary: true,
     pointerId: 1,

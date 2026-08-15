@@ -132,6 +132,7 @@ export interface TaskEventDto {
   id: string;
   threadId: string;
   sessionId: string | null;
+  turnId: string | null;
   eventType: string;
   timestamp: number;
   summary: string;
@@ -258,6 +259,7 @@ export function toTaskEventDto(
     id: event.id,
     threadId: event.taskId,
     sessionId: event.sessionId ?? null,
+    turnId: event.turnId ?? null,
     eventType: event.eventType,
     timestamp: event.timestamp,
     summary: event.summary,

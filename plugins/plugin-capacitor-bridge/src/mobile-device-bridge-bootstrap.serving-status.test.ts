@@ -24,10 +24,18 @@ const saved: Record<string, string | undefined> = {};
 const linuxAbstractSocketIt = process.platform === "linux" ? it : it.skip;
 
 function fakeRuntime() {
-	return {
+	const runtime = {
+		hasService: vi.fn(() => false),
 		registerModel: vi.fn(),
+		registerService: vi.fn(async () => undefined),
+		registerPlugin: vi.fn(async (plugin: { services?: unknown[] }) => {
+			for (const service of plugin.services ?? []) {
+				await runtime.registerService(service);
+			}
+		}),
 		getModel: vi.fn(() => undefined),
 	};
+	return runtime;
 }
 
 /** Fresh module instance so registeredModelTrigger starts null per test. */

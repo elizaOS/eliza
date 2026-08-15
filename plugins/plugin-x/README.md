@@ -79,7 +79,7 @@ When enabled, the discovery service searches for content matching the agent's `t
 
 ```
 src/
-  index.ts                 XPlugin (services: XService, XWorkflowCredentialProvider)
+  index.ts                 XPlugin (service: XService)
   base.ts                  ClientBase — twitter-api-v2 wrapper, profile/timeline/search
   environment.ts           twitterEnvSchema, validateTwitterConfig
   types.ts                 TwitterClientState, ITwitterClient, Tweet, MediaData, event payloads
@@ -87,7 +87,7 @@ src/
   interactions.ts          TwitterInteractionClient — mention/reply loop
   timeline.ts              TwitterTimelineClient — timeline action loop
   discovery.ts             TwitterDiscoveryClient — discovery loop
-  connector-account-provider.ts, connector-credential-refs.ts, workflow-credential-provider.ts
+  connector-account-provider.ts, connector-credential-refs.ts
   client/                  Low-level API: client.ts, tweets.ts, profile.ts, search.ts,
                            relationships.ts, accounts.ts, auth.ts, errors.ts, auth-providers/
   services/                XService (x.service.ts), Post/Message services + interfaces

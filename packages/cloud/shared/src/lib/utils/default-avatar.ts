@@ -1,12 +1,12 @@
 /**
  * Default Avatar Selection from Built-in Avatars
  *
- * Avatars are served from Cloudflare R2 CDN (blob.elizacloud.ai).
+ * Avatars are served from Cloudflare R2 CDN (blob.eliza.app).
  * The CDN base is configured via NEXT_PUBLIC_ASSETS_CDN_URL (defaults to
- * https://blob.elizacloud.ai when not set).
+ * https://blob.eliza.app when not set).
  */
 
-const DEFAULT_CDN_BASE = "https://blob.elizacloud.ai";
+const DEFAULT_CDN_BASE = "https://blob.eliza.app";
 
 function cdnUrl(path: string): string {
   const base =

@@ -18,7 +18,7 @@ import {
 } from "react";
 import { client } from "../../api";
 import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { openEventSource } from "../../utils/event-source";

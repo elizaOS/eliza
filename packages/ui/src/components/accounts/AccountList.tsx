@@ -12,7 +12,7 @@ import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useAccounts } from "../../hooks/useAccounts";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { AccountCard } from "./AccountCard";

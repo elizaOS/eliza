@@ -498,3 +498,46 @@ describe("MESSAGE umbrella planner tools footprint (real surface)", () => {
 		}
 	});
 });
+
+describe("promoted virtual similes", () => {
+	it("keeps the parent's simile array on the parent alone", () => {
+		// Retrieval drops any simile claimed by more than one catalog parent
+		// (#16567). If every promoted virtual inherited the parent array, a
+		// two-subaction umbrella would get its ENTIRE simile surface dropped
+		// as ambiguous — the live 2026-08-10 failure where all TASKS similes
+		// died and issue asks fell back to web search.
+		const parent = makeUmbrella({
+			similes: ["SHARED_ALIAS_ONE", "SHARED_ALIAS_TWO"],
+		});
+		const [umbrella, ...virtuals] = promoteSubactionsToActions(parent);
+
+		expect(umbrella.similes).toEqual(
+			expect.arrayContaining(["SHARED_ALIAS_ONE", "SHARED_ALIAS_TWO"]),
+		);
+		expect(virtuals.length).toBeGreaterThan(1);
+		for (const virtual of virtuals) {
+			expect(virtual.similes).not.toContain("SHARED_ALIAS_ONE");
+			expect(virtual.similes).not.toContain("SHARED_ALIAS_TWO");
+			// The virtual still routes through the family surface and its own
+			// subaction name.
+			expect(virtual.similes).toContain("WIDGET");
+		}
+		const names = new Set(virtuals.map((v) => v.name));
+		expect(names).toContain("WIDGET_CREATE");
+		const create = findVirtual(virtuals, "WIDGET_CREATE");
+		expect(create.similes).toContain("CREATE");
+	});
+
+	it("keeps per-subaction override similes on their own virtual only", () => {
+		const parent = makeUmbrella({ similes: ["FAMILY_ALIAS"] });
+		const [, ...virtuals] = promoteSubactionsToActions(parent, {
+			overrides: { read: { similes: ["PEEK_WIDGET"] } },
+		});
+		const read = findVirtual(virtuals, "WIDGET_READ");
+		expect(read.similes).toContain("PEEK_WIDGET");
+		for (const virtual of virtuals) {
+			if (virtual.name === "WIDGET_READ") continue;
+			expect(virtual.similes).not.toContain("PEEK_WIDGET");
+		}
+	});
+});

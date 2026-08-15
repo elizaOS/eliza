@@ -47,6 +47,8 @@ const ISSUER = "https://api.elizacloud.test";
 const CONSOLE_ORIGIN = "https://console.elizacloud.test";
 const FORGEJO_REDIRECT =
   "https://hub.elizacloud.test/user/oauth2/elizacloud/callback";
+const SLOPHUB_REDIRECT =
+  "https://git.slop.cash/user/oauth2/elizacloud/callback";
 const FORGEJO_CLIENT_ID = "elizahub-forgejo";
 const FORGEJO_SECRET = "forgejo-client-secret-value-0123456789";
 const LOWTRUST_CLIENT_ID = "lowtrust-app";
@@ -754,6 +756,87 @@ describe("discovery document", () => {
 });
 
 describe("authorize — validation that must never redirect", () => {
+  test("an additive callback works only for its existing registered client", async () => {
+    const aliasEnvironment = {
+      ...ENV,
+      OIDC_REDIRECT_URI_ALIASES: JSON.stringify({
+        [FORGEJO_CLIENT_ID]: [SLOPHUB_REDIRECT],
+      }),
+    };
+    await seedUser({ stewardUserId: "u-slophub-alias" });
+    const accepted = await harness.request(
+      `${ISSUER}${authorizeUrl({ redirect_uri: SLOPHUB_REDIRECT })}`,
+      {
+        headers: {
+          cookie: await sessionCookie("u-slophub-alias"),
+          "x-forwarded-for": "10.8.7.6",
+        },
+        redirect: "manual",
+      },
+      aliasEnvironment,
+    );
+    expect(accepted.status).toBe(302);
+    const acceptedLocation = new URL(
+      accepted.headers.get("location") as string,
+    );
+    expect(acceptedLocation.origin + acceptedLocation.pathname).toBe(
+      SLOPHUB_REDIRECT,
+    );
+    const code = acceptedLocation.searchParams.get("code");
+    expect(code).not.toBeNull();
+    const aliasTokenForm = form({
+      grant_type: "authorization_code",
+      code: code as string,
+      redirect_uri: SLOPHUB_REDIRECT,
+    });
+    const redeemed = await harness.request(
+      `${ISSUER}/api/oidc/token`,
+      {
+        method: "POST",
+        body: aliasTokenForm.body,
+        headers: {
+          ...aliasTokenForm.headers,
+          authorization: basicAuth(FORGEJO_CLIENT_ID, FORGEJO_SECRET),
+          "x-forwarded-for": "10.8.7.4",
+        },
+      },
+      aliasEnvironment,
+    );
+    expect(redeemed.status).toBe(200);
+
+    await seedUser({ stewardUserId: "u-slophub-primary" });
+    const primary = await harness.request(
+      `${ISSUER}${authorizeUrl()}`,
+      {
+        headers: {
+          cookie: await sessionCookie("u-slophub-primary"),
+          "x-forwarded-for": "10.8.7.3",
+        },
+        redirect: "manual",
+      },
+      aliasEnvironment,
+    );
+    expect(primary.status).toBe(302);
+    const primaryLocation = new URL(primary.headers.get("location") as string);
+    expect(primaryLocation.origin + primaryLocation.pathname).toBe(
+      FORGEJO_REDIRECT,
+    );
+    expect(primaryLocation.searchParams.get("code")).not.toBeNull();
+
+    for (const [clientId, redirectUri, ip] of [
+      [CONSOLE_CLIENT_ID, SLOPHUB_REDIRECT, "10.8.7.5"],
+      [FORGEJO_CLIENT_ID, `${SLOPHUB_REDIRECT}/`, "10.8.7.2"],
+    ] as const) {
+      const refused = await harness.request(
+        `${ISSUER}${authorizeUrl({ client_id: clientId, redirect_uri: redirectUri })}`,
+        { headers: { "x-forwarded-for": ip }, redirect: "manual" },
+        aliasEnvironment,
+      );
+      expect(refused.status).toBe(400);
+      expect(refused.headers.get("location")).toBeNull();
+    }
+  });
+
   test("an unknown client renders an error page with NO Location header", async () => {
     const cookie = await sessionCookie("u-unknown-client");
     await seedUser({ stewardUserId: "u-unknown-client" });

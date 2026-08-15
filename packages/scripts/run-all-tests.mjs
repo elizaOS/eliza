@@ -112,8 +112,8 @@ function parseFlag(name) {
 function parseFlagValue(prefix) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === prefix && i + 1 < argv.length) {
-      if (argv[i + 1].startsWith("--")) {
+    if (arg === prefix) {
+      if (i + 1 >= argv.length || argv[i + 1].startsWith("--")) {
         throw new Error(`${prefix} requires a value`);
       }
       const value = argv[i + 1];
@@ -122,6 +122,9 @@ function parseFlagValue(prefix) {
     }
     if (arg.startsWith(`${prefix}=`)) {
       const value = arg.slice(prefix.length + 1);
+      if (!value) {
+        throw new Error(`${prefix} requires a value`);
+      }
       argv.splice(i, 1);
       return value;
     }
@@ -171,6 +174,7 @@ let onlyFlag;
 let laneFilterFlag;
 let excludeFlags;
 let concurrencyFlag;
+let concurrency;
 let planFlag;
 let minTasksFlag;
 try {
@@ -183,6 +187,7 @@ try {
   planFlag = parseFlagValue("--plan");
   minTasksFlag = parseFlagValue("--min-tasks");
 } catch (error) {
+  // error-policy:J1 CLI parsing failures become a bounded usage error.
   failUsage(error.message);
 }
 
@@ -275,17 +280,25 @@ if (argv.length > 0) {
   failUsage(`unknown argument(s): ${argv.join(" ")}`);
 }
 
+try {
+  const concurrencyEnv = process.env.TEST_CONCURRENCY;
+  const concurrencyInput =
+    concurrencyFlag ??
+    (concurrencyEnv === undefined || concurrencyEnv.trim() === ""
+      ? undefined
+      : concurrencyEnv);
+  concurrency = normalizeConcurrency(concurrencyInput);
+} catch (error) {
+  // error-policy:J1 CLI and environment validation share the exit-2 boundary.
+  failUsage(error.message);
+}
+
 // ---------------------------------------------------------------------------
 // Environment / lane configuration
 // ---------------------------------------------------------------------------
 
 const TEST_LANE = process.env.TEST_LANE || "pr"; // "pr" | "post-merge"
 const TEST_SHARD = process.env.TEST_SHARD || ""; // "N/M"
-// Bounded worker-pool size for the parallel-safe `test` tasks. Default 1 keeps
-// the historical fully-serial behaviour; only an explicit opt-in parallelises.
-const concurrency = normalizeConcurrency(
-  concurrencyFlag ?? process.env.TEST_CONCURRENCY,
-);
 
 // Parse TEST_SHARD into { index, total } or null (parseShardSpec is pure; warn
 // here when a non-empty spec is malformed).
@@ -411,6 +424,9 @@ const ADDITIONAL_PACKAGE_DIRS = [
   path.join(repoRoot, "packages", "app-core", "platforms", "electrobun"),
 ];
 const NO_CLOUD_PACKAGE_DIRS = new Set([path.join("packages", "cloud", "e2e")]);
+const ROOT_PR_E2E_EXCLUDED_PACKAGE_DIRS = new Set([
+  path.join("packages", "homepage"),
+]);
 
 // Combine --filter, --pattern, --lane, and TEST_PACKAGE_FILTER. All (when set)
 // must match a task's label for it to run — they intersect rather than override
@@ -803,6 +819,34 @@ function isSingleBunTestCommand(command) {
   return /^bun\s+test\b/.test(commandWithoutEnv);
 }
 
+function unwrapKnownBunTestSupervisors(command) {
+  let current = stripLeadingEnvAssignments(command);
+  for (let depth = 0; depth < 3; depth += 1) {
+    const flakeRetry = current.match(
+      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-flake-retry\.mjs\s+(?:'[^']*'|"[^"]*"|\S+)\s+--\s+(.+)$/,
+    );
+    if (flakeRetry) {
+      current = flakeRetry[1];
+      continue;
+    }
+    const deadline = current.match(
+      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-deadline\.mjs\s+[1-9]\d*\s+--\s+(.+)$/,
+    );
+    if (deadline) {
+      current = deadline[1];
+      continue;
+    }
+    break;
+  }
+  return current;
+}
+
+function isSingleIsolatedBunTestWrapperCommand(command) {
+  return /^node\s+scripts\/run-isolated-tests\.mjs$/.test(
+    unwrapKnownBunTestSupervisors(command),
+  );
+}
+
 function structuredEvidenceKind(scriptName, scripts) {
   const command =
     resolveScriptCommand(scriptName, scripts) ||
@@ -814,7 +858,12 @@ function structuredEvidenceKind(scriptName, scripts) {
   ) {
     return null;
   }
-  if (isSingleBunTestCommand(command)) return "bun";
+  if (
+    isSingleBunTestCommand(command) ||
+    isSingleIsolatedBunTestWrapperCommand(command)
+  ) {
+    return "bun";
+  }
   if (
     isSingleVitestRunCommand(command) ||
     isSingleVitestWrapperCommand(command)
@@ -1280,6 +1329,17 @@ for (const packageJsonPath of packageJsonPaths) {
       } else {
         continue;
       }
+    }
+    // The homepage directory is a source/test module, not a deployable app.
+    // Its legacy visual harness remains operator-run because software-GPU timing
+    // can consume the entire root E2E budget; quality CI instead runs its source
+    // contracts and builds the real packages/app integration artifact.
+    if (
+      TEST_LANE === "pr" &&
+      scriptName === "test:e2e" &&
+      ROOT_PR_E2E_EXCLUDED_PACKAGE_DIRS.has(relativeDir)
+    ) {
+      continue;
     }
     if (packageFilters.some((rx) => !rx.test(label))) {
       continue;

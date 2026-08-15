@@ -98,7 +98,7 @@ vi.mock("../../lib/steward-session", () => ({
 }));
 
 vi.mock("../../lib/login-return-to", () => ({
-  resolveLoginReturnTo: () => "/dashboard",
+  resolveLoginReturnTo: () => "/cloud",
   consumePendingOAuthReturnTo: () => null,
   storePendingOAuthReturnTo: () => undefined,
 }));
@@ -123,6 +123,7 @@ async function startEmailLogin() {
 describe("StewardLoginSection email magic-link companion code", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    window.localStorage.clear();
     emailLoginSpies.start.mockResolvedValue({
       expiresAt: Date.now() + 600_000,
       challengeId: "challenge-1",

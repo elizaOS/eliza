@@ -207,7 +207,43 @@ export function shouldPassAfterBaselineUpdate(rows, updatedCount) {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_BUDGETS = path.resolve(HERE, "..", "perf-budgets.json");
 
-function parseArgs(argv) {
+/**
+ * Parse `--tolerance-pct` at the CLI boundary. Accepts only a complete
+ * non-negative decimal (integer or fractional). Partial strings such as
+ * `10junk` and non-finite values must not fall through to the budgets-file
+ * default — that would grade the gate under a different tolerance than the
+ * operator requested.
+ *
+ * @param {string | undefined} raw
+ * @returns {number}
+ */
+export function parseTolerancePct(raw) {
+  if (typeof raw !== "string" || raw.length === 0 || raw.startsWith("--")) {
+    throw new Error(
+      "--tolerance-pct requires a non-negative decimal number (e.g. 0, 15, 12.5)",
+    );
+  }
+  // Full-string match only: Number("10junk") is NaN and previously fell open
+  // to the budgets default via evaluateAll's Number.isFinite guard.
+  if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw)) {
+    throw new Error(
+      `--tolerance-pct must be a non-negative decimal number, got "${raw}"`,
+    );
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(
+      `--tolerance-pct must be a non-negative decimal number, got "${raw}"`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Parse CLI argv for the startup-budget gate. Exported for focused unit tests.
+ * @param {string[]} argv process.argv-style array (index 0-1 ignored)
+ */
+export function parseArgs(argv) {
   const args = {
     budgets: DEFAULT_BUDGETS,
     trace: null,
@@ -228,8 +264,9 @@ function parseArgs(argv) {
     else if (a === "--build-timing") args.buildTiming = argv[++i];
     else if (a === "--build-target") args.buildTarget = argv[++i];
     else if (a === "--metric") args.metrics.push(argv[++i]);
-    else if (a === "--tolerance-pct") args.tolerancePct = Number(argv[++i]);
-    else if (a === "--out") args.out = argv[++i];
+    else if (a === "--tolerance-pct") {
+      args.tolerancePct = parseTolerancePct(argv[++i]);
+    } else if (a === "--out") args.out = argv[++i];
     else if (a === "--update-baseline") args.updateBaseline = true;
     else if (a === "--json") args.json = true;
     else throw new Error(`Unknown argument: ${a}`);

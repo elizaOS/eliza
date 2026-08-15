@@ -52,6 +52,14 @@ export type ConnectorAccountCatalogPurpose =
   | "drive"
   | "meet";
 
+/** Provider-owned OAuth capability rendered by the generic account UI. */
+export interface ConnectorOAuthCapabilityDeclaration {
+  readonly id: string;
+  readonly group: string;
+  readonly label: string;
+  readonly description: string;
+}
+
 /**
  * Per-connector account defaults. This is the authoritative declaration the
  * server owns and the UI reads. Presentation-only fields (labels/descriptions)
@@ -75,6 +83,8 @@ export interface ConnectorAccountCatalogEntry {
   readonly defaultPurpose: readonly ConnectorAccountCatalogPurpose[];
   /** Whether this connector's accounts are provisioned via an OAuth flow. */
   readonly supportsOAuth: boolean;
+  /** Explicit least-privilege choices required when starting OAuth. */
+  readonly oauthCapabilities?: readonly ConnectorOAuthCapabilityDeclaration[];
   /**
    * Alternate ids that normalize onto this connector (e.g. "twitter" → "x",
    * "gmail" → "google"). Used for catalog lookup only.
@@ -112,6 +122,62 @@ export const CONNECTOR_ACCOUNT_CATALOG: readonly ConnectorAccountCatalogEntry[] 
       defaultRole: "OWNER",
       defaultPurpose: ["messaging", "calendar", "drive", "meet"],
       supportsOAuth: true,
+      oauthCapabilities: [
+        {
+          id: "gmail.read",
+          group: "Gmail",
+          label: "Read Gmail",
+          description: "Search and read Gmail messages.",
+        },
+        {
+          id: "gmail.send",
+          group: "Gmail",
+          label: "Send Gmail",
+          description: "Send email through Gmail.",
+        },
+        {
+          id: "gmail.manage",
+          group: "Gmail",
+          label: "Manage Gmail",
+          description: "Modify Gmail labels, message state, and settings.",
+        },
+        {
+          id: "calendar.read",
+          group: "Calendar",
+          label: "Read Calendar",
+          description: "List Google Calendar events.",
+        },
+        {
+          id: "calendar.write",
+          group: "Calendar",
+          label: "Write Calendar",
+          description: "Create and update Google Calendar events.",
+        },
+        {
+          id: "drive.read",
+          group: "Drive",
+          label: "Read Drive",
+          description: "Search and read Google Drive file metadata.",
+        },
+        {
+          id: "drive.write",
+          group: "Drive",
+          label: "Write Drive",
+          description: "Create or update files opened by this integration.",
+        },
+        {
+          id: "meet.create",
+          group: "Meet",
+          label: "Create Meet Spaces",
+          description: "Create Google Meet spaces.",
+        },
+        {
+          id: "meet.read",
+          group: "Meet",
+          label: "Read Meet Artifacts",
+          description: "Read Meet spaces, participants, and artifacts.",
+        },
+      ],
       aliases: ["gmail", "google-workspace"],
     },
     {

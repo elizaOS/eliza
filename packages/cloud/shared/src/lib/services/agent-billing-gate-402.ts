@@ -34,17 +34,35 @@ export interface InsufficientCreditsContext {
   requiredBalance?: number;
 }
 
-/** Build the canonical 402 body from a denied `checkAgentCreditGate` result. */
+/**
+ * Build the canonical 402 body from a denied `checkAgentCreditGate` result.
+ *
+ * The withheld-welcome-bonus reason comes from the route's explicit `context`
+ * (the create-with-signup route that just ran the grant) OR from the gate
+ * result itself — `checkAgentCreditGate` reads the reason recorded on the
+ * org's settings at signup, so EVERY gate-denying route (create, provision,
+ * resume, wake, upgrade) explains a capped signup without per-route plumbing.
+ */
 export function insufficientCreditsBody(
-  creditCheck: Pick<CreditGateResult, "balance" | "error">,
+  creditCheck: Pick<
+    CreditGateResult,
+    "balance" | "error" | "welcomeBonusWithheldReason" | "welcomeBonusWithheldMessage"
+  >,
   context: InsufficientCreditsContext = {},
 ): InsufficientCreditsBody {
-  const welcomeBonusWithheld = context.welcomeBonusWithheldReason && creditCheck.balance === 0;
+  const withheldReason =
+    context.welcomeBonusWithheldReason ?? creditCheck.welcomeBonusWithheldReason;
+  const withheldMessage =
+    context.welcomeBonusWithheldMessage ?? creditCheck.welcomeBonusWithheldMessage;
+  // `<= 0`: a withheld-bonus org has never held funds, so zero is the expected
+  // shape, but a negative reconciliation must not flip the explanation back to
+  // the generic copy while the reason is attached.
+  const welcomeBonusWithheld = withheldReason && creditCheck.balance <= 0;
   return {
     success: false,
     code: "insufficient_credits",
     error: welcomeBonusWithheld
-      ? (context.welcomeBonusWithheldMessage ??
+      ? (withheldMessage ??
         "Welcome credit unavailable for this signup. Add funds to start an agent.")
       : (creditCheck.error ?? "Insufficient credits"),
     requiredBalance: context.requiredBalance ?? AGENT_PRICING.MINIMUM_DEPOSIT,
@@ -52,7 +70,7 @@ export function insufficientCreditsBody(
     ...(welcomeBonusWithheld
       ? {
           welcomeBonusWithheld: true,
-          welcomeBonusWithheldReason: context.welcomeBonusWithheldReason,
+          welcomeBonusWithheldReason: withheldReason,
         }
       : {}),
   };
@@ -64,18 +82,21 @@ export function insufficientCreditsBody(
  * `Response.json` + CORS headers — and must send it with status 402.
  */
 export function insufficientCredits402(
-  creditCheck: Pick<CreditGateResult, "balance" | "error">,
+  creditCheck: Pick<
+    CreditGateResult,
+    "balance" | "error" | "welcomeBonusWithheldReason" | "welcomeBonusWithheldMessage"
+  >,
   warn: string,
   logContext: Record<string, unknown>,
   context: InsufficientCreditsContext = {},
 ): InsufficientCreditsBody {
+  const withheldReason =
+    context.welcomeBonusWithheldReason ?? creditCheck.welcomeBonusWithheldReason;
   logger.warn(warn, {
     ...logContext,
     balance: creditCheck.balance,
     required: context.requiredBalance ?? AGENT_PRICING.MINIMUM_DEPOSIT,
-    ...(context.welcomeBonusWithheldReason
-      ? { welcomeBonusWithheldReason: context.welcomeBonusWithheldReason }
-      : {}),
+    ...(withheldReason ? { welcomeBonusWithheldReason: withheldReason } : {}),
   });
   return insufficientCreditsBody(creditCheck, context);
 }

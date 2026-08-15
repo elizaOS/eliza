@@ -16,10 +16,9 @@ import { expect, test } from "../src/helpers/test-fixtures";
  *     derived from health_url's origin (resolveDirectWebUiUrlFromHealthUrl) and
  *     redirectUrl carries `?token=` only when ELIZA_API_TOKEN is present
  *     (supportsUiTokenPairing) — pairing-token/route.ts:65-94,252-273.
- *   • POST /api/auth/pair validates the token against the request Origin, is
- *     single-use (consumeValidToken flips used_at), and returns { apiKey } from
- *     environment_vars.ELIZA_API_TOKEN — auth/pair/route.ts:26-71,
- *     pairing-token.ts:75-120, agent-pairing-tokens.ts consumeValidToken:25-47.
+ *   • POST /api/auth/pair accepts only a loopback local relay and atomically
+ *     binds token, platform agent identity, origin, sandbox ownership, and the
+ *     nonblank API credential before marking the token used.
  *   • Token format must match ^[A-Za-z0-9_-]{43}$ — auth/pair/route.ts:22.
  *   • Tokens expire after 60s (TOKEN_EXPIRY_MS) and bind to one expected_origin.
  *
@@ -43,10 +42,11 @@ function hashToken(token: string): string {
 async function pair(
   apiUrl: string,
   token: string,
+  agentId: string,
   origin: string | null,
 ): Promise<{
   status: number;
-  body: { apiKey?: string | null; error?: string };
+  body: { apiKey?: string | null; agentId?: string; error?: string };
 }> {
   const res = await fetch(`${apiUrl}/api/auth/pair`, {
     method: "POST",
@@ -54,10 +54,11 @@ async function pair(
       "Content-Type": "application/json",
       ...(origin ? { Origin: origin } : {}),
     },
-    body: JSON.stringify({ token }),
+    body: JSON.stringify({ token, agentId }),
   });
   const body = (await res.json().catch(() => ({}))) as {
     apiKey?: string | null;
+    agentId?: string;
     error?: string;
   };
   return { status: res.status, body };
@@ -124,15 +125,26 @@ test.describe("pairing token exchange", () => {
     );
 
     // Exchange with the correct origin -> 200 with the agent api key.
-    const ok = await pair(stack.urls.api, token as string, webUiOrigin);
+    const ok = await pair(
+      stack.urls.api,
+      token as string,
+      sandboxId,
+      webUiOrigin,
+    );
     expect(
       ok.status,
       `pair should succeed, got ${ok.status}: ${JSON.stringify(ok.body)}`,
     ).toBe(200);
     expect(ok.body.apiKey).toBe(AGENT_API_TOKEN);
+    expect(ok.body.agentId).toBe(sandboxId);
 
     // Replaying the same token is rejected (single-use; used_at already set).
-    const replay = await pair(stack.urls.api, token as string, webUiOrigin);
+    const replay = await pair(
+      stack.urls.api,
+      token as string,
+      sandboxId,
+      webUiOrigin,
+    );
     expect(replay.status).toBe(401);
   });
 
@@ -185,16 +197,27 @@ test.describe("pairing token exchange", () => {
     const wrong = await pair(
       stack.urls.api,
       token as string,
+      sandboxId,
       "https://attacker.example.com",
     );
-    expect(wrong.status).toBe(401);
+    expect(wrong.status).toBe(403);
 
     // Missing Origin is rejected with 400 (route requires Origin).
-    const noOrigin = await pair(stack.urls.api, token as string, null);
+    const noOrigin = await pair(
+      stack.urls.api,
+      token as string,
+      sandboxId,
+      null,
+    );
     expect(noOrigin.status).toBe(400);
 
     // And the (still-unused) token remains valid from the correct origin.
-    const right = await pair(stack.urls.api, token as string, webUiOrigin);
+    const right = await pair(
+      stack.urls.api,
+      token as string,
+      sandboxId,
+      webUiOrigin,
+    );
     expect(right.status).toBe(200);
     expect(right.body.apiKey).toBe(AGENT_API_TOKEN);
   });
@@ -239,7 +262,7 @@ test.describe("pairing token exchange", () => {
       expires_at: new Date(Date.now() - 60_000),
     });
 
-    const expired = await pair(stack.urls.api, token, webUiOrigin);
+    const expired = await pair(stack.urls.api, token, sandboxId, webUiOrigin);
     expect(expired.status).toBe(401);
   });
 });

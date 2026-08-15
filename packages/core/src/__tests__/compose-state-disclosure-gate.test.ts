@@ -4,7 +4,9 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
+import { TurnAbortedError } from "../runtime/turn-controller";
 import { attestDeliveryAudienceFromCanonicalRoom } from "../security";
+import { runWithStreamingContext } from "../streaming-context";
 import type { Character, Memory, Provider, UUID } from "../types";
 import { ChannelType } from "../types";
 
@@ -162,6 +164,47 @@ describe("composeState owner-exclusive providers", () => {
 		turn.content.text = "rewritten private context";
 		await runtime.composeState(turn, ["PUBLIC", "PRIVATE"], true, false, []);
 
+		expect(publicGet).toHaveBeenCalledTimes(2);
+		expect(privateGet).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not cache a public projection when its owner cancels during assembly", async () => {
+		const { runtime } = runtimeHarness();
+		const controller = new AbortController();
+		let abortTriggered = false;
+		const values: Record<string, string> = {};
+		Object.defineProperty(values, "cancelDuringPublicProjection", {
+			enumerable: true,
+			get: () => {
+				if (!abortTriggered) {
+					abortTriggered = true;
+					controller.abort("owner stopped during public projection");
+				}
+				return "observed";
+			},
+		});
+		const publicGet = vi.fn(async () => ({ text: "PUBLIC", values }));
+		const privateGet = vi.fn(async () => ({ text: "PRIVATE" }));
+		runtime.registerProvider({ name: "PUBLIC", get: publicGet });
+		runtime.registerProvider({
+			name: "PRIVATE",
+			disclosureGate: { require: "owner_exclusive" },
+			get: privateGet,
+		});
+		const turn = message(
+			runtime,
+			"88888888-8888-8888-8888-888888888888" as UUID,
+		);
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+
+		const outcome = await runWithStreamingContext(
+			{ onStreamChunk: async () => {}, abortSignal: controller.signal },
+			() => runtime.composeState(turn, ["PUBLIC", "PRIVATE"], true, false, []),
+		).catch((cause: unknown) => cause);
+
+		expect(abortTriggered).toBe(true);
+		expect(outcome).toBeInstanceOf(TurnAbortedError);
+		await runtime.composeState(turn, ["PUBLIC", "PRIVATE"], true, false, []);
 		expect(publicGet).toHaveBeenCalledTimes(2);
 		expect(privateGet).toHaveBeenCalledTimes(2);
 	});

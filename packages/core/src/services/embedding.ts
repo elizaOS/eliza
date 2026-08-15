@@ -167,7 +167,7 @@ export class EmbeddingGenerationService extends Service {
 
 		const { memory, priority = "normal", runId } = payload;
 
-		if (memory.embedding) {
+		if (Array.isArray(memory.embedding) && memory.embedding.length > 0) {
 			this.runtime.logger.debug(
 				{
 					src: "plugin:basic-capabilities:service:embedding",
@@ -201,7 +201,11 @@ export class EmbeddingGenerationService extends Service {
 		const { memory } = item;
 
 		const memoryContent = memory.content;
-		if (!memoryContent.text) {
+		// Trim-check to match the embedding model contract: backends reject
+		// whitespace-only text, and no queue retry can ever change that
+		// (live 2026-08-10: image-only messages with whitespace text error-
+		// logged on every retry).
+		if (!memoryContent.text?.trim()) {
 			this.runtime.logger.warn(
 				{
 					src: "plugin:basic-capabilities:service:embedding",
@@ -214,7 +218,7 @@ export class EmbeddingGenerationService extends Service {
 		}
 
 		// Idempotency: skip a memory that already carries a vector.
-		if (memory.embedding) {
+		if (Array.isArray(memory.embedding) && memory.embedding.length > 0) {
 			return;
 		}
 
@@ -328,7 +332,13 @@ export class EmbeddingGenerationService extends Service {
 		const skipped: EmbeddingQueueItem[] = [];
 		for (const item of items) {
 			const text = item.memory.content.text;
-			if (!text || item.memory.embedding) {
+			// Same trim rule as the per-item path — backends reject
+			// whitespace-only text as terminally invalid.
+			if (
+				!text?.trim() ||
+				(Array.isArray(item.memory.embedding) &&
+					item.memory.embedding.length > 0)
+			) {
 				skipped.push(item);
 			} else {
 				toEmbed.push({ item, text });

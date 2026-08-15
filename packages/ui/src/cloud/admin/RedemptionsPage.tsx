@@ -1,5 +1,5 @@
 /**
- * /dashboard/admin/redemptions — review and approve token redemption requests.
+ * /cloud/admin/redemptions — review and approve token redemption requests.
  *
  * The redemption queue + payout system status come from the admin redemptions
  * endpoint (`/api/admin/redemptions`) and the public redemptions status probe

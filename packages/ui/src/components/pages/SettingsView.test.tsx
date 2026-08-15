@@ -16,6 +16,13 @@ import {
 } from "@testing-library/react";
 import { Settings } from "lucide-react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  backFromConnectorDetail,
+  openConnectorsIndexHash,
+  parseSettingsHash,
+  readSettingsHashRoute,
+  replaceConnectorDetailHash,
+} from "../settings/settings-route";
 import { SettingsView } from "./SettingsView";
 
 // SettingsView's own responsibility is hub → section navigation + a loadPlugins
@@ -63,6 +70,17 @@ const stubSections = vi.hoisted(() => [
     group: "system",
     titleKey: "settings.sections.crash.label",
     defaultTitle: "Crash",
+  },
+  {
+    id: "cloud-management",
+    label: "settings.sections.cloudManagement.label",
+    defaultLabel: "Cloud Management",
+    tone: "accent",
+    hue: "accent",
+    group: "cloud",
+    titleKey: "settings.sections.cloudManagement.label",
+    defaultTitle: "Cloud Management",
+    cloudOnly: true,
   },
 ]);
 
@@ -123,6 +141,7 @@ vi.mock("../settings/settings-sections", async () => {
     agent: "Agent",
     system: "System",
     security: "Security",
+    cloud: "Cloud",
   };
   const groupOrder = ["agent", "system", "security"];
   return {
@@ -143,6 +162,7 @@ vi.mock("../settings/settings-sections", async () => {
     SETTINGS_GROUP_LABEL: groupLabels,
     SETTINGS_GROUP_ORDER: groupOrder,
     SETTINGS_SECTIONS: sections,
+    backFromConnectorDetail,
     getAllSettingsSections: () => sections,
     // Group the stub sections the way the real helper does (bucket by group,
     // ordered by SETTINGS_GROUP_ORDER) so the folded section-nav renders.
@@ -163,8 +183,14 @@ vi.mock("../settings/settings-sections", async () => {
         .sort((a, b) => a.order - b.order)
         .map(({ group, label, items }) => ({ group, label, items }));
     },
-    readSettingsHashSection: () =>
-      window.location.hash.length > 1 ? window.location.hash.slice(1) : null,
+    openConnectorsIndexHash,
+    parseSettingsHash,
+    readSettingsHashRoute,
+    readSettingsHashSection: () => {
+      const route = readSettingsHashRoute();
+      return route.kind === "hub" ? null : route.sectionId;
+    },
+    replaceConnectorDetailHash,
     replaceSettingsHash: vi.fn(),
     settingsSectionLabel: (section: { defaultLabel: string }) =>
       section.defaultLabel,
@@ -184,6 +210,7 @@ function makeContext(
     t,
     loadPlugins: vi.fn(async () => {}),
     walletEnabled: true,
+    startupCoordinator: { target: "embedded-local" },
     ...overrides,
   };
 }
@@ -236,6 +263,32 @@ describe("SettingsView", () => {
     const nav = hubList();
     expect(nav.textContent).toContain("Agent");
     expect(nav.textContent).toContain("System");
+  });
+
+  it("hides Cloud management for local and VPS runtime targets", () => {
+    render(<SettingsView />);
+    expect(
+      screen.queryByTestId("settings-hub-row-cloud-management"),
+    ).toBeNull();
+
+    cleanup();
+    appMock.value = makeContext({
+      startupCoordinator: { target: "remote-backend" },
+    });
+    render(<SettingsView />);
+    expect(
+      screen.queryByTestId("settings-hub-row-cloud-management"),
+    ).toBeNull();
+  });
+
+  it("shows Cloud management for a managed Cloud runtime target", () => {
+    appMock.value = makeContext({
+      startupCoordinator: { target: "cloud-managed" },
+    });
+    render(<SettingsView />);
+    expect(hubRow("cloud-management").textContent).toContain(
+      "Cloud Management",
+    );
   });
 
   it("tapping a hub row opens that section as a subview under the same header", () => {

@@ -38,11 +38,10 @@ export default function PaymentSuccessPage() {
     }
 
     const targetParams = new URLSearchParams();
-    targetParams.set("tab", "billing");
     targetParams.set("payment", "success");
     if (trackId) targetParams.set("trackId", trackId);
     if (status) targetParams.set("status", status);
-    const targetPath = `/dashboard/settings?${targetParams.toString()}`;
+    const targetPath = `/cloud/billing?${targetParams.toString()}`;
 
     if (authenticated) {
       navigate(targetPath, { replace: true });
@@ -67,7 +66,7 @@ export default function PaymentSuccessPage() {
           </h1>
           <p className="text-sm text-muted">
             {t("cloud.paymentSuccess.redirecting", {
-              defaultValue: "Redirecting to your dashboard...",
+              defaultValue: "Redirecting to Cloud billing...",
             })}
           </p>
         </div>

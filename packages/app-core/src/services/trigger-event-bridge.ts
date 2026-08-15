@@ -43,6 +43,7 @@ import {
 } from "@elizaos/core";
 
 const DEFAULT_MIN_INTERVAL_MS = 1_000;
+const WORKFLOW_RUN_EVENT_TYPE = "workflow_run_event" as EventType;
 /** TTL for caching trigger task list to avoid repeated DB queries on high-frequency events. */
 const TRIGGER_CACHE_TTL_MS = 500;
 
@@ -57,6 +58,7 @@ export const EXPOSED_EVENTS: readonly EventType[] = [
   EventType.MESSAGE_SENT,
   EventType.REACTION_RECEIVED,
   EventType.ENTITY_JOINED,
+  WORKFLOW_RUN_EVENT_TYPE,
 ];
 
 export interface TriggerEventBridgeOptions {

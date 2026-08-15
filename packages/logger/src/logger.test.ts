@@ -60,6 +60,148 @@ describe("logger", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it("isolates listener failures and continues fan-out", () => {
+    const logger = bufferLogger();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const throwingListener = vi.fn<(entry: LogEntry) => void>(() => {
+      throw new Error("listener-failed");
+    });
+    const laterListener = vi.fn<(entry: LogEntry) => void>();
+    const unsubscribeThrowing = addLogListener(throwingListener);
+    const unsubscribeLater = addLogListener(laterListener);
+
+    try {
+      expect(() => {
+        logger.info("isolated-entry");
+        logger.warn("second-isolated-entry");
+      }).not.toThrow();
+
+      expect(throwingListener.mock.calls.length).toBeGreaterThan(0);
+      expect(laterListener).toHaveBeenCalledTimes(
+        throwingListener.mock.calls.length,
+      );
+      expect(laterListener.mock.calls).toContainEqual([
+        expect.objectContaining({ msg: "isolated-entry" }),
+      ]);
+      expect(laterListener.mock.calls).toContainEqual([
+        expect.objectContaining({ msg: "second-isolated-entry" }),
+      ]);
+      expect(recentLogs()).toContain("isolated-entry");
+      expect(consoleError).toHaveBeenCalledTimes(1);
+      expect(consoleError).toHaveBeenCalledWith(
+        "[logger] log listener failed; continuing fan-out and suppressing further errors from this listener",
+      );
+    } finally {
+      unsubscribeThrowing();
+      unsubscribeLater();
+    }
+  });
+
+  it("does not rethrow when the fallback warning sink fails", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {
+      throw new Error("console-failed");
+    });
+    const unsubscribeThrowing = addLogListener(() => {
+      throw new Error("listener-failed");
+    });
+    const laterListener = vi.fn<(entry: LogEntry) => void>();
+    const unsubscribeLater = addLogListener(laterListener);
+
+    try {
+      expect(() => bufferLogger().info("sink-failure-entry")).not.toThrow();
+      expect(laterListener.mock.calls.length).toBeGreaterThan(0);
+    } finally {
+      unsubscribeThrowing();
+      unsubscribeLater();
+    }
+  });
+
+  it("invokes a listener at most once per entry when it re-registers itself", () => {
+    const logger = bufferLogger();
+    const mutatingListener = vi.fn<(entry: LogEntry) => void>(() => {
+      removeLogListener(mutatingListener);
+      addLogListener(mutatingListener);
+    });
+    const laterListener = vi.fn<(entry: LogEntry) => void>();
+    addLogListener(mutatingListener);
+    addLogListener(laterListener);
+
+    try {
+      expect(() => logger.info("mutating-listener-entry")).not.toThrow();
+      const deliveredEntries = mutatingListener.mock.calls.map(
+        ([entry]) => entry,
+      );
+      expect(new Set(deliveredEntries).size).toBe(deliveredEntries.length);
+      expect(laterListener).toHaveBeenCalledTimes(deliveredEntries.length);
+    } finally {
+      removeLogListener(mutatingListener);
+      removeLogListener(laterListener);
+    }
+  });
+
+  it("skips a later listener removed during the current delivery", () => {
+    const logger = bufferLogger();
+    const laterListener = vi.fn<(entry: LogEntry) => void>();
+    const removingListener = vi.fn<(entry: LogEntry) => void>(() => {
+      removeLogListener(laterListener);
+    });
+    addLogListener(removingListener);
+    addLogListener(laterListener);
+
+    try {
+      logger.info("removed-before-turn");
+
+      expect(removingListener.mock.calls.length).toBeGreaterThan(0);
+      expect(laterListener).not.toHaveBeenCalled();
+    } finally {
+      removeLogListener(removingListener);
+      removeLogListener(laterListener);
+    }
+  });
+
+  it("does not reset warning suppression for a duplicate active listener", () => {
+    const logger = bufferLogger();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const throwingListener = () => {
+      throw new Error("listener-failed");
+    };
+    const unsubscribe = addLogListener(throwingListener);
+
+    try {
+      logger.info("first-failure");
+      addLogListener(throwingListener);
+      logger.info("second-failure");
+      expect(consoleError).toHaveBeenCalledTimes(1);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("resets warning suppression after unsubscribe and re-register", () => {
+    const logger = bufferLogger();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const throwingListener = () => {
+      throw new Error("listener-failed");
+    };
+    const unsubscribeFirst = addLogListener(throwingListener);
+
+    try {
+      logger.info("first-registration-failure");
+      unsubscribeFirst();
+      addLogListener(throwingListener);
+      logger.info("second-registration-failure");
+      expect(consoleError).toHaveBeenCalledTimes(2);
+    } finally {
+      removeLogListener(throwingListener);
+    }
+  });
+
   it("preserves forced browser mode for child loggers", () => {
     const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
     const logger = createLogger({

@@ -1,5 +1,5 @@
 /** Runs the Cloudflare proxy boundary for app-core hosted dashboard traffic. */
-const DEFAULT_UPSTREAM_ORIGIN = "https://www.elizacloud.ai";
+const DEFAULT_UPSTREAM_ORIGIN = "https://cloud.eliza.app";
 const DEFAULT_ALLOWED_ORIGINS: string[] = [];
 
 type Env = {

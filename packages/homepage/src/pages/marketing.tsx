@@ -17,7 +17,7 @@ import { releaseData } from "@/generated/release-data";
 import { isReleaseAvailable } from "@/lib/release-availability";
 import { useT } from "@/providers/I18nProvider";
 
-const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
+const cloudUrl = `${EXTERNAL_URLS.marketing}/login?intent=launch`;
 const webAppUrl = EXTERNAL_URLS.app;
 const osUrl = EXTERNAL_URLS.os;
 const releaseFallbackUrl = `${EXTERNAL_URLS.github}/releases`;
@@ -483,7 +483,7 @@ export default function MarketingPage() {
               })}
               body={t("homepage_eliza.marketing.actionRunCloudBody", {
                 defaultValue:
-                  "Launch your agent runtime and account dashboard in Eliza Cloud.",
+                  "Launch your hosted agent and manage it inside Eliza.",
               })}
               href={cloudUrl}
               label={t("homepage_eliza.marketing.ctaTryCloud", {

@@ -12,6 +12,7 @@ import type { AccessContext } from "./access-context";
 import type { Character } from "./agent";
 import type { ChatPreHandler } from "./chat-pre-handler";
 import type { Action, AgentContext, Provider } from "./components";
+import type { RoleGate } from "./contexts";
 import type { IDatabaseAdapter } from "./database";
 import type { RegisteredEvaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
@@ -890,6 +891,8 @@ export interface ViewDeclaration {
 	id: string;
 	/** Display label shown in the view manager and agent responses. */
 	label: string;
+	/** Caller-role requirement enforced at every server/view interaction boundary. */
+	roleGate?: RoleGate;
 	/**
 	 * View presentation type. Defaults to `"gui"`.
 	 *
@@ -1383,6 +1386,16 @@ export interface Plugin {
 
 	/** Remote-mode configuration. Required when {@link Plugin.mode} is `"remote"`. */
 	remote?: RemotePluginConfig;
+
+	/**
+	 * Declares that loading this plugin puts messaging connectors into passive
+	 * (ingest-only) mode by default, because the plugin owns the reply pipeline
+	 * (e.g. the LifeOps personal assistant). Connector gates read this typed
+	 * capability via `lifeOpsPassiveConnectorsEnabled` instead of matching
+	 * plugin names. Explicit `ELIZA_LIFEOPS_PASSIVE_CONNECTORS` settings
+	 * override the declared default in either direction.
+	 */
+	passiveConnectorsByDefault?: boolean;
 
 	/**
 	 * Optional pre-initialization hook invoked by the plugin resolver once the

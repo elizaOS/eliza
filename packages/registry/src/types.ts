@@ -7,7 +7,7 @@
  *    per package under `entries/third-party/`. This is what `elizaos plugins
  *    submit --dry-run` emits and what contributors add by pull request.
  * 2. {@link GeneratedRegistry} — the wire format the runtime consumes from
- *    `plugins.elizacloud.ai/generated-registry.json`. Produced from the source
+ *    `plugins.eliza.app/generated-registry.json`. Produced from the source
  *    entries by {@link generateRegistry}.
  */
 

@@ -1,4 +1,11 @@
-import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/core";
+/**
+ * Selects the opt-in standalone Telegram poller from the resolved runtime
+ * plugin set and explicit deployment settings.
+ */
+import {
+  type IAgentRuntime,
+  lifeOpsPassiveConnectorsEnabled,
+} from "@elizaos/core";
 
 function isExplicitTrue(value: string | undefined): boolean {
   if (!value) {
@@ -11,14 +18,14 @@ function isExplicitTrue(value: string | undefined): boolean {
 /**
  * The standalone Telegram bot is an opt-in alternative to the full
  * `@elizaos/plugin-telegram` connector: it only runs when LifeOps passive
- * connectors are explicitly disabled AND `ELIZA_TELEGRAM_STANDALONE_BOT` is
- * truthy. In the default (passive-connectors-on) posture it never starts, so
- * the passive telegram connector owns the long-poll instead.
+ * `ELIZA_TELEGRAM_STANDALONE_BOT` is truthy and LifeOps passive mode is not
+ * active. Explicit passive-connector settings retain precedence.
  */
 export function shouldStartTelegramStandaloneBot(
   env: NodeJS.ProcessEnv = process.env,
+  runtime?: Pick<IAgentRuntime, "getSetting" | "plugins">,
 ): boolean {
-  if (lifeOpsPassiveConnectorsEnabled(null, env)) {
+  if (lifeOpsPassiveConnectorsEnabled(runtime, env)) {
     return false;
   }
   return isExplicitTrue(env.ELIZA_TELEGRAM_STANDALONE_BOT);

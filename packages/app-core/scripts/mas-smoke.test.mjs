@@ -1,7 +1,8 @@
 /**
  * Self-tests for mas-smoke.mjs.
  *
- * Covers the pure-data helpers:
+ * Covers the pure-data helpers shared by MAS signing and verification:
+ *   - permission-host identifier selection and verification requirements
  *   - parseEntitlementsPlist: extracts true/false/string from plist XML
  *   - walkBundleFiles / isMachO / findMachOFiles: identifies Mach-O files in a
  *     synthetic bundle tree by magic bytes
@@ -19,6 +20,10 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import {
+  identifierVerificationRequirement,
+  signingIdentifierForMacho,
+} from "./codesign-mas.mjs";
 import { resolveElizaWorkspaceRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
   findMachOFiles,
@@ -56,6 +61,47 @@ const SAMPLE_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
   <string>production</string>
 </dict>
 </plist>`;
+
+test("MAS signer gives only the top-level Bun permission host the app identifier", () => {
+  const appPath = path.join("tmp", "Eliza.app");
+  const identifier = "ai.elizaos.app";
+
+  assert.equal(
+    signingIdentifierForMacho(
+      path.join(appPath, "Contents", "MacOS", "bun"),
+      appPath,
+      identifier,
+    ),
+    identifier,
+  );
+  assert.equal(
+    signingIdentifierForMacho(
+      path.join(appPath, "Contents", "MacOS", "launcher"),
+      appPath,
+      identifier,
+    ),
+    undefined,
+  );
+  assert.equal(
+    signingIdentifierForMacho(
+      path.join(appPath, "Contents", "Frameworks", "bun"),
+      appPath,
+      identifier,
+    ),
+    undefined,
+  );
+});
+
+test("MAS signer builds a literal verification requirement from a valid bundle id", () => {
+  assert.equal(
+    identifierVerificationRequirement("ai.elizaos.app"),
+    '=identifier "ai.elizaos.app"',
+  );
+  assert.throws(
+    () => identifierVerificationRequirement('ai.elizaos.app" or true'),
+    /Invalid macOS application identifier/,
+  );
+});
 
 test("parseEntitlementsPlist extracts true/false and string values", () => {
   const ents = parseEntitlementsPlist(SAMPLE_PLIST);

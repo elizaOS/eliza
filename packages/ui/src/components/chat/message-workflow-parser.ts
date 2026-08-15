@@ -21,11 +21,20 @@ export type WorkflowStepStatus = "pending" | "running" | "done" | "failed";
 export interface WorkflowStepSpec {
   label: string;
   status: WorkflowStepStatus;
+  nodeId?: string;
 }
 
 export interface WorkflowSpec {
   id: string;
   title?: string;
+  workflowId?: string;
+  runId?: string;
+  widgets?: Array<{
+    id: string;
+    title: string;
+    component: string;
+    dataPath?: string;
+  }>;
   steps: WorkflowStepSpec[];
 }
 
@@ -61,7 +70,11 @@ function parseStep(raw: unknown): WorkflowStepSpec | null {
     STEP_STATUSES.has(record.status as WorkflowStepStatus)
       ? (record.status as WorkflowStepStatus)
       : "pending";
-  return { label: label.trim(), status };
+  return {
+    label: label.trim(),
+    status,
+    ...(typeof record.nodeId === "string" ? { nodeId: record.nodeId } : {}),
+  };
 }
 
 /** Parse a `[WORKFLOW]` body into a normalized spec, or `null` if malformed. */
@@ -93,6 +106,34 @@ export function parseWorkflowBody(body: string): WorkflowSpec | null {
         ? record.id
         : generateId(),
     ...(typeof record.title === "string" ? { title: record.title } : {}),
+    ...(typeof record.workflowId === "string"
+      ? { workflowId: record.workflowId }
+      : {}),
+    ...(typeof record.runId === "string" ? { runId: record.runId } : {}),
+    ...(Array.isArray(record.widgets)
+      ? {
+          widgets: record.widgets.flatMap((value) => {
+            if (!value || typeof value !== "object") return [];
+            const widget = value as Record<string, unknown>;
+            if (
+              typeof widget.id !== "string" ||
+              typeof widget.title !== "string" ||
+              typeof widget.component !== "string"
+            )
+              return [];
+            return [
+              {
+                id: widget.id,
+                title: widget.title,
+                component: widget.component,
+                ...(typeof widget.dataPath === "string"
+                  ? { dataPath: widget.dataPath }
+                  : {}),
+              },
+            ];
+          }),
+        }
+      : {}),
     steps,
   };
 }

@@ -4,10 +4,8 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 /**
- * #8427 — a brand-new organization must start at $0, not the old $100 give-away
- * footgun. The signup grant (steward-sync) adds the small welcome bonus
- * explicitly; the column itself defaults to zero, and a CHECK keeps the balance
- * non-negative.
+ * #8427 — a brand-new organization starts at $0. Only explicit funding or
+ * promotion paths add credits, and a CHECK keeps the balance non-negative.
  */
 describe("#8427 organizations zero-balance default", () => {
   const config = getTableConfig(organizations);

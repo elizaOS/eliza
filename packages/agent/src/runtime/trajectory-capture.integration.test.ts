@@ -72,7 +72,13 @@ interface TrajectoryDetailLike {
     evaluatorName?: string;
     kind?: string;
     llmCalls?: CapturedLlmCall[];
-    providerAccesses?: Array<{ providerName?: string }>;
+    providerAccesses?: Array<{
+      providerId?: string;
+      providerName?: string;
+      timestamp?: number;
+      purpose?: string;
+      data?: Record<string, unknown>;
+    }>;
     action?: {
       actionName?: string;
       success?: boolean;
@@ -460,6 +466,69 @@ afterAll(async () => {
 });
 
 describe("trajectory capture -> DB -> viewer", () => {
+  it("retains required provider fields after bounded SQL persistence", async () => {
+    const logger = runtime.getService(
+      "trajectories",
+    ) as unknown as TrajLogger | null;
+    expect(logger).toBeTruthy();
+    if (!logger) return;
+
+    const trajectoryId = await logger.startTrajectory(runtime.agentId, {
+      source: "provider-budget-test",
+    });
+    const stepId = logger.startStep(trajectoryId);
+    const data = Object.fromEntries(
+      Array.from({ length: 20 }, (_, index) => [
+        `chunk-${index}`,
+        "x".repeat(70_000),
+      ]),
+    );
+
+    logger.logProviderAccess({
+      stepId,
+      providerName: "KNOWLEDGE",
+      purpose: "Provider KNOWLEDGE accessed for context",
+      data,
+    });
+    await flushTrajectoryWrites(runtime);
+    await logger.flushWriteQueue?.(trajectoryId);
+
+    const row = asRecord(
+      extractRows(
+        await executeRawSql(
+          runtime,
+          `SELECT payload FROM trajectory_steps WHERE id = '${stepId.replaceAll("'", "''")}'`,
+        ),
+      )[0],
+    );
+    const payload = parseMetadata(row?.payload);
+    const persistedAccess = Array.isArray(payload.providerAccesses)
+      ? asRecord(payload.providerAccesses[0])
+      : null;
+    expect(persistedAccess).toMatchObject({
+      providerName: "KNOWLEDGE",
+      purpose: "Provider KNOWLEDGE accessed for context",
+    });
+    expect(persistedAccess?.providerId).toBeTypeOf("string");
+    expect(persistedAccess?.timestamp).toBeTypeOf("number");
+    expect(persistedAccess?.data).toBeTypeOf("object");
+
+    const detail = await logger.getTrajectoryDetail(trajectoryId);
+    const readback = detail?.steps?.find((step) => step.stepId === stepId)
+      ?.providerAccesses?.[0];
+    expect(readback).toMatchObject({
+      providerName: "KNOWLEDGE",
+      purpose: "Provider KNOWLEDGE accessed for context",
+    });
+    expect(readback?.providerId).toBeTypeOf("string");
+    expect(readback?.timestamp).toBeTypeOf("number");
+    expect(readback?.data).toBeTypeOf("object");
+
+    await logger.endTrajectory(trajectoryId, "completed");
+    await flushTrajectoryWrites(runtime);
+    await logger.flushWriteQueue?.(trajectoryId);
+  });
+
   it("persists provider/LLM appends with valid active and completed metrics", async () => {
     const logger = runtime.getService(
       "trajectories",

@@ -1,9 +1,9 @@
 /**
  * Steward login section for the app-hosted login page.
  *
- * Supports passkey where browser WebAuthn is actually available, plus email
- * magic-link, OAuth (Google / Discord / GitHub), wallets, and the post-redirect
- * OAuth `code` / `#token` consumption + cookie sync.
+ * Supports phone OTP when Steward advertises SMS, passkey where browser
+ * WebAuthn is actually available, plus email magic-link, OAuth, wallets, and
+ * the post-redirect OAuth `code` / `#token` consumption + cookie sync.
  *
  * Wallet (SIWE / SIWS) sign-in is the bounded port of the wallet UI from
  * `cloud-frontend@4056e0e868` (nubs's call, 2026-07-06): gated on the live
@@ -24,8 +24,8 @@ import type {
   StewardMfaRequiredResult,
   StewardProviders,
 } from "@stwd/sdk";
-import { StewardAuth } from "@stwd/sdk";
-import { AlertCircle } from "lucide-react";
+import { StewardApiError, StewardAuth } from "@stwd/sdk";
+import { AlertCircle, Phone } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   Navigate,
@@ -82,6 +82,10 @@ import {
   syncStewardSessionCookie,
 } from "../../lib/steward-session";
 import {
+  LoginOptionsSkeleton,
+  ReservedLoginFrame,
+} from "./login-section-skeleton";
+import {
   resolveWebPasskeyCapability,
   type WebPasskeyCapability,
 } from "./passkey-capability";
@@ -104,7 +108,13 @@ const PLAYWRIGHT_TEST_AUTH_ENABLED =
   (typeof process !== "undefined" &&
     process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 
-type AuthStep = "idle" | "loading" | "email-sent" | "otp-entry" | "success";
+type AuthStep =
+  | "idle"
+  | "loading"
+  | "email-sent"
+  | "sms-code"
+  | "otp-entry"
+  | "success";
 type EmailCheckState =
   | "pending"
   | "approved"
@@ -124,6 +134,7 @@ function persistStewardToken(token: string): void {
 type Provider =
   | "passkey"
   | "email"
+  | "sms"
   | "google"
   | "discord"
   | "github"
@@ -151,6 +162,7 @@ function hasAnyWalletProvider(providers: StewardProviders): boolean {
 const DEFAULT_PROVIDERS: StewardProviders = {
   passkey: true,
   email: true,
+  sms: false,
   siwe: false,
   siws: false,
   google: false,
@@ -257,11 +269,16 @@ function getCallbackReasonMessage(
   }
 }
 
-const EMAIL_RESEND_COOLDOWN_MS = 30_000;
+const AUTH_CODE_RESEND_COOLDOWN_MS = 30_000;
 const EMAIL_STATUS_POLL_MS = 3_000;
 
 function sanitizeOneTimeCode(value: string): string {
   return value.replace(/[^0-9]/g, "").slice(0, 6);
+}
+
+function normalizeE164Phone(value: string): string | null {
+  const normalized = value.trim().replace(/[\s().-]/g, "");
+  return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : null;
 }
 
 function challengeExpiresAtMs(challenge: StewardEmailLoginChallenge): number {
@@ -324,15 +341,28 @@ export default function StewardLoginSection() {
   const pathname = useLocation().pathname;
   const stewardApiUrl = useMemo(() => resolveBrowserStewardApiUrl(), []);
 
-  const auth = useMemo(
-    () =>
-      new StewardAuth({ baseUrl: stewardApiUrl, tenantId: STEWARD_TENANT_ID }),
-    [stewardApiUrl],
-  );
+  const auth = useMemo(() => {
+    const privateSession = new Map<string, string>();
+    return new StewardAuth({
+      baseUrl: stewardApiUrl,
+      tenantId: STEWARD_TENANT_ID,
+      // Steward writes successful exchanges into its configured storage before
+      // returning. Keep that intermediate state private: handleSuccess first
+      // completes the authoritative Cloud sync (including verified-phone
+      // convergence), then publishes once through writeStoredStewardToken.
+      storage: {
+        getItem: (key) => privateSession.get(key) ?? null,
+        setItem: (key, value) => privateSession.set(key, value),
+        removeItem: (key) => privateSession.delete(key),
+      },
+    });
+  }, [stewardApiUrl]);
 
   const emailInputRef = useRef<HTMLInputElement>(null);
 
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [smsCode, setSmsCode] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [emailCode, setEmailCode] = useState("");
   const [emailChallenge, setEmailChallenge] =
@@ -344,6 +374,7 @@ export default function StewardLoginSection() {
   const [step, setStep] = useState<AuthStep>("idle");
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showPasskeyRecovery, setShowPasskeyRecovery] = useState(false);
   // Wallet libs mount only on intent: the first wallet-button click renders
   // the (lazy) providers + buttons and auto-starts that wallet's flow.
   const [walletButtonsMounted, setWalletButtonsMounted] = useState(false);
@@ -452,21 +483,9 @@ export default function StewardLoginSection() {
     const refreshToken = fromHash?.refreshToken ?? queryRefreshToken ?? null;
     if (!token) return;
 
-    try {
-      persistStewardToken(token);
-    } catch (sessionError) {
-      setCompletingCallback(false);
-      setCallbackError(
-        getErrorMessage(
-          sessionError,
-          "Could not complete Eliza Cloud sign-in.",
-        ),
-      );
-      return;
-    }
-
     syncStewardSessionCookie(token, refreshToken)
       .then(() => {
+        persistStewardToken(token);
         setRedirectTo(
           resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
         );
@@ -489,15 +508,23 @@ export default function StewardLoginSection() {
 
     const tryRecoverSession = async () => {
       try {
-        const session = auth.getSession();
-        if (session?.token) {
-          await syncStewardSessionCookie(session.token);
-          if (!cancelled) setRedirectTo(resolveLoginReturnTo(searchParams));
-          return;
+        const storedToken = readStoredStewardToken();
+        if (storedToken) {
+          try {
+            await syncStewardSessionCookie(storedToken);
+            if (!cancelled) {
+              setRedirectTo(resolveLoginReturnTo(searchParams));
+            }
+            return;
+          } catch (storedTokenError) {
+            // error-policy:J4 A stale browser token may coexist with a valid
+            // HttpOnly refresh cookie. Retry only through the server-owned
+            // cookie boundary; never reintroduce a browser refresh token.
+            if (!hasStewardAuthedCookie()) throw storedTokenError;
+          }
         }
 
-        const storedToken = readStoredStewardToken();
-        if (!storedToken && hasStewardAuthedCookie()) {
+        if (hasStewardAuthedCookie()) {
           const refreshed = await recoverStewardSessionViaCookie();
           if (cancelled) return;
           if (refreshed?.token) {
@@ -506,15 +533,6 @@ export default function StewardLoginSection() {
             setRedirectTo(resolveLoginReturnTo(searchParams));
           }
           return;
-        }
-
-        if (!storedToken) return;
-
-        const refreshed = await auth.refreshSession();
-        if (cancelled) return;
-        if (refreshed?.token) {
-          await syncStewardSessionCookie(refreshed.token);
-          if (!cancelled) setRedirectTo(resolveLoginReturnTo(searchParams));
         }
       } catch (sessionError) {
         if (!cancelled) {
@@ -533,7 +551,7 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, [auth, searchParams]);
+  }, [searchParams]);
 
   useEffect(() => {
     const errorCode = searchParams.get("error");
@@ -601,19 +619,22 @@ export default function StewardLoginSection() {
   }, [emailChallenge, emailCheckState, step, stewardApiUrl]);
 
   useEffect(() => {
-    if (step !== "email-sent" || !emailChallenge) {
+    const tracksEmailExpiry = step === "email-sent" && emailChallenge !== null;
+    if (!tracksEmailExpiry && step !== "sms-code") {
       setResendRemainingSeconds(0);
       return;
     }
 
     const update = () => {
       const resendMs = Math.max(0, resendAvailableAt - Date.now());
-      const expiryMs = Math.max(
-        0,
-        challengeExpiresAtMs(emailChallenge) - Date.now(),
-      );
-      if (expiryMs === 0 && emailCheckState === "pending") {
-        setEmailCheckState("expired");
+      if (tracksEmailExpiry) {
+        const expiryMs = Math.max(
+          0,
+          challengeExpiresAtMs(emailChallenge) - Date.now(),
+        );
+        if (expiryMs === 0 && emailCheckState === "pending") {
+          setEmailCheckState("expired");
+        }
       }
       setResendRemainingSeconds(Math.ceil(resendMs / 1000));
     };
@@ -623,16 +644,40 @@ export default function StewardLoginSection() {
     return () => clearInterval(interval);
   }, [emailChallenge, emailCheckState, resendAvailableAt, step]);
 
-  async function handleSuccess(token: string, refreshToken?: string | null) {
+  async function handleSuccess(
+    token: string,
+    refreshToken?: string | null,
+    options?: { verifiedPhone: string },
+  ) {
+    if (options) {
+      await syncStewardSessionCookie(token, refreshToken, options);
+    } else {
+      await syncStewardSessionCookie(token, refreshToken);
+    }
+    // Publish the browser token only after the authoritative Cloud sync wins.
+    // Otherwise StewardProviderRuntime can race a second unhinted sync against
+    // phone-account promotion.
     persistStewardToken(token);
-    await syncStewardSessionCookie(token, refreshToken);
     toast.success("Signed in!");
-    setRedirectTo(resolveLoginReturnTo(searchParams));
+    setRedirectTo(
+      resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
+    );
     setStep("success");
+  }
+
+  function isBrowserOwnedWebAuthnFailure(e: unknown, msg: string): boolean {
+    return (
+      (typeof DOMException !== "undefined" && e instanceof DOMException) ||
+      (e instanceof StewardApiError &&
+        e.status === 0 &&
+        (msg.includes("webauthn authentication") ||
+          msg.includes("webauthn registration")))
+    );
   }
 
   function isUserCancelled(e: unknown): boolean {
     const msg = getErrorMessage(e, "").toLowerCase();
+    if (!isBrowserOwnedWebAuthnFailure(e, msg)) return false;
     return (
       msg.includes("cancel") ||
       msg.includes("notallowed") ||
@@ -640,6 +685,20 @@ export default function StewardLoginSection() {
       msg.includes("aborted") ||
       msg.includes("timed out") ||
       msg.includes("timeout")
+    );
+  }
+
+  // UV errors surface when the Steward server or browser WebAuthn layer requires
+  // user verification (PIN/biometric) but the assertion didn't satisfy it. They
+  // must NOT silently fall through to startPasskeySignup() — the user already
+  // has a passkey; sending a setup OTP and re-running addPasskey() hits the same
+  // UV constraint and loops. See #18468.
+  function isUserVerificationError(e: unknown): boolean {
+    const msg = getErrorMessage(e, "").toLowerCase();
+    if (!isBrowserOwnedWebAuthnFailure(e, msg)) return false;
+    return (
+      msg.includes("user verification") ||
+      msg.includes("user could not be verified")
     );
   }
 
@@ -660,13 +719,36 @@ export default function StewardLoginSection() {
     }
     setLoading("passkey");
     setError(null);
+    setShowPasskeyRecovery(false);
     try {
       const result = requireCompletedAuth(
-        await auth.signInWithPasskey(email.trim()),
+        await auth.signInWithPasskey(email.trim(), {
+          fallbackToRegistration: false,
+        }),
       );
       await handleSuccess(result.token, result.refreshToken);
-    } catch {
-      await startPasskeySignup();
+    } catch (e: unknown) {
+      // error-policy:J4 authentication failures remain visibly distinct and
+      // only the ambiguous browser-owned credential outcome offers recovery.
+      if (isUserVerificationError(e)) {
+        setError(
+          "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
+        );
+        setLoading(null);
+      } else if (
+        isUserCancelled(e) ||
+        (e instanceof StewardApiError && e.status === 404)
+      ) {
+        // A discoverable-credential request intentionally cannot reveal whether
+        // an account or passkey exists. Chromium reports the same NotAllowedError
+        // for an empty credential result and a cancelled prompt, so recovery must
+        // remain an explicit user choice instead of silently sending signup mail.
+        setShowPasskeyRecovery(true);
+        setLoading(null);
+      } else {
+        setError(getErrorMessage(e, "Passkey sign-in failed. Try again."));
+        setLoading(null);
+      }
     }
   }
 
@@ -676,6 +758,7 @@ export default function StewardLoginSection() {
     try {
       await auth.sendEmailOtp(email.trim());
       setOtpCode("");
+      setShowPasskeyRecovery(false);
       setStep("otp-entry");
       setLoading(null);
     } catch (e: unknown) {
@@ -716,6 +799,10 @@ export default function StewardLoginSection() {
     setLoading("email");
     setError(null);
     try {
+      // The magic link can open in a new same-origin tab. Persist the pending
+      // destination before asking Steward to send it so the callback can
+      // resume an onboarding continuation instead of falling back to /join.
+      storePendingOAuthReturnTo(searchParams);
       const challenge = await startStewardEmailLogin(
         { baseUrl: stewardApiUrl, tenantId: STEWARD_TENANT_ID },
         email.trim(),
@@ -723,13 +810,70 @@ export default function StewardLoginSection() {
       setEmailChallenge(challenge);
       setEmailCode("");
       setEmailCheckState("pending");
-      setResendAvailableAt(Date.now() + EMAIL_RESEND_COOLDOWN_MS);
+      setResendAvailableAt(Date.now() + AUTH_CODE_RESEND_COOLDOWN_MS);
       setStep("email-sent");
       setLoading(null);
     } catch (e: unknown) {
       setError(describeEmailLoginError(e, "Failed to send sign-in email."));
       setLoading(null);
     }
+  }
+
+  async function handleSendSms() {
+    const normalizedPhone = normalizeE164Phone(phone);
+    if (!normalizedPhone) {
+      setError(
+        "Enter a complete phone number with country code, such as +1 415 555 2671.",
+      );
+      return;
+    }
+
+    setLoading("sms");
+    setError(null);
+    try {
+      await auth.sendSmsOtp(normalizedPhone);
+      setPhone(normalizedPhone);
+      setSmsCode("");
+      setResendAvailableAt(Date.now() + AUTH_CODE_RESEND_COOLDOWN_MS);
+      setResendRemainingSeconds(AUTH_CODE_RESEND_COOLDOWN_MS / 1000);
+      setStep("sms-code");
+    } catch (smsError) {
+      // error-policy:J4 Steward transport failures remain a visible login error.
+      setError(
+        getErrorMessage(smsError, "Couldn't send a text code. Try again."),
+      );
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function handleVerifySms() {
+    const code = sanitizeOneTimeCode(smsCode);
+    if (code.length !== 6) {
+      setError("Enter the six-digit code from the text message.");
+      return;
+    }
+
+    setLoading("sms");
+    setError(null);
+    try {
+      const result = requireCompletedAuth(await auth.verifySmsOtp(phone, code));
+      await handleSuccess(result.token, result.refreshToken, {
+        verifiedPhone: phone,
+      });
+    } catch (smsError) {
+      // error-policy:J4 Rejected or failed SMS verification stays recoverable.
+      setError(getErrorMessage(smsError, "That code didn't work. Try again."));
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  function cancelSmsLogin() {
+    setStep("idle");
+    setSmsCode("");
+    setError(null);
+    setLoading(null);
   }
 
   async function handleVerifyEmailCode() {
@@ -787,7 +931,7 @@ export default function StewardLoginSection() {
     setError(null);
     const host = window.location.hostname.toLowerCase();
     const oauthOrigin = host.endsWith(".pages.dev")
-      ? "https://staging.elizacloud.ai"
+      ? "https://staging.eliza.app"
       : window.location.origin;
     let codeChallenge: string;
     try {
@@ -843,29 +987,137 @@ export default function StewardLoginSection() {
   // "completing sign-in" state (never the provider options) until the exchange
   // resolves into a redirect or an error — so the callback can't flash back to
   // the sign-in options. A callback failure clears this and surfaces
-  // `callbackError` below.
+  // `callbackError` below. The reserved frame keeps the card at the option
+  // stack's footprint so a failure resolves in place instead of jumping
+  // (#18256).
   if (completingCallback && !callbackError) {
     return (
-      <div className="flex flex-col items-center gap-4 py-8" role="status">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
-        <p className="text-sm text-muted">
-          {t("cloud.login.completingSignIn", {
-            defaultValue: "Completing sign-in…",
-          })}
-        </p>
-      </div>
+      <ReservedLoginFrame>
+        <div className="flex flex-col items-center gap-4" role="status">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+          <p className="text-sm text-muted">
+            {t("cloud.login.completingSignIn", {
+              defaultValue: "Completing sign-in…",
+            })}
+          </p>
+        </div>
+      </ReservedLoginFrame>
     );
   }
 
   if (step === "success") {
     return (
-      <div className="flex flex-col items-center gap-4 py-8" role="status">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
-        <p className="text-sm text-muted">
-          {t("cloud.login.redirecting", {
-            defaultValue: "Redirecting to dashboard...",
+      <ReservedLoginFrame>
+        <div className="flex flex-col items-center gap-4" role="status">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+          <p className="text-sm text-muted">
+            {t("cloud.login.redirecting", {
+              defaultValue: "Redirecting to Eliza...",
+            })}
+          </p>
+        </div>
+      </ReservedLoginFrame>
+    );
+  }
+
+  if (step === "sms-code") {
+    const resendDisabled = loading !== null || resendRemainingSeconds > 0;
+
+    return (
+      <div className="space-y-4 py-4 text-center">
+        <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-accent-subtle text-accent">
+          <Phone className="size-5" aria-hidden="true" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-base font-semibold text-txt-strong">
+            {t("cloud.login.smsCode.title", {
+              defaultValue: "Enter the text code",
+            })}
+          </p>
+          <p className="text-sm text-muted">
+            {t("cloud.login.smsCode.sentTo", {
+              defaultValue: "We sent a six-digit code to",
+            })}{" "}
+            <strong className="font-semibold text-txt">{phone}</strong>
+          </p>
+        </div>
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="space-y-2">
+          <label
+            htmlFor="sms-sign-in-code"
+            className="block text-left text-sm font-medium text-txt"
+          >
+            {t("cloud.login.smsCode.label", {
+              defaultValue: "Six-digit code",
+            })}
+          </label>
+          <Input
+            id="sms-sign-in-code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            maxLength={6}
+            placeholder="123456"
+            value={smsCode}
+            onChange={(event) =>
+              setSmsCode(sanitizeOneTimeCode(event.target.value))
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Enter") handleVerifySms();
+            }}
+            disabled={loading !== null}
+            className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-center text-2xl font-semibold tracking-[0.45em] text-txt outline-none transition-colors placeholder:tracking-normal placeholder:text-muted hover:border-border-strong disabled:opacity-50"
+          />
+        </div>
+
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={handleVerifySms}
+          disabled={loading !== null || smsCode.length !== 6}
+          className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+        >
+          {loading === "sms" ? (
+            <Spinner />
+          ) : (
+            <Phone className="size-4" aria-hidden="true" />
+          )}{" "}
+          {t("cloud.login.smsCode.verify", {
+            defaultValue: "Verify phone",
           })}
-        </p>
+        </Button>
+
+        <div className="flex items-center justify-between text-sm">
+          <Button
+            variant="ghost"
+            type="button"
+            className="hosted-signin-focus-emphasis inline-flex min-h-touch items-center rounded-md border border-transparent px-3 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+            onClick={handleSendSms}
+            disabled={resendDisabled}
+          >
+            {resendRemainingSeconds > 0
+              ? `Resend in ${resendRemainingSeconds}s`
+              : t("cloud.login.smsCode.resend", {
+                  defaultValue: "Resend code",
+                })}
+          </Button>
+          <Button
+            variant="ghost"
+            type="button"
+            className="hosted-signin-focus-emphasis inline-flex min-h-touch items-center rounded-md border border-transparent px-3 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+            onClick={cancelSmsLogin}
+          >
+            {t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
+          </Button>
+        </div>
       </div>
     );
   }
@@ -1105,22 +1357,24 @@ export default function StewardLoginSection() {
     );
   }
 
+  // Provider discovery in flight: a pulsing skeleton with the final option
+  // stack's exact geometry, so the real options materialize in place with no
+  // card resize (#18256) instead of replacing a short spinner block.
   if (!providersLoaded) {
     return (
       <div
-        className="flex flex-col items-center gap-4 py-8"
         role="status"
         aria-busy="true"
         aria-label={t("cloud.login.loadingOptions.aria", {
           defaultValue: "Loading sign-in options",
         })}
       >
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
-        <p className="text-sm text-muted">
+        <LoginOptionsSkeleton />
+        <span className="sr-only">
           {t("cloud.login.loadingOptions", {
             defaultValue: "Loading sign-in options...",
           })}
-        </p>
+        </span>
       </div>
     );
   }
@@ -1134,6 +1388,57 @@ export default function StewardLoginSection() {
           <AlertCircle />
           <AlertDescription>{callbackError}</AlertDescription>
         </Alert>
+      )}
+
+      {providers.sms && (
+        <>
+          <div className="space-y-2">
+            <label
+              htmlFor="steward-login-phone"
+              className="block text-left text-sm font-medium text-txt"
+            >
+              {t("cloud.login.phoneLabel", { defaultValue: "Phone number" })}
+            </label>
+            <Input
+              id="steward-login-phone"
+              type="tel"
+              name="phone"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="+1 415 555 2671"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") handleSendSms();
+              }}
+              disabled={isLoading}
+              className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
+            />
+          </div>
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={handleSendSms}
+            disabled={isLoading}
+            className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+          >
+            {loading === "sms" ? (
+              <Spinner />
+            ) : (
+              <Phone className="size-4" aria-hidden="true" />
+            )}{" "}
+            {t("cloud.login.button.sms", { defaultValue: "Text me a code" })}
+          </Button>
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted">
+              {t("cloud.login.orContinueWith", {
+                defaultValue: "or continue with",
+              })}
+            </span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+        </>
       )}
 
       <div className="space-y-2">
@@ -1152,7 +1457,10 @@ export default function StewardLoginSection() {
             defaultValue: "you@example.com",
           })}
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setShowPasskeyRecovery(false);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               if (showPasskey) {
@@ -1163,7 +1471,7 @@ export default function StewardLoginSection() {
             }
           }}
           disabled={isLoading}
-          className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
+          className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
           autoComplete={showPasskey ? "email webauthn" : "email"}
         />
       </div>
@@ -1175,7 +1483,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
             {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}
@@ -1187,7 +1495,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handleEmail}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="hosted-signin-focus-emphasis flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.button.magicLink", { defaultValue: "Magic Link" })}
@@ -1217,6 +1525,55 @@ export default function StewardLoginSection() {
         </p>
       )}
 
+      {showPasskeyRecovery && (
+        <section
+          aria-labelledby="passkey-recovery-title"
+          className="space-y-3 rounded-md border border-border-strong bg-accent-subtle p-4 text-left"
+        >
+          <div className="space-y-1">
+            <p
+              id="passkey-recovery-title"
+              className="text-sm font-semibold text-txt-strong"
+            >
+              {t("cloud.login.passkeyRecovery.title", {
+                defaultValue: "Passkey not completed",
+              })}
+            </p>
+            <p className="text-xs leading-relaxed text-muted">
+              {t("cloud.login.passkeyRecovery.message", {
+                defaultValue:
+                  "No passkey was available, or the request was cancelled. Choose how you want to continue.",
+              })}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {providers.email !== false && (
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={handleEmail}
+                disabled={isLoading}
+                className="hosted-signin-focus-emphasis min-h-touch rounded-md border border-border-strong bg-bg-elevated px-3 py-2.5 text-sm font-semibold text-txt hover:border-border-hover hover:bg-bg-hover"
+              >
+                {t("cloud.login.passkeyRecovery.magicLink", {
+                  defaultValue: "Use Magic Link",
+                })}
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={startPasskeySignup}
+              disabled={isLoading}
+              className="hosted-signin-focus-emphasis min-h-touch rounded-md bg-accent px-3 py-2.5 text-sm font-semibold text-accent-foreground hover:bg-accent-hover"
+            >
+              {t("cloud.login.passkeyRecovery.setup", {
+                defaultValue: "Set up passkey",
+              })}
+            </Button>
+          </div>
+        </section>
+      )}
+
       {hasOAuthProviders && (
         <div className="flex items-center gap-3">
           <div className="h-px flex-1 bg-border" />
@@ -1237,7 +1594,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("google")}
               disabled={isLoading}
-              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
             >
               {loading === "google" ? <Spinner /> : <GoogleIcon />}{" "}
               {t("cloud.login.button.google", { defaultValue: "Google" })}
@@ -1249,7 +1606,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("discord")}
               disabled={isLoading}
-              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
             >
               {loading === "discord" ? (
                 <Spinner />
@@ -1265,7 +1622,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("github")}
               disabled={isLoading}
-              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 sm:col-span-2"
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 sm:col-span-2"
             >
               {loading === "github" ? (
                 <Spinner />
@@ -1332,7 +1689,7 @@ export default function StewardLoginSection() {
                   type="button"
                   onClick={() => handleWalletIntent("ethereum")}
                   disabled={isLoading}
-                  className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                  className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                 >
                   {t("cloud.login.wallet.evm", { defaultValue: "EVM wallet" })}
                 </Button>
@@ -1343,7 +1700,7 @@ export default function StewardLoginSection() {
                   type="button"
                   onClick={() => handleWalletIntent("solana")}
                   disabled={isLoading}
-                  className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                  className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                 >
                   {t("cloud.login.wallet.solana", {
                     defaultValue: "Solana wallet",

@@ -4,6 +4,7 @@ import type { OpenAITranscriptionParams } from "../types";
 import { isCloudSttAvailable, resolveCloudTimeoutMs } from "../utils/config";
 import { detectAudioMimeType } from "../utils/helpers";
 import { createElizaCloudClient } from "../utils/sdk-client";
+import { warmingRetryWaitSeconds } from "../utils/warming";
 
 /**
  * Thrown when Cloud STT cannot serve (no API key, or neither
@@ -135,10 +136,32 @@ export async function handleTranscription(
   }
 
   try {
-    const response = await createElizaCloudClient(runtime).routes.postApiV1VoiceSttRaw({
-      body: formData,
-      timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_STT_TIMEOUT_MS", 60_000),
-    });
+    // Ride through the cloud's transient cold-cache warming 503: on a box
+    // whose text brain runs elsewhere the STT admission cache goes cold
+    // between rare calls and the first one 503s with a warming body that
+    // clears in ~1s — the raw-Response companion to the throw-shaped retries
+    // in image/video/music (#18323/#18325/#18333). A non-warming failure
+    // still throws immediately.
+    let response: Response;
+    let warmingRetries = 0;
+    for (;;) {
+      response = await createElizaCloudClient(runtime).routes.postApiV1VoiceSttRaw({
+        body: formData,
+        timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_STT_TIMEOUT_MS", 60_000),
+      });
+      if (warmingRetries < 2) {
+        const waitSeconds = await warmingRetryWaitSeconds(response);
+        if (waitSeconds !== null) {
+          warmingRetries++;
+          logger.warn(
+            `[ELIZAOS_CLOUD] STT cold-cache warming (503), retry ${warmingRetries}/2 after ${waitSeconds}s...`
+          );
+          await new Promise((r) => setTimeout(r, waitSeconds * 1000));
+          continue;
+        }
+      }
+      break;
+    }
 
     if (!response.ok) {
       throw new Error(`Failed to transcribe audio: ${response.status} ${response.statusText}`);

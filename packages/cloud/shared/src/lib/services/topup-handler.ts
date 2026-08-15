@@ -144,9 +144,7 @@ async function getTopupRecipient(
   // No `walletProven`: this branch is the one with NO wallet signature — the
   // address came out of the request body, so the account it opens must not
   // claim the wallet was verified.
-  const { user } = await findOrCreateUserByWalletAddress(body.walletAddress, {
-    grantInitialCredits: false,
-  });
+  const { user } = await findOrCreateUserByWalletAddress(body.walletAddress);
 
   return {
     user,

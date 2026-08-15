@@ -26,8 +26,8 @@ export type {
   UpdatedUserResponse,
 } from "./types.cloud-api.js";
 
-export const DEFAULT_ELIZA_CLOUD_BASE_URL = "https://elizacloud.ai";
-export const DEFAULT_ELIZA_CLOUD_API_ORIGIN = "https://api.elizacloud.ai";
+export const DEFAULT_ELIZA_CLOUD_BASE_URL = "https://eliza.app";
+export const DEFAULT_ELIZA_CLOUD_API_ORIGIN = "https://api.eliza.app";
 export const DEFAULT_ELIZA_CLOUD_API_BASE_URL = `${DEFAULT_ELIZA_CLOUD_API_ORIGIN}/api/v1`;
 
 export type JsonPrimitive = boolean | number | string | null;

@@ -84,9 +84,12 @@ const VIEW_BUNDLE_WARNING_BYTES = 1024 * 1024;
  * view against a directory that isn't this plugin at all.
  */
 export function pluginPackageNameCandidates(pluginName: string): string[] {
-  return pluginName.startsWith("@")
-    ? [pluginName]
-    : [`@elizaos/plugin-${pluginName}`, pluginName];
+  if (pluginName.startsWith("@")) return [pluginName];
+
+  const shortName = pluginName.startsWith("plugin-")
+    ? pluginName.slice("plugin-".length)
+    : pluginName;
+  return [`@elizaos/plugin-${shortName}`, pluginName];
 }
 
 /**
@@ -100,6 +103,16 @@ async function resolvePluginPackageDir(
   const { createRequire } = await import("node:module");
   const req = createRequire(import.meta.url);
   const packageNames = pluginPackageNameCandidates(pluginName);
+
+  // In a source checkout, the workspace is authoritative. Bun can otherwise
+  // resolve a scoped package from its global install cache even when that
+  // package is not a dependency of this workspace, serving a stale published
+  // view instead of the bundle under review. Packaged installs have no nearby
+  // workspace root and naturally fall through to normal package resolution.
+  for (const packageName of packageNames) {
+    const workspaceDir = await resolveWorkspacePluginPackageDir(packageName);
+    if (workspaceDir) return workspaceDir;
+  }
 
   for (const packageName of packageNames) {
     // Preferred: resolve the package's own package.json directly. Requires the
@@ -127,11 +140,6 @@ async function resolvePluginPackageDir(
     } catch {
       // Package is not reachable from this module under this name.
     }
-  }
-
-  for (const packageName of packageNames) {
-    const workspaceDir = await resolveWorkspacePluginPackageDir(packageName);
-    if (workspaceDir) return workspaceDir;
   }
 
   logger.warn(

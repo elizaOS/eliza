@@ -16,7 +16,7 @@ Replaces the former fan-out across `plugin-evm`, `plugin-solana`, `plugin-raydiu
 | `gov` | On-chain governance: propose, vote, queue, execute via OpenZeppelin Governor. |
 | `pump_fun_buy` | Buy a pump.fun token on Solana through PumpPortal trade-local, local signing, and Solana RPC submission. |
 
-All write operations default to `mode=prepare` (stages the transaction but does not sign or send). The agent asks the user to confirm before submitting. `dryRun=true` returns metadata without signing.
+All write operations default to `mode=prepare` (stages the transaction but does not sign or send). The agent asks the user to confirm before submitting. `dryRun=true` returns metadata without signing. `mode=simulate` builds the real transaction (real Jupiter quote/route or real PumpPortal trade-local build) and runs it through `connection.simulateTransaction` instead of signing and sending — it needs only the wallet's public key, never a private key, so it cannot authorize or lead to a live submission and it skips the confirmation gate entirely. Supported today for Solana `swap` and `pump_fun_buy`; other subactions/chains return a typed `SIMULATION_UNSUPPORTED` failure.
 
 ### Analytics subactions (no wallet required)
 
@@ -70,6 +70,7 @@ Additional optional variables:
 | `BIRDEYE_NO_TRENDING` | Disable trending provider |
 | `ELIZA_AGENT_WALLET_AUTO_ENABLE` | Set to `0` to disable auto-enable |
 | `PUMPFUN_TRADE_LOCAL_URL` | Override PumpPortal local transaction API; default `https://pumpportal.fun/api/trade-local` |
+| `JUPITER_API_BASE_URL` | Override the Jupiter Swap API base; default `https://lite-api.jup.ag/swap/v1` |
 | `PUMPFUN_PRIORITY_FEE_SOL` | Priority fee in SOL for `pump_fun_buy`; default `0.00005` |
 | `PUMPFUN_POOL` | PumpPortal pool selector for `pump_fun_buy`; default `auto` |
 | `X402_SUPPORTED_NETWORKS` | Comma-separated networks for x402 micropayments |

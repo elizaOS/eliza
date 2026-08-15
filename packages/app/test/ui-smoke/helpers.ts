@@ -3184,21 +3184,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
-  await page.route("**/api/automations/nodes", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        nodes: [],
-        summary: { total: 0, enabled: 0, disabled: 0 },
-      }),
-    });
-  });
-
   // Coding-project registry read by the tasks/cockpit surfaces; the keyless
   // stub 501s it, which trips the issue guards on any route that mounts them.
   await page.route("**/api/projects", async (route) => {

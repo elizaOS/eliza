@@ -7,6 +7,7 @@
 
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_WARM_POOL_POLICY } from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-forecast";
 import {
   __setDepsForTests,
   processFleetUpgradeCycle,
@@ -36,6 +37,7 @@ function installDeps(
     jobsRepository: { countInFlightByTypes },
     agentSandboxesRepository: { listRunningWithDigestOtherThan },
     provisioningJobService: { enqueueAgentUpgradeOnce },
+    envWarmPoolPolicy: () => DEFAULT_WARM_POOL_POLICY,
     logger: { warn: mock(() => {}) },
   } as unknown as Parameters<typeof __setDepsForTests>[0]);
   return {
@@ -200,6 +202,12 @@ describe("real one-shot daemon entrypoint", () => {
       created: true,
       job: { id: "canary-safe-upgrade" },
     }));
+    const reEnqueueFailedDeletions = mock(async () => ({
+      scanned: 1,
+      reEnqueued: 1,
+      failed: 0,
+      abandoned: 0,
+    }));
     const healthCheckAll = mock(
       async () =>
         new Map([
@@ -281,6 +289,7 @@ describe("real one-shot daemon entrypoint", () => {
           reconcileWarmClaimCredentialFences,
           reconcileReplacementCleanupFences,
           enqueueAgentUpgradeOnce,
+          reEnqueueFailedDeletions,
         },
       },
       "@elizaos/cloud-shared/lib/utils/logger": { logger },
@@ -300,6 +309,7 @@ describe("real one-shot daemon entrypoint", () => {
       },
       "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool": {
         WarmPoolManager: OneShotWarmPoolManager,
+        envWarmPoolPolicy: () => DEFAULT_WARM_POOL_POLICY,
       },
       "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator": {
         getHetznerPoolContainerCreator: () => ({ kind: "deterministic" }),
@@ -433,6 +443,11 @@ describe("real one-shot daemon entrypoint", () => {
           "agent_admin_canary_image",
         ]);
         expect(enqueueAgentUpgradeOnce).toHaveBeenCalledTimes(1);
+        expect(reEnqueueFailedDeletions).toHaveBeenCalledTimes(1);
+        expect(reEnqueueFailedDeletions).toHaveBeenCalledWith({
+          minAgeMs: 10 * 60_000,
+          maxAgents: 200,
+        });
         expect(healthCheckAll).toHaveBeenCalledTimes(1);
         expect(syncAllocatedCounts).toHaveBeenCalledTimes(1);
         expect(prePullAgentImageOnAvailableNodes).toHaveBeenCalledWith(

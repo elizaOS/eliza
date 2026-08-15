@@ -53,6 +53,15 @@ describe("settings-sections registration (lazy boot seam)", () => {
       expect(registeredIds.has(id), `section "${id}" missing`).toBe(true);
     }
   });
+
+  it("marks built-in Cloud management sections as managed-runtime only", () => {
+    const byId = new Map(
+      getAllSettingsSections().map((section) => [section.id, section] as const),
+    );
+    expect(byId.get("cloud-overview")?.cloudOnly).toBe(true);
+    expect(byId.get("cloud-agents")?.cloudOnly).toBe(true);
+    expect(byId.get("my-runtimes")?.cloudOnly).not.toBe(true);
+  });
 });
 
 /**

@@ -129,9 +129,12 @@ export class DiscordTestSuite implements TestSuite {
 			await this.waitForVoiceManagerReady(this.discordClient);
 
 			const channel = await this.getTestChannel(runtime);
-			if (!channel?.isTextBased()) {
-				throw new Error("Invalid test channel for slash command test.");
+			if (!channel || channel.type !== ChannelType.GuildVoice) {
+				throw new Error(
+					"DISCORD_TEST_CHANNEL_ID must identify a voice channel.",
+				);
 			}
+			let reply = "";
 
 			// Simulate a join channel slash command interaction
 			interface MockJoinInteraction {
@@ -151,9 +154,10 @@ export class DiscordTestSuite implements TestSuite {
 					get: (name: string) =>
 						name === "channel" ? { value: channel.id } : null,
 				},
-				guild: (channel as TextChannel).guild,
+				guild: channel.guild,
 				deferReply: async () => {},
 				editReply: async (message: string) => {
+					reply = message;
 					logger.info(`JoinChannel Slash Command Response: ${message}`);
 				},
 			};
@@ -164,6 +168,9 @@ export class DiscordTestSuite implements TestSuite {
 			await this.discordClient.voiceManager.handleJoinChannelCommand(
 				testJoinInteraction,
 			);
+			if (!reply.startsWith("Joined voice channel:")) {
+				throw new Error(`Voice join did not succeed: ${reply || "no reply"}`);
+			}
 
 			logger.success("Join voice slash command test completed successfully.");
 		} catch (error) {

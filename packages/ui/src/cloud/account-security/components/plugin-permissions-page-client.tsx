@@ -9,13 +9,13 @@
 import { Puzzle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { DashboardPageContainer, useSetPageHeader } from "../../../cloud-ui";
 import {
-  BrandButton,
-  BrandCard,
-  CornerBrackets,
-  DashboardPageContainer,
-  useSetPageHeader,
-} from "../../../cloud-ui";
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "../../../components/settings/settings-layout";
+import { Button } from "../../../components/ui/button";
 import { ApiError, api, apiFetch } from "../../lib/api-client";
 import { emitAuditEvent } from "../data/audit-client";
 
@@ -101,50 +101,36 @@ export function PluginPermissionsPageClient() {
 
   return (
     <DashboardPageContainer>
-      <BrandCard className="relative">
-        <CornerBrackets size="sm" className="opacity-50" />
-        <div className="relative z-10 space-y-4">
-          <div className="flex items-center gap-2">
-            <Puzzle className="h-5 w-5 text-muted" />
-            <h3 className="text-lg font-bold text-txt-strong">Active grants</h3>
-          </div>
+      <SettingsStack data-testid="cloud-plugin-grants">
+        <SettingsGroup title="Active grants">
           {state.kind === "loading" ? (
-            <p className="text-sm text-muted">Loading…</p>
+            <SettingsRow label="Loading…" />
           ) : state.kind === "missing" ? (
-            <p className="text-sm text-muted">
-              Plugin grant tracking isn't exposed yet on this server. Grants
-              made from the desktop app will appear here once the backend is
-              wired.
-            </p>
+            <SettingsRow label="Plugin grant tracking isn't exposed yet on this server. Grants made from the desktop app will appear here once the backend is wired." />
           ) : state.kind === "error" ? (
-            <p className="text-sm text-red-300">{state.message}</p>
+            <SettingsRow tone="danger" label={state.message} />
           ) : state.grants.length === 0 ? (
-            <p className="text-sm text-muted">
-              No plugin has any permission granted on your account.
-            </p>
+            <SettingsRow label="No plugin has any permission granted on your account." />
           ) : (
-            <ul className="divide-y divide-border">
-              {state.grants.map((g) => (
-                <li
-                  key={g.grant_id}
-                  className="flex items-center justify-between gap-3 py-2 text-sm"
-                >
-                  <div className="space-y-0.5">
-                    <p className="font-medium text-txt-strong">
-                      {g.plugin_name ?? g.plugin_id}{" "}
-                      <span className="ml-1 rounded-sm border border-border bg-surface px-1.5 py-0.5 font-mono text-[10px] text-txt">
-                        {g.permission}
-                      </span>
-                    </p>
-                    <p className="font-mono text-[11px] text-muted">
-                      {g.scope ? `scope: ${g.scope} · ` : ""}granted{" "}
-                      {new Date(g.granted_at).toLocaleString()}
-                      {g.last_used
-                        ? ` · last used ${new Date(g.last_used).toLocaleString()}`
-                        : ""}
-                    </p>
-                  </div>
-                  <BrandButton
+            state.grants.map((g) => (
+              <SettingsRow
+                key={g.grant_id}
+                icon={Puzzle}
+                label={
+                  <span className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span>{g.plugin_name ?? g.plugin_id}</span>
+                    <span className="rounded-full border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted">
+                      {g.permission}
+                    </span>
+                  </span>
+                }
+                description={`${g.scope ? `scope: ${g.scope} · ` : ""}granted ${new Date(g.granted_at).toLocaleString()}${
+                  g.last_used
+                    ? ` · last used ${new Date(g.last_used).toLocaleString()}`
+                    : ""
+                }`}
+                control={
+                  <Button
                     size="sm"
                     variant="outline"
                     disabled={revoking === g.grant_id}
@@ -152,13 +138,13 @@ export function PluginPermissionsPageClient() {
                     data-testid={`revoke-${g.grant_id}`}
                   >
                     {revoking === g.grant_id ? "Revoking…" : "Revoke"}
-                  </BrandButton>
-                </li>
-              ))}
-            </ul>
+                  </Button>
+                }
+              />
+            ))
           )}
-        </div>
-      </BrandCard>
+        </SettingsGroup>
+      </SettingsStack>
     </DashboardPageContainer>
   );
 }

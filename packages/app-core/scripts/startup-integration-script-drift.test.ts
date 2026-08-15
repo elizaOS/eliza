@@ -46,6 +46,13 @@ describe("startup integration script drift", () => {
     expect(devPlatform).toMatch(
       /skipApi\s*\?\s*\{\s*ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT:\s*"1"\s*\}/,
     );
+    expect(devPlatform).toContain("resolveMacNativeEffectsDevPlan");
+    expect(devPlatform).toContain(
+      "process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB = plan.dylibPath",
+    );
+    expect(
+      devPlatform.indexOf("prepareMacNativeEffectsForDesktopDev();"),
+    ).toBeLessThan(devPlatform.indexOf("syncRendererPublicAssets();"));
   });
 
   it("syncs shared public assets before desktop renderer staleness checks", () => {
@@ -138,5 +145,4 @@ describe("startup integration script drift", () => {
       }
     },
   );
-
 });

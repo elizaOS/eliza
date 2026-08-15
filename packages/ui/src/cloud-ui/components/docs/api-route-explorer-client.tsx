@@ -94,7 +94,7 @@ function generateCurlExample(route: DiscoveredApiRouteDto): string {
   const method = route.methods[0] ?? "GET";
   const isBodyMethod = ["POST", "PUT", "PATCH"].includes(method);
 
-  let curl = `curl -X ${method} "https://www.elizacloud.ai${route.path}"`;
+  let curl = `curl -X ${method} "https://api.eliza.app${route.path}"`;
   curl += ` \\\n  -H "Authorization: Bearer YOUR_API_KEY"`;
 
   if (isBodyMethod) {
@@ -481,7 +481,7 @@ export function ApiRouteExplorerClient({
                       </span>
                       <span className="text-muted"> </span>
                       <span className="text-status-info">
-                        &quot;https://www.elizacloud.ai{selected.path}&quot;
+                        &quot;https://api.eliza.app{selected.path}&quot;
                       </span>
                       <span className="text-muted"> \</span>
                       {"\n"}
@@ -524,7 +524,7 @@ export function ApiRouteExplorerClient({
                   with your actual API key from{" "}
                   <a
                     className="text-txt-strong hover:underline"
-                    href="/dashboard/api-keys"
+                    href="/cloud/api-keys"
                   >
                     Dashboard → API Keys
                   </a>

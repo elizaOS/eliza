@@ -9,8 +9,15 @@
  */
 import { isViewVisible } from "@elizaos/core";
 import { isPermissionId, type PermissionId } from "@elizaos/shared";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useAgentElement } from "../../agent-surface";
+import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
@@ -21,6 +28,10 @@ import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
 import { DesktopSettingsNavigation } from "../settings/DesktopSettingsNavigation";
 import { SettingsHubList } from "../settings/SettingsHubList";
+import {
+  getSettingsSectionRegistryVersion,
+  subscribeSettingsSections,
+} from "../settings/settings-section-registry";
 import {
   backFromConnectorDetail,
   type GroupedSettingsSections,
@@ -231,8 +242,15 @@ export function SettingsView({
     walletEnabled: s.walletEnabled,
   }));
   const plugins = useAppSelector((s) => s.plugins);
+  const runtimeTarget = useAppSelector((s) => s.startupCoordinator.target);
+  const managedCloudRuntime = isManagedCloudRuntime(runtimeTarget);
   const enabledKinds = useEnabledViewKinds();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+  useSyncExternalStore(
+    subscribeSettingsSections,
+    getSettingsSectionRegistryVersion,
+    getSettingsSectionRegistryVersion,
+  );
   const [activeSection, setActiveSection] = useState<string | null>(
     () => initialSection ?? readSettingsHashSection(),
   );
@@ -243,22 +261,18 @@ export function SettingsView({
     null,
   );
 
-  const visibleSections = useMemo(() => {
-    return getAllSettingsSections().filter((section) => {
-      if (section.id === "wallet-rpc" && walletEnabled === false) return false;
-      if (!isViewVisible(section, enabledKinds)) return false;
-      if (section.hideOnCloud && isAndroidCloudBuild()) return false;
-      return true;
-    });
-  }, [walletEnabled, enabledKinds]);
-  const visibleSectionIds = useMemo(
-    () => new Set(visibleSections.map((section) => section.id)),
-    [visibleSections],
+  const visibleSections = getAllSettingsSections().filter((section) => {
+    if (section.id === "wallet-rpc" && walletEnabled === false) return false;
+    if (section.cloudOnly && !managedCloudRuntime) return false;
+    if (!isViewVisible(section, enabledKinds)) return false;
+    if (section.hideOnCloud && isAndroidCloudBuild()) return false;
+    return true;
+  });
+  const visibleSectionIds = new Set(
+    visibleSections.map((section) => section.id),
   );
-  const grouped: GroupedSettingsSections = useMemo(
-    () => groupSettingsSections(visibleSections),
-    [visibleSections],
-  );
+  const grouped: GroupedSettingsSections =
+    groupSettingsSections(visibleSections);
 
   useEffect(() => {
     void loadPlugins();

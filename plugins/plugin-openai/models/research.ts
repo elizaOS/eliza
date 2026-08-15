@@ -299,6 +299,9 @@ export async function handleResearch(
   const modelName = params.model ?? getResearchModel(runtime);
   const timeout = getResearchTimeout(runtime);
 
+  const timeoutSignal = AbortSignal.timeout(timeout);
+  const signal = params.signal ? AbortSignal.any([params.signal, timeoutSignal]) : timeoutSignal;
+
   logger.debug(`[OpenAI] Starting deep research with model: ${modelName}`);
   logger.debug(`[OpenAI] Research input: ${params.input.substring(0, 100)}...`);
 
@@ -359,7 +362,7 @@ export async function handleResearch(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(timeout),
+      signal,
     });
 
     if (!response.ok) {

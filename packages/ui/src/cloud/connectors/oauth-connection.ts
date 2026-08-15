@@ -110,7 +110,7 @@ export function useOAuthConnections(
         `/api/v1/oauth/${platform}/initiate`,
         {
           method: "POST",
-          json: { redirectUrl: "/dashboard/settings?tab=connections" },
+          json: { redirectUrl: "/cloud/connectors" },
         },
       );
       if (data.authUrl) {

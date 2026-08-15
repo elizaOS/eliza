@@ -44,6 +44,7 @@ packages/app/
     native-module-stub-plugin.ts  Browser replacements for Node/native modules
   scripts/
     build.mjs                Main app build script
+    sync-homepage-assets.mjs Copies approved public assets from the homepage source module
     plugin-build.mjs         Plugin-only build
     run-ui-playwright.mjs    Playwright test runner wrapper
     mobile-release-preflight.mjs  Mobile store/sideload preflight checks
@@ -67,6 +68,9 @@ packages/app/
   resolves trusted launch state, handles special window/device lanes, hydrates
   native storage before the normal first render, mounts React, schedules
   deferred plugin loading, and then finishes platform initialization.
+- `../homepage/src/embedded-home.tsx` and `embedded-downloads.tsx` — public
+  marketing entrypoints consumed through the `@homepage/*` Vite alias. Their
+  package is source/test-only; this app owns every served and deployed build.
 
 ## Boot sequence
 
@@ -301,7 +305,11 @@ bun run --cwd packages/app test:e2e
 - **`AsyncLocalStorage` patch.** A `renderChunk` plugin patches the `AsyncLocalStorage` browser replacement in mobile WebView bundles so `new undefined` never happens. Do not remove this plugin.
 - **Onboarding QA query params.** `?onboarding-replay=1` (dev builds only) re-runs onboarding as a **non-destructive** client overlay on the same agent — no reset endpoint, no active-server clear, no storage wipe; `?reset` clears the persisted client session for a genuinely fresh first run. Both are wired in `src/first-run-boot-patches.ts` (the arm-before-patch order there is load-bearing — see its header) and regression-locked by `test/first-run-boot-patches.test.ts`. Use the committed replay evidence script and tests rather than relying on the deleted historical HITL inventory.
 - **iOS full-Bun smoke.** When the `eliza:ios-full-bun-smoke:request` key is set through local storage or native Preferences, `main.tsx` calls app-core's shared `runIosFullBunSmokeIfRequested()` probe, which writes strict backend/model results to Preferences. This is a QA/CI gate; do not inline a second implementation or remove the call.
-- **`predev` / `prebuild` hooks.** Both run `sync-to-public.mjs` to copy shared brand assets (logos, favicons, concepts, banners, backgrounds) into `public/` before Vite starts. Do not delete assets from `public/` manually; re-run the hook instead.
+- **`predev` / `prebuild` hooks.** Both generate homepage release data, run
+  `sync-to-public.mjs` for shared brand assets, and run
+  `sync-homepage-assets.mjs` for the approved embedded marketing assets before
+  Vite starts. Do not restore a build/dev/deploy lifecycle under
+  `packages/homepage`; this package is the single frontend artifact.
 - See the root guide for architecture, naming, git workflow, and evidence rules.
 
 ## Package completion evidence

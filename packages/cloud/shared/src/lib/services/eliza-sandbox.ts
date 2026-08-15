@@ -23,6 +23,7 @@ import {
   type AgentSandboxBackupMetadata,
   type AgentSandboxStatus,
   agentSandboxesRepository,
+  PRE_DELETE_BACKUP_RETENTION_MS,
   prepareAgentBackupInsertData,
 } from "../../db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "../../db/repositories/characters";
@@ -40,18 +41,19 @@ import {
 import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { jobs } from "../../db/schemas/jobs";
 import { imageRepo } from "../../db/utils/docker-image-ref";
+import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { ApiError } from "../api/cloud-worker-errors";
 import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
 import { containersEnv } from "../config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
 import { settleOffResponsePath } from "../utils/settle-off-response-path";
 import { withTimeout } from "../utils/with-timeout";
 import {
-  assertCanonicalSourceImage,
+  assertAdminCanaryCanonicalOrDemoPair,
   assertDemoSourceImage,
   assertSha256Digest,
   parseAdminCanaryDemoImage,
@@ -75,8 +77,10 @@ import {
 } from "./ai-billing";
 import { aiBillingRecordsService } from "./ai-billing-records";
 import { apiKeysService } from "./api-keys";
+import { chatSseFrame, normalizeChatSseDonePayload } from "./chat-sse-frames";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
+import { withDefaultAgentCharacter } from "./default-agent-character";
 import { holdsCountedNodeSlot, isDeletionContinuation } from "./docker-node-workload-queries";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import { shellQuote } from "./docker-sandbox-utils";
@@ -99,6 +103,7 @@ import {
 } from "./managed-eliza-config";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES, JOB_TYPES } from "./provisioning-job-types";
+import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 import { mergeRuntimeAgentSecretsFromEnv } from "./runtime-agent-secrets";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import {
@@ -110,6 +115,7 @@ import {
   type SandboxDeletionStopOutcome,
   SandboxReplacementCleanupUnresolvedError,
 } from "./sandbox-provider-types";
+import { purgeSharedConversationRooms } from "./shared-runtime/conversation-coordinator";
 import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
 import {
   type RunSharedAgentTurnResult,
@@ -225,14 +231,22 @@ export class AgentQuotaExceededError extends Error {
  * function so config sanitization, character ownership, tier→status derivation,
  * and column defaults cannot drift between paths. `environmentVars` is expected
  * storage-ready (already passed through `encryptAgentEnvVarsForStorage`).
+ *
+ * A create that brings neither a linked `characterId` nor a persona in its
+ * config is seeded with the shipped default character
+ * ({@link withDefaultAgentCharacter}); seeding here rather than in any single
+ * reader is what keeps the shared turn, the dedicated container, the warm-pool
+ * claim push, and the first-boot bootstrap agreeing on one persona.
  */
 export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAgentSandbox {
   const sanitizedConfig = stripReservedElizaConfigKeys(params.agentConfig);
+  const executionTier: AgentExecutionTier = params.executionTier ?? "shared";
   const agentConfig = params.characterId
     ? withReusedElizaCharacterOwnership(sanitizedConfig)
-    : sanitizedConfig;
+    : executionTier === "custom"
+      ? sanitizedConfig
+      : withDefaultAgentCharacter(sanitizedConfig);
 
-  const executionTier: AgentExecutionTier = params.executionTier ?? "shared";
   const status = executionTier === "shared" ? "running" : "pending";
 
   return {
@@ -247,6 +261,16 @@ export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAge
     ...(params.characterId && { character_id: params.characterId }),
     ...(params.dockerImage && { docker_image: params.dockerImage }),
   };
+}
+
+/** Omits an empty custom-image overlay so a self-contained image keeps its bundled character. */
+export function agentConfigForProvision(
+  agent: Pick<AgentSandbox, "agent_config" | "execution_tier">,
+): Record<string, unknown> | undefined {
+  const config = agent.agent_config;
+  if (!config || typeof config !== "object" || Array.isArray(config)) return undefined;
+  const record = config as Record<string, unknown>;
+  return agent.execution_tier === "custom" && Object.keys(record).length === 0 ? undefined : record;
 }
 
 /**
@@ -390,7 +414,9 @@ export type DeleteAgentResult =
       reconciliationPending: true;
       deletedSandbox: AgentSandbox;
     }
-  | { success: false; error: string };
+  | { success: false; error: string; retryable?: true };
+
+export type DeleteAuthorization = "user_request" | "billing_request";
 
 /**
  * Outcome of the bounded container teardown attempted during `deleteAgent`:
@@ -478,7 +504,24 @@ export interface SnapshotResult {
   success: boolean;
   backup?: AgentSandboxBackup;
   error?: string;
+  retryable?: boolean;
 }
+
+/**
+ * Outcome of carrying an agent's state onto a replacement container.
+ *
+ * `capture-unsupported` is not a failure to retry: the running image has no
+ * snapshot endpoint, so the agent cannot be relocated at all and must be left
+ * where it is. Every other reason describes a move that did not happen and can
+ * be attempted again.
+ */
+export type StateTransferOutcome =
+  | { transferred: true; snapshotId: string; sizeBytes: number }
+  | {
+      transferred: false;
+      reason: "capture-unsupported" | "capture-failed" | "reconstruct-failed" | "push-failed";
+      detail: string;
+    };
 
 /**
  * Sentinel error for "the running agent image does not serve POST /api/snapshot".
@@ -489,6 +532,15 @@ export interface SnapshotResult {
  * this exactly like "Sandbox is not running": skip without burning retries.
  */
 export const SNAPSHOT_ENDPOINT_UNSUPPORTED = "Snapshot endpoint not supported by agent image";
+
+/**
+ * Transient pre-stop snapshot failure (agent returned 503 because its PGlite
+ * connection was closing while dumpDataDir() ran). Distinct from a hard 500 so
+ * a state-preserving restart can defer rather than permanently refuse to stop
+ * (2026-08-11 fleet incident: a 500 here wedged healthy agent restarts).
+ */
+export const SNAPSHOT_CAPTURE_TRANSIENT = "Snapshot capture temporarily unavailable";
+const AGENT_SNAPSHOT_CAPTURE_TRANSIENT_CODE = "PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT";
 
 const MAX_BACKUPS = 10;
 const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
@@ -502,6 +554,7 @@ const HEARTBEAT_PROBE_RETRY_MS = 2_000;
 // on success) is the downtime clock. The ~30s heartbeat itself keeps the
 // WireGuard NAT mapping warm, so a reachable agent never trips this.
 const HEARTBEAT_DISCONNECT_AFTER_MS = 120_000;
+
 // IP reconciliation (heartbeat + recovery): agent containers do not persist
 // tailscale node state, so a container restart mints a fresh node key and
 // headscale hands out the NEXT sequential IP — the stored headscale_ip /
@@ -521,6 +574,14 @@ const DB_LIVENESS_RESTART_BUDGET = 3;
 const DB_LIVENESS_RESTART_COOLDOWN_MS = 10 * 60_000;
 const DB_LIVENESS_RESTART_BUDGET_WINDOW_MS = 60 * 60_000;
 const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
+/**
+ * Maximum bytes to read from a snapshot-fetch error response body for
+ * diagnostic logging (#18228). The body distinguishes an agent-side 500
+ * (carries the thrown error message) from a bridge/proxy-hop 500 (proxy
+ * error page or empty). Bounded so a malicious or misconfigured upstream
+ * cannot exhaust Worker memory.
+ */
+const SNAPSHOT_ERROR_BODY_EXCERPT_BYTES = 512;
 /**
  * Hydration budgets (#16639): the worker heap died buffering unbounded
  * snapshot bodies (`res.json()` retained everything, then a re-stringify
@@ -988,6 +1049,91 @@ class ManagedLaunchOwnershipLost extends Error {
     super("Managed launch lost its agent ownership CAS");
     this.name = "ManagedLaunchOwnershipLost";
   }
+}
+
+/**
+ * Read a bounded excerpt of an error response body for diagnostic logging.
+ * Returns a trimmed string or null when the body is empty. Used by
+ * `fetchSnapshotState` (#18228) so an agent-side 500 (carrying the thrown
+ * error message) is distinguishable from a bridge/proxy-hop 500 (proxy error
+ * page or empty body) in Worker logs.
+ *
+ * Streams the body via a ReadableStream reader and stops after
+ * SNAPSHOT_ERROR_BODY_EXCERPT_BYTES of UTF-8, cancelling the remainder —
+ * never buffering the full response (a malicious upstream could OOM the
+ * Worker with an unbounded body).
+ */
+export async function readErrorBodyExcerpt(
+  res: Pick<Response, "body" | "headers">,
+): Promise<string | null> {
+  // error-policy:J2 non-blocking diagnostic — a body-read failure degrades to
+  // a null excerpt (status-only message) without aborting the snapshot path.
+  try {
+    if (!res.body) return null;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8", { fatal: false });
+    const chunks: string[] = [];
+    let totalBytes = 0;
+    try {
+      // error-policy:J2 stream cancellation after the byte budget is reached.
+      while (totalBytes < SNAPSHOT_ERROR_BODY_EXCERPT_BYTES) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const remaining = SNAPSHOT_ERROR_BODY_EXCERPT_BYTES - totalBytes;
+        const sliced = value.length >= remaining ? truncateUtf8Bytes(value, remaining) : value;
+        chunks.push(decoder.decode(sliced, { stream: true }));
+        totalBytes += sliced.length;
+      }
+    } finally {
+      // Cancel the reader to release the connection even if the body is larger.
+      await reader.cancel().catch(() => {});
+    }
+    // Flush any trailing multi-byte UTF-8 sequence held by the stream decoder.
+    chunks.push(decoder.decode());
+    const body = chunks.join("");
+    if (!body.trim()) return null;
+    const contentType = res.headers.get("content-type") ?? "";
+    // JSON error bodies carry structured diagnostics — try to extract a message.
+    if (contentType.includes("application/json")) {
+      try {
+        const data = JSON.parse(body) as { error?: unknown; message?: unknown };
+        const msg = data.error ?? data.message;
+        if (typeof msg === "string" && msg.trim()) {
+          return msg.trim();
+        }
+      } catch {
+        // Not valid JSON — fall through to raw excerpt.
+      }
+    }
+    return body.trim();
+  } catch {
+    return null;
+  }
+}
+
+/** Truncate UTF-8 bytes without splitting a multi-byte code point. */
+function truncateUtf8Bytes(bytes: Uint8Array, maxBytes: number): Uint8Array {
+  const limit = Math.min(bytes.length, maxBytes);
+  let safeEnd = limit;
+  while (safeEnd > 0) {
+    const byte = bytes[safeEnd - 1]!;
+    if ((byte & 0x80) === 0) {
+      return bytes.slice(0, safeEnd);
+    }
+    if ((byte & 0xc0) === 0x80) {
+      safeEnd--;
+      continue;
+    }
+    let sequenceLength = 1;
+    if ((byte & 0xf8) === 0xf0) sequenceLength = 4;
+    else if ((byte & 0xf0) === 0xe0) sequenceLength = 3;
+    else if ((byte & 0xe0) === 0xc0) sequenceLength = 2;
+    if (safeEnd - 1 + sequenceLength <= limit) {
+      return bytes.slice(0, limit);
+    }
+    return bytes.slice(0, safeEnd - 1);
+  }
+  return bytes.slice(0, 0);
 }
 
 export class ElizaSandboxService {
@@ -1797,7 +1943,127 @@ export class ElizaSandboxService {
     return agentSandboxesRepository.listByOrganization(orgId);
   }
 
-  async deleteAgent(agentId: string, orgId: string): Promise<DeleteAgentResult> {
+  async deleteAgent(
+    agentId: string,
+    orgId: string,
+    options: { authorization?: DeleteAuthorization } = {},
+  ): Promise<DeleteAgentResult> {
+    // Phase 0 — fail-closed pre-deletion capture (#18517), the discipline
+    // shutdown() applies before stopping: a live dedicated container is never
+    // destroyed without a current backup. Two delete surfaces reach here. The
+    // synchronous compat path sees the row still `running`, so a refusal
+    // leaves it untouched with nothing for the reconciler to re-arm. The
+    // primary v1 path stamps `deletion_pending` at enqueue time and calls
+    // this later from the job worker — there the container is still live with
+    // its bridge intact, the capture happens before any teardown, and a
+    // refusal leaves a recoverable tombstone the next attempt retries.
+    let captureWaiverAlreadyPersisted = false;
+    let captureUnsupportedGeneration: {
+      bridgeUrl: string;
+      environmentRevision: number;
+      sandboxId: string | null;
+    } | null = null;
+    let preDeleteBackupCandidate: {
+      id: string;
+      deletionAttemptId: string;
+    } | null = null;
+    let preDeleteSnapshot: {
+      stateData: AgentBackupStateData;
+      sizeBytes: number;
+      bridgeUrl: string;
+    } | null = null;
+    const snapshotSource = await this.getAgentForWrite(agentId, orgId);
+    // An unauthorized delete of a still-`running` row is refused by
+    // prepareAgentDelete no matter what happens here, so it skips the capture
+    // and keeps its original "suspend it before deletion" refusal — a capture
+    // outage must not change which refusal an unauthorized caller sees, nor
+    // cost a doomed HTTP round-trip.
+    //
+    // A `deletion_pending` row is NOT that case: the enqueue already carried
+    // the authorization when it stamped the status, and the re-enqueue of a
+    // stuck deletion (ProvisioningJobService.reEnqueueFailedDeletions) passes
+    // none. Gating phase 0 on `options.authorization` therefore left exactly
+    // those jobs arriving at prepareAgentDelete with `snapshot: null` against
+    // a capture-requiring row — refused as "lifecycle generation moved" on
+    // every attempt, deadlocking the stuck-delete population this guard
+    // exists to protect.
+    const captureSkippedForUnauthorizedRunning =
+      !options.authorization && snapshotSource?.status === "running";
+    if (!captureSkippedForUnauthorizedRunning && this.requiresPreDeleteCapture(snapshotSource)) {
+      // A deletion retry whose earlier attempt already captured (or recorded
+      // the image's supported no-snapshot response) must not contact a bridge
+      // the teardown may already have killed. Both candidates are revalidated
+      // under the lifecycle lock before they authorize the delete.
+      const priorBackup =
+        snapshotSource.deletion_started_at !== null && snapshotSource.deletion_attempt_id !== null
+          ? await agentSandboxesRepository.getLatestBackupByType(agentId, "pre-delete")
+          : undefined;
+      if (
+        priorBackup &&
+        snapshotSource.deletion_started_at !== null &&
+        snapshotSource.deletion_attempt_id !== null &&
+        priorBackup.created_at >= snapshotSource.deletion_started_at
+      ) {
+        preDeleteBackupCandidate = {
+          id: priorBackup.id,
+          deletionAttemptId: snapshotSource.deletion_attempt_id,
+        };
+      } else if (this.hasCurrentPreDeleteCaptureWaiver(snapshotSource)) {
+        captureWaiverAlreadyPersisted = true;
+      } else if (!snapshotSource.bridge_url) {
+        logger.error("[agent-sandbox] Delete refused: data-bearing container has no bridge", {
+          agentId,
+          status: snapshotSource.status,
+        });
+        return {
+          success: false,
+          error:
+            "Refusing to delete without a current backup: the agent's container has no reachable bridge to capture from",
+        };
+      } else {
+        try {
+          preDeleteSnapshot = await this.fetchSnapshotState(snapshotSource);
+        } catch (error) {
+          // error-policy:J1 the delete command boundary translates capture
+          // failures into an explicit refusal; a transient capture failure is
+          // marked retryable so the delete job re-attempts without burning
+          // its budget (shutdown's rule for the identical signal), and only
+          // an image that cannot snapshot by construction proceeds.
+          const message = error instanceof Error ? error.message : String(error);
+          if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
+            captureUnsupportedGeneration = {
+              bridgeUrl: snapshotSource.bridge_url,
+              environmentRevision: snapshotSource.environment_revision,
+              sandboxId: snapshotSource.sandbox_id,
+            };
+            logger.warn(
+              "[agent-sandbox] Delete proceeding without capture: image has no snapshot endpoint",
+              { agentId },
+            );
+          } else if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
+            logger.warn(
+              "[agent-sandbox] Delete deferred: pre-deletion capture transiently unavailable, will retry",
+              { agentId },
+            );
+            return {
+              success: false,
+              retryable: true,
+              error: `Refusing to delete without a current backup: ${message}`,
+            };
+          } else {
+            logger.error("[agent-sandbox] Delete refused: pre-deletion capture failed", {
+              agentId,
+              error: message,
+            });
+            return {
+              success: false,
+              error: `Refusing to delete without a current backup: ${message}`,
+            };
+          }
+        }
+      }
+    }
+
     // Phase 1 — short transaction: take the lifecycle lock, validate
     // preconditions, and capture the fields needed for teardown. We deliberately
     // do NOT run the container teardown inside this transaction:
@@ -1806,11 +2072,17 @@ export class ElizaSandboxService {
     // + write transaction + a pooled connection for the full teardown cap (up to
     // SANDBOX_DELETE_STOP_TIMEOUT_MS) would wedge concurrent lifecycle ops on the
     // same agent/org. The lock + transaction are released the moment this returns.
-    const precheck = await this.prepareAgentDelete(agentId, orgId);
+    const precheck = await this.prepareAgentDelete(agentId, orgId, options.authorization, {
+      snapshot: preDeleteSnapshot,
+      captureUnsupportedGeneration,
+      captureWaiverAlreadyPersisted,
+      existingBackup: preDeleteBackupCandidate,
+    });
 
     if (!precheck.ok) {
       return { success: false, error: precheck.error };
     }
+    let deletionOwnership = precheck;
 
     logger.info("[agent-sandbox] Deleting agent", {
       agentId,
@@ -1889,12 +2161,20 @@ export class ElizaSandboxService {
     // completes deletion but leaves the slot counted until the orphan
     // reconciler proves the container absent.
     if (containerProvenNotRunning && precheck.nodeId) {
-      const outcome = await agentSandboxesRepository.tryReleaseDeletionAllocation(
+      const release = await agentSandboxesRepository.tryReleaseDeletionAllocationForCommit(
         agentId,
         orgId,
         precheck.deletionAttemptId,
         precheck.nodeId,
+        precheck.lifecycleRevision,
       );
+      const outcome = release.outcome;
+      if (release.lifecycleRevision !== null) {
+        deletionOwnership = {
+          ...deletionOwnership,
+          lifecycleRevision: release.lifecycleRevision,
+        };
+      }
       // `not-owned` is the expected retry outcome and stays at info; only a
       // counter that failed to move while ownership WAS ours is an accounting
       // problem worth an operator's attention.
@@ -1928,7 +2208,7 @@ export class ElizaSandboxService {
     // would erase the only proof that the node counter still includes this slot.
     let result: DeleteAgentResult;
     if (containerProvenNotRunning) {
-      result = await this.commitAgentRowDelete(agentId, orgId, precheck);
+      result = await this.commitAgentRowDelete(agentId, orgId, deletionOwnership);
     } else {
       if (!reconciliationReason) {
         throw new Error("Unresolved deletion is missing its reconciliation reason");
@@ -1936,7 +2216,7 @@ export class ElizaSandboxService {
       result = await this.commitAgentReconciliationPending(
         agentId,
         orgId,
-        precheck,
+        deletionOwnership,
         reconciliationReason,
       );
     }
@@ -1947,7 +2227,16 @@ export class ElizaSandboxService {
       // (no FK cascade), so the per-channel history rows would otherwise be
       // orphaned forever after the agent is gone. A failure here leaves stale
       // rows but never un-deletes the (already gone) sandbox.
+      //
+      // The channel list is recovered BEFORE the Postgres delete so it can also
+      // drive the Durable Object purge below — each room's DO is named
+      // `${agentId}:${channelId}` and keeps its own copy of the live
+      // conversation window; without this step a deleted agent's conversation
+      // content would persist indefinitely in DO storage (data-retention /
+      // privacy gap, unbounded namespace growth).
+      let channelIds: string[] = [];
       try {
+        channelIds = await sharedRuntimeHistoryRepository.listChannelsByAgent(agentId);
         const removed = await sharedRuntimeHistoryRepository.deleteByAgent(agentId);
         if (removed > 0) {
           logger.info("[agent-sandbox] Cleaned up shared-runtime history after delete", {
@@ -1956,14 +2245,92 @@ export class ElizaSandboxService {
           });
         }
       } catch (err) {
+        // error-policy:J6 the sandbox is already gone; failed history cleanup
+        // leaves stale rows for a later sweep, never un-deletes the agent.
         logger.warn("[agent-sandbox] Failed to clean up shared-runtime history", {
           agentId,
           error: err instanceof Error ? err.message : String(err),
         });
       }
+
+      // #17006: purge each room's SharedRuntimeConversation Durable Object.
+      // The DO copy is the live source of truth for the conversation window,
+      // so dropping only the Postgres mirror above would leave the deleted
+      // agent's conversation content resident in DO storage indefinitely. The
+      // namespace binding exists only inside a Worker request (getCloudBinding
+      // returns undefined in tests/node runtimes), and the purge is
+      // best-effort per room: the deletion is already committed.
+      if (channelIds.length > 0) {
+        const conversations = getCloudBinding<RuntimeDurableObjectNamespace>(
+          "SHARED_RUNTIME_CONVERSATIONS",
+        );
+        if (conversations && typeof conversations.getByName === "function") {
+          try {
+            const purge = await purgeSharedConversationRooms(agentId, channelIds, {
+              namespace: conversations,
+            });
+            logger.info("[agent-sandbox] Purged shared-runtime conversation objects", {
+              agentId,
+              rooms: channelIds.length,
+              ...purge,
+            });
+          } catch (err) {
+            // error-policy:J6 the deletion is already committed; a purge
+            // failure is teardown-only and must never fail the delete.
+            logger.warn("[agent-sandbox] Shared-runtime conversation purge failed", {
+              agentId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      }
     }
 
     return result;
+  }
+
+  /** Whether this row carries a waiver for its current deletion generation. */
+  private hasCurrentPreDeleteCaptureWaiver(rec: AgentSandbox): boolean {
+    return (
+      rec.deletion_attempt_id !== null &&
+      rec.pre_delete_capture_waiver_attempt_id === rec.deletion_attempt_id &&
+      rec.pre_delete_capture_waiver_environment_revision === rec.environment_revision &&
+      rec.pre_delete_capture_waiver_sandbox_id === rec.sandbox_id &&
+      rec.pre_delete_capture_waiver_bridge_url !== null &&
+      rec.pre_delete_capture_waiver_bridge_url === rec.bridge_url
+    );
+  }
+
+  /**
+   * Whether deleting this row must first prove a current backup (#18517).
+   * Running rows always require proof. Error/disconnected rows require it when
+   * they retain a container locator. A deletion continuation with no live
+   * bridge requires it unless allocation ownership proves the row was already
+   * stopped; this avoids mistaking a stopped row's retained `sandbox_id` for a
+   * live container while still failing closed on ambiguous legacy intents.
+   */
+  private requiresPreDeleteCapture(rec: AgentSandbox | null | undefined): rec is AgentSandbox {
+    if (
+      !rec ||
+      rec.execution_tier === "shared" ||
+      (rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed")
+    ) {
+      return false;
+    }
+    if (rec.status === "running") return true;
+    const hasContainerLocator = Boolean(
+      rec.sandbox_id || rec.node_id || rec.container_name || rec.bridge_url,
+    );
+    if (rec.status === "disconnected" || rec.status === "error") {
+      return hasContainerLocator;
+    }
+    if (rec.status === "deletion_pending" || rec.status === "deletion_failed") {
+      return (
+        Boolean(rec.bridge_url) ||
+        (rec.deletion_allocation_counted !== false && hasContainerLocator)
+      );
+    }
+    return false;
   }
 
   /**
@@ -1976,6 +2343,24 @@ export class ElizaSandboxService {
   private async prepareAgentDelete(
     agentId: string,
     orgId: string,
+    authorization?: DeleteAuthorization,
+    preDeleteCapture?: {
+      snapshot: {
+        stateData: AgentBackupStateData;
+        sizeBytes: number;
+        bridgeUrl: string;
+      } | null;
+      captureUnsupportedGeneration: {
+        bridgeUrl: string;
+        environmentRevision: number;
+        sandboxId: string | null;
+      } | null;
+      captureWaiverAlreadyPersisted: boolean;
+      existingBackup: {
+        id: string;
+        deletionAttemptId: string;
+      } | null;
+    },
   ): Promise<
     | {
         ok: true;
@@ -1986,6 +2371,8 @@ export class ElizaSandboxService {
         environmentRevision: number;
         lifecycleRevision: number;
         deletionAttemptId: string;
+        deletionStartedAt: Date;
+        preDeleteBackupId: string | null;
       }
     | { ok: false; error: string }
   > {
@@ -2011,7 +2398,82 @@ export class ElizaSandboxService {
       if (rec.status === "provisioning" || hasActiveProvisionJob || hasActiveReplacementJob) {
         return { ok: false as const, error: "Agent provisioning is in progress" };
       }
+      const isSharedRuntime = rec.execution_tier === "shared";
+      const isUnclaimedWarmPoolEntry =
+        rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed";
+      if (
+        rec.status === "running" &&
+        !isSharedRuntime &&
+        !isUnclaimedWarmPoolEntry &&
+        !authorization
+      ) {
+        return {
+          ok: false as const,
+          error: "Agent is running; suspend it before deletion",
+        };
+      }
+      let preDeleteBackupId: string | null = null;
+      let captureWaiverToPersist: {
+        bridgeUrl: string;
+        environmentRevision: number;
+        sandboxId: string | null;
+      } | null = null;
+      let snapshotToPersist: {
+        stateData: AgentBackupStateData;
+        sizeBytes: number;
+      } | null = null;
+      if (this.requiresPreDeleteCapture(rec)) {
+        const existingBackup = preDeleteCapture?.existingBackup ?? null;
+        if (
+          existingBackup &&
+          rec.deletion_attempt_id === existingBackup.deletionAttemptId &&
+          rec.deletion_started_at !== null &&
+          (await agentSandboxesRepository.validateAttachedPreDeleteBackupForDeletion(tx, {
+            backupId: existingBackup.id,
+            sandboxRecordId: rec.id,
+            deletionStartedAt: rec.deletion_started_at,
+          }))
+        ) {
+          preDeleteBackupId = existingBackup.id;
+        }
+
+        const captureWaiverIsCurrent =
+          preDeleteCapture?.captureWaiverAlreadyPersisted === true &&
+          this.hasCurrentPreDeleteCaptureWaiver(rec);
+        if (preDeleteBackupId === null && !captureWaiverIsCurrent) {
+          const unsupported = preDeleteCapture?.captureUnsupportedGeneration ?? null;
+          if (unsupported) {
+            if (
+              rec.bridge_url !== unsupported.bridgeUrl ||
+              rec.environment_revision !== unsupported.environmentRevision ||
+              rec.sandbox_id !== unsupported.sandboxId
+            ) {
+              return {
+                ok: false as const,
+                error:
+                  "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
+              };
+            }
+            captureWaiverToPersist = unsupported;
+          } else {
+            const snapshot = preDeleteCapture?.snapshot ?? null;
+            // The capture must be OF THIS generation (shutdown's rule): a
+            // capture taken against a different bridge_url is another
+            // container's state. Refuse, leaving the row for a retry.
+            if (!snapshot || rec.bridge_url !== snapshot.bridgeUrl) {
+              return {
+                ok: false as const,
+                error:
+                  "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
+              };
+            }
+            snapshotToPersist = snapshot;
+          }
+        }
+      }
+
       const deletionAttemptId = rec.deletion_attempt_id ?? crypto.randomUUID();
+      const deletionStartedAt = rec.deletion_started_at ?? new Date();
       // A retry preserves the original audit timestamp while taking a fresh
       // database generation for the new teardown attempt.
       //
@@ -2025,10 +2487,19 @@ export class ElizaSandboxService {
         .set({
           status: "deletion_pending",
           deletion_attempt_id: deletionAttemptId,
-          ...(rec.deletion_started_at === null ? { deletion_started_at: new Date() } : {}),
+          ...(rec.deletion_started_at === null ? { deletion_started_at: deletionStartedAt } : {}),
           ...(isDeletionContinuation(rec)
             ? {}
             : { deletion_allocation_counted: holdsCountedNodeSlot(rec) }),
+          ...(captureWaiverToPersist
+            ? {
+                pre_delete_capture_waiver_attempt_id: deletionAttemptId,
+                pre_delete_capture_waiver_environment_revision:
+                  captureWaiverToPersist.environmentRevision,
+                pre_delete_capture_waiver_sandbox_id: captureWaiverToPersist.sandboxId,
+                pre_delete_capture_waiver_bridge_url: captureWaiverToPersist.bridgeUrl,
+              }
+            : {}),
           updated_at: new Date(),
         })
         .where(
@@ -2051,6 +2522,26 @@ export class ElizaSandboxService {
         throw new Error("Agent deletion intent was not persisted");
       }
 
+      // The retention predicate deliberately requires a pre-delete backup to
+      // be no older than this deletion intent. Persist only after the intent is
+      // durable in the same transaction; otherwise the backup helper stamps
+      // created_at first and the freshly captured row cannot be detached at
+      // commit. The backup metadata update advances lifecycle_revision, so use
+      // the post-trigger revision it returns as the ownership fence.
+      let lifecycleRevision = owned.lifecycleRevision;
+      if (snapshotToPersist) {
+        const persisted = await this.persistSnapshotWithinTransaction(
+          tx,
+          rec.id,
+          rec.organization_id,
+          "pre-delete",
+          snapshotToPersist.stateData,
+          snapshotToPersist.sizeBytes,
+        );
+        preDeleteBackupId = persisted.backupId;
+        lifecycleRevision = persisted.lifecycleRevision;
+      }
+
       return {
         ok: true as const,
         sandboxId: rec.sandbox_id,
@@ -2058,8 +2549,10 @@ export class ElizaSandboxService {
         status: rec.status,
         sourcePoolId: rec.warm_claim_source_pool_id,
         environmentRevision: rec.environment_revision,
-        lifecycleRevision: owned.lifecycleRevision,
+        lifecycleRevision,
         deletionAttemptId: owned.deletionAttemptId,
+        deletionStartedAt: owned.deletionStartedAt,
+        preDeleteBackupId,
       };
     });
   }
@@ -2077,6 +2570,8 @@ export class ElizaSandboxService {
       environmentRevision: number;
       lifecycleRevision: number;
       deletionAttemptId: string;
+      deletionStartedAt: Date;
+      preDeleteBackupId: string | null;
     },
   ): Promise<DeleteAgentResult> {
     return dbWrite.transaction(async (tx) => {
@@ -2106,6 +2601,29 @@ export class ElizaSandboxService {
         } as const;
       }
 
+      if (ownership.preDeleteBackupId) {
+        const retained = await agentSandboxesRepository.retainPreDeleteBackupForDeletedAgent(tx, {
+          backupId: ownership.preDeleteBackupId,
+          sandboxRecordId: agentId,
+          organizationId: orgId,
+          deletionAttemptId: ownership.deletionAttemptId,
+          deletionStartedAt: ownership.deletionStartedAt,
+          expiresAt: new Date(Date.now() + PRE_DELETE_BACKUP_RETENTION_MS),
+        });
+        if (!retained) {
+          throw new ElizaError("Pre-delete recovery backup ownership changed", {
+            code: "PRE_DELETE_BACKUP_RETENTION_LOST",
+            context: {
+              agentId,
+              organizationId: orgId,
+              deletionAttemptId: ownership.deletionAttemptId,
+              backupId: ownership.preDeleteBackupId,
+            },
+            severity: "fatal",
+          });
+        }
+      }
+
       const [deletedSandbox] = await tx
         .delete(agentSandboxes)
         .where(
@@ -2121,9 +2639,17 @@ export class ElizaSandboxService {
         )
         .returning();
 
-      return deletedSandbox
-        ? ({ success: true, rowDeleted: true, deletedSandbox } as const)
-        : ({ success: false, error: "Agent not found" } as const);
+      if (!deletedSandbox) {
+        // Throwing rolls back the recovery detachment above; returning a
+        // structured miss would commit an orphaned backup while retaining the
+        // agent row, making the next retry unable to find its capture.
+        throw new ElizaError("Agent row delete lost its lifecycle ownership", {
+          code: "AGENT_DELETE_COMMIT_LOST",
+          context: { agentId, organizationId: orgId, ...ownership },
+          severity: "ephemeral",
+        });
+      }
+      return { success: true, rowDeleted: true, deletedSandbox } as const;
     });
   }
 
@@ -2200,6 +2726,126 @@ export class ElizaSandboxService {
           } as const)
         : ({ success: false, error: "Agent not found" } as const);
     });
+  }
+
+  /**
+   * Reverse a queued deletion while the container is still alive (#18517).
+   * `deletion_pending` used to be a one-way door: cancelling the queued
+   * `agent_delete` job stranded the row, and `reEnqueueFailedDeletions`
+   * re-armed a fresh delete on every sweep. Run before teardown starts, this
+   * atomically cancels the queued job(s) and returns the row to `running`
+   * with its deletion-intent columns cleared, so the reconciler has nothing
+   * left to re-arm. Refusals leave everything untouched: an executing delete
+   * (job `in_progress`) may already be tearing the container down, and a row
+   * whose bridge is gone has no live workload for `running` to describe.
+   */
+  async cancelAgentDeletion(
+    agentId: string,
+    orgId: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    await ensureAgentSandboxSchema();
+    return dbWrite.transaction(async (tx) => this.cancelAgentDeletionTx(tx, agentId, orgId));
+  }
+
+  /** Transaction body of {@link cancelAgentDeletion}, separated so the
+   *  deterministic suite can drive it against a fake lifecycle transaction. */
+  private async cancelAgentDeletionTx(
+    tx: LifecycleTx,
+    agentId: string,
+    orgId: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    await this.lockLifecycle(tx, agentId, orgId);
+
+    const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+    if (!rec) return { success: false, error: "Agent not found" };
+    if (rec.status !== "deletion_pending") {
+      return {
+        success: false,
+        error: `Agent is not pending deletion (status: ${rec.status})`,
+      };
+    }
+    const previousBillingStatus = rec.deletion_previous_billing_status;
+    if (
+      rec.deletion_previous_status !== "running" ||
+      previousBillingStatus === null ||
+      !["active", "warning", "suspended", "shutdown_pending", "exempt"].includes(
+        previousBillingStatus,
+      )
+    ) {
+      return {
+        success: false,
+        error: "Agent deletion does not have a reversible running-state receipt",
+      };
+    }
+    // A running receipt plus a live bridge proves the workload still matches
+    // the state being restored. Legacy deletion rows have no receipt and are
+    // refused above; a missing bridge means teardown may already have begun.
+    if (!rec.bridge_url) {
+      return {
+        success: false,
+        error: "Agent container is no longer reachable; the deletion can only complete",
+      };
+    }
+    const executing = await tx.execute<{ id: string }>(sql`
+      SELECT id
+      FROM ${jobs}
+      WHERE type = ${JOB_TYPES.AGENT_DELETE}
+        AND organization_id = ${orgId}
+        AND ${jobs.agent_id} = ${agentId}
+        AND status = 'in_progress'
+      LIMIT 1
+    `);
+    if (executing.rows.length > 0) {
+      return { success: false, error: "Agent deletion is already executing" };
+    }
+
+    // Cancel queued (never claimed) delete jobs in the same transaction as the
+    // row restore, so no window exists where a worker claims the job against a
+    // row that is about to leave `deletion_pending`.
+    await tx.execute(sql`
+      UPDATE ${jobs}
+      SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
+      WHERE type = ${JOB_TYPES.AGENT_DELETE}
+        AND organization_id = ${orgId}
+        AND ${jobs.agent_id} = ${agentId}
+        AND status = 'pending'
+    `);
+
+    // Restore the captured billing state, never a guessed healthy default. A
+    // delete requested while billing was warning/suspended must not become a
+    // billing bypass when it is cancelled. Clearing allocation ownership
+    // withdraws the pending release-at-commit marker (#17185).
+    const restored = await tx.execute<{ id: string }>(sql`
+      UPDATE ${agentSandboxes}
+      SET status = ${rec.deletion_previous_status},
+          billing_status = ${previousBillingStatus},
+          shutdown_warning_sent_at = ${rec.deletion_previous_shutdown_warning_sent_at},
+          scheduled_shutdown_at = ${rec.deletion_previous_scheduled_shutdown_at},
+          deletion_attempt_id = NULL,
+          deletion_started_at = NULL,
+          deletion_previous_status = NULL,
+          deletion_previous_billing_status = NULL,
+          deletion_previous_shutdown_warning_sent_at = NULL,
+          deletion_previous_scheduled_shutdown_at = NULL,
+          deletion_allocation_counted = NULL,
+          error_count = 0,
+          error_message = NULL,
+          updated_at = NOW()
+      WHERE id = ${agentId}
+        AND organization_id = ${orgId}
+        AND status = 'deletion_pending'
+        AND deletion_attempt_id IS NOT DISTINCT FROM ${rec.deletion_attempt_id}
+      RETURNING id
+    `);
+    if (restored.rows.length !== 1) {
+      return { success: false, error: "Agent deletion ownership changed" };
+    }
+
+    logger.info("[agent-sandbox] Cancelled queued deletion; agent restored to running", {
+      agentId,
+      orgId,
+    });
+    return { success: true };
   }
 
   /**
@@ -2282,13 +2928,15 @@ export class ElizaSandboxService {
   async executeDeletion(
     agentId: string,
     orgId: string,
+    authorization?: DeleteAuthorization,
   ): Promise<{
     success: boolean;
     containerStopped: boolean;
     rowDeleted: boolean;
     error?: string;
+    retryable?: true;
   }> {
-    const result = await this.deleteAgent(agentId, orgId);
+    const result = await this.deleteAgent(agentId, orgId, { authorization });
     if (!result.success) {
       // If the row is already gone, treat as success. This covers the retry
       // case where a prior attempt deleted the row but failed before updating
@@ -2301,6 +2949,7 @@ export class ElizaSandboxService {
         containerStopped: false,
         rowDeleted: false,
         error: result.error,
+        retryable: result.retryable,
       };
     }
 
@@ -2526,19 +3175,14 @@ export class ElizaSandboxService {
             agentId: rec.id,
             agentName: rec.agent_name ?? "CloudAgent",
             organizationId: rec.organization_id,
-            environmentVars: {
+            environmentVars: applyRemoteDockerRuntimeMode({
               ...callerEnv,
               ...dbEnv,
-            },
+            }),
             // Path A: pass the persisted character so the container boots AS
             // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON
             // injection + packages/agent/src/runtime/sandbox-character.ts).
-            agentConfig:
-              rec.agent_config &&
-              typeof rec.agent_config === "object" &&
-              !Array.isArray(rec.agent_config)
-                ? (rec.agent_config as Record<string, unknown>)
-                : undefined,
+            agentConfig: agentConfigForProvision(rec),
             // Path A: the gateways route by character_id, so the container must
             // register under, and answer as, that id (see
             // SANDBOX_ROUTE_AGENT_ID injection).
@@ -3200,6 +3844,54 @@ export class ElizaSandboxService {
     return await this.fetchAgentTarget(rec, target, init);
   }
 
+  private async fetchCanonicalConversationApi(
+    rec: AgentApiTarget,
+    path: string,
+    init: RequestInit,
+    canonicalBridgeBase: unknown,
+  ): Promise<Response> {
+    const requestedBase =
+      typeof canonicalBridgeBase === "string"
+        ? canonicalBridgeBase.trim().replace(/\/+$/, "")
+        : null;
+    const storedBase = rec.bridge_url?.trim().replace(/\/+$/, "") ?? null;
+    if (requestedBase && requestedBase === storedBase) {
+      const url = new URL(requestedBase);
+      const isLoopback =
+        url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+      if ((url.protocol === "http:" || url.protocol === "https:") && isLoopback) {
+        // The local control plane deliberately multiplexes sandboxes beneath a
+        // path-prefixed loopback URL. Only the exact DB-owned target may bypass
+        // outbound SSRF validation; preserving its prefix reaches the same
+        // canonical conversation that accepted the cutover import.
+        return await this.fetchAgentTarget(rec, { url: `${requestedBase}${path}` }, init);
+      }
+    }
+
+    const baseDomain = this.getConfiguredAgentBaseDomain();
+    if (baseDomain) {
+      const workerTarget = this.getWorkerAgentRouterFetchTarget(rec, path);
+      if (workerTarget) {
+        return await this.fetchAgentTarget(rec, workerTarget, init);
+      }
+      const publicEndpoint = getElizaAgentPublicWebUiUrl(rec, {
+        baseDomain,
+        path,
+      });
+      if (publicEndpoint) {
+        return await this.fetchAgentTarget(rec, { url: publicEndpoint }, init);
+      }
+    }
+
+    return await this.fetchAgentTarget(
+      rec,
+      {
+        url: await this.getSafeBridgeEndpoint(rec, path),
+      },
+      init,
+    );
+  }
+
   private async getAgentWebFetchTarget(
     rec: AgentNetworkTarget,
     path: string,
@@ -3792,13 +4484,13 @@ export class ElizaSandboxService {
                 reply += part.text;
                 controller.enqueue(
                   encoder.encode(
-                    `event: chunk\ndata: ${JSON.stringify({
+                    chatSseFrame("chunk", {
                       messageId,
                       chunk: part.text,
                       text: part.text,
                       fullText: reply,
                       timestamp: Date.now(),
-                    })}\n\n`,
+                    }),
                   ),
                 );
                 continue;
@@ -3901,24 +4593,24 @@ export class ElizaSandboxService {
               }
               // Attach a VIEWS navigation handoff for a deterministic nav turn so
               // the PWA opens the view (findViewActionHandoff → navigate event in
-              // packages/ui/src/view-action-handoff.ts). Non-nav turns omit it,
-              // so the `done` frame is byte-identical to before for normal chat.
+              // packages/ui/src/view-action-handoff.ts). Non-nav turns omit it.
               const doneData = turn.navIntent
                 ? {
                     messageId,
                     text: finalReply,
+                    fullText: finalReply,
                     actionResults: [navIntentActionResult(turn.navIntent)],
                   }
-                : { messageId, text: finalReply };
-              controller.enqueue(
-                encoder.encode(`event: done\ndata: ${JSON.stringify(doneData)}\n\n`),
-              );
+                : { messageId, text: finalReply, fullText: finalReply };
+              controller.enqueue(encoder.encode(chatSseFrame("done", doneData)));
             }
             if (!finished) {
               await settleReservation(0);
               controller.enqueue(
                 encoder.encode(
-                  `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream ended without completion" })}\n\n`,
+                  chatSseFrame("error", {
+                    message: "Shared runtime stream ended without completion",
+                  }),
                 ),
               );
             }
@@ -3935,9 +4627,7 @@ export class ElizaSandboxService {
               agentId: rec.id,
             });
             controller.enqueue(
-              encoder.encode(
-                `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream failed" })}\n\n`,
-              ),
+              encoder.encode(chatSseFrame("error", { message: "Shared runtime stream failed" })),
             );
           } finally {
             controller.close();
@@ -4940,6 +5630,18 @@ export class ElizaSandboxService {
       };
     }
 
+    const canonicalConversationId =
+      typeof params.conversationId === "string" && params.conversationId.trim()
+        ? params.conversationId.trim()
+        : null;
+    if (canonicalConversationId) {
+      // Cutover connectors name the imported conversation explicitly. Do not
+      // fall through to a newly-created REST conversation or another bridge
+      // surface: either this exact history accepts the turn, or delivery fails
+      // closed and the provider retries the same clientMessageId.
+      return await this.bridgeConversationMessageSend(rec, rpc, params, canonicalConversationId);
+    }
+
     const attempts = [
       // Try the cloud-agent image's native /bridge JSON-RPC first. This is
       // the canonical surface served by packages/app-core/deploy/cloud-agent-shared.ts.
@@ -5091,17 +5793,19 @@ export class ElizaSandboxService {
     rec: AgentSandbox,
     rpc: BridgeRequest,
     params: Record<string, unknown>,
+    canonicalConversationId?: string,
   ): Promise<BridgeResponse> {
-    const conversationId = await this.createBridgeConversation(rec, params);
-    const res = await this.fetchAgentApi(
-      rec,
-      `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
-      {
-        method: "POST",
-        body: JSON.stringify(this.buildBridgeConversationMessageBody(params)),
-        signal: AbortSignal.timeout(60_000),
-      },
-    );
+    const conversationId =
+      canonicalConversationId ?? (await this.createBridgeConversation(rec, params));
+    const path = `/api/conversations/${encodeURIComponent(conversationId)}/messages`;
+    const init = {
+      method: "POST",
+      body: JSON.stringify(this.buildBridgeConversationMessageBody(params)),
+      signal: AbortSignal.timeout(60_000),
+    } satisfies RequestInit;
+    const res = canonicalConversationId
+      ? await this.fetchCanonicalConversationApi(rec, path, init, params.canonicalBridgeBase)
+      : await this.fetchAgentApi(rec, path, init);
     if (!res.ok) {
       return {
         jsonrpc: "2.0",
@@ -5122,6 +5826,76 @@ export class ElizaSandboxService {
         transport: "conversation-rest",
         ...(failureKind ? { failureKind } : {}),
       },
+    };
+  }
+
+  /**
+   * Recreates an authoritative cutover conversation after a Dedicated runtime
+   * loses its local conversation index during relocation or fresh boot. Exact
+   * source ids make concurrent repairs idempotent at the runtime boundary.
+   */
+  async importCanonicalConversation(
+    agentId: string,
+    orgId: string,
+    conversationId: string,
+    messages: Array<{
+      sourceId: string;
+      role: "user" | "assistant";
+      text: string;
+      timestamp?: number;
+    }>,
+  ): Promise<{
+    complete: true;
+    sourceMessageCount: number;
+    inserted: number;
+    skipped: number;
+  } | null> {
+    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    if (!rec) return null;
+    const serverSecret = getCloudAwareEnv().AGENT_SERVER_SHARED_SECRET?.trim();
+    if (!serverSecret) return null;
+
+    const res = await this.fetchCanonicalConversationApi(
+      rec,
+      `/api/conversations/${encodeURIComponent(conversationId)}/import`,
+      {
+        method: "POST",
+        headers: { "X-Server-Token": serverSecret },
+        body: JSON.stringify({ messages }),
+        signal: AbortSignal.timeout(20_000),
+      },
+      rec.bridge_url,
+    );
+    if (!res.ok) return null;
+
+    // error-policy:J3 an unreadable import receipt is explicitly invalid and
+    // cannot authorize the connector retry.
+    const body = (await res.json().catch(() => null)) as {
+      conversationId?: unknown;
+      complete?: unknown;
+      sourceMessageCount?: unknown;
+      inserted?: unknown;
+      skipped?: unknown;
+    } | null;
+    if (!body || typeof body.inserted !== "number" || typeof body.skipped !== "number") {
+      return null;
+    }
+    const inserted = body.inserted;
+    const skipped = body.skipped;
+    const countsMatch = inserted + skipped === messages.length;
+    const modernReceipt = body?.complete === true && body.sourceMessageCount === messages.length;
+    const legacyReceipt =
+      body?.complete === undefined &&
+      body.sourceMessageCount === undefined &&
+      body.conversationId === conversationId;
+    if (!countsMatch || (!modernReceipt && !legacyReceipt)) {
+      return null;
+    }
+    return {
+      complete: true,
+      sourceMessageCount: messages.length,
+      inserted,
+      skipped,
     };
   }
 
@@ -5418,6 +6192,9 @@ export class ElizaSandboxService {
     } else {
       body.conversationMode = "simple";
     }
+    if (typeof params.clientMessageId === "string" && params.clientMessageId.trim()) {
+      body.clientMessageId = params.clientMessageId.trim();
+    }
     return body;
   }
 
@@ -5689,7 +6466,7 @@ export class ElizaSandboxService {
       if (!res.ok) return null;
       const body = await res.json().catch(() => ({}));
       const messages = this.getBridgeMessages(body);
-      for (const message of messages.toReversed()) {
+      for (const message of messages.slice().reverse()) {
         const record = this.nestedBridgeRecord(message);
         if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
         const text = this.extractBridgeMessageText(record);
@@ -5718,7 +6495,7 @@ export class ElizaSandboxService {
       if (!res.ok) return null;
       const body = await res.json().catch(() => ({}));
       const messages = this.getBridgeMessages(body);
-      for (const message of messages.toReversed()) {
+      for (const message of messages.slice().reverse()) {
         const record = this.nestedBridgeRecord(message);
         if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
         const text = this.extractBridgeMessageText(record);
@@ -6145,10 +6922,11 @@ export class ElizaSandboxService {
       messageId,
       chunk: text,
       text,
+      fullText: text,
       timestamp: Date.now(),
     };
     return new Response(
-      `event: chunk\ndata: ${JSON.stringify(chunk)}\n\nevent: done\ndata: ${JSON.stringify({ messageId, text })}\n\n`,
+      chatSseFrame("chunk", chunk) + chatSseFrame("done", { messageId, text, fullText: text }),
       {
         status: 200,
         headers: {
@@ -6193,22 +6971,25 @@ export class ElizaSandboxService {
           const delta = typeof data.text === "string" ? data.text : "";
           accumulated = typeof data.fullText === "string" ? data.fullText : accumulated + delta;
           controller.enqueue(
-            `event: chunk\ndata: ${JSON.stringify({
+            chatSseFrame("chunk", {
               messageId,
               chunk: delta,
               text: delta,
               fullText: accumulated,
               timestamp: Date.now(),
-            })}\n\n`,
+            }),
           );
           return;
         }
         if (data?.type === "done") {
           controller.enqueue(
-            `event: done\ndata: ${JSON.stringify({
-              messageId,
-              text: typeof data.fullText === "string" ? data.fullText : accumulated,
-            })}\n\n`,
+            chatSseFrame(
+              "done",
+              normalizeChatSseDonePayload(data, {
+                messageId,
+                fullText: accumulated,
+              }),
+            ),
           );
           return;
         }
@@ -6246,7 +7027,7 @@ export class ElizaSandboxService {
   }
 
   private createBridgeSseErrorResponse(message: string): Response {
-    return new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
+    return new Response(chatSseFrame("error", { message }), {
       status: 200,
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",
@@ -6278,13 +7059,25 @@ export class ElizaSandboxService {
       if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
         return { success: false, error: SNAPSHOT_ENDPOINT_UNSUPPORTED };
       }
+      if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
+        return {
+          success: false,
+          error: SNAPSHOT_CAPTURE_TRANSIENT,
+          retryable: true,
+        };
+      }
       throw error;
     }
 
-    if (type === "pre-upgrade" && !stateData.manifest) {
+    // Both labels gate a destructive follow-up — a rollback replays the
+    // `pre-upgrade` point, and a relocation destroys the source container once
+    // the `pre-move` capture is restored elsewhere. A partial capture would
+    // survive either as silent data loss, so neither is accepted without a
+    // full-agent manifest.
+    if ((type === "pre-upgrade" || type === "pre-move") && !stateData.manifest) {
       return {
         success: false,
-        error: "Pre-upgrade snapshot did not include a full-agent manifest",
+        error: `${type} snapshot did not include a full-agent manifest`,
       };
     }
 
@@ -6303,6 +7096,82 @@ export class ElizaSandboxService {
       bytes: backup.size_bytes,
     });
     return { success: true, backup };
+  }
+
+  /**
+   * Carry an agent's durable state from the container it runs on today onto a
+   * replacement container on another node.
+   *
+   * This exists because a blue/green replacement moves the CONTAINER, not the
+   * state. Agent volumes are host bind-mounts (`/data/agents/<id>` mounted at
+   * `/root/.eliza`), so the pglite data directory does not follow a container
+   * to a new machine, and the `pre-upgrade` snapshot the upgrade path takes is
+   * only a rollback point — it is never pushed into the new container. A
+   * relocation built on the upgrade sequence alone would therefore start the
+   * agent on an empty database and destroy the old one on cutover.
+   *
+   * The only cross-node transport is the application-level snapshot/restore
+   * rail, which is node-agnostic by construction. This method is that rail,
+   * with the ordering that makes it safe:
+   *
+   *   1. capture from the OLD container while it is still live and serving;
+   *   2. reconstruct, so a backup that cannot be replayed is caught here;
+   *   3. push onto the new container.
+   *
+   * It never reports success without a completed push, so the caller may only
+   * retire the old placement once this resolves `transferred: true`. An image
+   * that cannot snapshot is reported as `capture-unsupported` rather than as a
+   * failure: such an agent is not relocatable, and the caller must leave it
+   * where it is instead of moving it without its data.
+   */
+  async transferStateForRelocation(opts: {
+    agentId: string;
+    orgId: string;
+    targetBridgeUrl: string;
+    /** Carries the agent's API token so the restore is not rejected (#15261). */
+    authRec: Pick<AgentSandbox, "id" | "environment_vars">;
+  }): Promise<StateTransferOutcome> {
+    const captured = await this.snapshot(opts.agentId, opts.orgId, "pre-move");
+    if (!captured.success || !captured.backup) {
+      const detail = captured.error ?? "unknown snapshot failure";
+      return {
+        transferred: false,
+        reason: detail === SNAPSHOT_ENDPOINT_UNSUPPORTED ? "capture-unsupported" : "capture-failed",
+        detail,
+      };
+    }
+
+    const restoreState = await agentSandboxesRepository.getReconstructedBackupState(
+      captured.backup.id,
+    );
+    if (!restoreState) {
+      return {
+        transferred: false,
+        reason: "reconstruct-failed",
+        detail: `pre-move backup ${captured.backup.id} could not be reconstructed`,
+      };
+    }
+
+    try {
+      await this.pushState(opts.targetBridgeUrl, restoreState, {
+        trusted: true,
+        authRec: opts.authRec,
+      });
+    } catch (error) {
+      // error-policy:J2 the caller decides what to do with a half-moved agent,
+      // and it can only decide correctly if the reason survives.
+      return {
+        transferred: false,
+        reason: "push-failed",
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+
+    return {
+      transferred: true,
+      snapshotId: captured.backup.id,
+      sizeBytes: captured.backup.size_bytes ?? 0,
+    };
   }
 
   /**
@@ -7167,7 +8036,10 @@ export class ElizaSandboxService {
 
   // Shutdown
 
-  async shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }> {
+  async shutdown(
+    agentId: string,
+    orgId: string,
+  ): Promise<{ success: boolean; error?: string; retryable?: boolean }> {
     let snapshotAgentId: string | null = null;
     let captureUnsupported = false;
     let preShutdownSnapshot: {
@@ -7192,6 +8064,22 @@ export class ElizaSandboxService {
             "[agent-sandbox] Shutdown proceeding without capture: image has no snapshot endpoint",
             { agentId },
           );
+        } else if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
+          // TRANSIENT (PGlite closing race): do NOT weaken the fail-closed
+          // guarantee — still refuse to stop — but mark the failure RETRYABLE so
+          // the restart/shutdown job re-attempts instead of treating a healthy
+          // agent as permanently un-capturable. On the next attempt PGlite is no
+          // longer mid-close and the capture succeeds (2026-08-11 fleet
+          // incident: opaque 500 here wedged healthy agents indefinitely).
+          logger.warn(
+            "[agent-sandbox] Shutdown deferred: pre-stop capture transiently unavailable, will retry",
+            { agentId },
+          );
+          return {
+            success: false,
+            retryable: true,
+            error: `Refusing to stop without a current backup: ${message}`,
+          };
         } else {
           // Fail CLOSED: stopping the container without a current capture
           // silently discards everything since the last backup. A shutdown
@@ -7797,6 +8685,7 @@ export class ElizaSandboxService {
     bridgeUrl?: string;
     healthUrl?: string;
     error?: string;
+    retryable?: boolean;
   }> {
     // Bail before shutdown()+provision() if the row is being deleted — restart
     // would otherwise flip a deletion_pending row to `stopped` and rebuild a
@@ -7823,6 +8712,10 @@ export class ElizaSandboxService {
         success: false,
         containerStopped: false,
         containerStarted: false,
+        // Propagate retryability: a transient pre-stop capture failure (PGlite
+        // closing race) must re-queue the restart, not permanently wedge a
+        // healthy agent (2026-08-11 fleet incident).
+        retryable: shutdownResult.retryable,
         error: shutdownResult.error ?? "Failed to stop sandbox before restart",
       };
     }
@@ -7890,8 +8783,8 @@ export class ElizaSandboxService {
     onCutoverInTx: AdminCanaryImageExecutionPolicy["onCutoverInTx"];
     onConvergedInTx: AdminCanaryImageExecutionPolicy["onConvergedInTx"];
   }): Promise<ImageSwapResult> {
-    assertCanonicalSourceImage(params.sourceImage, "sourceImage");
     assertSha256Digest(params.sourceDigest, "sourceDigest");
+    assertAdminCanaryCanonicalOrDemoPair(params.sourceImage, params.sourceDigest, "sourceImage");
     const target = parseAdminCanaryDemoImage(params.targetImage);
     if (target.digest !== params.targetDigest) {
       return { success: false, error: "Canary target image and digest do not match" };
@@ -8081,10 +8974,10 @@ export class ElizaSandboxService {
       // ELIZA_AGENT_LOCAL_STATE, PGLITE_DATA_DIR, ELIZA_PLUGIN_SET, ...) — the
       // narrow helper deliberately avoids the full provision merge, which would
       // mint a new API key / strip DATABASE_URL / flip local-state on upgrade (#8434).
-      environmentVars: {
+      environmentVars: applyRemoteDockerRuntimeMode({
         ...upgradeEnv,
         ...applyManagedAgentInferenceEnvDefaults(upgradeEnv),
-      },
+      }),
       dockerImage: digestPinnedImageRef(dockerImage, toDigest),
       excludeNodeId: oldNodeId,
       // Preserve the LIVE Headscale node during the overlap (#16565): the
@@ -8398,12 +9291,12 @@ export class ElizaSandboxService {
     onConvergedInTx: AdminCanaryImageExecutionPolicy["onConvergedInTx"];
   }): Promise<ImageSwapResult> {
     assertDemoSourceImage(params.sourceImage, "sourceImage");
-    const source = parseAdminCanaryDemoImage(params.sourceImage);
+    const source = parseAdminCanaryDemoImage(params.sourceImage, "sourceImage");
     if (source.digest !== params.sourceDigest) {
       return { success: false, error: "Canary rollback source image and digest do not match" };
     }
-    assertCanonicalSourceImage(params.targetImage, "targetImage");
     assertSha256Digest(params.targetDigest, "targetDigest");
+    assertAdminCanaryCanonicalOrDemoPair(params.targetImage, params.targetDigest, "targetImage");
     return await this.executeDowngradeWithPolicy(
       params.agentId,
       params.organizationId,
@@ -8577,10 +9470,10 @@ export class ElizaSandboxService {
       agentId,
       agentName: agent.agent_name ?? "",
       organizationId: orgId,
-      environmentVars: {
+      environmentVars: applyRemoteDockerRuntimeMode({
         ...rollbackEnv,
         ...applyManagedAgentInferenceEnvDefaults(rollbackEnv),
-      },
+      }),
       dockerImage: digestPinnedImageRef(rollbackImage, toDigest),
       excludeNodeId: oldNodeId,
       // Preserve the LIVE Headscale node during the overlap (#16565): the
@@ -9283,6 +10176,7 @@ export class ElizaSandboxService {
             updated_at = NOW()
           WHERE node_id = ${incoming.nodeId}
             AND enabled = TRUE
+            AND placement_state = 'open'
             AND status = 'healthy'
             AND allocated_count < capacity
           RETURNING node_id
@@ -9860,8 +10754,34 @@ export class ElizaSandboxService {
       // auto snapshot is skipped, not hard-failed-and-retried.
       throw new Error(SNAPSHOT_ENDPOINT_UNSUPPORTED);
     }
+    if (res.status === 503) {
+      let payload: { code?: unknown } | null = null;
+      try {
+        payload = (await res.clone().json()) as { code?: unknown };
+      } catch {
+        // error-policy:J3 an invalid upstream error body is not the structured
+        // transient signal and therefore follows the ordinary HTTP failure.
+        payload = null;
+      }
+      if (payload?.code === AGENT_SNAPSHOT_CAPTURE_TRANSIENT_CODE) {
+        // TRANSIENT: only the agent's structured PGlite-closing code defers a
+        // state-preserving restart. Unrelated runtime/proxy 503 responses keep
+        // the ordinary failure path and bounded attempt policy.
+        throw new Error(SNAPSHOT_CAPTURE_TRANSIENT);
+      }
+    }
     if (!res.ok) {
-      throw new Error(`Snapshot fetch failed: HTTP ${res.status}`);
+      // #18228: the snapshot transfer failed somewhere between the agent's HTTP
+      // handler and this fetch — an agent-side 500 carries a diagnostic body
+      // (the thrown message), while a bridge/proxy hop 500 carries a proxy
+      // error page or an empty body. The Worker log previously reported only
+      // the status code and discarded the body, making the two indistinguishable.
+      // Read a bounded excerpt of the body and include it after the canonical
+      // `Snapshot fetch failed: HTTP <status>` prefix so the existing
+      // SNAPSHOT_HTTP_ERROR_SHAPE regex (anchored at the status) still classifies
+      // it, while the operator sees where the hop failed.
+      const excerpt = await readErrorBodyExcerpt(res);
+      throw new Error(`Snapshot fetch failed: HTTP ${res.status}${excerpt ? ` ${excerpt}` : ""}`);
     }
 
     // Bounded hydration (#16639): stream and count — bytes past the raw
@@ -9892,7 +10812,7 @@ export class ElizaSandboxService {
     type: AgentBackupSnapshotType,
     stateData: AgentBackupStateData,
     sizeBytes: number,
-  ): Promise<void> {
+  ): Promise<{ backupId: string; lifecycleRevision: number }> {
     const [backup] = await tx
       .insert(agentSandboxBackups)
       .values(
@@ -9908,19 +10828,32 @@ export class ElizaSandboxService {
       )
       .returning();
 
-    await tx.execute(sql`
-      UPDATE ${agentSandboxes}
-      SET
-        last_backup_at = NOW(),
-        updated_at = NOW()
-      WHERE id = ${sandboxRecordId}
-    `);
+    if (!backup) {
+      throw new ElizaError("Backup insert did not return the persisted row", {
+        code: "AGENT_BACKUP_INSERT_MISSING",
+        context: { sandboxRecordId, organizationId, snapshotType: type },
+        severity: "fatal",
+      });
+    }
+    const [sandbox] = await tx
+      .update(agentSandboxes)
+      .set({ last_backup_at: new Date(), updated_at: new Date() })
+      .where(eq(agentSandboxes.id, sandboxRecordId))
+      .returning({ lifecycleRevision: agentSandboxes.lifecycle_revision });
+    if (!sandbox) {
+      throw new ElizaError("Backup metadata update lost its sandbox row", {
+        code: "AGENT_BACKUP_SANDBOX_MISSING",
+        context: { sandboxRecordId, organizationId, snapshotType: type, backupId: backup.id },
+        severity: "fatal",
+      });
+    }
 
     logger.info("[agent-sandbox] Backup created", {
       agentId: sandboxRecordId,
       type,
-      bytes: backup?.size_bytes ?? sizeBytes,
+      bytes: backup.size_bytes ?? sizeBytes,
     });
+    return { backupId: backup.id, lifecycleRevision: sandbox.lifecycleRevision };
   }
 
   /**

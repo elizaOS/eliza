@@ -11,6 +11,7 @@ import {
   type AdminCanaryImageJobData,
   type AdminCanaryPlannedTarget,
   type AdminCanaryRolloutInput,
+  assertAdminCanaryCanonicalOrDemoPair,
   assertAdminCanaryImageJobData,
   assertAdminCanaryRequestId,
   assertAdminCanaryRolloutInput,
@@ -322,6 +323,9 @@ export class AdminAgentImageRolloutService {
       ) {
         throw conflict(`Agent ${data.agentId} no longer has the completed canary rollback pair`);
       }
+      // Dry runs must validate the same immutable target pair that enqueue and
+      // execution will use, including a demo image from an earlier canary.
+      assertAdminCanaryCanonicalOrDemoPair(data.sourceImage, data.sourceDigest, "targetImage");
 
       plans.push({
         operation: "rollback",

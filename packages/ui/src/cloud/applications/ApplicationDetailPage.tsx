@@ -1,5 +1,5 @@
 /**
- * /dashboard/apps/:id — single Application detail (8 tabs). The app shell owns
+ * /cloud/apps/:id — single Application detail (8 tabs). The app shell owns
  * the document head; auth gating uses `useSessionAuth()`.
  */
 
@@ -24,7 +24,7 @@ import { useApp } from "./lib/apps";
 import { consumeOneTimeAppApiKey } from "./lib/one-time-app-api-key";
 import { isValidUUID } from "./lib/utils";
 
-/** /dashboard/apps/:id */
+/** /cloud/apps/:id */
 export default function ApplicationDetailPage() {
   const t = useCloudT();
   const { id } = useParams<{ id: string }>();
@@ -59,7 +59,7 @@ export default function ApplicationDetailPage() {
   }, [legacyQueryApiKey, location.pathname, location.search, navigate]);
 
   if (id && !isValidUUID(id)) {
-    return <Navigate to="/dashboard/apps" replace />;
+    return <Navigate to="/cloud/apps" replace />;
   }
 
   if (!session.ready || isLoading) {
@@ -87,7 +87,7 @@ export default function ApplicationDetailPage() {
   }
 
   if (!app) {
-    return <Navigate to="/dashboard/apps" replace />;
+    return <Navigate to="/cloud/apps" replace />;
   }
 
   return (

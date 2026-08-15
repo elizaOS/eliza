@@ -1028,7 +1028,7 @@ export async function runCli(argv = process.argv.slice(2)) {
         apiKey: readKey(directKeyEnv),
       },
       gateway: {
-        baseUrl: values["gateway-base-url"] || "https://api.elizacloud.ai",
+        baseUrl: values["gateway-base-url"] || "https://api.eliza.app",
         apiKey: readKey(gatewayKeyEnv),
       },
       promptOverride: values.prompt,
@@ -1049,7 +1049,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       if (!agentId)
         throw new Error("--agent-id is required for dedicated probes");
       const baseUrl = (
-        values["base-url"] || `https://${agentId}.elizacloud.ai`
+        values["base-url"] || `https://${agentId}.cloud.eliza.app`
       ).replace(/\/+$/, "");
       for (let sequence = 1; sequence <= repeats; sequence += 1) {
         records.push(
@@ -1069,7 +1069,7 @@ export async function runCli(argv = process.argv.slice(2)) {
         values["base-url"] ||
         (target === "direct"
           ? "https://api.cerebras.ai"
-          : "https://api.elizacloud.ai");
+          : "https://api.eliza.app");
       for (const probeCase of cases) {
         for (let sequence = 1; sequence <= repeats; sequence += 1) {
           records.push(

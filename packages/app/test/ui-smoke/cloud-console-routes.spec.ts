@@ -2,39 +2,19 @@
  * Playwright UI-smoke spec for the Cloud Console Routes app flow using the
  * real renderer fixture.
  */
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { expect, type Page, test } from "@playwright/test";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,
   installPageDiagnosticsGuard,
+  seedAppStorage,
 } from "./helpers";
 import { installCloudApiStubs } from "./helpers/cloud-audit-fixtures";
+import { seedStewardSession } from "./helpers/test-auth";
 
 const TEST_AUTH_ENABLED =
   process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
   process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true";
-
-function makeJwt(payload: Record<string, unknown>): string {
-  const encode = (value: object) =>
-    Buffer.from(JSON.stringify(value)).toString("base64url");
-  return `${encode({ alg: "HS256", typ: "JWT" })}.${encode(payload)}.sig`;
-}
-
-async function seedStewardToken(page: Page): Promise<string> {
-  const token = makeJwt({
-    sub: "cloud-console-route-smoke-user",
-    email: "cloud-console-route-smoke@agent.local",
-    exp: Math.floor(Date.now() / 1000) + 600,
-  });
-  await page.addInitScript(
-    ({ key, value }) => {
-      localStorage.setItem(key, value);
-    },
-    { key: STEWARD_TOKEN_KEY, value: token },
-  );
-  return token;
-}
 
 async function installAdminModerationRoutes(page: Page): Promise<void> {
   await page.route("**/api/v1/admin/moderation**", async (route) => {
@@ -132,14 +112,28 @@ test.describe("cloud console route wiring", () => {
     installPageDiagnosticsGuard(page);
     await installDefaultAppRoutes(page);
     await installCloudApiStubs(page);
-    stewardToken = await seedStewardToken(page);
+    await seedAppStorage(page, {
+      "elizaos:active-server": JSON.stringify({
+        id: "cloud:6f9619ff-8b86-4d01-b42d-00c04fc964ff",
+        kind: "cloud",
+        label: "Eliza Cloud",
+        accessToken: "ui-smoke-agent-access-token",
+      }),
+    });
+    stewardToken = await seedStewardSession(page, {
+      jwt: true,
+      subject: "cloud-console-route-smoke-user",
+      email: "cloud-console-route-smoke@agent.local",
+    });
   });
 
-  test("registers /dashboard/analytics instead of falling through to the cloud 404", async ({
+  test("registers /cloud/analytics instead of falling through to the cloud 404", async ({
     page,
   }) => {
-    await page.goto("/dashboard/analytics", { waitUntil: "domcontentloaded" });
+    await page.goto("/cloud/analytics", { waitUntil: "domcontentloaded" });
 
+    await expect(page.locator("[data-app-shell-root]")).toBeVisible();
+    await expect(page.getByTestId("view-header")).toHaveCount(1);
     await expect(
       page.getByRole("heading", { name: "Analytics", level: 1 }),
     ).toBeVisible();
@@ -149,7 +143,7 @@ test.describe("cloud console route wiring", () => {
     await expect(
       page.getByRole("heading", { name: /^Not found$/ }),
     ).toHaveCount(0);
-    await expectNoPageDiagnostics(page, "dashboard analytics route");
+    await expectNoPageDiagnostics(page, "cloud analytics route");
   });
 
   test("admin gate accepts a persisted Steward token without raw SDK context", async ({
@@ -157,13 +151,13 @@ test.describe("cloud console route wiring", () => {
   }) => {
     await installAdminModerationRoutes(page);
 
-    await page.goto("/dashboard/admin", { waitUntil: "domcontentloaded" });
+    await page.goto("/cloud/admin", { waitUntil: "domcontentloaded" });
 
     await expect(
       page.getByRole("heading", { name: "Admin Panel" }),
     ).toBeVisible();
     await expect(page.getByText("Sign in required")).toHaveCount(0);
-    await expectNoPageDiagnostics(page, "dashboard admin persisted token gate");
+    await expectNoPageDiagnostics(page, "cloud admin persisted token gate");
   });
 
   test("MCPs route loads registry data with only a persisted Steward token", async ({
@@ -171,7 +165,7 @@ test.describe("cloud console route wiring", () => {
   }) => {
     const mcpApi = await installMcpRoutes(page, stewardToken);
 
-    await page.goto("/dashboard/mcps", { waitUntil: "domcontentloaded" });
+    await page.goto("/cloud/mcps", { waitUntil: "domcontentloaded" });
 
     await expect(
       page.getByText("You haven't registered any MCP servers yet."),
@@ -185,6 +179,6 @@ test.describe("cloud console route wiring", () => {
           "/api/mcp/list",
         ]),
       );
-    await expectNoPageDiagnostics(page, "dashboard MCPs persisted token gate");
+    await expectNoPageDiagnostics(page, "cloud MCPs persisted token gate");
   });
 });

@@ -16,33 +16,24 @@ import { usePageTitle } from "../../lib/use-page-title";
 
 type TFn = ReturnType<typeof useCloudT>;
 
-type PaymentProvider = "stripe" | "oxapay" | "x402" | "crypto";
-type PaymentContext = "verified_payer" | "any_payer";
+type PaymentProvider = "stripe" | "oxapay" | "x402" | "wallet_native";
 type PaymentRequestStatus =
   | "pending"
+  | "delivered"
   | "settled"
   | "expired"
-  | "cancelled"
+  | "canceled"
   | "failed";
 
 interface PublicPaymentRequest {
   id: string;
-  organizationId: string;
-  agentId: string | null;
   provider: PaymentProvider;
   amountCents: number;
   currency: string;
-  paymentContext: PaymentContext;
   status: PaymentRequestStatus;
   reason: string | null;
   expiresAt: string | null;
-  callbackUrl: string | null;
-  payerIdentityId: string | null;
-  settlementTxRef: string | null;
-  metadata: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
-  hostedUrl?: string;
+  hostedUrl: string | null;
 }
 
 interface PublicResponse {
@@ -182,10 +173,12 @@ export default function PaymentRequestPage() {
   const isPaid = paymentRequest.status === "settled";
   const isExpired =
     paymentRequest.status === "expired" ||
-    paymentRequest.status === "cancelled" ||
+    paymentRequest.status === "canceled" ||
     paymentRequest.status === "failed";
   const canPay =
-    paymentRequest.status === "pending" && Boolean(paymentRequest.hostedUrl);
+    (paymentRequest.status === "pending" ||
+      paymentRequest.status === "delivered") &&
+    Boolean(paymentRequest.hostedUrl);
   const expiresLabel = formatDate(paymentRequest.expiresAt);
   const shortId = paymentRequest.id.slice(0, 8);
 
@@ -210,7 +203,7 @@ export default function PaymentRequestPage() {
               {isPaid
                 ? t("cloud.paymentRequest.paid", { defaultValue: "Paid" })
                 : isExpired
-                  ? paymentRequest.status === "cancelled"
+                  ? paymentRequest.status === "canceled"
                     ? t("cloud.paymentRequest.cancelled", {
                         defaultValue: "Cancelled",
                       })

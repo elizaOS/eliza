@@ -19,14 +19,7 @@
     "paths": {
       "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
       "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
-      "@elizaos/capacitor-system": ["../plugin-native-system/src/index.ts"],
-      "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": [
-        "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
-      ],
-      "react-dom": [
-        "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
-      ]
+      "@elizaos/capacitor-system": ["../plugin-native-system/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],

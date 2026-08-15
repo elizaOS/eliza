@@ -66,7 +66,7 @@ app.post("/", async (c) => {
       markupPercentage: body.markupPercentage,
     });
 
-    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
 
     if (agent.is_public) {
       return c.json({

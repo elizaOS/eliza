@@ -52,7 +52,66 @@ const rmRecursiveScript = resolve(pkgRoot, "../scripts/rm-path-recursive.mjs");
 // ---------------------------------------------------------------------------
 // args
 // ---------------------------------------------------------------------------
-function parseArgs(argv) {
+
+/**
+ * Require a complete unsigned decimal string that is a positive safe integer.
+ * Rejects partial numeric prefixes (`1junk`), fractions, signs, and values
+ * above Number.MAX_SAFE_INTEGER so filters never run with NaN/negative bounds.
+ *
+ * @param {string | undefined} raw
+ * @param {string} flag
+ * @returns {number}
+ */
+export function requirePositiveSafeInteger(raw, flag) {
+  if (raw === undefined) {
+    throw new Error(
+      `story-gate: ${flag} requires a positive integer (received no value)`,
+    );
+  }
+  if (typeof raw !== "string" || !/^[1-9]\d*$/.test(raw)) {
+    throw new Error(
+      `story-gate: ${flag} must be a positive integer (received ${JSON.stringify(raw)})`,
+    );
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(
+      `story-gate: ${flag} must be a positive safe integer (received ${JSON.stringify(raw)})`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Validate `--shard N/M` (1-indexed). Both sides must be complete positive
+ * safe integers with `1 <= N <= M`.
+ *
+ * @param {string | undefined} raw
+ * @returns {string} canonical `N/M` form
+ */
+export function requireShardSpec(raw) {
+  if (raw === undefined) {
+    throw new Error(
+      `story-gate: --shard requires N/M with positive integers (received no value)`,
+    );
+  }
+  if (typeof raw !== "string" || !/^[1-9]\d*\/[1-9]\d*$/.test(raw)) {
+    throw new Error(
+      `story-gate: --shard must be N/M with positive integers (received ${JSON.stringify(raw)})`,
+    );
+  }
+  const [indexRaw, totalRaw] = raw.split("/");
+  const index = requirePositiveSafeInteger(indexRaw, "--shard index");
+  const total = requirePositiveSafeInteger(totalRaw, "--shard total");
+  if (index > total) {
+    throw new Error(
+      `story-gate: --shard index must be <= total (received ${JSON.stringify(raw)})`,
+    );
+  }
+  return `${index}/${total}`;
+}
+
+export function parseArgs(argv) {
   const a = {
     staticDir: "storybook-static",
     out: "test/story-gate/output",
@@ -71,12 +130,21 @@ function parseArgs(argv) {
     const next = () => argv[++i];
     if (arg === "--static-dir") a.staticDir = next();
     else if (arg === "--out") a.out = next();
-    else if (arg === "--concurrency") a.concurrency = Number(next());
-    else if (arg === "--shard") a.shard = next();
+    else if (arg === "--concurrency") {
+      const raw = next();
+      const concurrency = Number(raw);
+      if (!Number.isInteger(concurrency) || concurrency < 1) {
+        throw new Error(
+          `story-gate: --concurrency must be a positive integer (received ${raw === undefined ? "no value" : JSON.stringify(raw)})`,
+        );
+      }
+      a.concurrency = concurrency;
+    } else if (arg === "--shard") a.shard = requireShardSpec(next());
     else if (arg === "--section") a.section = next();
     else if (arg === "--grep") a.grep = next();
-    else if (arg === "--limit") a.limit = Number(next());
-    else if (arg === "--update-baseline") a.updateBaseline = true;
+    else if (arg === "--limit") {
+      a.limit = requirePositiveSafeInteger(next(), "--limit");
+    } else if (arg === "--update-baseline") a.updateBaseline = true;
     else if (arg === "--no-screenshots") a.screenshots = false;
     else if (arg === "--no-a11y") a.a11y = false;
   }

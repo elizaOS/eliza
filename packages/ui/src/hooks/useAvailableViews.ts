@@ -19,10 +19,12 @@ import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { fetchWithCsrf } from "../api/csrf-client";
 import {
   type AppShellPageRegistration,
+  appShellPageIsAvailable,
   getAppShellPageRegistrySnapshot,
   listAppShellPages,
   subscribeAppShellPages,
 } from "../app-shell-registry";
+import { isManagedCloudRuntime } from "../cloud/managed-cloud-runtime";
 import {
   type BuiltinTab,
   isAospShellEnabled,
@@ -635,20 +637,37 @@ export function useAvailableViews(
   const networkViews =
     resource.status === "success" ? resource.data : EMPTY_VIEWS;
   const platform = getFrontendPlatform();
+  const runtimeTarget = useAppSelector(
+    (state) => state.startupCoordinator.target,
+  );
+  const managedCloudRuntime = isManagedCloudRuntime(runtimeTarget);
   const views = useMemo(() => {
     const merged = mergeWithAppShellViews(
       networkViews,
       appShellViews,
       platform,
     );
+    const unavailableRegistrationIds = new Set(
+      listAppShellPages()
+        .filter(
+          (page) =>
+            !appShellPageIsAvailable(page, {
+              managedCloud: managedCloudRuntime,
+            }),
+        )
+        .map((page) => page.id),
+    );
+    const runtimeAvailable = merged.filter(
+      (view) => !unavailableRegistrationIds.has(view.id),
+    );
     // Native device-OS surfaces (phone, messages, contacts, camera) exist only
     // on the AOSP ElizaOS fork. Each such view declares `nativeOs: true` on its
     // `ViewDeclaration`; strip them from the view manager + router on every
     // non-AOSP build (web, desktop, iOS, stock Play-Store Android), matching the
     // AOSP-gated home tiles (`nativeOs`) and the route gates in App.tsx.
-    if (isAospShellEnabled()) return merged;
-    return merged.filter((view) => !view.nativeOs);
-  }, [networkViews, appShellViews, platform]);
+    if (isAospShellEnabled()) return runtimeAvailable;
+    return runtimeAvailable.filter((view) => !view.nativeOs);
+  }, [networkViews, appShellViews, platform, managedCloudRuntime]);
 
   return {
     views,

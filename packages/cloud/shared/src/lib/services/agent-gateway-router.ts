@@ -773,16 +773,25 @@ export class AgentGatewayRouterService {
       };
     }
 
+    const targetAgentId =
+      resolved.target.kind === "local-session" && resolved.target.session
+        ? resolved.target.session.runtimeAgentId
+        : (resolved.target.sandbox?.id ?? resolved.agentId ?? args.sender.id);
+    const guildId = args.guildId?.trim();
+    const roomId = buildDirectConversationRoomIdFromIds(
+      targetAgentId,
+      "discord",
+      guildId || args.sender.id,
+      args.channelId,
+    );
     const rpcRequest: BridgeRequest = {
       jsonrpc: "2.0",
       id: randomUUID(),
       method: "message.send",
       params: {
         text: args.content,
-        roomId: args.guildId?.trim()
-          ? `discord-guild:${args.guildId.trim()}:channel:${args.channelId}`
-          : `discord-dm:${args.sender.id}:channel:${args.channelId}`,
-        channelType: args.guildId?.trim() ? "GROUP" : "DM",
+        roomId,
+        channelType: guildId ? "GROUP" : "DM",
         source: "discord",
         sender: {
           id: args.sender.id,
@@ -799,7 +808,7 @@ export class AgentGatewayRouterService {
         },
         metadata: {
           discord: {
-            ...(args.guildId?.trim() ? { guildId: args.guildId.trim() } : {}),
+            ...(guildId ? { guildId } : {}),
             channelId: args.channelId,
             messageId: args.messageId,
           },
@@ -843,6 +852,7 @@ export class AgentGatewayRouterService {
         message: args.body,
         platform: args.provider,
         platformUserId: args.from,
+        platformReplyAddress: args.to,
         sessionId: `platform:${args.provider}:${args.from}`,
         trustedPlatformIdentity: true,
         idempotencyKey: args.providerMessageId
@@ -866,6 +876,7 @@ export class AgentGatewayRouterService {
           message: args.body,
           platform: args.provider,
           platformUserId: args.from,
+          platformReplyAddress: args.to,
           sessionId: `platform:${args.provider}:${args.from}`,
           trustedPlatformIdentity: true,
           idempotencyKey: args.providerMessageId
@@ -893,6 +904,7 @@ export class AgentGatewayRouterService {
           message: args.body,
           platform: args.provider,
           platformUserId: args.from,
+          platformReplyAddress: args.to,
           sessionId: `platform:${args.provider}:${args.from}`,
           trustedPlatformIdentity: true,
           authenticatedUser: {
@@ -999,6 +1011,7 @@ export class AgentGatewayRouterService {
         message: args.body,
         platform: args.provider,
         platformUserId: args.from,
+        platformReplyAddress: args.to,
         sessionId: `platform:${args.provider}:${args.from}`,
         trustedPlatformIdentity: true,
         authenticatedUser: {
@@ -1127,14 +1140,45 @@ export class AgentGatewayRouterService {
     messageId: string;
     content: string;
     sender: AgentGatewaySender;
+    /** Allows the owning webhook to preserve an active app automation. */
+    onboardUnknownOwner: boolean;
   }): Promise<AgentGatewayRouteResult> {
     const senderTelegramId = args.sender.id.trim();
     const owner = await usersRepository.findByTelegramIdWithOrganization(senderTelegramId);
 
     if (!owner) {
+      if (!args.onboardUnknownOwner) {
+        return {
+          handled: false,
+          reason: "unknown_owner",
+        };
+      }
+      // Parity with the Discord DM and phone first-contact paths: an unlinked
+      // sender is an onboarding candidate, not silence. This route only ever
+      // sees private chats (the webhook and the gateway adapter both drop group
+      // traffic), so the Discord public-channel guard has nothing to protect
+      // here. The session key matches the one the gateway webhook already uses
+      // so both Telegram entry points share a single onboarding transcript.
+      const onboarding = await this.runOnboardingChat({
+        message: args.content,
+        platform: "telegram",
+        platformUserId: senderTelegramId,
+        platformDisplayName: args.sender.displayName ?? args.sender.username,
+        sessionId: `platform:telegram:${senderTelegramId}`,
+        trustedPlatformIdentity: true,
+        // Telegram message ids are only unique inside one chat. The same sender
+        // can DM multiple per-organization bots whose counters overlap, while
+        // the onboarding transcript intentionally remains sender-scoped.
+        idempotencyKey: `telegram:${args.organizationId}:${args.chatId}:${args.messageId}`,
+      });
+
       return {
-        handled: false,
+        handled: true,
+        replyText: onboarding.reply,
         reason: "unknown_owner",
+        userId: onboarding.session.userId,
+        organizationId: onboarding.session.organizationId,
+        agentId: onboarding.provisioning.agentId ?? undefined,
       };
     }
 

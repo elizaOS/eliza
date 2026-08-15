@@ -51,6 +51,23 @@ package-owned scripts rather than independent GitHub Actions release graphs.
 This keeps store credentials and platform troubleshooting out of the npm
 transaction.
 
+### Desktop release lane (`release-electrobun.yml`)
+
+`.github/workflows/release-electrobun.yml` is the Electrobun desktop build lane.
+It is **tag-bound and upload-only**: it resolves the existing release tag to its
+peeled commit SHA, checks out that exact commit for every validation, build, and
+release step, and uploads assets to the canonical GitHub Release created by
+`release.yaml`. It does not create a missing tag or GitHub Release.
+
+The workflow rejects malformed or nonexistent tags before any build work begins.
+For tag-push events, it proves the push SHA resolves to the same tagged commit.
+The `release` and OTA jobs re-resolve the tag immediately before publication and
+require the canonical non-draft GitHub Release to name the same exact commit. A
+moved tag, missing release, conflicting release target, or duplicate asset name
+fails closed; the desktop lane never replaces an existing release asset. Manual
+dispatches with `draft: true` retain only their Actions build artifacts and do
+not mutate the public release or OTA channel.
+
 Useful entry points include:
 
 ```bash

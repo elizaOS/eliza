@@ -7,10 +7,33 @@ import type { GatewayRedis } from "./redis";
 
 const KEDA_COOLDOWN_SECONDS = Number(process.env.KEDA_COOLDOWN_SECONDS ?? 900);
 const FORWARD_TIMEOUT_MS = 30_000;
+const MESSAGE_FORWARD_TIMEOUT_MS = 75_000;
 const RETRY_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 2_000;
 const RETRY_INCREMENT_MS = 1_000;
 const IDENTITY_CACHE_TTL_SECONDS = 300;
+const AGENT_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DNS_HOSTNAME_PATTERN =
+  /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+const CANONICAL_ROUTER_ORIGIN_BY_AGENT_DOMAIN: Readonly<
+  Record<string, string>
+> = Object.freeze({
+  "cloud.eliza.app": "eliza-production-1.eliza.app",
+  "cloud-staging.eliza.app": "eliza-staging-1.eliza.app",
+});
+
+interface CanonicalAgentFallbackTarget {
+  baseUrl: string;
+  forwardedHost?: string;
+}
+
+type CanonicalAgentFallbackEnv = Record<string, string | undefined>;
+
+export interface CanonicalAgentRoutingConfiguration {
+  agentBaseDomain: string;
+  routerOriginHost: string;
+}
 
 interface ServerRoute {
   serverName: string;
@@ -29,6 +52,65 @@ export interface ResolvedIdentity {
   // agent yet. Callers must treat this as an onboarding/provisioning condition,
   // never as an agent-server routing target.
   agentId: string | null;
+}
+
+/** Resolves one of the two supported production/staging routing pairs. */
+export function getCanonicalAgentRoutingConfiguration(
+  env: CanonicalAgentFallbackEnv = process.env,
+): CanonicalAgentRoutingConfiguration | null {
+  const routerOriginHost = env.AGENT_ROUTER_ORIGIN_HOST?.trim().toLowerCase();
+  const agentBaseDomain =
+    env.ELIZA_CLOUD_AGENT_BASE_DOMAIN?.trim().toLowerCase();
+  if (!routerOriginHost || !agentBaseDomain) return null;
+  if (
+    !DNS_HOSTNAME_PATTERN.test(routerOriginHost) ||
+    !DNS_HOSTNAME_PATTERN.test(agentBaseDomain) ||
+    CANONICAL_ROUTER_ORIGIN_BY_AGENT_DOMAIN[agentBaseDomain] !==
+      routerOriginHost
+  ) {
+    return null;
+  }
+  return { agentBaseDomain, routerOriginHost };
+}
+
+/** Rejects startup before health endpoints bind when routing is unsafe. */
+export function requireCanonicalAgentRoutingConfiguration(
+  env: CanonicalAgentFallbackEnv = process.env,
+): CanonicalAgentRoutingConfiguration {
+  const configuration = getCanonicalAgentRoutingConfiguration(env);
+  if (!configuration) {
+    throw new Error(
+      "AGENT_ROUTER_ORIGIN_HOST and ELIZA_CLOUD_AGENT_BASE_DOMAIN must be configured as an exact canonical production or staging pair",
+    );
+  }
+  return configuration;
+}
+
+/** Resolves a validated public or router-origin fallback for a cloud agent. */
+export function getCanonicalAgentFallbackTarget(
+  agentId: string,
+  env: CanonicalAgentFallbackEnv = process.env,
+): CanonicalAgentFallbackTarget | null {
+  if (!AGENT_ID_PATTERN.test(agentId)) return null;
+  const normalizedAgentId = agentId.toLowerCase();
+  const configuration = getCanonicalAgentRoutingConfiguration(env);
+  if (!configuration) return null;
+  const forwardedHost = `${normalizedAgentId}.${configuration.agentBaseDomain}`;
+  if (!DNS_HOSTNAME_PATTERN.test(forwardedHost)) {
+    return null;
+  }
+  return {
+    baseUrl: `https://${configuration.routerOriginHost}/api`,
+    forwardedHost,
+  };
+}
+
+/** Returns the selected fallback base URL for compatibility callers. */
+export function getCanonicalAgentFallbackBase(
+  agentId: string,
+  env: CanonicalAgentFallbackEnv = process.env,
+): string | null {
+  return getCanonicalAgentFallbackTarget(agentId, env)?.baseUrl ?? null;
 }
 
 export async function resolveIdentity(
@@ -343,6 +425,11 @@ export async function forwardToServer(
     userId,
     `/agents/${agentId}/message`,
     JSON.stringify(body),
+    getCanonicalAgentFallbackTarget(agentId),
+    {
+      timeoutMs: messageForwardTimeoutMs,
+      retryOnTimeout: false,
+    },
   );
   return parseAgentResponse(raw, agentId);
 }
@@ -401,12 +488,115 @@ export async function forwardEventToServer(
     userId,
     `/agents/${agentId}/event`,
     JSON.stringify({ userId, type, payload }),
+    getCanonicalAgentFallbackTarget(agentId),
   );
 }
 
 type TargetResult =
   | { ok: true; response: string }
-  | { ok: false; error: Error; isConnectionError: boolean };
+  | {
+      ok: false;
+      error: Error;
+      isConnectionError: boolean;
+      timedOut: boolean;
+      status?: number;
+    };
+
+interface ForwardAttemptPolicy {
+  timeoutMs: number;
+  retryOnTimeout: boolean;
+}
+
+let messageForwardTimeoutMs = MESSAGE_FORWARD_TIMEOUT_MS;
+
+/** Test-only seam for proving timeout behavior without a production-length wait. */
+export const __serverRouterTestHooks = {
+  setMessageForwardTimeoutMs(timeoutMs: number): void {
+    messageForwardTimeoutMs = timeoutMs;
+  },
+  resetMessageForwardTimeoutMs(): void {
+    messageForwardTimeoutMs = MESSAGE_FORWARD_TIMEOUT_MS;
+  },
+} as const;
+
+const RUNTIME_AGENT_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Dedicated app hosts can expose a runtime agent id that differs from the
+ * cloud sandbox id used for routing. Resolve that id only from the authenticated
+ * canonical host, and only when exactly one running runtime is present.
+ */
+async function discoverCanonicalRuntimeAgentId(
+  canonicalTarget: CanonicalAgentFallbackTarget,
+): Promise<string | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
+  const headers: Record<string, string> = {};
+  const sharedSecret = process.env.AGENT_SERVER_SHARED_SECRET;
+  if (sharedSecret) headers["X-Server-Token"] = sharedSecret;
+  if (canonicalTarget.forwardedHost) {
+    headers["X-Forwarded-Host"] = canonicalTarget.forwardedHost;
+  }
+
+  try {
+    const res = await fetch(
+      `${canonicalTarget.baseUrl.replace(/\/$/, "")}/agents`,
+      {
+        headers,
+        signal: controller.signal,
+      },
+    );
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as {
+      agents?: Array<{ id?: unknown; status?: unknown }>;
+    };
+    const running = (data.agents ?? []).filter(
+      (agent): agent is { id: string; status?: unknown } =>
+        typeof agent.id === "string" &&
+        RUNTIME_AGENT_ID_PATTERN.test(agent.id) &&
+        agent.status === "running",
+    );
+    return running.length === 1 ? running[0].id : null;
+  } catch {
+    // error-policy:J4 Discovery is an optional compatibility path; the caller
+    // retains and reports the original canonical forwarding failure.
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function tryCanonicalTarget(
+  canonicalTarget: CanonicalAgentFallbackTarget,
+  endpointPath: string,
+  body: string,
+  policy: ForwardAttemptPolicy,
+): Promise<TargetResult> {
+  const direct = await tryTarget(
+    canonicalTarget.baseUrl,
+    endpointPath,
+    body,
+    canonicalTarget.forwardedHost,
+    policy.timeoutMs,
+  );
+  if (direct.ok || direct.status !== 404) return direct;
+
+  const match = endpointPath.match(/^\/agents\/[^/]+\/(message|event)$/);
+  if (!match) return direct;
+
+  const runtimeAgentId = await discoverCanonicalRuntimeAgentId(canonicalTarget);
+  if (!runtimeAgentId) return direct;
+
+  return tryTarget(
+    canonicalTarget.baseUrl,
+    `/agents/${encodeURIComponent(runtimeAgentId)}/${match[1]}`,
+    body,
+    canonicalTarget.forwardedHost,
+    policy.timeoutMs,
+  );
+}
 
 /**
  * Generic retry loop with hash-ring routing and KEDA wake-on-zero.
@@ -420,9 +610,36 @@ async function forwardWithRetry(
   hashKey: string,
   endpointPath: string,
   body: string,
+  connectionFallback?: CanonicalAgentFallbackTarget | null,
+  policy: ForwardAttemptPolicy = {
+    timeoutMs: FORWARD_TIMEOUT_MS,
+    retryOnTimeout: true,
+  },
 ): Promise<string> {
   let lastError: Error | null = null;
   let woken = false;
+  let canonicalAttempted = false;
+
+  // Dedicated Docker sandboxes self-register a public host:port in Redis for
+  // compatibility, but production node firewalls intentionally do not expose
+  // those high ports to Railway. Their supported ingress is the canonical
+  // control-plane router over HTTPS. Prefer it before the Redis target so a
+  // normal Telegram/DM turn does not spend its entire non-replay timeout on a
+  // transport that cannot be reached from this service.
+  if (connectionFallback && serverName.startsWith("sandbox-")) {
+    canonicalAttempted = true;
+    const canonical = await tryCanonicalTarget(
+      connectionFallback,
+      endpointPath,
+      body,
+      policy,
+    );
+    if (canonical.ok) return canonical.response;
+    if (canonical.timedOut && !policy.retryOnTimeout) {
+      throw canonical.error;
+    }
+    lastError = canonical.error;
+  }
 
   for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
     if (attempt > 0) {
@@ -444,13 +661,56 @@ async function forwardWithRetry(
       continue;
     }
 
-    const result = await tryTarget(targets[0], endpointPath, body);
+    const result = await tryTarget(
+      targets[0],
+      endpointPath,
+      body,
+      undefined,
+      policy.timeoutMs,
+    );
     if (result.ok) return result.response;
+    if (result.timedOut && !policy.retryOnTimeout) {
+      throw result.error;
+    }
+
+    // Dedicated sandboxes can remain healthy behind their canonical hostname
+    // while an old direct host:port is still being refreshed into Redis. Only
+    // a transport failure may use this fixed-domain route: an HTTP response is
+    // authoritative and must not be bypassed through a second ingress.
+    if (
+      result.isConnectionError &&
+      connectionFallback &&
+      !canonicalAttempted &&
+      targets[0].replace(/\/$/, "") !==
+        connectionFallback.baseUrl.replace(/\/$/, "")
+    ) {
+      canonicalAttempted = true;
+      const canonical = await tryCanonicalTarget(
+        connectionFallback,
+        endpointPath,
+        body,
+        policy,
+      );
+      if (canonical.ok) return canonical.response;
+      if (canonical.timedOut && !policy.retryOnTimeout) {
+        throw canonical.error;
+      }
+      lastError = canonical.error;
+    }
 
     if (targets.length > 1) {
       await refreshHashRing(serverUrl);
-      const fallback = await tryTarget(targets[1], endpointPath, body);
+      const fallback = await tryTarget(
+        targets[1],
+        endpointPath,
+        body,
+        undefined,
+        policy.timeoutMs,
+      );
       if (fallback.ok) return fallback.response;
+      if (fallback.timedOut && !policy.retryOnTimeout) {
+        throw fallback.error;
+      }
     }
 
     lastError = result.error;
@@ -474,9 +734,17 @@ async function tryTarget(
   target: string,
   endpointPath: string,
   body: string,
+  forwardedHost?: string,
+  timeoutMs = FORWARD_TIMEOUT_MS,
 ): Promise<TargetResult> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
+  const timeoutId = setTimeout(
+    () =>
+      controller.abort(
+        new Error(`Agent forward timed out after ${timeoutMs}ms`),
+      ),
+    timeoutMs,
+  );
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -484,6 +752,9 @@ async function tryTarget(
   const sharedSecret = process.env.AGENT_SERVER_SHARED_SECRET;
   if (sharedSecret) {
     headers["X-Server-Token"] = sharedSecret;
+  }
+  if (forwardedHost) {
+    headers["X-Forwarded-Host"] = forwardedHost;
   }
 
   try {
@@ -507,12 +778,21 @@ async function tryTarget(
       ok: false,
       error: new Error(`Server returned ${res.status}: ${await res.text()}`),
       isConnectionError: false,
+      timedOut: false,
+      status: res.status,
     };
   } catch (err) {
+    const timedOut = controller.signal.aborted;
     return {
       ok: false,
-      error: err instanceof Error ? err : new Error(String(err)),
-      isConnectionError: true,
+      error:
+        timedOut && controller.signal.reason instanceof Error
+          ? controller.signal.reason
+          : err instanceof Error
+            ? err
+            : new Error(String(err)),
+      isConnectionError: !timedOut,
+      timedOut,
     };
   } finally {
     clearTimeout(timeoutId);

@@ -27,6 +27,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseTcpPort } from "../lib/cli-numbers.mjs";
 import { connectionById, connectionStatus } from "./lib/connections.mjs";
 import {
   completeGoogleFlow,
@@ -37,7 +38,7 @@ import {
   startGoogleFlow,
 } from "./lib/oauth.mjs";
 import { buildRegistry, discoverPlan } from "./lib/registry.mjs";
-import { RunManager } from "./lib/runner.mjs";
+import { normalizeRunConcurrency, RunManager } from "./lib/runner.mjs";
 import {
   consoleDir,
   credentialsToEnv,
@@ -54,10 +55,18 @@ import {
 import { verifyConnection } from "./lib/verify.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.ELIZA_TEST_CONSOLE_PORT || 31338);
+const DEFAULT_PORT = 31338;
 const HOST = "127.0.0.1";
 
-const runManager = new RunManager();
+function resolveConsolePort(env = process.env) {
+  const raw = env.ELIZA_TEST_CONSOLE_PORT;
+  // Trim decides only present-vs-blank; the raw value reaches the canonical
+  // parser untouched so " 65431 " is rejected instead of silently accepted.
+  if (raw === undefined || raw.trim() === "") return DEFAULT_PORT;
+  return parseTcpPort(raw, "ELIZA_TEST_CONSOLE_PORT");
+}
+
+export const runManager = new RunManager();
 const sseClients = new Set();
 
 runManager.on("event", (event) => {
@@ -133,7 +142,7 @@ function selectTasks({ mode, labels }) {
   return all;
 }
 
-const routes = {
+export const routes = {
   "GET /api/state": (req, res) => json(res, 200, currentState()),
 
   "POST /api/gates": async (req, res) => {
@@ -153,6 +162,17 @@ const routes = {
     } = await readBody(req);
     if (runManager.isRunning())
       return json(res, 409, { error: "run already in progress" });
+    let normalizedConcurrency;
+    try {
+      normalizedConcurrency = normalizeRunConcurrency(concurrency);
+    } catch (error) {
+      // error-policy:J1 API boundary — reject an invalid worker count before
+      // any live-lane side effect (task discovery, credential reads, token
+      // refresh/persist) runs.
+      return json(res, 400, {
+        error: error instanceof Error ? error.message : "invalid concurrency",
+      });
+    }
     const tasks = selectTasks({ mode, labels });
     if (tasks.length === 0)
       return json(res, 400, { error: "no tasks selected" });
@@ -194,7 +214,7 @@ const routes = {
       tasks,
       lane,
       extraEnv,
-      concurrency: Number(concurrency) || 3,
+      concurrency: normalizedConcurrency,
     });
     json(res, 200, { runId, taskCount: tasks.length });
   },
@@ -347,7 +367,20 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`[TestConsole] listening on http://${HOST}:${PORT}`);
-  console.log(`[TestConsole] state dir: ${consoleDir()}`);
-});
+// Keep route imports side-effect free while preserving startup through
+// canonical, symlinked, and URL-escaped entrypoint paths.
+if (import.meta.main) {
+  try {
+    const port = resolveConsolePort();
+    server.listen(port, HOST, () => {
+      console.log(`[TestConsole] listening on http://${HOST}:${port}`);
+      console.log(`[TestConsole] state dir: ${consoleDir()}`);
+    });
+  } catch (error) {
+    // error-policy:J1 Startup configuration errors become bounded usage failures.
+    console.error(
+      `[TestConsole] ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exitCode = 2;
+  }
+}

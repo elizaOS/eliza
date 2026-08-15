@@ -3,7 +3,8 @@
  *
  * Manages user accounts for Eliza App authentication.
  * Primary auth: Telegram OAuth + phone number (entered by user in frontend).
- * Auto-creates organizations for new users with initial credit balance.
+ * Auto-creates $0 organizations for new users. Shared access is independent of
+ * paid credits; explicit promotion codes and purchased top-ups remain separate.
  *
  * Cross-platform support:
  * - Telegram bot: lookup by telegram_id
@@ -14,16 +15,14 @@ import { organizationsRepository } from "../../../db/repositories/organizations"
 import { type UserWithOrganization, usersRepository } from "../../../db/repositories/users";
 import type { Organization } from "../../../db/schemas/organizations";
 import type { NewUser, User } from "../../../db/schemas/users";
+import { SIGNUP_CREDIT_POLICY } from "../../signup-credits";
 import { isUniqueConstraintError } from "../../utils/db-errors";
 import { isValidEmail, maskEmailForLogging } from "../../utils/email-validation";
 import { logger } from "../../utils/logger";
-import { normalizePhoneNumber } from "../../utils/phone-normalization";
+import { isValidE164, normalizePhoneNumber } from "../../utils/phone-normalization";
 import { apiKeysService } from "../api-keys";
-import { creditsService } from "../credits";
 import { redeemSignupCode } from "../signup-code";
 import type { TelegramAuthData } from "./telegram-auth";
-
-const ELIZA_APP_INITIAL_CREDITS = 5.0;
 
 export interface FindOrCreateResult {
   user: User;
@@ -97,17 +96,8 @@ async function createUserWithOrganization(params: {
   const organization = await organizationsRepository.create({
     name: organizationName,
     slug,
-    credit_balance: "0.00",
+    credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
   });
-
-  if (ELIZA_APP_INITIAL_CREDITS > 0) {
-    await creditsService.addCredits({
-      organizationId: organization.id,
-      amount: ELIZA_APP_INITIAL_CREDITS,
-      description: "Eliza App - Welcome bonus",
-      metadata: { type: "initial_free_credits", source: "eliza-app-signup" },
-    });
-  }
 
   const user = await usersRepository.create({
     ...userData,
@@ -147,6 +137,47 @@ async function createUserWithOrganization(params: {
 
 class ElizaAppUserService {
   /**
+   * Resolves Telegram's verified sender directly into the rowless personal
+   * service. This path starts at $0 and never creates an API key or sandbox;
+   * a later phone/Steward sign-in promotes this same user and organization.
+   */
+  async findOrCreateByTelegram(params: {
+    telegramId: string;
+    username?: string;
+    firstName?: string;
+    displayName?: string;
+  }): Promise<FindOrCreateResult> {
+    const telegramId = params.telegramId.trim();
+    if (!/^\d{1,20}$/.test(telegramId)) {
+      throw new Error("Trusted Telegram transport supplied an invalid sender id");
+    }
+    const displayName =
+      params.displayName?.trim() ||
+      params.firstName?.trim() ||
+      params.username?.trim() ||
+      "Eliza user";
+    const result = await usersRepository.findOrCreateTelegramPersonalAccount({
+      telegramId,
+      telegramUsername: params.username?.trim() || undefined,
+      telegramFirstName: params.firstName?.trim() || undefined,
+      displayName,
+      organizationName: `${displayName}'s Workspace`,
+      organizationSlug: generateSlugFromTelegram(params.username, telegramId),
+    });
+    logger.info(
+      result.isNew
+        ? "[ElizaAppUserService] Created Telegram personal account"
+        : "[ElizaAppUserService] Reused Telegram personal account",
+      {
+        userId: result.user.id,
+        organizationId: result.organization.id,
+        telegramId,
+      },
+    );
+    return result;
+  }
+
+  /**
    * Find or create user by Telegram OAuth data WITH phone number.
    * This is the primary authentication method - requires both Telegram and phone.
    * Phone number enables cross-platform messaging (iMessage lookup).
@@ -168,51 +199,15 @@ class ElizaAppUserService {
     const existingTelegramUser = await usersRepository.findByTelegramIdWithOrganization(telegramId);
 
     if (existingTelegramUser && existingTelegramUser.organization) {
-      // Update Telegram profile data and ensure phone is set
-      const updates: Partial<NewUser> = {
-        telegram_username: telegramData.username || existingTelegramUser.telegram_username,
+      const linked = await usersRepository.linkTelegramAndPhoneIdentity(existingTelegramUser.id, {
+        telegram_id: telegramId,
+        telegram_username: telegramData.username,
         telegram_first_name: telegramData.first_name,
-        telegram_photo_url: telegramData.photo_url || existingTelegramUser.telegram_photo_url,
-        updated_at: new Date(),
-      };
-
-      // Set phone number if not already set - but first check it's not taken
-      if (!existingTelegramUser.phone_number) {
-        const phoneOwner = await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
-        if (phoneOwner && phoneOwner.id !== existingTelegramUser.id) {
-          // Phone is owned by a different user - this is a conflict
-          logger.warn("[ElizaAppUserService] Phone already owned by another user", {
-            telegramUserId: existingTelegramUser.id,
-            phoneOwnerId: phoneOwner.id,
-            phone: `***${normalizedPhone.slice(-4)}`,
-          });
-          throw new Error("PHONE_ALREADY_LINKED");
-        }
-        updates.phone_number = normalizedPhone;
-        updates.phone_verified = true;
-      } else if (existingTelegramUser.phone_number !== normalizedPhone) {
-        // User already has a different phone linked - reject the mismatch
-        logger.warn("[ElizaAppUserService] Telegram user has different phone linked", {
-          telegramId,
-          existingPhone: `***${existingTelegramUser.phone_number.slice(-4)}`,
-          requestedPhone: `***${normalizedPhone.slice(-4)}`,
-        });
-        throw new Error("PHONE_MISMATCH");
-      }
-
-      try {
-        await usersRepository.update(existingTelegramUser.id, updates);
-      } catch (error) {
-        // Handle race condition: unique constraint violation on phone_number
-        if (isUniqueConstraintError(error)) {
-          logger.warn("[ElizaAppUserService] Race condition on phone update", {
-            telegramId,
-            phone: `***${normalizedPhone.slice(-4)}`,
-          });
-          throw new Error("PHONE_ALREADY_LINKED");
-        }
-        throw error;
-      }
+        telegram_photo_url: telegramData.photo_url,
+        phone_number: normalizedPhone,
+      });
+      if (linked.status === "phone_mismatch") throw new Error("PHONE_MISMATCH");
+      if (linked.status !== "linked") throw new Error("TELEGRAM_USER_NOT_FOUND");
 
       logger.info("[ElizaAppUserService] Found existing Telegram user, updated", {
         userId: existingTelegramUser.id,
@@ -248,21 +243,22 @@ class ElizaAppUserService {
         throw new Error("PHONE_ALREADY_LINKED");
       }
 
-      // Link Telegram to the existing phone-only user
       try {
-        await usersRepository.update(existingPhoneUser.id, {
+        const linked = await usersRepository.linkTelegramAndPhoneIdentity(existingPhoneUser.id, {
           telegram_id: telegramId,
           telegram_username: telegramData.username,
           telegram_first_name: telegramData.first_name,
           telegram_photo_url: telegramData.photo_url,
-          // Update name if user only had phone-based name like "User ***1234"
-          name: existingPhoneUser.name?.startsWith("User ***")
-            ? telegramData.last_name
-              ? `${telegramData.first_name} ${telegramData.last_name}`
-              : telegramData.first_name
-            : existingPhoneUser.name,
-          updated_at: new Date(),
+          phone_number: normalizedPhone,
         });
+        if (linked.status !== "linked") throw new Error("PHONE_ALREADY_LINKED");
+        if (existingPhoneUser.name?.startsWith("User ***")) {
+          await usersRepository.update(existingPhoneUser.id, {
+            name: telegramData.last_name
+              ? `${telegramData.first_name} ${telegramData.last_name}`
+              : telegramData.first_name,
+          });
+        }
       } catch (error) {
         // Handle race condition: unique constraint violation on telegram_id
         if (isUniqueConstraintError(error)) {
@@ -350,55 +346,30 @@ class ElizaAppUserService {
 
   async findOrCreateByPhone(phoneNumber: string): Promise<FindOrCreateResult> {
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
-    const existingUser = await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
-
-    if (existingUser && existingUser.organization) {
-      if (!existingUser.phone_verified) {
-        await usersRepository.update(existingUser.id, {
-          phone_verified: true,
-          updated_at: new Date(),
-        });
-      }
-      logger.info("[ElizaAppUserService] Linked phone to existing user (iMessage)", {
-        userId: existingUser.id,
-        phone: `***${normalizedPhone.slice(-4)}`,
-      });
-      return {
-        user: existingUser,
-        organization: existingUser.organization,
-        isNew: false,
-      };
+    if (!isValidE164(normalizedPhone)) {
+      throw new Error("Trusted phone transport supplied an invalid phone number");
     }
 
     const lastFour = normalizedPhone.slice(-4);
     const displayName = `User ***${lastFour}`;
     const organizationName = `User ***${lastFour}'s Workspace`;
-
-    try {
-      return await createUserWithOrganization({
-        userData: {
-          steward_user_id: `phone:${normalizedPhone}`,
-          phone_number: normalizedPhone,
-          phone_verified: true,
-          name: displayName,
-          is_anonymous: false,
-        },
-        organizationName,
-        slugGenerator: () => generateSlugFromPhone(normalizedPhone),
-      });
-    } catch (error) {
-      // Handle race condition: another request created the user first
-      if (isUniqueConstraintError(error)) {
-        const user = await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
-        if (user && user.organization) {
-          logger.info("[ElizaAppUserService] Recovered from race condition", {
-            phone: `***${normalizedPhone.slice(-2)}`,
-          });
-          return { user, organization: user.organization, isNew: false };
-        }
-      }
-      throw error;
-    }
+    const result = await usersRepository.findOrCreatePhonePersonalAccount({
+      phoneNumber: normalizedPhone,
+      displayName,
+      organizationName,
+      organizationSlug: generateSlugFromPhone(normalizedPhone),
+    });
+    logger.info(
+      result.isNew
+        ? "[ElizaAppUserService] Created phone-first personal account"
+        : "[ElizaAppUserService] Reused phone-first personal account",
+      {
+        userId: result.user.id,
+        organizationId: result.organization.id,
+        phone: `***${normalizedPhone.slice(-4)}`,
+      },
+    );
+    return result;
   }
 
   /**
@@ -609,6 +580,22 @@ class ElizaAppUserService {
       };
     }
 
+    // A canonical-only Discord link (users.discord_id written before the
+    // projection refresh existed) is invisible to the projection-based lookup
+    // above AND to inbound Discord routing. Converge it before treating the
+    // Discord id as new: without this, a legacy Discord user gets a second
+    // account instead of their existing one.
+    const canonicalOnlyUser =
+      await usersRepository.findByCanonicalDiscordIdWithOrganization(discordId);
+    if (canonicalOnlyUser && canonicalOnlyUser.organization) {
+      await usersRepository.refreshDiscordProjectionForWrite(canonicalOnlyUser.id);
+      return {
+        user: canonicalOnlyUser,
+        organization: canonicalOnlyUser.organization,
+        isNew: false,
+      };
+    }
+
     // Scenario 2: Check if user exists by phone_number (Telegram/iMessage-first user linking Discord)
     if (normalizedPhone) {
       const existingPhoneUser =
@@ -648,6 +635,9 @@ class ElizaAppUserService {
           throw error;
         }
 
+        // Project the canonical link into user_identities for Discord routing.
+        await usersRepository.refreshDiscordProjectionForWrite(existingPhoneUser.id);
+
         logger.info(
           "[ElizaAppUserService] Linked Discord to existing phone user (cross-platform)",
           {
@@ -674,7 +664,7 @@ class ElizaAppUserService {
     const organizationName = `${displayName}'s Workspace`;
 
     try {
-      return await createUserWithOrganization({
+      const created = await createUserWithOrganization({
         userData: {
           steward_user_id: `discord:${discordId}`,
           discord_id: discordId,
@@ -692,6 +682,11 @@ class ElizaAppUserService {
         slugGenerator: () => generateSlugFromDiscord(discordData.username, discordId),
         signupCode,
       });
+      // Project the new canonical Discord identity into user_identities — the
+      // row inbound Discord routing resolves DM senders by. Without it a fresh
+      // Discord-OAuth signup can never receive DM replies from their agent.
+      await usersRepository.refreshDiscordProjectionForWrite(created.user.id);
+      return created;
     } catch (error) {
       // Handle race condition: another request created the user first
       if (isUniqueConstraintError(error)) {
@@ -945,7 +940,12 @@ class ElizaAppUserService {
 
   async linkTelegramToUser(
     userId: string,
-    telegramData: TelegramAuthData,
+    telegramData: {
+      id: string | number;
+      username?: string;
+      first_name?: string;
+      photo_url?: string;
+    },
   ): Promise<{ success: boolean; error?: string }> {
     const telegramId = String(telegramData.id);
     const existingTelegramUser = await usersRepository.findByTelegramIdWithOrganization(telegramId);
@@ -963,13 +963,17 @@ class ElizaAppUserService {
     }
 
     try {
-      await usersRepository.update(userId, {
+      // Atomic canonical + userIdentities projection write: the Telegram
+      // gateway resolves inbound DMs through the projection
+      // (findByTelegramIdWithOrganization), so a canonical-only update would
+      // report success while DM routing still cannot see the link.
+      const linked = await usersRepository.linkTelegramIdentity(userId, {
         telegram_id: telegramId,
         telegram_username: telegramData.username,
         telegram_first_name: telegramData.first_name,
         telegram_photo_url: telegramData.photo_url,
-        updated_at: new Date(),
       });
+      if (!linked) return { success: false, error: "User account was not found" };
     } catch (error) {
       // Handle race condition: another request linked this Telegram first
       if (isUniqueConstraintError(error)) {
@@ -1010,34 +1014,14 @@ class ElizaAppUserService {
   ): Promise<{ success: boolean; error?: string }> {
     const { discordId, username, globalName, avatarUrl } = discordData;
 
-    // Check if this Discord ID is already linked to a different user
-    const existingDiscordUser = await usersRepository.findByDiscordIdWithOrganization(discordId);
-
-    if (existingDiscordUser && existingDiscordUser.id !== userId) {
-      logger.warn("[ElizaAppUserService] Discord already linked to another user", {
-        userId,
-        existingUserId: existingDiscordUser.id,
-        discordId,
-      });
-      return {
-        success: false,
-        error: "This Discord account is already linked to another account",
-      };
-    }
-
-    // If already linked to the same user, treat as idempotent success
-    if (existingDiscordUser && existingDiscordUser.id === userId) {
-      return { success: true };
-    }
-
     try {
-      await usersRepository.update(userId, {
+      const linked = await usersRepository.linkDiscordIdentity(userId, {
         discord_id: discordId,
         discord_username: username,
-        discord_global_name: globalName || undefined,
-        discord_avatar_url: avatarUrl || undefined,
-        updated_at: new Date(),
+        discord_global_name: globalName ?? null,
+        discord_avatar_url: avatarUrl ?? null,
       });
+      if (!linked) return { success: false, error: "User account was not found" };
     } catch (error) {
       // Handle race condition: another request linked this Discord account first
       if (isUniqueConstraintError(error)) {

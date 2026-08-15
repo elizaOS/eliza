@@ -90,3 +90,27 @@ describe("character preset resolution with a shared avatarIndex", () => {
     expect(injectedCharacters).toHaveLength(CHARACTER_DEFINITIONS.length);
   });
 });
+
+describe("default Eliza persona safety", () => {
+  const definition = CHARACTER_DEFINITIONS.find(({ id }) => id === "eliza");
+
+  it("keeps consequential ambiguity and side-effect claims receipt-bound", () => {
+    expect(definition).toBeDefined();
+    expect(definition?.system).toContain(
+      "Ask one clear question before consequential actions, external writes",
+    );
+    expect(definition?.system).toContain(
+      "unless the current turn has a matching tool receipt",
+    );
+
+    const replies = definition?.messageExamples.flatMap((conversation) =>
+      conversation
+        .filter(({ user }) => user === "{{agentName}}")
+        .map(({ content }) => content.text),
+    );
+    expect(replies).toContain("What time tomorrow?");
+    expect(replies?.join("\n")).not.toMatch(
+      /Done\. 9am|Give me a minute|Three more minutes|I'll ping you/u,
+    );
+  });
+});

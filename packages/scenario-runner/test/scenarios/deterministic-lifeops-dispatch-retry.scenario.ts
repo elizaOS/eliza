@@ -269,7 +269,7 @@ function assertFailTick(_status: number, body: unknown): string | undefined {
   }
   const fire = fires[0];
   if (fire?.status !== "scheduled") {
-    return `expected the typed dispatch failure to park the task back in scheduled, saw status=${JSON.stringify(fire?.status)}`;
+    return `expected the typed dispatch failure to park the task back in scheduled, saw ${JSON.stringify(fire)}; ledger=${JSON.stringify(probeLedger)}`;
   }
   if (fire.reason !== "retry:rate_limited") {
     return `expected reason retry:rate_limited, saw ${JSON.stringify(fire.reason)}`;
@@ -374,7 +374,9 @@ function assertProbeLedger(): string | undefined {
     if (metadata?.taskId !== probeTaskId) {
       return `dispatch ${index} was not for the probe task: ${JSON.stringify(payload)}`;
     }
-    if (payload?.message !== PROBE_PROMPT) {
+    // The deterministic dispatch-render stand-in prefixes the instruction so
+    // the renderer's instruction-echo guard accepts the copy.
+    if (payload?.message !== `Heads up: ${PROBE_PROMPT}`) {
       return `dispatch ${index} carried the wrong message: ${JSON.stringify(payload?.message)}`;
     }
   }

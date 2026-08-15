@@ -74,6 +74,7 @@ import {
 	runWithoutActionRoutingContext,
 } from "./runtime/action-routing-context";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators";
+import { isCanonicalModelCapabilityDisabled } from "./runtime/canonical-model-capabilities.ts";
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
 import { computePrefixHashes } from "./runtime/context-hash";
 import { ContextRegistry } from "./runtime/context-registry";
@@ -151,6 +152,7 @@ import {
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,
 	runWithStreamingContext,
+	runWithSuppressedModelStream,
 } from "./streaming-context";
 import {
 	getTrajectoryContext,
@@ -364,11 +366,7 @@ const DEFAULT_FAST_ROOM_DRAIN_TIMEOUT_MS = 500;
 const STATE_CACHE_LIMIT = 512;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
 
-type ProviderExecutionOutcome =
-	| "success"
-	| "error"
-	| "aborted"
-	| "deadline_exceeded";
+type ProviderExecutionOutcome = "success" | "error" | "aborted";
 
 interface ProviderExecutionRecord extends ProviderResult {
 	providerName: string;
@@ -404,8 +402,6 @@ interface InFlightProviderExecution {
 	waiters: number;
 	startedAt: number;
 	startedAtMonotonic: number;
-	timeoutMs?: number;
-	timeoutMode: "fail" | "degrade";
 }
 
 // Per-waiter cancellation boundary for a (possibly coalesced) provider
@@ -425,7 +421,7 @@ interface InFlightProviderExecution {
 // SYNCHRONOUSLY, immediately before `controller.abort()`, rather than being
 // left to the `promise.then(cleanup, cleanup)` at the call site: that cleanup
 // only fires once the shared promise finishes unwinding through
-// withProviderDeadline/withProviderStep, a microtask or more after the
+// runProviderExecution/withProviderStep, a microtask or more after the
 // synchronous abort. A composeState call landing in that window would
 // otherwise `get()` the dying execution and inherit an abort reason it never
 // asked for. Evicting here makes the entry unreachable at the moment it stops
@@ -497,83 +493,71 @@ export function calculateProviderOverlaps(
 	);
 }
 
-// Provider authors opt into a deadline with `timeoutMs`; operators can apply a
-// global default when deployment evidence supports one. An implicit default
-// would change the semantics of every third-party provider without knowing
-// whether its context is optional or how long its backing service can take.
-const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = (() => {
-	const raw = Number.parseInt(
-		process.env.ELIZA_COMPOSE_PROVIDER_TIMEOUT_MS ?? "",
-		10,
-	);
-	if (Number.isFinite(raw) && raw >= 250) return raw;
-	return undefined;
-})();
-
-class ProviderDeadlineError extends Error {
-	readonly timeoutMs: number;
-
-	constructor(providerName: string, timeoutMs: number) {
-		super(
-			`Provider "${providerName}" exceeded its ${timeoutMs}ms composeState budget`,
-		);
-		this.name = "TimeoutError";
-		this.timeoutMs = timeoutMs;
-	}
-}
-
-// The budget and its derived signal are created once per execution so
-// coalesced awaiters share one deadline. JavaScript cannot preempt a provider
-// that ignores AbortSignal, but cooperative database/network/subprocess work
-// receives the timeout immediately and the turn never waits past the budget.
-function withProviderDeadline<T>(
-	run: (signal: AbortSignal) => Promise<T>,
-	timeoutMs: number | undefined,
-	providerName: string,
-	parentSignal?: AbortSignal,
+// Shared provider work has one execution-owned cancellation boundary. Each
+// composeState caller races that work against its own owner signal in
+// awaitProviderExecution; this boundary stops waiting for non-cooperative work
+// when the final caller leaves or the runtime stops, while Promise.race keeps
+// the detached provider promise observed.
+function runProviderExecution<T>(
+	run: () => Promise<T>,
+	signal: AbortSignal,
 ): Promise<T> {
-	const controller = new AbortController();
-	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 	let rejectFromSignal: (() => void) | undefined;
-	const abortFromParent = () => {
-		controller.abort(
-			parentSignal?.reason ?? new Error("Provider execution aborted"),
-		);
-	};
-	if (parentSignal?.aborted) {
-		abortFromParent();
-	} else {
-		parentSignal?.addEventListener("abort", abortFromParent, { once: true });
-	}
 	const aborted = new Promise<never>((_, reject) => {
 		rejectFromSignal = () => {
-			reject(
-				controller.signal.reason ?? new Error("Provider execution aborted"),
-			);
+			reject(signal.reason ?? new Error("Provider execution aborted"));
 		};
-		if (controller.signal.aborted) {
+		if (signal.aborted) {
 			rejectFromSignal?.();
 			return;
 		}
-		controller.signal.addEventListener("abort", rejectFromSignal, {
+		signal.addEventListener("abort", rejectFromSignal, {
 			once: true,
 		});
 	});
-	if (!controller.signal.aborted && timeoutMs !== undefined) {
-		timeoutHandle = setTimeout(() => {
-			controller.abort(new ProviderDeadlineError(providerName, timeoutMs));
-		}, timeoutMs);
-	}
-	const providerPromise = controller.signal.aborted
-		? Promise.reject(controller.signal.reason)
-		: Promise.resolve().then(() => run(controller.signal));
-	return Promise.race([providerPromise, aborted]).finally(() => {
-		if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
-		if (rejectFromSignal) {
-			controller.signal.removeEventListener("abort", rejectFromSignal);
+	const providerPromise = Promise.resolve().then(() => {
+		// The execution controller can be aborted after this promise is created
+		// but before its microtask starts (an already-cancelled caller and runtime
+		// teardown both take this path). Recheck here so provider work never begins
+		// after its final lifecycle owner has already departed.
+		if (signal.aborted) {
+			throw signal.reason ?? new Error("Provider execution aborted");
 		}
-		parentSignal?.removeEventListener("abort", abortFromParent);
+		return run();
 	});
+	return Promise.race([providerPromise, aborted]).finally(() => {
+		if (rejectFromSignal) {
+			signal.removeEventListener("abort", rejectFromSignal);
+		}
+	});
+}
+
+function providerCancellationReason(
+	callerSignal: AbortSignal | undefined,
+	executionSignal: AbortSignal,
+	cause: unknown,
+): boolean {
+	return (
+		(callerSignal?.aborted === true && cause === callerSignal.reason) ||
+		(executionSignal.aborted && cause === executionSignal.reason)
+	);
+}
+
+function throwIfProviderCompositionAborted(
+	signal: AbortSignal | undefined,
+	runtimeStopped: boolean,
+): void {
+	if (signal?.aborted) {
+		const reason = signal.reason;
+		throw reason instanceof TurnAbortedError
+			? reason
+			: new TurnAbortedError(
+					reason instanceof Error ? reason.message : String(reason),
+				);
+	}
+	if (runtimeStopped) {
+		throw new TurnAbortedError("runtime-stop");
+	}
 }
 const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
 	"agentName",
@@ -665,10 +649,6 @@ export class EmbeddingDimensionProbeError extends Error {
 
 const TEXT_GENERATION_MODEL_KEYS: readonly string[] =
 	TEXT_GENERATION_MODEL_TYPES;
-
-const CANONICAL_TEXT_CAPABILITY_SETTING = "ELIZA_CANONICAL_LLM_TEXT_ENABLED";
-const CANONICAL_EMBEDDING_CAPABILITY_SETTING =
-	"ELIZA_CANONICAL_EMBEDDINGS_ENABLED";
 
 type StructuredResponseFormat = "JSON" | "TOON";
 
@@ -1273,6 +1253,10 @@ export class AgentRuntime implements IAgentRuntime {
 		string,
 		InFlightProviderExecution
 	>();
+	// Includes keyed/coalescible work and one-off executions (missing message id
+	// or an explicit refresh). The coalescing map alone cannot own shutdown:
+	// those one-off executions still need their controller aborted at teardown.
+	private providerExecutionsActive = new Set<InFlightProviderExecution>();
 	// Turn-scoped single-flight read coalescing (see runtime/single-flight-memo).
 	// A Stage-1 compose issues getRoom 4x (RECENT_MESSAGES / CHARACTER /
 	// PLATFORM_* / WORLD) and 3 overlapping room messages-scans (RECENT_MESSAGES
@@ -1412,8 +1396,12 @@ export class AgentRuntime implements IAgentRuntime {
 	private currentRoomId?: UUID; // Track the current room for logging
 	public messageService: IMessageService | null = null; // Lazily initialized
 	public companionUrl?: string;
-	/** Set when stop() has been called; prevents new service starts and use-after-stop. */
+	/** Set when stop() has completed service teardown. */
 	private stopped = false;
+	/** Set permanently at the first stop request, before any drain can yield. */
+	private stopRequested = false;
+	/** The active stop attempt; concurrent callers await the same teardown. */
+	private stopPromise: Promise<void> | null = null;
 
 	constructor(opts: {
 		conversationLength?: number;
@@ -2331,9 +2319,9 @@ export class AgentRuntime implements IAgentRuntime {
 			throw new Error(`registerPlugin: ${errorMsg}`);
 		}
 		const assertRuntimeActive = (): void => {
-			if (!this.stopped) return;
+			if (!this.stopRequested) return;
 			throw new ElizaError(
-				`Cannot register plugin "${plugin.name}" on a stopped runtime`,
+				`Cannot register plugin "${plugin.name}" after runtime stop was requested`,
 				{
 					code: "RUNTIME_STOPPED_DURING_PLUGIN_REGISTRATION",
 					severity: "ephemeral",
@@ -2599,6 +2587,14 @@ export class AgentRuntime implements IAgentRuntime {
 	 * For full teardown (including DB/adapter connection), call close() after stop().
 	 */
 	async stop(options?: RuntimeStopOptions): Promise<void> {
+		if (this.stopPromise) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId },
+				"Runtime stop already in progress",
+			);
+			await this.stopPromise;
+			return;
+		}
 		if (this.stopped) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId },
@@ -2606,6 +2602,57 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return;
 		}
+
+		let resolveStop!: () => void;
+		let rejectStop!: (reason?: unknown) => void;
+		const stopAttempt = new Promise<void>((resolve, reject) => {
+			resolveStop = resolve;
+			rejectStop = reject;
+		});
+		// Publish single-flight ownership before invoking a service hook. A hook is
+		// synchronous but may itself request shutdown; that reentrant call must join
+		// this attempt instead of starting a second teardown.
+		this.stopPromise = stopAttempt;
+		if (!this.stopRequested) {
+			this.stopRequested = true;
+			// Freeze connector/service ingress before the first shutdown await. Without
+			// this phase, a gateway delivery can begin a new turn while the runtime is
+			// already waiting for its room-owner drain, behind the eventual service-stop
+			// snapshot. Hooks are synchronous by contract to make that boundary atomic.
+			for (const [serviceType, services] of this.services) {
+				for (const service of services) {
+					try {
+						service?.prepareStop?.("runtime-stop");
+					} catch (err) {
+						// error-policy:J6 admission preparation is best-effort so one broken
+						// connector cannot deny every service its teardown opportunity.
+						this.logger.warn(
+							{
+								src: "agent",
+								agentId: this.agentId,
+								serviceType,
+								error: err instanceof Error ? err.message : String(err),
+							},
+							"Service prepareStop() threw; continuing",
+						);
+					}
+				}
+			}
+		}
+
+		void this._stopAfterAdmissionCordon(options).then(resolveStop, rejectStop);
+		try {
+			await stopAttempt;
+		} finally {
+			if (this.stopPromise === stopAttempt) {
+				this.stopPromise = null;
+			}
+		}
+	}
+
+	private async _stopAfterAdmissionCordon(
+		options?: RuntimeStopOptions,
+	): Promise<void> {
 		this.roomHandlerQueue.closeAdmissions("runtime-stop");
 		this.turnControllers.abortAllTurns("runtime-stop");
 		const fast = options?.fast === true;
@@ -2652,7 +2699,7 @@ export class AgentRuntime implements IAgentRuntime {
 			process.env.ELIZA_FAST_SHUTDOWN = "1";
 		}
 		try {
-			await this._stopServices(fast);
+			await this._stopServices(fast, options?.serviceStopTimeoutMs);
 		} finally {
 			if (fast) {
 				if (previousFastShutdown === undefined) {
@@ -2664,7 +2711,10 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
-	private async _stopServices(fast: boolean): Promise<void> {
+	private async _stopServices(
+		fast: boolean,
+		serviceStopTimeoutMs?: number,
+	): Promise<void> {
 		this.stopped = true;
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, fast },
@@ -2742,10 +2792,15 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		if (fast && fastStopTasks.length > 0) {
-			const timeoutMs = resolveShutdownTimeoutMs(
-				"ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS",
-				DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS,
-			);
+			const timeoutMs =
+				serviceStopTimeoutMs !== undefined &&
+				Number.isFinite(serviceStopTimeoutMs) &&
+				serviceStopTimeoutMs >= 0
+					? Math.floor(serviceStopTimeoutMs)
+					: resolveShutdownTimeoutMs(
+							"ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS",
+							DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS,
+						);
 			if (timeoutMs > 0) {
 				await Promise.race([
 					Promise.allSettled(fastStopTasks),
@@ -2778,9 +2833,10 @@ export class AgentRuntime implements IAgentRuntime {
 		// its provider work — no caller retains the controller — so clearing
 		// alone would strand in-flight provider calls past teardown with nothing
 		// left able to cancel them.
-		for (const execution of this.providerExecutionsInFlight.values()) {
+		for (const execution of this.providerExecutionsActive) {
 			execution.controller.abort(new Error("Runtime stopped"));
 		}
+		this.providerExecutionsActive.clear();
 		this.providerExecutionsInFlight.clear();
 		this.roomReadMemo.invalidate();
 		this.roomMessagesMemo.invalidate();
@@ -3407,6 +3463,11 @@ export class AgentRuntime implements IAgentRuntime {
 			if (value !== null && value !== undefined) {
 				// Secrets are stored as strings
 				this.character.secrets[key] = String(value);
+			} else {
+				// null clears — callers use setSetting(key, null) to revoke a
+				// previously bridged credential (cloud disconnect, connector
+				// admin wipe, plugin Settings blanking an optional param).
+				delete this.character.secrets[key];
 			}
 		} else {
 			if (!this.character.settings) {
@@ -3414,7 +3475,16 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 			if (value !== null && value !== undefined) {
 				this.character.settings[key] = value;
+			} else {
+				delete this.character.settings[key];
 			}
+		}
+		// Keep the constructor settings map aligned so getRuntimeSettingValue
+		// cannot resurrect a cleared key after character.secrets/settings drop it.
+		if (value !== null && value !== undefined) {
+			this.settings[key] = value;
+		} else {
+			delete this.settings[key];
 		}
 	}
 
@@ -4972,9 +5042,13 @@ export class AgentRuntime implements IAgentRuntime {
 			trajLogger = null;
 		}
 		const composeStartedAt = Date.now();
+		// The host installs its merged request/room owner in streaming context.
+		// Prefer that composite signal over the raw room controller so a client
+		// disconnect remains observable while a room turn is active.
 		const providerSignal =
+			getStreamingContext()?.abortSignal ??
 			this.turnControllers.signalFor(message.roomId) ??
-			getStreamingContext()?.abortSignal;
+			undefined;
 		const providerData: ProviderExecutionRecord[] = await Promise.all(
 			providersToRun.map(async (provider) => {
 				const providerRuntime: IAgentRuntime = this;
@@ -4992,27 +5066,37 @@ export class AgentRuntime implements IAgentRuntime {
 						: undefined;
 				const providerCoalesced = execution !== undefined;
 				if (!execution) {
-					const providerBudgetMs =
-						typeof provider.timeoutMs === "number" && provider.timeoutMs >= 250
-							? provider.timeoutMs
-							: COMPOSE_STATE_PROVIDER_TIMEOUT_MS;
-					const timeoutMode = provider.timeoutMode ?? "fail";
 					const startedAt = Date.now();
 					const startedAtMonotonic = performance.now();
+					const callerStreamingContext = getStreamingContext();
 					// The work is deliberately NOT wired to this caller's signal:
 					// coalesced waiters each race the shared promise against their own
 					// signal in awaitProviderExecution, and the dedicated controller
 					// aborts the provider only when no interested caller remains.
 					const workController = new AbortController();
-					const promise = withProviderDeadline(
-						(signal) =>
-							withProviderStep(providerRuntime, provider.name, () =>
-								provider.get(providerRuntime, message, cachedState, {
-									signal,
-								}),
+					const promise = runProviderExecution(
+						() =>
+							runWithStreamingContext(
+								{
+									// A caller without its own streaming context contributes
+									// no chunk consumer, so the scope stays cancellation-only
+									// and provider-internal useModel calls remain off the
+									// streaming path.
+									...callerStreamingContext,
+									// Nested useModel calls read cancellation from this
+									// scope. They belong to the shared execution, not to
+									// whichever caller happened to create it.
+									abortSignal: workController.signal,
+								},
+								() =>
+									runWithSuppressedModelStream(() =>
+										withProviderStep(providerRuntime, provider.name, () =>
+											provider.get(providerRuntime, message, cachedState, {
+												signal: workController.signal,
+											}),
+										),
+									),
 							),
-						providerBudgetMs,
-						provider.name,
 						workController.signal,
 					);
 					execution = {
@@ -5021,9 +5105,11 @@ export class AgentRuntime implements IAgentRuntime {
 						waiters: 0,
 						startedAt,
 						startedAtMonotonic,
-						timeoutMs: providerBudgetMs,
-						timeoutMode,
 					};
+					this.providerExecutionsActive.add(execution);
+					if (this.stopRequested) {
+						workController.abort(new Error("Runtime stopped"));
+					}
 					if (inFlightKey !== null) {
 						this.providerExecutionsInFlight.set(inFlightKey, execution);
 					}
@@ -5049,8 +5135,15 @@ export class AgentRuntime implements IAgentRuntime {
 								}
 							}
 						: () => {};
-				if (!providerCoalesced && inFlightKey !== null) {
-					void attachedExecution.promise.then(evict, evict);
+				if (!providerCoalesced) {
+					const releaseExecution = () => {
+						this.providerExecutionsActive.delete(attachedExecution);
+						evict();
+					};
+					void attachedExecution.promise.then(
+						releaseExecution,
+						releaseExecution,
+					);
 				}
 				try {
 					const result = await awaitProviderExecution(
@@ -5077,26 +5170,20 @@ export class AgentRuntime implements IAgentRuntime {
 				} catch (cause) {
 					const endedAt = Date.now();
 					const duration = performance.now() - execution.startedAtMonotonic;
-					const outcome: ProviderExecutionOutcome = providerSignal?.aborted
+					const outcome: ProviderExecutionOutcome = providerCancellationReason(
+						providerSignal,
+						execution.controller.signal,
+						cause,
+					)
 						? "aborted"
-						: cause instanceof ProviderDeadlineError
-							? "deadline_exceeded"
-							: cause instanceof Error && cause.name === "AbortError"
-								? "aborted"
-								: "error";
+						: "error";
 					const code =
 						outcome === "aborted"
 							? "PROVIDER_COMPOSITION_ABORTED"
-							: outcome === "deadline_exceeded"
-								? "PROVIDER_DEADLINE_EXCEEDED"
-								: "PROVIDER_COMPOSITION_FAILED";
+							: "PROVIDER_COMPOSITION_FAILED";
 					const error = new ElizaError(
 						`Provider "${provider.name}" ${
-							outcome === "aborted"
-								? "was aborted"
-								: outcome === "deadline_exceeded"
-									? "exceeded its boundary deadline"
-									: "failed"
+							outcome === "aborted" ? "was aborted" : "failed"
 						} during state composition`,
 						{
 							code,
@@ -5108,8 +5195,6 @@ export class AgentRuntime implements IAgentRuntime {
 								roomId: message.roomId,
 								messageId: message.id,
 								outcome,
-								timeoutMs: execution.timeoutMs,
-								timeoutMode: execution.timeoutMode,
 							},
 						},
 					);
@@ -5119,30 +5204,6 @@ export class AgentRuntime implements IAgentRuntime {
 						coalesced: providerCoalesced,
 					});
 					this.reportError("AgentRuntime.composeState.provider", error);
-					if (
-						outcome === "deadline_exceeded" &&
-						execution.timeoutMode === "degrade" &&
-						execution.timeoutMs !== undefined
-					) {
-						// error-policy:J4 optional providers may explicitly degrade,
-						// but the prompt and structured state must remain distinguishable
-						// from a legitimate empty result for the rest of the turn.
-						return {
-							text: `[Provider ${provider.name} unavailable this turn: exceeded ${execution.timeoutMs}ms deadline.]`,
-							values: {},
-							data: {
-								available: false,
-								reason: "deadline_exceeded",
-								timeoutMs: execution.timeoutMs,
-							},
-							providerName: provider.name,
-							providerStartedAt: execution.startedAt,
-							providerEndedAt: endedAt,
-							providerDurationMs: duration,
-							providerOutcome: outcome,
-							providerCoalesced,
-						};
-					}
 					return {
 						providerName: provider.name,
 						providerStartedAt: execution.startedAt,
@@ -5158,9 +5219,6 @@ export class AgentRuntime implements IAgentRuntime {
 		const providerOverlaps = calculateProviderOverlaps(providerData);
 		const failedProviderData = providerData.filter(
 			(record) => record.providerError !== undefined,
-		);
-		const degradedProviderData = providerData.filter(
-			(record) => record.providerOutcome === "deadline_exceeded",
 		);
 		for (const provider of reusedProviders) {
 			const cached = (
@@ -5179,7 +5237,6 @@ export class AgentRuntime implements IAgentRuntime {
 			providers: providersToRun.length,
 			reused: providersToGet.length - providersToRun.length,
 			failed: failedProviderData.length,
-			degraded: degradedProviderData.length,
 		});
 
 		const currentProviderResults: Record<string, CachedProviderResult> = {
@@ -5370,23 +5427,11 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		// A designed turn abort (threadOps abort op, user "stop", client
-		// disconnect) cancels every in-flight provider at once. Those provider
-		// "failures" are a consequence of the abort, not a broken pipeline —
-		// surface the abort itself so the message boundary keeps its ack-and-stop
-		// contract instead of emitting a canned runtime-failure apology (#16939:
-		// a CHOICE "cancel" tap turned into "Something went wrong on my end").
-		if (
-			failedProviderData.length > 0 &&
-			providerSignal?.aborted &&
-			failedProviderData.every((record) => record.providerOutcome === "aborted")
-		) {
-			const reason = providerSignal.reason;
-			throw reason instanceof TurnAbortedError
-				? reason
-				: new TurnAbortedError(
-						reason instanceof Error ? reason.message : String(reason),
-					);
-		}
+		// disconnect) owns the whole composition, including the post-provider
+		// assembly window. Surface that owner cancellation even when every provider
+		// already settled; provider-originated failures were reported above and are
+		// not misclassified as aborts merely because their Error name resembles one.
+		throwIfProviderCompositionAborted(providerSignal, this.stopRequested);
 		if (failedProviderData.length === 1) {
 			const failedProvider = failedProviderData[0];
 			if (failedProvider?.providerError) {
@@ -5431,6 +5476,7 @@ export class AgentRuntime implements IAgentRuntime {
 				});
 			}
 		}
+		throwIfProviderCompositionAborted(providerSignal, this.stopRequested);
 		const conversationSeed = buildDeterministicSeed(
 			this.agentId,
 			message.roomId,
@@ -5477,6 +5523,10 @@ export class AgentRuntime implements IAgentRuntime {
 			},
 			text: providersText,
 		} as State;
+		// Provider values can be lazily materialized while assembling the state;
+		// recheck at the mutation boundary so a cancellation in that window cannot
+		// populate either the normal cache or the audience-scoped public cache.
+		throwIfProviderCompositionAborted(providerSignal, this.stopRequested);
 		if (message.id && !containsSensitiveProvider) {
 			this.publicProviderStateByMessage.delete(message);
 			this.stateCache.set(message.id, newState);
@@ -5513,6 +5563,10 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 			}
 			const publicText = this.redactSecrets(publicTexts.join("\n"));
+			// Public projection assembly reads provider-owned values after the full
+			// state guard above. A getter can synchronously cancel the owner in that
+			// window, so guard the actual WeakMap mutation as well.
+			throwIfProviderCompositionAborted(providerSignal, this.stopRequested);
 			this.publicProviderStateByMessage.set(message, {
 				text: message.content.text,
 				state: {
@@ -5534,7 +5588,7 @@ export class AgentRuntime implements IAgentRuntime {
 	private async _ensureServiceStarted(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service | null> {
-		if (this.stopped) return null;
+		if (this.stopRequested) return null;
 		if (!this.isNativeFeatureServiceEnabled(serviceType)) return null;
 		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
 		// Fast path: a service that is already registered and running is returned
@@ -5544,7 +5598,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const alreadyRunning = this.services.get(key)?.[0];
 		if (alreadyRunning && this.initResolver) return alreadyRunning;
 		await this.initPromise;
-		if (this.stopped) return null;
+		if (this.stopRequested) return null;
 		const classes = this.serviceTypes.get(key);
 		if (!classes || classes.length === 0) {
 			return null;
@@ -5658,9 +5712,9 @@ export class AgentRuntime implements IAgentRuntime {
 			});
 		}
 		try {
-			if (this.stopped) {
+			if (this.stopped || this.stopRequested) {
 				throw new Error(
-					`Runtime stopped before service ${String(serviceType)} could start`,
+					`Runtime stop requested before service ${String(serviceType)} could start`,
 				);
 			}
 			const serviceInstance = await serviceDef.start(this);
@@ -5671,14 +5725,14 @@ export class AgentRuntime implements IAgentRuntime {
 					context: { serviceType },
 				});
 			}
-			if (this.stopped) {
+			if (this.stopped || this.stopRequested) {
 				await this._stopServiceInstance(
 					key,
 					serviceInstance,
 					"late service start after runtime stop",
 				);
 				throw new Error(
-					`Runtime stopped while service ${String(serviceType)} was starting`,
+					`Runtime stop requested while service ${String(serviceType)} was starting`,
 				);
 			}
 			this.serviceInstancesByClass.set(serviceDef, serviceInstance);
@@ -5858,6 +5912,16 @@ export class AgentRuntime implements IAgentRuntime {
 				code: "SERVICE_TYPE_MISSING",
 				context: { serviceName },
 			});
+		}
+		if (this.stopRequested) {
+			throw new ElizaError(
+				`Cannot register service ${String(serviceType)} after runtime stop was requested`,
+				{
+					code: "RUNTIME_STOPPED_DURING_SERVICE_REGISTRATION",
+					severity: "ephemeral",
+					context: { agentId: this.agentId, serviceType },
+				},
+			);
 		}
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, serviceType },
@@ -6055,14 +6119,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	private isCanonicalModelCapabilityDisabled(modelType: string): boolean {
-		const setting = TEXT_GENERATION_MODEL_KEYS.includes(modelType)
-			? this.getSetting(CANONICAL_TEXT_CAPABILITY_SETTING)
-			: modelType === ModelType.TEXT_EMBEDDING
-				? this.getSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING)
-				: undefined;
-		return (
-			setting === false || String(setting).trim().toLowerCase() === "false"
-		);
+		return isCanonicalModelCapabilityDisabled(this, modelType);
 	}
 
 	private assertCanonicalModelCapabilityEnabled(modelType: string): void {
@@ -10829,7 +10886,7 @@ ${section_end}`;
 		);
 	}
 	async addEmbeddingToMemory(memory: Memory): Promise<Memory> {
-		if (memory.embedding) {
+		if (Array.isArray(memory.embedding) && memory.embedding.length > 0) {
 			return memory;
 		}
 		const memoryText = memory.content.text;
@@ -10844,9 +10901,25 @@ ${section_end}`;
 			this.warnEmbeddingGenerationSkipped();
 			return memory;
 		}
-		memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
+		const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
 			text: memoryText,
 		});
+		if (!Array.isArray(embedding) || embedding.length === 0) {
+			throw new ElizaError(
+				"TEXT_EMBEDDING provider returned no usable vector",
+				{
+					code: "EMBEDDING_MODEL_OUTPUT_INVALID",
+					context: {
+						memoryId: memory.id,
+						outputKind: Array.isArray(embedding)
+							? "empty-array"
+							: typeof embedding,
+					},
+					severity: "fatal",
+				},
+			);
+		}
+		memory.embedding = embedding;
 		return memory;
 	}
 
@@ -10885,7 +10958,11 @@ ${section_end}`;
 		priority?: "high" | "normal" | "low",
 	): Promise<void> {
 		priority = priority || "normal";
-		if (!memory || memory.embedding || !memory.content.text) {
+		if (
+			!memory ||
+			(Array.isArray(memory.embedding) && memory.embedding.length > 0) ||
+			!memory.content.text
+		) {
 			return;
 		}
 		if (this.embeddingGenerationDisabledReason !== null) {
@@ -12640,7 +12717,7 @@ ${section_end}`;
 	}
 
 	async getPairingRequests(
-		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+		queries: import("./types/pairing").PairingRequestQuery[],
 	): Promise<import("./types/database").PairingRequestsResult> {
 		return this.adapter.getPairingRequests(queries);
 	}
@@ -12656,7 +12733,7 @@ ${section_end}`;
 	}
 
 	async getPairingAllowlists(
-		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+		queries: import("./types/pairing").PairingAllowlistQuery[],
 	): Promise<import("./types/database").PairingAllowlistsResult> {
 		return this.adapter.getPairingAllowlists(queries);
 	}

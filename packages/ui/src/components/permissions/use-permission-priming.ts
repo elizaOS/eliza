@@ -9,7 +9,11 @@ import type {
 } from "@elizaos/shared/contracts/permissions";
 import * as React from "react";
 import { client } from "../../api/client";
-import { isDesktopPlatform, isNative } from "../../platform";
+import {
+  checkDesktopPermissionFresh,
+  isDesktopPlatform,
+  isNative,
+} from "../../platform";
 import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
@@ -29,8 +33,8 @@ import { createClientPermissionsRegistry } from "../composites/chat/permission-c
  * tap). Nothing here prompts on mount — mount only *checks* current status so
  * already-granted permissions are skipped and never re-prompted.
  *
- * Like `useMicrophonePermission`, no method throws — every path resolves to a
- * concrete, renderable state.
+ * Permission request failures stay distinct from user denials so recovery copy
+ * never blames the user for a broken native bridge or app identity.
  */
 
 export type PrimingItemStatus = PermissionStatus | "unknown";
@@ -42,6 +46,10 @@ export interface PrimingItem {
   canRequest: boolean;
   /** True while this item's OS request is in flight. */
   requesting: boolean;
+  /** The platform request failed before the OS recorded a user decision. */
+  requestError: boolean;
+  /** The authoritative post-Settings status refresh failed. */
+  recheckError: boolean;
   /**
    * True once the user is done with this card — granted, or explicitly skipped.
    * A denied item is NOT resolved: it stays active so the recovery affordance
@@ -149,6 +157,8 @@ export function usePermissionPriming(
             status: entry.status,
             canRequest: entry.canRequest,
             requesting: false,
+            requestError: false,
+            recheckError: false,
             resolved: false,
           })),
       );
@@ -173,7 +183,11 @@ export function usePermissionPriming(
     async (id: PermissionId) => {
       if (requestingRef.current.has(id)) return;
       requestingRef.current.add(id);
-      patch(id, { requesting: true });
+      patch(id, {
+        requesting: true,
+        requestError: false,
+        recheckError: false,
+      });
       try {
         const state = await registry.request(id, {
           reason: PRIMING_REASON,
@@ -183,13 +197,21 @@ export function usePermissionPriming(
           status: state.status,
           canRequest: state.canRequest,
           requesting: false,
+          requestError: false,
+          recheckError: false,
           // Granting resolves the card; a denial keeps it active for recovery.
           resolved: state.status === "granted",
         });
       } catch {
-        // A thrown request is itself a soft failure — surface it as denied so
-        // the recovery affordance shows rather than a dead card.
-        patch(id, { status: "denied", canRequest: false, requesting: false });
+        // error-policy:J4 native/transport failures remain visibly different from
+        // a real OS denial and keep an explicit retry path.
+        patch(id, {
+          status: "unknown",
+          canRequest: true,
+          requesting: false,
+          requestError: true,
+          recheckError: false,
+        });
       } finally {
         requestingRef.current.delete(id);
       }
@@ -205,24 +227,29 @@ export function usePermissionPriming(
   );
 
   const openSettings = React.useCallback(async (id: PermissionId) => {
-    try {
-      await openSettingsFor(id);
-    } catch {
-      // Opening OS settings is best-effort; a failure must not wedge the flow.
-    }
+    await openSettingsFor(id);
   }, []);
 
   const recheck = React.useCallback(
     async (id: PermissionId) => {
       try {
-        const state = await registry.check(id);
+        // Returning from System Settings must bypass PermissionManager's
+        // short-lived cache for this exact permission; refreshing every prober
+        // would couple recovery to unrelated OS integrations.
+        const state = isDesktopPlatform()
+          ? await checkDesktopPermissionFresh(id)
+          : await registry.check(id);
         patch(id, {
           status: state.status,
           canRequest: state.canRequest,
+          requestError: false,
+          recheckError: false,
           resolved: state.status === "granted",
         });
       } catch {
-        // Leave the current state untouched if the re-check can't resolve.
+        // error-policy:J4 an authoritative refresh failure stays visible so
+        // the recovery control never appears to do nothing.
+        patch(id, { recheckError: true });
       }
     },
     [patch, registry],

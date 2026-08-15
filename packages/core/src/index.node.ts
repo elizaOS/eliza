@@ -56,6 +56,7 @@ export {
 } from "./constants";
 export { isElizaCloudServiceSelectedInConfig } from "./contracts/cloud-topology";
 export {
+	type CharacterFailureTemplates,
 	getDirectAccountProviderForFirstRunProvider,
 	getFirstRunProviderOption,
 	getStoredFirstRunProviderId,
@@ -295,6 +296,7 @@ export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime/trace-correlation";
 export * from "./runtime/trajectory-gate";
+export * from "./runtime/trajectory-provider-attribution";
 export * from "./runtime/trajectory-recorder";
 export * from "./runtime/trajectory-usage-rollup";
 export * from "./runtime/turn-controller";
@@ -325,6 +327,7 @@ export * from "./schemas/character";
 export * from "./schemas/index";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
+export * from "./search/keyless-web-search";
 // Export security utilities
 export * from "./security";
 export * from "./security/basic-email";
@@ -359,9 +362,7 @@ export { sanitizeOutboundText } from "./services/message/outbound-sanitize";
 export * from "./services/notification";
 export * from "./services/optimized-prompt";
 export {
-	applyOptimizedProviderSelection,
 	type OptimizedPromptRuntimeLike,
-	resolveOptimizedContextConfigForRuntime,
 	resolveOptimizedPromptForRuntime,
 } from "./services/optimized-prompt-resolver";
 export * from "./services/pairing";

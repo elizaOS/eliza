@@ -85,6 +85,8 @@ export interface SearchFilters {
 export interface SortOptions {
   sortBy: SortBy;
   order: SortOrder;
+  /** When false, sort only by sortBy/order (my-agents listing). Defaults to true. */
+  pinFeatured?: boolean;
 }
 
 /**

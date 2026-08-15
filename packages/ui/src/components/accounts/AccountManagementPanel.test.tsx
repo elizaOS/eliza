@@ -56,7 +56,7 @@ vi.mock("../../hooks/useAccounts", () => ({ useAccounts: () => accounts }));
 vi.mock("../../providers", () => ({
   SUBSCRIPTION_PROVIDER_SELECTIONS: [],
 }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (state: {
       t: (key: string, vars?: Record<string, unknown>) => string;

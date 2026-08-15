@@ -109,7 +109,12 @@ describe("resolveCloudRoute — the three modes", () => {
 		);
 		expect(route.source).toBe("cloud-proxy");
 		if (route.source !== "cloud-proxy") throw new Error("unreachable");
-		expect(route.baseUrl).toBe("https://elizacloud.ai/api/v1/apis/openai");
+		// Literal on purpose. The default lives in @elizaos/cloud-routing as the
+		// module-private CLOUD_BASE_FALLBACK, and @elizaos/core deliberately does
+		// not depend on @elizaos/shared, so neither the routing fallback nor
+		// ELIZA_DOMAIN_CONTRACTS is importable here without inverting the
+		// dependency direction. Exporting the fallback would make this derivable.
+		expect(route.baseUrl).toBe("https://api.eliza.app/api/v1/apis/openai");
 		expect(route.headers.Authorization).toBe("Bearer cloud-key");
 	});
 

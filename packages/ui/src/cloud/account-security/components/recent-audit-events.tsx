@@ -4,35 +4,32 @@
  * unavailable state without issuing a dead account-audit request.
  */
 
-import { BrandCard, CornerBrackets } from "../../../cloud-ui";
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "../../../components/settings/settings-layout";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
 export function RecentAuditEvents() {
   const t = useCloudT();
 
   return (
-    <BrandCard className="relative">
-      <CornerBrackets size="sm" className="opacity-50" />
-      <div className="relative z-10 space-y-3">
-        <div>
-          <h3 className="text-lg font-bold text-txt-strong">
-            {t("cloud.recentAuditEvents.title", {
-              defaultValue: "Recent security events",
-            })}
-          </h3>
-          <p className="text-sm text-muted">
-            {t("cloud.recentAuditEvents.subtitle", {
-              defaultValue:
-                "Last 50 audit events recorded against your account.",
-            })}
-          </p>
-        </div>
-        <p className="text-sm text-muted">
-          {t("cloud.recentAuditEvents.notExposed", {
+    <SettingsStack data-testid="cloud-recent-audit-events">
+      <SettingsGroup
+        title={t("cloud.recentAuditEvents.title", {
+          defaultValue: "Recent security events",
+        })}
+        description={t("cloud.recentAuditEvents.subtitle", {
+          defaultValue: "Last 50 audit events recorded against your account.",
+        })}
+      >
+        <SettingsRow
+          label={t("cloud.recentAuditEvents.notExposed", {
             defaultValue: "Audit log reading is unavailable on this server.",
           })}
-        </p>
-      </div>
-    </BrandCard>
+        />
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

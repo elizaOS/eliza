@@ -387,6 +387,9 @@ const wechatPlugin: Plugin = {
 
     channel = new WechatChannel({
       config: wechatConfig,
+      onDeliveryError: (error, accountId) => {
+        runtime.reportError("wechat:webhook-delivery", error, { accountId });
+      },
       onMessage: async (accountId: string, msg: WechatMessageContext) => {
         await deliverIncomingWechatMessage({
           runtime,

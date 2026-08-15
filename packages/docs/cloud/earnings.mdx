@@ -18,10 +18,10 @@ Earn from:
 
 ## Earnings Dashboard
 
-View balances, hosting spend, and redemptions at [Dashboard -> Earnings](https://elizacloud.ai/dashboard/earnings).
+View balances, hosting spend, and redemptions at [Cloud → Monetization](https://cloud.eliza.app/cloud/monetization).
 
 ```bash
-curl "https://www.elizacloud.ai/api/v1/redemptions/balance" \
+curl "https://api.eliza.app/api/v1/redemptions/balance" \
   -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY"
 ```
 
@@ -59,7 +59,7 @@ Redemptions use `pointsAmount`, where 100 points equals $1.00.
 3. Create `POST /api/v1/redemptions`.
 
 ```bash
-curl -X POST "https://www.elizacloud.ai/api/v1/redemptions" \
+curl -X POST "https://api.eliza.app/api/v1/redemptions" \
   -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -80,7 +80,7 @@ Supported networks are `ethereum`, `base`, `bnb`, and `solana`, subject to payou
 For per-app earnings, call:
 
 ```bash
-curl "https://www.elizacloud.ai/api/v1/apps/$APP_ID/earnings?days=30" \
+curl "https://api.eliza.app/api/v1/apps/$APP_ID/earnings?days=30" \
   -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY"
 ```
 

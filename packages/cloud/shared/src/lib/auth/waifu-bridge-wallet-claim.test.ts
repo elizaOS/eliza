@@ -52,10 +52,18 @@ mock.module("../services/organizations", () => ({
 }));
 
 mock.module("../../db/helpers", () => ({
+  // service-jwt imports the staging-session token class guard, whose module
+  // also names dbRead. This test never exercises that QA-token path, but Bun
+  // keeps module mocks visible to the rest of the batch, so preserve the full
+  // helpers export contract.
+  dbRead: {},
   dbWrite: {
     insert: () => ({
       values: async () => undefined,
     }),
+  },
+  writeTransaction: async () => {
+    throw new Error("transaction is outside this service-JWT test path");
   },
 }));
 

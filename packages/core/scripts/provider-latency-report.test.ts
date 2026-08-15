@@ -1,7 +1,7 @@
 /**
  * Process contract for the provider latency CLI against the real PGlite-backed
- * runtime, including full-provider execution, warm-cache coverage, and observed
- * parallelism. The sample count stays minimal because distribution quality is
+ * runtime, including full-provider execution, warm-cache coverage, and exact
+ * provider-span overlap. The sample count stays minimal because distribution quality is
  * established by the operator benchmark rather than this structural gate.
  */
 import { spawnSync } from "node:child_process";
@@ -19,7 +19,7 @@ interface ProviderLatencyReport {
 	}>;
 	execution: string;
 	reusedProviderResultsPerSample: { min: number; max: number };
-	effectiveParallelism: { count: number };
+	providerSpanOverlap: { count: number };
 	freshComposeWallMs: { count: number };
 	reusedComposeWallMs: { count: number };
 }
@@ -93,7 +93,7 @@ describe("provider latency report process", () => {
 		).toBe(true);
 		expect(report.freshComposeWallMs.count).toBe(report.samples);
 		expect(report.reusedComposeWallMs.count).toBe(report.samples);
-		expect(report.effectiveParallelism.count).toBe(report.samples);
+		expect(report.providerSpanOverlap.count).toBe(report.samples);
 		expect(report.execution).toContain("production turn context");
 		expect(report.reusedProviderResultsPerSample.min).toBe(
 			report.providerCount,

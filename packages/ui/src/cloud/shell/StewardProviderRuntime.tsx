@@ -31,9 +31,15 @@ import {
   useMemo,
   useRef,
 } from "react";
+import { dispatchStewardSessionChange } from "../../events/steward-session-event";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
+import {
+  clearPendingOnboardingSession,
+  peekPendingOnboardingSession,
+  TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+} from "../join/lib/onboarding-continuation";
 import {
   clearServerStewardSessionCookies,
   clearStaleStewardSession,
@@ -116,15 +122,23 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
 
       lastSyncedToken.current = token;
       wasAuthenticated.current = true;
+      const telegramContinuation = peekPendingOnboardingSession(
+        TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+      );
 
       fetch(configuredSessionEndpoint(), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({
+          token,
+          ...(telegramContinuation ? { telegramContinuation } : {}),
+        }),
       })
         .then(async (res) => {
           if (res.ok) {
+            if (telegramContinuation) clearPendingOnboardingSession();
+            dispatchStewardSessionChange("present");
             window.dispatchEvent(
               new CustomEvent("steward-token-sync", {
                 detail: { token, userId: user?.id },

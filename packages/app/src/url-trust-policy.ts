@@ -10,6 +10,10 @@
  */
 
 import {
+  ELIZA_DOMAIN_CONTRACTS,
+  LEGACY_ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/shared/elizacloud";
+import {
   IOS_LOCAL_AGENT_IPC_BASE,
   isMobileLocalAgentIpcUrl,
 } from "@elizaos/ui/first-run/mobile-runtime-mode";
@@ -66,20 +70,22 @@ export function isLoopbackApiHost(host: string): boolean {
 }
 
 /**
- * Canonical Eliza Cloud shared-tier control-plane hosts. The free shared agent
- * is served in-Worker off the apex `elizacloud.ai` / its `www.` and `api.`
- * siblings (the shared REST adapter lives at
- * `<host>/api/v1/eliza/agents/<id>`), NOT a per-agent `*.elizacloud.ai`
- * subdomain — so the dedicated-subdomain trust does not cover it. A store iOS
- * build must trust these HTTPS hosts regardless of whether `cloudApiBase` was
- * pinned to the exact host, or shared-tier bootstrap (the instant, always-on,
- * $0 path — the mobile default) is rejected under the strict network policy.
- * Prod hosts only; staging/dev are reached via a configured `cloudApiBase`.
+ * Eliza shared-tier control-plane hosts trusted by strict native builds. The
+ * canonical eliza.app family is primary; legacy elizacloud.ai names remain in
+ * this boundary-only set while their edge redirects are in service. Dedicated
+ * agent subdomains are deliberately excluded and handled by the caller.
  */
 const ELIZA_CLOUD_SHARED_HOSTS: ReadonlySet<string> = new Set([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "api.elizacloud.ai",
+  ...Object.values(ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
+    new URL(contract.marketingOrigin).hostname,
+    new URL(contract.cloudAppOrigin).hostname,
+    new URL(contract.cloudApiOrigin).hostname,
+  ]),
+  ...Object.values(LEGACY_ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
+    ...contract.marketingHostnames,
+    ...contract.cloudAppHostnames,
+    ...contract.cloudApiHostnames,
+  ]),
 ]);
 
 export function isElizaCloudSharedHost(host: string): boolean {

@@ -214,10 +214,16 @@ describe("VoiceProfileSection", () => {
     );
 
     await user.click(screen.getByTestId("voice-profile-manage-g1"));
-    await user.type(
-      screen.getByTestId("voice-profile-bind-entity-g1"),
-      "entity-alex",
+    const entity = screen.getByTestId("voice-profile-bind-entity-g1");
+    const bindLabel = screen.getByTestId("voice-profile-bind-label-g1");
+    expect(entity.getAttribute("data-agent-id")).toBe(
+      "voice-profile-entity-g1",
     );
+    expect(bindLabel.getAttribute("data-agent-id")).toBe(
+      "voice-profile-entity-label-g1",
+    );
+    expect(entity.getAttribute("aria-label")).toBeNull();
+    await user.type(entity, "entity-alex");
     await user.type(screen.getByTestId("voice-profile-bind-label-g1"), "Alex");
     await user.click(screen.getByTestId("voice-profile-bind-g1"));
 

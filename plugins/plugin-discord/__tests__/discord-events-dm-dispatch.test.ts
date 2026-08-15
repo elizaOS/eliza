@@ -161,6 +161,80 @@ describe("setupDiscordEventListeners — DM dispatch", () => {
 		expect(debouncerState.channelEnqueue).not.toHaveBeenCalled();
 	});
 
+	it("delivers a DM even when a CHANNEL_IDS allowlist is configured (DM-policy owns DM access, not the guild allowlist)", async () => {
+		// The bug this pins: with CHANNEL_IDS set, the guild-channel allowlist
+		// gate ran before the DM branch and silently dropped every DM (a DM
+		// channel id is never in CHANNEL_IDS). DM access must be governed by
+		// dmPolicy/allowFrom in the message manager, not the guild allowlist.
+		const service = makeService();
+		service.allowedChannelIds = ["guild-chan-1"] as never;
+		service.isChannelAllowed = vi.fn(
+			(id: string) => id === "guild-chan-1",
+		) as never;
+		const { channelDebouncer } = setupDiscordEventListeners(service as never);
+		service.channelDebouncer = channelDebouncer as never;
+
+		service.client.emit(
+			"messageCreate",
+			makeMessage(DiscordChannelType.DM, "dm-outside-allowlist"),
+		);
+		await tick();
+
+		expect(service.messageManager.handleMessage).toHaveBeenCalledTimes(1);
+		expect(debouncerState.channelEnqueue).not.toHaveBeenCalled();
+		// The allowlist gate must not have emitted the not-in-channels event for
+		// the DM either — the message was processed, not rejected.
+		expect(service.runtime.emitEvent).not.toHaveBeenCalledWith(
+			expect.stringContaining("NOT_IN_CHANNELS"),
+			expect.anything(),
+		);
+	});
+
+	it("delivers a group DM even when a CHANNEL_IDS allowlist is configured", async () => {
+		const service = makeService();
+		service.allowedChannelIds = ["guild-chan-1"] as never;
+		service.isChannelAllowed = vi.fn(
+			(id: string) => id === "guild-chan-1",
+		) as never;
+		const { channelDebouncer } = setupDiscordEventListeners(service as never);
+		service.channelDebouncer = channelDebouncer as never;
+
+		service.client.emit(
+			"messageCreate",
+			makeMessage(DiscordChannelType.GroupDM, "gdm-outside-allowlist"),
+		);
+		await tick();
+
+		expect(service.messageManager.handleMessage).toHaveBeenCalledTimes(1);
+	});
+
+	it("still drops guild-channel messages outside the CHANNEL_IDS allowlist", async () => {
+		const service = makeService();
+		service.allowedChannelIds = ["guild-chan-1"] as never;
+		service.isChannelAllowed = vi.fn(
+			(id: string) => id === "guild-chan-1",
+		) as never;
+		// The rejection path fetches the channel to distinguish threads.
+		(service.client as never as { channels: unknown }).channels = {
+			fetch: vi.fn(async () => ({
+				id: "guild-chan-2",
+				isThread: () => false,
+				isTextBased: () => true,
+			})),
+		};
+		const { channelDebouncer } = setupDiscordEventListeners(service as never);
+		service.channelDebouncer = channelDebouncer as never;
+
+		service.client.emit(
+			"messageCreate",
+			makeMessage(DiscordChannelType.GuildText, "guild-chan-2"),
+		);
+		await tick();
+
+		expect(service.messageManager.handleMessage).not.toHaveBeenCalled();
+		expect(debouncerState.channelEnqueue).not.toHaveBeenCalled();
+	});
+
 	it("still routes guild-channel messages through the channel debouncer/enqueue path", async () => {
 		const service = makeService();
 		const { channelDebouncer } = setupDiscordEventListeners(service as never);

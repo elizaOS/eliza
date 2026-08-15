@@ -39,6 +39,8 @@ interface RuntimeOptions {
 	muted?: boolean;
 	/** Force LLM-off-by-default so the turn drops before compose. */
 	llmOff?: boolean;
+	/** Disable the canonical embedding capability for an edge-only runtime. */
+	canonicalEmbeddingsDisabled?: boolean;
 	/**
 	 * Model the real run lifecycle: `getCurrentRunId` lazily mints a transient
 	 * PRERUN_ID until `startRun` mints RUN_ID, reproducing the pre-run
@@ -109,11 +111,16 @@ function makeRuntime(opts: RuntimeOptions = {}) {
 		}),
 		reportError: vi.fn(),
 		useModel,
-		getSetting: vi.fn((key: string) =>
-			key === "BASIC_CAPABILITIES_DEFLLMOFF" && opts.llmOff
-				? "true"
-				: undefined,
-		),
+		getSetting: vi.fn((key: string) => {
+			if (key === "BASIC_CAPABILITIES_DEFLLMOFF" && opts.llmOff) return "true";
+			if (
+				key === "ELIZA_CANONICAL_EMBEDDINGS_ENABLED" &&
+				opts.canonicalEmbeddingsDisabled
+			) {
+				return false;
+			}
+			return undefined;
+		}),
 		getRoom: vi.fn(async (roomId: UUID) => (roomId === ROOM_ID ? room : null)),
 		getWorld,
 		updateRoom: vi.fn(async () => undefined),
@@ -342,6 +349,20 @@ describe("recall-query embed prefetch (per-turn cache warm)", () => {
 		const service = new DefaultMessageService();
 
 		await service.handleMessage(runtime, userMessage("anything new?"));
+
+		expect(useModel).not.toHaveBeenCalled();
+	});
+
+	it("issues no speculative embed when the canonical capability is disabled", async () => {
+		const { runtime, useModel } = makeRuntime({
+			canonicalEmbeddingsDisabled: true,
+		});
+		const service = new DefaultMessageService();
+
+		await service.handleMessage(
+			runtime,
+			userMessage("remember this without an embedding provider"),
+		);
 
 		expect(useModel).not.toHaveBeenCalled();
 	});

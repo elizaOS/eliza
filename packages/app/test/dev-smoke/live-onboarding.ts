@@ -256,10 +256,10 @@ function seedCompletedFirstRunStorageForOrigin(): void {
 }
 
 export async function seedCompletedFirstRunStorage(page: Page): Promise<void> {
+  // Seed before the next document installs the surface-realm guard. Executing
+  // the same raw writes after /chat mounts would correctly be rejected as a
+  // view attempting to mutate reserved shell state.
   await page.addInitScript(seedCompletedFirstRunStorageForOrigin);
-  if (page.url() !== "about:blank") {
-    await page.evaluate(seedCompletedFirstRunStorageForOrigin);
-  }
 }
 
 export async function gotoChatComposer(page: Page): Promise<Locator> {

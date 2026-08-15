@@ -16,7 +16,6 @@ export * from "./types.js";
 // Import service for plugin
 import { createMatrixConnectorAccountProvider } from "./connector-account-provider.js";
 import { MatrixService } from "./service.js";
-import { MatrixWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 /**
  * Matrix plugin definition.
@@ -25,7 +24,7 @@ const matrixPlugin: Plugin = {
   name: "matrix",
   description: "Matrix messaging integration plugin for ElizaOS with E2EE support",
 
-  services: [MatrixService, MatrixWorkflowCredentialProvider],
+  services: [MatrixService],
 
   actions: [],
 

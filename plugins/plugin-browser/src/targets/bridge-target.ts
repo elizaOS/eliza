@@ -34,20 +34,62 @@ import type {
   BrowserWorkspaceTab,
 } from "../workspace/browser-workspace-types.js";
 
-const SUPPORTED_SUBACTIONS = new Set<BrowserWorkspaceCommand["subaction"]>([
+/**
+ * Subactions the bridge can execute directly without a LifeOps session.
+ * These are read-mostly operations that map cleanly to the companion's
+ * tab/page-context API.
+ */
+const BRIDGE_DIRECT_SUBACTIONS = new Set<BrowserWorkspaceCommand["subaction"]>([
   "list",
   "state",
+  "get",
+  "tab",
+]);
+
+/**
+ * Subactions that require a LifeOps browser session to record and gate
+ * account-affecting operations behind owner confirmation. The bridge's session
+ * APIs are not called from the generic BROWSER target, so these are advertised
+ * as unsupported in the pre-dispatch capability manifest — the dispatcher will
+ * skip the bridge and select a genuinely capable target instead of selecting
+ * the bridge and hitting a known rejection.
+ *
+ * (issue #18258 review: previously these were in SUPPORTED_SUBACTIONS, causing
+ * the bridge to be selected as "capable" and then unconditionally rejecting
+ * at execute time, mislabeling side-effecting commands as UNCERTAIN_OUTCOME.)
+ */
+const SESSION_GATED_SUBACTIONS = new Set<BrowserWorkspaceCommand["subaction"]>([
   "open",
   "navigate",
   "close",
   "show",
   "hide",
-  "tab",
-  "get",
   "back",
   "forward",
   "reload",
 ]);
+
+/**
+ * All subactions the bridge recognizes (direct + session-gated). The executor
+ * switch still handles the session-gated case to give a clear, actionable error
+ * when a caller pins target=bridge explicitly.
+ */
+const ALL_RECOGNIZED_SUBACTIONS = new Set([
+  ...BRIDGE_DIRECT_SUBACTIONS,
+  ...SESSION_GATED_SUBACTIONS,
+]);
+
+/**
+ * Capability manifest for the bridge target. Exported so the BrowserService
+ * bridge-target factory can wire a `supports()` pre-dispatch check from the
+ * same single source of truth (issue #18258).
+ *
+ * Only includes subactions the bridge can execute directly — session-gated
+ * operations are excluded so the pre-dispatch capability check skips the
+ * bridge for them.
+ */
+export const BRIDGE_SUPPORTED_SUBACTIONS: ReadonlySet<string> =
+  BRIDGE_DIRECT_SUBACTIONS;
 
 function bridgeTabToWorkspaceTab(
   tab: BrowserBridgeTabSummary,
@@ -77,7 +119,7 @@ export async function dispatchBridgeCommand(
   service: BrowserBridgeRouteService,
   command: BrowserWorkspaceCommand,
 ): Promise<BrowserWorkspaceCommandResult> {
-  if (!SUPPORTED_SUBACTIONS.has(command.subaction)) {
+  if (!ALL_RECOGNIZED_SUBACTIONS.has(command.subaction)) {
     throw unsupported(command.subaction);
   }
   switch (command.subaction) {

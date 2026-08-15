@@ -152,9 +152,10 @@ describe("AuthorizeContent", () => {
     expect(screen.queryByText("Access your Eliza Cloud account")).toBeNull();
     expect(screen.queryByText(/By continuing/)).toBeNull();
     expect(screen.queryByText("Signed in")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Authorize Demo App" }),
-    ).toBeTruthy();
+    const authorizeButton = screen.getByRole("button", {
+      name: "Authorize Demo App",
+    });
+    expect(authorizeButton.className).toContain("hover:bg-accent-hover");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
   });
 

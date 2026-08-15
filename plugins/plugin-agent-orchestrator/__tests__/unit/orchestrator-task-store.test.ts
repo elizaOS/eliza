@@ -339,6 +339,40 @@ describe("InMemoryTaskStore", () => {
     expect(afterUpdate?.session.activeTool).toBe("edit");
   });
 
+  it("scopes duplicate session mutations and resolves the durable current owner", async () => {
+    const store = new InMemoryTaskStore();
+    const taskA = await store.createTask(createInput({ title: "Task A" }));
+    const taskB = await store.createTask(createInput({ title: "Task B" }));
+    await store.addSession(
+      sessionFor(taskA.task.id, {
+        id: "row-a",
+        currentOwner: false,
+        status: "completed",
+      }),
+    );
+    await store.addSession(
+      sessionFor(taskB.task.id, {
+        id: "row-b",
+        currentOwner: true,
+        status: "ready",
+      }),
+    );
+
+    await store.updateSession(
+      "session-1",
+      { status: "errored" },
+      taskB.task.id,
+    );
+
+    expect(
+      (await store.findSession("session-1", taskA.task.id))?.session.status,
+    ).toBe("completed");
+    expect(
+      (await store.findSession("session-1", taskB.task.id))?.session.status,
+    ).toBe("errored");
+    expect((await store.findSession("session-1"))?.taskId).toBe(taskB.task.id);
+  });
+
   it("appends timeline children to the owning task", async () => {
     const store = new InMemoryTaskStore();
     const { task } = await store.createTask(createInput());
@@ -514,6 +548,35 @@ describe("FileTaskStore", () => {
     const loaded = await reopened.getTask(task.id);
     expect(loaded?.task.title).toBe("durable");
     expect(loaded?.sessions[0]?.sessionId).toBe("session-1");
+  });
+
+  it("resolves a reused session to its persisted current owner after restart", async () => {
+    const file = await tempFile();
+    const store = new FileTaskStore(file);
+    const taskA = await store.createTask(createInput({ title: "Task A" }));
+    const taskB = await store.createTask(createInput({ title: "Task B" }));
+    await store.addSession(
+      sessionFor(taskA.task.id, {
+        id: "row-a",
+        currentOwner: false,
+        status: "completed",
+      }),
+    );
+    await store.addSession(
+      sessionFor(taskB.task.id, {
+        id: "row-b",
+        currentOwner: true,
+        status: "ready",
+      }),
+    );
+
+    const reopened = new FileTaskStore(file);
+    expect((await reopened.findSession("session-1"))?.taskId).toBe(
+      taskB.task.id,
+    );
+    expect(
+      (await reopened.findSession("session-1", taskA.task.id))?.session.status,
+    ).toBe("completed");
   });
 
   it("does not remove a lock whose ownership token changed before cleanup", async () => {

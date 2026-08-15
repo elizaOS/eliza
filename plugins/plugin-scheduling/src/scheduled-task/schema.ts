@@ -9,6 +9,7 @@
  */
 
 import { z } from "zod";
+import type { ScheduledTask } from "./types.js";
 
 const isoString = z
   .string()
@@ -130,6 +131,12 @@ const scheduledTaskOutputSchema = z.object({
   ]),
   target: z.string().min(1).optional(),
   persistAs: z.enum(["task_metadata", "external_only"]).optional(),
+  fallback: z
+    .object({
+      body: z.string().trim().min(1).max(2_000),
+      title: z.string().trim().min(1).max(200).optional(),
+    })
+    .optional(),
 });
 
 const scheduledTaskRefSchema: z.ZodType<unknown> = z.lazy(() =>
@@ -236,6 +243,11 @@ export const scheduledTaskSchema = scheduledTaskInputBaseSchema.extend({
   taskId: z.string().min(1),
   state: scheduledTaskStateSchema,
 });
+
+/** Narrows untrusted route input only after the complete task schema accepts it. */
+export function isScheduledTask(value: unknown): value is ScheduledTask {
+  return scheduledTaskSchema.safeParse(value).success;
+}
 
 export const scheduledTaskVerbSchema = z.enum([
   "snooze",

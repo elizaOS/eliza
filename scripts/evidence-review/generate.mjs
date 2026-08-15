@@ -59,7 +59,31 @@ const SKIP_DIR_NAMES = new Set([
   ".codex-pr-worktrees",
 ]);
 
-function parseArgs(argv) {
+function requireOptionValue(argument, prefix) {
+  const value = argument.slice(prefix.length);
+  if (value.trim().length === 0) {
+    throw new Error(`${prefix.slice(0, -1)} requires a non-empty value`);
+  }
+  return value;
+}
+
+function parseIntegerOption(argument, prefix, minimum) {
+  const value = requireOptionValue(argument, prefix);
+  if (!/^(?:0|[1-9]\d*)$/u.test(value)) {
+    throw new Error(`${prefix.slice(0, -1)} must be a decimal integer`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum) {
+    const constraint =
+      minimum === 0
+        ? "a non-negative safe integer"
+        : `a safe integer of at least ${minimum}`;
+    throw new Error(`${prefix.slice(0, -1)} must be ${constraint}`);
+  }
+  return parsed;
+}
+
+export function parseArgs(argv) {
   const options = {
     outputDir: DEFAULT_OUTPUT_DIR,
     open: false,
@@ -74,30 +98,28 @@ function parseArgs(argv) {
     if (arg === "--open") options.open = true;
     else if (arg === "--no-open") options.open = false;
     else if (arg.startsWith("--out=")) {
-      options.outputDir = path.resolve(REPO_ROOT, arg.slice("--out=".length));
+      options.outputDir = path.resolve(
+        REPO_ROOT,
+        requireOptionValue(arg, "--out="),
+      );
     } else if (arg.startsWith("--ocr=")) {
       options.ocr = arg.slice("--ocr=".length);
     } else if (arg.startsWith("--max-images=")) {
-      options.maxImages = Number.parseInt(
-        arg.slice("--max-images=".length),
-        10,
-      );
+      options.maxImages = parseIntegerOption(arg, "--max-images=", 0);
     } else if (arg.startsWith("--max-artifacts=")) {
-      options.maxArtifacts = Number.parseInt(
-        arg.slice("--max-artifacts=".length),
-        10,
-      );
+      options.maxArtifacts = parseIntegerOption(arg, "--max-artifacts=", 100);
     } else if (arg.startsWith("--max-files-per-dir=")) {
-      options.maxFilesPerDir = Number.parseInt(
-        arg.slice("--max-files-per-dir=".length),
-        10,
+      options.maxFilesPerDir = parseIntegerOption(
+        arg,
+        "--max-files-per-dir=",
+        100,
       );
     } else if (arg.startsWith("--source=")) {
-      options.scanDirs.push(arg.slice("--source=".length));
+      options.scanDirs.push(requireOptionValue(arg, "--source="));
     } else if (arg.startsWith("--bundle=")) {
       options.bundleDir = path.resolve(
         REPO_ROOT,
-        arg.slice("--bundle=".length),
+        requireOptionValue(arg, "--bundle="),
       );
     } else if (arg === "--help" || arg === "-h") {
       printHelp();
@@ -106,20 +128,8 @@ function parseArgs(argv) {
       throw new Error(`unknown argument: ${arg}`);
     }
   }
-  if (!Number.isFinite(options.maxImages) || options.maxImages < 0) {
-    throw new Error("--max-images must be a non-negative number");
-  }
-  if (!Number.isFinite(options.maxArtifacts) || options.maxArtifacts < 100) {
-    throw new Error("--max-artifacts must be at least 100");
-  }
   if (!["auto", "on", "off"].includes(options.ocr)) {
     throw new Error("--ocr must be auto, on, or off");
-  }
-  if (
-    !Number.isFinite(options.maxFilesPerDir) ||
-    options.maxFilesPerDir < 100
-  ) {
-    throw new Error("--max-files-per-dir must be at least 100");
   }
   return options;
 }
@@ -696,12 +706,14 @@ async function main() {
   if (options.open) openFile(indexPath);
 }
 
-main()
-  .catch((error) => {
-    console.error(error?.stack || error?.message || String(error));
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await closeOcrEngines();
-    if (process.exitCode) process.exit(process.exitCode);
-  });
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main()
+    .catch((error) => {
+      console.error(error?.stack || error?.message || String(error));
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await closeOcrEngines();
+      if (process.exitCode) process.exit(process.exitCode);
+    });
+}

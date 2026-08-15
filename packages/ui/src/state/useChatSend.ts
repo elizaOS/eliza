@@ -158,7 +158,7 @@ function optimisticAttachmentKind(
 /**
  * True when the active client base is an Eliza Cloud agent — either the
  * shared-runtime REST adapter (`/api/v1/eliza/agents/<id>`) or a dedicated agent
- * on its own `<id>.elizacloud.ai` subdomain. A chat-send 404 against such a base
+ * on its own `<id>.cloud.eliza.app` subdomain. A chat-send 404 against such a base
  * is ambiguous: it can mean "the conversation was deleted" (recoverable by
  * recreating the conversation) OR "the agent itself was deleted / is
  * unreachable" — in which case recreating the conversation also 404s and the

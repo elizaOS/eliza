@@ -662,7 +662,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           setElizaCloudStatusReason(null);
           setElizaCloudLoginError(null);
           // Clear the stored cloud session token so directCloudRequest stops
-          // firing against api.elizacloud.ai with a stale key after reset.
+          // firing against api.eliza.app with a stale key after reset.
           // Without this, the renderer keeps making direct cloud calls even
           // though the UI shows disconnected. The device-code flow persists its
           // token through the steward-session store, so clearing that store is

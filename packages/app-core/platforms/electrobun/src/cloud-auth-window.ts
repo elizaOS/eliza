@@ -1,4 +1,8 @@
 /** Implements Electrobun desktop cloud auth window ts behavior for app-core shell integration. */
+import {
+  isElizaCloudControlPlaneHostname,
+  isElizaDedicatedAgentHostname,
+} from "@elizaos/shared/elizacloud";
 export interface CloudAuthWindowFrame {
   x: number;
   y: number;
@@ -40,7 +44,6 @@ const CLOUD_WINDOW_FRAME: CloudAuthWindowFrame = {
   width: 1280,
   height: 900,
 };
-const TRUSTED_ELIZA_HOST_SUFFIXES = ["elizacloud.ai", "elizaos.ai"] as const;
 const TRUSTED_ELIZA_CLOSE_MESSAGE_TYPE = "eliza.trusted-eliza-window.close";
 const TRUSTED_ELIZA_WINDOW_PRELOAD = `(() => {
   const emitHostMessage = (message) => {
@@ -92,8 +95,11 @@ export function isTrustedElizaUrl(value: string): boolean {
     }
 
     const hostname = url.hostname.toLowerCase();
-    return TRUSTED_ELIZA_HOST_SUFFIXES.some(
-      (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`),
+    return (
+      isElizaCloudControlPlaneHostname(hostname) ||
+      isElizaDedicatedAgentHostname(hostname) ||
+      hostname === "elizaos.ai" ||
+      hostname.endsWith(".elizaos.ai")
     );
   } catch {
     // error-policy:J3 untrusted/unparseable URL rejected (fail-closed)

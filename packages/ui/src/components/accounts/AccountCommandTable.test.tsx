@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { AccountCommandTable } from "./AccountCommandTable";
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (state: {
       t: (key: string, vars?: Record<string, unknown>) => string;

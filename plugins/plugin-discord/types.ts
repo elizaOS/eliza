@@ -224,6 +224,15 @@ export interface BuildMemoryFromMessageOptions {
 }
 
 export interface IDiscordService {
+	/**
+	 * Record an observed DM channel for cold-start scan coverage (#18746).
+	 * Optional for compat facades; implementations must never throw.
+	 */
+	recordDmChannel?: (
+		accountId: string,
+		channelId: string,
+		recipientId: string,
+	) => void;
 	accountId?: string;
 	client: DiscordJsClient | null;
 	/**
@@ -238,6 +247,8 @@ export interface IDiscordService {
 		message: Message,
 		options?: BuildMemoryFromMessageOptions,
 	) => Promise<Memory | null>;
+	/** Synchronous inbound admission check used by every turn-start path. */
+	admitInboundMessage?: (messageId: string, channelId: string) => boolean;
 	getVoiceTargets?: (query?: {
 		accountId?: string | null;
 		guildId?: string | null;

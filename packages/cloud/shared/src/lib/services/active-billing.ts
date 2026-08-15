@@ -577,6 +577,7 @@ async function cancelAgentInfrastructure(
         agentId,
         organizationId,
         userId,
+        authorization: "billing_request",
       });
     } else {
       await provisioningJobService.enqueueAgentSuspendOnce({

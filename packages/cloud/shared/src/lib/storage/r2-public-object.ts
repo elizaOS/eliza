@@ -1,11 +1,11 @@
 /**
  * Upload bytes to the Worker R2 binding and return a public HTTPS URL.
- * Mirrors the voice-clone sample pattern (blob.elizacloud.ai or R2_PUBLIC_HOST).
+ * Mirrors the voice-clone sample pattern (blob.eliza.app or R2_PUBLIC_HOST).
  */
 
 import type { Bindings } from "../../types/cloud-worker-env";
 
-const DEFAULT_R2_PUBLIC_HOST = "blob.elizacloud.ai";
+const DEFAULT_R2_PUBLIC_HOST = "blob.eliza.app";
 
 export interface PutPublicObjectOptions {
   /** R2 object key (no leading slash). */

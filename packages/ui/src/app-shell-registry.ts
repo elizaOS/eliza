@@ -16,6 +16,8 @@ export type AppShellPageLoader = () => Promise<{
   cleanup?: () => void | Promise<void>;
 }>;
 
+export type AppShellPageAvailability = "always" | "managed-cloud";
+
 /**
  * A page contributed at runtime by a plugin or host app. Mirrors the fields
  * on `PluginAppNavTab` from `@elizaos/core`, plus either a resolved React
@@ -32,6 +34,18 @@ export interface AppShellPageRegistration {
   icon?: string;
   /** Route path the tab links to. */
   path: string;
+  /**
+   * Optional additional route patterns owned by this page. A `:segment`
+   * consumes one path segment and a terminal `*` consumes the remainder. This
+   * lets one host page own a nested family such as `/cloud/*` while its
+   * navigation link remains the concrete `/cloud` root.
+   */
+  pathPatterns?: readonly string[];
+  /**
+   * Runtime availability enforced by the app router and every registry-backed
+   * discovery surface. Defaults to `always`.
+   */
+  availability?: AppShellPageAvailability;
   /**
    * Optional shell tab id this route activates. Defaults to `id`; use this for
    * plugin pages that are mounted under an existing built-in tab.
@@ -114,6 +128,43 @@ export function registerAppShellPage(
 
 export function listAppShellPages(): AppShellPageRegistration[] {
   return [...getRegistryStore().entries.values()];
+}
+
+function normalizedRouteSegments(path: string): string[] {
+  return path
+    .split(/[?#]/, 1)[0]
+    .replace(/^\/+|\/+$/g, "")
+    .split("/")
+    .filter(Boolean);
+}
+
+/** Pure exact/pattern matcher shared by navigation and the shell renderer. */
+export function appShellPageMatchesPath(
+  page: AppShellPageRegistration,
+  navigationPath: string,
+): boolean {
+  const candidate = normalizedRouteSegments(navigationPath);
+  const patterns = [page.path, ...(page.pathPatterns ?? [])];
+  return patterns.some((pattern) => {
+    const expected = normalizedRouteSegments(pattern);
+    for (let index = 0; index < expected.length; index += 1) {
+      const segment = expected[index];
+      if (segment === "*") return index === expected.length - 1;
+      if (candidate[index] === undefined) return false;
+      if (!segment.startsWith(":") && segment !== candidate[index]) {
+        return false;
+      }
+    }
+    return candidate.length === expected.length;
+  });
+}
+
+/** Pure runtime gate shared by routing, launcher, palette, and slash choices. */
+export function appShellPageIsAvailable(
+  page: AppShellPageRegistration,
+  runtime: { managedCloud: boolean },
+): boolean {
+  return page.availability !== "managed-cloud" || runtime.managedCloud;
 }
 
 export function subscribeAppShellPages(listener: () => void): () => void {

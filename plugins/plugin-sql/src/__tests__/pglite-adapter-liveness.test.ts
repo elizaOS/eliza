@@ -35,6 +35,7 @@ function makeAdapter() {
   };
   const manager = {
     close: vi.fn(async () => undefined),
+    dumpDataDir: vi.fn(async () => new Blob(["snapshot"])),
     ensureSync: vi.fn(async () => undefined),
     getConnection: vi.fn(() => rawConnection),
     initialize: vi.fn(async () => undefined),
@@ -78,6 +79,8 @@ describe("PgliteDatabaseAdapter liveness", () => {
     await expect(adapter.init()).resolves.toBeUndefined();
     await expect(adapter.getConnection()).resolves.toBe(db);
     expect(adapter.getRawConnection()).toBe(rawConnection);
+    await expect(adapter.dumpPgliteDataDir("gzip")).resolves.toBeInstanceOf(Blob);
+    expect(manager.dumpDataDir).toHaveBeenCalledWith("gzip");
     await expect(
       adapter.withEntityContext(null, async (tx) => {
         expect(tx).toBe(db);

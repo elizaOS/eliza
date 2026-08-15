@@ -14,7 +14,7 @@ import type {
 import { useAccounts } from "../../hooks/useAccounts";
 import { cn } from "../../lib/utils";
 import type { SubscriptionProviderSelectionId } from "../../providers";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import { AddAccountDialog } from "./AddAccountDialog";

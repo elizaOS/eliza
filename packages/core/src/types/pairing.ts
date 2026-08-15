@@ -60,6 +60,83 @@ export interface PairingAllowlistEntry {
 	metadata?: Record<string, string>;
 }
 
+/** Default number of records returned by a bounded pairing read. */
+export const DEFAULT_PAIRING_PAGE_LIMIT = 50;
+
+/** Maximum number of records returned by a bounded pairing read. */
+export const MAX_PAIRING_PAGE_LIMIT = 100;
+
+/** Caller-facing pagination options for pairing operator surfaces. */
+export interface PairingPageOptions {
+	/** Number of records to return (default 50, maximum 100). */
+	limit?: number;
+	/** Zero-based number of ordered records to skip. */
+	offset?: number;
+}
+
+/** Continuation metadata for a bounded pairing read. */
+export interface PairingPageInfo {
+	limit: number;
+	offset: number;
+	hasMore: boolean;
+	nextOffset: number | null;
+}
+
+/** A bounded page of pairing records. */
+export interface PairingPage<T> extends PairingPageInfo {
+	items: T[];
+}
+
+/** Ordering understood by pairing database queries. */
+export type PairingSortOrder = "oldest" | "newest";
+
+/** Optional bounds carried through the batch pairing database APIs. */
+export interface PairingQueryOptions extends PairingPageOptions {
+	order?: PairingSortOrder;
+}
+
+/** One batch query for pending pairing requests. */
+export interface PairingRequestQuery extends PairingQueryOptions {
+	channel: PairingChannel;
+	agentId: UUID;
+	/** Exclude requests created before this instant (used for TTL-aware pages). */
+	createdAfter?: Date;
+}
+
+/** One batch query for pairing allowlist entries. */
+export interface PairingAllowlistQuery extends PairingQueryOptions {
+	channel: PairingChannel;
+	agentId: UUID;
+}
+
+/**
+ * Validate and default caller-facing pairing pagination options.
+ *
+ * Database adapters also use this helper whenever a query requests a bounded
+ * page, keeping direct adapter calls subject to the same public contract.
+ */
+export function normalizePairingPageOptions(
+	options: PairingPageOptions = {},
+): Required<PairingPageOptions> {
+	const limit = options.limit ?? DEFAULT_PAIRING_PAGE_LIMIT;
+	const offset = options.offset ?? 0;
+
+	if (
+		!Number.isSafeInteger(limit) ||
+		limit < 1 ||
+		limit > MAX_PAIRING_PAGE_LIMIT
+	) {
+		throw new RangeError(
+			`Pairing page limit must be an integer between 1 and ${MAX_PAIRING_PAGE_LIMIT}`,
+		);
+	}
+	if (!Number.isSafeInteger(offset) || offset < 0) {
+		throw new RangeError("Pairing page offset must be a non-negative integer");
+	}
+
+	return { limit, offset };
+}
+
 /**
  * Result of upserting a pairing request
  */

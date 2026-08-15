@@ -16,7 +16,7 @@ export function buildHomeRemoteRunnerAccessUrl(input: {
 
   try {
     const url = new URL(normalizeCloudSiteUrl(input.cloudBaseUrl ?? undefined));
-    url.pathname = "/dashboard/app";
+    url.pathname = "/cloud";
     url.search = "";
     url.hash = "";
     url.searchParams.set(HOME_REMOTE_RUNNER_ACCESS_SESSION_PARAM, sessionId);

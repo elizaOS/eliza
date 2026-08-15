@@ -16,13 +16,15 @@ export function DocumentMetaManager(): null {
       defaultValue: "Eliza",
     });
     const description = t("homepage_eliza.meta.description", {
-      defaultValue: "Create apps and agents by chatting with AI.",
+      defaultValue:
+        "Eliza manages your digital life so you can focus on what matters.",
     });
     const ogTitle = t("homepage_eliza.meta.ogTitle", {
       defaultValue: "Eliza",
     });
     const ogDescription = t("homepage_eliza.meta.ogDescription", {
-      defaultValue: "Create apps and agents by chatting with AI.",
+      defaultValue:
+        "Eliza manages your digital life so you can focus on what matters.",
     });
     const ogImageAlt = t("homepage_eliza.meta.ogImageAlt", {
       defaultValue: "Eliza",

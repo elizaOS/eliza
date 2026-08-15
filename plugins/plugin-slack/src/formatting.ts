@@ -8,7 +8,11 @@
  * channel-type / display-name helpers. Used by `service.ts` on the send/receive
  * paths and re-exported from `index.ts`.
  */
-import type { SlackChannel, SlackUser } from "./types";
+import {
+  parseSlackArchivesUrl,
+  type SlackChannel,
+  type SlackUser,
+} from "./types";
 
 /**
  * Escape special characters for Slack mrkdwn format
@@ -317,10 +321,14 @@ export function formatSlackDate(
   format: string = "{date_short_pretty} at {time}",
   fallbackText?: string,
 ): string {
-  const unix = Math.floor(
-    (typeof timestamp === "number" ? timestamp : timestamp.getTime()) / 1000,
-  );
-  const fallback = fallbackText || new Date(unix * 1000).toISOString();
+  const timeMs =
+    typeof timestamp === "number" ? timestamp : timestamp.getTime();
+  const date = new Date(timeMs);
+  if (!Number.isFinite(date.getTime())) {
+    return fallbackText || "Invalid date";
+  }
+  const unix = Math.floor(timeMs / 1000);
+  const fallback = fallbackText || date.toISOString();
   return `<!date^${unix}^${format}|${fallback}>`;
 }
 
@@ -344,7 +352,9 @@ export function extractChannelIdFromMention(mention: string): string | null {
  * Extracts URL from a Slack link
  */
 export function extractUrlFromSlackLink(link: string): string | null {
-  const match = link.match(/^<(https?:\/\/[^|>]+)(?:\|[^>]*)?>$/);
+  const match = link.match(
+    /^<((?:https?|slack|mailto|tel):[^|>]+)(?:\|[^>]*)?>$/,
+  );
   return match ? match[1] : null;
 }
 
@@ -448,8 +458,8 @@ export function stripSlackFormatting(text: string): string {
     .replace(/<#[CGD][A-Z0-9]+(?:\|[^>]*)?>/gi, "") // Channel mentions
     .replace(/<!subteam\^[A-Z0-9]+(?:\|[^>]*)?>/gi, "") // User group mentions
     .replace(/<!(?:here|channel|everyone)(?:\|[^>]*)?>/gi, "") // Special mentions
-    .replace(/<(https?:\/\/[^|>]+)\|([^>]*)>/g, "$2") // Links with text → label
-    .replace(/<(https?:\/\/[^>]+)>/g, "$1") // Plain links → URL
+    .replace(/<((?:https?|slack|mailto|tel):[^|>]+)\|([^>]*)>/g, "$2") // Links with text → label
+    .replace(/<((?:https?|slack|mailto|tel):[^>]+)>/g, "$1") // Plain links → URL
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -469,25 +479,18 @@ export function buildSlackMessagePermalink(
 }
 
 /**
- * Parses a Slack message permalink
+ * Parses a Slack message permalink.
+ *
+ * Prose-embedded or mrkdwn-wrapped links must be extracted before they are
+ * passed in. The origin is established by `parseSlackArchivesUrl`, which both
+ * this helper and `parseSlackMessageLink` share so the two cannot drift into
+ * disagreeing about what counts as a Slack host.
+ *
+ * The returned `workspaceDomain` is a bare DNS label and so is safe to feed
+ * back through `buildSlackMessagePermalink`.
  */
 export function parseSlackMessagePermalink(
   link: string,
 ): { workspaceDomain: string; channelId: string; messageTs: string } | null {
-  const match = link.match(
-    /^https?:\/\/([^.]+)\.slack\.com\/archives\/([CGD][A-Z0-9]+)\/p(\d+)/i,
-  );
-  if (!match) {
-    return null;
-  }
-
-  const ts = match[3];
-  // Convert p1234567890123456 to 1234567890.123456
-  const messageTs = `${ts.slice(0, 10)}.${ts.slice(10)}`;
-
-  return {
-    workspaceDomain: match[1],
-    channelId: match[2],
-    messageTs,
-  };
+  return parseSlackArchivesUrl(link);
 }

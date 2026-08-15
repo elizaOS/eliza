@@ -7,15 +7,14 @@
  *
  *   - the action exists ONLY for shared-tier agents (a dedicated agent's
  *     detail page must not offer it),
- *   - the confirm dialog carries the billing-transparency copy — the
- *     continuous hosting burn and the server-enforced runway minimum, sourced
- *     from the same AGENT_PRICING constants the gate enforces,
+ *   - the confirm dialog carries the exact server-owned quote — continuous
+ *     hosting burn, current balance, and the enforced runway minimum,
  *   - Cancel is a real exit (nothing fired, no target minted),
- *   - Confirm fires the real `POST /upgrade-tier` (202), shows the upgrade
- *     progress line, and the dedicated migration target exists in the DB with
- *     the identity copied and the reattach marker recorded server-side.
+ *   - Confirm sends the explicit activation action and exact quote id to the
+ *     real `POST /upgrade-tier` (202), shows the upgrade progress line, and the
+ *     dedicated migration target exists in the DB with the identity copied and
+ *     the reattach marker recorded server-side.
  */
-import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
 // Playwright spec marker: `test`/`expect` arrive via the shared fixtures
 // below, but the coverage gate classifies a changed *.spec.ts by grepping for
 // a DIRECT @playwright/test import — without one it would run this file under
@@ -57,19 +56,39 @@ test.describe("upgrade to dedicated via dashboard UI", () => {
     await expect(upgradeButton).toBeVisible({ timeout: 30_000 });
 
     // ── Billing-transparency dialog: burn/day + runway minimum + continuity ──
+    const quoteResponsePromise = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier` &&
+        response.request().method() === "GET",
+    );
     await upgradeButton.click();
+    const quoteResponse = await quoteResponsePromise;
+    expect(quoteResponse.status()).toBe(200);
+    const quote = (await quoteResponse.json()) as {
+      data?: {
+        quoteId?: string;
+        hourlyRateUsd?: number;
+        dailyRateUsd?: number;
+        minimumBalanceUsd?: number;
+        minimumRunwayDays?: number;
+        balanceUsd?: number;
+      };
+    };
+    expect(quote.data?.quoteId).toMatch(/^[a-f0-9]{64}$/);
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText(
-      `$${AGENT_PRICING.DAILY_RUNNING_COST.toFixed(2)}/day`,
+      `$${quote.data?.dailyRateUsd?.toFixed(2)}/day`,
     );
     await expect(dialog).toContainText(
-      `$${AGENT_PRICING.UPGRADE_MINIMUM_BALANCE.toFixed(2)}`,
+      `$${quote.data?.minimumBalanceUsd?.toFixed(2)}`,
     );
+    await expect(dialog).toContainText(`${quote.data?.minimumRunwayDays} days`);
     await expect(dialog).toContainText(
-      `${AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS} days of hosting`,
+      `Current balance: $${quote.data?.balanceUsd?.toFixed(2)}`,
     );
-    await expect(dialog).toContainText("Your conversation history moves");
+    await expect(dialog).toContainText("Shared keeps working");
     await page.screenshot({
       path: test.info().outputPath("upgrade-confirm-dialog.png"),
       fullPage: true,
@@ -101,6 +120,10 @@ test.describe("upgrade to dedicated via dashboard UI", () => {
     await page.getByTestId("agent-upgrade-tier-confirm").click();
     const upgradeResponse = await upgradeResponsePromise;
     expect(upgradeResponse.status()).toBe(202);
+    expect(upgradeResponse.request().postDataJSON()).toEqual({
+      action: "activate_dedicated",
+      quoteId: quote.data?.quoteId,
+    });
     const upgradeBody = (await upgradeResponse.json()) as {
       data?: { dedicatedAgentId?: string };
     };

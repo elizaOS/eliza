@@ -16,18 +16,28 @@ import { lazy } from "react";
 import { registerCloudRoute } from "../shell/cloud-route-registry";
 
 export const JOIN_ROUTE_PATH = "join";
+export const GET_STARTED_ROUTE_PATH = "get-started";
 
 const JoinPage = lazy(() => import("./JoinPage"));
+const GetStartedPage = lazy(() => import("./GetStartedPage"));
 
 let registered = false;
 
-/** Register the join route. Idempotent — safe to call more than once. */
+/** Register the join routes. Idempotent — safe to call more than once. */
 export function registerJoinFlow(): void {
   if (registered) return;
   registered = true;
   registerCloudRoute({
     path: JOIN_ROUTE_PATH,
     element: JoinPage,
+    group: "auth",
+  });
+  // The messaging-funnel continuation landing (`?onboardingSession=`).
+  // Authenticated like /join: the page itself bounces signed-out visitors to
+  // /login after persisting the continuation token.
+  registerCloudRoute({
+    path: GET_STARTED_ROUTE_PATH,
+    element: GetStartedPage,
     group: "auth",
   });
 }

@@ -39,6 +39,26 @@ describe("inline widget parser edge cases", () => {
     ]);
   });
 
+  it("parses spaced CRLF markers identically across widget types", () => {
+    const taskId = "0123abcd-1234-5678-9abc-deadbeefcafe";
+    expect(
+      findChoiceRegions("[ CHOICE: approval ]\r\nyes=Yes\r\n[ / CHOICE ]"),
+    ).toHaveLength(1);
+    expect(
+      findFollowupsRegions(
+        "[ FOLLOWUPS ]\r\nreply:Again=Again\r\n[ / FOLLOWUPS ]",
+      ),
+    ).toHaveLength(1);
+    expect(
+      findFormRegions(
+        '[ FORM ]\r\n{"fields":[{"name":"when","type":"text"}]}\r\n[ / FORM ]',
+      ),
+    ).toHaveLength(1);
+    expect(findTaskRegions(`[ TASK: ${taskId} ]Ship[ / TASK ]`)).toHaveLength(
+      1,
+    );
+  });
+
   it("keeps duplicate ids as separate parser regions", () => {
     const text =
       "[CHOICE:approval id=dup]\nyes=Yes\n[/CHOICE]\n[CHOICE:approval id=dup]\nno=No\n[/CHOICE]";

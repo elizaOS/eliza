@@ -35,7 +35,7 @@ const itemTextStyle = {
 } as const satisfies CSSProperties;
 
 function defaultIsItemActive(item: DashboardSidebarItem, activePath: string) {
-  if (item.href === "/dashboard" || item.href === "/dashboard/admin") {
+  if (item.href === "/cloud" || item.href === "/cloud/admin") {
     return activePath === item.href;
   }
 

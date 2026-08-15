@@ -53,13 +53,31 @@ const stubElizaCore = {
     b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
       contents: `
         const noop = new Proxy(() => noop, { get: () => noop });
+        // The wake/provision path (client-cloud.ts) subclasses the real
+        // ElizaError; esbuild's ESM interop copies only this object's own keys,
+        // so a Proxy fallback would surface undefined here and break the
+        // subclass at evaluation time. Export a real class with core's shape so
+        // the fixture bundle exercises the same error type production does.
+        class ElizaError extends Error {
+          constructor(message, options = {}) {
+            super(
+              message,
+              options.cause !== undefined ? { cause: options.cause } : undefined,
+            );
+            this.name = "ElizaError";
+            this.code = options.code;
+            this.context = options.context;
+            this.severity = options.severity;
+            Object.setPrototypeOf(this, new.target.prototype);
+          }
+        }
         const isElizaSettingsDebugEnabled = () => false;
         const isViewVisible = (view, kinds) => {
           if (view && view.developerOnly) return Boolean(kinds && kinds.developer);
           if (view && view.viewKind === "developer") return Boolean(kinds && kinds.developer);
           return true;
         };
-        module.exports = new Proxy({ isElizaSettingsDebugEnabled, isViewVisible }, {
+        module.exports = new Proxy({ ElizaError, isElizaError: (v) => v instanceof ElizaError, isElizaSettingsDebugEnabled, isViewVisible }, {
           get: (t, p) => (p in t ? t[p] : noop),
         });
       `,
@@ -329,18 +347,19 @@ const transcriptionShortcutConsent = mobile.locator(
   '[data-testid="voice-section-intent-autostart-transcription"]',
 );
 assert(
-  !(await voiceShortcutConsent.isChecked()) &&
-    !(await transcriptionShortcutConsent.isChecked()),
+  (await voiceShortcutConsent.getAttribute("aria-checked")) === "false" &&
+    (await transcriptionShortcutConsent.getAttribute("aria-checked")) ===
+      "false",
   "mobile Voice settings default both shortcut microphone permissions off",
 );
-await voiceShortcutConsent.check();
+await voiceShortcutConsent.click();
 assert(
-  await voiceShortcutConsent.isChecked(),
+  (await voiceShortcutConsent.getAttribute("aria-checked")) === "true",
   "mobile Voice settings can grant voice-shortcut microphone permission",
 );
-await voiceShortcutConsent.uncheck();
+await voiceShortcutConsent.click();
 assert(
-  !(await voiceShortcutConsent.isChecked()),
+  (await voiceShortcutConsent.getAttribute("aria-checked")) === "false",
   "mobile Voice settings can revoke voice-shortcut microphone permission",
 );
 await mobile.waitForTimeout(450);

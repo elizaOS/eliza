@@ -4,7 +4,7 @@
  */
 // @vitest-environment jsdom
 import { cleanup, render } from "@testing-library/react";
-import { useState } from "react";
+import { StrictMode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentSurfaceProvider } from "./AgentSurfaceContext";
 import { handleAgentSurfaceCapability } from "./capabilities";
@@ -152,6 +152,59 @@ describe("agent-surface render integration", () => {
     expect(getViewRegistry("ephemeral", "gui")).toBeDefined();
     unmount();
     expect(getViewRegistry("ephemeral", "gui")).toBeUndefined();
+  });
+
+  it("keeps controls attached to the bridged registry during Strict Mode effect replay", () => {
+    const { unmount } = render(
+      <StrictMode>
+        <AgentSurfaceProvider viewId="strict-replay" viewType="gui">
+          <AgentButton agentId="wallet-tab">Wallet tab</AgentButton>
+        </AgentSurfaceProvider>
+      </StrictMode>,
+    );
+
+    const registry = getViewRegistry("strict-replay", "gui");
+    expect(registry).toBeDefined();
+    expect(registry?.snapshot().elements.map(({ id }) => id)).toEqual([
+      "wallet-tab",
+    ]);
+
+    unmount();
+    expect(getViewRegistry("strict-replay", "gui")).toBeUndefined();
+  });
+
+  it("keeps a shared registry live until the last overlapping provider unmounts", () => {
+    const { rerender, unmount } = render(
+      <>
+        <AgentSurfaceProvider key="first" viewId="overlap" viewType="gui">
+          <AgentButton agentId="first">First</AgentButton>
+        </AgentSurfaceProvider>
+        <AgentSurfaceProvider key="second" viewId="overlap" viewType="gui">
+          <AgentButton agentId="second">Second</AgentButton>
+        </AgentSurfaceProvider>
+      </>,
+    );
+
+    expect(
+      getViewRegistry("overlap", "gui")
+        ?.snapshot()
+        .elements.map(({ id }) => id)
+        .sort(),
+    ).toEqual(["first", "second"]);
+
+    rerender(
+      <AgentSurfaceProvider key="second" viewId="overlap" viewType="gui">
+        <AgentButton agentId="second">Second</AgentButton>
+      </AgentSurfaceProvider>,
+    );
+    expect(
+      getViewRegistry("overlap", "gui")
+        ?.snapshot()
+        .elements.map(({ id }) => id),
+    ).toEqual(["second"]);
+
+    unmount();
+    expect(getViewRegistry("overlap", "gui")).toBeUndefined();
   });
 
   it("toggles highlight mode via the set-highlight capability", () => {

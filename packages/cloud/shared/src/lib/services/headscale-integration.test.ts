@@ -81,7 +81,12 @@ describe("Headscale identity inference", () => {
 });
 
 describe("Headscale container credentials", () => {
-  test("uses a persistent node with a single-use key so Docker restarts can reconnect", async () => {
+  test("uses a persistent node with a REUSABLE key so a de-authorizing reboot can re-register", async () => {
+    // Reusable (was single-use): a hard reset de-authorizes the persisted node
+    // identity, forcing a fresh `tailscale up --authkey`. A single-use key
+    // returns `authkey already used` on that second boot and the container
+    // crash-loops (the prod-2 outage). Reusable + tag:agent + ACL isolation
+    // lets the same agent re-register on the same baked key.
     let request: Record<string, unknown> | null = null;
     const fake = {
       getNodeByNameStrict: async () => null,
@@ -97,7 +102,7 @@ describe("Headscale container credentials", () => {
     });
 
     expect(request).toMatchObject({
-      reusable: false,
+      reusable: true,
       ephemeral: false,
       aclTags: ["tag:agent"],
     });

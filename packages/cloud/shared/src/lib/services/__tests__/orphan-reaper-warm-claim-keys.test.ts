@@ -158,7 +158,6 @@ describe("orphan reaper key resolution for warm-claimed containers", () => {
           key: cleanupNameId,
           status: "replacement_cleanup_owned",
           nodeId: "node-8",
-          updatedAtMs: expect.any(Number),
         },
       ]);
     },

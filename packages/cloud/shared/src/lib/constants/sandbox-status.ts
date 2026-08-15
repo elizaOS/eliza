@@ -30,6 +30,7 @@ export function statusBadgeColor(status: string): string {
 export function formatRelative(date: Date | string | null): string {
   if (!date) return "Never";
   const d = new Date(date);
+  if (!Number.isFinite(d.getTime())) return "Never";
   const diffMs = Date.now() - d.getTime();
   const diffMin = Math.floor(diffMs / 60_000);
   if (diffMin < 1) return "Just now";
@@ -45,6 +46,7 @@ export function formatRelative(date: Date | string | null): string {
 export function formatRelativeShort(date: Date | string | null): string {
   if (!date) return "—";
   const d = new Date(date);
+  if (!Number.isFinite(d.getTime())) return "—";
   const diffMs = Date.now() - d.getTime();
   const diffMin = Math.floor(diffMs / 60_000);
   if (diffMin < 1) return "Just now";

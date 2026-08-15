@@ -12,13 +12,14 @@
  *
  * Exit codes:
  *   0  — payload fetched (regardless of whether any traces exist).
- *   1  — API not reachable / endpoint errored.
+ *   1  — API not reachable / endpoint errored / invalid --limit.
  */
 
 import {
   fetchAndRenderVoiceLatency,
   renderVoiceLatencyReport,
 } from "./lib/voice-latency-report.mjs";
+import { parsePositiveLimit } from "./lib/voice-latency-report-limit.mjs";
 
 function parsePositivePort(value) {
   const n = Number(value);
@@ -44,7 +45,16 @@ for (let i = 0; i < argv.length; i += 1) {
   if (a === "--json") json = true;
   else if (a === "--limit") {
     i += 1;
-    limit = Number(argv[i]);
+    try {
+      limit = parsePositiveLimit(argv[i]);
+    } catch (err) {
+      // error-policy:J1 CLI boundary translates invalid operator input to a
+      // diagnostic and non-zero process exit before any network request.
+      console.error(
+        `[voice-latency-report] ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exit(1);
+    }
   } else if (a === "--base") {
     i += 1;
     base = argv[i];
@@ -59,7 +69,7 @@ for (let i = 0; i < argv.length; i += 1) {
 const baseUrl = resolveApiBase(process.env, base);
 
 const result = await fetchAndRenderVoiceLatency(baseUrl, {
-  limit: Number.isInteger(limit) && limit > 0 ? limit : undefined,
+  limit,
 });
 
 if (!result.ok) {
@@ -81,7 +91,7 @@ if (json) {
   // threading the raw payload back through — and this path is for humans
   // anyway; --json is a convenience.
   const url = new URL("/api/dev/voice-latency", baseUrl);
-  if (Number.isInteger(limit) && limit > 0) {
+  if (limit !== undefined) {
     url.searchParams.set("limit", String(limit));
   }
   const res = await fetch(url.toString());

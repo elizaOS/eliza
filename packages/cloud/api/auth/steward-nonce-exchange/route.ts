@@ -18,14 +18,21 @@
  * returned only to the hardware checkout origin that still has to authenticate
  * a cross-site Stripe checkout request with Bearer auth.
  *
- * Origin/Referer CSRF check mirrors `/api/auth/steward-session` exactly — the
- * route is callable from `*.elizacloud.ai` and `elizaos.ai` only (plus
- * localhost in non-production).
+ * Origin/Referer CSRF check mirrors `/api/auth/steward-session` exactly: exact
+ * first-party Eliza UI origins plus localhost in non-production.
  */
 
-import type { StewardSessionErrorCode } from "@elizaos/shared/steward-session-client";
+import {
+  type StewardSessionErrorCode,
+  sanitizeTelegramAccountClaimContinuation,
+} from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
+import {
+  browserOriginHost,
+  checkElizaMutatingRequestOrigin,
+  isPermittedElizaBrowserOrigin,
+} from "@/lib/auth/browser-origin-policy";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import {
   STEWARD_AUTH_UPSTREAM_TIMEOUT_MS,
@@ -34,72 +41,21 @@ import {
 } from "@/lib/auth/steward-client";
 import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import { signStewardMutatingRequest } from "@/lib/steward/sign";
-import { describeSyncError, syncUserFromSteward } from "@/lib/steward-sync";
+import {
+  describeSyncError,
+  StewardTelegramAccountClaimError,
+  syncUserFromSteward,
+} from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 
-// ─── CSRF origin allowlist (must stay in lockstep with steward-session) ───
-const PERMITTED_ORIGIN_HOSTS = new Set<string>([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-  "staging.elizacloud.ai",
-  "elizaos.ai",
-  "www.elizaos.ai",
-]);
-const LOCAL_DEV_ORIGIN_HOSTS = new Set<string>([
-  "localhost",
-  "127.0.0.1",
-  "0.0.0.0",
-]);
-
-function originHost(rawOrigin: string | undefined): string | null {
-  if (!rawOrigin) return null;
-  try {
-    return new URL(rawOrigin).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-function isPermittedOrigin(
-  origin: string | null,
-  requestHost: string | null,
-  isProduction: boolean,
-): boolean {
-  if (!origin) return false;
-  if (PERMITTED_ORIGIN_HOSTS.has(origin)) return true;
-  if (origin.endsWith(".elizacloud.ai") || origin.endsWith(".elizaos.ai")) {
-    return true;
-  }
-  if (requestHost && origin === requestHost) return true;
-  if (!isProduction && LOCAL_DEV_ORIGIN_HOSTS.has(origin)) return true;
-  return false;
-}
-
 function checkOrigin(
   c: { req: { header: (name: string) => string | undefined } },
   isProduction: boolean,
 ): { ok: true } | { ok: false; reason: string } {
-  const rawOrigin = c.req.header("origin");
-  const rawReferer = c.req.header("referer");
-  const origin = originHost(rawOrigin);
-  const referer = originHost(rawReferer);
-  const host = (c.req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
-  if (!origin && !referer) {
-    return { ok: false, reason: "missing_origin_and_referer" };
-  }
-  if (origin && isPermittedOrigin(origin, host, isProduction))
-    return { ok: true };
-  if (!origin && referer && isPermittedOrigin(referer, host, isProduction)) {
-    return { ok: true };
-  }
-  return {
-    ok: false,
-    reason: `origin=${origin ?? "null"} referer=${referer ?? "null"}`,
-  };
+  return checkElizaMutatingRequestOrigin(c.req, isProduction);
 }
 
 function shouldReturnClientToken(
@@ -107,17 +63,18 @@ function shouldReturnClientToken(
   isProduction: boolean,
 ): boolean {
   const origin =
-    originHost(c.req.header("origin")) ?? originHost(c.req.header("referer"));
+    browserOriginHost(c.req.header("origin")) ??
+    browserOriginHost(c.req.header("referer"));
   const host = (c.req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
   if (!origin) return false;
-  // The SPA reads localStorage to decide `isAuthenticated` on /dashboard
+  // The SPA reads localStorage to decide `isAuthenticated` on /cloud
   // mount. Without returning the JWT here, OAuth users bounce back to /login.
   // Mirror the token for every origin the CSRF check already accepted — incl.
   // same-origin custom hosts via `origin === host`. Diverging from the CSRF
   // gate (as the static-set-only check did) silently dropped the token on hosts
   // that are accepted by Origin-match, so a valid login bounced to /login.
   // Matches steward-refresh's shouldReturnClientToken.
-  return isPermittedOrigin(origin, host, isProduction);
+  return isPermittedElizaBrowserOrigin(origin, host, isProduction);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -300,6 +257,7 @@ app.post("/", async (c) => {
     tenant_id?: unknown;
     codeVerifier?: unknown;
     code_verifier?: unknown;
+    telegramContinuation?: unknown;
   };
 
   const code = typeof body.code === "string" ? body.code.trim() : "";
@@ -332,6 +290,9 @@ app.post("/", async (c) => {
       : typeof body.code_verifier === "string"
         ? body.code_verifier.trim()
         : "";
+  const telegramContinuation = sanitizeTelegramAccountClaimContinuation(
+    body.telegramContinuation,
+  );
 
   if (!code) {
     logExchange("missing-code");
@@ -340,6 +301,13 @@ app.post("/", async (c) => {
   if (!redirectUri) {
     logExchange("missing-redirect-uri");
     return c.json(errorBody("redirectUri required", "missing_code"), 400);
+  }
+  if (body.telegramContinuation !== undefined && !telegramContinuation) {
+    logExchange("telegram-claim-invalid");
+    return c.json(
+      errorBody("Invalid Telegram account claim", "telegram_claim_conflict"),
+      409,
+    );
   }
   if (!stewardSecretConfigured(c.env)) {
     logExchange("server-secret-missing");
@@ -425,8 +393,19 @@ app.post("/", async (c) => {
       email: claims.email,
       walletAddress: claims.walletAddress ?? claims.address,
       walletChainType: claims.walletChain,
+      telegramContinuation: telegramContinuation ?? undefined,
     });
   } catch (error) {
+    if (error instanceof StewardTelegramAccountClaimError) {
+      logExchange("telegram-claim-conflict");
+      return c.json(
+        errorBody(
+          "This Telegram chat cannot be linked automatically",
+          "telegram_claim_conflict",
+        ),
+        409,
+      );
+    }
     logExchange("sync-failed");
     // Workers Logs indexes only the message STRING — an Error passed in the
     // context object is dropped entirely (a week of these prod 500s was
@@ -481,7 +460,7 @@ app.post("/", async (c) => {
   // Returning `token` (and `refreshToken`) here so the SPA can mirror it into
   // localStorage. The HttpOnly cookies above are the canonical session; the
   // localStorage copy is what @stwd/react's `useAuth()` and the SPA's
-  // `readStewardSessionFromStorage()` actually read on `/dashboard` route
+  // `readStewardSessionFromStorage()` actually read on `/cloud` route
   // mount to decide `isAuthenticated`. Without this, OAuth users land back
   // on `/login` after a successful exchange (wallet/SIWE keeps working only
   // because the Steward SDK writes its own localStorage copy). The original

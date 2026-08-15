@@ -90,27 +90,27 @@ export function getDisabledFeatures(): FeatureFlag[] {
 
 export const FEATURE_ROUTE_MAP: Record<FeatureFlag, { frontend: string[]; api: string[] }> = {
   mcp: {
-    frontend: ["/dashboard/mcps"],
+    frontend: ["/cloud/mcps"],
     api: ["/api/mcp", "/api/v1/mcp"],
   },
   containers: {
-    frontend: ["/dashboard/containers"],
+    frontend: ["/cloud/containers"],
     api: ["/api/v1/containers"],
   },
   gallery: {
-    frontend: ["/dashboard/gallery"],
+    frontend: ["/cloud/gallery"],
     api: ["/api/v1/gallery"],
   },
   memories: {
-    frontend: ["/dashboard/documents"],
+    frontend: ["/cloud/documents"],
     api: ["/api/v1/documents", "/api/v1/memories"],
   },
   voiceCloning: {
-    frontend: ["/dashboard/voices"],
+    frontend: ["/cloud/voices"],
     api: ["/api/v1/voices"],
   },
   billing: {
-    frontend: ["/dashboard/billing"],
+    frontend: ["/cloud/billing"],
     api: ["/api/billing"],
   },
 };

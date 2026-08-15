@@ -371,20 +371,21 @@
     "esbuild": "^0.28.0",
     "ethers": "^6.16.0",
     "git-workspace-service": "0.4.5",
-    "hono": "^4.12.18",
+    "hono": "^4.13.1",
     "isomorphic-git": "^1.35.0",
     "jpeg-js": "^0.4.4",
     "jsdom": "^29.0.0",
     "json5": "^2.2.3",
-    "pg": "^8.16.3",
+    "pg": "^8.23.0",
     "pngjs": "^7.0.0",
-    "ws": "^8.19.0",
+    "ws": "^8.21.3",
     "zod": "^4.4.3",
     "@elizaos/auth": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/plugin-e2b-sandbox": "*",
     "@elizaos/plugin-calendar": "workspace:*",
+    "@elizaos/plugin-documents": "workspace:*",
     "@elizaos/plugin-inbox": "workspace:*",
     "@elizaos/plugin-x402": "*"
   },
@@ -393,6 +394,9 @@
       "optional": true
     },
     "@elizaos/plugin-calendar": {
+      "optional": true
+    },
+    "@elizaos/plugin-documents": {
       "optional": true
     },
     "@elizaos/plugin-inbox": {
@@ -405,9 +409,9 @@
   "devDependencies": {
     "@elizaos/ui": "workspace:*",
     "@types/bun": "^1.3.12",
-    "@types/jsdom": "^28.0.0",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^25.2.0",
-    "@types/pg": "^8.15.2",
+    "@types/pg": "^8.21.0",
     "@types/pngjs": "^6.0.5",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

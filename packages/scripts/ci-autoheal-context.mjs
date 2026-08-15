@@ -34,6 +34,70 @@ export const DEFAULT_MAX_ATTEMPTS = 3;
 export const DEFAULT_LOG_BUDGET = 120_000;
 
 /**
+ * Parses a complete positive safe-integer decimal string. Partial suffixes,
+ * signs, fractions, whitespace-only, zero, and non-finite values throw so
+ * operator typos cannot silently disable the heal attempt ceiling or empty the
+ * log budget (`Number("abc")` is `NaN`, and `attempt > NaN` is always false).
+ *
+ * @param {string | number | undefined | null} value
+ * @param {string} label
+ * @returns {number}
+ */
+export function parsePositiveSafeInteger(value, label) {
+  const received =
+    typeof value === "number"
+      ? JSON.stringify(value)
+      : JSON.stringify(String(value ?? ""));
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 1) {
+      throw new Error(
+        `${label} must be a positive safe-integer decimal (received ${received})`,
+      );
+    }
+    return value;
+  }
+  const raw = String(value ?? "");
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(
+      `${label} must be a positive safe-integer decimal (received ${received})`,
+    );
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new Error(
+      `${label} must be a positive safe-integer decimal (received ${received})`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Resolve auto-heal attempt ceiling and log budget from env. Unset and empty
+ * values keep historical defaults. Explicit overrides fail closed so a typo,
+ * including surrounding whitespace, cannot disable the attempt ceiling or
+ * empty log excerpts.
+ *
+ * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} [env]
+ * @returns {{ maxAttempts: number, logBudget: number }}
+ */
+export function resolveAutohealPolicy(env = process.env) {
+  const maxAttemptsRaw = env.AUTOHEAL_MAX_ATTEMPTS;
+  const logBudgetRaw = env.AUTOHEAL_LOG_BUDGET;
+
+  const maxAttempts =
+    maxAttemptsRaw == null || maxAttemptsRaw === ""
+      ? DEFAULT_MAX_ATTEMPTS
+      : parsePositiveSafeInteger(maxAttemptsRaw, "AUTOHEAL_MAX_ATTEMPTS");
+
+  const logBudget =
+    logBudgetRaw == null || logBudgetRaw === ""
+      ? DEFAULT_LOG_BUDGET
+      : parsePositiveSafeInteger(logBudgetRaw, "AUTOHEAL_LOG_BUDGET");
+
+  return { maxAttempts, logBudget };
+}
+
+/**
  * Lines that mark the decisive region of a failed step. GitHub's own
  * `##[error]` annotation is the strongest signal; the rest catch the common
  * shapes this repo's toolchain emits (vitest, tsc, biome, bun, node).
@@ -342,11 +406,12 @@ function writeOutputs(outputPath, outputs) {
 }
 
 export async function main(env = process.env) {
+  // Fail closed on operator knobs before any GitHub call so a typo cannot open
+  // an unbounded heal loop or empty the agent briefing.
+  const { maxAttempts, logBudget: budget } = resolveAutohealPolicy(env);
   const repo = requireEnv(env, "GITHUB_REPOSITORY");
   const token = requireEnv(env, "GITHUB_TOKEN");
   const runId = requireEnv(env, "RUN_ID");
-  const maxAttempts = Number(env.AUTOHEAL_MAX_ATTEMPTS ?? DEFAULT_MAX_ATTEMPTS);
-  const budget = Number(env.AUTOHEAL_LOG_BUDGET ?? DEFAULT_LOG_BUDGET);
   const outDir = env.AUTOHEAL_OUT_DIR ?? ".autoheal";
 
   const client = createClient(token);

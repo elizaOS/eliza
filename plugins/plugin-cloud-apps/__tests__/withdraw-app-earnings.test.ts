@@ -131,7 +131,7 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       requireDefined(result, "action result").data as { cta: ConnectorCta }
     ).cta;
     expect(cta.url.startsWith("https://")).toBe(true);
-    expect(cta.url).toContain("/dashboard/apps/id-acme");
+    expect(cta.url).toContain("/cloud/apps/id-acme");
     expect(prompt).toContain(cta.url);
 
     // NO secret/credential transits the connector output.

@@ -17,6 +17,7 @@ export interface RendererBuildManifest {
   variant: string | null;
   capacitorTarget: string | null;
   runtimeMode: string | null;
+  playwrightTestAuth: boolean | null;
 }
 
 export interface RendererBuildManifestMeta {
@@ -25,6 +26,7 @@ export interface RendererBuildManifestMeta {
   variant?: string | null;
   capacitorTarget?: string | null;
   runtimeMode?: string | null;
+  playwrightTestAuth?: boolean | null;
 }
 
 export function computeRendererFingerprint(distDir: string): {
@@ -46,6 +48,11 @@ export function writeRendererBuildManifest(
 export function readRendererBuildManifest(
   dir: string,
 ): RendererBuildManifest | null;
+
+export function rendererBuildManifestMatchesDist(
+  distDir: string,
+  manifest: unknown,
+): manifest is RendererBuildManifest;
 
 export function assertStagedRendererMatchesBuild(
   freshDistDir: string,

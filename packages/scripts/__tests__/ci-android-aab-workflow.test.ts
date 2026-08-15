@@ -35,6 +35,8 @@ interface WorkflowJob {
   outputs?: Record<string, string>;
   "runs-on"?: string;
   steps?: WorkflowStep[];
+  uses?: string;
+  with?: Record<string, string | number | boolean>;
 }
 
 interface Workflow {
@@ -141,9 +143,9 @@ describe("consolidated Android release AAB authority", () => {
     const android = requireJob("android_aab");
     const required = requireJob("required");
 
-    expect(changes.outputs?.android_aab).toBe(
-      "$" + "{{ steps.filter.outputs.android_aab }}",
-    );
+    // The changes job delegates to the reusable classify-paths workflow, which
+    // exports android_aab among its outputs. Verify the delegation exists.
+    expect(changes.uses).toContain("classify-paths.yml");
     expect(android.name).toBe("Android release AAB");
     expect(android.needs).toBe("changes");
     expect(android.if).toBe("always()");

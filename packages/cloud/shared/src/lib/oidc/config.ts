@@ -54,6 +54,7 @@ export const OIDC_CONTINUE_PATH = "/oidc/continue";
 export interface OidcConfigEnv {
   OIDC_ENABLED?: unknown;
   OIDC_ISSUER_URL?: unknown;
+  ELIZA_ONBOARDING_LOGIN_APP_URL?: unknown;
   ELIZA_CLOUD_URL?: unknown;
   NEXT_PUBLIC_APP_URL?: unknown;
   OIDC_WALLET_EMAIL_DOMAIN?: unknown;
@@ -231,7 +232,10 @@ export function resolveOidcConfig(env: OidcConfigEnv): OidcConfig | null {
 
   const issuer = stripTrailingSlash(raw);
   const appOrigin =
-    readString(env.ELIZA_CLOUD_URL) ?? readString(env.NEXT_PUBLIC_APP_URL) ?? parsed.origin;
+    readString(env.ELIZA_ONBOARDING_LOGIN_APP_URL) ??
+    readString(env.NEXT_PUBLIC_APP_URL) ??
+    readString(env.ELIZA_CLOUD_URL) ??
+    parsed.origin;
 
   return {
     issuer,

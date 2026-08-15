@@ -377,11 +377,9 @@ test("writeSecret rejects invalid keys, multi-line values, and bad scopes", () =
   }
 });
 
-test("HITL dashboard, lane driver, collector, and tests import the shared layered env module", () => {
+test("surviving HITL consumers import the shared layered env module", () => {
   const importers = [
     "scripts/lifeops/hitl-credential-dashboard.mjs",
-    "scripts/lifeops/run-11632-live-lanes.mjs",
-    "scripts/lifeops/collect-11632-live-validation-status.mjs",
     "scripts/lifeops/env-layers.test.mjs",
   ];
   for (const relativePath of importers) {

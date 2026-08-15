@@ -33,4 +33,22 @@ describe("useNavigationState", () => {
     expect(onPopState).toHaveBeenCalledTimes(1);
     window.removeEventListener("popstate", onPopState);
   });
+
+  it("preserves focused shell modes when startup navigation commits the initial tab", () => {
+    window.history.replaceState(null, "", "/?shellMode=voice-workbench");
+    const { result } = renderHook(() =>
+      useNavigationState({
+        tab: "chat" as Tab,
+        setTabRaw: vi.fn(),
+        uiShellMode: "native",
+        hasActiveGameRun: false,
+        setAppsSubTab: vi.fn(),
+      }),
+    );
+
+    act(() => result.current.setTab("chat"));
+
+    expect(window.location.pathname).toBe("/chat");
+    expect(window.location.search).toBe("?shellMode=voice-workbench");
+  });
 });

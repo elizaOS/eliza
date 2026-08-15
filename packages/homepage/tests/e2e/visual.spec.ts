@@ -50,7 +50,7 @@ async function prepareProfileAuth(page: Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem("eliza_app_session", "homepage-visual-token");
   });
-  await page.route("https://www.elizacloud.ai/api/eliza-app/**", (route) =>
+  await page.route("https://api.eliza.app/api/eliza-app/**", (route) =>
     route.fulfill({
       json: {
         user: {
@@ -122,6 +122,9 @@ for (const viewport of VISUAL_VIEWPORTS) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
         test.setTimeout(60_000);
         await page.clock.setFixedTime(FIXED_TIME);
+        // Project-level contextOptions can swallow test.use reducedMotion in
+        // this runner; emulate explicitly so animated surfaces settle.
+        await page.emulateMedia({ reducedMotion: "reduce" });
         if ("authed" in route && route.authed) await prepareProfileAuth(page);
         const target = "goto" in route ? route.goto : route.path;
         await page.goto(target, { waitUntil: "domcontentloaded" });

@@ -3,11 +3,13 @@
  *
  * Booting a real PGLite-backed AgentRuntime requires every workspace
  * `@elizaos/*` package to resolve to its TypeScript source (independent of
- * build order), plus the three subpath specials the runtime touches:
+ * build order), plus the core and SQL subpath specials the runtime touches:
  * `@elizaos/core/testing`, `@elizaos/core/node`, `@elizaos/core/connectors`,
- * and `@elizaos/plugin-sql`
- * (the node entry). Shared and per-plugin real-runtime configs need this, and so
- * does every per-plugin runtime config that imports `@elizaos/core/testing`.
+ * and `@elizaos/plugin-sql` (the node entry). Package exports that declare an
+ * exact `eliza-source` condition contribute their own source aliases, including
+ * provider-owned endpoint diagnostics that otherwise require prebuilt dist.
+ * Shared and per-plugin real-runtime configs need this, and so does
+ * every per-plugin runtime config that imports `@elizaos/core/testing`.
  * Both consume this one builder so the alias set never drifts.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -32,6 +34,11 @@ interface WorkspaceSourceEntry {
   packageName: string;
   indexPath: string;
   sourceDir: string;
+  exportedSourceAliases: Array<{ subpath: string; sourcePath: string }>;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function getWorkspaceSourceEntry(
@@ -41,16 +48,53 @@ function getWorkspaceSourceEntry(
   if (!existsSync(packageJsonPath)) return undefined;
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
     name?: string;
+    exports?: Record<
+      string,
+      | string
+      | {
+          "eliza-source"?:
+            | string
+            | { import?: string; default?: string; types?: string };
+        }
+    >;
   };
   if (!packageJson.name?.startsWith("@elizaos/")) return undefined;
   // The testing surface resolves through the explicit alias below.
   if (packageJson.name === "@elizaos/core/testing") return undefined;
+  const exportedSourceAliases = Object.entries(
+    packageJson.exports ?? {},
+  ).flatMap(([subpath, target]) => {
+    if (subpath === "." || typeof target === "string") return [];
+    const source = target["eliza-source"];
+    const sourcePath =
+      typeof source === "string"
+        ? source
+        : (source?.import ?? source?.default ?? source?.types);
+    if (
+      !sourcePath?.startsWith("./") ||
+      !subpath.startsWith("./") ||
+      subpath.includes("*")
+    )
+      return [];
+    const resolvedSourcePath = path.resolve(packageDir, sourcePath);
+    if (
+      !resolvedSourcePath.startsWith(`${path.resolve(packageDir)}${path.sep}`)
+    )
+      return [];
+    return [
+      {
+        subpath: subpath.slice(2),
+        sourcePath: resolvedSourcePath,
+      },
+    ];
+  });
   const sourceIndex = path.join(packageDir, "src", "index.ts");
   if (existsSync(sourceIndex)) {
     return {
       packageName: packageJson.name,
       indexPath: sourceIndex,
       sourceDir: path.join(packageDir, "src"),
+      exportedSourceAliases,
     };
   }
   const rootIndex = path.join(packageDir, "index.ts");
@@ -59,6 +103,7 @@ function getWorkspaceSourceEntry(
       packageName: packageJson.name,
       indexPath: rootIndex,
       sourceDir: packageDir,
+      exportedSourceAliases,
     };
   }
   return undefined;
@@ -131,24 +176,32 @@ export function buildWorkspaceSourceAliases(
       ? collectWorkspacePackageDirs(dir)
           .map((packageDir) => getWorkspaceSourceEntry(packageDir))
           .filter((entry): entry is WorkspaceSourceEntry => entry !== undefined)
-          .flatMap(({ packageName, indexPath, sourceDir }) => [
-            { find: new RegExp(`^${packageName}$`), replacement: indexPath },
-            // Asset subpaths (JSON data imports like
-            // `@elizaos/registry/first-party/curated-app-definitions.json`)
-            // resolve to the source file as-is; the generic rule below would
-            // otherwise append `.ts` and break the resolve. First-match wins.
-            {
-              find: new RegExp(`^${packageName}/(.*\\.json)$`),
-              replacement: path.join(sourceDir, "$1"),
-            },
-            {
-              find: new RegExp(`^${packageName}/(.*)$`),
-              // Keep the target extensionless so Vite can resolve either a
-              // source file (`foo.ts`) or a public directory entry
-              // (`foo/index.ts`) through the same package-subpath rule.
-              replacement: path.join(sourceDir, "$1"),
-            },
-          ])
+          .flatMap(
+            ({ packageName, indexPath, sourceDir, exportedSourceAliases }) => [
+              ...exportedSourceAliases.map(({ subpath, sourcePath }) => ({
+                find: new RegExp(
+                  `^${escapeRegex(packageName)}/${escapeRegex(subpath)}$`,
+                ),
+                replacement: sourcePath,
+              })),
+              { find: new RegExp(`^${packageName}$`), replacement: indexPath },
+              // Asset subpaths (JSON data imports like
+              // `@elizaos/registry/first-party/curated-app-definitions.json`)
+              // resolve to the source file as-is; the generic rule below would
+              // otherwise append `.ts` and break the resolve. First-match wins.
+              {
+                find: new RegExp(`^${packageName}/(.*\\.json)$`),
+                replacement: path.join(sourceDir, "$1"),
+              },
+              {
+                find: new RegExp(`^${packageName}/(.*)$`),
+                // Keep the target extensionless so Vite can resolve either a
+                // source file (`foo.ts`) or a public directory entry
+                // (`foo/index.ts`) through the same package-subpath rule.
+                replacement: path.join(sourceDir, "$1"),
+              },
+            ],
+          )
       : [],
   );
 

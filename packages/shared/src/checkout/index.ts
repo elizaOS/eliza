@@ -1,7 +1,7 @@
 /**
  * Shared hardware-checkout client.
  *
- * Both elizaos.ai (os-homepage `CheckoutPage`) and elizacloud.ai
+ * Both elizaos.ai (os-homepage `CheckoutPage`) and eliza.app
  * (cloud-frontend `CheckoutPage`) POST to the same Stripe create-session
  * endpoint and then redirect the browser to the returned Stripe URL.
  *

@@ -1,16 +1,14 @@
 name: Develop PR
 
-# Lightweight gate for pull requests targeting `develop`: lint, typecheck,
-# build, and the unit suites owned by changed plugin packages. The broader
-# test/e2e/scenario/benchmark surface runs post-merge on push to `develop` (and
-# nightly/on-demand), keeping pre-merge feedback scoped to affected code.
+# Reusable lightweight gate for pull requests targeting `develop`: lint,
+# typecheck, build, and the unit suites owned by changed plugin packages. The
+# canonical CI workflow calls this gate so outside contributions create one
+# approval boundary instead of a second approval-gated workflow run.
 # `main` PRs retain the heavy gates through `ci.yaml`, `test.yml`'s peers, and
 # `quality.yml`. Steps mirror their post-merge counterparts where applicable.
 
 on:
-  pull_request:
-    branches: [develop]
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_call:
 
 concurrency:
   group: develop-pr-${{ github.event.pull_request.number }}

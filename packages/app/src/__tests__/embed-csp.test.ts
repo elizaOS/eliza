@@ -29,7 +29,7 @@ const spaNext = (): Promise<Response> =>
 
 const runRequest = (path: string): Promise<Response> =>
   onRequest({
-    request: new Request(`https://app.elizacloud.ai${path}`),
+    request: new Request(`https://cloud.eliza.app${path}`),
     env: {},
     next: spaNext,
   });
@@ -101,7 +101,7 @@ describe("onRequest /embed CSP policy", () => {
   });
 
   it("leaves a normal non-/embed SPA path untouched", async () => {
-    const response = await runRequest("/dashboard");
+    const response = await runRequest("/cloud");
     // No CSP injected by the middleware; the global _headers policy stands.
     expect(response.headers.get("Content-Security-Policy")).toBeNull();
     // X-Frame-Options from the SPA fall-through is preserved.

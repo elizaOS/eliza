@@ -10,6 +10,10 @@ describe("DEFAULT_BOOT_CONFIG", () => {
     expect(DEFAULT_BOOT_CONFIG.preferSharedCloudTier).toBe(true);
   });
 
+  it("defaults autoUpgradeSharedToDedicated OFF so onboarding stays shared-only with zero billable dedicated mutation (#18204)", () => {
+    expect(DEFAULT_BOOT_CONFIG.autoUpgradeSharedToDedicated).toBe(false);
+  });
+
   it("agrees with the packages/shared copy of the default (two boot-config stores must not disagree on the signup path)", async () => {
     // Read the shared store source instead of importing it: that module
     // re-exports from @elizaos/core, whose generated i18n data is not built in
@@ -28,6 +32,11 @@ describe("DEFAULT_BOOT_CONFIG", () => {
       ? "preferSharedCloudTier: true"
       : "preferSharedCloudTier: false";
     expect(source).toContain(literal);
+    // The auto-upgrade flag must also agree between the two copies (#18204).
+    const upgradeLiteral = DEFAULT_BOOT_CONFIG.autoUpgradeSharedToDedicated
+      ? "autoUpgradeSharedToDedicated: true"
+      : "autoUpgradeSharedToDedicated: false";
+    expect(source).toContain(upgradeLiteral);
   });
 });
 

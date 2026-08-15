@@ -19,6 +19,7 @@ import {
   EventType,
   logger,
   type Memory,
+  ModelType,
   type Room,
   type UUID,
 } from "@elizaos/core";
@@ -156,6 +157,14 @@ describe("processDueScheduledTasks — production wiring", () => {
     await runtime.addParticipant(ownerId, roomId);
     await runtime.addParticipant(runtime.agentId, roomId);
 
+    // Dispatch voicing requires a registered TEXT_SMALL model
+    // (hasScheduledDispatchModel checks getModel, not just useModel), so
+    // register a real handler before mocking useModel for determinism.
+    runtime.registerModel(
+      ModelType.TEXT_SMALL,
+      async () => "Your scheduled check is ready.",
+      "scheduler-integration-test",
+    );
     vi.spyOn(runtime, "useModel").mockResolvedValue(
       "Your scheduled check is ready.",
     );

@@ -26,10 +26,32 @@ export interface Bindings {
   /**
    * Wrangler environment name (`"production"` | `"staging"`); unset in local
    * dev/tests. Drives environment-scoped behavior that must not collide across
-   * envs sharing the elizacloud.ai cookie zone — e.g. Steward auth cookie
-   * names (`lib/auth/steward-cookies.ts`) and cache key prefixes.
+   * envs and previews — e.g. Steward auth cookie names
+   * (`lib/auth/steward-cookies.ts`) and cache key prefixes.
    */
   ENVIRONMENT?: string;
+  /** Public eliza.app agent used only when its exact Twilio line is called. */
+  ELIZA_APP_DEFAULT_AGENT_ID?: string;
+  /** Exact E.164 Twilio number allowed to route to the public default agent. */
+  ELIZA_APP_TWILIO_PHONE_NUMBER?: string;
+  /** Maximum unauthenticated Twilio media sockets awaiting a signed start frame. */
+  TWILIO_VOICE_MAX_PENDING_BOOTSTRAPS?: string;
+  /** Milliseconds allowed for a Twilio media socket to provide its signed start frame. */
+  TWILIO_VOICE_BOOTSTRAP_TIMEOUT_MS?: string;
+  /** Staging-only QA session bridge kill switch; absent/anything but "true" is off. */
+  STAGING_SESSION_EXCHANGE_ENABLED?: string;
+  /** Exact runtime/code contract version; currently only "v1" is accepted. */
+  STAGING_SESSION_EXCHANGE_VERSION?: string;
+  /** Dedicated HS256 key; must differ from every ordinary Steward JWT secret. */
+  STAGING_SESSION_EXCHANGE_SIGNING_SECRET?: string;
+  /** Dedicated protected-header kid (`staging-qa-v1-*`). */
+  STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID?: string;
+  /** Exact API-key UUIDs permitted to mint a full QA browser session. */
+  STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS?: string;
+  /** Exact Cloud user UUIDs eligible for the staging QA session bridge. */
+  STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS?: string;
+  /** Exact Cloud organization UUIDs eligible for the staging QA session bridge. */
+  STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS?: string;
   /**
    * Routes chat completions through the lazy chat-only Worker application.
    * Default off provides an immediate rollback to the monolithic router.
@@ -89,9 +111,10 @@ export interface Bindings {
   // ---- Cartesia ----
   /**
    * Server-side Cartesia API key. When set, un-pinned/default cloud TTS
-   * synthesizes with Cartesia Sonic. MP3 uses Cartesia's REST bytes endpoint;
-   * WAV uses the streaming adapter for codec-less clients. Unset falls back to
-   * the Kokoro/ElevenLabs selection chain.
+   * synthesizes with Cartesia Sonic (MP3 via the REST bytes endpoint, WAV via
+   * the streaming adapter for codec-less clients). Batch STT uses Cartesia
+   * only when VOICE_BATCH_STT_PROVIDER=cartesia; otherwise Whisper remains the
+   * unpinned default. Unset falls back to the Kokoro/ElevenLabs TTS chain.
    */
   CARTESIA_API_KEY?: string;
   /** Overrides the default Cartesia voice id used for un-pinned requests. */
@@ -126,7 +149,8 @@ export interface Bindings {
   /**
    * Base URL of the self-hosted Whisper STT service (OpenAI-compatible
    * `/v1/audio/transcriptions`, e.g. the Railway deploy). When set, the cloud
-   * STT endpoint serves Whisper for free; ElevenLabs STT is the fallback.
+   * STT endpoint serves Whisper for free whenever Cartesia does not claim the
+   * batch default; ElevenLabs STT is the fallback.
    */
   WHISPER_STT_URL?: string;
   /**
@@ -196,10 +220,19 @@ export interface Bindings {
 
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;
-  /** Opt-in batch STT provider. Deepgram is never selected by key presence alone. */
+  /**
+   * Batch STT provider override: `deepgram` | `cartesia` | `whisper` |
+   * `elevenlabs`. Unset uses Whisper when configured, otherwise ElevenLabs.
+   * Paid providers are never selected by key presence alone, and an override
+   * whose required binding is missing fails the route closed.
+   */
   VOICE_BATCH_STT_PROVIDER?: string;
   /** Opt-in prerecorded Deepgram STT key (server-held; never returned to clients). */
   DEEPGRAM_API_KEY?: string;
+  /** Effective USD price of one credit on the deployed Cartesia account. */
+  CARTESIA_STT_USD_PER_CREDIT?: string;
+  /** Cartesia batch STT request timeout in milliseconds (default 120000, max 300000). */
+  CARTESIA_BATCH_STT_TIMEOUT_MS?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */
   OPENROUTER_API_KEY?: string;
   OPENROUTER_BASE_URL?: string;
@@ -222,12 +255,12 @@ export interface Bindings {
   VERCEL_OIDC_TOKEN?: string;
   /**
    * Public hostname that serves the BLOB R2 bucket. Used to construct sample
-   * URLs returned to clients. Defaults to "blob.elizacloud.ai" if unset.
+   * URLs returned to clients. Defaults to "blob.eliza.app" if unset.
    */
   R2_PUBLIC_HOST?: string;
   /**
    * Base domain for managed frontend hosting system hosts. When set (e.g.
-   * "sites.elizacloud.ai"), a request to `<app-slug>.<suffix>` is served from
+   * "sites.eliza.app"), a request to `<app-slug>.<suffix>` is served from
    * the app's active frontend deployment by the Worker entry (see
    * `getHostedFrontendServeRewrite` in `packages/cloud/api/src/index.ts`).
    */
@@ -245,7 +278,12 @@ export interface Bindings {
   STEWARD_SESSION_SECRET?: string;
   /** Optional dedicated secret for OAuth success-page HMAC proofs; falls back to STEWARD_SESSION_SECRET. */
   OAUTH_SUCCESS_PROOF_SECRET?: string;
+  /** Required managed Google OAuth application credentials. */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   STEWARD_JWT_SECRET?: string;
+  /** HS256 service-account bridge secret; must never equal the staging QA signer. */
+  ELIZA_SERVICE_JWT_SECRET?: string;
   /** Steward vault encryption master password. Required for wallet/key operations. */
   STEWARD_MASTER_PASSWORD?: string;
   /** Tenant scoping. */
@@ -268,7 +306,7 @@ export interface Bindings {
    * token, and the only host the OIDC endpoints answer on. Relying parties
    * byte-compare it, so a trailing slash or host change invalidates every
    * existing account link. Must be a host this Worker is routed for — the
-   * apex `elizacloud.ai` is the SPA and never reaches the Worker.
+   * public homepage is a Pages app and never reaches the Worker directly.
    */
   OIDC_ISSUER_URL?: string;
   /**
@@ -282,6 +320,12 @@ export interface Bindings {
    * base64-wrapped). Client secrets are stored as sha256 hex only.
    */
   OIDC_CLIENTS?: string;
+  /**
+   * Public JSON object of client_id → additional exact HTTPS callbacks used
+   * during canonical-domain migrations. The client must already exist in
+   * OIDC_CLIENTS; this overlay cannot create or otherwise modify a client.
+   */
+  OIDC_REDIRECT_URI_ALIASES?: string;
   /**
    * Domain that wallet-derived no-reply identities are minted on, for relying
    * parties registered with `wallet_email_fallback`. Defaults to
@@ -359,6 +403,8 @@ export interface Bindings {
   // L3). Deliberately separate from GATEWAY_INTERNAL_SECRET (internal-event
   // path) so enabling this gate never affects direct provider webhooks.
   ELIZA_APP_WEBHOOK_GATEWAY_SECRET?: string;
+  /** Authenticates proactive Shared reminder delivery to the Railway gateway. */
+  GATEWAY_INTERNAL_SECRET?: string;
   ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL?: string;
   DISCORD_WEBHOOK_HANDLER_URL?: string;
   CONTAINER_CONTROL_PLANE_URL?: string;
@@ -415,6 +461,8 @@ export interface Bindings {
   INFERENCE_PASSTHROUGH_STREAMING?: string;
   RATE_LIMIT_DISABLED?: string;
   RATE_LIMIT_MULTIPLIER?: string;
+  /** Transition gate for the genuine AgentRuntime-backed Shared turn. */
+  SHARED_ELIZA_AGENT_RUNTIME?: string;
   PLAYWRIGHT_TEST_AUTH?: string;
   PLAYWRIGHT_TEST_AUTH_SECRET?: string;
   TWILIO_SMS_COST_PER_SEGMENT_USD?: string;
@@ -437,6 +485,7 @@ export interface Bindings {
  */
 export interface AuthedUser {
   id: string;
+  created_at?: Date | string;
   email?: string | null;
   /** Whether `email` is verified — gates the @elizalabs.ai super_admin grant. */
   email_verified?: boolean | null;

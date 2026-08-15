@@ -54,7 +54,7 @@ export function isLiveStripeSecretKey(key: string | undefined): boolean {
 /**
  * Fail closed when a LIVE Stripe secret key is bound outside production
  * (#13752): the staging Worker was bound to prod's `sk_live_` key, so
- * add-funds on staging.elizacloud.ai created `cs_live` checkout sessions and
+ * add-funds on staging.eliza.app created `cs_live` checkout sessions and
  * hands-on QA could pay real money into the staging database. Live keys are
  * only ever valid in the production deployment; staging/preview/dev must use
  * test-mode keys (`sk_test_`).

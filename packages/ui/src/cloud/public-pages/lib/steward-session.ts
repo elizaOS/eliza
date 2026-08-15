@@ -13,7 +13,14 @@ import {
   STEWARD_SESSION_ENDPOINT,
   type StewardNonceExchangeResponse,
   StewardSessionError,
+  sanitizeTelegramAccountClaimContinuation,
+  writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
+import {
+  clearPendingOnboardingSession,
+  peekPendingOnboardingSession,
+  TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+} from "../../join/lib/onboarding-continuation";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../../shell/steward-url";
 
 export function resolveStewardAuthEndpoint(
@@ -54,15 +61,30 @@ async function readSessionError(response: Response): Promise<{
 
 /**
  * Steward JWT → HttpOnly cookie sync. Production cloud hosts post directly to
- * api.elizacloud.ai so auth callbacks do not depend on a same-origin redirect.
+ * api.eliza.app so auth callbacks do not depend on a same-origin redirect.
  */
 export async function syncStewardSessionCookie(
   token: string,
   refreshToken?: string | null,
+  options?: { verifiedPhone?: string; telegramContinuation?: string },
 ): Promise<void> {
+  const explicitTelegramContinuation = sanitizeTelegramAccountClaimContinuation(
+    options?.telegramContinuation,
+  );
+  if (
+    options?.telegramContinuation !== undefined &&
+    !explicitTelegramContinuation
+  ) {
+    throw new Error("Invalid Telegram account claim.");
+  }
+  const telegramContinuation =
+    explicitTelegramContinuation ??
+    peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
   const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, {
     token,
     ...(refreshToken ? { refreshToken } : {}),
+    ...(options?.verifiedPhone ? { verifiedPhone: options.verifiedPhone } : {}),
+    ...(telegramContinuation ? { telegramContinuation } : {}),
   });
 
   if (!response.ok) {
@@ -72,7 +94,13 @@ export async function syncStewardSessionCookie(
     );
   }
 
+  if (telegramContinuation) clearPendingOnboardingSession();
+
   if (typeof window !== "undefined") {
+    // The cookie boundary may be entered directly by an SDK callback or after
+    // the login page already persisted the same token. Canonical storage is
+    // idempotent, so both paths publish one authority transition in total.
+    writeStoredStewardToken(token);
     window.dispatchEvent(
       new CustomEvent("steward-token-sync", { detail: { token } }),
     );
@@ -184,11 +212,15 @@ export async function exchangeStewardCodeViaApi(
   code: string,
   opts: { redirectUri?: string; tenantId?: string; codeVerifier?: string } = {},
 ): Promise<StewardNonceExchangeResponse> {
+  const telegramContinuation = peekPendingOnboardingSession(
+    TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+  );
   const response = await postAuthJson(STEWARD_NONCE_EXCHANGE_ENDPOINT, {
     code,
     ...(opts.redirectUri ? { redirectUri: opts.redirectUri } : {}),
     ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
     ...(opts.codeVerifier ? { codeVerifier: opts.codeVerifier } : {}),
+    ...(telegramContinuation ? { telegramContinuation } : {}),
   });
 
   if (!response.ok) {
@@ -199,7 +231,7 @@ export async function exchangeStewardCodeViaApi(
       body.code ?? null,
     );
   }
-
+  if (telegramContinuation) clearPendingOnboardingSession();
   return (await response.json()) as StewardNonceExchangeResponse;
 }
 

@@ -185,7 +185,7 @@ export type LifeOpsOverviewRecord = {
   agentOps?: Record<string, unknown>;
 };
 
-const ELIZA_CLOUD_OPENAI_BASE_URL = "https://elizacloud.ai/api/v1";
+const ELIZA_CLOUD_OPENAI_BASE_URL = "https://api.eliza.app/api/v1";
 
 function resolveLiveProviderModelEnv(
   providerName: LiveProviderName,

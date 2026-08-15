@@ -21,7 +21,7 @@ import {
   isPageScopedConversationMetadata,
 } from "../api/conversation-metadata.ts";
 import {
-  formatRelativeTimestamp,
+  formatRelativeTimestampPrefix,
   formatSpeakerLabel,
   roomSourceTag,
 } from "../shared/conversation-format.ts";
@@ -47,8 +47,6 @@ export const recentConversationsProvider: Provider = {
   contextGate: { anyOf: ["memory", "messaging"] },
   cacheStable: false,
   cacheScope: "turn",
-  timeoutMs: 8_000,
-  timeoutMode: "degrade",
   // roleGate ADMIN is enforced by applyPluginRoleGating (#12087 Item 14); the
   // declared gate is authoritative, not the handler body.
   roleGate: { minRole: "ADMIN" },
@@ -118,10 +116,10 @@ export const recentConversationsProvider: Provider = {
       for (const mem of sorted) {
         const room = roomCache.get(mem.roomId) ?? null;
         const tag = roomSourceTag(room);
-        const ts = formatRelativeTimestamp(mem.createdAt);
+        const age = formatRelativeTimestampPrefix(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);
         const text = (mem.content.text ?? "").slice(0, 200);
-        lines.push(`${tag} (${ts}) ${speaker}: ${text}`);
+        lines.push(`${tag} ${age}${speaker}: ${text}`);
       }
 
       return {

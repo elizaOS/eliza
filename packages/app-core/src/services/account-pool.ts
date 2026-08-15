@@ -154,6 +154,16 @@ const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
 };
 
 const KEEP_ALIVE_INTERVAL_MS = 5 * 60_000;
+/**
+ * How long the keep-alive sweep waits before re-probing a parked
+ * (needs-reauth / invalid) SUBSCRIPTION account. A parked OAuth account's
+ * refresh grant is dead until a human re-auths, so each probe burns a doomed
+ * refresh attempt against the provider's token endpoint and emits an error
+ * log line — at the 5-minute sweep cadence that is ~288 spam lines per
+ * account per day. A credential update (re-auth) bypasses the cooldown, so
+ * recovered accounts still re-admit within one sweep.
+ */
+const PARKED_SUBSCRIPTION_PROBE_COOLDOWN_MS = 6 * 60 * 60_000;
 
 function accountSessionPct(account: LinkedAccountConfig): number {
   return typeof account.usage?.sessionPct === "number"
@@ -1583,7 +1593,30 @@ export async function sweepAccountPoolKeepAlive(
     await pool.sweepExpired(providerId);
     for (const record of listProviderAccounts(providerId)) {
       result.checked += 1;
-      if (pool.get(record.id, providerId)?.health === "expired") continue;
+      const pooled = pool.get(record.id, providerId);
+      if (pooled?.health === "expired") continue;
+
+      // A parked subscription account's refresh grant is dead until a human
+      // re-auths, so resolving it burns a doomed refresh against the
+      // provider's token endpoint (plus an error log line) every sweep,
+      // forever. Probe parked accounts only when the stored credential has
+      // changed since the last probe (a re-auth just landed — re-admit
+      // within one sweep) or the cooldown elapsed. Direct-API probes stay
+      // unthrottled: they read a static key with no network cost, and they
+      // are the heal path for accounts flagged by earlier failures.
+      if (
+        (pooled?.health === "needs-reauth" || pooled?.health === "invalid") &&
+        isSubscriptionProvider(providerId)
+      ) {
+        const lastProbeMs = pooled.healthDetail?.lastChecked ?? 0;
+        const credentialChanged = record.updatedAt > lastProbeMs;
+        if (
+          !credentialChanged &&
+          Date.now() - lastProbeMs < PARKED_SUBSCRIPTION_PROBE_COOLDOWN_MS
+        ) {
+          continue;
+        }
+      }
 
       // A Codex CLI may have rotated the one-time refresh token inside its
       // per-account CODEX_HOME mid-session; adopt it BEFORE resolving, or the
@@ -1592,16 +1625,24 @@ export async function sweepAccountPoolKeepAlive(
       if (providerId === "openai-codex") {
         await adoptRotatedCodexTokens(record.id);
       }
-      const token = await getAccountAccessToken(providerId, record.id, {
+      const outcome = await getAccountAccessToken(providerId, record.id, {
         storagePolicy: defaultRuntimeStoragePolicy(),
+        outcome: true,
       });
-      if (!token) {
+      if (!outcome.ok) {
         result.failed += 1;
-        await pool.markNeedsReauth(record.id, "No valid credential available", {
-          providerId,
-        });
+        // Only a proven credential failure parks the account. Transport and
+        // provider outages keep the current health — one network blip must
+        // not mass-flag a healthy fleet as needs-reauth — and the next sweep
+        // simply retries.
+        if (outcome.kind === "auth") {
+          await pool.markNeedsReauth(record.id, outcome.message, {
+            providerId,
+          });
+        }
         continue;
       }
+      const token = outcome.accessToken;
 
       if (!isSubscriptionProvider(providerId)) {
         // Direct-API providers have no usage probe, but a successful token

@@ -54,30 +54,35 @@ export function getApiKeyOptional(runtime: IAgentRuntime): ValidatedApiKey | nul
   return apiKey as ValidatedApiKey;
 }
 
+/** Provides setting values to the pure endpoint resolver. */
+export type EndpointSettingReader = (key: string) => string | undefined;
+
 /**
- * Route to the wire-level mock server when one is running. `ELIZA_MOCK_ANTHROPIC_BASE`
- * is set only by the in-process mock runner (`packages/scenario-runner/test/mocks`) and never in
- * production — honoring it directly mirrors how LifeOps consumes its sibling
- * `ELIZA_MOCK_*_BASE` vars (`mockoon-redirect.ts`). It is authoritative when set
- * (a deliberate test action), so it wins over any configured base; in production
- * it is unset and has no effect.
+ * Pure endpoint policy shared by inference and diagnostic surfaces. The
+ * scenario runner's `ELIZA_MOCK_ANTHROPIC_BASE` remains authoritative.
  */
-function getMockBaseURL(): string | undefined {
-  return getEnvValue("ELIZA_MOCK_ANTHROPIC_BASE");
+export function resolveAnthropicBaseURL(
+  readSetting: EndpointSettingReader,
+  options: { browser?: boolean; mockBaseURL?: string } = {}
+): string {
+  const read = (key: string): string | undefined => {
+    const value = readSetting(key)?.trim();
+    return value ? value : undefined;
+  };
+  const mockBaseURL = options.mockBaseURL?.trim();
+  if (mockBaseURL) return mockBaseURL;
+  if (options.browser) {
+    const browserURL = read("ANTHROPIC_BROWSER_BASE_URL");
+    if (browserURL) return browserURL;
+  }
+  return read("ANTHROPIC_BASE_URL") ?? DEFAULT_BASE_URL;
 }
 
 export function getBaseURL(runtime: IAgentRuntime): string {
-  const mockBaseURL = getMockBaseURL();
-  if (mockBaseURL) {
-    return mockBaseURL;
-  }
-  if (isBrowser()) {
-    const browserURL = getRawSetting(runtime, "ANTHROPIC_BROWSER_BASE_URL");
-    if (browserURL) {
-      return browserURL;
-    }
-  }
-  return getRawSetting(runtime, "ANTHROPIC_BASE_URL") ?? DEFAULT_BASE_URL;
+  return resolveAnthropicBaseURL((key) => getRawSetting(runtime, key), {
+    browser: isBrowser(),
+    mockBaseURL: getEnvValue("ELIZA_MOCK_ANTHROPIC_BASE"),
+  });
 }
 
 export function getSmallModel(runtime: IAgentRuntime): ModelName {

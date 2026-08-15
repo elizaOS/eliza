@@ -1,14 +1,9 @@
-/** Verifies getCloudCompatAgents on hosted web with no agent baseUrl (join flow) through the package's configured test harness. */
-// @vitest-environment jsdom
-
 /**
- * Unit coverage for direct-Cloud base resolution during the hosted-web `/join`
- * flow: a signed-in Steward session with NO agent baseUrl yet. The base must
- * resolve from the PAGE host so `getCloudCompatAgents` hits the cloud worker
- * rather than the agent-proxy path (`/api/cloud/compat/agents`), which only
- * agent servers mount. Capacitor forced web + CapacitorHttp mocked, fetch
- * stubbed, no live cloud.
+ * Verifies hosted-web Cloud account requests choose the control plane without
+ * crossing agent and Steward credential boundaries. Capacitor is forced to web
+ * and fetch is stubbed; no live Cloud service is contacted.
  */
+// @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -153,5 +148,159 @@ describe("getCloudCompatAgents connected to a non-cloud agent while served from 
       expect(url).not.toContain("/api/v1/eliza/agents");
       expect(url).not.toContain("api.elizacloud.ai");
     }
+  });
+});
+
+describe("Cloud account management while connected to a dedicated Cloud agent", () => {
+  const dedicatedStagingBase =
+    "https://11111111-1111-4111-8111-111111111111.staging.elizacloud.ai";
+
+  it("uses the page-matched control plane and the stored Steward token for list and force-create", async () => {
+    setHostname("app-staging.elizacloud.ai");
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            success: true,
+            created: true,
+            data: {
+              id: "22222222-2222-4222-8222-222222222222",
+              agentName: "Disposable",
+              status: "pending",
+            },
+          },
+          202,
+        ),
+      );
+
+    const client = new ElizaClient(dedicatedStagingBase, "agent-bearer");
+    await client.getCloudCompatAgents();
+    await client.createCloudCompatAgent({
+      agentName: "Disposable",
+      forceCreate: true,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    for (const [url, init] of fetchSpy.mock.calls) {
+      expect(String(url)).toBe("/api/v1/eliza/agents");
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer steward-jwt",
+      );
+      expect(String(url)).not.toContain("/api/cloud/compat/agents");
+    }
+    const createInit = fetchSpy.mock.calls[1][1] as RequestInit;
+    expect(createInit.method).toBe("POST");
+    expect(JSON.parse(String(createInit.body))).toEqual({
+      agentName: "Disposable",
+      alwaysOn: true,
+      forceCreate: true,
+    });
+  });
+
+  it("never relabels or sends the dedicated agent bearer when the Steward session is missing", async () => {
+    setHostname("app-staging.elizacloud.ai");
+    localStorage.removeItem("steward_session_token");
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const client = new ElizaClient(dedicatedStagingBase, "agent-bearer");
+
+    await expect(
+      client.selectOrProvisionCloudAgent({
+        cloudApiBase: "https://staging.elizacloud.ai",
+        authToken: "agent-bearer",
+        name: "Disposable",
+        forceCreate: true,
+      }),
+    ).rejects.toThrow("Eliza Cloud login session is missing");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(localStorage.getItem("steward_session_token")).toBeNull();
+  });
+
+  it.each(["warm_pool", "warm_pool_recovery"])(
+    "accepts authoritative %s freshness when the backend omits created",
+    async (source) => {
+      setHostname("app-staging.elizacloud.ai");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse({
+          success: true,
+          source,
+          data: {
+            id: "22222222-2222-4222-8222-222222222222",
+            agentName: "Disposable",
+            status: source === "warm_pool" ? "running" : "provisioning",
+          },
+        }),
+      );
+      const client = new ElizaClient(dedicatedStagingBase, "agent-bearer");
+
+      await expect(
+        client.createCloudCompatAgent({
+          agentName: "Disposable",
+          forceCreate: true,
+        }),
+      ).resolves.toMatchObject({ created: true });
+    },
+  );
+
+  it.each([false, undefined])(
+    "rejects force-create freshness confirmation %s before any agent bind or compat fallback",
+    async (created) => {
+      setHostname("app-staging.elizacloud.ai");
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse({
+          success: true,
+          ...(created === undefined ? {} : { created }),
+          data: {
+            id: "11111111-1111-4111-8111-111111111111",
+            agentName: "Existing",
+            status: "running",
+          },
+        }),
+      );
+      const client = new ElizaClient(dedicatedStagingBase, "agent-bearer");
+
+      await expect(
+        client.createCloudCompatAgent({
+          agentName: "Disposable",
+          forceCreate: true,
+        }),
+      ).rejects.toThrow("did not confirm that a new agent was created");
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(String(fetchSpy.mock.calls[0][0])).toBe("/api/v1/eliza/agents");
+      expect(String(fetchSpy.mock.calls[0][0])).not.toContain(
+        "/api/cloud/compat/agents",
+      );
+    },
+  );
+
+  it("surfaces a quota rejection after one direct POST with no retry or compat fallback", async () => {
+    setHostname("app-staging.elizacloud.ai");
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(
+        {
+          success: false,
+          error: "Agent quota exceeded",
+          code: "agent_quota_exceeded",
+        },
+        429,
+      ),
+    );
+    const client = new ElizaClient(dedicatedStagingBase, "agent-bearer");
+
+    await expect(
+      client.createCloudCompatAgent({
+        agentName: "Disposable",
+        forceCreate: true,
+      }),
+    ).rejects.toMatchObject({ status: 429 });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0][0])).toBe("/api/v1/eliza/agents");
+    expect(String(fetchSpy.mock.calls[0][0])).not.toContain(
+      "/api/cloud/compat/agents",
+    );
   });
 });

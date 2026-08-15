@@ -78,16 +78,26 @@ export class HeadscaleIntegration {
   /**
    * Prepare VPN credentials for a new agent container.
    *
-   * Returns a single-use, persistent-node pre-auth key and the full set of
+   * Returns a REUSABLE, persistent-node pre-auth key and the full set of
    * environment variables the container needs to join the VPN on boot.
    *
    * The node must not be ephemeral. Docker's `unless-stopped` policy restarts
    * an agent in the same writable layer, so tailscaled reconnects with its
    * persisted node identity. Headscale deletes ephemeral nodes as soon as they
    * disconnect; the restarted container then sees `node no longer exists`,
-   * while its single-use auth key can only return `authkey already used`,
+   * while a single-use auth key can only return `authkey already used`,
    * leaving the agent in a permanent restart loop. Explicit sandbox teardown
    * already calls cleanupContainerVPN(), so persistent nodes are still removed.
+   *
+   * The key is REUSABLE (was single-use) so a reboot that de-authorizes the
+   * persisted node identity can re-`up` with the SAME baked key instead of
+   * hitting `authkey already used` and crash-looping (the prod-2 hard-reset
+   * failure class). Combined with the raised default TTL (24h) and the
+   * reconnect-first entrypoint, this makes the boot path resilient: a node
+   * reconnects on persisted state when it can, and re-authenticates with a
+   * still-valid reusable key when it must. The key stays tag-scoped
+   * (`tag:agent`) and ACL-isolated, so reusability is bounded to same-node
+   * re-registration of the one agent it was minted for.
    */
   async prepareContainerVPN(input: PrepareContainerVPNInput): Promise<{
     preAuthKey: string;
@@ -128,7 +138,11 @@ export class HeadscaleIntegration {
       }
 
       const preAuthKeyObj = await this.client.createPreAuthKey({
-        reusable: false,
+        // Reusable so a reboot that de-authorizes the persisted node identity
+        // can re-register with the same baked key rather than crash-looping on
+        // `authkey already used`. Bounded by tag:agent + ACL isolation to
+        // same-node re-registration of this one agent (see method doc).
+        reusable: true,
         ephemeral: false,
         aclTags: ["tag:agent"],
         user: inferHeadscaleUser(input),

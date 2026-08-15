@@ -84,25 +84,22 @@ export class TwitterMessageService implements IMessageService {
         SearchMode.Latest,
       );
 
-      const messages: Message[] = searchResult.tweets
-        .filter((tweet) => typeof tweet.id === "string")
-        .filter((tweet) => {
-          const conversationId = tweet.conversationId ?? tweet.id;
-          if (!conversationId) return false;
-          // Filter by room ID if specified
-          if (options.roomId) {
-            const tweetRoomId = createUniqueUuid(
-              this.client.runtime,
-              conversationId,
-            );
-            return tweetRoomId === options.roomId;
-          }
-          return true;
-        })
-        .map((tweet) => {
-          const tweetId = tweet.id as string;
-          const conversationId = tweet.conversationId ?? tweetId;
-          return {
+      const messages: Message[] = searchResult.tweets.flatMap((tweet) => {
+        // Normalize once per row; rows without a usable identity or timestamp
+        // fail closed instead of surfacing as fresh messages (#18965).
+        const timestamp = getEpochMs(tweet.timestamp);
+        if (typeof tweet.id !== "string" || timestamp === undefined) return [];
+        const tweetId = tweet.id;
+        const conversationId = tweet.conversationId ?? tweetId;
+        if (options.roomId) {
+          const tweetRoomId = createUniqueUuid(
+            this.client.runtime,
+            conversationId,
+          );
+          if (tweetRoomId !== options.roomId) return [];
+        }
+        return [
+          {
             id: tweetId,
             agentId: this.client.runtime.agentId,
             roomId: createUniqueUuid(this.client.runtime, conversationId),
@@ -112,14 +109,15 @@ export class TwitterMessageService implements IMessageService {
             type: tweet.inReplyToStatusId
               ? MessageType.REPLY
               : MessageType.MENTION,
-            timestamp: getEpochMs(tweet.timestamp),
+            timestamp,
             inReplyTo: tweet.inReplyToStatusId,
             metadata: {
               tweetId,
               permanentUrl: tweet.permanentUrl,
             },
-          };
-        });
+          },
+        ];
+      });
 
       return messages;
     } catch (error) {
@@ -192,6 +190,10 @@ export class TwitterMessageService implements IMessageService {
       if (!tweet?.id) return null;
       const conversationId = tweet.conversationId ?? tweet.id;
 
+      // Fail closed on a present-but-unusable timestamp (#18965).
+      const timestamp = getEpochMs(tweet.timestamp);
+      if (timestamp === undefined) return null;
+
       const message: Message = {
         id: tweet.id,
         agentId: agentId,
@@ -200,7 +202,7 @@ export class TwitterMessageService implements IMessageService {
         username: tweet.username ?? "",
         text: tweet.text ?? "",
         type: tweet.inReplyToStatusId ? MessageType.REPLY : MessageType.POST,
-        timestamp: getEpochMs(tweet.timestamp),
+        timestamp,
         inReplyTo: tweet.inReplyToStatusId,
         metadata: {
           tweetId: tweet.id,

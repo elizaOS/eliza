@@ -52,6 +52,8 @@ import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
 import { augmentVisionRequest } from "./services/vision/augmenter.js";
+import { prepareVisionImageInput } from "./services/vision/image-input.js";
+import type { VisionImageInput } from "./services/vision/types.js";
 import { extractRequestedVoiceId } from "./services/voice/requested-voice.js";
 
 export const LOCAL_INFERENCE_PROVIDER_ID = "eliza-local-inference";
@@ -796,7 +798,7 @@ function tryGetImageGenArbiter(
 }
 
 function paramsToVisionRequest(params: ImageDescriptionParams | string): {
-	image: { kind: "dataUrl"; dataUrl: string } | { kind: "url"; url: string };
+	image: VisionImageInput;
 	prompt?: string;
 	signal?: AbortSignal;
 	onTextChunk?: (chunk: string) => void | Promise<void>;
@@ -845,6 +847,19 @@ function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 	};
 }
 
+function paramsWithPreparedVisionImage(
+	params: ImageDescriptionParams | string,
+	image: VisionImageInput,
+): ImageDescriptionParams | string {
+	if (image.kind !== "bytes") {
+		return params;
+	}
+	const dataUrl = `data:${image.mimeType ?? "application/octet-stream"};base64,${Buffer.from(image.bytes).toString("base64")}`;
+	return typeof params === "string"
+		? dataUrl
+		: { ...params, imageUrl: dataUrl };
+}
+
 /**
  * Runtime setting marker that plugin-vision's `hasEliza1VisionHandler`
  * polls. Setting this to `"1"` makes VisionService prefer the eliza-1
@@ -878,6 +893,10 @@ function createImageDescriptionHandler() {
 		params: ImageDescriptionParams | string,
 	): Promise<ImageDescriptionResult> => {
 		const service = requireService(runtime, ModelType.IMAGE_DESCRIPTION);
+		const request = paramsToVisionRequest(params);
+		request.image = await prepareVisionImageInput(runtime, request.image, {
+			signal: request.signal,
+		});
 		const arbiter = tryGetArbiter(service);
 		if (arbiter?.requestVisionDescribe) {
 			// WS2 path. The arbiter owns the model handle and the projector
@@ -891,7 +910,6 @@ function createImageDescriptionHandler() {
 				typeof modelKeyCandidate === "string" && modelKeyCandidate
 					? modelKeyCandidate
 					: "gemma-vl";
-			const request = paramsToVisionRequest(params);
 			await augmentVisionRequest(request);
 			const result = await arbiter.requestVisionDescribe<
 				typeof request,
@@ -899,11 +917,16 @@ function createImageDescriptionHandler() {
 			>({ modelKey, payload: request });
 			return normalizeImageDescription(result);
 		}
+		const preparedParams = paramsWithPreparedVisionImage(params, request.image);
 		if (typeof service.describeImage === "function") {
-			return normalizeImageDescription(await service.describeImage(params));
+			return normalizeImageDescription(
+				await service.describeImage(preparedParams),
+			);
 		}
 		if (typeof service.imageDescription === "function") {
-			return normalizeImageDescription(await service.imageDescription(params));
+			return normalizeImageDescription(
+				await service.imageDescription(preparedParams),
+			);
 		}
 		throw unavailable(
 			ModelType.IMAGE_DESCRIPTION,

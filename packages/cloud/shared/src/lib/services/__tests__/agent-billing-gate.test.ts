@@ -120,6 +120,55 @@ describe("checkAgentCreditGate", () => {
     expect(result.error).toContain("Unable to verify credit balance");
   });
 
+  test("zero balance + withheld welcome bonus recorded on settings → reason attached", async () => {
+    findById.mockResolvedValue({
+      credit_balance: "0.00",
+      settings: {
+        welcomeBonusWithheld: {
+          reason: "ip_daily_cap",
+          message:
+            "Welcome credit unavailable because this network reached the daily free-credit limit. Add funds to start an agent.",
+        },
+      },
+    });
+
+    const result = await checkAgentCreditGate("org-capped-signup");
+
+    expect(result.allowed).toBe(false);
+    expect(result.balance).toBe(0);
+    expect(result.welcomeBonusWithheldReason).toBe("ip_daily_cap");
+    expect(result.welcomeBonusWithheldMessage).toContain("daily free-credit limit");
+  });
+
+  test("topped-up org (balance > 0) does NOT resurface the stale withheld record", async () => {
+    findById.mockResolvedValue({
+      credit_balance: "0.05",
+      settings: { welcomeBonusWithheld: { reason: "ip_daily_cap" } },
+    });
+
+    const result = await checkAgentCreditGate("org-topped-up");
+
+    expect(result.allowed).toBe(false);
+    expect(result.welcomeBonusWithheldReason).toBeUndefined();
+    expect(result.welcomeBonusWithheldMessage).toBeUndefined();
+  });
+
+  test("malformed withheld settings shapes are ignored (fail-closed messaging)", async () => {
+    for (const settings of [
+      undefined,
+      null,
+      {},
+      { welcomeBonusWithheld: true },
+      { welcomeBonusWithheld: { reason: "not_a_reason" } },
+      { welcomeBonusWithheld: { message: "no reason" } },
+    ]) {
+      findById.mockResolvedValue({ credit_balance: "0.00", settings });
+      const result = await checkAgentCreditGate("org-odd-settings");
+      expect(result.allowed).toBe(false);
+      expect(result.welcomeBonusWithheldReason).toBeUndefined();
+    }
+  });
+
   test("missing org denies without a corrupt-value log", async () => {
     findById.mockResolvedValue(null);
 

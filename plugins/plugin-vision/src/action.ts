@@ -25,7 +25,7 @@ import {
   type ScreenCaptureBridgeService,
 } from "./screen-capture-bridge";
 import type { VisionService } from "./service";
-import { VisionMode } from "./types";
+import { hasReadyInputForMode, VisionMode } from "./types";
 
 const VISION_ACTION_TIMEOUT_MS = 10_000;
 const MAX_VISION_TEXT_LENGTH = 4000;
@@ -250,11 +250,23 @@ async function runDescribe(
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const visionService = runtime.getService<VisionService>("VISION");
+  const caps = visionService?.getCapabilities();
+  const visionMode = visionService?.getVisionMode();
+  const hasReadyInput = hasReadyInputForMode(caps, visionMode);
+  const serviceActive = visionService?.isActive() === true;
 
-  if (!visionService?.isActive()) {
-    const thought =
-      "Vision service is not available or no camera is connected.";
-    const text = "I cannot see anything right now. No camera is available.";
+  if (!serviceActive || !hasReadyInput) {
+    const awaitingFirstInput = serviceActive && !hasReadyInput;
+    const unavailableReason =
+      visionMode === VisionMode.CAMERA
+        ? caps?.unavailableReasons?.camera
+        : caps?.unavailableReasons?.screenCapture;
+    const thought = awaitingFirstInput
+      ? `Vision input is unavailable${unavailableReason ? `: ${unavailableReason}` : "."}`
+      : "Vision service is not available — no camera or screen capture is connected.";
+    const text = awaitingFirstInput
+      ? `I cannot see anything right now${unavailableReason ? `: ${unavailableReason}` : "."}`
+      : "I cannot see anything right now. No vision input is available.";
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
       await callback({ thought, text, actions: ["VISION"] });
@@ -270,21 +282,28 @@ async function runDescribe(
       data: {
         actionName: "VISION",
         op: "describe",
-        error: "Vision service not available or no camera connected",
+        error: awaitingFirstInput
+          ? (unavailableReason ?? "Vision input has not produced a frame yet")
+          : "Vision service is inactive or has no available input",
       },
     };
   }
 
   try {
     const scene = await withVisionTimeout(
-      visionService.getSceneDescription(),
+      visionService.getEnhancedSceneDescription(),
       "vision scene description",
     );
     const cameraInfo = visionService.getCameraInfo();
+    const visionMode = visionService.getVisionMode();
 
     if (!scene) {
-      const thought = "Camera is connected but no scene has been analyzed yet.";
-      const text = `Camera "${cameraInfo?.name}" is connected, but I haven't analyzed any scenes yet. Please wait a moment.`;
+      const thought =
+        "A vision input is ready but no scene has been analyzed yet.";
+      const source = caps?.camera
+        ? `Camera "${cameraInfo?.name ?? "unknown"}"`
+        : "Screen capture";
+      const text = `${source} is ready, but I haven't analyzed any scenes yet. Please wait a moment.`;
       await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
       if (callback) {
         await callback({ thought, text, actions: ["VISION"] });
@@ -321,7 +340,12 @@ async function runDescribe(
     const detailLevel =
       options.detailLevel === "summary" ? "summary" : "detailed";
 
-    let description = `Looking through ${cameraInfo?.name || "the camera"}, `;
+    let description =
+      visionMode === VisionMode.SCREEN
+        ? "Looking at the screen, "
+        : visionMode === VisionMode.BOTH
+          ? "Using the camera and screen, "
+          : `Looking through ${cameraInfo?.name || "the camera"}, `;
     description += scene.description;
 
     if (detailLevel === "detailed" && peopleCount > 0) {
@@ -451,26 +475,38 @@ async function runCapture(
 ): Promise<ActionResult> {
   const visionService = runtime.getService<VisionService>("VISION");
 
-  if (!visionService?.isActive()) {
-    const thought =
-      "Vision service is not available or no camera is connected.";
-    const text = "I cannot capture an image right now. No camera is available.";
+  // Capture requires a camera. Check capability honestly — SCREEN mode with
+  // no camera should fail closed here, not pass isActive() and fail later.
+  const caps = visionService?.getCapabilities();
+  const visionMode = visionService?.getVisionMode();
+  const cameraModeActive =
+    visionMode === VisionMode.CAMERA || visionMode === VisionMode.BOTH;
+  if (!visionService?.isActive() || !cameraModeActive || !caps?.camera) {
+    const unavailableReason = !visionService
+      ? "Vision service is not available"
+      : !cameraModeActive
+        ? `Camera capture is disabled in ${visionMode ?? "the current"} vision mode`
+        : !caps?.camera
+          ? (caps?.unavailableReasons?.camera ?? "No camera is connected")
+          : "Camera processing is not active";
+    const thought = unavailableReason;
+    const text = `I cannot capture an image right now: ${unavailableReason}.`;
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
       await callback({ thought, text, actions: ["VISION"] });
     }
     return {
       success: false,
-      text: "Vision service unavailable - cannot capture image",
+      text,
       values: {
         success: false,
         visionAvailable: false,
-        error: "Vision service not available",
+        error: unavailableReason,
       },
       data: {
         actionName: "VISION",
         op: "capture",
-        error: "Vision service not available or no camera connected",
+        error: unavailableReason,
       },
     };
   }

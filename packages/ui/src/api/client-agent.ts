@@ -1040,7 +1040,7 @@ async function fetchStatusWithResumeProgress(
       on202: map202ToResumeProgressStatus,
     });
   } catch (err) {
-    // A DEDICATED cloud agent (its own <id>.elizacloud.ai subdomain) is bound
+    // A DEDICATED cloud agent (its own <id>.cloud.eliza.app subdomain) is bound
     // and RUNNING, but the cloud agent-router proxies its `/api/status` through
     // the shared-runtime resolver, which answers 404 `Not a shared-runtime
     // agent` for a dedicated agent (see

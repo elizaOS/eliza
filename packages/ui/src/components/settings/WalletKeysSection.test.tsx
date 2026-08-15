@@ -10,7 +10,13 @@
  * keys panel surfaces instead of a raw `HTTP 502` / `HTTP 500` banner.
  */
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const clientMock = vi.hoisted(() => ({
@@ -97,6 +103,20 @@ describe("WalletKeysSection - requests route through the shared client", () => {
     await screen.findByTestId("wallet-keys-empty");
     expect(screen.queryByTestId("wallet-keys-error")).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("routes the add-key fields through SettingsInputRow", async () => {
+    clientMock.rawRequest.mockResolvedValue(jsonResponse(200, { entries: [] }));
+    renderAsOwner();
+    await screen.findByTestId("wallet-keys-empty");
+    fireEvent.click(screen.getByTestId("wallet-keys-add-toggle"));
+    const name = screen.getByLabelText("Key name");
+    const secret = screen.getByLabelText("Private key");
+    expect(name.getAttribute("data-agent-id")).toBe("wallet-keys-key-name");
+    expect(secret.getAttribute("data-agent-id")).toBe(
+      "wallet-keys-private-key",
+    );
+    expect(secret.getAttribute("type")).toBe("password");
   });
 });
 

@@ -1903,6 +1903,58 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
 
+  it("attaches the prompt-start session snapshot to terminal events", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    let terminalSnapshot: SessionInfo | undefined;
+    service.onSessionEvent((_sid, event, _payload, sessionSnapshot) => {
+      if (event === "task_complete") terminalSnapshot = sessionSnapshot;
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-routing-snapshot",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      metadata: {
+        taskId: "task-a",
+        originRoomId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        taskRoomId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        label: "task-a-label",
+      },
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: {
+          stopReason: "end_turn",
+          content: [{ type: "text", text: "task A result" }],
+        },
+      } as AcpJsonRpcMessage);
+      await service.updateSessionMetadata(sessionId, {
+        taskId: "task-b",
+        originRoomId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        taskRoomId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        label: "task-b-label",
+      });
+      return { stopReason: "end_turn" };
+    });
+
+    await service.sendPrompt(sessionId, "finish task A");
+
+    expect(terminalSnapshot?.metadata).toMatchObject({
+      taskId: "task-a",
+      originRoomId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      taskRoomId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      label: "task-a-label",
+    });
+    expect((await service.getSession(sessionId))?.metadata).toMatchObject({
+      taskId: "task-b",
+      label: "task-b-label",
+    });
+  });
+
   it.each(["max_tokens", "interrupted"])(
     "native sendPrompt does not advertise an incomplete %s turn as task_complete",
     async (stopReason) => {
@@ -2213,7 +2265,7 @@ describe("AcpService", () => {
     expect(client.prompt).toHaveBeenCalledTimes(1);
   });
 
-  it("native cancel preserves cancelled status when the prompt later resolves", async () => {
+  it("native cancel settles from the original prompt's cancelled terminal result", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
     await service.start();
     const { sessionId } = await service.spawnSession({
@@ -2224,23 +2276,53 @@ describe("AcpService", () => {
     const client = firstNativeClient();
     let resolvePrompt: (value: { stopReason: string }) => void = () =>
       undefined;
-    client.prompt.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolvePrompt = resolve;
-        }),
-    );
+    const terminal = new Promise<{ stopReason: string }>((resolve) => {
+      resolvePrompt = resolve;
+    });
+    client.prompt.mockImplementationOnce(() => terminal);
+    client.cancel.mockImplementationOnce(() => terminal);
 
     const sent = service.sendPrompt(sessionId, "long running");
     await new Promise((resolve) => setImmediate(resolve));
-    await service.cancelSession(sessionId);
-    resolvePrompt({ stopReason: "end_turn" });
+    const cancelled = service.cancelSession(sessionId);
+    resolvePrompt({ stopReason: "cancelled" });
+    await cancelled;
     const result = await sent;
 
     expect(client.cancel).toHaveBeenCalledWith("protocol-session");
     expect(result.stopReason).toBe("cancelled");
     expect(result.error).toBeUndefined();
     expect((await service.getSession(sessionId))?.status).toBe("cancelled");
+  });
+
+  it("does not overwrite a prompt completion that races native cancellation", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-cancel-race",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    let resolvePrompt: (value: { stopReason: string }) => void = () =>
+      undefined;
+    const terminal = new Promise<{ stopReason: string }>((resolve) => {
+      resolvePrompt = resolve;
+    });
+    client.prompt.mockImplementationOnce(() => terminal);
+    client.cancel.mockImplementationOnce(() => terminal);
+
+    const sent = service.sendPrompt(sessionId, "nearly finished");
+    await new Promise((resolve) => setImmediate(resolve));
+    const cancelled = service.cancelSession(sessionId);
+    resolvePrompt({ stopReason: "end_turn" });
+    await expect(cancelled).rejects.toMatchObject({
+      code: "ACP_CANCEL_NOT_CONFIRMED",
+    });
+    const result = await sent;
+
+    expect(result.stopReason).toBe("end_turn");
+    expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
 
   it("native permission requests emit blocked and login_required events", async () => {
@@ -2467,7 +2549,7 @@ describe("AcpService", () => {
     expect(result.response).toBe("done");
   });
 
-  it("accepts direct assistant text updates when adapters provide a role", async () => {
+  it("correlates a terminal response without a synthetic sessionId to its CLI invocation", async () => {
     const create = nextProc();
     const service = new AcpService(runtime());
     await service.start();
@@ -2492,7 +2574,7 @@ describe("AcpService", () => {
     prompt.proc.stdout.emit(
       "data",
       Buffer.from(
-        `{"jsonrpc":"2.0","id":"req-direct","result":{"stopReason":"end_turn"},"sessionId":"${sessionId}"}\n`,
+        '{"jsonrpc":"2.0","id":"req-direct","result":{"stopReason":"end_turn"}}\n',
       ),
     );
     closeOk(prompt);
@@ -3093,5 +3175,132 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     ).rejects.toThrow(/busy/i);
     release?.();
     await p1;
+  });
+
+  it("keeps native prompt A routing when re-homed prompt B is rejected", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const terminal: Array<{
+      snapshot?: SessionInfo;
+      turnId?: string;
+    }> = [];
+    service.onSessionEvent((_sid, event, _data, sessionSnapshot, turnId) => {
+      if (event === "task_complete") {
+        terminal.push({ snapshot: sessionSnapshot, turnId });
+      }
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-rehome-overlap",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      metadata: { taskId: "task-a" },
+    });
+    const client = firstNativeClient();
+    let finishA: (() => void) | undefined;
+    client.prompt.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishA = () => {
+            client.emit({
+              jsonrpc: "2.0",
+              id: "prompt-a",
+              sessionId: "protocol-session",
+              result: {
+                stopReason: "end_turn",
+                content: [{ type: "text", text: "task A result" }],
+              },
+            } as AcpJsonRpcMessage);
+            resolve({ stopReason: "end_turn" });
+          };
+        }),
+    );
+
+    const promptA = service.sendPrompt(sessionId, "task A");
+    await vi.waitFor(() => expect(client.prompt).toHaveBeenCalledTimes(1));
+    await service.updateSessionMetadata(sessionId, { taskId: "task-b" });
+    await expect(service.sendPrompt(sessionId, "task B")).rejects.toThrow(
+      /already busy/,
+    );
+    finishA?.();
+    await promptA;
+
+    expect(terminal).toHaveLength(1);
+    expect(terminal[0]?.snapshot?.metadata?.taskId).toBe("task-a");
+    expect(terminal[0]?.turnId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("rejects overlapping CLI prompts without replacing prompt A routing", async () => {
+    const spawnReg = nextProc();
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "cli" }));
+    let terminalSnapshot: SessionInfo | undefined;
+    service.onSessionEvent((_sid, event, _data, sessionSnapshot) => {
+      if (event === "task_complete") terminalSnapshot = sessionSnapshot;
+    });
+    await service.start();
+    const spawning = service.spawnSession({
+      name: "cli-rehome-overlap",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      metadata: { taskId: "task-a" },
+    });
+    await waitForSpawn(spawnReg);
+    closeOk(spawnReg);
+    const { sessionId } = await spawning;
+
+    const promptReg = nextProc();
+    const promptA = service.sendPrompt(sessionId, "task A");
+    await waitForSpawn(promptReg);
+    await service.updateSessionMetadata(sessionId, { taskId: "task-b" });
+    await expect(service.sendPrompt(sessionId, "task B")).rejects.toThrow(
+      /already busy/,
+    );
+    promptReg.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: "prompt-a",
+          sessionId,
+          result: {
+            stopReason: "end_turn",
+            content: [{ type: "text", text: "task A result" }],
+          },
+        })}\n`,
+      ),
+    );
+    closeOk(promptReg);
+    await promptA;
+
+    expect(terminalSnapshot?.metadata?.taskId).toBe("task-a");
+    expect(spawnMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not attach a completed prompt snapshot to later lifecycle events", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    let stoppedSnapshot: SessionInfo | undefined;
+    let stoppedTurnId: string | undefined;
+    service.onSessionEvent((_sid, event, _data, sessionSnapshot, turnId) => {
+      if (event === "stopped") {
+        stoppedSnapshot = sessionSnapshot;
+        stoppedTurnId = turnId;
+      }
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "lifecycle-after-turn",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      metadata: { taskId: "task-a" },
+    });
+
+    await service.sendPrompt(sessionId, "task A");
+    await service.updateSessionMetadata(sessionId, { taskId: "task-b" });
+    await service.closeSession(sessionId);
+
+    expect(stoppedSnapshot).toBeUndefined();
+    expect(stoppedTurnId).toBeUndefined();
+    expect((await service.getSession(sessionId))?.metadata?.taskId).toBe(
+      "task-b",
+    );
   });
 });

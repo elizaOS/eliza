@@ -44,7 +44,7 @@ function SeededProvisioning({
       createPersistedActiveServer({
         kind: "cloud",
         id: `cloud:${SHARED_AGENT_ID}`,
-        apiBase: `https://www.elizacloud.ai/api/v1/eliza/agents/${SHARED_AGENT_ID}`,
+        apiBase: `https://api.eliza.app/api/v1/eliza/agents/${SHARED_AGENT_ID}`,
         accessToken: "story-token",
       }),
     );

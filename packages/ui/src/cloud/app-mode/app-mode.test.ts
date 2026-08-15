@@ -24,6 +24,9 @@ function agent(
 
 describe("isAppModeHostname — hostname matrix", () => {
   const matrix: Array<[string, boolean]> = [
+    ["cloud.eliza.app", true],
+    ["cloud-staging.eliza.app", true],
+    ["CLOUD.ELIZA.APP", true],
     ["app.elizacloud.ai", true],
     ["app-staging.elizacloud.ai", true],
     ["APP.ELIZACLOUD.AI", true],

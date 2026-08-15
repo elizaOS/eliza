@@ -91,7 +91,8 @@ const UNSAFE_OBJECT_FIELD_NAMES = new Set([
   "valueOf",
 ]);
 
-export const FORM_RE = /\[FORM\]\n([\s\S]*?)\n\[\/FORM\]/g;
+export const FORM_RE =
+  /\[[ \t]*FORM[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*FORM[ \t]*\]/g;
 
 export function generateFormId(): string {
   if (

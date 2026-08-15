@@ -3,13 +3,16 @@
  * It exposes the `PTY_SERVICE` console bridge that the agent server's WebSocket layer uses for output, keystrokes, resize events, and session lifecycle.
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   PtyConsoleBridge,
   PtySessionStore,
   type PtySpawnResolver,
 } from "./pty-session-store";
 import type { PtySessionInfo, PtySpawnSpec } from "./pty-types";
+
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const PTY_IDLE_TIMEOUT_SETTING = "PTY_IDLE_TIMEOUT_MS";
 
 function resolveAllowedRoot(runtime?: IAgentRuntime): string {
   const fromSetting = runtime?.getSetting?.("PTY_ALLOWED_DIRECTORY");
@@ -20,14 +23,51 @@ function resolveAllowedRoot(runtime?: IAgentRuntime): string {
   return raw;
 }
 
-function resolveIdleTimeoutMs(runtime?: IAgentRuntime): number | undefined {
-  const fromSetting = runtime?.getSetting?.("PTY_IDLE_TIMEOUT_MS");
-  const raw =
-    (typeof fromSetting === "string" && fromSetting.trim()) ||
-    process.env.PTY_IDLE_TIMEOUT_MS?.trim();
-  if (!raw) return undefined;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : undefined;
+/**
+ * Resolve the operator-configured idle-reap timeout, preferring the runtime
+ * setting over the process environment. Exported so tests can pin the resolved
+ * value, not just the accept/reject outcome.
+ */
+export function resolveIdleTimeoutMs(
+  runtime?: IAgentRuntime,
+): number | undefined {
+  const fromSetting = runtime?.getSetting?.(PTY_IDLE_TIMEOUT_SETTING);
+  const normalizedSetting =
+    typeof fromSetting === "string" ? fromSetting.trim() : fromSetting;
+  const usesRuntimeSetting =
+    normalizedSetting != null && normalizedSetting !== "";
+  const configured = usesRuntimeSetting
+    ? normalizedSetting
+    : process.env[PTY_IDLE_TIMEOUT_SETTING]?.trim();
+  if (configured == null || configured === "") return undefined;
+
+  const parsed =
+    typeof configured === "number"
+      ? configured
+      : typeof configured === "string" && /^\d+$/.test(configured)
+        ? Number(configured)
+        : Number.NaN;
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 0 ||
+    parsed > MAX_TIMER_DELAY_MS
+  ) {
+    throw new ElizaError(
+      `${PTY_IDLE_TIMEOUT_SETTING} must be an integer from 0 to ${MAX_TIMER_DELAY_MS}`,
+      {
+        code: "PTY_IDLE_TIMEOUT_INVALID",
+        context: {
+          setting: PTY_IDLE_TIMEOUT_SETTING,
+          source: usesRuntimeSetting ? "runtime" : "environment",
+          configured,
+          minimum: 0,
+          maximum: MAX_TIMER_DELAY_MS,
+        },
+        severity: "fatal",
+      },
+    );
+  }
+  return parsed;
 }
 
 export class PtyService extends Service {

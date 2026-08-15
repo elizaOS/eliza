@@ -280,10 +280,10 @@ describe("resolveCloudSignInPageUrl", () => {
   it("maps API and www bases to the apex login page elsewhere", () => {
     stubHostname("localhost", "http:");
     expect(resolveCloudSignInPageUrl("https://api.elizacloud.ai")).toBe(
-      "https://elizacloud.ai/login",
+      "https://eliza.app/login",
     );
     expect(resolveCloudSignInPageUrl("https://www.elizacloud.ai")).toBe(
-      "https://elizacloud.ai/login",
+      "https://eliza.app/login",
     );
   });
 

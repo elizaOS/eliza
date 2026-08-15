@@ -1,9 +1,8 @@
 /** Verifies the development Vite subprocess uses the direct TypeScript config loader. */
 
-import assert from "node:assert/strict";
 import path from "node:path";
-import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { expect, test } from "vitest";
 import { resolveViteCommand } from "./dev-ui-vite.mjs";
 
 const appDir = path.resolve(
@@ -11,15 +10,19 @@ const appDir = path.resolve(
   "../../../app",
 );
 
-test("resolveViteCommand skips Vite's redundant config bundling", () => {
+test("resolveViteCommand uses workspace source while skipping config bundling", () => {
   const resolved = resolveViteCommand({
     appDir,
     nodePath: "/test/node",
     port: 2138,
   });
 
-  assert.equal(resolved.command, "/test/node");
-  assert.deepEqual(resolved.args.slice(-4), [
+  expect(resolved.command).toBe("/test/node");
+  expect(resolved.args).toEqual([
+    "--conditions=eliza-source",
+    "--import",
+    "tsx",
+    path.join(appDir, "node_modules", "vite", "bin", "vite.js"),
     "--configLoader",
     "native",
     "--port",

@@ -16,7 +16,7 @@ const RUNTIMES: AgentProfile[] = [
     label: "Cloud agent",
     kind: "cloud",
     cloudAgentId: "agt_abc123",
-    apiBase: "https://agt_abc123.agent.elizacloud.ai",
+    apiBase: "https://agt_abc123.cloud.eliza.app",
     createdAt: "2026-06-02T00:00:00.000Z",
   },
   {

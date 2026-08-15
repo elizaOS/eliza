@@ -55,12 +55,19 @@ function fakeClient() {
   const createCloudCompatAgent = vi.fn();
   const getCloudCompatAgent = vi.fn();
   const resumeCloudCompatAgent = vi.fn(async () => ({ success: true }));
+  // Fresh creates that answer with a jobId now follow the job to terminal;
+  // default it to an already-completed job so reuse-focused cases pass through.
+  const getCloudCompatJobStatus = vi.fn(async (jobId: string) => ({
+    success: true,
+    data: { jobId, id: jobId, status: "completed", state: "completed" },
+  }));
   const client = Object.create(ElizaClient.prototype) as ElizaClient;
   Object.assign(client, {
     getCloudCompatAgents,
     createCloudCompatAgent,
     getCloudCompatAgent,
     resumeCloudCompatAgent,
+    getCloudCompatJobStatus,
   });
   return {
     client,
@@ -68,6 +75,7 @@ function fakeClient() {
     createCloudCompatAgent,
     getCloudCompatAgent,
     resumeCloudCompatAgent,
+    getCloudCompatJobStatus,
   };
 }
 
@@ -206,7 +214,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
 
     expect(result.created).toBe(false);
     expect(result.agentId).toBe("agent-no-urls");
-    expect(result.apiBase).toBe("https://agent-no-urls.elizacloud.ai");
+    expect(result.apiBase).toBe("https://agent-no-urls.cloud.eliza.app");
     expect(result.apiBase).not.toContain("/api/v1/eliza/agents/");
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
@@ -234,7 +242,9 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     });
 
     expect(result.created).toBe(false);
-    expect(result.apiBase).toBe("https://agent-staging.staging.elizacloud.ai");
+    expect(result.apiBase).toBe(
+      "https://agent-staging.cloud-staging.eliza.app",
+    );
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
 
@@ -264,7 +274,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.created).toBe(false);
     expect(result.executionTier).toBe("shared");
     expect(result.apiBase).toBe(
-      "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-shared",
+      "https://api-staging.eliza.app/api/v1/eliza/agents/agent-shared",
     );
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
@@ -291,6 +301,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     });
     createCloudCompatAgent.mockResolvedValue({
       success: true,
+      created: true,
       data: {
         agentId: "dedicated-target",
         agentName: "Eliza",
@@ -435,6 +446,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     });
     createCloudCompatAgent.mockResolvedValue({
       success: true,
+      created: true,
       data: {
         agentId: "agent-replacement",
         agentName: "Eliza",
@@ -525,6 +537,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       fakeClient();
     createCloudCompatAgent.mockResolvedValue({
       success: true,
+      created: true,
       data: {
         agentId: "agent-forced-new",
         agentName: "Demo Fresh",
@@ -562,11 +575,50 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.agentId).toBe("agent-forced-new");
   });
 
-  it("reports created:false when the backend reused an existing agent despite forceCreate (org at per-org cap #11023) so the UI cannot claim a fresh agent (#14487)", async () => {
-    const { client, createCloudCompatAgent } = fakeClient();
-    // Backend hit the per-org cap: the reuse guard handed back the existing
-    // agent and the create route returned 200 `created: false`. The client
-    // must propagate that, not hardcode `created: true`.
+  it("returns the exact create identity when cancellation arrives after acceptance", async () => {
+    const controller = new AbortController();
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+    createCloudCompatAgent.mockImplementation(async () => {
+      controller.abort(new DOMException("signed out", "AbortError"));
+      return {
+        success: true,
+        created: true,
+        data: {
+          agentId: "agent-cancelled",
+          agentName: "Authoritative Eliza",
+          jobId: "provision-job",
+          status: "provisioning",
+          nodeId: null,
+          message: "accepted",
+          createdAt: "2026-08-14T12:00:00.000Z",
+          executionTier: "dedicated-always" as const,
+        },
+      };
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      signal: controller.signal,
+    });
+
+    expect(result).toMatchObject({
+      agentId: "agent-cancelled",
+      created: true,
+      cleanupReceipt: {
+        deleteCondition: {
+          expectedAgentName: "Authoritative Eliza",
+          expectedCreatedAt: "2026-08-14T12:00:00.000Z",
+          expectedExecutionTier: "dedicated-always",
+        },
+      },
+    });
+  });
+
+  it("rejects an existing-agent response to forceCreate without binding or inspecting that agent", async () => {
+    const { client, createCloudCompatAgent, getCloudCompatAgent } =
+      fakeClient();
     createCloudCompatAgent.mockResolvedValue({
       success: true,
       created: false,
@@ -579,30 +631,21 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
         message: "Agent created",
       },
     });
-    (client.getCloudCompatAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
-      success: true,
-      data: makeAgent({
-        agent_id: "agent-existing",
-        agent_name: "Launch Verify Dedicated",
-        status: "running",
-        web_ui_url: "https://agent-existing.example.test",
-        webUiUrl: "https://agent-existing.example.test",
+
+    await expect(
+      client.selectOrProvisionCloudAgent({
+        ...BASE_OPTS,
+        name: "Demo Fresh",
+        forceCreate: true,
       }),
-    });
+    ).rejects.toThrow("did not confirm that a new agent was created");
 
-    const result = await client.selectOrProvisionCloudAgent({
-      ...BASE_OPTS,
-      name: "Demo Fresh",
-      forceCreate: true,
-    });
-
-    expect(result.created).toBe(false);
-    expect(result.agentId).toBe("agent-existing");
+    expect(getCloudCompatAgent).not.toHaveBeenCalled();
   });
 
-  it("keeps created:true when the create response omits the flag (older worker / non-direct path) so the pre-existing UX is unchanged", async () => {
-    const { client, createCloudCompatAgent } = fakeClient();
-    // No `created` field at all — the client must not demote a normal create.
+  it("rejects an ambiguous force-create response that omits the freshness flag", async () => {
+    const { client, createCloudCompatAgent, getCloudCompatAgent } =
+      fakeClient();
     createCloudCompatAgent.mockResolvedValue({
       success: true,
       data: {
@@ -614,24 +657,15 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
         message: "",
       },
     });
-    (client.getCloudCompatAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
-      success: true,
-      data: makeAgent({
-        agent_id: "agent-legacy",
-        status: "provisioning",
-        web_ui_url: "https://agent-legacy.example.test",
-        webUiUrl: "https://agent-legacy.example.test",
+    await expect(
+      client.selectOrProvisionCloudAgent({
+        ...BASE_OPTS,
+        name: "Eliza",
+        forceCreate: true,
       }),
-    });
+    ).rejects.toThrow("did not confirm that a new agent was created");
 
-    const result = await client.selectOrProvisionCloudAgent({
-      ...BASE_OPTS,
-      name: "Eliza",
-      forceCreate: true,
-    });
-
-    expect(result.created).toBe(true);
-    expect(result.agentId).toBe("agent-legacy");
+    expect(getCloudCompatAgent).not.toHaveBeenCalled();
   });
 
   // Default first-run: a freshly-created dedicated agent whose container is

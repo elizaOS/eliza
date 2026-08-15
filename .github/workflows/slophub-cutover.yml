@@ -1,0 +1,198 @@
+# The SlopHub cutover is two fixed mutations behind one reviewed-plan boundary.
+# A plan reads production state and publishes an attempt-scoped artifact. Apply
+# accepts only that exact successful artifact, executes its source SHA, rechecks
+# drift, and leaves GitHub's protected production approval in front of secrets.
+name: SlopHub Cutover
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Plan or apply the fixed SlopHub cutover
+        required: true
+        default: plan
+        type: choice
+        options: [plan, apply]
+      plan_run_id:
+        description: Successful SlopHub Cutover plan run id required for apply
+        required: false
+        type: string
+      plan_run_attempt:
+        description: Exact attempt that produced the reviewed plan
+        required: false
+        type: string
+      plan_artifact_id:
+        description: Exact GitHub artifact id shown by the plan run
+        required: false
+        type: string
+      plan_artifact_digest:
+        description: Exact sha256 artifact digest shown by the plan run
+        required: false
+        type: string
+
+concurrency:
+  group: slophub-production-cutover
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  validate-source:
+    name: Validate canonical source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require production main
+        shell: bash
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$SOURCE_REF" != "refs/heads/main" ]; then
+            echo "::error::SlopHub production cutover must run from refs/heads/main"
+            exit 1
+          fi
+
+  cutover:
+    name: ${{ inputs.operation }} SlopHub production cutover
+    needs: validate-source
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - name: Validate reviewed plan run
+        if: inputs.operation == 'apply'
+        id: reviewed-run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+          PLAN_RUN_ATTEMPT: ${{ inputs.plan_run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::apply requires a numeric plan_run_id"; exit 1; }
+          [[ "$PLAN_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || { echo "::error::apply requires a numeric plan_run_attempt"; exit 1; }
+          run_json=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PLAN_RUN_ID")
+          RUN_JSON="$run_json" EXPECTED_ATTEMPT="$PLAN_RUN_ATTEMPT" node - <<'NODE'
+          const run = JSON.parse(process.env.RUN_JSON);
+          const failures = [];
+          if (run.name !== "SlopHub Cutover") failures.push("workflow name");
+          if (run.path !== ".github/workflows/slophub-cutover.yml") failures.push("workflow path");
+          if (run.event !== "workflow_dispatch") failures.push("event");
+          if (run.status !== "completed" || run.conclusion !== "success") failures.push("successful conclusion");
+          if (run.head_branch !== "main") failures.push("canonical source branch");
+          if (String(run.run_attempt) !== process.env.EXPECTED_ATTEMPT) failures.push("run attempt");
+          if (failures.length > 0) {
+            console.error(`::error::Reviewed SlopHub plan run failed verification: ${failures.join(", ")}`);
+            process.exit(1);
+          }
+          console.log("Reviewed plan run identity verified; plan contents remain unprinted.");
+          NODE
+          source_sha=$(printf '%s' "$run_json" | jq -r '.head_sha')
+          [[ "$source_sha" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Reviewed plan source SHA is invalid"; exit 1; }
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve reviewed plan artifact
+        if: inputs.operation == 'apply'
+        shell: bash
+        env:
+          EXPECTED_ARTIFACT_ID: ${{ inputs.plan_artifact_id }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ inputs.plan_artifact_digest }}
+          EXPECTED_RUN_ID: ${{ inputs.plan_run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ inputs.plan_run_attempt }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::apply requires a numeric plan_artifact_id"; exit 1; }
+          [[ "$EXPECTED_ARTIFACT_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "::error::apply requires the exact sha256 artifact digest"; exit 1; }
+          artifact_json=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$EXPECTED_ARTIFACT_ID")
+          ARTIFACT_JSON="$artifact_json" node - <<'NODE'
+          const artifact = JSON.parse(process.env.ARTIFACT_JSON);
+          const expectedName = `slophub-cutover-plan-${process.env.EXPECTED_RUN_ID}-${process.env.EXPECTED_RUN_ATTEMPT}`;
+          const failures = [];
+          if (String(artifact.id) !== process.env.EXPECTED_ARTIFACT_ID) failures.push("artifact id");
+          if (artifact.name !== expectedName) failures.push("attempt-scoped artifact name");
+          if (artifact.digest !== process.env.EXPECTED_ARTIFACT_DIGEST) failures.push("GitHub artifact digest");
+          if (artifact.expired !== false) failures.push("unexpired artifact");
+          if (String(artifact.workflow_run?.id) !== process.env.EXPECTED_RUN_ID) failures.push("workflow run id");
+          if (failures.length > 0) {
+            console.error(`::error::Reviewed SlopHub artifact failed verification: ${failures.join(", ")}`);
+            process.exit(1);
+          }
+          console.log("Reviewed artifact identity and service digest verified.");
+          NODE
+
+      - name: Download reviewed plan artifact
+        if: inputs.operation == 'apply'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          artifact-ids: ${{ inputs.plan_artifact_id }}
+          path: ${{ runner.temp }}/reviewed-slophub-plan
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.plan_run_id }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.operation == 'apply' && steps.reviewed-run.outputs.source_sha || github.sha }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+
+      - name: Plan fixed cutover
+        if: inputs.operation == 'plan'
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          SLOPHUB_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$RUNNER_TEMP/slophub-plan"
+          bun packages/cloud/scripts/admin/slophub-cutover.ts plan \
+            --output "$RUNNER_TEMP/slophub-plan/plan.json"
+
+      - name: Upload reviewed plan artifact
+        if: inputs.operation == 'plan'
+        id: upload-plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: slophub-cutover-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/slophub-plan/plan.json
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Summarize reviewed plan identity
+        if: inputs.operation == 'plan' && success()
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.upload-plan.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload-plan.outputs.artifact-digest }}
+        run: |
+          {
+            echo "### SlopHub production cutover plan"
+            echo "- Run id: $GITHUB_RUN_ID"
+            echo "- Run attempt: $GITHUB_RUN_ATTEMPT"
+            echo "- Artifact id: $ARTIFACT_ID"
+            echo "- Artifact digest: sha256:$ARTIFACT_DIGEST"
+            echo ""
+            echo "Review the plan job and supply all four exact values to apply."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply reviewed cutover
+        if: inputs.operation == 'apply'
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          SLOPHUB_SOURCE_SHA: ${{ steps.reviewed-run.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          plan="$RUNNER_TEMP/reviewed-slophub-plan/plan.json"
+          [ -f "$plan" ] || { echo "::error::Reviewed artifact has no plan.json"; exit 1; }
+          bun packages/cloud/scripts/admin/slophub-cutover.ts apply --plan "$plan"

@@ -42,7 +42,7 @@ jobs:
       - uses: ./.github/actions/cloud-setup-test-env
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Run monetization lifecycle
         run: >-

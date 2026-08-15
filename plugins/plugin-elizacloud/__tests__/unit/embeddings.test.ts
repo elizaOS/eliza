@@ -185,6 +185,82 @@ describe("handleBatchTextEmbedding no-marker-on-failure", () => {
   });
 });
 
+describe("handleBatchTextEmbedding cold-gateway warming retry (#18103)", () => {
+  // The structural warming 503 body the gateway emits while auth/billing
+  // caches hydrate (#17875's shape) — the class that dropped one-shot seeds.
+  function warmingResponse(): Response {
+    return new Response(
+      JSON.stringify({
+        error: {
+          message: "Authorization cache is warming. Retry shortly.",
+          type: "service_unavailable",
+          code: "auth_cache_warming",
+        },
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  it("retries through the warming window and returns real vectors (seed survives a cold cache)", async () => {
+    vi.useFakeTimers();
+    try {
+      // Three warming 503s exceed the ordinary 2-attempt transient budget —
+      // proving the warming schedule is its own budget — then success.
+      requestRaw
+        .mockResolvedValueOnce(warmingResponse())
+        .mockResolvedValueOnce(warmingResponse())
+        .mockResolvedValueOnce(warmingResponse())
+        .mockResolvedValueOnce(embeddingResponse([vec(0.7)]));
+      const promise = handleBatchTextEmbedding(makeRuntime(), ["a"]);
+      await vi.runAllTimersAsync();
+      expect(await promise).toEqual([vec(0.7)]);
+      expect(requestRaw).toHaveBeenCalledTimes(4);
+      expect(emitModelUsageEvent).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still fails closed when the gateway keeps warming past the bounded budget", async () => {
+    vi.useFakeTimers();
+    try {
+      // Warming budget (4 retries) + transient budget (1 retry) all warming →
+      // terminal 503 throw, never a marker vector.
+      requestRaw.mockImplementation(async () => warmingResponse());
+      const promise = handleBatchTextEmbedding(makeRuntime(), ["a"]);
+      const assertion = expect(promise).rejects.toThrow(/API error: 503/);
+      await vi.runAllTimersAsync();
+      await assertion;
+      // 1 initial + 4 warming retries + 1 transient retry = 6 total attempts.
+      expect(requestRaw).toHaveBeenCalledTimes(6);
+      expect(emitModelUsageEvent).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a NON-warming 503 on the small transient budget (dead gateway fails promptly)", async () => {
+    vi.useFakeTimers();
+    try {
+      const dead = () =>
+        new Response(JSON.stringify({ error: { code: "upstream_error" } }), {
+          status: 503,
+          statusText: "Unavailable",
+          headers: { "Content-Type": "application/json" },
+        });
+      requestRaw.mockImplementation(async () => dead());
+      const promise = handleBatchTextEmbedding(makeRuntime(), ["a"]);
+      const assertion = expect(promise).rejects.toThrow(/API error: 503/);
+      await vi.runAllTimersAsync();
+      await assertion;
+      // No warming budget consumed: 1 initial + 1 transient retry only.
+      expect(requestRaw).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("embeddingBackoffMs cap + escalation", () => {
   afterEach(() => vi.restoreAllMocks());
 

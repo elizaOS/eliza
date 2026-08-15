@@ -13,7 +13,7 @@ Every cloud-SDK call routed through a monetized app generates two ledger rows:
 1. The user pays the base inference cost (debited from their org's credits)
 2. The markup % goes into the app-owner's `redeemable_earnings_ledger`
 
-The dashboard view at `https://www.elizacloud.ai/dashboard/earnings` shows the running totals.
+The Cloud view at `https://cloud.eliza.app/cloud/monetization` shows the running totals.
 
 ## Container billing
 

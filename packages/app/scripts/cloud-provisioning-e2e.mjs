@@ -9,7 +9,7 @@
 //
 // Usage:
 //   ELIZA_CLOUD_AUTH_TOKEN=... node scripts/cloud-provisioning-e2e.mjs
-//   [--cloud-api-base https://api.elizacloud.ai] [--agent-id <id>] [--fresh-agent]
+//   [--cloud-api-base https://api.eliza.app] [--agent-id <id>] [--fresh-agent]
 //   [--timeout-ms 600000] [--report <path>] [--print-runtime-url]
 import fs from "node:fs";
 
@@ -27,7 +27,7 @@ const token =
 const cloudApiBase = (
   arg("--cloud-api-base") ??
   process.env.ELIZA_CLOUD_API_BASE ??
-  "https://api.elizacloud.ai"
+  "https://api.eliza.app"
 ).replace(/\/+$/, "");
 const agentIdArg = arg("--agent-id") ?? process.env.ELIZA_CLOUD_AGENT_ID;
 const agentName =

@@ -144,7 +144,7 @@ if (status.status === "error") {
   // status.error carries the deploy failure reason — surface it to the human.
   throw new Error(`deploy failed: ${status.error}`);
 }
-const appUrl = status.vercelUrl; // the deployed URL (else the app's *.apps.elizacloud.ai subdomain)
+const appUrl = status.vercelUrl; // the deployed URL (else the app's *.apps.eliza.app subdomain)
 ```
 
 > **The deploy is GATED.** `cloud.deployApp` (`POST /api/v1/apps/:id/deploy`)
@@ -183,7 +183,7 @@ await cloud.updateApp(appId, {
 ```
 
 `appUrl` is the deployed URL from step 3 (`getAppDeployStatus().vercelUrl`, else
-the app's auto-assigned `*.apps.elizacloud.ai` subdomain). Without this, the
+the app's auto-assigned `*.apps.eliza.app` subdomain). Without this, the
 OAuth redirect flow can't return users to your app, and CORS rejects browser
 calls from the deployed origin.
 
@@ -192,11 +192,11 @@ calls from the deployed origin.
 Print the audit trail so the owner can verify + cash out:
 
 ```
-✓ App:        https://www.elizacloud.ai/dashboard/apps/<APP_ID>
-✓ Live URL:   <appUrl from getAppDeployStatus().vercelUrl, else *.apps.elizacloud.ai>
+✓ App:        https://cloud.eliza.app/cloud/apps/<APP_ID>
+✓ Live URL:   <appUrl from getAppDeployStatus().vercelUrl, else *.apps.eliza.app>
 ✓ Markup:     100%
 ✓ Survival:   earnings auto-fund hosting; agent stays alive while profitable
-→ Cashout:    https://www.elizacloud.ai/dashboard/earnings (Redeem for elizaOS)
+→ Cashout:    https://cloud.eliza.app/cloud/monetization (Redeem for elizaOS)
 ```
 
 Done. The earnings loop is now active. Subsequent user activity on the app credits the owner's `redeemable_earnings_ledger`, the daily container-billing cron pulls those earnings before touching credits, and the agent stays online as long as the app is profitable.

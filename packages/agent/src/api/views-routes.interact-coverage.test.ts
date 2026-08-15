@@ -10,6 +10,7 @@ import type http from "node:http";
 import { Readable } from "node:stream";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { viewActionAffinityMap } from "../runtime/view-action-affinity.ts";
 import {
   registerBuiltinViews,
@@ -42,6 +43,11 @@ import {
 const REFERENCE_PLUGIN = "@test/views-manager-reference";
 const DECLARED_PLUGIN = "@test/views-declared-caps";
 const SURFACE_PLUGIN = "@test/views-surface-grants";
+const PRIVATE_PLUGIN = "@test/views-owner-private";
+const privateServerInteract = vi.fn(async (capability: string) => ({
+  success: true,
+  capability,
+}));
 
 /**
  * A deterministic, self-contained stand-in for the plugin-app-control
@@ -84,6 +90,7 @@ function makeCtx(
   pathname: string,
   body: Record<string, unknown> | null,
   runtime?: IAgentRuntime,
+  callerAuthorization?: AgentHttpRequestAuthorization,
 ): {
   ctx: ViewsRouteContext;
   json: ReturnType<typeof vi.fn>;
@@ -107,6 +114,7 @@ function makeCtx(
     error,
     broadcastWs,
     runtime,
+    callerAuthorization,
   };
   return { ctx, json, error, broadcastWs };
 }
@@ -147,6 +155,26 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
               },
             ],
             serverInteract: referenceServerInteract,
+          },
+        ],
+      },
+      process.cwd(),
+    );
+
+    await registerPluginViews(
+      {
+        name: PRIVATE_PLUGIN,
+        description: "Synthetic owner-private view.",
+        views: [
+          {
+            id: "owner-private",
+            label: "Owner Private",
+            roleGate: { minRole: "OWNER" },
+            capabilities: [
+              { id: "read-private", description: "Read private state." },
+              { id: "write-private", description: "Mutate private state." },
+            ],
+            serverInteract: privateServerInteract,
           },
         ],
       },
@@ -214,6 +242,8 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
     unregisterPluginViews(REFERENCE_PLUGIN);
     unregisterPluginViews(DECLARED_PLUGIN);
     unregisterPluginViews(SURFACE_PLUGIN);
+    unregisterPluginViews(PRIVATE_PLUGIN);
+    privateServerInteract.mockClear();
     vi.restoreAllMocks();
   });
 
@@ -341,6 +371,50 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
       capability: "do-thing",
     });
   });
+
+  it.each(["read-private", "write-private"])(
+    "denies USER authority before dispatching %s on an owner-private view",
+    async (capability) => {
+      const { ctx, json, error } = makeCtx(
+        "POST",
+        "/api/views/owner-private/interact",
+        { capability },
+        undefined,
+        { ok: true, role: "USER" },
+      );
+
+      await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+      expect(json).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledWith(
+        ctx.res,
+        'View "owner-private" is not available to this caller',
+        403,
+      );
+      expect(privateServerInteract).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["read-private", "write-private"])(
+    "allows OWNER authority to dispatch %s on an owner-private view",
+    async (capability) => {
+      const { ctx, json, error } = makeCtx(
+        "POST",
+        "/api/views/owner-private/interact",
+        { capability },
+        undefined,
+        { ok: true, role: "OWNER" },
+      );
+
+      await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+      expect(error).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledTimes(1);
+      expect(privateServerInteract).toHaveBeenCalledWith(
+        capability,
+        undefined,
+        expect.objectContaining({ runtime: undefined }),
+      );
+    },
+  );
 
   it("accepts a standard capability even when the view declares its own allowlist", async () => {
     // get-state is a STANDARD capability accepted on any view, so it bypasses

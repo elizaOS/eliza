@@ -11,7 +11,12 @@ import path from "node:path";
 import test from "node:test";
 import { spawnSync } from "./lib/spawn-sync-captured.mjs";
 
-test("parallel script suites run in isolated worker processes", () => {
+// The four spawned suites do real subprocess work with a 20s exec budget; the
+// runner's 5s default test timeout undercut that on a loaded CI host (10.9s
+// observed on the scenario-runner lane).
+test("parallel script suites run in isolated worker processes", {
+  timeout: 60_000,
+}, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "script-test-isolation-"));
   try {
     fs.mkdirSync(path.join(root, "changed-cwd"));

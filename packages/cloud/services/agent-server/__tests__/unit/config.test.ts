@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   ensureServerName,
   getAdvertisedServerUrl,
+  getAgentCapacity,
   getAutoStartAgentConfig,
   normalizeServerName,
 } from "../../src/config";
@@ -42,6 +43,32 @@ describe("ensureServerName", () => {
 
     expect(ensureServerName(env)).toBe("8baf830a-2dc3-465d-b7ed-725fae3eaa56");
     expect(env.SERVER_NAME).toBe("8baf830a-2dc3-465d-b7ed-725fae3eaa56");
+  });
+});
+
+describe("getAgentCapacity", () => {
+  test.each(["1", "16", "200"])("accepts canonical capacity %s", (value) => {
+    expect(getAgentCapacity({ CAPACITY: value })).toBe(Number(value));
+  });
+
+  test.each([
+    undefined,
+    "",
+    "0",
+    "201",
+    "01",
+    "+1",
+    "-1",
+    "1.0",
+    "1e2",
+    " 1",
+    "1 ",
+    "Infinity",
+    "NaN",
+    "١",
+    "9007199254740993",
+  ])("rejects non-canonical or out-of-range capacity %p", (value) => {
+    expect(() => getAgentCapacity({ CAPACITY: value })).toThrow(/CAPACITY/);
   });
 });
 

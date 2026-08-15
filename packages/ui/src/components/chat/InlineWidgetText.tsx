@@ -4,6 +4,7 @@
  * affordances stay consistent with the full chat view.
  */
 
+import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
 import type { ReactNode } from "react";
 import { useAppSelectorShallow } from "../../state";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
@@ -39,7 +40,10 @@ export function InlineWidgetText({ content }: { content: string }): ReactNode {
   // non-analysis mode — hidden reasoning/tool tags are stripped, not leaked.
   // Incremental prefix-cached parse so a streaming overlay bubble re-parses only
   // its changed tail (#15280); byte-identical to parseSegments.
-  const segments = useParsedSegments(content, false);
+  const segments = useParsedSegments(
+    stripUnclaimedInteractionMarkup(content),
+    false,
+  );
 
   // Fast path: a single plain-text segment (most replies) renders as-is.
   if (segments.length === 1 && segments[0].kind === "text") {

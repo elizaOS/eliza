@@ -1,24 +1,23 @@
 /**
- * GET /pair - cloud pairing-token relay for hosted standalone agents.
- *
- * Some cloud agents boot the agent server without the app-core host bridge.
- * They still must own /pair before the static SPA fallback, otherwise the
- * browser lands on /pair?token=... as a normal app route and the one-time
- * token is never exchanged for the agent-local API key.
+ * Loopback-only `/pair` relay for standalone agent servers.
+ * Remote managed pairing terminates at the Cloud edge; explicit local Docker
+ * retains this handler so the one-time token resolves before the SPA fallback.
  */
 
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import {
+  type CloudPairRelaySession,
+  parseCloudPairRelaySession,
+  renderCloudPairHandoffHtml,
+  resolveCloudPairAgentIdFromEnv,
+} from "@elizaos/shared/contracts";
+import { isLoopbackBindHost } from "@elizaos/shared/runtime-env";
+import { resolveRequestOrigin } from "./request-origin.js";
 
 const RELAY_TIMEOUT_MS = 15_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 20;
-
-interface PairResponse {
-  apiKey?: string | null;
-  agentName?: string;
-  error?: string;
-}
 
 interface RateBucket {
   count: number;
@@ -51,7 +50,7 @@ function resolveCloudApiBaseUrl(): string {
   const raw =
     process.env.ELIZAOS_CLOUD_BASE_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "https://api.elizacloud.ai/api/v1";
+    "https://api.eliza.app/api/v1";
   return raw.replace(/\/+$/, "");
 }
 
@@ -59,80 +58,79 @@ function resolveCloudAuthRoot(): string {
   return resolveCloudApiBaseUrl().replace(/\/api\/v1\/?$/, "");
 }
 
-function resolveRequestOrigin(req: http.IncomingMessage): string {
-  const proto =
-    (req.headers["x-forwarded-proto"] as string | undefined) ||
-    (req.socket && "encrypted" in req.socket && req.socket.encrypted
-      ? "https"
-      : "http");
-  const host =
-    (req.headers["x-forwarded-host"] as string | undefined) || req.headers.host;
-  return host ? `${proto}://${host}` : "";
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    return isLoopbackBindHost(new URL(origin).hostname);
+  } catch {
+    // error-policy:J3 malformed request origins are never trusted as loopback.
+    return false;
+  }
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[<>&]/g, (c) =>
-    c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&amp;",
+function canUseManagedDirectRelay(req: http.IncomingMessage): boolean {
+  return (
+    process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY === "1" &&
+    isLoopbackOrigin(resolveRequestOrigin(req))
   );
 }
 
-function renderRedirectHtml(apiKey: string): string {
-  const safeKey = JSON.stringify(apiKey).replace(/</g, "\\u003c");
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="referrer" content="no-referrer">
-  <title>Signing in...</title>
-  <style>
-    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0a0a;color:#e5e5e5}
-    p{margin:0;font-size:.9rem;opacity:.8}
-  </style>
-</head>
-<body>
-  <p>Signing in to your agent...</p>
-  <script>
-    (function () {
-      try {
-        var key = ${safeKey};
-        function persist(storage) {
-          try {
-            storage.setItem("eliza:cloud-pair:api-token", key);
-            return true;
-          } catch (_storageError) {
-            return false;
-          }
-        }
-        var storedInSession = persist(window.sessionStorage);
-        var storedDurably = persist(window.localStorage);
-        if (!(storedInSession || storedDurably)) {
-          throw new Error("No browser storage accepted the paired token.");
-        }
-        var slot = Symbol.for("elizaos.app.boot-config");
-        var previous = window.__ELIZAOS_APP_BOOT_CONFIG__ ||
-          window.__ELIZA_APP_BOOT_CONFIG__ ||
-          (window[slot] && window[slot].current) ||
-          {};
-        var next = Object.assign({}, previous, { apiToken: key });
-        window.__ELIZAOS_APP_BOOT_CONFIG__ = next;
-        window.__ELIZA_APP_BOOT_CONFIG__ = next;
-        window[slot] = { current: next };
-      } catch (e) {
-        console.error("[cloud-pair] failed to persist the paired token", e);
-        var p = document.querySelector("p");
-        if (p) p.textContent = "Pairing failed. Close this window and try signing in again.";
-        return;
-      }
-      window.location.replace("/");
-    })();
-  </script>
-</body>
-</html>`;
+function escapeHtml(value: string): string {
+  return value.replace(/[<>&"]/g, (c) =>
+    c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === "&" ? "&amp;" : "&quot;",
+  );
 }
 
-function renderErrorHtml(title: string, message: string): string {
+/**
+ * Canonical staging hostnames — mirrors `STAGING_CONSOLE_HOSTS` in
+ * `packages/ui/src/utils/cloud-agent-base.ts` plus the wildcard subdomain.
+ * Kept local (not imported) to preserve the agent→UI dependency boundary.
+ * Update both if the canonical staging host set changes.
+ */
+const STAGING_CLOUD_HOSTS: ReadonlySet<string> = new Set([
+  "staging.eliza.app",
+  "api-staging.eliza.app",
+  "cloud-staging.eliza.app",
+  "staging.elizacloud.ai",
+  "api-staging.elizacloud.ai",
+  "app-staging.elizacloud.ai",
+]);
+
+function isStagingCloudHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    STAGING_CLOUD_HOSTS.has(host) ||
+    host.endsWith(".cloud-staging.eliza.app") ||
+    host.endsWith(".staging.elizacloud.ai")
+  );
+}
+
+/**
+ * Resolve the Eliza Cloud console dashboard URL for the environment the agent
+ * is provisioned against. A staging agent (any canonical staging alias or
+ * wildcard subdomain) gets the staging console; everything else gets the
+ * production console. This prevents staging users from being bounced to a
+ * production dashboard where their account/org/agent does not exist.
+ */
+function resolveCloudConsoleUrl(): string {
+  try {
+    const hostname = new URL(resolveCloudAuthRoot()).hostname.toLowerCase();
+    if (isStagingCloudHostname(hostname)) {
+      return "https://cloud-staging.eliza.app/cloud/agents";
+    }
+  } catch {
+    // error-policy:J3 malformed auth root yields the production default.
+  }
+  return "https://cloud.eliza.app/cloud/agents";
+}
+
+function renderErrorHtml(
+  title: string,
+  message: string,
+  recoveryUrl?: string,
+): string {
   const safeTitle = escapeHtml(title);
   const safeMessage = escapeHtml(message);
+  const safeHref = escapeHtml(recoveryUrl ?? resolveCloudConsoleUrl());
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -152,7 +150,7 @@ function renderErrorHtml(title: string, message: string): string {
   <div class="card">
     <h1>${safeTitle}</h1>
     <p>${safeMessage}</p>
-    <a href="https://www.elizacloud.ai/dashboard/agents" target="_top" rel="noopener">Back to Eliza Cloud</a>
+    <a href="${safeHref}" target="_top" rel="noopener">Back to Eliza Cloud</a>
   </div>
 </body>
 </html>`;
@@ -162,10 +160,15 @@ function sendHtml(
   res: http.ServerResponse,
   status: number,
   body: string,
+  extraHeaders?: Record<string, string>,
 ): void {
   res.writeHead(status, {
+    ...extraHeaders,
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    "content-security-policy":
+      "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    "cross-origin-resource-policy": "same-origin",
     pragma: "no-cache",
     expires: "0",
     "x-frame-options": "DENY",
@@ -182,6 +185,18 @@ export async function handleStandaloneCloudPairRoute(
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
   if (method !== "GET" || url.pathname !== "/pair") return false;
+
+  if (!canUseManagedDirectRelay(req)) {
+    sendHtml(
+      res,
+      421,
+      renderErrorHtml(
+        "Open this agent from Eliza Cloud",
+        "Managed sign-in is completed at the agent's Eliza Cloud address. Return to the dashboard and open the agent again.",
+      ),
+    );
+    return true;
+  }
 
   const ip = req.socket.remoteAddress ?? null;
   if (!rateLimitConsume(ip)) {
@@ -222,35 +237,64 @@ export async function handleStandaloneCloudPairRoute(
     return true;
   }
 
+  const agentId = resolveCloudPairAgentIdFromEnv(process.env);
+  if (!agentId) {
+    sendHtml(
+      res,
+      503,
+      renderErrorHtml(
+        "Agent identity unavailable",
+        "This local agent is missing its platform identity. Restart it from Eliza Cloud and try again.",
+      ),
+    );
+    return true;
+  }
+
   const exchangeUrl = `${resolveCloudAuthRoot()}/api/auth/pair`;
-  let exchanged: PairResponse | null = null;
+  let exchanged: CloudPairRelaySession | null = null;
   let status = 0;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), RELAY_TIMEOUT_MS);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), RELAY_TIMEOUT_MS);
     const response = await fetch(exchangeUrl, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         origin,
       },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, agentId }),
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
     status = response.status;
     if (response.ok) {
-      exchanged = (await response
-        .json()
-        .catch(() => null)) as PairResponse | null;
-    } else {
+      // error-policy:J3 a successful dependency response is still untrusted;
+      // malformed JSON or missing bearer ownership becomes an explicit 502.
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch (error) {
+        if (
+          controller.signal.aborted ||
+          (error instanceof Error && error.name === "AbortError")
+        ) {
+          throw error;
+        }
+        // error-policy:J3 malformed dependency JSON becomes an explicit invalid result.
+        body = null;
+      }
+      exchanged = parseCloudPairRelaySession(body);
+    } else if (status !== 401 && status !== 403 && status !== 410) {
+      // 401/403/410 are logged separately as pairing-link rejections below;
+      // only unexpected non-2xx statuses get the generic warning here.
       logger.warn(
-        `[cloud-pair] exchange returned non-2xx status=${status} url=${exchangeUrl}`,
+        `[cloud-pair] exchange returned non-2xx status=${status} exchangeUrl=${exchangeUrl} requestOrigin=${origin}`,
       );
     }
   } catch (err) {
+    // error-policy:J1 transport/abort failures become a structured 503 page.
+    const timedOut = err instanceof Error && err.name === "AbortError";
     logger.error(
-      `[cloud-pair] exchange failed url=${exchangeUrl} error=${
+      `[cloud-pair] exchange ${timedOut ? "timed out" : "failed"} url=${exchangeUrl} error=${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -259,19 +303,32 @@ export async function handleStandaloneCloudPairRoute(
       503,
       renderErrorHtml(
         "Eliza Cloud is unreachable",
-        "We could not reach Eliza Cloud to verify your sign-in link. Try again in a minute.",
+        timedOut
+          ? "Eliza Cloud did not respond in time. We could not confirm whether sign-in completed. Open your agent again from Eliza Cloud to get a fresh link."
+          : "We could not reach Eliza Cloud or confirm whether sign-in completed. Open your agent again from Eliza Cloud to get a fresh link.",
       ),
+      { "retry-after": "60" },
     );
     return true;
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (status === 401 || status === 403 || status === 410) {
+    // Cloud returns one opaque body for ALL rejection causes: expired,
+    // already-redeemed, unknown-to-this-environment, origin-not-bound, and
+    // malformed. The relay cannot determine which cause applies, so the
+    // rendered copy must NOT assert a specific cause — only that the link
+    // could not be verified. See issue #18184.
+    logger.warn(
+      `[cloud-pair] pairing link rejected status=${status} exchangeUrl=${exchangeUrl} requestOrigin=${origin}`,
+    );
     sendHtml(
       res,
       403,
       renderErrorHtml(
-        "Sign-in link expired",
-        "Pairing links are single-use and only valid for a minute. Open your agent again from Eliza Cloud.",
+        "Sign-in link could not be verified",
+        "Eliza Cloud could not verify this pairing link. It may have already been used, or does not match this agent. Open your agent again from Eliza Cloud to get a fresh link.",
       ),
     );
     return true;
@@ -289,13 +346,35 @@ export async function handleStandaloneCloudPairRoute(
     return true;
   }
 
-  if (!exchanged || typeof exchanged.apiKey !== "string" || !exchanged.apiKey) {
+  if (status >= 500) {
+    // A 5xx does not reveal whether Cloud consumed the one-time token before
+    // failing. Keep the copy neutral and recover through a fresh link rather
+    // than inviting a replay; Retry-After describes upstream availability.
+    sendHtml(
+      res,
+      502,
+      renderErrorHtml(
+        "Eliza Cloud hit an error",
+        "Eliza Cloud returned an internal error, so we could not confirm whether sign-in completed. Wait a moment, then open your agent again from Eliza Cloud to get a fresh link.",
+      ),
+      { "retry-after": "60" },
+    );
+    return true;
+  }
+
+  if (!exchanged) {
+    // Two remaining failure shapes: a 2xx whose body failed session parsing
+    // (Cloud really did accept the link), or an unexpected non-2xx status.
+    // Neither is recoverable by re-visiting this one-time URL.
+    const accepted = status >= 200 && status < 300;
     sendHtml(
       res,
       502,
       renderErrorHtml(
         "Sign-in failed",
-        "Eliza Cloud accepted the link but did not return a key. Try again from the dashboard.",
+        accepted
+          ? "Eliza Cloud accepted the link but did not return a valid agent session. Open your agent again from Eliza Cloud to get a fresh link."
+          : `Eliza Cloud returned an unexpected response (status ${status}), so your sign-in link could not be verified. Open your agent again from Eliza Cloud to get a fresh link.`,
       ),
     );
     return true;
@@ -304,6 +383,10 @@ export async function handleStandaloneCloudPairRoute(
   logger.info(
     `[cloud-pair] exchange ok agent=${exchanged.agentName ?? "agent"}`,
   );
-  sendHtml(res, 200, renderRedirectHtml(exchanged.apiKey));
+  sendHtml(
+    res,
+    200,
+    renderCloudPairHandoffHtml(exchanged.apiKey, exchanged.agentId),
+  );
   return true;
 }

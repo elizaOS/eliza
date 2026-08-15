@@ -63,6 +63,30 @@ if (process.env.RUN_TURBO_LOCKFILE_CHECK_ONLY === "1") {
 }
 
 const rawTurboArgs = process.argv.slice(2);
+
+function readConcurrencyOverride() {
+  const raw = process.env.RUN_TURBO_CONCURRENCY;
+  if (raw === undefined || raw === "") return null;
+
+  const parsed = Number(raw);
+  if (!/^\d+$/u.test(raw) || !Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new Error(
+      `RUN_TURBO_CONCURRENCY must be a positive safe-integer decimal; received ${JSON.stringify(raw)}`,
+    );
+  }
+
+  return raw;
+}
+
+let concurrencyOverride;
+try {
+  concurrencyOverride = readConcurrencyOverride();
+} catch (error) {
+  // error-policy:J1 This CLI boundary translates invalid environment input into a clear non-zero exit.
+  console.error(`[run-turbo] ${error.message}`);
+  process.exit(1);
+}
+
 // Turbo accepts tasks as `turbo run <task>` or bare `turbo <task>`, with flags
 // anywhere in between (`run --filter=x typecheck`), and forwards everything
 // after a bare `--` to the tasks themselves. Collect every non-flag argument
@@ -135,7 +159,7 @@ const turboPackageBin =
     .map((nm) => path.join(nm, "turbo/bin/turbo"))
     .find((candidate) => fs.existsSync(candidate)) ??
   path.join(repoRoot, "node_modules/turbo/bin/turbo");
-const turboArgs = rawTurboArgs;
+let turboArgs = rawTurboArgs;
 
 if (!turboArgs.some((arg) => arg === "--ui" || arg.startsWith("--ui="))) {
   turboArgs.unshift("--ui=stream");
@@ -156,19 +180,37 @@ if (
 // tsc processes on a full-workspace cone — the VM itself is OOM-killed and the
 // job exits 143 (#15140) — so CI lanes set this to 4 without forking the
 // `verify`/`typecheck` script definitions.
-if (process.env.RUN_TURBO_CONCURRENCY) {
-  const idx = turboArgs.findIndex(
-    (arg) => arg === "--concurrency" || arg.startsWith("--concurrency="),
-  );
-  const override = `--concurrency=${process.env.RUN_TURBO_CONCURRENCY}`;
-  if (idx === -1) {
-    if (runIndex !== -1) turboArgs.splice(runIndex + 1, 0, override);
-    else turboArgs.push(override);
-  } else if (turboArgs[idx] === "--concurrency") {
-    turboArgs.splice(idx, 2, override);
-  } else {
-    turboArgs.splice(idx, 1, override);
+function applyConcurrencyOverride(args, concurrency) {
+  const separatorIndex = args.indexOf("--");
+  const turboOwnArgs =
+    separatorIndex === -1 ? args : args.slice(0, separatorIndex);
+  const passThroughArgs =
+    separatorIndex === -1 ? [] : args.slice(separatorIndex);
+  const normalizedTurboOwnArgs = [];
+
+  for (let index = 0; index < turboOwnArgs.length; index += 1) {
+    const arg = turboOwnArgs[index];
+    if (arg.startsWith("--concurrency=")) continue;
+    if (arg === "--concurrency") {
+      if (index + 1 < turboOwnArgs.length) index += 1;
+      continue;
+    }
+    normalizedTurboOwnArgs.push(arg);
   }
+
+  const override = `--concurrency=${concurrency}`;
+  const normalizedRunIndex = normalizedTurboOwnArgs.indexOf("run");
+  if (normalizedRunIndex !== -1) {
+    normalizedTurboOwnArgs.splice(normalizedRunIndex + 1, 0, override);
+  } else {
+    normalizedTurboOwnArgs.push(override);
+  }
+
+  return [...normalizedTurboOwnArgs, ...passThroughArgs];
+}
+
+if (concurrencyOverride !== null) {
+  turboArgs = applyConcurrencyOverride(turboArgs, concurrencyOverride);
 }
 
 // Test seam: RUN_TURBO_BIN points at a Node script that stands in for the

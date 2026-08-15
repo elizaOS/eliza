@@ -4,7 +4,7 @@
  * `verifyStewardTokenCached`, and the real POSTGRES-backed single-use code
  * store + logout-marker service on PGlite — the same atomic
  * `DELETE … RETURNING` claim the deployed Worker runs against its Postgres.
- * Covers the strict per-role Origin-only allowlists (no `.elizacloud.ai`
+ * Covers the strict per-role Origin-only allowlists (no related-domain
  * suffix, no Referer fallback), Bearer-only mint (a planted parent-domain
  * cookie must NOT authenticate), the PKCE challenge/verifier binding,
  * single-use/replay/expiry semantics INCLUDING a concurrent double-exchange
@@ -137,7 +137,7 @@ async function call(path: string, opts: CallOpts): Promise<Response> {
 
 async function mintCode(token: string, challenge: string): Promise<string> {
   const res = await call("/mint", {
-    origin: "https://elizacloud.ai",
+    origin: "https://eliza.app",
     bearer: token,
     body: { codeChallenge: challenge },
   });
@@ -149,7 +149,7 @@ async function mintCode(token: string, challenge: string): Promise<string> {
 
 function exchange(code: string, verifier?: string): Promise<Response> {
   return call("/exchange", {
-    origin: "https://app.elizacloud.ai",
+    origin: "https://cloud.eliza.app",
     body: verifier === undefined ? { code } : { code, codeVerifier: verifier },
   });
 }
@@ -222,7 +222,7 @@ describe("origin gating", () => {
     const token = await mintToken("user-referer");
     const { challenge } = await makeVerifierPair();
     const res = await call("/mint", {
-      referer: "https://elizacloud.ai/auth/bridge",
+      referer: "https://eliza.app/auth/bridge",
       bearer: token,
       body: { codeChallenge: challenge },
     });
@@ -249,7 +249,7 @@ describe("mint authentication", () => {
   test("no credentials → 401", async () => {
     const { challenge } = await makeVerifierPair();
     const res = await call("/mint", {
-      origin: "https://elizacloud.ai",
+      origin: "https://eliza.app",
       body: { codeChallenge: challenge },
     });
     expect(res.status).toBe(401);
@@ -260,7 +260,7 @@ describe("mint authentication", () => {
     const token = await mintToken("user-cookie");
     const { challenge } = await makeVerifierPair();
     const res = await call("/mint", {
-      origin: "https://elizacloud.ai",
+      origin: "https://eliza.app",
       cookie: `steward-token=${token}`,
       body: { codeChallenge: challenge },
     });
@@ -271,7 +271,7 @@ describe("mint authentication", () => {
   test("a garbage Bearer token → 401 invalid_token", async () => {
     const { challenge } = await makeVerifierPair();
     const res = await call("/mint", {
-      origin: "https://elizacloud.ai",
+      origin: "https://eliza.app",
       bearer: "not-a-jwt",
       body: { codeChallenge: challenge },
     });
@@ -290,7 +290,7 @@ describe("mint authentication", () => {
       `${"a".repeat(63)}G`,
     ]) {
       const res = await call("/mint", {
-        origin: "https://elizacloud.ai",
+        origin: "https://eliza.app",
         bearer: token,
         body: { codeChallenge },
       });
@@ -411,7 +411,7 @@ describe("code lifecycle", () => {
   test("malformed / missing codes are rejected before any store lookup", async () => {
     for (const code of [undefined, "", "short", `eac_${"0".repeat(64)}`, 42]) {
       const res = await call("/exchange", {
-        origin: "https://app.elizacloud.ai",
+        origin: "https://cloud.eliza.app",
         body: { code },
       });
       expect(res.status).toBe(400);
@@ -491,7 +491,7 @@ describe("logout stays logged out (cross-host)", () => {
 
     // Mint refuses: bridging now would silently undo the logout.
     const mintRes = await call("/mint", {
-      origin: "https://elizacloud.ai",
+      origin: "https://eliza.app",
       bearer: preLogoutToken,
       body: { codeChallenge: challenge },
     });

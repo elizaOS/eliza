@@ -196,6 +196,18 @@ describe("GET /api/views/search keyword scoring", () => {
     const high = resultsFrom(jsonHigh);
     expect(high.length).toBeLessThanOrEqual(20);
     expect(high.length).toBe(2);
+
+    const { ctx: ctxZero, json: jsonZero } = makeSearchCtx("?q=wallet&limit=0");
+    await expect(handleViewsRoutes(ctxZero)).resolves.toBe(true);
+    expect(resultsFrom(jsonZero)).toHaveLength(1);
+
+    // Malformed and partial values retain the historical fallback of 5; the
+    // zero-specific fix must not turn them into the minimum page size.
+    for (const malformed of ["abc", "%20", "NaN", "1junk", "1.5"]) {
+      const { ctx, json } = makeSearchCtx(`?q=wallet&limit=${malformed}`);
+      await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+      expect(resultsFrom(json)).toHaveLength(2);
+    }
   });
 
   it("filters to tui views when viewType=tui is requested", async () => {

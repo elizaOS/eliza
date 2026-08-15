@@ -82,7 +82,7 @@ describe("CLOUD_ACCOUNT_STATUS", () => {
     );
     expect(result.success).toBe(true);
     expect(replies[0]?.text).toContain("critically low");
-    expect(replies[0]?.text).toContain("dashboard/settings?tab=billing");
+    expect(replies[0]?.text).toContain("cloud.eliza.app/cloud/billing");
   });
 
   it("re-guards in the handler when signed out (validate is advisory)", async () => {
@@ -152,7 +152,26 @@ describe("CLOUD_LIST_AGENTS", () => {
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({ count: 0 });
     expect(replies[0]?.text).toContain("don't have any agents hosted");
-    // Empty states stay un-gated so the evaluator may still add guidance.
+    // The callback already contains the complete empty-state answer and both
+    // supported next steps, so no evaluator may paraphrase it into bubble two.
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.turnComplete).toBe(true);
+  });
+
+  it("keeps the signed-out recovery path non-terminal", async () => {
+    const runtime = makeRuntime({ baseUrl: server.url, authenticated: false });
+    const { replies, callback } = collectCallback();
+    const result = await listCloudAgentsAction.handler(
+      runtime,
+      message("my hosted agents"),
+      STATE,
+      undefined,
+      callback
+    );
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ reason: "not_connected" });
+    expect(replies[0]?.text).toContain("not connected to Eliza Cloud");
+    expect(result.verifiedUserFacing).toBeUndefined();
     expect(result.turnComplete).toBeUndefined();
   });
 
@@ -169,6 +188,8 @@ describe("CLOUD_LIST_AGENTS", () => {
     );
     expect(result.success).toBe(false);
     expect(result.data).toMatchObject({ reason: "error" });
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(result.turnComplete).toBeUndefined();
   });
 });
 
@@ -223,7 +244,7 @@ describe("CLOUD_CREATE_API_KEY", () => {
     expect(result.success).toBe(false);
     expect(result.data).toMatchObject({ reason: "session_required" });
     expect(replies[0]?.text).toContain("signed-in session");
-    expect(replies[0]?.text).toContain("Cloud app");
+    expect(replies[0]?.text).toContain("cloud.eliza.app/cloud/api-keys");
   });
 
   it("refuses the reserved agent-sandbox: prefix without any network call", async () => {

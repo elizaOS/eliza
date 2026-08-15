@@ -11,11 +11,16 @@
  *   - a probe THROW propagates and destroys NOTHING (fail-closed);
  *   - a designed `false` (unreachable) reaps the row (destroy called);
  *   - a `true` probe keeps the row alive.
- * It also pins the J6 teardown branch: a destroy failure is recorded, not thrown.
+ * It also pins the J6 teardown branch (a destroy failure is recorded, not
+ * thrown) and the retry round: the probe crosses the headscale mesh, whose
+ * transient >5s hiccups made one-strike reaping destroy every ready entry, so
+ * a row is reaped only after `healthProbeAttempts` consecutive misses, retried
+ * concurrently with the fixed policy spacing and nothing else.
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { PoolContainerCreator } from "./agent-warm-pool";
+import { DEFAULT_WARM_POOL_POLICY } from "./agent-warm-pool-forecast";
 
 const repo = {
   listClaimablePool: mock(async () => [] as Array<{ id: string }>),
@@ -62,6 +67,27 @@ function fakeCreator(overrides: Partial<PoolContainerCreator> = {}): {
   return { creator, destroy, probe };
 }
 
+/** Instant sleep spy — records requested delays, never waits real time. */
+function instantSleep(): { sleepFn: (ms: number) => Promise<void>; delays: number[] } {
+  const delays: number[] = [];
+  return {
+    delays,
+    sleepFn: async (ms: number) => {
+      delays.push(ms);
+    },
+  };
+}
+
+const now = () => Date.now();
+
+/** Bounded poll for an async condition — the suite never waits unboundedly. */
+async function waitFor(cond: () => boolean, label: string): Promise<void> {
+  for (let i = 0; i < 500 && !cond(); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  if (!cond()) throw new Error(`timed out waiting for ${label}`);
+}
+
 beforeEach(() => {
   warmPoolEnabled = true;
   repo.listClaimablePool.mockReset();
@@ -96,20 +122,24 @@ describe("healthCheck fails closed on an internal probe failure", () => {
 });
 
 describe("healthCheck designed paths stay distinct from the failure", () => {
-  test("a designed `false` (unreachable) reaps the row — destroy IS called", async () => {
+  test("a designed `false` on EVERY attempt reaps the row — destroy IS called", async () => {
     const { WarmPoolManager } = await load();
     repo.listClaimablePool.mockResolvedValue([{ id: "dead-1" }]);
 
     const destroy = mock(async () => undefined);
     const probe = mock(async () => false);
     const { creator } = fakeCreator({ destroyPoolContainer: destroy, healthProbe: probe });
-    const manager = new WarmPoolManager(creator);
+    const { sleepFn } = instantSleep();
+    const manager = new WarmPoolManager(creator, DEFAULT_WARM_POOL_POLICY, now, sleepFn);
 
     const result = await manager.healthCheck();
+    expect(probe).toHaveBeenCalledTimes(DEFAULT_WARM_POOL_POLICY.healthProbeAttempts);
     expect(destroy).toHaveBeenCalledTimes(1);
     expect(destroy).toHaveBeenCalledWith("dead-1");
     expect(result.alive).toBe(0);
-    expect(result.removed).toEqual([{ id: "dead-1", reason: "health probe failed" }]);
+    expect(result.removed).toEqual([
+      { id: "dead-1", reason: "health probe failed after 3 attempts" },
+    ]);
   });
 
   test("a `true` probe keeps the row alive — destroy NOT called", async () => {
@@ -137,7 +167,8 @@ describe("healthCheck designed paths stay distinct from the failure", () => {
       throw new Error("ssh timeout");
     });
     const { creator } = fakeCreator({ destroyPoolContainer: destroy, healthProbe: probe });
-    const manager = new WarmPoolManager(creator);
+    const { sleepFn } = instantSleep();
+    const manager = new WarmPoolManager(creator, DEFAULT_WARM_POOL_POLICY, now, sleepFn);
 
     // Teardown is best-effort: the pass completes and the failure is surfaced in
     // the reason (retried next pass), NOT swallowed into a clean removal.
@@ -145,6 +176,138 @@ describe("healthCheck designed paths stay distinct from the failure", () => {
     expect(result.removed).toHaveLength(1);
     expect(result.removed[0]?.id).toBe("dead-2");
     expect(result.removed[0]?.reason).toContain("destroy errored: ssh timeout");
+  });
+});
+
+describe("healthCheck retry round tolerates transient mesh hiccups", () => {
+  test("a transient miss (fail, fail, pass) RETAINS the entry — destroy NOT called", async () => {
+    const { WarmPoolManager } = await load();
+    repo.listClaimablePool.mockResolvedValue([{ id: "flaky-1" }]);
+
+    let calls = 0;
+    const probe = mock(async () => {
+      calls++;
+      return calls >= 3; // first probe + first retry miss, second retry answers
+    });
+    const destroy = mock(async () => undefined);
+    const { creator } = fakeCreator({ destroyPoolContainer: destroy, healthProbe: probe });
+    const { sleepFn, delays } = instantSleep();
+    const manager = new WarmPoolManager(creator, DEFAULT_WARM_POOL_POLICY, now, sleepFn);
+
+    const result = await manager.healthCheck();
+    expect(probe).toHaveBeenCalledTimes(3);
+    expect(destroy).not.toHaveBeenCalled();
+    expect(result.alive).toBe(1);
+    expect(result.removed).toEqual([]);
+    // Each retry waited exactly the fixed policy spacing.
+    expect(delays).toEqual([
+      DEFAULT_WARM_POOL_POLICY.healthProbeRetryDelayMs,
+      DEFAULT_WARM_POOL_POLICY.healthProbeRetryDelayMs,
+    ]);
+  });
+
+  test("retry waits are BOUNDED: exactly attempts-1 spaced probes per failing row, never more", async () => {
+    const { WarmPoolManager } = await load();
+    repo.listClaimablePool.mockResolvedValue([{ id: "dead-3" }]);
+
+    const probe = mock(async () => false);
+    const destroy = mock(async () => undefined);
+    const { creator } = fakeCreator({ destroyPoolContainer: destroy, healthProbe: probe });
+    const { sleepFn, delays } = instantSleep();
+    const manager = new WarmPoolManager(creator, DEFAULT_WARM_POOL_POLICY, now, sleepFn);
+
+    const result = await manager.healthCheck();
+    // 3 attempts total: 1 first-pass probe + 2 retries, each behind one wait.
+    expect(probe).toHaveBeenCalledTimes(DEFAULT_WARM_POOL_POLICY.healthProbeAttempts);
+    expect(delays).toEqual([
+      DEFAULT_WARM_POOL_POLICY.healthProbeRetryDelayMs,
+      DEFAULT_WARM_POOL_POLICY.healthProbeRetryDelayMs,
+    ]);
+    expect(result.removed).toEqual([
+      { id: "dead-3", reason: "health probe failed after 3 attempts" },
+    ]);
+  });
+
+  test("suspect rows retry CONCURRENTLY — both waits open before either resolves", async () => {
+    const { WarmPoolManager } = await load();
+    repo.listClaimablePool.mockResolvedValue([{ id: "s-1" }, { id: "s-2" }]);
+
+    const pending: Array<() => void> = [];
+    const delays: number[] = [];
+    const sleepFn = (ms: number) =>
+      new Promise<void>((resolve) => {
+        delays.push(ms);
+        pending.push(resolve);
+      });
+
+    // The sequential first pass misses both rows; every retry probe answers.
+    let firstPass = 0;
+    const probe = mock(async () => {
+      if (firstPass < 2) {
+        firstPass++;
+        return false;
+      }
+      return true;
+    });
+    const destroy = mock(async () => undefined);
+    const { creator } = fakeCreator({ destroyPoolContainer: destroy, healthProbe: probe });
+    const manager = new WarmPoolManager(creator, DEFAULT_WARM_POOL_POLICY, now, sleepFn);
+
+    const resultPromise = manager.healthCheck();
+    // Sequential retries would open one wait at a time; the sweep's bounded
+    // worst case relies on all suspects waiting simultaneously.
+    await waitFor(() => pending.length === 2, "both suspects' retry waits to open");
+    expect(delays).toEqual([
+      DEFAULT_WARM_POOL_POLICY.healthProbeRetryDelayMs,
+      DEFAULT_WARM_POOL_POLICY.healthProbeRetryDelayMs,
+    ]);
+    for (const release of pending.splice(0)) release();
+
+    const result = await resultPromise;
+    expect(result.alive).toBe(2);
+    expect(destroy).not.toHaveBeenCalled();
+    expect(result.removed).toEqual([]);
+  });
+
+  test("an internal throw during a RETRY propagates and destroys NOTHING — even a confirmed-dead sibling", async () => {
+    const { WarmPoolManager } = await load();
+    repo.listClaimablePool.mockResolvedValue([{ id: "flaky-2" }, { id: "dead-4" }]);
+
+    const dbError = new Error("findById: connection reset");
+    let flakyCalls = 0;
+    const probe = mock(async (id: string) => {
+      if (id === "dead-4") return false; // misses every attempt
+      flakyCalls++;
+      if (flakyCalls === 1) return false; // first pass misses…
+      throw dbError; // …then its retry hits an internal failure
+    });
+    const destroy = mock(async () => undefined);
+    const { creator } = fakeCreator({ destroyPoolContainer: destroy, healthProbe: probe });
+    const { sleepFn } = instantSleep();
+    const manager = new WarmPoolManager(creator, DEFAULT_WARM_POOL_POLICY, now, sleepFn);
+
+    // Indeterminate sweep ⇒ fail closed: the error surfaces and NO row is
+    // reaped, including the sibling whose probes all designed-failed.
+    await expect(manager.healthCheck()).rejects.toBe(dbError);
+    expect(destroy).not.toHaveBeenCalled();
+  });
+
+  test("zero claimable rows ⇒ no probes and no retry waits", async () => {
+    const { WarmPoolManager } = await load();
+    repo.listClaimablePool.mockResolvedValue([]);
+
+    const destroy = mock(async () => undefined);
+    const probe = mock(async () => true);
+    const { creator } = fakeCreator({ destroyPoolContainer: destroy, healthProbe: probe });
+    const { sleepFn, delays } = instantSleep();
+    const manager = new WarmPoolManager(creator, DEFAULT_WARM_POOL_POLICY, now, sleepFn);
+
+    const result = await manager.healthCheck();
+    expect(probe).not.toHaveBeenCalled();
+    expect(delays).toEqual([]);
+    expect(destroy).not.toHaveBeenCalled();
+    expect(result.probed).toBe(0);
+    expect(result.removed).toEqual([]);
   });
 });
 

@@ -216,10 +216,20 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     expect(res.status).toBe(202);
     const json = (await res.json()) as {
       success: boolean;
-      data: { jobId: string };
+      data: {
+        jobId: string;
+        agentName: string;
+        createdAt: string;
+        executionTier: string;
+      };
     };
     expect(json.success).toBe(true);
     expect(json.data.jobId).toBe("job-1");
+    expect(json.data).toMatchObject({
+      agentName: "alpha",
+      createdAt: "2026-06-24T00:00:00.000Z",
+      executionTier: "custom",
+    });
     expect(enqueueAgentProvision).toHaveBeenCalledTimes(1);
   });
 

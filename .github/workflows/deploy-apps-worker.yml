@@ -97,21 +97,27 @@ jobs:
     steps:
       - name: Check deploy configuration
         id: deploy_config
+        env:
+          TARGET_ENVIRONMENT: ${{ needs.determine-env.outputs.environment }}
         run: |
-          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+          set -euo pipefail
+          missing=()
+          for name in DEPLOY_HOST DEPLOY_SSH_KEY; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Missing ELIZA_APPS_WORKER_HOST or ELIZA_APPS_WORKER_SSH_KEY; skipping apps-worker deploy."
+            echo "::error::Missing required apps-worker deployment setting name(s) for GitHub environment $TARGET_ENVIRONMENT: ${missing[*]}"
             {
-              echo "### Apps worker deploy skipped"
+              echo "### Apps worker deploy blocked"
               echo ""
-              echo "Missing \`ELIZA_APPS_WORKER_HOST\` or \`ELIZA_APPS_WORKER_SSH_KEY\` for this environment."
+              echo "GitHub environment \`$TARGET_ENVIRONMENT\` is missing required setting name(s): \`${missing[*]}\`."
               echo "Bootstrap an apps-control VM on the apps private network and set those secrets first."
             } >> "$GITHUB_STEP_SUMMARY"
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "::error::Manual deployment requires ELIZA_APPS_WORKER_HOST and ELIZA_APPS_WORKER_SSH_KEY."
-              exit 1
-            fi
-            exit 0
+            exit 1
           fi
           echo "configured=true" >> "$GITHUB_OUTPUT"
 

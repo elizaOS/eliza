@@ -12,7 +12,6 @@ import type { AnonymousSession } from "../../db/schemas";
 import {
   anonymousSessions,
   conversations,
-  creditTransactions,
   elizaRoomCharactersTable,
   organizations,
   userCharacters,
@@ -22,6 +21,7 @@ import { participantTable } from "../../db/schemas/eliza";
 import { organizationConfig } from "../../db/schemas/organization-config";
 import { userIdentities } from "../../db/schemas/user-identities";
 import { anonymousSessionsService } from "../services/anonymous-sessions";
+import { SIGNUP_CREDIT_POLICY } from "../signup-credits";
 import type { UserWithOrganization } from "../types";
 import { logger } from "../utils/logger";
 
@@ -195,7 +195,7 @@ export async function migrateAnonymousSession(
         .values({
           name: `${anonUser.name || "User"}'s Organization`,
           slug: orgSlug,
-          credit_balance: "5.00",
+          credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
         })
         .returning();
 
@@ -237,18 +237,6 @@ export async function migrateAnonymousSession(
 
       targetUserId = anonymousUserId;
       targetOrgId = organization.id;
-
-      await tx.insert(creditTransactions).values({
-        organization_id: targetOrgId,
-        user_id: targetUserId,
-        amount: "5.00",
-        type: "credit",
-        description: "Initial free credits - Anonymous migration welcome bonus",
-        metadata: {
-          type: "initial_free_credits",
-          source: "anonymous-steward-migration",
-        },
-      });
 
       logger.info(`${logPrefix} Converted in-place`, {
         userId: targetUserId,

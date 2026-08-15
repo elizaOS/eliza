@@ -1,6 +1,9 @@
 /** Verifies the check-in summary prompt is built from a CheckinReport. Deterministic vitest, no live model. */
 import { describe, expect, it } from "vitest";
-import { buildCheckinSummaryPrompt } from "./checkin-service.js";
+import {
+  buildCheckinSummaryPrompt,
+  getCheckinSummaryTrajectoryPurpose,
+} from "./checkin-service.js";
 import type { CheckinReport } from "./types.js";
 
 const baseReport = (
@@ -22,6 +25,11 @@ const baseReport = (
 });
 
 describe("buildCheckinSummaryPrompt", () => {
+  it("uses the optimized task purpose for each owner-facing check-in kind", () => {
+    expect(getCheckinSummaryTrajectoryPurpose("morning")).toBe("morning_brief");
+    expect(getCheckinSummaryTrajectoryPurpose("night")).toBe("health_checkin");
+  });
+
   it("uses morning framing and no sleep recap", () => {
     const p = buildCheckinSummaryPrompt(baseReport({ kind: "morning" }));
     expect(p).toContain("morning personal-assistant intro summary");

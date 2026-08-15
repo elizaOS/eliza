@@ -15,7 +15,7 @@ elizaOS Cloud provides a comprehensive REST API for all platform features.
 ## Base URL
 
 ```
-https://elizacloud.ai/api/v1
+https://api.eliza.app/api/v1
 ```
 
 ## Authentication
@@ -23,12 +23,12 @@ https://elizacloud.ai/api/v1
 All API requests require authentication via API key or session token:
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/dashboard" \
+curl -X GET "https://api.eliza.app/api/v1/dashboard" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 <Info>
-  Get your API key from [Dashboard → API Keys](https://elizacloud.ai/dashboard/api-keys)
+  Get your API key from [Eliza Cloud → API Keys](https://cloud.eliza.app/cloud/api-keys)
 </Info>
 
 ### Authentication Methods
@@ -114,7 +114,7 @@ All errors follow a consistent format:
 The full OpenAPI specification is available at:
 
 ```
-https://elizacloud.ai/api/openapi.json
+https://api.eliza.app/api/openapi.json
 ```
 
 You can use this with tools like Swagger UI, Postman, or to generate client SDKs.

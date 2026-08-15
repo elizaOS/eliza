@@ -6,7 +6,7 @@
 
 import { AlertCircle, CheckCircle2, Loader2, Vote } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
 import { Textarea } from "../../../../components/ui/textarea";
@@ -142,21 +142,45 @@ export default function BallotPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-bg text-txt">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
+      <main
+        className="flex min-h-[100dvh] items-center justify-center bg-bg text-txt"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <div className="flex items-center gap-3 text-muted">
+          <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+          <p>
+            {t("cloud.ballot.loading", {
+              defaultValue: "Loading ballot…",
+            })}
+          </p>
+        </div>
+      </main>
     );
   }
 
   if (error || !ballot) {
     return (
-      <div className="mx-auto max-w-md py-16 text-center">
-        <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
-        <p className="mt-4 text-sm text-muted-strong">
+      <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col items-center justify-center px-4 py-16 text-center text-txt">
+        <AlertCircle className="h-8 w-8 text-destructive" aria-hidden="true" />
+        <h1 className="mt-4 text-2xl font-semibold">
+          {t("cloud.ballot.unavailableHeading", {
+            defaultValue: "Ballot unavailable",
+          })}
+        </h1>
+        <p className="mt-2 text-sm text-muted-strong">
           {error ??
             t("cloud.ballot.notFound", { defaultValue: "Ballot not found." })}
         </p>
-      </div>
+        <Link
+          className="mt-6 text-sm text-muted transition-colors hover:text-txt"
+          to="/"
+        >
+          {t("cloud.ballot.returnHome", {
+            defaultValue: "Return to Eliza Cloud",
+          })}
+        </Link>
+      </main>
     );
   }
 

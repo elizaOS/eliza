@@ -1,0 +1,9 @@
+{
+  "package": "@davyjones0x/plugin-peer-cash",
+  "repository": "github:ADWilkinson/plugin-peer-cash",
+  "kind": "plugin",
+  "description": "Peer Cash offramp actions: cash out Base USDC to Venmo, Revolut, Wise, Zelle, and more at the live oracle market rate, with order tracking, withdraw, and top-up.",
+  "homepage": "https://peer.xyz/cash-sdk",
+  "version": "0.1.1",
+  "tags": ["offramp", "usdc", "base", "crypto-to-fiat", "payments", "zkp2p"]
+}

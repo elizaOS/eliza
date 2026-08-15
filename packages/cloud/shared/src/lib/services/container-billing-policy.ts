@@ -44,7 +44,7 @@ export interface ContainerBillingPlan {
  * Rules (the load-bearing survival-economics behavior):
  *  1. `payAsYouGoFromEarnings === false` → earnings stay frozen, charge comes
  *     purely from credits. Default when org owner opts out at
- *     /dashboard/billing.
+ *     /cloud/billing.
  *  2. `payAsYouGoFromEarnings === true` (default) → earnings absorb the bill
  *     first up to `dailyCost`, then credits cover the remainder. This is what
  *     keeps an earning agent self-funding ("survival economics" loop).

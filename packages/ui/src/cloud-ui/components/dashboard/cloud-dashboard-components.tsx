@@ -88,7 +88,7 @@ export function DashboardActionCards({
   return (
     <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-5", className)}>
       <Link
-        to="/dashboard/my-agents"
+        to="/cloud/my-agents"
         className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-white p-5 text-black transition-colors hover:bg-black hover:text-white sm:col-span-2 xl:col-span-1"
       >
         <div className="mb-4 flex items-center justify-between">
@@ -104,7 +104,7 @@ export function DashboardActionCards({
           <h3 className="text-base font-semibold">API Access</h3>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-medium">
             <Link
-              to="/dashboard/api-keys"
+              to="/cloud/api-keys"
               className="inline-flex items-center gap-1.5 hover:text-white"
             >
               <KeyRound className="h-3 w-3" />
@@ -118,7 +118,7 @@ export function DashboardActionCards({
               Docs
             </Link>
             <Link
-              to="/dashboard/api-explorer"
+              to="/cloud/api-explorer"
               className="inline-flex items-center gap-1.5 hover:text-white"
             >
               <Bot className="h-3 w-3" />
@@ -142,7 +142,7 @@ export function DashboardActionCards({
       </Link>
 
       <Link
-        to="/dashboard/agents"
+        to="/cloud/agents"
         className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-black p-5 text-white transition-colors hover:bg-white/[0.06]"
       >
         <div className="flex items-center justify-between">
@@ -153,7 +153,7 @@ export function DashboardActionCards({
       </Link>
 
       <Link
-        to="/dashboard/apps"
+        to="/cloud/apps"
         className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-black p-5 text-white transition-colors hover:bg-white/[0.06]"
       >
         <div className="flex items-center justify-between">

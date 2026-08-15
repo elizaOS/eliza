@@ -22,7 +22,8 @@
  *     ignored entirely (no half-rendered widget).
  */
 
-const TASK_BLOCK_RE = /\[TASK:([a-f0-9-]{8,64})\]([\s\S]*?)\[\/TASK\]/g;
+const TASK_BLOCK_RE =
+  /\[[ \t]*TASK[ \t]*:[ \t]*([a-f0-9-]{8,64})[ \t]*\]([\s\S]*?)\[[ \t]*\/[ \t]*TASK[ \t]*\]/g;
 
 /** Hard cap on the inline preview title — keeps a runaway template safe. */
 export const MAX_TASK_TITLE_LEN = 200;

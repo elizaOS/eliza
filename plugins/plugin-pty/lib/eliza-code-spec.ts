@@ -8,7 +8,7 @@ import path from "node:path";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
 import type { PtySpawnSpec } from "../services/pty-types";
 
-export const ELIZA_CLOUD_DEFAULT_BASE_URL = "https://api.elizacloud.ai/v1";
+export const ELIZA_CLOUD_DEFAULT_BASE_URL = "https://api.eliza.app/v1";
 export const ELIZA_CLOUD_FAST_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 export const ELIZA_CLOUD_SMART_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 

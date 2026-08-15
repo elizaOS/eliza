@@ -7,6 +7,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
 import { resetUiRegistryHostForTests } from "../registry-host";
+import { seedAppValue } from "../state/app-store";
 import { emitViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
 import { __resetResourceCache } from "./resource-cache";
@@ -66,6 +67,9 @@ describe("useAvailableViews", () => {
     fetchWithCsrf.mockReset();
     getFrontendPlatform.mockReset();
     getFrontendPlatform.mockReturnValue("desktop");
+    seedAppValue({
+      startupCoordinator: { phase: "ready", target: "embedded-local" },
+    } as Parameters<typeof seedAppValue>[0]);
   });
 
   afterEach(() => {
@@ -101,6 +105,36 @@ describe("useAvailableViews", () => {
     await flushHookEffects();
 
     expect(fetchWithCsrf).not.toHaveBeenCalled();
+  });
+
+  it("hides managed-cloud app pages from every registry-backed discovery surface on local and VPS runtimes", () => {
+    registerAppShellPage({
+      id: "cloud",
+      pluginId: "@elizaos/ui",
+      label: "Cloud",
+      path: "/cloud",
+      pathPatterns: ["/cloud/*"],
+      availability: "managed-cloud",
+      Component: () => null,
+    });
+
+    const local = renderHook(() =>
+      useAvailableViews({ networkEnabled: false }),
+    );
+    expect(
+      local.result.current.views.some((entry) => entry.id === "cloud"),
+    ).toBe(false);
+    local.unmount();
+
+    seedAppValue({
+      startupCoordinator: { phase: "ready", target: "cloud-managed" },
+    } as Parameters<typeof seedAppValue>[0]);
+    const cloud = renderHook(() =>
+      useAvailableViews({ networkEnabled: false }),
+    );
+    expect(cloud.result.current.views).toContainEqual(
+      expect.objectContaining({ id: "cloud", path: "/cloud" }),
+    );
   });
 
   it("does not fetch app-shell views from a limited cloud agent base", async () => {

@@ -1,0 +1,362 @@
+/**
+ * Browser contrast regression for the JoinPage primary recovery controls. The
+ * real renderer runs in desktop and coarse-pointer mobile contexts while Cloud
+ * responses deterministically expose cleanup-failure and credit-gate states;
+ * computed rest and hover colors must retain WCAG AA contrast in both.
+ */
+import { writeFile } from "node:fs/promises";
+import {
+  type CDPSession,
+  devices,
+  expect,
+  type Locator,
+  type Page,
+  type Route,
+  test,
+} from "@playwright/test";
+import { installDefaultAppRoutes } from "./helpers";
+import { seedStewardSession } from "./helpers/test-auth";
+
+const AGENT_ID = "11111111-2222-4333-8444-555555555555";
+const CREATED_AT = "2026-08-14T11:00:00.000Z";
+const JOB_ID = "provision-job-contrast";
+
+const SURFACES = [
+  {
+    name: "desktop",
+    context: {
+      ...devices["Desktop Chrome"],
+      viewport: { width: 1440, height: 900 },
+    },
+    coarsePointer: false,
+    hoverCapable: true,
+  },
+  {
+    name: "mobile-layout-hover",
+    context: {
+      ...devices["Pixel 7"],
+      // Chromium otherwise hard-wires `(hover: none)` for touch contexts and
+      // ignores CDP's hybrid coarse-pointer hover media override.
+      hasTouch: false,
+      viewport: { width: 390, height: 844 },
+    },
+    coarsePointer: false,
+    hoverCapable: true,
+  },
+  {
+    name: "mobile-touch",
+    context: {
+      ...devices["Pixel 7"],
+      viewport: { width: 390, height: 844 },
+    },
+    coarsePointer: true,
+    hoverCapable: false,
+  },
+] as const;
+
+type ContrastSample = {
+  backgroundColor: string;
+  className: string;
+  color: string;
+  expectedForeground: string;
+  ratio: number;
+};
+
+type FixtureMode = "cleanup-failure" | "credit-gate";
+type JoinRouteState = {
+  conditionalDeleteBodies: Record<string, unknown>[];
+  jobPolls: number;
+};
+
+async function fulfillJson(
+  route: Route,
+  status: number,
+  body: Record<string, unknown>,
+): Promise<void> {
+  await route.fulfill({
+    status,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+}
+
+async function installJoinRoutes(
+  page: Page,
+  readMode: () => FixtureMode,
+  state: JoinRouteState,
+): Promise<void> {
+  await installDefaultAppRoutes(page);
+
+  await page.route("**/api/auth/steward-session", async (route) => {
+    await fulfillJson(route, 200, { success: true });
+  });
+
+  await page.route("**/api/cloud/compat/agents", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") {
+      if (readMode() === "credit-gate") {
+        await fulfillJson(route, 402, {
+          success: false,
+          code: "insufficient_credits",
+          error: "Insufficient credits. Add funds to start an agent.",
+          currentBalance: 0,
+          requiredBalance: 0.1,
+        });
+        return;
+      }
+      await fulfillJson(route, 200, { success: true, data: [] });
+      return;
+    }
+    if (request.method() === "POST") {
+      await fulfillJson(route, 200, {
+        success: true,
+        created: true,
+        data: {
+          agentId: AGENT_ID,
+          agentName: "Eliza",
+          status: "provisioning",
+          jobId: JOB_ID,
+          createdAt: CREATED_AT,
+          executionTier: "dedicated-always",
+        },
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route("**/api/cloud/compat/jobs/*", async (route) => {
+    state.jobPolls += 1;
+    await fulfillJson(route, 200, {
+      success: true,
+      data: {
+        jobId: JOB_ID,
+        status: "pending",
+        state: "pending",
+      },
+    });
+  });
+
+  await page.route("**/api/cloud/compat/agents/*", async (route) => {
+    if (route.request().method() !== "DELETE") {
+      await route.fallback();
+      return;
+    }
+    state.conditionalDeleteBodies.push(
+      (route.request().postDataJSON() ?? {}) as Record<string, unknown>,
+    );
+    await fulfillJson(route, 409, {
+      success: false,
+      error: "Conditional cleanup was rejected in the contrast probe",
+    });
+  });
+}
+
+async function readContrast(locator: Locator): Promise<ContrastSample> {
+  return locator.evaluate((element) => {
+    type Rgba = { r: number; g: number; b: number; a: number };
+    const parseColor = (value: string): Rgba => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1;
+      canvas.height = 1;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) throw new Error("Canvas 2D is unavailable");
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = value;
+      context.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+      return { r: r / 255, g: g / 255, b: b / 255, a: a / 255 };
+    };
+    const composite = (foreground: Rgba, background: Rgba): Rgba => ({
+      r: foreground.r * foreground.a + background.r * (1 - foreground.a),
+      g: foreground.g * foreground.a + background.g * (1 - foreground.a),
+      b: foreground.b * foreground.a + background.b * (1 - foreground.a),
+      a: 1,
+    });
+    const luminance = (color: Rgba): number => {
+      const channel = (value: number) =>
+        value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      return (
+        0.2126 * channel(color.r) +
+        0.7152 * channel(color.g) +
+        0.0722 * channel(color.b)
+      );
+    };
+
+    const style = getComputedStyle(element);
+    const theme = element.closest<HTMLElement>(".theme-cloud");
+    if (!theme) throw new Error("Join CTA is missing its theme-cloud owner");
+    const themeBackground = parseColor(getComputedStyle(theme).backgroundColor);
+    const background = composite(
+      parseColor(style.backgroundColor),
+      themeBackground,
+    );
+    const foreground = composite(parseColor(style.color), background);
+    const light = Math.max(luminance(background), luminance(foreground));
+    const dark = Math.min(luminance(background), luminance(foreground));
+
+    const probe = document.createElement("span");
+    probe.style.color = "var(--bg)";
+    theme.appendChild(probe);
+    const expectedForeground = getComputedStyle(probe).color;
+    probe.remove();
+
+    return {
+      backgroundColor: style.backgroundColor,
+      className: element.className,
+      color: style.color,
+      expectedForeground,
+      ratio: (light + 0.05) / (dark + 0.05),
+    };
+  });
+}
+
+async function assertStableContrast(
+  cdp: CDPSession,
+  page: Page,
+  button: Locator,
+  hoverCapable: boolean,
+): Promise<{ rest: ContrastSample; hover: ContrastSample }> {
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(200);
+  const rest = await readContrast(button);
+  expect(rest.color).toBe(rest.expectedForeground);
+  expect(rest.ratio).toBeGreaterThanOrEqual(4.5);
+
+  const box = await button.boundingBox();
+  if (!box) throw new Error("Join CTA has no rendered bounding box");
+  const node = await cdp.send("DOM.getNodeForLocation", {
+    x: Math.floor(box.x + box.width / 2),
+    y: Math.floor(box.y + box.height / 2),
+    includeUserAgentShadowDOM: true,
+  });
+  await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
+  const { nodeIds } = await cdp.send("DOM.pushNodesByBackendIdsToFrontend", {
+    backendNodeIds: [node.backendNodeId],
+  });
+  const nodeId = nodeIds[0];
+  if (!nodeId) throw new Error("Join CTA could not be resolved in the DOM");
+  await cdp.send("CSS.forcePseudoState", {
+    nodeId,
+    forcedPseudoClasses: ["hover"],
+  });
+  await page.waitForTimeout(200);
+  const hover = await readContrast(button);
+  if (hoverCapable) {
+    expect(hover.backgroundColor).not.toBe(rest.backgroundColor);
+  } else {
+    expect(hover.backgroundColor).toBe(rest.backgroundColor);
+  }
+  expect(hover.color).toBe(rest.color);
+  expect(hover.color).toBe(hover.expectedForeground);
+  expect(hover.ratio).toBeGreaterThanOrEqual(4.5);
+  await cdp.send("CSS.forcePseudoState", {
+    nodeId,
+    forcedPseudoClasses: [],
+  });
+  return { rest, hover };
+}
+
+test("Join recovery CTAs preserve computed contrast on desktop, mobile-hover, and touch profiles", async ({
+  browser,
+  baseURL,
+}, testInfo) => {
+  const report: Record<string, unknown> = {
+    head: process.env.GITHUB_SHA ?? "local-exact-head",
+    surfaces: {},
+  };
+
+  for (const surface of SURFACES) {
+    const videoDir = testInfo.outputPath(`${surface.name}-video`);
+    const context = await browser.newContext({
+      ...surface.context,
+      baseURL,
+      serviceWorkers: "block",
+      ...(process.env.E2E_RECORD === "1"
+        ? { recordVideo: { dir: videoDir } }
+        : {}),
+    });
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("DOM.enable");
+    await cdp.send("CSS.enable");
+    await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
+    await cdp.send("Emulation.setEmulatedMedia", {
+      media: "screen",
+      features: [
+        { name: "hover", value: surface.hoverCapable ? "hover" : "none" },
+      ],
+    });
+    expect(
+      await page.evaluate(() => matchMedia("(hover: hover)").matches),
+    ).toBe(surface.hoverCapable);
+    let mode: FixtureMode = "cleanup-failure";
+    const routeState: JoinRouteState = {
+      conditionalDeleteBodies: [],
+      jobPolls: 0,
+    };
+    await seedStewardSession(page, { jwt: true });
+    await installJoinRoutes(page, () => mode, routeState);
+
+    await page.goto("/join");
+    const signOut = page.getByRole("button", { name: "Sign out" });
+    await expect(signOut).toBeVisible();
+    await expect.poll(() => routeState.jobPolls).toBeGreaterThan(0);
+    await signOut.click();
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    await expect.poll(() => routeState.conditionalDeleteBodies.length).toBe(1);
+    expect(routeState.conditionalDeleteBodies[0]).toEqual({
+      expectedAgentName: "Eliza",
+      expectedCreatedAt: CREATED_AT,
+      expectedExecutionTier: "dedicated-always",
+    });
+    const cleanupContrast = await assertStableContrast(
+      cdp,
+      page,
+      retry,
+      surface.hoverCapable,
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`${surface.name}-cleanup-hover.png`),
+      fullPage: true,
+    });
+
+    mode = "credit-gate";
+    await page.goto("/join");
+    const addFunds = page.getByRole("button", { name: "Add funds" });
+    await expect(addFunds).toBeVisible();
+    const creditContrast = await assertStableContrast(
+      cdp,
+      page,
+      addFunds,
+      surface.hoverCapable,
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`${surface.name}-credit-hover.png`),
+      fullPage: true,
+    });
+
+    const coarsePointer = await page.evaluate(
+      () => matchMedia("(pointer: coarse)").matches,
+    );
+    expect(coarsePointer).toBe(surface.coarsePointer);
+    report.surfaces = {
+      ...(report.surfaces as Record<string, unknown>),
+      [surface.name]: {
+        coarsePointer,
+        cleanupContrast,
+        creditContrast,
+        conditionalDeleteBody: routeState.conditionalDeleteBodies[0],
+      },
+    };
+    await context.close();
+  }
+
+  const reportPath = testInfo.outputPath("join-cta-computed-contrast.json");
+  await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  await testInfo.attach("join-cta-computed-contrast", {
+    path: reportPath,
+    contentType: "application/json",
+  });
+});

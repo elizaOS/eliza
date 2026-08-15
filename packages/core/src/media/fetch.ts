@@ -269,7 +269,16 @@ export async function fetchRemoteMedia(
 	}
 }
 
-async function readResponseWithLimit(
+/**
+ * Reads a response body under a hard byte cap, cancelling the stream as soon
+ * as the running total exceeds maxBytes instead of materializing the payload
+ * first — so a missing or lying Content-Length can never force an unbounded
+ * allocation. Shared by the remote media fetcher above and the trusted local
+ * attachment byte-fetches (ingest enrichment and on-demand transcription).
+ * Falls back to a post-read check only when the response exposes no stream.
+ * Throws MediaFetchError("max_bytes") on overflow.
+ */
+export async function readResponseWithLimit(
 	res: Response,
 	maxBytes: number,
 ): Promise<Buffer> {

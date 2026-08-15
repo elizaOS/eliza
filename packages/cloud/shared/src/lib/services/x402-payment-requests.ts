@@ -1,4 +1,4 @@
-// Coordinates cloud service x402 payment requests behavior behind route handlers.
+/** Coordinates x402 payment-request creation, settlement, and callback projection. */
 import {
   SOLANA_DEVNET_CAIP2,
   SOLANA_MAINNET_CAIP2,
@@ -199,7 +199,7 @@ function publicBaseUrl(): string {
     env.X402_PUBLIC_BASE_URL ??
     env.X402_BASE_URL ??
     env.NEXT_PUBLIC_API_URL ??
-    "https://x402.elizacloud.ai"
+    "https://x402.eliza.app"
   ).replace(/\/$/, "");
 }
 
@@ -386,6 +386,7 @@ async function triggerChannelCallback(
   // org — otherwise a forged settlement message could be injected cross-tenant.
   const authorized = await callbackRoomBelongsToOrganization({
     roomId,
+    agentId,
     chargeOrganizationId: payment.organization_id,
     logContext: "x402-payment-requests",
   });

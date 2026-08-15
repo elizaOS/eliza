@@ -195,8 +195,8 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 		});
 
 		expect(allowedRecall.items.map((item) => item.dedupeKey).sort()).toEqual([
-			"discord:discord-main:discord-message-1",
-			"telegram:telegram-main:telegram-message-9",
+			`discord:discord-main:${DISCORD_ROOM}:discord-message-1`,
+			`telegram:telegram-main:${TELEGRAM_ROOM}:telegram-message-9`,
 		]);
 		expect(
 			allowedRecall.items.map((item) => item.memory.content.text),
@@ -280,16 +280,11 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 		});
 
 		expect(deniedRecall.items).toEqual([]);
-		expect(deniedRecall.withheld).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					code: "cross_room_denied",
-					dedupeKey: "discord:discord-main:private-discord-message",
-					reason:
-						"cross-room recall denied by trusted delivery audience: participant_mismatch",
-				}),
-			]),
-		);
+		// The denied cross-room row is excluded by the room-constrained adapter
+		// query, so it is neither returned nor exposed through diagnostics.
+		expect(deniedRecall.withheld).toEqual([]);
+		expect(deniedRecall.availability).toBe("complete");
+		expect(deniedRecall.candidateWindowComplete).toBe(true);
 		expect(ownerExclusiveDisclosureWasUsed(groupTurn)).toBe(false);
 		expect(ownerExclusiveSuppressionNote(groupTurn)).toBeUndefined();
 	});
@@ -334,7 +329,7 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 		});
 
 		expect(sameRoomRecall.items.map((item) => item.dedupeKey)).toEqual([
-			"telegram:telegram-main:same-room-telegram-message",
+			`telegram:telegram-main:${OWNER_DM_ROOM}:same-room-telegram-message`,
 		]);
 		expect(sameRoomRecall.withheld).toEqual([]);
 		expect(sameRoomRecall.availability).toBe("complete");

@@ -8,7 +8,7 @@
  * domain are validated by the real server.
  *
  * Usage:
- *   bun run cloud:login:test-wallet                      # against https://api.elizacloud.ai
+ *   bun run cloud:login:test-wallet                      # against https://api.eliza.app
  *   bun run cloud:login:test-wallet -- --base http://127.0.0.1:8787
  *   bun run cloud:login:test-wallet -- --json            # machine-readable
  *   PRIVATE_KEY=0x... bun run cloud:login:test-wallet    # reuse a fixed wallet
@@ -25,10 +25,7 @@ function arg(name, fallback) {
   return fallback;
 }
 
-const baseUrl = arg(
-  "base",
-  process.env.SIWE_BASE ?? "https://api.elizacloud.ai",
-);
+const baseUrl = arg("base", process.env.SIWE_BASE ?? "https://api.eliza.app");
 const asJson = process.argv.includes("--json");
 const privateKey = process.env.PRIVATE_KEY?.trim() || undefined;
 

@@ -1,13 +1,13 @@
 # Cloud/Local Path Validation — Findings (live + audit)
 
-## Live real-cloud API results (api.elizacloud.ai, SIWE-authed)
+## Live real-cloud API results (api.eliza.app, SIWE-authed)
 - ✅ SIWE auth (nonce→verify→apiKey), /api/v1/user authed
 - ✅ Create agent (POST /api/v1/eliza/agents alwaysOn:true) → 202, tier=**dedicated-always**, status=pending, web_ui_url present immediately
 - ✅ Dedicated container READY at **t=73s** (status pending→running) — good boot time
 - ✅ Delete agent (DELETE /api/v1/eliza/agents/:id) → 202 + polls to 404 (container gone)
 - ❌ **Shared chat NEVER works** for the dedicated-always agent: POST .../api/conversations/<id>/messages → 404 "Not a shared-runtime agent" for the full 73s boot. So "chat immediately while the container boots" (#8810) is NON-FUNCTIONAL for the agents the app actually creates (createCloudCompatAgent hardcodes alwaysOn:true → getAgentTier→dedicated-always, agent-tier.ts:61).
 - ❌ Explicit POST .../provision → 409 (conflict) on an alwaysOn agent (already auto-provisioning). provisionCloudSandbox would hit this if used live.
-- ⚠️ Readiness base from agent detail = tailnet IP (100.64.0.70:2138), not the public subdomain. App must resolve the public <agentId>.elizacloud.ai web_ui_url, not bridge_url, to reach the container from a user device.
+- ⚠️ Readiness base from agent detail = tailnet IP (100.64.0.70:2138), not the public subdomain. App must resolve the public <agentId>.cloud.eliza.app web_ui_url, not bridge_url, to reach the container from a user device.
 
 ## Implications
 - Cloud provisioning + dedicated agent + delete: WORK at the API layer.
@@ -21,7 +21,7 @@
 - packages/agent/src/api/server.ts: added defensive WS error handlers (wss.on('error') + upgrade socket.on('error')) so an abrupt client disconnect during the WS handshake no longer crashes the agent API (was: "Uncaught exception: Unhandled error (ErrorEvent) at ws:201" → 6 restarts → dev server gives up). Agent typecheck EXIT:0.
 
 ## CORRECTED cloud assessment (after tracing the actual apiBase binding)
-- The app binds chat to the PUBLIC SUBDOMAIN https://<agentId>.elizacloud.ai (resolveCloudAgentApiBase keeps web_ui_url; normalizeDirectCloudSharedAgentApiBase only rewrites already-shared paths; the subdomain is not a control-plane host). My earlier "shared chat 404" was the WRONG base (the shared adapter `<api>/api/v1/eliza/agents/<id>`), which the app does NOT bind for a dedicated agent that has web_ui_url.
+- The app binds chat to the PUBLIC SUBDOMAIN https://<agentId>.cloud.eliza.app (resolveCloudAgentApiBase keeps web_ui_url; normalizeDirectCloudSharedAgentApiBase only rewrites already-shared paths; the subdomain is not a control-plane host). My earlier "shared chat 404" was the WRONG base (the shared adapter `<api>/api/v1/eliza/agents/<id>`), which the app does NOT bind for a dedicated agent that has web_ui_url.
 - LIVE PROOF: public subdomain /api/status returned 202 "starting" during boot (0→71s), then 200 at 82s; a real chat through the dedicated container returned a 200 agent reply. So:
   - ✅ Cloud provisioning WORKS (~73-82s boot)
   - ✅ Cloud inference WORKS (real chat through dedicated container)

@@ -227,6 +227,22 @@ describe("fishAudioPlugin", () => {
     ]);
   });
 
+  test("rejects synthesis timeouts above node's timer limit", async () => {
+    const rt = runtime({
+      ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+      FISH_AUDIO_API_KEY: "key",
+      FISH_AUDIO_REFERENCE_ID: "voice",
+    });
+
+    await expect(
+      handleFishAudioTextToSpeech(rt, {
+        text: "hello",
+        synthesisTimeoutMs: 2_147_483_648,
+      }),
+    ).rejects.toMatchObject({ code: "FISH_AUDIO_SYNTHESIS_TIMEOUT_INVALID" });
+  });
+
   test("rejects when Fish closes before a finish frame", async () => {
     FakeFishSocket.respondToText = false;
     Object.defineProperty(globalThis, "WebSocket", {

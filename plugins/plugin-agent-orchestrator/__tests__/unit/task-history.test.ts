@@ -189,6 +189,45 @@ describe("TASKS:history", () => {
     expect(historyCallback).not.toHaveBeenCalled();
   });
 
+  it("treats planner sentinel id filters as absent, never as a literal query or leaked text", async () => {
+    // Live 2026-08-10: a rhetorical "any burning fires?" routed to TASKS with
+    // projectId:"none" + sessionId:"none". Sentinels must not become real
+    // filters (a project/session named "none" matches nothing) nor surface in
+    // the reply as "project none" / "that session".
+    const tasks = [task({ id: "task-active", status: "active" })];
+    const taskService = {
+      getTaskForSession: vi.fn(async () => null),
+      listTasks: vi.fn(async () => tasks),
+    };
+    const historyCallback = callback();
+
+    const result = await taskHistoryAction.handler(
+      runtimeWithServices({ taskService }),
+      memory({ text: "any burning fires or admin things needed?" }),
+      state,
+      {
+        parameters: {
+          action: "history",
+          metric: "list",
+          projectId: "none",
+          sessionId: "none",
+        },
+      },
+      historyCallback,
+    );
+
+    // No session-scoping was attempted, and listTasks got no project filter.
+    expect(taskService.getTaskForSession).not.toHaveBeenCalled();
+    expect(taskService.listTasks).toHaveBeenCalledWith({
+      includeArchived: false,
+    });
+    expect(result?.success).toBe(true);
+    expect(result?.text).not.toContain("project none");
+    expect(result?.text).not.toContain("that session");
+    expect(result?.data?.filters).not.toHaveProperty("projectId");
+    expect(result?.data?.filters).not.toHaveProperty("sessionId");
+  });
+
   it("returns an empty scoped result when the session index has no match", async () => {
     const taskService = {
       getTaskForSession: vi.fn(async () => null),

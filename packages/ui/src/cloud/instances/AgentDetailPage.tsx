@@ -1,5 +1,5 @@
 /**
- * Agent detail page (`/dashboard/agents/:id`).
+ * Agent detail page (`/cloud/agents/:id`).
  */
 
 import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
@@ -34,9 +34,11 @@ import { useAgent } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
 import { statusBadgeColor, statusDotColor } from "./lib/sandbox-status";
 
-function formatDate(date: string | null): string {
+export function formatDate(date: string | null): string {
   if (!date) return "—";
-  return new Date(date).toLocaleDateString(undefined, {
+  const timestamp = new Date(date).getTime();
+  if (!Number.isFinite(timestamp)) return "—";
+  return new Date(timestamp).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -44,20 +46,25 @@ function formatDate(date: string | null): string {
 }
 
 function formatTime(date: string | null): string {
-  if (!date) return "";
-  return new Date(date).toLocaleTimeString(undefined, {
+  if (!date) return "—";
+  const timestamp = new Date(date).getTime();
+  if (!Number.isFinite(timestamp)) return "—";
+  return new Date(timestamp).toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
   });
 }
 
-function formatRelativeShort(
+export function formatRelativeShort(
   date: string | null,
   t: ReturnType<typeof useT>,
 ): string {
   if (!date) return t("cloud.agents.detail.never", { defaultValue: "Never" });
   const d = new Date(date);
-  const diffMs = Date.now() - d.getTime();
+  const timestamp = d.getTime();
+  if (!Number.isFinite(timestamp))
+    return t("cloud.agents.detail.never", { defaultValue: "Never" });
+  const diffMs = Date.now() - timestamp;
   const diffMin = Math.floor(diffMs / 60_000);
   if (diffMin < 1)
     return t("cloud.agents.detail.justNow", { defaultValue: "Just now" });
@@ -101,7 +108,7 @@ export default function AgentDetailPage() {
   }
 
   if (query.error instanceof ApiError && query.error.status === 404) {
-    return <Navigate to="/dashboard/agents" replace />;
+    return <Navigate to="/cloud/agents" replace />;
   }
   if (query.error) {
     const msg =
@@ -114,7 +121,7 @@ export default function AgentDetailPage() {
   }
 
   const agent = query.data;
-  if (!agent) return <Navigate to="/dashboard/agents" replace />;
+  if (!agent) return <Navigate to="/cloud/agents" replace />;
 
   const badgeColor = statusBadgeColor(agent.status);
   const dotColor = statusDotColor(agent.status);
@@ -133,7 +140,7 @@ export default function AgentDetailPage() {
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <Link
-          to="/dashboard/agents"
+          to="/cloud/agents"
           className="group flex min-h-touch items-center gap-2 text-sm text-muted-strong hover:text-txt-strong transition-colors"
         >
           <div className="flex items-center justify-center w-7 h-7 bg-card group-hover:bg-bg-hover transition-colors">

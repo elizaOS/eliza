@@ -59,11 +59,6 @@ export const rolodexProvider: Provider = {
   contextGate: { anyOf: ["contacts", "memory"] },
   cacheStable: false,
   cacheScope: "turn",
-  // The contact list is supplemental context; a cold relationships-graph
-  // rebuild over a large store must not stall the turn (#17490 gave its
-  // siblings budgets but missed this provider).
-  timeoutMs: 3_000,
-  timeoutMode: "degrade",
   // roleGate ADMIN is enforced by applyPluginRoleGating (#12087 Item 14); the
   // declared gate is authoritative, not the handler body.
   roleGate: { minRole: "ADMIN" },

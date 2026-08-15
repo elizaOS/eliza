@@ -275,9 +275,17 @@ describe("AppMonetizationSettings review gate", () => {
     renderMonetization(makeApp({ review_status: "approved" }));
 
     expect(await screen.findByText("Review approved")).toBeTruthy();
-    expect((screen.getByRole("switch") as HTMLButtonElement).disabled).toBe(
-      false,
+    const toggle = screen.getByRole("switch", {
+      name: "Enable Monetization",
+    }) as HTMLButtonElement;
+    expect(toggle.disabled).toBe(false);
+    expect(toggle.getAttribute("aria-describedby")).toBe(
+      "monetization-enabled-hint",
     );
+    expect(toggle.className).not.toMatch(/bg-green-500/);
+    expect(toggle.className).not.toMatch(/bg-neutral-700/);
+    expect(toggle.className).toMatch(/data-\[state=checked\]:bg-accent/);
+    expect(toggle.className).toMatch(/data-\[state=unchecked\]:bg-input/);
     expect(
       screen.queryByRole("button", { name: "Submit for review" }),
     ).toBeNull();

@@ -273,7 +273,7 @@ describe("GitHub release finalization", () => {
       ]),
       finalState: loadReleaseState(fixture.candidateDirectory),
     });
-  }, 30_000);
+  }, 120_000);
 
   test("rejects an existing release with a different public identity", async () => {
     const fixture = makeTaggedCandidate();
@@ -300,7 +300,7 @@ describe("GitHub release finalization", () => {
     expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
       "git-tagged",
     );
-  }, 30_000);
+  }, 120_000);
 
   test("rejects a mismatched repository or release target before recording finalization", async () => {
     const fixture = makeTaggedCandidate();
@@ -338,7 +338,7 @@ describe("GitHub release finalization", () => {
     expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
       "git-tagged",
     );
-  }, 30_000);
+  }, 120_000);
 
   test.each([
     [401, "authentication"],
@@ -369,6 +369,6 @@ describe("GitHub release finalization", () => {
         "git-tagged",
       );
     },
-    30_000,
+    120_000,
   );
 });

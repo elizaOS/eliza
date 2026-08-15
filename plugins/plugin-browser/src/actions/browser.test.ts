@@ -532,3 +532,115 @@ describe("BROWSER routing hint (#12209)", () => {
     expect(hint).toContain("COMPUTER_USE");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Typed dispatch failure propagation at the action boundary (#18258 review P1 #3)
+//
+// The service layer distinguishes UNSUPPORTED/UNAVAILABLE (safe pre-dispatch
+// declines) from UNCERTAIN_OUTCOME (a side-effecting command may have partially
+// executed — must NOT be retried). The BROWSER action must propagate this typed
+// state instead of collapsing every failure to "BROWSER_FAILED".
+// ---------------------------------------------------------------------------
+
+describe("BROWSER action propagates typed dispatch failures (#18258 review)", () => {
+  it("propagates a safe pre-dispatch decline (UNSUPPORTED) with fallbackSafe=true", async () => {
+    const { BrowserDispatchFailure } = await import("../dispatch-types.js");
+    const service = {
+      execute: vi.fn(async () => {
+        throw new BrowserDispatchFailure(
+          "UNSUPPORTED",
+          'No available browser target supports subaction "upload".',
+          { targetId: null },
+        );
+      }),
+    };
+
+    const { result } = await runBrowserAction({
+      service: service as never,
+      parameters: { action: "upload" },
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: false,
+        values: expect.objectContaining({
+          success: false,
+          error: "UNSUPPORTED",
+          dispatchKind: "UNSUPPORTED",
+          fallbackSafe: true,
+        }),
+        data: expect.objectContaining({
+          actionName: "BROWSER",
+          dispatchFailure: expect.objectContaining({
+            kind: "UNSUPPORTED",
+            fallbackSafe: true,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("propagates an uncertain post-dispatch failure (UNCERTAIN_OUTCOME) with fallbackSafe=false", async () => {
+    const { BrowserDispatchFailure } = await import("../dispatch-types.js");
+    const service = {
+      execute: vi.fn(async () => {
+        throw new BrowserDispatchFailure(
+          "UNCERTAIN_OUTCOME",
+          'Browser command "click" against target "bridge" failed after dispatch and may have partially completed.',
+          { targetId: "bridge" },
+        );
+      }),
+    };
+
+    const { result } = await runBrowserAction({
+      service: service as never,
+      parameters: { action: "click", selector: "#submit" },
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: false,
+        values: expect.objectContaining({
+          success: false,
+          error: "UNCERTAIN_OUTCOME",
+          dispatchKind: "UNCERTAIN_OUTCOME",
+          fallbackSafe: false,
+          targetId: "bridge",
+        }),
+        data: expect.objectContaining({
+          actionName: "BROWSER",
+          dispatchFailure: expect.objectContaining({
+            kind: "UNCERTAIN_OUTCOME",
+            fallbackSafe: false,
+            targetId: "bridge",
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("falls back to BROWSER_FAILED for non-dispatch errors", async () => {
+    const service = {
+      execute: vi.fn(async () => {
+        throw new Error("Something went wrong");
+      }),
+    };
+
+    const { result } = await runBrowserAction({
+      service: service as never,
+      parameters: { action: "state" },
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: false,
+        values: expect.objectContaining({
+          success: false,
+          error: "BROWSER_FAILED",
+        }),
+      }),
+    );
+    // Must NOT have dispatchFailure in data for a plain error.
+    expect(result?.data).not.toHaveProperty("dispatchFailure");
+  });
+});

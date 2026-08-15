@@ -47,7 +47,7 @@
     "@lydell/node-pty": "^1.1.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.6",
+    "@biomejs/biome": "2.5.7",
     "@types/node": "^25.0.3",
     "bun-types": "^1.2.25",
     "@typescript/native": "npm:typescript@^7.0.2",
@@ -84,6 +84,13 @@
         "type": "string",
         "description": "Directory interactive PTY sessions are restricted to (cwd + workspace root). Defaults to the process cwd.",
         "required": false,
+        "sensitive": false
+      },
+      "PTY_IDLE_TIMEOUT_MS": {
+        "type": "number",
+        "description": "Idle live-session timeout in milliseconds. Use 0 to disable the fallback reaper; values must be integers no greater than 2147483647.",
+        "required": false,
+        "default": 900000,
         "sensitive": false
       },
       "ELIZA_CODE_BIN": {

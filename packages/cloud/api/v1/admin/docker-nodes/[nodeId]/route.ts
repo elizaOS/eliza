@@ -111,6 +111,13 @@ const updateNodeSchema = z
   .object({
     hostname: z.string().min(1).optional(),
     enabled: z.boolean().optional(),
+    // Cordoning is deliberately NOT `enabled: false`: that flag also removes
+    // the node from health checks, allocated-count sync, disk monitoring and
+    // the orphan reconciler, which must keep running while residents are still
+    // on the box.
+    placementState: z
+      .enum(["open", "cordoned", "evacuating", "drained"])
+      .optional(),
     capacity: z.number().int().min(1).optional(),
     sshPort: z.number().int().min(1).max(65535).optional(),
     sshUser: z.string().min(1).optional(),
@@ -175,6 +182,7 @@ async function __hono_PATCH(
     const {
       hostname,
       enabled,
+      placementState,
       capacity,
       sshPort,
       sshUser,
@@ -185,6 +193,8 @@ async function __hono_PATCH(
     const updateData: Record<string, unknown> = {};
     if (hostname !== undefined) updateData.hostname = hostname;
     if (enabled !== undefined) updateData.enabled = enabled;
+    if (placementState !== undefined)
+      updateData.placement_state = placementState;
     if (capacity !== undefined) updateData.capacity = capacity;
     if (sshPort !== undefined) updateData.ssh_port = sshPort;
     if (sshUser !== undefined) updateData.ssh_user = sshUser;
@@ -211,6 +221,7 @@ async function __hono_PATCH(
             capacity: updated.capacity,
             allocatedCount: updated.allocated_count,
             enabled: updated.enabled,
+            placementState: updated.placement_state,
             status: updated.status,
             lastHealthCheck: updated.last_health_check,
             metadata: updated.metadata,

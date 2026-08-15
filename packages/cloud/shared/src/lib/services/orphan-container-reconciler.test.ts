@@ -224,16 +224,10 @@ describe("node-aware stale-twin classification", () => {
     nodeMoveGraceMs: 5 * 60_000,
   };
   const NOW = 1_000_000_000_000;
-  const onNode = (
-    key: string,
-    status: string,
-    nodeId: string,
-    ageMs: number,
-  ): LiveContainerRef => ({
+  const onNode = (key: string, status: string, nodeId: string): LiveContainerRef => ({
     key,
     status,
     nodeId,
-    updatedAtMs: NOW - ageMs,
   });
   const c = (id: string, containerAgeMs = 60 * 60_000): NodeContainerRef => ({
     name: `agent-${id}`,
@@ -255,7 +249,7 @@ describe("node-aware stale-twin classification", () => {
     expect(
       computeOrphanContainersToReap(
         [tenMinutesOld],
-        [onNode("x", "running", "nodeB", 10 * 60_000)],
+        [onNode("x", "running", "nodeB")],
         independentGrace,
         "nodeA",
         NOW,
@@ -263,10 +257,10 @@ describe("node-aware stale-twin classification", () => {
     ).toEqual([{ name: "agent-x", id: "docker-x", key: "x", reason: "wrong_node" }]);
   });
 
-  test("reaps a stable container whose live row points at a different node", () => {
+  test("reaps an old container whose live row points at a different node", () => {
     const orphans = computeOrphanContainersToReap(
       [c("x")],
-      [onNode("x", "running", "nodeB", 10 * 60_000)],
+      [onNode("x", "running", "nodeB")],
       cfg,
       "nodeA",
       NOW,
@@ -275,64 +269,108 @@ describe("node-aware stale-twin classification", () => {
   });
 
   test("retains a fresh container while placement is in flight", () => {
-    const orphans = computeOrphanContainersToReap(
+    const decisions = classifyContainersForReconciliation(
       [c("x", 29_000)],
-      [onNode("x", "running", "nodeB", 12 * 24 * 60 * 60_000)],
+      [onNode("x", "running", "nodeB")],
       cfg,
       "nodeA",
       NOW,
     );
-    expect(orphans).toEqual([]);
+    expect(decisions).toEqual([
+      {
+        action: "retain",
+        name: "agent-x",
+        id: "docker-x",
+        key: "x",
+        reason: "wrong_node_container_within_grace",
+      },
+    ]);
   });
 
   test("retains a container with unknown age", () => {
-    const orphans = computeOrphanContainersToReap(
+    const decisions = classifyContainersForReconciliation(
       [{ name: "agent-x", id: "docker-x" }],
-      [onNode("x", "running", "nodeB", 10 * 60_000)],
+      [onNode("x", "running", "nodeB")],
       cfg,
       "nodeA",
       NOW,
     );
-    expect(orphans).toEqual([]);
+    expect(decisions).toEqual([
+      {
+        action: "retain",
+        name: "agent-x",
+        id: "docker-x",
+        key: "x",
+        reason: "wrong_node_age_unknown",
+      },
+    ]);
   });
 
   test("retains the container on its canonical node", () => {
-    const orphans = computeOrphanContainersToReap(
+    const decisions = classifyContainersForReconciliation(
       [c("x")],
-      [onNode("x", "running", "nodeA", 10 * 60_000)],
+      [onNode("x", "running", "nodeA")],
       cfg,
       "nodeA",
       NOW,
     );
-    expect(orphans).toEqual([]);
+    expect(decisions).toEqual([
+      {
+        action: "retain",
+        name: "agent-x",
+        id: "docker-x",
+        key: "x",
+        reason: "live_on_node",
+      },
+    ]);
   });
 
-  test("retains a node mismatch within the row grace window", () => {
-    const orphans = computeOrphanContainersToReap(
+  test("reaps an old wrong-node container despite a fresh heartbeat row", () => {
+    const freshHeartbeatRow: LiveContainerRef & { updatedAtMs: number } = {
+      ...onNode("x", "running", "nodeB"),
+      updatedAtMs: NOW - 30_000,
+    };
+    const decisions = classifyContainersForReconciliation(
       [c("x")],
-      [onNode("x", "running", "nodeB", 30_000)],
+      [freshHeartbeatRow],
       cfg,
       "nodeA",
       NOW,
     );
-    expect(orphans).toEqual([]);
+    expect(decisions).toEqual([
+      {
+        action: "reap",
+        name: "agent-x",
+        id: "docker-x",
+        key: "x",
+        reason: "wrong_node",
+      },
+    ]);
   });
 
   test("retains a row whose placement evidence is incomplete", () => {
-    const orphans = computeOrphanContainersToReap(
+    const decisions = classifyContainersForReconciliation(
       [c("x")],
       [{ key: "x", status: "running" }],
       cfg,
       "nodeA",
       NOW,
     );
-    expect(orphans).toEqual([]);
+    expect(decisions).toEqual([
+      {
+        action: "retain",
+        name: "agent-x",
+        id: "docker-x",
+        key: "x",
+        reason: "wrong_node_evidence_incomplete",
+      },
+    ]);
   });
 
   test("terminal row still wins over node logic (reap as terminal_db_row)", () => {
     const orphans = computeOrphanContainersToReap(
       [c("x")],
-      [onNode("x", "error", "nodeB", 10 * 60_000)],
+      [onNode("x", "error", "nodeB")],
       cfg,
       "nodeA",
       NOW,
@@ -343,7 +381,7 @@ describe("node-aware stale-twin classification", () => {
   test("retains when the caller omits node context", () => {
     const orphans = computeOrphanContainersToReap(
       [c("x")],
-      [onNode("x", "running", "nodeB", 10 * 60_000)],
+      [onNode("x", "running", "nodeB")],
       cfg,
       undefined,
       NOW,
@@ -355,7 +393,7 @@ describe("node-aware stale-twin classification", () => {
     const appsCfg = { ...cfg, nodeAware: false };
     const orphans = computeOrphanContainersToReap(
       [c("x")],
-      [onNode("x", "running", "nodeB", 10 * 60_000)],
+      [onNode("x", "running", "nodeB")],
       appsCfg,
       "nodeA",
       NOW,

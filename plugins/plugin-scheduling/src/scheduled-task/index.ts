@@ -20,6 +20,13 @@ export {
   registerBuiltInCompletionChecks,
 } from "./completion-check-registry.js";
 export {
+  type ConnectorDispatchTarget,
+  dispatchViaMessageConnector,
+  isConnectorDispatchIntent,
+  resolveConnectorDispatchTarget,
+  runtimeHasMessageConnector,
+} from "./connector-dispatch.js";
+export {
   type AnchorRegistry,
   type ConsolidationRegistry,
   createAnchorRegistry,
@@ -38,12 +45,17 @@ export {
   FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS,
 } from "./default-pack.js";
 export {
+  buildDeterministicDispatchBody,
+  buildDeterministicDispatchTitle,
   buildScheduledDispatchRenderPrompt,
   buildScheduledDispatchTitlePrompt,
+  hasScheduledDispatchModel,
   RENDER_FAILURE_RETRY_MINUTES,
   renderFailureDispatchResult,
+  renderOwnerNotificationTitle,
   renderScheduledDispatchMessage,
   renderScheduledDispatchTitle,
+  scheduledDispatchPromptTask,
 } from "./dispatch-render.js";
 export {
   expectedReplyKindForTask,
@@ -115,6 +127,7 @@ export {
   ScheduledTaskRunnerService,
 } from "./runner-service.js";
 export {
+  isScheduledTask,
   scheduledTaskFilterSchema,
   scheduledTaskInputSchema,
   scheduledTaskSchema,
@@ -130,6 +143,10 @@ export {
   seedRegisteredTaskPacks,
 } from "./seed-registry.js";
 export {
+  createRuntimeSchedulingSqlExecutor,
+  type SchedulingSqlExecutor,
+} from "./sql.js";
+export {
   createInMemoryScheduledTaskLogStore,
   createStateLogger,
   type ScheduledTaskLogStore,
@@ -138,8 +155,11 @@ export {
 export {
   createSchedulingSqlScheduledTaskLogStore,
   createSchedulingSqlScheduledTaskStore,
+  type DueScheduledTaskRef,
+  listDueScheduledTaskRefs,
   parseScheduledTaskLogRow,
   parseScheduledTaskRow,
+  type SchedulingSqlStoreOptions,
 } from "./store.js";
 export { OWNER_LOCAL_TZ, resolveTriggerTz } from "./trigger-tz.js";
 export type {
@@ -174,6 +194,7 @@ export type {
   ScheduledTaskPipeline,
   ScheduledTaskPriority,
   ScheduledTaskRef,
+  ScheduledTaskResolvedContext,
   ScheduledTaskRunner,
   ScheduledTaskShouldFire,
   ScheduledTaskSource,

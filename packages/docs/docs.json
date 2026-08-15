@@ -42,7 +42,7 @@
     "primary": {
       "type": "button",
       "label": "Open Cloud",
-      "href": "https://elizacloud.ai"
+      "href": "https://cloud.eliza.app"
     }
   },
   "navigation": {

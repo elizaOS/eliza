@@ -1,35 +1,54 @@
+/**
+ Widget/control gallery capture harness for issue #12185.
+
+ Drives SpringBoard to open the Home Screen widget gallery and the Control
+ Center gallery, then attaches `.keepAlways` screenshots for the evidence
+ filmstrip. SpringBoard chrome differs across iOS majors, so each gallery leg
+ is best-effort and requires the app and ElizaWidgets extension to be installed.
+
+ A fully unsigned extension cannot be enumerated by the controls gallery; use
+ at least ad-hoc signing before capture.
+ */
 import XCTest
 
-/// Widget/control gallery capture harness (issue #12185).
-///
-/// Drives SpringBoard (not the app) to open the Home Screen widget gallery and
-/// the Control Center "Add a Control" gallery, searches for Eliza, and attaches
-/// `.keepAlways` screenshots at every step so
-/// `xcrun xcresulttool export attachments` yields the evidence filmstrip
-/// (run via packages/app/scripts/ios-device-capture.mjs
-/// --only-testing AppUITests/WidgetGalleryCaptureUITests).
-///
-/// SpringBoard's edit/gallery chrome differs across iOS majors, so each leg is
-/// best-effort: it screenshots whatever state it reached instead of failing the
-/// whole capture on a missing button. Requires the app (and therefore the
-/// ElizaWidgets extension) to already be installed on the target simulator.
-///
-/// Signing gotcha: a `CODE_SIGNING_ALLOWED=NO` simulator build registers the
-/// WIDGETS (static metadata) but the CONTROLS never appear in the gallery —
-/// control enumeration launches the appex, and a fully unsigned appex faults
-/// in XPC peer attribution (EXC_GUARD in `xpc_connection_copy_bundle_id`,
-/// `ExcUserFault_ElizaWidgets` crash log). Build with at least ad-hoc signing
-/// (`CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=-`)
-/// before capturing the control gallery.
 final class WidgetGalleryCaptureUITests: XCTestCase {
 
     private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+
+    // MARK: - Brand-aware display name
+
+    /// The installed target application's real accessibility label.
+    ///
+    /// Reads the host app's `label` (which mirrors `CFBundleDisplayName` /
+    /// `ELIZA_DISPLAY_NAME` from `app.config.ts`) so the test stays aligned
+    /// with the build's actual display name and preserves white-label support.
+    /// Based on NubsCarson:c21d9237 — do not silently substitute a canonical
+    /// brand when the label is unavailable; fail fast per the repository's
+    /// unavailable-state policy.
+    private func widgetAppDisplayName() throws -> String {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 15),
+            "Installed app must be running before XCUITest can read its display label."
+        )
+
+        let label = app.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try XCTUnwrap(
+            label.isEmpty ? nil : label,
+            "Installed app must have a non-empty display label (CFBundleDisplayName/ELIZA_DISPLAY_NAME)."
+        )
+    }
 
     override func setUpWithError() throws {
         continueAfterFailure = true
     }
 
     func testCaptureHomeScreenWidgetGallery() throws {
+        // XCUIApplication.label cannot be snapshotted after SpringBoard sends
+        // the app to the background, so resolve the required build identity
+        // while the installed target is running and carry it into the flow.
+        let displayName = try widgetAppDisplayName()
         goHome()
         attachScreenshot(named: "widget-00-home-screen")
 
@@ -59,11 +78,11 @@ final class WidgetGalleryCaptureUITests: XCTestCase {
         let search = springboard.searchFields.firstMatch
         if search.waitForExistence(timeout: 5) {
             search.tap()
-            search.typeText("Eliza")
+            search.typeText(displayName)
             Thread.sleep(forTimeInterval: 2)
             attachScreenshot(named: "widget-03-gallery-search-eliza")
 
-            let appRow = springboard.staticTexts["elizaOS"].firstMatch
+            let appRow = springboard.staticTexts[displayName].firstMatch
             if appRow.waitForExistence(timeout: 5) {
                 // The result row is often "visible but not hittable" to XCUI's
                 // hit-tester inside the gallery sheet; a coordinate tap works.

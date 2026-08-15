@@ -231,6 +231,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/agents/[agentId]/route.ts",
   },
+  "DELETE /api/v1/eliza/agents/{agentId}/api/{path}": {
+    method: "DELETE",
+    path: "/api/v1/eliza/agents/{agentId}/api/{path}",
+    methodName: "deleteApiV1ElizaAgentsByAgentIdApiByPath",
+    responseMode: "json",
+    pathParams: ["agentId", "path"],
+    catchAllPathParams: ["path"],
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/[...path]/route.ts",
+  },
   "DELETE /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}": {
     method: "DELETE",
     path: "/api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}",
@@ -330,6 +339,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/oauth/connections/[id]/route.ts",
+  },
+  "DELETE /api/v1/phone-gateways/bluebubbles/{id}": {
+    method: "DELETE",
+    path: "/api/v1/phone-gateways/bluebubbles/{id}",
+    methodName: "deleteApiV1PhoneGatewaysBluebubblesById",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/phone-gateways/bluebubbles/[id]/route.ts",
   },
   "DELETE /api/v1/proxy/birdeye/{path}": {
     method: "DELETE",
@@ -1440,6 +1458,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/agents/[agentId]/lifeops/schedule/merged-state/route.ts",
   },
+  "GET /api/v1/eliza/agents/{agentId}/upgrade-tier": {
+    method: "GET",
+    path: "/api/v1/eliza/agents/{agentId}/upgrade-tier",
+    methodName: "getApiV1ElizaAgentsByAgentIdUpgradeTier",
+    responseMode: "json",
+    pathParams: ["agentId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/upgrade-tier/route.ts",
+  },
   "GET /api/v1/eliza/agents/{agentId}/wallet": {
     method: "GET",
     path: "/api/v1/eliza/agents/{agentId}/wallet",
@@ -1583,6 +1610,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/plaid/status/route.ts",
+  },
+  "GET /api/v1/eliza/shared/messages": {
+    method: "GET",
+    path: "/api/v1/eliza/shared/messages",
+    methodName: "getApiV1ElizaSharedMessages",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/shared/messages/route.ts",
   },
   "GET /api/v1/files": {
     method: "GET",
@@ -1980,6 +2016,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/oauth/status/route.ts",
   },
+  "GET /api/v1/oauth/success-proof/verify": {
+    method: "GET",
+    path: "/api/v1/oauth/success-proof/verify",
+    methodName: "getApiV1OauthSuccessProofVerify",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/oauth/success-proof/verify/route.ts",
+  },
   "GET /api/v1/oauth/token/{platform}": {
     method: "GET",
     path: "/api/v1/oauth/token/{platform}",
@@ -2006,6 +2051,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/payment-requests/[id]/route.ts",
+  },
+  "GET /api/v1/phone-gateways/bluebubbles": {
+    method: "GET",
+    path: "/api/v1/phone-gateways/bluebubbles",
+    methodName: "getApiV1PhoneGatewaysBluebubbles",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/phone-gateways/bluebubbles/route.ts",
   },
   "GET /api/v1/pii-scrub/jobs/{id}": {
     method: "GET",
@@ -2930,7 +2984,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     method: "POST",
     path: "/api/v1/apps/{id}/chat",
     methodName: "postApiV1AppsByIdChat",
-    responseMode: "mixed",
+    responseMode: "json",
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apps/[id]/chat/route.ts",
@@ -3659,6 +3713,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/agents/[agentId]/upgrade-tier/route.ts",
   },
+  "POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover": {
+    method: "POST",
+    path: "/api/v1/eliza/agents/{agentId}/upgrade-tier/cutover",
+    methodName: "postApiV1ElizaAgentsByAgentIdUpgradeTierCutover",
+    responseMode: "json",
+    pathParams: ["agentId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/upgrade-tier/cutover/route.ts",
+  },
   "POST /api/v1/eliza/agents/{agentId}/wake": {
     method: "POST",
     path: "/api/v1/eliza/agents/{agentId}/wake",
@@ -3811,6 +3874,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/plaid/sync/route.ts",
+  },
+  "POST /api/v1/eliza/shared/messages": {
+    method: "POST",
+    path: "/api/v1/eliza/shared/messages",
+    methodName: "postApiV1ElizaSharedMessages",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/shared/messages/route.ts",
   },
   "POST /api/v1/embeddings": {
     method: "POST",
@@ -4108,6 +4180,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/payment-requests/[id]/expire/route.ts",
+  },
+  "POST /api/v1/phone-gateways/bluebubbles": {
+    method: "POST",
+    path: "/api/v1/phone-gateways/bluebubbles",
+    methodName: "postApiV1PhoneGatewaysBluebubbles",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/phone-gateways/bluebubbles/route.ts",
   },
   "POST /api/v1/pii-scrub/jobs": {
     method: "POST",
@@ -4667,6 +4748,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/connections/[platform]/route.ts",
   },
+  "PUT /api/v1/eliza/agents/{agentId}/api/{path}": {
+    method: "PUT",
+    path: "/api/v1/eliza/agents/{agentId}/api/{path}",
+    methodName: "putApiV1ElizaAgentsByAgentIdApiByPath",
+    responseMode: "json",
+    pathParams: ["agentId", "path"],
+    catchAllPathParams: ["path"],
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/[...path]/route.ts",
+  },
   "PUT /api/v1/eliza/agents/{agentId}/api/identity/uri": {
     method: "PUT",
     path: "/api/v1/eliza/agents/{agentId}/api/identity/uri",
@@ -4767,6 +4857,10 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/documents/{id}": { id: string | number };
   "DELETE /api/v1/documents/pre-upload": Record<never, never>;
   "DELETE /api/v1/eliza/agents/{agentId}": { agentId: string | number };
+  "DELETE /api/v1/eliza/agents/{agentId}/api/{path}": {
+    agentId: string | number;
+    path: string | number | readonly (string | number)[];
+  };
   "DELETE /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}": {
     agentId: string | number;
     conversationId: string | number;
@@ -4785,6 +4879,7 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/mcps/{mcpId}": { mcpId: string | number };
   "DELETE /api/v1/mcps/{mcpId}/publish": { mcpId: string | number };
   "DELETE /api/v1/oauth/connections/{id}": { id: string | number };
+  "DELETE /api/v1/phone-gateways/bluebubbles/{id}": { id: string | number };
   "DELETE /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
   };
@@ -4968,6 +5063,9 @@ export interface PublicRoutePathParams {
   "GET /api/v1/eliza/agents/{agentId}/lifeops/schedule/merged-state": {
     agentId: string | number;
   };
+  "GET /api/v1/eliza/agents/{agentId}/upgrade-tier": {
+    agentId: string | number;
+  };
   "GET /api/v1/eliza/agents/{agentId}/wallet": { agentId: string | number };
   "GET /api/v1/eliza/gateway-relay/sessions/{sessionId}/next": {
     sessionId: string | number;
@@ -4988,6 +5086,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/eliza/paypal/popup-callback": Record<never, never>;
   "GET /api/v1/eliza/paypal/status": Record<never, never>;
   "GET /api/v1/eliza/plaid/status": Record<never, never>;
+  "GET /api/v1/eliza/shared/messages": Record<never, never>;
   "GET /api/v1/files": Record<never, never>;
   "GET /api/v1/files/{id}": { id: string | number };
   "GET /api/v1/gallery": Record<never, never>;
@@ -5066,9 +5165,11 @@ export interface PublicRoutePathParams {
   "GET /api/v1/oauth/initiate": Record<never, never>;
   "GET /api/v1/oauth/providers": Record<never, never>;
   "GET /api/v1/oauth/status": Record<never, never>;
+  "GET /api/v1/oauth/success-proof/verify": Record<never, never>;
   "GET /api/v1/oauth/token/{platform}": { platform: string | number };
   "GET /api/v1/payment-requests": Record<never, never>;
   "GET /api/v1/payment-requests/{id}": { id: string | number };
+  "GET /api/v1/phone-gateways/bluebubbles": Record<never, never>;
   "GET /api/v1/pii-scrub/jobs/{id}": { id: string | number };
   "GET /api/v1/pricing/summary": Record<never, never>;
   "GET /api/v1/proxy/birdeye/{path}": {
@@ -5317,6 +5418,9 @@ export interface PublicRoutePathParams {
   "POST /api/v1/eliza/agents/{agentId}/upgrade-tier": {
     agentId: string | number;
   };
+  "POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover": {
+    agentId: string | number;
+  };
   "POST /api/v1/eliza/agents/{agentId}/wake": { agentId: string | number };
   "POST /api/v1/eliza/agents/{agentId}/write": { agentId: string | number };
   "POST /api/v1/eliza/discord/gateway-agent": Record<never, never>;
@@ -5336,6 +5440,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/eliza/plaid/exchange": Record<never, never>;
   "POST /api/v1/eliza/plaid/link-token": Record<never, never>;
   "POST /api/v1/eliza/plaid/sync": Record<never, never>;
+  "POST /api/v1/eliza/shared/messages": Record<never, never>;
   "POST /api/v1/embeddings": Record<never, never>;
   "POST /api/v1/extract": Record<never, never>;
   "POST /api/v1/files": Record<never, never>;
@@ -5383,6 +5488,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/payment-requests": Record<never, never>;
   "POST /api/v1/payment-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/payment-requests/{id}/expire": { id: string | number };
+  "POST /api/v1/phone-gateways/bluebubbles": Record<never, never>;
   "POST /api/v1/pii-scrub/jobs": Record<never, never>;
   "POST /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
@@ -5452,6 +5558,10 @@ export interface PublicRoutePathParams {
   "PUT /api/v1/apps/{id}/monetization": { id: string | number };
   "PUT /api/v1/billing/settings": Record<never, never>;
   "PUT /api/v1/connections/{platform}": { platform: string | number };
+  "PUT /api/v1/eliza/agents/{agentId}/api/{path}": {
+    agentId: string | number;
+    path: string | number | readonly (string | number)[];
+  };
   "PUT /api/v1/eliza/agents/{agentId}/api/identity/uri": {
     agentId: string | number;
   };
@@ -5829,6 +5939,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  deleteApiV1ElizaAgentsByAgentIdApiByPath<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/eliza/agents/{agentId}/api/{path}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "DELETE /api/v1/eliza/agents/{agentId}/api/{path}",
+      TResponse
+    >("DELETE /api/v1/eliza/agents/{agentId}/api/{path}", options);
+  }
+
   deleteApiV1ElizaAgentsByAgentIdApiConversationsByConversationId<
     TResponse = unknown,
   >(
@@ -5931,6 +6050,15 @@ export class ElizaCloudPublicRoutesClient {
       "DELETE /api/v1/oauth/connections/{id}",
       options,
     );
+  }
+
+  deleteApiV1PhoneGatewaysBluebubblesById<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/phone-gateways/bluebubbles/{id}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "DELETE /api/v1/phone-gateways/bluebubbles/{id}",
+      TResponse
+    >("DELETE /api/v1/phone-gateways/bluebubbles/{id}", options);
   }
 
   deleteApiV1ProxyBirdeyeByPath<TResponse = unknown>(
@@ -7051,6 +7179,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1ElizaAgentsByAgentIdUpgradeTier<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/upgrade-tier">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/eliza/agents/{agentId}/upgrade-tier",
+      TResponse
+    >("GET /api/v1/eliza/agents/{agentId}/upgrade-tier", options);
+  }
+
   getApiV1ElizaAgentsByAgentIdWallet<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/wallet">,
   ): Promise<TResponse> {
@@ -7188,6 +7325,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/eliza/plaid/status", TResponse>(
       "GET /api/v1/eliza/plaid/status",
+      options,
+    );
+  }
+
+  getApiV1ElizaSharedMessages<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/shared/messages"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/eliza/shared/messages", TResponse>(
+      "GET /api/v1/eliza/shared/messages",
       options,
     );
   }
@@ -7588,6 +7734,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1OauthSuccessProofVerify<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/oauth/success-proof/verify"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/oauth/success-proof/verify", TResponse>(
+      "GET /api/v1/oauth/success-proof/verify",
+      options,
+    );
+  }
+
   getApiV1OauthTokenByPlatform<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/oauth/token/{platform}">,
   ): Promise<TResponse> {
@@ -7611,6 +7766,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/payment-requests/{id}", TResponse>(
       "GET /api/v1/payment-requests/{id}",
+      options,
+    );
+  }
+
+  getApiV1PhoneGatewaysBluebubbles<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/phone-gateways/bluebubbles"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/phone-gateways/bluebubbles", TResponse>(
+      "GET /api/v1/phone-gateways/bluebubbles",
       options,
     );
   }
@@ -9269,6 +9433,15 @@ export class ElizaCloudPublicRoutesClient {
     >("POST /api/v1/eliza/agents/{agentId}/upgrade-tier", options);
   }
 
+  postApiV1ElizaAgentsByAgentIdUpgradeTierCutover<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover",
+      TResponse
+    >("POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover", options);
+  }
+
   postApiV1ElizaAgentsByAgentIdWake<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/wake">,
   ): Promise<TResponse> {
@@ -9421,6 +9594,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/eliza/plaid/sync", TResponse>(
       "POST /api/v1/eliza/plaid/sync",
+      options,
+    );
+  }
+
+  postApiV1ElizaSharedMessages<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/shared/messages"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/eliza/shared/messages", TResponse>(
+      "POST /api/v1/eliza/shared/messages",
       options,
     );
   }
@@ -9733,6 +9915,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/payment-requests/{id}/expire", TResponse>(
       "POST /api/v1/payment-requests/{id}/expire",
+      options,
+    );
+  }
+
+  postApiV1PhoneGatewaysBluebubbles<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/phone-gateways/bluebubbles"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/phone-gateways/bluebubbles", TResponse>(
+      "POST /api/v1/phone-gateways/bluebubbles",
       options,
     );
   }
@@ -10292,6 +10483,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  putApiV1ElizaAgentsByAgentIdApiByPath<TResponse = unknown>(
+    options: PublicRouteCallOptions<"PUT /api/v1/eliza/agents/{agentId}/api/{path}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "PUT /api/v1/eliza/agents/{agentId}/api/{path}",
+      TResponse
+    >("PUT /api/v1/eliza/agents/{agentId}/api/{path}", options);
+  }
+
   putApiV1ElizaAgentsByAgentIdApiIdentityUri<TResponse = unknown>(
     options: PublicRouteCallOptions<"PUT /api/v1/eliza/agents/{agentId}/api/identity/uri">,
   ): Promise<TResponse> {
@@ -10496,6 +10696,15 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("DELETE /api/v1/eliza/agents/{agentId}", options);
   }
 
+  deleteApiV1ElizaAgentsByAgentIdApiByPathRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/eliza/agents/{agentId}/api/{path}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "DELETE /api/v1/eliza/agents/{agentId}/api/{path}",
+      options,
+    );
+  }
+
   deleteApiV1ElizaAgentsByAgentIdApiConversationsByConversationIdRaw(
     options: PublicRouteCallOptions<"DELETE /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}">,
   ): Promise<Response> {
@@ -10575,6 +10784,15 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"DELETE /api/v1/oauth/connections/{id}">,
   ): Promise<Response> {
     return this.callRaw("DELETE /api/v1/oauth/connections/{id}", options);
+  }
+
+  deleteApiV1PhoneGatewaysBluebubblesByIdRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/phone-gateways/bluebubbles/{id}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "DELETE /api/v1/phone-gateways/bluebubbles/{id}",
+      options,
+    );
   }
 
   deleteApiV1ProxyBirdeyeByPathRaw(
@@ -11381,6 +11599,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1ElizaAgentsByAgentIdUpgradeTierRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/upgrade-tier">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/eliza/agents/{agentId}/upgrade-tier",
+      options,
+    );
+  }
+
   getApiV1ElizaAgentsByAgentIdWalletRaw(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/wallet">,
   ): Promise<Response> {
@@ -11484,6 +11711,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/eliza/plaid/status"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/eliza/plaid/status", options);
+  }
+
+  getApiV1ElizaSharedMessagesRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/shared/messages"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/eliza/shared/messages", options);
   }
 
   getApiV1FilesRaw(
@@ -11774,6 +12007,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/oauth/status", options);
   }
 
+  getApiV1OauthSuccessProofVerifyRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/oauth/success-proof/verify"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/oauth/success-proof/verify", options);
+  }
+
   getApiV1OauthTokenByPlatformRaw(
     options: PublicRouteCallOptions<"GET /api/v1/oauth/token/{platform}">,
   ): Promise<Response> {
@@ -11790,6 +12029,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/payment-requests/{id}">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/payment-requests/{id}", options);
+  }
+
+  getApiV1PhoneGatewaysBluebubblesRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/phone-gateways/bluebubbles"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/phone-gateways/bluebubbles", options);
   }
 
   getApiV1PiiScrubJobsByIdRaw(
@@ -13007,6 +13252,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1ElizaAgentsByAgentIdUpgradeTierCutoverRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover",
+      options,
+    );
+  }
+
   postApiV1ElizaAgentsByAgentIdWakeRaw(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/wake">,
   ): Promise<Response> {
@@ -13113,6 +13367,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/sync"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/eliza/plaid/sync", options);
+  }
+
+  postApiV1ElizaSharedMessagesRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/shared/messages"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/eliza/shared/messages", options);
   }
 
   postApiV1EmbeddingsRaw(
@@ -13332,6 +13592,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/payment-requests/{id}/expire">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/payment-requests/{id}/expire", options);
+  }
+
+  postApiV1PhoneGatewaysBluebubblesRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/phone-gateways/bluebubbles"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/phone-gateways/bluebubbles", options);
   }
 
   postApiV1PiiScrubJobsRaw(
@@ -13710,6 +13976,15 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"PUT /api/v1/connections/{platform}">,
   ): Promise<Response> {
     return this.callRaw("PUT /api/v1/connections/{platform}", options);
+  }
+
+  putApiV1ElizaAgentsByAgentIdApiByPathRaw(
+    options: PublicRouteCallOptions<"PUT /api/v1/eliza/agents/{agentId}/api/{path}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "PUT /api/v1/eliza/agents/{agentId}/api/{path}",
+      options,
+    );
   }
 
   putApiV1ElizaAgentsByAgentIdApiIdentityUriRaw(

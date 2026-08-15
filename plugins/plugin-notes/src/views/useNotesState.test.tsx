@@ -1,6 +1,8 @@
 /**
  * Exercises the browser synchronization hook against controlled transport
  * promises, including lifecycle refreshes that can overlap after a reconnect.
+ *
+ * @vitest-environment jsdom
  */
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";

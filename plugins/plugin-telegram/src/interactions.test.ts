@@ -23,6 +23,22 @@ describe("renderTelegramInteractions", () => {
     expect(out.needsFreeTextReply).toBe(false);
   });
 
+  it("does not ship an unclaimed terminal marker when no controls parse", () => {
+    const out = renderTelegramInteractions({
+      text: "Done.\r\n[ FOLLOWUPS ]\r\nreply:More=More",
+    } as Content);
+    expect(out.text).toBe("Done.");
+    expect(out.keyboardRows).toEqual([]);
+  });
+
+  it("renders spaced CRLF followups as native controls", () => {
+    const out = renderTelegramInteractions({
+      text: "Done.\r\n[ FOLLOWUPS ]\r\nreply:More=More\r\n[ / FOLLOWUPS ]",
+    } as Content);
+    expect(out.text).toBe("Done.");
+    expect(out.keyboardRows[0]?.[0]).toMatchObject({ text: "More" });
+  });
+
   it("renders a choice block as callback buttons and strips the marker", () => {
     const content: Content = {
       text: "Approve the deploy?\n[CHOICE:approve id=c1]\nyes=Yes, ship it\nno=Cancel\n[/CHOICE]",

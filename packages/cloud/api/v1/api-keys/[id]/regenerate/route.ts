@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { assertOrgMembership } from "@/api-app/middleware/org-membership";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
@@ -21,7 +21,7 @@ app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const user = await requireUserWithOrg(c);
     const id = c.req.param("id");
     if (!id) return c.json({ error: "Missing id" }, 400);
 

@@ -63,6 +63,24 @@ describe("createTurnDrainRegistry", () => {
 		expect(registry.pendingCount()).toBe(0);
 	});
 
+	it("reports a message id pending while either half is outstanding, and not after", async () => {
+		const registry = createTurnDrainRegistry();
+		const controller = makeController();
+		const turn = delay(5).then(() => {
+			controller.setDone();
+		});
+
+		expect(registry.isPending("msg-1")).toBe(false);
+		registry.trackTurn("msg-1", turn);
+		registry.trackStatusReaction("msg-1", controller);
+		expect(registry.isPending("msg-1")).toBe(true);
+		expect(registry.isPending("msg-other")).toBe(false);
+
+		await registry.drain(200);
+
+		expect(registry.isPending("msg-1")).toBe(false);
+	});
+
 	it("returns promptly when nothing is in flight", async () => {
 		const registry = createTurnDrainRegistry();
 

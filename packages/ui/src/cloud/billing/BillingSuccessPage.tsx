@@ -1,8 +1,8 @@
 /**
- * /dashboard/billing/success — Stripe Checkout return URL.
+ * /cloud/billing/success — Stripe Checkout return URL.
  *
  * The server points `success_url` here as
- * `/dashboard/billing/success?session_id=...&from=settings`. On mount we POST
+ * `/cloud/billing/success?session_id=...&from=settings`. On mount we POST
  * `/api/billing/checkout/verify` (the synchronous webhook fallback) so credits
  * apply immediately rather than waiting on the async webhook, then show the
  * refreshed balance.

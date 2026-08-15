@@ -607,6 +607,154 @@ describe("GET /api/models/config activeChat", () => {
     expect(targets.large?.ELIZAOS_CLOUD_LARGE_MODEL).toBeNull();
   });
 
+  it("reports the Cerebras serving default when no base URL is configured", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: {
+        serviceRouting: {
+          llmText: {
+            backend: "cerebras",
+            transport: "direct",
+            accountId: "cerebras",
+          },
+        },
+      } as never,
+      processEnv: {},
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toEqual({
+      provider: "cerebras",
+      family: "OPENAI",
+      endpoint: "api.cerebras.ai",
+    });
+  });
+
+  it("uses Cerebras base URL unless the shared OpenAI override is configured", async () => {
+    const config = {
+      serviceRouting: {
+        llmText: {
+          backend: "cerebras",
+          transport: "direct",
+          accountId: "cerebras",
+        },
+      },
+    } as never;
+    const cerebras = makeHarness("GET", null, {
+      config,
+      processEnv: { CEREBRAS_BASE_URL: "https://inference.example/v1" },
+    });
+    await handleModelConfigRoutes(cerebras.ctx as never);
+    expect(responseOf(cerebras.json).body.activeChat).toMatchObject({
+      endpoint: "inference.example",
+    });
+
+    const openAiOverride = makeHarness("GET", null, {
+      config,
+      processEnv: {
+        CEREBRAS_BASE_URL: "https://inference.example/v1",
+        OPENAI_BASE_URL: "https://gateway.example/v1",
+      },
+    });
+    await handleModelConfigRoutes(openAiOverride.ctx as never);
+    expect(responseOf(openAiOverride.json).body.activeChat).toMatchObject({
+      endpoint: "gateway.example",
+    });
+  });
+
+  it("matches provider endpoint precedence across config and process env", async () => {
+    const cases = [
+      {
+        name: "OpenAI nested config wins over process env",
+        config: {
+          serviceRouting: {
+            llmText: {
+              backend: "openai",
+              transport: "direct",
+              accountId: "openai",
+            },
+          },
+          env: {
+            vars: { OPENAI_BASE_URL: " https://nested.openai.example/v1 " },
+          },
+        },
+        processEnv: { OPENAI_BASE_URL: "https://process.openai.example/v1" },
+        endpoint: "nested.openai.example",
+      },
+      {
+        name: "Anthropic whitespace config falls through to process env",
+        config: {
+          serviceRouting: {
+            llmText: {
+              backend: "anthropic",
+              transport: "direct",
+              accountId: "anthropic",
+            },
+          },
+          env: {
+            vars: {
+              ANTHROPIC_BASE_URL: "   ",
+              ELIZA_MOCK_ANTHROPIC_BASE: "https://config-mock.invalid/v1",
+            },
+          },
+        },
+        processEnv: {
+          ANTHROPIC_BASE_URL: " https://process.anthropic.example/v1 ",
+        },
+        endpoint: "process.anthropic.example",
+      },
+      {
+        name: "Cloud nested config wins when direct config is whitespace",
+        config: {
+          serviceRouting: {
+            llmText: {
+              backend: "elizacloud",
+              transport: "cloud-proxy",
+              accountId: "elizacloud",
+            },
+          },
+          env: {
+            ELIZAOS_CLOUD_BASE_URL: "\t",
+            vars: {
+              ELIZAOS_CLOUD_BASE_URL: "https://nested.cloud.example/api/v1",
+            },
+          },
+        },
+        processEnv: {
+          ELIZAOS_CLOUD_BASE_URL: "https://process.cloud.example/api/v1",
+        },
+        endpoint: "nested.cloud.example",
+      },
+      {
+        name: "Cerebras provider default uses its provider-owned base override",
+        config: {
+          serviceRouting: {
+            llmText: {
+              backend: "cerebras",
+              transport: "direct",
+              accountId: "cerebras",
+            },
+          },
+          env: { vars: { OPENAI_BASE_URL: " " } },
+        },
+        processEnv: {
+          CEREBRAS_BASE_URL: "https://process.cerebras.example/v1",
+        },
+        endpoint: "process.cerebras.example",
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const harness = makeHarness("GET", null, {
+        config: testCase.config as never,
+        processEnv: { ...testCase.processEnv },
+      });
+      await handleModelConfigRoutes(harness.ctx as never);
+      expect(
+        responseOf(harness.json).body.activeChat,
+        testCase.name,
+      ).toMatchObject({ endpoint: testCase.endpoint });
+    }
+  });
+
   it("omits activeChat when no routing is configured", async () => {
     const { ctx, json } = makeHarness("GET", null);
     await handleModelConfigRoutes(ctx as never);

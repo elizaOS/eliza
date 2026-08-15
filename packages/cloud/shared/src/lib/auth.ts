@@ -7,8 +7,10 @@ import {
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   verifyPlaywrightTestSessionToken,
 } from "./auth/playwright-test-session";
+import { loadVerifiedStagingSessionUser } from "./auth/staging-session-binding";
 import {
   invalidateStewardTokenCache,
+  isStagingSessionTokenCandidate,
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "./auth/steward-client";
@@ -39,8 +41,20 @@ function hashToken(token: string): string {
 function getStewardVerifyEnv(): StewardVerifyEnv {
   const env = getCloudAwareEnv();
   return {
+    NODE_ENV: env.NODE_ENV,
+    ENVIRONMENT: env.ENVIRONMENT,
     STEWARD_SESSION_SECRET: env.STEWARD_SESSION_SECRET,
     STEWARD_JWT_SECRET: env.STEWARD_JWT_SECRET,
+    ELIZA_SERVICE_JWT_SECRET: env.ELIZA_SERVICE_JWT_SECRET,
+    STEWARD_TENANT_ID: env.STEWARD_TENANT_ID,
+    STAGING_SESSION_EXCHANGE_ENABLED: env.STAGING_SESSION_EXCHANGE_ENABLED,
+    STAGING_SESSION_EXCHANGE_VERSION: env.STAGING_SESSION_EXCHANGE_VERSION,
+    STAGING_SESSION_EXCHANGE_SIGNING_SECRET: env.STAGING_SESSION_EXCHANGE_SIGNING_SECRET,
+    STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: env.STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID,
+    STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS: env.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS,
+    STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS: env.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS,
+    STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+      env.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS,
   };
 }
 
@@ -49,6 +63,7 @@ function getStewardVerifyEnv(): StewardVerifyEnv {
  * @param sessionToken - The session token to invalidate cache for
  */
 export async function invalidateUserSessionCache(sessionToken: string): Promise<void> {
+  if (isStagingSessionTokenCandidate(sessionToken)) return;
   const tokenHash = hashToken(sessionToken);
   const cacheKey = CacheKeys.session.user(tokenHash);
   await redisCache.del(cacheKey);
@@ -124,6 +139,21 @@ export async function getCurrentUserFromRequest(
       getCloudAwareEnv().ENVIRONMENT,
     );
     if (!stewardToken) return null;
+
+    // QA sessions must return before the rollback-readable user cache is even
+    // addressed. The exact pre-QA rollback trusts that cache before signature
+    // verification, so a dedicated-key token may never read or populate it.
+    const qaTokenCandidate = isStagingSessionTokenCandidate(stewardToken);
+    if (qaTokenCandidate) {
+      const claims = await verifyStewardTokenCached(getStewardVerifyEnv(), stewardToken);
+      const binding = claims?.stagingSessionBinding;
+      if (!claims || !binding) return null;
+
+      return await loadVerifiedStagingSessionUser({
+        binding,
+        stewardUserId: claims.userId,
+      });
+    }
 
     const tokenHash = hashToken(stewardToken);
     const cacheKey = CacheKeys.session.user(tokenHash);
@@ -373,20 +403,29 @@ export async function requireAuthOrApiKey(request: Request): Promise<AuthResult>
     if (looksLikeJwt(bearerValue)) {
       const stewardClaims = await verifyStewardTokenCached(getStewardVerifyEnv(), bearerValue);
       if (stewardClaims) {
-        let user = await usersService.getByStewardId(stewardClaims.userId);
-        if (!user) {
-          try {
-            user = await syncUserFromSteward({
-              stewardUserId: stewardClaims.userId,
-              email: stewardClaims.email,
-              walletAddress: stewardClaims.walletAddress ?? stewardClaims.address,
-              walletChainType: stewardClaims.walletChain,
-            });
-          } catch (syncErr) {
-            logger.error("[AUTH] Steward JIT sync failed", { error: syncErr });
-            throw new AuthenticationError("User not found");
+        let user: UserWithOrganization | undefined | null;
+        if (stewardClaims.stagingSessionBinding) {
+          user = await loadVerifiedStagingSessionUser({
+            binding: stewardClaims.stagingSessionBinding,
+            stewardUserId: stewardClaims.userId,
+          });
+        } else {
+          user = await usersService.getByStewardId(stewardClaims.userId);
+          if (!user) {
+            try {
+              user = await syncUserFromSteward({
+                stewardUserId: stewardClaims.userId,
+                email: stewardClaims.email,
+                walletAddress: stewardClaims.walletAddress ?? stewardClaims.address,
+                walletChainType: stewardClaims.walletChain,
+              });
+            } catch (syncErr) {
+              logger.error("[AUTH] Steward JIT sync failed", { error: syncErr });
+              throw new AuthenticationError("User not found");
+            }
           }
         }
+        if (!user) throw new AuthenticationError("User not found");
         if (!user.is_active) throw new ForbiddenError("User account is inactive");
         if (!user.organization?.is_active) throw new ForbiddenError("Organization is inactive");
         return { user, authMethod: "session", session_token: bearerValue };
@@ -458,6 +497,12 @@ export async function getUserFromRequest(request: Request): Promise<UserWithOrga
     const token = authHeader.slice(7);
     const stewardClaims = await verifyStewardTokenCached(getStewardVerifyEnv(), token);
     if (stewardClaims) {
+      if (stewardClaims.stagingSessionBinding) {
+        return await loadVerifiedStagingSessionUser({
+          binding: stewardClaims.stagingSessionBinding,
+          stewardUserId: stewardClaims.userId,
+        });
+      }
       const user = await usersService.getByStewardId(stewardClaims.userId);
       return user ?? null;
     }

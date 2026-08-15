@@ -585,6 +585,15 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const initialBrowseHandledRef = useRef(false);
   const workspaceRootRef = useRef<HTMLElement | null>(null);
   const workspaceSnapshotRef = useRef<BrowserWorkspaceSnapshot>(workspace);
+  // Polls are slower than their cadence when the API is unhealthy. Keep them
+  // single-flight, and order every response so a late poll cannot roll back a
+  // newer user action or turn stale-state refresh noise into a page failure.
+  const workspaceLoadVersionRef = useRef(0);
+  const foregroundWorkspaceLoadsRef = useRef(0);
+  const visibleWorkspaceLoadsRef = useRef(0);
+  const workspaceActionsInFlightRef = useRef(0);
+  const backgroundWorkspaceRefreshInFlightRef = useRef(false);
+  const initialWorkspaceLoadStartedRef = useRef(false);
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
   const registeredIframeElementsRef = useRef(new WeakSet<HTMLIFrameElement>());
   const iframeFocusHandoffsRef = useRef(
@@ -784,6 +793,17 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       return nextState;
     }
   }, []);
+
+  const {
+    beginBrowserWalletFrameNavigation,
+    revokeBrowserWalletFrame,
+    syncBrowserWalletFrameTarget,
+  } = useBrowserWorkspaceWalletBridge({
+    iframeRefs,
+    workspaceTabs: workspace.mode === "web" ? workspace.tabs : [],
+    walletState: browserWalletState,
+    loadWalletState: loadBrowserWalletState,
+  });
 
   const loadBrowserBridgeState = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -1043,14 +1063,29 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   }, [releaseBrowserWorkspaceIframeFocusReturn]);
 
   const loadWorkspace = useCallback(
-    async (options?: { preferTabId?: string | null; silent?: boolean }) => {
-      if (!options?.silent) {
+    async (options?: {
+      preferTabId?: string | null;
+      silent?: boolean;
+      background?: boolean;
+    }) => {
+      const background = options?.background === true;
+      const showLoading = options?.silent !== true;
+      if (!background) {
+        foregroundWorkspaceLoadsRef.current += 1;
+      }
+      const loadVersion = ++workspaceLoadVersionRef.current;
+      if (showLoading) {
+        visibleWorkspaceLoadsRef.current += 1;
         setLoading(true);
       }
       try {
         const snapshot = await client.getBrowserWorkspace();
+        if (loadVersion !== workspaceLoadVersionRef.current) return;
         const previousSnapshot = workspaceSnapshotRef.current;
         for (const nextTab of snapshot.tabs) {
+          if (snapshot.mode === "web") {
+            syncBrowserWalletFrameTarget(nextTab.id, nextTab.url);
+          }
           const previousTab = previousSnapshot.tabs.find(
             (tab) => tab.id === nextTab.id,
           );
@@ -1071,6 +1106,14 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             });
           }
         }
+        if (previousSnapshot.mode === "web") {
+          const nextTabIds = new Set(snapshot.tabs.map((tab) => tab.id));
+          for (const previousTab of previousSnapshot.tabs) {
+            if (snapshot.mode !== "web" || !nextTabIds.has(previousTab.id)) {
+              revokeBrowserWalletFrame(previousTab.id);
+            }
+          }
+        }
         workspaceSnapshotRef.current = snapshot;
         setWorkspace(snapshot);
         setLoadError(null);
@@ -1081,6 +1124,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           ),
         );
       } catch (error) {
+        if (background || loadVersion !== workspaceLoadVersionRef.current) {
+          // error-policy:J4 poll — retain the last successful workspace on a
+          // transient background failure; the next visible tick retries.
+          return;
+        }
         const message =
           error instanceof Error
             ? error.message
@@ -1089,14 +1137,22 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               });
         setLoadError(message);
       } finally {
-        if (!options?.silent) {
-          setLoading(false);
+        if (!background) {
+          foregroundWorkspaceLoadsRef.current -= 1;
+        }
+        if (showLoading) {
+          visibleWorkspaceLoadsRef.current -= 1;
+          if (visibleWorkspaceLoadsRef.current === 0) {
+            setLoading(false);
+          }
         }
       }
     },
     [
       armBrowserWorkspaceIframeFocusReturn,
       readBrowserWorkspaceFocusReturnTarget,
+      revokeBrowserWalletFrame,
+      syncBrowserWalletFrameTarget,
     ],
   );
 
@@ -1108,6 +1164,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     ) => {
       const actionFocusReturnTarget = readBrowserWorkspaceFocusReturnTarget();
       browserActionFocusReturnTargetRef.current = actionFocusReturnTarget;
+      workspaceActionsInFlightRef.current += 1;
+      workspaceLoadVersionRef.current += 1;
       setBusyAction(actionKey);
       try {
         await action();
@@ -1121,6 +1179,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               }));
         setActionNoticeRef.current(message, "error", 4_000);
       } finally {
+        workspaceActionsInFlightRef.current -= 1;
         setBusyAction(null);
         if (
           browserActionFocusReturnTargetRef.current === actionFocusReturnTarget
@@ -1131,6 +1190,26 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     },
     [readBrowserWorkspaceFocusReturnTarget],
   );
+
+  const refreshWorkspaceInBackground = useCallback(async () => {
+    if (
+      backgroundWorkspaceRefreshInFlightRef.current ||
+      foregroundWorkspaceLoadsRef.current > 0 ||
+      workspaceActionsInFlightRef.current > 0
+    ) {
+      return;
+    }
+    backgroundWorkspaceRefreshInFlightRef.current = true;
+    try {
+      await loadWorkspace({
+        preferTabId: selectedTabId,
+        silent: true,
+        background: true,
+      });
+    } finally {
+      backgroundWorkspaceRefreshInFlightRef.current = false;
+    }
+  }, [loadWorkspace, selectedTabId]);
 
   const loadSelectedBrowserWorkspaceSnapshot = useCallback(
     async (tabId: string, mode: BrowserWorkspaceSnapshot["mode"]) => {
@@ -1261,6 +1340,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         // directly via the ref in embedded web mode only.
         const iframe = iframeRefs.current.get(selectedTabId);
         if (iframe && iframe.src !== tab.url) {
+          beginBrowserWalletFrameNavigation(selectedTabId, tab.url);
           armBrowserWorkspaceIframeFocusReturn(iframe, {
             navigationUrl: tab.url,
           });
@@ -1276,6 +1356,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     },
     [
       armBrowserWorkspaceIframeFocusReturn,
+      beginBrowserWalletFrameNavigation,
       browserTabRenderPath,
       loadWorkspace,
       openNewBrowserWorkspaceTab,
@@ -2101,13 +2182,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     };
   }, []);
 
-  const { postBrowserWalletReady } = useBrowserWorkspaceWalletBridge({
-    iframeRefs,
-    workspaceTabs: workspace.mode === "web" ? workspace.tabs : [],
-    walletState: browserWalletState,
-    loadWalletState: loadBrowserWalletState,
-  });
-
   const closeBrowserWorkspaceTabById = useCallback(
     async (tabId: string) => {
       // Native mobile shell: tabs are client-side. Drop the tab from state (the
@@ -2123,6 +2197,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         return;
       }
       await client.closeBrowserWorkspaceTab(tabId);
+      revokeBrowserWalletFrame(tabId);
       const snapshot = await client.getBrowserWorkspace();
       const nextId =
         snapshot.tabs.find((tab) => tab.id === selectedTabId)?.id ??
@@ -2136,7 +2211,12 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         silent: true,
       });
     },
-    [browserTabRenderPath, loadWorkspace, selectedTabId],
+    [
+      browserTabRenderPath,
+      loadWorkspace,
+      revokeBrowserWalletFrame,
+      selectedTabId,
+    ],
   );
 
   const closeAllBrowserWorkspaceTabs = useCallback(async () => {
@@ -2145,6 +2225,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     );
     for (const tab of closableTabs) {
       await client.closeBrowserWorkspaceTab(tab.id);
+      revokeBrowserWalletFrame(tab.id);
     }
     const snapshot = await client.getBrowserWorkspace();
     const nextId = snapshot.tabs[0]?.id ?? null;
@@ -2155,9 +2236,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     setLocationInput(snapshot.tabs.find((tab) => tab.id === nextId)?.url ?? "");
     setLocationDirty(false);
     await loadWorkspace({ preferTabId: nextId, silent: true });
-  }, [loadWorkspace, workspace.tabs]);
+  }, [loadWorkspace, revokeBrowserWalletFrame, workspace.tabs]);
 
   useEffect(() => {
+    if (initialWorkspaceLoadStartedRef.current) return;
+    initialWorkspaceLoadStartedRef.current = true;
     void loadWorkspace();
   }, [loadWorkspace]);
 
@@ -2177,7 +2260,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   }, [browserBridgeSupported, loadBrowserBridgeState, workspace.mode]);
 
   useIntervalWhenDocumentVisible(() => {
-    void loadWorkspace({ preferTabId: selectedTabId, silent: true });
+    void refreshWorkspaceInBackground();
   }, POLL_INTERVAL_MS);
 
   useEffect(() => {
@@ -2277,6 +2360,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     if (workspace.mode === "web") {
       const iframe = iframeRefs.current.get(selectedTab.id);
       if (iframe) {
+        beginBrowserWalletFrameNavigation(selectedTab.id, selectedTab.url);
         armBrowserWorkspaceIframeFocusReturn(iframe, {
           navigationUrl: selectedTab.url,
         });
@@ -2292,6 +2376,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
   }, [
     armBrowserWorkspaceIframeFocusReturn,
+    beginBrowserWalletFrameNavigation,
     browserTabRenderPath,
     nativeTabSurfaces,
     selectedTab,
@@ -2934,7 +3019,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       ) : browserTabRenderPath === "sandboxed-iframe" ? (
         workspace.tabs.map((tab) => {
           const active = tab.id === selectedTabId;
-          const highlighted = tab.visible;
           const frameBlocked = isBrowserWorkspaceFrameBlockedUrl(tab.url);
           const visibilityClass = active
             ? "pointer-events-auto opacity-100"
@@ -3006,9 +3090,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               }}
               onLoad={(event) => {
                 beginBrowserWorkspaceIframeFocusSettle(event.currentTarget);
-                if (highlighted) {
-                  postBrowserWalletReady(tab, browserWalletState);
-                }
               }}
             />
           );

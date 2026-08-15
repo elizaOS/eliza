@@ -1,10 +1,10 @@
 // Validate CLOUD INFERENCE end-to-end through a running dedicated container,
-// reached via the PUBLIC subdomain (https://<agentId>.elizacloud.ai) the way a
+// reached via the PUBLIC subdomain (https://<agentId>.cloud.eliza.app) the way a
 // real user device would — not the internal tailnet bridge_url.
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
 
-const API = "https://api.elizacloud.ai";
+const API = "https://api.eliza.app";
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function j(method, path, { token, body, base } = {}) {
@@ -61,7 +61,7 @@ async function main() {
   const agentId = cd.id || cd.agentId;
   log("created", create.status, agentId, cd.executionTier || cd.execution_tier);
   if (!agentId) process.exit(2);
-  const publicBase = `https://${agentId}.elizacloud.ai`;
+  const publicBase = `https://${agentId}.cloud.eliza.app`;
   // wait for the PUBLIC subdomain to serve /api/status with running
   let ready = false;
   const t0 = Date.now();

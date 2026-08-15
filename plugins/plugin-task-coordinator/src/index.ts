@@ -1,6 +1,6 @@
 /**
- * Plugin definition for the coding-agent task coordinator: the view manifest,
- * the orchestrator view's typed capability descriptors, and `init()`.
+ * Server-side plugin definition for the coding-agent task coordinator: the view
+ * manifest, the orchestrator view's typed capability descriptors, and `init()`.
  *
  * Declares three GUI views (`task-coordinator`, `orchestrator`, `cockpit`) with
  * their bundle path + component exports, and the capability list remote/control
@@ -9,6 +9,12 @@
  * registry; the deterministic handler action is the only server-side runtime
  * contribution. All task/session state is owned by
  * `@elizaos/plugin-agent-orchestrator` — this plugin is display + control only.
+ *
+ * GUI components (ProjectSwitcher, CodingAgentTasksPanel, …) live in the view
+ * bundle (`task-coordinator-view-bundle.ts`) or are reached via slot-registry
+ * lazy imports. They must NOT be re-exported from this entry: the headless cloud
+ * agent image loads `dist/index.js` in Node, and any `@elizaos/ui` transitives
+ * (e.g. `@radix-ui/react-slot`) are pruned from the Docker runtime-dep closure.
  */
 import type { Plugin, ViewCapability } from "@elizaos/core";
 import {
@@ -333,4 +339,3 @@ export {
   orchestratorStatusCommandAction,
   registerOrchestratorCommands,
 } from "./orchestrator-command";
-export { ProjectSwitcher } from "./ProjectSwitcher";

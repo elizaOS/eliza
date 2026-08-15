@@ -24,12 +24,12 @@ MCP (Model Context Protocol) allows agents to:
 
 ### Dashboard
 
-Browse and connect MCP servers at [Dashboard → MCPs](https://elizacloud.ai/dashboard/mcps).
+Browse and connect MCP servers at [Cloud → MCPs](https://cloud.eliza.app/cloud/mcps).
 
 ### API
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/mcps" \
+curl -X POST "https://api.eliza.app/api/v1/mcps" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -54,7 +54,7 @@ elizaOS Cloud provides a curated registry of MCP servers:
 ### Browse Registry
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/mcp/registry" \
+curl -X GET "https://api.eliza.app/api/mcp/registry" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -114,7 +114,7 @@ Verify the tools are available in the agent.
 ### Connect via API
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/mcps" \
+curl -X POST "https://api.eliza.app/api/v1/mcps" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -133,7 +133,7 @@ curl -X POST "https://elizacloud.ai/api/v1/mcps" \
 When MCP servers are connected, agents can use their tools automatically:
 
 ```javascript
-const response = await fetch("https://elizacloud.ai/api/v1/chat/completions", {
+const response = await fetch("https://api.eliza.app/api/v1/chat/completions", {
   method: "POST",
   headers: {
     Authorization: "Bearer YOUR_API_KEY",
@@ -155,7 +155,7 @@ The agent will automatically invoke the `get_weather` tool and include the resul
 elizaOS Cloud exposes an MCP-compatible JSON-RPC interface:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/mcp" \
+curl -X POST "https://api.eliza.app/api/mcp" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -289,7 +289,7 @@ elizaOS Cloud provides demo MCP servers for testing:
 ### Test Demo Server
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/mcps/weather" \
+curl -X POST "https://api.eliza.app/api/mcps/weather" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -308,14 +308,14 @@ curl -X POST "https://elizacloud.ai/api/mcps/weather" \
 ### List Connected MCPs
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/mcps?agentId=agent_abc123" \
+curl -X GET "https://api.eliza.app/api/v1/mcps?agentId=agent_abc123" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 ### Disconnect MCP
 
 ```bash
-curl -X DELETE "https://elizacloud.ai/api/v1/mcps/mcp_abc123" \
+curl -X DELETE "https://api.eliza.app/api/v1/mcps/mcp_abc123" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -324,7 +324,7 @@ curl -X DELETE "https://elizacloud.ai/api/v1/mcps/mcp_abc123" \
 Share your MCP server in the registry:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/mcps/{mcpId}/publish" \
+curl -X POST "https://api.eliza.app/api/v1/mcps/{mcpId}/publish" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -339,7 +339,7 @@ curl -X POST "https://elizacloud.ai/api/v1/mcps/{mcpId}/publish" \
 - **Minimal Tools** — Only connect tools your agent actually needs to reduce latency
 - **Test Thoroughly** — Verify tools work correctly before deploying to production
 - **Handle Errors** — MCP calls can fail; implement graceful fallbacks in your agent
-- **Monitor Usage** — Track tool invocations in [Dashboard](/dashboard) for optimization
+- **Monitor Usage** — Track tool invocations in [Cloud](/cloud) for optimization
 
 ## Next Steps
 

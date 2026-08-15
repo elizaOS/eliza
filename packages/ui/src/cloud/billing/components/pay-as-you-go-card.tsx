@@ -5,15 +5,21 @@
  * earnings stay untouched for token cashout.
  *
  * Reads/writes /api/v1/billing/settings (the same endpoint that handles
- * auto-top-up).
+ * auto-top-up). The toggle is a SettingsSwitchRow hosted in SettingsStack /
+ * SettingsGroup.
  */
 
 "use client";
 
-import { BrandCard, CornerBrackets, Label, Switch } from "@elizaos/ui/cloud-ui";
 import { Coins, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { SettingsSwitchRow } from "../../../components/settings/settings-agent-rows";
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "../../../components/settings/settings-layout";
 import { ApiError, api } from "../../lib/api-client";
 
 const ENDPOINT = "/api/v1/billing/settings";
@@ -58,42 +64,30 @@ export function PayAsYouGoCard() {
   };
 
   return (
-    <BrandCard className="relative">
-      <CornerBrackets size="sm" className="opacity-50" />
-
-      <div className="relative z-10 space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-muted" />
-          <h3 className="text-base font-mono text-txt uppercase">
-            Pay Hosting From Earnings
-          </h3>
-        </div>
-
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1 flex-1 min-w-0">
-            <Label className="text-txt-strong font-mono text-sm flex items-center gap-2">
-              <Coins className="h-4 w-4 text-muted" />
-              Use my app earnings to pay container hosting
-            </Label>
-            <p className="text-xs font-mono text-muted leading-relaxed">
-              When on, daily container bills are paid from your redeemable
-              earnings first, then from credits. When off, hosting bills come
-              purely from credits and your earnings stay untouched (cashout
-              only).
-            </p>
-          </div>
-          {enabled === null ? (
-            <Loader2 className="h-5 w-5 animate-spin text-muted flex-shrink-0" />
-          ) : (
-            <Switch
-              checked={enabled}
-              onCheckedChange={handleToggle}
-              disabled={saving}
-              className="flex-shrink-0"
-            />
-          )}
-        </div>
-      </div>
-    </BrandCard>
+    <SettingsStack data-testid="cloud-pay-as-you-go">
+      <SettingsGroup title="Pay hosting from earnings">
+        {enabled === null ? (
+          <SettingsRow
+            icon={Coins}
+            label="Use my app earnings to pay container hosting"
+            description="When on, daily container bills are paid from your redeemable earnings first, then from credits. When off, hosting bills come purely from credits and your earnings stay untouched (cashout only)."
+            control={
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-muted" />
+            }
+          />
+        ) : (
+          <SettingsSwitchRow
+            agentId="cloud-billing-pay-as-you-go"
+            group="cloud-billing"
+            icon={Coins}
+            label="Use my app earnings to pay container hosting"
+            description="When on, daily container bills are paid from your redeemable earnings first, then from credits. When off, hosting bills come purely from credits and your earnings stay untouched (cashout only)."
+            checked={enabled}
+            disabled={saving}
+            onCheckedChange={(next) => void handleToggle(next)}
+          />
+        )}
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

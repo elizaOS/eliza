@@ -9,25 +9,25 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api";
-import { clearStaleStewardSession } from "../cloud/shell/StewardProviderShared";
+import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import { useCloudState } from "./useCloudState";
 
 const getCloudStatusMock = vi.hoisted(() => vi.fn());
 const getCloudCreditsMock = vi.hoisted(() => vi.fn());
 const cloudDisconnectMock = vi.hoisted(() => vi.fn());
-const clearStaleStewardSessionMock = vi.hoisted(() => vi.fn());
+const signOutFromSsoBridgedHostMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../api", () => ({
   client: {
-    getBaseUrl: vi.fn(() => "https://api.elizacloud.ai"),
+    getBaseUrl: vi.fn(() => "https://api.eliza.app"),
     getCloudStatus: getCloudStatusMock,
     getCloudCredits: getCloudCreditsMock,
     cloudDisconnect: cloudDisconnectMock,
   },
 }));
 
-vi.mock("../cloud/shell/StewardProviderShared", () => ({
-  clearStaleStewardSession: clearStaleStewardSessionMock,
+vi.mock("../cloud/sso-bridge/sso-bridge", () => ({
+  signOutFromSsoBridgedHost: signOutFromSsoBridgedHostMock,
 }));
 
 vi.mock("../first-run/mobile-runtime-mode", async (importOriginal) => ({
@@ -58,7 +58,7 @@ describe("useCloudState — locked Cloud account sign-out", () => {
       critical: false,
     });
     cloudDisconnectMock.mockResolvedValue(undefined);
-    clearStaleStewardSessionMock.mockClear();
+    signOutFromSsoBridgedHostMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -79,7 +79,7 @@ describe("useCloudState — locked Cloud account sign-out", () => {
       await result.current.handleCloudSignOut();
     });
 
-    expect(clearStaleStewardSession).toHaveBeenCalledTimes(1);
+    expect(signOutFromSsoBridgedHost).toHaveBeenCalledTimes(1);
     expect(client.cloudDisconnect).not.toHaveBeenCalled();
     expect(result.current.elizaCloudConnected).toBe(false);
     expect(result.current.elizaCloudEnabled).toBe(false);

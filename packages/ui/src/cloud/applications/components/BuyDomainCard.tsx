@@ -165,7 +165,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
     // origin is `https://localhost` (Capacitor) / the Electrobun scheme, so an
     // origin-relative URL would dead-end at the device instead of Eliza Cloud
     // billing. resolveCloudConsoleUrl is correct on web + native.
-    void openExternalUrl(resolveCloudConsoleUrl("/settings#cloud-billing"));
+    void openExternalUrl(resolveCloudConsoleUrl("/cloud/billing"));
   }
 
   return (

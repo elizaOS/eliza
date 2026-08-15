@@ -79,7 +79,7 @@ const fail = (message) => {
   process.exit(1);
 };
 
-const DEFAULT_ELIZA_CLOUD_BASE = "https://elizacloud.ai";
+const DEFAULT_ELIZA_CLOUD_BASE = "https://api.eliza.app";
 
 function readFirstString(env, keys) {
   for (const key of keys) {

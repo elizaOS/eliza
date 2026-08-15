@@ -28,6 +28,34 @@ export const CHARACTER_LANGUAGES = [
 
 export type CharacterLanguage = (typeof CHARACTER_LANGUAGES)[number];
 
+/**
+ * Character-authored replacements for the framework's canned failure replies.
+ *
+ * Only the keys the core message service actually reads are listed — see
+ * `buildTransientFailureReply` / `buildNoModelProviderReply` in
+ * `packages/core/src/services/message.ts`, which resolve
+ * `character.templates?.<key> || <builtin>`. Keys are deliberately NOT widened
+ * to the full `Character.templates` record: prompt-shaped keys such as
+ * `messageHandlerTemplate` are ignored by the local runtime, so allowing them
+ * here would let a preset ship config that silently does nothing.
+ *
+ * These strings are emitted VERBATIM as the reply text. They are not run
+ * through the handlebars pass, so `{{name}}`-style placeholders would leak
+ * literally and must not be used.
+ */
+export interface CharacterFailureTemplates {
+  /** Provider rejected the credentials (invalid or unauthorized key). */
+  authFailedReply?: string;
+  /** Provider is out of credits or quota; waiting will not clear it. */
+  insufficientCreditsReply?: string;
+  /** No LLM provider plugin is registered at all. */
+  noModelProviderReply?: string;
+  /** Provider is throttling; retrying shortly should succeed. */
+  rateLimitedReply?: string;
+  /** Any other failure once every model call has already failed. */
+  transientFailureReply?: string;
+}
+
 export interface StylePreset {
   id: string;
   name: string;
@@ -45,6 +73,12 @@ export interface StylePreset {
     post: string[];
   };
   topics: string[];
+  /**
+   * In-character overrides for the framework's canned failure replies, copied
+   * onto `Character.templates` when the preset is materialized. Optional: a
+   * preset without it keeps the voice-neutral framework defaults.
+   */
+  templates?: CharacterFailureTemplates;
   postExamples: string[];
   postExamples_zhCN?: string[];
   messageExamples: Array<

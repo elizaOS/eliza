@@ -211,16 +211,12 @@ export function AppPromote({ app }: AppPromoteProps) {
             className="border-border hover:bg-bg-hover rounded-sm"
           >
             <Link
-              to="/dashboard/settings?tab=connections"
+              to="/cloud/connectors"
               onClick={(e) => {
                 // Native studio: the connections surface lives outside the
                 // apps-only MemoryRouter — open it in the system browser. No-op
                 // on web (the in-router navigation runs unchanged).
-                if (
-                  openCloudConsoleRouteExternally(
-                    "/dashboard/settings?tab=connections",
-                  )
-                ) {
+                if (openCloudConsoleRouteExternally("/cloud/connectors")) {
                   e.preventDefault();
                 }
               }}

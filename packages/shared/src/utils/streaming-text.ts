@@ -15,6 +15,41 @@ export const DELTA_STREAM_PROTOCOL = "delta-v2" as const;
 
 export type DeltaStreamProtocol = typeof DELTA_STREAM_PROTOCOL;
 
+/**
+ * Remove an NFC-space overlap while preserving raw input beyond the sequence
+ * that contains the cut. Canonical ordering can make an exact raw boundary
+ * impossible, so only that ambiguous prefix is normalized.
+ */
+function sliceAfterNormalizedOverlap(
+  incoming: string,
+  incomingNorm: string,
+  overlap: number,
+): string {
+  if (overlap <= 0) return incoming;
+  const targetPrefix = incomingNorm.slice(0, overlap);
+  const codePointBoundaries: number[] = [];
+  let offset = 0;
+  for (const codePoint of incoming) {
+    offset += codePoint.length;
+    codePointBoundaries.push(offset);
+  }
+
+  for (const offset of codePointBoundaries) {
+    if (incoming.slice(0, offset).normalize("NFC") === targetPrefix) {
+      return incoming.slice(offset);
+    }
+  }
+
+  for (const offset of codePointBoundaries) {
+    const normalizedPrefix = incoming.slice(0, offset).normalize("NFC");
+    if (normalizedPrefix.startsWith(targetPrefix)) {
+      return `${normalizedPrefix.slice(overlap)}${incoming.slice(offset)}`;
+    }
+  }
+
+  return incomingNorm.slice(overlap);
+}
+
 function commonPrefixLength(left: string, right: string): number {
   const maxLength = Math.min(left.length, right.length);
   let index = 0;
@@ -127,7 +162,8 @@ export function mergeStreamingText(existing: string, incoming: string): string {
       return incoming.length === 1 ? `${existing}${incoming}` : existing;
     }
 
-    return `${existing.slice(0, existing.length - (existingNorm.length - existingTrimmedLength))}${incoming.slice(overlap)}`;
+    const suffix = sliceAfterNormalizedOverlap(incoming, incomingNorm, overlap);
+    return `${existing.slice(0, existing.length - (existingNorm.length - existingTrimmedLength))}${suffix}`;
   }
 
   // Some providers revise earlier words in-place while still sending the full

@@ -480,7 +480,7 @@ export function CapabilitiesSection() {
                   })}
                   value={capabilityCloudApiBase}
                   onValueChange={setCapabilityCloudApiBase}
-                  placeholder="https://api.elizacloud.ai"
+                  placeholder="https://api.eliza.app"
                   autoComplete="url"
                   inputMode="url"
                 />

@@ -1,12 +1,12 @@
 /**
- * Verifies the Browser view's fullscreen chrome contract: with the builtin
- * registry declaring `header: "fullscreen"`, the view owns its whole surface
- * and embedded page loads cannot take focus from the control that opened it.
- * Renders the real component in jsdom with deterministic workspace API data.
+ * Verifies Browser fullscreen chrome, focus handoff, refresh precedence, and
+ * wallet-origin authority. The real component renders in jsdom with
+ * deterministic workspace API responses.
  */
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -15,11 +15,25 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const walletStateHarness = vi.hoisted(() => ({
+  connected: false,
+  pendingApprovals: 0,
+}));
+
 vi.mock("../../state", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../state")>();
   const state = {
-    getStewardPending: () => null,
-    getStewardStatus: () => null,
+    getStewardPending: async () =>
+      Array.from(
+        { length: walletStateHarness.pendingApprovals },
+        (_, index) => ({
+          queueId: `pending-${index}`,
+        }),
+      ),
+    getStewardStatus: async () =>
+      walletStateHarness.connected
+        ? { available: true, configured: true, connected: true }
+        : null,
     setActionNotice: vi.fn(),
     t: (
       _key: string,
@@ -59,6 +73,9 @@ vi.mock("../../api", async (importOriginal) => {
       navigateBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
+      closeBrowserWorkspaceTab: vi
+        .fn()
+        .mockRejectedValue(new Error("no api in test")),
       snapshotBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
@@ -68,6 +85,10 @@ vi.mock("../../api", async (importOriginal) => {
 
 import { client } from "../../api";
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
+import {
+  BROWSER_WALLET_READY_TYPE,
+  BROWSER_WALLET_REQUEST_TYPE,
+} from "./browser-workspace-wallet";
 
 const GOOGLE_WORKSPACE = {
   mode: "web" as const,
@@ -97,7 +118,34 @@ const APPLE_WORKSPACE = {
   ],
 };
 
+const EXAMPLE_WORKSPACE = {
+  mode: "web" as const,
+  tabs: [
+    {
+      ...APPLE_WORKSPACE.tabs[0],
+      title: "Example",
+      url: "https://example.com/",
+    },
+  ],
+};
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
+  walletStateHarness.connected = false;
+  walletStateHarness.pendingApprovals = 0;
   vi.mocked(client.getBrowserWorkspace).mockResolvedValue({
     mode: "web",
     tabs: [],
@@ -106,6 +154,9 @@ beforeEach(() => {
     new Error("no api in test"),
   );
   vi.mocked(client.navigateBrowserWorkspaceTab).mockRejectedValue(
+    new Error("no api in test"),
+  );
+  vi.mocked(client.closeBrowserWorkspaceTab).mockRejectedValue(
     new Error("no api in test"),
   );
 });
@@ -251,6 +302,14 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     const iframe = await screen.findByTitle("Apple");
     fireEvent.pointerDown(iframe);
     const address = screen.getByTestId("browser-workspace-address-input");
+    // The iframe can mount before the active-tab URL synchronization effect
+    // has committed. Wait for that initial value so the effect cannot overwrite
+    // the simulated edit on a loaded runner.
+    await waitFor(() =>
+      expect((address as HTMLInputElement).value).toBe(
+        "https://www.apple.com/",
+      ),
+    );
     address.focus();
     fireEvent.change(address, { target: { value: "https://example.com/" } });
     await waitFor(() =>
@@ -296,5 +355,342 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         }),
       ),
     );
+  });
+
+  it("keeps transient background refresh timeouts off a healthy page and retries single-flight", async () => {
+    vi.useFakeTimers();
+    const pendingRefresh = deferred<typeof GOOGLE_WORKSPACE>();
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockResolvedValueOnce(GOOGLE_WORKSPACE)
+      .mockImplementationOnce(() => pendingRefresh.promise)
+      .mockResolvedValueOnce(APPLE_WORKSPACE);
+
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByTitle("Google")).not.toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_500);
+      });
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(7_500);
+      });
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        pendingRefresh.reject(new Error("Request timed out after 10000ms"));
+        await Promise.resolve();
+      });
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByTitle("Google")).not.toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_500);
+      });
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(3);
+      expect(screen.getByTitle("Apple")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an explicit action refresh failure observable", async () => {
+    vi.mocked(client.getBrowserWorkspace)
+      .mockResolvedValueOnce(APPLE_WORKSPACE)
+      .mockRejectedValueOnce(new Error("Explicit refresh failed"));
+    vi.mocked(client.openBrowserWorkspaceTab).mockResolvedValue({
+      tab: GOOGLE_WORKSPACE.tabs[0],
+    });
+
+    render(<BrowserWorkspaceView />);
+    expect(await screen.findByTitle("Apple")).not.toBeNull();
+    fireEvent.click(screen.getByTestId("browser-workspace-nav-new-tab"));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Explicit refresh failed",
+    );
+  });
+
+  it("shows an initial load failure until a later background retry succeeds", async () => {
+    vi.useFakeTimers();
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockRejectedValueOnce(new Error("Initial workspace load failed"))
+      .mockResolvedValueOnce(APPLE_WORKSPACE);
+
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Initial workspace load failed",
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_500);
+      });
+      expect(screen.getByTitle("Apple")).not.toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the StrictMode initial load single-flight and loading until it settles", async () => {
+    const pendingInitialLoad = deferred<typeof APPLE_WORKSPACE>();
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockImplementation(() => pendingInitialLoad.promise);
+
+    render(<BrowserWorkspaceView />, { reactStrictMode: true });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Loading browser workspace")).not.toBeNull();
+    expect(screen.queryByText("No page open")).toBeNull();
+
+    await act(async () => {
+      pendingInitialLoad.resolve(APPLE_WORKSPACE);
+      await Promise.resolve();
+    });
+    expect(screen.getByTitle("Apple")).not.toBeNull();
+    expect(screen.queryByText("Loading browser workspace")).toBeNull();
+  });
+
+  it("does not let a stale background response overwrite a newer navigation", async () => {
+    vi.useFakeTimers();
+    const pendingRefresh = deferred<typeof GOOGLE_WORKSPACE>();
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockResolvedValueOnce(APPLE_WORKSPACE)
+      .mockImplementationOnce(() => pendingRefresh.promise)
+      .mockResolvedValueOnce(EXAMPLE_WORKSPACE);
+    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
+      tab: EXAMPLE_WORKSPACE.tabs[0],
+    });
+
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByTitle("Apple")).not.toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_500);
+      });
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
+
+      const address = screen.getByTestId("browser-workspace-address-input");
+      await act(async () => {
+        fireEvent.change(address, {
+          target: { value: "https://example.com/" },
+        });
+        fireEvent.keyDown(address, { key: "Enter" });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(3);
+      expect(screen.getByTitle("Example")).not.toBeNull();
+
+      await act(async () => {
+        pendingRefresh.resolve(GOOGLE_WORKSPACE);
+        await Promise.resolve();
+      });
+      expect(screen.getByTitle("Example")).not.toBeNull();
+      expect(screen.queryByTitle("Google")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("updates wallet authority before iframe navigation and revokes it before closed-frame removal", async () => {
+    const navigationSnapshot = deferred<typeof EXAMPLE_WORKSPACE>();
+    const closedSnapshot = deferred<{ mode: "web"; tabs: [] }>();
+    let workspaceRead = 0;
+    vi.mocked(client.getBrowserWorkspace).mockImplementation(() => {
+      workspaceRead += 1;
+      if (workspaceRead === 1) return Promise.resolve(APPLE_WORKSPACE);
+      if (workspaceRead === 2) return navigationSnapshot.promise;
+      return closedSnapshot.promise;
+    });
+    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
+      tab: EXAMPLE_WORKSPACE.tabs[0],
+    });
+    vi.mocked(client.closeBrowserWorkspaceTab).mockResolvedValue({
+      closed: true,
+    });
+
+    render(<BrowserWorkspaceView />);
+    const iframe = (await screen.findByTitle("Apple")) as HTMLIFrameElement;
+    const postMessageCalls: Array<[unknown, string]> = [];
+    const spiedWindows = new Set<Window>();
+    const spyFrameWindow = () => {
+      const frameWindow = iframe.contentWindow as Window;
+      if (!spiedWindows.has(frameWindow)) {
+        spiedWindows.add(frameWindow);
+        vi.spyOn(frameWindow, "postMessage").mockImplementation(
+          (message, targetOrigin) => {
+            postMessageCalls.push([message, String(targetOrigin)]);
+          },
+        );
+      }
+    };
+    spyFrameWindow();
+    const readyCalls = () =>
+      postMessageCalls.filter(
+        ([message]) =>
+          (message as { type?: unknown }).type === BROWSER_WALLET_READY_TYPE,
+      );
+    const requestState = async (origin: string, requestId: string) => {
+      await act(async () => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            data: {
+              type: BROWSER_WALLET_REQUEST_TYPE,
+              requestId,
+              method: "getState",
+            },
+            origin,
+            source: iframe.contentWindow,
+          }),
+        );
+        await Promise.resolve();
+      });
+    };
+
+    await requestState("https://www.apple.com", "ready-a");
+    expect(readyCalls()).toHaveLength(1);
+
+    const address = screen.getByTestId("browser-workspace-address-input");
+    fireEvent.change(address, {
+      target: { value: EXAMPLE_WORKSPACE.tabs[0].url },
+    });
+    fireEvent.keyDown(address, { key: "Enter" });
+    await waitFor(() =>
+      expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
+        "tab-apple",
+        EXAMPLE_WORKSPACE.tabs[0].url,
+      ),
+    );
+    await waitFor(() => expect(iframe.src).toBe(EXAMPLE_WORKSPACE.tabs[0].url));
+    expect(screen.getByTitle("Apple")).toBe(iframe);
+    spyFrameWindow();
+
+    await requestState("https://example.com", "ready-b");
+    expect(readyCalls()).toHaveLength(2);
+    expect(readyCalls().at(-1)?.[1]).toBe("https://example.com");
+    await requestState("https://www.apple.com", "stale-a");
+    expect(readyCalls()).toHaveLength(2);
+    await requestState("https://example.com", "duplicate-b");
+    expect(readyCalls()).toHaveLength(2);
+
+    navigationSnapshot.resolve(EXAMPLE_WORKSPACE);
+    expect(await screen.findByTitle("Example")).toBe(iframe);
+    expect(readyCalls()).toHaveLength(2);
+
+    fireEvent.click(screen.getByTestId("browser-workspace-close-all-tabs"));
+    await waitFor(() =>
+      expect(client.closeBrowserWorkspaceTab).toHaveBeenCalledWith("tab-apple"),
+    );
+    await waitFor(() =>
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(3),
+    );
+    const callsBeforeClosedRequest = postMessageCalls.length;
+    await requestState("https://example.com", "closed-b");
+    expect(postMessageCalls).toHaveLength(callsBeforeClosedRequest);
+
+    closedSnapshot.resolve({ mode: "web", tabs: [] });
+    expect(await screen.findByText("No page open")).not.toBeNull();
+  });
+
+  it("preserves wallet readiness when Go resolves to the already-loaded URL", async () => {
+    vi.useFakeTimers();
+    walletStateHarness.connected = true;
+    walletStateHarness.pendingApprovals = 1;
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(APPLE_WORKSPACE);
+    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
+      tab: APPLE_WORKSPACE.tabs[0],
+    });
+
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      const iframe = screen.getByTitle("Apple") as HTMLIFrameElement;
+      const postMessage = vi
+        .spyOn(iframe.contentWindow as Window, "postMessage")
+        .mockImplementation(() => undefined);
+      const readyCalls = () =>
+        postMessage.mock.calls.filter(
+          ([message]) =>
+            (message as { type?: unknown }).type === BROWSER_WALLET_READY_TYPE,
+        );
+
+      await act(async () => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            data: {
+              type: BROWSER_WALLET_REQUEST_TYPE,
+              requestId: "prove-loaded-origin",
+              method: "getState",
+            },
+            origin: "https://www.apple.com",
+            source: iframe.contentWindow,
+          }),
+        );
+        await Promise.resolve();
+      });
+      expect(readyCalls()).toHaveLength(1);
+      expect(readyCalls().at(-1)).toEqual([
+        {
+          type: BROWSER_WALLET_READY_TYPE,
+          state: expect.objectContaining({ pendingApprovals: 1 }),
+        },
+        "https://www.apple.com",
+      ]);
+
+      const address = screen.getByTestId("browser-workspace-address-input");
+      await act(async () => {
+        fireEvent.keyDown(address, { key: "Enter" });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
+        "tab-apple",
+        APPLE_WORKSPACE.tabs[0].url,
+      );
+      expect(iframe.src).toBe(APPLE_WORKSPACE.tabs[0].url);
+
+      walletStateHarness.pendingApprovals = 2;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+        await Promise.resolve();
+      });
+      expect(readyCalls()).toHaveLength(2);
+      expect(readyCalls().at(-1)).toEqual([
+        {
+          type: BROWSER_WALLET_READY_TYPE,
+          state: expect.objectContaining({ pendingApprovals: 2 }),
+        },
+        "https://www.apple.com",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

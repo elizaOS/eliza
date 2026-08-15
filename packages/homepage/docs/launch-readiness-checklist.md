@@ -46,7 +46,7 @@ Run these from the repository root:
 bun run --cwd packages/homepage typecheck
 bun run --cwd packages/homepage check:release-data
 bun run --cwd packages/homepage test:e2e
-bun run --cwd packages/homepage build
+bun run --cwd packages/app build:web
 ```
 
 If the e2e test passes while `releaseData.release.tagName` is still

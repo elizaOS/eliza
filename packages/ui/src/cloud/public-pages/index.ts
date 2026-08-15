@@ -6,17 +6,18 @@
  * cloud-route registry (the `CloudRouterShell` renders whatever the registry
  * returns). Importing the module for its side effect is enough:
  *
- *   import { registerPublicPages } from "@elizaos/ui/cloud/public-pages";
+ *   import { registerPublicPages } from "@elizaos/ui/cloud/public-pages/register";
  *   registerPublicPages();
  *
- * The page components + the domain's lib helpers are also re-exported for hosts
- * that want to mount a page directly (e.g. tests) rather than via the registry.
+ * Boot registration must import `./register` (or this package's register export
+ * path), never this barrel, so LoginPage and other pages stay React.lazy chunks
+ * (#18056). The page components + the domain's lib helpers remain re-exported
+ * here for hosts that want to mount a page directly (e.g. tests).
  *
  * StewardLoginSection is deliberately NOT re-exported: it imports the
  * wagmi/RainbowKit/Solana wallet stack, and a static re-export here would drag
- * that multi-MB graph into every chunk that loads this barrel (register-all →
- * the cloud router shell). LoginPage already code-splits it behind React.lazy
- * with a designed fallback — import it from
+ * that multi-MB graph into every chunk that loads this barrel. LoginPage already
+ * code-splits it behind React.lazy with a designed fallback — import it from
  * "./pages/login/steward-login-section" directly if a host ever needs it.
  */
 

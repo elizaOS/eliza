@@ -153,6 +153,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Plugin,
   type Provider,
+  type RuntimeStopOptions,
   requireConfirmedSendHandlerDelivery,
   type ServiceClass,
   stringToUuid,
@@ -180,11 +181,7 @@ import {
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { resolveDefaultVaultDataDir } from "@elizaos/vault";
 import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
-import {
-  type AgentHostBridge,
-  getAgentHostBridge,
-  hasDurableHostVault,
-} from "./host-bridge.ts";
+import { type AgentHostBridge, getAgentHostBridge } from "./host-bridge.ts";
 
 // Host capabilities (wallet-key hydration, vault bootstrap/access, account
 // pool, build variant) are INJECTED downward by the app-core host via
@@ -1603,6 +1600,12 @@ type RuntimeAdapterWithClose = {
   close?: () => Promise<void> | void;
 };
 
+// Discord's bounded connector teardown may use 10 s for turn drain and 2 s
+// for reaction reconciliation. Keep signal shutdown fast/concurrent while
+// granting that contract a small cleanup margin under the dev supervisor's
+// 15 s hard ceiling.
+const SIGNAL_SERVICE_STOP_TIMEOUT_MS = 13_000;
+
 /**
  * Best-effort runtime shutdown that also closes the database adapter.
  *
@@ -1613,7 +1616,7 @@ type RuntimeAdapterWithClose = {
 export async function shutdownRuntime(
   runtime: AgentRuntime | null | undefined,
   context: string,
-  options: { fast?: boolean } = {},
+  options: RuntimeStopOptions = {},
 ): Promise<void> {
   let firstError: unknown = null;
 
@@ -1651,7 +1654,7 @@ export async function shutdownRuntime(
   try {
     // Interactive/signal teardown asks for the capped fast path so Ctrl-C does
     // not block on a slow deferred service start or a long embedding drain.
-    await runtime.stop(options.fast ? { fast: true } : undefined);
+    await runtime.stop(options.fast ? options : undefined);
   } catch (err) {
     if (!firstError) firstError = err;
     logger.warn(`[eliza] ${context}: runtime stop failed: ${formatError(err)}`);
@@ -2188,7 +2191,7 @@ export async function autoFetchCloudGithubToken(
   // Need cloud credentials and an agent ID
   const cloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
   const cloudBaseUrl =
-    process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://api.elizacloud.ai";
+    process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://api.eliza.app";
   if (!cloudApiKey || !agentId) return;
 
   const managedNs = readAliasedEnv("ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT");
@@ -3648,6 +3651,45 @@ export function resolveEmbeddingProviderPluginName(
   return backend ? getFirstRunProviderOption(backend)?.pluginName : undefined;
 }
 
+export const DEFAULT_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS = 30_000;
+export const MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS = 2_147_483_647;
+
+/**
+ * Resolves `ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS` for the deferred
+ * registration watchdog.
+ *
+ * Blank/unset keeps the default. Anything else must be a complete decimal
+ * integer inside Node's schedulable timer range: `Number.parseInt` alone
+ * silently truncates `"10.5"` to a 10 ms watchdog and lets `"2147483648"`
+ * through to a `setTimeout` that Node clamps to 1 ms, either of which aborts
+ * deferred plugin registration instantly instead of waiting.
+ */
+export function resolveDeferredPluginRegistrationTimeoutMs(
+  rawEnv?: string | null,
+): number {
+  const trimmed = rawEnv?.trim() ?? "";
+  if (trimmed === "") {
+    return DEFAULT_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS;
+  }
+  const parsed = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  if (!(parsed >= 1 && parsed <= MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS)) {
+    throw new ElizaError(
+      `Invalid ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS: "${rawEnv}". Expected a decimal integer between 1 and ${MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS}.`,
+      {
+        code: "INVALID_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT",
+        severity: "fatal",
+        context: {
+          raw: rawEnv,
+          trimmed,
+          min: 1,
+          max: MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
+        },
+      },
+    );
+  }
+  return parsed;
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -4129,6 +4171,13 @@ export async function startEliza(
       }
     }
   }
+
+  // Persisted plugin settings are hydrated into process.env above. Resolve the
+  // watchdog only after that merge so first boot validates and uses the same
+  // effective value that downstream runtime consumers observe.
+  const deferredWatchdogTimeoutMs = resolveDeferredPluginRegistrationTimeoutMs(
+    process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
+  );
 
   // Keep the canonical public key env in sync for Solana plugins that still
   // read process.env directly instead of runtime settings.
@@ -4829,19 +4878,14 @@ export async function startEliza(
 
   // Durable storage for connector OAuth credential refs. Connector plugins
   // resolve `connector_credential_store` for BOTH the write at OAuth-callback
-  // time and the read after restart; without this service their token writes
-  // fall through to the in-memory SECRETS global store and die with the
-  // process (the dangling vaultRef then fails every post-restart credential
-  // read). Registered only when the host vault is real — wrapping the no-op
-  // default vault would swallow writes instead.
+  // time and the read after restart; before this service existed their token
+  // writes fell through to the in-memory SECRETS global store and died with
+  // the process (the dangling vaultRef then failed every post-restart
+  // credential read — #18080). Registered unconditionally: the service uses
+  // the host vault when a durable bridge is installed and opens its own
+  // state-dir PGlite vault on hostless/standalone/Cloud boots.
   const registerConnectorCredentialStoreService = async (): Promise<void> => {
     try {
-      if (!hasDurableHostVault()) {
-        logger.debug(
-          "[eliza] ConnectorCredentialStoreService skipped: no durable host vault",
-        );
-        return;
-      }
       const { ConnectorCredentialStoreService } = await import(
         "../services/connector-credential-store.ts"
       );
@@ -4863,12 +4907,11 @@ export async function startEliza(
   // surface a failure loudly — a missing store is exactly the silent-token-
   // loss condition this service exists to prevent.
   const ensureConnectorCredentialStoreStarted = async (): Promise<void> => {
-    if (!hasDurableHostVault()) return;
     try {
       await runtime.getServiceLoadPromise("connector_credential_store");
     } catch (err) {
       logger.warn(
-        `[eliza] ConnectorCredentialStoreService failed to start; connector OAuth credential writes will fall back to non-durable storage: ${formatError(err)}`,
+        `[eliza] ConnectorCredentialStoreService failed to start; connector OAuth credential writes will fail until it is restored (no non-durable fallback): ${formatError(err)}`,
       );
     }
   };
@@ -5508,13 +5551,6 @@ export async function startEliza(
       ...deferredPluginsForRuntime,
     ]);
 
-    const timeoutMs = (() => {
-      const raw =
-        process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS?.trim();
-      if (!raw) return 30_000;
-      const parsed = Number.parseInt(raw, 10);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
-    })();
     const registerDeferredPlugin = async (
       plugin: (typeof deferredPluginsForRuntime)[number],
     ): Promise<void> => {
@@ -5531,10 +5567,10 @@ export async function startEliza(
         registrationWatchdog = setTimeout(() => {
           exceededWatchdog = true;
           const error = new Error(
-            `Registration exceeded ${timeoutMs / 1000}s watchdog`,
+            `Registration exceeded ${deferredWatchdogTimeoutMs / 1000}s watchdog`,
           );
           logger.warn(
-            `[eliza] deferred: Plugin ${plugin.name} registration exceeded the ${timeoutMs / 1000}s watchdog; still waiting for a definitive result`,
+            `[eliza] deferred: Plugin ${plugin.name} registration exceeded the ${deferredWatchdogTimeoutMs / 1000}s watchdog; still waiting for a definitive result`,
           );
           // error-policy:J7 the watchdog reports a diagnostic without killing
           // the deferred loop; the same registration promise remains awaited.
@@ -5544,10 +5580,10 @@ export async function startEliza(
             {
               plugin: plugin.name,
               phase: "deferred-boot",
-              timeoutMs,
+              timeoutMs: deferredWatchdogTimeoutMs,
             },
           );
-        }, timeoutMs);
+        }, deferredWatchdogTimeoutMs);
         registrationWatchdog.unref?.();
         await runtime.registerPlugin(plugin);
         logger.info(
@@ -5914,6 +5950,7 @@ export async function startEliza(
     disposeRuntime: (reason) =>
       shutdownRuntime(runtime, reason, {
         fast: true,
+        serviceStopTimeoutMs: SIGNAL_SERVICE_STOP_TIMEOUT_MS,
       }),
     disposeSandbox: sandboxManager
       ? async () => {

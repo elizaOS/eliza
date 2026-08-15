@@ -6,7 +6,7 @@
  * "missing", broadcasts a system-warning via WebSocket.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, ElizaError } from "@elizaos/core";
 
 export type ConnectorStatus = "ok" | "missing" | "unknown";
 
@@ -20,10 +20,46 @@ export interface ConnectorHealthMonitorOptions {
   runtime: AgentRuntime;
   config: { connectors?: Record<string, unknown> };
   broadcastWs: (payload: object) => void;
-  intervalMs?: number;
+  intervalMs: number;
 }
 
 const DEFAULT_INTERVAL_MS = 60_000;
+const MIN_INTERVAL_MS = 10_000;
+const MAX_INTERVAL_MS = 2_147_483_647;
+
+/**
+ * Resolves the owner-facing interval before the API server binds. The monitor
+ * receives only this validated number, so its deferred post-listen startup has
+ * no configuration failure left for the best-effort boundary to hide.
+ */
+export function resolveConnectorHealthIntervalMs(
+  envVal: string | undefined,
+): number {
+  if (envVal === undefined || envVal === "") return DEFAULT_INTERVAL_MS;
+
+  const parsed = Number(envVal);
+  if (
+    !/^[1-9][0-9]*$/.test(envVal) ||
+    !Number.isSafeInteger(parsed) ||
+    parsed < MIN_INTERVAL_MS ||
+    parsed > MAX_INTERVAL_MS
+  ) {
+    throw new ElizaError(
+      `Invalid CONNECTOR_HEALTH_INTERVAL_MS value ${JSON.stringify(envVal)}: expected an exact decimal integer from ${MIN_INTERVAL_MS} through ${MAX_INTERVAL_MS}`,
+      {
+        code: "CONNECTOR_HEALTH_INTERVAL_INVALID",
+        context: {
+          setting: "CONNECTOR_HEALTH_INTERVAL_MS",
+          configured: envVal,
+          minimum: MIN_INTERVAL_MS,
+          maximum: MAX_INTERVAL_MS,
+        },
+        severity: "fatal",
+      },
+    );
+  }
+  return parsed;
+}
 
 /**
  * Maps connector config keys to the service/client name the plugin registers.
@@ -82,7 +118,7 @@ export class ConnectorHealthMonitor {
     this.runtime = opts.runtime;
     this.config = opts.config;
     this.broadcastWs = opts.broadcastWs;
-    this.intervalMs = opts.intervalMs ?? this.resolveIntervalMs();
+    this.intervalMs = opts.intervalMs;
   }
 
   start(): void {
@@ -104,14 +140,6 @@ export class ConnectorHealthMonitor {
       result[name] = status;
     }
     return result;
-  }
-
-  private resolveIntervalMs(): number {
-    const envVal = process.env.CONNECTOR_HEALTH_INTERVAL_MS;
-    if (!envVal) return DEFAULT_INTERVAL_MS;
-    const parsed = Number.parseInt(envVal, 10);
-    if (Number.isNaN(parsed) || parsed < 10_000) return DEFAULT_INTERVAL_MS;
-    return parsed;
   }
 
   private getConfiguredConnectors(): string[] {

@@ -25,7 +25,9 @@ let signature;
 try {
   signature = new RegExp(signatureRaw);
 } catch (error) {
-  console.error(`[run-with-flake-retry] invalid signature regex: ${error.message}`);
+  console.error(
+    `[run-with-flake-retry] invalid signature regex: ${error.message}`,
+  );
   process.exit(2);
 }
 const [command, ...args] = argv.slice(2);
@@ -33,29 +35,36 @@ const [command, ...args] = argv.slice(2);
 function runOnce() {
   return new Promise((resolve) => {
     const child = spawn(command, args, { stdio: ["inherit", "pipe", "pipe"] });
-    let tail = "";
-    const capture = (chunk, sink) => {
+    const tails = { stdout: "", stderr: "" };
+    let matched = false;
+    const capture = (chunk, sink, stream) => {
       sink.write(chunk);
-      // Only the tail is needed for signature matching; unbounded capture of a
-      // chatty suite would hold the whole log in memory.
-      tail = (tail + chunk.toString()).slice(-262144);
+      const candidate = tails[stream] + chunk.toString();
+      // Match while output arrives: a chatty teardown may emit more than the
+      // retained overlap after the failure and must not erase the signal.
+      if (!matched && signature.test(candidate)) matched = true;
+      tails[stream] = candidate.slice(-262144);
     };
-    child.stdout.on("data", (chunk) => capture(chunk, process.stdout));
-    child.stderr.on("data", (chunk) => capture(chunk, process.stderr));
+    child.stdout.on("data", (chunk) =>
+      capture(chunk, process.stdout, "stdout"),
+    );
+    child.stderr.on("data", (chunk) =>
+      capture(chunk, process.stderr, "stderr"),
+    );
     child.on("error", (error) => {
       console.error(
         `[run-with-flake-retry] failed to start "${command}": ${error.message}`,
       );
-      resolve({ code: 127, tail });
+      resolve({ code: 127, matched });
     });
     child.on("close", (code, signal) => {
-      resolve({ code: code ?? (signal ? 1 : 0), tail });
+      resolve({ code: code ?? (signal ? 1 : 0), matched });
     });
   });
 }
 
 const first = await runOnce();
-if (first.code === 0 || first.code === 127 || !signature.test(first.tail)) {
+if (first.code === 0 || first.code === 127 || !first.matched) {
   process.exit(first.code);
 }
 console.error(

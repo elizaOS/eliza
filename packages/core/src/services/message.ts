@@ -50,7 +50,11 @@ import {
 } from "../inference-timing";
 import { logger } from "../logger";
 import { describeImageCached } from "../media";
-import { fetchRemoteMedia } from "../media/fetch";
+import {
+	fetchRemoteMedia,
+	MediaFetchError,
+	readResponseWithLimit,
+} from "../media/fetch";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import {
 	checkSenderRole,
@@ -78,6 +82,7 @@ import {
 	type CandidateActionBackstopRule,
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
+import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -175,7 +180,11 @@ import type {
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
 import type { RoomHandlerLease } from "../runtime/room-handler-queue";
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
-import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
+import {
+	actionHasSubActions,
+	runSubPlanner,
+	subPlannerCallDigest,
+} from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import { resolveTraceCorrelationFromEnv } from "../runtime/trace-correlation";
 import {
@@ -532,9 +541,6 @@ function resolveStage1ReplyGateMode(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): ReplyGateMode | null {
-	if (typeof runtime.getService !== "function") {
-		return null;
-	}
 	const store = getPersonalityStore(runtime);
 	if (!store || message.entityId === runtime.agentId) {
 		return null;
@@ -1386,6 +1392,38 @@ type MediaWithInlineData = Media & {
  */
 const ATTACHMENT_FETCH_MAX_BYTES = 50 * 1024 * 1024;
 
+/** Aggregate bytes admitted to enrichment for one message turn. */
+const ATTACHMENT_TURN_MAX_BYTES = 100 * 1024 * 1024;
+
+type AttachmentByteBudget = { remaining: number };
+
+function attachmentFailure(
+	phase: NonNullable<Media["enrichmentFailure"]>["phase"],
+	code: NonNullable<Media["enrichmentFailure"]>["code"],
+	retryable: boolean,
+	message: string,
+): Pick<Media, "notProcessed" | "enrichmentFailure"> {
+	return {
+		notProcessed: message,
+		enrichmentFailure: { phase, code, retryable },
+	};
+}
+
+function sanitizedAttachmentDiagnostic(
+	code: string,
+	message: string,
+	attachment: Media,
+): ElizaError {
+	return new ElizaError(message, {
+		code,
+		severity: "ephemeral",
+		context: {
+			attachmentId: attachment.id,
+			contentType: attachment.contentType,
+		},
+	});
+}
+
 function sanitizeAttachmentsForStorage(
 	attachments: Media[] | undefined,
 ): Media[] | undefined {
@@ -1847,7 +1885,7 @@ export function preservedSettledToolResult(
 ): (PlannerToolResult & { userFacingText: string }) | undefined {
 	for (let index = settled.length - 1; index >= 0; index--) {
 		const entry = settled[index];
-		if (!entry || entry.result.success !== true) continue;
+		if (entry?.result.success !== true) continue;
 		if (isTerminalPlannerToolName(entry.name)) continue;
 		const candidate = entry.result.userFacingText?.trim();
 		if (!candidate) continue;
@@ -1864,6 +1902,85 @@ export function preservedSettledToolResult(
 		return { ...entry.result, userFacingText: candidate };
 	}
 	return undefined;
+}
+
+export const NO_REPORTABLE_TOOL_OUTCOME_MESSAGE =
+	"I ran that, but it finished without producing a result I can report back.";
+
+const ASYNC_HANDOFF_ACK_MESSAGE = "on it, working on that now.";
+
+function preservedVerifiedFailure(
+	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
+	deliveredVisibleTexts: ReadonlySet<string>,
+): string | undefined {
+	for (let index = settled.length - 1; index >= 0; index--) {
+		const entry = settled[index];
+		if (entry?.result.success !== false) continue;
+		if (entry.result.verifiedUserFacing !== true) continue;
+		if (isTerminalPlannerToolName(entry.name)) continue;
+		const candidate = entry.result.userFacingText?.trim();
+		if (!candidate) continue;
+		if (
+			deliveredTextsCoverReply(
+				deliveredVisibleTexts,
+				normalizeVisibleTextForDuplicateCheck(candidate),
+			)
+		) {
+			continue;
+		}
+		return candidate;
+	}
+	return undefined;
+}
+
+function hasAcceptedAsyncHandoff(result: ActionResult): boolean {
+	if (result.success !== true) return false;
+	return (
+		result.effectReceipts?.some(
+			(receipt) =>
+				receipt.outcome === "applied" &&
+				receipt.commit !== undefined &&
+				receipt.commit.id.trim().length > 0,
+		) === true
+	);
+}
+
+/**
+ * Terminal report for a tool turn whose planner produced no prose. A
+ * pre-tool acknowledgement is retained only when a successful action carries
+ * authoritative acceptance proof that work continues beyond this turn.
+ */
+export function answerlessToolTurnReport(args: {
+	settledToolResults: ReadonlyArray<{
+		name: string;
+		result: PlannerToolResult;
+	}>;
+	deliveredVisibleTexts: ReadonlySet<string>;
+	actionResults: readonly ActionResult[];
+	actions: readonly Action[] | undefined;
+	stageOneAck: string;
+}): string {
+	const successful = preservedSettledToolResult(
+		args.settledToolResults,
+		args.deliveredVisibleTexts,
+	);
+	if (successful) return successful.userFacingText;
+	const failed = preservedVerifiedFailure(
+		args.settledToolResults,
+		args.deliveredVisibleTexts,
+	);
+	if (failed) return failed;
+	if (args.deliveredVisibleTexts.size > 0) return "";
+	const acceptedActionNames = args.actionResults
+		.filter(hasAcceptedAsyncHandoff)
+		.map((result) =>
+			typeof result.data?.actionName === "string" ? result.data.actionName : "",
+		)
+		.filter((name) => name.length > 0);
+	if (candidateActionsIncludeAsyncHandoff(args.actions, acceptedActionNames)) {
+		return args.stageOneAck || ASYNC_HANDOFF_ACK_MESSAGE;
+	}
+	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
 }
 
 /** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
@@ -3971,7 +4088,7 @@ direct/private rules:
 - Non-simple contexts/actions are only for tools, live/private state, files/web/shell, side effects, scheduling/memory/settings/secrets/finance/media/device control.
 - UI navigation is device/app control: open/show/switch/go-home requests use contexts=["general"], candidateActionNames=["VIEWS"], and a brief pending ack. Never claim the view opened before VIEWS succeeds.
 - Slash-command questions are conversation: contexts=["general"]; say /commands shows the list; never select VIEWS or ask clarification for "show commands".
-- Sticky Notes and native device controls are also device/app control: note and flashlight reads or mutations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
+- Sticky Notes use contexts=["notes"], candidateActionNames=["NOTES"]. Native device controls such as flashlight operations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
 - Calendar-event reads or mutations use contexts=["calendar"], candidateActionNames=["CALENDAR"]. A timed "add X tomorrow at 9am" request is a calendar event unless the user explicitly asks for a task or reminder.
 - Goals/todos/reminders/habits/routines are non-simple; goals -> tasks + OWNER_GOALS, never work threads.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
@@ -5073,11 +5190,15 @@ export function messageHandlerFromFieldResult(
 	// required-tool enforcement — stand on deterministic text inference alone
 	// (coding backstop, ack inference, or direct inference). Record that so
 	// the planner loop can accept a firmly repeated terminal answer early
-	// instead of burning the full miss budget on a heuristic's guess.
+	// instead of burning the full miss budget on a heuristic's guess. Coding
+	// work is deliberately excluded: that inference is structurally anchored
+	// to an operation plus a code artifact, and relaxing it lets a planner ship
+	// a repeated progress/fallback answer without ever executing delegation.
 	if (
 		shouldPlan &&
 		planCandidateActions.length > 0 &&
-		rawCandidateActions.length === 0
+		rawCandidateActions.length === 0 &&
+		directCurrentInference.kind !== "coding"
 	) {
 		plan.requiredToolEvidence = "inferred";
 	}
@@ -5328,11 +5449,13 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 			...(viewOverlapMissBudget !== undefined
 				? { requiredToolMissBudget: viewOverlapMissBudget }
 				: {}),
-			// Same provenance stamp as the structured path: when Stage 1's own
-			// candidate list was empty, this escalation stands on deterministic
-			// text inference alone.
+			// Same relaxable-inference stamp as the structured path. Strong coding
+			// work orders keep the full corrective budget so a repeated terminal
+			// fallback cannot impersonate completed delegation.
 			...(getMessageHandlerCandidateActions(messageHandler).length === 0
-				? { requiredToolEvidence: "inferred" as const }
+				? directCurrentInference.kind !== "coding"
+					? { requiredToolEvidence: "inferred" as const }
+					: {}
 				: {}),
 		},
 	};
@@ -6173,6 +6296,21 @@ async function resolveStage1SenderRole(
 	}
 	try {
 		const result = await checkSenderRole(runtime, message);
+		// The resolved role decides the entire action surface for the turn, and
+		// a silent fall to the floor is indistinguishable from an explicit
+		// non-elevated grant without this line. `result === null` means no world
+		// resolved for the message — the most common cause of an owner probe
+		// landing on the floor.
+		runtime.logger.debug(
+			{
+				src: "service:message",
+				entityId: message.entityId,
+				roomId: message.roomId,
+				worldResolved: result !== null,
+				role: result?.role ?? null,
+			},
+			"Stage 1 sender role resolved",
+		);
 		if (result?.role) {
 			return result.role as RoleGateRole;
 		}
@@ -6371,6 +6509,7 @@ async function executeV5PlannedToolCall(
 			action,
 			actionResult,
 			toolCall.params,
+			args.runtime,
 		),
 	});
 }
@@ -6404,6 +6543,8 @@ function plannerToolCallHasActionParameter(toolCall: PlannerToolCall): boolean {
 interface SubPlannerSubStep {
 	action: string;
 	success: boolean;
+	callDigest: string;
+	retryable: boolean;
 	summary?: string;
 	internalTranscriptText?: string;
 	error?: string;
@@ -6439,6 +6580,8 @@ function collectSubPlannerSubSteps(
 		subSteps.push({
 			action: step.toolCall.name,
 			success: result.success,
+			callDigest: subPlannerCallDigest(step.toolCall),
+			retryable: result.data?.retryable !== false,
 			...(summarySource ? { summary: truncateSubStepText(summarySource) } : {}),
 			...(result.transcriptVisibility === "internal" &&
 			typeof result.text === "string"
@@ -7069,6 +7212,13 @@ export async function runV5MessageRuntimeStage1(args: {
 	onResponseHandlerEarlyReply?: (
 		event: ResponseHandlerEarlyReplyEvent,
 	) => Promise<boolean> | Promise<void> | boolean | undefined;
+	/**
+	 * Fires once Stage 1 routing commits this turn to a response (final reply
+	 * or planning). Lets the caller distinguish "runtime died after the model
+	 * chose to answer" from "died before any respond decision existed" in its
+	 * failure-reply gate.
+	 */
+	onStage1RespondDecision?: () => void;
 }): Promise<V5MessageRuntimeStage1Result> {
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
@@ -7101,6 +7251,12 @@ export async function runV5MessageRuntimeStage1(args: {
 					warn?: (context: unknown, message?: string) => void;
 				},
 				reportError: args.runtime.reportError.bind(args.runtime),
+				// Final-persistence tool-diagnostic projection: the recorder always
+				// runs the shared tool-shape pattern pass; this adds the runtime's
+				// character-configured secret masking on top. Optional-bound because
+				// lightweight/test runtimes may not implement redactSecrets — the
+				// pattern pass must keep running for them.
+				redactSecrets: args.runtime.redactSecrets?.bind(args.runtime),
 			})
 		: undefined;
 	const trajectoryId = recorder
@@ -7788,18 +7944,20 @@ export async function runV5MessageRuntimeStage1(args: {
 		// for human and bot addressees (bot-ness is surfaced to the model as
 		// transcript context, not handled here). Undirected banter
 		// (addressedTo: []) never gates, so chatty agents still interject per
-		// their character. Two structural bypasses keep deliberately-engaged
-		// turns first-class: the turn also addresses the agent (platform
-		// mention/reply or the agent's name in the text), or the sender's
-		// effective personality reply_gate is an explicit "always".
+		// their character. Eligibility is bounded by the canonical `ambientTurn`
+		// classifier: only positively identified unaddressed text-group traffic
+		// can be suppressed. Direct/API/self turns, client chat, autonomous and
+		// sub-agent traffic, explicit mentions/replies/names, and unknown channel
+		// types all fail open. The sender's effective personality reply_gate also
+		// provides a deliberate opt-out when it is explicitly "always".
 		//
-		// Fail SAFE on any resolution error (DB hiccup in getEntitiesForRoom): a
+		// Fail OPEN on any resolution error (DB hiccup in getEntitiesForRoom): a
 		// transient failure must NOT convert a normal turn into silence — it
 		// just means "don't suppress", matching the conservative contract and
 		// the fire-and-forget addressee handling above.
 		const addressedToOtherParticipant =
+			ambientTurn &&
 			addressedTo.length > 0 &&
-			!messageExplicitlyAddressesAgent(args.runtime, args.message) &&
 			resolveStage1ReplyGateMode(args.runtime, args.message) !== "always"
 				? await messageAddressedToOtherParticipant({
 						runtime: args.runtime,
@@ -7839,6 +7997,13 @@ export async function runV5MessageRuntimeStage1(args: {
 				state: args.state,
 			};
 		}
+
+		// Past this point the Stage-1 model has committed this turn to a
+		// response (final reply or planning). Surface the per-message decision
+		// so a later runtime failure can qualify for a visible failure reply
+		// instead of the unaddressed-turn suppression — evaluator-demoted
+		// IGNOREs and the injection-gate return above never reach this.
+		args.onStage1RespondDecision?.();
 
 		if (route.type === "final_reply") {
 			// The simple-context reply IS the answer: Stage 1 emits `replyText` (→
@@ -8217,9 +8382,20 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannerTools.map((tool) => normalizeActionIdentifier(tool.name)),
 		);
 		const stageOneActionLookup = buildRuntimeActionLookup(args.runtime);
+		const plannerToolActions = plannerTools.flatMap(
+			(tool) => resolveRuntimeAction(stageOneActionLookup, tool.name) ?? [],
+		);
 		const candidateResolvesToPlannerTool = (name: string): boolean => {
 			const normalized = normalizeActionIdentifier(name);
 			if (plannerToolNames.has(normalized)) return true;
+			// Retrieval can replace an umbrella candidate (TASKS) with the precise
+			// promoted child exposed this turn (TASKS_SPAWN_AGENT). Promoted children
+			// deliberately carry the parent name as a simile, so resolve against the
+			// ACTUAL planner surface before consulting the full runtime. Otherwise the
+			// runtime lookup finds the exact parent, which is absent from plannerTools,
+			// and incorrectly disables hard-tool enforcement even though its child is
+			// exposed and runnable.
+			if (exposedActionMatches(plannerToolActions, normalized)) return true;
 			const resolved = resolveRuntimeAction(stageOneActionLookup, name);
 			return (
 				resolved !== undefined &&
@@ -8696,17 +8872,27 @@ export async function runV5MessageRuntimeStage1(args: {
 					normalizeVisibleTextForDuplicateCheck(earlyReplyText))
 				? prePatchStageOneReply
 				: "";
-		// The ack fallback is a delivery floor for turns that DID real tool work
-		// (async handoffs and action turns whose result text got lost) — callers
-		// must not render a blank for work that genuinely happened. A turn that
-		// ran NO action must not "fix" its silence into a work-is-underway ack:
-		// no work follows this turn, so the ack would be a lie. Prefer the
-		// preserved stage-0 answer over any ack in every case.
+		// The answerless floor reports an undelivered canonical tool outcome, stays
+		// silent after a callback delivery, retains an ack only for a successfully
+		// accepted async handoff, and otherwise says no result was produced.
+		// A media deliverable delivered through an action's own callback
+		// (GENERATE_MEDIA posts an attachment-only, text:"" callback) IS the turn's
+		// answer. The answerless-final floor must not then resurrect the Stage-1
+		// "on it" ack behind the image — a redundant, out-of-order second bubble.
+		// deliveredMediaUrls is non-empty only for a SYNCHRONOUSLY delivered media
+		// attachment, so a slow/async generation (nothing delivered yet) still acks.
+		const mediaDeliverableShipped = deliveredMediaUrls.length > 0;
 		const ackFallback =
 			!plannedText && !earlyReplySent && !suppressesPlannerReply
 				? preservedAnswerFallback ||
-					(ranNonSilentAction
-						? stageOneAck || "on it, working on that now."
+					(ranNonSilentAction && !mediaDeliverableShipped
+						? answerlessToolTurnReport({
+								settledToolResults: settledPlannerToolResults,
+								deliveredVisibleTexts,
+								actionResults,
+								actions: args.runtime.actions,
+								stageOneAck,
+							})
 						: "")
 				: preservedAnswerFallback;
 		let effectiveReplyText = plannedText || ackFallback;
@@ -9718,6 +9904,49 @@ function looksLikeDelegationExcludedAsk(text: string): boolean {
 	);
 }
 
+const LEGACY_CODING_WORK_VERB_PATTERN =
+	/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/giu;
+const LEGACY_CODING_ARTIFACT_PATTERN =
+	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/giu;
+const CODING_OPERATION_VERB_PATTERN =
+	/\b(?:refactor|debug|deploy|patch|optimize|migrate|profile)\b/giu;
+const REVIEW_WORK_VERB_PATTERN =
+	/\b(?:review|audit|investigate|analyze|inspect|test|trace|diagnose)\b/giu;
+const STRONG_CODE_ARTIFACT_PATTERN =
+	/\b(?:code|cli|script|backend|frontend|repo|repository|bug|pr|pull request|commit|branch|stack trace|pipeline|ci)\b/giu;
+const EXPANDED_WORK_ARTIFACT_PATTERN =
+	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|repository|feature|bug|url|pr|pull request|issue|commit|branch|build|test|error|stack trace|failure|log|docs|documentation|run|pipeline|ci)\b/giu;
+const HTTP_URL_PATTERN = /\bhttps?:\/\/[^\s<>()]+/iu;
+
+interface TextSpan {
+	start: number;
+	end: number;
+}
+
+function collectTextSpans(text: string, pattern: RegExp): TextSpan[] {
+	return Array.from(text.matchAll(pattern), (match) => ({
+		start: match.index,
+		end: match.index + match[0].length,
+	}));
+}
+
+function hasNearbyTerms(
+	text: string,
+	leftPattern: RegExp,
+	rightPattern: RegExp,
+	maxGap: number,
+): boolean {
+	const leftSpans = collectTextSpans(text, leftPattern);
+	const rightSpans = collectTextSpans(text, rightPattern);
+	return leftSpans.some((left) =>
+		rightSpans.some((right) => {
+			if (left.end <= right.start) return right.start - left.end <= maxGap;
+			if (right.end <= left.start) return left.start - right.end <= maxGap;
+			return true;
+		}),
+	);
+}
+
 function looksLikeCodingWorkRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (!normalized.trim()) {
@@ -9733,12 +9962,39 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 		return false;
 	}
 	const asksCodingWork =
-		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b[\s\S]{0,160}\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
+		// Preserve the pre-#18108 construction/edit contract exactly.
+		hasNearbyTerms(
 			normalized,
+			LEGACY_CODING_WORK_VERB_PATTERN,
+			LEGACY_CODING_ARTIFACT_PATTERN,
+			160,
 		) ||
-		/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/iu.test(
+		// Coding-native operations can safely use the expanded artifact set.
+		hasNearbyTerms(
 			normalized,
-		);
+			CODING_OPERATION_VERB_PATTERN,
+			EXPANDED_WORK_ARTIFACT_PATTERN,
+			160,
+		) ||
+		// Review-family verbs are common in health, finance, and personal work.
+		// Promote them without a URL only when paired with a code-specific noun.
+		hasNearbyTerms(
+			normalized,
+			REVIEW_WORK_VERB_PATTERN,
+			STRONG_CODE_ARTIFACT_PATTERN,
+			160,
+		) ||
+		// A URL plus a nearby review-family verb and work artifact is the
+		// deterministic work-order shape reported in #18108. Without the URL,
+		// generic nouns such as issue, test, log, or documentation remain planner
+		// decisions instead of being mislabeled as coding jobs.
+		(HTTP_URL_PATTERN.test(normalized) &&
+			hasNearbyTerms(
+				normalized,
+				REVIEW_WORK_VERB_PATTERN,
+				EXPANDED_WORK_ARTIFACT_PATTERN,
+				160,
+			));
 	return asksDelegation || asksCodingWork;
 }
 
@@ -11448,14 +11704,12 @@ export class DefaultMessageService implements IMessageService {
 								}
 							: opts.abortSignal
 								? {
-										// No stream callback but caller provided an abort
-										// signal — install a no-op chunk handler so the
-										// streaming-context plumbing carries the signal
-										// down into `runtime.useModel`. The runtime never
-										// invokes onStreamChunk when no streaming is happening.
-										onStreamChunk: async () => undefined,
+										// Cancellation-only contexts deliberately omit a chunk
+										// consumer. `useModel` treats a present consumer as the
+										// request to use its streaming transport and parser.
 										messageId: responseId,
 										abortSignal: opts.abortSignal,
+										reportError: runtime.reportError.bind(runtime),
 									}
 								: undefined;
 					const processingPromise = runtime.turnControllers.runWith(
@@ -11473,7 +11727,6 @@ export class DefaultMessageService implements IMessageService {
 										}
 									: abortSignal
 										? {
-												onStreamChunk: async () => undefined,
 												messageId: responseId,
 												abortSignal,
 												reportError: runtime.reportError.bind(runtime),
@@ -11872,7 +12125,11 @@ export class DefaultMessageService implements IMessageService {
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a warm failure only
 		// forfeits the overlap; the compose-time caller re-embeds and fails open.
 		const recallWarmText = message.content?.text;
-		if (typeof recallWarmText === "string" && recallWarmText.trim() !== "") {
+		if (
+			typeof recallWarmText === "string" &&
+			recallWarmText.trim() !== "" &&
+			!isCanonicalModelCapabilityDisabled(runtime, ModelType.TEXT_EMBEDDING)
+		) {
 			const recallWarmMessageId =
 				typeof message.id === "string" ? message.id : undefined;
 			const recallWarmTask = embedRecallQuery(runtime, recallWarmText, {
@@ -11995,6 +12252,7 @@ export class DefaultMessageService implements IMessageService {
 		let routedDecision: ContextRoutingDecision | null = null;
 		let strategyResult: StrategyResult | null = null;
 		let _usedV5Runtime = false;
+		let stage1DecidedRespond = false;
 		let stage1RiskGateApplied = false;
 		const earlyReplyMessages: Memory[] = [];
 		const persistedEarlyReplyIds = new Set<string>();
@@ -12195,6 +12453,9 @@ export class DefaultMessageService implements IMessageService {
 									}
 								: {}),
 							onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
+							onStage1RespondDecision: () => {
+								stage1DecidedRespond = true;
+							},
 						}),
 					),
 					timeInferenceSpan("message:ingress:parallel-respond-hooks", () =>
@@ -12302,7 +12563,11 @@ export class DefaultMessageService implements IMessageService {
 					isAutonomous,
 					hasDeliveredEarlyReply: earlyReplyMessages.length > 0,
 				});
-				if (failureGate.addressed) {
+				// Stage 1 already made the per-message RESPOND decision for this
+				// turn before the runtime died — that is the model evaluation the
+				// deterministic gate defers to, so the anti-spam suppression
+				// (which exists for pre-decision throws) does not apply.
+				if (failureGate.addressed || stage1DecidedRespond) {
 					shouldRespondToMessage = true;
 					terminalDecision = null;
 					strategyResult = await this.buildStructuredFailureReply(
@@ -13155,8 +13420,15 @@ export class DefaultMessageService implements IMessageService {
 			"Processing attachments",
 		);
 
-		const processedAttachments = await Promise.all(
-			attachments.map(async (attachment) => {
+		const processedAttachments: Media[] = [];
+		const byteBudget: AttachmentByteBudget = {
+			remaining: ATTACHMENT_TURN_MAX_BYTES,
+		};
+		// Enrichment is deliberately ordered. In particular, transcription models
+		// are often backed by one local GPU/process; launching an attacker-sized
+		// attachment array concurrently caused memory spikes and provider storms.
+		for (const attachment of attachments) {
+			const processed = await (async () => {
 				const processedAttachment: Media = { ...attachment };
 
 				const isRemote = /^(http|https):\/\//.test(attachment.url);
@@ -13204,6 +13476,8 @@ export class DefaultMessageService implements IMessageService {
 								attachment.url,
 								url,
 								isRemote,
+								byteBudget,
+								attachment.size,
 							);
 							imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 						}
@@ -13250,6 +13524,8 @@ export class DefaultMessageService implements IMessageService {
 							attachment.url,
 							url,
 							isRemote,
+							byteBudget,
+							attachment.size,
 						);
 						// Any text/* document (plain, csv, markdown) and application/json —
 						// all on the chat upload allow-list — is readable as UTF-8 text;
@@ -13300,7 +13576,15 @@ export class DefaultMessageService implements IMessageService {
 								"Extracted PDF text content",
 							);
 						} else {
-							processedAttachment.notProcessed = `Unsupported document type (${contentType}); stored but text not extracted`;
+							Object.assign(
+								processedAttachment,
+								attachmentFailure(
+									"extract",
+									"unsupported_type",
+									false,
+									`Unsupported document type (${contentType}); stored but text not extracted`,
+								),
+							);
 							runtime.logger.warn(
 								{ src: "service:message", contentType },
 								"Skipping unsupported document type",
@@ -13324,6 +13608,8 @@ export class DefaultMessageService implements IMessageService {
 								attachment.url,
 								url,
 								isRemote,
+								byteBudget,
+								attachment.size,
 							);
 
 							const transcript = await runtime.useModel(
@@ -13348,20 +13634,59 @@ export class DefaultMessageService implements IMessageService {
 									"Transcribed audio attachment",
 								);
 							} else {
-								processedAttachment.notProcessed =
-									"Audio transcription returned no text (empty or no speech detected)";
+								Object.assign(
+									processedAttachment,
+									attachmentFailure(
+										"transcribe",
+										"empty_result",
+										false,
+										"Audio transcription returned no text (empty or no speech detected)",
+									),
+								);
 							}
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
-							// explicit transcription-unavailable state.
-							processedAttachment.notProcessed = `Audio transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
+							// explicit failure state. Fetch-layer failures (MediaFetchError:
+							// size cap, remote or local HTTP/stream error) happen before any TRANSCRIPTION
+							// provider runs, so they get a transient could-not-fetch marker —
+							// the "transcription unavailable" marker is reserved for genuine
+							// provider failures because the read action treats it as
+							// STT-is-disabled evidence.
+							Object.assign(
+								processedAttachment,
+								err instanceof Error && err.name === "MediaFetchError"
+									? attachmentFailure(
+											err.message.includes("turn byte budget")
+												? "budget"
+												: "fetch",
+											err.message.includes("turn byte budget")
+												? "byte_limit"
+												: "unavailable",
+											true,
+											"Audio attachment could not be fetched for enrichment",
+										)
+									: attachmentFailure(
+											"transcribe",
+											"unavailable",
+											true,
+											"Audio transcription unavailable",
+										),
+							);
 							runtime.logger.warn(
-								{ src: "service:message", err },
+								{
+									src: "service:message",
+									errorName: err instanceof Error ? err.name : "UnknownError",
+								},
 								"Audio transcription failed, continuing without transcript",
 							);
-							runtime.reportError("MessageService.audioTranscription", err, {
-								url: attachment.url,
-							});
+							runtime.reportError(
+								"MessageService.audioTranscription",
+								sanitizedAttachmentDiagnostic(
+									"ATTACHMENT_AUDIO_TRANSCRIPTION_FAILED",
+									"Audio attachment enrichment failed",
+									attachment,
+								),
+							);
 						}
 					} else if (
 						attachment.contentType === ContentType.VIDEO &&
@@ -13381,6 +13706,8 @@ export class DefaultMessageService implements IMessageService {
 								attachment.url,
 								url,
 								isRemote,
+								byteBudget,
+								attachment.size,
 							);
 
 							const transcript = await runtime.useModel(
@@ -13405,20 +13732,59 @@ export class DefaultMessageService implements IMessageService {
 									"Transcribed video attachment",
 								);
 							} else {
-								processedAttachment.notProcessed =
-									"Video transcription returned no text (empty or no speech detected)";
+								Object.assign(
+									processedAttachment,
+									attachmentFailure(
+										"transcribe",
+										"empty_result",
+										false,
+										"Video transcription returned no text (empty or no speech detected)",
+									),
+								);
 							}
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
-							// explicit transcription-unavailable state.
-							processedAttachment.notProcessed = `Video transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
+							// explicit failure state. Fetch-layer failures (MediaFetchError:
+							// size cap, remote or local HTTP/stream error) happen before any TRANSCRIPTION
+							// provider runs, so they get a transient could-not-fetch marker —
+							// the "transcription unavailable" marker is reserved for genuine
+							// provider failures because the read action treats it as
+							// STT-is-disabled evidence.
+							Object.assign(
+								processedAttachment,
+								err instanceof Error && err.name === "MediaFetchError"
+									? attachmentFailure(
+											err.message.includes("turn byte budget")
+												? "budget"
+												: "fetch",
+											err.message.includes("turn byte budget")
+												? "byte_limit"
+												: "unavailable",
+											true,
+											"Video attachment could not be fetched for enrichment",
+										)
+									: attachmentFailure(
+											"transcribe",
+											"unavailable",
+											true,
+											"Video transcription unavailable",
+										),
+							);
 							runtime.logger.warn(
-								{ src: "service:message", err },
+								{
+									src: "service:message",
+									errorName: err instanceof Error ? err.name : "UnknownError",
+								},
 								"Video transcription failed, continuing without transcript",
 							);
-							runtime.reportError("MessageService.videoTranscription", err, {
-								url: attachment.url,
-							});
+							runtime.reportError(
+								"MessageService.videoTranscription",
+								sanitizedAttachmentDiagnostic(
+									"ATTACHMENT_VIDEO_TRANSCRIPTION_FAILED",
+									"Video attachment enrichment failed",
+									attachment,
+								),
+							);
 						}
 					}
 
@@ -13430,19 +13796,35 @@ export class DefaultMessageService implements IMessageService {
 					// Degrade to the un-enriched attachment (marking remote ones
 					// ephemeral so the UI can offer a retry) and keep processing.
 					runtime.logger.warn(
-						{ src: "service:message", url: attachment.url, err },
+						{
+							src: "service:message",
+							attachmentId: attachment.id,
+							errorName: err instanceof Error ? err.name : "UnknownError",
+						},
 						"Attachment processing failed; keeping un-enriched attachment",
 					);
-					runtime.reportError("MessageService.attachmentEnrichment", err, {
-						url: attachment.url,
-					});
+					runtime.reportError(
+						"MessageService.attachmentEnrichment",
+						sanitizedAttachmentDiagnostic(
+							"ATTACHMENT_ENRICHMENT_FAILED",
+							"Attachment enrichment failed",
+							attachment,
+						),
+					);
 					return {
 						...attachment,
+						...attachmentFailure(
+							"extract",
+							"unavailable",
+							true,
+							"Attachment enrichment unavailable",
+						),
 						ephemeral: isRemote ? true : attachment.ephemeral,
 					};
 				}
-			}),
-		);
+			})();
+			processedAttachments.push(processed);
+		}
 
 		return processedAttachments;
 	}
@@ -13452,36 +13834,96 @@ export class DefaultMessageService implements IMessageService {
 	 * (attacker-influenceable) URLs go through the SSRF-guarded fetcher, which
 	 * blocks private/loopback/link-local hosts; trusted local media-store URLs
 	 * (built from a path-validated relative URL) use the runtime fetch. This is
-	 * the ONLY place a raw fetch is used during attachment enrichment.
+	 * the ONLY place a raw fetch is used during attachment enrichment. Both
+	 * branches fail only with typed MediaFetchError carrying static prose
+	 * (numeric HTTP status, never statusText), so the transcription catch
+	 * blocks can classify every byte-fetch failure as transient could-not-fetch
+	 * — the transcription-unavailable marker must never be forged by a fetch
+	 * that failed before any TRANSCRIPTION provider ran. Bodies are read
+	 * through the shared streaming cap, cancelling at the limit instead of
+	 * materializing an oversize payload first.
 	 */
 	private async fetchAttachmentBytes(
 		runtime: IAgentRuntime,
 		rawUrl: string,
 		resolvedLocalUrl: string,
 		isRemote: boolean,
+		budget: AttachmentByteBudget,
+		expectedBytes?: number,
 	): Promise<{ buffer: Buffer; contentType: string }> {
+		if (budget.remaining <= 0) {
+			throw new MediaFetchError(
+				"max_bytes",
+				"Attachment turn byte budget exhausted",
+			);
+		}
+		const maxBytes = Math.min(ATTACHMENT_FETCH_MAX_BYTES, budget.remaining);
+		if (
+			typeof expectedBytes === "number" &&
+			Number.isFinite(expectedBytes) &&
+			expectedBytes > maxBytes
+		) {
+			throw new MediaFetchError(
+				"max_bytes",
+				expectedBytes > budget.remaining
+					? "Attachment exceeds turn byte budget"
+					: `Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
+			);
+		}
 		if (isRemote) {
 			const { buffer, contentType } = await fetchRemoteMedia({
 				url: rawUrl,
-				maxBytes: ATTACHMENT_FETCH_MAX_BYTES,
+				maxBytes,
 			});
+			budget.remaining -= Math.max(buffer.byteLength, expectedBytes ?? 0);
 			return {
 				buffer,
 				contentType: contentType ?? "application/octet-stream",
 			};
 		}
 		const runtimeFetch = runtime.fetch ?? globalThis.fetch;
-		const res = await runtimeFetch(resolvedLocalUrl);
-		if (!res.ok) {
-			throw new Error(`Failed to fetch attachment: ${res.statusText}`);
+		try {
+			const res = await runtimeFetch(resolvedLocalUrl);
+			if (!res.ok) {
+				// Only the numeric status: statusText is dynamic prose (a local
+				// 503 could carry "TRANSCRIPTION not available") and must never
+				// reach the catch blocks that key on unavailability wording.
+				throw new MediaFetchError(
+					"http_error",
+					`Failed to fetch attachment locally (HTTP ${res.status})`,
+				);
+			}
+			// Reject on the declared size before reading; the streamed read below
+			// cancels at the cap when the header is absent or lying.
+			const declaredLength = Number(res.headers.get("content-length"));
+			if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+				throw new MediaFetchError(
+					"max_bytes",
+					declaredLength > budget.remaining
+						? "Attachment exceeds turn byte budget"
+						: `Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
+				);
+			}
+			const contentType =
+				res.headers.get("content-type") || "application/octet-stream";
+			const buffer = await readResponseWithLimit(res, maxBytes);
+			budget.remaining -= Math.max(buffer.byteLength, expectedBytes ?? 0);
+			return { buffer, contentType };
+		} catch (err) {
+			// error-policy:J2 typed transient-class rethrow covering the whole
+			// local read boundary (fetch, header reads, body read): every local
+			// byte-fetch failure surfaces as MediaFetchError so the audio/video
+			// catch blocks write the transient could-not-fetch marker, never the
+			// transcription-unavailable one. Matched by name rather than
+			// instanceof so the pass-through survives module duplication across
+			// the multi-target build and test mocks.
+			if (err instanceof Error && err.name === "MediaFetchError") throw err;
+			throw new MediaFetchError(
+				"fetch_failed",
+				"Failed to fetch attachment locally",
+				err,
+			);
 		}
-		const buffer = Buffer.from(await res.arrayBuffer());
-		if (buffer.length > ATTACHMENT_FETCH_MAX_BYTES) {
-			throw new Error(`Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`);
-		}
-		const contentType =
-			res.headers.get("content-type") || "application/octet-stream";
-		return { buffer, contentType };
 	}
 
 	private resolveRecentMessagesForFailureReply(

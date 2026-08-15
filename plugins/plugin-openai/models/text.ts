@@ -42,15 +42,18 @@ import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
 import {
   getActionPlannerModel,
+  getBaseURL,
   getExperimentalTelemetry,
   getLargeModel,
   getMediumModel,
   getMegaModel,
   getNanoModel,
   getResponseHandlerModel,
+  getSetting,
   getSmallModel,
   getUsageProvider,
   isCerebrasMode,
+  isProxyMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
 
@@ -327,14 +330,50 @@ function isCerebrasReasoningModel(modelName: string | undefined): boolean {
   return id === "gpt-oss-120b" || id === "zai-glm-4.7";
 }
 
-/** Maps thinking suppression only for the Cerebras models that document it. */
-function resolveCerebrasThinkingOffReasoningEffort(
+function isOpenCodeGoEndpoint(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      url.hostname.toLowerCase() === "opencode.ai" &&
+      (url.pathname === "/zen/go/v1" || url.pathname.startsWith("/zen/go/v1/"))
+    );
+  } catch {
+    // error-policy:J3 Malformed configuration is not a matching provider URL.
+    return false;
+  }
+}
+
+/**
+ * Detects the endpoint contract that translates `reasoning_effort: "none"`.
+ *
+ * Browser requests terminate at an opaque proxy, so the direct base URL is not
+ * proof of the proxy's upstream. Proxy deployments must declare their actual
+ * upstream explicitly before this provider-specific wire value is emitted.
+ */
+function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
+  if (isOpenCodeGoEndpoint(getBaseURL(runtime))) return true;
+  return (
+    isProxyMode(runtime) &&
+    isOpenCodeGoEndpoint(getSetting(runtime, "OPENAI_BROWSER_UPSTREAM_BASE_URL"))
+  );
+}
+
+/** Maps thinking suppression only for exact model ids on proven endpoints. */
+function resolveThinkingOffReasoningEffort(
+  runtime: IAgentRuntime,
   modelName: string | undefined
 ): "low" | "none" | undefined {
   if (!modelName) return undefined;
-  const id = normalizeCerebrasModelId(modelName);
-  if (id === "gpt-oss-120b") return "low";
-  if (id === "zai-glm-4.7") return "none";
+  const cerebrasId = normalizeCerebrasModelId(modelName);
+  if (isCerebrasMode(runtime)) {
+    if (cerebrasId === "gpt-oss-120b") return "low";
+    if (cerebrasId === "zai-glm-4.7") return "none";
+  }
+
+  const exactModelId = modelName.trim().toLowerCase();
+  if (exactModelId === "deepseek-v4-flash" && isOpenCodeGoMode(runtime)) return "none";
   return undefined;
 }
 
@@ -371,16 +410,13 @@ function resolveProviderOptions(
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
   const reasoningEffort = resolveReasoningEffort(runtime, modelName);
-  // Thinking-off suppression outranks the env pin and the Cerebras "low"
-  // default (matching plugin-elizacloud: Stage-1/planner calls stay cheap
-  // regardless of a user-pinned effort). An explicit caller
-  // `providerOptions.openai.reasoningEffort` still wins via the spread guard
-  // below. Scoped to Cerebras mode: OpenAI-direct rejects `"none"`.
+  // Thinking-off suppression outranks the env pin and provider default so
+  // forced-tool planner calls do not enter an incompatible reasoning mode.
+  // Keep this endpoint/model allowlist exact: OpenAI-direct and many compatible
+  // endpoints reject `"none"`. An explicit caller value still wins below.
   const elizaThinking = (rawProviderOptions?.eliza as { thinking?: unknown } | undefined)?.thinking;
   const thinkingOffEffort =
-    elizaThinking === "off" && isCerebrasMode(runtime)
-      ? resolveCerebrasThinkingOffReasoningEffort(modelName)
-      : undefined;
+    elizaThinking === "off" ? resolveThinkingOffReasoningEffort(runtime, modelName) : undefined;
   const effectiveReasoningEffort = thinkingOffEffort ?? reasoningEffort;
 
   if (
@@ -1189,7 +1225,7 @@ function hasIllegalStrictRoot(node: Record<string, unknown>): boolean {
 
 // Constraint keywords that strict-grammar providers reject with a hard 400
 // that fails the ENTIRE request. The exact set was bisected live against
-// api.elizacloud.ai / gpt-oss-120b (Cerebras): maxItems/minItems/maxLength/
+// api.eliza.app / gpt-oss-120b (Cerebras): maxItems/minItems/maxLength/
 // minLength/pattern/format/min-maxProperties are rejected; numeric bounds
 // (minimum/maximum/multipleOf) and uniqueItems are accepted, so they are NOT
 // stripped. Each maps to a human phrase folded into `description` so the model
@@ -1331,7 +1367,7 @@ function sanitizeJsonSchema(
   // funnels through here, so strip the strict-unsupported constraint keywords
   // centrally instead of relying on each schema author to remember the rule.
   // UNCONDITIONAL, not Cerebras-gated: isCerebrasMode is proxy-blind — an agent
-  // pointed at api.elizacloud.ai with OPENAI_API_KEY looks like plain OpenAI,
+  // pointed at api.eliza.app with OPENAI_API_KEY looks like plain OpenAI,
   // which is exactly the deployment where the 400 fired (#11123/#11141). The
   // recursion below reaches nested nodes via properties/items/unions.
   stripStrictUnsupportedConstraints(sanitized);
@@ -1376,7 +1412,7 @@ function sanitizeJsonSchema(
   if (sanitized.type === "object" && sanitized.additionalProperties !== false) {
     // Strict-grammar providers reject open maps (schema-valued or `true`
     // additionalProperties) with a hard 400, and provider strictness is
-    // proxy-blind (an agent on api.elizacloud.ai with OPENAI_API_KEY may still
+    // proxy-blind (an agent on api.eliza.app with OPENAI_API_KEY may still
     // route to strict Cerebras — #11123/#11156), so we must always close the
     // object on the wire. But a DECLARED free-form map (e.g. contact
     // customFields = `additionalProperties: { type: "string" }`) was collapsed

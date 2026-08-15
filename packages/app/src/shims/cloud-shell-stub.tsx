@@ -16,6 +16,8 @@ export function CloudRouterShell({
   appElement,
 }: {
   appElement: ReactNode;
+  marketingHomeElement?: ReactNode;
+  downloadsElement?: ReactNode;
 }): ReactNode {
   return appElement;
 }

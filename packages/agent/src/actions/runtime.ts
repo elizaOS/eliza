@@ -285,7 +285,7 @@ interface ReloadConfigResponse {
 }
 
 async function reloadConfigOp(): Promise<ActionResult> {
-  // The route handler owns ConfigRouteContext (state.config, BLOCKED_ENV_KEYS)
+  // The route handler owns ConfigRouteContext (state.config, isBlockedEnvKey)
   // and the diff/apply helpers are file-private. Until those are extracted to
   // a service, this op stays HTTP-backed.
   try {

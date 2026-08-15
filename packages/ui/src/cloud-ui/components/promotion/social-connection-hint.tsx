@@ -143,7 +143,7 @@ export function SocialConnectionHint({
                   size="sm"
                   className="bg-[#5865F2] hover:bg-[#4752C4]"
                 >
-                  <Link to="/dashboard/settings?tab=connections">
+                  <Link to="/cloud/connectors">
                     Connect Discord
                     <ArrowRight className="h-4 w-4 ml-2" />
                   </Link>
@@ -188,7 +188,7 @@ export function SocialConnectionHint({
                   size="sm"
                   className="bg-[#0088cc] hover:bg-[#0077b5]"
                 >
-                  <Link to="/dashboard/settings?tab=connections">
+                  <Link to="/cloud/connectors">
                     Connect Telegram
                     <ArrowRight className="h-4 w-4 ml-2" />
                   </Link>

@@ -172,7 +172,7 @@ describe("shouldLoadStewardRuntime", () => {
       "/login",
       "/app-auth/authorize",
       "/auth/callback/email",
-      "/dashboard",
+      "/cloud",
       "/payment/abc",
     ]) {
       expect(shouldLoadStewardRuntime(path)).toBe(true);
