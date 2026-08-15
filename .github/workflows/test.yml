@@ -315,30 +315,55 @@ jobs:
             FROM agent_sandboxes
             WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
             SQL
-      - name: Converge the exact replacement cleanup fence
+      - name: Restart the exact clean X agent container
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 5m
+          envs: ELIZACLOUD_API_KEY
           script: |
             set -euo pipefail
-            database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
-            database_url="${database_url/sslmode=no-verify/sslmode=require}"
-            organization_id="$(psql "$database_url" -v ON_ERROR_STOP=1 -Atc "SELECT organization_id FROM agent_sandboxes WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'")"
-            test -n "$organization_id"
-            cd /opt/eliza
-            TARGET_AGENT_ID=4602b3be-2c01-4e7e-9cdc-849604e1bef7 \
-              TARGET_ORG_ID="$organization_id" \
-              /home/deploy/.bun/bin/bun --env-file=cloud/.env.local -e '
-                const { elizaSandboxService } = await import("./packages/cloud/shared/src/lib/services/eliza-sandbox.ts");
-                await elizaSandboxService.convergeReplacementCleanupFence(
-                  process.env.TARGET_AGENT_ID,
-                  process.env.TARGET_ORG_ID,
-                );
-                process.stdout.write("exact replacement cleanup converged\n");
-              '
+            work="$(mktemp -d)"
+            trap 'rm -rf "$work"' EXIT
+            containers_key="$(sed -n 's/^CONTAINERS_SSH_KEY=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            test -n "$containers_key"
+            printf '%s' "$containers_key" | base64 -d > "$work/key"
+            chmod 600 "$work/key"
+            curl --silent --show-error --fail --max-time 30 \
+              --header "Authorization: Bearer $ELIZACLOUD_API_KEY" \
+              --output "$work/node.json" \
+              https://api.eliza.app/api/v1/admin/docker-nodes/eliza-core-prod-5
+            host="$(jq -er '.data.hostname' "$work/node.json")"
+            user="$(jq -er '.data.sshUser' "$work/node.json")"
+            port="$(jq -er '.data.sshPort' "$work/node.json")"
+            ssh -i "$work/key" -p "$port" \
+              -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile="$work/known_hosts" \
+              "$user@$host" \
+              'set -euo pipefail
+              target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7
+              expected=ghcr.io/elizaos/eliza-demo@sha256:ddbcccf17776cd26ada045f7e0acbb5df31a629e0d53ce1042297cb837fa53ea
+              test "$(docker inspect --format "{{.Config.Image}}" "$target")" = "$expected"
+              docker restart --time 20 "$target" >/dev/null
+              for attempt in $(seq 1 30); do
+                if docker exec "$target" bun -e '\''
+                  const token = process.env.ELIZA_API_TOKEN;
+                  const response = await fetch("http://127.0.0.1:2138/api/health", {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                  });
+                  const body = await response.json();
+                  if (!response.ok || body.ready !== true || body.database !== "ok") process.exit(1);
+                  process.stdout.write(JSON.stringify({ ready: body.ready, database: body.database, plugins: body.plugins }) + "\\n");
+                '\''; then
+                  printf "exact clean container restarted healthy\n"
+                  exit 0
+                fi
+                sleep 5
+              done
+              docker logs --tail 100 "$target" >&2
+              exit 1'
 
   changes:
     name: Classify changed paths
