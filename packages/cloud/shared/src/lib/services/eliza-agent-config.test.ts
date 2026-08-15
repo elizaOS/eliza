@@ -94,6 +94,7 @@ describe("personal Eliza cutover marker", () => {
     sharedMessageCount: 12,
     sharedScheduledTaskCount: 3,
     sharedTodoCount: 4,
+    sharedTodoMutationCount: 7,
     sharedTodoDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     activatedAt: "2026-08-13T18:00:00.000Z",
   };
@@ -114,12 +115,14 @@ describe("personal Eliza cutover marker", () => {
     const {
       sharedScheduledTaskCount: _scheduledCount,
       sharedTodoCount: _todoCount,
+      sharedTodoMutationCount: _todoMutationCount,
       sharedTodoDigest: _todoDigest,
       ...legacy
     } = marker;
     expect(readPersonalElizaCutover({ [AGENT_PERSONAL_CUTOVER_KEY]: legacy })).toMatchObject({
       sharedScheduledTaskCount: 0,
       sharedTodoCount: 0,
+      sharedTodoMutationCount: 0,
       sharedTodoDigest: null,
     });
   });
@@ -136,6 +139,16 @@ describe("personal Eliza cutover marker", () => {
     expect(
       readPersonalElizaCutover({
         [AGENT_PERSONAL_CUTOVER_KEY]: missingCount,
+      }),
+    ).toBeNull();
+  });
+
+  test("rejects a mutation count without the Todo snapshot receipt", () => {
+    const { sharedTodoCount: _count, sharedTodoDigest: _digest, ...mutationOnly } = marker;
+
+    expect(
+      readPersonalElizaCutover({
+        [AGENT_PERSONAL_CUTOVER_KEY]: mutationOnly,
       }),
     ).toBeNull();
   });

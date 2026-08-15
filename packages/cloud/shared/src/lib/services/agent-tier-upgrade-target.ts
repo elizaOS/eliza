@@ -182,6 +182,7 @@ export async function finalizePersonalTierUpgradeCutover(params: {
   sharedMessageCount: number;
   sharedScheduledTaskCount: number;
   sharedTodoCount: number;
+  sharedTodoMutationCount: number;
   sharedTodoDigest: string;
 }): Promise<AgentSandbox> {
   return dbWrite.transaction(async (tx) => {
@@ -227,6 +228,7 @@ export async function finalizePersonalTierUpgradeCutover(params: {
       existing.sharedMessageCount === params.sharedMessageCount &&
       existing.sharedScheduledTaskCount === params.sharedScheduledTaskCount &&
       existing.sharedTodoCount === params.sharedTodoCount &&
+      existing.sharedTodoMutationCount === params.sharedTodoMutationCount &&
       existing.sharedTodoDigest === params.sharedTodoDigest
     ) {
       return target;
@@ -245,6 +247,7 @@ export async function finalizePersonalTierUpgradeCutover(params: {
             sharedMessageCount: params.sharedMessageCount,
             sharedScheduledTaskCount: params.sharedScheduledTaskCount,
             sharedTodoCount: params.sharedTodoCount,
+            sharedTodoMutationCount: params.sharedTodoMutationCount,
             sharedTodoDigest: params.sharedTodoDigest,
             activatedAt: sameCutover ? existing.activatedAt : new Date().toISOString(),
           },

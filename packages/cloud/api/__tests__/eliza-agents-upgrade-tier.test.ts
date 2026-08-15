@@ -1068,14 +1068,24 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           '2026-08-14T17:00:00.000Z'
         )
       `);
-      const cutoverTodo = await cutoverTodoStore.create({
-        ...cutoverTodoScope,
-        roomId: "a5150000-0000-4000-8000-000000000002",
-        content: "Call mom before Friday",
-        activeForm: "Calling mom before Friday",
-        status: "pending",
-        metadata: { source: "cutover-api-test" },
+      const cutoverTodoMutation = await cutoverTodoStore.applyMutation({
+        scope: cutoverTodoScope,
+        idempotencyKey: "cutover-api-test:create",
+        mutation: {
+          action: "create",
+          input: {
+            roomId: "a5150000-0000-4000-8000-000000000002",
+            content: "Call mom before Friday",
+            activeForm: "Calling mom before Friday",
+            status: "pending",
+            metadata: { source: "cutover-api-test" },
+          },
+        },
       });
+      if (cutoverTodoMutation.result.action !== "create") {
+        throw new Error("Todo setup did not return its created row");
+      }
+      const cutoverTodo = cutoverTodoMutation.result.todo;
       cutoverTodoId = cutoverTodo.id;
 
       const refused = await cutover(PERSONAL_C, CUTOVER_TARGET);
@@ -1186,11 +1196,13 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           messages: unknown[];
           todoSnapshot: {
             todos: unknown[];
+            mutations: unknown[];
             digest: string;
           };
         };
         const messageCount = requestBody.messages.length;
         const todoCount = requestBody.todoSnapshot.todos.length;
+        const todoMutationCount = requestBody.todoSnapshot.mutations.length;
         return Response.json({
           complete: true,
           sourceMessageCount: messageCount,
@@ -1206,6 +1218,13 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           repairedTodos: 0,
           skippedTodos: requestBody.activateScheduledTasks ? todoCount : 0,
           removedStaleTodos: 0,
+          sourceTodoMutationCount: todoMutationCount,
+          importedTodoMutations: requestBody.activateScheduledTasks
+            ? 0
+            : todoMutationCount,
+          skippedTodoMutations: requestBody.activateScheduledTasks
+            ? todoMutationCount
+            : 0,
           sourceTodoDigest: requestBody.todoSnapshot.digest,
           targetTodoDigest: requestBody.todoSnapshot.digest,
         });
@@ -1228,6 +1247,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
         sharedMessageCount: 2,
         sharedTodoCount: 1,
+        sharedTodoMutationCount: 1,
         sharedTodoDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
       });
       expect(cutoverCoordinatorOperations).toEqual([
@@ -1239,6 +1259,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
         sharedMessageCount: 2,
         sharedTodoCount: 1,
+        sharedTodoMutationCount: 1,
         sharedTodoDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
       });
 
@@ -1305,7 +1326,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         ],
         cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
         todoSnapshot: {
-          version: 1,
+          version: 2,
           sourceAgentId: PERSONAL_C,
           todos: [
             {
@@ -1316,6 +1337,14 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
               status: "pending",
               metadata: { source: "cutover-api-test" },
             },
+          ],
+          mutations: [
+            expect.objectContaining({
+              version: 1,
+              idempotencyKey: "cutover-api-test:create",
+              operation: "create",
+              applied: true,
+            }),
           ],
           digest: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
@@ -1328,9 +1357,14 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         activateScheduledTasks: true,
         cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
         todoSnapshot: {
-          version: 1,
+          version: 2,
           sourceAgentId: PERSONAL_C,
           todos: [{ sourceId: cutoverTodo.id }],
+          mutations: [
+            expect.objectContaining({
+              idempotencyKey: "cutover-api-test:create",
+            }),
+          ],
           digest: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
       });
@@ -1341,6 +1375,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         sharedMessageCount: 2,
         sharedScheduledTaskCount: 2,
         sharedTodoCount: 1,
+        sharedTodoMutationCount: 1,
         sharedTodoDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
       });
       expect(new Set(cutoverCoordinatorTokens).size).toBe(1);
@@ -1357,6 +1392,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
             sharedMessageCount?: number;
             sharedScheduledTaskCount?: number;
             sharedTodoCount?: number;
+            sharedTodoMutationCount?: number;
             sharedTodoDigest?: string;
             activatedAt?: string;
           }
@@ -1367,6 +1403,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         sharedMessageCount: 2,
         sharedScheduledTaskCount: 2,
         sharedTodoCount: 1,
+        sharedTodoMutationCount: 1,
         sharedTodoDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
       });
       expect(marker?.activatedAt).toBeTruthy();
@@ -1399,10 +1436,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         const requestBody = JSON.parse(String(init?.body)) as {
           activateScheduledTasks?: boolean;
           messages: unknown[];
-          todoSnapshot: { todos: unknown[]; digest: string };
+          todoSnapshot: {
+            todos: unknown[];
+            mutations: unknown[];
+            digest: string;
+          };
         };
         const messageCount = requestBody.messages.length;
         const todoCount = requestBody.todoSnapshot.todos.length;
+        const todoMutationCount = requestBody.todoSnapshot.mutations.length;
         return Response.json({
           complete: true,
           sourceMessageCount: messageCount,
@@ -1420,6 +1462,9 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           repairedTodos: 0,
           skippedTodos: todoCount,
           removedStaleTodos: 0,
+          sourceTodoMutationCount: todoMutationCount,
+          importedTodoMutations: 0,
+          skippedTodoMutations: todoMutationCount,
           sourceTodoDigest: requestBody.todoSnapshot.digest,
           targetTodoDigest: requestBody.todoSnapshot.digest,
         });
@@ -1444,6 +1489,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         sharedMessageCount: cutoverHistory.length,
         sharedScheduledTaskCount: 2,
         sharedTodoCount: 1,
+        sharedTodoMutationCount: 1,
         sharedTodoDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
       });
       const committedRows = (await dbWrite.execute(sql`

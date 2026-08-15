@@ -4,7 +4,12 @@
  */
 
 import { searchKeylessWeb, type UUID } from "@elizaos/core/edge";
-import type { Todo, TodoStore } from "@elizaos/plugin-todos/edge";
+import type {
+  CreateTodoInput,
+  Todo,
+  TodoMutationRecord,
+  TodoStore,
+} from "@elizaos/plugin-todos/edge";
 import { runWithCloudBindingsAsync } from "../../../shared/src/lib/runtime/cloud-bindings";
 import { runSharedAgentTurn } from "../../../shared/src/lib/services/shared-runtime/run-shared-agent-turn";
 
@@ -15,27 +20,99 @@ type Env = {
 };
 
 function createTodoProbeStore(records: Todo[]): TodoStore {
+  const mutations: TodoMutationRecord[] = [];
+  const create = (input: CreateTodoInput): Todo => {
+    const now = new Date();
+    const todo: Todo = {
+      id: `90000000-0000-4000-8000-${String(records.length + 1).padStart(12, "0")}`,
+      agentId: input.agentId,
+      entityId: input.entityId,
+      roomId: input.roomId ?? null,
+      worldId: input.worldId ?? null,
+      content: input.content,
+      activeForm: input.activeForm ?? input.content,
+      status: input.status ?? "pending",
+      parentTodoId: input.parentTodoId ?? null,
+      parentTrajectoryStepId: input.parentTrajectoryStepId ?? null,
+      metadata: input.metadata ?? {},
+      createdAt: now,
+      updatedAt: now,
+      completedAt: input.status === "completed" ? now : null,
+    };
+    records.push(todo);
+    return todo;
+  };
   return {
-    async create(input) {
-      const now = new Date();
-      const todo: Todo = {
-        id: `90000000-0000-4000-8000-${String(records.length + 1).padStart(12, "0")}`,
-        agentId: input.agentId,
-        entityId: input.entityId,
-        roomId: input.roomId ?? null,
-        worldId: input.worldId ?? null,
-        content: input.content,
-        activeForm: input.activeForm ?? input.content,
-        status: input.status ?? "pending",
-        parentTodoId: input.parentTodoId ?? null,
-        parentTrajectoryStepId: input.parentTrajectoryStepId ?? null,
-        metadata: input.metadata ?? {},
-        createdAt: now,
-        updatedAt: now,
-        completedAt: input.status === "completed" ? now : null,
+    async applyMutation(input) {
+      const existing = mutations.find(
+        (record) =>
+          record.scope.agentId === input.scope.agentId &&
+          record.scope.entityId === input.scope.entityId &&
+          record.idempotencyKey === input.idempotencyKey,
+      );
+      if (existing) {
+        return {
+          mutationId: existing.mutationId,
+          idempotencyKey: existing.idempotencyKey,
+          replayed: true,
+          committedAt: existing.committedAt,
+          applied: existing.applied,
+          result: existing.result,
+        };
+      }
+      if (input.mutation.action !== "create") {
+        throw new Error("The Workerd mutation probe only creates Todos");
+      }
+      const committedAt = new Date();
+      const result = {
+        action: "create" as const,
+        todo: create({ ...input.scope, ...input.mutation.input }),
       };
-      records.push(todo);
-      return todo;
+      const record: TodoMutationRecord = {
+        mutationId: `91000000-0000-4000-8000-${String(mutations.length + 1).padStart(12, "0")}`,
+        scope: input.scope,
+        idempotencyKey: input.idempotencyKey,
+        requestDigest: "0".repeat(64),
+        operation: "create",
+        applied: true,
+        result,
+        committedAt,
+      };
+      mutations.push(record);
+      return {
+        mutationId: record.mutationId,
+        idempotencyKey: record.idempotencyKey,
+        replayed: false,
+        committedAt,
+        applied: true,
+        result,
+      };
+    },
+    async readCutoverState(scope) {
+      return {
+        todos: records.filter(
+          (todo) =>
+            todo.agentId === scope.agentId && todo.entityId === scope.entityId,
+        ),
+        mutations: mutations.filter(
+          (record) =>
+            record.scope.agentId === scope.agentId &&
+            record.scope.entityId === scope.entityId,
+        ),
+      };
+    },
+    async listMutationRecords(scope) {
+      return mutations.filter(
+        (record) =>
+          record.scope.agentId === scope.agentId &&
+          record.scope.entityId === scope.entityId,
+      );
+    },
+    async importMutationRecords() {
+      throw new Error("The Workerd creation probe does not import mutations");
+    },
+    async create(input) {
+      return create(input);
     },
     async get(scope, id) {
       return (

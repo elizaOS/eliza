@@ -5,32 +5,101 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
-import type { TodoStore } from "@elizaos/plugin-todos/edge";
+import type { CreateTodoInput, TodoMutationRecord, TodoStore } from "@elizaos/plugin-todos/edge";
 
 const scheduledInputs: Array<Record<string, unknown>> = [];
 type StoredTodo = Awaited<ReturnType<TodoStore["create"]>>;
 const storedTodos: StoredTodo[] = [];
+const storedTodoMutations: TodoMutationRecord[] = [];
+function createStoredTodo(input: CreateTodoInput): StoredTodo {
+  const now = new Date();
+  const todo: StoredTodo = {
+    id: `90000000-0000-4000-8000-${String(storedTodos.length + 1).padStart(12, "0")}`,
+    agentId: input.agentId,
+    entityId: input.entityId,
+    roomId: input.roomId ?? null,
+    worldId: input.worldId ?? null,
+    content: input.content,
+    activeForm: input.activeForm ?? input.content,
+    status: input.status ?? "pending",
+    parentTodoId: input.parentTodoId ?? null,
+    parentTrajectoryStepId: input.parentTrajectoryStepId ?? null,
+    metadata: input.metadata ?? {},
+    createdAt: now,
+    updatedAt: now,
+    completedAt: input.status === "completed" ? now : null,
+  };
+  storedTodos.push(todo);
+  return todo;
+}
 const todoStore: TodoStore = {
-  async create(input) {
-    const now = new Date();
-    const todo: StoredTodo = {
-      id: `90000000-0000-4000-8000-${String(storedTodos.length + 1).padStart(12, "0")}`,
-      agentId: input.agentId,
-      entityId: input.entityId,
-      roomId: input.roomId ?? null,
-      worldId: input.worldId ?? null,
-      content: input.content,
-      activeForm: input.activeForm ?? input.content,
-      status: input.status ?? "pending",
-      parentTodoId: input.parentTodoId ?? null,
-      parentTrajectoryStepId: input.parentTrajectoryStepId ?? null,
-      metadata: input.metadata ?? {},
-      createdAt: now,
-      updatedAt: now,
-      completedAt: input.status === "completed" ? now : null,
+  async applyMutation(input) {
+    const existing = storedTodoMutations.find(
+      (record) =>
+        record.scope.agentId === input.scope.agentId &&
+        record.scope.entityId === input.scope.entityId &&
+        record.idempotencyKey === input.idempotencyKey,
+    );
+    if (existing) {
+      return {
+        mutationId: existing.mutationId,
+        idempotencyKey: existing.idempotencyKey,
+        replayed: true,
+        committedAt: existing.committedAt,
+        applied: existing.applied,
+        result: existing.result,
+      };
+    }
+    if (input.mutation.action !== "create") {
+      throw new Error("Todo mutation is outside this runtime creation test");
+    }
+    const committedAt = new Date();
+    const result = {
+      action: "create" as const,
+      todo: createStoredTodo({ ...input.scope, ...input.mutation.input }),
     };
-    storedTodos.push(todo);
-    return todo;
+    const record: TodoMutationRecord = {
+      mutationId: `91000000-0000-4000-8000-${String(storedTodoMutations.length + 1).padStart(12, "0")}`,
+      scope: input.scope,
+      idempotencyKey: input.idempotencyKey,
+      requestDigest: "0".repeat(64),
+      operation: "create",
+      applied: true,
+      result,
+      committedAt,
+    };
+    storedTodoMutations.push(record);
+    return {
+      mutationId: record.mutationId,
+      idempotencyKey: record.idempotencyKey,
+      replayed: false,
+      committedAt,
+      applied: true,
+      result,
+    };
+  },
+  async readCutoverState(scope) {
+    return {
+      todos: storedTodos.filter(
+        (todo) => todo.agentId === scope.agentId && todo.entityId === scope.entityId,
+      ),
+      mutations: storedTodoMutations.filter(
+        (record) =>
+          record.scope.agentId === scope.agentId && record.scope.entityId === scope.entityId,
+      ),
+    };
+  },
+  async listMutationRecords(scope) {
+    return storedTodoMutations.filter(
+      (record) =>
+        record.scope.agentId === scope.agentId && record.scope.entityId === scope.entityId,
+    );
+  },
+  async importMutationRecords() {
+    throw new Error("Todo import is outside this runtime creation test");
+  },
+  async create(input) {
+    return createStoredTodo(input);
   },
   async get(scope, id) {
     return (
@@ -89,6 +158,7 @@ const ORIGINAL_CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
 beforeEach(() => {
   scheduledInputs.length = 0;
   storedTodos.length = 0;
+  storedTodoMutations.length = 0;
   process.env.CEREBRAS_API_KEY = "shared-runtime-test-key";
   process.env.NODE_ENV = "production";
 });

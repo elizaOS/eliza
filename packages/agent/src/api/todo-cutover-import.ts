@@ -13,6 +13,12 @@ import {
 } from "@elizaos/core";
 import type { TodoInsert, TodoRow } from "@elizaos/plugin-todos/db/schema";
 import {
+  deserializeTodoMutationRecord,
+  importTodoMutationRecordsInTransaction,
+  type TodoMutationRecord,
+  type TodoMutationResult,
+} from "@elizaos/plugin-todos/service";
+import {
   createSharedTodoCutoverSnapshot,
   type SharedTodoCutoverRecord,
   type SharedTodoCutoverSnapshot,
@@ -62,12 +68,58 @@ interface MaterializedSourceRecord {
 
 export interface SharedTodoImportReceipt {
   sourceTodoCount: number;
+  sourceTodoMutationCount: number;
   importedTodos: number;
   repairedTodos: number;
   skippedTodos: number;
   removedStaleTodos: number;
+  importedTodoMutations: number;
+  skippedTodoMutations: number;
   sourceTodoDigest: string;
   targetTodoDigest: string;
+}
+
+function mutationResultTodos(
+  result: TodoMutationResult,
+): Array<{ roomId: string | null; worldId: string | null }> {
+  switch (result.action) {
+    case "create":
+      return [result.todo];
+    case "update":
+    case "complete":
+    case "cancel":
+      return result.todo ? [result.todo] : [];
+    case "delete":
+      return result.deleted ? [result.deleted] : [];
+    case "write":
+      return [...result.before, ...result.after];
+    case "clear":
+      return [];
+  }
+}
+
+function sourceExecutionScopeMaps(
+  snapshot: SharedTodoCutoverSnapshot,
+  records: readonly TodoMutationRecord[],
+  targetRoomId: UUID,
+): {
+  roomIdMap: Readonly<Record<string, string | null>>;
+  worldIdMap: Readonly<Record<string, string | null>>;
+} {
+  const roomIdMap: Record<string, string | null> = {};
+  const worldIdMap: Record<string, string | null> = {};
+  const remember = (todo: {
+    roomId: string | null;
+    worldId: string | null;
+  }) => {
+    if (todo.roomId) roomIdMap[todo.roomId] = targetRoomId;
+    if (todo.worldId) worldIdMap[todo.worldId] = null;
+  };
+  for (const todo of snapshot.todos) remember(todo);
+  for (const record of records) {
+    for (const todo of mutationResultTodos(record.result)) remember(todo);
+  }
+  return { roomIdMap, worldIdMap };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -242,6 +294,18 @@ export async function importSharedTodoCutover(input: {
     );
   }
   const { todosTable } = await import("@elizaos/plugin-todos/db/schema");
+  const targetScope = {
+    agentId: input.runtime.agentId,
+    entityId: input.entityId,
+  };
+  const mutationRecords = input.snapshot.mutations.map((wire) =>
+    deserializeTodoMutationRecord(wire, targetScope),
+  );
+  const executionScopeMaps = sourceExecutionScopeMaps(
+    input.snapshot,
+    mutationRecords,
+    input.targetRoomId,
+  );
   const targetIds = new Map(
     input.snapshot.todos.map((todo) => {
       const sourceId = validateUuid(todo.sourceId);
@@ -414,6 +478,12 @@ export async function importSharedTodoCutover(input: {
         );
     }
 
+    const mutationImport = await importTodoMutationRecordsInTransaction(tx, {
+      targetScope,
+      records: mutationRecords,
+      ...executionScopeMaps,
+    });
+
     const targetRows =
       desiredIds.size === 0
         ? []
@@ -442,6 +512,7 @@ export async function importSharedTodoCutover(input: {
     const materialized = await createSharedTodoCutoverSnapshot({
       sourceAgentId: input.snapshot.sourceAgentId,
       todos: materializeSourceRecords(targetRows),
+      mutations: input.snapshot.mutations,
     });
     if (materialized.digest !== input.snapshot.digest) {
       throw new ElizaError(
@@ -457,10 +528,13 @@ export async function importSharedTodoCutover(input: {
     }
     return {
       sourceTodoCount: input.snapshot.todos.length,
+      sourceTodoMutationCount: input.snapshot.mutations.length,
       importedTodos,
       repairedTodos,
       skippedTodos,
       removedStaleTodos: staleIds.length,
+      importedTodoMutations: mutationImport.imported,
+      skippedTodoMutations: mutationImport.skipped,
       sourceTodoDigest: input.snapshot.digest,
       targetTodoDigest: materialized.digest,
     };

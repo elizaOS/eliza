@@ -37,7 +37,7 @@ import {
   SHARED_CUTOVER_GATEWAY_CHANNEL,
   SharedReminderCutoverConflictError,
 } from "@/lib/services/shared-runtime/shared-scheduling";
-import { listSharedTodosSnapshot } from "@/lib/services/shared-runtime/shared-todos";
+import { readSharedTodoCutoverState } from "@/lib/services/shared-runtime/shared-todos";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "POST, OPTIONS";
@@ -133,10 +133,10 @@ async function readTodoCutoverSnapshot(
   sourceAgentId: string,
   ownerId: string,
 ): Promise<SharedTodoCutoverSnapshot> {
-  const todos = await listSharedTodosSnapshot({ sourceAgentId, ownerId });
+  const state = await readSharedTodoCutoverState({ sourceAgentId, ownerId });
   return createSharedTodoCutoverSnapshot({
     sourceAgentId,
-    todos: todos.map((todo) => ({
+    todos: state.todos.map((todo) => ({
       sourceId: todo.id,
       roomId: todo.roomId,
       worldId: todo.worldId,
@@ -150,6 +150,7 @@ async function readTodoCutoverSnapshot(
       updatedAt: todo.updatedAt.toISOString(),
       completedAt: todo.completedAt?.toISOString() ?? null,
     })),
+    mutations: state.mutations,
   });
 }
 
@@ -163,12 +164,17 @@ function confirmsTodoImport(
 ): boolean {
   return (
     receipt?.sourceTodoCount === snapshot.todos.length &&
+    receipt.sourceTodoMutationCount === snapshot.mutations.length &&
     isNonNegativeSafeInteger(receipt.importedTodos) &&
     isNonNegativeSafeInteger(receipt.repairedTodos) &&
     isNonNegativeSafeInteger(receipt.skippedTodos) &&
     isNonNegativeSafeInteger(receipt.removedStaleTodos) &&
     receipt.importedTodos + receipt.repairedTodos + receipt.skippedTodos ===
       snapshot.todos.length &&
+    isNonNegativeSafeInteger(receipt.importedTodoMutations) &&
+    isNonNegativeSafeInteger(receipt.skippedTodoMutations) &&
+    receipt.importedTodoMutations + receipt.skippedTodoMutations ===
+      snapshot.mutations.length &&
     receipt.sourceTodoDigest === snapshot.digest &&
     receipt.targetTodoDigest === snapshot.digest
   );
@@ -291,6 +297,8 @@ app.post("/", async (c) => {
       if (
         marker?.cutoverToken === sealToken &&
         marker.sharedTodoCount === activeTodoSnapshot.todos.length &&
+        marker.sharedTodoMutationCount ===
+          activeTodoSnapshot.mutations.length &&
         marker.sharedTodoDigest === activeTodoSnapshot.digest &&
         activeBase
       ) {
@@ -351,6 +359,7 @@ app.post("/", async (c) => {
               importedMessages: marker.sharedMessageCount,
               importedScheduledTasks: marker.sharedScheduledTaskCount,
               importedTodos: marker.sharedTodoCount,
+              importedTodoMutations: marker.sharedTodoMutationCount,
             },
           });
         } catch {
@@ -539,6 +548,7 @@ app.post("/", async (c) => {
         sharedMessageCount: history.length,
         sharedScheduledTaskCount: scheduledTasks.length,
         sharedTodoCount: todoSnapshot.todos.length,
+        sharedTodoMutationCount: todoSnapshot.mutations.length,
         sharedTodoDigest: todoSnapshot.digest,
       });
       markerCommitted = true;
@@ -597,6 +607,7 @@ app.post("/", async (c) => {
           importedMessages: history.length,
           importedScheduledTasks: scheduledTasks.length,
           importedTodos: todoSnapshot.todos.length,
+          importedTodoMutations: todoSnapshot.mutations.length,
         },
       });
     } finally {

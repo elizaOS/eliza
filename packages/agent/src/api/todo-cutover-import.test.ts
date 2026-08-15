@@ -6,7 +6,11 @@
 
 import { stringToUuid, type UUID } from "@elizaos/core";
 import todosRuntimePlugin from "@elizaos/plugin-todos/plugin";
-import { getTodosService } from "@elizaos/plugin-todos/service";
+import {
+  getTodosService,
+  serializeTodoMutationRecord,
+  type TodoMutationRecord,
+} from "@elizaos/plugin-todos/service";
 import { createSharedTodoCutoverSnapshot } from "@elizaos/shared/todo-cutover";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -20,6 +24,8 @@ const SECOND_ENTITY_ID = "11111111-1111-4111-8111-111111111112" as UUID;
 const ROOM_ID = "22222222-2222-4222-8222-222222222222" as UUID;
 const SOURCE_AGENT_ID = "personal:shared-source";
 const CUTOVER_TOKEN = "personal-cutover:shared-source:dedicated-target";
+const SOURCE_ROOM_ID = "33333333-3333-4333-8333-333333333333";
+const SOURCE_WORLD_ID = "44444444-4444-4444-8444-444444444444";
 
 function sourceId(label: string): UUID {
   return stringToUuid(`shared-todo-source:${label}`);
@@ -28,7 +34,7 @@ function sourceId(label: string): UUID {
 function sourceTodo(sourceId: UUID, parentSourceId: UUID | null = null) {
   return {
     sourceId,
-    roomId: "33333333-3333-4333-8333-333333333333",
+    roomId: SOURCE_ROOM_ID,
     worldId: null,
     content: `Todo ${sourceId}`,
     activeForm: `Doing ${sourceId}`,
@@ -40,6 +46,41 @@ function sourceTodo(sourceId: UUID, parentSourceId: UUID | null = null) {
     updatedAt: "2026-08-14T11:00:00.000Z",
     completedAt: null,
   };
+}
+
+function sourceMutationWire(todoId: UUID) {
+  const record: TodoMutationRecord = {
+    mutationId: sourceId("mutation-create"),
+    scope: {
+      agentId: sourceId("shared-storage-agent"),
+      entityId: sourceId("shared-storage-owner"),
+    },
+    idempotencyKey: "todos:v1:shared-turn-1:0",
+    requestDigest: "a".repeat(64),
+    operation: "create",
+    applied: true,
+    result: {
+      action: "create",
+      todo: {
+        id: todoId,
+        agentId: sourceId("shared-storage-agent"),
+        entityId: sourceId("shared-storage-owner"),
+        roomId: SOURCE_ROOM_ID,
+        worldId: SOURCE_WORLD_ID,
+        content: `Todo ${todoId}`,
+        activeForm: `Doing ${todoId}`,
+        status: "pending",
+        parentTodoId: null,
+        parentTrajectoryStepId: null,
+        metadata: { source: "shared" },
+        createdAt: new Date("2026-08-14T10:00:00.000Z"),
+        updatedAt: new Date("2026-08-14T11:00:00.000Z"),
+        completedAt: null,
+      },
+    },
+    committedAt: new Date("2026-08-14T11:00:01.000Z"),
+  };
+  return serializeTodoMutationRecord(record);
 }
 
 describe("Dedicated Shared Todo cutover import", () => {
@@ -72,6 +113,7 @@ describe("Dedicated Shared Todo cutover import", () => {
         sourceTodo(sourceId("child"), sourceId("parent")),
         sourceTodo(sourceId("parent")),
       ],
+      mutations: [sourceMutationWire(sourceId("parent"))],
     });
     const first = await importSharedTodoCutover({
       runtime,
@@ -82,10 +124,13 @@ describe("Dedicated Shared Todo cutover import", () => {
     });
     expect(first).toMatchObject({
       sourceTodoCount: 2,
+      sourceTodoMutationCount: 1,
       importedTodos: 2,
       repairedTodos: 0,
       skippedTodos: 0,
       removedStaleTodos: 0,
+      importedTodoMutations: 1,
+      skippedTodoMutations: 0,
       sourceTodoDigest: firstSnapshot.digest,
       targetTodoDigest: firstSnapshot.digest,
     });
@@ -104,6 +149,25 @@ describe("Dedicated Shared Todo cutover import", () => {
     expect(imported.find((todo) => todo.id === native.id)?.content).toBe(
       "Native Dedicated Todo",
     );
+    const [importedMutation] = await service.listMutationRecords({
+      agentId: runtime.agentId,
+      entityId: ENTITY_ID,
+    });
+    expect(importedMutation).toMatchObject({
+      mutationId: sourceId("mutation-create"),
+      idempotencyKey: "todos:v1:shared-turn-1:0",
+      scope: { agentId: runtime.agentId, entityId: ENTITY_ID },
+      result: {
+        action: "create",
+        todo: {
+          id: parentId,
+          agentId: runtime.agentId,
+          entityId: ENTITY_ID,
+          roomId: ROOM_ID,
+          worldId: null,
+        },
+      },
+    });
 
     const replay = await importSharedTodoCutover({
       runtime,
@@ -117,6 +181,8 @@ describe("Dedicated Shared Todo cutover import", () => {
       repairedTodos: 0,
       skippedTodos: 2,
       removedStaleTodos: 0,
+      importedTodoMutations: 0,
+      skippedTodoMutations: 1,
     });
 
     const tamperedSnapshot = {
@@ -163,6 +229,7 @@ describe("Dedicated Shared Todo cutover import", () => {
     const finalSnapshot = await createSharedTodoCutoverSnapshot({
       sourceAgentId: SOURCE_AGENT_ID,
       todos: [sourceTodo(parentId)],
+      mutations: firstSnapshot.mutations,
     });
     const exactSync = await importSharedTodoCutover({
       runtime,
@@ -203,6 +270,7 @@ describe("Dedicated Shared Todo cutover import", () => {
     const emptySnapshot = await createSharedTodoCutoverSnapshot({
       sourceAgentId: SOURCE_AGENT_ID,
       todos: [],
+      mutations: firstSnapshot.mutations,
     });
     const emptied = await importSharedTodoCutover({
       runtime,

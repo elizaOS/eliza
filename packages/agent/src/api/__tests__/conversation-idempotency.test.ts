@@ -336,10 +336,13 @@ async function runRoute(
     todoCutoverImporter: vi.fn(
       async ({ snapshot }: { snapshot: SharedTodoCutoverSnapshot }) => ({
         sourceTodoCount: snapshot.todos.length,
+        sourceTodoMutationCount: snapshot.mutations.length,
         importedTodos: snapshot.todos.length,
         repairedTodos: 0,
         skippedTodos: 0,
         removedStaleTodos: 0,
+        importedTodoMutations: snapshot.mutations.length,
+        skippedTodoMutations: 0,
         sourceTodoDigest: snapshot.digest,
         targetTodoDigest: snapshot.digest,
       }),
@@ -1699,6 +1702,7 @@ describe("conversation handoff import — exact source identities", () => {
     const todoSnapshot = await createSharedTodoCutoverSnapshot({
       sourceAgentId: "personal:source",
       todos: [],
+      mutations: [],
     });
     const body = {
       messages: [
@@ -1742,6 +1746,9 @@ describe("conversation handoff import — exact source identities", () => {
       skippedScheduledTasks: 0,
       activatedScheduledTasks: 0,
       sourceTodoCount: 0,
+      sourceTodoMutationCount: 0,
+      importedTodoMutations: 0,
+      skippedTodoMutations: 0,
       sourceTodoDigest: todoSnapshot.digest,
       targetTodoDigest: todoSnapshot.digest,
     });
@@ -1804,6 +1811,7 @@ describe("conversation handoff import — exact source identities", () => {
     const snapshot = await createSharedTodoCutoverSnapshot({
       sourceAgentId: "personal:source",
       todos: [],
+      mutations: [],
     });
     const tamperedHarness = createHarness({ scheduling: true });
     const tampered = await runRoute(
@@ -1824,6 +1832,7 @@ describe("conversation handoff import — exact source identities", () => {
     const wrongSourceSnapshot = await createSharedTodoCutoverSnapshot({
       sourceAgentId: "personal:other",
       todos: [],
+      mutations: [],
     });
     const wrongSourceHarness = createHarness({ scheduling: true });
     const wrongSource = await runRoute(
