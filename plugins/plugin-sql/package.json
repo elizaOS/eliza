@@ -19,11 +19,6 @@
         "import": "./src/dist/node/index.node.js",
         "default": "./src/dist/node/index.node.js"
       },
-      "workerd": {
-        "types": "./src/dist/index.worker.d.ts",
-        "import": "./src/dist/worker/index.worker.js",
-        "default": "./src/dist/worker/index.worker.js"
-      },
       "browser": {
         "types": "./src/dist/index.d.ts",
         "import": "./src/dist/browser/index.browser.js",

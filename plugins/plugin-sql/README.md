@@ -10,7 +10,7 @@ bun add @elizaos/plugin-sql
 
 ## Overview
 
-This plugin registers a `DatabaseAdapter` with the elizaOS agent runtime so that all core runtime persistence (memories, entities, rooms, tasks, cache, logs, relationships, etc.) works against a real SQL backend. On Node/Bun it selects PostgreSQL when `POSTGRES_URL` is set, otherwise falls back to embedded PGlite. In the browser build it always uses PGlite (WASM). The `workerd` export uses PostgreSQL through Cloudflare Hyperdrive and requires `POSTGRES_URL`; it never falls back to PGlite or local storage.
+This plugin registers a `DatabaseAdapter` with the elizaOS agent runtime so that all core runtime persistence (memories, entities, rooms, tasks, cache, logs, relationships, etc.) works against a real SQL backend. On Node/Bun it selects PostgreSQL when `POSTGRES_URL` is set, otherwise falls back to embedded PGlite. In the browser build it always uses PGlite (WASM).
 
 ## Database Schema
 
@@ -74,8 +74,6 @@ The Caddyfile at `plugins/plugin-sql/caddy/electric-proxy.Caddyfile` forwards ev
 | `NODE_ENV` | No | `development` | `production` disables verbose migration logging and tightens safety checks. |
 
 Settings are read via `runtime.getSetting(key)` inside `plugin.init`.
-
-For Cloudflare Workers, enable Wrangler's `nodejs_compat` compatibility flag and pass `env.HYPERDRIVE.connectionString` into the runtime as the `POSTGRES_URL` setting. When row-level isolation is enabled, pass `ENABLE_DATA_ISOLATION` and `ELIZA_SERVER_ID` through the runtime settings as well.
 
 ## Vector Dimensions
 
@@ -143,5 +141,5 @@ Default Postgres pool configuration (`src/pg/manager.ts`):
 
 ## Requirements
 
-- Node.js, Bun, or Cloudflare Workers with `nodejs_compat`
+- Node.js or Bun
 - PostgreSQL with vector extension (for Postgres mode)
