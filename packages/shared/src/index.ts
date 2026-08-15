@@ -264,6 +264,7 @@ export * from "./format-error.js";
 // Canonical UI language codes + BCP-47 normalization (React-free) so Node
 // route handlers can normalize `Accept-Language` without the renderer.
 export * from "./i18n/language.js";
+export { textStatesExplicitRecurrence } from "./i18n/recurrence-markers.js";
 // Knowledge-graph primitives — canonical Entity/Relationship types + the
 // identity-merge engine. Dependency-free; the DB-backed stores stay in
 // @elizaos/plugin-personal-assistant.

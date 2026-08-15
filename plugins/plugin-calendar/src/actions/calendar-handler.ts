@@ -38,10 +38,7 @@ import type {
   LifeOpsCalendarRecurrenceScope,
   LifeOpsNextCalendarEventContext,
 } from "@elizaos/shared";
-import {
-  findKeywordTermMatch,
-  getValidationKeywordTerms,
-} from "@elizaos/shared";
+import { textStatesExplicitRecurrence } from "@elizaos/shared";
 import { isAppleCalendarGrant } from "../apple-calendar.js";
 import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "../calendar-action-schema.js";
 import {
@@ -2841,23 +2838,15 @@ function resolveCreateEventDurationMinutes(args: {
 }
 
 /**
- * True when the user's own words state a repeating cadence. Backed by the
- * multilingual lifeops_cadence lexicon plus the bare recurrence markers the
- * lexicon's window-phrases do not cover ("every monday", "repeats", "recurring").
+ * True when any of the turn's texts states a repeating cadence in the user's
+ * own words. Delegates to the shared explicit-recurrence markers — repetition
+ * words only, never time-of-day window phrases, which appear in one-shot asks
+ * ("dentist tomorrow in the morning") and must not open the recurrence gate.
  */
-export function intentStatesRecurrence(intent: string): boolean {
-  if (!intent.trim()) return false;
-  if (/\b(?:every|each|repeat(?:s|ing)?|recurring|recurs?)\b/i.test(intent)) {
-    return true;
-  }
-  return (
-    findKeywordTermMatch(
-      intent,
-      getValidationKeywordTerms("contextSignal.lifeops_cadence.strong", {
-        includeAllLocales: true,
-      }),
-    ) !== undefined
-  );
+export function intentStatesRecurrence(
+  ...texts: ReadonlyArray<string | null | undefined>
+): boolean {
+  return textStatesExplicitRecurrence(...texts);
 }
 
 type CreateEventRequestBuildArgs = {
@@ -2868,6 +2857,13 @@ type CreateEventRequestBuildArgs = {
   intent: string;
   fallbackRequest?: CreateLifeOpsCalendarEventRequest;
   preferExtractedDetails?: boolean;
+  /**
+   * Texts the recurrence guard grounds in: the raw user message (the planner
+   * intent can be a paraphrase) and the recent-conversation window, so a
+   * clarify round-trip ("make it weekly" answered a turn earlier) keeps its
+   * stated recurrence. The intent itself is always checked too.
+   */
+  recurrenceGuardTexts?: ReadonlyArray<string | null | undefined>;
 };
 
 type CreateEventRequestBuildResult = {
@@ -3010,7 +3006,10 @@ function buildCreateEventRequest(
   // and the turn lectures about providers instead of creating the event.
   // Model-inferred recurrence therefore requires an explicit recurrence term
   // in the user's own words; planner-structured recurrence stays trusted.
-  const extractedRecurrence = intentStatesRecurrence(args.intent)
+  const extractedRecurrence = intentStatesRecurrence(
+    args.intent,
+    ...(args.recurrenceGuardTexts ?? []),
+  )
     ? detailRecurrenceLines(args.extractedDetails)
     : undefined;
   const recurrence = args.preferExtractedDetails
@@ -4306,6 +4305,10 @@ const calendarAction: CalendarHandlerAction = {
           explicitTitle,
           inferredTitle,
           intent,
+          recurrenceGuardTexts: [
+            messageText(message),
+            formatCreateEventRecentConversation(state),
+          ],
           // The outer planner identifies CALENDAR and supplies hints; this
           // domain-specific extraction has the authoritative calendar context,
           // timezone, and local-date anchors needed to normalize wall time.

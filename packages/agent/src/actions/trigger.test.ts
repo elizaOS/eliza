@@ -1744,6 +1744,44 @@ describe("sprayed one-shot cap on an explicit recurrence", () => {
     expect(trigger?.maxRuns).toBeUndefined();
   });
 
+  it("drops the cap on a bare weekday recurrence ('every tuesday')", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "take out recycling",
+        cronExpression: "0 8 * * 2",
+        maxRuns: 1,
+      },
+      "take out recycling every tuesday at 8am",
+    );
+    expect(result?.success).toBe(true);
+    const trigger = (
+      createdTasks[0]?.metadata as { trigger?: { maxRuns?: number } }
+    )?.trigger;
+    expect(trigger?.maxRuns).toBeUndefined();
+  });
+
+  it("keeps maxRuns=1 when the text has only a time-of-day window phrase", async () => {
+    // "in the morning" is a WINDOW, not a recurrence — a one-shot reminder
+    // must not become an unbounded daily cron because of it.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "call mom",
+        cronExpression: "0 9 * * *",
+        maxRuns: 1,
+      },
+      "remind me to call mom in the morning",
+    );
+    expect(result?.success).toBe(true);
+    const trigger = (
+      createdTasks[0]?.metadata as { trigger?: { maxRuns?: number } }
+    )?.trigger;
+    expect(trigger?.maxRuns).toBe(1);
+  });
+
   it("keeps maxRuns=1 when the text states no recurrence", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
     const result = await create(

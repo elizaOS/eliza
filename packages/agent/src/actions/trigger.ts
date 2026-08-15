@@ -38,7 +38,7 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import { findKeywordTermMatch } from "@elizaos/shared";
+import { textStatesExplicitRecurrence } from "@elizaos/shared";
 import {
   describeCronSchedule,
   describeIntervalMs,
@@ -59,7 +59,6 @@ import {
   parseScheduledAtIso,
 } from "../triggers/scheduling.ts";
 import type { TriggerTaskMetadata } from "../triggers/types.ts";
-import { getContextSignalTerms } from "./context-signal-lexicon.ts";
 
 type AutonomyRoomService = {
   getAutonomousRoomId?(): UUID;
@@ -581,17 +580,10 @@ async function opCreate(
   // A field-spraying planner answering "pushups every morning at 8am" emits
   // the cron AND maxRuns:1 from its derived one-shot echo, silently turning a
   // routine into a single fire. When the user's own words state a repeating
-  // cadence, the recurrence wins and the sprayed one-shot cap is dropped.
-  if (
-    maxRuns === 1 &&
-    cronExpression &&
-    findKeywordTermMatch(
-      text,
-      getContextSignalTerms("lifeops_cadence", "strong", {
-        includeAllLocales: true,
-      }),
-    ) !== undefined
-  ) {
+  // cadence (explicit-recurrence markers only — time-of-day window phrases
+  // like "in the morning" appear in one-shot asks and must NOT drop the cap),
+  // the recurrence wins and the sprayed one-shot cap is dropped.
+  if (maxRuns === 1 && cronExpression && textStatesExplicitRecurrence(text)) {
     maxRuns = undefined;
   }
 
