@@ -26,10 +26,6 @@ import {
 import { modelProviderErrorDetail } from "../utils/model-errors";
 import { computePrefixHashes } from "./context-hash";
 import {
-	containsReasoningMarkup,
-	stripCompletedReasoningPrefix,
-} from "./reasoning-artifacts";
-import {
 	buildStageChatMessages,
 	normalizePromptSegments,
 	renderContextObject,
@@ -54,6 +50,10 @@ import type {
 	PlannerTrajectory,
 	RunEvaluatorParams,
 } from "./planner-types";
+import {
+	containsReasoningMarkup,
+	stripCompletedReasoningPrefix,
+} from "./reasoning-artifacts";
 import type {
 	RecordedStage,
 	RecordedUsage,
@@ -1364,13 +1364,9 @@ function tryParseJson(candidate: string): unknown {
 }
 
 function parseEvaluatorText(text: string): ParsedEvaluatorObject {
-	// Reasoning-token residue defeats every stage below: a reply like
-	// `None</think>\`\`\`json {…}` fails the fence unwrap, the strict parse,
-	// AND the leading-fence repair (which requires the text to START with a
-	// fence) — the raw envelope then leaked verbatim to Discord (live
-	// tj-b8809c9841cdfd, matrix F18). The think contract is unambiguous:
-	// everything before the LAST </think> is reasoning, never output — strip
-	// it before any envelope handling.
+	// A completed provider reasoning prefix defeats fence unwrap and strict
+	// parsing. Strip through its final canonical close tag before envelope
+	// handling; dangling markup remains invalid and is denied during recovery.
 	return parseEvaluatorVisibleText(stripCompletedReasoningPrefix(text));
 }
 
