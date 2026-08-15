@@ -290,7 +290,15 @@ export function renderInteractionsAsPlainText(
 	const source = text ?? "";
 	const { blocks, cleanedText } = parseInteractionBlocks(source);
 	if (blocks.length === 0) {
-		return { text: source, hadBlocks: false };
+		// Return the CLEANED text, not the raw source. Zero blocks once implied
+		// "nothing was removed", which made echoing the source equivalent — but
+		// the parser also sweeps unclaimed markup now, and no-blocks is exactly
+		// the path that residue survives on (a half-open or misspelled marker
+		// claims nothing). Echoing `source` here discards the sweep and ships
+		// the markup verbatim. The Discord and Telegram renderers already return
+		// their cleaned text on this branch; this was the last one that did not.
+		// `hadBlocks` still reports the parse honestly.
+		return { text: cleanedText, hadBlocks: false };
 	}
 	const fallbacks = blocks
 		.map((block) => toPlainTextFallback(block, opts))

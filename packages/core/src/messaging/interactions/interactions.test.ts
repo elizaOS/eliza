@@ -825,3 +825,67 @@ describe("interaction marker residue", () => {
 		expect(parseInteractionBlocks(text).cleanedText).toBe(text);
 	});
 });
+
+describe("unclaimed interaction markers never ship as prose", () => {
+	// Live 2026-08-14: a Discord reply ended with a raw
+	//   [ FOLLOWUPS ]\nreply:Show me a joke=Show joke\n[ /FOLLOWUPS ]
+	// block. The spaced variant missed the whitespace-strict regex, so nothing
+	// claimed it and nothing removed it — it shipped to the user as literal text.
+	const spaced =
+		"dad jokes page is done.\n\n[ FOLLOWUPS ]\nreply:Show me a joke=Show joke\nreply:Add more jokes=Expand jokes\n[ /FOLLOWUPS ]";
+
+	it("parses the spaced variant into blocks instead of leaking it", () => {
+		const { blocks, cleanedText } = parseInteractionBlocks(spaced);
+		expect(blocks.length).toBe(1);
+		expect(cleanedText).toBe("dad jokes page is done.");
+		expect(cleanedText).not.toContain("FOLLOWUPS");
+		expect(cleanedText).not.toContain("reply:");
+	});
+
+	it("strips a half-open marker the parser cannot claim", () => {
+		const { cleanedText } = parseInteractionBlocks(
+			"here you go.\n[ FOLLOWUPS ]\nreply:More=More",
+		);
+		expect(cleanedText).toBe("here you go.");
+	});
+
+	it("keeps an unsafe FORM's text — #14489 carries user data", () => {
+		// Reconciles with #14489: FORM is data, the others are affordances. A form
+		// whose fields were all rejected must NOT be silently deleted.
+		const { blocks, cleanedText } = parseInteractionBlocks(
+			'[FORM]\n{"fields":[{"name":"constructor","type":"text"}]}\n[/FORM]',
+		);
+		expect(blocks).toHaveLength(0);
+		expect(cleanedText).toContain("[FORM]");
+	});
+
+	it("leaves ordinary bracketed prose alone", () => {
+		const text = "i read [the docs] and [section 2] carefully.";
+		expect(parseInteractionBlocks(text).cleanedText).toBe(text);
+	});
+
+	it("does not eat a normal sentence containing a colon and equals", () => {
+		const text = "set the flag: enabled=true in your config.";
+		expect(parseInteractionBlocks(text).cleanedText).toBe(text);
+	});
+
+	// A parser that sweeps residue is necessary but not sufficient: a renderer
+	// that echoes its RAW input on the zero-block branch discards the sweep, and
+	// zero-block is precisely the branch residue survives on. The Discord and
+	// Telegram renderers already return their cleaned text here; the plain-text
+	// path was the last one still handing back the source.
+	it("renders the swept text on the zero-block plain-text path", () => {
+		const { text, hadBlocks } = renderInteractionsAsPlainText(
+			"here you go.\n[ FOLLOWUPS ]\nreply:More=More",
+		);
+		expect(hadBlocks).toBe(false);
+		expect(text).not.toContain("FOLLOWUPS");
+		expect(text).not.toContain("reply:");
+		expect(text).toBe("here you go.");
+	});
+
+	it("leaves block-free ordinary prose byte-identical through the renderer", () => {
+		const text = "i read [the docs] and [section 2] carefully.";
+		expect(renderInteractionsAsPlainText(text).text).toBe(text);
+	});
+});
