@@ -634,6 +634,32 @@ export function retrieveActions(
 		: 0;
 	const limited = limit > 0 ? results.slice(0, limit) : results;
 
+	// A Stage-1 candidate (or explicit caller hint) that resolves to a
+	// registered catalog parent is an exact reference, not a retrieval guess.
+	// Ranking may place it anywhere, but tier NARROWING must never evict it:
+	// a keyword-flooded query window otherwise leaves the planner without the
+	// one grounded tool and downstream layers improvise (live
+	// tj-f8bdfafb488900: a leaked [FOLLOWUPS] block's navigate/apps/reminders
+	// tokens ranked five view/app parents over OWNER_REMINDERS — stage-1's
+	// exact candidate — and the tier narrowed to [CLOSE_ALL_VIEWS]).
+	// Injection, not score rescue: an appended entry keeps its real scores;
+	// only tier membership is guaranteed, so ordinary ranking is untouched
+	// whenever the hint survives the cut on its own.
+	if (limit > 0 && parentActionHints.length > 0) {
+		const limitedNames = new Set(limited.map((entry) => entry.normalizedName));
+		for (const hint of parentActionHints) {
+			const normalized = normalizeActionName(hint);
+			if (limitedNames.has(normalized)) continue;
+			const evicted = results.find(
+				(entry) => entry.normalizedName === normalized,
+			);
+			if (evicted) {
+				limited.push(evicted);
+				limitedNames.add(normalized);
+			}
+		}
+	}
+
 	for (let index = 0; index < limited.length; index += 1) {
 		limited[index].rank = index + 1;
 	}

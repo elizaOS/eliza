@@ -903,3 +903,75 @@ describe("canonical OWNER_* fallbacks for non-PA topologies", () => {
 		expect(response.results[0]).toMatchObject({ name: "OWNER_TODOS" });
 	});
 });
+
+describe("tier-narrowing candidate injection (tj-f8bdfafb488900)", () => {
+	const viewParent = (name: string, extraTags: string[] = []) => ({
+		name,
+		description: `${name} manages open UI views, apps, panels, reminders prompts, and navigation followups.`,
+		similes: ["open view", "navigate apps", "close view"],
+		tags: ["views", "navigation", "apps", "prompt", "followups", ...extraTags],
+		contexts: ["general"],
+	});
+
+	const poisonedCatalogActions = [
+		viewParent("CLOSE_ALL_VIEWS"),
+		viewParent("CLOSE_VIEW"),
+		viewParent("VIEWS"),
+		viewParent("APP"),
+		viewParent("PAGE_DELEGATE"),
+		{
+			name: "OWNER_REMINDERS",
+			description: "Read, create, and delete the owner's reminders.",
+			similes: ["my reminders", "delete reminder"],
+			tags: ["reminders", "owner"],
+		},
+	];
+
+	// The live poisoning vector: the PREVIOUS reply leaked an app-surface
+	// control block into the conversation window, and its navigate/apps/
+	// reminders/prompt tokens rank every view parent above the grounded
+	// owner surface.
+	const leakedWindow = [
+		"[FOLLOWUPS] navigate:/apps/reminders=Open reminders prompt:Delete the submit the invoice reminder [/FOLLOWUPS]",
+	];
+
+	it("a stage-1 candidate naming a catalog parent survives tier narrowing under keyword flood", () => {
+		const catalog = buildActionCatalog(poisonedCatalogActions);
+		const response = retrieveActions({
+			catalog,
+			messageText: "now delete the submit the invoice reminder too",
+			recentConversationText: leakedWindow,
+			candidateActions: ["OWNER_REMINDERS"],
+			selectedContexts: ["general"],
+			limit: 3,
+		});
+		const names = response.results.map((entry) => entry.name);
+		expect(names).toContain("OWNER_REMINDERS");
+	});
+
+	it("injection preserves membership only — no hint means pure ranking is untouched", () => {
+		const catalog = buildActionCatalog(poisonedCatalogActions);
+		const withHint = retrieveActions({
+			catalog,
+			messageText: "now delete the submit the invoice reminder too",
+			recentConversationText: leakedWindow,
+			candidateActions: ["OWNER_REMINDERS"],
+			limit: 3,
+		});
+		const withoutHint = retrieveActions({
+			catalog,
+			messageText: "now delete the submit the invoice reminder too",
+			recentConversationText: leakedWindow,
+			limit: 3,
+		});
+		// Ranked prefix identical in both runs — the hint appends, never reorders.
+		const rankedPrefix = withHint.results
+			.slice(0, 3)
+			.filter((entry) => entry.name !== "OWNER_REMINDERS")
+			.map((entry) => entry.name);
+		const pureTop = withoutHint.results.slice(0, 3).map((entry) => entry.name);
+		for (const name of rankedPrefix) {
+			expect(pureTop).toContain(name);
+		}
+	});
+});
