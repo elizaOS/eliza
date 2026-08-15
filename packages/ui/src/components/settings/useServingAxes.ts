@@ -64,6 +64,11 @@ function useActiveChatSource(): {
 
   useEffect(() => {
     let disposed = false;
+    // The chip mounts on the chat overlay, which is rendered by surfaces and
+    // harnesses that stub the API client down to the calls they need. A
+    // missing method is "serving source unknown", not a crash that takes the
+    // whole composer with it.
+    if (typeof client.getModelsConfig !== "function") return;
     client
       .getModelsConfig()
       .then((response) => {
