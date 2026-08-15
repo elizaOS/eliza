@@ -64,7 +64,10 @@
       "buildOnInstall": {
         "sentinel": "dist/index.js",
         "order": 1
-      }
+      },
+      "testLanes": [
+        "server"
+      ]
     }
   }
 }
