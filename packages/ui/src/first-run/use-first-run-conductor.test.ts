@@ -299,11 +299,6 @@ beforeEach(() => {
   // `mockRejectedValue`/`mockResolvedValue` would otherwise poison later tests).
   mocks.client.submitFirstRun.mockResolvedValue(undefined);
   mocks.client.getPersonalSharedEliza.mockResolvedValue({
-    apiBase: "https://agent.example.test",
-    agentId: "agent-1",
-    created: false,
-  });
-  mocks.client.getPersonalSharedEliza.mockResolvedValue({
     personalElizaId: PERSONAL_ELIZA_ID,
     agentId: PERSONAL_ELIZA_ID,
     activeAgentId: PERSONAL_ELIZA_ID,
