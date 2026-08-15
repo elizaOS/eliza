@@ -367,6 +367,10 @@ describe("canonical cloud deployment environment contract", () => {
     expect(plan.run).toContain(
       '"-target=cloudflare_dns_record.canonical_edge_wildcard[\\"$site_wildcard|$origin\\"]"',
     );
+    expect(plan.run).toContain("terraform show -json selected.tfplan");
+    expect(plan.run).toContain(
+      "validate-terraform-canonical-edge-additive-plan.mjs",
+    );
     expect(plan.run).not.toContain("legacy_redirect");
     expect(plan.run).not.toContain("cloudflare_dns_record.pages");
 
@@ -379,12 +383,7 @@ describe("canonical cloud deployment environment contract", () => {
       "terraform show -json selected.tfplan",
     );
     expect(scopedPlanValidation.run).toContain(
-      'actions[0] !== "create"',
-    );
-    expect(scopedPlanValidation.run).toContain("out-of-scope action");
-    expect(scopedPlanValidation.run).toContain("non-additive action");
-    expect(scopedPlanValidation.run).toContain(
-      "scope contains no additive resource creation",
+      "validate-terraform-canonical-edge-additive-plan.mjs",
     );
 
     const scopedVerification = step(
@@ -395,7 +394,9 @@ describe("canonical cloud deployment environment contract", () => {
     expect(scopedVerification.run).toContain(
       'terraform refresh "${refresh_args[@]}"',
     );
-    expect(scopedVerification.run).toContain('refresh_args+=("-target=$address")');
+    expect(scopedVerification.run).toContain(
+      'refresh_args+=("-target=$address")',
+    );
     expect(scopedVerification.run).not.toContain(
       "terraform refresh -no-color -input=false",
     );
@@ -405,13 +406,17 @@ describe("canonical cloud deployment environment contract", () => {
     expect(scopedVerification.run).toContain("canonical.certificate_packs");
     expect(scopedVerification.run).not.toContain("legacy_certificate_packs");
 
-    const cleanup = step(
+    const cleanup = step(infra, "terraform", "Remove plaintext reviewed plan");
+    expect(cleanup.run).toContain(
+      'shred -u "$RUNNER_TEMP/canonical-edge-reviewed-plan.json"',
+    );
+    const planCleanup = step(
       infra,
       "terraform",
-      "Remove plaintext reviewed plan",
+      "Remove plaintext planned state",
     );
-    expect(cleanup.run).toContain(
-      'rm -f "$RUNNER_TEMP/canonical-edge-reviewed-plan.json"',
+    expect(planCleanup.run).toContain(
+      'shred -u "$RUNNER_TEMP/canonical-edge-reviewed-plan.json"',
     );
   });
 

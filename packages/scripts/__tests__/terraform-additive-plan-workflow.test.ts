@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface WorkflowStep {
   name?: string;
@@ -63,6 +64,7 @@ function runValidator(resourceChanges: ReturnType<typeof resource>[]) {
     env: {
       ...process.env,
       PATH: `${directory}:${process.env.PATH ?? ""}`,
+      GITHUB_WORKSPACE: fileURLToPath(repoRoot).replace(/\/$/, ""),
       PLAN_FIXTURE: fixturePath,
       RUNNER_TEMP: directory,
       TARGET_ENVIRONMENT: "staging",
