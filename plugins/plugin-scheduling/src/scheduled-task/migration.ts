@@ -63,7 +63,7 @@ export async function ensureSchedulingTables(exec: SqlExecutor): Promise<void> {
   await exec(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
   await exec(
     `CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.life_scheduled_tasks (
-      id TEXT PRIMARY KEY,
+      id TEXT NOT NULL,
       agent_id TEXT NOT NULL,
       kind TEXT NOT NULL,
       prompt_instructions TEXT NOT NULL,
@@ -92,7 +92,8 @@ export async function ensureSchedulingTables(exec: SqlExecutor): Promise<void> {
       version INTEGER NOT NULL DEFAULT 1,
       next_fire_at TIMESTAMPTZ,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (agent_id, id)
     )`,
   );
   await exec(
@@ -105,6 +106,10 @@ export async function ensureSchedulingTables(exec: SqlExecutor): Promise<void> {
        ADD COLUMN IF NOT EXISTS transfer_holder_token TEXT,
        ADD COLUMN IF NOT EXISTS transfer_target_agent_id TEXT,
        ADD COLUMN IF NOT EXISTS transfer_status TEXT`,
+  );
+  await exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduling_tasks_agent_id
+      ON ${TARGET_SCHEMA}.life_scheduled_tasks (agent_id, id)`,
   );
   await exec(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduling_tasks_agent_idempotency

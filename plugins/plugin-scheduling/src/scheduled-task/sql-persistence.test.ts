@@ -229,6 +229,66 @@ describe("scheduling SQL persistence", () => {
   );
 
   it(
+    "keeps imported task ids tenant-scoped across agents",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const executeSql = async (sql: string) =>
+        (await harness.pg.query<Record<string, unknown>>(sql)).rows;
+      const sourceStore = createSchedulingSqlScheduledTaskStore({
+        agentId: "personal:source",
+        executeSql,
+      });
+      const targetStore = createSchedulingSqlScheduledTaskStore({
+        agentId: "personal:target",
+        executeSql,
+      });
+      const task = {
+        taskId: "caller-controlled-id",
+        kind: "reminder" as const,
+        promptInstructions: "source reminder",
+        trigger: { kind: "once" as const, atIso: "2026-07-17T09:00:00.000Z" },
+        priority: "medium" as const,
+        respectsGlobalPause: true,
+        state: { status: "scheduled" as const, followupCount: 0 },
+        source: "user_chat" as const,
+        createdBy: "owner",
+        ownerVisible: true,
+      };
+
+      await sourceStore.upsert(task);
+      await targetStore.upsert({
+        ...task,
+        promptInstructions: "target reminder",
+      });
+
+      await expect(sourceStore.get(task.taskId)).resolves.toMatchObject({
+        promptInstructions: "source reminder",
+      });
+      await expect(targetStore.get(task.taskId)).resolves.toMatchObject({
+        promptInstructions: "target reminder",
+      });
+      const rows = await harness.pg.query(
+        `SELECT agent_id, prompt_instructions
+           FROM app_scheduling.life_scheduled_tasks
+          WHERE id = 'caller-controlled-id'
+          ORDER BY agent_id`,
+      );
+      expect(rows.rows).toEqual([
+        {
+          agent_id: "personal:source",
+          prompt_instructions: "source reminder",
+        },
+        {
+          agent_id: "personal:target",
+          prompt_instructions: "target reminder",
+        },
+      ]);
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "keeps a due watcher through runner service re-init and fires it",
     async () => {
       const harness = await createRuntimeHarness();

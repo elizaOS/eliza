@@ -5,7 +5,7 @@
 CREATE SCHEMA IF NOT EXISTS "app_scheduling";
 
 CREATE TABLE IF NOT EXISTS "app_scheduling"."life_scheduled_tasks" (
-  "id" text PRIMARY KEY NOT NULL,
+  "id" text NOT NULL,
   "agent_id" text NOT NULL,
   "kind" text NOT NULL,
   "prompt_instructions" text NOT NULL,
@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS "app_scheduling"."life_scheduled_tasks" (
   "version" integer DEFAULT 1 NOT NULL,
   "next_fire_at" timestamp with time zone,
   "created_at" text NOT NULL,
-  "updated_at" text NOT NULL
+  "updated_at" text NOT NULL,
+  PRIMARY KEY ("agent_id", "id")
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_scheduling_tasks_agent_idempotency"
