@@ -173,6 +173,108 @@ function matchesAnyGlob(filePath, globs) {
   return globs.some((glob) => globToRegExp(glob).test(normalisedPath));
 }
 
+function resolveScriptWorkingDir(scriptBody) {
+  const match = scriptBody.match(/^cd\s+(\S+)\s*&&/);
+  return match ? match[1] : ".";
+}
+
+function resolveConfigFlagPath(scriptBody) {
+  const match = scriptBody.match(/--config[= ]("?)([^"\s]+)\1/);
+  return match ? match[2] : null;
+}
+
+/**
+ * Best-effort static extraction of a top-level `name: [ "a", "b" ]` string
+ * array from a Vitest config source file. Not a full parser — sufficient for
+ * the literal, non-computed `include`/`exclude` arrays these configs use.
+ * Returns `null` when the array cannot be found at all, distinct from `[]`
+ * for an array that parses empty.
+ */
+function extractConfigStringArray(configSource, arrayName) {
+  const arrayPattern = new RegExp(`\\b${arrayName}\\s*:\\s*\\[([^\\]]*)\\]`);
+  const match = configSource.match(arrayPattern);
+  if (!match) return null;
+  return Array.from(
+    match[1].matchAll(/["'`]([^"'`]+)["'`]/g),
+    (entry) => entry[1],
+  );
+}
+
+/**
+ * `vitest run --config <file> <path>` treats trailing path arguments as
+ * filters over the config's own `include` set — they narrow an
+ * already-matched file list, they never add to it. A heavy-only path can
+ * appear verbatim in test:e2e:heavy's script string and still match zero
+ * files if the referenced config's `include` globs do not independently
+ * reach it, with `--passWithNoTests` (or a bare zero-file exit) masking the
+ * result as green. Resolve the config test:e2e:heavy actually runs against
+ * and require every heavy-only exception path to be a real file its
+ * `include`/`exclude` globs would discover.
+ */
+function ensureHeavyOnlyE2EReachability(heavyE2EScript, failures) {
+  const exceptions = manifest.exceptions.heavyOnlyE2E ?? [];
+  if (exceptions.length === 0) return;
+
+  const configFlagPath = resolveConfigFlagPath(heavyE2EScript);
+  if (!configFlagPath) {
+    failures.push(
+      "test:e2e:heavy does not pass a --config flag; cannot verify heavy-only path reachability.",
+    );
+    return;
+  }
+
+  const scriptWorkingDir = resolveScriptWorkingDir(heavyE2EScript);
+  const configRepoPath = normalisePath(
+    path.join(scriptWorkingDir, configFlagPath),
+  );
+  const configAbsolutePath = path.join(REPO_ROOT, configRepoPath);
+  if (!fs.existsSync(configAbsolutePath)) {
+    failures.push(
+      `test:e2e:heavy references --config "${configRepoPath}", which does not exist.`,
+    );
+    return;
+  }
+
+  const configSource = readText(configRepoPath);
+  const includeGlobs = extractConfigStringArray(configSource, "include");
+  const excludeGlobs = extractConfigStringArray(configSource, "exclude") ?? [];
+  if (!includeGlobs || includeGlobs.length === 0) {
+    failures.push(
+      `Unable to statically extract a non-empty "include" array from ${configRepoPath}; cannot verify heavy-only path reachability.`,
+    );
+    return;
+  }
+
+  const configDir = normalisePath(path.dirname(configRepoPath));
+  const reachableFiles = new Set(
+    fs
+      .globSync(includeGlobs, {
+        cwd: path.dirname(configAbsolutePath),
+        dot: true,
+      })
+      .map(normalisePath)
+      .filter((candidate) => !matchesAnyGlob(candidate, excludeGlobs)),
+  );
+
+  for (const exception of exceptions) {
+    const exceptionRepoPath = normalisePath(exception.path);
+    const pathRelativeToConfig =
+      configDir !== "." && exceptionRepoPath.startsWith(`${configDir}/`)
+        ? exceptionRepoPath.slice(configDir.length + 1)
+        : exceptionRepoPath;
+
+    if (!reachableFiles.has(pathRelativeToConfig)) {
+      failures.push(
+        `Heavy-only path "${exception.path}" is not reachable through test:e2e:heavy's config ` +
+          `"${configRepoPath}" (looked for "${pathRelativeToConfig}" relative to that config's root; ` +
+          `its include globs are: ${includeGlobs.join(", ")}). vitest CLI file arguments only narrow an ` +
+          "already-discovered set, so this path would silently match zero files even though it appears " +
+          "verbatim in the script string.",
+      );
+    }
+  }
+}
+
 function readText(relativePath) {
   return fs.readFileSync(
     path.join(REPO_ROOT, resolveRepoRelativePath(relativePath)),
@@ -310,18 +412,29 @@ function ensurePackageScripts(failures) {
 
   const deterministicE2E = scripts["test:e2e"] ?? "";
   const heavyE2E = scripts["test:e2e:heavy"] ?? "";
+  // test:e2e:heavy may `cd` into a package directory before invoking vitest
+  // (see ensureHeavyOnlyE2EReachability below), so the heavy-only path it
+  // names on the command line is relative to that directory, not repo root.
+  const heavyE2EWorkingDir = resolveScriptWorkingDir(heavyE2E);
   for (const exception of manifest.exceptions.heavyOnlyE2E ?? []) {
     if (!deterministicE2E.includes(`--exclude ${exception.path}`)) {
       failures.push(
         `test:e2e must explicitly exclude heavy-only path ${exception.path}.`,
       );
     }
-    if (!heavyE2E.includes(exception.path)) {
+    const heavyPathVariant =
+      heavyE2EWorkingDir !== "." &&
+      exception.path.startsWith(`${heavyE2EWorkingDir}/`)
+        ? exception.path.slice(heavyE2EWorkingDir.length + 1)
+        : exception.path;
+    if (!heavyE2E.includes(heavyPathVariant)) {
       failures.push(
         `test:e2e:heavy must explicitly include heavy-only path ${exception.path}.`,
       );
     }
   }
+
+  ensureHeavyOnlyE2EReachability(heavyE2E, failures);
 }
 
 function ensureDesktopInventory(failures) {
