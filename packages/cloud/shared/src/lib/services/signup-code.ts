@@ -41,8 +41,8 @@ function loadCodes(): Map<string, number> {
   for (const [code, amount] of Object.entries(codes)) {
     const normalized = code?.trim().toLowerCase();
     if (!normalized) continue;
-    const num = typeof amount === "number" ? amount : parseFloat(String(amount));
-    if (!isNaN(num) && num > 0) {
+    const num = typeof amount === "number" ? amount : Number(amount);
+    if (Number.isFinite(num) && num > 0) {
       map.set(normalized, num);
     }
   }
