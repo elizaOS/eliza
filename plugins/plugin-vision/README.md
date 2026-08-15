@@ -48,7 +48,7 @@ The plugin auto-enables when `config.features.vision` is truthy or `config.media
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `CAMERA_NAME` | auto | Partial name match for camera device selection (case-insensitive) |
-| `VISION_MODE` | `CAMERA` | `OFF` / `CAMERA` / `SCREEN` / `BOTH` |
+| `VISION_MODE` | `OFF` | `OFF` / `CAMERA` / `SCREEN` / `BOTH`; camera and screen capture require explicit activation |
 | `PIXEL_CHANGE_THRESHOLD` | `50` | % pixel change required before triggering a VLM scene update |
 | `VLM_UPDATE_INTERVAL` | `10000` | ms between VLM scene-describe calls |
 | `SCREEN_CAPTURE_INTERVAL` | `2000` | ms between screen captures |
@@ -107,6 +107,8 @@ The plugin registers a single `VISION` action that routes to one of these sub-op
 ## Privacy
 
 - Camera access requires OS-level permissions.
+- Camera and screen capture default to `OFF` until explicitly enabled.
+- Denying camera permission stops camera capture until it is explicitly re-enabled.
 - No frames are written to disk by default.
 - All inference runs locally unless a remote IMAGE_DESCRIPTION provider is registered.
 - Consider access implications before enabling in shared or sensitive environments.

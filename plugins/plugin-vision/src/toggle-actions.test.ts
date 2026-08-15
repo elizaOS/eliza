@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { VisionService } from "./service";
 import { VisionMode } from "./types";
 
-function makeRuntime() {
+function makeRuntime(settings: Record<string, string> = {}) {
   const trajectoryLogger = {
     isEnabled: () => true,
     startTrajectory: vi.fn(() => "t"),
@@ -19,7 +19,7 @@ function makeRuntime() {
   return Object.assign(Object.create(null) as IAgentRuntime, {
     agentId: "agent",
     character: {},
-    getSetting: vi.fn(() => undefined),
+    getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn((name: string) =>
       name === "trajectories" ? trajectoryLogger : null,
     ),
@@ -28,6 +28,21 @@ function makeRuntime() {
 }
 
 describe("VisionService camera/screen toggle actions", () => {
+  it("defaults to OFF until vision capture is explicitly enabled", () => {
+    const svc = new VisionService(makeRuntime());
+
+    expect(svc.getVisionMode()).toBe(VisionMode.OFF);
+  });
+
+  it.each([VisionMode.CAMERA, VisionMode.BOTH])(
+    "honors an explicit %s mode",
+    (visionMode) => {
+      const svc = new VisionService(makeRuntime({ VISION_MODE: visionMode }));
+
+      expect(svc.getVisionMode()).toBe(visionMode);
+    },
+  );
+
   it("enableCamera switches from OFF to CAMERA", async () => {
     const svc = new VisionService(makeRuntime());
     Object.defineProperty(svc, "visionConfig", {
@@ -100,4 +115,35 @@ describe("VisionService camera/screen toggle actions", () => {
     await svc.disableScreen();
     expect(setMode).toHaveBeenCalledWith(VisionMode.CAMERA);
   });
+
+  it.each([
+    [VisionMode.CAMERA, VisionMode.OFF],
+    [VisionMode.BOTH, VisionMode.SCREEN],
+  ])(
+    "stops %s camera capture after the operating system denies permission",
+    async (initialMode, expectedMode) => {
+      const svc = new VisionService(makeRuntime({ VISION_MODE: initialMode }));
+      const capture = vi.fn(async () => {
+        throw new Error("Camera access denied. Please grant permission.");
+      });
+      const processingInterval = setInterval(() => undefined, 10_000);
+      Reflect.set(svc, "camera", {
+        id: "built-in",
+        name: "Built-in Camera",
+        capture,
+      });
+      Reflect.set(svc, "frameProcessingInterval", processingInterval);
+      const captureAndProcessFrame = Reflect.get(
+        svc,
+        "captureAndProcessFrame",
+      ) as () => Promise<void>;
+
+      await captureAndProcessFrame.call(svc);
+
+      expect(capture).toHaveBeenCalledOnce();
+      expect(svc.getVisionMode()).toBe(expectedMode);
+      expect(svc.getCameraInfo()).toBeNull();
+      expect(Reflect.get(svc, "frameProcessingInterval")).toBeNull();
+    },
+  );
 });
