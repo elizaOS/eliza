@@ -2634,9 +2634,9 @@ async function tryPassthroughStreamingRequest(params: {
       firstReasoningMs: tail.milestones.firstReasoningMs,
       firstContentMs: tail.milestones.firstContentMs,
       completionMs: tail.milestones.completionMs,
-      // An in-stream SSE error frame is an upstream-reported failure: record
-      // it as not-completed rather than a healthy run (#16079).
-      aborted: tail.readError !== null || tail.sawErrorFrame,
+      // A read failure, provider error frame, or clean EOF without the required
+      // `[DONE]` marker is incomplete; none may masquerade as healthy.
+      aborted: tail.readError !== null || tail.sawErrorFrame || !tail.sawDone,
       createdAt: new Date().toISOString(),
     });
     if (tail.usage) {

@@ -1268,6 +1268,23 @@ describe("passthrough streaming — #16079 milestone telemetry", () => {
     expect(event.completionMs).not.toBeNull();
   });
 
+  test("clean EOF without [DONE] records an incomplete terminal", async () => {
+    fetchImpl = async () =>
+      sseResponse(
+        `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}],"usage":null}\n\n`,
+      );
+
+    const res = await callStreaming(async () => null, {});
+    await res.text();
+
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find((e) => e.path === "passthrough");
+    if (!event) throw new Error("no passthrough milestone event recorded");
+    expect(event.firstEventMs).not.toBeNull();
+    expect(event.firstContentMs).not.toBeNull();
+    expect(event.completionMs).toBeNull();
+    expect(event.aborted).toBe(true);
+  });
   test("client-branch cancel records aborted=true with partial milestones", async () => {
     // RP round-1 finding: the existing abort test simulated an upstream read
     // error; this one cancels the CLIENT branch mid-stream, exercising the

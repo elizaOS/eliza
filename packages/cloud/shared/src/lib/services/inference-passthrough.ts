@@ -74,13 +74,13 @@ export interface PassthroughUsage {
  * first) — absence is reported as absence, never as zero.
  */
 export interface PassthroughStreamMilestones {
-  /** First successfully parsed JSON `data:` frame (malformed frames and `[DONE]` do not count). */
+  /** First non-empty SSE `data:` event, even when its payload is malformed or `[DONE]`. */
   firstEventMs: number | null;
   /** First delta carrying reasoning (`reasoning`, `reasoning_content`, or `thinking`). */
   firstReasoningMs: number | null;
   /** First delta carrying visible `content` text. */
   firstContentMs: number | null;
-  /** Reader observed stream termination (upstream close or `[DONE]`). */
+  /** Provider emitted `[DONE]`; clean EOF alone is not protocol completion. */
   completionMs: number | null;
 }
 
@@ -178,7 +178,7 @@ export async function readPassthroughStreamTail(
     now?: () => number;
   } = {},
 ): Promise<PassthroughStreamTail> {
-  const now = options.now ?? performance.now;
+  const now = options.now ?? (() => performance.now());
   const startedAt = options.startedAt ?? now();
   const decoder = new TextDecoder();
   const tail: PassthroughStreamTail = {
@@ -200,6 +200,9 @@ export async function readPassthroughStreamTail(
     if (!line.startsWith("data:")) return;
     const payload = line.slice("data:".length).trim();
     if (!payload) return;
+    // The first-SSE boundary is transport-level: a malformed provider payload
+    // is still a real data event and must not disappear from latency telemetry.
+    tail.milestones.firstEventMs ??= roundedElapsed(now, startedAt);
     if (payload === "[DONE]") {
       tail.sawDone = true;
       // [DONE] IS the provider's completion marker (#16079): record it now
@@ -225,7 +228,7 @@ export async function readPassthroughStreamTail(
       usage?: SseUsageRecord | null;
       error?: unknown;
     };
-    tail.milestones.firstEventMs ??= roundedElapsed(now, startedAt);
+
     if (record.error !== undefined && record.error !== null) {
       tail.sawErrorFrame = true;
       // An error frame parsed AFTER [DONE] revokes that completion (#16079):
@@ -287,17 +290,9 @@ export async function readPassthroughStreamTail(
     }
     buffer += decoder.decode();
     if (buffer) handleLine(buffer);
-    // Normal termination (upstream close, with or without [DONE]) still counts
-    // as observed completion; abort/error paths fall through with the
-    // milestone left null so they cannot masquerade as a completed stream.
-    // `??=` — NOT assignment — so a completion already recorded at [DONE]
-    // parse time keeps the [DONE] boundary even when the provider delays the
-    // connection close after it (#16079). An in-stream SSE error frame is NOT
-    // completion: the provider reported failure mid-stream and the stream must
-    // not be recorded as if it ran to a healthy end.
-    if (tail.readError === null && !tail.sawErrorFrame) {
-      tail.milestones.completionMs ??= roundedElapsed(now, startedAt);
-    }
+    // A clean transport EOF is not the OpenAI-compatible completion boundary.
+    // Only `[DONE]` establishes protocol completion; callers classify an EOF
+    // without it as incomplete even when the stream itself closed cleanly.
   } catch (error) {
     // error-policy:J7 metering must not kill the settle chain — the route
     // observes the failure via readError and settles the delivered portion.

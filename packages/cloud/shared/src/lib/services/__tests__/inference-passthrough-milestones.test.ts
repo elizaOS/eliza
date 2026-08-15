@@ -133,14 +133,14 @@ describe("readPassthroughStreamTail — milestones (#16079)", () => {
     expect(tail.milestones.firstEventMs).toBe(4);
   });
 
-  test("malformed frames never produce milestones", async () => {
+  test("a malformed data frame still records the first SSE event", async () => {
     const clock = scriptedClock(0, 2);
     const tail = await readWithClock(
       [`data: not-json\n\n`, `: comment line\n\n`, `data: [DONE]\n\n`],
       0,
       clock,
     );
-    expect(tail.milestones.firstEventMs).toBeNull();
+    expect(tail.milestones.firstEventMs).toBe(2);
     expect(tail.milestones.completionMs).toBe(6);
   });
 
@@ -184,15 +184,28 @@ describe("readPassthroughStreamTail — milestones (#16079)", () => {
       firstEventMs: null,
       firstReasoningMs: null,
       firstContentMs: null,
-      completionMs: 42,
+      completionMs: null,
     };
     expect(tail.milestones).toEqual(allNull);
   });
 
-  test("defaults: startedAt/now resolve to performance.now when omitted", async () => {
+  test("clean EOF without [DONE] remains explicitly incomplete", async () => {
+    const clock = scriptedClock(0, 5);
+    const tail = await readWithClock(
+      [`data: {"id":"c1","choices":[{"delta":{"content":"partial"}}]}\n\n`],
+      0,
+      clock,
+    );
+    expect(tail.sawDone).toBe(false);
+    expect(tail.milestones.firstEventMs).toBe(5);
+    expect(tail.milestones.firstContentMs).toBe(5);
+    expect(tail.milestones.completionMs).toBeNull();
+  });
+
+  test("defaults: startedAt/now resolve to a receiver-safe performance clock", async () => {
     const tail = await readPassthroughStreamTail(sseStream([`data: [DONE]\n\n`]));
-    // No crash, milestone fields present and completion observed.
-    expect(tail.milestones.firstEventMs).toBeNull();
+    // No crash, and the transport event plus protocol completion are observed.
+    expect(typeof tail.milestones.firstEventMs).toBe("number");
     expect(typeof tail.milestones.completionMs).toBe("number");
     expect(tail.milestones.completionMs).not.toBeNull();
   });
