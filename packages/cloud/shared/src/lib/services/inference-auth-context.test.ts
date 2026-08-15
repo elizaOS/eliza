@@ -148,9 +148,19 @@ describe("resolveInferenceAuthHydrationDeadlineMs", () => {
     "2147483648",
     "9007199254740992",
   ])("rejects an invalid hydration deadline %p", (raw) => {
-    expect(() => resolveInferenceAuthHydrationDeadlineMs(raw)).toThrow(
-      "INFERENCE_AUTH_HYDRATION_DEADLINE_MS must be an integer from 1 through 2147483647 milliseconds",
-    );
+    let thrown: unknown;
+    try {
+      resolveInferenceAuthHydrationDeadlineMs(raw);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toMatchObject({
+      code: "INVALID_INFERENCE_AUTH_HYDRATION_DEADLINE",
+      context: {
+        envKey: "INFERENCE_AUTH_HYDRATION_DEADLINE_MS",
+        configured: raw,
+      },
+    });
   });
 });
 

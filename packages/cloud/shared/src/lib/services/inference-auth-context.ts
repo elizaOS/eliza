@@ -23,6 +23,7 @@
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { getErrorStatusCode } from "../api/errors";
 import { type CacheBackendKind, cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -294,17 +295,24 @@ export function resolveInferenceAuthHydrationDeadlineMs(raw: string | undefined)
   }
   const normalized = raw.trim();
   if (!/^\d+$/.test(normalized)) {
-    throw new Error(
-      `INFERENCE_AUTH_HYDRATION_DEADLINE_MS must be an integer from 1 through ${MAX_HYDRATION_DEADLINE_MS} milliseconds`,
-    );
+    throw invalidHydrationDeadline(raw);
   }
   const parsed = Number(normalized);
   if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > MAX_HYDRATION_DEADLINE_MS) {
-    throw new Error(
-      `INFERENCE_AUTH_HYDRATION_DEADLINE_MS must be an integer from 1 through ${MAX_HYDRATION_DEADLINE_MS} milliseconds`,
-    );
+    throw invalidHydrationDeadline(raw);
   }
   return parsed;
+}
+
+function invalidHydrationDeadline(configured: string): ElizaError {
+  return new ElizaError(
+    `INFERENCE_AUTH_HYDRATION_DEADLINE_MS must be an integer from 1 through ${MAX_HYDRATION_DEADLINE_MS} milliseconds`,
+    {
+      code: "INVALID_INFERENCE_AUTH_HYDRATION_DEADLINE",
+      context: { envKey: "INFERENCE_AUTH_HYDRATION_DEADLINE_MS", configured },
+      severity: "fatal",
+    },
+  );
 }
 
 const HYDRATION_DEADLINE_MS = resolveInferenceAuthHydrationDeadlineMs(
