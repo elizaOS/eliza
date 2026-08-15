@@ -161,6 +161,43 @@ test("publishes the authorization scope before optional admission prefill comple
   });
 });
 
+test("prewarms the call conversation while the fixed greeting is playing", async () => {
+  const requests: Request[] = [];
+  const voiceEnv = {
+    ...env,
+    SHARED_RUNTIME_CONVERSATIONS: {
+      getByName(name: string) {
+        expect(name).toBe(`${AGENT_ID}:${CONVERSATION_ID}`);
+        return {
+          async fetch(input: RequestInfo | URL, init?: RequestInit) {
+            requests.push(new Request(input, init));
+            return Response.json({ success: true });
+          },
+        };
+      },
+    },
+  };
+
+  await runWithCloudBindingsAsync(voiceEnv, async () => {
+    await hydrateVoiceSharedAgentScope(
+      voiceEnv as unknown as Parameters<typeof hydrateVoiceSharedAgentScope>[0],
+      claims,
+      sharedAgent as never,
+    );
+  });
+
+  expect(requests).toHaveLength(1);
+  const request = requests[0];
+  if (!request) throw new Error("expected conversation prewarm request");
+  expect(request.url).toBe("https://shared-runtime.internal/prewarm");
+  const body = (await request.json()) as unknown;
+  expect(body).toEqual({
+    operation: "prewarm",
+    agentId: AGENT_ID,
+    roomId: CONVERSATION_ID,
+  });
+});
+
 test("does not overwrite an already-warm character entry", async () => {
   await runWithCloudBindingsAsync(env, async () => {
     await cache.set(CHARACTER_KEY, { id: CHARACTER_ID, name: "Existing" }, 60);
