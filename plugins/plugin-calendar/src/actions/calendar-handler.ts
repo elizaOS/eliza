@@ -38,6 +38,10 @@ import type {
   LifeOpsCalendarRecurrenceScope,
   LifeOpsNextCalendarEventContext,
 } from "@elizaos/shared";
+import {
+  findKeywordTermMatch,
+  getValidationKeywordTerms,
+} from "@elizaos/shared";
 import { isAppleCalendarGrant } from "../apple-calendar.js";
 import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "../calendar-action-schema.js";
 import {
@@ -2836,6 +2840,26 @@ function resolveCreateEventDurationMinutes(args: {
   return undefined;
 }
 
+/**
+ * True when the user's own words state a repeating cadence. Backed by the
+ * multilingual lifeops_cadence lexicon plus the bare recurrence markers the
+ * lexicon's window-phrases do not cover ("every monday", "repeats", "recurring").
+ */
+export function intentStatesRecurrence(intent: string): boolean {
+  if (!intent.trim()) return false;
+  if (/\b(?:every|each|repeat(?:s|ing)?|recurring|recurs?)\b/i.test(intent)) {
+    return true;
+  }
+  return (
+    findKeywordTermMatch(
+      intent,
+      getValidationKeywordTerms("contextSignal.lifeops_cadence.strong", {
+        includeAllLocales: true,
+      }),
+    ) !== undefined
+  );
+}
+
 type CreateEventRequestBuildArgs = {
   details: Record<string, unknown> | undefined;
   extractedDetails: Record<string, unknown>;
@@ -2979,7 +3003,16 @@ function buildCreateEventRequest(
     }) ?? null;
 
   const explicitRecurrence = detailRecurrenceLines(args.details);
-  const extractedRecurrence = detailRecurrenceLines(args.extractedDetails);
+  // The extraction model routinely infers weekly recurrence from
+  // cadence-flavored event nouns ("standup monday at 10am" →
+  // RRULE:FREQ=WEEKLY;BYDAY=MO) even though the user asked for one event; on
+  // the built-in calendar that hard-400s (ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED)
+  // and the turn lectures about providers instead of creating the event.
+  // Model-inferred recurrence therefore requires an explicit recurrence term
+  // in the user's own words; planner-structured recurrence stays trusted.
+  const extractedRecurrence = intentStatesRecurrence(args.intent)
+    ? detailRecurrenceLines(args.extractedDetails)
+    : undefined;
   const recurrence = args.preferExtractedDetails
     ? (extractedRecurrence ??
       explicitRecurrence ??
