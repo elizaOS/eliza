@@ -18,7 +18,7 @@ import {
   MAX_ANONYMOUS_EXPIRY_DAYS,
   MAX_ANONYMOUS_MESSAGE_LIMIT,
   parseAnonymousPositiveIntEnv,
-} from "@/auth/anonymous-session-config";
+} from "@/api/auth/anonymous-session-config";
 import { dbRead } from "@/db/helpers";
 import { userIdentities } from "@/db/schemas/user-identities";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
