@@ -35,8 +35,13 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	// "Authorization: required for this endpoint" from being partially masked.
 	// Bearer keeps its floor-free rule for compatibility with short service
 	// values in env-style `*_AUTHORIZATION` output.
+	// The auth-param lookahead requires a value character after the "=": a
+	// token68 with "=" padding ("Basic dXNlcjpw...Mw==") otherwise satisfies
+	// the param shape and the rule consumes trailing prose to end-of-line,
+	// diverging from the streaming scanner's value-exact redaction
+	// (guarded-stream split-equivalence).
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=/~]+)`,
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+((?=[A-Za-z][A-Za-z0-9!#$%&'*+.^_|~-]*[ \t]*=)[^\r\n]+)(?=[\r\n]|$)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+((?=[A-Za-z][A-Za-z0-9!#$%&'*+.^_|~-]*=[^=\s])[^\r\n]+)(?=[\r\n]|$)`,
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+([A-Za-z0-9._~+/\-]{8,}={0,})(?=[\r\n]|$)`,
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z0-9._~+/\-]{18,}={0,})(?=[\r\n]|$)`,
 	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
