@@ -104,6 +104,8 @@ describe("hosted public renderer entry policy", () => {
     expect(entrySource).toContain('import("./public-web-entry")');
     expect(entrySource).toContain('import("./main")');
     expect(publicEntrySource).not.toMatch(/from\s+["']\.\/main["']/);
+    expect(publicEntrySource).toContain('import("./main")');
+    expect(publicEntrySource).not.toContain("window.location.reload()");
     expect(publicEntrySource).toContain("seedPublicWebBootConfig");
   });
 
