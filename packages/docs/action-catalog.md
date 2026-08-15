@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 11
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 166
+- **Registered runtime actions:** 167
 
 ## Actions
 
@@ -440,6 +440,7 @@ list. Regenerate this document after changing the registered action surface.
 - `MEMORY` — `packages/agent/src/actions/memories.ts`
 - `MESSAGE` — `packages/core/src/features/advanced-capabilities/actions/message.ts`, `packages/core/src/features/messaging/triage/actions/draftFollowup.ts`, `packages/core/src/features/messaging/triage/actions/draftReply.ts`, `packages/core/src/features/messaging/triage/actions/listInbox.ts`, `packages/core/src/features/messaging/triage/actions/manageMessage.ts`, `packages/core/src/features/messaging/triage/actions/respondToMessage.ts`, `packages/core/src/features/messaging/triage/actions/scheduleDraftSend.ts`, `packages/core/src/features/messaging/triage/actions/searchMessages.ts`, `packages/core/src/features/messaging/triage/actions/sendDraft.ts`, `packages/core/src/features/messaging/triage/actions/triageMessages.ts`
 - `MODEL_SWITCH` — `plugins/plugin-app-control/src/actions/model-switch.ts`
+- `NOTES` — `plugins/plugin-notes/src/action.ts`
 - `NOTIFY` — `packages/agent/src/actions/notify.ts`
 - `ORCHESTRATOR_STATUS_COMMAND` — `plugins/plugin-task-coordinator/src/orchestrator-command.ts`
 - `OWNER_ALARMS` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`

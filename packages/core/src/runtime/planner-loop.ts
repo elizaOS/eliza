@@ -15,6 +15,12 @@ import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
+import {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticArgs,
+	projectToolDiagnosticValue,
+	type ToolDiagnosticTextRedactor,
+} from "../security/tool-diagnostics";
 import { resolveOptimizedPromptForRuntime } from "../services/optimized-prompt-resolver";
 import {
 	emitStreamingHook,
@@ -48,7 +54,11 @@ import {
 import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
 import { tailWellFormed, truncateWellFormed } from "../utils/well-formed";
-import { computePrefixHashes, stableJsonStringify } from "./context-hash";
+import {
+	computePrefixHashes,
+	hashString,
+	stableJsonStringify,
+} from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import {
 	buildStageChatMessages,
@@ -329,6 +339,10 @@ async function runPlannerLoopIterations(
 	params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
 	const plannerContext = normalizePlannerContext(params.context);
+	// Diagnostic projection for every context/event copy of tool-call
+	// arguments: runtime-known secrets composed with the shared tool-shape
+	// patterns. The raw calls stay on `trajectory.plannedQueue` for execution.
+	const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
 	// Coding/full-surface mode (the eliza-code sub-agent sets
 	// ELIZA_PLANNER_FULL_ACTION_SURFACE): a real build legitimately makes many
 	// tool calls (read several files, write several, run tests). The chat default
@@ -671,11 +685,17 @@ async function runPlannerLoopIterations(
 						trajectory,
 						iteration,
 					);
-					trajectory.evaluatorOutputs.push(evaluator);
+					trajectory.evaluatorOutputs.push(
+						projectToolDiagnosticValue(
+							evaluator,
+							redactDiagnosticText,
+						) as EvaluatorOutput,
+					);
 					trajectory.context = appendEvaluationEvent({
 						context: trajectory.context,
 						iteration,
 						evaluator,
+						redactDiagnosticText,
 					});
 					const protocolFailureRelay =
 						deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
@@ -935,11 +955,17 @@ async function runPlannerLoopIterations(
 				// — the happy path tests assert this.
 				const shouldRecordTerminalEvaluation =
 					trajectory.evaluatorOutputs.length > 0;
-				trajectory.evaluatorOutputs.push(terminalEvaluator);
+				trajectory.evaluatorOutputs.push(
+					projectToolDiagnosticValue(
+						terminalEvaluator,
+						redactDiagnosticText,
+					) as EvaluatorOutput,
+				);
 				trajectory.context = appendEvaluationEvent({
 					context: trajectory.context,
 					iteration,
 					evaluator: terminalEvaluator,
+					redactDiagnosticText,
 				});
 				if (shouldRecordTerminalEvaluation) {
 					const terminalEvalStartedAt = Date.now();
@@ -1096,6 +1122,8 @@ async function runPlannerLoopIterations(
 			}
 			repeatedNonTerminalToolCalls = 0;
 			trajectory.plannedQueue.push(...validNonTerminalCalls);
+			// The queue keeps the exact raw calls for the handler path; the context
+			// copies below are diagnostics and carry the redacted projection only.
 			trajectory.context = {
 				...trajectory.context,
 				plannedQueue: [
@@ -1103,7 +1131,10 @@ async function runPlannerLoopIterations(
 					...validNonTerminalCalls.map((toolCall) => ({
 						id: toolCall.id,
 						name: toolCall.name,
-						args: stringifyForModel(toolCall.params ?? {}),
+						args: stringifyToolArgsForDiagnostics(
+							toolCall.params,
+							redactDiagnosticText,
+						),
 						status: "queued" as const,
 						sourceStageId: `planner:${iteration}`,
 					})),
@@ -1119,7 +1150,10 @@ async function runPlannerLoopIterations(
 						iteration,
 						toolCallId: toolCall.id,
 						name: toolCall.name,
-						params: stringifyForModel(toolCall.params ?? {}),
+						params: stringifyToolArgsForDiagnostics(
+							toolCall.params,
+							redactDiagnosticText,
+						),
 						status: "queued",
 					},
 				});
@@ -1220,11 +1254,17 @@ async function runPlannerLoopIterations(
 		});
 		if (gatedDecision) {
 			const { output: gated, reason } = gatedDecision;
-			trajectory.evaluatorOutputs.push(gated);
+			trajectory.evaluatorOutputs.push(
+				projectToolDiagnosticValue(
+					gated,
+					redactDiagnosticText,
+				) as EvaluatorOutput,
+			);
 			trajectory.context = appendEvaluationEvent({
 				context: trajectory.context,
 				iteration,
 				evaluator: gated,
+				redactDiagnosticText,
 			});
 			await recordGatedEvaluationStage({
 				runtime: params.runtime,
@@ -1299,8 +1339,18 @@ async function runPlannerLoopIterations(
 				),
 			};
 		}
-		trajectory.evaluatorOutputs.push(evaluator);
-		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
+		trajectory.evaluatorOutputs.push(
+			projectToolDiagnosticValue(
+				evaluator,
+				redactDiagnosticText,
+			) as EvaluatorOutput,
+		);
+		appendEvaluatorContextEvent(
+			trajectory,
+			evaluator,
+			iteration,
+			redactDiagnosticText,
+		);
 		const protocolFailureRelay = deterministicEvaluatorProtocolFailureRelay(
 			evaluator,
 			trajectory,
@@ -1416,6 +1466,7 @@ function renderPlannerModelInput(params: {
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
 		maxToolResultChars: params.maxToolResultChars,
+		redactText: composeToolDiagnosticRedactor(params.runtime),
 	});
 	// Action names + parameter schemas now ride directly on the tools array
 	// (each Action is exposed as its own native tool), so there is no separate
@@ -2228,6 +2279,7 @@ async function maybeCompactPlannerTrajectory(args: {
 		compactedSteps,
 		keptSteps,
 		budget: args.budget,
+		redactDiagnosticText: composeToolDiagnosticRedactor(args.runtime),
 	});
 	args.trajectory.archivedSteps.push(...compactedSteps);
 	args.trajectory.steps = keptSteps;
@@ -2326,6 +2378,7 @@ function buildCompactionSummary(args: {
 	compactedSteps: readonly PlannerStep[];
 	keptSteps: readonly PlannerStep[];
 	budget: ModelInputBudget;
+	redactDiagnosticText: ToolDiagnosticTextRedactor;
 }): string {
 	const lines = [
 		"Compacted prior planner trajectory steps because estimated input approached the model context window.",
@@ -2337,12 +2390,15 @@ function buildCompactionSummary(args: {
 		"Compacted step summaries:",
 	];
 	for (const step of args.compactedSteps) {
-		lines.push(`- ${summarizePlannerStep(step)}`);
+		lines.push(`- ${summarizePlannerStep(step, args.redactDiagnosticText)}`);
 	}
 	return lines.join("\n").trim();
 }
 
-function summarizePlannerStep(step: PlannerStep): string {
+function summarizePlannerStep(
+	step: PlannerStep,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
+): string {
 	const name = step.toolCall?.name ?? (step.terminalOnly ? "terminal" : "step");
 	const status = step.result
 		? step.result.success
@@ -2351,12 +2407,29 @@ function summarizePlannerStep(step: PlannerStep): string {
 		: "no_result";
 	const args =
 		step.toolCall?.params && Object.keys(step.toolCall.params).length > 0
-			? ` args=${compactText(stringifyForModel(step.toolCall.params), 180)}`
+			? ` args=${compactText(
+					stringifyToolArgsForDiagnostics(
+						step.toolCall.params,
+						redactDiagnosticText,
+					),
+					180,
+				)}`
 			: "";
 	const result = step.result
-		? ` result=${compactText(toolMessageContent(step.result), 360)}`
+		? ` result=${compactText(
+				toolMessageContent(
+					projectToolDiagnosticValue(
+						step.result,
+						redactDiagnosticText,
+					) as PlannerToolResult,
+				),
+				360,
+			)}`
 		: step.terminalMessage
-			? ` message=${compactText(step.terminalMessage, 240)}`
+			? ` message=${compactText(
+					redactDiagnosticText(step.terminalMessage),
+					240,
+				)}`
 			: "";
 	return `iter ${step.iteration} ${name} ${status}${args}${result}`;
 }
@@ -2675,8 +2748,13 @@ function appendEvaluationEvent(args: {
 	context: ContextObject;
 	iteration: number;
 	evaluator: EvaluatorOutput;
+	redactDiagnosticText?: ToolDiagnosticTextRedactor;
 }): ContextObject {
 	const createdAt = Date.now();
+	const evaluator = projectToolDiagnosticValue(
+		args.evaluator,
+		args.redactDiagnosticText ?? composeToolDiagnosticRedactor(),
+	) as EvaluatorOutput;
 	return appendContextEvent(args.context, {
 		id: `evaluation:${args.iteration}:${createdAt}`,
 		type: "evaluation",
@@ -2684,13 +2762,13 @@ function appendEvaluationEvent(args: {
 		createdAt,
 		metadata: {
 			iteration: args.iteration,
-			success: args.evaluator.success,
-			decision: args.evaluator.decision,
-			thought: args.evaluator.thought,
-			messageToUser: args.evaluator.messageToUser,
-			recommendedToolCallId: args.evaluator.recommendedToolCallId,
-			protocolFailure: args.evaluator.protocolFailure,
-			parseError: args.evaluator.parseError,
+			success: evaluator.success,
+			decision: evaluator.decision,
+			thought: evaluator.thought,
+			messageToUser: evaluator.messageToUser,
+			recommendedToolCallId: evaluator.recommendedToolCallId,
+			protocolFailure: evaluator.protocolFailure,
+			parseError: evaluator.parseError,
 		},
 	});
 }
@@ -2699,11 +2777,13 @@ function appendEvaluatorContextEvent(
 	trajectory: PlannerTrajectory,
 	evaluator: EvaluatorOutput,
 	iteration: number,
+	redactDiagnosticText?: ToolDiagnosticTextRedactor,
 ): void {
 	trajectory.context = appendEvaluationEvent({
 		context: trajectory.context,
 		iteration,
 		evaluator,
+		redactDiagnosticText,
 	});
 }
 
@@ -2874,16 +2954,34 @@ async function executeQueuedToolCall(params: {
 		params.trajectory.context,
 		params.toolCall,
 	);
+	const redactDiagnosticText = composeToolDiagnosticRedactor(
+		params.params.runtime,
+	);
 	await emitStreamingHook(streamingContext, "onToolCall", {
-		toolCall: plannerToolCallToStreamingToolCall(params.toolCall, "pending"),
+		toolCall: plannerToolCallToStreamingToolCall(
+			params.toolCall,
+			"pending",
+			redactDiagnosticText,
+		),
 		contextEvent,
 		messageId: streamingContext?.messageId,
 		metadata: { iteration: params.iteration },
 	});
 
-	await params.params.onToolCallEnqueued?.(params.toolCall, {
-		iteration: params.iteration,
-	});
+	await params.params.onToolCallEnqueued?.(
+		{
+			...params.toolCall,
+			...(params.toolCall.params !== undefined
+				? {
+						params: projectToolDiagnosticArgs(
+							params.toolCall.params,
+							redactDiagnosticText,
+						),
+					}
+				: {}),
+		},
+		{ iteration: params.iteration },
+	);
 
 	const startedAt = Date.now();
 	let result: PlannerToolResult;
@@ -2918,12 +3016,13 @@ async function executeQueuedToolCall(params: {
 	const isParameterValidationFailure = Array.isArray(
 		(result.data as { parameterErrors?: unknown } | undefined)?.parameterErrors,
 	);
+	const failureError = isParameterValidationFailure
+		? "parameter_validation_failed"
+		: (result.error ?? diagnosticFailureReason(result));
 	const failure = {
 		toolName: params.toolCall.name,
 		success: result.success,
-		error: isParameterValidationFailure
-			? "parameter_validation_failed"
-			: (result.error ?? diagnosticFailureReason(result)),
+		error: projectToolDiagnosticValue(failureError, redactDiagnosticText),
 		repeatKey: isParameterValidationFailure
 			? "parameter_validation"
 			: toolFailureRepeatKey(params.toolCall),
@@ -2963,8 +3062,13 @@ async function executeQueuedToolCall(params: {
 			iteration: params.iteration,
 			toolCallId: params.toolCall.id,
 			name: params.toolCall.name,
-			params: stringifyForModel(params.toolCall.params ?? {}),
-			result: stringifyForModel(result),
+			params: stringifyToolArgsForDiagnostics(
+				params.toolCall.params,
+				redactDiagnosticText,
+			),
+			result: stringifyForModel(
+				projectToolDiagnosticValue(result, redactDiagnosticText),
+			),
 			status: result.success ? "completed" : "failed",
 		},
 	});
@@ -3044,13 +3148,33 @@ async function recordToolStage(args: {
 function plannerToolCallToStreamingToolCall(
 	toolCall: PlannerToolCall,
 	status: "pending" | "completed" | "failed",
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
 ): ToolCall {
+	// Streaming observers are a diagnostic surface: keep the raw call identity
+	// for correlation, project the argument values.
 	return {
 		id: toolCall.id ?? toolCall.name,
 		name: toolCall.name,
-		arguments: (toolCall.params ?? {}) as ToolCall["arguments"],
+		arguments: (projectToolDiagnosticArgs(
+			toolCall.params ?? {},
+			redactDiagnosticText,
+		) ?? {}) as ToolCall["arguments"],
 		status,
 	};
+}
+
+/**
+ * Serialize tool-call arguments for a diagnostic context/event copy: project
+ * through the composed redaction first, then stringify. Never used for the
+ * execution path, which reads the raw call from the planned queue.
+ */
+function stringifyToolArgsForDiagnostics(
+	params: Record<string, unknown> | undefined,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
+): string {
+	return stringifyForModel(
+		projectToolDiagnosticArgs(params ?? {}, redactDiagnosticText) ?? {},
+	);
 }
 
 function findToolContextEvent(
@@ -3789,7 +3913,7 @@ function synthesisReceiptSummary(
 			const operation = compactText(receipt.operation, 120);
 			const resourceKind = compactText(receipt.resource.kind, 80);
 			const resourceId = compactText(receipt.resource.id, 160);
-			return `receipt outcome=${receipt.outcome} operation=${operation} resource=${resourceKind}:${resourceId}`;
+			return `receipt outcome=${receipt.outcome} operation=${operation} resource_kind=${resourceKind} resource_id=${resourceId}`;
 		})
 		.join("\n");
 }
@@ -4201,13 +4325,18 @@ async function rescueReplyFromSuccessfulResults(
 	params: PlannerLoopParams,
 	trajectory: PlannerTrajectory,
 ): Promise<string | undefined> {
+	const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
 	const successfulExcerpts: string[] = [];
 	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
 		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
 		if (step.result?.success !== true) continue;
+		const diagnosticResult = projectToolDiagnosticValue(
+			step.result,
+			redactDiagnosticText,
+		) as PlannerToolResult;
 		const text =
-			getNonEmptyString(step.result.userFacingText) ??
-			getNonEmptyString(step.result.text);
+			getNonEmptyString(diagnosticResult.userFacingText) ??
+			getNonEmptyString(diagnosticResult.text);
 		if (!text) continue;
 		successfulExcerpts.push(
 			[
@@ -4223,7 +4352,8 @@ async function rescueReplyFromSuccessfulResults(
 		latestUnresolvedFailedNonTerminalToolStep(trajectory) ??
 		latestFailedToolStep(trajectory);
 	const failedCause = failedStep
-		? failedStepCauseForPrompt(failedStep)
+		? redactDiagnosticText(failedStepCauseForPrompt(failedStep) ?? "") ||
+			undefined
 		: undefined;
 	const instructions = [
 		"You are finishing a chat turn. Compose the final reply to the user from the tool results in the next message.",
@@ -4876,7 +5006,9 @@ function splitUnavailableToolCalls(
 }
 
 function toolFailureRepeatKey(toolCall: PlannerToolCall): string {
-	return `${toolCall.name}:${stringifyForModel(toolCall.params ?? {})}`;
+	return `${toolCall.name}:${hashString(
+		stableJsonStringify(toolCall.params ?? {}),
+	)}`;
 }
 
 /**
@@ -5550,12 +5682,20 @@ export function summarizeActionResultForPlanner(
 	action: Pick<Action, "summarize"> | undefined,
 	result: ActionResult,
 	params: Record<string, unknown> = {},
+	runtime?: Pick<PlannerRuntime, "redactSecrets">,
 ): string | undefined {
 	if (result.success !== true || typeof action?.summarize !== "function") {
 		return undefined;
 	}
-	const summary = action.summarize(result, params)?.trim();
-	return summary || undefined;
+	const redactDiagnosticText = composeToolDiagnosticRedactor(runtime);
+	const diagnosticResult = projectToolDiagnosticValue(
+		result,
+		redactDiagnosticText,
+	) as ActionResult;
+	const diagnosticParams =
+		projectToolDiagnosticArgs(params, redactDiagnosticText) ?? {};
+	const summary = action.summarize(diagnosticResult, diagnosticParams)?.trim();
+	return summary ? redactDiagnosticText(summary) : undefined;
 }
 
 function getNonEmptyString(value: unknown): string | undefined {

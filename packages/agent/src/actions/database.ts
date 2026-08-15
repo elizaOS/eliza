@@ -278,13 +278,38 @@ async function opListTables(
   const lines = tables.map(
     (t) => `- ${t.name} (${t.columns.length} cols, ${t.rowCount} rows)`,
   );
+
+  // Both branches used to hide the narrowing above: "No tables found." read as
+  // an empty database and "Found 7 table(s)" read as the whole schema while
+  // `allTables` held the real count. Name what narrowed it and how to widen.
+  const narrowings: string[] = [];
+  if (filter) narrowings.push(`name contains "${filter}"`);
+  if (!includeEmpty)
+    narrowings.push("includeEmpty:false (zero-row tables dropped)");
+  const widen = includeEmpty
+    ? "drop the filter"
+    : filter
+      ? "drop the filter or pass includeEmpty:true"
+      : "pass includeEmpty:true";
+  const scopeNote =
+    narrowings.length === 0
+      ? ""
+      : ` (narrowed by ${narrowings.join(" and ")}; ${allTables.length} table(s) exist before filtering — ${widen} to see them all)`;
+
   return {
     success: true,
     text: lines.length
-      ? `Found ${tables.length} table(s):\n${lines.join("\n")}`
-      : "No tables found.",
-    values: { count: tables.length },
-    data: { actionName: "DATABASE", op: "list_tables", tables, filter },
+      ? `Found ${tables.length} table(s)${scopeNote}:\n${lines.join("\n")}`
+      : `No tables found${scopeNote}.`,
+    values: { count: tables.length, totalBeforeFilter: allTables.length },
+    data: {
+      actionName: "DATABASE",
+      op: "list_tables",
+      tables,
+      filter,
+      includeEmpty,
+      totalBeforeFilter: allTables.length,
+    },
   };
 }
 
@@ -606,7 +631,7 @@ export const databaseAction: Action = {
   descriptionCompressed:
     "database list_tables|get_table|query(read-only default)|search_vectors",
   routingHint:
-    "inspect the agent's RAW database — list/read tables, run read-only SQL, or vector/similarity search over stored rows -> DATABASE; for the agent's own conversational memory records about the user -> MEMORY (action=search); for the user's stored files -> FILES; for open-web lookups -> WEB_SEARCH",
+    "inspect the agent's RAW database — list/read tables, run read-only SQL, or vector/similarity search over stored rows -> DATABASE; for the agent's own conversational memory records about the user -> MEMORY (action=search); for the user's stored files -> FILES; for open-web lookups -> WEB_SEARCH. NEVER use DATABASE to take, store, or read a NOTE for the user ('make a note', 'note to self', 'what notes do i have') — notes are memory records and belong to MEMORY; hand-written INSERTs against the memories table fail on schema mismatch and lose the user's note.",
   validate: async (runtime) => {
     registerVectorSearchCategory(runtime);
     return true;

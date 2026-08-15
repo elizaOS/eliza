@@ -128,6 +128,13 @@ Path-scoped deployment workflows may run after changes land on `develop` or
 `main`. They do not create pull-request checks. GitHub environments own
 production approvals and credentials.
 
+`cloud-cf-deploy.yml` and `build-agent-image.yml` cover the runtime workspace
+dependency closure of their release artifacts, not only their owning
+directories. Keep that source admission synchronized with package manifests
+through `cloud-release-dependency-trigger-workflow.test.ts`; otherwise a
+source-form package can change an artifact without creating a release
+candidate.
+
 Cloudflare application deploys require Workers and Pages write access. The
 Terraform domain workflow additionally requires zone-scoped DNS write and
 `SSL and Certificates Write` access because it manages advanced wildcard

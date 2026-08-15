@@ -307,11 +307,6 @@ export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
   "@elizaos/plugin-app-control", // VIEWS navigation in the app chat surface
   "@elizaos/plugin-notes", // managed Cloud Notes data and capabilities
-  // Persistent checklists (TODO action + CURRENT_TODOS provider). Alongside
-  // notes and reminders this is most of what a new chat-only user tries first;
-  // the plugin itself has no heavy runtime surface (drizzle CRUD over the
-  // adapter plugin-sql already provides).
-  "@elizaos/plugin-todos",
   "@elizaos/plugin-documents", // Knowledge CRUD/search routes exposed to hosted web clients
   // ScheduledTask primitive. Calendar is already always selected on lean-chat
   // via MOBILE_VIEW_PLUGINS (viewEveryPlatform) and declares a hard dependency

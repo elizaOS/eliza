@@ -79,6 +79,7 @@ import { apiKeysService } from "./api-keys";
 import { chatSseFrame, normalizeChatSseDonePayload } from "./chat-sse-frames";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
+import { withDefaultAgentCharacter } from "./default-agent-character";
 import { holdsCountedNodeSlot, isDeletionContinuation } from "./docker-node-workload-queries";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import { shellQuote } from "./docker-sandbox-utils";
@@ -229,14 +230,22 @@ export class AgentQuotaExceededError extends Error {
  * function so config sanitization, character ownership, tier→status derivation,
  * and column defaults cannot drift between paths. `environmentVars` is expected
  * storage-ready (already passed through `encryptAgentEnvVarsForStorage`).
+ *
+ * A create that brings neither a linked `characterId` nor a persona in its
+ * config is seeded with the shipped default character
+ * ({@link withDefaultAgentCharacter}); seeding here rather than in any single
+ * reader is what keeps the shared turn, the dedicated container, the warm-pool
+ * claim push, and the first-boot bootstrap agreeing on one persona.
  */
 export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAgentSandbox {
   const sanitizedConfig = stripReservedElizaConfigKeys(params.agentConfig);
+  const executionTier: AgentExecutionTier = params.executionTier ?? "shared";
   const agentConfig = params.characterId
     ? withReusedElizaCharacterOwnership(sanitizedConfig)
-    : sanitizedConfig;
+    : executionTier === "custom"
+      ? sanitizedConfig
+      : withDefaultAgentCharacter(sanitizedConfig);
 
-  const executionTier: AgentExecutionTier = params.executionTier ?? "shared";
   const status = executionTier === "shared" ? "running" : "pending";
 
   return {
@@ -251,6 +260,16 @@ export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAge
     ...(params.characterId && { character_id: params.characterId }),
     ...(params.dockerImage && { docker_image: params.dockerImage }),
   };
+}
+
+/** Omits an empty custom-image overlay so a self-contained image keeps its bundled character. */
+export function agentConfigForProvision(
+  agent: Pick<AgentSandbox, "agent_config" | "execution_tier">,
+): Record<string, unknown> | undefined {
+  const config = agent.agent_config;
+  if (!config || typeof config !== "object" || Array.isArray(config)) return undefined;
+  const record = config as Record<string, unknown>;
+  return agent.execution_tier === "custom" && Object.keys(record).length === 0 ? undefined : record;
 }
 
 /**
@@ -2538,6 +2557,126 @@ export class ElizaSandboxService {
   }
 
   /**
+   * Reverse a queued deletion while the container is still alive (#18517).
+   * `deletion_pending` used to be a one-way door: cancelling the queued
+   * `agent_delete` job stranded the row, and `reEnqueueFailedDeletions`
+   * re-armed a fresh delete on every sweep. Run before teardown starts, this
+   * atomically cancels the queued job(s) and returns the row to `running`
+   * with its deletion-intent columns cleared, so the reconciler has nothing
+   * left to re-arm. Refusals leave everything untouched: an executing delete
+   * (job `in_progress`) may already be tearing the container down, and a row
+   * whose bridge is gone has no live workload for `running` to describe.
+   */
+  async cancelAgentDeletion(
+    agentId: string,
+    orgId: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    await ensureAgentSandboxSchema();
+    return dbWrite.transaction(async (tx) => this.cancelAgentDeletionTx(tx, agentId, orgId));
+  }
+
+  /** Transaction body of {@link cancelAgentDeletion}, separated so the
+   *  deterministic suite can drive it against a fake lifecycle transaction. */
+  private async cancelAgentDeletionTx(
+    tx: LifecycleTx,
+    agentId: string,
+    orgId: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    await this.lockLifecycle(tx, agentId, orgId);
+
+    const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+    if (!rec) return { success: false, error: "Agent not found" };
+    if (rec.status !== "deletion_pending") {
+      return {
+        success: false,
+        error: `Agent is not pending deletion (status: ${rec.status})`,
+      };
+    }
+    const previousBillingStatus = rec.deletion_previous_billing_status;
+    if (
+      rec.deletion_previous_status !== "running" ||
+      previousBillingStatus === null ||
+      !["active", "warning", "suspended", "shutdown_pending", "exempt"].includes(
+        previousBillingStatus,
+      )
+    ) {
+      return {
+        success: false,
+        error: "Agent deletion does not have a reversible running-state receipt",
+      };
+    }
+    // A running receipt plus a live bridge proves the workload still matches
+    // the state being restored. Legacy deletion rows have no receipt and are
+    // refused above; a missing bridge means teardown may already have begun.
+    if (!rec.bridge_url) {
+      return {
+        success: false,
+        error: "Agent container is no longer reachable; the deletion can only complete",
+      };
+    }
+    const executing = await tx.execute<{ id: string }>(sql`
+      SELECT id
+      FROM ${jobs}
+      WHERE type = ${JOB_TYPES.AGENT_DELETE}
+        AND organization_id = ${orgId}
+        AND ${jobs.agent_id} = ${agentId}
+        AND status = 'in_progress'
+      LIMIT 1
+    `);
+    if (executing.rows.length > 0) {
+      return { success: false, error: "Agent deletion is already executing" };
+    }
+
+    // Cancel queued (never claimed) delete jobs in the same transaction as the
+    // row restore, so no window exists where a worker claims the job against a
+    // row that is about to leave `deletion_pending`.
+    await tx.execute(sql`
+      UPDATE ${jobs}
+      SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
+      WHERE type = ${JOB_TYPES.AGENT_DELETE}
+        AND organization_id = ${orgId}
+        AND ${jobs.agent_id} = ${agentId}
+        AND status = 'pending'
+    `);
+
+    // Restore the captured billing state, never a guessed healthy default. A
+    // delete requested while billing was warning/suspended must not become a
+    // billing bypass when it is cancelled. Clearing allocation ownership
+    // withdraws the pending release-at-commit marker (#17185).
+    const restored = await tx.execute<{ id: string }>(sql`
+      UPDATE ${agentSandboxes}
+      SET status = ${rec.deletion_previous_status},
+          billing_status = ${previousBillingStatus},
+          shutdown_warning_sent_at = ${rec.deletion_previous_shutdown_warning_sent_at},
+          scheduled_shutdown_at = ${rec.deletion_previous_scheduled_shutdown_at},
+          deletion_attempt_id = NULL,
+          deletion_started_at = NULL,
+          deletion_previous_status = NULL,
+          deletion_previous_billing_status = NULL,
+          deletion_previous_shutdown_warning_sent_at = NULL,
+          deletion_previous_scheduled_shutdown_at = NULL,
+          deletion_allocation_counted = NULL,
+          error_count = 0,
+          error_message = NULL,
+          updated_at = NOW()
+      WHERE id = ${agentId}
+        AND organization_id = ${orgId}
+        AND status = 'deletion_pending'
+        AND deletion_attempt_id IS NOT DISTINCT FROM ${rec.deletion_attempt_id}
+      RETURNING id
+    `);
+    if (restored.rows.length !== 1) {
+      return { success: false, error: "Agent deletion ownership changed" };
+    }
+
+    logger.info("[agent-sandbox] Cancelled queued deletion; agent restored to running", {
+      agentId,
+      orgId,
+    });
+    return { success: true };
+  }
+
+  /**
    * Phase 2 of `deleteAgent` (see there): the bounded container + VPN teardown.
    * Provider errors are captured as values so `withTimeout` rejects ONLY on a
    * genuine hang. The provider's tagged outcome distinguishes proven absence
@@ -2871,12 +3010,7 @@ export class ElizaSandboxService {
             // Path A: pass the persisted character so the container boots AS
             // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON
             // injection + packages/agent/src/runtime/sandbox-character.ts).
-            agentConfig:
-              rec.agent_config &&
-              typeof rec.agent_config === "object" &&
-              !Array.isArray(rec.agent_config)
-                ? (rec.agent_config as Record<string, unknown>)
-                : undefined,
+            agentConfig: agentConfigForProvision(rec),
             // Path A: the gateways route by character_id, so the container must
             // register under, and answer as, that id (see
             // SANDBOX_ROUTE_AGENT_ID injection).

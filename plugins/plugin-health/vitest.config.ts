@@ -14,6 +14,15 @@ const sharedSrc = fileURLToPath(
 // (ENOTDIR). Each subpath must resolve to its own source module instead.
 const aliases = [
   {
+    // plugin-scheduling (source-aliased below) imports @elizaos/core/edge;
+    // vite's test-mode resolver misses linked-package subpath exports, so pin
+    // it to the edge source entry (mirrors plugin-calendar after #19815).
+    find: /^@elizaos\/core\/edge$/,
+    replacement: fileURLToPath(
+      new URL("../../packages/core/src/index.edge.ts", import.meta.url),
+    ),
+  },
+  {
     find: /^@elizaos\/shared$/,
     replacement: `${sharedSrc}/index.ts`,
   },

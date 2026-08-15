@@ -20,6 +20,7 @@
  *  - route only shared-eligible agents here (see `agent-tier.ts`)
  */
 
+import { replaceNameTokens } from "@elizaos/core";
 import { generateText, streamText } from "ai";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import {
@@ -32,7 +33,7 @@ import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-inten
 export interface SharedTurnMessage {
   /** Stable message id used by SSE, REST history, and storage merge paths. */
   id?: string;
-  role: "user" | "assistant";
+  role: "system" | "user" | "assistant";
   content: string;
   /** Epoch-ms timestamp used by REST chat clients to reconcile persisted turns. */
   createdAt?: number;
@@ -60,6 +61,8 @@ export interface RunSharedAgentTurnInput {
   history: SharedTurnMessage[];
   /** The incoming user message or event text. */
   message: string;
+  /** Trusted lifecycle callers may add a system event instead of impersonating the user. */
+  messageRole?: "system" | "user";
   /** Stable ids assigned by the transport for the persisted user/assistant pair. */
   messageIds?: {
     user: string;
@@ -185,14 +188,24 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
   return hasLanguageModelProviderConfigured(DEFAULT_SHARED_MODEL) ? DEFAULT_SHARED_MODEL : null;
 }
 
+/**
+ * Assemble the turn's system prompt.
+ *
+ * `{{name}}` / `{{agentName}}` tokens are resolved here because a character can
+ * reach this path still carrying them: the shipped presets ship tokenized
+ * `system` / `bio` so a later rename keeps propagating, and the cloud create
+ * path seeds one verbatim. A container-backed agent gets the same substitution
+ * from `@elizaos/core`'s prompt builder; the shared turn talks to the provider
+ * directly, so it is the only renderer on this side.
+ */
 function buildSystemPrompt(character: SharedAgentCharacter): string {
   const parts: string[] = [];
-  const system = character.system?.trim();
+  const system = replaceNameTokens(character.system ?? "", character.name).trim();
   if (system) parts.push(system);
   if (character.bio?.length) {
     parts.push(
       `About you:\n- ${character.bio
-        .map((b) => b.trim())
+        .map((b) => replaceNameTokens(b, character.name).trim())
         .filter(Boolean)
         .join("\n- ")}`,
     );
@@ -212,11 +225,12 @@ function appendTurn(
   userMessage: string,
   reply: string,
   messageIds?: RunSharedAgentTurnInput["messageIds"],
+  messageRole: "system" | "user" = "user",
 ): SharedTurnMessage[] {
   const sentAt = Date.now();
   return [
     ...history,
-    { id: messageIds?.user, role: "user", content: userMessage, createdAt: sentAt },
+    { id: messageIds?.user, role: messageRole, content: userMessage, createdAt: sentAt },
     { id: messageIds?.assistant, role: "assistant", content: reply, createdAt: sentAt + 1 },
   ];
 }
@@ -244,7 +258,13 @@ export async function runSharedAgentTurn(
   if (capabilityWall) {
     return {
       reply: capabilityWall.reply,
-      history: appendTurn(input.history, message, capabilityWall.reply, input.messageIds),
+      history: appendTurn(
+        input.history,
+        message,
+        capabilityWall.reply,
+        input.messageIds,
+        input.messageRole,
+      ),
       model: "capability-wall",
       degraded: false,
       capabilityWall,
@@ -259,7 +279,13 @@ export async function runSharedAgentTurn(
   if (navIntent) {
     return {
       reply: navIntent.reply,
-      history: appendTurn(input.history, message, navIntent.reply, input.messageIds),
+      history: appendTurn(
+        input.history,
+        message,
+        navIntent.reply,
+        input.messageIds,
+        input.messageRole,
+      ),
       model: "nav-intent",
       degraded: false,
       navIntent,
@@ -272,7 +298,7 @@ export async function runSharedAgentTurn(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendTurn(input.history, message, reply, input.messageIds),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: "none",
       degraded: true,
     };
@@ -283,7 +309,7 @@ export async function runSharedAgentTurn(
     const system = buildSystemPrompt(input.character);
     const messages = [
       ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
-      { role: "user" as const, content: message },
+      { role: input.messageRole ?? ("user" as const), content: message },
     ];
     await input.onProviderDispatch?.();
     const { text, usage } = await generateText({
@@ -299,7 +325,7 @@ export async function runSharedAgentTurn(
     const reply = text.trim() || "…";
     return {
       reply,
-      history: appendTurn(input.history, message, reply, input.messageIds),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: modelId,
       degraded: false,
       usage,
@@ -341,7 +367,7 @@ export async function runSharedAgentTurnStream(
       model: "capability-wall",
       degraded: false,
       reply,
-      history: appendTurn(input.history, message, reply, input.messageIds),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       parts,
       capabilityWall,
     };
@@ -362,7 +388,7 @@ export async function runSharedAgentTurnStream(
       model: "nav-intent",
       degraded: false,
       reply,
-      history: appendTurn(input.history, message, reply, input.messageIds),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       parts,
       navIntent,
     };
@@ -374,7 +400,7 @@ export async function runSharedAgentTurnStream(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendTurn(input.history, message, reply, input.messageIds),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: "none",
       degraded: true,
     };
@@ -385,7 +411,7 @@ export async function runSharedAgentTurnStream(
     const system = buildSystemPrompt(input.character);
     const messages = [
       ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
-      { role: "user" as const, content: message },
+      { role: input.messageRole ?? ("user" as const), content: message },
     ];
     await input.onProviderDispatch?.();
     const result = streamText({

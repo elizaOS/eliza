@@ -44,6 +44,12 @@ const SECRET_SERVICE_TYPES = [
   "VAULT",
   SECRETS_SERVICE_TYPE,
 ] as const;
+// Write candidates exclude the in-memory core SECRETS service: tokens written
+// there die with the process while the persisted vaultRef dangles (#18080).
+// SECRETS stays a read-side probe above for refs written by older builds.
+const SECRET_WRITER_SERVICE_TYPES = SECRET_SERVICE_TYPES.filter(
+  (type) => type !== SECRETS_SERVICE_TYPE,
+);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -613,7 +619,7 @@ async function writeSecretValue(
   accountId: string,
   credentialType: string,
 ): Promise<void> {
-  for (const serviceType of SECRET_SERVICE_TYPES) {
+  for (const serviceType of SECRET_WRITER_SERVICE_TYPES) {
     const service = runtimeService(runtime, serviceType) as {
       putSecret?: (params: {
         vaultRef: string;
@@ -629,7 +635,6 @@ async function writeSecretValue(
         value: string,
         options?: Record<string, unknown>,
       ) => Promise<void> | void;
-      setGlobal?: (key: string, value: string) => Promise<boolean> | boolean;
     } | null;
     if (!service) continue;
     if (typeof service.putSecret === "function") {
@@ -643,10 +648,6 @@ async function writeSecretValue(
         caller: "plugin-calendar",
       });
       return;
-    }
-    if (typeof service.setGlobal === "function") {
-      if (await service.setGlobal(vaultRef, value)) return;
-      continue;
     }
     if (typeof service.set === "function") {
       await service.set(vaultRef, value, {

@@ -459,6 +459,8 @@ async function connectSession(opts: {
   sttConnectTimeoutMs?: number;
   prewarmElizaContext?: () => Promise<void>;
   openingGreeting?: string;
+  openingPrompt?: string;
+  openingClientMessageId?: string;
   cacheWarmingRetryDelaysMs?: readonly number[];
   onClearAudio?: () => void;
   fish?: {
@@ -502,6 +504,10 @@ async function connectSession(opts: {
           : {}),
         ...(opts.openingGreeting
           ? { openingGreeting: opts.openingGreeting }
+          : {}),
+        ...(opts.openingPrompt ? { openingPrompt: opts.openingPrompt } : {}),
+        ...(opts.openingClientMessageId
+          ? { openingClientMessageId: opts.openingClientMessageId }
           : {}),
         ...(opts.cacheWarmingRetryDelaysMs
           ? {
@@ -581,6 +587,37 @@ describe("voice-session WS lifecycle", () => {
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("speaking_end");
+  });
+
+  test("generates the call opener as a stable canonical system turn", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      openingPrompt: "The user called. Greet them using existing history.",
+      openingClientMessageId: "twilio-call:CA123:started",
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        requests.push(
+          JSON.parse(String(init?.body)) as Record<string, unknown>,
+        );
+        return makeCanonicalChunkFetch(["Good to hear from you again."])(
+          "",
+          {},
+        );
+      }) as unknown as typeof fetch,
+    });
+    await flush();
+
+    expect(requests).toEqual([
+      expect.objectContaining({
+        text: "The user called. Greet them using existing history.",
+        messageRole: "system",
+        clientMessageId: "twilio-call:CA123:started",
+      }),
+    ]);
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toBe(
+      "Good to hear from you again.",
+    );
   });
 
   test("stt_final posts the transcript to the canonical agent conversation stream with scoped identity", async () => {
@@ -810,13 +847,10 @@ describe("voice-session WS lifecycle", () => {
     expect(prewarmCalls).toBe(1);
   });
 
-  test("first response joins prewarm and an interruption discards the obsolete turn", async () => {
-    let resolvePrewarm: () => void = () => {};
-    const prewarm = new Promise<void>((resolve) => {
-      resolvePrewarm = resolve;
-    });
+  test("first response does not wait for latency-only prewarm", async () => {
+    const prewarm = new Promise<void>(() => undefined);
     const requestTexts: string[] = [];
-    const successFetch = makeSseFetch(["Replacement response."]);
+    const successFetch = makeSseFetch(["Immediate response."]);
     const client = new FakeClientSocket();
     await connectSession({
       client,
@@ -831,20 +865,11 @@ describe("voice-session WS lifecycle", () => {
     const ttsBefore = FakeCartesiaSocket.instances.length;
 
     ink.emitTurn("turn.start");
-    ink.emitTurn("turn.end", "obsolete first request");
+    ink.emitTurn("turn.end", "first request");
+    await flush();
     await flush();
     expect(FakeCartesiaSocket.instances.length).toBe(ttsBefore + 1);
-    expect(requestTexts).toEqual([]);
-
-    ink.emitTurn("turn.start");
-    ink.emitTurn("turn.end", "replacement request");
-    await flush();
-    expect(requestTexts).toEqual([]);
-
-    resolvePrewarm();
-    await flush();
-    await flush();
-    expect(requestTexts).toEqual(["replacement request"]);
+    expect(requestTexts).toEqual(["first request"]);
     expect(client.controlTypes()).toContain("llm_first_text");
   });
 
@@ -1632,7 +1657,7 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBe(framesAfterInterrupt);
   });
 
-  test("semantic turn-start interrupts immediately and the caller gets the next response", async () => {
+  test("confirmed caller words interrupt immediately and get the next response", async () => {
     const client = new FakeClientSocket();
     await connectSession({
       client,
@@ -1654,13 +1679,19 @@ describe("voice-session WS lifecycle", () => {
     const audioBeforeInterruption = client.audioFrames.length;
     ink.emitTurn("turn.start");
     await flush();
+    expect(client.controlFrames).not.toContainEqual(
+      expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
+    );
+    expect(cartesia.closed).toBe(false);
+
+    ink.emitTurn("turn.update", "wait");
+    await flush();
     expect(client.controlFrames).toContainEqual(
       expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
     );
     expect(cartesia.closed).toBe(true);
     expect(client.audioFrames).toHaveLength(audioBeforeInterruption);
 
-    ink.emitTurn("turn.update", "wait");
     ink.emitTurn("turn.end", "wait");
     await flush();
     await flush();
@@ -1668,7 +1699,7 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBeGreaterThan(audioBeforeInterruption);
   });
 
-  test("semantic turn-start flushes transport audio after server TTS completed", async () => {
+  test("confirmed caller words flush transport audio after server TTS completed", async () => {
     const client = new FakeClientSocket();
     let clearCount = 0;
     await connectSession({
@@ -1690,6 +1721,10 @@ describe("voice-session WS lifecycle", () => {
     clearCount = 0;
 
     ink.emitTurn("turn.start");
+    await flush();
+    expect(clearCount).toBe(0);
+
+    ink.emitTurn("turn.update", "wait");
     await flush();
     expect(clearCount).toBe(1);
   });

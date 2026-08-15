@@ -481,7 +481,9 @@ export interface Action {
 	 * early ack is warranted on latency-sensitive channels (voice): only turns
 	 * whose candidate actions include an async-handoff action get an early
 	 * ack, so synchronous retrieval turns deliver one reply — the answer — on
-	 * every channel. Promoted subactions inherit the parent's flag.
+	 * every channel. At the terminal no-answer floor, the same flag retains an
+	 * ack only when the executed action succeeded and supplied an applied
+	 * receipt with commit proof. Promoted subactions inherit the parent's flag.
 	 */
 	asyncHandoff?: boolean;
 

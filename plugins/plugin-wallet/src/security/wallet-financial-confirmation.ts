@@ -10,8 +10,11 @@
  * alone are not sufficient — the LLM cannot bypass this gate by setting
  * request params, since confirmation state lives in runtime cache and is
  * keyed off the actual transfer/swap/bridge parameters, not caller-supplied
- * flags. `dryRun=true` requests skip the gate entirely (no signing occurs).
- * Do not remove or short-circuit this gate from calling code.
+ * flags. `dryRun=true` requests skip the gate entirely (no signing occurs),
+ * and so does `mode="simulate"` (the request only ever builds an unsigned
+ * transaction and calls `connection.simulateTransaction`; nothing it does can
+ * authorize or lead to a broadcast). Do not remove or short-circuit this gate
+ * from calling code.
  */
 import type {
   ActionResult,
@@ -74,9 +77,11 @@ export function walletFinancialRangeKey(
 }
 
 export function requiresWalletFinancialConfirmation(
-  params: Pick<WalletFinancialWriteParams, "subaction" | "dryRun">,
+  params: Pick<WalletFinancialWriteParams, "subaction" | "dryRun" | "mode">,
 ): boolean {
-  if (params.dryRun) {
+  // dryRun and mode="simulate" both never sign or submit, so neither needs the
+  // out-of-band confirmation turn this gate exists to enforce.
+  if (params.dryRun || params.mode === "simulate") {
     return false;
   }
   return ON_CHAIN_SUBACTIONS.has(params.subaction);

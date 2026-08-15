@@ -24,8 +24,13 @@ import { formatError } from "../../../utils/format-error.ts";
 import { resolveStateDir } from "../utils/paths.ts";
 import { getRegistryEntry } from "./pluginRegistryService.ts";
 
-const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
+// Guarded for edge isolates: the child_process builtin is absent there, and
+// promisify(undefined) at module scope would kill the whole import. Node hosts
+// get the real promisified binding; edge paths fail at use instead.
+const execAsync =
+	typeof exec === "function" ? promisify(exec) : (undefined as never);
+const execFileAsync =
+	typeof execFile === "function" ? promisify(execFile) : (undefined as never);
 
 const CORE_GIT_URL = "https://github.com/elizaos/eliza.git";
 const CORE_BRANCH = "develop";

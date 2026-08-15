@@ -913,6 +913,21 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 	});
 
 	// ── userStream (voice) ─────────────────────────────────────────────
+	service.client.on("voiceStateUpdate", async (oldState, newState) => {
+		try {
+			await service.voiceManager?.handleVoiceStateUpdate(oldState, newState);
+		} catch (error) {
+			service.runtime.logger.error(
+				{
+					src: "plugin:discord:service:voice",
+					agentId: service.runtime.agentId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Error handling Discord voice state update",
+			);
+		}
+	});
+
 	service.client.on(
 		"userStream",
 		(entityId, name, userName, channel, opusDecoder) => {

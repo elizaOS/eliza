@@ -148,24 +148,6 @@ function validateCreateInput(input: CreatePaymentRequestInput): void {
   }
 }
 
-function redactSettlementPayload(args: {
-  paymentRequest: PaymentRequestRow;
-  status: PaymentRequestStatus;
-  txRef?: string | null;
-  error?: string;
-}): Record<string, unknown> {
-  return {
-    paymentRequestId: args.paymentRequest.id,
-    organizationId: args.paymentRequest.organizationId,
-    provider: args.paymentRequest.provider,
-    amountCents: args.paymentRequest.amountCents,
-    currency: args.paymentRequest.currency,
-    status: args.status,
-    txRef: args.txRef ?? null,
-    error: args.error,
-  };
-}
-
 function assertNotTerminal(row: PaymentRequestRow, action: string): void {
   if (TERMINAL_STATUSES.has(row.status)) {
     throw new Error(
@@ -244,21 +226,11 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
     });
 
     const intent = await adapter.createIntent({ request: created });
-
-    const persisted = await this.repository.updatePaymentRequestStatus(created.id, null, {
-      hostedUrl: intent.hostedUrl ?? null,
-      providerIntent: intent.providerIntent,
-    });
-    const row = requireRow(persisted, created.id, "post-intent persist");
-
-    await this.repository.recordPaymentRequestEvent({
-      paymentRequestId: row.id,
-      eventName: "payment.created",
-      redactedPayload: redactSettlementPayload({
-        paymentRequest: row,
-        status: row.status,
-      }),
-    });
+    const row = await this.markInitialized(
+      created.id,
+      intent.providerIntent,
+      intent.hostedUrl ?? null,
+    );
 
     logger.info("[PaymentRequests] Created payment request", {
       paymentRequestId: row.id,
@@ -268,7 +240,7 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
       currency: row.currency,
     });
 
-    return { paymentRequest: row, hostedUrl: intent.hostedUrl };
+    return { paymentRequest: row, hostedUrl: row.hostedUrl ?? undefined };
   }
 
   async get(id: string, organizationId: string): Promise<PaymentRequestRow | null> {
@@ -296,27 +268,34 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
   }
 
   async cancel(id: string, organizationId: string, reason?: string): Promise<PaymentRequestRow> {
-    const existing = requireRow(await this.repository.getPaymentRequest(id), id, "cancel lookup");
-    if (existing.organizationId !== organizationId) {
-      throw new Error(`Payment request ${id} does not belong to organization ${organizationId}`);
-    }
-    assertCancelable(existing);
-
-    const updated = requireRow(
-      await this.repository.updatePaymentRequestStatus(id, "canceled"),
+    const canceledAt = new Date();
+    const updated = await this.repository.cancelPaymentRequest(
       id,
-      "cancel update",
+      organizationId,
+      reason,
+      canceledAt,
     );
-
-    await this.repository.recordPaymentRequestEvent({
-      paymentRequestId: id,
-      eventName: "payment.canceled",
-      redactedPayload: redactSettlementPayload({
-        paymentRequest: updated,
-        status: "canceled",
-        error: reason,
-      }),
-    });
+    if (!updated) {
+      const existing = requireRow(
+        await this.repository.getPaymentRequest(id),
+        id,
+        "cancel compare-and-set",
+      );
+      if (existing.organizationId !== organizationId) {
+        throw new Error(`Payment request ${id} does not belong to organization ${organizationId}`);
+      }
+      if (existing.status === "canceled") return existing;
+      if (
+        (existing.status === "pending" || existing.status === "delivered") &&
+        existing.expiresAt.getTime() <= canceledAt.getTime()
+      ) {
+        throw new Error(
+          `Cannot cancel payment request ${id}: expired at ${existing.expiresAt.toISOString()}`,
+        );
+      }
+      assertCancelable(existing);
+      throw new Error(`Cannot cancel payment request ${id}: state changed concurrently`);
+    }
 
     logger.info("[PaymentRequests] Canceled payment request", {
       paymentRequestId: id,
@@ -339,17 +318,6 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
 
     const expired = await this.repository.expirePastPaymentRequest(id, now);
     if (expired) {
-      const row = await this.repository.getPaymentRequest(id);
-      if (row) {
-        await this.repository.recordPaymentRequestEvent({
-          paymentRequestId: id,
-          eventName: "payment.expired",
-          redactedPayload: redactSettlementPayload({
-            paymentRequest: row,
-            status: "expired",
-          }),
-        });
-      }
       logger.info("[PaymentRequests] Expired payment request", {
         paymentRequestId: id,
         organizationId,
@@ -362,7 +330,6 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
 
   async expirePast(now: Date = new Date()): Promise<string[]> {
     const expiredIds = await this.repository.expirePastPaymentRequests(now);
-    await this.recordExpiredEvents(expiredIds);
     if (expiredIds.length > 0) {
       logger.info("[PaymentRequests] Expired payment requests", {
         count: expiredIds.length,
@@ -373,7 +340,6 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
 
   async expirePastForOrg(organizationId: string, now: Date = new Date()): Promise<string[]> {
     const expiredIds = await this.repository.expirePastPaymentRequestsForOrg(organizationId, now);
-    await this.recordExpiredEvents(expiredIds);
     if (expiredIds.length > 0) {
       logger.info("[PaymentRequests] Expired payment requests", {
         organizationId,
@@ -383,56 +349,30 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
     return expiredIds;
   }
 
-  private async recordExpiredEvents(expiredIds: string[]): Promise<void> {
-    for (const id of expiredIds) {
-      const row = await this.repository.getPaymentRequest(id);
-      if (!row) continue;
-      await this.repository.recordPaymentRequestEvent({
-        paymentRequestId: id,
-        eventName: "payment.expired",
-        redactedPayload: redactSettlementPayload({
-          paymentRequest: row,
-          status: "expired",
-        }),
-      });
-    }
-  }
-
   async markSettled(
     id: string,
     settlementTxRef: string,
     settlementProof: Record<string, unknown>,
   ): Promise<PaymentRequestRow> {
-    const existing = requireRow(
-      await this.repository.getPaymentRequest(id),
-      id,
-      "markSettled lookup",
-    );
-    if (existing.status === "settled" && existing.settlementTxRef === settlementTxRef) {
-      return existing;
-    }
-    assertNotTerminal(existing, "settle");
-
     const settledAt = new Date();
-    const updated = requireRow(
-      await this.repository.updatePaymentRequestStatus(id, "settled", {
-        settledAt,
-        settlementTxRef,
-        settlementProof,
-      }),
+    const updated = await this.repository.settlePaymentRequest(
       id,
-      "markSettled update",
+      settledAt,
+      settlementTxRef,
+      settlementProof,
     );
-
-    await this.repository.recordPaymentRequestEvent({
-      paymentRequestId: id,
-      eventName: "payment.settled",
-      redactedPayload: redactSettlementPayload({
-        paymentRequest: updated,
-        status: "settled",
-        txRef: settlementTxRef,
-      }),
-    });
+    if (!updated) {
+      const existing = requireRow(
+        await this.repository.getPaymentRequest(id),
+        id,
+        "markSettled compare-and-set",
+      );
+      if (existing.status === "settled" && existing.settlementTxRef === settlementTxRef) {
+        return existing;
+      }
+      assertNotTerminal(existing, "settle");
+      throw new Error(`Cannot settle payment request ${id}: state changed concurrently`);
+    }
 
     logger.info("[PaymentRequests] Settled payment request", {
       paymentRequestId: id,
@@ -449,53 +389,50 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
     providerIntent: Record<string, unknown>,
     hostedUrl?: string | null,
   ): Promise<PaymentRequestRow> {
-    const updated = requireRow(
-      await this.repository.updatePaymentRequestStatus(id, "delivered", {
-        providerIntent,
-        hostedUrl,
-      }),
+    const initializedAt = new Date();
+    const updated = await this.repository.initializePaymentRequest(
       id,
-      "markInitialized update",
+      providerIntent,
+      hostedUrl ?? null,
+      initializedAt,
     );
+    if (updated) return updated;
 
-    await this.repository.recordPaymentRequestEvent({
-      paymentRequestId: id,
-      eventName: "payment.delivered",
-      redactedPayload: redactSettlementPayload({
-        paymentRequest: updated,
-        status: updated.status,
-      }),
-    });
-
-    return updated;
-  }
-
-  async markFailed(id: string, error: string): Promise<PaymentRequestRow> {
     const existing = requireRow(
       await this.repository.getPaymentRequest(id),
       id,
-      "markFailed lookup",
+      "markInitialized compare-and-set",
     );
-    if (existing.status === "failed") {
+    if (
+      existing.status === "delivered" &&
+      existing.hostedUrl === (hostedUrl ?? null) &&
+      JSON.stringify(existing.providerIntent) === JSON.stringify(providerIntent)
+    ) {
       return existing;
     }
-    assertNotTerminal(existing, "fail");
-
-    const updated = requireRow(
-      await this.repository.updatePaymentRequestStatus(id, "failed"),
-      id,
-      "markFailed update",
+    if (existing.status === "pending" && existing.expiresAt.getTime() <= initializedAt.getTime()) {
+      throw new Error(
+        `Cannot initialize payment request ${id}: expired at ${existing.expiresAt.toISOString()}`,
+      );
+    }
+    assertNotTerminal(existing, "initialize");
+    throw new Error(
+      `Cannot initialize payment request ${id}: state changed concurrently to "${existing.status}"`,
     );
+  }
 
-    await this.repository.recordPaymentRequestEvent({
-      paymentRequestId: id,
-      eventName: "payment.failed",
-      redactedPayload: redactSettlementPayload({
-        paymentRequest: updated,
-        status: "failed",
-        error,
-      }),
-    });
+  async markFailed(id: string, error: string): Promise<PaymentRequestRow> {
+    const updated = await this.repository.failPaymentRequest(id, error, new Date());
+    if (!updated) {
+      const existing = requireRow(
+        await this.repository.getPaymentRequest(id),
+        id,
+        "markFailed compare-and-set",
+      );
+      if (existing.status === "failed") return existing;
+      assertNotTerminal(existing, "fail");
+      throw new Error(`Cannot fail payment request ${id}: state changed concurrently`);
+    }
 
     logger.warn("[PaymentRequests] Failed payment request", {
       paymentRequestId: id,
@@ -513,15 +450,23 @@ export function createPaymentRequestsService(
   return new PaymentRequestsServiceImpl(deps);
 }
 
-export function toPublicPaymentRequest(row: PaymentRequestRow): PublicPaymentRequest {
+export function toPublicPaymentRequest(
+  row: PaymentRequestRow,
+  now: Date = new Date(),
+): PublicPaymentRequest {
+  const status =
+    (row.status === "pending" || row.status === "delivered") &&
+    row.expiresAt.getTime() <= now.getTime()
+      ? "expired"
+      : row.status;
   return {
     id: row.id,
     provider: row.provider,
     amountCents: row.amountCents,
     currency: row.currency,
     reason: row.reason,
-    status: row.status,
-    hostedUrl: row.hostedUrl,
+    status,
+    hostedUrl: status === "expired" ? null : row.hostedUrl,
     expiresAt: row.expiresAt,
   };
 }

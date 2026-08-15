@@ -380,7 +380,13 @@ export class UserCharactersRepository {
    * filtered client-side by callers if needed.
    */
   async listPublic(
-    options: { search?: string; category?: string; limit?: number; offset?: number } = {},
+    options: {
+      search?: string;
+      category?: string;
+      limit?: number;
+      offset?: number;
+      orderBy?: "name";
+    } = {},
   ): Promise<UserCharacter[]> {
     const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
     const offset = Math.max(options.offset ?? 0, 0);
@@ -400,10 +406,41 @@ export class UserCharactersRepository {
 
     return await dbRead.query.userCharacters.findMany({
       where: and(...conditions),
-      orderBy: desc(userCharacters.created_at),
+      // orderBy "name" uses COLLATE "C" so windows fetched here can be merged
+      // with plain code-unit comparison by callers paginating across sources
+      // (discovery, #19076/#19083): the caller's comparator and this ORDER BY
+      // must be the same total order or window-based pagination drops rows.
+      orderBy:
+        options.orderBy === "name"
+          ? [sql`${userCharacters.name} COLLATE "C" asc`, sql`${userCharacters.id} asc`]
+          : desc(userCharacters.created_at),
       limit,
       offset,
     });
+  }
+
+  /**
+   * Counts public catalog characters under the same conditions as listPublic,
+   * so paginating callers can report exact totals without scanning (#19083).
+   * (countPublic below serves the my-agents search surface with different
+   * filter semantics.)
+   */
+  async countPublicCatalog(options: { search?: string; category?: string } = {}): Promise<number> {
+    const conditions: SQL[] = [
+      eq(userCharacters.is_public, true),
+      eq(userCharacters.source, "cloud"),
+    ];
+    if (options.category) {
+      conditions.push(eq(userCharacters.category, options.category));
+    }
+    if (options.search) {
+      conditions.push(ilikeEscaped(userCharacters.name, options.search));
+    }
+    const [result] = await dbRead
+      .select({ count: sql<number>`count(*)` })
+      .from(userCharacters)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
 
   /**
