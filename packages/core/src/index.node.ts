@@ -326,6 +326,7 @@ export * from "./schemas/character";
 export * from "./schemas/index";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
+export * from "./search/keyless-web-search";
 // Export security utilities
 export * from "./security";
 export * from "./security/basic-email";
