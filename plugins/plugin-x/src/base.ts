@@ -41,6 +41,7 @@ import {
 import {
   buildTwitterMessageMetadata,
   createMemorySafe,
+  reconcileTwitterRoom,
   reconcileTwitterWorld,
 } from "./utils/memory";
 import { getSetting } from "./utils/settings";
@@ -613,10 +614,17 @@ export class ClientBase {
             },
           });
 
-          const roomId = createUniqueUuid(
-            this.runtime,
-            this.tweetRoomKey(tweet),
-          );
+          const roomKey = this.tweetRoomKey(tweet);
+          const roomId = createUniqueUuid(this.runtime, roomKey);
+          await reconcileTwitterRoom(this.runtime, {
+            id: roomId,
+            name: `Twitter conversation ${roomKey}`,
+            source: "twitter",
+            type: ChannelType.FEED,
+            channelId: roomKey,
+            serverId: tweet.userId,
+            worldId,
+          });
           // Ensure the entity exists with proper world association
           await this.runtime.ensureConnection({
             entityId,
@@ -749,7 +757,17 @@ export class ClientBase {
         },
       });
 
-      const roomId = createUniqueUuid(this.runtime, this.tweetRoomKey(tweet));
+      const roomKey = this.tweetRoomKey(tweet);
+      const roomId = createUniqueUuid(this.runtime, roomKey);
+      await reconcileTwitterRoom(this.runtime, {
+        id: roomId,
+        name: `Twitter conversation ${roomKey}`,
+        source: "twitter",
+        type: ChannelType.FEED,
+        channelId: roomKey,
+        serverId: tweet.userId,
+        worldId,
+      });
 
       // Ensure the entity exists with proper world association
       await this.runtime.ensureConnection({

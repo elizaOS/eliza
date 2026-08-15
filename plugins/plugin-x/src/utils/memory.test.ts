@@ -70,11 +70,13 @@ describe("Twitter memory utilities", () => {
     const ensureWorldExists = vi.fn(async () => undefined);
     const updateWorld = vi.fn(async () => undefined);
     const ensureRoomExists = vi.fn(async () => undefined);
+    const updateRoom = vi.fn(async () => undefined);
     const ensureConnection = vi.fn(async () => undefined);
     const runtime = runtimeWithStorage({
       ensureWorldExists,
       updateWorld,
       ensureRoomExists,
+      updateRoom,
       ensureConnection,
     });
 

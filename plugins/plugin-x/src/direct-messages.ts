@@ -15,7 +15,11 @@ import {
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import type { TwitterClientState } from "./types";
-import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
+import {
+  createMemorySafe,
+  reconcileTwitterRoom,
+  reconcileTwitterWorld,
+} from "./utils/memory";
 import { getSetting } from "./utils/settings";
 
 interface DirectMessageEvent {
@@ -214,7 +218,7 @@ export class TwitterDirectMessageClient {
         twitter: { accountId: this.client.accountId, id: senderId, username },
       },
     });
-    await this.runtime.ensureRoomExists({
+    await reconcileTwitterRoom(this.runtime, {
       id: roomId,
       name: `X DM with @${username}`,
       source: "x",

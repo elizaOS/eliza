@@ -12,6 +12,7 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  type Room,
   type UUID,
   type World,
 } from "@elizaos/core";
@@ -57,6 +58,15 @@ export async function reconcileTwitterWorld(
 ): Promise<void> {
   await runtime.ensureWorldExists(world);
   await runtime.updateWorld(world);
+}
+
+/** Persists the canonical X world pointer on create-only legacy runtimes. */
+export async function reconcileTwitterRoom(
+  runtime: IAgentRuntime,
+  room: Room,
+): Promise<void> {
+  await runtime.ensureRoomExists(room);
+  await runtime.updateRoom(room);
 }
 
 /**
@@ -141,7 +151,7 @@ export async function ensureTwitterContext(
     });
 
     // Ensure room exists
-    await runtime.ensureRoomExists({
+    await reconcileTwitterRoom(runtime, {
       id: roomId,
       name: `Twitter conversation ${conversationId}`,
       source: "twitter",

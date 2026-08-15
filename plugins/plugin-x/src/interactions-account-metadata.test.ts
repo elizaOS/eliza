@@ -24,6 +24,7 @@ function createRuntime(settings: Record<string, string> = {}) {
     emitEvent: vi.fn(),
     ensureConnection: vi.fn(async () => undefined),
     ensureRoomExists: vi.fn(async () => undefined),
+    updateRoom: vi.fn(async () => undefined),
     ensureWorldExists: vi.fn(async () => undefined),
     updateWorld: vi.fn(async () => undefined),
     getMemoryById: vi.fn(async () => null),

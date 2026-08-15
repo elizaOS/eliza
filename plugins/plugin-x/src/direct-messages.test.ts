@@ -92,6 +92,7 @@ describe("TwitterDirectMessageClient", () => {
       ensureWorldExists: vi.fn(async () => undefined),
       updateWorld: vi.fn(async () => undefined),
       ensureRoomExists: vi.fn(async () => undefined),
+      updateRoom: vi.fn(async () => undefined),
       ensureConnection: vi.fn(async () => undefined),
       messageService: { handleMessage },
       reportError: vi.fn(),

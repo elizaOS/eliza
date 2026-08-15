@@ -47,6 +47,7 @@ import {
   createMemorySafe,
   ensureTwitterContext as ensureContext,
   isTweetProcessed,
+  reconcileTwitterRoom,
   reconcileTwitterWorld,
 } from "./utils/memory";
 import { getSetting } from "./utils/settings";
@@ -928,7 +929,19 @@ ${tweet.text}`;
           },
         });
 
-        // 2. Ensure entity connection
+        // 2. Ensure the room points at the canonical user world before the
+        // connection path can synthesize a legacy per-room fallback world.
+        await reconcileTwitterRoom(this.runtime, {
+          id: roomId,
+          name: `Twitter conversation ${conversationId}`,
+          source: "twitter",
+          type: ChannelType.FEED,
+          channelId: conversationId,
+          serverId: userId,
+          worldId: worldId,
+        });
+
+        // 3. Ensure entity connection
         await this.runtime.ensureConnection({
           entityId,
           roomId,
@@ -940,18 +953,7 @@ ${tweet.text}`;
           worldId: worldId,
         });
 
-        // 2.5. Ensure room exists
-        await this.runtime.ensureRoomExists({
-          id: roomId,
-          name: `Twitter conversation ${conversationId}`,
-          source: "twitter",
-          type: ChannelType.FEED,
-          channelId: conversationId,
-          serverId: userId,
-          worldId: worldId,
-        });
-
-        // 3. Create a memory for the tweet
+        // 4. Create a memory for the tweet
         const memory: Memory = {
           id: tweetId,
           entityId,
