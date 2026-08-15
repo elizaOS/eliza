@@ -56,16 +56,35 @@ export async function hydrateVoiceSharedAgentScope(
         // hydration makes the next turn fully serviceable.
         const characterId = agent.character_id;
         const hydrateCharacter = async (): Promise<void> => {
-          if (!characterId) return;
-          const cacheKey = `character:data:${characterId}`;
-          if (await cache.get(cacheKey)) return;
-          const character =
-            await userCharactersRepository.findByIdInOrganization(
-              characterId,
-              claims.organizationId,
-            );
-          if (!character) return;
-          await cache.set(cacheKey, character, CacheTTL.agent.characterData);
+          if (characterId) {
+            const cacheKey = `character:data:${characterId}`;
+            if (await cache.get(cacheKey)) return;
+            const linked =
+              await userCharactersRepository.findByIdInOrganization(
+                characterId,
+                claims.organizationId,
+              );
+            if (linked) {
+              await cache.set(cacheKey, linked, CacheTTL.agent.characterData);
+            }
+          }
+        };
+        const warmVoiceModelPricing = async (): Promise<void> => {
+          const [pricing, voiceConfig] = await Promise.all([
+            import("@/lib/pricing"),
+            import("@/lib/voice-session/config"),
+          ]);
+          const { calculateCost, getProviderFromModel, normalizeModelName } =
+            pricing;
+          const { resolveElizaModel } = voiceConfig;
+          const model = resolveElizaModel(env);
+          await calculateCost(
+            normalizeModelName(model),
+            getProviderFromModel(model),
+            1,
+            1,
+            "bitrouter",
+          );
         };
 
         // Publish the authorization gate as soon as the authoritative agent
@@ -89,6 +108,14 @@ export async function hydrateVoiceSharedAgentScope(
             logger.warn("[voice-scope-hydration] character prefill failed", {
               agentId: claims.agentId,
               characterId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }),
+          warmVoiceModelPricing().catch((error) => {
+            // error-policy:J7 pricing hydration is latency-only; the first turn
+            // retains the canonical typed cache-warming retry fallback.
+            logger.warn("[voice-scope-hydration] pricing prefill failed", {
+              agentId: claims.agentId,
               error: error instanceof Error ? error.message : String(error),
             });
           }),
