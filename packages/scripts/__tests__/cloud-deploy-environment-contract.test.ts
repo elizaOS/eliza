@@ -24,7 +24,18 @@ interface WorkflowJob {
   env?: Record<string, string>;
   environment?: string;
   needs?: string | string[];
+  "runs-on"?:
+    | string
+    | {
+        group?: string;
+        labels?: string[];
+      };
   steps?: WorkflowStep[];
+  strategy?: {
+    matrix?: {
+      include?: Array<Record<string, string>>;
+    };
+  };
 }
 
 interface Workflow {
@@ -53,6 +64,8 @@ const infraSource = read(".github/workflows/infra.yml");
 const infra = parse(".github/workflows/infra.yml");
 const slopHubSource = read(".github/workflows/slophub-cutover.yml");
 const slopHub = parse(".github/workflows/slophub-cutover.yml");
+const prodOpsSource = read(".github/workflows/prod-ops-runner.yml");
+const prodOps = parse(".github/workflows/prod-ops-runner.yml");
 const provisioning = parse(
   ".github/workflows/deploy-eliza-provisioning-worker.yml",
 );
@@ -104,6 +117,8 @@ describe("canonical cloud deployment environment contract", () => {
 
     expect(slopHub.jobs?.cutover?.needs).toBe("validate-source");
     expect(slopHub.jobs?.cutover?.environment).toBe("production");
+    expect(slopHub.jobs?.["validate-source"]?.["runs-on"]).toBe("ubuntu-24.04");
+    expect(slopHub.jobs?.cutover?.["runs-on"]).toBe("ubuntu-24.04");
     expect(slopHub.jobs?.cutover?.env).toBeUndefined();
     expect(
       step(slopHub, "validate-source", "Require production main").run,
@@ -157,6 +172,54 @@ describe("canonical cloud deployment environment contract", () => {
       "OIDC_REDIRECT_URI_ALIASES",
     );
     expect(cloudSource).not.toContain("secrets.OIDC_REDIRECT_URI_ALIASES");
+  });
+
+  test("reserves prod-ops for a protected manual main-branch doctor", () => {
+    const triggerBlock = prodOpsSource.slice(
+      prodOpsSource.indexOf("on:"),
+      prodOpsSource.indexOf("\nconcurrency:"),
+    );
+    expect(triggerBlock).toContain("workflow_dispatch:");
+    for (const forbiddenTrigger of ["push:", "pull_request:", "schedule:"]) {
+      expect(triggerBlock).not.toContain(forbiddenTrigger);
+    }
+    expect(prodOps.jobs?.doctor?.needs).toBe("validate-source");
+    expect(prodOps.jobs?.doctor?.environment).toBe("production");
+    expect(prodOps.jobs?.["validate-source"]?.["runs-on"]).toBe("ubuntu-24.04");
+    expect(prodOps.jobs?.doctor?.["runs-on"]).toEqual({
+      group: "prod-ops",
+      labels: ["self-hosted", "Linux", "X64", "$" + "{{ matrix.slot }}"],
+    });
+    expect(prodOps.jobs?.doctor?.strategy?.matrix?.include).toEqual([
+      {
+        slot: "prod-ops-1",
+        runner_name_prefix: "eliza-prod-ops-1-",
+      },
+      {
+        slot: "prod-ops-2",
+        runner_name_prefix: "eliza-prod-ops-2-",
+      },
+    ]);
+    expect(
+      step(prodOps, "validate-source", "Require production main").run,
+    ).toContain('"refs/heads/main"');
+    expect(infra.jobs?.["validate-source"]?.["runs-on"]).toBe("ubuntu-24.04");
+    expect(infra.jobs?.terraform?.["runs-on"]).toBe("ubuntu-24.04");
+    const doctor = step(
+      prodOps,
+      "doctor",
+      "Verify runner identity and workload isolation",
+    );
+    expect(doctor.run).toContain("/etc/eliza/prod-ops-runner");
+    expect(doctor.run).toContain("public_pr_jobs=forbidden");
+    for (const forbiddenService of [
+      "forgejo",
+      "caddy",
+      "eliza-provisioning-worker",
+      "docker",
+    ]) {
+      expect(doctor.run).toContain(forbiddenService);
+    }
   });
 
   test("gates protected Terraform operations on the canonical source ref", () => {
