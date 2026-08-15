@@ -491,11 +491,17 @@ export async function sharedRestMessagesGet(
   namespace: RuntimeDurableObjectNamespace,
 ): Promise<{ messages: SharedRestMessage[] }> {
   const history = await coordinateSharedHistory(agentId, conversationId, { namespace });
-  const messages = history.map((turn, index) => ({
+  // Lifecycle system events shape model continuity but are not authored chat
+  // bubbles, so keep them private to the canonical history/prompt boundary.
+  const visibleHistory = history.filter(
+    (turn): turn is typeof turn & { role: "user" | "assistant" } =>
+      turn.role === "user" || turn.role === "assistant",
+  );
+  const messages = visibleHistory.map((turn, index) => ({
     id: turn.id ?? `${conversationId}:${index}`,
     role: turn.role,
     text: turn.content,
-    timestamp: sharedRestMessageTimestamp(turn, index, history.length),
+    timestamp: sharedRestMessageTimestamp(turn, index, visibleHistory.length),
     ...(turn.role === "assistant" && turn.interrupted ? { interrupted: true } : {}),
   }));
   return { messages };
@@ -517,6 +523,11 @@ export async function sharedRestMessageSend(
   namespace: RuntimeDurableObjectNamespace,
   clientMessageId?: string,
   funding: "organization-credits" | "platform" = "organization-credits",
+  trustedDelivery?: {
+    platform: "telegram";
+    project: string;
+    chatId: string;
+  },
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -528,6 +539,7 @@ export async function sharedRestMessageSend(
       text,
       roomId: conversationId,
       ...(clientMessageId ? { clientMessageId } : {}),
+      ...(trustedDelivery ? { trustedDelivery } : {}),
     },
   };
   // The production coordinator and Worker lifetime are required together so a

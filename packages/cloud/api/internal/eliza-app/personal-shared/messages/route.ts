@@ -13,18 +13,64 @@ import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversat
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import { sharedRestMessageSend } from "@/lib/services/shared-runtime/shared-rest-adapter";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
 
+// Telegram's hosted Bot API download ceiling is 20 MiB. This stricter product
+// ceiling keeps the base64 JSON body (~10.7 MiB) and decoded copies bounded in
+// a 128 MiB Worker isolate while covering ordinary conversational voice notes.
+const MAX_TELEGRAM_VOICE_BYTES = 8 * 1024 * 1024;
+const MAX_TELEGRAM_VOICE_BASE64_LENGTH =
+  Math.ceil(MAX_TELEGRAM_VOICE_BYTES / 3) * 4;
+const DEFAULT_WHISPER_MODEL = "Systran/faster-whisper-small";
+
+const telegramVoiceNoteSchema = z.object({
+  bytesBase64: z.string().min(1).max(MAX_TELEGRAM_VOICE_BASE64_LENGTH),
+  mimeType: z.literal("audio/ogg"),
+  filename: z
+    .string()
+    .trim()
+    .regex(/^telegram-[A-Za-z0-9:._-]+\.ogg$/),
+  sizeBytes: z.number().int().positive().max(MAX_TELEGRAM_VOICE_BYTES),
+  durationSeconds: z
+    .number()
+    .int()
+    .min(0)
+    .max(15 * 60),
+});
+
 const sharedMessageSchema = z.discriminatedUnion("platform", [
+  z
+    .object({
+      platform: z.literal("telegram"),
+      project: z
+        .string()
+        .trim()
+        .regex(/^[a-z0-9][a-z0-9_-]{0,63}$/i),
+      chatId: z
+        .string()
+        .trim()
+        .regex(/^-?\d{1,20}$/),
+      telegramUserId: z
+        .string()
+        .trim()
+        .regex(/^\d{1,20}$/),
+      telegramUsername: z.string().trim().min(1).max(64).optional(),
+      displayName: z.string().trim().min(1).max(128).optional(),
+      messageId: z.string().trim().min(1).max(160),
+      message: z.string().trim().min(1).max(4000).optional(),
+      voiceNote: telegramVoiceNoteSchema.optional(),
+    })
+    .refine(
+      (input) => input.message !== undefined || input.voiceNote !== undefined,
+    ),
   z.object({
-    platform: z.literal("telegram"),
-    telegramUserId: z
-      .string()
-      .trim()
-      .regex(/^\d{1,20}$/),
-    telegramUsername: z.string().trim().min(1).max(64).optional(),
+    platform: z.literal("discord"),
+    discordUserId: z.string().trim().min(1).max(32),
+    discordUsername: z.string().trim().min(1).max(80),
     displayName: z.string().trim().min(1).max(128).optional(),
+    avatarUrl: z.string().url().nullable().optional(),
     messageId: z.string().trim().min(1).max(160),
     message: z.string().trim().min(1).max(4000),
   }),
@@ -39,6 +85,74 @@ const sharedMessageSchema = z.discriminatedUnion("platform", [
   }),
 ]);
 
+function decodeTelegramVoiceNote(
+  input: z.infer<typeof telegramVoiceNoteSchema>,
+): Uint8Array {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(input.bytesBase64)) {
+    throw new Error("Telegram voice note is not canonical base64");
+  }
+  const bytes = Buffer.from(input.bytesBase64, "base64");
+  if (
+    bytes.byteLength !== input.sizeBytes ||
+    bytes.byteLength > MAX_TELEGRAM_VOICE_BYTES ||
+    bytes.toString("base64") !== input.bytesBase64
+  ) {
+    throw new Error("Telegram voice note byte length is invalid");
+  }
+  if (bytes.subarray(0, 4).toString("ascii") !== "OggS") {
+    throw new Error("Telegram voice note is not an Ogg stream");
+  }
+  return bytes;
+}
+
+async function transcribeTelegramVoiceNote(
+  env: AppEnv["Bindings"],
+  bytes: Uint8Array,
+  filename: string,
+): Promise<string> {
+  const whisperBaseUrl = env.WHISPER_STT_URL?.trim();
+  if (!whisperBaseUrl) {
+    throw new Error("Telegram voice transcription is not configured");
+  }
+  const audio = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(audio).set(bytes);
+  const form = new FormData();
+  form.append("file", new File([audio], filename, { type: "audio/ogg" }));
+  form.append("model", env.WHISPER_STT_MODEL?.trim() || DEFAULT_WHISPER_MODEL);
+  const response = await fetch(
+    `${whisperBaseUrl.replace(/\/+$/, "")}/v1/audio/transcriptions`,
+    {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(60_000),
+    },
+  );
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(`Telegram voice transcription failed (${response.status})`);
+  }
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    // error-policy:J3 the transcription provider response is untrusted input.
+    throw new Error("Telegram voice transcription returned invalid JSON", {
+      cause: error,
+    });
+  }
+  const transcript =
+    payload !== null &&
+    typeof payload === "object" &&
+    !Array.isArray(payload) &&
+    typeof (payload as Record<string, unknown>).text === "string"
+      ? ((payload as Record<string, unknown>).text as string).trim()
+      : "";
+  if (!transcript) {
+    throw new Error("Telegram voice transcription returned no speech");
+  }
+  return transcript;
+}
+
 const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
@@ -47,6 +161,7 @@ app.post("/", async (c) => {
     if (auth instanceof Response) return auth;
     if (
       auth.service !== "webhook-gateway" &&
+      auth.service !== "discord-gateway" &&
       auth.service !== "shared-secret"
     ) {
       return jsonError(c, 403, "Forbidden", "access_denied");
@@ -73,6 +188,20 @@ app.post("/", async (c) => {
         "validation_error",
       );
     }
+    let telegramVoiceBytes: Uint8Array | undefined;
+    if (parsed.data.platform === "telegram" && parsed.data.voiceNote) {
+      try {
+        telegramVoiceBytes = decodeTelegramVoiceNote(parsed.data.voiceNote);
+      } catch {
+        // error-policy:J3 decoded media bytes are untrusted transport input.
+        return jsonError(
+          c,
+          400,
+          "Invalid Telegram voice note",
+          "validation_error",
+        );
+      }
+    }
 
     const worker = resolveSharedRuntimeWorkerRequestContext(c);
     if ("error" in worker) {
@@ -95,16 +224,59 @@ app.post("/", async (c) => {
             username: parsed.data.telegramUsername,
             displayName: parsed.data.displayName,
           })
-        : await elizaAppUserService.findOrCreateByPhone(
-            parsed.data.phoneNumber,
-          );
+        : parsed.data.platform === "discord"
+          ? await elizaAppUserService.findOrCreateByDiscordId(
+              parsed.data.discordUserId,
+              {
+                username: parsed.data.discordUsername,
+                globalName: parsed.data.displayName,
+                avatarUrl: parsed.data.avatarUrl,
+              },
+            )
+          : await elizaAppUserService.findOrCreateByPhone(
+              parsed.data.phoneNumber,
+            );
     const agent = personalSharedAgent({
       userId: account.user.id,
       organizationId: account.organization.id,
     });
+    let deliveryMessage = parsed.data.message;
     if (
       parsed.data.platform === "telegram" &&
-      /^\/connect(?:@[a-z0-9_]{5,32})?$/i.test(parsed.data.message)
+      parsed.data.voiceNote &&
+      telegramVoiceBytes
+    ) {
+      // Shared has no authenticated writer into the agent-owned canonical
+      // `/api/media/<sha>.<ext>` store. Keep only the transcript in durable
+      // conversation history; do not create a parallel R2 media namespace.
+      const transcript = await transcribeTelegramVoiceNote(
+        c.env,
+        telegramVoiceBytes,
+        parsed.data.voiceNote.filename,
+      );
+      deliveryMessage = parsed.data.message
+        ? `${parsed.data.message}\n\n[Voice note transcript]\n${transcript}`
+        : transcript;
+      logger.info(
+        "[personal-shared-messaging] Telegram voice note transcribed",
+        {
+          durationSeconds: parsed.data.voiceNote.durationSeconds,
+          sizeBytes: parsed.data.voiceNote.sizeBytes,
+          userId: account.user.id,
+        },
+      );
+    }
+    if (!deliveryMessage) {
+      return jsonError(
+        c,
+        400,
+        "Messaging delivery has no content",
+        "validation_error",
+      );
+    }
+    if (
+      parsed.data.platform === "telegram" &&
+      /^\/connect(?:@[a-z0-9_]{5,32})?$/i.test(deliveryMessage)
     ) {
       // A new command gets independent expiry while a webhook retry reaches
       // the same session. Reusing the sender's permanent session would make
@@ -206,7 +378,7 @@ app.post("/", async (c) => {
         id: parsed.data.messageId,
         method: "message.send",
         params: {
-          text: parsed.data.message,
+          text: deliveryMessage,
           roomId: agent.id,
           conversationId: agent.id,
           canonicalBridgeBase: dedicated.bridge_url,
@@ -214,10 +386,14 @@ app.post("/", async (c) => {
           clientMessageId: parsed.data.messageId,
           platformName: parsed.data.platform,
           source: parsed.data.platform,
-          ...(parsed.data.platform === "telegram"
+          ...(parsed.data.platform === "telegram" ||
+          parsed.data.platform === "discord"
             ? {
                 senderName:
-                  parsed.data.displayName ?? parsed.data.telegramUsername,
+                  parsed.data.displayName ??
+                  (parsed.data.platform === "telegram"
+                    ? parsed.data.telegramUsername
+                    : parsed.data.discordUsername),
               }
             : {}),
         },
@@ -231,7 +407,14 @@ app.post("/", async (c) => {
         const history = await coordinateSharedHistory(agent.id, agent.id, {
           namespace: worker.namespace,
         });
-        const importMessages = history.flatMap((message) =>
+        const importableHistory = history.filter(
+          (
+            message,
+          ): message is typeof message & {
+            role: "user" | "assistant";
+          } => message.role === "user" || message.role === "assistant",
+        );
+        const importMessages = importableHistory.flatMap((message) =>
           message.id
             ? [
                 {
@@ -246,7 +429,7 @@ app.post("/", async (c) => {
             : [],
         );
         let receipt =
-          importMessages.length === history.length
+          importMessages.length === importableHistory.length
             ? await elizaSandboxService.importCanonicalConversation(
                 dedicated.id,
                 account.organization.id,
@@ -306,12 +489,19 @@ app.post("/", async (c) => {
     const result = await sharedRestMessageSend(
       agent,
       agent.id,
-      parsed.data.message,
+      deliveryMessage,
       agent.agent_name ?? "Eliza",
       worker.executionCtx,
       worker.namespace,
       parsed.data.messageId,
       "platform",
+      parsed.data.platform === "telegram"
+        ? {
+            platform: "telegram",
+            project: parsed.data.project,
+            chatId: parsed.data.chatId,
+          }
+        : undefined,
     );
 
     return c.json({

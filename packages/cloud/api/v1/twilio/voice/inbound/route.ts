@@ -4,11 +4,12 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { and, eq, or } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { dbRead, dbWrite } from "@/db/helpers";
-import { twilioInboundCalls } from "@/db/schemas";
+import { sharedRuntimeHistory, twilioInboundCalls } from "@/db/schemas";
+import { sharedRuntimeChannelId } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { ObjectNamespaces } from "@/lib/storage/object-namespace";
 import { offloadJsonField } from "@/lib/storage/object-store";
 import { logger } from "@/lib/utils/logger";
@@ -115,7 +116,11 @@ app.post("/", async (c) => {
     return new Response("Invalid signature", { status: 403 });
   }
 
-  const phoneNumber = await resolveTwilioVoiceTarget(c.env, publicLineNumber);
+  const phoneNumber = await resolveTwilioVoiceTarget(
+    c.env,
+    publicLineNumber,
+    callerNumber,
+  );
   if (!phoneNumber) {
     return new Response(buildTerminalVoiceTwiML(NOT_CONFIGURED_PROMPT), {
       headers: { "Content-Type": "text/xml" },
@@ -124,13 +129,12 @@ app.post("/", async (c) => {
   const targetResolvedAt = Date.now();
 
   const id = randomUUID();
-  const conversationId = randomUUID();
+  const conversationId = phoneNumber.agentId;
   try {
     scheduleTwilioVoiceScopePrewarm({
       agent: phoneNumber.agent,
       env: c.env,
       executionCtx: c.executionCtx,
-      freshConversation: true,
       claims: {
         agentId: phoneNumber.agentId,
         conversationId,
@@ -148,7 +152,10 @@ app.post("/", async (c) => {
   }
   const priorCallPromise = Promise.resolve(
     dbRead
-      .select({ id: twilioInboundCalls.id })
+      .select({
+        id: twilioInboundCalls.id,
+        receivedAt: twilioInboundCalls.received_at,
+      })
       .from(twilioInboundCalls)
       .where(
         and(
@@ -165,6 +172,23 @@ app.post("/", async (c) => {
           eq(twilioInboundCalls.agent_id, phoneNumber.agentId),
         ),
       )
+      .orderBy(desc(twilioInboundCalls.received_at))
+      .limit(1),
+  );
+  const priorConversationPromise = Promise.resolve(
+    dbRead
+      .select({ updatedAt: sharedRuntimeHistory.updated_at })
+      .from(sharedRuntimeHistory)
+      .where(
+        and(
+          eq(sharedRuntimeHistory.agent_id, phoneNumber.agentId),
+          eq(
+            sharedRuntimeHistory.channel_id,
+            sharedRuntimeChannelId(phoneNumber.agentId, conversationId),
+          ),
+        ),
+      )
+      .orderBy(desc(sharedRuntimeHistory.updated_at))
       .limit(1),
   );
   const rawPayloadPromise = offloadJsonField<Record<string, string>>({
@@ -211,7 +235,14 @@ app.post("/", async (c) => {
         error: error instanceof Error ? error.message : String(error),
       });
     });
-  const [priorCall] = await priorCallPromise;
+  const [[priorCall], [priorConversation]] = await Promise.all([
+    priorCallPromise,
+    priorConversationPromise,
+  ]);
+  const previousInteractionAt = Math.max(
+    priorCall?.receivedAt?.getTime() ?? 0,
+    priorConversation?.updatedAt?.getTime() ?? 0,
+  );
   const callerResolvedAt = Date.now();
   try {
     c.executionCtx.waitUntil(recordCall);
@@ -233,7 +264,9 @@ app.post("/", async (c) => {
       agentId: phoneNumber.agentId,
       conversationId,
       calledNumber: publicLineNumber,
-      returningCaller: Boolean(priorCall),
+      returningCaller: Boolean(priorCall || priorConversation),
+      previousInteractionAt:
+        previousInteractionAt > 0 ? previousInteractionAt : undefined,
     },
     authToken,
   );
@@ -247,7 +280,7 @@ app.post("/", async (c) => {
   const responseReadyAt = Date.now();
   logger.info("[twilio-voice-inbound] realtime TwiML ready", {
     callSid: event.CallSid,
-    returningCaller: Boolean(priorCall),
+    returningCaller: Boolean(priorCall || priorConversation),
     targetMs: targetResolvedAt - requestStartedAt,
     callerLookupMs: callerResolvedAt - targetResolvedAt,
     tokenAndDirectoryMs: responseReadyAt - callerResolvedAt,

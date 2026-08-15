@@ -59,6 +59,7 @@ import { navIntentActionResult } from "./shared-nav-intent";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
+import { createSharedScheduledTaskRunner } from "./shared-scheduling";
 
 export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
@@ -140,6 +141,10 @@ export interface SharedRuntimeChatOptions {
   turnClaims?: SharedTurnClaimStore;
   /** Personal Shared keeps abuse limits but never debits account credits. */
   funding?: "organization-credits" | "platform";
+  /** Server-authenticated lifecycle prompt; never derived from bridge params. */
+  trustedMessageRole?: "system";
+  /** Local/transition gate for proving the genuine Workerd AgentRuntime path. */
+  executionEngine?: "direct-model" | "eliza-runtime";
 }
 
 export {
@@ -153,6 +158,24 @@ function stringValue(value: unknown): string | undefined {
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+}
+
+function trustedReminderDelivery(params: Record<string, unknown>) {
+  const delivery = record(params.trustedDelivery);
+  if (
+    delivery?.platform !== "telegram" ||
+    typeof delivery.project !== "string" ||
+    !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(delivery.project) ||
+    typeof delivery.chatId !== "string" ||
+    !/^-?\d{1,20}$/.test(delivery.chatId)
+  ) {
+    return undefined;
+  }
+  return {
+    platform: "telegram" as const,
+    project: delivery.project,
+    chatId: delivery.chatId,
+  };
 }
 
 function stableUuid(raw: string): string {
@@ -227,15 +250,22 @@ function turnMessageIds(
   };
 }
 
+export function sharedRuntimeChannelId(agentId: string, roomId: string): string {
+  const room = roomId.trim() || "default";
+  return stableUuid(`cloud-bridge-channel:${agentId}:${room}`);
+}
+
 function channelId(agentId: string, params: Record<string, unknown>): string {
   const room = stringValue(params.roomId) ?? stringValue(params.userId) ?? "default";
-  return stableUuid(`cloud-bridge-channel:${agentId}:${room}`);
+  return sharedRuntimeChannelId(agentId, room);
 }
 
 function isTurn(value: unknown): value is SharedTurnMessage {
   const candidate = record(value);
   return (
-    (candidate?.role === "user" || candidate?.role === "assistant") &&
+    (candidate?.role === "system" ||
+      candidate?.role === "user" ||
+      candidate?.role === "assistant") &&
     typeof candidate.content === "string" &&
     candidate.content.trim().length > 0
   );
@@ -660,6 +690,15 @@ function sseError(message: string): Response {
 }
 
 export class SharedRuntimeChatService {
+  async recordLifecycleEvent(
+    agentId: string,
+    roomId: string,
+    event: SharedTurnMessage,
+    store: SharedRuntimeHistoryStore,
+  ): Promise<void> {
+    await mergeHistory(agentId, channelId(agentId, { roomId }), [event], store);
+  }
+
   async getHistory(
     agentId: string,
     roomId = agentId,
@@ -710,6 +749,7 @@ export class SharedRuntimeChatService {
       };
     }
     const roomId = channelId(agent.id, params);
+    const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
       const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
@@ -756,14 +796,39 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, rpc);
+    const reminderDelivery =
+      options.funding === "platform" ? trustedReminderDelivery(params) : undefined;
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
         character,
         history,
         message: text,
+        messageRole,
         messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
+        ...(options.executionEngine === "eliza-runtime"
+          ? {
+              execution: {
+                engine: "eliza-runtime" as const,
+                agentKey: agent.id,
+                ...(reminderDelivery
+                  ? {
+                      reminders: {
+                        delivery: reminderDelivery,
+                        runner: createSharedScheduledTaskRunner(agent.id, {
+                          dispatch: async () => {
+                            throw new Error(
+                              "Interactive Shared turns cannot fire reminders; Cloudflare cron owns dispatch",
+                            );
+                          },
+                        }),
+                      },
+                    }
+                  : {}),
+              },
+            }
+          : {}),
       });
     } catch (error) {
       await settleFailedProviderWorkOffPath(
@@ -851,6 +916,7 @@ export class SharedRuntimeChatService {
     const text = stringValue(params.text);
     if (!text) return sseError("message.send requires params.text");
     const roomId = channelId(agent.id, params);
+    const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
       const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
@@ -924,6 +990,7 @@ export class SharedRuntimeChatService {
         character,
         history,
         message: text,
+        messageRole,
         messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
       });
@@ -978,7 +1045,7 @@ export class SharedRuntimeChatService {
     const makeTurnMessages = (reply: string, interrupted: boolean): SharedTurnMessage[] => {
       const sentAt = Date.now();
       const messages: SharedTurnMessage[] = [
-        { id: messageIds.user, role: "user", content: text, createdAt: sentAt },
+        { id: messageIds.user, role: messageRole, content: text, createdAt: sentAt },
       ];
       const assistantText = reply.trim();
       if (assistantText) {

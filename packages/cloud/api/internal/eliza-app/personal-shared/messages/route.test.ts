@@ -14,6 +14,11 @@ const findOrCreateByPhone = mock(async () => ({
   organization: { id: "00000000-0000-4000-8000-000000000011" },
   isNew: true,
 }));
+const findOrCreateByDiscordId = mock(async () => ({
+  user: { id: "00000000-0000-4000-8000-000000000002" },
+  organization: { id: "00000000-0000-4000-8000-000000000001" },
+  isNew: false,
+}));
 const sharedRestMessageSend = mock(async () => ({ text: "hello from Eliza" }));
 const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
   loginUrl:
@@ -106,7 +111,11 @@ const namespace = {
 const runtimeExecutionCtx = { waitUntil() {} };
 
 mock.module("@/lib/services/eliza-app", () => ({
-  elizaAppUserService: { findOrCreateByPhone, findOrCreateByTelegram },
+  elizaAppUserService: {
+    findOrCreateByDiscordId,
+    findOrCreateByPhone,
+    findOrCreateByTelegram,
+  },
 }));
 mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
   sharedRestMessageSend,
@@ -157,6 +166,7 @@ function request(body: unknown, authorization = "Bearer test-secret") {
     {
       INTERNAL_SECRET: "test-secret",
       SHARED_RUNTIME_CONVERSATIONS: namespace,
+      WHISPER_STT_URL: "https://whisper.test",
     } as never,
     executionCtx as never,
   );
@@ -164,6 +174,8 @@ function request(body: unknown, authorization = "Bearer test-secret") {
 
 const valid = {
   platform: "telegram",
+  project: "eliza-app",
+  chatId: "123456789",
   telegramUserId: "123456789",
   telegramUsername: "nubs",
   displayName: "Nubs",
@@ -181,6 +193,7 @@ const validPhone = {
 describe("personal Shared messaging deliveries", () => {
   beforeEach(() => {
     findOrCreateByPhone.mockClear();
+    findOrCreateByDiscordId.mockClear();
     activeTarget = null;
     findOrCreateByTelegram.mockClear();
     findActivePersonalDedicatedTarget.mockClear();
@@ -227,7 +240,79 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
       "telegram:eliza:42",
       "platform",
+      {
+        platform: "telegram",
+        project: "eliza-app",
+        chatId: "123456789",
+      },
     );
+  });
+
+  test("transcribes a Telegram voice note before the Shared turn", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (input, init) => {
+      const outbound = new Request(input, init);
+      expect(outbound.url).toBe("https://whisper.test/v1/audio/transcriptions");
+      const form = await outbound.formData();
+      const file = form.get("file");
+      expect(file).toBeInstanceOf(File);
+      expect((file as File).type).toBe("audio/ogg");
+      return Response.json({ text: "remember the red bicycle" });
+    }) as unknown as typeof fetch;
+    const bytes = Buffer.from("OggSvoice-note");
+    try {
+      const response = await request({
+        ...valid,
+        message: undefined,
+        voiceNote: {
+          bytesBase64: bytes.toString("base64"),
+          mimeType: "audio/ogg",
+          filename: "telegram-42.ogg",
+          sizeBytes: bytes.length,
+          durationSeconds: 4,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(sharedRestMessageSend).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringMatching(/^personal:/),
+        "remember the red bicycle",
+        "Eliza",
+        runtimeExecutionCtx,
+        namespace,
+        "telegram:eliza:42",
+        "platform",
+        {
+          platform: "telegram",
+          project: "eliza-app",
+          chatId: "123456789",
+        },
+      );
+      await expect(response.json()).resolves.toMatchObject({
+        data: { reply: "hello from Eliza" },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("rejects a forged voice payload before identity, storage, or inference", async () => {
+    const response = await request({
+      ...valid,
+      message: undefined,
+      voiceNote: {
+        bytesBase64: Buffer.from("not ogg").toString("base64"),
+        mimeType: "audio/ogg",
+        filename: "telegram-42.ogg",
+        sizeBytes: 7,
+        durationSeconds: 4,
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(findOrCreateByTelegram).not.toHaveBeenCalled();
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
 
   test("issues an account-bound Telegram claim without entering runtime or provisioning", async () => {
@@ -328,6 +413,40 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
       "blooio:eliza:message-42",
       "platform",
+      undefined,
+    );
+  });
+
+  test("routes a linked Discord DM through the same personal room", async () => {
+    const response = await request({
+      platform: "discord",
+      discordUserId: "123456789012345678",
+      discordUsername: "shaw",
+      displayName: "Shaw",
+      avatarUrl: "https://cdn.discordapp.com/avatar.png",
+      messageId: "discord:message-42",
+      message: "continue our conversation",
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { identity: { id: string } };
+    };
+    expect(findOrCreateByDiscordId).toHaveBeenCalledWith("123456789012345678", {
+      username: "shaw",
+      globalName: "Shaw",
+      avatarUrl: "https://cdn.discordapp.com/avatar.png",
+    });
+    expect(sharedRestMessageSend).toHaveBeenCalledWith(
+      expect.objectContaining({ id: body.data.identity.id }),
+      body.data.identity.id,
+      "continue our conversation",
+      "Eliza",
+      runtimeExecutionCtx,
+      namespace,
+      "discord:message-42",
+      "platform",
+      undefined,
     );
   });
 

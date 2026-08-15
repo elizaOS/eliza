@@ -46,6 +46,11 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import {
+  getScheduledTaskRunner,
+  isScheduledTask,
+  type ScheduledTask,
+} from "@elizaos/plugin-scheduling";
 import type { ChatFailureKind } from "@elizaos/shared";
 import {
   PatchConversationRequestSchema,
@@ -3265,6 +3270,45 @@ export async function handleConversationRoutes(
       error(res, "Imported message sourceIds must be unique", 400);
       return true;
     }
+    const rawScheduledTasks = rawImport.scheduledTasks;
+    if (rawScheduledTasks !== undefined && !Array.isArray(rawScheduledTasks)) {
+      error(res, "`scheduledTasks` must be an array", 400);
+      return true;
+    }
+    const cutoverToken =
+      typeof rawImport.cutoverToken === "string" &&
+      rawImport.cutoverToken.trim().length > 0 &&
+      rawImport.cutoverToken.length <= 512
+        ? rawImport.cutoverToken.trim()
+        : null;
+    const importTasks: ScheduledTask[] = [];
+    for (const rawTask of rawScheduledTasks ?? []) {
+      if (!isScheduledTask(rawTask) || rawTask.kind !== "reminder") {
+        error(
+          res,
+          "Every imported scheduled task must be a valid reminder",
+          400,
+        );
+        return true;
+      }
+      importTasks.push(rawTask);
+    }
+    if (importTasks.length > 0 && !cutoverToken) {
+      error(res, "A cutoverToken is required to import scheduled tasks", 400);
+      return true;
+    }
+    const activateScheduledTasks = rawImport.activateScheduledTasks;
+    if (
+      activateScheduledTasks !== undefined &&
+      typeof activateScheduledTasks !== "boolean"
+    ) {
+      error(res, "`activateScheduledTasks` must be a boolean", 400);
+      return true;
+    }
+    if (activateScheduledTasks === true && !cutoverToken) {
+      error(res, "A cutoverToken is required to activate scheduled tasks", 400);
+      return true;
+    }
 
     const runtime = state.runtime;
     if (!runtime) {
@@ -3345,7 +3389,7 @@ export async function handleConversationRoutes(
         return true;
       }
 
-      if (!exactImport) {
+      if (!exactImport && importTasks.length === 0) {
         // Legacy imports predate source ids. Preserve their room-level
         // idempotency while exact cloud cutovers use per-message identities.
         const existing = await runtime.getMemories({
@@ -3426,6 +3470,56 @@ export async function handleConversationRoutes(
           return true;
         }
       }
+      let importedScheduledTasks = 0;
+      let skippedScheduledTasks = 0;
+      let activatedScheduledTasks = 0;
+      let skippedActivatedScheduledTasks = 0;
+      if (importTasks.length > 0 && cutoverToken) {
+        const runner = getScheduledTaskRunner(runtime, {
+          agentId: runtime.agentId,
+        });
+        for (let i = 0; i < importTasks.length; i += 1) {
+          try {
+            const result = await runner.importTask(importTasks[i], {
+              sourceAgentId: convId,
+              cutoverToken,
+            });
+            if (result.imported) importedScheduledTasks += 1;
+            else skippedScheduledTasks += 1;
+          } catch (err) {
+            // error-policy:J1 the conversation import boundary reports the exact failing task.
+            error(
+              res,
+              `Scheduled task import failed at task ${i}: ${getErrorMessage(err)}`,
+              500,
+            );
+            return true;
+          }
+        }
+        if (activateScheduledTasks === true) {
+          for (let i = 0; i < importTasks.length; i += 1) {
+            try {
+              const result = await runner.activateImportedTask(
+                importTasks[i].taskId,
+                {
+                  sourceAgentId: convId,
+                  cutoverToken,
+                },
+              );
+              if (result.activated) activatedScheduledTasks += 1;
+              else skippedActivatedScheduledTasks += 1;
+            } catch (err) {
+              // error-policy:J1 the conversation import boundary reports the exact failing task.
+              error(
+                res,
+                `Scheduled task activation failed at task ${i}: ${getErrorMessage(err)}`,
+                500,
+              );
+              return true;
+            }
+          }
+        }
+      }
       conv.updatedAt = new Date().toISOString();
       state.broadcastWs?.({ type: "conversation-updated", conversation: conv });
       json(res, {
@@ -3434,6 +3528,11 @@ export async function handleConversationRoutes(
         sourceMessageCount: importMessages.length,
         inserted,
         skipped,
+        sourceScheduledTaskCount: importTasks.length,
+        importedScheduledTasks,
+        skippedScheduledTasks,
+        activatedScheduledTasks,
+        skippedActivatedScheduledTasks,
       });
       return true;
     } finally {

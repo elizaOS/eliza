@@ -81,6 +81,8 @@ async function postTelegramDelivery(
       },
       body: JSON.stringify({
         platform: "telegram",
+        project: "eliza-app",
+        chatId: TELEGRAM_USER_ID,
         telegramUserId: TELEGRAM_USER_ID,
         telegramUsername: "first_five_nubs",
         displayName: "Nubs",
@@ -124,8 +126,12 @@ async function waitForMirroredHistory(agentId: string): Promise<{
     const history = channelId
       ? await sharedRuntimeHistoryRepository.get(agentId, channelId)
       : [];
-    if (channelIds.length === 1 && history.length === 2) {
-      return { channelIds, history };
+    const visibleHistory = history.filter(
+      (entry): entry is typeof entry & { role: "user" | "assistant" } =>
+        entry.role !== "system",
+    );
+    if (channelIds.length === 1 && visibleHistory.length === 2) {
+      return { channelIds, history: visibleHistory };
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -135,7 +141,10 @@ async function waitForMirroredHistory(agentId: string): Promise<{
   return {
     channelIds,
     history: channelId
-      ? await sharedRuntimeHistoryRepository.get(agentId, channelId)
+      ? (await sharedRuntimeHistoryRepository.get(agentId, channelId)).filter(
+          (entry): entry is typeof entry & { role: "user" | "assistant" } =>
+            entry.role !== "system",
+        )
       : [],
   };
 }
