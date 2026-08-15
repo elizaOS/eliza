@@ -999,7 +999,8 @@ describe("F21 aliases survive production retrieval topology filtering", () => {
 		const catalog = buildActionCatalog([
 			{
 				name: parentName,
-				description: "A registered runtime surface with no candidate-name overlap.",
+				description:
+					"A registered runtime surface with no candidate-name overlap.",
 			},
 		]);
 		const response = retrieveActions({
