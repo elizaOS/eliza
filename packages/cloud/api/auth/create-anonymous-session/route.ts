@@ -9,6 +9,11 @@ import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
 import {
+  MAX_ANONYMOUS_EXPIRY_DAYS,
+  MAX_ANONYMOUS_MESSAGE_LIMIT,
+  parseAnonymousPositiveIntEnv,
+} from "@/api/auth/anonymous-session-config";
+import {
   getIpKey,
   RateLimitPresets,
   rateLimit,
@@ -18,21 +23,6 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
-
-function parsePositiveIntEnv(
-  value: string | undefined,
-  defaultValue: number,
-  name: string,
-): number {
-  const n = Number.parseInt(value || String(defaultValue), 10);
-  if (Number.isNaN(n) || n <= 0) {
-    logger.warn(
-      `[create-anonymous-session] Invalid ${name}, using default: ${defaultValue}`,
-    );
-    return defaultValue;
-  }
-  return n;
-}
 
 function isValidReturnUrl(url: string): boolean {
   return url.startsWith("/") && !url.startsWith("//");
@@ -59,15 +49,19 @@ app.get("/", async (c) => {
       ANON_SESSION_EXPIRY_DAYS?: string;
       ANON_MESSAGE_LIMIT?: string;
     };
-    const expiryDays = parsePositiveIntEnv(
+    const expiryDays = parseAnonymousPositiveIntEnv(
       env.ANON_SESSION_EXPIRY_DAYS,
       7,
       "ANON_SESSION_EXPIRY_DAYS",
+      MAX_ANONYMOUS_EXPIRY_DAYS,
+      "create-anonymous-session",
     );
-    const msgLimit = parsePositiveIntEnv(
+    const msgLimit = parseAnonymousPositiveIntEnv(
       env.ANON_MESSAGE_LIMIT,
       5,
       "ANON_MESSAGE_LIMIT",
+      MAX_ANONYMOUS_MESSAGE_LIMIT,
+      "create-anonymous-session",
     );
 
     const rawReturnUrl = c.req.query("returnUrl") || "/";

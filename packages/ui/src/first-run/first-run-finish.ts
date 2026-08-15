@@ -105,6 +105,22 @@ export interface FirstRunFinishPorts {
    * reuse narration; text-only consumers ignore it.
    */
   onStatus?: (text: string | null, code?: string) => void;
+  /**
+   * Cooperative cancellation for an abandoned attempt (#19255): checked
+   * before every mutation and after every await boundary on the cloud path,
+   * so a deadline-abandoned attempt cannot provision, persist, or complete
+   * first-run concurrently with a newer attempt. Aborting settles the flow
+   * with an AbortError rejection the caller treats as an expected stale
+   * outcome, preserving the one-finish/provision-at-a-time invariant.
+   */
+  signal?: AbortSignal;
+  /**
+   * Fires when the flow reaches interactive Cloud login (#19255): lets the
+   * conductor seed the waiting turn and arm the bounded recovery deadline
+   * for entries that started silent (stored Steward token) and only later
+   * degraded into OAuth.
+   */
+  onInteractiveLogin?: () => void;
 }
 
 type FirstRunRuntimeStateKey =
@@ -493,6 +509,7 @@ export async function bindCloudAgent(
   },
   ports: FirstRunFinishPorts,
 ): Promise<FirstRunFinishOutcome> {
+  ports.signal?.throwIfAborted();
   ports.onStatus?.("Setting up your cloud agent", "setup");
   const plan = buildFirstRunSubmitPlan({
     draft: { ...sourceDraft, runtime: "cloud" },
@@ -520,6 +537,9 @@ export async function bindCloudAgent(
       : {}),
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
   });
+  // The remote agent now exists/was selected; every step after this point
+  // mutates local durable state, so an abandoned attempt stops HERE (#19255).
+  ports.signal?.throwIfAborted();
   const cloudAgentApiBase = selectedAgent.apiBase;
   if (selectedAgent.requiresAgentPairing) {
     ports.onStatus?.("Signing in to your cloud agent", "pairing");
@@ -530,6 +550,7 @@ export async function bindCloudAgent(
         cloudToken: authToken,
         containerBase: cloudAgentApiBase,
       });
+      ports.signal?.throwIfAborted();
       if (pairMode === "in-process") {
         persistMobileRuntimeModeForServerTarget("elizacloud");
         clearForceFreshFirstRun();
@@ -574,6 +595,7 @@ export async function bindCloudAgent(
   void Promise.resolve()
     .then(() => client.listConversations?.())
     .catch(() => undefined);
+  ports.signal?.throwIfAborted();
   const activeServer = createPersistedActiveServer({
     kind: "cloud",
     id: `cloud:${selectedAgent.agentId}`,
@@ -618,6 +640,7 @@ export async function bindCloudAgent(
   // agents…" reuse — must leave `eliza:first-run-complete` set, or the next
   // launch re-enters first-run for a user whose agent is healthy (#15903).
   // Idempotent with the callback's own setFirstRunComplete(true) persist.
+  ports.signal?.throwIfAborted();
   savePersistedFirstRunComplete(true);
   ports.onStatus?.(null);
   ports.completeFirstRun("chat");
@@ -768,6 +791,7 @@ export async function listOrAutoProvisionCloudAgent(
   sourceDraft: FirstRunProfileDraft,
   ports: FirstRunFinishPorts,
 ): Promise<FirstRunFinishOutcome> {
+  ports.signal?.throwIfAborted();
   syncIdentity(sourceDraft, ports);
   ports.setRuntimeState(
     "firstRunRuntimeTarget",
@@ -775,12 +799,19 @@ export async function listOrAutoProvisionCloudAgent(
   );
   ports.setRuntimeState("firstRunProvider", "elizacloud");
   if (!getCloudAuthToken(client)) {
+    // Interactive OAuth is the unbounded wait (#19255): tell the conductor so
+    // it can seed the waiting turn and arm the bounded recovery deadline.
+    ports.onInteractiveLogin?.();
     await ports.handleInteractiveCloudLogin({ requireClientAuth: true });
+    ports.signal?.throwIfAborted();
   }
   const authToken = getCloudAuthToken(client) ?? "";
   if (!authToken) {
     return { kind: "needs-cloud-login" };
   }
+  // The join flow persists durable local state; a deadline-abandoned attempt
+  // stops HERE (#19255) so it cannot race a newer attempt's join.
+  ports.signal?.throwIfAborted();
   const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
   const selected = await runJoinFlow({
     client,

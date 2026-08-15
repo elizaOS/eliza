@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { resolveStateDir, resolveUserPath } from "@elizaos/core";
+import { ElizaError, resolveStateDir, resolveUserPath } from "@elizaos/core";
 import type { ClientUser } from "discord.js";
 import type { DiscordSettings } from "./types";
 
@@ -159,22 +159,89 @@ function buildLocalAvatarPathCandidates(source: string): string[] {
 	return [...candidates];
 }
 
+/**
+ * `errno` codes that mean the probed path genuinely is not there: nothing at
+ * the path (`ENOENT`) or a parent component that is not a directory
+ * (`ENOTDIR`). Any other code — `EACCES`, `EISDIR`, `EIO`, `ELOOP`, `EMFILE` —
+ * describes a file the probe could not READ, not a file that does not exist,
+ * and must never be summarized as absence.
+ */
+const ABSENT_PATH_ERROR_CODES = new Set(["ENOENT", "ENOTDIR"]);
+
+function pathProbeErrorCode(error: unknown): string {
+	const code = (error as NodeJS.ErrnoException | null | undefined)?.code;
+	return typeof code === "string" ? code : "unknown";
+}
+
 async function readAvatarBytesFromLocalCandidates(
 	source: string,
 ): Promise<Buffer> {
-	let lastError: unknown = null;
-	for (const candidate of buildLocalAvatarPathCandidates(source)) {
+	const candidates = buildLocalAvatarPathCandidates(source);
+	const failures: Array<{ candidate: string; error: unknown }> = [];
+	for (const candidate of candidates) {
 		try {
 			return await fs.readFile(candidate);
 		} catch (error) {
-			lastError = error;
+			// error-policy:J2 every probe failure is retained and rethrown below as
+			// one typed error carrying the first cause. Dropping them here would let
+			// an unreadable-but-present file be reported as nonexistent.
+			failures.push({ candidate, error });
 		}
 	}
 
-	if (lastError instanceof Error) {
-		throw lastError;
+	if (candidates.length === 0) {
+		throw new ElizaError(
+			`Discord profile avatar source resolved to no candidate path: ${source}`,
+			{
+				code: "DISCORD_PROFILE_AVATAR_UNRESOLVED",
+				context: { source },
+			},
+		);
 	}
-	throw new Error(`Unable to resolve Discord profile avatar source: ${source}`);
+
+	// Report the SOURCE and every path tried, not one arbitrary candidate's
+	// ENOENT. Rethrowing the last miss named a single file the reader then went
+	// hunting for — the live warning read `ENOENT ... open
+	// '<repo>/public/avatars/eliza.png'`, which describes neither the real
+	// input (`/avatars/eliza.png`, a web path served from blob storage, with no
+	// local file anywhere) nor the fact that several roots were probed.
+	//
+	// Aggregating is only honest when every probe actually missed. A candidate
+	// that failed for any other reason EXISTS as far as this loop can tell, so
+	// reporting it as nonexistence would fabricate the diagnosis this function
+	// was written to stop fabricating — and would bury the EACCES/EIO that is
+	// the real fault. Split the two outcomes and keep the underlying cause.
+	const tried = candidates.join(", ");
+	const unreadable = failures.filter(
+		({ error }) => !ABSENT_PATH_ERROR_CODES.has(pathProbeErrorCode(error)),
+	);
+	const firstUnreadable = unreadable[0];
+	if (firstUnreadable) {
+		throw new ElizaError(
+			`Unable to read Discord profile avatar source "${source}" — ${unreadable.length} of ${candidates.length} candidate path(s) failed for a reason other than absence (first: ${pathProbeErrorCode(firstUnreadable.error)} at ${firstUnreadable.candidate}); tried: ${tried}`,
+			{
+				code: "DISCORD_PROFILE_AVATAR_UNREADABLE",
+				context: {
+					source,
+					candidates,
+					unreadable: unreadable.map(({ candidate, error }) => ({
+						candidate,
+						code: pathProbeErrorCode(error),
+					})),
+				},
+				cause: firstUnreadable.error,
+			},
+		);
+	}
+
+	throw new ElizaError(
+		`Unable to resolve Discord profile avatar source "${source}" — none of ${candidates.length} candidate path(s) exist: ${tried}`,
+		{
+			code: "DISCORD_PROFILE_AVATAR_NOT_FOUND",
+			context: { source, candidates },
+			cause: failures[0]?.error,
+		},
+	);
 }
 
 async function loadDiscordProfileAvatarBytes(

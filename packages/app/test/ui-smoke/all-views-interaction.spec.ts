@@ -70,6 +70,7 @@ type ControlSnapshot = {
 
 const CLICK_OBSERVED_ATTRIBUTES = [
   "data-agent-id",
+  "data-chat-open",
   "aria-expanded",
   "aria-pressed",
   "aria-selected",
@@ -477,6 +478,13 @@ function documentedClickNoop(
     // keyless stub does not perform.
     return "spatial agent-dispatch control routes its action to the agent runtime; no local DOM outcome in the keyless stub";
   }
+  if (details.attributes["data-chat-open"]) {
+    // chat-open dispatch controls (data-chat-open) route their action to the
+    // ChatOverlay, which the interaction harness hides in setup via
+    // hideChatOverlay so overlay chrome does not shadow the view controls;
+    // opening it therefore produces no observable local DOM outcome here.
+    return "chat-open dispatch control routes its action to the ChatOverlay, which the interaction harness hides in setup; no local DOM outcome";
+  }
   return null;
 }
 
@@ -826,6 +834,30 @@ test.describe("every-view interaction coverage", () => {
         if (failureText === "net::ERR_ABORTED") return;
         networkFailures.push(`requestfailed: ${url} ${failureText}`);
       });
+      // The generic ladders cannot see a rejected workflow create: a 4xx
+      // still bumps the API request count and the rendered error state is a
+      // legitimate DOM outcome, so the editor follow-ons silently vanish
+      // while the case stays green. Record the whole workflow surface so the
+      // automations case can assert the successful sequence explicitly.
+      const workflowSurfaceResponses: Array<{
+        method: string;
+        pathname: string;
+        status: number;
+      }> = [];
+      page.on("response", (response) => {
+        const pathname = new URL(response.url()).pathname;
+        if (
+          pathname !== "/api/triggers" &&
+          !pathname.startsWith("/api/workflow/")
+        ) {
+          return;
+        }
+        workflowSurfaceResponses.push({
+          method: response.request().method(),
+          pathname,
+          status: response.status(),
+        });
+      });
 
       await page.setViewportSize({ width: 1440, height: 1000 });
       await seedAppStorage(page);
@@ -958,6 +990,53 @@ test.describe("every-view interaction coverage", () => {
           ...networkFailures,
         ].join("\n"),
       ).toHaveLength(0);
+      // The automations crawl must complete the workflow-editor round trip,
+      // not merely generate traffic toward it: the create must succeed and
+      // the editor's follow-on reads must land, and no workflow-surface
+      // request may be rejected. Without this, an invalid or rejecting
+      // fixture prunes the editor coverage while the case stays green.
+      if (view.id === "automations") {
+        const observed = workflowSurfaceResponses
+          .map((r) => `${r.method} ${r.pathname} -> ${r.status}`)
+          .join("\n");
+        const rejected = workflowSurfaceResponses.filter(
+          (r) => r.status < 200 || r.status >= 300,
+        );
+        expect(
+          rejected.map((r) => `${r.method} ${r.pathname} -> ${r.status}`),
+          `automations: workflow-surface request was rejected\nobserved:\n${observed}`,
+        ).toHaveLength(0);
+        const succeeded = (method: string, pattern: RegExp) =>
+          workflowSurfaceResponses.some(
+            (r) =>
+              r.method === method &&
+              pattern.test(r.pathname) &&
+              r.status >= 200 &&
+              r.status < 300,
+          );
+        const missing = (
+          [
+            ["POST", /^\/api\/workflow\/workflows$/, "workflow create"],
+            ["GET", /^\/api\/triggers$/, "editor trigger-list read"],
+            [
+              "GET",
+              /^\/api\/workflow\/workflows\/[^/]+\/executions$/,
+              "editor executions read",
+            ],
+            [
+              "GET",
+              /^\/api\/workflow\/workflows\/[^/]+\/revisions$/,
+              "editor revisions read",
+            ],
+          ] as const
+        )
+          .filter(([method, pattern]) => !succeeded(method, pattern))
+          .map(([, , label]) => label);
+        expect(
+          missing,
+          `automations: workflow-editor sequence incomplete; missing: ${missing.join(", ")}\nobserved:\n${observed}`,
+        ).toHaveLength(0);
+      }
     });
   }
 });

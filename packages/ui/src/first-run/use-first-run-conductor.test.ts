@@ -10,7 +10,7 @@
  * singleton + the background model download).
  */
 
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FIRST_RUN_SIGN_IN_PROMPT } from "./first-run-greeting";
@@ -2244,6 +2244,139 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
       ),
     ).toBe(false);
     expect(transcript.current.length).toBe(before);
+    unmount();
+  });
+});
+
+describe("bounded cloud sign-in wait (#19255)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function pendingLogin() {
+    const resolvers: Array<() => void> = [];
+    const handleInteractiveCloudLogin = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    return { handleInteractiveCloudLogin, resolvers };
+  }
+
+  it("deadline converts the visible wait into the recovery choice and the aborted attempt cannot provision or complete", async () => {
+    vi.useFakeTimers();
+    localStorage.removeItem("steward_session_token");
+    const { handleInteractiveCloudLogin, resolvers } = pendingLogin();
+    const spies = seedAppStore({
+      elizaCloudConnected: false,
+      handleInteractiveCloudLogin,
+    });
+    const { turn, transcript, unmount } = renderConductor();
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(turn("first-run:cloud-login-waiting")?.text).toContain(
+      "Waiting for sign-in",
+    );
+
+    await act(async () => vi.advanceTimersByTimeAsync(90_000));
+    const notice = turn("first-run:cloud-login-waiting");
+    expect(notice?.text).toContain("didn't finish");
+    expect(notice?.text).toContain("Sign in to Eliza Cloud");
+
+    // The stale attempt settles later WITH a landed token: the abort
+    // checkpoint must stop it before any provisioning or completion, and
+    // no error turn may be seeded for an expected stale abort.
+    localStorage.setItem("steward_session_token", "cloud-token");
+    await act(async () => {
+      for (const release of resolvers) release();
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(
+      transcript.current.some((message) =>
+        String(message.text).includes("went wrong"),
+      ),
+    ).toBe(false);
+    localStorage.removeItem("steward_session_token");
+    unmount();
+  });
+
+  it("a stale attempt's late settle never closes the retry attempt's freshly claimed popup", async () => {
+    vi.useFakeTimers();
+    localStorage.removeItem("steward_session_token");
+    const closeA = vi.fn();
+    const closeB = vi.fn();
+    // The conductor claims through the REAL claim/release pair, whose popup
+    // source is window.open — drive it directly (the module-level
+    // preOpenCloudLoginWindow mock only affects importers of the symbol).
+    const openSpy = vi.spyOn(window, "open");
+    openSpy
+      .mockReturnValueOnce({
+        close: closeA,
+        closed: false,
+      } as unknown as Window)
+      .mockReturnValueOnce({
+        close: closeB,
+        closed: false,
+      } as unknown as Window);
+    const { handleInteractiveCloudLogin, resolvers } = pendingLogin();
+    seedAppStore({ elizaCloudConnected: false, handleInteractiveCloudLogin });
+    const { turn, unmount } = renderConductor();
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+
+    // Attempt A reaches the deadline: its own popup is released exactly once.
+    await act(async () => vi.advanceTimersByTimeAsync(90_000));
+    expect(closeA).toHaveBeenCalledTimes(1);
+    expect(turn("first-run:cloud-login-waiting")?.text).toContain(
+      "didn't finish",
+    );
+
+    // The recovery choice launches attempt B, which claims a fresh popup.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+
+    // A's login settles late: the stale finally must not touch B's popup.
+    await act(async () => {
+      for (const release of resolvers.slice(0, 1)) release();
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(closeB).not.toHaveBeenCalled();
+    // Settle B too so no state update fires after the store resets.
+    await act(async () => {
+      for (const release of resolvers.slice(1)) release();
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    unmount();
+  });
+
+  it("a flow that settles before the deadline never sees the recovery notice", async () => {
+    // The deadline is armed at the tap (visible entry) and must be cancelled
+    // by the settle; the stored bearer completes the flow without needing
+    // interactive login (the never-settling login variants are pinned by the
+    // deadline tests above; cancel mechanics by the helper suite). Cloud-only
+    // mode (the production default): completion lands directly, not behind
+    // the chooser-mode tutorial step.
+    localStorage.removeItem("eliza:enable-runtime-chooser");
+    localStorage.removeItem("steward_session_token");
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    localStorage.setItem("steward_session_token", "cloud-token");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitFor(() => {
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    expect(
+      transcript.current.some((message) =>
+        String(message.text).includes("didn't finish"),
+      ),
+    ).toBe(false);
+    localStorage.removeItem("steward_session_token");
     unmount();
   });
 });

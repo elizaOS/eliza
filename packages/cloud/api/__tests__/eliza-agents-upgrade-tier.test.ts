@@ -20,7 +20,10 @@ process.env.MOCK_REDIS = "1";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as realAuth from "@/lib/auth";
-import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
+import {
+  personalSharedAgent,
+  personalSharedAgentId,
+} from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
@@ -566,6 +569,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       ORG_A,
     );
     expect(target?.execution_tier).toBe("dedicated-always");
+    const sharedCharacter = (
+      personalSharedAgent({ userId: USER_A, organizationId: ORG_A })
+        .agent_config as {
+        character: { system: string; bio: string[] };
+      }
+    ).character;
+    const targetConfig = target?.agent_config as Record<string, unknown>;
+    expect(targetConfig.system).toBe(sharedCharacter.system);
+    expect(targetConfig.bio).toEqual(sharedCharacter.bio);
     expect(
       (target?.agent_config as Record<string, unknown> | null)
         ?.__agentUpgradedFrom,
