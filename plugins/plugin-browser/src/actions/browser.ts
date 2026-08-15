@@ -44,14 +44,19 @@ type BrowserWorkspaceSubaction =
   | "back"
   | "click"
   | "close"
+  | "drag"
+  | "fill"
   | "forward"
   | "get"
   | "hide"
+  | "hover"
   | "navigate"
   | "open"
   | "press"
   | "reload"
   | "screenshot"
+  | "scroll"
+  | "scrollinto"
   | "show"
   | "snapshot"
   | "state"
@@ -82,12 +87,15 @@ type BrowserActionValue =
   | BrowserWorkspaceAction
   | "autofill_login"
   | "autofill-login"
+  | "clear"
+  | "scroll_into"
   | "wait_for_url"
   | "wait-for-url";
 type NormalizedBrowserAction =
   | BrowserWorkspaceSubaction
   | "autofill-login"
   | "wait-for-url"
+  | "clear"
   | "info"
   | "context"
   | "get_context"
@@ -107,6 +115,10 @@ type BrowserActionParameters = {
   pixels?: number;
   script?: string;
   selector?: string;
+  /** Scroll direction for action=scroll. Default "down". */
+  direction?: "down" | "left" | "right" | "up";
+  /** Drop-target selector for action=drag (source comes from `selector`). */
+  targetSelector?: string;
   /**
    * Canonical browser action. Legacy `subaction` remains accepted.
    */
@@ -196,6 +208,15 @@ function inferBrowserSubaction(
     return "tab";
   }
 
+  // Scroll intent is unambiguous when a direction or pixel distance arrives
+  // without text to type: honor it even if the planner omitted the action.
+  if (
+    (params?.direction !== undefined || params?.pixels !== undefined) &&
+    params?.text === undefined
+  ) {
+    return "scroll";
+  }
+
   // In watch mode the user is observing the agent drive the browser; prefer
   // the realistic-* subactions so the cursor moves and pointer events fire
   // faithfully. Default-mode (no watcher) keeps the leaner click()/value=
@@ -235,6 +256,8 @@ function normalizeBrowserAction(
       return "cursor-hide";
     case "autofill_login":
       return "autofill-login";
+    case "scroll_into":
+      return "scrollinto";
     case "wait_for_url":
     case "wait-for-url":
       return "wait-for-url";
@@ -257,6 +280,10 @@ function normalizeLegacyBrowserAction(
     case "close_tab":
     case "switch_tab":
       return "tab";
+    // `clear` is fill-with-empty-value; the handler blanks the text so the
+    // workspace replaces (never appends to) the control's current value.
+    case "clear":
+      return "fill";
     case "autofill-login":
     case "wait-for-url":
       return undefined;
@@ -276,6 +303,11 @@ function isWorkspaceSubaction(
     action === "back" ||
     action === "click" ||
     action === "close" ||
+    action === "drag" ||
+    action === "fill" ||
+    action === "hover" ||
+    action === "scroll" ||
+    action === "scrollinto" ||
     action === "forward" ||
     action === "get" ||
     action === "hide" ||
@@ -347,6 +379,32 @@ function formatBrowserSessionResult(
 
   if (result.closed) {
     return `Browser closed (${result.mode}).`;
+  }
+
+  // Interaction receipts stay grounded in the executed command and, when the
+  // backend reports it, the actually-affected tab — never the requested label.
+  const affectedTab = result.tab
+    ? ` on ${result.tab.title} (${formatBrowserDestination(result.tab.url)})`
+    : "";
+  switch (command.subaction) {
+    case "scroll":
+      return `Scrolled ${command.direction ?? "down"}${
+        command.selector ? ` in ${command.selector}` : ""
+      }${affectedTab} (${result.mode}).`;
+    case "scrollinto":
+      return `Scrolled ${command.selector ?? "the target"} into view${affectedTab} (${result.mode}).`;
+    case "hover":
+      return `Hovering over ${command.selector ?? "the target"}${affectedTab} (${result.mode}).`;
+    case "drag":
+      return `Dragged ${command.selector ?? "the source"} to ${
+        command.value ?? "the target"
+      }${affectedTab} (${result.mode}).`;
+    case "fill":
+      return command.value
+        ? `Filled ${command.selector ?? "the field"}${affectedTab} (${result.mode}).`
+        : `Cleared ${command.selector ?? "the field"}${affectedTab} (${result.mode}).`;
+    default:
+      break;
   }
 
   if (result.tab) {
@@ -431,6 +489,23 @@ function browserProgressRationale(
       return command.selector
         ? `fill ${command.selector}`
         : "type requested text";
+    case "fill":
+      return command.selector
+        ? `${command.value ? "fill" : "clear"} ${command.selector}`
+        : "fill requested field";
+    case "hover":
+      return command.selector
+        ? `hover over ${command.selector}`
+        : "hover over requested target";
+    case "drag":
+      return command.selector
+        ? `drag ${command.selector}`
+        : "drag requested element";
+    case "scroll":
+    case "scrollinto":
+      return command.selector
+        ? `scroll ${command.selector}`
+        : `scroll ${command.direction ?? "down"}`;
     case "press":
     case "realistic-press":
       return command.key ? `press ${command.key}` : "press requested key";
@@ -724,9 +799,9 @@ export const browserAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
+    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. Interaction: click, type (append), fill (replace), clear, press, scroll (direction/pixels, optional selector), hover, drag (selector -> targetSelector). action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
   descriptionCompressed:
-    "Browser open|navigate|click|type|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
+    "Browser open|navigate|click|type|fill|clear|scroll|hover|drag|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
   routingHint:
     "drive an INTERACTIVE web browser session — navigate/click/type across pages, log into a site, or autofill saved credentials on a real browser target -> BROWSER; to fetch ONE URL's contents in a single shot -> WEB_FETCH, to answer an open-web question -> WEB_SEARCH, or to control native desktop apps/Finder/windows on the machine -> COMPUTER_USE",
   // Browser effects acknowledge the verified browser receipt. A speculative
@@ -761,6 +836,17 @@ export const browserAction: Action = {
     const url =
       params?.url?.trim() || extractFirstUrl(messageText) || undefined;
 
+    // `clear` arrives as fill; blank the value so the workspace replaces the
+    // control's contents instead of appending. Drag carries its drop target
+    // in `value` per the workspace contract.
+    const clearRequested = normalizeBrowserAction(params?.action) === "clear";
+    const commandValue =
+      subaction === "drag"
+        ? params?.targetSelector?.trim() || params?.text
+        : clearRequested
+          ? ""
+          : params?.text;
+
     const command: BrowserWorkspaceCommand = {
       id: params?.id?.trim(),
       key: params?.key?.trim(),
@@ -773,8 +859,9 @@ export const browserAction: Action = {
       show: subaction === "open" ? true : undefined,
       subaction,
       tabAction: params?.tabAction ?? normalizeLegacyTabAction(params?.action),
-      text: params?.text,
-      value: params?.text,
+      direction: params?.direction,
+      text: clearRequested ? "" : params?.text,
+      value: commandValue,
       timeoutMs: params?.timeoutMs,
       url,
       cursorDurationMs: params?.cursorDurationMs,
@@ -816,6 +903,14 @@ export const browserAction: Action = {
           success: true,
           mode: result.mode,
           subaction: result.subaction,
+          // Ground the receipt in the tab the backend actually affected.
+          ...(result.tab
+            ? {
+                tabId: result.tab.id,
+                url: result.tab.url,
+                title: result.tab.title,
+              }
+            : {}),
         },
         data: {
           actionName: "BROWSER",
@@ -910,13 +1005,17 @@ export const browserAction: Action = {
         type: "string" as const,
         enum: [
           "back",
+          "clear",
           "click",
           "close",
           "context",
+          "drag",
+          "fill",
           "forward",
           "get",
           "get_context",
           "hide",
+          "hover",
           "info",
           "list_tabs",
           "navigate",
@@ -925,6 +1024,8 @@ export const browserAction: Action = {
           "press",
           "reload",
           "screenshot",
+          "scroll",
+          "scroll_into",
           "show",
           "snapshot",
           "state",
@@ -1017,9 +1118,25 @@ export const browserAction: Action = {
     },
     {
       name: "pixels",
-      description: "Scroll distance in pixels",
+      description: "Scroll distance in pixels for action=scroll. Default 240.",
       required: false,
       schema: { type: "number" as const },
+    },
+    {
+      name: "direction",
+      description: "Scroll direction for action=scroll. Default down.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["down", "left", "right", "up"],
+      },
+    },
+    {
+      name: "targetSelector",
+      description:
+        "Drop-target selector for action=drag; source comes from selector.",
+      required: false,
+      schema: { type: "string" as const },
     },
     {
       name: "timeoutMs",
