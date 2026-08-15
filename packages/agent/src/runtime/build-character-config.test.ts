@@ -264,6 +264,34 @@ describe("connector policy projection", () => {
     });
   });
 
+  it("strips vault refs instead of projecting them as secret material", () => {
+    const character = buildCharacterFromConfig({
+      connectors: {
+        slack: {
+          botToken: "vault://connectors.slack.token",
+          accounts: {
+            support: {
+              botToken: "vault://connectors.slack.support.token",
+              channels: { support: { enabled: true } },
+            },
+          },
+        },
+      },
+      agents: { list: [{ name: "Tester", system: "x" }] },
+    } as unknown as ElizaConfig);
+
+    const secrets = character.secrets ?? {};
+    expect(secrets).not.toHaveProperty(
+      connectorBaseCredentialSettingKey("slack", "botToken"),
+    );
+    expect(secrets).not.toHaveProperty(
+      connectorAccountCredentialSettingKey("slack", "support", "botToken"),
+    );
+    // The ref never leaks into plain settings either — the boot chain's
+    // vault resolution lane is the only consumer of vault:// pointers.
+    expect(JSON.stringify(character.settings)).not.toContain("vault://");
+  });
+
   it("projects Slack policy while keeping every account credential secret", () => {
     const persisted = ElizaSchema.parse({
       connectors: {
