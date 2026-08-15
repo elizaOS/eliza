@@ -3,12 +3,12 @@
  * Functions worker, exercised without production credentials.
  */
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { describe, expect, test } from "vitest";
 
 const workflow = readFileSync(
-  join(import.meta.dir, "../../../.github/workflows/cloud-cf-release.yml"),
+  join(import.meta.dirname, "../../../.github/workflows/cloud-cf-release.yml"),
   "utf8",
 );
 
