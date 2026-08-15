@@ -97,6 +97,29 @@ function detailToken(step: string, detail?: Record<string, unknown>): string {
       .filter((value): value is string => Boolean(value))
       .join(" · ");
   }
+  if (step === "realtime:trace-complete") {
+    const outcome = pick("outcome");
+    const complete = pick("evidenceComplete") === "true";
+    const missing = detail.missingMarks;
+    const missingToken =
+      Array.isArray(missing) && missing.length > 0
+        ? `missing:${missing.join(",")}`
+        : null;
+    const latency = (key: string, label: string): string | null => {
+      const value = pick(key);
+      return value && value !== "not_measured" ? `${label} ${value}ms` : null;
+    };
+    return [
+      outcome,
+      complete ? "evidence:complete" : (missingToken ?? "evidence:partial"),
+      latency("acousticEndToFinalMs", "E→STT"),
+      latency("commitToModelMs", "C→M"),
+      latency("speakableToTtsByteMs", "S→TTS"),
+      latency("acousticEndToAudibleMs", "E→A"),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(" · ");
+  }
   if (step === "realtime:capture-ready") {
     const backend = pick("backend");
     const frameMs = pick("frameMs");
@@ -213,6 +236,12 @@ function isBadStep(step: string, token: string): boolean {
     if (Number.isFinite(code) && code >= 400) return true;
   }
   if (step === "pause:cancel") return true;
+  if (
+    step === "realtime:trace-complete" &&
+    !token.includes("evidence:complete")
+  ) {
+    return true;
+  }
   return false;
 }
 

@@ -115,6 +115,15 @@ describe("VoiceCaptureHud", () => {
       sttToAudioMs: 1083,
       modelToAudioMs: 123,
     });
+    voiceCaptureDebug("realtime:trace-complete", {
+      outcome: "spoken",
+      evidenceComplete: true,
+      missingMarks: [],
+      acousticEndToFinalMs: 180,
+      commitToModelMs: 470,
+      speakableToTtsByteMs: 120,
+      acousticEndToAudibleMs: 910,
+    });
 
     render(<VoiceCaptureHud localDev={false} />);
     await screen.findByTestId("voice-capture-hud");
@@ -127,6 +136,24 @@ describe("VoiceCaptureHud", () => {
     expect(text).toContain("16000→48000Hz · streaming_linear");
     expect(text).toContain("seq 7");
     expect(text).toContain("spoken · S→M 960ms · S→A 1083ms · M→A 123ms");
+    expect(text).toContain(
+      "spoken · evidence:complete · E→STT 180ms · C→M 470ms · S→TTS 120ms · E→A 910ms",
+    );
+  });
+
+  it("shows missing strict trace evidence as a failing line", async () => {
+    voiceCaptureDebug("realtime:trace-complete", {
+      outcome: "spoken",
+      evidenceComplete: false,
+      missingMarks: ["acoustic_speech_ended", "last_audio_playout"],
+      acousticEndToFinalMs: "not_measured",
+    });
+    render(<VoiceCaptureHud localDev />);
+    const line = await screen.findByTestId("voice-capture-hud-line");
+    expect(line.textContent).toContain(
+      "missing:acoustic_speech_ended,last_audio_playout",
+    );
+    expect(line.querySelector(".text-red-400")).not.toBeNull();
   });
 
   it("renders immediately in local development without a build stamp", async () => {
