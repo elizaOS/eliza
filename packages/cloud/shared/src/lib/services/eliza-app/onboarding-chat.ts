@@ -17,7 +17,7 @@ import {
 } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
-import { launchManagedElizaAgent } from "../eliza-managed-launch";
+import { readManagedElizaAgentConnection } from "../eliza-managed-launch";
 import { readOnboardingCoordinatorResult } from "./onboarding-coordinator-transport";
 import {
   enqueueDiscordProactiveGreeting,
@@ -1233,18 +1233,17 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
   }
 
   try {
-    const launch = await launchManagedElizaAgent({
+    const connection = await readManagedElizaAgentConnection({
       agentId: session.agentId,
       organizationId: session.organizationId,
-      userId: session.userId,
     });
 
     const rememberResponse = await fetch(
-      `${launch.connection.apiBase.replace(/\/+$/, "")}/api/memory/remember`,
+      `${connection.apiBase.replace(/\/+$/, "")}/api/memory/remember`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${launch.connection.token}`,
+          Authorization: `Bearer ${connection.token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -1271,10 +1270,10 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
     return {
       session: {
         ...session,
-        launchUrl: launch.appUrl,
+        launchUrl: controlPanelUrl(session.agentId),
         handoffCopiedAt: nowIso(),
       },
-      launchUrl: launch.appUrl,
+      launchUrl: controlPanelUrl(session.agentId),
       copied: true,
     };
   } catch (error) {

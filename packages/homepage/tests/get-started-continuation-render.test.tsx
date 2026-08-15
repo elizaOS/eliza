@@ -360,6 +360,7 @@ describe("GetStartedPage platform continuation", () => {
     );
     expect(chatPost).toBeDefined();
     expect(page.html()).toContain("Dedicated compute off");
+    expect(page.html()).toContain("Continue to Eliza");
     expect(document.querySelector("input[disabled]")).not.toBeNull();
     expect(
       chatFetch.mock.calls.some(
@@ -371,6 +372,22 @@ describe("GetStartedPage platform continuation", () => {
 
     page.unmount();
   });
+
+  test.each(["pending", "provisioning", "error"])(
+    "an authoritative %s continuation can skip Dedicated compute",
+    async (status) => {
+      authState = { isAuthenticated: true, isLoading: false };
+      previewResult = null;
+      legacyStatus = status;
+      const page = await renderPage(
+        "/get-started?onboardingSession=0f5f9f9a-72cf-45e1-b1a1-2b7f9b1de111",
+      );
+
+      expect(page.query("continuation-confirm")).toBeNull();
+      expect(page.html()).toContain("Skip to Eliza");
+      page.unmount();
+    },
+  );
 
   test("a transient preview failure stays on the continuation and retries", async () => {
     authState = { isAuthenticated: true, isLoading: false };

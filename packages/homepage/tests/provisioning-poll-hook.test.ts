@@ -22,6 +22,7 @@ const fetchCalls: Array<{ url: string; method: string; body: unknown }> = [];
 // The mock returns a provisioning-pending response so the poll loop keeps
 // running until the test deliberately flips the status to "running".
 let nextStatus = "pending";
+let runningHasBridge = true;
 let statusResponseSuccess = true;
 let releaseStatusResponse: (() => void) | null = null;
 
@@ -95,7 +96,10 @@ const clientMock = {
           provisioning: {
             status: nextStatus,
             agentId: isRunning ? "agent-123" : null,
-            bridgeUrl: isRunning ? "https://agent-123.example" : null,
+            bridgeUrl:
+              isRunning && runningHasBridge
+                ? "https://agent-123.example"
+                : null,
           },
           messages: [
             {
@@ -234,6 +238,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     setupDom();
     fetchCalls.length = 0;
     nextStatus = "pending";
+    runningHasBridge = true;
     statusResponseSuccess = true;
     releaseStatusResponse = null;
     capturedTimers = [];
@@ -334,6 +339,39 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     expect(firstPoll.sessionId).toBe("platform:blooio:+123****7890");
     expect(firstPoll.platform).toBe("blooio");
 
+    unmount();
+  });
+
+  test.each(["pending", "provisioning", "error"])(
+    "applies authoritative %s status to the continuation state",
+    async (status) => {
+      nextStatus = status;
+      const { getState, unmount } = mountHook(
+        true,
+        "platform:blooio:+123****7890",
+      );
+
+      await waitForEffects(150);
+
+      expect(getState().containerStatus).toBe(status);
+      expect(getState().hasObservedStatus).toBe(true);
+      unmount();
+    },
+  );
+
+  test("applies running status without a bridge as authoritative but not ready", async () => {
+    nextStatus = "running";
+    runningHasBridge = false;
+    const { getState, unmount } = mountHook(
+      true,
+      "platform:blooio:+123****7890",
+    );
+
+    await waitForEffects(150);
+
+    expect(getState().containerStatus).toBe("running");
+    expect(getState().hasObservedStatus).toBe(true);
+    expect(getState().isReady).toBe(false);
     unmount();
   });
 

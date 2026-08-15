@@ -21,7 +21,7 @@ const findOrCreateByPhone = mock();
 const linkPhoneToUser = mock();
 const linkDiscordToUser = mock();
 const linkTelegramToUser = mock();
-const launchManagedElizaAgent = mock();
+const readManagedElizaAgentConnection = mock();
 const loggerWarn = mock();
 let cloudEnv: Record<string, string | undefined> = {};
 const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
@@ -63,7 +63,7 @@ mock.module("../../utils/logger", () => ({
 }));
 
 mock.module("../eliza-managed-launch", () => ({
-  launchManagedElizaAgent,
+  readManagedElizaAgentConnection,
 }));
 
 mock.module("./provisioning", () => ({
@@ -102,7 +102,7 @@ describe("runOnboardingChat", () => {
     linkDiscordToUser.mockResolvedValue({ success: true });
     linkTelegramToUser.mockReset();
     linkTelegramToUser.mockResolvedValue({ success: true });
-    launchManagedElizaAgent.mockReset();
+    readManagedElizaAgentConnection.mockReset();
     loggerWarn.mockReset();
     cloudEnv = {};
     clearLocalGreetingQueue();
@@ -994,12 +994,9 @@ describe("runOnboardingChat", () => {
           bridge_url: "https://agent-1.example",
         },
       });
-      launchManagedElizaAgent.mockResolvedValue({
-        appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
-        connection: {
-          apiBase: "https://agent-1.example/",
-          token: "agent-token",
-        },
+      readManagedElizaAgentConnection.mockResolvedValue({
+        apiBase: "https://agent-1.example/",
+        token: "agent-token",
       });
 
       const result = await runOnboardingChat({
@@ -1015,17 +1012,16 @@ describe("runOnboardingChat", () => {
       });
 
       expect(result.handoffComplete).toBe(true);
-      expect(result.launchUrl).toBe("https://app.elizacloud.ai/dashboard/agents/agent-1");
+      expect(result.launchUrl).toBe("https://cloud.eliza.app/cloud/agents/agent-1");
       expect(result.session.userId).toBe("user-1");
       expect(result.session.organizationId).toBe("org-1");
       expect(result.session.agentId).toBe("agent-1");
-      expect(result.session.launchUrl).toBe("https://app.elizacloud.ai/dashboard/agents/agent-1");
+      expect(result.session.launchUrl).toBe("https://cloud.eliza.app/cloud/agents/agent-1");
       expect(result.session.handoffCopiedAt).toBeTruthy();
       expect(result.reply).toContain("already knows everything from this chat");
-      expect(launchManagedElizaAgent).toHaveBeenCalledWith({
+      expect(readManagedElizaAgentConnection).toHaveBeenCalledWith({
         agentId: "agent-1",
         organizationId: "org-1",
-        userId: "user-1",
       });
       expect(rememberRequests).toHaveLength(1);
       const rememberRequest = rememberRequests[0];
@@ -1043,7 +1039,7 @@ describe("runOnboardingChat", () => {
         "User's preferred name: Sam",
       );
 
-      launchManagedElizaAgent.mockClear();
+      readManagedElizaAgentConnection.mockClear();
       const continued = await runOnboardingChat({
         platform: "blooio",
         platformUserId: "+14155550123",
@@ -1058,8 +1054,8 @@ describe("runOnboardingChat", () => {
       expect(continued.handoffComplete).toBe(true);
       expect(continued.session.agentId).toBe("agent-1");
       expect(continued.session.handoffCopiedAt).toBe(result.session.handoffCopiedAt);
-      expect(continued.launchUrl).toBe("https://app.elizacloud.ai/dashboard/agents/agent-1");
-      expect(launchManagedElizaAgent).not.toHaveBeenCalled();
+      expect(continued.launchUrl).toBe("https://cloud.eliza.app/cloud/agents/agent-1");
+      expect(readManagedElizaAgentConnection).not.toHaveBeenCalled();
       expect(rememberRequests).toHaveLength(1);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1848,12 +1844,9 @@ describe("runOnboardingChat", () => {
             bridge_url: "https://agent-1.example",
           },
         });
-        launchManagedElizaAgent.mockResolvedValue({
-          appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
-          connection: {
-            apiBase: "https://agent-1.example",
-            token: "agent-token",
-          },
+        readManagedElizaAgentConnection.mockResolvedValue({
+          apiBase: "https://agent-1.example",
+          token: "agent-token",
         });
 
         const first = await runOnboardingChat({
@@ -1918,12 +1911,9 @@ describe("runOnboardingChat", () => {
             bridge_url: "https://agent-1.example",
           },
         });
-        launchManagedElizaAgent.mockResolvedValue({
-          appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
-          connection: {
-            apiBase: "https://agent-1.example",
-            token: "agent-token",
-          },
+        readManagedElizaAgentConnection.mockResolvedValue({
+          apiBase: "https://agent-1.example",
+          token: "agent-token",
         });
 
         const result = await runOnboardingChat({
@@ -2240,12 +2230,9 @@ describe("runOnboardingChat", () => {
           bridgeUrl: null,
           sandbox: null,
         });
-        launchManagedElizaAgent.mockResolvedValue({
-          appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
-          connection: {
-            apiBase: "https://agent-1.example/",
-            token: "agent-token",
-          },
+        readManagedElizaAgentConnection.mockResolvedValue({
+          apiBase: "https://agent-1.example/",
+          token: "agent-token",
         });
 
         // Start with a real user message so the transcript has real content.

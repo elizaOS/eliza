@@ -267,20 +267,13 @@ export function useElizaAppProvisioningChat(
             const provisioning = res.data.provisioning;
             const newStatus =
               provisioning?.status ?? containerStatusRef.current;
-            setContainerStatus(newStatus);
-            if (provisioning?.agentId && !agentIdRef.current)
-              setAgentId(provisioning.agentId);
-            if (provisioning?.bridgeUrl) {
-              setBridgeUrl(provisioning.bridgeUrl);
-            }
+            applyOnboardingResponse(res.data);
             if (newStatus === "running" && provisioning?.bridgeUrl) {
               stoppedRef.current = true;
-              applyOnboardingResponse(res.data);
               return;
             }
             if (newStatus === "none") {
               stoppedRef.current = true;
-              applyOnboardingResponse(res.data);
               return;
             }
             if (newStatus === "error") {

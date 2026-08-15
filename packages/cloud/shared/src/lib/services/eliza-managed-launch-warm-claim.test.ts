@@ -7,7 +7,11 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { AgentSandbox } from "../../db/schemas/agent-sandboxes";
 import { cache } from "../cache/client";
 import { apiKeysService } from "./api-keys";
-import { launchManagedElizaAgent, ManagedElizaLaunchError } from "./eliza-managed-launch";
+import {
+  launchManagedElizaAgent,
+  ManagedElizaLaunchError,
+  readManagedElizaAgentConnection,
+} from "./eliza-managed-launch";
 import { elizaSandboxService } from "./eliza-sandbox";
 
 const AGENT_ID = "00000000-0000-4000-8000-000000000111";
@@ -125,6 +129,33 @@ describe("managed launch warm-claim credential boundary", () => {
 });
 
 describe("managed launch credential rotation ordering", () => {
+  test("read-only connection lookup never touches lifecycle collaborators", async () => {
+    const running = genericSandbox("running");
+    const getAgent = spyOn(elizaSandboxService, "getAgent").mockResolvedValue(running);
+    const shutdown = spyOn(elizaSandboxService, "shutdown");
+    const prepare = spyOn(elizaSandboxService, "prepareManagedLaunchEnvironment");
+    const provision = spyOn(elizaSandboxService, "provision");
+    try {
+      const connection = await readManagedElizaAgentConnection({
+        agentId: AGENT_ID,
+        organizationId: ORG_ID,
+      });
+
+      expect(connection).toEqual({
+        apiBase: "https://old-agent.example",
+        token: "transport-token",
+      });
+      expect(shutdown).not.toHaveBeenCalled();
+      expect(prepare).not.toHaveBeenCalled();
+      expect(provision).not.toHaveBeenCalled();
+    } finally {
+      getAgent.mockRestore();
+      shutdown.mockRestore();
+      prepare.mockRestore();
+      provision.mockRestore();
+    }
+  });
+
   test("a refused shutdown leaves the running credential untouched", async () => {
     const running = genericSandbox("running");
     const getAgent = spyOn(elizaSandboxService, "getAgent").mockResolvedValue(running);
