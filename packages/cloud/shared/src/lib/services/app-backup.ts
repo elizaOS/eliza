@@ -13,6 +13,7 @@
 
 import type { App } from "../../db/repositories/apps";
 import { logger } from "../utils/logger";
+import { parseAppMonetizationNumber } from "./app-credit-math";
 import { appCreditsService } from "./app-credits";
 import { appsService } from "./apps";
 
@@ -66,8 +67,16 @@ export class AppBackupService {
       },
       monetization: {
         enabled: app.monetization_enabled,
-        inference_markup_percentage: Number(app.inference_markup_percentage ?? 0),
-        purchase_share_percentage: Number(app.purchase_share_percentage ?? 0),
+        inference_markup_percentage: parseAppMonetizationNumber(
+          "inference_markup_percentage",
+          app.inference_markup_percentage ?? 0,
+          { min: 0, max: 1000 },
+        ),
+        purchase_share_percentage: parseAppMonetizationNumber(
+          "purchase_share_percentage",
+          app.purchase_share_percentage ?? 0,
+          { min: 0, max: 100 },
+        ),
       },
       automation: {
         discord: app.discord_automation ?? null,
