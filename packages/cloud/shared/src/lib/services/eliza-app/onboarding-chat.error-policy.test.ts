@@ -10,7 +10,7 @@ const sessionCache = new Map<string, unknown>();
 const ensureElizaAppProvisioning = mock();
 const getElizaAppProvisioningStatus = mock();
 const linkPhoneToUser = mock();
-const launchManagedElizaAgent = mock();
+const readManagedElizaAgentConnection = mock();
 let cloudEnv: Record<string, string | undefined> = {};
 const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
 
@@ -29,7 +29,7 @@ mock.module("../../runtime/cloud-bindings", () => ({
 }));
 
 mock.module("../eliza-managed-launch", () => ({
-  launchManagedElizaAgent,
+  readManagedElizaAgentConnection,
 }));
 
 mock.module("./provisioning", () => ({
@@ -71,7 +71,7 @@ describe("onboarding-chat phone-link error policy", () => {
     ensureElizaAppProvisioning.mockReset();
     getElizaAppProvisioningStatus.mockReset();
     linkPhoneToUser.mockReset();
-    launchManagedElizaAgent.mockReset();
+    readManagedElizaAgentConnection.mockReset();
     ensureElizaAppProvisioning.mockResolvedValue(provisioning());
     getElizaAppProvisioningStatus.mockResolvedValue(provisioning());
     cloudEnv = {};
