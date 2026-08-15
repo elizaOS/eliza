@@ -90,6 +90,7 @@ describe("TwitterDirectMessageClient", () => {
       getMemoryById: async (id: string) => memories.get(id) ?? null,
       createMemory,
       ensureWorldExists: vi.fn(async () => undefined),
+      updateWorld: vi.fn(async () => undefined),
       ensureRoomExists: vi.fn(async () => undefined),
       ensureConnection: vi.fn(async () => undefined),
       messageService: { handleMessage },

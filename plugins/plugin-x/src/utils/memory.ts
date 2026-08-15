@@ -13,6 +13,7 @@ import {
   logger,
   type Memory,
   type UUID,
+  type World,
 } from "@elizaos/core";
 import type { Tweet as ClientTweet } from "../client";
 
@@ -45,6 +46,18 @@ type TwitterMetadataTweet = Pick<
   ClientTweet,
   "conversationId" | "id" | "name" | "userId" | "username"
 >;
+
+/**
+ * Persists a Twitter world on both modern upsert runtimes and older production
+ * runtimes where ensureWorldExists only creates missing rows.
+ */
+export async function reconcileTwitterWorld(
+  runtime: IAgentRuntime,
+  world: World,
+): Promise<void> {
+  await runtime.ensureWorldExists(world);
+  await runtime.updateWorld(world);
+}
 
 /**
  * `createdAt` must be an already-validated epoch-milliseconds value: callers
@@ -112,7 +125,7 @@ export async function ensureTwitterContext(
 
   try {
     // Ensure world exists
-    await runtime.ensureWorldExists({
+    await reconcileTwitterWorld(runtime, {
       id: worldId,
       name: `${username}'s Twitter`,
       agentId: runtime.agentId,

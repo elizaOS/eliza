@@ -15,7 +15,7 @@ import {
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import type { TwitterClientState } from "./types";
-import { createMemorySafe } from "./utils/memory";
+import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
 import { getSetting } from "./utils/settings";
 
 interface DirectMessageEvent {
@@ -204,7 +204,7 @@ export class TwitterDirectMessageClient {
     );
     const entityId = createUniqueUuid(this.runtime, senderId);
 
-    await this.runtime.ensureWorldExists({
+    await reconcileTwitterWorld(this.runtime, {
       id: worldId,
       name: `${displayName}'s X messages`,
       agentId: this.runtime.agentId,

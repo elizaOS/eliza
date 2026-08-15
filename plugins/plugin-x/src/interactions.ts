@@ -47,6 +47,7 @@ import {
   createMemorySafe,
   ensureTwitterContext as ensureContext,
   isTweetProcessed,
+  reconcileTwitterWorld,
 } from "./utils/memory";
 import { getSetting } from "./utils/settings";
 import { getEpochMs } from "./utils/time";
@@ -912,7 +913,7 @@ ${tweet.text}`;
 
         // 1. Ensure world exists for the user
         const worldId = createUniqueUuid(this.runtime, userId);
-        await this.runtime.ensureWorldExists({
+        await reconcileTwitterWorld(this.runtime, {
           id: worldId,
           name: `${username}'s Twitter`,
           agentId: this.runtime.agentId,

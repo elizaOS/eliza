@@ -68,10 +68,12 @@ describe("Twitter memory utilities", () => {
 
   it("stores the canonical entity UUID as the Twitter world owner", async () => {
     const ensureWorldExists = vi.fn(async () => undefined);
+    const updateWorld = vi.fn(async () => undefined);
     const ensureRoomExists = vi.fn(async () => undefined);
     const ensureConnection = vi.fn(async () => undefined);
     const runtime = runtimeWithStorage({
       ensureWorldExists,
+      updateWorld,
       ensureRoomExists,
       ensureConnection,
     });
@@ -83,6 +85,13 @@ describe("Twitter memory utilities", () => {
     });
 
     expect(ensureWorldExists).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          ownership: { ownerId: context.entityId },
+        }),
+      }),
+    );
+    expect(updateWorld).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({
           ownership: { ownerId: context.entityId },

@@ -38,7 +38,11 @@ import {
   type TwitterClientState,
   type TwitterInteractionPayload,
 } from "./types";
-import { buildTwitterMessageMetadata, createMemorySafe } from "./utils/memory";
+import {
+  buildTwitterMessageMetadata,
+  createMemorySafe,
+  reconcileTwitterWorld,
+} from "./utils/memory";
 import { getSetting } from "./utils/settings";
 import { getEpochMs } from "./utils/time";
 
@@ -596,7 +600,7 @@ export class ClientBase {
             tweet.userId === profile.id
               ? this.runtime.agentId
               : createUniqueUuid(this.runtime, tweet.userId);
-          await this.runtime.ensureWorldExists({
+          await reconcileTwitterWorld(this.runtime, {
             id: worldId,
             name: `${tweet.username}'s Twitter`,
             agentId: this.runtime.agentId,
@@ -732,7 +736,7 @@ export class ClientBase {
         tweet.userId === profile.id
           ? this.runtime.agentId
           : createUniqueUuid(this.runtime, tweet.userId);
-      await this.runtime.ensureWorldExists({
+      await reconcileTwitterWorld(this.runtime, {
         id: worldId,
         name: `${tweet.username}'s Twitter`,
         agentId: this.runtime.agentId,
