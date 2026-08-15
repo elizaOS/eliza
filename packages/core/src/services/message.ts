@@ -67,7 +67,7 @@ import {
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
-import { canActionRun } from "../runtime/action-gate";
+import { actionGateFailure, canActionRun } from "../runtime/action-gate";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
@@ -2692,6 +2692,7 @@ async function collectV5PlannerCandidateActions(args: {
 		action: Action,
 		parentActionName?: string,
 		activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
+		explicitCandidateName?: string,
 	): Promise<boolean> => {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		if (!normalizedName || seen.has(normalizedName)) {
@@ -2700,13 +2701,31 @@ async function collectV5PlannerCandidateActions(args: {
 		// One gate for exposure and execution (#12087 Item 9): private-action gate
 		// (private actions never reach the planner on a user turn) + ACTION_ROLE_POLICY
 		// + contextGate + roleGate, all via the shared chokepoint.
-		if (
-			!canActionRun(action, {
-				message: args.message,
-				activeContexts,
-				userRoles: args.userRoles,
-			})
-		) {
+		//
+		// For EXPLICIT stage-1 candidates the rejection must be observable:
+		// dropping the one action stage-1 named leaves the planner improvising
+		// with unrelated tools, and a silent drop is undiagnosable from
+		// trajectories (live: a poisoned disclosure census killed every
+		// owner-life candidate in a DM for a full morning with zero log lines —
+		// issue #19999). The every-action loop stays quiet; benign rejections
+		// there are the normal case.
+		const gateFailure = actionGateFailure(action, {
+			message: args.message,
+			activeContexts,
+			userRoles: args.userRoles,
+		});
+		if (gateFailure !== undefined) {
+			if (explicitCandidateName) {
+				logger.warn(
+					{
+						src: "service:message",
+						action: action.name,
+						candidate: explicitCandidateName,
+						gate: gateFailure,
+					},
+					"Explicit stage-1 candidate rejected at the action gate",
+				);
+			}
 			return false;
 		}
 		try {
@@ -2718,6 +2737,17 @@ async function collectV5PlannerCandidateActions(args: {
 				},
 			);
 			if (!accountPolicy.allowed) {
+				if (explicitCandidateName) {
+					logger.warn(
+						{
+							src: "service:message",
+							action: action.name,
+							candidate: explicitCandidateName,
+							gate: "connector-account-policy",
+						},
+						"Explicit stage-1 candidate rejected by connector account policy",
+					);
+				}
 				return false;
 			}
 			if (action.validate) {
@@ -2727,6 +2757,17 @@ async function collectV5PlannerCandidateActions(args: {
 					args.state,
 				);
 				if (!valid) {
+					if (explicitCandidateName) {
+						logger.warn(
+							{
+								src: "service:message",
+								action: action.name,
+								candidate: explicitCandidateName,
+								gate: "validate-returned-false",
+							},
+							"Explicit stage-1 candidate rejected by action validate()",
+						);
+					}
 					return false;
 				}
 			}
@@ -2775,6 +2816,7 @@ async function collectV5PlannerCandidateActions(args: {
 				action,
 				undefined,
 				mergeAgentContexts(args.selectedContexts, action.contexts),
+				candidateName,
 			);
 		}
 	}
