@@ -2,6 +2,7 @@
  * Packaged Electrobun spec for the Electrobun Bottom Bar E2e desktop app
  * behavior.
  */
+
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -9,6 +10,7 @@ import { expect, test } from "@playwright/test";
 import sharp from "sharp";
 import { startMockApiServer } from "./mock-api";
 import {
+  isMacConsoleSessionLocked,
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
@@ -135,55 +137,82 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         dpr: window.devicePixelRatio || 1,
       };
     })()`);
-    const screenPng = Buffer.from(
-      (await harness.screenshot()).replace(/^data:image\/png;base64,/, ""),
-      "base64",
-    );
-    const nativeBounds = (await harness.getState()).mainWindow.bounds;
-    expect(nativeBounds).toBeTruthy();
-    if (!nativeBounds) throw new Error("bottom-bar window bounds unavailable");
-    const screenMetadata = await sharp(screenPng).metadata();
-    const left = Math.max(
-      0,
-      Math.round((nativeBounds.x + pillRect.x) * pillRect.dpr),
-    );
-    const top = Math.max(
-      0,
-      Math.round((nativeBounds.y + pillRect.y) * pillRect.dpr),
-    );
-    const width = Math.min(
-      Math.round(pillRect.width * pillRect.dpr),
-      (screenMetadata.width ?? 0) - left,
-    );
-    const height = Math.min(
-      Math.round(pillRect.height * pillRect.dpr),
-      (screenMetadata.height ?? 0) - top,
-    );
-    expect(width).toBeGreaterThan(35);
-    expect(height).toBeGreaterThan(6);
-    const pillPixels = await sharp(screenPng)
-      .extract({ left, top, width, height })
-      .ensureAlpha()
-      .raw()
-      .toBuffer();
-    let whitePixels = 0;
-    for (let offset = 0; offset < pillPixels.length; offset += 4) {
-      const red = pillPixels[offset];
-      const green = pillPixels[offset + 1];
-      const blue = pillPixels[offset + 2];
-      if (red > 210 && green > 210 && blue > 210) whitePixels += 1;
+    const macSessionLocked = isMacConsoleSessionLocked();
+    if (macSessionLocked) {
+      // error-policy:J4 macOS screen capture can stall WKWebView evaluation
+      // while the console session is locked. Preserve DOM/native geometry
+      // assertions without invoking the unavailable OS capture path.
+      testInfo.annotations.push({
+        type: "screen-capture-unavailable",
+        description: "macOS console session is locked",
+      });
+    } else {
+      const screenPng = Buffer.from(
+        (await harness.screenshot()).replace(/^data:image\/png;base64,/, ""),
+        "base64",
+      );
+      const nativeBounds = (await harness.getState()).mainWindow.bounds;
+      expect(nativeBounds).toBeTruthy();
+      if (!nativeBounds) {
+        throw new Error("bottom-bar window bounds unavailable");
+      }
+      const screenMetadata = await sharp(screenPng).metadata();
+      const screenStats = await sharp(screenPng).stats();
+      const captureHasVisiblePixels = screenStats.channels
+        .slice(0, 3)
+        .some((channel) => channel.mean > 2 || channel.max > 12);
+      const left = Math.max(
+        0,
+        Math.round((nativeBounds.x + pillRect.x) * pillRect.dpr),
+      );
+      const top = Math.max(
+        0,
+        Math.round((nativeBounds.y + pillRect.y) * pillRect.dpr),
+      );
+      const width = Math.min(
+        Math.round(pillRect.width * pillRect.dpr),
+        (screenMetadata.width ?? 0) - left,
+      );
+      const height = Math.min(
+        Math.round(pillRect.height * pillRect.dpr),
+        (screenMetadata.height ?? 0) - top,
+      );
+      expect(width).toBeGreaterThan(35);
+      expect(height).toBeGreaterThan(6);
+      const pillPixels = await sharp(screenPng)
+        .extract({ left, top, width, height })
+        .ensureAlpha()
+        .raw()
+        .toBuffer();
+      let whitePixels = 0;
+      for (let offset = 0; offset < pillPixels.length; offset += 4) {
+        const red = pillPixels[offset];
+        const green = pillPixels[offset + 1];
+        const blue = pillPixels[offset + 2];
+        if (red > 210 && green > 210 && blue > 210) whitePixels += 1;
+      }
+      const sampledPixels = width * height;
+      const pillCapturePath = testInfo.outputPath("bottom-launcher-pill.png");
+      await sharp(screenPng)
+        .extract({ left, top, width, height })
+        .png()
+        .toFile(pillCapturePath);
+      await testInfo.attach("bottom-launcher-pill.png", {
+        path: pillCapturePath,
+        contentType: "image/png",
+      });
+      if (captureHasVisiblePixels) {
+        expect(whitePixels / sampledPixels).toBeGreaterThan(0.55);
+      } else {
+        // error-policy:J4 Preserve the all-black capture attachment and the
+        // DOM/native geometry assertions without misreporting OS capture
+        // denial as a missing launcher. Unlocked CUA remains the pixel proof.
+        testInfo.annotations.push({
+          type: "screen-capture-unavailable",
+          description: "macOS returned an all-black desktop capture",
+        });
+      }
     }
-    const sampledPixels = width * height;
-    const pillCapturePath = testInfo.outputPath("bottom-launcher-pill.png");
-    await sharp(screenPng)
-      .extract({ left, top, width, height })
-      .png()
-      .toFile(pillCapturePath);
-    await testInfo.attach("bottom-launcher-pill.png", {
-      path: pillCapturePath,
-      contentType: "image/png",
-    });
-    expect(whitePixels / sampledPixels).toBeGreaterThan(0.55);
 
     await harness.eval(
       `document.querySelector('[data-testid="shell-home-pill"]')?.click()`,
@@ -287,23 +316,35 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     );
     await harness.showMainWindow();
     await harness.focusMainWindow();
-    await harness.waitForState(
-      (next) => next.shell.windowVisible && next.shell.windowFocused,
-      "Expected the popup chat to be visible and focused before hotkey dismissal.",
-      30_000,
-    );
-    await harness.pressShortcut("chat-overlay");
-    await harness.waitForState(
-      (next) => !next.shell.windowVisible,
-      "Expected the popup hotkey to dismiss a visible focused chat.",
-      30_000,
-    );
-    await harness.pressShortcut("chat-overlay");
-    await harness.waitForState(
-      (next) => next.shell.windowVisible && next.shell.windowFocused,
-      "Expected the popup hotkey to summon and focus the hidden chat.",
-      30_000,
-    );
+    if (macSessionLocked) {
+      // error-policy:J4 A locked macOS console cannot grant key-window focus.
+      // Registration remains asserted above; unlocked packaged and CUA runs
+      // exercise the actual dismiss/summon sequence.
+      const lockedState = await harness.getState();
+      expect(lockedState.shell.windowVisible).toBe(true);
+      testInfo.annotations.push({
+        type: "window-focus-unavailable",
+        description: "macOS console session is locked",
+      });
+    } else {
+      await harness.waitForState(
+        (next) => next.shell.windowVisible && next.shell.windowFocused,
+        "Expected the popup chat to be visible and focused before hotkey dismissal.",
+        30_000,
+      );
+      await harness.pressShortcut("chat-overlay");
+      await harness.waitForState(
+        (next) => !next.shell.windowVisible,
+        "Expected the popup hotkey to dismiss a visible focused chat.",
+        30_000,
+      );
+      await harness.pressShortcut("chat-overlay");
+      await harness.waitForState(
+        (next) => next.shell.windowVisible && next.shell.windowFocused,
+        "Expected the popup hotkey to summon and focus the hidden chat.",
+        30_000,
+      );
+    }
 
     if (process.platform === "darwin") {
       expect(interactiveState.shell.trayPopover).toMatchObject({
