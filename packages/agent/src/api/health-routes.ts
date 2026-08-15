@@ -2,7 +2,8 @@
  * Health, status, and runtime-introspection routes for the local agent server:
  * `GET /api/status` (agent state, active model, uptime, cloud-connection and
  * pending-restart summary), `GET /api/health` (subsystem readiness — runtime,
- * plugins loaded/failed, swarm coordinator, connector statuses), and
+ * plugins loaded/failed, service registrations including failed starts, swarm
+ * coordinator, connector statuses), and
  * `GET /api/runtime` (deep, memoized reflective snapshot of the runtime object
  * graph for the debug UI).
  *
@@ -589,6 +590,15 @@ export async function handleHealthRoutes(
       state.agentState !== "restarting" &&
       !databaseLiveness.terminal;
 
+    // Service registration truth (#16309): a service whose start() threw is
+    // recorded as "failed" by the runtime but previously never reached this
+    // surface, so supervisors saw a settled healthy boot over dead services.
+    const serviceHealth = runtime ? runtime.getServiceHealth() : {};
+    const failedServiceTypes = Object.entries(serviceHealth)
+      .filter(([, entry]) => entry.status === "failed")
+      .map(([type]) => type)
+      .sort();
+
     json(
       res,
       {
@@ -606,6 +616,13 @@ export async function handleHealthRoutes(
         plugins: {
           loaded: loadedPluginCount,
           failed: failedPluginCount,
+        },
+        services: {
+          registered: Object.values(serviceHealth).filter(
+            (entry) => entry.status === "registered",
+          ).length,
+          failed: failedServiceTypes.length,
+          failedTypes: failedServiceTypes,
         },
         coordinator: coordinatorStatus,
         connectors,
