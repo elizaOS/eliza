@@ -6,8 +6,12 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
-import { resolveStateDir, resolveUserPath } from "@elizaos/core";
+import {
+	ElizaError,
+	type IAgentRuntime,
+	resolveStateDir,
+	resolveUserPath,
+} from "@elizaos/core";
 import type { ClientUser } from "discord.js";
 import type { DiscordSettings } from "./types";
 
@@ -162,19 +166,58 @@ function buildLocalAvatarPathCandidates(source: string): string[] {
 async function readAvatarBytesFromLocalCandidates(
 	source: string,
 ): Promise<Buffer> {
-	let lastError: unknown = null;
-	for (const candidate of buildLocalAvatarPathCandidates(source)) {
+	const candidates = buildLocalAvatarPathCandidates(source);
+	for (const [candidateIndex, candidate] of candidates.entries()) {
 		try {
 			return await fs.readFile(candidate);
 		} catch (error) {
-			lastError = error;
+			const fsCode =
+				error instanceof Error &&
+				"code" in error &&
+				typeof error.code === "string"
+					? error.code
+					: undefined;
+			if (fsCode === "ENOENT" || fsCode === "ENOTDIR") {
+				// error-policy:J3 these codes mean this candidate is absent; probing
+				// the next declared root is the intended resolution algorithm.
+				continue;
+			}
+
+			// error-policy:J2 a present-but-unreadable candidate is not a miss.
+			// Preserve its machine-readable cause without copying the OS message,
+			// which can contain a user path or other sensitive local details.
+			const sanitizedCause = Object.assign(
+				new Error(
+					fsCode
+						? `Filesystem read failed (${fsCode}).`
+						: "Filesystem read failed.",
+				),
+				fsCode ? { code: fsCode } : {},
+			);
+			throw new ElizaError(
+				"A Discord profile avatar candidate could not be read.",
+				{
+					code: "DISCORD_PROFILE_AVATAR_READ_FAILED",
+					cause: sanitizedCause,
+					context: {
+						fsCode: fsCode ?? "UNKNOWN",
+						candidateIndex,
+						candidateCount: candidates.length,
+					},
+					severity: "ephemeral",
+				},
+			);
 		}
 	}
 
-	if (lastError instanceof Error) {
-		throw lastError;
-	}
-	throw new Error(`Unable to resolve Discord profile avatar source: ${source}`);
+	throw new ElizaError(
+		`Discord profile avatar was not found in ${candidates.length} local candidate path(s).`,
+		{
+			code: "DISCORD_PROFILE_AVATAR_NOT_FOUND",
+			context: { candidateCount: candidates.length },
+			severity: "ephemeral",
+		},
+	);
 }
 
 async function loadDiscordProfileAvatarBytes(
