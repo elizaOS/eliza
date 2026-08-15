@@ -1,18 +1,28 @@
 /**
- * Matrix F4 (tj-a6b65b4576ad86): the planner translated the user's
- * "wifi credentials" into the stored title "wifi password" (it had the note
- * list in prior-turn context), so delete-note removed a note the user never
- * named — via an EXACT-title lookup no fuzzy guard could catch. The fence:
- * when the caller supplies the user's original words, the resolved title
- * must appear in them or the delete fails structurally and the reply asks.
+ * Tests that name-based note deletion is bound to a complete title phrase in
+ * the owner's current wording before the transactional delete commits.
  */
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { NotesService } from "./service";
 
-async function seeded(): Promise<NotesService> {
-  const service = new NotesService();
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+async function seeded(title = "wifi password"): Promise<NotesService> {
+  const stateDir = mkdtempSync(path.join(tmpdir(), "notes-delete-fence-"));
+  temporaryDirectories.push(stateDir);
+  const service = new NotesService(undefined, { stateDir });
+  await service.initialize();
   await service.createNoteWithCommit({
-    title: "wifi password",
+    title,
     body: "hunter2-not-really",
     color: "yellow",
   });
@@ -38,6 +48,46 @@ describe("delete-note owner-text fence", () => {
       { requireTitleInText: "delete the wifi password note" },
     );
     expect(removed.value.title).toBe("wifi password");
+    expect(service.snapshot().notes).toHaveLength(0);
+  });
+
+  it("rejects substring collisions as different names", async () => {
+    const service = await seeded("art");
+    await expect(
+      service.deleteNoteByLookupWithCommit("title", "art", {
+        requireTitleInText: "delete the cart note",
+      }),
+    ).rejects.toMatchObject({ code: "NOTES_DELETE_NAME_MISMATCH" });
+    expect(service.snapshot().notes).toHaveLength(1);
+  });
+
+  it("treats Unicode combining marks as part of the surrounding name", async () => {
+    const service = await seeded("i");
+    await expect(
+      service.deleteNoteByLookupWithCommit("title", "i", {
+        requireTitleInText: "delete the İ note",
+      }),
+    ).rejects.toMatchObject({ code: "NOTES_DELETE_NAME_MISMATCH" });
+    expect(service.snapshot().notes).toHaveLength(1);
+  });
+
+  it("accepts canonically equivalent multilingual title spelling", async () => {
+    const service = await seeded("café");
+    const removed = await service.deleteNoteByLookupWithCommit(
+      "title",
+      "café",
+      { requireTitleInText: "delete the cafe\u0301 note" },
+    );
+    expect(removed.value.title).toBe("café");
+    expect(service.snapshot().notes).toHaveLength(0);
+  });
+
+  it("accepts an exactly named punctuation-bearing title", async () => {
+    const service = await seeded("C++");
+    const removed = await service.deleteNoteByLookupWithCommit("title", "C++", {
+      requireTitleInText: 'delete the "C++" note',
+    });
+    expect(removed.value.title).toBe("C++");
     expect(service.snapshot().notes).toHaveLength(0);
   });
 
