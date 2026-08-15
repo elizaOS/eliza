@@ -3548,7 +3548,7 @@ export async function loadTrajectoryByStepId(
   }
 }
 
-function normalizeStepForPersistence(
+export function normalizeStepForPersistence(
   trajectoryId: string,
   step: PersistedStep,
 ): PersistedStep {

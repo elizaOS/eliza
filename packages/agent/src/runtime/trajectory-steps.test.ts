@@ -14,6 +14,9 @@ import {
   createBaseTrajectory,
   ensureTrajectoriesTable,
   loadTrajectoryById,
+  normalizeStepForPersistence,
+  type PersistedProviderAccess,
+  type PersistedStep,
   type PersistedTrajectory,
   parsePersistedTrajectoryRow,
   saveTrajectory,
@@ -796,5 +799,75 @@ describe("trajectory_steps dedicated table", () => {
     expect(loaded?.steps.length).toBe(1);
     expect(loaded?.steps[0]?.script).toBe(longScript);
     expect(loaded?.steps[0]?.script?.length).toBe(longScript.length);
+  });
+});
+
+describe("normalizeStepForPersistence provider-access byte budget ordering", () => {
+  // A legacy/data-first provider record whose large `data` payload precedes the
+  // required `purpose` string. With a plain `{ ...access }` snapshot, `data`
+  // consumes the shared row byte budget first, `purpose` is dropped, and the
+  // completeness re-validation discards the entire provider access. Reserving
+  // the required fields first must keep `purpose` intact while `data` degrades.
+  function buildDataFirstProviderAccess(): PersistedProviderAccess {
+    // ~1.2 MB of provider output — exceeds the ~1 MB shared row budget so that
+    // whichever field is serialized last is starved out of the budget.
+    const chunk = "x".repeat(60_000);
+    const access = {
+      data: { chunks: Array.from({ length: 20 }, () => chunk) },
+      providerId: "provider-recent-messages",
+      providerName: "recentMessages",
+      timestamp: 1_700_000_000_000,
+      purpose: "supply recent conversation context to the planner",
+    };
+    return access as unknown as PersistedProviderAccess;
+  }
+
+  function buildStep(access: PersistedProviderAccess): PersistedStep {
+    return {
+      stepId: "step-provider-order",
+      stepNumber: 0,
+      timestamp: 1_700_000_000_000,
+      llmCalls: [],
+      providerAccesses: [access],
+    };
+  }
+
+  it("retains a complete purpose when data-first records exceed the row budget", () => {
+    const step = buildStep(buildDataFirstProviderAccess());
+
+    const normalized = normalizeStepForPersistence("traj-order-1", step);
+
+    expect(normalized.providerAccesses).toHaveLength(1);
+    const persisted = normalized.providerAccesses[0];
+    // The required strings survive because they are reserved before `data`.
+    expect(persisted?.purpose).toBe(
+      "supply recent conversation context to the planner",
+    );
+    expect(persisted?.providerId).toBe("provider-recent-messages");
+    expect(persisted?.providerName).toBe("recentMessages");
+    expect(persisted?.timestamp).toBe(1_700_000_000_000);
+    // `data` is the field that absorbs the truncation, not `purpose`.
+    const dataBytes = Buffer.byteLength(JSON.stringify(persisted?.data));
+    expect(dataBytes).toBeLessThan(1024 * 1024);
+  });
+
+  it("preserves the required-field-first order in the snapshot output", () => {
+    const step = buildStep(buildDataFirstProviderAccess());
+
+    const normalized = normalizeStepForPersistence("traj-order-2", step);
+    const persisted = normalized.providerAccesses[0];
+    expect(persisted).toBeDefined();
+    const keys = Object.keys(persisted as PersistedProviderAccess);
+
+    // Every required field precedes `data`, independent of incoming key order.
+    for (const required of [
+      "providerId",
+      "providerName",
+      "timestamp",
+      "purpose",
+    ]) {
+      expect(keys.indexOf(required)).toBeGreaterThanOrEqual(0);
+      expect(keys.indexOf(required)).toBeLessThan(keys.indexOf("data"));
+    }
   });
 });
