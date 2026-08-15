@@ -92,6 +92,12 @@ app.route(
 app.post("/internal/deliver", (c) =>
   deliverInternalDiscordMessage(c.req.raw, {
     getInternalSecret: () => process.env.GATEWAY_INTERNAL_SECRET,
+    receipts: {
+      get: (key) => gatewayManager.readElizaAppDeliveryReceipt(key),
+      set: (key, value, options) =>
+        gatewayManager.claimOrWriteElizaAppDeliveryReceipt(key, value, options),
+      delete: (key) => gatewayManager.deleteElizaAppDeliveryReceipt(key),
+    },
     sendDirectMessage: (input) =>
       gatewayManager.deliverElizaAppDirectMessage(input),
   }),

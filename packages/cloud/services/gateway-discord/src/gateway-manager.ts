@@ -502,6 +502,28 @@ export class GatewayManager {
     return { accepted: true, providerMessageId: sent.id };
   }
 
+  async readElizaAppDeliveryReceipt(key: string): Promise<string | null> {
+    if (!this.redis)
+      throw new Error("Discord delivery receipt store unavailable");
+    return await this.redis.get<string>(key);
+  }
+
+  async claimOrWriteElizaAppDeliveryReceipt(
+    key: string,
+    value: string,
+    options: { ex: number; nx?: boolean },
+  ): Promise<unknown> {
+    if (!this.redis)
+      throw new Error("Discord delivery receipt store unavailable");
+    return await this.redis.set(key, value, options);
+  }
+
+  async deleteElizaAppDeliveryReceipt(key: string): Promise<unknown> {
+    if (!this.redis)
+      throw new Error("Discord delivery receipt store unavailable");
+    return await this.redis.del(key);
+  }
+
   /**
    * Acquire a JWT token from the token endpoint using the bootstrap secret.
    * This must be called before any API operations.

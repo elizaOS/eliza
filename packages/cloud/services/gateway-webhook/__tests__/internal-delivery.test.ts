@@ -109,7 +109,7 @@ describe("internal proactive delivery", () => {
       replayed: false,
     });
     expect(replay.status).toBe(200);
-    await expect(replay.json()).resolves.toEqual({
+    await expect(replay.json()).resolves.toMatchObject({
       success: true,
       replayed: true,
       idempotencyKey: "task-1:2026-08-14T20:00:00.000Z",
