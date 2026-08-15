@@ -43,6 +43,7 @@ import {
   resolveOnceDueAt,
   runLifeConnectedQuery,
   runLifeOperationHandler,
+  textStatesExplicitUnscheduled,
   wantsEarlierReminderNudge,
 } from "./life.js";
 
@@ -763,6 +764,32 @@ describe("runLifeOperationHandler definition update targeting", () => {
   });
 });
 
+describe("explicit unscheduled owner authority", () => {
+  it.each([
+    "add buy milk with no due date",
+    "add buy milk someday",
+    "añade comprar leche sin fecha",
+    "adicionar comprar leite sem prazo",
+    "添加买牛奶，没有截止日期",
+    "牛乳を買う、期限なし",
+    "우유 사기, 마감일 없이",
+    "thêm việc mua sữa không có ngày đến hạn",
+    "idagdag ang bumili ng gatas, walang takdang petsa",
+  ])("accepts an explicit no-date phrase in %p", (text) => {
+    expect(textStatesExplicitUnscheduled(text)).toBe(true);
+  });
+
+  it.each([
+    "add buy milk as a todo",
+    "add buy milk tomorrow at 9 as a todo",
+    "no due date, but actually schedule it tomorrow at 9",
+    "not a plain todo — schedule it tomorrow",
+    "add buy milk every monday",
+  ])("rejects omitted or contradicted no-date authority in %p", (text) => {
+    expect(textStatesExplicitUnscheduled(text)).toBe(false);
+  });
+});
+
 describe("runLifeOperationHandler clarification contract", () => {
   beforeEach(() => {
     serviceState.createCalls.length = 0;
@@ -824,6 +851,44 @@ describe("runLifeOperationHandler clarification contract", () => {
       }),
     ]);
   });
+
+  it.each(["add buy milk as a todo", "add buy milk tomorrow at 9 as a todo"])(
+    "does not treat planner-only unscheduled output as explicit for %p",
+    async (ownerText) => {
+      const runtime = makeRuntime((prompt) => {
+        if (prompt.includes("create_definition request")) {
+          return taskPlanJson({
+            requestKind: "todo",
+            title: "Buy milk",
+            cadenceKind: "unscheduled",
+          });
+        }
+        return "";
+      });
+
+      const result = await runLifeOperationHandler(
+        runtime,
+        makeMessage(ownerText),
+        undefined,
+        {
+          parameters: {
+            action: "create",
+            intent: ownerText,
+            ownerSurface: "OWNER_TODOS",
+          },
+        } as HandlerOptions,
+      );
+
+      expect(result).toMatchObject({
+        success: false,
+        values: {
+          error: "MISSING_DEFINITION_FIELD",
+          missingField: "schedule",
+        },
+      });
+      expect(serviceState.createCalls).toHaveLength(0);
+    },
+  );
 
   it("does not turn an undated reminder into a non-firing definition", async () => {
     const runtime = makeRuntime((prompt) => {
