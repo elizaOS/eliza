@@ -363,6 +363,8 @@ export function isShellDirectActionName(
  * - "owner-goals": concrete owner goal create/save/confirm phrasing.
  * - "owner-routines": habit/routine commitment phrasing, including recurring
  *   cadences ("3 times a day") — an owner mutation, never navigation.
+ * - "owner-scheduled-admin": snooze/reschedule/skip verbs acting on an
+ *   existing scheduled item — owner mutations that navigation cannot satisfy.
  * - "owner-reads": a possessive owner-data read ("list my personal todos",
  *   "what are my reminders") — the read-side mirror of the mutation rule
  *   above: data asks are owner-domain evidence, and VIEWS can only navigate,
@@ -384,6 +386,7 @@ export type DirectCurrentRequestCandidateKind =
 	| "owner-goals"
 	| "owner-routines"
 	| "owner-reads"
+	| "owner-scheduled-admin"
 	| "view-surface"
 	| "view-navigation"
 	| "view-capability"
@@ -636,6 +639,40 @@ function findOwnerRoutinesActionName(
 	return findAvailableActionName(actions, OWNER_ROUTINES_ACTION_NAMES);
 }
 
+const SCHEDULED_ADMIN_ACTION_NAMES = [
+	"OWNER_REMINDERS",
+	"SCHEDULED_TASKS",
+	"REMINDERS",
+	"REMINDER",
+] as const;
+
+/**
+ * Detects admin operations on an existing scheduled item ("snooze the water
+ * the ficus reminder until 6pm sunday", "skip today's checkin",
+ * "reschedule my dentist reminder"). Live miss (matrix F5,
+ * tj-a793149be84b86): with no deterministic candidate the turn fell through
+ * to the view/app overlap, routed to APP, and failed "could not find that
+ * active item" without ever reaching the reminders surface. Same
+ * owner-domain-evidence rule as the mutation legs: these verbs act on owner
+ * data; navigation cannot satisfy them.
+ */
+function looksLikeScheduledItemAdminRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized) return false;
+	if (!/\b(?:snooze|reschedule|postpone|unsnooze|skip)\b/iu.test(normalized)) {
+		return false;
+	}
+	return /\b(?:reminders?|tasks?|check[- ]?ins?|alarms?|follow[- ]?ups?)\b/iu.test(
+		normalized,
+	);
+}
+
+function findScheduledAdminActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string | undefined {
+	return findAvailableActionName(actions, SCHEDULED_ADMIN_ACTION_NAMES);
+}
+
 /**
  * Owner-life domains with a possessive read shape. Each maps to its reader
  * surface in preference order: the personal-assistant umbrella first, then the
@@ -670,7 +707,7 @@ const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
 	["reminders", /\breminders?\b/iu],
 	["routines", /\b(?:routines?|habits?)\b/iu],
 	["alarms", /\balarms?\b/iu],
-	["finances", /\b(?:finances|spending|expenses)\b/iu],
+	["finances", /\b(?:finances|budget|spending|expenses)\b/iu],
 ];
 
 function ownerLifeReadDomainsInPossessiveScopes(
@@ -871,6 +908,17 @@ export function inferDirectCurrentRequestCandidateInference(
 		const ownerGoalsAction = findOwnerGoalsActionName(actions);
 		if (ownerGoalsAction) {
 			return { names: [ownerGoalsAction], kind: "owner-goals" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Scheduled-item admin verbs (snooze/reschedule/skip) are owner mutations
+	// on existing data; without a deterministic candidate they fall through to
+	// the view/app overlap and fail off-surface (matrix F5). Same
+	// no-candidate-on-missing-surface rule as the other mutation legs.
+	if (looksLikeScheduledItemAdminRequest(messageText)) {
+		const scheduledAdminAction = findScheduledAdminActionName(actions);
+		if (scheduledAdminAction) {
+			return { names: [scheduledAdminAction], kind: "owner-scheduled-admin" };
 		}
 		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}
