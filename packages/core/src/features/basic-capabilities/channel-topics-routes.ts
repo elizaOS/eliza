@@ -31,8 +31,8 @@ export const CHANNEL_TOPICS_SEARCH_ROUTE: Route = {
 			res.status(400).json({ error: "query parameter 'q' is required" });
 			return;
 		}
-		const rawLimit = Number.parseInt(firstQueryValue(req.query?.limit), 10);
-		const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 20;
+		const rawLimit = Number(firstQueryValue(req.query?.limit));
+		const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? rawLimit : 20;
 		const svc = runtime.getService("channel_topics") as
 			| (TopicSearchService & object)
 			| null;
