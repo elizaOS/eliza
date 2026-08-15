@@ -38,6 +38,7 @@ import {
 } from "./types/message-source";
 import { formatError } from "./utils/format-error";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
+import { validateUuid } from "./utils.ts";
 
 export type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
@@ -422,10 +423,10 @@ export function resolveCanonicalOwnerId(
 		return configuredOwnerIds[0] ?? null;
 	}
 
-	const worldOwnerId = metadata?.ownership?.ownerId;
-	return typeof worldOwnerId === "string" && worldOwnerId.length > 0
-		? worldOwnerId
-		: null;
+	// Connector platform identifiers are not entity IDs. Legacy connector worlds
+	// sometimes persisted numeric provider IDs here; reject them before any role
+	// path can pass the value into UUID-backed entity/relationship queries.
+	return validateUuid(metadata?.ownership?.ownerId);
 }
 
 function resolveOwnershipCandidateIds(
