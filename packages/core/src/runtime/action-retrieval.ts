@@ -179,6 +179,22 @@ const COMPRESS_MODE_TOP_K_CAP = 8;
 // arbitrate from the exposed descriptions (#9950).
 const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	ADD_GOAL: ["OWNER_GOALS"],
+	// Email-shaped candidates bind to the inbox triage umbrella. Stage-1
+	// routinely invents these exact names (matrix F21, caught live by the
+	// #20001 resolved-to-nothing observability: EMAIL and EMAIL_SEARCH bound
+	// to no runtime action and the candidate died silently pre-#20001).
+	EMAIL: ["MESSAGE", "INBOX"],
+	EMAILS: ["MESSAGE", "INBOX"],
+	EMAIL_SEARCH: ["MESSAGE", "INBOX"],
+	SEARCH_EMAILS: ["MESSAGE", "INBOX"],
+	READ_EMAIL: ["MESSAGE", "INBOX"],
+	CHECK_EMAIL: ["MESSAGE", "INBOX"],
+	CHECK_INBOX: ["MESSAGE", "INBOX"],
+	// Terminal-shaped candidates bind to the shell surface (same F21 batch:
+	// TERMINAL_COMMAND resolved to nothing).
+	TERMINAL_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	TERMINAL: ["SHELL", "TERMINAL_SHELL"],
+	RUN_COMMAND: ["SHELL", "TERMINAL_SHELL"],
 	// Todo-shaped candidates hint BOTH todo owners: the personal-assistant
 	// umbrella and plugin-todos' TODO parent. Deployments load one or the
 	// other; the resolver keeps whichever is registered. Without these the
@@ -1215,10 +1231,11 @@ function resolveSimileParentHints(
 		parentBySimile.delete(normalized);
 	}
 	return candidateActions.flatMap((actionName) => {
-		if (parentNames.has(actionName)) {
+		const normalized = normalizeActionName(actionName);
+		if (!normalized || parentNames.has(normalized)) {
 			return [];
 		}
-		const parent = parentBySimile.get(actionName);
+		const parent = parentBySimile.get(normalized);
 		return parent ? [parent] : [];
 	});
 }

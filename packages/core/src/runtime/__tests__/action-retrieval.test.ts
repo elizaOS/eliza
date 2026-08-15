@@ -143,11 +143,10 @@ describe("action catalogue and retrieval", () => {
 		});
 	});
 
-	it("resolves a simile candidate hint to its catalog parent (BASH -> SHELL)", () => {
-		// The live regression this locks: Stage-1 hints candidateActions=["BASH"]
-		// (the documented canonical hint) but the parent action is named SHELL with
-		// BASH only as a simile. Without simile resolution the hint is dead and the
-		// surface cut hands the planner unrelated keyword matches instead.
+	it("normalizes simile candidate hints before resolving catalog parents", () => {
+		// Stage-1 producers may use lower- or camel-cased spellings while action
+		// metadata remains canonical. Both must resolve through the same exact-hint
+		// path rather than falling through to unrelated keyword matches.
 		const catalog = buildActionCatalog([
 			{
 				name: "SHELL",
@@ -157,15 +156,17 @@ describe("action catalogue and retrieval", () => {
 			},
 			...actions,
 		]);
-		const response = retrieveActions({
-			catalog,
-			messageText: "how much disk space is left on the server",
-			candidateActions: ["BASH"],
-		});
-		expect(response.results[0]).toMatchObject({
-			name: "SHELL",
-			matchedBy: expect.arrayContaining(["exact"]),
-		});
+		for (const candidateAction of ["bash", "runCommand"]) {
+			const response = retrieveActions({
+				catalog,
+				messageText: "how much disk space is left on the server",
+				candidateActions: [candidateAction],
+			});
+			expect(response.results[0]).toMatchObject({
+				name: "SHELL",
+				matchedBy: expect.arrayContaining(["exact"]),
+			});
+		}
 	});
 
 	it("drops a simile claimed by multiple parents instead of first-writer-wins (#16561)", () => {
@@ -251,7 +252,7 @@ describe("action catalogue and retrieval", () => {
 		const response = retrieveActions({
 			catalog,
 			messageText: "message my contact",
-			candidateActions: ["EMAIL"],
+			candidateActions: ["email"],
 		});
 		expect(response.results[0]?.name).toBe("EMAIL");
 	});
@@ -958,5 +959,71 @@ describe("canonical OWNER_* fallbacks for non-PA topologies", () => {
 		// out-scored the stage-1 candidate and tiering kept only the view
 		// action. With the window stripped, the candidate stays on top.
 		expect(response.results[0]).toMatchObject({ name: "OWNER_REMINDERS" });
+	});
+});
+
+describe("F21 alias rows: email + terminal candidates bind to real parents", () => {
+	it("email-shaped candidates alias to the inbox triage umbrella", () => {
+		expect(parentAliasesForCandidateAction("EMAIL")).toEqual([
+			"MESSAGE",
+			"INBOX",
+		]);
+		expect(parentAliasesForCandidateAction("EMAIL_SEARCH")).toEqual([
+			"MESSAGE",
+			"INBOX",
+		]);
+		expect(parentAliasesForCandidateAction("CHECK_INBOX")).toEqual([
+			"MESSAGE",
+			"INBOX",
+		]);
+	});
+
+	it("terminal-shaped candidates alias to the shell surface", () => {
+		expect(parentAliasesForCandidateAction("TERMINAL_COMMAND")).toEqual([
+			"SHELL",
+			"TERMINAL_SHELL",
+		]);
+		expect(parentAliasesForCandidateAction("RUN_COMMAND")).toEqual([
+			"SHELL",
+			"TERMINAL_SHELL",
+		]);
+	});
+});
+describe("F21 aliases survive production retrieval topology filtering", () => {
+	it.each([
+		["EMAIL", "MESSAGE"],
+		["EMAIL_SEARCH", "INBOX"],
+		["TERMINAL_COMMAND", "SHELL"],
+		["RUN_COMMAND", "TERMINAL_SHELL"],
+	])("binds %s to the available %s parent", (candidate, parentName) => {
+		const catalog = buildActionCatalog([
+			{
+				name: parentName,
+				description: "A registered runtime surface with no candidate-name overlap.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "",
+			candidateActions: [candidate],
+		});
+
+		expect(response.results[0]).toMatchObject({ name: parentName });
+	});
+
+	it("keeps a registered EMAIL parent authoritative over its fallback aliases", () => {
+		const catalog = buildActionCatalog([
+			{ name: "EMAIL", description: "Direct email capability." },
+			{ name: "MESSAGE", description: "Per-channel message triage." },
+			{ name: "INBOX", description: "Cross-channel inbox triage." },
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "",
+			candidateActions: ["EMAIL"],
+		});
+
+		expect(response.query.parentActionHints).toEqual(["EMAIL"]);
+		expect(response.results[0]).toMatchObject({ name: "EMAIL" });
 	});
 });
