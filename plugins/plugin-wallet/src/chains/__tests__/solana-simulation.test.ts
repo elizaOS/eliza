@@ -25,6 +25,7 @@ import type {
 } from "../../types/wallet-router";
 import { simulatePumpFunBuy, simulateSolanaSwap } from "../registry";
 import { SOLANA_SERVICE_NAME } from "../solana/constants";
+import { DEFAULT_JUPITER_API_BASE_URL } from "../solana/jupiter-api";
 import { SolanaService } from "../solana/service";
 
 const PUMPFUN_TRADE_LOCAL_URL = "https://pumpportal.fun/api/trade-local";
@@ -225,7 +226,7 @@ describe("Solana simulate mode (GH #16613)", () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url.startsWith("https://quote-api.jup.ag/v6/quote")) {
+      if (url.startsWith(`${DEFAULT_JUPITER_API_BASE_URL}/quote`)) {
         return jsonResponse({
           inputMint: "So11111111111111111111111111111111111111112",
           inAmount: "1000000000",
@@ -245,7 +246,7 @@ describe("Solana simulate mode (GH #16613)", () => {
           ],
         });
       }
-      if (url === "https://quote-api.jup.ag/v6/swap") {
+      if (url === `${DEFAULT_JUPITER_API_BASE_URL}/swap`) {
         return jsonResponse({
           swapTransaction: swapTxBase64,
           dynamicSlippageReport: { slippageBps: 12 },
@@ -346,7 +347,7 @@ describe("Solana simulate mode (GH #16613)", () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url.startsWith("https://quote-api.jup.ag/v6/quote")) {
+      if (url.startsWith(`${DEFAULT_JUPITER_API_BASE_URL}/quote`)) {
         return jsonResponse({
           inputMint: "So11111111111111111111111111111111111111112",
           outputMint: mint,
@@ -355,7 +356,7 @@ describe("Solana simulate mode (GH #16613)", () => {
           priceImpactPct: "0",
         });
       }
-      if (url === "https://quote-api.jup.ag/v6/swap") {
+      if (url === `${DEFAULT_JUPITER_API_BASE_URL}/swap`) {
         return jsonResponse({
           swapTransaction: swapTxBase64,
           dynamicSlippageReport: { slippageBps: 25 },
@@ -397,7 +398,7 @@ describe("Solana simulate mode (GH #16613)", () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url.startsWith("https://quote-api.jup.ag/v6/quote")) {
+      if (url.startsWith(`${DEFAULT_JUPITER_API_BASE_URL}/quote`)) {
         return jsonResponse({
           inputMint: "So11111111111111111111111111111111111111112",
           outputMint: mint,
@@ -406,7 +407,7 @@ describe("Solana simulate mode (GH #16613)", () => {
           priceImpactPct: "0",
         });
       }
-      if (url === "https://quote-api.jup.ag/v6/swap") {
+      if (url === `${DEFAULT_JUPITER_API_BASE_URL}/swap`) {
         return jsonResponse({
           swapTransaction: swapTxBase64,
           dynamicSlippageReport: { slippageBps: 25 },
@@ -450,7 +451,7 @@ describe("Solana simulate mode (GH #16613)", () => {
   it("throws a typed error when the Jupiter quote fails (transport/build failure, not a fabricated simulation)", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url.startsWith("https://quote-api.jup.ag/v6/quote")) {
+      if (url.startsWith(`${DEFAULT_JUPITER_API_BASE_URL}/quote`)) {
         return jsonResponse({ error: "no route found" });
       }
       throw new Error(`unexpected fetch url: ${url}`);
@@ -464,7 +465,7 @@ describe("Solana simulate mode (GH #16613)", () => {
 
     await expect(
       simulateSolanaSwap(swapParams(), createContext(runtime)),
-    ).rejects.toThrow(/Failed to get Jupiter quote: no route found/);
+    ).rejects.toThrow(/Jupiter rejected the quote: no route found/);
     expect(fakeConnection.simulateTransaction).not.toHaveBeenCalled();
   });
 
@@ -498,7 +499,7 @@ describe("Solana simulate mode (GH #16613)", () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url.startsWith("https://quote-api.jup.ag/v6/quote")) {
+      if (url.startsWith(`${DEFAULT_JUPITER_API_BASE_URL}/quote`)) {
         return jsonResponse({
           inputMint,
           inAmount: "1000000",
@@ -509,7 +510,7 @@ describe("Solana simulate mode (GH #16613)", () => {
           routePlan: [],
         });
       }
-      if (url === "https://quote-api.jup.ag/v6/swap") {
+      if (url === `${DEFAULT_JUPITER_API_BASE_URL}/swap`) {
         return jsonResponse({
           swapTransaction: swapTxBase64,
           dynamicSlippageReport: { slippageBps: 25 },
@@ -570,7 +571,7 @@ describe("Solana simulate mode (GH #16613)", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = typeof input === "string" ? input : input.toString();
-        if (url.startsWith("https://quote-api.jup.ag/v6/quote")) {
+        if (url.startsWith(`${DEFAULT_JUPITER_API_BASE_URL}/quote`)) {
           return jsonResponse({
             inAmount: "1000000000",
             outAmount: "150000000",
@@ -578,7 +579,7 @@ describe("Solana simulate mode (GH #16613)", () => {
             routePlan: [],
           });
         }
-        if (url === "https://quote-api.jup.ag/v6/swap") {
+        if (url === `${DEFAULT_JUPITER_API_BASE_URL}/swap`) {
           return jsonResponse({ swapTransaction: swapTxBase64 });
         }
         throw new Error(`unexpected fetch url: ${url}`);
@@ -606,10 +607,10 @@ describe("Solana simulate mode (GH #16613)", () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url.startsWith("https://quote-api.jup.ag/v6/quote")) {
+      if (url.startsWith(`${DEFAULT_JUPITER_API_BASE_URL}/quote`)) {
         return jsonResponse({ inAmount: "1", outAmount: "1", routePlan: [] });
       }
-      if (url === "https://quote-api.jup.ag/v6/swap") {
+      if (url === `${DEFAULT_JUPITER_API_BASE_URL}/swap`) {
         return jsonResponse({
           swapTransaction: swapTxBase64,
           dynamicSlippageReport: { slippageBps: 25 },
@@ -620,8 +621,10 @@ describe("Solana simulate mode (GH #16613)", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const fakeConnection = createFakeConnection();
-    // No SOLANA_PUBLIC_KEY / SOLANA_PRIVATE_KEY settings at all.
-    const runtime = createRuntime(fakeConnection, {});
+    // A private key may exist, but simulation must neither read nor decode it.
+    const runtime = createRuntime(fakeConnection, {
+      SOLANA_PRIVATE_KEY: "must-not-be-read",
+    });
 
     await expect(
       simulatePumpFunBuy(pumpFunParams(mint), createContext(runtime)),
@@ -635,6 +638,8 @@ describe("Solana simulate mode (GH #16613)", () => {
       (runtime as unknown as { setSetting: ReturnType<typeof vi.fn> })
         .setSetting,
     ).not.toHaveBeenCalled();
+    expect(runtime.getSetting).not.toHaveBeenCalledWith("SOLANA_PRIVATE_KEY");
+    expect(runtime.getSetting).not.toHaveBeenCalledWith("WALLET_PRIVATE_KEY");
     expect(fakeConnection.simulateTransaction).not.toHaveBeenCalled();
   });
 

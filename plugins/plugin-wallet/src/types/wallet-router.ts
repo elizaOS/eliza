@@ -111,16 +111,6 @@ export interface WalletRouterContext {
 }
 
 /**
- * Result of running a handler's real unsigned transaction through
- * `connection.simulateTransaction({ sigVerify: false, replaceRecentBlockhash:
- * true })`. An RPC-reported revert is a *successful* simulation with
- * `success: false` and a populated `err`/`logs` — never a thrown error, and
- * never fabricated success. `summary` echoes the subaction-specific
- * quote/build fields (swap: inToken/outToken/inAmount/outAmount/
- * priceImpactPct from the Jupiter quote; pump_fun_buy: mint/solAmount) so
- * callers can render a result without re-deriving it from `metadata`.
- */
-/**
  * One leg of the route the simulated transaction would take (Jupiter
  * `routePlan` shape, condensed). Empty for venues with a single fixed route
  * (pump.fun bonding curve).
@@ -132,6 +122,12 @@ export interface WalletSimulationRouteLeg {
   readonly percent: number | null;
 }
 
+/**
+ * Result of running a handler's real unsigned transaction through
+ * `connection.simulateTransaction({ sigVerify: false, replaceRecentBlockhash:
+ * true })`. An RPC-reported revert is represented by `success: false` with
+ * populated `err`/`logs`, never by fabricated success.
+ */
 export interface WalletRouterSimulation {
   readonly success: boolean;
   readonly err: string | null;

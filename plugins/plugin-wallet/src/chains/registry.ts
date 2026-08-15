@@ -82,6 +82,10 @@ const PUMPFUN_TRADE_LOCAL_URL = "https://pumpportal.fun/api/trade-local";
 const PUMPFUN_DEFAULT_PRIORITY_FEE_SOL = 0.00005;
 const PUMPFUN_DEFAULT_SLIPPAGE_BPS = 1_000;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function getRuntimeSetting(runtime: IAgentRuntime, key: string): string | null {
   const value = runtime.getSetting(key);
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -947,24 +951,11 @@ async function fetchJupiterSwapTransaction(
 
   const jupiterApiBaseUrl = resolveJupiterApiBaseUrl(context.runtime);
   const fetchFn = context.runtime.fetch || globalThis.fetch;
-  const quoteData = (await fetchJupiterJson(
+  const quoteData = await fetchJupiterJson(
     fetchFn,
     `${jupiterApiBaseUrl}/quote?${quoteParams.toString()}`,
     "quote",
-  )) as Record<string, unknown> & {
-    inAmount?: string;
-    outAmount?: string;
-    priceImpactPct?: string;
-    slippageBps?: number;
-    routePlan?: readonly {
-      readonly swapInfo?: {
-        readonly label?: string;
-        readonly inputMint?: string;
-        readonly outputMint?: string;
-      };
-      readonly percent?: number;
-    }[];
-  };
+  );
   if (typeof quoteData.error === "string") {
     throw new ElizaError(`Jupiter rejected the quote: ${quoteData.error}`, {
       code: "JUPITER_QUOTE_REJECTED",
@@ -1007,12 +998,9 @@ async function fetchJupiterSwapTransaction(
   );
   const dynamicSlippage = params.slippageBps === undefined;
   const dynamicSlippageReport = swapData.dynamicSlippageReport;
-  const reportedSlippageBps =
-    dynamicSlippageReport !== null &&
-    typeof dynamicSlippageReport === "object" &&
-    !Array.isArray(dynamicSlippageReport)
-      ? (dynamicSlippageReport as Record<string, unknown>).slippageBps
-      : undefined;
+  const reportedSlippageBps = isRecord(dynamicSlippageReport)
+    ? dynamicSlippageReport.slippageBps
+    : undefined;
   const effectiveSlippageBps = dynamicSlippage
     ? reportedSlippageBps
     : quoteData.slippageBps;
@@ -1027,17 +1015,34 @@ async function fetchJupiterSwapTransaction(
       "Jupiter dynamic slippage report is missing a valid slippageBps value",
     );
   }
+  const route = Array.isArray(quoteData.routePlan)
+    ? quoteData.routePlan.flatMap((rawLeg) => {
+        if (!isRecord(rawLeg)) {
+          return [];
+        }
+        const swapInfo = isRecord(rawLeg.swapInfo) ? rawLeg.swapInfo : {};
+        return [
+          {
+            label: typeof swapInfo.label === "string" ? swapInfo.label : null,
+            inputMint:
+              typeof swapInfo.inputMint === "string"
+                ? swapInfo.inputMint
+                : inputMint,
+            outputMint:
+              typeof swapInfo.outputMint === "string"
+                ? swapInfo.outputMint
+                : outputMint,
+            percent: typeof rawLeg.percent === "number" ? rawLeg.percent : null,
+          },
+        ];
+      })
+    : [];
 
   return {
     transaction,
     inputMint,
     outputMint,
-    route: (quoteData.routePlan ?? []).map((leg) => ({
-      label: leg.swapInfo?.label ?? null,
-      inputMint: leg.swapInfo?.inputMint ?? inputMint,
-      outputMint: leg.swapInfo?.outputMint ?? outputMint,
-      percent: typeof leg.percent === "number" ? leg.percent : null,
-    })),
+    route,
     effectiveSlippageBps:
       typeof effectiveSlippageBps === "number" ? effectiveSlippageBps : null,
     quoteSummary: {

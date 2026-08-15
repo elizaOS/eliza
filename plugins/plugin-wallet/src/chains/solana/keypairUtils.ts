@@ -52,28 +52,7 @@ export function getExistingSolanaPublicKey(runtime: IAgentRuntime): PublicKey | 
   const publicKeyString =
     getStringSetting(runtime, "SOLANA_PUBLIC_KEY") ??
     getStringSetting(runtime, "WALLET_PUBLIC_KEY");
-  if (publicKeyString) {
-    return new PublicKey(publicKeyString);
-  }
-  const privateKeyString =
-    getStringSetting(runtime, "SOLANA_PRIVATE_KEY") ??
-    getStringSetting(runtime, "WALLET_PRIVATE_KEY");
-  if (!privateKeyString) {
-    return null;
-  }
-  try {
-    return Keypair.fromSecretKey(bs58.decode(privateKeyString)).publicKey;
-  } catch {
-    try {
-      return Keypair.fromSecretKey(Uint8Array.from(Buffer.from(privateKeyString, "base64")))
-        .publicKey;
-    } catch {
-      // error-policy:J3 an unparseable configured key yields "no key
-      // available" for this read-only lookup; the signing path
-      // (getWalletKey) is the boundary that surfaces the format error.
-      return null;
-    }
-  }
+  return publicKeyString ? new PublicKey(publicKeyString) : null;
 }
 
 export async function getWalletKey(
