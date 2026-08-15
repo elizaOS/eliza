@@ -5,10 +5,7 @@ import {
   type IAgentRuntime,
   UnavailableCapabilityRouter,
 } from "@elizaos/core";
-import {
-  __resetHostExecutionBaselineForTests,
-  captureHostExecutionBaseline,
-} from "@elizaos/shared/host-execution-env";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runShell } from "./run-shell.js";
 
@@ -32,7 +29,6 @@ beforeEach(() => {
     process,
     "platform",
   );
-  __resetHostExecutionBaselineForTests();
   captureHostExecutionBaseline();
 });
 
@@ -45,7 +41,6 @@ afterEach(() => {
   if (savedPlatformDescriptor) {
     Object.defineProperty(process, "platform", savedPlatformDescriptor);
   }
-  __resetHostExecutionBaselineForTests();
 });
 
 function runtimeWithRouter(router: ElizaCapabilityRouter): IAgentRuntime {

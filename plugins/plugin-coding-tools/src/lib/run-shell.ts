@@ -29,6 +29,10 @@ import {
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import { applyHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import {
+  applyHostExecutionBaseline,
+  resolveHostExecutable,
+} from "@elizaos/shared/host-execution-env";
+import {
   detectTerminalSupport,
   missingToolForCommand,
   missingToolMessage,
@@ -520,15 +524,7 @@ function resolveExecutableForHost(
   name: string,
   fallback: string,
 ): string | undefined {
-  const pathEntries = (process.env.PATH ?? "")
-    .split(importPath.delimiter)
-    .filter(Boolean);
-  for (const entry of pathEntries) {
-    const candidate = importPath.join(entry, name);
-    if (existsSync(candidate)) return candidate;
-  }
-  if (existsSync(fallback)) return fallback;
-  return undefined;
+  return resolveHostExecutable(name) ?? resolveHostExecutable(fallback);
 }
 
 function runOnHostWithShell(

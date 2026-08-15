@@ -6,11 +6,8 @@
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  __resetHostExecutionBaselineForTests,
-  captureHostExecutionBaseline,
-} from "@elizaos/shared/host-execution-env";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   detectTerminalSupport,
   missingTerminalToolForCommand,
@@ -34,22 +31,29 @@ const ENV_KEYS = [
 let savedEnv: Record<string, string | undefined>;
 let tempDir = "";
 
-beforeEach(() => {
+beforeAll(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
   tempDir = mkdtempSync(path.join(tmpdir(), "shell-cap-"));
   process.env.PATH = tempDir;
-  __resetHostExecutionBaselineForTests();
   captureHostExecutionBaseline();
 });
 
-afterEach(() => {
+beforeEach(() => {
+  for (const key of ENV_KEYS) {
+    const value = savedEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  process.env.PATH = tempDir;
+});
+
+afterAll(() => {
   for (const key of ENV_KEYS) {
     const value = savedEnv[key];
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
   rmSync(tempDir, { recursive: true, force: true });
-  __resetHostExecutionBaselineForTests();
 });
 
 function executable(name: string): string {

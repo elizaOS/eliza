@@ -282,10 +282,11 @@ describe("with-package-build-lock", () => {
     cleanupPaths.add(evidenceDir);
     const readyPath = path.join(evidenceDir, "rename-ready");
     const releasePath = path.join(evidenceDir, "rename-release");
+    const renamedPath = path.join(evidenceDir, "rename-complete");
     const preloadPath = path.join(evidenceDir, "rename-barrier.mjs");
     writeFileSync(
       preloadPath,
-      `import fs from "node:fs/promises";\nconst originalRename=fs.rename.bind(fs);\nfs.rename=async(source,destination)=>{if(source===process.env.ELIZA_BUILD_LOCK_TEST_TARGET){await fs.writeFile(process.env.ELIZA_BUILD_LOCK_TEST_READY,"ready");while(true){try{await fs.access(process.env.ELIZA_BUILD_LOCK_TEST_RELEASE);break;}catch(error){/* error-policy:J3 a missing release marker remains an explicit blocked state. */if(error?.code!=="ENOENT")throw error;}await new Promise(resolve=>setTimeout(resolve,5));}}return originalRename(source,destination);};\n`,
+      `import fs from "node:fs/promises";\nconst originalRename=fs.rename.bind(fs);\nfs.rename=async(source,destination)=>{const isTarget=source===process.env.ELIZA_BUILD_LOCK_TEST_TARGET;if(isTarget){await fs.writeFile(process.env.ELIZA_BUILD_LOCK_TEST_READY,"ready");while(true){try{await fs.access(process.env.ELIZA_BUILD_LOCK_TEST_RELEASE);break;}catch(error){/* error-policy:J3 a missing release marker remains an explicit blocked state. */if(error?.code!=="ENOENT")throw error;}await new Promise(resolve=>setTimeout(resolve,5));}}const result=await originalRename(source,destination);if(isTarget)await fs.writeFile(process.env.ELIZA_BUILD_LOCK_TEST_RENAMED,"renamed");return result;};\n`,
     );
 
     const contender = spawnWrapper(
@@ -297,6 +298,7 @@ describe("with-package-build-lock", () => {
         ELIZA_BUILD_LOCK_TEST_TARGET: lockPath,
         ELIZA_BUILD_LOCK_TEST_READY: readyPath,
         ELIZA_BUILD_LOCK_TEST_RELEASE: releasePath,
+        ELIZA_BUILD_LOCK_TEST_RENAMED: renamedPath,
       },
     );
     const contenderResult = collect(contender);
@@ -312,6 +314,7 @@ describe("with-package-build-lock", () => {
     writeFileSync(lockPath, replacement, { flag: "wx" });
     writeFileSync(releasePath, "release");
 
+    await waitForPath(renamedPath);
     await waitForFileContent(lockPath, replacement);
     expect(readFileSync(lockPath, "utf8")).toBe(replacement);
     expect(JSON.parse(readFileSync(lockPath, "utf8")).ownerId).toBe(

@@ -5,20 +5,19 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  __resetHostExecutionBaselineForTests,
   applyHostExecutionBaseline,
   captureHostExecutionBaseline,
+  createHostExecutionBaseline,
   getHostExecutionBaseline,
+  resolveHostExecutable,
   validateHostExecutionPath,
 } from "./host-execution-env.ts";
-
-afterEach(() => {
-  __resetHostExecutionBaselineForTests();
-});
 
 describe("host execution boot baseline", () => {
   it("captures before a later PATH write in a fresh process", () => {
@@ -41,8 +40,10 @@ describe("host execution boot baseline", () => {
   it("keeps a fresh process capture after later environment mutation", () => {
     const bootPath =
       path.delimiter === ";" ? "C:\\Windows\\System32" : "/usr/bin:/bin";
-    captureHostExecutionBaseline({ PATH: bootPath });
-    const later = captureHostExecutionBaseline({ PATH: "/tmp/plugin-bin" });
+    process.env.PATH = bootPath;
+    captureHostExecutionBaseline();
+    process.env.PATH = "/tmp/plugin-bin";
+    const later = captureHostExecutionBaseline();
     expect(later.path).toBe(bootPath);
     expect(getHostExecutionBaseline().path).toBe(bootPath);
   });
@@ -56,12 +57,11 @@ describe("host execution boot baseline", () => {
 
   it("accepts the Windows Path casing but rejects ambiguous case variants", () => {
     expect(
-      captureHostExecutionBaseline({ Path: "C:\\Windows\\System32" }, "win32")
+      createHostExecutionBaseline({ Path: "C:\\Windows\\System32" }, "win32")
         .path,
     ).toBe("C:\\Windows\\System32");
-    __resetHostExecutionBaselineForTests();
     expect(
-      captureHostExecutionBaseline(
+      createHostExecutionBaseline(
         { PATH: "C:\\Windows", Path: "C:\\Tools" },
         "win32",
       ).path,
@@ -69,9 +69,23 @@ describe("host execution boot baseline", () => {
   });
 
   it("adds only PATH to an already-sanitized environment", () => {
-    captureHostExecutionBaseline({ PATH: "/usr/bin:/bin" }, "linux");
+    const bootPath = getHostExecutionBaseline().path;
     expect(
       applyHostExecutionBaseline({ Path: "/tmp/late", SAFE: "yes" }),
-    ).toEqual({ PATH: "/usr/bin:/bin", SAFE: "yes" });
+    ).toEqual({ PATH: bootPath, SAFE: "yes" });
+  });
+
+  it("rejects executable paths outside the captured PATH directories", () => {
+    if (process.platform === "win32") return;
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "host-authority-"));
+    const executable = path.join(tempDir, "outside-path");
+    try {
+      writeFileSync(executable, "#!/bin/sh\nexit 0\n");
+      chmodSync(executable, 0o755);
+      expect(resolveHostExecutable(executable)).toBeUndefined();
+      expect(resolveHostExecutable("/bin/sh")).toBe("/bin/sh");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

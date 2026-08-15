@@ -3,7 +3,6 @@
  * whether a usable terminal/shell exists in the environment, resolves the shell
  * and executables to run, and reports the missing tool for a given command.
  */
-import fs from "node:fs";
 import path from "node:path";
 
 import { readAliasedEnv } from "@elizaos/shared";
@@ -84,23 +83,9 @@ export function isAospTerminalRuntime(): boolean {
   return isAndroidRuntime() && isTruthyEnv(process.env.ELIZA_AOSP_BUILD);
 }
 
-function executableExists(candidate: string): boolean {
-  try {
-    fs.accessSync(candidate, fs.constants.X_OK);
-    return true;
-  } catch {
-    // error-policy:J3 existence/permission probe; access failure means the
-    // candidate is absent or not executable — false is the expected miss.
-    return false;
-  }
-}
-
 export function resolveExecutable(nameOrPath: string): string | undefined {
   const trimmed = nameOrPath.trim();
   if (!trimmed) return undefined;
-  if (path.isAbsolute(trimmed)) {
-    return executableExists(trimmed) ? trimmed : undefined;
-  }
   return resolveHostExecutable(trimmed);
 }
 
@@ -132,8 +117,8 @@ export function resolveTerminalShell(): ShellResolution {
     available: false,
     source: "fallback",
     warning: isAndroidRuntime()
-      ? "No executable POSIX shell was detected. Android direct/AOSP local-yolo builds must expose /system/bin/sh or set CODING_TOOLS_SHELL to an executable shell."
-      : "No executable POSIX shell was detected. Set SHELL or CODING_TOOLS_SHELL to an executable shell.",
+      ? "No boot-authorized POSIX shell was detected. Android direct/AOSP local-yolo builds must include /system/bin or another shell directory in the boot PATH."
+      : "No boot-authorized POSIX shell was detected. Ensure the boot PATH contains an executable shell.",
   };
 }
 

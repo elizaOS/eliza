@@ -13,24 +13,7 @@ export interface HostExecutionBaseline {
   readonly path?: string;
 }
 
-const HOST_EXECUTION_BASELINE_KEY = Symbol.for(
-  "elizaos.host-execution-baseline",
-);
-
-type BaselineSlot = {
-  value?: HostExecutionBaseline;
-};
-
-function baselineSlot(): BaselineSlot {
-  const root = globalThis as typeof globalThis & {
-    [HOST_EXECUTION_BASELINE_KEY]?: BaselineSlot;
-  };
-  const existing = root[HOST_EXECUTION_BASELINE_KEY];
-  if (existing) return existing;
-  const created: BaselineSlot = {};
-  root[HOST_EXECUTION_BASELINE_KEY] = created;
-  return created;
-}
+let capturedBaseline: HostExecutionBaseline | undefined;
 
 function pathValueForPlatform(
   env: NodeJS.ProcessEnv,
@@ -59,24 +42,27 @@ export function validateHostExecutionPath(
   return value;
 }
 
-/** Capture once. Later calls cannot replace the boot authority. */
-export function captureHostExecutionBaseline(
-  env: NodeJS.ProcessEnv = process.env,
+export function createHostExecutionBaseline(
+  env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
 ): HostExecutionBaseline {
-  const slot = baselineSlot();
-  if (slot.value) return slot.value;
-  slot.value = Object.freeze({
+  return Object.freeze({
     path: validateHostExecutionPath(
       pathValueForPlatform(env, platform),
       platform,
     ),
   });
-  return slot.value;
+}
+
+/** Capture once. Later calls cannot replace the boot authority. */
+export function captureHostExecutionBaseline(): HostExecutionBaseline {
+  if (capturedBaseline) return capturedBaseline;
+  capturedBaseline = createHostExecutionBaseline(process.env);
+  return capturedBaseline;
 }
 
 export function getHostExecutionBaseline(): HostExecutionBaseline {
-  return baselineSlot().value ?? Object.freeze({});
+  return capturedBaseline ?? Object.freeze({});
 }
 
 /**
@@ -99,11 +85,21 @@ export function resolveHostExecutable(nameOrPath: string): string | undefined {
   const trimmed = nameOrPath.trim();
   if (!trimmed || trimmed.includes("\0")) return undefined;
   const candidates: string[] = [];
+  const baseline = getHostExecutionBaseline();
+  const authorityDirectories =
+    baseline.path?.split(path.delimiter).map((entry) => path.resolve(entry)) ??
+    [];
   if (path.isAbsolute(trimmed)) {
-    candidates.push(trimmed);
+    const candidate = path.resolve(trimmed);
+    const candidateDirectory = path.dirname(candidate);
+    const isAuthorized = authorityDirectories.some((directory) =>
+      process.platform === "win32"
+        ? directory.toLowerCase() === candidateDirectory.toLowerCase()
+        : directory === candidateDirectory,
+    );
+    if (isAuthorized) candidates.push(candidate);
   } else if (!trimmed.includes("/") && !trimmed.includes("\\")) {
-    const baseline = getHostExecutionBaseline();
-    for (const entry of baseline.path?.split(path.delimiter) ?? []) {
+    for (const entry of authorityDirectories) {
       candidates.push(path.join(entry, trimmed));
       if (process.platform === "win32" && path.extname(trimmed) === "") {
         candidates.push(path.join(entry, `${trimmed}.exe`));
@@ -120,9 +116,4 @@ export function resolveHostExecutable(nameOrPath: string): string | undefined {
     }
   }
   return undefined;
-}
-
-/** Test-only reset for isolated boot-capture cases. */
-export function __resetHostExecutionBaselineForTests(): void {
-  baselineSlot().value = undefined;
 }

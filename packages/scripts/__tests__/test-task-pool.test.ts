@@ -9,6 +9,7 @@ import {
   normalizeConcurrency,
   parseShardSpec,
   partitionTasks,
+  resolveConcurrency,
   runPool,
   SERIALIZE_PACKAGES,
   taskBelongsToShard,
@@ -198,6 +199,20 @@ describe("normalizeConcurrency", () => {
     ]) {
       expect(() => normalizeConcurrency(value)).toThrow(/concurrency/);
     }
+  });
+});
+
+describe("resolveConcurrency", () => {
+  test("prefers the CLI value and treats blank environment values as absent", () => {
+    expect(resolveConcurrency("4", "9")).toBe(4);
+    expect(resolveConcurrency(null, undefined)).toBe(1);
+    expect(resolveConcurrency(null, "")).toBe(1);
+    expect(resolveConcurrency(null, "   ")).toBe(1);
+    expect(resolveConcurrency(null, "5")).toBe(5);
+  });
+
+  test("rejects malformed present environment values", () => {
+    expect(() => resolveConcurrency(null, "1e3")).toThrow(/concurrency/);
   });
 });
 

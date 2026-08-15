@@ -1,15 +1,14 @@
 /**
- * Spawned-CLI boundary coverage for run-all-tests concurrency validation: a
- * present-but-malformed --concurrency (including an explicitly empty
- * `--concurrency=`) must exit through the repository's named usage error with
- * exit 2 and no stack trace, never degrade to serial execution. The harness is
- * real — each case spawns the actual script in plan mode with a filter that
- * matches nothing, so no tasks run.
+ * Concurrency boundary coverage for run-all-tests: malformed CLI and
+ * environment values exercise the real spawned command, while default
+ * resolution uses the runner's pure seam so this parallel scripts lane does
+ * not race unrelated repository-discovery tests.
  */
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { resolveConcurrency } from "../lib/test-task-pool.mjs";
 
 const SCRIPT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -63,15 +62,15 @@ describe("run-all-tests --concurrency usage boundary", () => {
     }
   });
 
-  test("valid --concurrency still plans and an empty env stays unset", () => {
+  test("valid --concurrency still plans", () => {
     const valid = runPlan(["--concurrency=3"]);
     expect(valid.status).toBe(0);
     expect(valid.stdout).toContain("concurrency=3");
+  });
 
+  test("empty environment values stay unset without repository discovery", () => {
     for (const value of ["", "   "]) {
-      const emptyEnv = runPlan([], { TEST_CONCURRENCY: value });
-      expect(emptyEnv.status).toBe(0);
-      expect(emptyEnv.stdout).toContain("concurrency=1");
+      expect(resolveConcurrency(null, value)).toBe(1);
     }
   });
 
