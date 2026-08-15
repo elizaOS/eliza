@@ -34,6 +34,7 @@ import {
 import {
   deliverManagedReply,
   postManagedAgentMessageWithRetry,
+  withManagedTypingHeartbeat,
 } from "./managed-message-egress";
 import {
   drainAndDeliverGreetings as drainAndDeliverPendingGreetings,
@@ -2373,53 +2374,77 @@ export class GatewayManager {
     content: string,
   ): Promise<void> {
     try {
-      if ("sendTyping" in message.channel) {
-        await message.channel.sendTyping();
-      }
-
       // Egress health (proven dropped-turn class, E2E 2026-08-05): a single
       // transient failure from the routing API must not consume the user's
       // turn. The route is idempotent on `discord:<messageId>`, so bounded
       // retry replays the SAME turn instead of dropping it.
-      const outcome = await postManagedAgentMessageWithRetry({
-        doPost: () =>
-          fetchWithTimeout(
-            `${this.config.elizaCloudUrl}/api/internal/discord/eliza-app/messages`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                ...this.getAuthHeader(),
-              },
-              body: JSON.stringify({
-                ...(message.guildId ? { guildId: message.guildId } : {}),
-                channelId: message.channelId,
-                messageId: message.id,
-                content,
-                sender: {
-                  id: message.author.id,
-                  username: message.author.username,
-                  displayName:
-                    message.member?.displayName ??
-                    message.author.globalName ??
-                    undefined,
-                  avatar: message.author.displayAvatarURL() || null,
+      const startedAt = Date.now();
+      const route = () =>
+        postManagedAgentMessageWithRetry({
+          doPost: () =>
+            fetchWithTimeout(
+              `${this.config.elizaCloudUrl}/api/internal/discord/eliza-app/messages`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...this.getAuthHeader(),
                 },
-              }),
-              timeout: EVENT_FORWARD_TIMEOUT_MS,
+                body: JSON.stringify({
+                  ...(message.guildId ? { guildId: message.guildId } : {}),
+                  channelId: message.channelId,
+                  messageId: message.id,
+                  content,
+                  sender: {
+                    id: message.author.id,
+                    username: message.author.username,
+                    displayName:
+                      message.member?.displayName ??
+                      message.author.globalName ??
+                      undefined,
+                    avatar: message.author.displayAvatarURL() || null,
+                  },
+                }),
+                timeout: EVENT_FORWARD_TIMEOUT_MS,
+              },
+            ),
+          refreshAuth: () => this.refreshToken(),
+          onAttemptFailure: ({ attempt, status, error }) => {
+            logger.warn("Managed Agent Discord routing attempt failed", {
+              guildId: message.guildId ?? null,
+              channelId: message.channelId,
+              messageId: message.id,
+              attempt,
+              ...(status !== undefined ? { status } : {}),
+              error: sanitizeError(error),
+            });
+          },
+        });
+      const typingChannel =
+        "sendTyping" in message.channel ? message.channel : null;
+      const outcome = typingChannel
+        ? await withManagedTypingHeartbeat(
+            {
+              sendTyping: () => typingChannel.sendTyping(),
+              onFailure: (error) => {
+                logger.warn("Managed Agent Discord typing heartbeat failed", {
+                  guildId: message.guildId ?? null,
+                  channelId: message.channelId,
+                  messageId: message.id,
+                  error,
+                });
+              },
             },
-          ),
-        refreshAuth: () => this.refreshToken(),
-        onAttemptFailure: ({ attempt, status, error }) => {
-          logger.warn("Managed Agent Discord routing attempt failed", {
-            guildId: message.guildId ?? null,
-            channelId: message.channelId,
-            messageId: message.id,
-            attempt,
-            ...(status !== undefined ? { status } : {}),
-            error: sanitizeError(error),
-          });
-        },
+            route,
+          )
+        : await route();
+      logger.info("Managed Agent Discord routing completed", {
+        guildId: message.guildId ?? null,
+        channelId: message.channelId,
+        messageId: message.id,
+        elapsedMs: Date.now() - startedAt,
+        attempts: outcome.attempts,
+        ok: outcome.ok,
       });
 
       if (!outcome.ok) {
