@@ -74,6 +74,11 @@ function lookupError(
   );
 }
 
+/** Identity key for copies with exactly the same user-visible content. */
+function noteContentKey(note: StickyNote): string {
+  return `${note.title}\0${note.body}`;
+}
+
 function resolveNoteIndex(
   notes: StickyNote[],
   selector: NoteLookupSelector,
@@ -94,7 +99,15 @@ function resolveNoteIndex(
   if (candidates.length === 0) {
     throw lookupError("NOTES_NOT_FOUND", selector, value, []);
   }
-  if (candidates.length > 1) {
+  // Ambiguity exists only between notes a user could tell apart. Multiple
+  // byte-identical copies (the duplicate-create case) are one logical note:
+  // asking "which one?" has no answerable form, and refusing made identical
+  // duplicates permanently unaddressable through chat. Differing matches keep
+  // the explicit ambiguity error.
+  if (
+    candidates.length > 1 &&
+    new Set(candidates.map(({ note }) => noteContentKey(note))).size > 1
+  ) {
     throw lookupError(
       "NOTES_AMBIGUOUS_NOTE",
       selector,
@@ -314,7 +327,12 @@ export class NotesService extends Service {
   async deleteNoteByLookupWithCommit(
     selector: NoteLookupSelector,
     value: string,
-  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
+  ): Promise<{
+    value: StickyNote;
+    snapshot: NotesSnapshot;
+    removedCount: number;
+  }> {
+    let removedCount = 0;
     const transaction = await this.store.transact((draft) => {
       const index = resolveNoteIndex(draft.notes, selector, value);
       const existing = draft.notes[index];
@@ -324,11 +342,17 @@ export class NotesService extends Service {
           severity: "fatal",
         });
       }
-      draft.notes.splice(index, 1);
+      // Deleting "the note" deletes every byte-identical copy: duplicates are
+      // one logical note, and leaving three identical survivors after "delete
+      // the milk note" contradicts what the deletion just confirmed.
+      const key = noteContentKey(existing);
+      const kept = draft.notes.filter((note) => noteContentKey(note) !== key);
+      removedCount = draft.notes.length - kept.length;
+      draft.notes = kept;
       return existing;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:deleted");
-    return transaction;
+    return { ...transaction, removedCount };
   }
 
   async clearNotesWithCommit(): Promise<{

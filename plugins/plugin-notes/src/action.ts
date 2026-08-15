@@ -95,6 +95,7 @@ function committed(text: string, data: Record<string, unknown>): ActionResult {
 
 export const notesAction: Action = {
   name: "NOTES",
+  contexts: ["notes", "general"],
   similes: [
     "NOTE",
     "TAKE_NOTE",
@@ -200,9 +201,16 @@ export const notesAction: Action = {
         "query",
         content,
       );
-      const text = `deleted the note: ${describe(removed.value)}`;
+      const text =
+        removed.removedCount > 1
+          ? `deleted the note: ${describe(removed.value)} (removed ${removed.removedCount} identical copies)`
+          : `deleted the note: ${describe(removed.value)}`;
       await deliver(text);
-      return committed(text, { op, noteId: removed.value.id });
+      return committed(text, {
+        op,
+        noteId: removed.value.id,
+        removedCount: removed.removedCount,
+      });
     }
 
     const replacement = readString(params.body) ?? readString(params.newText);
