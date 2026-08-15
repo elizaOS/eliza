@@ -14,6 +14,8 @@ export interface ChatEvent {
   senderName?: string;
   text: string;
   isCommand?: boolean;
+  /** Provider-accepted message time, used only for coarse ingress latency. */
+  providerSentAtMs?: number;
   mediaUrls?: string[];
   /** Provider-owned voice-note metadata; never contains an authenticated URL. */
   voiceNote?: {
