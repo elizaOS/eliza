@@ -163,7 +163,6 @@ describe("desktop bottom-bar config", () => {
       });
     });
 
-
     it("uses per-pixel passthrough only for the transparent macOS bottom bar", () => {
       expect(
         resolveDesktopShellWindowPresentation({}, [], "darwin").passthrough,
