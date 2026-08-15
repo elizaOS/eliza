@@ -19,7 +19,10 @@ import {
   RoomHandlerQueue,
   stringToUuid,
 } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import {
+  COMMITTED_SPEECH_PROTOCOL,
+  type ReadJsonBodyOptions,
+} from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   __getChatDedupeTtlMsForTests,
@@ -334,6 +337,7 @@ describe("chat route helper coverage", () => {
         metadata: { localInference: true },
         clientMessageId: " turn-7 ",
         streamProtocol: DELTA_STREAM_PROTOCOL,
+        voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
       }),
     );
     const readJsonBody = <T extends object>(
@@ -363,9 +367,27 @@ describe("chat route helper coverage", () => {
       metadata: { localInference: true },
       clientMessageId: "turn-7",
       streamProtocol: DELTA_STREAM_PROTOCOL,
+      voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
     });
     expect(readJsonBodyMock).toHaveBeenCalledWith(req, res, {
       maxBytes: 20 * 1024 * 1024,
+    });
+
+    readJsonBodyMock.mockResolvedValueOnce({
+      text: "terminal fallback",
+      streamProtocol: "future-stream",
+      voiceSpeechProtocol: "future-speech",
+    });
+    await expect(
+      readChatRequestPayload(req as never, res as never, {
+        readJsonBody,
+        error,
+      }),
+    ).resolves.toEqual({
+      prompt: "terminal fallback",
+      channelType: ChannelType.DM,
+      images: undefined,
+      preferredLanguage: "en",
     });
 
     readJsonBodyMock.mockResolvedValueOnce({ text: "hi", channelType: "bad" });

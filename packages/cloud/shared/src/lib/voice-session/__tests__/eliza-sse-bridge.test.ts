@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import { COMMITTED_SPEECH_PROTOCOL, REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 
 import {
   streamElizaConversation,
@@ -82,6 +82,146 @@ describe("eliza sse bridge", () => {
 
     expect(deltas).toEqual(["Hello", " local"]);
     expect(result).toEqual({ completed: true, aborted: false });
+  });
+
+  test("negotiates and forwards only revalidated committed speech segments", async () => {
+    const sentence = "This complete sentence is deliberately long enough for safe speech.";
+    const segments: unknown[] = [];
+    let requestBody: Record<string, unknown> | null = null;
+    const fetchImpl = (async (_input: unknown, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return sseResponse([
+        `data: ${JSON.stringify({ type: "token", text: `${sentence} Next` })}\n\n`,
+        `data: ${JSON.stringify({
+          type: "voice_speech_segment",
+          version: 1,
+          sequence: 0,
+          sourceStart: 0,
+          sourceEnd: sentence.length,
+          speechText: sentence,
+        })}\n\n`,
+        `data: ${JSON.stringify({ type: "done", fullText: `${sentence} Next` })}\n\n`,
+      ]);
+    }) as unknown as typeof fetch;
+
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "hi",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-segments",
+        signal: new AbortController().signal,
+        fetchImpl,
+        voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+        onSpeechSegment: (segment) => segments.push(segment),
+      },
+      () => {},
+    );
+
+    expect(requestBody).toMatchObject({
+      streamProtocol: "delta-v2",
+      voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+    });
+    expect(segments).toEqual([
+      {
+        type: "voice_speech_segment",
+        version: 1,
+        sequence: 0,
+        sourceStart: 0,
+        sourceEnd: sentence.length,
+        speechText: sentence,
+      },
+    ]);
+    expect(result).toEqual({ completed: true, aborted: false });
+  });
+
+  test("keeps terminal compatibility when committed speech is not requested", async () => {
+    let requestBody: Record<string, unknown> | null = null;
+    const fetchImpl = (async (_input: unknown, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return sseResponse([
+        `data: ${JSON.stringify({ type: "token", text: "Terminal only." })}\n\n`,
+        `data: ${JSON.stringify({ type: "done", fullText: "Terminal only." })}\n\n`,
+      ]);
+    }) as unknown as typeof fetch;
+
+    await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "hi",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-terminal-compat",
+        signal: new AbortController().signal,
+        fetchImpl,
+      },
+      () => {},
+    );
+
+    expect(requestBody).not.toHaveProperty("voiceSpeechProtocol");
+  });
+
+  test("fails closed on unnegotiated or source-divergent committed speech", async () => {
+    const sentence = "This complete sentence is deliberately long enough for safe speech.";
+    const frame = {
+      type: "voice_speech_segment",
+      version: 1,
+      sequence: 0,
+      sourceStart: 0,
+      sourceEnd: sentence.length,
+      speechText: sentence,
+    };
+    const fetchImpl = (async () =>
+      sseResponse([
+        `data: ${JSON.stringify({ type: "token", text: `${sentence} Next` })}\n\n`,
+        `data: ${JSON.stringify(frame)}\n\n`,
+        `data: ${JSON.stringify({ type: "done", fullText: `${sentence} Next` })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    await expect(
+      streamElizaConversation(
+        {
+          endpoint: "http://x",
+          authorization: "Bearer s",
+          model: "m",
+          transcript: "hi",
+          agentId: "agent-1",
+          conversationId: "conv-1",
+          traceId: "trace-unnegotiated-segment",
+          signal: new AbortController().signal,
+          fetchImpl,
+        },
+        () => {},
+      ),
+    ).rejects.toMatchObject({ code: "protocol_error", retryable: false });
+
+    const divergentFetch = (async () =>
+      sseResponse([
+        `data: ${JSON.stringify({ type: "token", text: `${sentence} Next` })}\n\n`,
+        `data: ${JSON.stringify({ ...frame, speechText: "A different safe sentence that cannot be authorized." })}\n\n`,
+      ])) as unknown as typeof fetch;
+    await expect(
+      streamElizaConversation(
+        {
+          endpoint: "http://x",
+          authorization: "Bearer s",
+          model: "m",
+          transcript: "hi",
+          agentId: "agent-1",
+          conversationId: "conv-1",
+          traceId: "trace-divergent-segment",
+          signal: new AbortController().signal,
+          fetchImpl: divergentFetch,
+          voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+        },
+        () => {},
+      ),
+    ).rejects.toMatchObject({ code: "protocol_error", retryable: false });
   });
 
   test("forwards only validated content-free status frames", async () => {

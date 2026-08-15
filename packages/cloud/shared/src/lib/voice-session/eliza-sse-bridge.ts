@@ -26,6 +26,14 @@ import {
   REALTIME_VOICE_CLIENT_TRANSPORT,
   type VoiceOutputPolicy,
 } from "@elizaos/shared";
+import {
+  COMMITTED_SPEECH_PROTOCOL,
+  CommittedSpeechProtocolError,
+  type CommittedSpeechSegment,
+  initialCommittedSpeechValidationState,
+  parseCommittedSpeechSegment,
+  validateCommittedSpeechSegment,
+} from "@elizaos/shared/voice/incremental-speech-segments";
 
 export const VOICE_TRACE_HEADER = "X-Eliza-Voice-Trace-Id";
 export const VOICE_CLIENT_MESSAGE_ID_PREFIX = REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX;
@@ -59,6 +67,10 @@ export interface ElizaSseBridgeRequest {
   traceId: string;
   /** Content-free canonical phase updates used by bounded voice progress. */
   onStatus?: (status: ChatTurnStatus) => void;
+  /** Explicit opt-in for irrevocable, safely projected model-prefix speech. */
+  voiceSpeechProtocol?: typeof COMMITTED_SPEECH_PROTOCOL;
+  /** Invoked only for validated segments when the exact protocol was requested. */
+  onSpeechSegment?: (segment: CommittedSpeechSegment) => void;
   /** Abort → cancels the fetch → cancels the upstream provider stream. */
   signal: AbortSignal;
   /** Injectable fetch for tests; defaults to global fetch. */
@@ -181,6 +193,9 @@ export async function streamElizaConversation(
         // Snapshot-only action replies must remain distinguishable from model
         // deltas. The local loopback adapter preserves this exact negotiation.
         streamProtocol: VOICE_STREAM_PROTOCOL,
+        ...(request.voiceSpeechProtocol === COMMITTED_SPEECH_PROTOCOL
+          ? { voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL }
+          : {}),
       }),
       signal: request.signal,
     });
@@ -234,6 +249,7 @@ export async function streamElizaConversation(
   let eventType = "";
   let emittedText = "";
   let pendingProvisionalText: string | null = null;
+  let speechValidationState = initialCommittedSpeechValidationState();
   const emitDelta = (text: string): void => {
     if (!text) return;
     emittedText += text;
@@ -330,6 +346,51 @@ export async function streamElizaConversation(
         if (payloadType === "status") {
           const status = extractChatTurnStatus(payload);
           if (status) request.onStatus?.(status);
+          continue;
+        }
+        if (payloadType === "voice_speech_segment") {
+          if (request.voiceSpeechProtocol !== COMMITTED_SPEECH_PROTOCOL) {
+            throw new ElizaSseBridgeError(
+              "Eliza agent emitted an unnegotiated committed speech segment",
+              "protocol_error",
+              undefined,
+              undefined,
+              false,
+            );
+          }
+          let parsedPayload: unknown;
+          try {
+            parsedPayload = JSON.parse(payload);
+          } catch {
+            parsedPayload = null;
+          }
+          const segment = parseCommittedSpeechSegment(parsedPayload);
+          if (!segment) {
+            throw new ElizaSseBridgeError(
+              "Eliza agent committed speech segment is malformed",
+              "protocol_error",
+              undefined,
+              undefined,
+              false,
+            );
+          }
+          try {
+            speechValidationState = validateCommittedSpeechSegment(
+              segment,
+              emittedText,
+              speechValidationState,
+            );
+          } catch (error) {
+            if (!(error instanceof CommittedSpeechProtocolError)) throw error;
+            throw new ElizaSseBridgeError(
+              error.message,
+              "protocol_error",
+              undefined,
+              undefined,
+              false,
+            );
+          }
+          request.onSpeechSegment?.(segment);
           continue;
         }
         const update = extractTextUpdate(payload);

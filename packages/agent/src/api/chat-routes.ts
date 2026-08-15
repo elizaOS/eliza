@@ -65,6 +65,7 @@ import type {
 } from "@elizaos/shared";
 import {
   asRecord,
+  COMMITTED_SPEECH_PROTOCOL,
   DELTA_STREAM_PROTOCOL,
   extractAssistantReplyText,
   isLinkedAccountProviderId,
@@ -2981,6 +2982,9 @@ export async function readChatRequestPayload(
    *  drives `createChatTokenStreamWriter`. Unknown values are ignored so the
    *  server stays on legacy framing for un-negotiated clients. */
   streamProtocol?: typeof DELTA_STREAM_PROTOCOL;
+  /** Additive exact-realtime-voice capability. Unknown values are ignored and
+   *  retain the terminal-only speech contract. */
+  voiceSpeechProtocol?: typeof COMMITTED_SPEECH_PROTOCOL;
 } | null> {
   const body = await helpers.readJsonBody<{
     text?: string;
@@ -2991,6 +2995,7 @@ export async function readChatRequestPayload(
     metadata?: Record<string, unknown>;
     clientMessageId?: string;
     streamProtocol?: string;
+    voiceSpeechProtocol?: string;
   }>(req, res, { maxBytes });
   if (!body) return null;
   const normalizedPrompt = normalizeIncomingChatPrompt(body.text, body.images);
@@ -3044,6 +3049,10 @@ export async function readChatRequestPayload(
     body.streamProtocol === DELTA_STREAM_PROTOCOL
       ? DELTA_STREAM_PROTOCOL
       : undefined;
+  const voiceSpeechProtocol =
+    body.voiceSpeechProtocol === COMMITTED_SPEECH_PROTOCOL
+      ? COMMITTED_SPEECH_PROTOCOL
+      : undefined;
   return {
     prompt: normalizedPrompt,
     channelType,
@@ -3053,6 +3062,7 @@ export async function readChatRequestPayload(
     ...(metadata ? { metadata } : {}),
     ...(clientMessageId ? { clientMessageId } : {}),
     ...(streamProtocol ? { streamProtocol } : {}),
+    ...(voiceSpeechProtocol ? { voiceSpeechProtocol } : {}),
   };
 }
 

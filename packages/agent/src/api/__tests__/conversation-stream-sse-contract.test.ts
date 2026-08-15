@@ -35,10 +35,12 @@ import {
   ModelType,
   RoomHandlerQueue,
   stringToUuid,
+  TurnAbortedError,
   TurnControllerRegistry,
   type UUID,
 } from "@elizaos/core";
 import {
+  COMMITTED_SPEECH_PROTOCOL,
   REALTIME_VOICE_CLIENT_TRANSPORT,
   REALTIME_VOICE_INGRESS_COMMITTED_V1,
   REALTIME_VOICE_INGRESS_HEADER,
@@ -49,6 +51,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // single fixture drives both the legacy and delta-v2 framings through the real
 // route handler.
 let requestStreamProtocol: "delta-v2" | undefined;
+let requestVoiceSpeechProtocol: typeof COMMITTED_SPEECH_PROTOCOL | undefined;
 let requestClientMessageId: string | undefined;
 let requestMetadata: Record<string, unknown> | undefined;
 const DEFAULT_REQUEST_PROMPT = "stream the deterministic thought";
@@ -76,6 +79,9 @@ vi.mock("../chat-routes.ts", async () => {
       metadata: requestMetadata,
       ...(requestStreamProtocol
         ? { streamProtocol: requestStreamProtocol }
+        : {}),
+      ...(requestVoiceSpeechProtocol
+        ? { voiceSpeechProtocol: requestVoiceSpeechProtocol }
         : {}),
       ...(requestClientMessageId
         ? { clientMessageId: requestClientMessageId }
@@ -967,6 +973,7 @@ describe("conversation stream SSE contract (#10712)", () => {
   afterEach(() => {
     vi.clearAllMocks();
     requestStreamProtocol = undefined;
+    requestVoiceSpeechProtocol = undefined;
     requestClientMessageId = undefined;
     requestMetadata = undefined;
     requestPromptQueue.length = 0;
@@ -2126,6 +2133,28 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(done).not.toHaveProperty("transcriptVisibility");
   });
 
+  it("never commits provisional action-callback text to speech", async () => {
+    requestStreamProtocol = "delta-v2";
+    requestVoiceSpeechProtocol = COMMITTED_SPEECH_PROTOCOL;
+    useExactRealtimeVoiceRequest("voice:provisional-action-speech-contract");
+    const { ctx, record, state } = createCtx(
+      createVisibleCallbackWithInternalReceiptMessageService(),
+    );
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    runtime.updateMemory = vi.fn(async () => true);
+
+    await handleConversationRoutes(ctx);
+
+    const payloads = parseSsePayloads(record.writes);
+    expect(
+      payloads.some((payload) => payload.type === "voice_speech_segment"),
+    ).toBe(false);
+    expect(payloads).toContainEqual(
+      expect.objectContaining({ type: "done", fullText: "Opened Notes." }),
+    );
+  });
+
   it("keeps a failed action callback authoritative through done and persistence", async () => {
     requestStreamProtocol = "delta-v2";
     const expectedFailure =
@@ -2738,6 +2767,162 @@ describe("conversation stream SSE contract (#10712)", () => {
     // The terminal done frame is the full-text authority in delta framing too.
     const done = payloads.find((payload) => payload.type === "done");
     expect(done).toMatchObject({ type: "done", fullText: FINAL_TEXT });
+  });
+
+  it("emits only negotiated, model-origin committed speech before terminal", async () => {
+    const firstSentence =
+      "This complete sentence is deliberately long enough for safe speech.";
+    requestStreamProtocol = "delta-v2";
+    requestVoiceSpeechProtocol = COMMITTED_SPEECH_PROTOCOL;
+    useExactRealtimeVoiceRequest("voice:committed-segment-contract");
+    const fixture = createCtx(
+      createChunkPlanMessageService(
+        [
+          { chunk: firstSentence, accumulated: firstSentence },
+          {
+            chunk: " A later model token provides lookahead.",
+            accumulated: `${firstSentence} A later model token provides lookahead.`,
+          },
+        ],
+        `${firstSentence} A later model token provides lookahead.`,
+        "plain response",
+      ),
+    );
+
+    await handleConversationRoutes(fixture.ctx);
+
+    const payloads = parseSsePayloads(fixture.record.writes);
+    const segmentIndex = payloads.findIndex(
+      (payload) => payload.type === "voice_speech_segment",
+    );
+    const doneIndex = payloads.findIndex((payload) => payload.type === "done");
+    expect(segmentIndex).toBeGreaterThan(-1);
+    expect(segmentIndex).toBeLessThan(doneIndex);
+    expect(payloads[segmentIndex]).toEqual({
+      type: "voice_speech_segment",
+      version: 1,
+      sequence: 0,
+      sourceStart: 0,
+      sourceEnd: firstSentence.length,
+      speechText: firstSentence,
+    });
+
+    requestVoiceSpeechProtocol = undefined;
+    useExactRealtimeVoiceRequest("voice:terminal-only-contract");
+    const fallback = createCtx(
+      createChunkPlanMessageService(
+        [
+          { chunk: firstSentence, accumulated: firstSentence },
+          {
+            chunk: " More.",
+            accumulated: `${firstSentence} More.`,
+          },
+        ],
+        `${firstSentence} More.`,
+        "terminal fallback",
+      ),
+    );
+    await handleConversationRoutes(fallback.ctx);
+    expect(
+      parseSsePayloads(fallback.record.writes).some(
+        (payload) => payload.type === "voice_speech_segment",
+      ),
+    ).toBe(false);
+  });
+
+  it("fails closed and persists only the committed prefix after a model rewrite", async () => {
+    const committed =
+      "This complete sentence is deliberately long enough for safe speech.";
+    const rewritten =
+      "A replacement sentence is deliberately long enough but contradicts speech.";
+    requestStreamProtocol = "delta-v2";
+    requestVoiceSpeechProtocol = COMMITTED_SPEECH_PROTOCOL;
+    useExactRealtimeVoiceRequest("voice:committed-rewrite-contract");
+    const fixture = createCtx(
+      createChunkPlanMessageService(
+        [
+          {
+            chunk: `${committed} Next`,
+            accumulated: `${committed} Next`,
+          },
+          {
+            chunk: `${rewritten} Next`,
+            accumulated: `${rewritten} Next`,
+          },
+        ],
+        `${rewritten} Next`,
+        "rewrite must fail",
+      ),
+    );
+
+    await handleConversationRoutes(fixture.ctx);
+
+    const payloads = parseSsePayloads(fixture.record.writes);
+    expect(payloads).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        code: "committed_speech_protocol_error",
+      }),
+    );
+    expect(persistAssistantConversationMemory).toHaveBeenCalledWith(
+      expect.anything(),
+      ROOM_ID,
+      expect.objectContaining({ text: committed }),
+      ChannelType.DM,
+      expect.any(Number),
+      expect.any(String),
+      expect.anything(),
+    );
+    expect(payloads.some((payload) => payload.type === "done")).toBe(false);
+  });
+
+  it("preserves the already-authorized prefix when an exact turn aborts", async () => {
+    const committed =
+      "This complete sentence is deliberately long enough for safe speech.";
+    requestStreamProtocol = "delta-v2";
+    requestVoiceSpeechProtocol = COMMITTED_SPEECH_PROTOCOL;
+    useExactRealtimeVoiceRequest("voice:committed-abort-contract");
+    const messageService = {
+      async handleMessage(
+        _runtime: AgentRuntime,
+        _message: unknown,
+        _callback: unknown,
+        options?: {
+          onStreamChunk?: (
+            chunk: string,
+            messageId?: string,
+            accumulated?: string,
+          ) => Promise<void> | void;
+        },
+      ) {
+        await options?.onStreamChunk?.(
+          `${committed} Next`,
+          undefined,
+          `${committed} Next`,
+        );
+        throw new TurnAbortedError("confirmed_speech");
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "committed-abort-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    } satisfies NonNullable<AgentRuntime["messageService"]>;
+    const fixture = createCtx(messageService);
+
+    await handleConversationRoutes(fixture.ctx);
+
+    expect(persistAssistantConversationMemory).toHaveBeenCalledWith(
+      expect.anything(),
+      ROOM_ID,
+      expect.objectContaining({ text: committed }),
+      ChannelType.DM,
+      expect.any(Number),
+      expect.any(String),
+      expect.anything(),
+    );
   });
 
   it("emits a mid-stream structured rewrite as a fullText-only snapshot frame under delta-v2 (cumulative fullText under legacy)", async () => {

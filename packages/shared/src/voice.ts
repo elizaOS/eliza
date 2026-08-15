@@ -18,6 +18,7 @@ export const REALTIME_VOICE_CLIENT_TRANSPORT = "realtime_voice" as const;
  */
 export const REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX = "voice:" as const;
 
+export * from "./voice/incremental-speech-segments.js";
 export * from "./voice/realtime-voice-ingress.js";
 export * from "./voice/realtime-voice-trace.js";
 export * from "./voice/turn-coordinator.js";

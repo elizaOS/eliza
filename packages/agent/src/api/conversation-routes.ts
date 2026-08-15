@@ -50,6 +50,9 @@ import {
 } from "@elizaos/core";
 import {
   type ChatFailureKind,
+  COMMITTED_SPEECH_PROTOCOL,
+  CommittedSpeechProtocolError,
+  CommittedSpeechSegmenter,
   PatchConversationRequestSchema,
   PostConversationCleanupEmptyRequestSchema,
   PostConversationRequestSchema,
@@ -3720,6 +3723,7 @@ export async function handleConversationRoutes(
       source,
       metadata: chatMetadata,
       streamProtocol,
+      voiceSpeechProtocol,
       clientMessageId,
     } = chatPayload;
     const runtime = state.runtime;
@@ -3729,6 +3733,11 @@ export async function handleConversationRoutes(
     )
       ? clientMessageId
       : null;
+    const committedSpeechEnabled = Boolean(
+      exactVoiceClientMessageId &&
+        streamProtocol === "delta-v2" &&
+        voiceSpeechProtocol === COMMITTED_SPEECH_PROTOCOL,
+    );
     let exactVoiceAdmission: TurnRequestAdmission | null = null;
     let exactVoiceAbortListener: (() => void) | null = null;
     let heartbeatInterval: ReturnType<typeof setInterval> | undefined;
@@ -4291,6 +4300,44 @@ export async function handleConversationRoutes(
         // (thinking → running_action → thinking) still pass through.
         let lastStatusSignature = "thinking::";
         let generationResult: ChatGenerationResult | null = null;
+        const speechSegmenter = committedSpeechEnabled
+          ? new CommittedSpeechSegmenter()
+          : null;
+        const writeSpeechSegments = (
+          segments: ReturnType<CommittedSpeechSegmenter["observeModelDelta"]>,
+        ) => {
+          for (const segment of segments) writeSse(res, { ...segment });
+        };
+        const persistCommittedSpeech = async (): Promise<boolean> => {
+          const text = speechSegmenter?.committedSourceText ?? "";
+          if (!text) return false;
+          if (!runtimeTurnLease) {
+            throw new Error(
+              "Committed speech persistence requires the active room lease",
+            );
+          }
+          // Emitting a speech segment is the assistant side-effect commit. If a
+          // later exact abort wins, preserve that already-authorized prefix
+          // instead of applying the ordinary precommit cancellation gate.
+          const routeOwnedId = crypto.randomUUID() as UUID;
+          const persisted = await persistAssistantConversationMemory(
+            runtime,
+            conv.roomId,
+            { text, inReplyTo: messageToStore.id },
+            channelType,
+            turnStartedAt,
+            routeOwnedId,
+            runtimeTurnLease,
+          );
+          const outcome: ChatMessageIdOutcome = {
+            text,
+            agentName: state.agentName,
+            ...(persisted?.id ? { messageId: persisted.id } : {}),
+            userMessageId: messageToStore.id,
+          };
+          await settleTurnReservation(outcome);
+          return true;
+        };
         try {
           const result = await generateChatResponse(
             runtime,
@@ -4341,6 +4388,11 @@ export async function handleConversationRoutes(
                 ) {
                   return;
                 }
+                const speechSegments =
+                  origin === "model"
+                    ? (speechSegmenter?.observeModelDelta(chunk) ?? [])
+                    : [];
+                if (origin === "action_callback") speechSegmenter?.disable();
                 streamedText += chunk;
                 // Action-callback text is provisional on the wire: the final reply
                 // may replace it wholesale, and a voice client must not speak text
@@ -4348,6 +4400,7 @@ export async function handleConversationRoutes(
                 tokenWriter.writeChunk(res, chunk, streamedText, {
                   provisional: origin === "action_callback",
                 });
+                writeSpeechSegments(speechSegments);
               },
               onSnapshot: (text, origin) => {
                 if (!text) return;
@@ -4357,6 +4410,11 @@ export async function handleConversationRoutes(
                 ) {
                   return;
                 }
+                const speechSegments =
+                  origin === "model"
+                    ? (speechSegmenter?.observeModelSnapshot(text) ?? [])
+                    : [];
+                if (origin === "action_callback") speechSegmenter?.disable();
                 // Action callbacks may be the first visible source for a turn. An
                 // authoritative snapshot therefore has to be able to establish the
                 // stream, not merely revise text emitted by a model-token source.
@@ -4375,6 +4433,7 @@ export async function handleConversationRoutes(
                 tokenWriter.writeSnapshot(res, streamedText, {
                   provisional: origin === "action_callback",
                 });
+                writeSpeechSegments(speechSegments);
               },
               resolveNoResponseText: () =>
                 resolveNoResponseFallback(state.logBuffer, runtime),
@@ -4394,6 +4453,7 @@ export async function handleConversationRoutes(
               state.logBuffer,
               runtime,
             );
+            speechSegmenter?.assertTerminalText(resolvedText);
             if (
               !disconnectTracker.isAborted() &&
               !streamedText &&
@@ -4524,7 +4584,20 @@ export async function handleConversationRoutes(
                 clientMessageId ?? null,
               )
             ) {
-              if (exactVoiceClientMessageId) {
+              if (
+                exactVoiceClientMessageId &&
+                (await persistCommittedSpeech())
+              ) {
+                logger.info(
+                  {
+                    conversationId: conv.id,
+                    roomId: conv.roomId,
+                    committedSpeechLength:
+                      speechSegmenter?.committedSourceText.length ?? 0,
+                  },
+                  "[ConversationStream] preserved interrupted committed speech",
+                );
+              } else if (exactVoiceClientMessageId) {
                 try {
                   await settleTurnReservation({
                     text: "",
@@ -4547,6 +4620,37 @@ export async function handleConversationRoutes(
               } else {
                 releaseTurnReservation();
               }
+            }
+          } else if (terminalError instanceof CommittedSpeechProtocolError) {
+            logger.warn(
+              {
+                err: getErrorMessage(terminalError),
+                conversationId: conv.id,
+                roomId: conv.roomId,
+                committedSpeechLength:
+                  speechSegmenter?.committedSourceText.length ?? 0,
+              },
+              "[ConversationStream] committed speech protocol failed closed",
+            );
+            try {
+              if (!(await persistCommittedSpeech())) releaseTurnReservation();
+            } catch (persistError) {
+              logger.warn(
+                {
+                  err: getErrorMessage(persistError),
+                  conversationId: conv.id,
+                  roomId: conv.roomId,
+                },
+                "[ConversationStream] failed to preserve committed speech prefix",
+              );
+              releaseTurnReservation();
+            }
+            if (!disconnectTracker.isAborted()) {
+              writeSse(res, {
+                type: "error",
+                code: "committed_speech_protocol_error",
+                message: getErrorMessage(terminalError),
+              });
             }
           } else if (
             isCallbackHistoryPersistenceError(terminalError) ||
