@@ -442,6 +442,55 @@ describe("handleStandaloneCloudPairRoute", () => {
     }
   });
 
+  it("keeps a stalled successful response body on the timeout path", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+          const signal = init?.signal;
+          if (!signal) throw new Error("Expected the relay abort signal.");
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              new Promise<never>((_resolve, reject) => {
+                signal.addEventListener(
+                  "abort",
+                  () =>
+                    reject(
+                      Object.assign(new Error("This operation was aborted"), {
+                        name: "AbortError",
+                      }),
+                    ),
+                  { once: true },
+                );
+              }),
+          } as Response);
+        }),
+      );
+
+      const harness = fakeRes();
+      const handled = handleStandaloneCloudPairRoute(
+        fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+        harness.res,
+      );
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(harness.body()).toBe("");
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(handled).resolves.toBe(true);
+      expect(harness.status()).toBe(503);
+      expect(harness.headers()["retry-after"]).toBe("60");
+      expect(harness.body()).toContain(
+        "could not confirm whether sign-in completed",
+      );
+      expect(harness.body()).not.toContain("accepted the link");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("emits Retry-After and honest copy on transport failure", async () => {
     vi.useFakeTimers();
     try {

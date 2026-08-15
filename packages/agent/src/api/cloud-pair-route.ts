@@ -269,7 +269,19 @@ export async function handleStandaloneCloudPairRoute(
     if (response.ok) {
       // error-policy:J3 a successful dependency response is still untrusted;
       // malformed JSON or missing bearer ownership becomes an explicit 502.
-      const body: unknown = await response.json().catch(() => null);
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch (error) {
+        if (
+          controller.signal.aborted ||
+          (error instanceof Error && error.name === "AbortError")
+        ) {
+          throw error;
+        }
+        // error-policy:J3 malformed dependency JSON becomes an explicit invalid result.
+        body = null;
+      }
       exchanged = parseCloudPairRelaySession(body);
     } else if (status !== 401 && status !== 403 && status !== 410) {
       // 401/403/410 are logged separately as pairing-link rejections below;
