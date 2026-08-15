@@ -932,6 +932,7 @@ type DefinitionResult = {
 function resolveDefinitionInRecords(
   defs: LifeOpsDefinitionRecord[],
   target: string | undefined,
+  destructive = false,
 ): DefinitionResult {
   if (!target) return { match: null, ambiguousCandidates: [] };
   const byId = defs.find((entry) => entry.definition.id === target);
@@ -984,13 +985,20 @@ function resolveDefinitionInRecords(
   const bestMatches = scored
     .filter(({ score }) => score === bestScore)
     .map(({ entry }) => entry);
-  if (bestMatches.length === 1) {
+  // Destructive ops never act on a token-overlap guess: shared filler tokens
+  // let "check the oven" resolve to "check the kettle" and DELETE the wrong
+  // record with a confident receipt (live, watchtower's post-resurrection
+  // audit). Sibling of the trigger path's TRIGGER_REF_MISMATCH guard: the
+  // containment stages above (id / exact / substring) satisfy "one name
+  // contains the other" and still resolve; a scorer-only "match" degrades to
+  // a clarification candidate so the handler ASKS instead of deleting.
+  if (bestMatches.length === 1 && !destructive) {
     return {
       match: bestMatches.at(0) ?? null,
       ambiguousCandidates: [],
     };
   }
-  if (bestMatches.length > 1) {
+  if (bestMatches.length >= 1) {
     return {
       match: null,
       ambiguousCandidates: bestMatches.map((entry) => entry.definition.title),
@@ -1003,12 +1011,13 @@ async function resolveDefinition(
   service: LifeOpsService,
   target: string | undefined,
   domain?: LifeOpsDomain,
+  destructive = false,
 ): Promise<DefinitionResult> {
   if (!target) return { match: null, ambiguousCandidates: [] };
   const defs = (await service.listDefinitions()).filter((e) =>
     domain ? e.definition.domain === domain : true,
   );
-  return resolveDefinitionInRecords(defs, target);
+  return resolveDefinitionInRecords(defs, target, destructive);
 }
 
 async function resolveDefinitionForMutation(
@@ -1016,6 +1025,7 @@ async function resolveDefinitionForMutation(
   target: string | undefined,
   ownerText: string,
   domain?: LifeOpsDomain,
+  destructive = false,
 ): Promise<DefinitionResult> {
   const defs = (await service.listDefinitions()).filter((entry) =>
     domain ? entry.definition.domain === domain : true,
@@ -1053,19 +1063,23 @@ async function resolveDefinitionForMutation(
   const bestMatches = scored
     .filter(({ score }) => score === bestScore)
     .map(({ entry }) => entry);
-  if (bestMatches.length === 1) {
+  // Same destructive guard as resolveDefinitionInRecords: a token-overlap
+  // "best match" is a guess, and guesses may not delete records. The explicit
+  // containment branch above already resolved anything whose stored title
+  // appears in the owner's text.
+  if (bestMatches.length === 1 && !destructive) {
     return {
       match: bestMatches.at(0) ?? null,
       ambiguousCandidates: [],
     };
   }
-  if (bestMatches.length > 1) {
+  if (bestMatches.length >= 1) {
     return {
       match: null,
       ambiguousCandidates: bestMatches.map((entry) => entry.definition.title),
     };
   }
-  return resolveDefinition(service, target, domain);
+  return resolveDefinition(service, target, domain, destructive);
 }
 
 function tokenizeTitle(value: string): string[] {
@@ -5439,13 +5453,16 @@ async function runLifeOperationHandlerInner(
           targetName,
           messageText(message) || intent,
           domain,
+          // Destructive: a fuzzy near-miss must ask, never delete (the
+          // wrong-item deletion guard — sibling of TRIGGER_REF_MISMATCH).
+          true,
         );
       if (!target)
         return {
           success: false,
           text:
             ambiguousCandidates.length > 0
-              ? `Multiple items match — which one?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
+              ? `I found ${ambiguousCandidates.length === 1 ? "a similarly named item" : "similarly named items"} but not an exact match — delete ${ambiguousCandidates.length === 1 ? "it" : "which one"}?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
               : "I could not find that item to delete.",
         };
       await service.deleteDefinition(target.definition.id);
