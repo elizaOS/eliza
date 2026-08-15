@@ -45,6 +45,10 @@ import type {
 } from "./run-shared-agent-turn";
 import { appendSharedTurn } from "./run-shared-agent-turn";
 import {
+  sharedPublicWebGrounding,
+  sharedRuntimeModelHistoryContents,
+} from "./shared-runtime-history-policy";
+import {
   sharedRuntimeConversationRoomId,
   sharedRuntimeWorldId,
 } from "./shared-runtime-storage-identity";
@@ -391,6 +395,7 @@ async function executeSharedElizaRuntimeTurn(
       type: ChannelType.DM,
     });
     if (input.history.length > 0) {
+      const historyContents = sharedRuntimeModelHistoryContents(input.history, input.message);
       await adapter.createMemories(
         input.history.map((message, index) => ({
           tableName: "messages",
@@ -400,7 +405,7 @@ async function executeSharedElizaRuntimeTurn(
             agentId: runtime.agentId,
             roomId,
             content: {
-              text: message.content,
+              text: historyContents[index],
               source: "shared-runtime",
               channelType: ChannelType.DM,
             },
@@ -461,6 +466,7 @@ async function executeSharedElizaRuntimeTurn(
         reply,
         input.messageIds,
         input.messageRole,
+        sharedPublicWebGrounding(result.actionResults),
       ),
       model: input.model,
       degraded: false,

@@ -24,6 +24,10 @@ import { type ActionResult, replaceNameTokens, type UUID } from "@elizaos/core/e
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
 import { generateText, streamText } from "ai";
+import type {
+  SharedRuntimeHistoryMessage,
+  SharedRuntimePublicGrounding,
+} from "../../../db/schemas/shared-runtime-history";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import {
   getInteractiveCerebrasLanguageModel,
@@ -31,20 +35,9 @@ import {
 } from "../../providers/language-model";
 import { resolveSharedCapabilityWall, type SharedCapabilityWall } from "./shared-capability-wall";
 import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-intent";
+import { sharedRuntimeModelHistoryContents } from "./shared-runtime-history-policy";
 
-export interface SharedTurnMessage {
-  /** Stable message id used by SSE, REST history, and storage merge paths. */
-  id?: string;
-  role: "system" | "user" | "assistant";
-  content: string;
-  /** Epoch-ms timestamp used by REST chat clients to reconcile persisted turns. */
-  createdAt?: number;
-  /**
-   * True when an assistant message is a partial prefix from a canceled or failed
-   * stream. Model history keeps the text but annotates it as incomplete.
-   */
-  interrupted?: boolean;
-}
+export type SharedTurnMessage = SharedRuntimeHistoryMessage;
 
 export interface SharedAgentCharacter {
   /** Display/agent name. */
@@ -267,20 +260,20 @@ export function appendSharedTurn(
   reply: string,
   messageIds?: RunSharedAgentTurnInput["messageIds"],
   messageRole: "system" | "user" = "user",
+  grounding?: SharedRuntimePublicGrounding,
 ): SharedTurnMessage[] {
   const sentAt = Date.now();
   return [
     ...history,
     { id: messageIds?.user, role: messageRole, content: userMessage, createdAt: sentAt },
-    { id: messageIds?.assistant, role: "assistant", content: reply, createdAt: sentAt + 1 },
+    {
+      id: messageIds?.assistant,
+      role: "assistant",
+      content: reply,
+      createdAt: sentAt + 1,
+      ...(grounding ? { grounding } : {}),
+    },
   ];
-}
-
-function modelHistoryContent(message: SharedTurnMessage): string {
-  if (message.role === "assistant" && message.interrupted) {
-    return `[interrupted assistant partial]\n${message.content}`;
-  }
-  return message.content;
 }
 
 /**
@@ -379,8 +372,12 @@ export async function runSharedAgentTurn(
       reminders: remindersEnabled,
       todos: todosEnabled,
     });
+    const historyContents = sharedRuntimeModelHistoryContents(input.history, message);
     const messages = [
-      ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
+      ...input.history.map((m, index) => ({
+        role: m.role,
+        content: historyContents[index],
+      })),
       { role: input.messageRole ?? ("user" as const), content: message },
     ];
     await input.onProviderDispatch?.();
@@ -510,8 +507,12 @@ export async function runSharedAgentTurnStream(
       reminders: remindersEnabled,
       todos: todosEnabled,
     });
+    const historyContents = sharedRuntimeModelHistoryContents(input.history, message);
     const messages = [
-      ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
+      ...input.history.map((m, index) => ({
+        role: m.role,
+        content: historyContents[index],
+      })),
       { role: input.messageRole ?? ("user" as const), content: message },
     ];
     await input.onProviderDispatch?.();

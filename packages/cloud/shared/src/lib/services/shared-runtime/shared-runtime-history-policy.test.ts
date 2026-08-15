@@ -8,6 +8,9 @@ import {
   MAX_HISTORY_MESSAGES,
   mergeSharedRuntimeHistoryMessages,
   selectSharedRuntimeContext,
+  sharedPublicWebGrounding,
+  sharedRuntimeModelHistoryContent,
+  sharedRuntimeModelHistoryContents,
 } from "./shared-runtime-history-policy";
 
 describe("shared runtime history merge policy", () => {
@@ -74,6 +77,58 @@ describe("shared runtime history merge policy", () => {
 });
 
 describe("shared runtime long-term transcript context", () => {
+  test("persists only bounded successful public search output", () => {
+    const result = {
+      success: true,
+      data: {
+        actionName: "WEB_SEARCH",
+        query: "  current Tessera repository  ",
+        provider: "parallel",
+        value: `  ${"x".repeat(4_100)}  `,
+      },
+    };
+
+    expect(sharedPublicWebGrounding([result])).toEqual({
+      kind: "web_search",
+      query: "current Tessera repository",
+      provider: "parallel",
+      text: "x".repeat(4_000),
+    });
+    expect(sharedPublicWebGrounding([{ ...result, success: false }])).toBeUndefined();
+    expect(
+      sharedPublicWebGrounding([
+        { ...result, data: { ...result.data, provider: "untrusted-provider" } },
+      ]),
+    ).toBeUndefined();
+    expect(sharedPublicWebGrounding([null, "forged", { success: true }])).toBeUndefined();
+  });
+
+  test("bounds model context to the two most relevant public reads", () => {
+    const grounded = (id: string, text: string) => ({
+      id,
+      role: "assistant" as const,
+      content: `reply ${id}`,
+      grounding: {
+        kind: "web_search" as const,
+        query: text,
+        provider: "parallel" as const,
+        text,
+      },
+    });
+    const projected = sharedRuntimeModelHistoryContents(
+      [
+        grounded("old-relevant", "Tessera ARC resource validation"),
+        grounded("new-unrelated", "daily weather forecast"),
+        grounded("new-relevant", "Tessera repository origin guard"),
+      ],
+      "How does Tessera validate ARC resources?",
+    );
+
+    expect(projected[0]).toContain("Tessera ARC resource validation");
+    expect(projected[1]).toBe("reply new-unrelated");
+    expect(projected[2]).toContain("Tessera repository origin guard");
+  });
+
   test("keeps recent turns and recalls an older preference with its reply", () => {
     const history = Array.from({ length: 60 }, (_, index) => ({
       id: `message-${index}`,
@@ -111,5 +166,37 @@ describe("shared runtime long-term transcript context", () => {
     expect(context.map((message) => message.id)).toEqual(
       Array.from({ length: 24 }, (_, index) => `message-${index + 56}`),
     );
+  });
+
+  test("recalls successful public search evidence without treating malformed JSON as grounding", () => {
+    const history = Array.from({ length: 50 }, (_, index) => ({
+      id: `message-${index}`,
+      role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+      content: `ordinary turn ${index}`,
+      createdAt: index,
+      ...(index === 3
+        ? {
+            grounding: {
+              kind: "web_search" as const,
+              query: "NubsCarson Tessera GitHub",
+              provider: "parallel" as const,
+              text: "Tessera validates ARC resources through an origin guard.",
+            },
+          }
+        : {}),
+    }));
+
+    const context = selectSharedRuntimeContext(history, "How does Tessera validate resources?", 25);
+
+    expect(context.map((message) => message.id)).toContain("message-3");
+    expect(sharedRuntimeModelHistoryContent(history[3])).toContain(
+      "Tessera validates ARC resources through an origin guard.",
+    );
+    expect(
+      sharedRuntimeModelHistoryContent({
+        ...history[3],
+        grounding: { ...history[3].grounding!, provider: "forged" } as never,
+      }),
+    ).toBe("ordinary turn 3");
   });
 });
