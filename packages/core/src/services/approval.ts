@@ -444,8 +444,8 @@ export class ApprovalService extends Service {
 
 		// Resolve with timeout default or cancel
 		const defaultOption = request.timeoutDefault ?? "cancel";
-		const isCancel =
-			request.options.find((o) => o.name === defaultOption)?.isCancel ?? true;
+		const option = request.options.find((o) => o.name === defaultOption);
+		const isCancel = option ? option.isCancel === true : true;
 
 		pending.resolve({
 			selectedOption: defaultOption,
