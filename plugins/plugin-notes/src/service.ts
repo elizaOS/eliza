@@ -48,6 +48,17 @@ function normalizedLookup(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function titleAppearsAsNamedPhrase(text: string, title: string): boolean {
+  const normalizedText = normalizedLookup(text);
+  const normalizedTitle = normalizedLookup(title);
+  if (!normalizedText || !normalizedTitle) return false;
+  const escapedTitle = normalizedTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `(?:^|[^\\p{L}\\p{N}])${escapedTitle}(?=$|[^\\p{L}\\p{N}])`,
+    "u",
+  ).test(normalizedText);
+}
+
 function lookupError(
   code:
     | "NOTES_NOT_FOUND"
@@ -459,19 +470,14 @@ export class NotesService extends Service {
           severity: "fatal",
         });
       }
-      // Destructive-op name fence (matrix F4, tj-a6b65b4576ad86): the
-      // planner may translate the user's words into a stored title from
-      // prior-turn context ("wifi credentials" → title "wifi password"), so
-      // even an EXACT-title lookup can name a note the user never said.
-      // When the caller supplies the user's original text, the resolved
-      // title must appear in it — otherwise fail structurally so the reply
-      // ASKS with the candidate title instead of deleting a translation.
-      // Sibling of TRIGGER_REF_MISMATCH and the lifeops #20057 guard.
+      // Bind a planner-selected title to a complete phrase in the owner's
+      // current wording; substring collisions must not authorize deletion.
       if (
         typeof options?.requireTitleInText === "string" &&
         options.requireTitleInText.trim().length > 0 &&
-        !normalizedLookup(options.requireTitleInText).includes(
-          normalizedLookup(existing.title),
+        !titleAppearsAsNamedPhrase(
+          options.requireTitleInText,
+          existing.title,
         )
       ) {
         throw lookupError("NOTES_DELETE_NAME_MISMATCH", selector, value, [
