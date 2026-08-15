@@ -1,12 +1,24 @@
-# Pagination validation summary
+# Zero-delivery recovery fix
 
-All four staged routes had fail-open or non-canonical pagination defects and were modified.
+## Finding
 
-- `billing-ledger-route.ts`: defective. Its finite-number fallback still accepted zero, negative, fractional, and oversized limits. It now accepts only canonical decimal integers from 1 through 500, defaults blank or missing input to 50, and returns a parameter/value-specific 400 otherwise. The staged route has no `offset` query handling, so none was invented.
-- `ballots-route.ts`: defective. Zod coercion accepted exponent and leading-zero forms and mishandled blank input. Local parsing now enforces limit 1–500 and nonnegative safe-integer offset, with defaults 50 and 0, before the remaining filters are validated.
-- `oauth-intents-route.ts`: defective for the same coercion behavior as ballots. It now uses the same fail-closed grammar and bounds, with defaults 50 and 0.
-- `gallery-route.ts`: defective. In addition to coercion issues, its 1000-record ceiling exceeded the required 500. It now caps accepted limits at 500, defaults to 100/0, and retains the existing one-extra-record fetch used to calculate `hasMore`.
+The recovery gate treated any non-empty `actionResults` array as evidence that real work occurred. Failed actions therefore enabled the acknowledgement fallback and could produce the misleading text `on it, working on that now.`
 
-`v1-pagination-validation.test.ts` uses Bun module mocks before dynamic route imports and exercises malformed, negative, oversized/unsafe, junk, valid, and blank inputs at the HTTP boundary and mocked service boundary. `verify-pagination.mjs` is dependency-free and checks parser behavior plus forbidden source patterns.
+`ActionResult` uses its boolean `success` field as the authoritative execution outcome throughout `message.ts` (for example, media delivery already ignores results where `success` is false). Error detail is carried in result data in relevant execution paths, so absence of an error value is not as reliable as an explicit successful outcome.
 
-Validation in this isolated stage: `node verify-pagination.mjs` passed, and Node 24's TypeScript syntax checker accepted all four routes and the Bun test file. Bun is not installed in the sandbox, so the mocked route suite could not be executed here.
+## Change
+
+Replaced the non-empty-array check with:
+
+```typescript
+actionResults.some((result) => result.success === true)
+```
+
+The existing `suppressesPlannerReply` condition remains unchanged and continues to take precedence.
+
+## Tests and verification
+
+- Added `zero-delivery-recovery.test.ts` with the four requested `bun:test` cases: all failed, successful, empty, and mixed results.
+- Added `verify-zero-delivery.mjs`, a dependency-free Node harness covering those cases and planner-reply suppression.
+- `node repo/verify-zero-delivery.mjs` passes.
+- Bun is not installed in the cleanroom, so the `bun:test` suite could not be executed here.

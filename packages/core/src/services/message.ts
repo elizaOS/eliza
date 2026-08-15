@@ -8744,7 +8744,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			) ||
 			(ambientTurn && plannerResult.endedWithDeliberateSilence === true);
 		const ranNonSilentAction =
-			actionResults.length > 0 && !suppressesPlannerReply;
+			actionResults.some((result) => result.success === true) &&
+			!suppressesPlannerReply;
 		const rawStageOneAck =
 			typeof messageHandler.plan.reply === "string"
 				? messageHandler.plan.reply.trim()
