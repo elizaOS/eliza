@@ -51,14 +51,14 @@ export const MANAGED_VOICE_COMMAND = {
   defaultMemberPermissions: PermissionFlagsBits.ManageGuild,
   options: [
     {
-      name: "mode",
-      description: "Join or leave voice",
-      type: ApplicationCommandOptionType.String,
-      required: true,
-      choices: [
-        { name: "join", value: "join" },
-        { name: "leave", value: "leave" },
-      ],
+      name: "join",
+      description: "Join your current voice channel",
+      type: ApplicationCommandOptionType.Subcommand,
+    },
+    {
+      name: "leave",
+      description: "Leave your voice channel",
+      type: ApplicationCommandOptionType.Subcommand,
     },
   ],
 } as const;
@@ -280,8 +280,8 @@ export class ManagedGuildVoiceController {
       return;
     }
 
-    const mode = interaction.options.getString("mode", true);
-    if (mode === "leave") {
+    const subcommand = interaction.options.getSubcommand(true);
+    if (subcommand === "leave") {
       const session = this.sessions.get(interaction.guildId);
       if (!session || session.ownerDiscordUserId !== interaction.user.id) {
         await interaction.reply({
@@ -304,7 +304,7 @@ export class ManagedGuildVoiceController {
     if (!channel?.isVoiceBased() || channel.guild.id !== interaction.guildId) {
       await interaction.reply({
         content:
-          "Join a voice channel in this server first, then run `/voice mode:join`.",
+          "Join a voice channel in this server first, then run `/voice join`.",
         ephemeral: true,
       });
       return;
