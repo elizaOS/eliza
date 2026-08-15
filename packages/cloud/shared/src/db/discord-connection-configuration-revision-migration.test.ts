@@ -37,9 +37,8 @@ afterAll(async () => {
 });
 
 describe("0208 Discord connection configuration revision", () => {
-  test("backfills a stable revision without coupling telemetry writes", async () => {
+  test("backfills, widens prior integers, and ignores telemetry writes", async () => {
     const migration = readFileSync(MIGRATION_PATH, "utf8");
-    await client.exec(migration);
     await client.exec(migration);
 
     const initial = await client.query<{ configuration_revision: string }>(`
@@ -49,6 +48,16 @@ describe("0208 Discord connection configuration revision", () => {
     `);
     expect(initial.rows).toEqual([{ configuration_revision: "0" }]);
 
+    await client.exec(`
+      ALTER TABLE discord_connections
+      ALTER COLUMN configuration_revision
+      TYPE integer USING configuration_revision::integer;
+      UPDATE discord_connections
+      SET configuration_revision = 2147483647
+      WHERE id = '00000000-0000-4000-8000-000000000001';
+    `);
+    await client.exec(migration);
+
     const column = await client.query<{ data_type: string }>(`
       SELECT data_type
       FROM information_schema.columns
@@ -56,6 +65,12 @@ describe("0208 Discord connection configuration revision", () => {
         AND column_name = 'configuration_revision'
     `);
     expect(column.rows).toEqual([{ data_type: "numeric" }]);
+
+    await client.exec(`
+      UPDATE discord_connections
+      SET configuration_revision = configuration_revision + 1
+      WHERE id = '00000000-0000-4000-8000-000000000001';
+    `);
 
     await client.exec(`
       UPDATE discord_connections
@@ -69,6 +84,6 @@ describe("0208 Discord connection configuration revision", () => {
       FROM discord_connections
       WHERE id = '00000000-0000-4000-8000-000000000001'
     `);
-    expect(afterTelemetry.rows).toEqual([{ configuration_revision: "0" }]);
+    expect(afterTelemetry.rows).toEqual([{ configuration_revision: "2147483648" }]);
   });
 });
