@@ -5,7 +5,6 @@
  * the exact source snapshot consumed by Dedicated cutover.
  */
 
-import { ElizaError, stringToUuid, type UUID } from "@elizaos/core/edge";
 import {
   createTodosSqlStore,
   serializeTodoMutationRecord,
@@ -14,41 +13,22 @@ import {
 } from "@elizaos/plugin-todos/edge";
 import type { SharedTodoMutationCutoverRecord } from "@elizaos/shared/todo-cutover";
 import { dbWrite } from "../../../db/client";
+import {
+  type SharedTodoSourceScope,
+  sharedTodoStorageScope,
+} from "./shared-runtime-storage-identity";
 
-export interface SharedTodoSourceScope {
-  sourceAgentId: string;
-  ownerId: string;
-}
-
-export interface SharedTodoStorageScope {
-  agentId: UUID;
-  entityId: UUID;
-}
+export {
+  type SharedTodoSourceScope,
+  type SharedTodoStorageScope,
+  sharedRuntimeConversationRoomId,
+  sharedRuntimeWorldId,
+  sharedTodoStorageScope,
+} from "./shared-runtime-storage-identity";
 
 export interface SharedTodoCutoverState {
   todos: Todo[];
   mutations: SharedTodoMutationCutoverRecord[];
-}
-
-function requireScopePart(value: string, field: keyof SharedTodoSourceScope): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    throw new ElizaError("Shared Todo storage scope is incomplete", {
-      code: "SHARED_TODO_SCOPE_INVALID",
-      context: { field },
-    });
-  }
-  return trimmed;
-}
-
-/** Derives the only UUID scope under which one Shared user's Todos are stored. */
-export function sharedTodoStorageScope(input: SharedTodoSourceScope): SharedTodoStorageScope {
-  const sourceAgentId = requireScopePart(input.sourceAgentId, "sourceAgentId");
-  const ownerId = requireScopePart(input.ownerId, "ownerId");
-  return {
-    agentId: stringToUuid(`shared-todos:agent:${sourceAgentId}`),
-    entityId: stringToUuid(`shared-todos:owner:${ownerId}`),
-  };
 }
 
 /** Creates the canonical TodoStore over Cloud's request-scoped Hyperdrive DB. */

@@ -44,6 +44,10 @@ import type {
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { appendSharedTurn } from "./run-shared-agent-turn";
+import {
+  sharedRuntimeConversationRoomId,
+  sharedRuntimeWorldId,
+} from "./shared-runtime-storage-identity";
 
 type NativeTextModelResult = string & {
   text: string;
@@ -377,11 +381,11 @@ async function executeSharedElizaRuntimeTurn(
     if (input.execution?.todos && !runtime.actions.some((action) => action.name === "TODO")) {
       throw new Error("Eliza Shared runtime initialized without its TODO action");
     }
-    const roomId = stringToUuid(`${input.agentKey}:conversation`);
+    const roomId = sharedRuntimeConversationRoomId(input.agentKey);
     await runtime.ensureConnection({
       entityId,
       roomId,
-      worldId: stringToUuid(`${input.agentKey}:world`),
+      worldId: sharedRuntimeWorldId(input.agentKey),
       userName: "Shared user",
       source: "shared-runtime",
       type: ChannelType.DM,
