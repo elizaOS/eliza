@@ -242,7 +242,7 @@ jobs:
             FROM agent_sandboxes
             WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
             SQL
-      - name: Pre-pull the fixed image and retire the failed exact container
+      - name: Cache the clean image and release the failed provision
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -269,7 +269,51 @@ jobs:
               -o UserKnownHostsFile="$work/known_hosts" \
               -o ServerAliveInterval=15 -o ServerAliveCountMax=40 \
               "$user@$host" \
-              'set -euo pipefail; image=ghcr.io/elizaos/eliza-demo@sha256:a4d6156aef4c79fc01709a85025fd1a9f010a99279493e9545ed14f7137bd8cd; target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7; docker pull "$image"; docker image inspect "$image" >/dev/null; if docker inspect "$target" >/dev/null 2>&1; then test "$(docker inspect --format "{{.Config.Image}}" "$target")" = "$image"; docker stop --time 20 "$target" >/dev/null || true; docker rm "$target" >/dev/null; fi; printf "fixed image cached and failed exact container absent\n"'
+              'set -euo pipefail; failed=ghcr.io/elizaos/eliza-demo@sha256:a4d6156aef4c79fc01709a85025fd1a9f010a99279493e9545ed14f7137bd8cd; image=ghcr.io/elizaos/eliza-demo@sha256:ddbcccf17776cd26ada045f7e0acbb5df31a629e0d53ce1042297cb837fa53ea; target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7; if docker inspect "$target" >/dev/null 2>&1; then test "$(docker inspect --format "{{.Config.Image}}" "$target")" = "$failed"; docker stop --time 20 "$target" >/dev/null || true; docker rm "$target" >/dev/null; fi; docker pull "$image"; docker image inspect "$image" >/dev/null; test ! "$(docker ps -aq --filter "name=^/${target}$")"; printf "clean image cached and failed exact container absent\n"'
+            database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            database_url="${database_url/sslmode=no-verify/sslmode=require}"
+            psql "$database_url" -v ON_ERROR_STOP=1 <<'SQL'
+            BEGIN;
+            UPDATE jobs
+            SET status = 'failed',
+                error = 'Operator superseded failed extended-attribute image provision',
+                execution_quiesced_at = NOW(),
+                completed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = 'b491a56e-5aa1-4df4-b27e-aadb0abf615f'
+              AND agent_id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'
+              AND type = 'agent_provision'
+              AND status IN ('pending', 'in_progress');
+            DO $$
+            DECLARE changed integer;
+            BEGIN
+              UPDATE agent_sandboxes AS sandbox
+              SET status = 'stopped',
+                  docker_image = 'ghcr.io/elizaos/eliza-demo@sha256:ddbcccf17776cd26ada045f7e0acbb5df31a629e0d53ce1042297cb837fa53ea',
+                  image_digest = 'sha256:ddbcccf17776cd26ada045f7e0acbb5df31a629e0d53ce1042297cb837fa53ea',
+                  lifecycle_job_id = NULL,
+                  lifecycle_execution_generation = NULL,
+                  error_message = NULL,
+                  updated_at = NOW()
+              WHERE sandbox.id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'
+                AND sandbox.status = 'provisioning'
+                AND sandbox.lifecycle_job_id = 'b491a56e-5aa1-4df4-b27e-aadb0abf615f'
+                AND sandbox.replacement_cleanup_node_id = 'eliza-core-prod-5'
+                AND sandbox.replacement_cleanup_container_name = 'agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7'
+                AND EXISTS (
+                  SELECT 1 FROM agent_sandbox_backups AS backup
+                  WHERE backup.sandbox_record_id = sandbox.id
+                );
+              GET DIAGNOSTICS changed = ROW_COUNT;
+              IF changed <> 1 THEN
+                RAISE EXCEPTION 'failed provision ownership did not match';
+              END IF;
+            END $$;
+            COMMIT;
+            SELECT id, status, docker_image, replacement_cleanup_node_id
+            FROM agent_sandboxes
+            WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
+            SQL
 
   changes:
     name: Classify changed paths
