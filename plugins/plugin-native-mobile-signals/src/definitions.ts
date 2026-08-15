@@ -117,10 +117,22 @@ export interface MobileSignalsScreenTimeStatus {
       path: string;
     }>;
   };
+  /**
+   * Whether the platform's screen-time report surface is currently usable.
+   * On iOS this means an authorized, bundled DeviceActivity report extension;
+   * on Android it means Usage Access is granted for the host summary.
+   */
   reportAvailable: boolean;
-  /** Coarse, in-extension-rendered category summaries are available (no raw export). */
+  /**
+   * Whether the host can read a coarse usage summary. This is always `false`
+   * on iOS because DeviceActivity report data stays inside the extension, but
+   * Android reports `true` after Usage Access is granted.
+   */
   coarseSummaryAvailable: boolean;
-  /** `DeviceActivityMonitor` threshold-crossing events are available. */
+  /**
+   * Whether a native producer schedules and handles typed threshold events.
+   * The current iOS, Android, and web implementations all report `false`.
+   */
   thresholdEventsAvailable: boolean;
   /**
    * Permanently `false` — a platform constraint, not a TODO. Apple's
@@ -128,7 +140,7 @@ export interface MobileSignalsScreenTimeStatus {
    * per-app usage to the host app: usage is only readable inside a rendered
    * `DeviceActivityReport` extension (never exfiltrated) plus
    * `DeviceActivityMonitor` threshold events. Host-side mobile screen-time is
-   * therefore scoped to coarse summaries + threshold events; there is no
+   * therefore scoped to the in-extension report surface only on iOS; there is no
    * macOS-style per-window dwell on iOS. See issue #9970.
    */
   rawUsageExportAvailable: false;

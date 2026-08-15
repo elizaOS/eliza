@@ -22,6 +22,15 @@ In browser environments a web fallback is provided using `document.visibilitySta
 | Screen time / usage | DeviceActivity + FamilyControls | `PACKAGE_USAGE_STATS` | No |
 | Background refresh | Not available (foreground monitoring only) | Not available | No |
 
+## Screen-time capability status
+
+| Capability | iOS | Android | Web |
+|---|---|---|---|
+| `reportAvailable` | `true` only when FamilyControls is authorized and the report extension is bundled | Mirrors Usage Access | `false` |
+| `coarseSummaryAvailable` | `false`; category totals render only inside Apple's privacy-sandboxed report extension | Mirrors Usage Access and the host-readable foreground-time summary | `false` |
+| `thresholdEventsAvailable` | `false` until a typed threshold is scheduled and handled | `false` | `false` |
+| `rawUsageExportAvailable` | `false`; raw per-app usage cannot leave the report extension | `false` | `false` |
+
 ## Installation
 
 ```bash

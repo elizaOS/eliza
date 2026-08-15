@@ -1,3 +1,9 @@
+/**
+ * Reports the iOS Screen Time permission and capability boundary to the Capacitor bridge.
+ *
+ * Host-readable capability flags are derived by ScreenTimeCapabilityPolicy; DeviceActivity
+ * report content remains confined to the report extension.
+ */
 import FamilyControls
 import DeviceActivity
 import Foundation
@@ -50,8 +56,10 @@ enum ScreenTimeSupport {
         let provisioningReason: Any = provisioningSatisfied
             ? NSNull()
             : (entitlementInspection.reason ?? reason)
-        let reportAvailable = extensionInspection.report && authorizationStatus == "approved"
-        let thresholdEventsAvailable = extensionInspection.monitor && authorizationStatus == "approved"
+        let capabilities = ScreenTimeCapabilityPolicy.status(
+            reportExtensionAvailable: extensionInspection.report,
+            authorizationStatus: authorizationStatus
+        )
 
         return [
             "supported": provisioningSatisfied || entitlementInspection.inspected == "not-inspectable",
@@ -86,10 +94,10 @@ enum ScreenTimeSupport {
                 "inspected": extensionInspection.inspected,
                 "bundles": extensionInspection.bundles,
             ],
-            "reportAvailable": reportAvailable,
-            "coarseSummaryAvailable": reportAvailable,
-            "thresholdEventsAvailable": thresholdEventsAvailable,
-            "rawUsageExportAvailable": false,
+            "reportAvailable": capabilities.reportAvailable,
+            "coarseSummaryAvailable": capabilities.coarseSummaryAvailable,
+            "thresholdEventsAvailable": capabilities.thresholdEventsAvailable,
+            "rawUsageExportAvailable": capabilities.rawUsageExportAvailable,
             "reason": reason,
         ]
     }
