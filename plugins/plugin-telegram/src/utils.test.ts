@@ -106,9 +106,12 @@ describe("convertMarkdownToTelegram", () => {
       "```shell-session\r\n$ echo ok\r\n```",
       "```shell-session\n$ echo ok\r\n```",
     ],
-  ])("preserves CRLF fenced code with language tag %s", (input, expected) => {
-    expect(convertMarkdownToTelegram(input)).toBe(expected);
-  });
+  ])(
+    "preserves CRLF fenced code with language tag %s",
+    (input, expected) => {
+      expect(convertMarkdownToTelegram(input)).toBe(expected);
+    },
+  );
 
   it("leaves an unterminated fenced block as escaped plain text", () => {
     expect(convertMarkdownToTelegram("```c++\r\nunterminated")).toBe(
@@ -140,9 +143,13 @@ describe("convertMarkdownToTelegram", () => {
       "[outer [inner]](https://x.test)",
       "\\[outer \\[inner\\]\\]\\(https://x\\.test\\)",
     ],
-  ])("keeps malformed or nested link boundary %s as plain text", (input, expected) => {
-    expect(convertMarkdownToTelegram(input)).toBe(expected);
-  });
+  ])(
+    "keeps malformed or nested link boundary %s as plain text",
+    (input, expected) => {
+      expect(convertMarkdownToTelegram(input)).toBe(expected);
+    },
+  );
+
   it("resolves nested tokens (inline code inside bold/header) without leaking NUL sentinels", () => {
     const bold = convertMarkdownToTelegram("**bold `code`**");
     expect(bold).toBe("*bold `code`*");
