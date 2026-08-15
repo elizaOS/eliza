@@ -26,10 +26,15 @@ BEGIN
   WHERE id = '$failed_job'
     AND agent_id = '$agent_id'
     AND type = 'agent_restart'
-    AND status IN ('pending', 'in_progress')
-    AND error = 'Agent replacement cleanup is still pending';
+    AND status IN ('pending', 'in_progress');
   GET DIAGNOSTICS changed = ROW_COUNT;
-  IF changed <> 1 THEN
+  IF changed <> 1 AND NOT EXISTS (
+    SELECT 1 FROM jobs
+    WHERE id = '$failed_job'
+      AND agent_id = '$agent_id'
+      AND type = 'agent_restart'
+      AND status = 'failed'
+  ) THEN
     RAISE EXCEPTION 'exact xattr restart job did not match';
   END IF;
 END \$\$;
