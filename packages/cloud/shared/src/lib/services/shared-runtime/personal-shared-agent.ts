@@ -13,6 +13,7 @@ import { getDefaultElizaCharacterData } from "../../utils/default-eliza-characte
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 
 const PERSONAL_SHARED_AGENT_NAMESPACE = "af8f7624-42f8-4da8-bdf1-593b1a0d7f20";
+const PERSONAL_SHARED_GUILD_VOICE_NAMESPACE = "b9ea4ce5-636d-4ec4-bc75-6308188f883f";
 const PERSONAL_SHARED_AGENT_PREFIX = "personal:";
 
 export interface PersonalSharedAccountIdentity {
@@ -32,6 +33,23 @@ export function personalSharedAgentId(identity: PersonalSharedAccountIdentity): 
 export function isPersonalSharedAgentId(value: string): boolean {
   return /^personal:[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
+  );
+}
+
+/**
+ * A public guild voice room must never reuse the owner's private cross-channel
+ * room. This stable UUID retains guild-voice continuity without importing DM,
+ * phone, SMS, or Telegram history into a room where other people can listen.
+ */
+export function personalSharedGuildVoiceRoomId(input: {
+  agentId: string;
+  discordUserId: string;
+  guildId: string;
+  channelId: string;
+}): string {
+  return uuidv5(
+    [input.agentId, input.discordUserId, input.guildId, input.channelId].join(":"),
+    PERSONAL_SHARED_GUILD_VOICE_NAMESPACE,
   );
 }
 

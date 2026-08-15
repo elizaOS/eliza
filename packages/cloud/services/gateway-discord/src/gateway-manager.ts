@@ -27,6 +27,11 @@ import {
 import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
 import { logger } from "./logger";
 import {
+  createManagedGuildVoiceCloudBridge,
+  MANAGED_GUILD_VOICE_INTENT,
+  ManagedGuildVoiceController,
+} from "./managed-guild-voice";
+import {
   deliverManagedReply,
   postManagedAgentMessageWithRetry,
 } from "./managed-message-egress";
@@ -384,6 +389,8 @@ export class GatewayManager {
   private dmPollInFlight: Promise<void> | null = null;
   /** Durable user-install welcome delivery, active on the system-bot leader. */
   private installWelcomeQueue: DiscordInstallWelcomeQueue | null = null;
+  /** Live guild audio, owned by the same leader as the system-bot token. */
+  private managedGuildVoice: ManagedGuildVoiceController | null = null;
   /** Interval for leader election checks */
   private elizaAppLeaderInterval: NodeJS.Timeout | null = null;
 
@@ -1944,6 +1951,7 @@ export class GatewayManager {
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
+        MANAGED_GUILD_VOICE_INTENT,
       ],
       // Partials required for DM support - DM channels are not cached by default
       partials: [Partials.Channel, Partials.Message],
@@ -1962,6 +1970,23 @@ export class GatewayManager {
           error: sanitizeError(error),
         });
       });
+      if (process.env.ELIZA_APP_DISCORD_GUILD_VOICE_ENABLED === "true") {
+        const client = this.elizaAppClient;
+        if (client && !this.managedGuildVoice) {
+          this.managedGuildVoice = new ManagedGuildVoiceController({
+            client,
+            bridge: createManagedGuildVoiceCloudBridge({
+              apiBaseUrl: this.config.elizaCloudUrl,
+              getAuthorizationHeader: () => this.getAuthHeader(),
+            }),
+          });
+          void this.managedGuildVoice.start().catch((error) => {
+            logger.error("Failed to start managed Discord guild voice", {
+              error: sanitizeError(error),
+            });
+          });
+        }
+      }
     });
 
     this.elizaAppClient.on(Events.MessageCreate, async (message: Message) => {
@@ -2011,6 +2036,10 @@ export class GatewayManager {
    * Disconnect the Eliza App bot.
    */
   private async disconnectElizaAppBot(): Promise<void> {
+    if (this.managedGuildVoice) {
+      await this.managedGuildVoice.stop();
+      this.managedGuildVoice = null;
+    }
     if (this.greetingPollInterval) {
       clearInterval(this.greetingPollInterval);
       this.greetingPollInterval = null;
