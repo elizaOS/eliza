@@ -5,7 +5,12 @@ import { createTodoAction } from "./actions/todo.js";
 import { createCurrentTodosProvider } from "./providers/current-todos.js";
 import type { TodoStore } from "./store.js";
 
-export { createTodosSqlStore } from "./sql-store.js";
+export {
+  createTodosSqlStore,
+  deserializeTodoMutationRecord,
+  importTodoMutationRecordsInTransaction,
+  serializeTodoMutationRecord,
+} from "./sql-store.js";
 
 export const TODOS_EDGE_COMPATIBILITY = {
   target: "edge",
@@ -43,6 +48,13 @@ export function createTodosEdgePlugin(options: TodosEdgePluginOptions): Plugin {
 export type {
   CreateTodoInput,
   TodoFilter,
+  TodoMutation,
+  TodoMutationExecution,
+  TodoMutationImportInput,
+  TodoMutationInput,
+  TodoMutationRecord,
+  TodoMutationRecordWire,
+  TodoMutationResult,
   TodoScope,
   TodoStore,
   UpdateTodoInput,

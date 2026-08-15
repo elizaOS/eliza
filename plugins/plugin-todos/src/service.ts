@@ -16,6 +16,9 @@ export class TodosService extends Service implements TodoStore {
   override capabilityDescription =
     "User-scoped todo CRUD. Persistent (drizzle/postgres), keyed by (agentId, entityId).";
 
+  readonly applyMutation: TodoStore["applyMutation"];
+  readonly listMutationRecords: TodoStore["listMutationRecords"];
+  readonly importMutationRecords: TodoStore["importMutationRecords"];
   readonly create: TodoStore["create"];
   readonly get: TodoStore["get"];
   readonly list: TodoStore["list"];
@@ -36,6 +39,9 @@ export class TodosService extends Service implements TodoStore {
       );
     }
     const store = createTodosSqlStore(db);
+    this.applyMutation = store.applyMutation.bind(store);
+    this.listMutationRecords = store.listMutationRecords.bind(store);
+    this.importMutationRecords = store.importMutationRecords.bind(store);
     this.create = store.create.bind(store);
     this.get = store.get.bind(store);
     this.list = store.list.bind(store);
@@ -55,16 +61,29 @@ export class TodosService extends Service implements TodoStore {
   }
 }
 
-export { createTodosSqlStore } from "./sql-store.js";
+export {
+  createTodosSqlStore,
+  deserializeTodoMutationRecord,
+  importTodoMutationRecordsInTransaction,
+  serializeTodoMutationRecord,
+} from "./sql-store.js";
 export {
   type CreateTodoInput,
   findDuplicateTodoId,
   isValidTodoListLimit,
   TODO_DUPLICATE_ID_ERROR_CODE,
+  TODO_IDEMPOTENCY_CONFLICT_ERROR_CODE,
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_LIST_LIMIT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,
   type TodoFilter,
+  type TodoMutation,
+  type TodoMutationExecution,
+  type TodoMutationImportInput,
+  type TodoMutationInput,
+  type TodoMutationRecord,
+  type TodoMutationRecordWire,
+  type TodoMutationResult,
   type TodoScope,
   type TodoStore,
   type UpdateTodoInput,

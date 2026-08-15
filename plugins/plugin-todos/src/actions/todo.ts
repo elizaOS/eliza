@@ -21,6 +21,7 @@ import {
   findDuplicateTodoId,
   isTodoStore,
   isValidTodoListLimit,
+  type TodoMutationExecution,
   type TodoStore,
   type UpdateTodoInput,
 } from "../store.js";
@@ -107,14 +108,6 @@ function readAction(value: unknown): TodoActionName | undefined {
     return s as TodoActionName;
   }
   return undefined;
-}
-
-function isOwnedByScope(todo: Todo, scope: ScopeContext): boolean {
-  return todo.entityId === scope.entityId && todo.agentId === scope.agentId;
-}
-
-function todoScope(scope: ScopeContext) {
-  return { agentId: scope.agentId, entityId: scope.entityId };
 }
 
 interface ParsedListItem {
@@ -215,12 +208,41 @@ async function emit(
 
 type TodoMutationAction = Exclude<TodoActionName, "list">;
 
+function record(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function isPriorTodoMutation(result: ActionResult): boolean {
+  const data = record(result.data);
+  if (data?.actionName !== "TODO") return false;
+  const action = readAction(data.action ?? data.op);
+  return action !== undefined && action !== "list";
+}
+
+function mutationIdempotencyKey(
+  message: Memory,
+  options: HandlerOptions | undefined,
+): string | null {
+  const content = record(message.content);
+  const marker = record(content?.chatIdempotency);
+  const originId =
+    readString(marker?.clientMessageId) ?? readString(message.id);
+  if (!originId) return null;
+  const ordinal =
+    options?.actionContext?.previousResults.filter(isPriorTodoMutation)
+      .length ?? 0;
+  return `todos:v1:${originId}:${ordinal}`;
+}
+
 interface TodoMutationResult {
   action: TodoMutationAction;
   callback: HandlerCallback | undefined;
   data: Record<string, unknown>;
   resource: { kind: string; id: string; version?: string };
   text: string;
+  execution: TodoMutationExecution;
 }
 
 async function appliedMutationResult({
@@ -229,23 +251,41 @@ async function appliedMutationResult({
   data,
   resource,
   text,
+  execution,
 }: TodoMutationResult): Promise<ActionResult> {
-  const observedAt = new Date().toISOString();
-  const receiptId = `todos:${action}:${resource.id}:${observedAt}`;
-  const receipt: EffectReceipt = {
-    receiptId,
-    operation: `todos.${action}`,
-    resource,
-    artifacts: [],
-    idempotency: { key: null, replayed: false },
-    observedAt,
-    outcome: "applied",
-    commit: {
-      kind: "durable",
-      id: `todos:${action}:${resource.id}:${resource.version ?? observedAt}`,
-      committedAt: observedAt,
-    },
-  };
+  const observedAt = execution.committedAt.toISOString();
+  const receiptId = `todos:mutation:${execution.mutationId}`;
+  const receipt: EffectReceipt = execution.replayed
+    ? {
+        receiptId,
+        operation: `todos.${action}`,
+        resource,
+        artifacts: [],
+        idempotency: {
+          key: execution.idempotencyKey,
+          replayed: true,
+        },
+        observedAt,
+        outcome: "noop",
+        reason: "Reused the previously committed Todo mutation",
+      }
+    : {
+        receiptId,
+        operation: `todos.${action}`,
+        resource,
+        artifacts: [],
+        idempotency: {
+          key: execution.idempotencyKey,
+          replayed: false,
+        },
+        observedAt,
+        outcome: "applied",
+        commit: {
+          kind: "durable",
+          id: execution.mutationId,
+          committedAt: observedAt,
+        },
+      };
   await callback?.({
     text,
     source: "todos",
@@ -258,33 +298,34 @@ async function appliedMutationResult({
     userFacingText: text,
     verifiedUserFacing: true,
     turnComplete: true,
+    continueChain: false,
     data: { actionName: "TODO", ...data },
     effectReceipts: [receipt],
     userFacingEffectReceiptIds: [receiptId],
   };
 }
 
-function sameTodoListState(before: Todo[], after: Todo[]): boolean {
-  if (
-    before.length !== after.length ||
-    findDuplicateTodoId(before) !== null ||
-    findDuplicateTodoId(after) !== null
-  ) {
-    return false;
-  }
-  const beforeById = new Map(before.map((todo) => [todo.id, todo]));
-  return after.every((todo) => {
-    const previous = beforeById.get(todo.id);
-    return (
-      previous !== undefined &&
-      previous.content === todo.content &&
-      previous.activeForm === todo.activeForm &&
-      previous.status === todo.status &&
-      previous.parentTodoId === todo.parentTodoId &&
-      previous.roomId === todo.roomId &&
-      previous.worldId === todo.worldId
-    );
-  });
+async function ledgeredNoEffectResult(
+  callback: HandlerCallback | undefined,
+  text: string,
+  data: Record<string, unknown>,
+): Promise<ActionResult> {
+  await emit(callback, text);
+  return {
+    success: true,
+    text,
+    turnComplete: true,
+    continueChain: false,
+    data: { actionName: "TODO", ...data },
+  };
+}
+
+function ledgeredNotFound(id: string): ActionResult {
+  return {
+    ...failure("not_found", `todo ${id} not found for this user`),
+    turnComplete: true,
+    continueChain: false,
+  };
 }
 
 interface ActionHandlerArgs {
@@ -294,24 +335,38 @@ interface ActionHandlerArgs {
   callback: HandlerCallback | undefined;
 }
 
+interface MutationActionHandlerArgs extends ActionHandlerArgs {
+  idempotencyKey: string;
+}
+
 async function actionWrite({
   service,
   scope,
   params,
   callback,
-}: ActionHandlerArgs): Promise<ActionResult> {
+  idempotencyKey,
+}: MutationActionHandlerArgs): Promise<ActionResult> {
   const parsed = parseTodoList(params.todos);
   if (!parsed.ok) {
     return failure("invalid_param", parsed.message);
   }
-  const result = await service.writeList({
-    entityId: scope.entityId,
-    agentId: scope.agentId,
-    roomId: scope.roomId,
-    worldId: scope.worldId,
-    parentTrajectoryStepId: scope.parentTrajectoryStepId,
-    todos: parsed.items,
+  const execution = await service.applyMutation({
+    scope: { entityId: scope.entityId, agentId: scope.agentId },
+    idempotencyKey,
+    mutation: {
+      action: "write",
+      input: {
+        roomId: scope.roomId,
+        worldId: scope.worldId,
+        parentTrajectoryStepId: scope.parentTrajectoryStepId,
+        todos: parsed.items,
+      },
+    },
   });
+  if (execution.result.action !== "write") {
+    throw new Error("Todo mutation result does not match action=write");
+  }
+  const result = execution.result;
   let pending = 0;
   let inProgress = 0;
   let completed = 0;
@@ -334,9 +389,8 @@ async function actionWrite({
     completedCount: completed,
     cancelledCount: cancelled,
   };
-  if (sameTodoListState(result.before, result.after)) {
-    await emit(callback, text);
-    return { success: true, text, data: { actionName: "TODO", ...data } };
+  if (!execution.applied) {
+    return ledgeredNoEffectResult(callback, text, data);
   }
   return appliedMutationResult({
     action: "write",
@@ -347,6 +401,7 @@ async function actionWrite({
       id: `${scope.agentId}:${scope.entityId}`,
     },
     data,
+    execution,
   });
 }
 
@@ -355,7 +410,8 @@ async function actionCreate({
   scope,
   params,
   callback,
-}: ActionHandlerArgs): Promise<ActionResult> {
+  idempotencyKey,
+}: MutationActionHandlerArgs): Promise<ActionResult> {
   const content = readString(params.content);
   if (!content) {
     return failure("missing_param", "content is required for action=create");
@@ -363,9 +419,7 @@ async function actionCreate({
   const status = readStatus(params.status) ?? "pending";
   const activeForm = readString(params.activeForm);
   const parentTodoId = readString(params.parentTodoId);
-  const input: CreateTodoInput = {
-    entityId: scope.entityId,
-    agentId: scope.agentId,
+  const input: Omit<CreateTodoInput, "entityId" | "agentId"> = {
     roomId: scope.roomId,
     worldId: scope.worldId,
     content,
@@ -374,7 +428,15 @@ async function actionCreate({
   };
   if (activeForm !== undefined) input.activeForm = activeForm;
   if (parentTodoId !== undefined) input.parentTodoId = parentTodoId;
-  const todo = await service.create(input);
+  const execution = await service.applyMutation({
+    scope: { entityId: scope.entityId, agentId: scope.agentId },
+    idempotencyKey,
+    mutation: { action: "create", input },
+  });
+  if (execution.result.action !== "create") {
+    throw new Error("Todo mutation result does not match action=create");
+  }
+  const todo = execution.result.todo;
   const text = `Created: ${checkboxFor(todo.status)} ${todo.content}`;
   return appliedMutationResult({
     action: "create",
@@ -391,6 +453,7 @@ async function actionCreate({
       entityId: scope.entityId,
       todo,
     },
+    execution,
   });
 }
 
@@ -399,14 +462,11 @@ async function actionUpdate({
   scope,
   params,
   callback,
-}: ActionHandlerArgs): Promise<ActionResult> {
+  idempotencyKey,
+}: MutationActionHandlerArgs): Promise<ActionResult> {
   const id = readString(params.id);
   if (!id) {
     return failure("missing_param", "id is required for action=update");
-  }
-  const existing = await service.get(todoScope(scope), id);
-  if (!existing || !isOwnedByScope(existing, scope)) {
-    return failure("not_found", `todo ${id} not found for this user`);
   }
   const patch: UpdateTodoInput = {};
   const content = readString(params.content);
@@ -434,9 +494,17 @@ async function actionUpdate({
       "at least one field is required for action=update",
     );
   }
-  const todo = await service.update(todoScope(scope), id, patch);
+  const execution = await service.applyMutation({
+    scope: { entityId: scope.entityId, agentId: scope.agentId },
+    idempotencyKey,
+    mutation: { action: "update", id, patch },
+  });
+  if (execution.result.action !== "update") {
+    throw new Error("Todo mutation result does not match action=update");
+  }
+  const todo = execution.result.todo;
   if (!todo) {
-    return failure("not_found", `todo ${id} not found`);
+    return ledgeredNotFound(id);
   }
   const text = `Updated: ${checkboxFor(todo.status)} ${todo.content}`;
   return appliedMutationResult({
@@ -454,26 +522,30 @@ async function actionUpdate({
       entityId: scope.entityId,
       todo,
     },
+    execution,
   });
 }
 
 async function actionSetStatus(
-  args: ActionHandlerArgs,
-  status: TodoStatus,
+  args: MutationActionHandlerArgs,
   action: "complete" | "cancel",
 ): Promise<ActionResult> {
-  const { service, scope, params, callback } = args;
+  const { service, scope, params, callback, idempotencyKey } = args;
   const id = readString(params.id);
   if (!id) {
     return failure("missing_param", `id is required for action=${action}`);
   }
-  const existing = await service.get(todoScope(scope), id);
-  if (!existing || !isOwnedByScope(existing, scope)) {
-    return failure("not_found", `todo ${id} not found for this user`);
+  const execution = await service.applyMutation({
+    scope: { entityId: scope.entityId, agentId: scope.agentId },
+    idempotencyKey,
+    mutation: { action, id },
+  });
+  if (execution.result.action !== action) {
+    throw new Error(`Todo mutation result does not match action=${action}`);
   }
-  const todo = await service.update(todoScope(scope), id, { status });
+  const todo = execution.result.todo;
   if (!todo) {
-    return failure("not_found", `todo ${id} not found`);
+    return ledgeredNotFound(id);
   }
   const text = `${action}: ${checkboxFor(todo.status)} ${todo.content}`;
   return appliedMutationResult({
@@ -486,6 +558,7 @@ async function actionSetStatus(
       version: todo.updatedAt.toISOString(),
     },
     data: { action, op: action, entityId: scope.entityId, todo },
+    execution,
   });
 }
 
@@ -494,19 +567,22 @@ async function actionDelete({
   scope,
   params,
   callback,
-}: ActionHandlerArgs): Promise<ActionResult> {
+  idempotencyKey,
+}: MutationActionHandlerArgs): Promise<ActionResult> {
   const id = readString(params.id);
   if (!id) {
     return failure("missing_param", "id is required for action=delete");
   }
-  const existing = await service.get(todoScope(scope), id);
-  if (!existing || !isOwnedByScope(existing, scope)) {
-    return failure("not_found", `todo ${id} not found for this user`);
+  const execution = await service.applyMutation({
+    scope: { entityId: scope.entityId, agentId: scope.agentId },
+    idempotencyKey,
+    mutation: { action: "delete", id },
+  });
+  if (execution.result.action !== "delete") {
+    throw new Error("Todo mutation result does not match action=delete");
   }
-  const ok = await service.delete(todoScope(scope), id);
-  if (!ok) {
-    return failure("not_found", `todo ${id} not found`);
-  }
+  const existing = execution.result.deleted;
+  if (!existing) return ledgeredNotFound(id);
   const text = `Deleted: ${existing.content}`;
   return appliedMutationResult({
     action: "delete",
@@ -519,6 +595,7 @@ async function actionDelete({
       entityId: scope.entityId,
       id,
     },
+    execution,
   });
 }
 
@@ -563,13 +640,17 @@ async function actionClear({
   service,
   scope,
   callback,
-}: ActionHandlerArgs): Promise<ActionResult> {
-  const filter: { entityId: string; agentId: string; roomId?: string } = {
-    entityId: scope.entityId,
-    agentId: scope.agentId,
-  };
-  if (scope.roomId) filter.roomId = scope.roomId;
-  const count = await service.clear(filter);
+  idempotencyKey,
+}: MutationActionHandlerArgs): Promise<ActionResult> {
+  const execution = await service.applyMutation({
+    scope: { entityId: scope.entityId, agentId: scope.agentId },
+    idempotencyKey,
+    mutation: { action: "clear", roomId: scope.roomId },
+  });
+  if (execution.result.action !== "clear") {
+    throw new Error("Todo mutation result does not match action=clear");
+  }
+  const { count } = execution.result;
   const text = `Cleared ${count} todo${count === 1 ? "" : "s"}.`;
   const data = {
     action: "clear" as const,
@@ -577,9 +658,8 @@ async function actionClear({
     entityId: scope.entityId,
     count,
   };
-  if (count === 0) {
-    await emit(callback, text);
-    return { success: true, text, data: { actionName: "TODO", ...data } };
+  if (!execution.applied) {
+    return ledgeredNoEffectResult(callback, text, data);
   }
   return appliedMutationResult({
     action: "clear",
@@ -590,6 +670,7 @@ async function actionClear({
       id: `${scope.agentId}:${scope.entityId}`,
     },
     data,
+    execution,
   });
 }
 
@@ -617,6 +698,8 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       "capability:write",
       "capability:update",
       "capability:delete",
+      "effect:idempotent",
+      "effect:receipt-required",
       "surface:internal",
     ],
     similes: [
@@ -768,30 +851,44 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
           );
         }
         const args: ActionHandlerArgs = { service, scope, params, callback };
+        if (action === "list") return await actionList(args);
+        const idempotencyKey = mutationIdempotencyKey(message, options);
+        if (!idempotencyKey) {
+          return {
+            ...failure(
+              "missing_idempotency",
+              "message has no stable client or memory id",
+            ),
+            continueChain: false,
+          };
+        }
+        const mutationArgs: MutationActionHandlerArgs = {
+          ...args,
+          idempotencyKey,
+        };
         switch (action) {
           case "write":
-            return await actionWrite(args);
+            return await actionWrite(mutationArgs);
           case "create":
-            return await actionCreate(args);
+            return await actionCreate(mutationArgs);
           case "update":
-            return await actionUpdate(args);
+            return await actionUpdate(mutationArgs);
           case "complete":
-            return await actionSetStatus(args, "completed", "complete");
+            return await actionSetStatus(mutationArgs, "complete");
           case "cancel":
-            return await actionSetStatus(args, "cancelled", "cancel");
+            return await actionSetStatus(mutationArgs, "cancel");
           case "delete":
-            return await actionDelete(args);
-          case "list":
-            return await actionList(args);
+            return await actionDelete(mutationArgs);
           case "clear":
-            return await actionClear(args);
+            return await actionClear(mutationArgs);
         }
       } catch (error) {
         // error-policy:J1 action boundary translates durable-store failures
         // into an explicit tool failure the planner and user can observe.
         const message =
           error instanceof Error ? error.message : "todo persistence failed";
-        return failure("persistence_error", message);
+        const result = failure("persistence_error", message);
+        return action === "list" ? result : { ...result, continueChain: false };
       }
     },
     examples: [

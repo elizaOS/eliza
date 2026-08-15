@@ -44,7 +44,10 @@ export {
 export { TodosView } from "./components/todos/TodosView.js";
 export {
   type TodoInsert,
+  type TodoMutationInsert,
+  type TodoMutationRow,
   type TodoRow,
+  todoMutationsTable,
   todosSchema,
   todosTable,
 } from "./db/schema.js";
@@ -53,8 +56,18 @@ export { currentTodosProvider } from "./providers/current-todos.js";
 export {
   type CreateTodoInput,
   createTodosSqlStore,
+  deserializeTodoMutationRecord,
   getTodosService,
+  importTodoMutationRecordsInTransaction,
+  serializeTodoMutationRecord,
   type TodoFilter,
+  type TodoMutation,
+  type TodoMutationExecution,
+  type TodoMutationImportInput,
+  type TodoMutationInput,
+  type TodoMutationRecord,
+  type TodoMutationRecordWire,
+  type TodoMutationResult,
   TodosService,
   type UpdateTodoInput,
 } from "./service.js";
