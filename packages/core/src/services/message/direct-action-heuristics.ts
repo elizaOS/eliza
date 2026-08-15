@@ -674,6 +674,48 @@ function findScheduledAdminActionName(
 }
 
 /**
+ * Detects a destructive owner-item operation ("delete the reminder named
+ * water the ficus", "cancel the call marco reminder", "remove my dentist
+ * alarm") and names the owning domain. Live regression (matrix F31,
+ * tj-f02205ae366226 family): Stage-1 classified exact-name reminder deletes
+ * as ["simple"] with no candidates, the turn planned with HANDLE_RESPONSE
+ * only, and the model composed a fictional surface refusal ("can't delete
+ * reminders here — dm me") that then self-reinforced through conversation
+ * history. Deletes are owner mutations on existing data — the same
+ * owner-domain-evidence rule as the other mutation legs — resolved
+ * per-domain through the same preference lists the read leg uses.
+ */
+function detectOwnerItemDeleteDomain(text: string): OwnerLifeReadDomain | null {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized || looksLikeActionExplanationRequest(normalized)) {
+		return null;
+	}
+	// Surface-noun asks stay with the navigation legs ("close the reminders
+	// tab" is view work, not a data mutation).
+	if (
+		/\b(?:view|views|page|screen|tab|panel|window|ui|dashboard|app)\b/iu.test(
+			normalized,
+		)
+	) {
+		return null;
+	}
+	if (
+		!/\b(?:delete|remove|cancel|clear|get\s+rid\s+of|stop\s+tracking)\b/iu.test(
+			normalized,
+		)
+	) {
+		return null;
+	}
+	for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
+		// Finance records have no named-item delete surface; "clear my
+		// spending" is not an item deletion.
+		if (domain === "finances") continue;
+		if (noun.test(normalized)) return domain;
+	}
+	return null;
+}
+
+/**
  * Owner-life domains with a possessive read shape. Each maps to its reader
  * surface in preference order: the personal-assistant umbrella first, then the
  * standalone domain plugin's action names, so lean stacks (one todo owner per
@@ -919,6 +961,22 @@ export function inferDirectCurrentRequestCandidateInference(
 		const scheduledAdminAction = findScheduledAdminActionName(actions);
 		if (scheduledAdminAction) {
 			return { names: [scheduledAdminAction], kind: "owner-scheduled-admin" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Destructive owner-item operations are owner mutations on existing data.
+	// Stage-1 drift can classify an exact-name delete as simple chat (matrix
+	// F31); the deterministic candidate keeps the turn on the planning path
+	// where the owning umbrella can act, ask, or fail closed on its own
+	// surface. Same no-candidate-on-missing-surface rule as the legs above.
+	const ownerDeleteDomain = detectOwnerItemDeleteDomain(messageText);
+	if (ownerDeleteDomain) {
+		const ownerDeleteAction = findOwnerLifeReadActionName(
+			actions,
+			ownerDeleteDomain,
+		);
+		if (ownerDeleteAction) {
+			return { names: [ownerDeleteAction], kind: "owner-scheduled-admin" };
 		}
 		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}
