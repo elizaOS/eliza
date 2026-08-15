@@ -195,6 +195,12 @@ async function startAuthenticatedViewsServer(
 					});
 					return;
 				}
+				if (interactionBody.capability === "undeclared-capability") {
+					sendJson(res, 400, {
+						error: "the view catalog does not declare that capability",
+					});
+					return;
+				}
 				sendJson(res, 200, { success: true, text: "interaction complete" });
 				return;
 			}
@@ -469,6 +475,49 @@ describe("authenticated view loopback requests", () => {
 				viewType: "gui",
 			}),
 		});
+	});
+
+	it("keeps a failed view interaction's diagnostic off the user callback", async () => {
+		const token = "views-interaction-failure-token";
+		const server = await startAuthenticatedViewsServer(token);
+		process.env.ELIZA_PORT = String(server.port);
+		process.env.ELIZA_API_TOKEN = token;
+
+		const callbackTexts: string[] = [];
+		const result = await createViewsAction({
+			hasOwnerAccess: async () => true,
+		}).handler(
+			{ agentId: "agent-1" } as never,
+			{
+				entityId: "user-1",
+				roomId: "room-1",
+				agentId: "agent-1",
+				content: { text: "list my todos" },
+			} as never,
+			undefined,
+			{
+				action: "interact",
+				view: "tasks",
+				capability: "undeclared-capability",
+			},
+			async (content) => {
+				if (content.text) callbackTexts.push(content.text);
+				return [];
+			},
+		);
+
+		// The catalog diagnostic goes back to the planner via the result; the
+		// user-facing callback stays silent so the model can phrase the failure.
+		expect(callbackTexts).toEqual([]);
+		expect(result).toMatchObject({
+			success: false,
+			text: 'Cannot invoke capability "undeclared-capability" on view "tasks": the view catalog does not declare that capability.',
+		});
+		expect(result).not.toHaveProperty("turnComplete");
+		expect(result).not.toHaveProperty("userFacingText");
+		expect(
+			(result as { verifiedUserFacing?: boolean }).verifiedUserFacing,
+		).not.toBe(true);
 	});
 
 	it("authenticates every Node-side loopback caller", async () => {

@@ -39,11 +39,6 @@
 				"import": "./dist/edge/index.edge.js",
 				"default": "./dist/edge/index.edge.js"
 			},
-			"edge-light": {
-				"types": "./dist/edge/index.d.ts",
-				"import": "./dist/edge/index.edge.js",
-				"default": "./dist/edge/index.edge.js"
-			},
 			"browser": {
 				"types": "./dist/index.browser.d.ts",
 				"import": "./dist/browser/index.browser.js",
