@@ -1,53 +1,122 @@
 /**
- * Matrix F18 (tj-b8809c9841cdfd, SEVERE): the evaluator model emitted a
- * think-token-prefixed fenced envelope — `None</think>```json {…}` — which
- * defeated fence unwrap, strict parse, AND the leading-fence repair, so the
- * raw envelope became messageToUser and reached Discord verbatim. Seam 1:
- * the parser strips everything through the last </think> before envelope
- * handling. (Seam 2, the egress rejection, is pinned in the planner-loop
- * suite via isUnsafeUserVisibleText's exported behavior.)
+ * Covers evaluator reasoning-residue parsing, successful-tool recovery, and
+ * final planner egress with deterministic model/tool doubles. Valid completed
+ * prefixes retain their envelope; dangling or mutated tags never become chat.
  */
-import { describe, expect, it } from "vitest";
-import { parseEvaluatorOutput } from "../evaluator";
+import { describe, expect, it, vi } from "vitest";
+import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
+import { isUnsafeUserVisibleText, runPlannerLoop } from "../planner-loop";
 
-const F18_RAW =
-	'None</think>```json\n{ "success": true, "decision": "FINISH", "thought": "Documents store is empty.", "messageToUser": "Your documents store is empty." }\n```';
+const ENVELOPE =
+	'```json\n{ "success": true, "decision": "FINISH", "thought": "Documents store is empty.", "messageToUser": "Your documents store is empty." }\n```';
 
-describe("evaluator think-residue stripping (F18)", () => {
-	it("parses the live think-prefixed envelope instead of leaking it", () => {
-		const output = parseEvaluatorOutput(F18_RAW);
+describe("evaluator reasoning-residue parsing", () => {
+	it.each([
+		"None</think>",
+		"<THINK >synthetic reasoning</THINK >",
+		"<thinking>synthetic reasoning</thinking>",
+		'< reasoning provider="synthetic">synthetic reasoning</ reasoning >',
+	])("parses a valid envelope after completed prefix %s", (prefix) => {
+		const output = parseEvaluatorOutput(`${prefix}${ENVELOPE}`);
 		expect(output.parseError).toBeUndefined();
 		expect(output.decision).toBe("FINISH");
 		expect(output.messageToUser).toBe("Your documents store is empty.");
 	});
 
-	it("still parses plain fenced envelopes", () => {
-		const output = parseEvaluatorOutput(
-			'```json\n{ "success": true, "decision": "FINISH", "thought": "queue drained", "messageToUser": "All finished with the review." }\n```',
-		);
+	it("still parses a plain fenced envelope", () => {
+		const output = parseEvaluatorOutput(ENVELOPE);
 		expect(output.parseError).toBeUndefined();
-		expect(output.messageToUser).toBe("All finished with the review.");
+		expect(output.messageToUser).toBe("Your documents store is empty.");
 	});
 });
 
-import { isUnsafeUserVisibleText } from "../planner-loop";
+describe("successful-tool evaluator recovery", () => {
+	async function recover(raw: string) {
+		return runEvaluator({
+			runtime: { useModel: vi.fn(async () => raw) },
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "tool-1", name: "SHELL", params: {} },
+						result: { success: true, text: "synthetic tool result" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+	}
 
-describe("egress rejection of internals (F18 seam 2)", () => {
-	it("rejects think residue and evaluator envelopes at the last line", () => {
-		expect(isUnsafeUserVisibleText(F18_RAW)).toBe(true);
-		expect(isUnsafeUserVisibleText("prefix</think>anything")).toBe(true);
-		expect(
-			isUnsafeUserVisibleText(
-				'{ "success": false, "decision": "CONTINUE", "thought": "…" }',
-			),
-		).toBe(true);
+	it.each([
+		"<think>synthetic internal analysis with no close",
+		"<THINK >synthetic internal analysis with no close",
+		"<thinking>synthetic internal analysis with no close",
+		'< reasoning provider="synthetic">internal analysis with no close',
+		"synthetic internal analysis</ THINK >synthetic prose",
+	])("does not promote reasoning-tag residue as prose: %s", async (raw) => {
+		const output = await recover(raw);
+		expect(output.decision).toBe("CONTINUE");
+		expect(output.messageToUser).toBeUndefined();
+		expect(output.raw).toMatchObject({
+			recoverySource: "reasoning_markup_text",
+		});
+	});
+});
+
+describe("reasoning residue at final egress", () => {
+	it.each([
+		"<think>synthetic internal",
+		"</THINK >synthetic answer",
+		"<thinking>synthetic internal</thinking>",
+		"< reasoning >synthetic internal</ reasoning >",
+	])("rejects provider tag variant %s", (text) => {
+		expect(isUnsafeUserVisibleText(text)).toBe(true);
 	});
 
-	it("passes ordinary prose that merely mentions the words", () => {
+	it("passes ordinary prose that merely mentions reasoning words", () => {
 		expect(
 			isUnsafeUserVisibleText(
 				"I think the decision to finish early was a success.",
 			),
 		).toBe(false);
+	});
+
+	it("falls back to tool-owned text instead of emitting evaluator residue", async () => {
+		const safeToolText = "Synthetic tool result is ready.";
+		const result = await runPlannerLoop({
+			runtime: {
+				useModel: vi.fn().mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{ id: "call-1", name: "SHELL", arguments: {} },
+					],
+				}),
+			},
+			context: { id: "ctx" },
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: safeToolText,
+				userFacingText: safeToolText,
+			})),
+			evaluate: vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Synthetic evaluation.",
+				messageToUser: "<THINK >synthetic internal analysis with no close",
+			})),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(safeToolText);
+		expect(result.finalMessage).not.toMatch(/<\s*\/?\s*think/i);
 	});
 });
