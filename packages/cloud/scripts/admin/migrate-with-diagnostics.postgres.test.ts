@@ -131,6 +131,9 @@ async function seedAppliedPrefix(
     CREATE TABLE users (
       id uuid PRIMARY KEY
     );
+    CREATE TABLE organizations (
+      id uuid PRIMARY KEY
+    );
     -- This fixture records the pre-checkpoint ledger without replaying its SQL.
     -- It must therefore materialize every pre-checkpoint relation referenced by
     -- pending migrations. Keep this checkpoint schema in lockstep when a new
@@ -276,7 +279,7 @@ describe.skipIf(!ENABLED)(
 
       const first = await runScript(MIGRATOR, database.url);
       expect(first.exitCode, first.output).toBe(0);
-      expect(first.output).toContain("pending migrations: 14");
+      expect(first.output).toContain("pending migrations: 15");
 
       const catalog = await database.client.query<{
         data_type: string;
@@ -341,7 +344,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 14");
+      expect(migrated.output).toContain("pending migrations: 15");
 
       await database.client.query(
         "UPDATE drizzle.__drizzle_migrations SET hash = 'checkpoint-drift' WHERE created_at = $1",
@@ -387,7 +390,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 14");
+      expect(migrated.output).toContain("pending migrations: 15");
       await database.client.end();
     }, 120_000);
 
@@ -397,7 +400,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 14");
+      expect(migrated.output).toContain("pending migrations: 15");
       await database.client.end();
     }, 120_000);
 
@@ -429,7 +432,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 14");
+      expect(migrated.output).toContain("pending migrations: 15");
       await database.client.end();
     }, 120_000);
 
@@ -449,7 +452,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 14");
+      expect(migrated.output).toContain("pending migrations: 15");
 
       const remaining = await database.client.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = ANY($1::bigint[])",
