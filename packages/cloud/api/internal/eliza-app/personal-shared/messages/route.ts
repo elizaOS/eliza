@@ -245,7 +245,7 @@ app.post("/", async (c) => {
               ]
             : [],
         );
-        const receipt =
+        let receipt =
           importMessages.length === history.length
             ? await elizaSandboxService.importCanonicalConversation(
                 dedicated.id,
@@ -254,6 +254,14 @@ app.post("/", async (c) => {
                 importMessages,
               )
             : null;
+        if (!receipt && importMessages.length > 0) {
+          receipt = await elizaSandboxService.importCanonicalConversation(
+            dedicated.id,
+            account.organization.id,
+            agent.id,
+            [],
+          );
+        }
         if (receipt) {
           response = await elizaSandboxService.bridge(
             dedicated.id,
