@@ -74,6 +74,7 @@ import {
 	runWithoutActionRoutingContext,
 } from "./runtime/action-routing-context";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators";
+import { isCanonicalModelCapabilityDisabled } from "./runtime/canonical-model-capabilities.ts";
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
 import { computePrefixHashes } from "./runtime/context-hash";
 import { ContextRegistry } from "./runtime/context-registry";
@@ -648,10 +649,6 @@ export class EmbeddingDimensionProbeError extends Error {
 
 const TEXT_GENERATION_MODEL_KEYS: readonly string[] =
 	TEXT_GENERATION_MODEL_TYPES;
-
-const CANONICAL_TEXT_CAPABILITY_SETTING = "ELIZA_CANONICAL_LLM_TEXT_ENABLED";
-const CANONICAL_EMBEDDING_CAPABILITY_SETTING =
-	"ELIZA_CANONICAL_EMBEDDINGS_ENABLED";
 
 type StructuredResponseFormat = "JSON" | "TOON";
 
@@ -6122,14 +6119,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	private isCanonicalModelCapabilityDisabled(modelType: string): boolean {
-		const setting = TEXT_GENERATION_MODEL_KEYS.includes(modelType)
-			? this.getSetting(CANONICAL_TEXT_CAPABILITY_SETTING)
-			: modelType === ModelType.TEXT_EMBEDDING
-				? this.getSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING)
-				: undefined;
-		return (
-			setting === false || String(setting).trim().toLowerCase() === "false"
-		);
+		return isCanonicalModelCapabilityDisabled(this, modelType);
 	}
 
 	private assertCanonicalModelCapabilityEnabled(modelType: string): void {
