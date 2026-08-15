@@ -2657,10 +2657,7 @@ type V5PlannerActionSurface = {
 	summary: V5PlannerActionSurfaceSummary;
 };
 
-// Exported for unit coverage of the candidate-rejection log contract
-// (#20001): the warn IS the deliverable, so tests pin that a rejected or
-// unresolvable explicit candidate produces the structured reason.
-export async function collectV5PlannerCandidateActions(args: {
+async function collectV5PlannerCandidateActions(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
@@ -2704,14 +2701,9 @@ export async function collectV5PlannerCandidateActions(args: {
 		// One gate for exposure and execution (#12087 Item 9): private-action gate
 		// (private actions never reach the planner on a user turn) + ACTION_ROLE_POLICY
 		// + contextGate + roleGate, all via the shared chokepoint.
-		//
-		// For EXPLICIT stage-1 candidates the rejection must be observable:
-		// dropping the one action stage-1 named leaves the planner improvising
-		// with unrelated tools, and a silent drop is undiagnosable from
-		// trajectories (live: a poisoned disclosure census killed every
-		// owner-life candidate in a DM for a full morning with zero log lines —
-		// issue #19999). The every-action loop stays quiet; benign rejections
-		// there are the normal case.
+		// Explicit Stage-1 hints need a diagnostic when their resolved action is
+		// rejected. The all-action pass stays quiet because ordinary gate misses
+		// are expected while building a narrowed surface.
 		const gateFailure = actionGateFailure(action, {
 			message: args.message,
 			activeContexts,
@@ -2719,12 +2711,13 @@ export async function collectV5PlannerCandidateActions(args: {
 		});
 		if (gateFailure !== undefined) {
 			if (explicitCandidateName) {
-				logger.warn(
+				args.runtime.logger.warn(
 					{
 						src: "service:message",
 						action: action.name,
 						candidate: explicitCandidateName,
-						gate: gateFailure,
+						gate: "action-gate",
+						reason: gateFailure,
 					},
 					"Explicit stage-1 candidate rejected at the action gate",
 				);
@@ -2741,12 +2734,13 @@ export async function collectV5PlannerCandidateActions(args: {
 			);
 			if (!accountPolicy.allowed) {
 				if (explicitCandidateName) {
-					logger.warn(
+					args.runtime.logger.warn(
 						{
 							src: "service:message",
 							action: action.name,
 							candidate: explicitCandidateName,
 							gate: "connector-account-policy",
+							reason: accountPolicy.reason,
 						},
 						"Explicit stage-1 candidate rejected by connector account policy",
 					);
@@ -2761,12 +2755,13 @@ export async function collectV5PlannerCandidateActions(args: {
 				);
 				if (!valid) {
 					if (explicitCandidateName) {
-						logger.warn(
+						args.runtime.logger.warn(
 							{
 								src: "service:message",
 								action: action.name,
 								candidate: explicitCandidateName,
 								gate: "validate-returned-false",
+								reason: `Action ${action.name} is not available for the current state`,
 							},
 							"Explicit stage-1 candidate rejected by action validate()",
 						);
@@ -2815,11 +2810,7 @@ export async function collectV5PlannerCandidateActions(args: {
 					.map((alias) => resolveRuntimeAction(actionLookup, alias))
 					.filter((action): action is Action => action !== undefined);
 		if (resolved.length === 0) {
-			// The plumbing-class observable: stage-1 named a candidate that binds
-			// to NO runtime action even after the alias fallback. Without this
-			// line that gap is indistinguishable from a gate rejection when
-			// reading trajectories (#19999 triage had to rule it out by hand).
-			logger.warn(
+			args.runtime.logger.warn(
 				{
 					src: "service:message",
 					candidate: candidateName,
