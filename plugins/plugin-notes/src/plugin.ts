@@ -5,8 +5,10 @@
  */
 
 import type { Plugin } from "@elizaos/core";
+import { notesAction } from "./action.js";
 import { NOTES_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
+import { notesProvider } from "./provider.js";
 import { notesRoutes } from "./routes.js";
 import { NotesService } from "./service.js";
 
@@ -14,6 +16,8 @@ export const notesPlugin: Plugin = {
   name: "@elizaos/plugin-notes",
   description:
     "Managed Cloud Notes view with durable agent-driven CRUD and view switching.",
+  actions: [notesAction],
+  providers: [notesProvider],
   services: [NotesService],
   routes: notesRoutes,
   views: [
