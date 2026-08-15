@@ -538,9 +538,9 @@ jobs:
             export VOICE_REALTIME_ELIZA_AUTHORIZATION
           fi
 
-          # Production provider and bridge values are managed Worker secrets,
-          # not GitHub secret material. keep_vars preserves them, and their
-          # binding names are verified against the live Worker before deploy.
+          # Production provider and bridge values remain managed Worker
+          # secrets. A protected-environment value may create or rotate one;
+          # a blank source preserves it, and names are verified before deploy.
 
           # Staging advertises realtime only when the repository variable
           # VOICE_REALTIME_WS_ENABLED is explicitly truthy. Refuse that opt-in
@@ -618,33 +618,6 @@ jobs:
             exit 1
           fi
 
-          if [ "$DEPLOY_ENVIRONMENT" = "production" ] && \
-             is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
-            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
-            printf '%s' "$secret_inventory" | node -e '
-              const fs = require("node:fs");
-              const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
-              const entries = Array.isArray(parsed)
-                ? parsed
-                : Array.isArray(parsed?.result)
-                  ? parsed.result
-                  : [];
-              const present = new Set(entries.map((entry) => entry?.name).filter(Boolean));
-              const required = [
-                "CARTESIA_API_KEY",
-                "VOICE_REALTIME_CARTESIA_VOICE_ID",
-                "VOICE_REALTIME_ELIZA_AUTHORIZATION",
-                "VOICE_REALTIME_ELIZA_ENDPOINT",
-              ];
-              const missing = required.filter((name) => !present.has(name));
-              if (missing.length > 0) {
-                console.error(`::error::Production realtime voice is missing managed Worker secret binding name(s): ${missing.join(" ")}`);
-                process.exit(1);
-              }
-              console.log(`Verified ${required.length} managed production voice secret binding names; values were not read.`);
-            '
-          fi
-
           publish_secret() {
             local name="$1"
             local value="${!name:-}"
@@ -692,6 +665,37 @@ jobs:
             done
             echo "::error::wrangler secret put $name failed after 3 attempts"
             return 1
+          }
+
+          verify_production_voice_secret_bindings() {
+            if [ "$DEPLOY_ENVIRONMENT" != "production" ] || \
+               ! is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
+              return 0
+            fi
+            local secret_inventory
+            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            printf '%s' "$secret_inventory" | node -e '
+              const fs = require("node:fs");
+              const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
+              const entries = Array.isArray(parsed)
+                ? parsed
+                : Array.isArray(parsed?.result)
+                  ? parsed.result
+                  : [];
+              const present = new Set(entries.map((entry) => entry?.name).filter(Boolean));
+              const required = [
+                "CARTESIA_API_KEY",
+                "VOICE_REALTIME_CARTESIA_VOICE_ID",
+                "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+                "VOICE_REALTIME_ELIZA_ENDPOINT",
+              ];
+              const missing = required.filter((name) => !present.has(name));
+              if (missing.length > 0) {
+                console.error(`::error::Production realtime voice is missing managed Worker secret binding name(s): ${missing.join(" ")}`);
+                process.exit(1);
+              }
+              console.log(`Verified ${required.length} managed production voice secret binding names; values were not read.`);
+            '
           }
 
           # Like publish_secret, but for values that act as ROUTING TOGGLES
@@ -809,6 +813,11 @@ jobs:
           do
             publish_toggle_secret "$name" || exit 1
           done
+
+          # GitHub and Cloudflare are separate write-only authorities. Verify
+          # the live names only after configured values have had a chance to
+          # create their bindings, but still before any Worker code deploys.
+          verify_production_voice_secret_bindings || exit 1
 
       - name: Deploy to Cloudflare Workers
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
