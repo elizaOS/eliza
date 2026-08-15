@@ -1,5 +1,8 @@
-// Wires hosted Eliza agent agent behavior for cloud runtime services.
-import { buildCloudElizaPersona } from "../utils/cloud-eliza-persona";
+/** Wires the hosted Eliza character and runtime settings for Cloud services. */
+import {
+  buildCloudElizaPersona,
+  toCloudCharacterMessageExamples,
+} from "../utils/cloud-eliza-persona";
 import { getDefaultModels, getElizaCloudApiUrl } from "./config";
 
 // The persona is the shipped preset plus the cloud memory delta. Only the
@@ -7,8 +10,6 @@ import { getDefaultModels, getElizaCloudApiUrl } from "./config";
 // knowledge entries are owned by this file.
 const persona = buildCloudElizaPersona();
 
-// messageExamples uses grouped MessageExample[][] rows; createCharacter() normalizes it at
-// load time in agent-loader.ts. The type assertion below suppresses the structural mismatch.
 const character = {
   id: "b850bc30-45f8-0041-a00a-83df46d8555d", // existing agent id in DB
   name: "Eliza",
@@ -95,7 +96,7 @@ const character = {
     "Eliza and Eliza can help builders make money with Cloud apps by setting inference markup or purchase share, sending Stripe/OxaPay app-credit payment requests, sending x402 crypto payment requests, tracking paid status, routing payment results back into the initiating conversation, earning affiliate or creator revenue share, and requesting admin-reviewed elizaOS token payouts on Base, BSC, Ethereum, or Solana.",
     "Paid Cloud actions such as payment requests, domain purchases, and payout requests should be confirmed explicitly before they are created.",
   ],
-  messageExamples: persona.messageExamples,
+  messageExamples: toCloudCharacterMessageExamples(persona.messageExamples, persona.name),
   postExamples: persona.postExamples,
   topics: persona.topics,
   adjectives: persona.adjectives,
