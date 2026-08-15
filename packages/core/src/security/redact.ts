@@ -41,7 +41,7 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	// diverging from the streaming scanner's value-exact redaction
 	// (guarded-stream split-equivalence).
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=/~]+)`,
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+((?=[A-Za-z][A-Za-z0-9!#$%&'*+.^_|~-]*=[^=\s])[^\r\n]+)(?=[\r\n]|$)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+((?=[A-Za-z][A-Za-z0-9!#$%&'*+.^_|~-]*[ \t]*=(?:[^=\s]|[ \t]+"))[^\r\n]+)(?=[\r\n]|$)`,
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+([A-Za-z0-9._~+/\-]{8,}={0,})(?=[\r\n]|$)`,
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z0-9._~+/\-]{18,}={0,})(?=[\r\n]|$)`,
 	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,

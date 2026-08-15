@@ -156,6 +156,17 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(output).not.toContain(response);
 	});
 
+	it("masks quoted Digest auth params with RFC boundary whitespace", () => {
+		const username = ["private", "-user"].join("");
+		const response = ["6629fae49393", "a05397450978507c4ef1"].join("");
+		const input = `Authorization: Digest username = "${username}", realm = "restricted", response = "${response}"`;
+		const output = redactSensitiveText(input);
+		expect(output).toContain("Authorization: Digest ");
+		expect(output).not.toContain(username);
+		expect(output).not.toContain("restricted");
+		expect(output).not.toContain(response);
+	});
+
 	it("does not rewrite invalid header-shaped prose", () => {
 		for (const line of [
 			"Authorization: required for this endpoint",
