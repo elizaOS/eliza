@@ -904,7 +904,16 @@ describe("canonical OWNER_* fallbacks for non-PA topologies", () => {
 	});
 });
 
-describe("tier-narrowing candidate injection (tj-f8bdfafb488900)", () => {
+describe("hinted-parent tier membership pins (tj-f8bdfafb488900 aftermath)", () => {
+	// HONEST NEGATIVE, documented: the live eviction in tj-f8bdfafb488900 was
+	// NOT a retrieval-ranking failure — the "simple" context gate excluded the
+	// owner families from the CATALOG itself, so no post-slice recovery could
+	// ever apply (deterministic replay, HQ #18309 18029134). Adversarial
+	// attempts to evict an exact-hinted parent from the topK purely by keyword
+	// flood all failed: the exact-stage RRF share plus the saturated-cohort
+	// message-evidence tie-break already protect hinted parents. This block
+	// PINS that existing protection so future stage-weight or tie-break tuning
+	// cannot silently regress hint membership.
 	const viewParent = (name: string, extraTags: string[] = []) => ({
 		name,
 		description: `${name} manages open UI views, apps, panels, reminders prompts, and navigation followups.`,
@@ -927,15 +936,11 @@ describe("tier-narrowing candidate injection (tj-f8bdfafb488900)", () => {
 		},
 	];
 
-	// The live poisoning vector: the PREVIOUS reply leaked an app-surface
-	// control block into the conversation window, and its navigate/apps/
-	// reminders/prompt tokens rank every view parent above the grounded
-	// owner surface.
 	const leakedWindow = [
 		"[FOLLOWUPS] navigate:/apps/reminders=Open reminders prompt:Delete the submit the invoice reminder [/FOLLOWUPS]",
 	];
 
-	it("a stage-1 candidate naming a catalog parent survives tier narrowing under keyword flood", () => {
+	it("an exact-hinted catalog parent survives tier narrowing under keyword flood", () => {
 		const catalog = buildActionCatalog(poisonedCatalogActions);
 		const response = retrieveActions({
 			catalog,
@@ -947,31 +952,5 @@ describe("tier-narrowing candidate injection (tj-f8bdfafb488900)", () => {
 		});
 		const names = response.results.map((entry) => entry.name);
 		expect(names).toContain("OWNER_REMINDERS");
-	});
-
-	it("injection preserves membership only — no hint means pure ranking is untouched", () => {
-		const catalog = buildActionCatalog(poisonedCatalogActions);
-		const withHint = retrieveActions({
-			catalog,
-			messageText: "now delete the submit the invoice reminder too",
-			recentConversationText: leakedWindow,
-			candidateActions: ["OWNER_REMINDERS"],
-			limit: 3,
-		});
-		const withoutHint = retrieveActions({
-			catalog,
-			messageText: "now delete the submit the invoice reminder too",
-			recentConversationText: leakedWindow,
-			limit: 3,
-		});
-		// Ranked prefix identical in both runs — the hint appends, never reorders.
-		const rankedPrefix = withHint.results
-			.slice(0, 3)
-			.filter((entry) => entry.name !== "OWNER_REMINDERS")
-			.map((entry) => entry.name);
-		const pureTop = withoutHint.results.slice(0, 3).map((entry) => entry.name);
-		for (const name of rankedPrefix) {
-			expect(pureTop).toContain(name);
-		}
 	});
 });

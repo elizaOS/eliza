@@ -634,32 +634,6 @@ export function retrieveActions(
 		: 0;
 	const limited = limit > 0 ? results.slice(0, limit) : results;
 
-	// A Stage-1 candidate (or explicit caller hint) that resolves to a
-	// registered catalog parent is an exact reference, not a retrieval guess.
-	// Ranking may place it anywhere, but tier NARROWING must never evict it:
-	// a keyword-flooded query window otherwise leaves the planner without the
-	// one grounded tool and downstream layers improvise (live
-	// tj-f8bdfafb488900: a leaked [FOLLOWUPS] block's navigate/apps/reminders
-	// tokens ranked five view/app parents over OWNER_REMINDERS — stage-1's
-	// exact candidate — and the tier narrowed to [CLOSE_ALL_VIEWS]).
-	// Injection, not score rescue: an appended entry keeps its real scores;
-	// only tier membership is guaranteed, so ordinary ranking is untouched
-	// whenever the hint survives the cut on its own.
-	if (limit > 0 && parentActionHints.length > 0) {
-		const limitedNames = new Set(limited.map((entry) => entry.normalizedName));
-		for (const hint of parentActionHints) {
-			const normalized = normalizeActionName(hint);
-			if (limitedNames.has(normalized)) continue;
-			const evicted = results.find(
-				(entry) => entry.normalizedName === normalized,
-			);
-			if (evicted) {
-				limited.push(evicted);
-				limitedNames.add(normalized);
-			}
-		}
-	}
-
 	for (let index = 0; index < limited.length; index += 1) {
 		limited[index].rank = index + 1;
 	}
@@ -1297,18 +1271,34 @@ function shouldUseRecentConversationForActionSearch(
 	);
 }
 
+// App-surface control blocks ([FORM]/[CHOICE]/[FOLLOWUPS]/[TASK]/[CHECKLIST]
+// and single-line [CONFIG:…] markers) travel inline in delivered message text.
+// When a prior turn's reply carried one, its wire vocabulary ("navigate",
+// "apps", "open", "prompt", …) is UI plumbing, not user intent — left in the
+// retrieval window it floods keyword/bm25 scoring toward view/app actions and
+// can evict the stage-1 candidate entirely (live tj-f8bdfafb488900: a reminder
+// delete routed to CLOSE_ALL_VIEWS off a leaked [FOLLOWUPS] block). Strip the
+// blocks from the conversation window before tokenization; the current user
+// message is never stripped.
+const CONTROL_BLOCK_MARKER_RE =
+	/\[[ \t]*(?:FORM|CHOICE[^\]]*|FOLLOWUPS[^\]]*|TASK:[^\]]*|CHECKLIST)[ \t]*\][\s\S]*?\[[ \t]*\/[ \t]*(?:FORM|CHOICE|FOLLOWUPS|TASK|CHECKLIST)[ \t]*\]|\[CONFIG:[^\]]*\]/g;
+
+export function stripControlBlockMarkers(text: string): string {
+	return text.replace(CONTROL_BLOCK_MARKER_RE, " ");
+}
+
 function normalizeTextList(
 	value: string | readonly string[] | undefined,
 ): string[] {
 	if (typeof value === "string") {
-		return [value];
+		return [stripControlBlockMarkers(value).trim()].filter(Boolean);
 	}
 	if (!Array.isArray(value)) {
 		return [];
 	}
 	return value
 		.filter((entry): entry is string => typeof entry === "string")
-		.map((entry) => entry.trim())
+		.map((entry) => stripControlBlockMarkers(entry).trim())
 		.filter(Boolean);
 }
 
