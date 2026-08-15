@@ -109,7 +109,7 @@ export function convertMarkdownToTelegram(markdown: string): string {
   //    URL pattern allows one level of balanced parentheses so Wikipedia-style
   //    links like https://en.wikipedia.org/wiki/Test_(assessment) are not truncated.
   converted = converted.replace(
-    /\[([^\]]+)\]\(((?:[^()\s]|\([^)]*\))+)\)/g,
+    /\[([^\]]+)\]\(((?:[^()\s]|\([^()]*\))+)\)/g,
     (_match, text, url) => {
       // For link text we escape as plain text.
       const formattedText = escapePlainText(text);
@@ -174,7 +174,7 @@ export function convertMarkdownToTelegram(markdown: string): string {
   //    to bold text. This avoids unescaped '#' characters (which crash Telegram)
   //    by removing them and wrapping the rest of the line in bold markers.
   converted = converted.replace(
-    /^(#{1,6})\s*(.*)$/gm,
+    /^(#{1,6})[^\S\r\n]*([^\r\n]*)\r?$/gm,
     (_match, _hashes, headerContent: string) => {
       const trimmed = headerContent.trim();
       // Empty headers (e.g. "# " or "### \n") would produce "**" which
