@@ -2557,6 +2557,7 @@ function main(): void {
       .map((name) => ({
         name,
         spec: rootDependencySpecs.get(name) ?? null,
+        required: true,
         requesterDir: ROOT,
         requesterDestDir: targetDist,
       }));
@@ -2667,6 +2668,7 @@ function main(): void {
         queue.push({
           name: dep.name,
           spec: dep.spec,
+          required: dep.required,
           requesterDir: resolved.sourceDir,
           requesterDestDir: destination,
         });
