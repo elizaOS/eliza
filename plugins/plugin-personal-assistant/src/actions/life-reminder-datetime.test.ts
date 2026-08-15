@@ -1367,8 +1367,8 @@ describe("runLifeOperationHandler clarification contract", () => {
 
     expect(result).toMatchObject({
       success: false,
-      text: clarification,
-      userFacingText: clarification,
+      text: "When should it happen?",
+      userFacingText: "When should it happen?",
       values: {
         success: false,
         error: "MISSING_DEFINITION_FIELD",
