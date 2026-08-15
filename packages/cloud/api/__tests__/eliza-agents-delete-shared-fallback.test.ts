@@ -16,7 +16,13 @@ const deleteAgent = mock(async () => ({
   success: false,
   error: "Failed to delete sandbox",
 }));
-const cancelAgentDeletion = mock(async () => ({ success: true }));
+type CancelAgentDeletionResult =
+  | { success: true }
+  | { success: false; error: string };
+
+const cancelAgentDeletion = mock(
+  async (): Promise<CancelAgentDeletionResult> => ({ success: true }),
+);
 const enqueueAgentDeleteOnce = mock(async () => ({
   created: true,
   job: { id: "delete-job-1", status: "pending" },

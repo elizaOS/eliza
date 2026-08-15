@@ -45,6 +45,7 @@ import {
   StaleJobExecutionError,
 } from "../../db/repositories/jobs";
 import {
+  type AgentBillingStatus,
   type AgentExecutionTier,
   type AgentSandboxPoolStatus,
   type AgentSandboxStatus,
@@ -823,6 +824,9 @@ interface LifecycleSandboxRow {
   replacement_cleanup_sandbox_id: string | null;
   deletion_attempt_id: string | null;
   deletion_started_at: Date | null;
+  billing_status: AgentBillingStatus;
+  shutdown_warning_sent_at: Date | null;
+  scheduled_shutdown_at: Date | null;
   pool_status: AgentSandboxPoolStatus | null;
 }
 
@@ -1329,6 +1333,9 @@ export class ProvisioningJobService {
         replacement_cleanup_sandbox_id: agentSandboxes.replacement_cleanup_sandbox_id,
         deletion_attempt_id: agentSandboxes.deletion_attempt_id,
         deletion_started_at: agentSandboxes.deletion_started_at,
+        billing_status: agentSandboxes.billing_status,
+        shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
+        scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
         pool_status: agentSandboxes.pool_status,
       })
       .from(agentSandboxes)
