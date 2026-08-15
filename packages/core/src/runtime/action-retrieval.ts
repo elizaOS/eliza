@@ -179,6 +179,48 @@ const COMPRESS_MODE_TOP_K_CAP = 8;
 // arbitrate from the exposed descriptions (#9950).
 const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	ADD_GOAL: ["OWNER_GOALS"],
+	// Todo-shaped candidates hint BOTH todo owners: the personal-assistant
+	// umbrella and plugin-todos' TODO parent. Deployments load one or the
+	// other; the resolver keeps whichever is registered. Without these the
+	// names Stage-1 actually emits ("add a todo: buy milk" → CREATE_TODO,
+	// "what todos do i have" → USER_TODOS_READ, live trajectories
+	// tj-060255231afe39 / tj-06105af841e1c1) resolve to nothing — the
+	// candidate narrow then dropped every todo tool and the planner
+	// improvised (replayed a stale OWNER_GOALS create; invented a VIEWS
+	// "get-todos" capability that errored). Same class as the habit/goal
+	// aliases above (#10722).
+	ADD_TODO: ["OWNER_TODOS", "TODO"],
+	CREATE_TODO: ["OWNER_TODOS", "TODO"],
+	TODO: ["OWNER_TODOS"],
+	TODOS: ["OWNER_TODOS", "TODO"],
+	TODO_ADD: ["OWNER_TODOS", "TODO"],
+	TODO_CREATE: ["OWNER_TODOS", "TODO"],
+	TODOS_CREATE: ["OWNER_TODOS", "TODO"],
+	NEW_TODO: ["OWNER_TODOS", "TODO"],
+	SAVE_TODO: ["OWNER_TODOS", "TODO"],
+	TODO_LIST: ["OWNER_TODOS", "TODO"],
+	LIST_TODOS: ["OWNER_TODOS", "TODO"],
+	GET_TODOS: ["OWNER_TODOS", "TODO"],
+	SHOW_TODOS: ["OWNER_TODOS", "TODO"],
+	READ_TODOS: ["OWNER_TODOS", "TODO"],
+	USER_TODOS_READ: ["OWNER_TODOS", "TODO"],
+	COMPLETE_TODO: ["OWNER_TODOS", "TODO"],
+	TODO_COMPLETE: ["OWNER_TODOS", "TODO"],
+	DELETE_TODO: ["OWNER_TODOS", "TODO"],
+	REMOVE_TODO: ["OWNER_TODOS", "TODO"],
+	// Alarm-shaped candidates: same dual hint as reminders/habits — the
+	// owner umbrella plus the always-registered TRIGGER scheduler.
+	ADD_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+	SET_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+	CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+	ALARM_CREATE: ["OWNER_ALARMS", "TRIGGER"],
+	WAKE_ME_UP: ["OWNER_ALARMS", "TRIGGER"],
+	// Finance-shaped candidates: OWNER_FINANCES declares only one simile
+	// ("FINANCES"), so the common Stage-1 inventions need explicit hints.
+	FINANCE: ["OWNER_FINANCES"],
+	SPENDING: ["OWNER_FINANCES"],
+	SPENDING_SUMMARY: ["OWNER_FINANCES"],
+	EXPENSES: ["OWNER_FINANCES"],
 	// Habit/reminder-shaped candidates hint BOTH the owner-life umbrella and the
 	// always-registered TRIGGER scheduler. Stage-1 routinely invents these names
 	// ("can u help me to brush my teeth everyday" → SET_HABIT), and on
@@ -331,11 +373,14 @@ export function retrieveActions(
 		...candidateActions.filter((actionName) =>
 			catalogParentNames.has(normalizeActionName(actionName)),
 		),
-		...candidateActions.flatMap((actionName) =>
-			candidateNamespaceParentExists(input.catalog.parents, actionName)
+		...candidateActions.flatMap((actionName) => {
+			const explicitAliases =
+				explicitParentAliasesForCandidateAction(actionName);
+			if (explicitAliases.length > 0) return explicitAliases;
+			return candidateNamespaceParentExists(input.catalog.parents, actionName)
 				? []
-				: parentAliasesForCandidateAction(actionName),
-		),
+				: parentAliasesForCandidateAction(actionName);
+		}),
 		// Stage-1 routinely hints an action by one of its similes — the canonical
 		// documented example is candidateActions=["BASH"] for the SHELL parent
 		// (message-handler.ts). Similes feed the fuzzy search text but carry no
@@ -954,10 +999,8 @@ function dedupeNormalizedStrings(values: string[] | undefined): string[] {
 
 export function parentAliasesForCandidateAction(actionName: string): string[] {
 	const normalized = normalizeActionName(actionName);
-	const explicit = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
-	if (explicit) {
-		return [...explicit];
-	}
+	const explicit = explicitParentAliasesForCandidateAction(normalized);
+	if (explicit.length > 0) return explicit;
 	// Permission/access management is SETTINGS (grant/revoke an app's fs/net
 	// namespace, OS permission requests, shell access) — never view navigation.
 	// Checked before the view/app surface heuristics because Stage-1 invents
@@ -981,6 +1024,11 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
 		aliases.push("APP");
 	}
 	return aliases;
+}
+
+function explicitParentAliasesForCandidateAction(actionName: string): string[] {
+	const normalized = normalizeActionName(actionName);
+	return [...(CANDIDATE_ACTION_PARENT_ALIASES[normalized] ?? [])];
 }
 
 const APP_SURFACE_TOKENS = new Set([

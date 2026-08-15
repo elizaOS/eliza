@@ -1223,12 +1223,18 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
             kind: "reminder",
             promptInstructions: "drink water",
             state: { status: "fired", followupCount: 0 },
+            escalation: {
+              steps: [{ delayMinutes: 0, channelKey: "shared_gateway_dm" }],
+            },
           },
           {
             taskId: "cutover-reminder",
             kind: "reminder",
             promptInstructions: "call mom",
             state: { status: "scheduled", followupCount: 0 },
+            escalation: {
+              steps: [{ delayMinutes: 0, channelKey: "shared_gateway_dm" }],
+            },
           },
         ],
         cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,

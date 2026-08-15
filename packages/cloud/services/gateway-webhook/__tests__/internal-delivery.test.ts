@@ -142,9 +142,10 @@ describe("internal proactive delivery", () => {
 
     expect(duplicate.status).toBe(202);
     await expect(duplicate.json()).resolves.toMatchObject({
-      success: true,
+      success: false,
       replayed: true,
       acceptanceUnknown: true,
+      acceptance: "unknown",
     });
     finishSend?.();
     expect((await firstPromise).status).toBe(200);
@@ -164,13 +165,13 @@ describe("internal proactive delivery", () => {
 
     expect(first.status).toBe(202);
     await expect(first.json()).resolves.toMatchObject({
-      success: true,
+      success: false,
       acceptanceUnknown: true,
       replayed: false,
     });
     expect(replay.status).toBe(202);
     await expect(replay.json()).resolves.toMatchObject({
-      success: true,
+      success: false,
       acceptanceUnknown: true,
       replayed: true,
     });
@@ -190,6 +191,31 @@ describe("internal proactive delivery", () => {
     expect(first.status).toBe(202);
     expect(replay.status).toBe(202);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("never reports a pre-existing indeterminate tombstone as accepted", async () => {
+    const redis = new MemoryRedis();
+    redis.store.set(
+      "internal-delivery:telegram:eliza-app:task-1:2026-08-14T20:00:00.000Z",
+      "indeterminate",
+    );
+    globalThis.fetch = mock(async () => {
+      throw new Error("must not resend an indeterminate delivery");
+    }) as typeof fetch;
+
+    const response = await deliverInternalMessage(
+      request(),
+      dependencies(redis),
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      acceptance: "unknown",
+      retryable: false,
+      acceptanceUnknown: true,
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   test("retries without Markdown only after Telegram explicitly rejects formatting", async () => {

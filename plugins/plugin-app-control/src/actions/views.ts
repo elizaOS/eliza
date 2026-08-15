@@ -2371,6 +2371,9 @@ async function runViewsLayout({
 }
 
 function withViewsUserFacingText(result: ActionResult): ActionResult {
+	if (result.success !== true && result.userFacingText === undefined) {
+		return result;
+	}
 	if (
 		result.transcriptVisibility === "internal" &&
 		result.userFacingText === undefined
@@ -2400,6 +2403,7 @@ const VIEWS_ROUTING_HINT = [
 	"Close/hide means VIEWS action=close, never delete/remove.",
 	"Listing, launching, or restarting installed applications uses APP; only opening the apps/views page uses VIEWS.",
 	"Changing a settings or permission value uses SETTINGS; VIEWS only opens the Settings surface.",
+	"Reading or changing the owner's todos, goals, reminders, routines, alarms, health, or finances uses the OWNER_* actions; VIEWS only opens those surfaces and never returns that data.",
 ].join(" ");
 
 export function createViewsAction(deps: ViewsActionDeps = {}): Action {
@@ -3254,9 +3258,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 									}
 								);
 							}
-							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`;
-							await callback?.({ text: reply });
-							return { success: false, text: reply };
+							// Catalog diagnostics return to the planner via the result,
+							// never straight to the user (same policy as the HTTP
+							// interaction failure below).
+							return {
+								success: false,
+								text: `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`,
+							};
 						}
 						if (!resolvedCapability && standardCapability)
 							capability = standardCapability;
@@ -3267,9 +3275,10 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								text,
 							);
 							if (correction.kind === "reject") {
-								const reply = `Refusing destructive capability on view "${viewId}": ${correction.reason}. Please rephrase with explicit, unambiguous intent.`;
-								await callback?.({ text: reply });
-								return { success: false, text: reply };
+								return {
+									success: false,
+									text: `Refusing destructive capability on view "${viewId}": ${correction.reason}. Please rephrase with explicit, unambiguous intent.`,
+								};
 							}
 							if (
 								correction.capability.id !== resolvedCapability.capability.id
@@ -3306,9 +3315,10 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							text,
 						);
 						if (!paramsResolution.ok) {
-							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": ${paramsResolution.error}.`;
-							await callback?.({ text: reply });
-							return { success: false, text: reply };
+							return {
+								success: false,
+								text: `Cannot invoke capability "${capability}" on view "${viewId}": ${paramsResolution.error}.`,
+							};
 						}
 						const params = paramsResolution.params;
 						const timeoutMs =
@@ -3331,7 +3341,12 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const effectContract = interaction.success
 							? readViewInteractionEffectContract(interaction.result)
 							: undefined;
-						await callback?.({ text: resultText });
+						// Failure text is a catalog-internal diagnostic ("Cannot invoke
+						// capability X on view Y") — it goes back to the planner via the
+						// result, never straight to the user.
+						if (interaction.success) {
+							await callback?.({ text: resultText });
+						}
 						return {
 							success: interaction.success,
 							text: resultText,

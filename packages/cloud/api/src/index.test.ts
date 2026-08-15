@@ -774,7 +774,9 @@ describe("cloud-api worker entrypoint", () => {
 
     expect(config.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe("false");
     expect(config.env?.staging?.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe("true");
-    expect(config.env?.production?.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe("true");
+    expect(config.env?.production?.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe(
+      "true",
+    );
   });
 
   test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {
