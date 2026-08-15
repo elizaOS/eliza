@@ -14,6 +14,7 @@
 import type {
   SharedTodoCutoverRecord,
   SharedTodoCutoverSnapshot,
+  SharedTodoMutationCutoverRecord,
 } from "@elizaos/shared/todo-cutover";
 
 export type SandboxStatus =
@@ -147,6 +148,9 @@ export interface ConversationImportResult {
   repairedTodos?: number;
   skippedTodos?: number;
   removedStaleTodos?: number;
+  sourceTodoMutationCount?: number;
+  importedTodoMutations?: number;
+  skippedTodoMutations?: number;
   sourceTodoDigest?: string;
   targetTodoDigest?: string;
   alreadyPopulated?: boolean;
@@ -432,11 +436,15 @@ export class ControlPlaneStore {
       | "repairedTodos"
       | "skippedTodos"
       | "removedStaleTodos"
+      | "sourceTodoMutationCount"
+      | "importedTodoMutations"
+      | "skippedTodoMutations"
       | "sourceTodoDigest"
       | "targetTodoDigest"
     > = {};
     if (todoSnapshot) {
-      const previousTodos = this.todoSnapshots.get(key)?.todos ?? [];
+      const previousSnapshot = this.todoSnapshots.get(key);
+      const previousTodos = previousSnapshot?.todos ?? [];
       const previousById = new Map(
         previousTodos.map((todo) => [todo.sourceId, todo]),
       );
@@ -456,6 +464,38 @@ export class ControlPlaneStore {
       const removedStaleTodos = previousTodos.filter(
         (todo) => !nextIds.has(todo.sourceId),
       ).length;
+      const previousMutationsByKey = new Map(
+        previousSnapshot?.mutations.map((mutation) => [
+          mutation.idempotencyKey,
+          mutation,
+        ]) ?? [],
+      );
+      const previousMutationsById = new Map(
+        previousSnapshot?.mutations.map((mutation) => [
+          mutation.mutationId,
+          mutation,
+        ]) ?? [],
+      );
+      let importedTodoMutations = 0;
+      let skippedTodoMutations = 0;
+      for (const mutation of todoSnapshot.mutations) {
+        const previous = previousMutationsByKey.get(mutation.idempotencyKey);
+        if (previous) {
+          if (JSON.stringify(previous) !== JSON.stringify(mutation)) {
+            throw new Error(
+              "Todo mutation idempotency key belongs to a different record",
+            );
+          }
+          skippedTodoMutations += 1;
+          continue;
+        }
+        if (previousMutationsById.has(mutation.mutationId)) {
+          throw new Error(
+            "Todo mutation id belongs to a different idempotency key",
+          );
+        }
+        importedTodoMutations += 1;
+      }
       this.todoSnapshots.set(key, structuredClone(todoSnapshot));
       todoReceipt = {
         sourceTodoCount: todoSnapshot.todos.length,
@@ -463,6 +503,9 @@ export class ControlPlaneStore {
         repairedTodos,
         skippedTodos,
         removedStaleTodos,
+        sourceTodoMutationCount: todoSnapshot.mutations.length,
+        importedTodoMutations,
+        skippedTodoMutations,
         sourceTodoDigest: todoSnapshot.digest,
         targetTodoDigest: todoSnapshot.digest,
       };
@@ -514,6 +557,17 @@ export class ControlPlaneStore {
     return structuredClone(
       this.todoSnapshots.get(this.convKey(sandboxId, conversationId))?.todos ??
         [],
+    );
+  }
+
+  /** Read the durable Todo replay authority materialized by Dedicated. */
+  getTodoMutations(
+    sandboxId: string,
+    conversationId: string,
+  ): SharedTodoMutationCutoverRecord[] {
+    return structuredClone(
+      this.todoSnapshots.get(this.convKey(sandboxId, conversationId))
+        ?.mutations ?? [],
     );
   }
 
@@ -580,6 +634,17 @@ export class ControlPlaneStore {
     );
     if (!sandbox) return [];
     return this.getTodos(sandbox.id, conversationId);
+  }
+
+  getTodoMutationsByAgent(
+    agentId: string,
+    conversationId: string,
+  ): SharedTodoMutationCutoverRecord[] {
+    const sandbox = [...this.sandboxes.values()].find(
+      (candidate) => candidate.agentId === agentId,
+    );
+    if (!sandbox) return [];
+    return this.getTodoMutations(sandbox.id, conversationId);
   }
 
   createJob(input: {

@@ -4,7 +4,10 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createSharedTodoCutoverSnapshot } from "@elizaos/shared/todo-cutover";
+import {
+  createSharedTodoCutoverSnapshot,
+  type SharedTodoMutationCutoverRecord,
+} from "@elizaos/shared/todo-cutover";
 import {
   type RunningControlPlaneMock,
   startControlPlaneMock,
@@ -13,10 +16,16 @@ import { type RunningHetznerMock, startHetznerMock } from "../src/hetzner";
 
 const TOKEN = "todo-cutover-token";
 const CONVERSATION_ID = "personal:todo-cutover-source";
-const SANDBOX_ID = "dedicated-todo-target";
+const DEDICATED_AGENT_ID = "dedicated-todo-target";
+const TODO_ID = "11111111-1111-4111-8111-111111111111";
+const ROOM_ID = "22222222-2222-4222-8222-222222222222";
+const SHARED_AGENT_ID = "33333333-3333-4333-8333-333333333333";
+const USER_ID = "44444444-4444-4444-8444-444444444444";
+const MUTATION_ID = "55555555-5555-4555-8555-555555555555";
 
 let controlPlane: RunningControlPlaneMock;
 let hetzner: RunningHetznerMock;
+let sandboxId: string;
 
 beforeAll(async () => {
   hetzner = await startHetznerMock({ actionMs: 5 });
@@ -26,6 +35,11 @@ beforeAll(async () => {
     hetznerUrl: hetzner.url,
     hetznerToken: "test-token",
   });
+  sandboxId = controlPlane.store.createSandbox({
+    organizationId: "org-1",
+    userId: "user-1",
+    agentId: DEDICATED_AGENT_ID,
+  }).id;
 });
 
 afterAll(async () => {
@@ -35,7 +49,7 @@ afterAll(async () => {
 
 async function postImport(body: Record<string, unknown>): Promise<Response> {
   return fetch(
-    `${controlPlane.url}/api/compat/agents/${SANDBOX_ID}/api/conversations/${encodeURIComponent(CONVERSATION_ID)}/import`,
+    `${controlPlane.url}/api/compat/agents/${sandboxId}/api/conversations/${encodeURIComponent(CONVERSATION_ID)}/import`,
     {
       method: "POST",
       headers: {
@@ -51,12 +65,43 @@ async function postImport(body: Record<string, unknown>): Promise<Response> {
 
 describe("control-plane Todo cutover import", () => {
   test("requires, verifies, stores, and replays the exact digest-bound snapshot", async () => {
+    const mutation = {
+      version: 1,
+      mutationId: MUTATION_ID,
+      idempotencyKey: "shared-turn-1:todo:0",
+      requestDigest: "a".repeat(64),
+      operation: "create",
+      applied: true,
+      resultJson: {
+        version: 1,
+        result: {
+          action: "create",
+          todo: {
+            id: TODO_ID,
+            agentId: SHARED_AGENT_ID,
+            entityId: USER_ID,
+            roomId: ROOM_ID,
+            worldId: null,
+            content: "Call mom",
+            activeForm: "Calling mom",
+            status: "pending",
+            parentTodoId: null,
+            parentTrajectoryStepId: null,
+            metadata: { delivery: "telegram" },
+            createdAt: "2026-08-15T01:00:00.000Z",
+            updatedAt: "2026-08-15T01:00:00.000Z",
+            completedAt: null,
+          },
+        },
+      },
+      committedAt: "2026-08-15T01:00:00.000Z",
+    } satisfies SharedTodoMutationCutoverRecord;
     const snapshot = await createSharedTodoCutoverSnapshot({
       sourceAgentId: CONVERSATION_ID,
       todos: [
         {
-          sourceId: "shared-todo-1",
-          roomId: "shared-room-1",
+          sourceId: TODO_ID,
+          roomId: ROOM_ID,
           worldId: null,
           content: "Call mom",
           activeForm: "Calling mom",
@@ -69,6 +114,7 @@ describe("control-plane Todo cutover import", () => {
           completedAt: null,
         },
       ],
+      mutations: [mutation],
     });
 
     const missing = await postImport({
@@ -96,12 +142,24 @@ describe("control-plane Todo cutover import", () => {
       repairedTodos: 0,
       skippedTodos: 0,
       removedStaleTodos: 0,
+      sourceTodoMutationCount: 1,
+      importedTodoMutations: 1,
+      skippedTodoMutations: 0,
       sourceTodoDigest: snapshot.digest,
       targetTodoDigest: snapshot.digest,
     });
-    expect(controlPlane.store.getTodos(SANDBOX_ID, CONVERSATION_ID)).toEqual(
+    expect(controlPlane.store.getTodos(sandboxId, CONVERSATION_ID)).toEqual(
       snapshot.todos,
     );
+    expect(
+      controlPlane.store.getTodoMutations(sandboxId, CONVERSATION_ID),
+    ).toEqual(snapshot.mutations);
+    expect(
+      controlPlane.store.getTodoMutationsByAgent(
+        DEDICATED_AGENT_ID,
+        CONVERSATION_ID,
+      ),
+    ).toEqual(snapshot.mutations);
 
     const replay = await postImport({
       messages: [],
@@ -114,7 +172,28 @@ describe("control-plane Todo cutover import", () => {
       importedTodos: 0,
       repairedTodos: 0,
       skippedTodos: 1,
+      sourceTodoMutationCount: 1,
+      importedTodoMutations: 0,
+      skippedTodoMutations: 1,
       targetTodoDigest: snapshot.digest,
     });
+
+    const conflictingSnapshot = await createSharedTodoCutoverSnapshot({
+      sourceAgentId: CONVERSATION_ID,
+      todos: snapshot.todos,
+      mutations: [{ ...mutation, requestDigest: "b".repeat(64) }],
+    });
+    const conflictingReplay = await postImport({
+      messages: [],
+      cutoverToken: "personal-cutover-token",
+      todoSnapshot: conflictingSnapshot,
+    });
+    expect(conflictingReplay.status).toBe(500);
+    expect(controlPlane.store.getTodos(sandboxId, CONVERSATION_ID)).toEqual(
+      snapshot.todos,
+    );
+    expect(
+      controlPlane.store.getTodoMutations(sandboxId, CONVERSATION_ID),
+    ).toEqual(snapshot.mutations);
   });
 });
