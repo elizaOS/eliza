@@ -108,6 +108,23 @@ describe("canonical cloud deployment environment contract", () => {
     expect(production).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
   });
 
+  test("keeps Shared Discord reminder delivery bound across Worker deploys", () => {
+    const staging = cloudApiWranglerSource.slice(
+      cloudApiWranglerSource.indexOf("[env.staging.vars]"),
+      cloudApiWranglerSource.indexOf("[env.production.vars]"),
+    );
+    const production = cloudApiWranglerSource.slice(
+      cloudApiWranglerSource.indexOf("[env.production.vars]"),
+    );
+
+    expect(staging).toContain(
+      'ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://gateway-discord-staging-staging.up.railway.app"',
+    );
+    expect(production).toContain(
+      'ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://gateway-discord-production.up.railway.app"',
+    );
+  });
+
   test("keeps the fixed SlopHub cutover behind a reviewed production plan", () => {
     const triggerBlock = slopHubSource.slice(
       slopHubSource.indexOf("on:"),
