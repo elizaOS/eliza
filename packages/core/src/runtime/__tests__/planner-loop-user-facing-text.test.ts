@@ -8,6 +8,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
+	latestToolResultText,
 	looksLikeActionEnvelopeJson,
 	looksLikeSpawnEnvelopeJson,
 	runPlannerLoop,
@@ -774,5 +775,78 @@ describe("planner-loop — verified tool text + evaluator prose combine", () => 
 			evaluate,
 		});
 		expect(result.finalMessage).toBe(preview);
+	});
+});
+
+describe("latestToolResultText — failed-step diagnostics stay planner-facing", () => {
+	const trajectoryWith = (
+		steps: PlannerTrajectory["steps"],
+	): PlannerTrajectory => ({
+		context: { id: "ctx" },
+		steps,
+		archivedSteps: [],
+		plannedQueue: [],
+		evaluatorOutputs: [],
+	});
+
+	// The live defect (tj-1a1dd4704d0293): a failed VIEWS interact carried its
+	// catalog diagnostic as userFacingText and the FINISH fallback delivered it
+	// verbatim when the evaluator supplied no messageToUser.
+	it("skips a failed step's text unless it claimed failure authority", () => {
+		const trajectory = trajectoryWith([
+			{
+				iteration: 0,
+				toolCall: { id: "call-1", name: "VIEWS", arguments: {} },
+				result: {
+					success: false as const,
+					text: 'Cannot invoke capability "get-todos" on view "automations".',
+					userFacingText:
+						'Cannot invoke capability "get-todos" on view "automations".',
+				},
+			},
+		]);
+		expect(latestToolResultText(trajectory)).toBeUndefined();
+	});
+
+	it("keeps a failed step's text when the tool claimed failure authority", () => {
+		const owned =
+			"That reminder no longer exists, so there is nothing to delete.";
+		const trajectory = trajectoryWith([
+			{
+				iteration: 0,
+				toolCall: { id: "call-1", name: "OWNER_REMINDERS", arguments: {} },
+				result: {
+					success: false as const,
+					text: owned,
+					userFacingText: owned,
+					verifiedUserFacing: true,
+				},
+			},
+		]);
+		expect(latestToolResultText(trajectory)).toBe(owned);
+	});
+
+	it("falls back past a failed step to an earlier successful step's text", () => {
+		const trajectory = trajectoryWith([
+			{
+				iteration: 0,
+				toolCall: { id: "call-1", name: "CHECK", arguments: {} },
+				result: {
+					success: true as const,
+					text: "raw",
+					userFacingText: "Saved the goal.",
+				},
+			},
+			{
+				iteration: 1,
+				toolCall: { id: "call-2", name: "VIEWS", arguments: {} },
+				result: {
+					success: false as const,
+					text: "diag",
+					userFacingText: "diag",
+				},
+			},
+		]);
+		expect(latestToolResultText(trajectory)).toBe("Saved the goal.");
 	});
 });
