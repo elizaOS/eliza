@@ -201,33 +201,40 @@ export function linkShareOwnText(text: string): string {
 		.trim();
 }
 
+const WEB_SEARCH_NEGATION_PATTERN =
+	/\b(?:(?:do\s+not|don['’]?t|never(?!\s+mind\b))\b[^.!?;]{0,64}\b(?:google\b|(?:browse|search|look\s+up|use)\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b)|without\b[^.!?;]{0,32}\b(?:brows(?:e|ing)|search(?:ing)?|look(?:ing)?\s+up|us(?:e|ing))\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b)/iu;
+const EXPLICIT_WEB_SEARCH_PATTERN =
+	/\b(?:search\s+(?:the\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu;
+const INTENT_CLAUSE_BOUNDARY_PATTERN =
+	/\s*(?:;|\b(?:but|however|instead)\b)\s*/iu;
+
+function intentClauses(text: string): string[] {
+	return text
+		.toLowerCase()
+		.split(INTENT_CLAUSE_BOUNDARY_PATTERN)
+		.map((clause) => clause.trim())
+		.filter(Boolean);
+}
+
+function explicitlyAsksWebSearch(text: string): boolean {
+	return intentClauses(text).some(
+		(clause) =>
+			!WEB_SEARCH_NEGATION_PATTERN.test(clause) &&
+			EXPLICIT_WEB_SEARCH_PATTERN.test(clause),
+	);
+}
+
 export function looksLikeWebSearchRequest(text: string): boolean {
-	const normalized = text.toLowerCase();
-	if (!normalized.trim()) {
-		return false;
-	}
-
-	if (
-		/\b(?:do not|don't|dont|without)\s+(?:browse|search|google|look\s+up|use)\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b/iu.test(
-			normalized,
-		)
-	) {
-		return false;
-	}
-
-	const explicitlyAsksSearch =
-		/\b(?:search\s+(?:the\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu.test(
-			normalized,
-		);
 	const asksCurrentInfo =
-		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|rn|atm|up[- ]?to[- ]?date)\b/iu.test(
-			normalized,
-		);
+		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|rn|atm|up[- ]?to[- ]?date)\b/iu;
 	const mentionsMarketOrNews =
-		/\b(?:price|prices|quote|btc|bitcoin|eth|ethereum|stock|stocks?|ticker|market|markets?|exchange rate|news|headline|headlines|weather)\b/iu.test(
-			normalized,
-		);
-	return explicitlyAsksSearch || (asksCurrentInfo && mentionsMarketOrNews);
+		/\b(?:price|prices|quote|btc|bitcoin|eth|ethereum|stock|stocks?|ticker|market|markets?|exchange rate|news|headline|headlines|weather)\b/iu;
+	return intentClauses(text).some(
+		(clause) =>
+			!WEB_SEARCH_NEGATION_PATTERN.test(clause) &&
+			(EXPLICIT_WEB_SEARCH_PATTERN.test(clause) ||
+				(asksCurrentInfo.test(clause) && mentionsMarketOrNews.test(clause))),
+	);
 }
 
 export function findAvailableActionName(
@@ -643,6 +650,8 @@ type OwnerLifeReadDomain =
 	| "alarms"
 	| "finances";
 
+const BLOCKED_OWNER_LIFE_READ = Symbol("blocked-owner-life-read");
+
 const OWNER_READ_ACTION_NAMES_BY_DOMAIN: Record<
 	OwnerLifeReadDomain,
 	readonly string[]
@@ -664,6 +673,30 @@ const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
 	["finances", /\b(?:finances|spending|expenses)\b/iu],
 ];
 
+function ownerLifeReadDomainsInPossessiveScopes(
+	normalized: string,
+): Set<OwnerLifeReadDomain> {
+	const domains = new Set<OwnerLifeReadDomain>();
+	for (const match of normalized.matchAll(/\b(?:my|our)\b([^,;.!?]*)/giu)) {
+		const rawScope = match[1] ?? "";
+		const scope =
+			rawScope.split(
+				/\b(?:about|concerning|regarding|for|due|from|on|in|with|where|that|which|because)\b/iu,
+				1,
+			)[0] ?? "";
+		// "Spending habits" names finance data; treating the trailing generic
+		// habit noun as a routine would make registry order decide the surface.
+		const domainScope = scope.replace(
+			/\b(?:finance|financial|spending|expenses?)\s+habits?\b/giu,
+			"finances",
+		);
+		for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
+			if (noun.test(domainScope)) domains.add(domain);
+		}
+	}
+	return domains;
+}
+
 /**
  * Detects a possessive owner-data READ ("list my personal todos", "what are
  * my reminders for today") — the read-side mirror of the owner-mutation rule
@@ -673,7 +706,9 @@ const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
  * failed on an undeclared get-todos capability). Explicit UI-surface nouns
  * stay with the navigation legs, and advice/organizing questions stay chat.
  */
-function detectOwnerLifeReadDomain(text: string): OwnerLifeReadDomain | null {
+function detectOwnerLifeReadDomain(
+	text: string,
+): OwnerLifeReadDomain | typeof BLOCKED_OWNER_LIFE_READ | null {
 	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
 	if (!normalized) return null;
 	// Surface-noun asks are navigation, owned by the earlier view legs.
@@ -684,13 +719,8 @@ function detectOwnerLifeReadDomain(text: string): OwnerLifeReadDomain | null {
 	) {
 		return null;
 	}
-	// A read needs a possessive anchor; adjectives may sit between it and the
-	// domain noun ("my personal todos", "our shared reminders").
-	const possessiveDomain =
-		/\b(?:my|our)\b(?:\s+\w+){0,2}\s+(?:todos?|to[- ]dos?|todo\s+list|task\s+list|goals?|reminders?|routines?|habits?|alarms?|finances|spending|expenses)\b/iu.test(
-			normalized,
-		);
-	if (!possessiveDomain) return null;
+	const domains = ownerLifeReadDomainsInPossessiveScopes(normalized);
+	if (domains.size === 0) return null;
 	// Mutation shapes belong to the write detectors above (or the model);
 	// "check off"/"mark ... done" are completions, not reads.
 	if (
@@ -700,17 +730,41 @@ function detectOwnerLifeReadDomain(text: string): OwnerLifeReadDomain | null {
 		/\bcheck(?:ed)?\s+off\b/iu.test(normalized) ||
 		/\bmark\b[\s\S]{0,40}\b(?:done|complete|off)\b/iu.test(normalized)
 	) {
-		return null;
+		return BLOCKED_OWNER_LIFE_READ;
+	}
+	// Advice, quoted examples, negated commands, and metalinguistic discussion
+	// mention owner nouns without requesting the underlying private records.
+	if (
+		/\b(?:advice|tips?|suggestions?|recommendations?)\b/iu.test(normalized) ||
+		/\bhow\s+to\b/iu.test(normalized) ||
+		/\bhow\s+(?:do|can|could|should|would)\s+(?:i|we)\b/iu.test(normalized) ||
+		/\b(?:how(?:\s+(?:do|can|could|should|would))?(?:\s+(?:i|we))?|ways?|methods?|approaches?|strategies?)\b[^.!?]{0,80}\b(?:organize|manage|track|plan|improve|handle|structure|prioritize|budget)\w*\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:what|which)\s+should\s+(?:i|we)\b/iu.test(normalized) ||
+		/\b(?:help|teach|guide)\s+(?:me|us)\b/iu.test(normalized) ||
+		/\b(?:when|if)\s+i\s+say\b/iu.test(normalized) ||
+		/\b(?:the\s+)?(?:phrase|sentence|wording|utterance|quote|quoted)\b/iu.test(
+			normalized,
+		) ||
+		/["“][^"”]*\b(?:my|our)\b[^"”]*["”]/u.test(normalized) ||
+		/‘[^’]*\b(?:my|our)\b[^’]*’/u.test(normalized) ||
+		/(?:^|[^\p{L}\p{N}])'[^'\r\n]*\b(?:my|our)\b[^'\r\n]*'(?![\p{L}\p{N}])/u.test(
+			normalized,
+		) ||
+		/\b(?:do\s+not|don['’]?t|never(?!\s+mind\b))\b(?:(?!\b(?:but|however|instead)\b)[^.!?;]){0,96}\b(?:list|show|tell|give|read|check|see|look|review|go\s+over)\b/iu.test(
+			normalized,
+		)
+	) {
+		return BLOCKED_OWNER_LIFE_READ;
 	}
 	const hasReadShape =
 		/\b(?:list|show|what(?:'s|s| is| are)(?:\s+(?:on|in))?|do i have|have i got|any(?:thing)?\s+(?:on|in|left|due)|tell me|give me|read(?:\s+(?:me|out))?|check|see|look at|go over|review)\b/iu.test(
 			normalized,
 		);
 	if (!hasReadShape) return null;
-	for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
-		if (noun.test(normalized)) return domain;
-	}
-	return null;
+	if (domains.size !== 1) return BLOCKED_OWNER_LIFE_READ;
+	return domains.values().next().value ?? null;
 }
 
 function findOwnerLifeReadActionName(
@@ -825,7 +879,16 @@ export function inferDirectCurrentRequestCandidateInference(
 	// wants the data, and VIEWS can only navigate. With no registered owner
 	// reader the turn yields NO deterministic candidate rather than degrading
 	// into the view catalog.
+	const webLookupActions = looksLikeWebSearchRequest(messageText)
+		? findWebLookupActionNames(actions)
+		: [];
 	const ownerReadDomain = detectOwnerLifeReadDomain(messageText);
+	if (ownerReadDomain === BLOCKED_OWNER_LIFE_READ) {
+		if (explicitlyAsksWebSearch(messageText) && webLookupActions.length > 0) {
+			return { names: webLookupActions, kind: "web" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
 	if (ownerReadDomain) {
 		const ownerReadAction = findOwnerLifeReadActionName(
 			actions,
@@ -843,9 +906,8 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (viewCapabilityAction) {
 		return { names: [viewCapabilityAction], kind: "view-capability" };
 	}
-	if (looksLikeWebSearchRequest(messageText)) {
-		const lookupActions = findWebLookupActionNames(actions);
-		if (lookupActions.length > 0) return { names: lookupActions, kind: "web" };
+	if (webLookupActions.length > 0) {
+		return { names: webLookupActions, kind: "web" };
 	}
 	return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 }
