@@ -498,14 +498,16 @@ jobs:
             echo "agent-state-gate=ok"
             service_key="$ELIZACLOUD_API_KEY"
             test -n "${service_key//[[:space:]]/}"
+            echo "service-key-gate=ok"
             response_file=/tmp/eliza-x-restart-response.json
             curl --silent --show-error --max-time 30 \
               --request POST \
               --header "X-Service-Key: $service_key" \
               --output "$response_file" \
               --write-out '%{http_code}' \
-              > /tmp/eliza-x-restart-http-code \
-              "https://api.eliza.app/api/v1/agents/$agent_id/restart"
+              "https://api.eliza.app/api/v1/agents/$agent_id/restart" \
+              > /tmp/eliza-x-restart-http-code
+            echo "restart-request-complete"
             IFS= read -r http_code < /tmp/eliza-x-restart-http-code
             echo "restart-http-code=$http_code"
             jq '{success,error,code}' "$response_file"
