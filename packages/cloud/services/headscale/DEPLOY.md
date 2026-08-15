@@ -97,11 +97,16 @@ gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza \
 
 The inspection requires a regular, root-owned, non-group/world-writable file,
 exactly two server blocks that name only `headscale-staging.elizacloud.ai`, and
-exactly two loaded nginx owners from that path. It reports file metadata,
-SHA-256, directive-name counts, and the validated server-block/name shape for
-review without printing directive literal values. Only after that run is
-reviewed may an operator select the retirement operation and supply that exact
-lowercase digest:
+exactly two loaded nginx owners from that path. A file-local websocket upgrade
+map may spell its empty-string key with nginx's equivalent single or double
+quotes, but every other map token and any external reference remain
+fail-closed. The inspection reports file metadata, SHA-256, directive-name
+counts, and the validated server-block/name/map shape for review without
+printing directive literal values. If the map is rejected, only structural
+counts are printed so operators can distinguish formatting drift from an
+additional entry without exposing values. Only after that run is reviewed may
+an operator select the retirement operation and supply that exact lowercase
+digest:
 
 ```bash
 gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza \
