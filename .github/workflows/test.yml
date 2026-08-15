@@ -523,6 +523,10 @@ jobs:
               "SELECT node_id, count(*) AS active_agent_rows FROM agent_sandboxes WHERE node_id IS NOT NULL AND status NOT IN ('stopped','error','sleeping','deletion_failed') GROUP BY node_id ORDER BY node_id"
             psql "$database_url" -v ON_ERROR_STOP=1 -c \
               "SELECT node_id, count(*) AS active_app_rows FROM containers WHERE node_id IS NOT NULL AND status NOT IN ('failed','stopped','deleted') GROUP BY node_id ORDER BY node_id"
+            sed -n '/^AGENT_CONTAINER_MEMORY_LIMIT_MB=/p;/^DEFAULT_AGENT_IMAGE_PLATFORM=/p;/^ENVIRONMENT=/p' /opt/eliza/cloud/.env.local
+            journalctl --since '15 minutes ago' --no-pager 2>/dev/null \
+              | grep -E 'Node refused for placement|No reachable healthy nodes|Skipping node with incompatible architecture|DOCKER_PLACEMENT_UNAVAILABLE' \
+              | tail -120 || true
 
   changes:
     name: Classify changed paths
