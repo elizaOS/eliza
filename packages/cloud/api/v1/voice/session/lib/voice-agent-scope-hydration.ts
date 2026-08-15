@@ -15,6 +15,7 @@ import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { warmInferenceAdmissionSnapshot } from "@/lib/services/inference-admission-snapshot";
+import { coordinateSharedConversationPrewarm } from "@/lib/services/shared-runtime/conversation-coordinator";
 import { logger } from "@/lib/utils/logger";
 import type { Bindings } from "@/types/cloud-worker-env";
 import type { InternalElizaConversationFetchClaims } from "./internal-eliza-conversation-fetch";
@@ -83,7 +84,7 @@ export async function hydrateVoiceSharedAgentScope(
 
         // error-policy:J7 a failed character prefill leaves the next turn on
         // its existing retryable warming path rather than failing hydration.
-        await Promise.all([
+        const optionalWarmups: Promise<unknown>[] = [
           hydrateCharacter().catch((error) => {
             logger.warn("[voice-scope-hydration] character prefill failed", {
               agentId: claims.agentId,
@@ -102,7 +103,28 @@ export async function hydrateVoiceSharedAgentScope(
               });
             },
           ),
-        ]);
+        ];
+        if (env.SHARED_RUNTIME_CONVERSATIONS) {
+          optionalWarmups.push(
+            coordinateSharedConversationPrewarm(
+              claims.agentId,
+              claims.conversationId,
+              { namespace: env.SHARED_RUNTIME_CONVERSATIONS },
+            ).catch((error) => {
+              // error-policy:J7 conversation hydration is a latency hint; the
+              // real turn retains its typed cache-warming retry fallback.
+              logger.warn(
+                "[voice-scope-hydration] conversation prefill failed",
+                {
+                  agentId: claims.agentId,
+                  conversationId: claims.conversationId,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              );
+            }),
+          );
+        }
+        await Promise.all(optionalWarmups);
       }),
   );
 }
