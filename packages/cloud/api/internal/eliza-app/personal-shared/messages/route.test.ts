@@ -1,8 +1,8 @@
 /** Verifies trusted messaging convergence into a platform-funded rowless turn. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-
 import type { OnboardingChatInput } from "@/lib/services/eliza-app/onboarding-chat";
+import { logger } from "@/lib/utils/logger";
 
 let activeTarget: {
   id: string;
@@ -151,12 +151,20 @@ mock.module("@/lib/services/shared-runtime/resolve-shared-agent", () => ({
 const { default: app } = await import("./route");
 const executionCtx = { waitUntil() {}, passThroughOnException() {}, props: {} };
 
-function request(body: unknown, authorization = "Bearer test-secret") {
+function request(
+  body: unknown,
+  authorization = "Bearer test-secret",
+  traceId = "11111111-1111-4111-8111-111111111111",
+) {
   return app.request(
     "/",
     {
       method: "POST",
-      headers: { authorization, "content-type": "application/json" },
+      headers: {
+        authorization,
+        "content-type": "application/json",
+        "x-eliza-trace-id": traceId,
+      },
       body: JSON.stringify(body),
     },
     {
@@ -246,6 +254,69 @@ describe("personal Shared messaging deliveries", () => {
         chatId: "123456789",
       },
     );
+  });
+
+  test("correlates a Shared failure without logging its sensitive message", async () => {
+    const errorLog = mock(() => undefined);
+    const originalError = logger.error;
+    logger.error = errorLog;
+    const failure = new TypeError("provider body must remain private");
+    sharedRestMessageSend.mockImplementationOnce(async () => {
+      throw failure;
+    });
+
+    try {
+      const response = await request(
+        valid,
+        "Bearer test-secret",
+        "22222222-2222-4222-8222-222222222222",
+      );
+
+      expect(response.status).toBe(500);
+      expect(response.headers.get("x-eliza-failure-stage")).toBe(
+        "shared_runtime",
+      );
+      expect(response.headers.get("x-eliza-failure-name")).toBe("TypeError");
+      expect(errorLog).toHaveBeenCalledWith(
+        "[personal-shared-messaging] delivery failed",
+        {
+          traceId: "22222222-2222-4222-8222-222222222222",
+          stage: "shared_runtime",
+          errorName: "TypeError",
+        },
+      );
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain(
+        "provider body must remain private",
+      );
+    } finally {
+      logger.error = originalError;
+    }
+  });
+
+  test("redacts an unrecognized error name from headers and logs", async () => {
+    const errorLog = mock(() => undefined);
+    const originalError = logger.error;
+    logger.error = errorLog;
+    const failure = new Error("private");
+    failure.name = "CallerSelectedSecretName";
+    sharedRestMessageSend.mockImplementationOnce(async () => {
+      throw failure;
+    });
+
+    try {
+      const response = await request(valid);
+      expect(response.status).toBe(500);
+      expect(response.headers.get("x-eliza-failure-name")).toBe("OtherError");
+      expect(errorLog).toHaveBeenCalledWith(
+        "[personal-shared-messaging] delivery failed",
+        expect.objectContaining({ errorName: "OtherError" }),
+      );
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain(
+        "CallerSelectedSecretName",
+      );
+    } finally {
+      logger.error = originalError;
+    }
   });
 
   test("transcribes a Telegram voice note before the Shared turn", async () => {

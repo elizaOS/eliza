@@ -564,6 +564,8 @@ describe("gateway webhook handler e2e routing", () => {
           headers: {
             "Retry-After": "0",
             "Server-Timing": "failed_worker;dur=1234",
+            "X-Eliza-Failure-Stage": "shared_runtime",
+            "X-Eliza-Failure-Name": "TypeError",
           },
         });
       }
@@ -601,6 +603,8 @@ describe("gateway webhook handler e2e routing", () => {
         retryAfterSeconds: 0,
         retryDelayMs: 0,
         cloudServerTiming: "failed_worker;dur=1234",
+        cloudFailureStage: "shared_runtime",
+        cloudFailureName: "TypeError",
       }),
     );
     expect(infoLog).toHaveBeenCalledWith(
