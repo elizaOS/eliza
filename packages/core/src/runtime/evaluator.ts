@@ -812,9 +812,32 @@ function recoverEvaluatorTextOutput(
 	}
 
 	if (!hasSuccessfulToolResult(trajectory)) return output;
+
+	const envelopeMessage = trailingFinishEnvelopeMessage(text);
+	if (envelopeMessage) {
+		return {
+			success: true,
+			decision: "FINISH",
+			thought:
+				"Recovered the terminal evaluator envelope's answer from surrounding debris.",
+			messageToUser: envelopeMessage,
+			raw: { recoverySource: "trailing_finish_envelope_message" },
+		};
+	}
 	if (!looksLikeUserFacingAnswer(text)) return output;
 
 	const userFacing = stripTrailingEvaluatorEnvelope(text);
+	if (!looksLikeUserFacingAnswer(userFacing)) {
+		return {
+			...output,
+			success: false,
+			decision: "CONTINUE",
+			thought:
+				"Evaluator prose was only debris around a structured envelope; replanning from recorded tool results.",
+			parseError: undefined,
+			raw: { recoverySource: "debris_only_text" },
+		};
+	}
 
 	return {
 		success: true,
@@ -824,6 +847,35 @@ function recoverEvaluatorTextOutput(
 		messageToUser: userFacing,
 		raw: { recoverySource: "prose_after_successful_tool" },
 	};
+}
+
+/**
+ * Recover the user-facing answer from a valid trailing terminal envelope.
+ * Nonterminal envelopes remain planner control flow and must never be promoted
+ * into a finished user reply merely because noisy text preceded them.
+ */
+function trailingFinishEnvelopeMessage(text: string): string | null {
+	const trimmed = text.trimEnd();
+	if (!trimmed.endsWith("}")) return null;
+	const candidate = extractJsonObjects(trimmed).at(-1);
+	if (!candidate || !trimmed.endsWith(candidate)) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(candidate);
+	} catch {
+		// error-policy:J3 malformed model output is not a recoverable envelope.
+		return null;
+	}
+	if (!isEvaluatorEnvelopeObject(parsed)) return null;
+	const record = parsed as Record<string, unknown>;
+	const decision = String(record.decision ?? record.route)
+		.trim()
+		.toUpperCase();
+	if (decision !== "FINISH") return null;
+	const message = record.messageToUser;
+	return typeof message === "string" && message.trim().length > 0
+		? message.trim()
+		: null;
 }
 
 function containsInvocationDsl(text: string): boolean {

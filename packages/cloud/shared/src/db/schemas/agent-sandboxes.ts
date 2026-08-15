@@ -152,6 +152,23 @@ export const agentSandboxes = pgTable(
     database_error: text("database_error"),
     snapshot_id: text("snapshot_id"),
     last_backup_at: timestamp("last_backup_at", { withTimezone: true }),
+    /**
+     * When a scheduled snapshot last ATTEMPTED to capture this agent —
+     * success, failure, or capability skip. `last_backup_at` stays
+     * success-only so staleness detection remains honest; this column exists
+     * so the sweep can distinguish "never tried" from "tried and cannot"
+     * (#15783 Phase 1).
+     */
+    last_backup_attempt_at: timestamp("last_backup_attempt_at", { withTimezone: true }),
+    /**
+     * Set when the last auto snapshot attempt was skipped because the agent
+     * image does not serve `POST /api/snapshot` (the
+     * SNAPSHOT_ENDPOINT_UNSUPPORTED sentinel). Cleared on any successful
+     * snapshot. While set, the scheduled sweep only re-probes the row at a
+     * slow cadence instead of letting it permanently occupy the capped
+     * due-set window and starve backup-capable agents (#15783).
+     */
+    backup_unsupported_reason: text("backup_unsupported_reason"),
     last_heartbeat_at: timestamp("last_heartbeat_at", { withTimezone: true }),
     error_message: text("error_message"),
     error_count: integer("error_count").notNull().default(0),

@@ -229,7 +229,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
   private sttPartialTimer: ReturnType<typeof setTimeout> | null = null;
   private llmAbort: AbortController | null = null;
-  private elizaPrewarm: Promise<void> | null = null;
   private phrase: PhraseAggregator | null = null;
   private turnSttMs = 0;
   private turnTtsChars = 0;
@@ -326,10 +325,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     this.state = "listening";
     // Read immutable tenancy from cache while the user is beginning to speak.
-    // A miss schedules authoritative hydration under the Worker lifetime; the
-    // first turn joins that work so it does not burn time polling a cold cache.
+    // A miss schedules authoritative hydration under the Worker lifetime. This
+    // is a latency hint only: the response path has its own typed cache-warming
+    // retries and must never wait indefinitely for optional background fills.
     if (this.config.prewarmElizaContext) {
-      this.elizaPrewarm = this.config.prewarmElizaContext().catch((error) => {
+      void this.config.prewarmElizaContext().catch((error) => {
         // error-policy:J7 prewarm is latency-only; the response path retains
         // its typed cache-warming retry fallback and reports the failed hint.
         logger.warn("[voice-session] Eliza context prewarm failed", {
@@ -536,17 +536,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
       case "start-of-turn": {
-        // Ink's semantic turn detector is the earliest reliable signal that
-        // the caller has begun a new utterance. Stop current audio immediately
-        // so Eliza never talks over the caller while transcription continues.
+        // Speech-start alone is not enough to cancel playback: phone echo and
+        // line noise can trigger Ink before it has recognized any caller words.
+        // Wait for a transcript update/final below, then interrupt immediately.
         this.resetSttPartialDelivery();
         this.activeSttTurn = true;
-        const responseActive = Boolean(this.currentVoiceTurnId);
-        this.interrupt("acoustic");
-        // A transport such as Twilio can still be playing audio it buffered
-        // before TTS reported completion. There is no active turn to emit an
-        // `interrupted` frame in that state, so flush the transport directly.
-        if (!responseActive) this.config.downlink.clearAudio?.();
         this.state = "transcribing";
         break;
       }
@@ -671,10 +665,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   /** Cancel an active response only after Ink has produced caller words. */
   private interruptForConfirmedSpeech(transcript: string): void {
-    if (!this.currentVoiceTurnId || !SPOKEN_TRANSCRIPT_RE.test(transcript)) {
-      return;
-    }
-    this.interrupt("acoustic");
+    if (!SPOKEN_TRANSCRIPT_RE.test(transcript)) return;
+    if (this.currentVoiceTurnId) this.interrupt("acoustic");
+    else this.config.downlink.clearAudio?.();
     this.state = "transcribing";
   }
 
@@ -885,13 +878,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // turn does not await readiness because outbound phrases queue in the
       // adapter, so consume that designed rejection on fast teardown.
       void prewarmedTts.opened.catch(() => undefined);
-
-      const elizaPrewarm = this.elizaPrewarm;
-      if (elizaPrewarm) {
-        await elizaPrewarm;
-        if (this.elizaPrewarm === elizaPrewarm) this.elizaPrewarm = null;
-        if (abort.signal.aborted || this.currentVoiceTurnId !== traceId) return;
-      }
 
       const request = {
         endpoint: this.config.elizaEndpoint,

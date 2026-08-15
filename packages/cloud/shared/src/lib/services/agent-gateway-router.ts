@@ -773,16 +773,25 @@ export class AgentGatewayRouterService {
       };
     }
 
+    const targetAgentId =
+      resolved.target.kind === "local-session" && resolved.target.session
+        ? resolved.target.session.runtimeAgentId
+        : (resolved.target.sandbox?.id ?? resolved.agentId ?? args.sender.id);
+    const guildId = args.guildId?.trim();
+    const roomId = buildDirectConversationRoomIdFromIds(
+      targetAgentId,
+      "discord",
+      guildId || args.sender.id,
+      args.channelId,
+    );
     const rpcRequest: BridgeRequest = {
       jsonrpc: "2.0",
       id: randomUUID(),
       method: "message.send",
       params: {
         text: args.content,
-        roomId: args.guildId?.trim()
-          ? `discord-guild:${args.guildId.trim()}:channel:${args.channelId}`
-          : `discord-dm:${args.sender.id}:channel:${args.channelId}`,
-        channelType: args.guildId?.trim() ? "GROUP" : "DM",
+        roomId,
+        channelType: guildId ? "GROUP" : "DM",
         source: "discord",
         sender: {
           id: args.sender.id,
@@ -799,7 +808,7 @@ export class AgentGatewayRouterService {
         },
         metadata: {
           discord: {
-            ...(args.guildId?.trim() ? { guildId: args.guildId.trim() } : {}),
+            ...(guildId ? { guildId } : {}),
             channelId: args.channelId,
             messageId: args.messageId,
           },

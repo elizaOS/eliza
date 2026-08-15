@@ -15,6 +15,7 @@ import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { warmInferenceAdmissionSnapshot } from "@/lib/services/inference-admission-snapshot";
+import { coordinateSharedConversationPrewarm } from "@/lib/services/shared-runtime/conversation-coordinator";
 import { logger } from "@/lib/utils/logger";
 import type { Bindings } from "@/types/cloud-worker-env";
 import type { InternalElizaConversationFetchClaims } from "./internal-eliza-conversation-fetch";
@@ -67,11 +68,23 @@ export async function hydrateVoiceSharedAgentScope(
           await cache.set(cacheKey, character, CacheTTL.agent.characterData);
         };
 
-        // The scope entry is the authorization gate: never let an optional
-        // character prefill failure prevent it from being written.
+        // Publish the authorization gate as soon as the authoritative agent
+        // lookup succeeds. Character and admission prefills are latency hints;
+        // keeping this write behind either one turns a slow optional dependency
+        // into the full 503/backoff staircase on the caller's first response.
+        await cache.set(
+          CacheKeys.sharedAgentScope.voice(
+            claims.organizationId,
+            claims.userId,
+            claims.agentId,
+          ),
+          agent,
+          CacheTTL.sharedAgentScope.resolve,
+        );
+
         // error-policy:J7 a failed character prefill leaves the next turn on
         // its existing retryable warming path rather than failing hydration.
-        await Promise.all([
+        const optionalWarmups: Promise<unknown>[] = [
           hydrateCharacter().catch((error) => {
             logger.warn("[voice-scope-hydration] character prefill failed", {
               agentId: claims.agentId,
@@ -90,17 +103,28 @@ export async function hydrateVoiceSharedAgentScope(
               });
             },
           ),
-        ]);
-
-        await cache.set(
-          CacheKeys.sharedAgentScope.voice(
-            claims.organizationId,
-            claims.userId,
-            claims.agentId,
-          ),
-          agent,
-          CacheTTL.sharedAgentScope.resolve,
-        );
+        ];
+        if (env.SHARED_RUNTIME_CONVERSATIONS) {
+          optionalWarmups.push(
+            coordinateSharedConversationPrewarm(
+              claims.agentId,
+              claims.conversationId,
+              { namespace: env.SHARED_RUNTIME_CONVERSATIONS },
+            ).catch((error) => {
+              // error-policy:J7 conversation hydration is a latency hint; the
+              // real turn retains its typed cache-warming retry fallback.
+              logger.warn(
+                "[voice-scope-hydration] conversation prefill failed",
+                {
+                  agentId: claims.agentId,
+                  conversationId: claims.conversationId,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              );
+            }),
+          );
+        }
+        await Promise.all(optionalWarmups);
       }),
   );
 }

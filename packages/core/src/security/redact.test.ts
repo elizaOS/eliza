@@ -132,6 +132,60 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(redactSensitiveText(bearer)).not.toContain("a".repeat(40));
 	});
 
+	it("masks token68 credentials for origin, proxy, and extension schemes", () => {
+		const basic = ["dXNlcjpzdXBl", "cnNlY3JldA=="].join("");
+		for (const input of [
+			`Authorization: Basic ${basic}`,
+			`Proxy-Authorization: Basic ${basic}`,
+			`Authorization: Custom ${basic}`,
+			`Authorization: ${basic}`,
+		]) {
+			const output = redactSensitiveText(input);
+			expect(output).not.toContain(basic);
+		}
+	});
+
+	it("masks the complete Digest auth-param remainder", () => {
+		const username = ["private", "-user"].join("");
+		const response = ["6629fae49393", "a05397450978507c4ef1"].join("");
+		const input = `Authorization: Digest username="${username}", realm="restricted", response="${response}"`;
+		const output = redactSensitiveText(input);
+		expect(output).toContain("Authorization: Digest ");
+		expect(output).not.toContain(username);
+		expect(output).not.toContain("restricted");
+		expect(output).not.toContain(response);
+	});
+
+	it("does not rewrite invalid header-shaped prose", () => {
+		for (const line of [
+			"Authorization: required for this endpoint",
+			"Authorization: none",
+			"Proxy-Authorization: unavailable for local requests",
+		]) {
+			expect(redactSensitiveText(line)).toBe(line);
+		}
+	});
+
+	it("masks the credential tail when it repeats the scheme", () => {
+		expect(redactSensitiveText("Authorization: abcdefgh abcdefgh")).toBe(
+			"Authorization: abcdefgh ***",
+		);
+	});
+
+	it("masks AWS credential identifiers without storing scanner fixtures", () => {
+		const ids = [
+			["AKIA", "IOSFODNN7EXAMPLE"].join(""),
+			["ASIA", "Y34FZKBOKMUTVV7A"].join(""),
+		];
+		for (const id of ids) {
+			expect(redactSensitiveText(`AWS_ACCESS_KEY_ID=${id}`)).not.toContain(id);
+			expect(redactSensitiveText(`bare ${id} here`)).not.toContain(id);
+		}
+		expect(redactSensitiveText("AsiaPacificRegion123 selected")).toBe(
+			"AsiaPacificRegion123 selected",
+		);
+	});
+
 	it("masks Stripe secret + restricted keys (underscore form)", () => {
 		// Stripe is the payment processor — a leaked sk_live_ is catastrophic, and these
 		// often appear as bare values (not under a *_SECRET name) in logged request bodies.

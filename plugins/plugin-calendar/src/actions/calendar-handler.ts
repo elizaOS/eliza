@@ -328,6 +328,27 @@ type CalendarActionParams = {
 const PARAMETER_DOC_NOISE_PATTERN =
   /\b(?:actions?|params?|parameters?|query\?:string|subaction\?:string|details\?:object|required parameter|supported keys include|may include:|match against titles|structured calendar arguments|structured data when needed|boolean when)\b|\b\w+\?:\w+\b/i;
 
+// Tool planners sometimes fill omitted structured controls with their schema
+// key (or the next comma-led key fragment). Filter only fields that route or
+// constrain an operation. User-authored title/query/description/location data
+// intentionally bypasses this heuristic because those exact strings are valid.
+const PLANNER_CONTROL_DETAIL_KEYS = new Set([
+  "calendarId",
+  "eventId",
+  "grantId",
+  "label",
+  "mode",
+  "recurrenceScope",
+  "side",
+  "startAt",
+  "endAt",
+  "timeMin",
+  "timeMax",
+  "timeZone",
+  "windowPreset",
+]);
+const PLANNER_KEY_FRAGMENT_PATTERN = /^,\s*[A-Za-z_][A-Za-z0-9_-]*\s*:?$/;
+
 const I18N_LOCALES = ["en", "zh-CN", "ko", "es", "pt", "vi", "tl"];
 
 function buildIntlMonthMap(): Record<string, number> {
@@ -449,18 +470,42 @@ const RECURRENCE_SCOPE_SERIES_PATTERN =
   /\b(?:whole|entire|full)\s+series\b|\bthe\s+series\b|\ball\s+(?:occurrences|instances|of\s+them)\b|\bevery\s+(?:occurrence|instance|single\s+one)\b|\bstop\s+(?:it\s+)?(?:from\s+)?(?:repeating|recurring)\b|\bcancel\s+the\s+recurring\b/i;
 
 /**
+ * Planner-authored `recurrenceScope` at the action boundary: recognized values
+ * normalize, anything else means "the user did not specify". The strict
+ * normalizer's fail-closed 400 is for API callers; here the value is
+ * model-emitted, and junk in it (observed as fragments of neighboring key
+ * names) must degrade to unset — the same contract this file already applies
+ * to planner-authored calendarId, windows, mode, side, and grantId — so a
+ * mutation turn falls back to the user's own phrasing instead of dying.
+ */
+function lenientRecurrenceScope(
+  value: unknown,
+): LifeOpsCalendarRecurrenceScope | null {
+  try {
+    return normalizeRecurrenceScope(value) ?? null;
+  } catch {
+    // error-policy:J3 model-emitted debris is "not specified"; scope intent
+    // falls back to explicit message phrasing below.
+    return null;
+  }
+}
+
+/**
  * Structural resolution of one, following, or whole-series intent: explicit
  * `recurrenceScope` detail first, then unambiguous message phrasing. Returns
  * null when the intent stays ambiguous — the caller must ask instead of
  * mutating.
  */
-function resolveRecurrenceScopeIntent(args: {
+export function resolveRecurrenceScopeIntent(args: {
   details: Record<string, unknown> | undefined;
+  fallbackDetails?: Record<string, unknown>;
   text: string;
 }): LifeOpsCalendarRecurrenceScope | null {
-  const explicit = normalizeRecurrenceScope(
-    detailString(args.details, "recurrenceScope"),
-  );
+  const explicit =
+    lenientRecurrenceScope(detailString(args.details, "recurrenceScope")) ??
+    lenientRecurrenceScope(
+      detailString(args.fallbackDetails, "recurrenceScope"),
+    );
   if (explicit) {
     return explicit;
   }
@@ -1330,16 +1375,6 @@ function normalizeCalendarDetails(
     return undefined;
   }
 
-  const normalized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(details)) {
-    // Some tool-model providers serialize an omitted string field as the
-    // literal "unknown". Treat it as absent at this boundary so it cannot be
-    // mistaken for an event ID, grant binding, date, or other real value.
-    if (typeof value === "string" && value.trim().toLowerCase() === "unknown") {
-      continue;
-    }
-    normalized[key] = value;
-  }
   const aliasMap = new Map<string, string>();
   for (const [canonical, aliases] of Object.entries(CALENDAR_DETAIL_ALIASES)) {
     aliasMap.set(normalizeLookupKey(canonical), canonical);
@@ -1348,10 +1383,28 @@ function normalizeCalendarDetails(
     }
   }
 
+  const normalized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(details)) {
     if (typeof value === "string" && value.trim().toLowerCase() === "unknown") {
       continue;
     }
+    const canonical = aliasMap.get(normalizeLookupKey(key)) ?? key;
+    if (
+      typeof value === "string" &&
+      PLANNER_CONTROL_DETAIL_KEYS.has(canonical)
+    ) {
+      const trimmed = value.trim();
+      if (
+        PLANNER_KEY_FRAGMENT_PATTERN.test(trimmed) ||
+        normalizeLookupKey(trimmed) === normalizeLookupKey(canonical)
+      ) {
+        continue;
+      }
+    }
+    normalized[key] = value;
+  }
+
+  for (const [key, value] of Object.entries(normalized)) {
     const canonical = aliasMap.get(normalizeLookupKey(key));
     if (!canonical) {
       continue;
@@ -4332,16 +4385,9 @@ const calendarAction: CalendarHandlerAction = {
           detailRecurrenceLines(extractedForUpdate);
         let recurrenceScopeForUpdate = resolveRecurrenceScopeIntent({
           details,
+          fallbackDetails: extractedForUpdate,
           text: `${messageText(message)} ${intent}`,
         });
-        if (!recurrenceScopeForUpdate) {
-          recurrenceScopeForUpdate =
-            normalizeRecurrenceScope(
-              typeof extractedForUpdate.recurrenceScope === "string"
-                ? extractedForUpdate.recurrenceScope
-                : undefined,
-            ) ?? null;
-        }
         // A recurrence-rule change is inherently a series edit.
         if (recurrenceUpdate && !recurrenceScopeForUpdate) {
           recurrenceScopeForUpdate = "series";

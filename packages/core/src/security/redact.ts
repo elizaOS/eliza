@@ -27,8 +27,18 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*:\s*"([^"]+)"`,
 	// CLI flags (space-separated and --flag=value forms).
 	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
-	// Authorization headers.
-	String.raw`Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=]+)`,
+	// Authorization headers. RFC 7235 credentials are either one token68 value
+	// or a comma-separated auth-param list. Match the complete credential
+	// remainder rather than naming schemes: Basic, Digest, Proxy-Authorization,
+	// and extension schemes all carry reusable authentication material. The
+	// line boundary prevents an invalid prose sentence such as
+	// "Authorization: required for this endpoint" from being partially masked.
+	// Bearer keeps its floor-free rule for compatibility with short service
+	// values in env-style `*_AUTHORIZATION` output.
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=/~]+)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+((?=[A-Za-z][A-Za-z0-9!#$%&'*+.^_|~-]*[ \t]*=)[^\r\n]+)(?=[\r\n]|$)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+([A-Za-z0-9._~+/\-]{8,}={0,})(?=[\r\n]|$)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z0-9._~+/\-]{18,}={0,})(?=[\r\n]|$)`,
 	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
 	// URI userinfo. Mask the complete userinfo component (user:password,
 	// token-only, or password-only) so credentials in database URLs, curl
@@ -45,6 +55,12 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	// Distinct shape from the OpenAI sk- above; Stripe is the payment processor so a leaked
 	// sk_live_ is catastrophic, and these often appear as bare values (not under a *_SECRET name).
 	String.raw`\b((?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,})\b`,
+	// AWS credential identifiers have fixed four-character type prefixes and
+	// 16 uppercase base32 characters. AKIA/ASIA are access-key IDs; ABIA/ACCA
+	// are bearer/context credential identifiers and should be masked as well.
+	// Keep this regex explicitly case-sensitive so ordinary mixed-case words
+	// beginning with "Asia" are not folded into the credential shape.
+	String.raw`/\b((?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16})\b/g`,
 	String.raw`\b(ghp_[A-Za-z0-9]{20,})\b`,
 	String.raw`\b(github_pat_[A-Za-z0-9_]{20,})\b`,
 	String.raw`\b(xox[baprs]-[A-Za-z0-9-]{10,})\b`,
@@ -211,6 +227,13 @@ function redactMatch(match: string, groups: string[]): string {
 	const masked = maskToken(token);
 	if (token === match) {
 		return masked;
+	}
+	// Credential patterns capture the secret remainder at the match tail. A
+	// first-occurrence replace is unsafe when the same bytes occur earlier in
+	// the scheme/prefix, so splice the known tail position directly.
+	const tailIndex = match.length - token.length;
+	if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
+		return `${match.slice(0, tailIndex)}${masked}`;
 	}
 	// Use a replacer function so `masked` is inserted literally. `masked` keeps
 	// the token's first/last characters verbatim, and String.replace treats a

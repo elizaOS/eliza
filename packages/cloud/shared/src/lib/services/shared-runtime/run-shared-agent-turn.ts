@@ -20,6 +20,7 @@
  *  - route only shared-eligible agents here (see `agent-tier.ts`)
  */
 
+import { replaceNameTokens } from "@elizaos/core";
 import { generateText, streamText } from "ai";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import {
@@ -185,14 +186,24 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
   return hasLanguageModelProviderConfigured(DEFAULT_SHARED_MODEL) ? DEFAULT_SHARED_MODEL : null;
 }
 
+/**
+ * Assemble the turn's system prompt.
+ *
+ * `{{name}}` / `{{agentName}}` tokens are resolved here because a character can
+ * reach this path still carrying them: the shipped presets ship tokenized
+ * `system` / `bio` so a later rename keeps propagating, and the cloud create
+ * path seeds one verbatim. A container-backed agent gets the same substitution
+ * from `@elizaos/core`'s prompt builder; the shared turn talks to the provider
+ * directly, so it is the only renderer on this side.
+ */
 function buildSystemPrompt(character: SharedAgentCharacter): string {
   const parts: string[] = [];
-  const system = character.system?.trim();
+  const system = replaceNameTokens(character.system ?? "", character.name).trim();
   if (system) parts.push(system);
   if (character.bio?.length) {
     parts.push(
       `About you:\n- ${character.bio
-        .map((b) => b.trim())
+        .map((b) => replaceNameTokens(b, character.name).trim())
         .filter(Boolean)
         .join("\n- ")}`,
     );

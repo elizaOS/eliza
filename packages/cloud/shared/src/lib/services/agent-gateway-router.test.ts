@@ -867,6 +867,49 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
     expect(result.agentId).toBe("sb-stopped");
     expect(runOnboardingChat).not.toHaveBeenCalled();
   });
+
+  test("routes an authenticated DM with a canonical deterministic conversation UUID", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue({
+      id: "user-1",
+      organization_id: "org-1",
+    });
+    listOwnerSessions.mockResolvedValue([]);
+    listByOrganization.mockResolvedValue([
+      {
+        id: "sb-running",
+        status: "running",
+        user_id: "user-1",
+        organization_id: "org-1",
+        agent_config: {},
+      },
+    ]);
+    bridge.mockResolvedValue({ result: { text: "hello from eliza" } });
+
+    const result = await newRouter().routeDiscordMessage(discordArgs());
+
+    expect(result).toMatchObject({
+      handled: true,
+      replyText: "hello from eliza",
+      agentId: "sb-running",
+      organizationId: "org-1",
+      userId: "user-1",
+    });
+    expect(bridge).toHaveBeenCalledWith(
+      "sb-running",
+      "org-1",
+      expect.objectContaining({
+        method: "message.send",
+        params: expect.objectContaining({
+          roomId: expect.stringMatching(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+          ),
+          channelType: "DM",
+          source: "discord",
+        }),
+      }),
+    );
+    expect(result.roomId).not.toContain("discord-dm:");
+  });
 });
 
 describe("AgentGatewayRouterService telegram onboarding", () => {

@@ -1840,6 +1840,34 @@ function validateLlmCapture(
   }
 }
 
+/**
+ * Snapshot a provider capture with its completeness fields first in the shared
+ * byte budget, mirroring {@link snapshotLlmCaptureParams}.
+ *
+ * `data` carries the provider's rendered output and routinely dominates the
+ * row budget, and the canonical producer shape emits it BEFORE the required
+ * `purpose` string. Bounding in producer order therefore starved `purpose`
+ * into a truncation marker, and re-validating the deliberately lossy snapshot
+ * against the same completeness contract discarded the ENTIRE provider access
+ * — on exactly the context-heavy turns the record exists to explain. Reserving
+ * the small required strings first keeps the record complete and lets `data`
+ * degrade to a bounded object instead.
+ */
+function snapshotProviderCaptureParams(
+  params: Record<string, unknown>,
+  stepId: string,
+): Record<string, unknown> {
+  return snapshotCaptureParams(
+    {
+      providerName: params.providerName,
+      purpose: params.purpose,
+      data: params.data,
+      ...params,
+    },
+    stepId,
+  );
+}
+
 export function normalizeProviderAccessPayload(
   args: unknown[],
 ): { stepId: string; params: Record<string, unknown> } | null {
@@ -1863,7 +1891,7 @@ export function normalizeProviderAccessPayload(
       stepId,
     };
     validateProviderCapture(params, stepId);
-    const snapshot = snapshotCaptureParams(params, stepId);
+    const snapshot = snapshotProviderCaptureParams(params, stepId);
     validateProviderCapture(snapshot, stepId);
     return {
       stepId,
@@ -1888,7 +1916,7 @@ export function normalizeProviderAccessPayload(
   const normalizedParams =
     params.stepId === stepId ? params : { ...params, stepId };
   validateProviderCapture(normalizedParams, stepId);
-  const snapshot = snapshotCaptureParams(normalizedParams, stepId);
+  const snapshot = snapshotProviderCaptureParams(normalizedParams, stepId);
   validateProviderCapture(snapshot, stepId);
   return {
     stepId,
@@ -3554,6 +3582,30 @@ function normalizeStepForPersistence(
     }
     return bounded;
   };
+  const normalizeProviderRecord = (
+    access: PersistedProviderAccess,
+    index: number,
+  ): PersistedProviderAccess => {
+    const { providerId, providerName, timestamp, purpose, data, ...extras } =
+      access;
+    const bounded = snapshotCaptureParams(
+      {
+        providerId,
+        providerName,
+        timestamp,
+        purpose,
+        data,
+        ...extras,
+      },
+      step.stepId,
+    );
+    return parsePersistedProviderAccess(
+      bounded,
+      trajectoryId,
+      step.stepId,
+      index,
+    );
+  };
 
   return {
     ...(boundedScalars as unknown as PersistedStep),
@@ -3564,14 +3616,7 @@ function normalizeStepForPersistence(
       (call, index) =>
         normalizeRecord(call, "llmCalls", index) as unknown as PersistedLlmCall,
     ),
-    providerAccesses: providerAccesses.map(
-      (access, index) =>
-        normalizeRecord(
-          access,
-          "providerAccesses",
-          index,
-        ) as unknown as PersistedProviderAccess,
-    ),
+    providerAccesses: providerAccesses.map(normalizeProviderRecord),
     ...(childSteps !== undefined ? { childSteps: [...childSteps] } : {}),
     ...(usedSkills !== undefined ? { usedSkills: [...usedSkills] } : {}),
     ...(skillInvocations !== undefined

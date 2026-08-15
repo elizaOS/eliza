@@ -145,16 +145,13 @@ supervisor relaunches) — never a silent `process.exit`.
 - `ELIZA_MEMORY_WATCHDOG_INTERVAL_MS` — sample interval (default `30000`, floor `1000`).
 - `ELIZA_MEMORY_WATCHDOG_SUSTAINED` — consecutive over-threshold samples before a restart, to debounce transient spikes (default `3`, floor `1`).
 
-Connector health monitoring (`api/connector-health.ts`): `ConnectorHealthMonitor` is
-  constructed inside a post-listen deferred wave wrapped in a warn-and-continue catch
-  (`startDeferredStartupWork` in `api/server.ts`), so `resolveConnectorHealthIntervalMs`
-  never throws — a malformed value falls back to the default instead, so a bad env var
-  can't silently disable connector health monitoring for the process lifetime.
+Connector health monitoring (`api/connector-health.ts`): the interval is validated
+  synchronously by `startApiServer` before the HTTP server is created or bound, then
+  passed into the monitor's post-listen deferred construction. The deferred catch
+  therefore cannot hide malformed owner configuration or disable monitoring.
 - `CONNECTOR_HEALTH_INTERVAL_MS` — poll interval in ms (default `60000`, floor `10000`,
-  ceiling `2147483647`). Parsed with `Number.parseInt` (not a canonical-integer regex),
-  so trailing-junk/fractional/leading-zero forms truncate the same way they always have;
-  unset, non-numeric, below-floor, or above-ceiling values fall back to the default
-  (an above-ceiling value also logs a warning naming the env var).
+  ceiling `2147483647`). Configured values must be exact decimal integers; malformed,
+  non-canonical, below-floor, or above-ceiling values fail API startup before readiness.
 
 ## How to extend
 

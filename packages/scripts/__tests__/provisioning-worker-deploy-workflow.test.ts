@@ -20,6 +20,14 @@ const services = [
 ];
 
 describe("provisioning worker deployment contract", () => {
+  it("routes both jobs only to the healthy Hetzner fleet", () => {
+    expect(
+      workflow.match(
+        /^\s+runs-on: \$\{\{ fromJSON\(vars\.HETZNER_FLEET_ONLINE != 'true' && '\["ubuntu-24\.04"\]' \|\| '\["self-hosted","hetzner-robot"\]'\) \}\}$/gm,
+      ),
+    ).toHaveLength(2);
+  });
+
   it("resolves one immutable SHA and deploys exactly that snapshot", () => {
     expect(workflow).toContain('deployment_sha="$PUSH_SHA"');
     expect(workflow).toContain(
@@ -79,6 +87,33 @@ describe("provisioning worker deployment contract", () => {
         "ExecStartPre=/opt/eliza/packages/cloud/scripts/admin/ensure-generated-keywords.sh",
       );
     }
+  });
+
+  it("reconciles WARM_POOL_ENABLED from the protected environment so re-arms cannot drop it (#16961)", () => {
+    // The daemon replenish phase self-gates on this key; if a re-arm rebuilds
+    // /opt/eliza/cloud/.env.local without it, every dedicated provision
+    // silently falls back to the 30-120s cold path. The flag must flow from
+    // the GitHub environment VARIABLE through the SSH env passthrough into the
+    // skip-empty EnvironmentFile reconcile loop.
+    expect(workflow).toContain(
+      "WARM_POOL_ENABLED: ${{ vars.WARM_POOL_ENABLED }}",
+    );
+    expect(workflow).toMatch(/envs: [^\n]*\bWARM_POOL_ENABLED\b/);
+    expect(workflow).toContain('"WARM_POOL_ENABLED=$WARM_POOL_ENABLED" \\');
+  });
+
+  it("keeps the Worker warm-pool claim flag committed per wrangler environment (#16961)", () => {
+    const wranglerToml = readFileSync(
+      join(root, "packages/cloud/api/wrangler.toml"),
+      "utf8",
+    );
+    // A dashboard-only var disappears on redeploy; the intended state must be
+    // an explicit committed value in every environment block.
+    const occurrences = wranglerToml.match(
+      /^WARM_POOL_ENABLED = "(?:true|false)"$/gm,
+    );
+    expect(occurrences).not.toBeNull();
+    expect((occurrences ?? []).length).toBe(3);
   });
 
   it("keeps replacement workload memory inside the control-plane service fence", () => {
