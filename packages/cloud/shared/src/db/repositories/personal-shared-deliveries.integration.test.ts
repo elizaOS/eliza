@@ -340,6 +340,36 @@ describe("Discord personal Shared repeat delivery", () => {
     expect(projectionAfter.updated_at).toEqual(projectionBefore.updated_at);
   });
 
+  test("preserves stored optional profile fields when the gateway omits them", async () => {
+    const input = discordInput("814700107");
+    const created = await elizaAppUserService.resolvePersonalDelivery(input);
+
+    const replayed = await elizaAppUserService.resolvePersonalDelivery({
+      platform: "discord",
+      discordId: input.discordId,
+      username: input.username,
+    });
+
+    expect(replayed).toMatchObject({
+      userId: created.userId,
+      organizationId: created.organizationId,
+      resolution: "single-query-repeat",
+    });
+    const [canonical] = await dbWrite.select().from(users).where(eq(users.id, created.userId));
+    const [projection] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, created.userId));
+    expect(canonical).toMatchObject({
+      discord_global_name: input.globalName,
+      discord_avatar_url: input.avatarUrl,
+    });
+    expect(projection).toMatchObject({
+      discord_global_name: input.globalName,
+      discord_avatar_url: input.avatarUrl,
+    });
+  });
+
   test("returns exact Dedicated authority and falls back when another target is newer", async () => {
     const input = discordInput("814700102");
     const account = await elizaAppUserService.resolvePersonalDelivery(input);
