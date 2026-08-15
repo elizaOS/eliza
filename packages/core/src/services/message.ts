@@ -67,7 +67,7 @@ import {
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
-import { canActionRun } from "../runtime/action-gate";
+import { actionGateFailure, canActionRun } from "../runtime/action-gate";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
@@ -2657,7 +2657,10 @@ type V5PlannerActionSurface = {
 	summary: V5PlannerActionSurfaceSummary;
 };
 
-async function collectV5PlannerCandidateActions(args: {
+// Exported for unit coverage of the candidate-rejection log contract
+// (#20001): the warn IS the deliverable, so tests pin that a rejected or
+// unresolvable explicit candidate produces the structured reason.
+export async function collectV5PlannerCandidateActions(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
@@ -2692,6 +2695,7 @@ async function collectV5PlannerCandidateActions(args: {
 		action: Action,
 		parentActionName?: string,
 		activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
+		explicitCandidateName?: string,
 	): Promise<boolean> => {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		if (!normalizedName || seen.has(normalizedName)) {
@@ -2700,13 +2704,31 @@ async function collectV5PlannerCandidateActions(args: {
 		// One gate for exposure and execution (#12087 Item 9): private-action gate
 		// (private actions never reach the planner on a user turn) + ACTION_ROLE_POLICY
 		// + contextGate + roleGate, all via the shared chokepoint.
-		if (
-			!canActionRun(action, {
-				message: args.message,
-				activeContexts,
-				userRoles: args.userRoles,
-			})
-		) {
+		//
+		// For EXPLICIT stage-1 candidates the rejection must be observable:
+		// dropping the one action stage-1 named leaves the planner improvising
+		// with unrelated tools, and a silent drop is undiagnosable from
+		// trajectories (live: a poisoned disclosure census killed every
+		// owner-life candidate in a DM for a full morning with zero log lines —
+		// issue #19999). The every-action loop stays quiet; benign rejections
+		// there are the normal case.
+		const gateFailure = actionGateFailure(action, {
+			message: args.message,
+			activeContexts,
+			userRoles: args.userRoles,
+		});
+		if (gateFailure !== undefined) {
+			if (explicitCandidateName) {
+				logger.warn(
+					{
+						src: "service:message",
+						action: action.name,
+						candidate: explicitCandidateName,
+						gate: gateFailure,
+					},
+					"Explicit stage-1 candidate rejected at the action gate",
+				);
+			}
 			return false;
 		}
 		try {
@@ -2718,6 +2740,17 @@ async function collectV5PlannerCandidateActions(args: {
 				},
 			);
 			if (!accountPolicy.allowed) {
+				if (explicitCandidateName) {
+					logger.warn(
+						{
+							src: "service:message",
+							action: action.name,
+							candidate: explicitCandidateName,
+							gate: "connector-account-policy",
+						},
+						"Explicit stage-1 candidate rejected by connector account policy",
+					);
+				}
 				return false;
 			}
 			if (action.validate) {
@@ -2727,6 +2760,17 @@ async function collectV5PlannerCandidateActions(args: {
 					args.state,
 				);
 				if (!valid) {
+					if (explicitCandidateName) {
+						logger.warn(
+							{
+								src: "service:message",
+								action: action.name,
+								candidate: explicitCandidateName,
+								gate: "validate-returned-false",
+							},
+							"Explicit stage-1 candidate rejected by action validate()",
+						);
+					}
 					return false;
 				}
 			}
@@ -2770,11 +2814,27 @@ async function collectV5PlannerCandidateActions(args: {
 			: parentAliasesForCandidateAction(candidateName)
 					.map((alias) => resolveRuntimeAction(actionLookup, alias))
 					.filter((action): action is Action => action !== undefined);
+		if (resolved.length === 0) {
+			// The plumbing-class observable: stage-1 named a candidate that binds
+			// to NO runtime action even after the alias fallback. Without this
+			// line that gap is indistinguishable from a gate rejection when
+			// reading trajectories (#19999 triage had to rule it out by hand).
+			logger.warn(
+				{
+					src: "service:message",
+					candidate: candidateName,
+					gate: "resolved-to-no-runtime-action",
+				},
+				"Explicit stage-1 candidate resolved to no runtime action",
+			);
+			continue;
+		}
 		for (const action of resolved) {
 			await appendIfAllowed(
 				action,
 				undefined,
 				mergeAgentContexts(args.selectedContexts, action.contexts),
+				candidateName,
 			);
 		}
 	}
