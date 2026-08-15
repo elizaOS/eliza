@@ -433,9 +433,7 @@ function printSuccess(report) {
 }
 
 function main() {
-  const repoRoot = path.resolve(
-    process.env.AUDIT_TEST_LANE_REPO_ROOT ?? DEFAULT_REPO_ROOT,
-  );
+  const repoRoot = DEFAULT_REPO_ROOT;
   assertExtraScriptNamesCurrent(repoRoot);
   const report = computeTestLaneMembershipReport({ repoRoot });
   printSuccess(report);
