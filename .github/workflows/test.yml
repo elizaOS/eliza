@@ -73,7 +73,7 @@ jobs:
           test -n "${ELIZACLOUD_API_KEY//[[:space:]]/}"
           test -n "${DEPLOY_HOST//[[:space:]]/}"
           test -n "${DEPLOY_SSH_KEY//[[:space:]]/}"
-      - name: Quiesce the stale restart and restart the exact container
+      - name: Reconcile the absent placement onto the fixed immutable image
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -85,22 +85,6 @@ jobs:
             set -euo pipefail
             work="$(mktemp -d)"
             trap 'rm -rf "$work"' EXIT
-            database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
-            database_url="${database_url/sslmode=no-verify/sslmode=require}"
-            test -n "$database_url"
-            psql "$database_url" -v ON_ERROR_STOP=1 <<'SQL'
-            UPDATE jobs
-            SET status = 'failed',
-                error = 'Operator superseded stale PGlite restart before image canary',
-                execution_quiesced_at = NOW(),
-                completed_at = NOW(),
-                updated_at = NOW()
-            WHERE id = 'c87baa5a-fb91-4747-8eac-3b5757b868da'
-              AND agent_id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'
-              AND type = 'agent_restart'
-              AND status IN ('pending', 'in_progress')
-            RETURNING id, status, execution_quiesced_at;
-            SQL
             containers_key="$(sed -n 's/^CONTAINERS_SSH_KEY=//p' /opt/eliza/cloud/.env.local | tail -1)"
             test -n "$containers_key"
             printf '%s' "$containers_key" | base64 -d > "$work/key"
@@ -116,7 +100,50 @@ jobs:
               -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
               -o UserKnownHostsFile="$work/known_hosts" \
               "$user@$host" \
-              'set -euo pipefail; target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7; docker inspect "$target" >/dev/null; docker restart "$target" >/dev/null; sleep 20; test "$(docker inspect --format "{{.State.Status}}" "$target")" = running; printf "container restarted and running\n"'
+              'set -euo pipefail; target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7; if docker inspect "$target" >/dev/null 2>&1; then printf "refusing: container still exists\n" >&2; exit 1; fi; printf "exact stale container is absent\n"'
+            database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            database_url="${database_url/sslmode=no-verify/sslmode=require}"
+            test -n "$database_url"
+            psql "$database_url" -v ON_ERROR_STOP=1 <<'SQL'
+            WITH eligible AS (
+              SELECT sandbox.id
+              FROM agent_sandboxes AS sandbox
+              WHERE sandbox.id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'
+                AND sandbox.status = 'running'
+                AND sandbox.node_id = 'eliza-core-prod-6'
+                AND sandbox.container_name = 'agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7'
+                AND sandbox.replacement_cleanup_sandbox_id IS NULL
+                AND EXISTS (
+                  SELECT 1 FROM agent_sandbox_backups AS backup
+                  WHERE backup.sandbox_record_id = sandbox.id
+                )
+                AND NOT EXISTS (
+                  SELECT 1 FROM jobs
+                  WHERE jobs.agent_id = sandbox.id::text
+                    AND jobs.status IN ('pending', 'in_progress')
+                )
+              FOR UPDATE
+            )
+            UPDATE agent_sandboxes AS sandbox
+            SET status = 'stopped',
+                sandbox_id = NULL,
+                bridge_url = NULL,
+                health_url = NULL,
+                node_id = NULL,
+                container_name = NULL,
+                bridge_port = NULL,
+                web_ui_port = NULL,
+                headscale_ip = NULL,
+                docker_image = 'ghcr.io/elizaos/eliza-demo@sha256:a4d6156aef4c79fc01709a85025fd1a9f010a99279493e9545ed14f7137bd8cd',
+                image_digest = 'sha256:a4d6156aef4c79fc01709a85025fd1a9f010a99279493e9545ed14f7137bd8cd',
+                previous_docker_image = NULL,
+                previous_image_digest = NULL,
+                error_message = NULL,
+                updated_at = NOW()
+            FROM eligible
+            WHERE sandbox.id = eligible.id
+            RETURNING sandbox.id, sandbox.status, sandbox.docker_image;
+            SQL
 
   changes:
     name: Classify changed paths
