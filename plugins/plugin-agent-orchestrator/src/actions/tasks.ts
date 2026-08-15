@@ -1437,7 +1437,7 @@ async function runCreate(
   const successfulResults = laneOutcome.results;
   return {
     success: true,
-    text: `Created ${successfulResults.length} task-agent lanes.`,
+    text: `Created ${successfulResults.length} task-agent lanes. They run asynchronously and no lane result is available yet — results arrive later as follow-up messages. Tell the user the agents are working; never state, guess, or invent their output in this turn.`,
     data: {
       waveId: plan.waveId,
       agents: successfulResults.flatMap((result) =>
@@ -2020,12 +2020,14 @@ async function runSpawnAgent(
       })}`,
     );
 
-    // No text ack here. The orchestrator's progress hook owns user-visible
-    // status updates; emitting "On it" duplicates that and (worse) surfaces
-    // the planner's hallucinated messageToUser via the bootstrap REPLY path.
+    // Planner-facing grounding, not a user ack (the orchestrator's progress
+    // hook owns user-visible status). An empty text here left the finish pass
+    // with nothing to relay for an async spawn, and it answered the user's
+    // question from thin air instead (observed live: fabricated `bun
+    // --version` output). State the pending contract explicitly.
     return {
       success: true,
-      text: "",
+      text: `Sub-agent "${label}" (${session.agentType}) dispatched; it runs asynchronously and its result is NOT available yet — it arrives later as a follow-up message. Tell the user the agent is working. Never state, guess, or invent the sub-agent's output in this turn.`,
       // Terminate the planner loop after the first spawn fires.
       //
       // TASKS_SPAWN_AGENT is fire-and-forget: the action returns the

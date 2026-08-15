@@ -115,7 +115,7 @@ describe("TASKS:spawn_agent", () => {
       cb,
     );
     expect(result?.success).toBe(true);
-    expect(result?.text).toBe("");
+    expect(result?.text).toContain("result is NOT available yet");
     expect(cb).not.toHaveBeenCalled();
     expect(result?.continueChain).toBe(false);
     expect(result?.data).toMatchObject({
@@ -333,7 +333,7 @@ describe("TASKS:spawn_agent", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect(result?.text).toBe("");
+    expect(result?.text).toContain("result is NOT available yet");
     expect(result?.data).toMatchObject({ deferredUserReply: true });
     expect(cb).not.toHaveBeenCalled();
   });
