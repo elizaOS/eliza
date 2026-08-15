@@ -65,6 +65,66 @@ describe("ensureWorkerSecretAbsent", () => {
     ]);
   });
 
+  test("uses version-aware inventory and deletion before a code deploy", async () => {
+    const calls: string[][] = [];
+    const outputs = [
+      JSON.stringify([
+        { id: "older", number: 8 },
+        { id: "before", number: 10 },
+        { id: "oldest", number: 3 },
+      ]),
+      JSON.stringify({
+        resources: {
+          bindings: [
+            { name: "STAGING_SESSION_EXCHANGE_ENABLED", type: "secret_text" },
+            { name: "PLAIN_VALUE", type: "plain_text" },
+          ],
+        },
+      }),
+      "",
+      JSON.stringify([{ id: "after", number: 11 }]),
+      JSON.stringify({ resources: { bindings: [] } }),
+    ];
+    const result = await ensureWorkerSecretAbsent({
+      name: "STAGING_SESSION_EXCHANGE_ENABLED",
+      wranglerArgs: ["--env", "staging"],
+      versioned: true,
+      run: async (args: string[]) => {
+        calls.push(args);
+        return outputs.shift() ?? "[]";
+      },
+      sleep: async () => {},
+    });
+
+    expect(result).toBe("removed");
+    expect(calls).toEqual([
+      ["versions", "list", "--env", "staging", "--json"],
+      ["versions", "view", "before", "--env", "staging", "--json"],
+      [
+        "versions",
+        "secret",
+        "delete",
+        "STAGING_SESSION_EXCHANGE_ENABLED",
+        "--env",
+        "staging",
+      ],
+      ["versions", "list", "--env", "staging", "--json"],
+      ["versions", "view", "after", "--env", "staging", "--json"],
+    ]);
+  });
+
+  test("fails closed when the latest version inventory is malformed", async () => {
+    await expect(
+      ensureWorkerSecretAbsent({
+        name: "STAGING_SESSION_EXCHANGE_ENABLED",
+        versioned: true,
+        attempts: 1,
+        run: async () => JSON.stringify([]),
+        sleep: async () => {},
+      }),
+    ).rejects.toThrow("Could not confirm Worker secret");
+  });
+
   test("owns an ambiguous delete when the retry proves absence", async () => {
     const calls: string[][] = [];
     const result = await ensureWorkerSecretAbsent({

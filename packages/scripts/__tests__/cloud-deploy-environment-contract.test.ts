@@ -593,6 +593,9 @@ describe("canonical cloud deployment environment contract", () => {
     }
     expect(publish.run).toContain("managed_worker_provisioning_secrets=(");
     expect(publish.run).toContain('publish_secret "$name" || exit 1');
+    expect(publish.run).toContain('bunx wrangler versions secret put "$name"');
+    expect(publish.run).toContain('--versions "$name"');
+    expect(publish.run).not.toContain('bunx wrangler secret put "$name"');
     expect(publish.run).toContain(
       'echo "::notice::$name is not configured; skipping"',
     );
