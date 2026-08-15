@@ -810,13 +810,10 @@ describe("voice-session WS lifecycle", () => {
     expect(prewarmCalls).toBe(1);
   });
 
-  test("first response joins prewarm and an interruption discards the obsolete turn", async () => {
-    let resolvePrewarm: () => void = () => {};
-    const prewarm = new Promise<void>((resolve) => {
-      resolvePrewarm = resolve;
-    });
+  test("first response does not wait for latency-only prewarm", async () => {
+    const prewarm = new Promise<void>(() => undefined);
     const requestTexts: string[] = [];
-    const successFetch = makeSseFetch(["Replacement response."]);
+    const successFetch = makeSseFetch(["Immediate response."]);
     const client = new FakeClientSocket();
     await connectSession({
       client,
@@ -831,20 +828,11 @@ describe("voice-session WS lifecycle", () => {
     const ttsBefore = FakeCartesiaSocket.instances.length;
 
     ink.emitTurn("turn.start");
-    ink.emitTurn("turn.end", "obsolete first request");
+    ink.emitTurn("turn.end", "first request");
+    await flush();
     await flush();
     expect(FakeCartesiaSocket.instances.length).toBe(ttsBefore + 1);
-    expect(requestTexts).toEqual([]);
-
-    ink.emitTurn("turn.start");
-    ink.emitTurn("turn.end", "replacement request");
-    await flush();
-    expect(requestTexts).toEqual([]);
-
-    resolvePrewarm();
-    await flush();
-    await flush();
-    expect(requestTexts).toEqual(["replacement request"]);
+    expect(requestTexts).toEqual(["first request"]);
     expect(client.controlTypes()).toContain("llm_first_text");
   });
 
