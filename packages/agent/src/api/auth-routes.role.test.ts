@@ -1,10 +1,11 @@
 /**
  * Unit test for the boundary role reported by `GET /api/auth/me`: an authorized
  * loopback request resolves to OWNER, an unauthorized request to GUEST with a
- * 401. The auth helpers (`isAuthorized`, `resolveBoundaryRole`) are mocked so
- * the assertions exercise the route's role mapping in isolation.
+ * 401, and the route cannot bypass the trusted-local classifier when local auth
+ * is required. The auth helpers are mocked so the assertions exercise route
+ * response mapping and composition in isolation.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   isAuthorized: vi.fn(),
@@ -58,6 +59,11 @@ function mkCtx(remoteAddress = "203.0.113.10"): {
 }
 
 describe("/api/auth/me boundary role (#9948)", () => {
+  afterEach(() => {
+    delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+    vi.clearAllMocks();
+  });
+
   it("returns role OWNER for an authorized loopback request", async () => {
     mocks.isAuthorized.mockReturnValue(true);
     mocks.isTrustedLocalRequest.mockReturnValue(true);
@@ -78,5 +84,21 @@ describe("/api/auth/me boundary role (#9948)", () => {
     expect((captured.body as { access: { role: string } }).access.role).toBe(
       "GUEST",
     );
+  });
+
+  it("does not treat ELIZA_REQUIRE_LOCAL_AUTH as a local-access grant", async () => {
+    process.env.ELIZA_REQUIRE_LOCAL_AUTH = "1";
+    mocks.isAuthorized.mockReturnValue(true);
+    mocks.isTrustedLocalRequest.mockReturnValue(false);
+
+    const { ctx, captured } = mkCtx("127.0.0.1");
+    expect(await handleAuthRoutes(ctx)).toBe(true);
+    expect(captured.status).toBe(200);
+    expect(captured.body).toMatchObject({
+      identity: { id: "bearer-agent", kind: "machine" },
+      session: { id: "bearer", kind: "machine" },
+      access: { mode: "bearer", role: "OWNER" },
+    });
+    expect(mocks.isTrustedLocalRequest).toHaveBeenCalledWith(ctx.req);
   });
 });
