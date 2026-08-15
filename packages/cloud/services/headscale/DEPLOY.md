@@ -107,9 +107,11 @@ reference remain fail-closed. The inspection reports file metadata,
 SHA-256, directive-name counts, and the validated server-block/name/map shape
 for review without printing directive literal values. If the map is rejected,
 only structural counts are printed so operators can distinguish formatting
-drift from an additional entry without exposing values. Only after that run is
-reviewed may an operator select the retirement operation and supply that exact
-lowercase digest:
+drift from an additional entry without exposing values. A rejected map also
+reports only the candidate count, field count, exact/other/mismatched token-form
+categories, extra-field presence, and brace placement; it never prints a token
+or directive value. Only after that run is reviewed may an operator select the
+retirement operation and supply that exact lowercase digest:
 
 ```bash
 gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza \
