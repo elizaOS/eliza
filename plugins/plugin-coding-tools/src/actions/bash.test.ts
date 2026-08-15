@@ -130,82 +130,6 @@ interface RuntimeOptions {
 type RuntimeSecretFragment = Parameters<
   IAgentRuntime["locateConfiguredSecretFragmentTaint"]
 >[0][number];
-type RuntimeSecretTaint = ReturnType<
-  IAgentRuntime["locateConfiguredSecretFragmentTaint"]
->;
-
-function locateTestSecretTaint(
-  fragments: readonly RuntimeSecretFragment[],
-  secret: string | undefined,
-  profileRevision = 1,
-): RuntimeSecretTaint {
-  if (!secret || secret.length < 8) {
-    return {
-      status: "complete",
-      ranges: [],
-      maxSecretLength: 0,
-      profileRevision,
-    };
-  }
-  const found: Array<{
-    source: string;
-    startOffset: number;
-    endOffset: number;
-  }> = [];
-  const visit = (
-    fragmentIndex: number,
-    secretOffset: number,
-    path: typeof found,
-  ): void => {
-    const fragment = fragments[fragmentIndex];
-    if (!fragment) return;
-    for (let end = secretOffset + 1; end <= secret.length; end += 1) {
-      const segment = secret.slice(secretOffset, end);
-      let occurrence = fragment.text.indexOf(segment);
-      while (occurrence >= 0) {
-        const nextPath = [
-          ...path,
-          {
-            source: fragment.source,
-            startOffset: fragment.startOffset + occurrence,
-            endOffset: fragment.startOffset + occurrence + segment.length,
-          },
-        ];
-        if (end === secret.length) found.push(...nextPath);
-        else visit(fragmentIndex + 1, end, nextPath);
-        occurrence = fragment.text.indexOf(segment, occurrence + 1);
-      }
-    }
-  };
-  for (let start = 0; start < fragments.length; start += 1) {
-    visit(start, 0, []);
-  }
-  const ranges = found
-    .sort(
-      (left, right) =>
-        left.source.localeCompare(right.source) ||
-        left.startOffset - right.startOffset ||
-        left.endOffset - right.endOffset,
-    )
-    .reduce<typeof found>((merged, range) => {
-      const previous = merged.at(-1);
-      if (
-        previous?.source === range.source &&
-        range.startOffset <= previous.endOffset
-      ) {
-        previous.endOffset = Math.max(previous.endOffset, range.endOffset);
-      } else {
-        merged.push({ ...range });
-      }
-      return merged;
-    }, []);
-  return {
-    status: "complete",
-    ranges,
-    maxSecretLength: secret.length,
-    profileRevision,
-  };
-}
 
 function requireActionResult(result: ActionResult | undefined): ActionResult {
   if (!result) throw new Error("Expected SHELL action result");
@@ -233,11 +157,16 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   }
 
   const services = new Map<string, unknown>();
+  const character = {
+    name: "coding-tools-test",
+    ...(opts.configuredSecret
+      ? { settings: { secrets: { TEST_SECRET: opts.configuredSecret } } }
+      : {}),
+  } as Character;
+  const secretOwner = new AgentRuntime({ character });
   const runtime = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
-    character: opts.configuredSecret
-      ? { settings: { secrets: { TEST_SECRET: opts.configuredSecret } } }
-      : {},
+    character,
     getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),
     redactSecrets: vi.fn((text: string) =>
@@ -247,7 +176,7 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     ),
     locateConfiguredSecretFragmentTaint: vi.fn(
       (fragments: readonly RuntimeSecretFragment[]) =>
-        locateTestSecretTaint(fragments, opts.configuredSecret),
+        secretOwner.locateConfiguredSecretFragmentTaint(fragments),
     ),
   } as IAgentRuntime;
 
@@ -2129,16 +2058,6 @@ describeIfPosix("shellAction", () => {
   it("maps a configured secret across ordered stdout and stderr fragments without breaking offsets", async () => {
     const secret = "marigold9";
     const { runtime } = await makeRuntime({ configuredSecret: secret });
-    const secretOwner = new AgentRuntime({
-      character: {
-        name: "fragment-redaction-integration",
-        settings: { secrets: { TEST_SECRET: secret } },
-      } as Character,
-    });
-    vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockImplementation(
-      (fragments: readonly RuntimeSecretFragment[]) =>
-        secretOwner.locateConfiguredSecretFragmentTaint(fragments),
-    );
     const actor = makeMessage();
     const command = [
       "printf '\\x6d\\x61\\x72\\x69X'",
@@ -2549,10 +2468,6 @@ describeIfPosix("shellAction", () => {
     vi.mocked(runtime.redactSecrets).mockImplementation((text: string) =>
       text.replaceAll(rotatedSecret, "[REDACTED:ROTATED_SECRET]"),
     );
-    vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockImplementation(
-      (fragments: readonly RuntimeSecretFragment[]) =>
-        locateTestSecretTaint(fragments, rotatedSecret, 2),
-    );
     const actor = makeMessage();
     const start = requireActionResult(
       await shellAction.handler?.(runtime, actor, undefined, {
@@ -2603,10 +2518,6 @@ describeIfPosix("shellAction", () => {
     };
     vi.mocked(runtime.redactSecrets).mockImplementation((text: string) =>
       text.replaceAll(rotatedSecret, "[REDACTED:ROTATED_SECRET]"),
-    );
-    vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockImplementation(
-      (fragments: readonly RuntimeSecretFragment[]) =>
-        locateTestSecretTaint(fragments, rotatedSecret, 2),
     );
 
     const poll = requireActionResult(
