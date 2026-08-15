@@ -85,11 +85,12 @@ const NAME_LIKE_RECURRENCE_PATTERNS: readonly RegExp[] = [
 // week" remains recurring because the one-shot expression is followed by a
 // cadence unit.
 const ONE_SHOT_DIRECTIVE_PATTERNS: readonly RegExp[] = [
-  /\b(?:not|no|never)\s+(?:a\s+)?(?:recurr(?:ing|ence)|repeat(?:ed|ing)?|every|each)\b/i,
-  /\b(?:do\s+not|don't)\s+repeat\b/i,
+  /\b(?:not|no|never)\s+(?:a\s+)?(?:recurr(?:ing|ence)|repeat(?:ed|ing)?|every|each)\b(?:(?![,.;!?]|\b(?:but|rather|instead|actually|make\s+it)\b)[\s\S])*/i,
+  /\b(?:do\s+not|don't)\s+repeat\b(?:(?![,.;!?]|\b(?:but|rather|instead|actually|make\s+it)\b)[\s\S])*/i,
   /\b(?:just|only)\s+(?:once|one\s+time)\b(?!\s+(?:a|per|each|every)\s+(?:day|week|month|year))/i,
   /\b(?:once|one\s+time)\s+only\b/i,
-  /(?:一度だけ|1回だけ|繰り返さない|毎日ではない)/,
+  /(?:一度だけ|1回だけ)/,
+  /(?:繰り返さない|毎日ではない)(?:(?![、。！？]|(?:代わり|むしろ|実際には))[\s\S])*/,
 ];
 
 type IntentMarker = {

@@ -1884,6 +1884,21 @@ describe("sprayed one-shot cap on an explicit recurrence", () => {
     expect(createdTasks[0]?.metadata.trigger?.maxRuns).toBe(1);
   });
 
+  it("keeps maxRuns=1 when cadence words remain inside a negated clause", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "call the bank",
+        cronExpression: "0 9 * * 1",
+        maxRuns: 1,
+      },
+      "do not repeat this every week",
+    );
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0]?.metadata.trigger?.maxRuns).toBe(1);
+  });
+
   it("keeps maxRuns=1 when the text has only a time-of-day window phrase", async () => {
     // "in the morning" is a WINDOW, not a recurrence — a one-shot reminder
     // must not become an unbounded daily cron because of it.
