@@ -185,12 +185,12 @@ protected GitHub Environment variables rather than committing live values.
    `cloudflare_certificate_pack.canonical_edge` generations without an import
    id and the current environment's hosted-site wildcard DNS instances. The
    scope is authenticated in the artifact metadata and must match the apply
-   dispatch. Before apply, the workflow rejects every actionable resource
-   outside those families and every update, delete, or replacement inside
-   them. Its activation polling refreshes only the exact addresses from that
-   reviewed plan, so unrelated observations are not written into state. Use
-   `full` for ordinary convergence. Never use a scoped plan to conceal
-   destructive drift in either targeted resource family.
+   dispatch. Before packaging and again before apply, the workflow rejects
+   every actionable resource outside those families and every update, delete,
+   or replacement inside them. Its activation polling refreshes only the exact
+   addresses from that reviewed plan, so unrelated observations are not
+   written into state. Use `full` for ordinary convergence. Never use a scoped
+   plan to conceal destructive drift in either targeted resource family.
 5. Deploy the staging Worker routes before converting legacy site/tunnel DNS to
    proxied redirect ingress. Dispatch `operation=apply` with the exact successful
    plan run id, run attempt, artifact id, and service digest copied from that

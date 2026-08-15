@@ -423,6 +423,12 @@ jobs:
             done < <(jq -r '.[]' <<< "$TF_VAR_canonical_edge_wildcard_origins")
           fi
           terraform plan "${plan_args[@]}"
+          if [ "$TERRAFORM_PLAN_SCOPE" = "canonical-edge-additive" ]; then
+            reviewed_plan="$RUNNER_TEMP/canonical-edge-reviewed-plan.json"
+            terraform show -json selected.tfplan > "$reviewed_plan"
+            node "$GITHUB_WORKSPACE/packages/scripts/validate-terraform-canonical-edge-additive-plan.mjs" \
+              "$reviewed_plan" "${{ inputs.environment }}"
+          fi
 
       - name: Package reviewed plan
         if: inputs.operation == 'plan'
@@ -486,6 +492,9 @@ jobs:
         working-directory: ${{ steps.root.outputs.directory }}
         shell: bash
         run: |
+          if [ -f "$RUNNER_TEMP/canonical-edge-reviewed-plan.json" ]; then
+            shred -u "$RUNNER_TEMP/canonical-edge-reviewed-plan.json"
+          fi
           if [ -f selected.tfplan ]; then
             shred -u selected.tfplan
           fi
@@ -521,55 +530,8 @@ jobs:
           set -euo pipefail
           reviewed_plan="$RUNNER_TEMP/canonical-edge-reviewed-plan.json"
           terraform show -json selected.tfplan > "$reviewed_plan"
-          node - "$reviewed_plan" <<'NODE'
-          const fs = require("node:fs");
-          const plan = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-          const siteWildcard = process.env.TARGET_ENVIRONMENT === "production"
-            ? "*.sites.eliza.app"
-            : "*.sites-staging.eliza.app";
-          const packPrefix = 'cloudflare_certificate_pack.canonical_edge[';
-          const dnsPrefix = `cloudflare_dns_record.canonical_edge_wildcard[\"${siteWildcard}|`;
-          const changes = plan.resource_changes ?? [];
-          let packTargets = 0;
-          let dnsTargets = 0;
-          let creates = 0;
-          const failures = [];
-
-          for (const resource of changes) {
-            const actions = resource.change?.actions ?? [];
-            if (resource.change?.importing) {
-              failures.push(`${resource.address}: import is not additive infrastructure creation`);
-              continue;
-            }
-            const noOp = actions.length === 1 && actions[0] === "no-op";
-            if (resource.mode !== "managed" || noOp) continue;
-            const isPack = resource.address.startsWith(packPrefix);
-            const isSiteDns = resource.address.startsWith(dnsPrefix);
-            if (!isPack && !isSiteDns) {
-              failures.push(`${resource.address}: out-of-scope action ${actions.join("/")}`);
-              continue;
-            }
-            if (actions.length !== 1 || actions[0] !== "create") {
-              failures.push(`${resource.address}: non-additive action ${actions.join("/")}`);
-              continue;
-            }
-            creates += 1;
-          }
-
-          for (const resource of changes) {
-            if (resource.mode !== "managed") continue;
-            if (resource.address.startsWith(packPrefix)) packTargets += 1;
-            if (resource.address.startsWith(dnsPrefix)) dnsTargets += 1;
-          }
-          if (packTargets === 0) failures.push("no canonical certificate-pack targets");
-          if (dnsTargets === 0) failures.push("no hosted-site wildcard DNS targets");
-          if (creates === 0) failures.push("scope contains no additive resource creation");
-          if (failures.length > 0) {
-            console.error(`::error::Reviewed canonical-edge plan is not additive-only: ${failures.join(", ")}`);
-            process.exit(1);
-          }
-          console.log(`Reviewed additive-only canonical-edge plan (${packTargets} certificate, ${dnsTargets} DNS target(s)).`);
-          NODE
+          node "$GITHUB_WORKSPACE/packages/scripts/validate-terraform-canonical-edge-additive-plan.mjs" \
+            "$reviewed_plan" "$TARGET_ENVIRONMENT"
 
       - name: Apply reviewed plan
         if: inputs.operation == 'apply'
@@ -754,7 +716,9 @@ jobs:
         working-directory: ${{ steps.root.outputs.directory }}
         shell: bash
         run: |
-          rm -f "$RUNNER_TEMP/canonical-edge-reviewed-plan.json"
+          if [ -f "$RUNNER_TEMP/canonical-edge-reviewed-plan.json" ]; then
+            shred -u "$RUNNER_TEMP/canonical-edge-reviewed-plan.json"
+          fi
           if [ -f selected.tfplan ]; then
             shred -u selected.tfplan
           fi
