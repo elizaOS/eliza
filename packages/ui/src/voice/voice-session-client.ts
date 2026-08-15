@@ -1014,6 +1014,14 @@ export function createVoiceSessionClient(
         setState(loopToListening(state));
         break;
       case "error":
+        // Keep provider/runtime failures observable without retaining prompts,
+        // transcripts, upstream snippets, or credentials. Live browser tests
+        // and the debug HUD can now fail on the authoritative server code
+        // instead of timing out after a terminal `turn_end(error)` frame.
+        mark(
+          `server_error(${event.code},retryable=${event.retryable ? 1 : 0})`,
+          event.traceId ?? state.traceId,
+        );
         if (isLostSttTurnError(event)) {
           rejectCurrentProvisionalSpeech();
           mark("stt_turn_lost(reconnecting)", state.traceId);

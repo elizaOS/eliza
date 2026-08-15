@@ -128,8 +128,18 @@ test.describe("normal-chat realtime acoustic barge-in", () => {
       // never loop the scenario and contaminate later local turns.
       const muteAfterSecondTurn = (async () => {
         await expect
-          .poll(() => knownPhraseTurns.count(), { timeout: 30_000 })
-          .toBe(2);
+          .poll(
+            () =>
+              consoleMessages.filter((message) =>
+                message.includes("[eliza][voice-capture] realtime:stt_final"),
+              ).length,
+            {
+              message:
+                "mute immediately after the second authoritative transcript before Chromium loops the fake WAV",
+              timeout: 30_000,
+            },
+          )
+          .toBeGreaterThanOrEqual(2);
         const mute = page.getByRole("button", { name: "mute microphone" });
         await mute.click();
         await expect(
@@ -178,19 +188,53 @@ test.describe("normal-chat realtime acoustic barge-in", () => {
       ).toBe(false);
       await muteAfterSecondTurn;
 
+      const interruptedAssistantRow = assistantMessageRows
+        .filter({ hasText: "Response interrupted" })
+        .first();
+      await expect(interruptedAssistantRow).toBeVisible({ timeout: 30_000 });
+      const frozenInterruptedText = await interruptedAssistantRow.textContent();
+      expect(frozenInterruptedText?.trim()).toBeTruthy();
+
       const replacementTraceLine = page
         .getByTestId("voice-capture-hud-line")
         .filter({ hasText: "realtime:trace-complete" })
         .filter({ hasText: "spoken" })
         .last();
-      await expect(replacementTraceLine).toContainText("evidence:complete", {
-        timeout: 150_000,
-      });
+      await expect
+        .poll(
+          async () => {
+            const terminalError = consoleMessages.find((message) =>
+              message.includes("[eliza][voice-capture] realtime:server_error("),
+            );
+            if (terminalError) return `error:${terminalError}`;
+            const text = await replacementTraceLine.textContent();
+            return text?.includes("evidence:complete") ? "complete" : "pending";
+          },
+          {
+            message: "replacement voice turn should finish with live playout",
+            timeout: 90_000,
+          },
+        )
+        .not.toBe("pending");
+      const replacementError = consoleMessages.find((message) =>
+        message.includes("[eliza][voice-capture] realtime:server_error("),
+      );
+      expect(
+        replacementError,
+        `replacement voice turn failed before playout: ${replacementError ?? "unknown"}`,
+      ).toBeUndefined();
+      await expect(replacementTraceLine).toContainText("evidence:complete");
       await expect(userMessageRows).toHaveCount(3);
       await expect
         .poll(() => assistantMessageRows.count())
         .toBeGreaterThanOrEqual(1);
       expect(await assistantMessageRows.count()).toBeLessThanOrEqual(2);
+      await expect
+        .poll(() => interruptedAssistantRow.textContent(), {
+          message:
+            "an interrupted voice row must stay frozen while its replacement finishes",
+        })
+        .toBe(frozenInterruptedText);
       expect(
         consoleMessages.some((message) =>
           message.includes("Cannot update a component"),

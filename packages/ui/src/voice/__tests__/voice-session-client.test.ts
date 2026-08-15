@@ -1838,7 +1838,7 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
   it("a retryable server error does NOT tear down the session", async () => {
     const mint = makeMintFetch();
     const ws = makeWsFactory();
-    const { client } = baseDeps(mint, ws);
+    const { client, marks } = baseDeps(mint, ws);
     await client.start();
     await flush();
     const sock = ws.last();
@@ -1849,6 +1849,12 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     sock.emitControl({ t: "stt_final", text: "ok", traceId: "T1" });
     expect(client.state.finalTranscript).toBe("ok");
     expect(mint.calls.length).toBe(1);
+    expect(marks).toContainEqual(
+      expect.objectContaining({
+        name: "server_error(audio_too_large,retryable=1)",
+        traceId: "T1",
+      }),
+    );
     await client.stop();
   });
 
