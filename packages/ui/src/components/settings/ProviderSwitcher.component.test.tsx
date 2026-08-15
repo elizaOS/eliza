@@ -33,6 +33,10 @@ vi.mock("../../state", () => ({
         String(vars?.defaultValue ?? key),
       plugins: [],
       setActionNotice: vi.fn(),
+      // The serving-axes summary reads the runtime axis from these; the real
+      // store always supplies startupCoordinator, so the stub must too.
+      firstRunRuntimeTarget: "",
+      startupCoordinator: { target: "embedded-local" },
     }),
 }));
 vi.mock("./useProviderSelection", () => ({
@@ -159,6 +163,18 @@ describe("ProviderSwitcher", () => {
     cleanup();
     vi.clearAllMocks();
     selection.visibleProviderPanelId = "__local__";
+  });
+
+  it("states both serving axes above the intelligence tiles", () => {
+    render(<ProviderSwitcher />);
+    // Tiles alone cannot distinguish a hosted agent from Cloud models, so the
+    // runtime axis must be wired in, not just available (#20045 follow-up).
+    expect(screen.getByTestId("serving-runtime-value").textContent).toBe(
+      "This device",
+    );
+    expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+      "This device",
+    );
   });
 
   it("renders the grouped surface and activates local selection", () => {
