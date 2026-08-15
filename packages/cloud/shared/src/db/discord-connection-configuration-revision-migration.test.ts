@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 const MIGRATION_PATH = join(
   import.meta.dir,
-  "migrations/0206_discord_connection_configuration_revision.sql",
+  "migrations/0208_discord_connection_configuration_revision.sql",
 );
 
 let client: PGlite;
@@ -36,7 +36,7 @@ afterAll(async () => {
   await client.close();
 });
 
-describe("0206 Discord connection configuration revision", () => {
+describe("0208 Discord connection configuration revision", () => {
   test("backfills a stable revision without coupling telemetry writes", async () => {
     const migration = readFileSync(MIGRATION_PATH, "utf8");
     await client.exec(migration);
