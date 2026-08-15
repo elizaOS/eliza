@@ -1,6 +1,6 @@
-# This manual doctor is the only bootstrap proof for the dedicated production
-# operations runner. Runner-group workflow restrictions and the protected
-# production environment must both admit the job before the host can execute it.
+# This manual doctor consumes one ephemeral registration on each protected host.
+# Existing production workflows stay on hosted capacity until two distinct
+# slots pass this proof and an independently reviewed routing change lands.
 name: Prod Ops Runner
 
 on:
@@ -16,9 +16,7 @@ permissions:
 jobs:
   validate-source:
     name: Validate canonical source
-    runs-on:
-      group: prod-ops
-      labels: [self-hosted, Linux, X64, prod-ops]
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: Require production main
@@ -32,11 +30,20 @@ jobs:
           }
 
   doctor:
-    name: Verify protected prod-ops runner
+    name: Verify protected prod-ops runner (${{ matrix.slot }})
     needs: validate-source
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - slot: prod-ops-1
+            runner_name_prefix: eliza-prod-ops-1-
+          - slot: prod-ops-2
+            runner_name_prefix: eliza-prod-ops-2-
     runs-on:
       group: prod-ops
-      labels: [self-hosted, Linux, X64, prod-ops]
+      labels: [self-hosted, Linux, X64, "${{ matrix.slot }}"]
     environment: production
     timeout-minutes: 5
     steps:
@@ -45,15 +52,22 @@ jobs:
           RUNNER_ARCH: ${{ runner.arch }}
           RUNNER_NAME: ${{ runner.name }}
           RUNNER_OS: ${{ runner.os }}
+          RUNNER_NAME_PREFIX: ${{ matrix.runner_name_prefix }}
+          RUNNER_SLOT: ${{ matrix.slot }}
         run: |
           set -euo pipefail
           [ "$RUNNER_OS" = "Linux" ]
           [ "$RUNNER_ARCH" = "X64" ]
-          [[ "$RUNNER_NAME" == eliza-prod-ops-* ]]
+          [[ "$RUNNER_NAME" == "$RUNNER_NAME_PREFIX"* ]]
           [ -f /etc/eliza/prod-ops-runner ]
           grep -qx 'role=github-actions-prod-ops' /etc/eliza/prod-ops-runner
           grep -qx 'runner_group=prod-ops' /etc/eliza/prod-ops-runner
           grep -qx 'public_pr_jobs=forbidden' /etc/eliza/prod-ops-runner
+          grep -qx "runner_slot=$RUNNER_SLOT" /etc/eliza/prod-ops-runner
+          jq -e '.ephemeral == true' /opt/actions-runner/.runner >/dev/null
+          [ ! -w /opt/actions-runner/run.sh ]
+          [ "$(stat -c '%U:%G' /opt/actions-runner/run.sh)" = "root:actions-runner" ]
+          [ -f /var/lib/eliza-prod-ops-runner/clean-start ]
 
           for service in forgejo caddy eliza-provisioning-worker docker; do
             if systemctl is-active --quiet "$service"; then
@@ -64,9 +78,9 @@ jobs:
 
           [ ! -e /var/lib/forgejo ]
           [ ! -e /opt/eliza/cloud ]
-          available_kib=$(df --output=avail /opt/actions-runner | tail -1 | tr -d ' ')
+          available_kib=$(df --output=avail /var/lib/eliza-prod-ops-runner | tail -1 | tr -d ' ')
           [ "$available_kib" -ge 10485760 ] || {
             echo "::error::prod-ops runner has less than 10 GiB free"
             exit 1
           }
-          echo "Protected prod-ops runner identity, disk, and workload isolation verified."
+          echo "Ephemeral $RUNNER_SLOT identity, immutable runner bytes, clean start, disk, and workload isolation verified."

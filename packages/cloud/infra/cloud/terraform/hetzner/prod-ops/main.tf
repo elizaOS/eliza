@@ -1,11 +1,25 @@
 /**
- * Dedicated capacity for protected production operations. The host never joins
- * the agent data plane or the general CI fleet; GitHub runner-group policy and
- * the production environment decide which trusted workflows can execute here.
+ * Two disposable-capacity hosts reserve a protected lane for production
+ * operations. Each registration accepts one job, while a revisioned hostname
+ * lets Terraform replace a host without depending on the host being repaired.
  */
 
 locals {
-  runner_name = "eliza-prod-ops-1"
+  bootstrap_revision = substr(sha256(join("\n", [
+    file("${path.module}/cloud-init/bootstrap.yaml.tftpl"),
+    var.hcloud_image,
+    var.hcloud_location,
+    var.hcloud_server_type,
+    jsonencode(var.ssh_public_keys),
+  ])), 0, 8)
+
+  runner_slots = {
+    for index in range(var.runner_count) : "prod-ops-${index + 1}" => {
+      name = "eliza-prod-ops-${index + 1}-${local.bootstrap_revision}"
+      slot = "prod-ops-${index + 1}"
+    }
+  }
+
   labels = {
     "managed-by"  = "terraform"
     "environment" = "production"
@@ -27,22 +41,24 @@ resource "hcloud_firewall" "prod_ops" {
 }
 
 resource "hcloud_server" "prod_ops" {
-  name               = local.runner_name
-  location           = var.hcloud_location
-  server_type        = var.hcloud_server_type
-  image              = var.hcloud_image
-  firewall_ids       = [hcloud_firewall.prod_ops.id]
-  delete_protection  = true
-  rebuild_protection = true
-  labels             = local.labels
+  for_each = local.runner_slots
+
+  name         = each.value.name
+  location     = var.hcloud_location
+  server_type  = var.hcloud_server_type
+  image        = var.hcloud_image
+  firewall_ids = [hcloud_firewall.prod_ops.id]
+  labels = merge(local.labels, {
+    "runner-slot" = each.value.slot
+  })
 
   user_data = templatefile("${path.module}/cloud-init/bootstrap.yaml.tftpl", {
-    hostname          = local.runner_name
+    hostname          = each.value.name
     operator_ssh_keys = var.ssh_public_keys
+    runner_slot       = each.value.slot
   })
 
   lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [image, user_data]
+    create_before_destroy = true
   }
 }

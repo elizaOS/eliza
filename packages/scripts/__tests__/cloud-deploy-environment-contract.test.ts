@@ -31,6 +31,11 @@ interface WorkflowJob {
         labels?: string[];
       };
   steps?: WorkflowStep[];
+  strategy?: {
+    matrix?: {
+      include?: Array<Record<string, string>>;
+    };
+  };
 }
 
 interface Workflow {
@@ -112,14 +117,8 @@ describe("canonical cloud deployment environment contract", () => {
 
     expect(slopHub.jobs?.cutover?.needs).toBe("validate-source");
     expect(slopHub.jobs?.cutover?.environment).toBe("production");
-    expect(slopHub.jobs?.["validate-source"]?.["runs-on"]).toEqual({
-      group: "prod-ops",
-      labels: ["self-hosted", "Linux", "X64", "prod-ops"],
-    });
-    expect(slopHub.jobs?.cutover?.["runs-on"]).toEqual({
-      group: "prod-ops",
-      labels: ["self-hosted", "Linux", "X64", "prod-ops"],
-    });
+    expect(slopHub.jobs?.["validate-source"]?.["runs-on"]).toBe("ubuntu-24.04");
+    expect(slopHub.jobs?.cutover?.["runs-on"]).toBe("ubuntu-24.04");
     expect(slopHub.jobs?.cutover?.env).toBeUndefined();
     expect(
       step(slopHub, "validate-source", "Require production main").run,
@@ -186,23 +185,26 @@ describe("canonical cloud deployment environment contract", () => {
     }
     expect(prodOps.jobs?.doctor?.needs).toBe("validate-source");
     expect(prodOps.jobs?.doctor?.environment).toBe("production");
-    expect(prodOps.jobs?.["validate-source"]?.["runs-on"]).toEqual({
-      group: "prod-ops",
-      labels: ["self-hosted", "Linux", "X64", "prod-ops"],
-    });
+    expect(prodOps.jobs?.["validate-source"]?.["runs-on"]).toBe("ubuntu-24.04");
     expect(prodOps.jobs?.doctor?.["runs-on"]).toEqual({
       group: "prod-ops",
-      labels: ["self-hosted", "Linux", "X64", "prod-ops"],
+      labels: ["self-hosted", "Linux", "X64", "$" + "{{ matrix.slot }}"],
     });
+    expect(prodOps.jobs?.doctor?.strategy?.matrix?.include).toEqual([
+      {
+        slot: "prod-ops-1",
+        runner_name_prefix: "eliza-prod-ops-1-",
+      },
+      {
+        slot: "prod-ops-2",
+        runner_name_prefix: "eliza-prod-ops-2-",
+      },
+    ]);
     expect(
       step(prodOps, "validate-source", "Require production main").run,
     ).toContain('"refs/heads/main"');
-    expect(infra.jobs?.["validate-source"]?.["runs-on"]).toContain(
-      "inputs.component != 'prod-ops'",
-    );
-    expect(infra.jobs?.terraform?.["runs-on"]).toBe(
-      infra.jobs?.["validate-source"]?.["runs-on"],
-    );
+    expect(infra.jobs?.["validate-source"]?.["runs-on"]).toBe("ubuntu-24.04");
+    expect(infra.jobs?.terraform?.["runs-on"]).toBe("ubuntu-24.04");
     const doctor = step(
       prodOps,
       "doctor",

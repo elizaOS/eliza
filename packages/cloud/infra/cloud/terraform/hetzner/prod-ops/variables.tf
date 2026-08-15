@@ -33,6 +33,17 @@ variable "hcloud_image" {
   default     = "ubuntu-24.04"
 }
 
+variable "runner_count" {
+  description = "Number of independent one-job runner slots reserved for protected operations."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.runner_count >= 2 && var.runner_count <= 4 && floor(var.runner_count) == var.runner_count
+    error_message = "runner_count must be an integer from 2 through 4"
+  }
+}
+
 variable "ssh_public_keys" {
   description = "Core-admin SSH public keys installed for the runner-admin account."
   type        = list(string)

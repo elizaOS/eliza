@@ -41,9 +41,7 @@ permissions:
 jobs:
   validate-source:
     name: Validate canonical source
-    runs-on:
-      group: prod-ops
-      labels: [self-hosted, Linux, X64, prod-ops]
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: Require production main
@@ -60,9 +58,7 @@ jobs:
   cutover:
     name: ${{ inputs.operation }} SlopHub production cutover
     needs: validate-source
-    runs-on:
-      group: prod-ops
-      labels: [self-hosted, Linux, X64, prod-ops]
+    runs-on: ubuntu-24.04
     environment: production
     timeout-minutes: 15
     steps:

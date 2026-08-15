@@ -1,7 +1,6 @@
 #cloud-config
-# This host prepares immutable runner bytes but deliberately receives no GitHub
-# credential. A core admin supplies one short-lived registration token over SSH
-# after Terraform apply, keeping tokens out of state and provider metadata.
+# The image contains only pinned runner bytes. A core admin supplies one
+# short-lived registration token after apply; each registration accepts one job.
 hostname: ${hostname}
 manage_etc_hosts: true
 package_update: true
@@ -27,8 +26,8 @@ users:
 %{ endfor ~}
   - name: actions-runner
     system: true
-    shell: /bin/bash
-    homedir: /opt/actions-runner
+    shell: /usr/sbin/nologin
+    homedir: /var/lib/eliza-prod-ops-runner/home
 
 ssh_pwauth: false
 disable_root: true
@@ -40,16 +39,81 @@ write_files:
     content: |
       role=github-actions-prod-ops
       runner_group=prod-ops
+      runner_slot=${runner_slot}
       public_pr_jobs=forbidden
-  - path: /usr/local/sbin/prod-ops-work-clean
+  - path: /usr/local/sbin/prod-ops-reset-state
+    owner: root:root
+    permissions: "0750"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      systemctl is-active --quiet eliza-prod-ops-runner.service && {
+        echo "runner service must be inactive before reset" >&2
+        exit 1
+      }
+      install_root=/opt/actions-runner
+      state_root=/var/lib/eliza-prod-ops-runner
+      rm -f -- "$install_root/.runner" "$install_root/.credentials" "$install_root/.credentials_rsaparams"
+      find "$state_root/config" "$state_root/diag" "$state_root/home" "$state_root/work" \
+        -mindepth 1 -delete
+      install -o root -g actions-runner -m 0440 /dev/null "$state_root/clean-start"
+  - path: /usr/local/sbin/prod-ops-after-job
+    owner: root:root
+    permissions: "0750"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      state_root=/var/lib/eliza-prod-ops-runner
+      find "$state_root/config" "$state_root/diag" "$state_root/home" "$state_root/work" \
+        -mindepth 1 -delete
+      install -o root -g actions-runner -m 0440 /dev/null "$state_root/clean-start"
+  - path: /usr/local/sbin/prod-ops-job-start
     owner: root:root
     permissions: "0755"
     content: |
       #!/usr/bin/env bash
       set -euo pipefail
-      work=/opt/actions-runner/_work
-      [ -d "$work" ] || exit 0
-      find "$work" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+      test -f /var/lib/eliza-prod-ops-runner/clean-start
+      test ! -w /opt/actions-runner/run.sh
+  - path: /etc/systemd/system/eliza-prod-ops-runner.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Ephemeral elizaOS production operations runner
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=actions-runner
+      Group=actions-runner
+      WorkingDirectory=/opt/actions-runner
+      Environment=HOME=/var/lib/eliza-prod-ops-runner/home
+      Environment=ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/sbin/prod-ops-job-start
+      ExecStart=/opt/actions-runner/runsvc.sh
+      ExecStopPost=+/usr/local/sbin/prod-ops-after-job
+      Restart=no
+      KillMode=control-group
+      UMask=0077
+      NoNewPrivileges=true
+      PrivateTmp=true
+      ProtectHome=tmpfs
+      ProtectSystem=strict
+      ReadOnlyPaths=/opt/actions-runner
+      ReadWritePaths=/var/lib/eliza-prod-ops-runner
+      ProtectControlGroups=true
+      ProtectKernelLogs=true
+      ProtectKernelModules=true
+      ProtectKernelTunables=true
+      ProtectProc=invisible
+      ProcSubset=pid
+      RestrictSUIDSGID=true
+      LockPersonality=true
+      CapabilityBoundingSet=
+
+      [Install]
+      WantedBy=multi-user.target
   - path: /usr/local/sbin/configure-prod-ops-runner
     owner: root:root
     permissions: "0750"
@@ -57,50 +121,54 @@ write_files:
       #!/usr/bin/env bash
       set -euo pipefail
       [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
-      [ ! -e /opt/actions-runner/.runner ] || { echo "runner is already configured" >&2; exit 1; }
+      systemctl is-active --quiet eliza-prod-ops-runner.service && {
+        echo "runner service is already active" >&2
+        exit 1
+      }
       IFS= read -r registration_token
       [ -n "$registration_token" ] || { echo "read one short-lived registration token on stdin" >&2; exit 1; }
-      cd /opt/actions-runner
-      runuser -u actions-runner -- ./config.sh \
+
+      install_root=/opt/actions-runner
+      state_root=/var/lib/eliza-prod-ops-runner
+      /usr/local/sbin/prod-ops-reset-state
+      chown -R actions-runner:actions-runner "$install_root"
+      runuser -u actions-runner -- "$install_root/config.sh" \
         --unattended \
+        --ephemeral \
+        --disableupdate \
         --url https://github.com/elizaOS \
         --token "$registration_token" \
         --name ${hostname} \
         --runnergroup prod-ops \
-        --labels prod-ops,hetzner-cloud \
-        --work _work
+        --labels ${runner_slot},hetzner-cloud \
+        --work "$state_root/work"
       registration_token=
-      ./svc.sh install actions-runner
-      unit=$(find /etc/systemd/system -maxdepth 1 -type f -name 'actions.runner.elizaOS.*.service' -printf '%f\n')
-      [ "$(printf '%s\n' "$unit" | sed '/^$/d' | wc -l)" -eq 1 ] || { echo "expected exactly one runner service" >&2; exit 1; }
-      install -d -m 0755 "/etc/systemd/system/$unit.d"
-      cat > "/etc/systemd/system/$unit.d/hardening.conf" <<'EOF'
-      [Service]
-      Environment=ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/sbin/prod-ops-work-clean
-      Environment=ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/sbin/prod-ops-work-clean
-      UMask=0077
-      NoNewPrivileges=true
-      PrivateTmp=true
-      ProtectHome=true
-      ProtectSystem=full
-      ReadWritePaths=/opt/actions-runner
-      ProtectControlGroups=true
-      ProtectKernelModules=true
-      ProtectKernelTunables=true
-      RestrictSUIDSGID=true
-      LockPersonality=true
-      CapabilityBoundingSet=
-      EOF
-      systemctl daemon-reload
-      ./svc.sh start
-      ./svc.sh status
+
+      for name in .runner .credentials .credentials_rsaparams; do
+        [ -f "$install_root/$name" ] || continue
+        mv "$install_root/$name" "$state_root/config/$name"
+        ln -s "$state_root/config/$name" "$install_root/$name"
+      done
+      rm -rf -- "$install_root/_diag"
+      ln -s "$state_root/diag" "$install_root/_diag"
+      chown -R root:actions-runner "$install_root" "$state_root/config"
+      chmod -R go-w "$install_root"
+      find "$state_root/config" -type f -exec chmod 0640 {} +
+      systemctl start eliza-prod-ops-runner.service
+      systemctl --no-pager --full status eliza-prod-ops-runner.service
 
 runcmd:
-  - install -d -o actions-runner -g actions-runner -m 0750 /opt/actions-runner
+  - install -d -o root -g actions-runner -m 0755 /opt/actions-runner
+  - install -d -o actions-runner -g actions-runner -m 0700 /var/lib/eliza-prod-ops-runner/home /var/lib/eliza-prod-ops-runner/work /var/lib/eliza-prod-ops-runner/diag
+  - install -d -o root -g actions-runner -m 0750 /var/lib/eliza-prod-ops-runner/config
   - curl --fail --silent --show-error --location --output /tmp/actions-runner.tar.gz https://github.com/actions/runner/releases/download/v2.336.0/actions-runner-linux-x64-2.336.0.tar.gz
   - echo '04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d  /tmp/actions-runner.tar.gz' | sha256sum --check --strict
   - tar --extract --gzip --file /tmp/actions-runner.tar.gz --directory /opt/actions-runner
-  - chown -R actions-runner:actions-runner /opt/actions-runner
+  - chown -R root:actions-runner /opt/actions-runner
+  - chmod -R go-w /opt/actions-runner
   - rm -f /tmp/actions-runner.tar.gz
-  - systemctl enable --now unattended-upgrades.service
+  - /usr/local/sbin/prod-ops-reset-state
+  - systemctl daemon-reload
+  - systemctl enable unattended-upgrades.service
+  - systemctl start unattended-upgrades.service
   - touch /var/lib/cloud/instance/prod-ops-ready

@@ -4,6 +4,7 @@ environment = "production"
 # Infrastructure workflow supplies HCLOUD_TOKEN for that project.
 hcloud_location    = "ash"
 hcloud_server_type = "cpx22"
+runner_count        = 2
 
 ssh_public_keys = [
   "ssh-ed25519 REPLACE_WITH_CORE_ADMIN_PUBLIC_KEY prod-ops",

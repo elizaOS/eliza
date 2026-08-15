@@ -55,9 +55,7 @@ permissions:
 jobs:
   validate-source:
     name: Validate canonical infrastructure source
-    # The dedicated host cannot provision or repair itself. Every other
-    # production operation uses the protected pool; staging remains hosted.
-    runs-on: ${{ inputs.environment == 'production' && inputs.component != 'prod-ops' && 'prod-ops' || 'ubuntu-24.04' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: Validate canonical source ref
@@ -80,7 +78,7 @@ jobs:
   terraform:
     name: ${{ inputs.operation }} ${{ inputs.component }} (${{ inputs.environment }})
     needs: validate-source
-    runs-on: ${{ inputs.environment == 'production' && inputs.component != 'prod-ops' && 'prod-ops' || 'ubuntu-24.04' }}
+    runs-on: ubuntu-24.04
     environment: ${{ inputs.environment }}
     timeout-minutes: 45
     env:

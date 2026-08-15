@@ -68,42 +68,53 @@ describe("Terraform redis-rest deployment", () => {
 
 describe("Protected production-operations runner", () => {
   const main = readFileSync(join(PROD_OPS_DIR, "main.tf"), "utf-8");
-  const variables = readFileSync(
-    join(PROD_OPS_DIR, "variables.tf"),
-    "utf-8",
-  );
+  const variables = readFileSync(join(PROD_OPS_DIR, "variables.tf"), "utf-8");
   const cloudInit = readFileSync(
     join(PROD_OPS_DIR, "cloud-init", "bootstrap.yaml.tftpl"),
     "utf-8",
   );
   const readme = readFileSync(join(PROD_OPS_DIR, "README.md"), "utf-8");
 
-  test("creates one protected host outside public CI and agent planes", () => {
-    expect(main).toContain('runner_name = "eliza-prod-ops-1"');
+  test("creates two replaceable slots outside public CI and agent planes", () => {
+    expect(main).toContain("for index in range(var.runner_count)");
+    expect(main).toContain('"prod-ops-$' + '{index + 1}"');
+    expect(main).toContain('"runner-slot" = each.value.slot');
     expect(main).toContain('"role"        = "github-actions-prod-ops"');
-    expect(main).toContain("delete_protection  = true");
-    expect(main).toContain("rebuild_protection = true");
-    expect(main).toContain("prevent_destroy = true");
+    expect(main).toContain("bootstrap_revision");
+    expect(main).toContain("create_before_destroy = true");
+    expect(main).not.toContain("prevent_destroy");
+    expect(main).not.toContain("ignore_changes");
     expect(main).toContain('port        = "22"');
     expect(main).not.toContain('"0.0.0.0/0"');
     expect(main).not.toContain('"::/0"');
     expect(variables).toContain('var.environment == "production"');
     expect(variables).toContain('cidr != "0.0.0.0/0"');
     expect(variables).toContain('cidr != "::/0"');
+    expect(variables).toContain("default     = 2");
+    expect(variables).toContain("var.runner_count >= 2");
   });
 
-  test("pins runner bytes and keeps registration credentials out of state", () => {
-    expect(cloudInit).toContain(
-      "actions-runner-linux-x64-2.336.0.tar.gz",
-    );
+  test("pins immutable one-job runner bytes and keeps credentials out of state", () => {
+    expect(cloudInit).toContain("actions-runner-linux-x64-2.336.0.tar.gz");
     expect(cloudInit).toContain(
       "04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d",
     );
     expect(cloudInit).toContain("IFS= read -r registration_token");
+    expect(cloudInit).toContain("--ephemeral");
+    expect(cloudInit).toContain("--disableupdate");
     expect(cloudInit).toContain("--runnergroup prod-ops");
-    expect(cloudInit).toContain("--labels prod-ops,hetzner-cloud");
+    expect(cloudInit).toContain("--labels $" + "{runner_slot},hetzner-cloud");
+    expect(cloudInit).toContain("ExecStart=/opt/actions-runner/runsvc.sh");
+    expect(cloudInit).toContain("Restart=no");
+    expect(cloudInit).toContain("KillMode=control-group");
     expect(cloudInit).toContain("NoNewPrivileges=true");
-    expect(cloudInit).toContain("ACTIONS_RUNNER_HOOK_JOB_COMPLETED");
+    expect(cloudInit).toContain("ReadOnlyPaths=/opt/actions-runner");
+    expect(cloudInit).toContain(
+      "ReadWritePaths=/var/lib/eliza-prod-ops-runner",
+    );
+    expect(cloudInit).not.toContain("ACTIONS_RUNNER_HOOK_JOB_COMPLETED");
+    expect(cloudInit).toContain("ExecStopPost=+");
+    expect(cloudInit).toContain("prod-ops-reset-state");
     expect(main).not.toMatch(/github.*token|registration.*token/i);
     expect(variables).not.toMatch(/github.*token|registration.*token/i);
   });
@@ -112,10 +123,12 @@ describe("Protected production-operations runner", () => {
     expect(readme).toContain("refs/heads/main");
     expect(readme).toContain("restricted_to_workflows=true");
     expect(readme).toContain("prod-ops-runner.yml@refs/heads/main");
-    expect(readme).toContain("slophub-cutover.yml@refs/heads/main");
-    expect(readme).toContain("infra.yml@refs/heads/main");
+    expect(readme).not.toContain("slophub-cutover.yml@refs/heads/main");
+    expect(readme).not.toContain("infra.yml@refs/heads/main");
     expect(readme).toContain("production");
-    expect(readme).toContain("Review the server type and the recurring price");
+    expect(readme).toContain("two live doctor passes");
+    expect(readme).toContain("switch back to");
+    expect(readme).toContain("`ubuntu-24.04`");
   });
 });
 
@@ -241,9 +254,12 @@ describe("Cloudflare Pages domain durability", () => {
         TF_VAR_canonical_edge_wildcard_origins: '["192.0.2.1"]',
         TF_VAR_canonical_service_origins: '{"api.example":["192.0.2.2"]}',
         TF_VAR_railway_tunnel_dns_records: "{}",
-        TF_VAR_canonical_edge_certificate_packs: '{"canonical":{"hosts":["example"]}}',
-        TF_VAR_legacy_redirect_wildcard_origins: '{"*.legacy.example":["192.0.2.3"]}',
-        TF_VAR_legacy_redirect_certificate_packs: '{"legacy":{"hosts":["legacy.example"]}}',
+        TF_VAR_canonical_edge_certificate_packs:
+          '{"canonical":{"hosts":["example"]}}',
+        TF_VAR_legacy_redirect_wildcard_origins:
+          '{"*.legacy.example":["192.0.2.3"]}',
+        TF_VAR_legacy_redirect_certificate_packs:
+          '{"legacy":{"hosts":["legacy.example"]}}',
         ...overrides,
       },
       encoding: "utf8",
@@ -422,9 +438,7 @@ describe("Cloudflare Pages domain durability", () => {
     expect(workflow).toContain(
       "for (const [name, source, expected, allowEmpty = false] of required)",
     );
-    expect(workflow).toContain(
-      "allowEmpty || Object.keys(value).length > 0",
-    );
+    expect(workflow).toContain("allowEmpty || Object.keys(value).length > 0");
     expect(workflow).toContain("terraform output -json railway_tunnel_dns");
     expect(workflow).toContain("record.proxied !== false");
     expect(workflow).toContain("record.roles?.includes(role)");

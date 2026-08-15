@@ -4,6 +4,8 @@
 self-hosted-runner:
   labels:
     - prod-ops
+    - prod-ops-1
+    - prod-ops-2
 
 paths:
   .github/workflows/*.yml:
