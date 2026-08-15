@@ -15,6 +15,7 @@ let turnError: Error | null;
 let streamTurnError: Error | null;
 let turnCalls = 0;
 let lastTurnInput: Record<string, unknown> | undefined;
+let lastStreamTurnInput: Record<string, unknown> | undefined;
 let streamTurnCalls = 0;
 let admissionError: Error | null;
 let billError: Error | null;
@@ -177,12 +178,46 @@ mock.module("./run-shared-agent-turn", () => ({
       : turn.history;
     return { ...turn, history };
   },
-  runSharedAgentTurnStream: async (input: { abortSignal?: AbortSignal }) => {
+  runSharedAgentTurnStream: async (input: {
+    abortSignal?: AbortSignal;
+    [key: string]: unknown;
+  }) => {
     streamTurnCalls++;
+    lastStreamTurnInput = input;
     if (streamTurnError) throw streamTurnError;
     streamAbortSignal = input.abortSignal;
     return streamTurn;
   },
+}));
+
+const todoStore = { boundary: "canonical-shared-todo-store" };
+const expectedTodoScope = {
+  agentId: "10000000-0000-5000-8000-000000000001",
+  entityId: "10000000-0000-5000-8000-000000000002",
+};
+const expectedTodoExecution = {
+  scope: expectedTodoScope,
+  store: todoStore,
+};
+const expectedTodoActionResult = {
+  success: true,
+  text: "Created: [ ] Buy milk",
+  verifiedUserFacing: true,
+  effectReceipts: [
+    {
+      receiptId: "todos:create:todo-1:receipt-1",
+      operation: "todos.create",
+      outcome: "applied",
+    },
+  ],
+};
+const createSharedTodoStore = mock(() => todoStore);
+const sharedTodoStorageScope = mock(
+  (_input: { sourceAgentId: string; ownerId: string }) => expectedTodoScope,
+);
+mock.module("./shared-todos", () => ({
+  createSharedTodoStore,
+  sharedTodoStorageScope,
 }));
 
 class TestInferenceAdmissionDispatchMarkError extends Error {}
@@ -333,6 +368,7 @@ beforeEach(() => {
   streamTurnError = null;
   turnCalls = 0;
   lastTurnInput = undefined;
+  lastStreamTurnInput = undefined;
   streamTurnCalls = 0;
   characterReads = 0;
   loggerWarn.mockClear();
@@ -344,6 +380,8 @@ beforeEach(() => {
   billingGate = null;
   releaseBilling = () => {};
   streamAbortSignal = undefined;
+  createSharedTodoStore.mockClear();
+  sharedTodoStorageScope.mockClear();
   turn = {
     degraded: false,
     reply: "hello back",
@@ -469,8 +507,9 @@ describe("SharedRuntimeChatService", () => {
   test("passes the explicit AgentRuntime transition gate without changing identity", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
+    turn.actionResults = [expectedTodoActionResult];
 
-    await service.bridge(agent, rpc, {
+    const response = await service.bridge(agent, rpc, {
       ...h,
       funding: "platform",
       executionEngine: "eliza-runtime",
@@ -479,6 +518,45 @@ describe("SharedRuntimeChatService", () => {
     expect(lastTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      todos: expectedTodoExecution,
+    });
+    expect(sharedTodoStorageScope).toHaveBeenCalledWith({
+      sourceAgentId: agent.id,
+      ownerId: agent.user_id,
+    });
+    expect(response.result?.actionResults).toEqual([expectedTodoActionResult]);
+  });
+
+  test("keeps Todo-capable streaming on the same genuine AgentRuntime path", async () => {
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "Created: [ ] Buy milk" };
+        yield {
+          type: "finish",
+          text: "Created: [ ] Buy milk",
+          actionResults: [expectedTodoActionResult],
+        };
+      })(),
+    };
+    const response = await new SharedRuntimeChatService().stream(agent, rpc, {
+      ...harness(),
+      funding: "platform",
+      executionEngine: "eliza-runtime",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain(
+      JSON.stringify({ actionResults: [expectedTodoActionResult] }).slice(1, -1),
+    );
+    expect(lastStreamTurnInput?.execution).toEqual({
+      engine: "eliza-runtime",
+      agentKey: agent.id,
+      todos: expectedTodoExecution,
+    });
+    expect(sharedTodoStorageScope).toHaveBeenCalledWith({
+      sourceAgentId: agent.id,
+      ownerId: agent.user_id,
     });
   });
 
@@ -504,6 +582,7 @@ describe("SharedRuntimeChatService", () => {
     expect(lastTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      todos: expectedTodoExecution,
       reminders: {
         runner: expect.any(Object),
         delivery: {
@@ -522,6 +601,7 @@ describe("SharedRuntimeChatService", () => {
     expect(lastTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      todos: expectedTodoExecution,
     });
   });
 

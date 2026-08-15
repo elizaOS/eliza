@@ -20,8 +20,9 @@
  *  - route only shared-eligible agents here (see `agent-tier.ts`)
  */
 
-import { replaceNameTokens } from "@elizaos/core/edge";
+import { type ActionResult, replaceNameTokens, type UUID } from "@elizaos/core/edge";
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
+import type { TodoStore } from "@elizaos/plugin-todos/edge";
 import { generateText, streamText } from "ai";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import {
@@ -81,6 +82,10 @@ export interface RunSharedAgentTurnInput {
   execution?: {
     engine: "eliza-runtime";
     agentKey: string;
+    todos?: {
+      scope: { agentId: UUID; entityId: UUID };
+      store: TodoStore;
+    };
     reminders?: {
       delivery: SharedReminderDelivery;
       runner: ScheduledTaskRunner;
@@ -101,6 +106,8 @@ export interface RunSharedAgentTurnResult {
    */
   degraded: boolean;
   usage?: SharedAgentTurnUsage;
+  /** Genuine plugin results, including applied effect receipts, for clients and replay. */
+  actionResults?: ActionResult[];
   /**
    * Set when the turn was an in-app navigation command handled deterministically
    * (no LLM call). The caller attaches a VIEWS navigation handoff to the turn's
@@ -113,13 +120,21 @@ export interface RunSharedAgentTurnResult {
 
 export type SharedAgentTurnStreamPart =
   | { type: "text-delta"; text: string }
-  | { type: "finish"; text: string; usage?: SharedAgentTurnUsage };
+  | {
+      type: "finish";
+      text: string;
+      usage?: SharedAgentTurnUsage;
+      /** Applied plugin effects that must land with the terminal turn. */
+      actionResults?: ActionResult[];
+    };
 
 export interface RunSharedAgentTurnStreamResult {
   model: string;
   degraded: boolean;
   reply?: string;
   history?: SharedTurnMessage[];
+  /** Genuine plugin results preserved on the terminal SSE frame and replay. */
+  actionResults?: ActionResult[];
   parts?: AsyncIterable<SharedAgentTurnStreamPart>;
   /** Cancels the AI SDK response reader in addition to aborting provider I/O. */
   cancel?: (reason?: unknown) => Promise<void>;
@@ -214,7 +229,7 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  */
 function buildSystemPrompt(
   character: SharedAgentCharacter,
-  capabilities: { reminders: boolean },
+  capabilities: { reminders: boolean; todos: boolean },
 ): string {
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
@@ -234,8 +249,11 @@ function buildSystemPrompt(
       (capabilities.reminders
         ? "- REMINDERS can create, list, snooze, complete, and dismiss reminders delivered to this private chat.\n"
         : "- Reminders are unavailable on this transport.\n") +
+      (capabilities.todos
+        ? "- TODO can create, list, update, complete, cancel, and delete this account's persistent checklist.\n"
+        : "- Persistent todos are unavailable on this chat path.\n") +
       "- You have no connected accounts, calendar, calling, arbitrary messaging, purchasing, notes store, shell, filesystem, browser control, or code execution in this runtime.\n" +
-      "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything outside this conversation.\n" +
+      "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything unless a registered action returned a successful result for that exact effect.\n" +
       "- When an ambiguous follow-up asks you to execute a prior external action, state that the action needs Dedicated and offer the useful planning or drafting help you can provide here.",
   );
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
@@ -276,8 +294,11 @@ export async function runSharedAgentTurn(
   const message = input.message.trim();
 
   const remindersEnabled = Boolean(input.execution?.reminders);
+  const todosEnabled = Boolean(input.execution?.todos);
+  const requestedCapability = resolveSharedCapabilityWall(message);
   const capabilityWall = resolveSharedCapabilityWall(message, {
     reminders: remindersEnabled,
+    todos: todosEnabled,
   });
   if (capabilityWall) {
     return {
@@ -299,7 +320,13 @@ export async function runSharedAgentTurn(
   // shared agent has no VIEWS action, so "go to settings" would otherwise be a
   // hallucinated prose refusal; resolve it here and hand the client a VIEWS
   // navigation so the view actually opens (#F5-ACTIONS).
-  const navIntent = resolveSharedNavIntent(message);
+  // "Add this to my todo list" overlaps the To-dos view matcher. Once the
+  // durable action is registered, persistence must win over an app-navigation
+  // handoff or the turn would claim success without writing anything.
+  const navIntent =
+    todosEnabled && requestedCapability?.capability === "todos"
+      ? null
+      : resolveSharedNavIntent(message);
   if (navIntent) {
     return {
       reply: navIntent.reply,
@@ -336,6 +363,7 @@ export async function runSharedAgentTurn(
         ...input.character,
         system: buildSystemPrompt(input.character, {
           reminders: remindersEnabled,
+          todos: todosEnabled,
         }),
       },
       agentKey: input.execution.agentKey,
@@ -347,6 +375,7 @@ export async function runSharedAgentTurn(
     const model = getInteractiveCerebrasLanguageModel(modelId);
     const system = buildSystemPrompt(input.character, {
       reminders: remindersEnabled,
+      todos: todosEnabled,
     });
     const messages = [
       ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
@@ -396,10 +425,14 @@ export async function runSharedAgentTurnStream(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
-  const remindersEnabled = false;
+
+  const remindersEnabled = Boolean(input.execution?.reminders);
+  const todosEnabled = Boolean(input.execution?.todos);
+  const requestedCapability = resolveSharedCapabilityWall(message);
 
   const capabilityWall = resolveSharedCapabilityWall(message, {
     reminders: remindersEnabled,
+    todos: todosEnabled,
   });
   if (capabilityWall) {
     const reply = capabilityWall.reply;
@@ -421,7 +454,10 @@ export async function runSharedAgentTurnStream(
   // one-shot stream that yields the confirmation text so the SSE shape is
   // identical to a normal turn; the caller reads `navIntent` to attach a VIEWS
   // navigation handoff to the `done` frame (#F5-ACTIONS).
-  const navIntent = resolveSharedNavIntent(message);
+  const navIntent =
+    todosEnabled && requestedCapability?.capability === "todos"
+      ? null
+      : resolveSharedNavIntent(message);
   if (navIntent) {
     const reply = navIntent.reply;
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
@@ -457,7 +493,8 @@ export async function runSharedAgentTurnStream(
       character: {
         ...input.character,
         system: buildSystemPrompt(input.character, {
-          reminders: false,
+          reminders: remindersEnabled,
+          todos: todosEnabled,
         }),
       },
       agentKey: input.execution.agentKey,
@@ -469,6 +506,7 @@ export async function runSharedAgentTurnStream(
     const model = getInteractiveCerebrasLanguageModel(modelId);
     const system = buildSystemPrompt(input.character, {
       reminders: remindersEnabled,
+      todos: todosEnabled,
     });
     const messages = [
       ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),

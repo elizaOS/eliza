@@ -45,6 +45,7 @@ import {
 } from "../inference-provider-outcome";
 import { admitOrganizationInference } from "../organization-inference-admission";
 import {
+  type RunSharedAgentTurnInput,
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
   runSharedAgentTurn,
@@ -60,6 +61,7 @@ import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 import { createSharedScheduledTaskRunner } from "./shared-scheduling";
+import { createSharedTodoStore, sharedTodoStorageScope } from "./shared-todos";
 
 export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
@@ -82,8 +84,9 @@ export interface SharedRuntimeHistoryStore {
 }
 
 function turnActionResults(
-  turn: Pick<RunSharedAgentTurnResult, "navIntent" | "capabilityWall">,
+  turn: Pick<RunSharedAgentTurnResult, "actionResults" | "navIntent" | "capabilityWall">,
 ): unknown[] | undefined {
+  if (turn.actionResults?.length) return turn.actionResults;
   if (turn.capabilityWall) return [capabilityWallActionResult(turn.capabilityWall)];
   if (turn.navIntent) return [navIntentActionResult(turn.navIntent)];
   return undefined;
@@ -175,6 +178,39 @@ function trustedReminderDelivery(params: Record<string, unknown>) {
     platform: "telegram" as const,
     project: delivery.project,
     chatId: delivery.chatId,
+  };
+}
+
+function sharedElizaRuntimeExecution(
+  agent: SharedRuntimeAgent,
+  params: Record<string, unknown>,
+  funding: SharedRuntimeChatOptions["funding"],
+): NonNullable<RunSharedAgentTurnInput["execution"]> {
+  const reminderDelivery = funding === "platform" ? trustedReminderDelivery(params) : undefined;
+  return {
+    engine: "eliza-runtime",
+    agentKey: agent.id,
+    todos: {
+      scope: sharedTodoStorageScope({
+        sourceAgentId: agent.id,
+        ownerId: agent.user_id,
+      }),
+      store: createSharedTodoStore(),
+    },
+    ...(reminderDelivery
+      ? {
+          reminders: {
+            delivery: reminderDelivery,
+            runner: createSharedScheduledTaskRunner(agent.id, {
+              dispatch: async () => {
+                throw new Error(
+                  "Interactive Shared turns cannot fire reminders; Cloudflare cron owns dispatch",
+                );
+              },
+            }),
+          },
+        }
+      : {}),
   };
 }
 
@@ -796,8 +832,6 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, rpc);
-    const reminderDelivery =
-      options.funding === "platform" ? trustedReminderDelivery(params) : undefined;
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
@@ -809,24 +843,7 @@ export class SharedRuntimeChatService {
         onProviderDispatch: billing?.markProviderDispatched,
         ...(options.executionEngine === "eliza-runtime"
           ? {
-              execution: {
-                engine: "eliza-runtime" as const,
-                agentKey: agent.id,
-                ...(reminderDelivery
-                  ? {
-                      reminders: {
-                        delivery: reminderDelivery,
-                        runner: createSharedScheduledTaskRunner(agent.id, {
-                          dispatch: async () => {
-                            throw new Error(
-                              "Interactive Shared turns cannot fire reminders; Cloudflare cron owns dispatch",
-                            );
-                          },
-                        }),
-                      },
-                    }
-                  : {}),
-              },
+              execution: sharedElizaRuntimeExecution(agent, params, options.funding),
             }
           : {}),
       });
@@ -995,10 +1012,7 @@ export class SharedRuntimeChatService {
         onProviderDispatch: billing?.markProviderDispatched,
         ...(options.executionEngine === "eliza-runtime"
           ? {
-              execution: {
-                engine: "eliza-runtime" as const,
-                agentKey: agent.id,
-              },
+              execution: sharedElizaRuntimeExecution(agent, params, options.funding),
             }
           : {}),
       });
@@ -1147,6 +1161,9 @@ export class SharedRuntimeChatService {
               );
               continue;
             }
+            const actionResults = part.actionResults?.length
+              ? part.actionResults
+              : turnActionResults(turn);
             await finalizeMessages(finalReply, false, async () => {
               // Durable claim completion before the done frame: a lost/dropped
               // terminal frame replays this result on retry instead of
@@ -1162,7 +1179,7 @@ export class SharedRuntimeChatService {
                   degraded: false,
                   runtime: "shared",
                   transport: "shared-runtime",
-                  ...(turnActionResults(turn) ? { actionResults: turnActionResults(turn) } : {}),
+                  ...(actionResults ? { actionResults } : {}),
                 });
               }
               if (isDeterministicFreeTurn(turn)) {
@@ -1175,7 +1192,6 @@ export class SharedRuntimeChatService {
                 );
               }
             });
-            const actionResults = turnActionResults(turn);
             const done = actionResults
               ? {
                   messageId: messageIds.assistant,

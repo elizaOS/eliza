@@ -6,6 +6,10 @@ import { resolveSharedCapabilityWall } from "./shared-capability-wall";
 describe("Shared capability wall", () => {
   test.each([
     ["remind me tomorrow at 9", "reminders"],
+    ["add milk to my todo list", "todos"],
+    ["add milk to my tasks", "todos"],
+    ["show my checklist", "todos"],
+    ["complete the laundry todo", "todos"],
     ["show my calendar events", "calendar"],
     ["book me dinner for four", "bookings"],
     ["book a flight to san francisco", "bookings"],
@@ -63,4 +67,13 @@ describe("Shared capability wall", () => {
       expect(resolveSharedCapabilityWall(wrappedTurn)).toBeNull();
     },
   );
+
+  test("allows todos only when the genuine runtime has durable storage", () => {
+    expect(
+      resolveSharedCapabilityWall("add milk to my todo list", {
+        todos: true,
+      }),
+    ).toBeNull();
+    expect(resolveSharedCapabilityWall("add milk to my todo list")?.capability).toBe("todos");
+  });
 });
