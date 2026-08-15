@@ -18,11 +18,20 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
+export function parseContainerListLimit(value: string | undefined): number {
+  const normalized = value?.trim();
+  if (!normalized || !/^\d+$/.test(normalized)) return 500;
+
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return 500;
+  return Math.min(parsed, 2000);
+}
+
 app.get("/", async (c) => {
   try {
     await requireAdmin(c);
 
-    const limit = Math.min(parseInt(c.req.query("limit") || "500", 10), 2000);
+    const limit = parseContainerListLimit(c.req.query("limit"));
 
     const rows = await containersRepository.listForAdminInfrastructure(limit);
 
