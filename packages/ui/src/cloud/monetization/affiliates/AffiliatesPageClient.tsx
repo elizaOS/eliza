@@ -157,7 +157,7 @@ export function AffiliatesPageClient() {
     if (ok) {
       markAffiliateCopied();
       toast.success(
-        t("cloud.affiliates.linkCopied", {
+        t("cloud.affiliates.affiliateLinkCopied", {
           defaultValue: "Affiliate link copied",
         }),
       );
@@ -231,7 +231,7 @@ export function AffiliatesPageClient() {
             defaultValue: "Invite link copied",
           })
         : copied
-          ? t("cloud.affiliates.linkCopied", {
+          ? t("cloud.affiliates.affiliateLinkCopied", {
               defaultValue: "Affiliate link copied",
             })
           : "";
