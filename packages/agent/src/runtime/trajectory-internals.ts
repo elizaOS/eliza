@@ -1607,6 +1607,25 @@ function snapshotLlmCaptureParams(
 }
 
 /**
+ * Reserve a provider capture's completeness fields before its potentially
+ * dominant data payload consumes the shared snapshot budget.
+ */
+function snapshotProviderCaptureParams(
+  params: Record<string, unknown>,
+  stepId: string,
+): Record<string, unknown> {
+  return snapshotCaptureParams(
+    {
+      providerName: params.providerName,
+      purpose: params.purpose,
+      data: params.data,
+      ...params,
+    },
+    stepId,
+  );
+}
+
+/**
  * A tool-call-only completion (`finishReason=tool-calls` — a planner turn that
  * emits only a tool call, or a Stage-1 truncated at its completion-token cap)
  * produces no assistant text, so producers hand this recorder
@@ -1863,7 +1882,7 @@ export function normalizeProviderAccessPayload(
       stepId,
     };
     validateProviderCapture(params, stepId);
-    const snapshot = snapshotCaptureParams(params, stepId);
+    const snapshot = snapshotProviderCaptureParams(params, stepId);
     validateProviderCapture(snapshot, stepId);
     return {
       stepId,
@@ -1888,7 +1907,7 @@ export function normalizeProviderAccessPayload(
   const normalizedParams =
     params.stepId === stepId ? params : { ...params, stepId };
   validateProviderCapture(normalizedParams, stepId);
-  const snapshot = snapshotCaptureParams(normalizedParams, stepId);
+  const snapshot = snapshotProviderCaptureParams(normalizedParams, stepId);
   validateProviderCapture(snapshot, stepId);
   return {
     stepId,
@@ -3554,6 +3573,44 @@ function normalizeStepForPersistence(
     }
     return bounded;
   };
+  const normalizeProviderAccess = (
+    access: PersistedProviderAccess,
+    index: number,
+  ): PersistedProviderAccess => {
+    const {
+      providerId,
+      providerName,
+      timestamp,
+      purpose,
+      data,
+      ...optionalFields
+    } = access;
+    const bounded = sanitizeTrajectoryJsonObject({
+      providerId,
+      providerName,
+      timestamp,
+      purpose,
+      data,
+      ...optionalFields,
+    });
+    if (!bounded) {
+      throw new ElizaError("Trajectory step record could not be normalized", {
+        code: "TRAJECTORY_STEP_INVALID",
+        context: {
+          trajectoryId,
+          stepId: step.stepId,
+          field: "providerAccesses",
+          index,
+        },
+      });
+    }
+    return parsePersistedProviderAccess(
+      bounded,
+      trajectoryId,
+      step.stepId,
+      index,
+    );
+  };
 
   return {
     ...(boundedScalars as unknown as PersistedStep),
@@ -3564,14 +3621,7 @@ function normalizeStepForPersistence(
       (call, index) =>
         normalizeRecord(call, "llmCalls", index) as unknown as PersistedLlmCall,
     ),
-    providerAccesses: providerAccesses.map(
-      (access, index) =>
-        normalizeRecord(
-          access,
-          "providerAccesses",
-          index,
-        ) as unknown as PersistedProviderAccess,
-    ),
+    providerAccesses: providerAccesses.map(normalizeProviderAccess),
     ...(childSteps !== undefined ? { childSteps: [...childSteps] } : {}),
     ...(usedSkills !== undefined ? { usedSkills: [...usedSkills] } : {}),
     ...(skillInvocations !== undefined
