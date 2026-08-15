@@ -95,6 +95,29 @@ describe("truncateToCompleteSentence", () => {
 	it("falls back to a word boundary with ellipsis when no period fits", () => {
 		const out = truncateToCompleteSentence("alpha beta gamma delta", 12);
 		expect(out.endsWith("...")).toBe(true);
-		expect(out.length).toBeLessThanOrEqual(15);
+		expect(out.length).toBeLessThanOrEqual(12);
+	});
+
+	it("never exceeds maxLength on the word-boundary path, ellipsis included", () => {
+		const out = truncateToCompleteSentence("alpha beta gamma delta", 12);
+		expect(out.length).toBeLessThanOrEqual(12);
+	});
+
+	it("keeps a tweet-sized truncation within the 280 character cap", () => {
+		const text = "word ".repeat(60).trim();
+		expect(text.length).toBeGreaterThan(280);
+		const out = truncateToCompleteSentence(text, 280);
+		expect(out.endsWith("...")).toBe(true);
+		expect(out.length).toBeLessThanOrEqual(280);
+	});
+
+	it("still ends at a period when one fits, without an ellipsis", () => {
+		const out = truncateToCompleteSentence("One. Two. Three is longer.", 10);
+		expect(out).toBe("One. Two.");
+		expect(out.length).toBeLessThanOrEqual(10);
+	});
+
+	it("returns text unchanged when it already fits", () => {
+		expect(truncateToCompleteSentence("short", 280)).toBe("short");
 	});
 });
