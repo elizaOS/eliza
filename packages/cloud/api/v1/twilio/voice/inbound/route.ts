@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { dbRead, dbWrite } from "@/db/helpers";
@@ -18,6 +18,7 @@ import { recordVoiceSessionJti } from "@/lib/voice-session/jwt";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { scheduleTwilioVoiceScopePrewarm } from "../lib/prewarm-voice-scope";
 import { resolveTwilioVoiceTarget } from "../lib/resolve-voice-target";
+import { resolveTwilioCallParticipants } from "../lib/twilio-call-direction";
 import { mintTwilioStreamToken } from "../lib/twilio-stream-token";
 import {
   buildRealtimeVoiceTwiML,
@@ -33,6 +34,7 @@ const TwilioVoicePayloadSchema = z
     From: z.string().min(1),
     To: z.string().min(1),
     CallStatus: z.string().min(1),
+    Direction: z.string().optional(),
   })
   .passthrough();
 
@@ -68,6 +70,11 @@ app.post("/", async (c) => {
   const event = parsed.data;
   const normalizedFrom = normalizePhoneNumber(event.From);
   const normalizedTo = normalizePhoneNumber(event.To);
+  const { publicLineNumber, callerNumber } = resolveTwilioCallParticipants({
+    direction: event.Direction,
+    from: normalizedFrom,
+    to: normalizedTo,
+  });
   const telephonyEnv = c.env as unknown as {
     TWILIO_ACCOUNT_SID?: string;
     TWILIO_AUTH_TOKEN?: string;
@@ -107,7 +114,7 @@ app.post("/", async (c) => {
     return new Response("Invalid signature", { status: 403 });
   }
 
-  const phoneNumber = await resolveTwilioVoiceTarget(c.env, normalizedTo);
+  const phoneNumber = await resolveTwilioVoiceTarget(c.env, publicLineNumber);
   if (!phoneNumber) {
     return new Response(buildTerminalVoiceTwiML(NOT_CONFIGURED_PROMPT), {
       headers: { "Content-Type": "text/xml" },
@@ -141,8 +148,16 @@ app.post("/", async (c) => {
     .from(twilioInboundCalls)
     .where(
       and(
-        eq(twilioInboundCalls.from_number, normalizedFrom),
-        eq(twilioInboundCalls.to_number, normalizedTo),
+        or(
+          and(
+            eq(twilioInboundCalls.from_number, callerNumber),
+            eq(twilioInboundCalls.to_number, publicLineNumber),
+          ),
+          and(
+            eq(twilioInboundCalls.from_number, publicLineNumber),
+            eq(twilioInboundCalls.to_number, callerNumber),
+          ),
+        ),
         eq(twilioInboundCalls.agent_id, phoneNumber.agentId),
       ),
     )
@@ -187,7 +202,7 @@ app.post("/", async (c) => {
       userId: phoneNumber.userId,
       agentId: phoneNumber.agentId,
       conversationId,
-      calledNumber: normalizedTo,
+      calledNumber: publicLineNumber,
       returningCaller: Boolean(priorCall),
     },
     authToken,

@@ -58,6 +58,10 @@ function resolveCharacterVariant(
       post: [...definition.style.post],
     },
     topics: [...definition.topics],
+    // Copied (not spread into a default {}) so presets without failure
+    // templates keep the key absent and the runtime's `|| <builtin>` fallback
+    // stays reachable.
+    ...(definition.templates ? { templates: { ...definition.templates } } : {}),
     postExamples: [...variant.postExamples],
     messageExamples: [...definition.messageExamples],
   };

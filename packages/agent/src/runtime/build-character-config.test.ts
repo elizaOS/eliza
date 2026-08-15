@@ -89,6 +89,30 @@ describe("Matrix connector secret/settings boundary", () => {
   });
 });
 
+describe("last-resort character system prompt", () => {
+  // An agent whose name matches no bundled preset and whose entry supplies no
+  // `system` falls through to defaultCharacterSystemTemplate. That template is a
+  // persona for ordinary conversation, so a structured-output directive in it
+  // makes a self-hoster's agent answer every message with a JSON object.
+  it("carries no output-format directive", () => {
+    const character = buildCharacterFromConfig({
+      agents: { list: [{ name: "Zzyzx Quorra" }] },
+    } as ElizaConfig);
+
+    const system = character.system ?? "";
+    expect(system.length).toBeGreaterThan(0);
+    for (const directive of [
+      "JSON only",
+      "Return one JSON object",
+      "No prose",
+      "fences",
+      "markdown",
+    ]) {
+      expect(system).not.toContain(directive);
+    }
+  });
+});
+
 describe("agent entry character passthrough", () => {
   it("keeps runtime capability hints idempotent across config rebuilds", () => {
     const workflowHint =

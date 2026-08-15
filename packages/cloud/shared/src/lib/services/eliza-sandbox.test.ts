@@ -732,6 +732,70 @@ describe("buildAgentSandboxInsertValues", () => {
       environment_vars: { ELIZA_API_TOKEN: "encrypted-token" },
     });
   });
+
+  test("seeds the canonical cloud character when a managed create brings no persona", async () => {
+    const { buildAgentSandboxInsertValues } = await import("./eliza-sandbox.ts?actual");
+    const { buildDefaultAgentCharacterConfig } = await import("./default-agent-character");
+    const seed = buildDefaultAgentCharacterConfig();
+
+    for (const executionTier of ["shared", "dedicated-always"] as const) {
+      const config = buildAgentSandboxInsertValues({
+        organizationId: "22222222-2222-4222-8222-222222222222",
+        userId: "33333333-3333-4333-8333-333333333333",
+        agentName: "bnancy",
+        executionTier,
+      }).agent_config as Record<string, unknown>;
+
+      expect(config.system).toBe(seed.system);
+      expect(config.bio).toEqual(seed.bio);
+      expect(config.style).toEqual(seed.style);
+      expect(config.messageExamples).toEqual(seed.messageExamples);
+      // The agent's own name stays in the `agent_name` column so a later rename
+      // still reaches every reader; the seed must not pin it into the config.
+      expect(config.name).toBeUndefined();
+      expect(config.system).not.toBe("You are bnancy, a helpful assistant.");
+    }
+  });
+
+  test("leaves a caller-supplied or character-linked create unseeded", async () => {
+    const { agentConfigForProvision, buildAgentSandboxInsertValues } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const base = {
+      organizationId: "22222222-2222-4222-8222-222222222222",
+      userId: "33333333-3333-4333-8333-333333333333",
+      agentName: "bnancy",
+    };
+
+    expect(
+      buildAgentSandboxInsertValues({
+        ...base,
+        agentConfig: { system: "You are bnancy, the caller's own persona." },
+      }).agent_config,
+    ).toEqual({ system: "You are bnancy, the caller's own persona." });
+
+    expect(
+      buildAgentSandboxInsertValues({
+        ...base,
+        agentConfig: { character: { system: "nested caller persona" } },
+      }).agent_config,
+    ).toEqual({ character: { system: "nested caller persona" } });
+
+    expect(
+      buildAgentSandboxInsertValues({
+        ...base,
+        characterId: "44444444-4444-4444-8444-444444444444",
+      }).agent_config,
+    ).toEqual({ __agentCharacterOwnership: "reuse-existing" });
+
+    const custom = buildAgentSandboxInsertValues({
+      ...base,
+      dockerImage: "ghcr.io/dexploarer/bnancy:latest",
+      executionTier: "custom",
+    });
+    expect(custom.agent_config).toEqual({});
+    expect(agentConfigForProvision(custom)).toBeUndefined();
+  });
 });
 
 describe("ElizaSandboxService state restore auth", () => {
@@ -5128,6 +5192,30 @@ describe("buildRuntimeBootstrapAgent persona seed", () => {
     expect(agent.system).toBe("You are shared-nancy.");
     expect(agent.bio).toEqual(["a real bio"]);
     expect(agent.style).toEqual({ all: ["terse"] });
+  });
+
+  test("boots a freshly created agent on the seeded default character", async () => {
+    const { buildAgentSandboxInsertValues } = await import("./eliza-sandbox.ts?actual");
+    const { buildDefaultAgentCharacterConfig } = await import("./default-agent-character");
+    const seed = buildDefaultAgentCharacterConfig();
+
+    const agent = await buildBootstrap({
+      ...baseRec,
+      agent_config: buildAgentSandboxInsertValues({
+        organizationId: "22222222-2222-4222-8222-222222222222",
+        userId: "33333333-3333-4333-8333-333333333333",
+        agentName: "bnancy",
+        executionTier: "dedicated-always",
+      }).agent_config as Record<string, unknown>,
+    });
+
+    // The stub fallback is now unreachable for a fresh agent: the persona comes
+    // from the row, while the NAME still comes from the agent_name column.
+    expect(agent.name).toBe("bnancy");
+    expect(agent.system).toBe(seed.system);
+    expect(agent.bio).toEqual(seed.bio as string[]);
+    expect(agent.style).toEqual(seed.style as { all?: string[] });
+    expect(agent.system).not.toBe("You are bnancy, a helpful assistant.");
   });
 });
 

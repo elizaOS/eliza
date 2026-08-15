@@ -684,14 +684,34 @@ async function handleRead(
     let resolvedEntityId = isLikelyUuid(entityId)
       ? (entityId as UUID)
       : undefined;
+    // Name resolution used limit:1 and took the first row, so ambiguity was
+    // not merely unreported — it was undetectable. Read enough rows to see a
+    // second match, then say which one was chosen and how to read the others.
+    let otherNameMatches: Array<{ displayName: string; entityId: UUID }> = [];
+    let nameMatchWindowSaturated = false;
 
     if (!resolvedEntityId && name) {
+      // Read one MORE than we report on, so a saturated window is detectable.
+      // getGraphSnapshot hard-slices to `limit`, so asking for exactly the
+      // number we intend to name makes a capped result indistinguishable from a
+      // complete one — "matched 5 contacts" was being stated as a flat fact
+      // when a 6th match existed, which is the same windowed-count-as-total
+      // defect this file fixes elsewhere.
+      const NAME_MATCH_REPORT_CAP = 5;
       const snapshot = await graphService.getGraphSnapshot({
         search: name,
-        limit: 1,
+        limit: NAME_MATCH_REPORT_CAP + 1,
       });
       if (snapshot && snapshot.people.length > 0) {
         resolvedEntityId = snapshot.people[0].primaryEntityId;
+        nameMatchWindowSaturated =
+          snapshot.people.length > NAME_MATCH_REPORT_CAP;
+        otherNameMatches = snapshot.people
+          .slice(1, NAME_MATCH_REPORT_CAP)
+          .map((person) => ({
+            displayName: person.displayName,
+            entityId: person.primaryEntityId,
+          }));
       }
     }
 
@@ -713,19 +733,36 @@ async function handleRead(
     }
 
     const formatted = formatPersonDetail(detail);
+    const ambiguityNote =
+      otherNameMatches.length === 0
+        ? ""
+        : `\n\nAmbiguous name: "${name}" matched ${
+            nameMatchWindowSaturated
+              ? `at least ${otherNameMatches.length + 1}`
+              : `${otherNameMatches.length + 1}`
+          } contacts${nameMatchWindowSaturated ? " (match list was capped, so more may exist — narrow the name to see the rest)" : ""}. These details are for ${detail.displayName} (entityId: ${resolvedEntityId}) only. Other matches: ${otherNameMatches
+            .map(
+              (other) => `${other.displayName} (entityId: ${other.entityId})`,
+            )
+            .join(
+              ", ",
+            )}. Ask the user which one, or re-run action=read with one of those entityIds.`;
 
     return {
-      text: formatted,
+      text: `${formatted}${ambiguityNote}`,
       success: true,
       values: {
         success: true,
         entityId: resolvedEntityId,
         displayName: detail.displayName,
+        nameMatchCount: name ? otherNameMatches.length + 1 : 1,
+        ambiguousName: otherNameMatches.length > 0,
       },
       data: {
         actionName: CONTACT_ACTION,
         op: "read",
         entityId: resolvedEntityId,
+        otherNameMatches,
         detail: {
           displayName: detail.displayName,
           platforms: detail.platforms,

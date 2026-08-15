@@ -9,6 +9,7 @@ import { elizaAppUserService } from "@/lib/services/eliza-app";
 import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
+import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import { sharedRestMessageSend } from "@/lib/services/shared-runtime/shared-rest-adapter";
@@ -200,31 +201,75 @@ app.post("/", async (c) => {
             : undefined,
         );
       }
-      const response = await elizaSandboxService.bridge(
+      const bridgeRequest = {
+        jsonrpc: "2.0" as const,
+        id: parsed.data.messageId,
+        method: "message.send",
+        params: {
+          text: parsed.data.message,
+          roomId: agent.id,
+          conversationId: agent.id,
+          canonicalBridgeBase: dedicated.bridge_url,
+          userId: account.user.id,
+          clientMessageId: parsed.data.messageId,
+          platformName: parsed.data.platform,
+          source: parsed.data.platform,
+          ...(parsed.data.platform === "telegram"
+            ? {
+                senderName:
+                  parsed.data.displayName ?? parsed.data.telegramUsername,
+              }
+            : {}),
+        },
+      };
+      let response = await elizaSandboxService.bridge(
         dedicated.id,
         account.organization.id,
-        {
-          jsonrpc: "2.0",
-          id: parsed.data.messageId,
-          method: "message.send",
-          params: {
-            text: parsed.data.message,
-            roomId: agent.id,
-            conversationId: agent.id,
-            canonicalBridgeBase: dedicated.bridge_url,
-            userId: account.user.id,
-            clientMessageId: parsed.data.messageId,
-            platformName: parsed.data.platform,
-            source: parsed.data.platform,
-            ...(parsed.data.platform === "telegram"
-              ? {
-                  senderName:
-                    parsed.data.displayName ?? parsed.data.telegramUsername,
-                }
-              : {}),
-          },
-        },
+        bridgeRequest,
       );
+      if (response.error?.message === "Bridge returned HTTP 404") {
+        const history = await coordinateSharedHistory(agent.id, agent.id, {
+          namespace: worker.namespace,
+        });
+        const importMessages = history.flatMap((message) =>
+          message.id
+            ? [
+                {
+                  sourceId: message.id,
+                  role: message.role,
+                  text: message.content,
+                  ...(typeof message.createdAt === "number"
+                    ? { timestamp: message.createdAt }
+                    : {}),
+                },
+              ]
+            : [],
+        );
+        let receipt =
+          importMessages.length === history.length
+            ? await elizaSandboxService.importCanonicalConversation(
+                dedicated.id,
+                account.organization.id,
+                agent.id,
+                importMessages,
+              )
+            : null;
+        if (!receipt && importMessages.length > 0) {
+          receipt = await elizaSandboxService.importCanonicalConversation(
+            dedicated.id,
+            account.organization.id,
+            agent.id,
+            [],
+          );
+        }
+        if (receipt) {
+          response = await elizaSandboxService.bridge(
+            dedicated.id,
+            account.organization.id,
+            bridgeRequest,
+          );
+        }
+      }
       if (response.error) {
         return jsonError(
           c,

@@ -79,6 +79,7 @@ import { apiKeysService } from "./api-keys";
 import { chatSseFrame, normalizeChatSseDonePayload } from "./chat-sse-frames";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
+import { withDefaultAgentCharacter } from "./default-agent-character";
 import { holdsCountedNodeSlot, isDeletionContinuation } from "./docker-node-workload-queries";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import { shellQuote } from "./docker-sandbox-utils";
@@ -229,14 +230,22 @@ export class AgentQuotaExceededError extends Error {
  * function so config sanitization, character ownership, tier→status derivation,
  * and column defaults cannot drift between paths. `environmentVars` is expected
  * storage-ready (already passed through `encryptAgentEnvVarsForStorage`).
+ *
+ * A create that brings neither a linked `characterId` nor a persona in its
+ * config is seeded with the shipped default character
+ * ({@link withDefaultAgentCharacter}); seeding here rather than in any single
+ * reader is what keeps the shared turn, the dedicated container, the warm-pool
+ * claim push, and the first-boot bootstrap agreeing on one persona.
  */
 export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAgentSandbox {
   const sanitizedConfig = stripReservedElizaConfigKeys(params.agentConfig);
+  const executionTier: AgentExecutionTier = params.executionTier ?? "shared";
   const agentConfig = params.characterId
     ? withReusedElizaCharacterOwnership(sanitizedConfig)
-    : sanitizedConfig;
+    : executionTier === "custom"
+      ? sanitizedConfig
+      : withDefaultAgentCharacter(sanitizedConfig);
 
-  const executionTier: AgentExecutionTier = params.executionTier ?? "shared";
   const status = executionTier === "shared" ? "running" : "pending";
 
   return {
@@ -251,6 +260,16 @@ export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAge
     ...(params.characterId && { character_id: params.characterId }),
     ...(params.dockerImage && { docker_image: params.dockerImage }),
   };
+}
+
+/** Omits an empty custom-image overlay so a self-contained image keeps its bundled character. */
+export function agentConfigForProvision(
+  agent: Pick<AgentSandbox, "agent_config" | "execution_tier">,
+): Record<string, unknown> | undefined {
+  const config = agent.agent_config;
+  if (!config || typeof config !== "object" || Array.isArray(config)) return undefined;
+  const record = config as Record<string, unknown>;
+  return agent.execution_tier === "custom" && Object.keys(record).length === 0 ? undefined : record;
 }
 
 /**
@@ -2871,12 +2890,7 @@ export class ElizaSandboxService {
             // Path A: pass the persisted character so the container boots AS
             // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON
             // injection + packages/agent/src/runtime/sandbox-character.ts).
-            agentConfig:
-              rec.agent_config &&
-              typeof rec.agent_config === "object" &&
-              !Array.isArray(rec.agent_config)
-                ? (rec.agent_config as Record<string, unknown>)
-                : undefined,
+            agentConfig: agentConfigForProvision(rec),
             // Path A: the gateways route by character_id, so the container must
             // register under, and answer as, that id (see
             // SANDBOX_ROUTE_AGENT_ID injection).
@@ -5520,6 +5534,76 @@ export class ElizaSandboxService {
         transport: "conversation-rest",
         ...(failureKind ? { failureKind } : {}),
       },
+    };
+  }
+
+  /**
+   * Recreates an authoritative cutover conversation after a Dedicated runtime
+   * loses its local conversation index during relocation or fresh boot. Exact
+   * source ids make concurrent repairs idempotent at the runtime boundary.
+   */
+  async importCanonicalConversation(
+    agentId: string,
+    orgId: string,
+    conversationId: string,
+    messages: Array<{
+      sourceId: string;
+      role: "user" | "assistant";
+      text: string;
+      timestamp?: number;
+    }>,
+  ): Promise<{
+    complete: true;
+    sourceMessageCount: number;
+    inserted: number;
+    skipped: number;
+  } | null> {
+    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    if (!rec) return null;
+    const serverSecret = getCloudAwareEnv().AGENT_SERVER_SHARED_SECRET?.trim();
+    if (!serverSecret) return null;
+
+    const res = await this.fetchCanonicalConversationApi(
+      rec,
+      `/api/conversations/${encodeURIComponent(conversationId)}/import`,
+      {
+        method: "POST",
+        headers: { "X-Server-Token": serverSecret },
+        body: JSON.stringify({ messages }),
+        signal: AbortSignal.timeout(20_000),
+      },
+      rec.bridge_url,
+    );
+    if (!res.ok) return null;
+
+    // error-policy:J3 an unreadable import receipt is explicitly invalid and
+    // cannot authorize the connector retry.
+    const body = (await res.json().catch(() => null)) as {
+      conversationId?: unknown;
+      complete?: unknown;
+      sourceMessageCount?: unknown;
+      inserted?: unknown;
+      skipped?: unknown;
+    } | null;
+    if (!body || typeof body.inserted !== "number" || typeof body.skipped !== "number") {
+      return null;
+    }
+    const inserted = body.inserted;
+    const skipped = body.skipped;
+    const countsMatch = inserted + skipped === messages.length;
+    const modernReceipt = body?.complete === true && body.sourceMessageCount === messages.length;
+    const legacyReceipt =
+      body?.complete === undefined &&
+      body.sourceMessageCount === undefined &&
+      body.conversationId === conversationId;
+    if (!countsMatch || (!modernReceipt && !legacyReceipt)) {
+      return null;
+    }
+    return {
+      complete: true,
+      sourceMessageCount: messages.length,
+      inserted,
+      skipped,
     };
   }
 
