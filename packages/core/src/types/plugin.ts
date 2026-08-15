@@ -12,6 +12,7 @@ import type { AccessContext } from "./access-context";
 import type { Character } from "./agent";
 import type { ChatPreHandler } from "./chat-pre-handler";
 import type { Action, AgentContext, Provider } from "./components";
+import type { RoleGate } from "./contexts";
 import type { IDatabaseAdapter } from "./database";
 import type { RegisteredEvaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
@@ -890,6 +891,8 @@ export interface ViewDeclaration {
 	id: string;
 	/** Display label shown in the view manager and agent responses. */
 	label: string;
+	/** Caller-role requirement enforced at every server/view interaction boundary. */
+	roleGate?: RoleGate;
 	/**
 	 * View presentation type. Defaults to `"gui"`.
 	 *

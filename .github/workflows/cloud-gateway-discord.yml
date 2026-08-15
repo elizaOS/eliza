@@ -1,31 +1,16 @@
 name: Cloud Gateway Discord
 
-# CI for the gateway-discord service. The service is deployed to Railway
-# (see packages/cloud/services/gateway-discord/railway.toml); Railway auto-
-# deploys on push to the watched branch, so this workflow only runs tests
-# and a build sanity check.
+# CI for the gateway-discord service. The current Railway services are uploaded
+# explicitly and have no connected repository source, so this workflow validates
+# source and protected configuration but does not claim or perform a deployment.
 #
 # AWS EKS / Terraform / Helm deploy jobs were removed as part of the AWS
 # retirement (see packages/cloud/infra/cloud/AWS_RETIREMENT.md).
 
 on:
+  workflow_dispatch:
   push:
-    branches: [main, develop]
-    paths:
-      - "packages/cloud/services/gateway-discord/**"
-      - "packages/cloud/shared/src/lib/services/gateway-discord/**"
-      - "packages/cloud/shared/src/lib/auth/jwks.ts"
-      - "packages/cloud/shared/src/lib/auth/jwt-internal.ts"
-      - "packages/cloud/shared/src/lib/auth/internal-api.ts"
-      - "packages/cloud/shared/scripts/messaging-gateway-preflight.mjs"
-      - "packages/cloud/api/v1/discord/**"
-      - "packages/cloud/api/internal/discord/**"
-      - "packages/cloud/api/internal/auth/**"
-      - "packages/cloud/api/.well-known/jwks.json/**"
-      - "packages/cloud/shared/src/db/**/discord-connections.ts"
-      - ".github/workflows/cloud-gateway-discord.yml"
-  pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - "packages/cloud/services/gateway-discord/**"
       - "packages/cloud/shared/src/lib/services/gateway-discord/**"
@@ -41,7 +26,7 @@ on:
       - ".github/workflows/cloud-gateway-discord.yml"
 
 concurrency:
-  group: cloud-gateway-discord-${{ github.event.pull_request.number || github.ref }}
+  group: cloud-gateway-discord-${{ github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -56,9 +41,11 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Test
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+  trusted-config:
+    name: Trusted configuration
+    if: github.event_name == 'workflow_dispatch'
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -70,28 +57,7 @@ jobs:
       - name: Install root dependencies
         run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
 
-      - name: Run fork-safe messaging gateway preflight
-        if: github.event_name == 'pull_request'
-        # Pull requests from forks cannot read repository configuration. Fixed
-        # non-secret sentinels exercise the strict parser and channel contract
-        # without turning missing fork credentials into a guaranteed red lane.
-        run: bun run preflight:messaging-gateways:strict -- --channels=shared,telegram,discord
-        env:
-          ELIZACLOUD_API_URL: https://api.example.invalid
-          CEREBRAS_API_KEY: ci-contract-value
-          ELIZA_APP_WEBHOOK_GATEWAY_URL: https://gateway.example.invalid
-          ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ci-contract-value
-          ELIZA_APP_TELEGRAM_BOT_TOKEN: ci-contract-value
-          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ci-contract-value
-          ELIZA_APP_DISCORD_APPLICATION_ID: ci-contract-value
-          ELIZA_APP_DISCORD_CLIENT_SECRET: ci-contract-value
-          ELIZA_APP_DISCORD_BOT_TOKEN: ci-contract-value
-
       - name: Enforce trusted messaging gateway configuration
-        if: github.event_name != 'pull_request'
-        # Trusted branch runs enforce the repository's real deployment
-        # configuration. The gateway URL is a repository variable in the
-        # canonical Cloudflare deploy workflow; credentials remain secrets.
         run: bun run preflight:messaging-gateways:strict -- --channels=shared,telegram,discord
         env:
           ELIZACLOUD_API_URL: ${{ secrets.ELIZACLOUD_API_URL }}
@@ -103,6 +69,20 @@ jobs:
           ELIZA_APP_DISCORD_APPLICATION_ID: ${{ secrets.ELIZA_APP_DISCORD_APPLICATION_ID }}
           ELIZA_APP_DISCORD_CLIENT_SECRET: ${{ secrets.ELIZA_APP_DISCORD_CLIENT_SECRET }}
           ELIZA_APP_DISCORD_BOT_TOKEN: ${{ secrets.ELIZA_APP_DISCORD_BOT_TOKEN }}
+
+  test:
+    name: Test
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
 
       - name: Run service tests
         working-directory: packages/cloud/services/gateway-discord

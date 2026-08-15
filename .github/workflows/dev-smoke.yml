@@ -9,11 +9,8 @@ on:
         required: false
         type: string
         default: standalone
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
-    branches: [main, develop]
+    branches: [develop]
     paths:
       - ".github/workflows/dev-smoke.yml"
       - "package.json"
@@ -25,12 +22,11 @@ on:
       - "packages/ui/**"
   workflow_dispatch:
 
-# Standalone PR and push runs share stable keys so obsolete work is superseded.
-# Reusable callers pass a distinct scope, keeping exhaustive work outside those
-# domains; schedule and dispatch events never cancel an active run.
+# Develop pushes share a stable key so obsolete work is superseded. Reusable
+# callers retain their own scope.
 concurrency:
-  group: dev-smoke-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+  group: dev-smoke-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 permissions:
   contents: read

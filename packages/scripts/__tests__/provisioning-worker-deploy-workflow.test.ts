@@ -20,6 +20,14 @@ const services = [
 ];
 
 describe("provisioning worker deployment contract", () => {
+  it("routes both jobs only to the healthy Hetzner fleet", () => {
+    expect(
+      workflow.match(
+        /^\s+runs-on: \$\{\{ fromJSON\(vars\.HETZNER_FLEET_ONLINE != 'true' && '\["ubuntu-24\.04"\]' \|\| '\["self-hosted","hetzner-robot"\]'\) \}\}$/gm,
+      ),
+    ).toHaveLength(2);
+  });
+
   it("resolves one immutable SHA and deploys exactly that snapshot", () => {
     expect(workflow).toContain('deployment_sha="$PUSH_SHA"');
     expect(workflow).toContain(
@@ -70,6 +78,17 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain("- 'packages/shared/**'");
   });
 
+  it("serializes the SSH mutation on the target host after runner cancellation", () => {
+    const lock = "exec 9>/tmp/eliza-provisioning-worker-deploy.lock";
+    expect(workflow).toContain(lock);
+    expect(workflow).toContain("flock -w 1200 9");
+    expect(workflow.indexOf(lock)).toBeLessThan(
+      workflow.indexOf("cd /opt/eliza"),
+    );
+    expect(workflow).toContain("command_timeout: 40m");
+    expect(workflow).toContain("timeout-minutes: 55");
+  });
+
   it("regenerates before deploy and self-heals both services", () => {
     expect(workflow).toContain(
       "bash packages/cloud/scripts/admin/ensure-generated-keywords.sh",
@@ -79,6 +98,104 @@ describe("provisioning worker deployment contract", () => {
         "ExecStartPre=/opt/eliza/packages/cloud/scripts/admin/ensure-generated-keywords.sh",
       );
     }
+  });
+
+  it("reconciles WARM_POOL_ENABLED from the protected environment so re-arms cannot drop it (#16961)", () => {
+    // The daemon replenish phase self-gates on this key; if a re-arm rebuilds
+    // /opt/eliza/cloud/.env.local without it, every dedicated provision
+    // silently falls back to the 30-120s cold path. The flag must flow from
+    // the GitHub environment VARIABLE through the SSH env passthrough into the
+    // skip-empty EnvironmentFile reconcile loop.
+    expect(workflow).toContain(
+      "WARM_POOL_ENABLED: ${{ vars.WARM_POOL_ENABLED }}",
+    );
+    expect(workflow).toMatch(/envs: [^\n]*\bWARM_POOL_ENABLED\b/);
+    expect(workflow).toContain('"WARM_POOL_ENABLED=$WARM_POOL_ENABLED" \\');
+  });
+
+  it("keeps the Worker warm-pool claim flag committed per wrangler environment (#16961)", () => {
+    const wranglerToml = readFileSync(
+      join(root, "packages/cloud/api/wrangler.toml"),
+      "utf8",
+    );
+    // A dashboard-only var disappears on redeploy; the intended state must be
+    // an explicit committed value in every environment block.
+    const occurrences = wranglerToml.match(
+      /^WARM_POOL_ENABLED = "(?:true|false)"$/gm,
+    );
+    expect(occurrences).not.toBeNull();
+    expect((occurrences ?? []).length).toBe(3);
+  });
+
+  it("checks the canonical router only after local readiness and fails with diagnostics", () => {
+    const routerPort = "$" + "{ROUTER_PORT}";
+    const publicHost = "$" + "{AGENT_ROUTER_PUBLIC_HOST}";
+    const healthStep = workflow.indexOf("- name: Health check");
+    const localHealth = workflow.indexOf(
+      `curl -sf -m 3 "http://127.0.0.1:${routerPort}/healthz"`,
+    );
+    const canonicalHealth = workflow.indexOf(
+      `curl -fsS -m 5 "https://${publicHost}/healthz"`,
+    );
+
+    expect(healthStep).toBeGreaterThan(-1);
+    expect(localHealth).toBeGreaterThan(healthStep);
+    expect(canonicalHealth).toBeGreaterThan(localHealth);
+    expect(workflow.slice(0, healthStep)).not.toContain(
+      `"https://${publicHost}/healthz"`,
+    );
+    expect(workflow).toContain(
+      "Canonical agent-router host failed after local readiness",
+    );
+    expect(workflow).toContain(
+      "Canonical agent-router host returned an unexpected health payload",
+    );
+    expect(workflow).toContain(
+      "sudo systemctl status eliza-agent-router.service --no-pager || true",
+    );
+  });
+
+  it("settles both public-route failure branches with diagnostics then exit 1", () => {
+    // Both the transport-failure branch and the unexpected-payload branch
+    // must run diagnostics and then terminate the deployment immediately;
+    // a mutation that logs diagnostics and continues must fail here.
+    const failFast = [
+      ...workflow.matchAll(/report_public_route_failure\n\s*exit 1\b/g),
+    ];
+    expect(failFast).toHaveLength(2);
+    // The transport probe is bounded: a short retry absorbs one-off blips
+    // without reintroducing the blind 30-attempt loop this PR removed.
+    expect(workflow).toContain("for public_attempt in 1 2 3; do");
+    expect(workflow).not.toContain("for attempt in $(seq 1 30)");
+  });
+
+  it("rejects non-JSON and malformed public health payloads", () => {
+    // Execute the actual validator embedded in the workflow rather than
+    // asserting on its text, so a regression to substring matching fails.
+    const validator = workflow.match(
+      /validate_public_health_payload\(\) \{\n\s*node -e '([\s\S]*?)'\n\s*\}/,
+    );
+    expect(validator).not.toBeNull();
+    const script = (validator as RegExpMatchArray)[1];
+
+    const runValidator = (payload: string): number => {
+      const proc = Bun.spawnSync(["node", "-e", script], {
+        stdin: Buffer.from(payload),
+      });
+      return proc.exitCode;
+    };
+
+    expect(runValidator('{"ok":true}')).toBe(0);
+    expect(runValidator('{ "ok" : true, "uptime": 12 }')).toBe(0);
+    // HTTP-200 HTML error page containing the healthy substring must fail.
+    expect(
+      runValidator('<html><body>router says "ok": true</body></html>'),
+    ).not.toBe(0);
+    expect(runValidator('{"ok":false}')).not.toBe(0);
+    expect(runValidator('{"ok":"true"}')).not.toBe(0);
+    expect(runValidator('[{"ok":true}]')).not.toBe(0);
+    expect(runValidator("null")).not.toBe(0);
+    expect(runValidator("")).not.toBe(0);
   });
 
   it("keeps replacement workload memory inside the control-plane service fence", () => {

@@ -114,3 +114,32 @@ describe("renderTelegramInteractions", () => {
     expect(out.text).not.toContain("/forms/");
   });
 });
+
+describe("dashboard-only marker stripping (Finding B)", () => {
+  it("strips [CONFIG:…] from delivered text while native keyboards still render", () => {
+    const rendered = renderTelegramInteractions({
+      text: "Connect your calendar first.\n\n[CONFIG:google_calendars]\n\n[FOLLOWUPS]\nreply:yes=Yes\n[/FOLLOWUPS]",
+    } as never);
+    expect(rendered.text).not.toContain("[CONFIG:");
+    expect(rendered.text).toContain("Connect your calendar first.");
+    expect(rendered.keyboardRows.length).toBeGreaterThan(0);
+  });
+
+  it("strips [CONFIG:…] on the zero-block path too", () => {
+    const rendered = renderTelegramInteractions({
+      text: "Set up here: [CONFIG:@elizaos/plugin-gmail]",
+    } as never);
+    expect(rendered.text).toBe("Set up here:");
+    expect(rendered.keyboardRows).toHaveLength(0);
+  });
+
+  it("strips [CONFIG:…] from fallback prose contributed by a parsed block", () => {
+    const id = "abc12345-def6-7890-abcd-ef1234567890";
+    const rendered = renderTelegramInteractions({
+      text: `[TASK:${id}]Ship it [CONFIG:@elizaos/plugin-gmail][/TASK]`,
+    } as Content);
+    expect(rendered.text).toBe("Ship it");
+    expect(rendered.text).not.toContain("[CONFIG:");
+    expect(rendered.keyboardRows).toHaveLength(0);
+  });
+});

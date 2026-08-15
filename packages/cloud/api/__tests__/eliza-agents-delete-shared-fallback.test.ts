@@ -11,10 +11,18 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
 }));
 
 const getAgent = mock(async () => sharedAgent());
+const getAgentForWrite = mock(async () => sharedAgent());
 const deleteAgent = mock(async () => ({
   success: false,
   error: "Failed to delete sandbox",
 }));
+type CancelAgentDeletionResult =
+  | { success: true }
+  | { success: false; error: string };
+
+const cancelAgentDeletion = mock(
+  async (): Promise<CancelAgentDeletionResult> => ({ success: true }),
+);
 const enqueueAgentDeleteOnce = mock(async () => ({
   created: true,
   job: { id: "delete-job-1", status: "pending" },
@@ -73,7 +81,12 @@ mock.module("@/lib/services/admin", () => ({
 }));
 
 mock.module("@/lib/services/eliza-sandbox", () => ({
-  elizaSandboxService: { getAgent, deleteAgent },
+  elizaSandboxService: {
+    getAgent,
+    getAgentForWrite,
+    deleteAgent,
+    cancelAgentDeletion,
+  },
 }));
 
 mock.module("@/lib/services/provisioning-jobs", () => ({
@@ -139,16 +152,30 @@ async function deleteRequest(body?: Record<string, unknown> | string) {
   );
 }
 
-describe("DELETE /api/v1/eliza/agents/:agentId", () => {
+async function patchRequest(body: Record<string, unknown>) {
+  return app.fetch(
+    new Request("https://api.example.test/api/v1/eliza/agents/agent-1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+describe("agent deletion lifecycle", () => {
   beforeEach(() => {
     requireUserOrApiKeyWithOrg.mockClear();
     getAgent.mockReset();
     getAgent.mockResolvedValue(sharedAgent());
+    getAgentForWrite.mockReset();
+    getAgentForWrite.mockResolvedValue(sharedAgent());
     deleteAgent.mockReset();
     deleteAgent.mockResolvedValue({
       success: false,
       error: "Failed to delete sandbox",
     });
+    cancelAgentDeletion.mockReset();
+    cancelAgentDeletion.mockResolvedValue({ success: true });
     enqueueAgentDeleteOnce.mockClear();
     enqueueAgentDeleteOnce.mockResolvedValue({
       created: true,
@@ -157,6 +184,44 @@ describe("DELETE /api/v1/eliza/agents/:agentId", () => {
     triggerImmediate.mockClear();
     loggerWarn.mockClear();
     loggerInfo.mockClear();
+  });
+
+  test("exposes authenticated cancellation of a queued deletion", async () => {
+    getAgentForWrite.mockResolvedValueOnce(
+      sharedAgent({
+        status: "deletion_pending",
+        execution_tier: "dedicated-always",
+      }),
+    );
+
+    const response = await patchRequest({ action: "cancel_deletion" });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        agentId: "agent-1",
+        action: "cancel_deletion",
+        status: "running",
+      },
+    });
+    expect(cancelAgentDeletion).toHaveBeenCalledWith("agent-1", "org-1");
+    expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();
+  });
+
+  test("surfaces a non-reversible deletion cancellation as a conflict", async () => {
+    cancelAgentDeletion.mockResolvedValueOnce({
+      success: false,
+      error: "Agent deletion is already executing",
+    });
+
+    const response = await patchRequest({ action: "cancel_deletion" });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Agent deletion is already executing",
+    });
   });
 
   test("queues an async delete instead of returning 500 when shared sync teardown fails", async () => {

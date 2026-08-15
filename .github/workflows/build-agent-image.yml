@@ -2,19 +2,49 @@ name: Build Agent Image
 
 # Single source of truth for the cloud-agent container image used by the
 # cloud sandbox provisioner. Two trigger surfaces:
-#   - push to develop/main → :develop / :stable + :latest, plus :sha-<short>
+#   - push to develop → :develop + :sha-<short>
 #   - workflow_dispatch → manual canonical reruns or digest-preserving demo promotion
 # The previous release-only workflow (image.yaml) duplicated this entire
 # pre-build sequence; it's been deleted in favor of this consolidated build.
 
 on:
   push:
-    branches: [develop, main]
+    branches: [develop]
     paths:
+      - "bun.lock"
+      - "bunfig.toml"
+      - "package.json"
+      - "patches/**"
+      - "plugins/**"
+      - "tsconfig.base.json"
+      - "tsconfig.build.template.json"
+      - "tsconfig.json"
+      - "turbo.json"
+      - "packages/auth/**"
+      - "packages/cloud/routing/**"
+      - "packages/cloud/shared/**"
+      - "packages/evidence/**"
+      - "packages/elizaos/**"
+      - "packages/logger/**"
+      - "packages/prompts/**"
+      - "packages/registry/**"
+      - "packages/scripts/build-private-workspace-packages.mjs"
+      - "packages/scripts/build-core-packages.mjs"
+      - "packages/scripts/build-core.mjs"
+      - "packages/scripts/ensure-workspace-symlinks.mjs"
+      - "packages/scripts/lib/repository-file-integrity.mjs"
+      - "packages/scripts/lib/script-metadata.mjs"
+      - "packages/scripts/lib/workspaces.mjs"
+      - "packages/scripts/patch-llama-cpp-capacitor.mjs"
+      - "packages/scripts/patch-nested-core-dist.mjs"
+      - "packages/scripts/patch-punycode-deprecation.mjs"
+      - "packages/scripts/run-turbo.mjs"
+      - "packages/scripts/sync-artifacts.mjs"
+      - "packages/shared/**"
+      - "packages/skills/**"
+      - "packages/ui/**"
+      - "packages/vault/**"
       - "packages/app-core/deploy/Dockerfile.ci"
-      - "plugins/plugin-sql/**"
-      - "plugins/plugin-elizacloud/**"
-      - "plugins/plugin-local-inference/**"
       - "packages/agent/**"
       - "packages/core/**"
       - "packages/app/**"
@@ -189,6 +219,7 @@ jobs:
             --filter=@elizaos/plugin-mcp \
             --filter=@elizaos/plugin-signal \
             --filter=@elizaos/plugin-telegram \
+            --filter=@elizaos/plugin-x \
             --filter=@elizaos/plugin-whatsapp \
             --filter=@elizaos/plugin-wallet \
             --filter=@elizaos/plugin-workflow

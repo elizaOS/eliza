@@ -17,7 +17,7 @@ name: Deploy Apps Worker (Product 2)
 
 on:
   push:
-    branches: [develop, main]
+    branches: [develop]
     paths:
       - '.github/workflows/deploy-apps-worker.yml'
       - 'packages/cloud/scripts/admin/daemons/apps-provisioning-worker.ts'

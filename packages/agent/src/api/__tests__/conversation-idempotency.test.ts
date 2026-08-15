@@ -31,6 +31,7 @@ import type {
   AgentRuntime,
   EffectReceipt,
   Memory,
+  Service,
   StreamChunkMetadata,
 } from "@elizaos/core";
 import {
@@ -44,6 +45,10 @@ import {
   COMMITTED_SPEECH_PROTOCOL,
   REALTIME_VOICE_CLIENT_TRANSPORT,
 } from "@elizaos/shared";
+import {
+  createSharedTodoCutoverSnapshot,
+  type SharedTodoCutoverSnapshot,
+} from "@elizaos/shared/todo-cutover";
 import {
   afterAll,
   afterEach,
@@ -135,6 +140,8 @@ interface TestHarness {
   storedMemories: Memory[];
   deleteManyMemories: ReturnType<typeof vi.fn>;
   deleteRoom: ReturnType<typeof vi.fn>;
+  importScheduledTask: ReturnType<typeof vi.fn>;
+  activateScheduledTask: ReturnType<typeof vi.fn>;
 }
 
 /** Real-route harness: the runtime stub streams one "ok" chunk per turn via
@@ -143,7 +150,7 @@ interface TestHarness {
  *  memories are retained and served back through `getMemories`, so the dupe
  *  branches' persisted-first-reply lookup reads the real write path's output. */
 function createHarness(
-  options: { maxPendingPerRoom?: number } = {},
+  options: { maxPendingPerRoom?: number; scheduling?: boolean } = {},
 ): TestHarness {
   const handleMessage = vi.fn(
     async (
@@ -187,6 +194,24 @@ function createHarness(
   });
   const deleteRoom = vi.fn(async () => undefined);
   const emitEvent = vi.fn(async () => undefined);
+  const importedScheduledTaskIds = new Set<string>();
+  const importScheduledTask = vi.fn(async (task: { taskId: string }) => {
+    const imported = !importedScheduledTaskIds.has(task.taskId);
+    importedScheduledTaskIds.add(task.taskId);
+    return { task, imported };
+  });
+  const activatedScheduledTaskIds = new Set<string>();
+  const activateScheduledTask = vi.fn(async (taskId: string) => {
+    const activated = !activatedScheduledTaskIds.has(taskId);
+    activatedScheduledTaskIds.add(taskId);
+    return { task: { taskId }, activated };
+  });
+  const schedulingService = {
+    getRunner: () => ({
+      importTask: importScheduledTask,
+      activateImportedTask: activateScheduledTask,
+    }),
+  };
   const runtime = {
     agentId: AGENT_ID,
     character: {
@@ -198,7 +223,8 @@ function createHarness(
     plugins: [],
     logger,
     emitEvent,
-    getService: vi.fn(() => null),
+    getService: <T extends Service = Service>() =>
+      options.scheduling ? (schedulingService as unknown as T) : null,
     getServicesByType: vi.fn(() => []),
     drainChatPreHandlers: vi.fn(async () => null),
     messageService: {
@@ -272,6 +298,8 @@ function createHarness(
     storedMemories,
     deleteManyMemories,
     deleteRoom,
+    importScheduledTask,
+    activateScheduledTask,
   };
 }
 
@@ -314,6 +342,20 @@ async function runRoute(
         response.write(`error ${status}: ${message}`);
         response.end();
       },
+    ),
+    todoCutoverImporter: vi.fn(
+      async ({ snapshot }: { snapshot: SharedTodoCutoverSnapshot }) => ({
+        sourceTodoCount: snapshot.todos.length,
+        sourceTodoMutationCount: snapshot.mutations.length,
+        importedTodos: snapshot.todos.length,
+        repairedTodos: 0,
+        skippedTodos: 0,
+        removedStaleTodos: 0,
+        importedTodoMutations: snapshot.mutations.length,
+        skippedTodoMutations: 0,
+        sourceTodoDigest: snapshot.digest,
+        targetTodoDigest: snapshot.digest,
+      }),
     ),
   } as unknown as ConversationRouteContext;
 
@@ -2393,5 +2435,164 @@ describe("conversation handoff import — exact source identities", () => {
       "hello back",
       "one more thing",
     ]);
+  });
+
+  it("imports exact Shared reminders with the same cutover receipt", async () => {
+    const {
+      state,
+      storedMemories,
+      importScheduledTask,
+      activateScheduledTask,
+    } = createHarness({ scheduling: true });
+    const todoSnapshot = await createSharedTodoCutoverSnapshot({
+      sourceAgentId: "personal:source",
+      todos: [],
+      mutations: [],
+    });
+    const body = {
+      messages: [
+        {
+          sourceId: "shared-u1",
+          role: "user",
+          text: "remind me",
+          timestamp: 10,
+        },
+      ],
+      scheduledTasks: [
+        {
+          taskId: "shared-reminder-1",
+          kind: "reminder",
+          promptInstructions: "call mom",
+          trigger: { kind: "once", atIso: "2026-08-15T17:00:00.000Z" },
+          priority: "medium",
+          respectsGlobalPause: true,
+          state: { status: "scheduled", followupCount: 0 },
+          source: "user_chat",
+          createdBy: "owner",
+          ownerVisible: true,
+        },
+      ],
+      cutoverToken: "personal-cutover-token",
+      todoSnapshot,
+    };
+
+    const first = await runRoute(
+      "POST",
+      "/api/conversations/personal:source/import",
+      state,
+      body,
+    );
+    expect(first.captured.payload).toMatchObject({
+      complete: true,
+      sourceMessageCount: 1,
+      inserted: 1,
+      sourceScheduledTaskCount: 1,
+      importedScheduledTasks: 1,
+      skippedScheduledTasks: 0,
+      activatedScheduledTasks: 0,
+      sourceTodoCount: 0,
+      sourceTodoMutationCount: 0,
+      importedTodoMutations: 0,
+      skippedTodoMutations: 0,
+      sourceTodoDigest: todoSnapshot.digest,
+      targetTodoDigest: todoSnapshot.digest,
+    });
+
+    const replay = await runRoute(
+      "POST",
+      "/api/conversations/personal:source/import",
+      state,
+      body,
+    );
+    expect(replay.captured.payload).toMatchObject({
+      complete: true,
+      inserted: 0,
+      skipped: 1,
+      importedScheduledTasks: 0,
+      skippedScheduledTasks: 1,
+      activatedScheduledTasks: 0,
+    });
+    const activated = await runRoute(
+      "POST",
+      "/api/conversations/personal:source/import",
+      state,
+      { ...body, activateScheduledTasks: true },
+    );
+    expect(activated.captured.payload).toMatchObject({
+      complete: true,
+      importedScheduledTasks: 0,
+      skippedScheduledTasks: 1,
+      activatedScheduledTasks: 1,
+      skippedActivatedScheduledTasks: 0,
+    });
+    expect(storedMemories).toHaveLength(1);
+    expect(importScheduledTask).toHaveBeenCalledTimes(3);
+    expect(activateScheduledTask).toHaveBeenCalledTimes(1);
+    expect(importScheduledTask.mock.calls[0]?.[1]).toEqual({
+      sourceAgentId: "personal:source",
+      cutoverToken: "personal-cutover-token",
+    });
+  });
+
+  it("rejects an exact cutover token when the Todo snapshot is missing", async () => {
+    const { state, storedMemories } = createHarness({ scheduling: true });
+    const response = await runRoute(
+      "POST",
+      "/api/conversations/personal:source/import",
+      state,
+      {
+        messages: [{ sourceId: "shared-u1", role: "user", text: "hello" }],
+        cutoverToken: "personal-cutover-token",
+      },
+    );
+
+    expect(response.record.writes.join("")).toContain(
+      "error 400: A todoSnapshot is required",
+    );
+    expect(storedMemories).toHaveLength(0);
+  });
+
+  it("rejects tampered or cross-conversation Todo snapshots before any write", async () => {
+    const snapshot = await createSharedTodoCutoverSnapshot({
+      sourceAgentId: "personal:source",
+      todos: [],
+      mutations: [],
+    });
+    const tamperedHarness = createHarness({ scheduling: true });
+    const tampered = await runRoute(
+      "POST",
+      "/api/conversations/personal:source/import",
+      tamperedHarness.state,
+      {
+        messages: [{ sourceId: "shared-u1", role: "user", text: "hello" }],
+        cutoverToken: "personal-cutover-token",
+        todoSnapshot: { ...snapshot, digest: "0".repeat(64) },
+      },
+    );
+    expect(tampered.record.writes.join("")).toContain(
+      "error 400: Todo snapshot digest does not match its records",
+    );
+    expect(tamperedHarness.storedMemories).toHaveLength(0);
+
+    const wrongSourceSnapshot = await createSharedTodoCutoverSnapshot({
+      sourceAgentId: "personal:other",
+      todos: [],
+      mutations: [],
+    });
+    const wrongSourceHarness = createHarness({ scheduling: true });
+    const wrongSource = await runRoute(
+      "POST",
+      "/api/conversations/personal:source/import",
+      wrongSourceHarness.state,
+      {
+        messages: [{ sourceId: "shared-u1", role: "user", text: "hello" }],
+        cutoverToken: "personal-cutover-token",
+        todoSnapshot: wrongSourceSnapshot,
+      },
+    );
+    expect(wrongSource.record.writes.join("")).toContain(
+      "error 400: Todo snapshot source does not match the conversation",
+    );
+    expect(wrongSourceHarness.storedMemories).toHaveLength(0);
   });
 });

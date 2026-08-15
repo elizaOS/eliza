@@ -163,6 +163,18 @@ const transcript = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
 ```
 
+### Research retirement
+
+Eliza Cloud does not register `ModelType.RESEARCH`. Use a provider that
+implements the real research contract, including its search tools and citation
+output, and call it through `runtime.useModel(ModelType.RESEARCH, ...)`.
+
+The previously published `models/research` handler, `models/index` barrel
+export, and `getResearchModel` config export remain as deprecated compatibility
+shims. They throw `ELIZA_CLOUD_RESEARCH_UNAVAILABLE`; they never substitute a
+`TEXT_LARGE` model or return ordinary synthesis as research. These shims will
+remain through the 2.x line and may be removed in 3.0.0.
+
 ## Adding Cloud Calls
 
 1. Prefer an existing high-level SDK method when one exists.

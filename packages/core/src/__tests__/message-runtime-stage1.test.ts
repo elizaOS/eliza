@@ -1283,7 +1283,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			}
 		).messages?.[0];
 		expect(String(systemMessage?.content ?? "")).toContain(
-			"goals -> tasks + OWNER_GOALS, never work threads",
+			"goals -> tasks + OWNER_GOALS",
+		);
+		expect(String(systemMessage?.content ?? "")).toContain(
+			"never work threads and never VIEWS",
 		);
 	});
 
@@ -1456,8 +1459,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent).not.toContain(longDescription);
 		// Compactness ceiling for the DM Stage-1 prompt. Any leaked context
 		// description (~2,500+ chars each) blows far past this; deliberate
-		// template rules only nudge it, so keep the ceiling tight.
-		expect(systemContent.length).toBeLessThan(3_800);
+		// template rules only nudge it, so keep the ceiling tight (currently
+		// ~4.1k rendered after the #19863 owner-life routing floor named every
+		// umbrella).
+		expect(systemContent.length).toBeLessThan(4_300);
 	});
 
 	it("direct-channel prompt grounds capability denials in executable actions and requires fresh tool retries", async () => {
@@ -4369,11 +4374,28 @@ describe("runV5MessageRuntimeStage1", () => {
 				name: "TASKS_SPAWN_AGENT",
 				description: "Spawn a coding task.",
 				contexts: ["general"],
+				asyncHandoff: true,
 				validate: vi.fn(async () => true),
 				handler: vi.fn(async () => ({
 					success: true,
 					text: "",
 					continueChain: false,
+					effectReceipts: [
+						{
+							receiptId: "spawn-1",
+							operation: "tasks.spawn_agent",
+							resource: { kind: "acp.session", id: "session-1" },
+							artifacts: [],
+							idempotency: { key: null, replayed: false },
+							observedAt: "2026-08-15T00:00:00.000Z",
+							outcome: "applied" as const,
+							commit: {
+								kind: "provider_accepted" as const,
+								id: "session-1",
+								committedAt: "2026-08-15T00:00:00.000Z",
+							},
+						},
+					],
 				})),
 			},
 		] as IAgentRuntime["actions"];

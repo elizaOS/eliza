@@ -1,7 +1,7 @@
 /**
  * Persists Slack OAuth credential material to durable storage after an install
- * flow completes. Writes secret values to the first available vault
- * (connector credential store, `vault`, or `SECRETS`) under a normalized
+ * flow completes. Writes secret values to the first available durable vault
+ * (connector credential store or `vault`, never in-memory `SECRETS`) under a normalized
  * `connector.<agent>.<provider>.<account>.<credType>` vault ref, then records
  * the ref metadata against the connector account via the account manager's
  * storage. Refuses to complete (throws) when no durable vault or ref writer is
@@ -181,47 +181,6 @@ function resolveVaultWriters(
           sensitive: true,
           caller: context.caller,
         });
-        return vaultRef;
-      },
-    });
-  }
-
-  const secrets = getService(runtime, "SECRETS") as {
-    setGlobal?: (
-      key: string,
-      value: string,
-      config?: { sensitive?: boolean },
-    ) => Promise<boolean> | boolean;
-    set?: (
-      key: string,
-      value: string,
-      context: JsonRecord,
-      config?: { sensitive?: boolean },
-    ) => Promise<boolean> | boolean;
-  } | null;
-  if (
-    typeof secrets?.setGlobal === "function" ||
-    typeof secrets?.set === "function"
-  ) {
-    writers.push({
-      name: "SECRETS",
-      write: async (vaultRef, credential) => {
-        if (typeof secrets.setGlobal === "function") {
-          await secrets.setGlobal(vaultRef, credential.value, {
-            sensitive: true,
-          });
-          return vaultRef;
-        }
-        await secrets.set?.(
-          vaultRef,
-          credential.value,
-          {
-            level: "global",
-            agentId: runtime.agentId,
-            requesterId: runtime.agentId,
-          },
-          { sensitive: true },
-        );
         return vaultRef;
       },
     });

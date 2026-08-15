@@ -4,15 +4,35 @@
  * Character secrets may be ordinary strings with no recognizable credential
  * shape, so pattern redaction alone is insufficient.
  */
-import { type IAgentRuntime, redactSensitiveText } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  redactSensitiveText,
+} from "@elizaos/core";
 
 export function redactShellText(runtime: IAgentRuntime, text: string): string {
-  const runtimeRedactor = Reflect.get(runtime, "redactSecrets");
-  const runtimeRedacted =
-    typeof runtimeRedactor === "function"
-      ? runtimeRedactor.call(runtime, text)
-      : text;
+  if (typeof runtime.redactSecrets !== "function") {
+    throw new ElizaError("Shell output redaction is unavailable", {
+      code: "SHELL_REDACTION_UNAVAILABLE",
+    });
+  }
+  const runtimeRedacted = runtime.redactSecrets(text);
   return redactSensitiveText(runtimeRedacted, { mode: "tools" });
+}
+
+export function resolveShellRedactionOverlapChars(
+  runtime: IAgentRuntime,
+  minimum: number,
+): number {
+  const configuredSecrets = runtime.character?.settings?.secrets;
+  if (!configuredSecrets || typeof configuredSecrets !== "object") {
+    return minimum;
+  }
+  return Object.values(configuredSecrets).reduce<number>(
+    (maximum, value) =>
+      typeof value === "string" ? Math.max(maximum, value.length) : maximum,
+    minimum,
+  );
 }
 
 export function redactShellValue<T>(runtime: IAgentRuntime, value: T): T {

@@ -14,6 +14,9 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const MAX_OUTPUT_CHARS = 1_000_000;
 const MIN_BACKGROUND_MS = 10;
 const MAX_BACKGROUND_MS = 120_000;
+const DEFAULT_JOB_TTL_MS = 30 * 60 * 1000;
+const MIN_JOB_TTL_MS = 60 * 1000;
+const MAX_JOB_TTL_MS = 3 * 60 * 60 * 1000;
 
 const configSchema = z.object({
   enabled: z.boolean(),
@@ -33,6 +36,12 @@ const configSchema = z.object({
     .min(MIN_BACKGROUND_MS)
     .max(MAX_BACKGROUND_MS)
     .default(10000),
+  jobTtlMs: z
+    .number()
+    .int()
+    .min(MIN_JOB_TTL_MS)
+    .max(MAX_JOB_TTL_MS)
+    .default(DEFAULT_JOB_TTL_MS),
   allowBackground: z.boolean().default(true),
 });
 
@@ -115,6 +124,12 @@ export function loadShellConfig(): ShellConfig {
     MAX_BACKGROUND_MS,
     MIN_BACKGROUND_MS,
   );
+  const jobTtlMs = parsePositiveIntegerEnv(
+    "SHELL_JOB_TTL_MS",
+    DEFAULT_JOB_TTL_MS,
+    MAX_JOB_TTL_MS,
+    MIN_JOB_TTL_MS,
+  );
   const allowBackground = process.env.SHELL_ALLOW_BACKGROUND !== "false";
 
   const customForbidden = process.env.SHELL_FORBIDDEN_COMMANDS
@@ -133,6 +148,7 @@ export function loadShellConfig(): ShellConfig {
     maxOutputChars,
     pendingMaxOutputChars,
     defaultBackgroundMs,
+    jobTtlMs,
     allowBackground,
   };
 

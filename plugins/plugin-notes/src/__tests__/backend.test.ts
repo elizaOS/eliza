@@ -26,6 +26,7 @@ import {
 import { notesRoutes } from "../routes.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "../service.js";
 import { NotesStore, notesStateFilePath } from "../store.js";
+import type { StickyNote } from "../types.js";
 
 const temporaryDirectories: string[] = [];
 const testRuntimes: AgentRuntime[] = [];
@@ -86,6 +87,9 @@ function expectAppliedMutationReceipt(
     },
   });
   expect(Number.isNaN(Date.parse(receipt.observedAt))).toBe(false);
+  if (receipt.outcome !== "applied") {
+    throw new Error("Expected an applied mutation receipt.");
+  }
   expect(receipt.commit.committedAt).toBe(receipt.observedAt);
   expect(result.userFacingEffectReceiptIds).toEqual([receipt.receiptId]);
 }
@@ -493,6 +497,75 @@ describe("Notes capabilities", () => {
     });
   });
 
+  it("returns replay and multi-record outcomes for one logical note", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    const first = await interact(
+      "create-note",
+      { content: "Milk\nBuy oat milk", color: "green" },
+      service,
+    );
+    const note = (first.data as { note: StickyNote }).note;
+
+    const replay = await interact(
+      "create-note",
+      { content: "Milk\nBuy oat milk", color: "green" },
+      service,
+    );
+    expect(replay).toMatchObject({
+      success: true,
+      data: { note: { id: note.id }, replayed: true },
+      effectReceipts: [
+        {
+          outcome: "noop",
+          idempotency: { key: note.id, replayed: true },
+        },
+      ],
+    });
+    expect(service.listNotes()).toHaveLength(1);
+
+    await service.store.transact((draft) => {
+      draft.notes.push(
+        { ...note, id: "legacy-milk-2" },
+        { ...note, id: "legacy-milk-3" },
+      );
+    });
+    expect(service.snapshot().notes).toHaveLength(1);
+
+    const updated = await interact(
+      "update-note",
+      { query: "Milk", content: "Milk\nAlready bought" },
+      service,
+    );
+    expect(updated).toMatchObject({
+      success: true,
+      data: {
+        consolidatedCount: 2,
+        consolidatedIds: ["legacy-milk-2", "legacy-milk-3"],
+      },
+    });
+    expect(updated.text).toContain("consolidated 3 identical copies");
+
+    await service.store.transact((draft) => {
+      const current = draft.notes[0];
+      if (!current) throw new Error("Updated note is required");
+      draft.notes.push({ ...current, id: "legacy-updated-copy" });
+    });
+    const deleted = await interact(
+      "delete-note",
+      { query: "Already bought" },
+      service,
+    );
+    expect(deleted).toMatchObject({
+      success: true,
+      data: {
+        removedCount: 2,
+        removedIds: [note.id, "legacy-updated-copy"],
+      },
+    });
+    expect(deleted.text).toContain("removed 2 identical copies");
+    expect(service.listNotes()).toEqual([]);
+  });
+
   it("requires structural confirmation before clear-notes mutates the collection", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -727,6 +800,33 @@ describe("Notes capabilities", () => {
 
     // Nothing was deleted.
     expect(service.listNotes()).toHaveLength(2);
+  });
+
+  it("returns the destructive name-mismatch fence as a structured failure", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "wifi password\nhunter2-not-really", color: "yellow" },
+      service,
+    );
+
+    await expect(
+      interact(
+        "delete-note",
+        {
+          title: "wifi password",
+          ownerText: "delete the wifi credentials note",
+        },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      text: expect.stringContaining("nothing was deleted"),
+      error: { code: "NOTES_DELETE_NAME_MISMATCH" },
+    });
+    expect(service.listNotes().map((note) => note.title)).toEqual([
+      "wifi password",
+    ]);
   });
 
   it("delete-note rejects content parameter (fail-closed for payload contract)", async () => {

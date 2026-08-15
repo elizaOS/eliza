@@ -156,4 +156,13 @@ describe("SETTINGS is discoverable for un-actioned settings writes (#14364)", ()
 		});
 		expect(exposedParents(tiered)).toContain("MODEL_SWITCH");
 	});
+
+	it("exposes MODEL_SWITCH for a preference-shaped request that needs disambiguation", () => {
+		const { tiered } = routeTurn({
+			messageText: "switch to the faster model",
+			candidateActions: ["SWITCH_MODEL", "UPDATE_SETTINGS"],
+			selectedContexts: ["settings"],
+		});
+		expect(exposedParents(tiered)).toContain("MODEL_SWITCH");
+	});
 });

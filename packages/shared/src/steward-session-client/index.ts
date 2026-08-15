@@ -212,6 +212,7 @@ export function readStoredStewardToken(): string | null {
 /** Persists the canonical token and publishes exactly one authority transition. */
 export function writeStoredStewardToken(token: string): void {
   if (typeof window === "undefined") return;
+  if (window.localStorage.getItem(STEWARD_TOKEN_KEY) === token) return;
   window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
   dispatchStewardSessionChange("present");
 }

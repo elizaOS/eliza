@@ -58,6 +58,7 @@ import {
 import {
   buildNativeAppleReminderMetadata,
   type NativeAppleReminderLikeKind,
+  readNativeAppleReminderMetadata,
 } from "../lifeops/apple-reminders.js";
 import {
   resolveDefaultTimeZone,
@@ -97,6 +98,8 @@ import {
 import {
   type ExtractedTaskParams,
   extractTaskCreatePlanWithLlm,
+  textExplicitlyLeavesScheduleUnspecified,
+  textStatesExplicitSchedule,
 } from "./lib/extract-task-plan.js";
 import {
   type ExtractedUpdateFields,
@@ -113,9 +116,12 @@ import {
   type DeferredLifeGoalDraft,
   deferredLifeDraftExpiryReason,
   extractDeferredLifeDraftFollowupWithLlm,
+  invalidateDeferredLifeDraftCache,
+  isExplicitLifeCreateConfirmation,
   isLifeSaveRetraction,
   latestDeferredLifeDraft,
-  readDeferredLifeDraftCache,
+  latestDeferredLifeDraftIsInvalidated,
+  readDeferredLifeDraftCacheState,
   readRecentLifeSaveCache,
   writeDeferredLifeDraftCache,
   writeRecentLifeSaveCache,
@@ -124,6 +130,10 @@ import {
   applyOwnerPolicyConfigureEscalation,
   applyOwnerPolicySetReminder,
 } from "./lib/owner-policy-writes.js";
+import {
+  textContradictsExplicitUndatedTodo,
+  textStatesExplicitUndatedTodo,
+} from "./lib/undated-todo-intent.js";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -252,6 +262,7 @@ type InternalLifeOp =
   | "skip_occurrence"
   | "snooze_occurrence"
   | "review_goal"
+  | "review_definitions"
   | "policy_set_reminder"
   | "policy_configure_escalation";
 
@@ -273,7 +284,11 @@ function toInternalLifeOp(
     case "snooze":
       return "snooze_occurrence";
     case "review":
-      return "review_goal";
+      // A goal review ranks progress toward outcomes; every definition
+      // surface (todos/habits/routines/reminders) reviews its tracked
+      // definitions — including unscheduled ones that never materialize
+      // occurrences and are invisible to the occurrence overview.
+      return kind === "goal" ? "review_goal" : "review_definitions";
     case "policy_set_reminder":
       return "policy_set_reminder";
     case "policy_configure_escalation":
@@ -513,6 +528,7 @@ async function routeLifeSubaction(args: {
 function resolveDeferredLifeDraftReuseMode(args: {
   details: Record<string, unknown> | undefined;
   draft: DeferredLifeDraft | null;
+  draftIsFromPriorTurn: boolean;
   explicitConfirmation?: boolean;
   explicitOperation: LifeOperation | undefined;
   llmMode?: DeferredLifeDraftFollowupMode;
@@ -527,8 +543,12 @@ function resolveDeferredLifeDraftReuseMode(args: {
     return null;
   }
 
-  if (detailBoolean(args.details, "confirmed") === true) {
-    return "confirm";
+  // A planner can call the same action more than once while settling one
+  // message. Only an explicit owner confirmation may reuse a draft whose
+  // source turn cannot be proven older; planner flags and classifications are
+  // never evidence that the owner saw the preview.
+  if (!args.draftIsFromPriorTurn && args.explicitConfirmation !== true) {
+    return null;
   }
 
   const explicitOperation = args.explicitOperation
@@ -542,44 +562,24 @@ function resolveDeferredLifeDraftReuseMode(args: {
     return null;
   }
 
+  // Substantive follow-up text wins over planner-authored confirmation flags.
+  // Otherwise “keep it undated, but Friday” can be treated as approval and
+  // persist a changed schedule the owner has never previewed.
+  if (args.llmMode === "edit") {
+    return "edit";
+  }
+
   if (args.explicitConfirmation === true) {
     return "confirm";
   }
 
-  if (args.llmMode === "confirm" || args.llmMode === "edit") {
-    return args.llmMode;
+  if (
+    args.llmMode === "confirm" ||
+    detailBoolean(args.details, "confirmed") === true
+  ) {
+    return "confirm";
   }
   return null;
-}
-
-const LIFE_CONFIRMATION_VETO_RE =
-  /\b(?:no|not|don t|do not|cancel|hold off|wait|later|change)\b/u;
-const LIFE_CONFIRMATION_CUE_RE =
-  /\b(?:ok|okay|yes|yep|yeah|sure|confirm|confirmed|approve|approved|save it|save that|save this|save the goal|set it|lock it in|do it|looks good|that works|go ahead)\b/u;
-
-// Sentence-scoped on purpose: a message-wide negation veto turned "yes lock
-// it in! and can it bug me before friday too, not just friday morning" into
-// a non-confirmation, so three consecutive confirmed creates previewed and
-// nothing persisted (#16941 live). A sentence that carries its own negation
-// ("don't save that one") still never counts as consent.
-function isExplicitLifeCreateConfirmation(text: string): boolean {
-  const sentences = text.split(/(?<=[.!?])\s+|\n+/u);
-  for (const sentence of sentences) {
-    const normalized = sentence
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, " ")
-      .trim();
-    if (!normalized) {
-      continue;
-    }
-    if (LIFE_CONFIRMATION_VETO_RE.test(normalized)) {
-      continue;
-    }
-    if (LIFE_CONFIRMATION_CUE_RE.test(normalized)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // A confirmation is "bare" when stripping the yes-cues and politeness filler
@@ -923,15 +923,12 @@ type DefinitionResult = {
   ambiguousCandidates: string[];
 };
 
-async function resolveDefinition(
-  service: LifeOpsService,
+function resolveDefinitionInRecords(
+  defs: LifeOpsDefinitionRecord[],
   target: string | undefined,
-  domain?: LifeOpsDomain,
-): Promise<DefinitionResult> {
+  destructive = false,
+): DefinitionResult {
   if (!target) return { match: null, ambiguousCandidates: [] };
-  const defs = (await service.listDefinitions()).filter((e) =>
-    domain ? e.definition.domain === domain : true,
-  );
   const byId = defs.find((entry) => entry.definition.id === target);
   if (byId) {
     return { match: byId, ambiguousCandidates: [] };
@@ -982,13 +979,20 @@ async function resolveDefinition(
   const bestMatches = scored
     .filter(({ score }) => score === bestScore)
     .map(({ entry }) => entry);
-  if (bestMatches.length === 1) {
+  // Destructive ops never act on a token-overlap guess: shared filler tokens
+  // let "check the oven" resolve to "check the kettle" and DELETE the wrong
+  // record with a confident receipt (live, watchtower's post-resurrection
+  // audit). Sibling of the trigger path's TRIGGER_REF_MISMATCH guard: the
+  // containment stages above (id / exact / substring) satisfy "one name
+  // contains the other" and still resolve; a scorer-only "match" degrades to
+  // a clarification candidate so the handler ASKS instead of deleting.
+  if (bestMatches.length === 1 && !destructive) {
     return {
       match: bestMatches.at(0) ?? null,
       ambiguousCandidates: [],
     };
   }
-  if (bestMatches.length > 1) {
+  if (bestMatches.length >= 1) {
     return {
       match: null,
       ambiguousCandidates: bestMatches.map((entry) => entry.definition.title),
@@ -997,11 +1001,25 @@ async function resolveDefinition(
   return { match: null, ambiguousCandidates: [] };
 }
 
+async function resolveDefinition(
+  service: LifeOpsService,
+  target: string | undefined,
+  domain?: LifeOpsDomain,
+  destructive = false,
+): Promise<DefinitionResult> {
+  if (!target) return { match: null, ambiguousCandidates: [] };
+  const defs = (await service.listDefinitions()).filter((e) =>
+    domain ? e.definition.domain === domain : true,
+  );
+  return resolveDefinitionInRecords(defs, target, destructive);
+}
+
 async function resolveDefinitionForMutation(
   service: LifeOpsService,
   target: string | undefined,
   ownerText: string,
   domain?: LifeOpsDomain,
+  destructive = false,
 ): Promise<DefinitionResult> {
   const defs = (await service.listDefinitions()).filter((entry) =>
     domain ? entry.definition.domain === domain : true,
@@ -1039,19 +1057,23 @@ async function resolveDefinitionForMutation(
   const bestMatches = scored
     .filter(({ score }) => score === bestScore)
     .map(({ entry }) => entry);
-  if (bestMatches.length === 1) {
+  // Same destructive guard as resolveDefinitionInRecords: a token-overlap
+  // "best match" is a guess, and guesses may not delete records. The explicit
+  // containment branch above already resolved anything whose stored title
+  // appears in the owner's text.
+  if (bestMatches.length === 1 && !destructive) {
     return {
       match: bestMatches.at(0) ?? null,
       ambiguousCandidates: [],
     };
   }
-  if (bestMatches.length > 1) {
+  if (bestMatches.length >= 1) {
     return {
       match: null,
       ambiguousCandidates: bestMatches.map((entry) => entry.definition.title),
     };
   }
-  return resolveDefinition(service, target, domain);
+  return resolveDefinition(service, target, domain, destructive);
 }
 
 function tokenizeTitle(value: string): string[] {
@@ -1344,6 +1366,8 @@ function summarizeCadence(cadence: LifeOpsCadence): string {
     : [];
 
   switch (cadence.kind) {
+    case "unscheduled":
+      return "no due date";
     case "once": {
       const dueAt = new Date(cadence.dueAt);
       if (Number.isNaN(dueAt.getTime())) {
@@ -1408,6 +1432,7 @@ type LifeReplyScenario =
   | "calendar_next"
   | "email_triage"
   | "weekly_goal_review"
+  | "definitions_review"
   | "service_error";
 
 function buildRuleBasedLifeReply(args: {
@@ -2183,6 +2208,10 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
     return undefined;
   }
 
+  if (cadenceKind === "unscheduled") {
+    return { kind: "unscheduled" };
+  }
+
   if (cadenceKind === "once" && typeof record.dueAt === "string") {
     return {
       kind: "once",
@@ -2348,6 +2377,7 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
 export function buildCadenceFromLlmParams(
   params: ExtractedTaskParams,
   context?: {
+    allowUnscheduled?: boolean;
     intent?: string;
     now?: Date;
     timeZone?: string;
@@ -2358,6 +2388,13 @@ export function buildCadenceFromLlmParams(
 } | null {
   const kind = params.cadenceKind;
   if (!kind) return null;
+  // Explicitly undated ("no due date", "just a plain todo"): a real answer,
+  // not a missing one — no windows/slots machinery applies.
+  if (kind === "unscheduled") {
+    return context?.allowUnscheduled === true
+      ? { cadence: { kind: "unscheduled" } }
+      : null;
+  }
   const effectiveTimeZone = context?.timeZone;
   const timeOfDayMinute =
     typeof params.timeOfDay === "string"
@@ -3149,6 +3186,12 @@ async function isForeignPageScope(
 // `runLifeOperationHandler` below.
 export const OWNER_OPERATION_TAGS: string[] = [
   "domain:reminders",
+  // "resource:tracked-work" + "capability:read" ground empty-tracked-state
+  // replies at the planned-reply egress guard: a verified owner-surface review
+  // that authored the exact reply ("nothing on the list") is real evidence,
+  // not a fabricated recap, so the guard must not replace it with a canned
+  // failure (core services/message.ts plannedReplyHasClaimGroundingReceipt).
+  "resource:tracked-work",
   "capability:read",
   "capability:write",
   "capability:update",
@@ -3157,6 +3200,18 @@ export const OWNER_OPERATION_TAGS: string[] = [
   "effect:receipt-required",
   "surface:internal",
 ];
+
+const EMPTY_TRACKED_STATE_CLAIM_GROUNDING = ["empty_tracked_state"] as const;
+
+function ownerOverviewIsEmpty(overview: {
+  owner: { goals: unknown[]; occurrences: unknown[]; reminders: unknown[] };
+}): boolean {
+  return (
+    overview.owner.goals.length === 0 &&
+    overview.owner.occurrences.length === 0 &&
+    overview.owner.reminders.length === 0
+  );
+}
 
 // "productivity" is deliberate: Stage-1 routinely tags habit/reminder-shaped
 // asks with the productivity context (a child of tasks). Retrieval uses
@@ -3197,6 +3252,58 @@ function ownerSurfaceActionNameFromOptions(
   return typeof raw?.ownerSurface === "string" && raw.ownerSurface.length > 0
     ? raw.ownerSurface
     : "OWNER_TODOS";
+}
+
+const OWNER_DEFINITION_SURFACES = [
+  "OWNER_TODOS",
+  "OWNER_REMINDERS",
+  "OWNER_ALARMS",
+  "OWNER_ROUTINES",
+] as const;
+
+type OwnerDefinitionSurface = (typeof OWNER_DEFINITION_SURFACES)[number];
+
+function ownerDefinitionSurface(value: unknown): OwnerDefinitionSurface | null {
+  return typeof value === "string" &&
+    OWNER_DEFINITION_SURFACES.includes(value as OwnerDefinitionSurface)
+    ? (value as OwnerDefinitionSurface)
+    : null;
+}
+
+function definitionReviewSurface(
+  record: LifeOpsDefinitionRecord,
+): OwnerDefinitionSurface | null {
+  const persisted = ownerDefinitionSurface(
+    record.definition.metadata.ownerSurface,
+  );
+  if (persisted) return persisted;
+
+  const nativeReminder = readNativeAppleReminderMetadata(
+    record.definition.metadata,
+  );
+  if (nativeReminder?.kind === "alarm") return "OWNER_ALARMS";
+  if (nativeReminder?.kind === "reminder") return "OWNER_REMINDERS";
+  if (record.definition.kind === "task") return "OWNER_TODOS";
+  if (
+    record.definition.kind === "habit" ||
+    record.definition.kind === "routine"
+  ) {
+    return "OWNER_ROUTINES";
+  }
+  return null;
+}
+
+function definitionReviewSurfaceLabel(surface: OwnerDefinitionSurface): string {
+  switch (surface) {
+    case "OWNER_TODOS":
+      return "todos";
+    case "OWNER_REMINDERS":
+      return "reminders";
+    case "OWNER_ALARMS":
+      return "alarms";
+    case "OWNER_ROUTINES":
+      return "habits or routines";
+  }
 }
 
 function lifeEffectRequestId(message: Memory): string {
@@ -3693,12 +3800,28 @@ async function runLifeOperationHandlerInner(
   );
   const details = params.details;
   const stateDeferredDraft = latestDeferredLifeDraft(state);
-  const cachedDeferredDraft = stateDeferredDraft
-    ? null
-    : await readDeferredLifeDraftCache(runtime, message);
+  const cachedDeferredDraftState = await readDeferredLifeDraftCacheState(
+    runtime,
+    message,
+  );
+  const cachedDeferredDraft =
+    cachedDeferredDraftState.kind === "draft"
+      ? cachedDeferredDraftState.draft
+      : null;
   const deferredDraft = stateDeferredDraft ?? cachedDeferredDraft;
+  const deferredDraftIsInvalidated =
+    deferredDraft === null &&
+    (latestDeferredLifeDraftIsInvalidated(state) ||
+      cachedDeferredDraftState.kind === "invalidated");
   const explicitCreateConfirmation =
     isExplicitLifeCreateConfirmation(currentText);
+  const currentMessageId =
+    message.id !== undefined && message.id !== null ? String(message.id) : "";
+  const draftSourceMessageId = deferredDraft?.sourceMessageId?.trim() ?? "";
+  const draftIsFromPriorTurn =
+    currentMessageId.length > 0 &&
+    draftSourceMessageId.length > 0 &&
+    draftSourceMessageId !== currentMessageId;
   const turnsSinceDraft =
     deferredDraft != null
       ? (countTurnsSinceLatestDeferredLifeDraft(state) ?? 0) + 1
@@ -3727,7 +3850,7 @@ async function runLifeOperationHandlerInner(
     turnsSinceDraft,
   });
   if (draftExpiryReason && deferredDraftFollowupMode === "confirm") {
-    await clearDeferredLifeDraftCache(runtime, message);
+    await invalidateDeferredLifeDraftCache(runtime, message);
     const fallback =
       "That LifeOps draft expired. Please restate it and I'll preview it again.";
     return {
@@ -3746,7 +3869,7 @@ async function runLifeOperationHandlerInner(
     };
   }
   if (deferredDraftFollowupMode === "cancel") {
-    await clearDeferredLifeDraftCache(runtime, message);
+    await invalidateDeferredLifeDraftCache(runtime, message);
     const fallback = "Okay, I won't save it yet.";
     return {
       success: true,
@@ -3859,6 +3982,7 @@ async function runLifeOperationHandlerInner(
   const deferredDraftReuseMode = resolveDeferredLifeDraftReuseMode({
     details,
     draft: deferredDraft,
+    draftIsFromPriorTurn,
     explicitConfirmation: explicitCreateConfirmation,
     explicitOperation: explicitSubaction,
     llmMode: deferredDraftFollowupMode,
@@ -4030,7 +4154,13 @@ async function runLifeOperationHandlerInner(
             .map((goal) => goal.title),
         },
       }),
-      data: toActionData(overview),
+      data: toActionData({
+        ...overview,
+        actionName: ownerSurfaceActionName,
+        ...(ownerOverviewIsEmpty(overview)
+          ? { claimGrounding: EMPTY_TRACKED_STATE_CLAIM_GROUNDING }
+          : {}),
+      }),
     };
   }
   // Internal handler dispatch key (definition vs goal split lives here).
@@ -4075,26 +4205,11 @@ async function runLifeOperationHandlerInner(
     params.title ??
     routedParams?.target ??
     routedParams?.title;
-  // Planner-asserted `confirmed` is only real consent when the owner has
-  // actually seen a preview: either the current owner text is an explicit
-  // yes, or a draft previewed on an EARLIER message is still pending.
-  // Observed live (#16941, child-morning-routine): after previewing a daily
-  // routine, the planner immediately re-called create with confirmed:true in
-  // the same turn — saving a routine the child never approved — then told the
-  // child nothing was saved, and the real confirm turn duplicated the row.
-  const plannerAssertedConfirmed =
-    params.confirmed === true || detailBoolean(details, "confirmed") === true;
-  const currentMessageId =
-    message.id !== undefined && message.id !== null ? String(message.id) : "";
-  const priorTurnDraftPending =
-    deferredDraft != null &&
-    (deferredDraft.sourceMessageId === undefined ||
-      currentMessageId === "" ||
-      deferredDraft.sourceMessageId !== currentMessageId);
+  // Consent must come from the owner's current text. A pending draft proves
+  // only that a preview exists; neither a planner `confirmed:true` field nor a
+  // Stage-1 applied-effect claim can authorize the consequential write.
   const createConfirmed =
-    deferredDraftReuseMode === "confirm" ||
-    explicitCreateConfirmation ||
-    (plannerAssertedConfirmed && priorTurnDraftPending);
+    deferredDraftReuseMode === "confirm" || explicitCreateConfirmation;
 
   try {
     const createDefinition = async () => {
@@ -4136,6 +4251,36 @@ async function runLifeOperationHandlerInner(
       const explicitMetadata = detailObject(details, "metadata") as
         | Record<string, unknown>
         | undefined;
+      const rejectsStaleInvalidatedDraftConfirmation =
+        deferredDraftIsInvalidated &&
+        explicitCreateConfirmation &&
+        !textStatesExplicitUndatedTodo(currentText) &&
+        !textStatesExplicitSchedule(currentText);
+      if (rejectsStaleInvalidatedDraftConfirmation) {
+        await invalidateDeferredLifeDraftCache(runtime, message);
+        const text =
+          "That draft is no longer active. Restate what you want saved, including its timing or that it has no due date.";
+        return {
+          success: false as const,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          values: {
+            success: false,
+            error: "MISSING_DEFINITION_FIELD",
+            missingField: "schedule",
+            requiresConfirmation: true,
+            awaitingUserInput: true,
+          },
+          data: {
+            actionName: ownerSurfaceActionName,
+            lifeDraftInvalidated: true,
+            missingField: "schedule",
+            requiresConfirmation: true,
+            awaitingUserInput: true,
+          },
+        };
+      }
 
       // Owner's stored timezone fact (travel-aware), used as the fallback zone
       // for a conversational create when no zone was stated out loud and no
@@ -4248,6 +4393,7 @@ async function runLifeOperationHandlerInner(
                   windowPolicy?.timezone,
               ) ?? ownerFactTimeZone;
             const llmCadence = buildCadenceFromLlmParams(llmPlan, {
+              allowUnscheduled: ownerSurfaceActionName === "OWNER_TODOS",
               intent,
               timeZone: llmCadenceTimeZone ?? undefined,
             });
@@ -4277,6 +4423,36 @@ async function runLifeOperationHandlerInner(
             deferredDefinitionDraft?.request.timezone ??
             windowPolicy?.timezone,
         ) ?? ownerFactTimeZone;
+      const ownerDefinitionAction = ownerDefinitionSurface(
+        ownerSurfaceActionName,
+      );
+      if (
+        ownerDefinitionAction !== null &&
+        ownerDefinitionAction !== "OWNER_TODOS" &&
+        textExplicitlyLeavesScheduleUnspecified(currentText)
+      ) {
+        cadence = undefined;
+        if (editingDeferredDefinitionDraft) {
+          await invalidateDeferredLifeDraftCache(runtime, message);
+        }
+      }
+      const confirmsValidatedUndatedDraft =
+        deferredDraftReuseMode === "confirm" &&
+        deferredDefinitionDraft?.request.cadence.kind === "unscheduled";
+      if (
+        (editingDeferredDefinitionDraft &&
+          deferredDefinitionDraft.request.cadence.kind === "unscheduled" &&
+          textContradictsExplicitUndatedTodo(currentText)) ||
+        (cadence?.kind === "unscheduled" &&
+          (ownerSurfaceActionName !== "OWNER_TODOS" ||
+            (!confirmsValidatedUndatedDraft &&
+              !textStatesExplicitUndatedTodo(currentText))))
+      ) {
+        cadence = undefined;
+        if (editingDeferredDefinitionDraft) {
+          await invalidateDeferredLifeDraftCache(runtime, message);
+        }
+      }
       const timedRequestKind = llmRequestKind;
       const nativeAppleMetadata =
         timedRequestKind && cadence?.kind === "once"
@@ -4285,13 +4461,22 @@ async function runLifeOperationHandlerInner(
               source: "llm",
             })
           : undefined;
+      const surfaceMetadata = ownerDefinitionSurface(ownerSurfaceActionName)
+        ? { ownerSurface: ownerSurfaceActionName }
+        : undefined;
       const definitionMetadata = editingDeferredDefinitionDraft
         ? mergeMetadataRecords(
             deferredDefinitionDraft.request.metadata,
-            mergeMetadataRecords(explicitMetadata, nativeAppleMetadata),
+            explicitMetadata,
+            nativeAppleMetadata,
+            surfaceMetadata,
           )
-        : (deferredDefinitionDraft?.request.metadata ??
-          mergeMetadataRecords(explicitMetadata, nativeAppleMetadata));
+        : mergeMetadataRecords(
+            deferredDefinitionDraft?.request.metadata,
+            explicitMetadata,
+            nativeAppleMetadata,
+            surfaceMetadata,
+          );
 
       if (!title) {
         const fallback = "What should I call it?";
@@ -4357,6 +4542,9 @@ async function runLifeOperationHandlerInner(
           },
           data: {
             actionName: ownerSurfaceActionName,
+            ...(editingDeferredDefinitionDraft
+              ? { lifeDraftInvalidated: true }
+              : {}),
             missingField: "schedule",
             requiresConfirmation: true,
             awaitingUserInput: true,
@@ -4372,24 +4560,27 @@ async function runLifeOperationHandlerInner(
         (detailString(details, "kind") as
           | CreateLifeOpsDefinitionRequest["kind"]
           | undefined) ??
-        "habit";
-      const leadShaped = applyLeadUpReminderShape({
-        cadence,
-        plan:
-          (detailObject(details, "reminderPlan") as
-            | CreateLifeOpsDefinitionRequest["reminderPlan"]
-            | undefined) ??
-          deferredDefinitionDraft?.request.reminderPlan ??
-          buildDefaultReminderPlan(`${title} reminder`),
-        ownerText: messageText(message),
-        title,
-        milestones: resolveMilestoneLabels({
-          details,
-          intent,
-          ownerText: messageText(message),
-          multiStep: llmPlan?.multiStep === true,
-        }),
-      });
+        (ownerSurfaceActionName === "OWNER_TODOS" ? "task" : "habit");
+      const leadShaped =
+        cadence.kind === "unscheduled"
+          ? { cadence, plan: null }
+          : applyLeadUpReminderShape({
+              cadence,
+              plan:
+                (detailObject(details, "reminderPlan") as
+                  | CreateLifeOpsDefinitionRequest["reminderPlan"]
+                  | undefined) ??
+                deferredDefinitionDraft?.request.reminderPlan ??
+                buildDefaultReminderPlan(`${title} reminder`),
+              ownerText: messageText(message),
+              title,
+              milestones: resolveMilestoneLabels({
+                details,
+                intent,
+                ownerText: messageText(message),
+                multiStep: llmPlan?.multiStep === true,
+              }),
+            });
       const definitionDraft: DeferredLifeDefinitionDraft = {
         intent,
         operation: "create_definition",
@@ -5259,13 +5450,16 @@ async function runLifeOperationHandlerInner(
           targetName,
           messageText(message) || intent,
           domain,
+          // Destructive: a fuzzy near-miss must ask, never delete (the
+          // wrong-item deletion guard — sibling of TRIGGER_REF_MISMATCH).
+          true,
         );
       if (!target)
         return {
           success: false,
           text:
             ambiguousCandidates.length > 0
-              ? `Multiple items match — which one?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
+              ? `I found ${ambiguousCandidates.length === 1 ? "a similarly named item" : "similarly named items"} but not an exact match — delete ${ambiguousCandidates.length === 1 ? "it" : "which one"}?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
               : "I could not find that item to delete.",
         };
       await service.deleteDefinition(target.definition.id);
@@ -5529,6 +5723,106 @@ async function runLifeOperationHandlerInner(
       };
     }
 
+    if (internalOp === "review_definitions") {
+      const surface = ownerDefinitionSurface(ownerSurfaceActionName);
+      if (!surface) {
+        return {
+          success: false,
+          text: "That owner surface cannot review LifeOps definitions.",
+          data: toActionData({
+            actionName: ownerSurfaceActionName,
+            definitions: [],
+            error: "LIFEOPS_DEFINITION_SURFACE_UNSUPPORTED",
+          }),
+        };
+      }
+      const reviewDomain = domain ?? "user_lifeops";
+      const active = (await service.listDefinitions()).filter(
+        (record) =>
+          record.definition.status === "active" &&
+          record.definition.domain === reviewDomain &&
+          definitionReviewSurface(record) === surface,
+      );
+      let selected = active;
+      if (targetName) {
+        const resolved = resolveDefinitionInRecords(active, targetName);
+        if (resolved.ambiguousCandidates.length > 0) {
+          const fallback = `Multiple ${definitionReviewSurfaceLabel(surface)} match "${targetName}": ${resolved.ambiguousCandidates.join(", ")}. Which one did you mean?`;
+          return {
+            success: false,
+            text: fallback,
+            data: toActionData({
+              actionName: ownerSurfaceActionName,
+              ambiguousCandidates: resolved.ambiguousCandidates,
+              definitions: [],
+              error: "LIFEOPS_DEFINITION_AMBIGUOUS",
+            }),
+          };
+        }
+        if (!resolved.match) {
+          const fallback = `I couldn't find an active ${definitionReviewSurfaceLabel(surface)} item matching "${targetName}".`;
+          return {
+            success: false,
+            text: fallback,
+            data: toActionData({
+              actionName: ownerSurfaceActionName,
+              definitions: [],
+              error: "LIFEOPS_DEFINITION_NOT_FOUND",
+            }),
+          };
+        }
+        selected = [resolved.match];
+      }
+      if (selected.length === 0) {
+        const label = definitionReviewSurfaceLabel(surface);
+        return {
+          success: true,
+          text: await renderLifeActionReply({
+            runtime,
+            message,
+            state,
+            intent,
+            scenario: "definitions_review",
+            fallback: `You aren't tracking any active ${label} right now.`,
+            context: { definitions: [] },
+          }),
+          data: toActionData({
+            actionName: ownerSurfaceActionName,
+            claimGrounding: EMPTY_TRACKED_STATE_CLAIM_GROUNDING,
+            definitions: [],
+          }),
+        };
+      }
+      const listed = selected.slice(0, 12).map((record) => ({
+        title: record.definition.title,
+        cadence: summarizeCadence(record.definition.cadence),
+        kind: record.definition.kind,
+      }));
+      const fallback = [
+        `You're tracking ${selected.length} ${definitionReviewSurfaceLabel(surface)} item${selected.length === 1 ? "" : "s"}:`,
+        ...listed.map((item) => `- ${item.title} (${item.cadence})`),
+        ...(selected.length > listed.length
+          ? [`…and ${selected.length - listed.length} more.`]
+          : []),
+      ].join("\n");
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "definitions_review",
+          fallback,
+          context: { definitions: listed, total: selected.length },
+        }),
+        data: toActionData({
+          actionName: ownerSurfaceActionName,
+          definitions: selected.map((record) => record.definition),
+        }),
+      };
+    }
+
     if (internalOp === "review_goal") {
       const target = await resolveGoal(service, targetName, domain);
       if (!target) {
@@ -5558,7 +5852,11 @@ async function runLifeOperationHandlerInner(
                   .map((goal) => goal.title),
               },
             }),
-            data: toActionData(overview),
+            data: toActionData({
+              ...overview,
+              actionName: ownerSurfaceActionName,
+              claimGrounding: EMPTY_TRACKED_STATE_CLAIM_GROUNDING,
+            }),
           };
         }
         const fallback = formatWeeklyGoalReview(weeklyReview);

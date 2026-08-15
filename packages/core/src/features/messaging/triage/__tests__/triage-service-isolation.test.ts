@@ -10,9 +10,14 @@
 
 import { describe, expect, it } from "vitest";
 import type { IAgentRuntime } from "../../../../types/index.ts";
+import { searchMessagesAction } from "../actions/searchMessages.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { MessageRefStore } from "../message-ref-store.ts";
-import { TriageService } from "../triage-service.ts";
+import {
+	__resetDefaultTriageServiceForTests,
+	getDefaultTriageService,
+	TriageService,
+} from "../triage-service.ts";
 import {
 	type ListOptions,
 	type MessageAdapterCapabilities,
@@ -140,5 +145,84 @@ describe("TriageService per-source failure isolation", () => {
 				content: "hello",
 			}),
 		).rejects.toBeInstanceOf(NotYetImplementedError);
+	});
+
+	it("searchWithReceipt uses limit+1 to distinguish overflow from exact fit", async () => {
+		const runtime = createFakeRuntime();
+		const overflowService = new TriageService(new MessageRefStore());
+		overflowService.register(
+			new HealthyAdapter("gmail", [
+				ref("gmail", "1"),
+				ref("gmail", "2"),
+				ref("gmail", "3"),
+			]),
+		);
+		const overflow = await overflowService.searchWithReceipt(runtime, {
+			sources: ["gmail"],
+			content: "hello",
+			limit: 2,
+		});
+		expect(overflow.refs).toHaveLength(2);
+		expect(overflow.receipt).toMatchObject({
+			succeeded: ["gmail"],
+			limit: 2,
+			hasMore: true,
+		});
+
+		const exactService = new TriageService(new MessageRefStore());
+		exactService.register(
+			new HealthyAdapter("gmail", [ref("gmail", "1"), ref("gmail", "2")]),
+		);
+		const exact = await exactService.searchWithReceipt(runtime, {
+			sources: ["gmail"],
+			content: "hello",
+			limit: 2,
+		});
+		expect(exact.refs).toHaveLength(2);
+		expect(exact.receipt.hasMore).toBe(false);
+	});
+
+	it("searchWithReceipt exposes sources that were not searched", async () => {
+		const service = new TriageService(new MessageRefStore());
+		service.register(new HealthyAdapter("gmail", [ref("gmail", "1")]));
+		const result = await service.searchWithReceipt(createFakeRuntime(), {
+			sources: ["gmail", "discord"],
+			content: "hello",
+		});
+		expect(result.receipt).toMatchObject({
+			requested: ["gmail", "discord"],
+			succeeded: ["gmail"],
+			unregistered: ["discord"],
+			hasMore: null,
+			limit: null,
+		});
+	});
+
+	it("the action never describes an unsearched source as covered", async () => {
+		__resetDefaultTriageServiceForTests();
+		getDefaultTriageService().register(
+			new HealthyAdapter("gmail", [ref("gmail", "1")]),
+		);
+		const result = await searchMessagesAction.handler(
+			createFakeRuntime(),
+			{} as never,
+			undefined,
+			{
+				parameters: {
+					sources: ["gmail", "discord"],
+					content: "hello",
+					limit: 1,
+				},
+			} as never,
+		);
+		expect(result.text).toContain("Searched 1 of 2 requested source(s)");
+		expect(result.text).toContain("discord (not registered)");
+		expect(result.text).not.toContain("across connected channels");
+		expect(result.data?.scope).toMatchObject({
+			succeededSources: ["gmail"],
+			unregisteredSources: ["discord"],
+			filtersApplied: { content: true },
+			hasMore: false,
+		});
 	});
 });

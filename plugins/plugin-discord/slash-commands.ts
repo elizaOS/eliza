@@ -459,6 +459,98 @@ function resolveTranscriptsViewUrl(runtime: IAgentRuntime): string | undefined {
 }
 
 /**
+ * `/voice join|leave` gives the canonical owner an explicit, consent-aware
+ * control surface for live Discord audio. Join is intentionally limited to
+ * the owner's current guild voice channel; accepting an arbitrary channel ID
+ * would let a remote command place the bot into somebody else's conversation.
+ */
+const voiceCommand: SlashCommand = {
+	name: "voice",
+	description: "Join or leave your current Discord voice channel",
+	requiredRole: "OWNER",
+	requiredPermissions: PermissionFlagsBits.ManageGuild,
+	options: [
+		{
+			name: "mode",
+			description: "join or leave voice",
+			type: "string",
+			required: true,
+			choices: [
+				{ name: "join", value: "join" },
+				{ name: "leave", value: "leave" },
+			],
+		},
+	],
+	async execute(interaction, runtime) {
+		const guild = interaction.guild;
+		if (!guild || !interaction.guildId) {
+			await interaction.reply({
+				content: "Voice controls are only available in a server.",
+				ephemeral: true,
+			});
+			return;
+		}
+
+		const service = runtime.getService("discord") as {
+			voiceManager?: VoiceManager;
+		} | null;
+		const voiceManager = service?.voiceManager;
+		if (!voiceManager) {
+			await interaction.reply({
+				content: "Voice support is not available right now.",
+				ephemeral: true,
+			});
+			return;
+		}
+
+		const mode = interaction.options.get("mode")?.value;
+		if (mode === "leave") {
+			const connection = voiceManager.getVoiceConnection(interaction.guildId);
+			const channelId = connection?.joinConfig.channelId;
+			const channel = channelId
+				? guild.channels.cache.get(channelId)
+				: undefined;
+			if (!channel?.isVoiceBased?.()) {
+				await interaction.reply({
+					content: "I'm not in a voice channel in this server.",
+					ephemeral: true,
+				});
+				return;
+			}
+			voiceManager.leaveChannel(channel);
+			await interaction.reply({
+				content: `Left **${channel.name}**.`,
+				ephemeral: true,
+			});
+			return;
+		}
+
+		if (mode !== "join") {
+			await interaction.reply({
+				content: "Use `/voice mode:join` or `/voice mode:leave`.",
+				ephemeral: true,
+			});
+			return;
+		}
+
+		const member = guild.members.cache.get(interaction.user.id);
+		const channel = member?.voice.channel;
+		if (!channel?.isVoiceBased() || channel.guild.id !== guild.id) {
+			await interaction.reply({
+				content:
+					"Join a voice channel in this server first, then run `/voice mode:join`.",
+				ephemeral: true,
+			});
+			return;
+		}
+
+		await interaction.deferReply({ ephemeral: true });
+		await voiceManager.joinChannel(channel);
+		await interaction.editReply({ content: `Joined **${channel.name}**.` });
+	},
+};
+
+/**
  * `/transcribe start|stop` — live diarized meeting transcription for the
  * voice channel the bot is currently connected to in this server. Start sets
  * a per-channel override (so it works regardless of the global
@@ -747,6 +839,7 @@ function registerBuiltins(): void {
 		settingsCommand,
 		setupCommand,
 		appCommand,
+		voiceCommand,
 		transcribeCommand,
 	]) {
 		commands.set(command.name, command);

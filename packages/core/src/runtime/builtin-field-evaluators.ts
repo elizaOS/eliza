@@ -173,9 +173,9 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "candidateActionNames",
 	description:
-		"Likely UPPER_SNAKE_CASE action names. Prefer available_actions; confident unlisted names ok. UI navigation plus view-backed Notes and native-device operations -> VIEWS; calendar-event reads/writes -> CALENDAR. Life-management (goals/todos/reminders/routines) -> the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER); hint, not a claim. Empty when no action likely.",
+		"Likely UPPER_SNAKE_CASE action names. Prefer available_actions; confident unlisted names ok. Sticky Notes -> NOTES; UI navigation and native-device operations -> VIEWS; calendar-event reads/writes -> CALENDAR. Life-management (goals/todos/reminders/routines) -> the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER); hint, not a claim. Empty when no action likely.",
 	descriptionCompressed:
-		"Likely UPPER_SNAKE_CASE action names. UI navigation and view-backed Notes/device operations -> VIEWS; calendar events -> CALENDAR. Empty only when no action is needed.",
+		"Likely UPPER_SNAKE_CASE action names. Sticky Notes -> NOTES; UI navigation and native-device operations -> VIEWS; calendar events -> CALENDAR. Empty only when no action is needed.",
 	priority: 50,
 	schema: {
 		type: "array",

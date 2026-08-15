@@ -133,10 +133,11 @@ const VALID_SSN = "123 45 6789";
 const PEM_KEY =
 	"-----BEGIN PRIVATE KEY-----\nMIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4w\nggE6AgEAAkEAqwArU3\n-----END PRIVATE KEY-----";
 
-// HTTP Basic auth: base64("user:password123"). redact.ts covers Bearer but not
-// Basic, so this only redacts via the `basic-auth-header` detector's
-// `Authorization:` anchor — the anchor the streaming guard must hold intact.
+// HTTP Basic auth: base64("user:password123"). The streaming guard must retain
+// the Authorization anchor with its credential until the line boundary because
+// neither detector can classify a partial field value safely.
 const BASIC_B64 = "dXNlcjpwYXNzd29yZDEyMw==";
+const AUTH_PARAM_SECRET = ["private", "-user"].join("");
 const LONG_ANCHORED_VALUE = Array.from(
 	{ length: 96 },
 	(_, i) => `tok${i.toString(36)}A1b2C3d4E5f6`,
@@ -334,6 +335,43 @@ async function buildFixtures(): Promise<Fixture[]> {
 			rawSecrets: [BASIC_B64],
 			rawPii: [],
 			equivalence: true,
+		},
+		{
+			name: "HTTP Basic auth token followed by one diagnostic word",
+			text: `Header Authorization: Basic ${BASIC_B64} trailing`,
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: [BASIC_B64],
+			rawPii: [],
+			equivalence: true,
+		},
+		{
+			name: "extension auth-param list with complete token grammar",
+			text: `Header Authorization: 1Custom 1user=${AUTH_PARAM_SECRET}, realm="restricted,zone"\nDone.`,
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: [AUTH_PARAM_SECRET, "restricted,zone"],
+			rawPii: [],
+			equivalence: true,
+		},
+		{
+			name: "malformed auth-param assignment fails toward masking",
+			text: `Header Authorization: Digest username="${AUTH_PARAM_SECRET}, realm=restricted\nDone.`,
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: [AUTH_PARAM_SECRET, "restricted"],
+			rawPii: [],
+			equivalence: true,
+		},
+		{
+			name: "long extension auth-param list beyond the opener window",
+			text: `Header Proxy-Authorization: Custom _user="${LONG_ANCHORED_VALUE}", realm=restricted\nDone.`,
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: [LONG_ANCHORED_VALUE, "restricted"],
+			rawPii: [],
+			equivalence: true,
+			chunkings: (text) =>
+				targetedLongChunkings(text, [
+					"Proxy-Authorization:",
+					LONG_ANCHORED_VALUE,
+				]),
 		},
 		{
 			name: "long HTTP Basic auth header (anchor more than opener window behind value)",

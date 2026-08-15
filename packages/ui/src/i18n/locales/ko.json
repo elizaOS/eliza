@@ -7386,6 +7386,7 @@
   "desktop.tray.testNotification.body": "렌더러 트레이 작업이 연결되어 응답 중입니다.",
   "accounts.provider.cerebrasApi": "Cerebras API",
   "automationsfeed.emptyHeadline": "아직 예약된 항목이 없어요",
+  "automationsfeed.emptyWorkflows": "워크플로우 없음",
   "automationsfeed.emptySub": "채팅에서 워크플로우를 설정해 달라고 요청하면 여기에서 실행돼요.",
   "bootstrapstep.startOver": "다시 시작",
   "chat.attachmentsKeptDroppedMixed": "{{kept}}개 유지, {{dropped}}개 제외 ({{tooLarge}}개가 {{maxMb}}MB 초과, {{overCount}}개가 개수 제한 초과)",

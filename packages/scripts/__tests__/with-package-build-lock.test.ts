@@ -71,12 +71,14 @@ function spawnWrapper(
   packageKey: string,
   command: string[],
   staleMs = "1000",
+  envOverrides: NodeJS.ProcessEnv = {},
 ): ChildProcessWithoutNullStreams {
   return spawn(NODE_BIN, [WRAPPER, packageKey, "--", ...command], {
     cwd: REPO_ROOT,
     env: {
       ...process.env,
       ELIZA_PACKAGE_BUILD_LOCK_STALE_MS: staleMs,
+      ...envOverrides,
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -104,6 +106,25 @@ async function waitForPath(target: string, timeoutMs = 5_000): Promise<void> {
   while (!existsSync(target)) {
     if (Date.now() >= deadline)
       throw new Error(`Timed out waiting for ${target}`);
+    await Bun.sleep(10);
+  }
+}
+
+async function waitForFileContent(
+  target: string,
+  expected: string,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    try {
+      if (readFileSync(target, "utf8") === expected) return;
+    } catch (error) {
+      // error-policy:J3 a missing file remains an explicit not-ready state.
+      if (error?.code !== "ENOENT") throw error;
+    }
+    if (Date.now() >= deadline)
+      throw new Error(`Timed out waiting for expected content at ${target}`);
     await Bun.sleep(10);
   }
 }
@@ -227,12 +248,12 @@ describe("with-package-build-lock", () => {
     expect(readFileSync(observationPath, "utf8")).toBe("after");
   });
 
-  test("serializes simultaneous takeovers of one dead-owner lock", async () => {
+  test("serializes simultaneous takeovers of a directory-style dead-owner lock", async () => {
     const packageKey = uniquePackageKey("dead-race");
     const lockPath = lockPathFor(packageKey);
-    mkdirSync(path.dirname(lockPath), { recursive: true });
+    mkdirSync(lockPath, { recursive: true });
     writeFileSync(
-      lockPath,
+      path.join(lockPath, "metadata.json"),
       `${JSON.stringify({ pid: 2_147_483_647, ownerId: "dead", createdAt: new Date().toISOString() })}\n`,
     );
     const evidenceDir = mkdtempSync(path.join(tmpdir(), "eliza-lock-race-"));
@@ -249,28 +270,58 @@ describe("with-package-build-lock", () => {
     expect(existsSync(overlapPath)).toBe(false);
   });
 
-  test("keeps replacement owners exclusive during repeated stale takeovers", async () => {
-    const packageKey = uniquePackageKey("takeover-stress");
+  test("preserves a live replacement installed before atomic stale takeover", async () => {
+    const packageKey = uniquePackageKey("replacement-barrier");
     const lockPath = lockPathFor(packageKey);
     mkdirSync(path.dirname(lockPath), { recursive: true });
     writeFileSync(
       lockPath,
       `${JSON.stringify({ pid: 2_147_483_647, ownerId: "dead", createdAt: new Date().toISOString() })}\n`,
     );
-    const evidenceDir = mkdtempSync(path.join(tmpdir(), "eliza-lock-stress-"));
+    const evidenceDir = mkdtempSync(path.join(tmpdir(), "eliza-lock-barrier-"));
     cleanupPaths.add(evidenceDir);
-    const activePath = path.join(evidenceDir, "active");
-    const overlapPath = path.join(evidenceDir, "overlap");
-    const childCode = `const fs=require("node:fs");const active=${JSON.stringify(activePath)};const overlap=${JSON.stringify(overlapPath)};if(fs.existsSync(active))fs.appendFileSync(overlap,"overlap\\n");fs.writeFileSync(active,String(process.pid));setTimeout(()=>fs.rmSync(active,{force:true}),40);`;
-
-    const outcomes = await Promise.all(
-      Array.from({ length: 8 }, () =>
-        collect(spawnWrapper(packageKey, [NODE_BIN, "-e", childCode])),
-      ),
+    const readyPath = path.join(evidenceDir, "rename-ready");
+    const releasePath = path.join(evidenceDir, "rename-release");
+    const preloadPath = path.join(evidenceDir, "rename-barrier.mjs");
+    writeFileSync(
+      preloadPath,
+      `import fs from "node:fs/promises";\nconst originalRename=fs.rename.bind(fs);\nfs.rename=async(source,destination)=>{if(source===process.env.ELIZA_BUILD_LOCK_TEST_TARGET){await fs.writeFile(process.env.ELIZA_BUILD_LOCK_TEST_READY,"ready");while(true){try{await fs.access(process.env.ELIZA_BUILD_LOCK_TEST_RELEASE);break;}catch(error){/* error-policy:J3 a missing release marker remains an explicit blocked state. */if(error?.code!=="ENOENT")throw error;}await new Promise(resolve=>setTimeout(resolve,5));}}return originalRename(source,destination);};\n`,
     );
 
-    expect(outcomes.every((outcome) => outcome.code === 0)).toBe(true);
-    expect(existsSync(overlapPath)).toBe(false);
+    const contender = spawnWrapper(
+      packageKey,
+      [NODE_BIN, "-e", "process.exit(0)"],
+      "1",
+      {
+        NODE_OPTIONS: `--import=${preloadPath}`,
+        ELIZA_BUILD_LOCK_TEST_TARGET: lockPath,
+        ELIZA_BUILD_LOCK_TEST_READY: readyPath,
+        ELIZA_BUILD_LOCK_TEST_RELEASE: releasePath,
+      },
+    );
+    const contenderResult = collect(contender);
+    await waitForPath(readyPath);
+
+    const replacementId = randomUUID();
+    const replacement = `${JSON.stringify({
+      pid: process.pid,
+      ownerId: replacementId,
+      createdAt: new Date().toISOString(),
+    })}\n`;
+    rmSync(lockPath, { force: true });
+    writeFileSync(lockPath, replacement, { flag: "wx" });
+    writeFileSync(releasePath, "release");
+
+    await waitForFileContent(lockPath, replacement);
+    expect(readFileSync(lockPath, "utf8")).toBe(replacement);
+    expect(JSON.parse(readFileSync(lockPath, "utf8")).ownerId).toBe(
+      replacementId,
+    );
+
+    contender.kill("SIGTERM");
+    const outcome = await contenderResult;
+    expect(outcome.code).not.toBe(0);
+    expect(readFileSync(lockPath, "utf8")).toBe(replacement);
   });
 
   test("waits for the age bound before reclaiming incomplete metadata", () => {

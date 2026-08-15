@@ -1172,9 +1172,11 @@ export function ChatOverlay({
   agentName = "Eliza",
   slash: slashProp,
   firstRunOpen = false,
+  releaseFirstRunToHalf = false,
+  onFirstRunReleaseHandled,
 }: {
   controller: ShellController;
-  /** Name shown in the composer placeholder ("Ask {agentName}"). Defaults to Eliza. */
+  /** Name shown in the composer placeholder ("Message {agentName}"). Defaults to Eliza. */
   agentName?: string;
   /** Universal slash-command catalog + app-level nav effects. */
   slash?: SlashCommandController;
@@ -1189,6 +1191,13 @@ export function ChatOverlay({
    * completed — the sheet settles to half, the scrim fades, and home is shown.
    */
   firstRunOpen?: boolean;
+  /**
+   * One-shot completion intent retained by the parent shell when onboarding
+   * completion and a runtime-target remount happen in the same transition.
+   */
+  releaseFirstRunToHalf?: boolean;
+  /** Acknowledges that the retained completion intent reached this overlay. */
+  onFirstRunReleaseHandled?: () => void;
 }): React.JSX.Element {
   const {
     messages,
@@ -3723,8 +3732,16 @@ export function ChatOverlay({
       setMaximized(true);
       return;
     }
-    if (was) goToDetent("half");
-  }, [firstRunOpen, goToDetent]);
+    if (was || releaseFirstRunToHalf) {
+      goToDetent("half");
+      onFirstRunReleaseHandled?.();
+    }
+  }, [
+    firstRunOpen,
+    goToDetent,
+    onFirstRunReleaseHandled,
+    releaseFirstRunToHalf,
+  ]);
 
   // First-run backdrop. While onboarding pins the sheet FULL, a neutral scrim
   // preserves the shell's configured wallpaper while keeping the sign-in copy
@@ -6496,7 +6513,7 @@ export function ChatOverlay({
                   // the imageError note above.)
                   placeholder={
                     compactLanding
-                      ? "Ask"
+                      ? "Message"
                       : firstRunOpen
                         ? "Sign in to start chatting"
                         : noProviderConfigured
@@ -6506,9 +6523,9 @@ export function ChatOverlay({
                               ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
                               : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
                             : booting
-                              ? `Ask ${agentName} — waking up…`
+                              ? `Message ${agentName} — waking up…`
                               : (viewChatBinding?.placeholder ??
-                                `Ask ${agentName}`)
+                                `Message ${agentName}`)
                   }
                   aria-label="message"
                   data-testid="chat-composer-textarea"

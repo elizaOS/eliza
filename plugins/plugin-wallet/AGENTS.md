@@ -23,7 +23,7 @@ Adds a unified wallet action+provider surface to an Eliza agent, replacing the p
 
 Similes handled: `SWAP`, `SWAP_SOLANA`, `TRANSFER`, `TRANSFER_TOKEN`, `WALLET_SWAP`, `WALLET_TRANSFER`, `CROSS_CHAIN_TRANSFER`, `PREPARE_TRANSFER`, `WALLET_ACTION`, `WALLET_GOV`, `PUMP_FUN_BUY`, `PUMPFUN_BUY`, `TOKEN_INFO`, `BIRDEYE_LOOKUP`, `BIRDEYE_SEARCH`, `WALLET_SEARCH_ADDRESS`.
 
-All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`, `pump_fun_buy`) require a user confirmation turn before execution. `mode=prepare` (default) stages without signing. Setting `mode=execute` does **not** bypass the gate — submission only happens after a confirmed reply turn. `dryRun=true` returns metadata without signing.
+All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`, `pump_fun_buy`) require a user confirmation turn before execution. `mode=prepare` (default) stages without signing. Setting `mode=execute` does **not** bypass the gate — submission only happens after a confirmed reply turn. `dryRun=true` returns metadata without signing. `mode=simulate` (GH #16613) is a third, non-broadcasting mode: the handler builds the real transaction (real Jupiter quote/swap-tx or real PumpPortal trade-local build, whichever the subaction uses) and runs `connection.simulateTransaction({ sigVerify: false, replaceRecentBlockhash: true })` against it instead of signing and sending. It needs only the wallet's public key — never a private key or a `WalletBackend` signer — so it cannot authorize or lead to a live submission, and it skips the confirmation gate entirely (`requiresWalletFinancialConfirmation` returns `false` for it, same as `dryRun`). An RPC-reported revert is a *typed, successful* simulation (`success: false` with `err`/`logs`), never a thrown error or a fabricated success. Supported today for Solana `swap` and `pump_fun_buy` only; every other handler/subaction combination returns a typed `SIMULATION_UNSUPPORTED` router failure rather than silently falling back to `execute()` or the `prepare` echo.
 
 **Providers:**
 
@@ -189,6 +189,7 @@ All read via `runtime.getSetting()` (or `process.env` fallback where noted).
 | `STEWARD_AGENT_TOKEN` | Steward backend | Bearer token for Steward. |
 | `STEWARD_TENANT_ID` | Steward backend | Tenant/user identifier. |
 | `SOLANA_RPC_URL` | Solana features | RPC endpoint; skips Solana init if absent. |
+| `JUPITER_API_BASE_URL` | No | Jupiter Swap API base URL. Defaults to `https://lite-api.jup.ag/swap/v1`. |
 | `SOLANA_NO_ACTIONS` | No | Set to `true` to skip Solana action registration. |
 | `PUMPFUN_TRADE_LOCAL_URL` | No | PumpPortal local transaction API. Defaults to `https://pumpportal.fun/api/trade-local`. |
 | `PUMPFUN_PRIORITY_FEE_SOL` | No | Priority fee in SOL for `pump_fun_buy`. Defaults to `0.00005`. |
@@ -214,6 +215,7 @@ EVM RPC (LP manager / chain routing): `ETHEREUM_RPC_URL` / `EVM_PROVIDER_MAINNET
 1. Implement `WalletChainHandler` from `src/types/wallet-router.ts`. Provide `chain`, `name`, `supportedSubactions`, `metadata()`, `prepare()`, and `execute()`.
 2. Register it in `src/chains/registry.ts` inside `registerDefaultWalletChainHandlers`, calling `service.registerChainHandler(handler)`.
 3. No new action needed — `walletRouterAction` dispatches to all registered handlers via `WalletBackendService.routeWalletAction`.
+4. Optionally implement `simulate()` and declare `simulation: { supported: true, supportedActions: [...] }` to support `mode=simulate` for a subaction (GH #16613). `simulate()` must build the real unsigned transaction and run it through `connection.simulateTransaction` — never sign, never call `sendTransaction`/`sendRawTransaction`/`confirmTransaction`. A handler that omits `simulate`/`simulation` gets a typed `SIMULATION_UNSUPPORTED` router failure for `mode=simulate`, never a silent fallback to `execute()` or to the `prepare` echo. See `fetchJupiterSwapTransaction`/`simulateSolanaSwap` and `fetchPumpFunTransaction`/`simulatePumpFunBuy` in `src/chains/registry.ts` for the reference shape (build helper shared with `execute`, plus a thin simulate wrapper).
 
 **Add a new analytics provider:**
 
@@ -229,7 +231,7 @@ Extend `src/analytics/birdeye/service.ts`. The service proxies all calls through
 
 - **Financial confirmation gate.** All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`, `pump_fun_buy`) go through `gateWalletFinancialExecution` in `src/security/wallet-financial-confirmation.ts`, which calls `requireConfirmation` from `@elizaos/core`. The LLM cannot bypass this by passing `mode=execute` alone — a confirmed reply turn is always required. Do not remove or short-circuit this gate.
 - **`WalletBackend` is the only signing path.** Providers and actions must never read raw private key env vars directly. Go through `WalletBackendService.getWalletBackend()` → `WalletBackend`.
-- **pump.fun buy path.** `pump_fun_buy` is a Solana handler alias (`pumpfun`, `pump.fun`, `pump-fun`, `pump`) that requires `toToken`/`token` as a valid Solana mint and `amount` as SOL. It requests a serialized transaction from PumpPortal trade-local, signs through `WalletBackend.getSolanaSigner()` when available (falling back to the existing local `getWalletKey` Solana path), opens the token page through the optional browser service when available, then submits through `SOLANA_RPC_URL`.
+- **pump.fun buy path.** `pump_fun_buy` is a Solana handler alias (`pumpfun`, `pump.fun`, `pump-fun`, `pump`) that requires `toToken`/`token` as a valid Solana mint and `amount` as SOL. It requests a serialized transaction from PumpPortal trade-local, signs through `WalletBackend.getSolanaSigner()` when available (falling back to the existing local `getWalletKey` Solana path), opens the token page through the optional browser service when available, then submits through `SOLANA_RPC_URL`. `mode=simulate` (GH #16613) shares the trade-local build (`fetchPumpFunTransaction`) but resolves only a public key (`resolvePumpFunPublicKey`, never `WalletBackend.getSolanaSigner()`/local keypair), skips the browser coin-page open, and runs `connection.simulateTransaction` instead of signing/sending.
 - **`handleWalletRoutes` is dependency-injected.** It imports nothing from `@elizaos/agent` to avoid a cycle. All agent-internal helpers (runtime lookup, auth, route helpers) are passed via `WalletRouteContext.deps` by `@elizaos/agent`'s server wiring.
 - **Sub-plugins.** `evmPlugin` and `solanaPlugin` are composed into `walletPlugin` in `plugin.ts`. They are not intended to be loaded directly; always depend on `@elizaos/plugin-wallet`.
 - **`SDK-LICENSE`** covers the `src/sdk/` subtree (originally from agent-wallet-sdk, MIT).

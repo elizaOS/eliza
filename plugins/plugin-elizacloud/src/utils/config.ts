@@ -1,5 +1,6 @@
+/** Resolves Cloud model and endpoint settings from runtime and environment state. */
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, resolveSetting } from "@elizaos/core";
+import { ElizaError, logger, resolveSetting } from "@elizaos/core";
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
@@ -233,6 +234,20 @@ export function getResponseModel(runtime: IAgentRuntime): string {
     getSetting(runtime, "ELIZAOS_CLOUD_RESPONSE_MODEL") ??
     getSetting(runtime, "RESPONSE_MODEL") ??
     getLargeModel(runtime)
+  );
+}
+
+/**
+ * @deprecated Eliza Cloud research was retired. This compatibility export
+ * fails explicitly instead of selecting a text model that cannot do research.
+ */
+export function getResearchModel(_runtime: IAgentRuntime): never {
+  throw new ElizaError(
+    "Eliza Cloud no longer provides a RESEARCH model; install a research-capable provider",
+    {
+      code: "ELIZA_CLOUD_RESEARCH_UNAVAILABLE",
+      severity: "fatal",
+    },
   );
 }
 

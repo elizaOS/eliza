@@ -802,7 +802,6 @@ async function withPackagedHarness(
       // (the bottom-bar default is covered by electrobun-bottom-bar.e2e.spec.ts).
       extraEnv: {
         ELIZA_DESKTOP_BOTTOM_BAR: "0",
-        ELIZA_DESKTOP_TRAY_POPOVER: "1",
       },
     });
     debugPackagedPhase("starting initial packaged launch");
@@ -1040,6 +1039,10 @@ test("packaged desktop shortcut bridge summons the main window", async ({
     expect(initialState.shell.shortcuts ?? []).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          id: "command-palette",
+          accelerator: "CommandOrControl+K",
+        }),
+        expect.objectContaining({
           id: "chat-overlay",
           accelerator: PACKAGED_CHAT_OVERLAY_ACCELERATOR,
         }),
@@ -1048,15 +1051,26 @@ test("packaged desktop shortcut bridge summons the main window", async ({
 
     await harness.closeMainWindow();
     await harness.waitForState(
-      (state) => !state.mainWindow.present && state.shell.trayPresent,
-      "Expected closing the main window to leave the tray active before shortcut summon.",
+      (state) =>
+        state.mainWindow.present &&
+        state.shell.trayPresent &&
+        !state.shell.windowVisible &&
+        !state.shell.windowFocused,
+      "Expected closing the main window to hide it to the tray before shortcut summon.",
       30_000,
     );
 
     await harness.pressShortcut("chat-overlay");
     await harness.waitForState(
-      (state) => state.mainWindow.present && state.shell.windowFocused,
-      "Expected shortcut bridge press to summon and focus the main window.",
+      (state) =>
+        state.mainWindow.present &&
+        state.shell.windowVisible &&
+        // A synthetic HTTP shortcut press is not a macOS user-activation event,
+        // so the interactive test host may immediately reclaim key-window
+        // status. The native implementation still activates NSApp and orders
+        // the window key; CUA covers that real user-initiated focus boundary.
+        (process.platform === "darwin" || state.shell.windowFocused),
+      "Expected shortcut bridge press to summon the main window.",
       30_000,
     );
   });
@@ -1150,7 +1164,7 @@ test("packaged macOS desktop keeps the tray alive and preserves vibrancy through
 
     expect(initialState.mainWindow.titleBarStyle).toBe("hiddenInset");
     expect(initialState.shell.trayPopover).toMatchObject({
-      configured: true,
+      configured: false,
       windowPresent: false,
       visible: false,
     });
@@ -1162,27 +1176,6 @@ test("packaged macOS desktop keeps the tray alive and preserves vibrancy through
 
     const initialEffects = await readMainWindowEffects(harness);
     expect(initialEffects.shadowEnabled).toBe(true);
-
-    const openedPopover = await harness.toggleTrayPopover();
-    expect(openedPopover).toMatchObject({
-      configured: true,
-      windowPresent: true,
-      visible: true,
-    });
-    expect(openedPopover.lastAnchorBounds).toMatchObject({
-      width: 360,
-      height: 480,
-    });
-
-    const hiddenPopover = await harness.toggleTrayPopover();
-    expect(hiddenPopover).toMatchObject({
-      configured: true,
-      windowPresent: true,
-      visible: false,
-    });
-    expect(hiddenPopover.lastAnchorBounds).toEqual(
-      openedPopover.lastAnchorBounds,
-    );
 
     await harness.closeMainWindow();
 

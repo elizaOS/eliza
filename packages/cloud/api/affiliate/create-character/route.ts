@@ -170,6 +170,36 @@ function clientIp(c: AppContext): string | undefined {
   );
 }
 
+function parsePositiveIntEnv(
+  value: string | undefined,
+  defaultValue: number,
+  name: string,
+  max: number,
+): number {
+  const raw = value ?? String(defaultValue);
+  // Reject trailing junk, scientific notation, and non-decimal strings.
+  if (!/^\d+$/.test(raw)) {
+    logger.warn(
+      `[affiliate/create-character] Invalid ${name} (expected positive integer), using default: ${defaultValue}`,
+    );
+    return defaultValue;
+  }
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n) || n <= 0 || !Number.isSafeInteger(n)) {
+    logger.warn(
+      `[affiliate/create-character] Invalid ${name} (expected safe positive integer), using default: ${defaultValue}`,
+    );
+    return defaultValue;
+  }
+  if (n > max) {
+    logger.warn(
+      `[affiliate/create-character] ${name} exceeds maximum (${max}), clamping to: ${max}`,
+    );
+    return max;
+  }
+  return n;
+}
+
 const app = new Hono<AppEnv>();
 
 app.options("/", (c) => {
@@ -235,9 +265,11 @@ app.post("/", async (c) => {
     const sessionId = providedSessionId || crypto.randomUUID();
     const expiresAt = new Date(Date.now() + ANON_USER_TTL_MS);
 
-    const messagesLimit = Number.parseInt(
-      (c.env.ANON_MESSAGE_LIMIT as string | undefined) ?? "5",
-      10,
+    const messagesLimit = parsePositiveIntEnv(
+      c.env.ANON_MESSAGE_LIMIT as string | undefined,
+      5,
+      "ANON_MESSAGE_LIMIT",
+      1000,
     );
 
     // Fail closed on session provisioning. The session row IS the spend gate:

@@ -29,17 +29,13 @@ Primary app-shell logic.
 
 Agent layer on elizaOS: providers, skill discovery and catalog plumbing, runtime compatibility layers, training and testing helpers.
 
-### `apps/app/`
+### `packages/app/`
 
-Main React UI and desktop shell: web UI, onboarding, settings, Electrobun native process under `apps/app/electrobun/`.
+Main React UI and desktop shell: web UI, onboarding, settings. The Electrobun native process lives under `packages/app-core/platforms/electrobun/`.
 
-### `eliza/cloud/`
+### `packages/cloud/`
 
-Eliza Cloud product code (git submodule nested under `eliza/`): apps, billing, earnings, auth, containers, domains, cloud-side agent runtime and plugins.
-
-### `eliza/`
-
-Repo-local upstream elizaOS checkout for linked development. Change this only when the issue is genuinely upstream or the user asks for upstream work.
+Eliza Cloud product code: apps, billing, earnings, auth, containers, domains, cloud-side agent runtime and plugins.
 
 ## Commands
 
@@ -54,9 +50,8 @@ Useful narrower commands:
 ```bash
 bun run dev
 bun run dev:desktop
-bun run eliza ...
+bun run start
 bun run test:e2e
-bun run test:coverage
 ```
 
 ## Non-negotiable runtime invariants
@@ -67,4 +62,4 @@ bun run test:coverage
 
 ## Default skill seeding
 
-Shipped skills are bundled in `@elizaos/skills` and are seeded into the state-dir skills folder (e.g. `~/.eliza/skills` when `ELIZA_NAMESPACE=eliza`) by Eliza’s `scripts/ensure-skills.mjs`. They are default agent knowledge, not optional extras.
+Shipped skills are bundled in `@elizaos/skills` and are seeded into the state-dir skills folder (e.g. `~/.eliza/skills` when `ELIZA_NAMESPACE=eliza`) by Eliza’s `packages/app-core/scripts/ensure-skills.mjs`. They are default agent knowledge, not optional extras.

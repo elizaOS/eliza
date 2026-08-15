@@ -15,6 +15,7 @@ const input = {
   conversationId: "11111111-1111-4111-8111-111111111111",
   calledNumber: "+14484080429",
   returningCaller: true,
+  previousInteractionAt: 987_654,
 };
 
 describe("Twilio stream token", () => {
@@ -49,5 +50,23 @@ describe("Twilio stream token", () => {
     expect(
       await verifyTwilioStreamToken(minted.token, "secret", () => 1_130_000),
     ).toBeNull();
+  });
+
+  test("accepts personal Shared room ids and rejects arbitrary room text", async () => {
+    const personal = {
+      ...input,
+      agentId: "personal:da729919-c9f5-5fe7-b5fe-3e0ca681a8c1",
+      conversationId: "personal:da729919-c9f5-5fe7-b5fe-3e0ca681a8c1",
+    };
+    const minted = await mintTwilioStreamToken(personal, "secret");
+    expect(await verifyTwilioStreamToken(minted.token, "secret")).toEqual(
+      minted.claims,
+    );
+    await expect(
+      mintTwilioStreamToken(
+        { ...input, conversationId: "room-from-client" },
+        "secret",
+      ),
+    ).rejects.toThrow();
   });
 });

@@ -185,6 +185,34 @@ describe("verifyPagesFrontendOnce", () => {
     expect(report.detail).toContain("2 emitted JavaScript asset(s)");
   });
 
+  it("ignores the reserved Pages _worker.js executable", async () => {
+    const distDir = makeDist("assets/index-fresh.js", "entry");
+    writeFileSync(
+      join(distDir, "_worker.js"),
+      "export default { fetch: () => new Response('middleware') };",
+    );
+    const fetchImpl = (async (url: string) => {
+      if (url === "https://app.elizacloud.ai/") {
+        return response(
+          '<script type="module" src="/assets/index-fresh.js"></script>',
+        );
+      }
+      if (url.endsWith("/assets/index-fresh.js")) return response("entry");
+      throw new Error(
+        `reserved worker must not be fetched as an asset: ${url}`,
+      );
+    }) as unknown as typeof fetch;
+
+    const report = await verifyPagesFrontendOnce({
+      servedUrl: "https://app.elizacloud.ai",
+      distDir,
+      fetchImpl,
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.detail).toContain("1 emitted JavaScript asset(s)");
+  });
+
   it("fails when a live lazy asset does not exactly match local bytes", async () => {
     const distDir = makeDist("assets/index-fresh.js", "entry");
     writeFileSync(join(distDir, "assets/AppContext-lazy.js"), "local lazy");

@@ -29,9 +29,7 @@ describe("coding tool planner summaries", () => {
   });
 
   it("summarizes shell commands with bounded text", () => {
-    expect(summarizeShellCommand({ command: "bun test" })).toBe(
-      "ran `bun test`",
-    );
+    expect(summarizeShellCommand("bun test")).toBe("ran `bun test`");
     expect(
       compactSummaryText(
         "bun run test --filter very-long-package-name -- --reporter verbose",

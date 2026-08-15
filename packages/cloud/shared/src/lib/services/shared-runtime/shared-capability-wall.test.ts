@@ -6,6 +6,10 @@ import { resolveSharedCapabilityWall } from "./shared-capability-wall";
 describe("Shared capability wall", () => {
   test.each([
     ["remind me tomorrow at 9", "reminders"],
+    ["add milk to my todo list", "todos"],
+    ["add milk to my tasks", "todos"],
+    ["show my checklist", "todos"],
+    ["complete the laundry todo", "todos"],
     ["show my calendar events", "calendar"],
     ["book me dinner for four", "bookings"],
     ["book a flight to san francisco", "bookings"],
@@ -35,5 +39,41 @@ describe("Shared capability wall", () => {
     "Let's discuss my meeting tomorrow",
   ])("keeps discussion and research in Shared: %s", (message) => {
     expect(resolveSharedCapabilityWall(message)).toBeNull();
+  });
+
+  test("allows reminders only when the current transport has trusted delivery", () => {
+    expect(
+      resolveSharedCapabilityWall("remind me in two minutes", {
+        reminders: true,
+      }),
+    ).toBeNull();
+    expect(resolveSharedCapabilityWall("remind me in two minutes")?.capability).toBe("reminders");
+  });
+
+  test("does not falsely claim voice and messaging require Dedicated", () => {
+    const wall = resolveSharedCapabilityWall("call Mom");
+    expect(wall?.reply).toContain("connected voice and messaging channels");
+    expect(wall?.reply).not.toContain("Dedicated");
+  });
+
+  test.each(["channel", "voice"])(
+    "does not treat trusted public Discord %s context as a communication request",
+    (transport) => {
+      const wrappedTurn = [
+        `[Public Discord guild ${transport}; speaker: shaw.`,
+        "Use only this public guild channel's context. Never reveal or summarize context from any private transport.]",
+        "reply with exactly PONG",
+      ].join("\n");
+      expect(resolveSharedCapabilityWall(wrappedTurn)).toBeNull();
+    },
+  );
+
+  test("allows todos only when the genuine runtime has durable storage", () => {
+    expect(
+      resolveSharedCapabilityWall("add milk to my todo list", {
+        todos: true,
+      }),
+    ).toBeNull();
+    expect(resolveSharedCapabilityWall("add milk to my todo list")?.capability).toBe("todos");
   });
 });

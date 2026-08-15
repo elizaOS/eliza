@@ -11,6 +11,7 @@ import type { Media } from "@elizaos/core";
 import {
   type Content,
   createUniqueUuid,
+  ElizaError,
   fetchWithSsrfGuard,
   logger,
   type Memory,
@@ -21,6 +22,7 @@ import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
 import { TWEET_MAX_LENGTH } from "./constants";
 import type { ActionResponse, MediaData } from "./types";
+import { normalizeXReceiptId } from "./utils/provider-receipt";
 
 /**
  * Minimal shape we rely on from the Twitter v2 send-tweet response after
@@ -147,14 +149,14 @@ export async function sendStandardTweet(
   tweetId?: string,
   mediaData?: MediaData[],
 ) {
-  const standardTweetResult = await client.twitterClient.sendTweet(
-    content,
-    tweetId,
-    mediaData,
-  );
-
-  // The result is already the response object
-  return standardTweetResult;
+  return client.withAuthenticatedSession(async (session) => {
+    if (!client.isAuthenticatedSessionCurrent(session)) {
+      throw new ElizaError("X credentials rotated before post egress", {
+        code: "X_AUTH_SESSION_ROTATED",
+      });
+    }
+    return client.twitterClient.sendTweet(content, tweetId, mediaData);
+  });
 }
 
 type SendTweetResponse = Awaited<
@@ -173,8 +175,9 @@ function unwrapSentTweet(response: SendTweetResponse): SentTweet | undefined {
 
   if (inner && typeof inner === "object" && "id" in inner) {
     const candidate = inner as { id: unknown };
-    if (typeof candidate.id === "string") {
-      return inner as SentTweet;
+    const id = normalizeXReceiptId(candidate.id);
+    if (id) {
+      return { ...(inner as Record<string, unknown>), id } as SentTweet;
     }
   }
   return undefined;
@@ -187,15 +190,19 @@ export async function sendTweet(
   tweetToReplyTo?: string,
   mediaIds?: string[],
 ): Promise<SentTweet> {
-  const isNoteTweet = text.length > TWEET_MAX_LENGTH;
-  const postText = isNoteTweet
-    ? truncateToCompleteSentence(text, TWEET_MAX_LENGTH)
-    : text;
+  return client.withAuthenticatedSession(async (session) => {
+    const { profile } = session;
+    const isNoteTweet = text.length > TWEET_MAX_LENGTH;
+    const postText = isNoteTweet
+      ? truncateToCompleteSentence(text, TWEET_MAX_LENGTH)
+      : text;
 
-  let result: SendTweetResponse;
-
-  try {
-    result = await client.twitterClient.sendTweet(
+    if (!client.isAuthenticatedSessionCurrent(session)) {
+      throw new ElizaError("X credentials rotated before post egress", {
+        code: "X_AUTH_SESSION_ROTATED",
+      });
+    }
+    const result: SendTweetResponse = await client.twitterClient.sendTweet(
       postText,
       tweetToReplyTo,
       mediaData,
@@ -203,51 +210,45 @@ export async function sendTweet(
       mediaIds,
     );
     logger.info("Successfully posted Tweet");
-  } catch (error) {
-    logger.error("Error posting Tweet:", errorDetail(error));
-    throw error;
-  }
 
-  const tweetResult = unwrapSentTweet(result);
-  if (!tweetResult) {
-    logger.error("No valid response from Twitter API");
-    throw new Error("Failed to send tweet - no valid response");
-  }
-
-  try {
-    if (
-      client.lastCheckedTweetId === null ||
-      client.lastCheckedTweetId < BigInt(tweetResult.id)
-    ) {
-      client.lastCheckedTweetId = BigInt(tweetResult.id);
+    const tweetResult = unwrapSentTweet(result);
+    if (!tweetResult) {
+      throw new ElizaError("X returned no usable post receipt", {
+        code: "X_POST_RESPONSE_INVALID",
+      });
     }
-    await client.cacheLatestCheckedTweetId();
 
-    await client.cacheTweet({
-      ...tweetResult,
-      userId: "",
-      username: "",
-      name: "",
-      conversationId: tweetResult.id,
-      timestamp: Date.now(),
-      photos: [],
-      mentions: [],
-      hashtags: [],
-      urls: [],
-      videos: [],
-      thread: [],
-      permanentUrl: "",
-    });
+    try {
+      client.recordLatestCheckedTweetId(profile.id, BigInt(tweetResult.id));
+      await client.cacheLatestCheckedTweetId(profile);
+      await client.cacheTweet({
+        ...tweetResult,
+        userId: profile.id,
+        username: profile.username,
+        name: profile.screenName,
+        conversationId: tweetResult.id,
+        timestamp: Date.now(),
+        photos: [],
+        mentions: [],
+        hashtags: [],
+        urls: [],
+        videos: [],
+        thread: [],
+        permanentUrl: `https://x.com/${profile.username}/status/${tweetResult.id}`,
+      });
+      logger.info("Successfully posted a tweet", tweetResult.id);
+    } catch (error) {
+      // error-policy:J7 X already accepted the post, so retrying would duplicate
+      // an external effect. Surface the local receipt failure and return the
+      // accepted provider result exactly once.
+      client.runtime.reportError("X.sendTweet.localReceipt", error, {
+        accountId: client.accountId,
+        tweetId: tweetResult.id,
+      });
+    }
 
-    logger.info("Successfully posted a tweet", tweetResult.id);
-  } catch (error) {
-    logger.error(
-      "Tweet posted, but failed to update local tweet cache:",
-      errorDetail(error),
-    );
-  }
-
-  return tweetResult;
+    return tweetResult;
+  });
 }
 
 /**
@@ -264,77 +265,70 @@ export async function sendChunkedTweet(
   client: ClientBase,
   content: Content,
   roomId: UUID,
-  twitterUsername: string,
+  _twitterUsername: string,
   inReplyTo: string,
 ): Promise<Memory[]> {
-  const messages: Memory[] = [];
-  const chunks = splitTweetContent(content.text ?? "", TWEET_MAX_LENGTH);
+  return client.withAuthenticatedSession(async (session) => {
+    const messages: Memory[] = [];
+    const chunks = splitTweetContent(content.text ?? "", TWEET_MAX_LENGTH);
+    let previousTweetId = inReplyTo;
 
-  let previousTweetId = inReplyTo;
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      if (chunk === undefined) continue;
+      const tweetContent = `${chunk}`;
+      logger.debug(`Sending tweet ${i + 1}/${chunks.length}: ${tweetContent}`);
 
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    if (chunk === undefined) continue;
-    const _isLastChunk = i === chunks.length - 1;
+      try {
+        let mediaData: MediaData[] = [];
+        if (content.attachments && content.attachments.length > 0) {
+          mediaData = await fetchMediaData(content.attachments);
+        }
+        if (!client.isAuthenticatedSessionCurrent(session)) {
+          throw new ElizaError("X credentials rotated during thread egress", {
+            code: "X_AUTH_SESSION_ROTATED",
+          });
+        }
+        const result = await sendTweet(
+          client,
+          tweetContent,
+          mediaData,
+          previousTweetId,
+        );
+        const tweetResult =
+          typeof result.data === "object" && result.data !== null
+            ? result.data
+            : result;
 
-    // Add the tweet number to the beginning of each chunk
-    const tweetContent = `${chunk}`;
-
-    logger.debug(`Sending tweet ${i + 1}/${chunks.length}: ${tweetContent}`);
-
-    try {
-      // Convert Media[] to MediaData[] if needed
-      let mediaData: MediaData[] = [];
-      if (content.attachments && content.attachments.length > 0) {
-        mediaData = await fetchMediaData(content.attachments);
+        if (
+          typeof tweetResult === "object" &&
+          tweetResult !== null &&
+          "id" in tweetResult &&
+          typeof tweetResult.id === "string"
+        ) {
+          const tweetId = tweetResult.id;
+          messages.push({
+            id: createUniqueUuid(client.runtime, tweetId),
+            entityId: client.runtime.agentId,
+            content: {
+              text: chunk,
+              url: `https://x.com/${session.profile.username}/status/${tweetId}`,
+              source: "twitter",
+            },
+            agentId: client.runtime.agentId,
+            roomId,
+            createdAt: Date.now(),
+          });
+          previousTweetId = tweetId;
+        }
+      } catch (error) {
+        logger.error(`Error sending chunk ${i + 1}:`, errorDetail(error));
+        throw error;
       }
-
-      const result = await sendTweet(
-        client,
-        tweetContent,
-        mediaData,
-        previousTweetId,
-      );
-
-      const body = result;
-
-      // Twitter API v2 response format
-      const tweetResult =
-        typeof body.data === "object" && body.data !== null ? body.data : body;
-
-      // if we have a response
-      if (
-        typeof tweetResult === "object" &&
-        tweetResult !== null &&
-        "id" in tweetResult &&
-        typeof tweetResult.id === "string"
-      ) {
-        const tweetId = tweetResult.id;
-        const permanentUrl = `https://x.com/${twitterUsername}/status/${tweetId}`;
-
-        const memory: Memory = {
-          id: createUniqueUuid(client.runtime, tweetId),
-          entityId: client.runtime.agentId,
-          content: {
-            text: chunk,
-            url: permanentUrl,
-            source: "twitter",
-          },
-          agentId: client.runtime.agentId,
-          roomId,
-          createdAt: Date.now(),
-        };
-
-        messages.push(memory);
-        previousTweetId = tweetId;
-      }
-    } catch (error) {
-      logger.error(`Error sending chunk ${i + 1}:`, errorDetail(error));
-      throw error;
     }
-  }
 
-  return messages;
+    return messages;
+  });
 }
 
 /**

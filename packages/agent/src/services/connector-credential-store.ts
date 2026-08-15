@@ -9,11 +9,19 @@
  * connector credential silently died with the process while its vaultRef
  * pointer stayed behind in connector account storage.
  *
- * Backed by the host vault (`AgentHostBridge.sharedVault()`), which encrypts
- * at rest and survives restarts. The boot funnel registers this service only
- * when `hasDurableHostVault()` is true: wrapping the no-op default vault
- * would swallow writes and lose credentials immediately, which is strictly
- * worse than the SECRETS fallback it replaces.
+ * Backed by a vault that encrypts at rest and survives restarts: the host
+ * vault (`AgentHostBridge.sharedVault()`) when an embedding host installed a
+ * durable bridge, otherwise a state-dir PGlite vault (`createVault()`, rooted
+ * at `ELIZA_STATE_DIR`) the service opens itself. The standalone/Cloud image
+ * boots with no host bridge (#18080), so without the fallback nothing durable
+ * exists there and every connector credential dies with the process. The boot
+ * funnel registers this service unconditionally.
+ *
+ * The state-dir vault is lazy — PGlite opens on the first credential
+ * operation, not at boot — and encrypts with the master key from the OS
+ * keychain or `ELIZA_VAULT_PASSPHRASE`; a headless host without either fails
+ * the write with `MasterKeyUnavailableError` (fail closed, actionable) rather
+ * than silently storing tokens that vanish on restart.
  *
  * The read/write surface mirrors the `ConnectorCredentialStore` contract in
  * `@elizaos/plugin-sql` (`putSecret`/`get`/`has`/`remove`) plus `reveal`,
@@ -21,8 +29,11 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import type { Vault } from "@elizaos/vault";
-import { getAgentHostBridge } from "../runtime/host-bridge.ts";
+import { createVault, type Vault } from "@elizaos/vault";
+import {
+  getAgentHostBridge,
+  hasDurableHostVault,
+} from "../runtime/host-bridge.ts";
 
 export const CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPE =
   "connector_credential_store";
@@ -39,6 +50,16 @@ export interface ConnectorCredentialPutSecretParams {
   caller?: string;
 }
 
+// One state-dir vault per process: PGlite is single-writer, and multi-agent
+// boots construct one service instance per runtime over the same data dir.
+let stateDirVault: Vault | null = null;
+
+function durableVault(): Vault {
+  if (hasDurableHostVault()) return getAgentHostBridge().sharedVault();
+  stateDirVault ??= createVault();
+  return stateDirVault;
+}
+
 export class ConnectorCredentialStoreService extends Service {
   static serviceType = CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPE;
   capabilityDescription =
@@ -48,7 +69,7 @@ export class ConnectorCredentialStoreService extends Service {
 
   constructor(runtime?: IAgentRuntime, vault?: Vault) {
     super(runtime);
-    this.vault = vault ?? getAgentHostBridge().sharedVault();
+    this.vault = vault ?? durableVault();
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {

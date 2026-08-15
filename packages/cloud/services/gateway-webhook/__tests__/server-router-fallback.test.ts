@@ -100,7 +100,7 @@ describe("canonical agent forwarding fallback", () => {
     ).toBeNull();
   });
 
-  test("sends the canonical agent hostname to the router origin", async () => {
+  test("sends dedicated sandboxes to the canonical router before their blocked public port", async () => {
     const requests: Array<{ url: string; forwardedHost: string | null }> = [];
     const previousOrigin = process.env.AGENT_ROUTER_ORIGIN_HOST;
     const previousDomain = process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN;
@@ -113,9 +113,6 @@ describe("canonical agent forwarding fallback", () => {
           url,
           forwardedHost: new Headers(init?.headers).get("x-forwarded-host"),
         });
-        if (url.startsWith("http://stale-sandbox.example")) {
-          throw new TypeError("connection timed out");
-        }
         return new Response(JSON.stringify({ response: "agent is live" }), {
           status: 200,
         });
@@ -146,10 +143,6 @@ describe("canonical agent forwarding fallback", () => {
     }
 
     expect(requests).toEqual([
-      {
-        url: `http://stale-sandbox.example/api/agents/${AGENT_ID}/message`,
-        forwardedHost: null,
-      },
       {
         url: `https://eliza-production-1.eliza.app/api/agents/${AGENT_ID}/message`,
         forwardedHost: `${AGENT_ID}.cloud.eliza.app`,
@@ -210,9 +203,6 @@ describe("canonical agent forwarding fallback", () => {
     globalThis.fetch = mock(async (input: string | URL | Request) => {
       const url = input instanceof Request ? input.url : String(input);
       requests.push(url);
-      if (url.startsWith("http://stale-sandbox.example")) {
-        throw new TypeError("connection timed out");
-      }
       if (url.endsWith(`/agents/${AGENT_ID}/message`)) {
         return new Response(JSON.stringify({ error: "Agent not found" }), {
           status: 404,
@@ -257,7 +247,6 @@ describe("canonical agent forwarding fallback", () => {
     }
 
     expect(requests).toEqual([
-      `http://stale-sandbox.example/api/agents/${AGENT_ID}/message`,
       `https://eliza-production-1.eliza.app/api/agents/${AGENT_ID}/message`,
       "https://eliza-production-1.eliza.app/api/agents",
       `https://eliza-production-1.eliza.app/api/agents/${RUNTIME_AGENT_ID}/message`,

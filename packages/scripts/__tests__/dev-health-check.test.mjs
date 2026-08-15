@@ -11,7 +11,10 @@ import { fileURLToPath } from "node:url";
 import {
   DEFAULT_API_PORT,
   DEFAULT_UI_PORT,
+  MAX_TIMER_MS,
   parseArgs,
+  parsePositiveIntMs,
+  parsePositiveIntSeconds,
   parseTcpPort,
   resolveApiPortFromEnv,
   resolveUiPortFromEnv,
@@ -73,6 +76,117 @@ describe("parseTcpPort", () => {
         /must be a TCP port integer from 1 to 65535/,
       );
     }
+  });
+});
+
+describe("parsePositiveIntMs", () => {
+  test("accepts positive integers through the timer ceiling", () => {
+    expect(parsePositiveIntMs("1", "--duration-ms")).toBe(1);
+    expect(parsePositiveIntMs("400", "--duration-ms")).toBe(400);
+    expect(parsePositiveIntMs(String(MAX_TIMER_MS), "--duration-ms")).toBe(
+      MAX_TIMER_MS,
+    );
+  });
+
+  test("rejects fractions, scientific notation, hex, and trailing garbage", () => {
+    for (const value of [
+      "0.4",
+      "1e20",
+      "1e3",
+      "0x10",
+      "20foo",
+      "1.5",
+      "+1",
+      " 5 ",
+      "NaN",
+      "Infinity",
+      "",
+    ]) {
+      expect(() => parsePositiveIntMs(value, "--duration-ms")).toThrow(
+        /--duration-ms must be a positive integer number of milliseconds from 1 to 2147483647/,
+      );
+    }
+  });
+
+  test("rejects zero, negatives, and values above the timer ceiling", () => {
+    for (const value of [
+      "0",
+      "-1",
+      String(MAX_TIMER_MS + 1),
+      "9007199254740992",
+      "9".repeat(400),
+    ]) {
+      expect(() => parsePositiveIntMs(value, "--duration-ms")).toThrow(
+        /--duration-ms must be a positive integer number of milliseconds from 1 to 2147483647/,
+      );
+    }
+  });
+});
+
+describe("parsePositiveIntSeconds", () => {
+  test("accepts positive integer seconds within the timer ceiling", () => {
+    expect(parsePositiveIntSeconds("1", "--seconds")).toBe(1);
+    expect(parsePositiveIntSeconds("90", "--seconds")).toBe(90);
+    // Largest whole-second window that still fits the 32-bit ms ceiling.
+    expect(parsePositiveIntSeconds("2147483", "--seconds")).toBe(2147483);
+  });
+
+  test("rejects fractional, scientific, zero, negative, and garbage input", () => {
+    for (const value of [
+      "0",
+      "0.4",
+      "1e20",
+      "1.5",
+      "0x10",
+      "20foo",
+      "-1",
+      "+1",
+      "",
+      "NaN",
+    ]) {
+      expect(() => parsePositiveIntSeconds(value, "--seconds")).toThrow(
+        /--seconds must be a positive integer number of seconds/,
+      );
+    }
+  });
+
+  test("rejects a whole-second window that overflows the timer ceiling", () => {
+    expect(() => parsePositiveIntSeconds("2147484", "--seconds")).toThrow(
+      /--seconds of 2147484 seconds exceeds the maximum observation window of 2147483647 milliseconds/,
+    );
+  });
+});
+
+describe("parseArgs duration wiring", () => {
+  test("--seconds keeps its integer value", () => {
+    expect(parseArgs(["--seconds=120"], {}).seconds).toBe(120);
+  });
+
+  test("--duration-ms converts to a seconds window that round-trips", () => {
+    // 400 ms must survive Math.round(seconds * 1000) instead of collapsing to 0.
+    const options = parseArgs(["--duration-ms=400"], {});
+    expect(Math.round(options.seconds * 1000)).toBe(400);
+    expect(Math.round(parseArgs(["--duration-ms=1"], {}).seconds * 1000)).toBe(
+      1,
+    );
+  });
+
+  test("rejects fractional, scientific, and over-ceiling timing flags", () => {
+    expect(() => parseArgs(["--duration-ms=0.4"], {})).toThrow(
+      /--duration-ms must be a positive integer number of milliseconds/,
+    );
+    expect(() => parseArgs(["--duration-ms=1e20"], {})).toThrow(
+      /--duration-ms must be a positive integer number of milliseconds/,
+    );
+    expect(() => parseArgs(["--seconds=1e20"], {})).toThrow(
+      /--seconds must be a positive integer number of seconds/,
+    );
+    expect(() => parseArgs(["--seconds=0"], {})).toThrow(
+      /--seconds must be a positive integer number of seconds/,
+    );
+    expect(() => parseArgs([`--duration-ms=${MAX_TIMER_MS + 1}`], {})).toThrow(
+      /--duration-ms must be a positive integer number of milliseconds from 1 to 2147483647/,
+    );
   });
 });
 
@@ -201,7 +315,9 @@ describe("dev-health-check CLI boundary", () => {
       },
     );
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toMatch(/--seconds must be a positive number/);
+    expect(result.stderr).toMatch(
+      /--seconds must be a positive integer number of seconds/,
+    );
     expect(result.stderr).not.toMatch(/ELIZA_(?:UI|API)?_?PORT/);
     expect(result.stdout).not.toContain("[dev-health-check] starting:");
   });
@@ -224,6 +340,56 @@ describe("dev-health-check CLI boundary", () => {
       expect(paddedEnv.status).not.toBe(0);
       expect(paddedEnv.stderr).toMatch(/ELIZA_API_PORT must be a TCP port/);
       expect(existsSync(logDir)).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects invalid --duration-ms before log/output or dev startup", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "dev-health-dur-"));
+    const logDir = path.join(directory, "nested-logs");
+    try {
+      for (const value of [
+        "0",
+        "0.4",
+        "1e20",
+        "1e3",
+        "0x10",
+        "20foo",
+        "-5",
+        "2147483648",
+      ]) {
+        const result = runCli([
+          `--log-dir=${logDir}`,
+          `--duration-ms=${value}`,
+        ]);
+        expect(result.status).not.toBe(0);
+        const combined = `${result.stdout}${result.stderr}`;
+        expect(combined).toMatch(
+          /--duration-ms must be a positive integer number of milliseconds/,
+        );
+        expect(combined).not.toContain("[dev-health-check] starting:");
+        expect(existsSync(logDir)).toBe(false);
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects invalid --seconds before log/output or dev startup", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "dev-health-secs-"));
+    const logDir = path.join(directory, "nested-logs");
+    try {
+      for (const value of ["0", "0.4", "1e20", "0x10", "20foo", "-5"]) {
+        const result = runCli([`--log-dir=${logDir}`, `--seconds=${value}`]);
+        expect(result.status).not.toBe(0);
+        const combined = `${result.stdout}${result.stderr}`;
+        expect(combined).toMatch(
+          /--seconds must be a positive integer number of seconds/,
+        );
+        expect(combined).not.toContain("[dev-health-check] starting:");
+        expect(existsSync(logDir)).toBe(false);
+      }
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

@@ -971,9 +971,13 @@ export type DictationActivityPhase =
   | "thinking"
   | "speaking";
 
+/** Native-localized titles for app-owned Live Activity session kinds. */
+export type LiveActivitySessionTitleKind = "keyboard-dictation";
+
 export interface LiveActivityPluginLike extends NativePlugin {
   isSupported(): Promise<{ supported: boolean; enabled: boolean }>;
   start(options: {
+    sessionTitleKind?: LiveActivitySessionTitleKind;
     sessionTitle?: string;
     phase?: DictationActivityPhase;
     transcript?: string;

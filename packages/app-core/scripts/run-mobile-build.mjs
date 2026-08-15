@@ -2875,6 +2875,34 @@ function restoreAndroidManifestFromPlatformTemplateIfMissing() {
   return true;
 }
 
+/**
+ * Replaces the boot receiver with the exact block shipped by local-capable
+ * Android targets. Keeping this transformation pure lets tests inspect the
+ * post-overlay manifest instead of only the platform input template.
+ */
+export function ensureElizaBootReceiverManifest(xml, androidPackage) {
+  let next = removeApplicationComponentBlock(
+    xml,
+    `${androidPackage}.ElizaBootReceiver`,
+  );
+  next = removeApplicationComponentClassBlock(next, "ElizaBootReceiver");
+  return appendMissingApplicationBlock(
+    next,
+    `${androidPackage}.ElizaBootReceiver`,
+    `
+        <receiver
+            android:name="${androidPackage}.ElizaBootReceiver"
+            android:directBootAware="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>`,
+  );
+}
+
 function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
   assertSharedTreeOnlyForEliza("overlay Java sources");
   const templateJavaRoot = path.join(
@@ -3421,20 +3449,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
             </intent-filter>
         </activity>`,
     );
-    xml = appendMissingApplicationBlock(
-      xml,
-      `${androidPackage}.ElizaBootReceiver`,
-      `
-        <receiver
-            android:name="${androidPackage}.ElizaBootReceiver"
-            android:directBootAware="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>`,
-    );
+    xml = ensureElizaBootReceiverManifest(xml, androidPackage);
     // Browser: replaces stripped Browser2 as the only http(s) handler.
     xml = appendMissingApplicationBlock(
       xml,

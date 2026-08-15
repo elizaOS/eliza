@@ -418,6 +418,18 @@ const vitestResolveAlias: ModuleAlias[] = [
           ),
         },
         {
+          // The client-public entry is bundled separately from the core root.
+          // Resolve it before the prefix-matching bare-core alias below so
+          // package tests do not produce index.node.ts/client-public (ENOTDIR).
+          find: /^@elizaos\/core\/client-public$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts")
+              ? "client-public.ts"
+              : "client-public.js",
+          ),
+        },
+        {
           find: /^@elizaos\/core\/security\/kms$/,
           replacement: path.join(
             path.dirname(elizaCoreEntry),

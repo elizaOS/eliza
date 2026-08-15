@@ -13,13 +13,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const bridge = vi.hoisted(() => ({
   redirect: vi.fn<() => Promise<boolean>>(),
-  shouldAttempt: vi.fn<() => boolean>(),
+  shouldAutoBridge: vi.fn<() => boolean>(),
 }));
 
 vi.mock("../../../sso-bridge/sso-bridge", () => ({
   redirectToSsoBridge: bridge.redirect,
   sanitizeBridgeReturnTo: (value: string | null) => value ?? "/",
-  shouldAttemptSsoBridge: bridge.shouldAttempt,
+  shouldAutoBridgeToSso: bridge.shouldAutoBridge,
 }));
 
 vi.mock("./steward-login-section", () => ({
@@ -52,8 +52,8 @@ async function renderLogin(): Promise<void> {
 beforeEach(() => {
   vi.useFakeTimers();
   bridge.redirect.mockReset();
-  bridge.shouldAttempt.mockReset();
-  bridge.shouldAttempt.mockReturnValue(true);
+  bridge.shouldAutoBridge.mockReset();
+  bridge.shouldAutoBridge.mockReturnValue(true);
 });
 
 afterEach(() => {
@@ -62,15 +62,26 @@ afterEach(() => {
 });
 
 describe("managed-cloud login handoff", () => {
-  it("uses the redirect-loop guard before starting another bridge", async () => {
-    bridge.shouldAttempt.mockReturnValue(false);
+  it("renders one stable local sign-in surface when there is no auth-origin session to bridge", async () => {
+    bridge.shouldAutoBridge.mockReturnValue(false);
 
     await renderLogin();
 
     expect(bridge.redirect).not.toHaveBeenCalled();
+    expect(screen.queryByText("Taking you to Eliza sign in")).toBeNull();
     expect(
       screen.getByRole("heading", { name: "Sign in to Eliza" }),
     ).toBeTruthy();
+  });
+
+  it("starts one handoff under StrictMode when an existing session is bridgeable", async () => {
+    bridge.redirect.mockResolvedValue(true);
+
+    await renderLogin();
+
+    expect(bridge.shouldAutoBridge).toHaveBeenCalledTimes(2);
+    expect(bridge.redirect).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Taking you to Eliza sign in")).toBeTruthy();
   });
 
   it("falls back when bridge initiation rejects", async () => {

@@ -144,8 +144,7 @@ async function startProtectedSelfApi(expectedToken: string): Promise<{
       }
       if (
         request.method === "POST" &&
-        (request.pathname === "/api/local-inference/routing/preferred" ||
-          request.pathname === "/api/local-inference/routing/policy")
+        request.pathname === "/api/local-inference/routing/text"
       ) {
         sendJson(res, 200, { ok: true });
         return;
@@ -312,10 +311,7 @@ describe("authenticated agent self-API callers", () => {
       "/api/config/reload",
       "/api/browser-bridge/companions",
       "/api/terminal/run",
-      "/api/local-inference/routing/preferred",
-      "/api/local-inference/routing/policy",
-      "/api/local-inference/routing/preferred",
-      "/api/local-inference/routing/policy",
+      "/api/local-inference/routing/text",
     ]);
     expect(
       authenticated.every(

@@ -170,7 +170,6 @@ const relationshipsProvider: Provider = {
 	contextGate: { anyOf: ["contacts", "memory"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	timeoutMs: 8_000,
 	roleGate: { minRole: "USER" },
 
 	get: async (runtime: IAgentRuntime, message: Memory) => {

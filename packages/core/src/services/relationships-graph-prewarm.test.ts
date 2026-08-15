@@ -1,7 +1,7 @@
 /**
  * #17932: boot-time graph prewarm so cold rolodex turns hit the
- * stale-while-revalidate cache instead of awaiting a first-build that pins
- * the event loop past the 3s provider deadline.
+ * stale-while-revalidate cache instead of awaiting a first build that adds
+ * avoidable latency to provider composition.
  */
 import { describe, expect, test } from "vitest";
 import type { IAgentRuntime } from "../types/index";

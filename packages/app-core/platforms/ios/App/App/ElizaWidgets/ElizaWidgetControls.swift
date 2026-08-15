@@ -1,3 +1,7 @@
+/**
+ iOS controls expose Eliza chat and voice entry points from Control Center,
+ the Lock Screen, and the Action button without duplicating app behavior.
+ */
 import AppIntents
 import SwiftUI
 import WidgetKit

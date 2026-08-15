@@ -510,7 +510,11 @@ async function waitForHetznerAction(
   environment: Required<Environment>,
   request: Request,
 ): Promise<void> {
-  let action = object(initialResponse.action, "Hetzner action");
+  const actions = array(initialResponse.actions, "Hetzner actions");
+  if (actions.length !== 1) {
+    throw new Error("Hetzner set_rules must return exactly one action");
+  }
+  let action = object(actions[0], "Hetzner action");
   const actionId = integer(action.id, "Hetzner action id");
   for (let poll = 0; poll <= MAX_ACTION_POLLS; poll += 1) {
     const status = string(action.status, "Hetzner action status");

@@ -389,6 +389,8 @@ validate_retirable_legacy_vhost() {
         printf "line %d: hash token in active syntax\\n", NR
         next
       }
+      gsub(/[$][{]http_upgrade[}]/, "$http_upgrade", line)
+      gsub(/[$][{]connection_upgrade[}]/, "$connection_upgrade", line)
       semicolons = gsub(/;/, ";", line)
       opens = gsub(/[{]/, "{", line)
       closes = gsub(/[}]/, "}", line)
@@ -421,8 +423,171 @@ validate_retirable_legacy_vhost() {
       if (directive ~ /^[[:alpha:]_][[:alnum:]_]*$/) print directive
     }
   ')
+  legacy_upgrade_map_shape=$(printf '%s\\n' "$legacy_vhost_source" | awk '
+    function normalize_map_variable(token, quote, name) {
+      quote = substr(token, 1, 1)
+      if (quote == sprintf("%c", 39) || quote == sprintf("%c", 34)) {
+        if (length(token) < 2 || substr(token, length(token), 1) != quote) return ""
+        token = substr(token, 2, length(token) - 2)
+      }
+      if (token ~ /^[$][[:alpha:]_][[:alnum:]_]*$/) return token
+      if (token ~ /^[$][{][[:alpha:]_][[:alnum:]_]*[}]$/) {
+        name = token
+        sub(/^[$][{]/, "", name)
+        sub(/[}]$/, "", name)
+        return "$" name
+      }
+      return ""
+    }
+    function is_exact_map_source(token) {
+      return normalize_map_variable(token) == "$http_upgrade"
+    }
+    function inspect_map_header(normalized, body, fields, count, has_open, output) {
+      body = normalized
+      sub(/^map[[:space:]]+/, "", body)
+      has_open = body ~ /[{]$/
+      if (has_open) sub(/[[:space:]]*[{]$/, "", body)
+      count = split(body, fields, /[[:space:]]+/)
+      output = count >= 2 ? normalize_map_variable(fields[2]) : ""
+      if (count != 2 \
+          || !is_exact_map_source(fields[1]) \
+          || output == "") return 0
+      upgrade_map_output_variable = output
+      if (has_open) {
+        blocks += 1
+        in_upgrade_map = 1
+      } else {
+        awaiting_upgrade_map_open = 1
+      }
+      return 1
+    }
+    {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      if (line == "" || line ~ /^#/) next
+      normalized = line
+      gsub(/[[:space:]]+/, " ", normalized)
+      if (awaiting_upgrade_map_open) {
+        if (normalized == "{") {
+          blocks += 1
+          in_upgrade_map = 1
+        } else {
+          unexpected += 1
+        }
+        awaiting_upgrade_map_open = 0
+        next
+      }
+      if (in_upgrade_map) {
+        if (normalized == "default upgrade;") {
+          defaults += 1
+        } else if (normalized == "\\047\\047 close;" \
+            || normalized == "\\042\\042 close;") {
+          closes += 1
+        } else if (normalized == "}") {
+          endings += 1
+          in_upgrade_map = 0
+        } else {
+          unexpected += 1
+        }
+        next
+      }
+      if (normalized ~ /^map[[:space:]]/) {
+        if (!inspect_map_header(normalized)) {
+          unexpected += 1
+        }
+      } else if (normalized ~ /^default[[:space:]]/) {
+        unexpected += 1
+      }
+    }
+    END {
+      if (in_upgrade_map) unexpected += 1
+      if (awaiting_upgrade_map_open) unexpected += 1
+      printf "%d %d %d %d %d %s\\n", blocks + 0, defaults + 0, closes + 0, endings + 0, unexpected + 0, upgrade_map_output_variable
+    }
+  ')
+  legacy_upgrade_map_output_variable=
+  read -r legacy_upgrade_map_blocks legacy_upgrade_map_defaults \\
+    legacy_upgrade_map_closes legacy_upgrade_map_endings \\
+    legacy_upgrade_map_unexpected legacy_upgrade_map_output_variable \\
+    <<<"$legacy_upgrade_map_shape"
+  legacy_has_upgrade_map=false
+  if [ "$legacy_upgrade_map_blocks" -ne 0 ] \\
+      || [ "$legacy_upgrade_map_defaults" -ne 0 ] \\
+      || [ "$legacy_upgrade_map_closes" -ne 0 ] \\
+      || [ "$legacy_upgrade_map_endings" -ne 0 ] \\
+      || [ "$legacy_upgrade_map_unexpected" -ne 0 ]; then
+    if [ "$legacy_upgrade_map_blocks" -ne 1 ] \\
+        || [ "$legacy_upgrade_map_defaults" -ne 1 ] \\
+        || [ "$legacy_upgrade_map_closes" -ne 1 ] \\
+        || [ "$legacy_upgrade_map_endings" -ne 1 ] \\
+        || [ "$legacy_upgrade_map_unexpected" -ne 0 ] \\
+        || [ -z "$legacy_upgrade_map_output_variable" ]; then
+      echo "legacy Headscale vhost has an unexpected upgrade map shape: blocks=$legacy_upgrade_map_blocks defaults=$legacy_upgrade_map_defaults empty-close=$legacy_upgrade_map_closes endings=$legacy_upgrade_map_endings unexpected=$legacy_upgrade_map_unexpected"
+      legacy_upgrade_map_header_profile=$(printf '%s\\n' "$legacy_vhost_source" | awk '
+        function token_form(token, expected, quote, prefix) {
+          quote = substr(token, 1, 1)
+          prefix = ""
+          if (quote == sprintf("%c", 39) || quote == sprintf("%c", 34)) {
+            if (length(token) < 2 || substr(token, length(token), 1) != quote) {
+              return "mismatched-quote"
+            }
+            token = substr(token, 2, length(token) - 2)
+            prefix = "quoted-"
+          }
+          if (token == expected) return prefix "exact"
+          if (token == "$" "{" substr(expected, 2) "}") return prefix "braced-exact"
+          if (token ~ /^[$][[:alpha:]_][[:alnum:]_]*$/ \
+              || token ~ /^[$][{][[:alpha:]_][[:alnum:]_]*[}]$/) {
+            return prefix "other-variable"
+          }
+          return prefix "other"
+        }
+        function inspect_header(normalized, body, fields, count, has_open) {
+          candidates += 1
+          body = normalized
+          sub(/^map[[:space:]]+/, "", body)
+          has_open = body ~ /[{]$/
+          if (has_open) sub(/[[:space:]]*[{]$/, "", body)
+          count = split(body, fields, /[[:space:]]+/)
+          if (candidates == 1) {
+            field_count = count
+            source_form = count >= 1 ? token_form(fields[1], "$http_upgrade") : "missing"
+            target_form = count >= 2 ? token_form(fields[2], "$connection_upgrade") : "missing"
+            extra_fields = count > 2 ? "yes" : "no"
+            brace_form = has_open ? "same-line" : "absent"
+            awaiting_brace_profile = !has_open
+          }
+        }
+        {
+          line = $0
+          sub(/^[[:space:]]+/, "", line)
+          sub(/[[:space:]]+$/, "", line)
+          if (line == "" || line ~ /^#/) next
+          normalized = line
+          gsub(/[[:space:]]+/, " ", normalized)
+          if (awaiting_brace_profile) {
+            brace_form = normalized == "{" ? "following-line" : "absent-or-intervening"
+            awaiting_brace_profile = 0
+          }
+          if (normalized ~ /^map[[:space:]]/) inspect_header(normalized)
+        }
+        END {
+          if (candidates == 1) {
+            printf "candidates=1 fields=%d source-form=%s target-form=%s extra-fields=%s brace=%s\\n", \
+              field_count, source_form, target_form, extra_fields, brace_form
+          } else {
+            printf "candidates=%d\\n", candidates + 0
+          }
+        }
+      ')
+      echo "legacy Headscale upgrade map header profile: $legacy_upgrade_map_header_profile"
+      return 1
+    fi
+    legacy_has_upgrade_map=true
+  fi
   unexpected_legacy_directives=$(printf '%s\\n' "$legacy_vhost_directives" \\
-    | awk '$0 !~ /^(server|listen|server_name|location|root|default_type|try_files|return|ssl_certificate|ssl_certificate_key|proxy_pass|proxy_http_version|proxy_set_header|proxy_buffering|proxy_read_timeout|proxy_send_timeout)$/ { print }')
+    | awk '$0 !~ /^(map|default|server|listen|server_name|location|root|default_type|try_files|return|ssl_certificate|ssl_certificate_key|proxy_pass|proxy_http_version|proxy_set_header|proxy_buffering|proxy_read_timeout|proxy_send_timeout)$/ { print }')
   if [ "\${HS_ENFORCE_LEGACY_VHOST_DIRECTIVE_ALLOWLIST:-false}" = "true" ] \\
       && [ -n "$unexpected_legacy_directives" ]; then
     echo "legacy Headscale vhost contains directives outside the reviewed retirement allowlist:"
@@ -468,7 +633,8 @@ validate_retirable_legacy_vhost() {
     return 1
   fi
 
-  loaded_legacy_owners=$(sudo nginx -T 2>&1 | awk \\
+  loaded_nginx_config=$(sudo nginx -T 2>&1)
+  loaded_legacy_owners=$(printf '%s\\n' "$loaded_nginx_config" | awk \\
     -v target="$HS_RETIRABLE_LEGACY_VHOST" \\
     -v canonical="$HS_HOST" \\
     -v legacy="$HS_LEGACY_HOST" '
@@ -512,6 +678,57 @@ validate_retirable_legacy_vhost() {
     | awk -v host="$HS_HOST" '$0 == host { count += 1 } END { print count + 0 }')
   if [ "$loaded_legacy_count" -ne 2 ] || [ "$loaded_canonical_count" -ne 0 ]; then
     echo "legacy Headscale vhost ownership no longer matches the reviewed two-listener contract"
+    return 1
+  fi
+  legacy_upgrade_map_external_reference_profile=$(printf '%s\\n' "$loaded_nginx_config" \\
+    | awk -v target="$HS_RETIRABLE_LEGACY_VHOST" \\
+        -v map_output="$legacy_upgrade_map_output_variable" '
+      BEGIN {
+        map_output_name = substr(map_output, 2)
+        plain_output_pattern = "[$]" map_output_name "([^[:alnum:]_]|$)"
+        braced_output_pattern = "[$][{]" map_output_name "[}]"
+      }
+      /^# configuration file / {
+        config_file = $0
+        sub(/^# configuration file /, "", config_file)
+        sub(/:$/, "", config_file)
+        next
+      }
+      map_output != "" && config_file != target \\
+          && ($0 ~ plain_output_pattern || $0 ~ braced_output_pattern) {
+        references_by_path[config_file] += 1
+      }
+      END {
+        for (path in references_by_path) {
+          printf "%s\\t%d\\n", path, references_by_path[path]
+        }
+      }
+    ' | sort)
+  legacy_upgrade_map_external_references=$(printf '%s\\n' \\
+    "$legacy_upgrade_map_external_reference_profile" \\
+    | awk -F '\\t' '{ count += $2 } END { print count + 0 }')
+  legacy_upgrade_map_managed_references=$(printf '%s\\n' \\
+    "$legacy_upgrade_map_external_reference_profile" \\
+    | awk -F '\\t' -v managed="\${HS_VHOST:-}" \\
+        '$1 == managed { count += $2 } END { print count + 0 }')
+  legacy_upgrade_map_external_path_count=$(printf '%s\\n' \\
+    "$legacy_upgrade_map_external_reference_profile" \\
+    | awk -F '\\t' 'NF == 2 { count += 1 } END { print count + 0 }')
+  # The managed vhost is backed up and replaced before legacy removal, then
+  # this validator runs again. No other loaded owner or reference count is safe.
+  legacy_upgrade_map_has_reviewed_managed_overlap=false
+  if [ "$legacy_has_upgrade_map" = "true" ] \\
+      && [ "$legacy_upgrade_map_external_references" -eq 2 ] \\
+      && [ "$legacy_upgrade_map_managed_references" -eq 2 ] \\
+      && [ "$legacy_upgrade_map_external_path_count" -eq 1 ]; then
+    legacy_upgrade_map_has_reviewed_managed_overlap=true
+  fi
+  if [ "$legacy_has_upgrade_map" = "true" ] \\
+      && [ "$legacy_upgrade_map_external_references" -ne 0 ] \\
+      && [ "$legacy_upgrade_map_has_reviewed_managed_overlap" != "true" ]; then
+    echo "legacy Headscale upgrade-map output is referenced outside the reviewed file (paths and counts only):"
+    printf '%s\\n' "$legacy_upgrade_map_external_reference_profile" \\
+      | awk -F '\\t' '{ printf "path=%s references=%d\\n", $1, $2 }'
     return 1
   fi
 }
@@ -956,6 +1173,7 @@ HS_RETIRABLE_LEGACY_VHOST=${shellQuote(retirableLegacyVhost ?? "")}
 HS_REQUIRE_RETIRABLE_LEGACY_VHOST=true
 HS_ENFORCE_LEGACY_VHOST_DIRECTIVE_ALLOWLIST=false
 HS_REVIEWED_LEGACY_VHOST_SHA256=""
+HS_VHOST=/etc/nginx/conf.d/headscale.conf
 
 if [ -z "$HS_RETIRABLE_LEGACY_VHOST" ] \\
     || ! sudo test -e "$HS_RETIRABLE_LEGACY_VHOST"; then
@@ -970,6 +1188,11 @@ sudo stat -c 'type=%F owner=%U group=%G mode=%a bytes=%s path=%n' \\
 echo "reviewed-sha256=$legacy_vhost_sha256"
 echo "--- reviewed nginx directive-name inventory (values withheld) ---"
 printf '%s\\n' "$legacy_vhost_directives" | sort | uniq -c
+if [ "$legacy_has_upgrade_map" = "true" ]; then
+  echo "reviewed-upgrade-map=headscale-websocket-v1 managed-references=$legacy_upgrade_map_managed_references unmanaged-references=$((legacy_upgrade_map_external_references - legacy_upgrade_map_managed_references))"
+else
+  echo "reviewed-upgrade-map=absent managed-references=0 unmanaged-references=0"
+fi
 echo "reviewed-shape=server-blocks:$legacy_server_block_count server-names:$legacy_server_name_count exact-host:$HS_LEGACY_HOST"
 echo "Legacy Headscale vhost passed the read-only retirement preflight"
 `;

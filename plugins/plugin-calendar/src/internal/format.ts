@@ -41,10 +41,18 @@ export function formatCalendarEventDateTime(
     includeYear?: boolean;
     includeTimeZoneName?: boolean;
     numericDate?: boolean;
+    /**
+     * Render in this zone instead of the event's own. Callers that list several
+     * events side by side pass one zone so the times are comparable: a mixed
+     * list read "friday aug 14 at 11am pdt and saturday aug 15 at 1pm utc"
+     * (live capture), which asks the owner to do timezone math to compare two
+     * of their own appointments.
+     */
+    timeZone?: string;
   },
 ): string {
   const start = new Date(event.startAt);
-  const timeZone = event.timezone || undefined;
+  const timeZone = options?.timeZone || event.timezone || undefined;
   const currentYear = getCalendarYearForDisplay(new Date(), timeZone);
   const eventYear = getCalendarYearForDisplay(start, timeZone);
   const includeYear = options?.includeYear ?? eventYear !== currentYear;

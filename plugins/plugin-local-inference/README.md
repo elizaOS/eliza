@@ -66,6 +66,7 @@ Key environment variables (all optional unless noted):
 | `ELIZA_DISABLE_LOCAL_EMBEDDINGS` | Set `1` to disable local `TEXT_EMBEDDING` registration entirely |
 | `ELIZA_IMAGEGEN_ACCELERATOR` | Force image-gen backend: `coreml`, `mflux`, `sd-cpp`, `tensorrt` |
 | `ELIZA_DEVICE_BRIDGE_ENABLED` | Enable iOS/AOSP physical device bridge |
+| `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | Device generate/embed timeout in ms (default 60000). Must be a canonical decimal integer from 1 through 2147483647; malformed or out-of-range values reject before device lookup with `INVALID_DEVICE_BRIDGE_TIMEOUT`. |
 | `SD_CPP_BIN` | Absolute path to sd.cpp binary |
 | `MFLUX_BIN` | Absolute path to mflux binary |
 | `ELIZA_KOKORO_DEFAULT_VOICE_ID` | Default Kokoro TTS voice |

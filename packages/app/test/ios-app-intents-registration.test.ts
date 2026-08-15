@@ -46,6 +46,45 @@ const liveActivityBridgeSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaLiveActivityBridge.swift"),
   "utf8",
 );
+interface StringCatalogEntry {
+  localizations?: Record<
+    string,
+    {
+      stringUnit?: { state: string; value: string };
+    }
+  >;
+}
+
+interface StringCatalog {
+  sourceLanguage: string;
+  strings: Record<string, StringCatalogEntry>;
+  version: string;
+}
+
+const localizableCatalog = JSON.parse(
+  readFileSync(path.join(iosAppRoot, "App/Localizable.xcstrings"), "utf8"),
+) as StringCatalog;
+function parseAppleStrings(source: string): Map<string, string> {
+  return new Map(
+    [...source.matchAll(/^"([^"]+)"\s*=\s*"([^"]+)";$/gm)].map(
+      ([, key, value]) => [key, value],
+    ),
+  );
+}
+
+const englishAppShortcuts = parseAppleStrings(
+  readFileSync(
+    path.join(iosAppRoot, "App/en.lproj/AppShortcuts.strings"),
+    "utf8",
+  ),
+);
+const spanishAppShortcuts = parseAppleStrings(
+  readFileSync(
+    path.join(iosAppRoot, "App/es.lproj/AppShortcuts.strings"),
+    "utf8",
+  ),
+);
+const appNamePlaceholder = "$" + "{applicationName}";
 const keyboardViewControllerSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaKeyboard/KeyboardViewController.swift"),
   "utf8",
@@ -230,6 +269,100 @@ describe("native assistant entry contracts", () => {
     expect(appIntentsSwift).toContain(
       "Draft a reply with \\(.applicationName)",
     );
+  });
+
+  it("ships Spanish App Intent, widget, control, and Live Activity copy", () => {
+    const requiredKeys = [
+      "Ask Eliza",
+      "Ask Eliza a question or hand off a request to chat.",
+      "Prompt",
+      "What would you like to ask Eliza?",
+      "Start Voice Chat",
+      "Open Daily Brief",
+      "Create LifeOps Task",
+      "Draft Smart Reply",
+      "Eliza Quick Actions",
+      "Ask, talk, and plan with Eliza from your Home and Lock Screen.",
+      "Eliza Voice",
+      "Keyboard dictation",
+      "Stop Dictation",
+      "Save Dictation",
+      "Recording",
+      "Transcribing",
+      "Thinking",
+      "Speaking",
+      "Voice session",
+    ];
+
+    expect(localizableCatalog.sourceLanguage).toBe("en");
+    for (const key of requiredKeys) {
+      const spanish =
+        localizableCatalog.strings[key]?.localizations?.es?.stringUnit;
+      expect(spanish, `missing Spanish localization for ${key}`).toEqual({
+        state: "translated",
+        value: expect.any(String),
+      });
+      expect(spanish?.value.trim().length).toBeGreaterThan(0);
+    }
+
+    expect(widgetsSwift).toContain("let title: LocalizedStringResource");
+    expect(dictationLiveActivitySwift).toContain(
+      "var label: LocalizedStringResource",
+    );
+    expect(liveActivityBridgeSwift).toContain(
+      'String(localized: "Voice session")',
+    );
+    expect(liveActivityBridgeSwift).toContain(
+      'String(localized: "Keyboard dictation")',
+    );
+    expect(liveActivityBridgeSwift).toContain(
+      'case keyboardDictation = "keyboard-dictation"',
+    );
+  });
+
+  it("ships localized App Shortcut phrases with the required app-name token", () => {
+    const expectedKeys = [
+      `Ask ${appNamePlaceholder}`,
+      `Start voice with ${appNamePlaceholder}`,
+      `Start ${appNamePlaceholder} voice`,
+      `Open ${appNamePlaceholder} daily brief`,
+      `Show my daily brief in ${appNamePlaceholder}`,
+      `Create a task in ${appNamePlaceholder}`,
+      `Draft a reply with ${appNamePlaceholder}`,
+    ];
+    expect([...englishAppShortcuts.keys()]).toEqual(expectedKeys);
+    expect([...spanishAppShortcuts.keys()]).toEqual(expectedKeys);
+
+    for (const key of expectedKeys) {
+      expect(englishAppShortcuts.get(key)).toBe(key);
+      const spanish = spanishAppShortcuts.get(key);
+      expect(spanish, `missing Spanish App Shortcut ${key}`).toBeTruthy();
+      expect(spanish).toContain(appNamePlaceholder);
+    }
+  });
+
+  it("builds each localization catalog into only its intended targets", () => {
+    expect(pbxproj).toMatch(/knownRegions = \([\s\S]*?\bes,?[\s\S]*?\);/);
+
+    const localizableFileRef = pbxproj.match(
+      /([A-Z0-9]+) \/\* Localizable\.xcstrings \*\/ = \{isa = PBXFileReference/,
+    )?.[1];
+    expect(localizableFileRef).toBeTruthy();
+    expect(
+      pbxproj.match(
+        new RegExp(`isa = PBXBuildFile; fileRef = ${localizableFileRef} `, "g"),
+      )?.length,
+    ).toBe(2);
+
+    const shortcutsFileRef = pbxproj.match(
+      /([A-Z0-9]+) \/\* AppShortcuts\.strings \*\/ = \{\s*isa = PBXVariantGroup/,
+    )?.[1];
+    expect(shortcutsFileRef).toBeTruthy();
+    expect(
+      pbxproj.match(
+        new RegExp(`isa = PBXBuildFile; fileRef = ${shortcutsFileRef} `, "g"),
+      )?.length,
+    ).toBe(1);
   });
 
   it("builds the ElizaWidgets extension target with widget + controls sources", () => {

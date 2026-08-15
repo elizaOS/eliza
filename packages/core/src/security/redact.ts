@@ -14,7 +14,17 @@ const DEFAULT_REDACT_KEEP_END = 4;
 
 // Minimum length for a secret to be considered for redaction
 // Shorter values could cause false positives
-const MIN_SECRET_LENGTH = 8;
+export const MIN_SECRET_LENGTH = 8;
+
+// RFC 9110 §5.6.2 and §11.2. Keeping these grammar fragments together makes
+// Authorization classification one authority for both direct redaction and
+// SecretSwapSession, which compiles this module's exported default patterns.
+const HTTP_TOKEN_PATTERN = "[!#$%&'*+\\-.^_`|~0-9A-Za-z]+";
+const HTTP_BWS_PATTERN = String.raw`[ \t]*`;
+const HTTP_QUOTED_STRING_PATTERN = String.raw`"(?:[\t\x20\x21\x23-\x5B\x5D-\x7E\x80-\xFF]|\\[\t\x20-\x7E\x80-\xFF])*"`;
+const HTTP_AUTH_PARAM_PATTERN = `${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=${HTTP_BWS_PATTERN}(?:${HTTP_TOKEN_PATTERN}|${HTTP_QUOTED_STRING_PATTERN})`;
+const HTTP_AUTH_PARAM_LIST_PATTERN = `(?:,${HTTP_BWS_PATTERN})*${HTTP_AUTH_PARAM_PATTERN}(?:${HTTP_BWS_PATTERN},${HTTP_BWS_PATTERN}(?:${HTTP_AUTH_PARAM_PATTERN})?)*`;
+const HTTP_TOKEN68_PATTERN = String.raw`[A-Za-z0-9._~+/\-]+={0,}`;
 
 /**
  * Default patterns for detecting sensitive data.
@@ -27,8 +37,23 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*:\s*"([^"]+)"`,
 	// CLI flags (space-separated and --flag=value forms).
 	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
-	// Authorization headers.
-	String.raw`Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=]+)`,
+	// Authorization credentials are either one token68 value or a complete
+	// comma-separated auth-param list. Basic is classified first because its
+	// trailing `=` is token68 padding, not an auth-param assignment; this also
+	// lets diagnostic prose follow a Basic credential without being swallowed.
+	// Extension schemes then use the complete RFC token/quoted-string grammar.
+	// Line boundaries keep invalid prose such as "Authorization: required for
+	// this endpoint" unchanged. Bearer retains its floor-free compatibility for
+	// short service values in env-style `*_AUTHORIZATION` output.
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=/~]+)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Basic[ \t]+(${HTTP_TOKEN68_PATTERN})(?=[ \t]|[\r\n]|$)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_AUTH_PARAM_LIST_PATTERN})(?=${HTTP_BWS_PATTERN}(?:[\r\n]|$))`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_TOKEN68_PATTERN})(?=${HTTP_BWS_PATTERN}(?:[\r\n]|$))`,
+	// Once a non-Basic/Bearer credential has the unambiguous `token BWS =`
+	// assignment opener, malformed quoting or a truncated list must fail toward
+	// masking rather than leave a likely credential in diagnostics.
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(?!(?:Basic|Bearer)(?:[ \t]|$))(${HTTP_TOKEN_PATTERN})[ \t]+((?=${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=)[^\r\n]+)(?=[\r\n]|$)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z0-9._~+/\-]{18,}={0,})(?=[\r\n]|$)`,
 	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
 	// URI userinfo. Mask the complete userinfo component (user:password,
 	// token-only, or password-only) so credentials in database URLs, curl
@@ -48,6 +73,12 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	// Distinct shape from the OpenAI sk- above; Stripe is the payment processor so a leaked
 	// sk_live_ is catastrophic, and these often appear as bare values (not under a *_SECRET name).
 	String.raw`\b((?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,})\b`,
+	// AWS credential identifiers have fixed four-character type prefixes and
+	// 16 uppercase base32 characters. AKIA/ASIA are access-key IDs; ABIA/ACCA
+	// are bearer/context credential identifiers and should be masked as well.
+	// Keep this regex explicitly case-sensitive so ordinary mixed-case words
+	// beginning with "Asia" are not folded into the credential shape.
+	String.raw`/\b((?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16})\b/g`,
 	String.raw`\b(ghp_[A-Za-z0-9]{20,})\b`,
 	String.raw`\b(github_pat_[A-Za-z0-9_]{20,})\b`,
 	String.raw`\b(xox[baprs]-[A-Za-z0-9-]{10,})\b`,
@@ -89,6 +120,30 @@ const SENSITIVE_KEY_SUBSTRINGS: readonly string[] = [
 	"authorization",
 ];
 
+// Exact telemetry/schema controls whose names contain "token" but whose
+// values are counts, budgets, or correlation identifiers rather than
+// credentials. Keep this list deliberately closed: broad suffix rules would
+// accidentally exempt credential collections such as `accessTokens`.
+const NON_SECRET_TOKEN_METADATA_KEYS = new Set([
+	"cachecreationinputtokens",
+	"cachereadinputtokens",
+	"completiontokens",
+	"compactionthresholdtokens",
+	"contextwindowtokens",
+	"estimatedinputtokens",
+	"inputtokens",
+	"maxtokens",
+	"maxtokensomitted",
+	"outputtokens",
+	"prompttokens",
+	"reasoningtokens",
+	"reservetokens",
+	"tokencount",
+	"tokencountestimated",
+	"tokenid",
+	"totaltokens",
+]);
+
 /**
  * Whether an object key names a credential and its value must be fully masked.
  * Matches the substrings in {@link SENSITIVE_KEY_SUBSTRINGS} plus `token`
@@ -97,6 +152,10 @@ const SENSITIVE_KEY_SUBSTRINGS: readonly string[] = [
  */
 export function isSensitiveKeyName(key: string): boolean {
 	const lower = key.toLowerCase();
+	const normalized = lower.replace(/[_-]/g, "");
+	if (NON_SECRET_TOKEN_METADATA_KEYS.has(normalized)) {
+		return false;
+	}
 	if (SENSITIVE_KEY_SUBSTRINGS.some((needle) => lower.includes(needle))) {
 		return true;
 	}
@@ -214,6 +273,13 @@ function redactMatch(match: string, groups: string[]): string {
 	const masked = maskToken(token);
 	if (token === match) {
 		return masked;
+	}
+	// Credential patterns capture the secret remainder at the match tail. A
+	// first-occurrence replace is unsafe when the same bytes occur earlier in
+	// the scheme/prefix, so splice the known tail position directly.
+	const tailIndex = match.length - token.length;
+	if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
+		return `${match.slice(0, tailIndex)}${masked}`;
 	}
 	// Use a replacer function so `masked` is inserted literally. `masked` keeps
 	// the token's first/last characters verbatim, and String.replace treats a

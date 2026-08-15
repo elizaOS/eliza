@@ -15,10 +15,16 @@ import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { parseTcpPort } from "./lib/cli-numbers.mjs";
 import { resolveDevAllSkipPlugins } from "./lib/script-metadata.mjs";
 
 /** Default wall-clock budget for each service readiness wait (ms). */
 export const DEFAULT_SERVICE_STARTUP_TIMEOUT_MS = 120_000;
+
+const isDirectRun =
+  import.meta.main === true ||
+  (typeof process.argv[1] === "string" &&
+    import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href);
 
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
@@ -105,13 +111,39 @@ export function resolveServiceStartupTimeoutMs(env = process.env) {
   );
 }
 
-const ports = {
-  agentApi: envDefault("DEV_ALL_AGENT_API_PORT", "31337"),
-  frontend: envDefault("DEV_ALL_FRONTEND_PORT", "2138"),
-  cloudWeb: envDefault("DEV_ALL_CLOUD_WEB_PORT", "3000"),
-  cloudApi: envDefault("DEV_ALL_CLOUD_API_PORT", "8787"),
-  cloudDb: envDefault("DEV_ALL_CLOUD_DB_PORT", "55432"),
-};
+// Ports must not reuse envDefault: its trim would normalize " 4242 " before
+// the canonical parser could reject it. Unset/blank keeps the default; any
+// present value reaches parseTcpPort exactly as the operator wrote it.
+function portEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "")
+    return parseTcpPort(fallback, name);
+  return parseTcpPort(raw, name);
+}
+
+function resolvePorts() {
+  return {
+    agentApi: portEnv("DEV_ALL_AGENT_API_PORT", "31337"),
+    frontend: portEnv("DEV_ALL_FRONTEND_PORT", "2138"),
+    cloudWeb: portEnv("DEV_ALL_CLOUD_WEB_PORT", "3000"),
+    cloudApi: portEnv("DEV_ALL_CLOUD_API_PORT", "8787"),
+    cloudDb: portEnv("DEV_ALL_CLOUD_DB_PORT", "55432"),
+  };
+}
+
+function resolvePortsAtCliBoundary() {
+  try {
+    return resolvePorts();
+  } catch (error) {
+    // error-policy:J1 Startup configuration errors become bounded usage failures.
+    console.error(
+      `[dev:all] ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(2);
+  }
+}
+
+const ports = isDirectRun ? resolvePortsAtCliBoundary() : resolvePorts();
 
 const urls = {
   agentApi: `http://127.0.0.1:${ports.agentApi}`,
@@ -646,11 +678,6 @@ async function main() {
     });
   }
 }
-
-const isDirectRun =
-  import.meta.main === true ||
-  (typeof process.argv[1] === "string" &&
-    import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href);
 
 if (isDirectRun) {
   main().catch((error) => {

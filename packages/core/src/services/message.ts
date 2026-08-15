@@ -67,7 +67,7 @@ import {
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
-import { canActionRun } from "../runtime/action-gate";
+import { actionGateFailure, canActionRun } from "../runtime/action-gate";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
@@ -82,6 +82,7 @@ import {
 	type CandidateActionBackstopRule,
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
+import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -147,6 +148,7 @@ import {
 	FAILED_TOOL_FALLBACK_MESSAGE,
 	isTerminalPlannerToolName,
 	type PlannerLoopParams,
+	type PlannerLoopResult,
 	type PlannerRuntime,
 	type PlannerToolCall,
 	type PlannerToolResult,
@@ -184,16 +186,21 @@ import {
 	runSubPlanner,
 	subPlannerCallDigest,
 } from "../runtime/sub-planner";
-import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
+import {
+	buildCanonicalSystemPrompt,
+	buildCharacterStyleDirections,
+} from "../runtime/system-prompt";
 import { resolveTraceCorrelationFromEnv } from "../runtime/trace-correlation";
 import {
 	buildProviderAttributionsFromState,
 	flattenTrajectoryMessages,
 } from "../runtime/trajectory-provider-attribution";
 import {
+	captureToolStageIO,
 	createJsonFileTrajectoryRecorder,
 	finalizeTrajectoryRecording,
 	isTrajectoryRecordingEnabled,
+	type RecordedStage,
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
 import { TurnAbortedError } from "../runtime/turn-controller";
@@ -927,8 +934,9 @@ function alwaysOnResponseStateProviderNames(runtime: IAgentRuntime): string[] {
  *   - ACTIONS / PROVIDERS / ACTION_STATE: meta-listings — the planner sees
  *     actions as native function tools, so a parallel text block is
  *     duplicative and confusing.
- *   - CHARACTER: already rendered via `staticPrefix.systemPrompt` (which
- *     includes system + bio + role) so the text-block CHARACTER provider
+ *   - CHARACTER: identity is already rendered via `staticPrefix.systemPrompt`
+ *     (system + bio + role) and chat style directions via
+ *     `staticPrefix.characterPrompt`, so the text-block CHARACTER provider
  *     would duplicate the same content.
  * RECENT_MESSAGES stays included because Stage 1 needs full prior dialogue
  * text when no structured `recentMessages` array is available from the
@@ -1979,6 +1987,85 @@ export function preservedSettledToolResult(
 	return undefined;
 }
 
+export const NO_REPORTABLE_TOOL_OUTCOME_MESSAGE =
+	"I ran that, but it finished without producing a result I can report back.";
+
+const ASYNC_HANDOFF_ACK_MESSAGE = "on it, working on that now.";
+
+function preservedVerifiedFailure(
+	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
+	deliveredVisibleTexts: ReadonlySet<string>,
+): string | undefined {
+	for (let index = settled.length - 1; index >= 0; index--) {
+		const entry = settled[index];
+		if (entry?.result.success !== false) continue;
+		if (entry.result.verifiedUserFacing !== true) continue;
+		if (isTerminalPlannerToolName(entry.name)) continue;
+		const candidate = entry.result.userFacingText?.trim();
+		if (!candidate) continue;
+		if (
+			deliveredTextsCoverReply(
+				deliveredVisibleTexts,
+				normalizeVisibleTextForDuplicateCheck(candidate),
+			)
+		) {
+			continue;
+		}
+		return candidate;
+	}
+	return undefined;
+}
+
+function hasAcceptedAsyncHandoff(result: ActionResult): boolean {
+	if (result.success !== true) return false;
+	return (
+		result.effectReceipts?.some(
+			(receipt) =>
+				receipt.outcome === "applied" &&
+				receipt.commit !== undefined &&
+				receipt.commit.id.trim().length > 0,
+		) === true
+	);
+}
+
+/**
+ * Terminal report for a tool turn whose planner produced no prose. A
+ * pre-tool acknowledgement is retained only when a successful action carries
+ * authoritative acceptance proof that work continues beyond this turn.
+ */
+export function answerlessToolTurnReport(args: {
+	settledToolResults: ReadonlyArray<{
+		name: string;
+		result: PlannerToolResult;
+	}>;
+	deliveredVisibleTexts: ReadonlySet<string>;
+	actionResults: readonly ActionResult[];
+	actions: readonly Action[] | undefined;
+	stageOneAck: string;
+}): string {
+	const successful = preservedSettledToolResult(
+		args.settledToolResults,
+		args.deliveredVisibleTexts,
+	);
+	if (successful) return successful.userFacingText;
+	const failed = preservedVerifiedFailure(
+		args.settledToolResults,
+		args.deliveredVisibleTexts,
+	);
+	if (failed) return failed;
+	if (args.deliveredVisibleTexts.size > 0) return "";
+	const acceptedActionNames = args.actionResults
+		.filter(hasAcceptedAsyncHandoff)
+		.map((result) =>
+			typeof result.data?.actionName === "string" ? result.data.actionName : "",
+		)
+		.filter((name) => name.length > 0);
+	if (candidateActionsIncludeAsyncHandoff(args.actions, acceptedActionNames)) {
+		return args.stageOneAck || ASYNC_HANDOFF_ACK_MESSAGE;
+	}
+	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
+}
+
 /** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
 const MEDIA_CONTENT_URL_RE =
 	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
@@ -2717,6 +2804,7 @@ async function collectV5PlannerCandidateActions(args: {
 		action: Action,
 		parentActionName?: string,
 		activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
+		explicitCandidateName?: string,
 	): Promise<boolean> => {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		if (!normalizedName || seen.has(normalizedName)) {
@@ -2725,13 +2813,27 @@ async function collectV5PlannerCandidateActions(args: {
 		// One gate for exposure and execution (#12087 Item 9): private-action gate
 		// (private actions never reach the planner on a user turn) + ACTION_ROLE_POLICY
 		// + contextGate + roleGate, all via the shared chokepoint.
-		if (
-			!canActionRun(action, {
-				message: args.message,
-				activeContexts,
-				userRoles: args.userRoles,
-			})
-		) {
+		// Explicit Stage-1 hints need a diagnostic when their resolved action is
+		// rejected. The all-action pass stays quiet because ordinary gate misses
+		// are expected while building a narrowed surface.
+		const gateFailure = actionGateFailure(action, {
+			message: args.message,
+			activeContexts,
+			userRoles: args.userRoles,
+		});
+		if (gateFailure !== undefined) {
+			if (explicitCandidateName) {
+				args.runtime.logger.warn(
+					{
+						src: "service:message",
+						action: action.name,
+						candidate: explicitCandidateName,
+						gate: "action-gate",
+						reason: gateFailure,
+					},
+					"Explicit stage-1 candidate rejected at the action gate",
+				);
+			}
 			return false;
 		}
 		try {
@@ -2743,6 +2845,18 @@ async function collectV5PlannerCandidateActions(args: {
 				},
 			);
 			if (!accountPolicy.allowed) {
+				if (explicitCandidateName) {
+					args.runtime.logger.warn(
+						{
+							src: "service:message",
+							action: action.name,
+							candidate: explicitCandidateName,
+							gate: "connector-account-policy",
+							reason: accountPolicy.reason,
+						},
+						"Explicit stage-1 candidate rejected by connector account policy",
+					);
+				}
 				return false;
 			}
 			if (action.validate) {
@@ -2752,6 +2866,18 @@ async function collectV5PlannerCandidateActions(args: {
 					args.state,
 				);
 				if (!valid) {
+					if (explicitCandidateName) {
+						args.runtime.logger.warn(
+							{
+								src: "service:message",
+								action: action.name,
+								candidate: explicitCandidateName,
+								gate: "validate-returned-false",
+								reason: `Action ${action.name} is not available for the current state`,
+							},
+							"Explicit stage-1 candidate rejected by action validate()",
+						);
+					}
 					return false;
 				}
 			}
@@ -2795,11 +2921,23 @@ async function collectV5PlannerCandidateActions(args: {
 			: parentAliasesForCandidateAction(candidateName)
 					.map((alias) => resolveRuntimeAction(actionLookup, alias))
 					.filter((action): action is Action => action !== undefined);
+		if (resolved.length === 0) {
+			args.runtime.logger.warn(
+				{
+					src: "service:message",
+					candidate: candidateName,
+					gate: "resolved-to-no-runtime-action",
+				},
+				"Explicit stage-1 candidate resolved to no runtime action",
+			);
+			continue;
+		}
 		for (const action of resolved) {
 			await appendIfAllowed(
 				action,
 				undefined,
 				mergeAgentContexts(args.selectedContexts, action.contexts),
+				candidateName,
 			);
 		}
 	}
@@ -3454,6 +3592,13 @@ async function createV5MessageContextObject(args: {
 		character: args.runtime.character,
 		userRole: args.userRoles?.[0],
 	});
+	// Chat style directions (style.all + style.chat) render exactly once here,
+	// in the stable prefix. Computed statically from the character — not via the
+	// per-room CHARACTER provider — so the KV-cacheable prefix stays
+	// byte-identical across turns (#17026).
+	const characterStyleDirections = buildCharacterStyleDirections({
+		character: args.runtime.character,
+	});
 	// Stage 2 exposes each Action as its own native tool. Per-action specs live
 	// in `events[type=tool]`; the LLM calls each action directly by name. We
 	// also expose the universal terminal-sentinel tools (REPLY / IGNORE / STOP)
@@ -3487,6 +3632,14 @@ async function createV5MessageContextObject(args: {
 						id: "system",
 						label: "system",
 						content: systemPrompt,
+						stable: true,
+					}
+				: undefined,
+			characterPrompt: characterStyleDirections
+				? {
+						id: "character-style",
+						label: "system",
+						content: characterStyleDirections,
 						stable: true,
 					}
 				: undefined,
@@ -3720,7 +3873,21 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 			(action.tags ?? []).map((tag) => tag.trim().toLowerCase()),
 		);
 		if (args.kind === "empty_tracked_state") {
-			return tags.has("resource:tracked-work") && tags.has("capability:read");
+			if (!tags.has("resource:tracked-work") || !tags.has("capability:read")) {
+				return false;
+			}
+			const isMixedMutationSurface = [
+				"capability:write",
+				"capability:update",
+				"capability:delete",
+				"capability:schedule",
+			].some((tag) => tags.has(tag));
+			if (!isMixedMutationSurface) return true;
+			const claimGrounding = result.data?.claimGrounding;
+			return (
+				Array.isArray(claimGrounding) &&
+				claimGrounding.includes("empty_tracked_state")
+			);
 		}
 		return false;
 	});
@@ -4117,9 +4284,9 @@ direct/private rules:
 - Non-simple contexts/actions are only for tools, live/private state, files/web/shell, side effects, scheduling/memory/settings/secrets/finance/media/device control.
 - UI navigation is device/app control: open/show/switch/go-home requests use contexts=["general"], candidateActionNames=["VIEWS"], and a brief pending ack. Never claim the view opened before VIEWS succeeds.
 - Slash-command questions are conversation: contexts=["general"]; say /commands shows the list; never select VIEWS or ask clarification for "show commands".
-- Sticky Notes and native device controls are also device/app control: note and flashlight reads or mutations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
+- Sticky Notes use contexts=["notes"], candidateActionNames=["NOTES"]. Native device controls such as flashlight operations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
 - Calendar-event reads or mutations use contexts=["calendar"], candidateActionNames=["CALENDAR"]. A timed "add X tomorrow at 9am" request is a calendar event unless the user explicitly asks for a task or reminder.
-- Goals/todos/reminders/habits/routines are non-simple; goals -> tasks + OWNER_GOALS, never work threads.
+- Reading or changing goals/todos/reminders/alarms/habits/routines DATA is non-simple; goals -> tasks + OWNER_GOALS, todos -> tasks + OWNER_TODOS, reminders -> tasks + OWNER_REMINDERS, alarms -> tasks + OWNER_ALARMS, habits/routines -> tasks + OWNER_ROUTINES, never work threads and never VIEWS. Opening or showing their PAGE ("open my todos page", "show the reminders screen") stays UI navigation -> VIEWS per the rule above.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
 - Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
 - Never deny a capability when current_turn_boundary says a role-visible executable action can attempt it. available_contexts supplies routing domains but does not by itself prove a handler exists.
@@ -4764,7 +4931,8 @@ async function synthesizeCommittedDirectReply(args: {
 	actionResults?: readonly ActionResult[];
 }): Promise<CommittedDirectReplySynthesisResult> {
 	const parentStream = getStreamingContext();
-	if (!parentStream?.onStreamChunk) {
+	const onStreamChunk = parentStream?.onStreamChunk;
+	if (!parentStream || !onStreamChunk) {
 		throw new ElizaError(
 			"Committed direct-reply synthesis requires a visible stream consumer",
 			{ code: "COMMITTED_REPLY_STREAM_REQUIRED" },
@@ -4830,15 +4998,10 @@ async function synthesizeCommittedDirectReply(args: {
 					preserveRequestedJson && isValidJsonText(accumulated)
 						? "json"
 						: "text";
-				await parentStream.onStreamChunk(
-					delta,
-					parentStream.messageId,
-					projected,
-					{
-						authority: "committed_reply",
-						visibleFormat,
-					},
-				);
+				await onStreamChunk(delta, parentStream.messageId, projected, {
+					authority: "committed_reply",
+					visibleFormat,
+				});
 			}
 			committedVisibleText = projected;
 		},
@@ -5787,11 +5950,17 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 		return messageHandler;
 	}
 
+	const stageOneCandidateActions =
+		getMessageHandlerCandidateActions(messageHandler);
+	const composedCandidateActions =
+		directCurrentInference.kind === "owner-reads"
+			? directCurrentCandidateActions
+			: uniqueActionNames([
+					...stageOneCandidateActions,
+					...directCurrentCandidateActions,
+				]);
 	const runnableCandidateActions = filterRunnableCandidateActions(
-		uniqueActionNames([
-			...getMessageHandlerCandidateActions(messageHandler),
-			...directCurrentCandidateActions,
-		]),
+		composedCandidateActions,
 		runtimeContext,
 	);
 	if (runnableCandidateActions.length === 0) return messageHandler;
@@ -6707,6 +6876,21 @@ async function resolveStage1SenderRole(
 	}
 	try {
 		const result = await checkSenderRole(runtime, message);
+		// The resolved role decides the entire action surface for the turn, and
+		// a silent fall to the floor is indistinguishable from an explicit
+		// non-elevated grant without this line. `result === null` means no world
+		// resolved for the message — the most common cause of an owner probe
+		// landing on the floor.
+		runtime.logger.debug(
+			{
+				src: "service:message",
+				entityId: message.entityId,
+				roomId: message.roomId,
+				worldResolved: result !== null,
+				role: result?.role ?? null,
+			},
+			"Stage 1 sender role resolved",
+		);
 		if (result?.role) {
 			return result.role as RoleGateRole;
 		}
@@ -6785,6 +6969,13 @@ interface ExecuteV5PlannedToolCallParams {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	plannerLoopConfig?: PlannerLoopParams["config"];
+	/**
+	 * Normal planner selection may activate the selected action's routing
+	 * contexts after that action was surfaced through the context-filtered tool
+	 * set. Deterministic evaluator calls have no such planner-surface proof and
+	 * must retain the turn's original contexts for the canonical gate.
+	 */
+	activateActionContexts?: boolean;
 }
 
 interface BuildV5ExecutorContextParams {
@@ -6860,15 +7051,26 @@ async function executeV5PlannedToolCall(
 	const action = executionActions.find(
 		(candidate) => candidate.name === toolCall.name,
 	);
-	const executorCtx = action
-		? {
-				...args.executorCtx,
-				activeContexts: mergeAgentContexts(
-					args.executorCtx.activeContexts,
-					action.contexts,
-				),
-			}
-		: args.executorCtx;
+	const executorCtx =
+		action && args.activateActionContexts !== false
+			? {
+					...args.executorCtx,
+					activeContexts: mergeAgentContexts(
+						args.executorCtx.activeContexts,
+						action.contexts,
+					),
+				}
+			: args.executorCtx;
+	if (
+		action &&
+		actionHasSubActions(action) &&
+		args.activateActionContexts === false
+	) {
+		const gateFailure = actionGateFailure(action, executorCtx);
+		if (gateFailure) {
+			return { success: false, error: gateFailure, text: gateFailure };
+		}
+	}
 
 	const hasDispatcherActionParameter =
 		plannerToolCallHasActionParameter(toolCall);
@@ -6905,6 +7107,7 @@ async function executeV5PlannedToolCall(
 			action,
 			actionResult,
 			toolCall.params,
+			args.runtime,
 		),
 	});
 }
@@ -7651,9 +7854,14 @@ export async function runV5MessageRuntimeStage1(args: {
 				logger: args.runtime.logger as {
 					warn?: (context: unknown, message?: string) => void;
 				},
-				redactText: (text) =>
-					redactMessageDiagnosticText(args.runtime, text),
+				redactText: (text) => redactMessageDiagnosticText(args.runtime, text),
 				reportError: args.runtime.reportError.bind(args.runtime),
+				// Final-persistence tool-diagnostic projection: the recorder always
+				// runs the shared tool-shape pattern pass; this adds the runtime's
+				// character-configured secret masking on top. Optional-bound because
+				// lightweight/test runtimes may not implement redactSecrets — the
+				// pattern pass must keep running for them.
+				redactSecrets: args.runtime.redactSecrets?.bind(args.runtime),
 			})
 		: undefined;
 	const trajectoryId = recorder
@@ -7952,10 +8160,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		let stage1RetryCount = 0;
 		const invokeStage1Model = () => {
 			const invoke = () =>
-				args.runtime.useModel(
-					ModelType.RESPONSE_HANDLER,
-					stage1ModelParams,
-				);
+				args.runtime.useModel(ModelType.RESPONSE_HANDLER, stage1ModelParams);
 			// Stage 1 is a private route/effect envelope. The registered field set
 			// is plugin-extensible, so relying on today's replyText-only whitelist
 			// would let a future text/messageToUser field escape before validation.
@@ -8115,15 +8320,15 @@ export async function runV5MessageRuntimeStage1(args: {
 		const requestedExactLiteral = parseExactLiteralOnlyInstruction(
 			getUserMessageText(args.message),
 		);
-			const exactLiteralCandidateMatches =
-				requestedExactLiteral !== null &&
-				rawStageOneReply.trim() === requestedExactLiteral;
-			const exactLiteralCandidateClassification = exactLiteralCandidateMatches
-				? sanitizeUserVisibleModelOutput(requestedExactLiteral)
-				: null;
-			const exactLiteralStageOneReply =
-				exactLiteralCandidateMatches &&
-				exactLiteralCandidateClassification?.kind === "text";
+		const exactLiteralCandidateMatches =
+			requestedExactLiteral !== null &&
+			rawStageOneReply.trim() === requestedExactLiteral;
+		const exactLiteralCandidateClassification = exactLiteralCandidateMatches
+			? sanitizeUserVisibleModelOutput(requestedExactLiteral)
+			: null;
+		const exactLiteralStageOneReply =
+			exactLiteralCandidateMatches &&
+			exactLiteralCandidateClassification?.kind === "text";
 		const stageOneVisibleReply: UserVisibleModelOutput =
 			exactLiteralStageOneReply
 				? {
@@ -8559,11 +8764,10 @@ export async function runV5MessageRuntimeStage1(args: {
 					committedReplyAuthority: replyUsesCommittedStream
 						? "prefix-stable-v1"
 						: undefined,
-					preserveUserRequestedFormat:
-						shouldPreserveUserRequestedJson(
-							getUserMessageText(args.message) ?? "",
-							reply,
-						),
+					preserveUserRequestedFormat: shouldPreserveUserRequestedJson(
+						getUserMessageText(args.message) ?? "",
+						reply,
+					),
 				}),
 			};
 		}
@@ -8575,19 +8779,22 @@ export async function runV5MessageRuntimeStage1(args: {
 		// evaluator that cleared Stage-1 candidates has already established an
 		// authoritative route from richer runtime state, so the generic text
 		// heuristic must not undo that decision.
-		const directPlannerCandidateActions =
-			inferDirectCurrentRequestCandidateActions(
-				args.runtime.actions ?? [],
-				getUserMessageText(args.message) ?? "",
-			);
+		const directPlannerInference = inferDirectCurrentRequestCandidateInference(
+			args.runtime.actions ?? [],
+			getUserMessageText(args.message) ?? "",
+		);
+		const directPlannerCandidateActions = directPlannerInference.names;
 		if (
 			directPlannerCandidateActions.length > 0 &&
 			!responseHandlerEvaluation.candidateActionsClearedByEvaluators
 		) {
-			messageHandler.plan.candidateActions = uniqueActionNames([
-				...getMessageHandlerCandidateActions(messageHandler),
-				...directPlannerCandidateActions,
-			]);
+			messageHandler.plan.candidateActions =
+				directPlannerInference.kind === "owner-reads"
+					? directPlannerCandidateActions
+					: uniqueActionNames([
+							...getMessageHandlerCandidateActions(messageHandler),
+							...directPlannerCandidateActions,
+						]);
 		}
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 		let earlyReplyText = deferDirectReplySynthesis
@@ -8991,6 +9198,149 @@ export async function runV5MessageRuntimeStage1(args: {
 			result: PlannerToolResult;
 		}> = [];
 
+		const invokeDeterministicToolCall =
+			async (): Promise<PlannerLoopResult> => {
+				const selected = messageHandler.plan.deterministicToolCall;
+				if (!selected) {
+					throw new Error(
+						"Deterministic tool execution requires a selected call",
+					);
+				}
+				const actionLookup = buildRuntimeActionLookup(args.runtime);
+				const action = resolveRuntimeAction(actionLookup, selected.name);
+				const toolCall: PlannerToolCall = {
+					id: `response-handler:${normalizeActionIdentifier(action?.name ?? selected.name)}`,
+					name: action?.name ?? selected.name,
+					...(selected.params ? { params: selected.params } : {}),
+				};
+				const startedAt = Date.now();
+				let callbackDelivered = false;
+				const deterministicCallback: HandlerCallback | undefined =
+					recordingCallback
+						? async (...callbackArgs) => {
+								callbackDelivered = true;
+								return recordingCallback(...callbackArgs);
+							}
+						: undefined;
+				let result: PlannerToolResult;
+				try {
+					result = trackSettledPlannerToolResult(
+						settledPlannerToolResults,
+						toolCall.name,
+						await executeV5PlannedToolCall({
+							runtime: args.runtime,
+							toolCall,
+							plannerContext: plannerContextAfterEarlyReply,
+							executorCtx: buildV5ExecutorContext({
+								message: args.message,
+								state: plannerState,
+								selectedContexts,
+								senderRole,
+								previousResults: [],
+								...(deterministicCallback
+									? { callback: deterministicCallback }
+									: {}),
+							}),
+							plannerRuntime,
+							executorOptions: {
+								// The evaluator selected one exact action. Keep that single-action
+								// surface while the canonical executor rechecks role, context,
+								// private-action, argument, account, and validate gates.
+								actions: action ? [action] : [],
+								...(args.onSettledActionResult
+									? { onSettledResult: args.onSettledActionResult }
+									: {}),
+							},
+							evaluatorEffects,
+							recorder,
+							trajectoryId,
+							plannerLoopConfig: args.plannerLoopConfig,
+							activateActionContexts: false,
+						}),
+					);
+				} catch (error) {
+					// error-policy:J1 Match the planner loop's tool boundary: a handler or
+					// sub-planner throw becomes one explicit failed result for the normal
+					// reply/error path rather than falling through to a second planner call.
+					result = trackSettledPlannerToolResult(
+						settledPlannerToolResults,
+						toolCall.name,
+						{
+							success: false,
+							error,
+							text: error instanceof Error ? error.message : String(error),
+						},
+					);
+				}
+				const endedAt = Date.now();
+				if (recorder && trajectoryId) {
+					try {
+						const input = selected.params ?? {};
+						const io = captureToolStageIO({
+							input,
+							output: result,
+							error: result.error,
+						});
+						const stage: RecordedStage = {
+							stageId: `stage-tool-${toolCall.name}-${startedAt}`,
+							kind: "tool",
+							startedAt,
+							endedAt,
+							latencyMs: endedAt - startedAt,
+							tool: {
+								name: toolCall.name,
+								args: input,
+								result,
+								success: result.success,
+								durationMs: endedAt - startedAt,
+								description: action?.description,
+								input: io.input,
+								output: io.output,
+								errorText: io.errorText,
+								truncated: io.truncated,
+							},
+						};
+						await recorder.recordStage(trajectoryId, stage);
+					} catch (error) {
+						// error-policy:J7 Trajectory persistence is diagnostic and cannot
+						// change the already-settled deterministic action result.
+						args.runtime.reportError(
+							"MessageService.recordDeterministicTool",
+							error,
+							{ trajectoryId, tool: toolCall.name },
+						);
+						args.runtime.logger.warn(
+							{
+								src: "service:message",
+								err: error instanceof Error ? error.message : String(error),
+								trajectoryId,
+								tool: toolCall.name,
+							},
+							"Failed to record deterministic tool stage",
+						);
+					}
+				}
+
+				const reportableResultText = result.userFacingText?.trim();
+				const finalMessage =
+					!callbackDelivered &&
+					reportableResultText &&
+					(result.success === true || result.verifiedUserFacing === true)
+						? reportableResultText
+						: undefined;
+				return {
+					status: "finished",
+					trajectory: {
+						context: plannerContextAfterEarlyReply,
+						steps: [{ iteration: 0, toolCall, result }],
+						archivedSteps: [],
+						plannedQueue: [],
+						evaluatorOutputs: [],
+					},
+					...(finalMessage ? { finalMessage } : {}),
+				};
+			};
+
 		const invokePlannerLoop = (
 			loopContext: typeof plannerContextAfterEarlyReply,
 		) => {
@@ -9123,7 +9473,12 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		let plannerResult: Awaited<ReturnType<typeof invokePlannerLoop>>;
 		try {
-			plannerResult = await invokePlannerLoop(plannerContextAfterEarlyReply);
+			plannerResult = messageHandler.plan.deterministicToolCall
+				? await timeInferenceSpan(
+						"actions:response-handler-deterministic-tool",
+						invokeDeterministicToolCall,
+					)
+				: await invokePlannerLoop(plannerContextAfterEarlyReply);
 		} catch (error) {
 			const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
 				? undefined
@@ -9356,6 +9711,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const preservedAnswerFallback =
 			!plannedText &&
 			!suppressesPlannerReply &&
+			!messageHandler.plan.deterministicToolCall &&
 			prePatchStageOneReply &&
 			!prePatchStageOneReplyIsUngroundedAppliedClaim &&
 			!PROGRESS_ONLY_ANSWER_REJECT.test(prePatchStageOneReply.trim()) &&
@@ -9364,12 +9720,9 @@ export async function runV5MessageRuntimeStage1(args: {
 					normalizeVisibleTextForDuplicateCheck(earlyReplyText))
 				? prePatchStageOneReply
 				: "";
-		// The ack fallback is a delivery floor for turns that DID real tool work
-		// (async handoffs and action turns whose result text got lost) — callers
-		// must not render a blank for work that genuinely happened. A turn that
-		// ran NO action must not "fix" its silence into a work-is-underway ack:
-		// no work follows this turn, so the ack would be a lie. Prefer the
-		// preserved stage-0 answer over any ack in every case.
+		// The answerless floor reports an undelivered canonical tool outcome, stays
+		// silent after a callback delivery, retains an ack only for a successfully
+		// accepted async handoff, and otherwise says no result was produced.
 		// A media deliverable delivered through an action's own callback
 		// (GENERATE_MEDIA posts an attachment-only, text:"" callback) IS the turn's
 		// answer. The answerless-final floor must not then resurrect the Stage-1
@@ -9381,7 +9734,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			!plannedText && !earlyReplySent && !suppressesPlannerReply
 				? preservedAnswerFallback ||
 					(ranNonSilentAction && !mediaDeliverableShipped
-						? stageOneAck || "on it, working on that now."
+						? answerlessToolTurnReport({
+								settledToolResults: settledPlannerToolResults,
+								deliveredVisibleTexts,
+								actionResults,
+								actions: args.runtime.actions,
+								stageOneAck,
+							})
 						: "")
 				: preservedAnswerFallback;
 		let effectiveReplyText = plannedText || ackFallback;
@@ -9508,12 +9867,67 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		let effectiveDeliveredReplyText =
 			strippedPlannedReplyText || effectiveReplyText;
-		const shouldSendPlannedText =
+		let shouldSendPlannedText =
 			Boolean(effectiveReplyText) &&
 			!plannedTextRepeatsEarlyReply &&
 			!plannedTextRepeatsActionReply &&
 			!plannedTextIsRedundantFailureFallback &&
 			!plannedTextRepeatsVerifiedActionDelivery;
+		// NEVER-SILENT INVARIANT (matrix F24/F12, tj-bfe764bf544bed /
+		// tj-fda9d65e8d04b9): a RESPOND turn that executed tools must not end
+		// with zero deliveries. Every suppression above presupposes the user
+		// already received the content through some earlier delivery — when
+		// NOTHING was delivered this turn (no early ack, empty delivered-set)
+		// that premise is false by construction, and an empty
+		// `effectiveReplyText` (a FINISH whose message evaporated in the
+		// safety chain) otherwise ships `responseContent: null`: the runtime
+		// produced a correct answer and the user got silence. Recover with the
+		// best grounded text available and name the failure in the log so the
+		// upstream emptying path is diagnosable instead of invisible.
+		// Two states are NOT recoverable silence: a synchronously delivered
+		// media deliverable is a delivery even though it never enters the
+		// visible-TEXT set, and deliberate silence (suppressPlannerReply
+		// terminals, ambient IGNORE after tool work) is a contract this
+		// invariant must honor, not a failure for it to "fix" into filler.
+		if (
+			!shouldSendPlannedText &&
+			!earlyReplySent &&
+			!suppressesPlannerReply &&
+			deliveredVisibleTexts.size === 0 &&
+			deliveredMediaUrls.length === 0 &&
+			actionResults.length > 0
+		) {
+			const recoveredText =
+				effectiveDeliveredReplyText ||
+				stageOneAck ||
+				actionResults
+					.map((result) =>
+						typeof result.userFacingText === "string"
+							? result.userFacingText.trim()
+							: "",
+					)
+					.filter((ownedText) => ownedText.length > 0)
+					.at(-1) ||
+				"I finished working on that but could not compose a clean reply — ask again and I will retry.";
+			args.runtime.logger.warn(
+				{
+					src: "service:message",
+					emptyFinal: !effectiveReplyText,
+					suppressedByEarlyReply: plannedTextRepeatsEarlyReply,
+					suppressedByActionReply: plannedTextRepeatsActionReply,
+					recoveredFrom: effectiveDeliveredReplyText
+						? "plannedText"
+						: stageOneAck
+							? "stageOneAck"
+							: "actionUserFacingText",
+				},
+				"RESPOND turn reached the reply gate with zero deliveries; recovering instead of ending silent",
+			);
+			effectiveReplyText = recoveredText;
+			strippedPlannedReplyText = recoveredText;
+			effectiveDeliveredReplyText = recoveredText;
+			shouldSendPlannedText = true;
+		}
 		let replyWasInterrupted = false;
 		let replyUsesCommittedStream = false;
 		const replyIsExactCanonicalActionText = actionResults.some(
@@ -9784,7 +10198,13 @@ async function recordFactsAndRelationshipsStage(args: {
 		const candidates = extractCandidatesForRecording(result);
 		const kept = result?.parsed
 			? {
-					facts: result.parsed.facts,
+					// The trajectory contract records facts as strings; the speaker
+					// attribution is rendered inline so replays can audit it.
+					facts: result.parsed.facts.map((fact) =>
+						fact.subject && fact.subject !== "user"
+							? `[${fact.subject}] ${fact.fact}`
+							: fact.fact,
+					),
 					relationships: result.parsed.relationships,
 				}
 			: { facts: [], relationships: [] };
@@ -11908,684 +12328,697 @@ export class DefaultMessageService implements IMessageService {
 		);
 		let responseSupersessionCleanupOwned = false;
 		try {
-
-		// Central delivery-audience attestation: every connector funnels inbound
-		// turns through this seam, so attesting from canonical room state here
-		// gives Telegram/iMessage/WhatsApp-style ingress the same evidence the
-		// Discord connector mints itself. An attestation remains authoritative
-		// only inside the runtime that minted it; a Memory crossing runtime
-		// boundaries is re-attested from the active runtime's canonical state.
-		if (!trustedDeliveryAudienceIsBoundToRuntime(message, runtime)) {
-			try {
-				await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
-			} catch (error) {
-				// error-policy:J4 attestation failure leaves the turn unattested, so
-				// every owner-private surface fails closed while ordinary chat
-				// continues; the lookup failure surfaces via RECENT_ERRORS.
-				runtime.reportError("MessageService.deliveryAudience", error, {
-					roomId: message.roomId,
-					messageId: message.id,
-				});
-			}
-		}
-		responseSupersessionController.signal.throwIfAborted();
-
-		const source =
-			typeof message.content?.source === "string" &&
-			message.content.source.trim() !== ""
-				? message.content.source
-				: "messageService";
-
-		// Root-turn traceId (#13775). On emit-first paths (agent API chat route,
-		// connectors) the trajectories MESSAGE_RECEIVED handler already minted and
-		// stamped one on message.metadata before we ran — reuse it, or the DB row
-		// and the file trajectory would carry different ids. Otherwise mint here
-		// (inherited from a spawning parent's env when this runtime is itself a
-		// sub-agent, else fresh) and stamp it BEFORE MESSAGE_RECEIVED is emitted
-		// below so the DB trajectory handler records the SAME traceId as the file
-		// recorder. Placed on the turn's trajectory context below so sub-agent
-		// spawns read it too. All stores then join on one traceId.
-		const preStampedTraceId =
-			typeof message.metadata === "object" &&
-			message.metadata !== null &&
-			typeof (message.metadata as { traceId?: unknown }).traceId === "string" &&
-			(message.metadata as { traceId: string }).traceId.trim() !== ""
-				? (message.metadata as { traceId: string }).traceId
-				: undefined;
-		const traceId =
-			preStampedTraceId ??
-			resolveTraceCorrelationFromEnv().traceId ??
-			asUUID(v4());
-		if (!message.metadata) {
-			message.metadata = { type: "message" };
-		}
-		(message.metadata as { traceId?: string }).traceId = traceId;
-
-		let trajectoryStepId =
-			typeof message.metadata === "object" &&
-			message.metadata !== null &&
-			"trajectoryStepId" in message.metadata
-				? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
-				: undefined;
-		let trajectoryId =
-			typeof message.metadata === "object" &&
-			message.metadata !== null &&
-			"trajectoryId" in message.metadata
-				? (message.metadata as { trajectoryId?: string }).trajectoryId
-				: undefined;
-
-		let alwaysDuringTask: Promise<void> | undefined;
-		if (
-			!(typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== "")
-		) {
-			try {
-				await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-					runtime,
-					message,
-					callback,
-					source,
-				});
-			} catch (error) {
-				// error-policy:J7 Event delivery is diagnostic; action preprocessing
-				// below remains a required data path and is deliberately outside this catch.
-				runtime.logger.warn(
-					{
-						src: "service:message",
-						agentId: runtime.agentId,
-						entityId: message.entityId,
+			// Central delivery-audience attestation: every connector funnels inbound
+			// turns through this seam, so attesting from canonical room state here
+			// gives Telegram/iMessage/WhatsApp-style ingress the same evidence the
+			// Discord connector mints itself. An attestation remains authoritative
+			// only inside the runtime that minted it; a Memory crossing runtime
+			// boundaries is re-attested from the active runtime's canonical state.
+			if (!trustedDeliveryAudienceIsBoundToRuntime(message, runtime)) {
+				try {
+					await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+				} catch (error) {
+					// error-policy:J4 attestation failure leaves the turn unattested, so
+					// every owner-private surface fails closed while ordinary chat
+					// continues; the lookup failure surfaces via RECENT_ERRORS.
+					runtime.reportError("MessageService.deliveryAudience", error, {
 						roomId: message.roomId,
-						error: error instanceof Error ? error.message : String(error),
-					},
-					"Failed to emit MESSAGE_RECEIVED before handling message",
-				);
-				runtime.reportError("MessageService.messageReceivedEvent", error, {
-					entityId: message.entityId,
-					roomId: message.roomId,
-				});
+						messageId: message.id,
+					});
+				}
 			}
-			// ALWAYS_BEFORE (blocking): hooks run for every message before
-			// any pipeline work. Use for cheap heuristic preprocessing
-			// (identity extraction, dispute detection) whose results may
-			// influence Stage 1 routing.
-			await runtime.runActionsByMode("ALWAYS_BEFORE", message);
-			// ALWAYS_DURING begins alongside the response pipeline, but actions may
-			// mutate room state. The room owner therefore remains live until this
-			// tracked work settles even if the visible response finishes first.
-			alwaysDuringTask = detachPostDeliverySideEffect(
-				runtime,
-				"ALWAYS_DURING",
-				() => runtime.runActionsByMode("ALWAYS_DURING", message),
-				"room-state",
-				message.roomId,
-				options?.roomHandlerLease,
-			);
+			responseSupersessionController.signal.throwIfAborted();
 
-			trajectoryStepId =
+			const source =
+				typeof message.content?.source === "string" &&
+				message.content.source.trim() !== ""
+					? message.content.source
+					: "messageService";
+
+			// Root-turn traceId (#13775). On emit-first paths (agent API chat route,
+			// connectors) the trajectories MESSAGE_RECEIVED handler already minted and
+			// stamped one on message.metadata before we ran — reuse it, or the DB row
+			// and the file trajectory would carry different ids. Otherwise mint here
+			// (inherited from a spawning parent's env when this runtime is itself a
+			// sub-agent, else fresh) and stamp it BEFORE MESSAGE_RECEIVED is emitted
+			// below so the DB trajectory handler records the SAME traceId as the file
+			// recorder. Placed on the turn's trajectory context below so sub-agent
+			// spawns read it too. All stores then join on one traceId.
+			const preStampedTraceId =
+				typeof message.metadata === "object" &&
+				message.metadata !== null &&
+				typeof (message.metadata as { traceId?: unknown }).traceId ===
+					"string" &&
+				(message.metadata as { traceId: string }).traceId.trim() !== ""
+					? (message.metadata as { traceId: string }).traceId
+					: undefined;
+			const traceId =
+				preStampedTraceId ??
+				resolveTraceCorrelationFromEnv().traceId ??
+				asUUID(v4());
+			if (!message.metadata) {
+				message.metadata = { type: "message" };
+			}
+			(message.metadata as { traceId?: string }).traceId = traceId;
+
+			let trajectoryStepId =
 				typeof message.metadata === "object" &&
 				message.metadata !== null &&
 				"trajectoryStepId" in message.metadata
 					? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
 					: undefined;
-			trajectoryId =
+			let trajectoryId =
 				typeof message.metadata === "object" &&
 				message.metadata !== null &&
 				"trajectoryId" in message.metadata
 					? (message.metadata as { trajectoryId?: string }).trajectoryId
 					: undefined;
-		}
-		responseSupersessionController.signal.throwIfAborted();
 
-		const trajectoryContextBase = {
-			// Minted above (before MESSAGE_RECEIVED) so file, DB, and spawn paths
-			// share it for the whole turn (#13775).
-			traceId,
-			runId: runtime.getCurrentRunId?.(),
-			roomId: message.roomId,
-			messageId: message.id,
-			turnMemo: new Map<string, Promise<unknown>>(),
-		};
-
-		return await runWithTrajectoryContext<MessageProcessingResult>(
-			typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
-				? {
-						...trajectoryContextBase,
-						...(typeof trajectoryId === "string" && trajectoryId.trim() !== ""
-							? { trajectoryId: trajectoryId.trim() }
-							: {}),
-						trajectoryStepId: trajectoryStepId.trim(),
-					}
-				: trajectoryContextBase,
-			async (): Promise<MessageProcessingResult> => {
-				const senderRole = await timeInferenceSpan(
-					"message:ingress:sender-role",
-					() => resolveStage1SenderRole(runtime, message),
-				);
-				responseSupersessionController.signal.throwIfAborted();
-				const trajectoryContext = getTrajectoryContext();
-				if (trajectoryContext) trajectoryContext.userRole = senderRole;
-
-				// Determine shouldRespondModel from options or runtime settings
-				const shouldRespondModelSetting = runtime.getSetting(
-					"SHOULD_RESPOND_MODEL",
-				);
-				const resolvedShouldRespondModel = normalizeShouldRespondModelType(
-					options?.shouldRespondModel ?? shouldRespondModelSetting,
-				);
-
-				let activeTurnSignal: AbortSignal | undefined;
-
-				// WHY voice detection wraps onStreamChunk here instead of using a
-				// separate AsyncLocalStorage streaming context:
-				//
-				// Previously handleMessage created a second extractor through
-				// runWithStreamingContext. Both extractors received the same raw LLM
-				// tokens in useModel and emitted independently, causing the
-				// dual-extractor garbling bug; consumers saw overlapping deltas that
-				// produced unintelligible TTS.
-				//
-				// The fix: a single structured field extractor in
-				// dynamicPromptExecFromState) now provides `accumulated` — the full
-				// extracted text — via the third StreamChunkCallback argument. Voice
-				// detection wraps the caller's callback to intercept accumulated text
-				// for first-sentence detection, then forwards to the original. This
-				// keeps voice logic in handleMessage (encapsulation) without adding a
-				// second extraction pipeline.
-				//
-				// The `streamTextFallback` path exists for action handlers or other
-				// call sites that don't provide `accumulated` (raw token streams).
-				let firstSentenceSent = false;
-				let firstSentenceText = "";
-				let streamTextFallback = "";
-				let runTerminalOwner: MessageRunTerminalOwner | undefined;
-				let runTerminalSettlement: Promise<void> | undefined;
-				// Envelope-echo latch for this turn's stream: once the accumulated
-				// text reads as envelope material, every downstream chunk consumer
-				// (model_stream_chunk hook re-emission, first-sentence TTS, the
-				// host's stream callback) is cut off. Chunks forwarded before the
-				// needle completed are already delivered — that residue is the
-				// documented open edge in security/outbound-envelope-guard.ts.
-				const streamCarriesEnvelope = createOutboundEnvelopeStreamLatch(
-					runtime,
-					"stream-chunk",
-				);
-				const userOnStreamChunk = options?.onStreamChunk;
-				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
-					userOnStreamChunk
-						? async (chunk, messageId, accumulated, metadata) => {
-								activeTurnSignal?.throwIfAborted();
-								// Sensitive turns deliver once through the final callback,
-								// where the audience is re-read. Streaming bytes cannot be
-								// recalled if room membership changes mid-generation.
-								if (ownerExclusiveDisclosureWasUsed(message)) {
-									return;
-								}
-								let streamText: string;
-								// If we have accumulated text, also sync streamTextFallback so the
-								// fallback path has accurate state if the stream source later changes.
-								if (accumulated !== undefined) {
-									streamTextFallback = accumulated;
-									streamText = accumulated;
-								} else {
-									streamTextFallback += chunk;
-									streamText = streamTextFallback;
-								}
-
-								if (streamCarriesEnvelope(streamText)) {
-									return;
-								}
-
-								// Skip when this callback is invoked from `useModel`'s stream loop:
-								// `source: "use_model"` already ran for the same raw chunk (Node ALS).
-								if (
-									getModelStreamChunkDeliveryDepth() === 0 &&
-									metadata?.authority !== "committed_reply"
-								) {
-									await runtime.applyPipelineHooks(
-										"model_stream_chunk",
-										modelStreamChunkPipelineHookContext({
-											source: "message_service",
-											chunk,
-											messageId,
-											roomId: message.roomId,
-											runId: runtime.getCurrentRunId(),
-											responseId,
-											accumulated,
-										}),
-									);
-								}
-								activeTurnSignal?.throwIfAborted();
-
-								// First-sentence cloud-TTS path (deliverFirstSentenceVoice —
-								// the local-inference voice loop is a separate layer, see its
-								// JSDoc). Only run detection when `accumulated` is present:
-								// raw-token streams (no accumulated) may contain partial
-								// structured output that would garble hasFirstSentence() and
-								// TTS.
-								if (
-									!firstSentenceSent &&
-									accumulated !== undefined &&
-									metadata?.visibleFormat !== "json" &&
-									(metadata?.authority === "committed_reply" ||
-										hasFirstSentence(streamText))
-								) {
-									const { first } = extractFirstSentence(streamText);
-									if (first.length > 5) {
-										firstSentenceSent = true;
-										firstSentenceText = first;
-										// Audio does not stall the text stream, but its model capture
-										// remains owned by the run-terminal barrier.
-										const deliverVoice = () =>
-											deliverFirstSentenceVoice(
-												runtime,
-												first,
-												callback,
-												activeTurnSignal,
-											);
-										if (!runTerminalOwner) {
-											throw new ElizaError(
-												"Voice streaming requires a live run terminal owner",
-												{
-													code: "RUN_TERMINAL_OWNER_REQUIRED",
-													context: {
-														messageId: message.id,
-														roomId: message.roomId,
-													},
-												},
-											);
-										}
-										runTerminalOwner.track(
-											"first-sentence-voice",
-											deliverVoice,
-										);
-									}
-								}
-
-								activeTurnSignal?.throwIfAborted();
-								await userOnStreamChunk(
-									chunk,
-									messageId,
-									accumulated,
-									metadata,
-								);
-							}
-						: undefined;
-
-				const opts: ResolvedMessageOptions = {
-					maxRetries: options?.maxRetries ?? 3,
-					continueAfterActions:
-						options?.continueAfterActions ??
-						parseBooleanFromText(
-							String(runtime.getSetting("CONTINUE_AFTER_ACTIONS") ?? "true"),
-						),
-					onStreamChunk: wrappedOnStreamChunk,
-					keepExistingResponses:
-						resolvedKeepExistingResponses,
-					shouldRespondModel: resolvedShouldRespondModel,
-					...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
-					...(options?.assistantCommitAbortSignal
-						? {
-								assistantCommitAbortSignal: options.assistantCommitAbortSignal,
-							}
-						: {}),
-					...(options?.roomHandlerLease
-						? { roomHandlerLease: options.roomHandlerLease }
-						: {}),
-					...(options?.onSettledActionResult
-						? {
-								onSettledActionResult: options.onSettledActionResult,
-							}
-						: {}),
-					...(options?.onTrajectoryTerminalOwner
-						? {
-								onTrajectoryTerminalOwner: options.onTrajectoryTerminalOwner,
-							}
-						: {}),
-				};
-
-				const deliveredVisibleTexts = new Set<string>();
-				const recordDeliveredVisibleText = (text: string) => {
-					deliveredVisibleTexts.add(
-						normalizeVisibleTextForDuplicateCheck(text),
-					);
-				};
-				const instrumentedCallback = wrapSingleTurnVisibleCallback(
-					runtime,
-					message,
-					callback,
-					recordDeliveredVisibleText,
-					undefined,
-					opts.assistantCommitAbortSignal,
-				);
-				const precommittedVisibleCallback = wrapSingleTurnVisibleCallback(
-					runtime,
-					message,
-					callback,
-					recordDeliveredVisibleText,
-				);
-
-				// A host route may open the timer before calling the message service so
-				// augmentation and response normalization share this same timeline.
-				// Only the layer that creates the timer closes and persists it.
-				const inheritedInferenceTimer = getInferenceTimer();
-				const ownsInferenceTimer = inheritedInferenceTimer === undefined;
-				let inferenceTimer: InferenceTurnTimer | undefined;
-
-				responseSupersessionCleanupOwned = true;
+			let alwaysDuringTask: Promise<void> | undefined;
+			if (
+				!(
+					typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
+				)
+			) {
 				try {
-					runtime.logger.info(
+					await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+						runtime,
+						message,
+						callback,
+						source,
+					});
+				} catch (error) {
+					// error-policy:J7 Event delivery is diagnostic; action preprocessing
+					// below remains a required data path and is deliberately outside this catch.
+					runtime.logger.warn(
 						{
 							src: "service:message",
 							agentId: runtime.agentId,
 							entityId: message.entityId,
 							roomId: message.roomId,
+							error: error instanceof Error ? error.message : String(error),
 						},
-						"Message received",
+						"Failed to emit MESSAGE_RECEIVED before handling message",
+					);
+					runtime.reportError("MessageService.messageReceivedEvent", error, {
+						entityId: message.entityId,
+						roomId: message.roomId,
+					});
+				}
+				// ALWAYS_BEFORE (blocking): hooks run for every message before
+				// any pipeline work. Use for cheap heuristic preprocessing
+				// (identity extraction, dispute detection) whose results may
+				// influence Stage 1 routing.
+				await runtime.runActionsByMode("ALWAYS_BEFORE", message);
+				// ALWAYS_DURING begins alongside the response pipeline, but actions may
+				// mutate room state. The room owner therefore remains live until this
+				// tracked work settles even if the visible response finishes first.
+				alwaysDuringTask = detachPostDeliverySideEffect(
+					runtime,
+					"ALWAYS_DURING",
+					() => runtime.runActionsByMode("ALWAYS_DURING", message),
+					"room-state",
+					message.roomId,
+					options?.roomHandlerLease,
+				);
+
+				trajectoryStepId =
+					typeof message.metadata === "object" &&
+					message.metadata !== null &&
+					"trajectoryStepId" in message.metadata
+						? (message.metadata as { trajectoryStepId?: string })
+								.trajectoryStepId
+						: undefined;
+				trajectoryId =
+					typeof message.metadata === "object" &&
+					message.metadata !== null &&
+					"trajectoryId" in message.metadata
+						? (message.metadata as { trajectoryId?: string }).trajectoryId
+						: undefined;
+			}
+			responseSupersessionController.signal.throwIfAborted();
+
+			const trajectoryContextBase = {
+				// Minted above (before MESSAGE_RECEIVED) so file, DB, and spawn paths
+				// share it for the whole turn (#13775).
+				traceId,
+				runId: runtime.getCurrentRunId?.(),
+				roomId: message.roomId,
+				messageId: message.id,
+				turnMemo: new Map<string, Promise<unknown>>(),
+			};
+
+			return await runWithTrajectoryContext<MessageProcessingResult>(
+				typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== ""
+					? {
+							...trajectoryContextBase,
+							...(typeof trajectoryId === "string" && trajectoryId.trim() !== ""
+								? { trajectoryId: trajectoryId.trim() }
+								: {}),
+							trajectoryStepId: trajectoryStepId.trim(),
+						}
+					: trajectoryContextBase,
+				async (): Promise<MessageProcessingResult> => {
+					const senderRole = await timeInferenceSpan(
+						"message:ingress:sender-role",
+						() => resolveStage1SenderRole(runtime, message),
+					);
+					responseSupersessionController.signal.throwIfAborted();
+					const trajectoryContext = getTrajectoryContext();
+					if (trajectoryContext) trajectoryContext.userRole = senderRole;
+
+					// Determine shouldRespondModel from options or runtime settings
+					const shouldRespondModelSetting = runtime.getSetting(
+						"SHOULD_RESPOND_MODEL",
+					);
+					const resolvedShouldRespondModel = normalizeShouldRespondModelType(
+						options?.shouldRespondModel ?? shouldRespondModelSetting,
 					);
 
-					// Track this response ID - ensure map exists for this agent
-					let agentResponses = latestResponseIds.get(runtime.agentId);
-					if (!agentResponses) {
-						agentResponses = new Map<string, string[]>();
-						latestResponseIds.set(runtime.agentId, agentResponses);
-					}
+					let activeTurnSignal: AbortSignal | undefined;
 
-					const roomResponses = agentResponses.get(message.roomId) ?? [];
-					const previousResponseId = roomResponses[roomResponses.length - 1];
-					if (previousResponseId) {
-						logger.debug(
+					// WHY voice detection wraps onStreamChunk here instead of using a
+					// separate AsyncLocalStorage streaming context:
+					//
+					// Previously handleMessage created a second extractor through
+					// runWithStreamingContext. Both extractors received the same raw LLM
+					// tokens in useModel and emitted independently, causing the
+					// dual-extractor garbling bug; consumers saw overlapping deltas that
+					// produced unintelligible TTS.
+					//
+					// The fix: a single structured field extractor in
+					// dynamicPromptExecFromState) now provides `accumulated` — the full
+					// extracted text — via the third StreamChunkCallback argument. Voice
+					// detection wraps the caller's callback to intercept accumulated text
+					// for first-sentence detection, then forwards to the original. This
+					// keeps voice logic in handleMessage (encapsulation) without adding a
+					// second extraction pipeline.
+					//
+					// The `streamTextFallback` path exists for action handlers or other
+					// call sites that don't provide `accumulated` (raw token streams).
+					let firstSentenceSent = false;
+					let firstSentenceText = "";
+					let streamTextFallback = "";
+					let runTerminalOwner: MessageRunTerminalOwner | undefined;
+					let runTerminalSettlement: Promise<void> | undefined;
+					// Envelope-echo latch for this turn's stream: once the accumulated
+					// text reads as envelope material, every downstream chunk consumer
+					// (model_stream_chunk hook re-emission, first-sentence TTS, the
+					// host's stream callback) is cut off. Chunks forwarded before the
+					// needle completed are already delivered — that residue is the
+					// documented open edge in security/outbound-envelope-guard.ts.
+					const streamCarriesEnvelope = createOutboundEnvelopeStreamLatch(
+						runtime,
+						"stream-chunk",
+					);
+					const userOnStreamChunk = options?.onStreamChunk;
+					const wrappedOnStreamChunk: StreamChunkCallback | undefined =
+						userOnStreamChunk
+							? async (chunk, messageId, accumulated, metadata) => {
+									activeTurnSignal?.throwIfAborted();
+									// Sensitive turns deliver once through the final callback,
+									// where the audience is re-read. Streaming bytes cannot be
+									// recalled if room membership changes mid-generation.
+									if (ownerExclusiveDisclosureWasUsed(message)) {
+										return;
+									}
+									let streamText: string;
+									// If we have accumulated text, also sync streamTextFallback so the
+									// fallback path has accurate state if the stream source later changes.
+									if (accumulated !== undefined) {
+										streamTextFallback = accumulated;
+										streamText = accumulated;
+									} else {
+										streamTextFallback += chunk;
+										streamText = streamTextFallback;
+									}
+
+									if (streamCarriesEnvelope(streamText)) {
+										return;
+									}
+
+									// Skip when this callback is invoked from `useModel`'s stream loop:
+									// `source: "use_model"` already ran for the same raw chunk (Node ALS).
+									if (
+										getModelStreamChunkDeliveryDepth() === 0 &&
+										metadata?.authority !== "committed_reply"
+									) {
+										await runtime.applyPipelineHooks(
+											"model_stream_chunk",
+											modelStreamChunkPipelineHookContext({
+												source: "message_service",
+												chunk,
+												messageId,
+												roomId: message.roomId,
+												runId: runtime.getCurrentRunId(),
+												responseId,
+												accumulated,
+											}),
+										);
+									}
+									activeTurnSignal?.throwIfAborted();
+
+									// First-sentence cloud-TTS path (deliverFirstSentenceVoice —
+									// the local-inference voice loop is a separate layer, see its
+									// JSDoc). Only run detection when `accumulated` is present:
+									// raw-token streams (no accumulated) may contain partial
+									// structured output that would garble hasFirstSentence() and
+									// TTS.
+									if (
+										!firstSentenceSent &&
+										accumulated !== undefined &&
+										metadata?.visibleFormat !== "json" &&
+										(metadata?.authority === "committed_reply" ||
+											hasFirstSentence(streamText))
+									) {
+										const { first } = extractFirstSentence(streamText);
+										if (first.length > 5) {
+											firstSentenceSent = true;
+											firstSentenceText = first;
+											// Audio does not stall the text stream, but its model capture
+											// remains owned by the run-terminal barrier.
+											const deliverVoice = () =>
+												deliverFirstSentenceVoice(
+													runtime,
+													first,
+													callback,
+													activeTurnSignal,
+												);
+											if (!runTerminalOwner) {
+												throw new ElizaError(
+													"Voice streaming requires a live run terminal owner",
+													{
+														code: "RUN_TERMINAL_OWNER_REQUIRED",
+														context: {
+															messageId: message.id,
+															roomId: message.roomId,
+														},
+													},
+												);
+											}
+											runTerminalOwner.track(
+												"first-sentence-voice",
+												deliverVoice,
+											);
+										}
+									}
+
+									activeTurnSignal?.throwIfAborted();
+									await userOnStreamChunk(
+										chunk,
+										messageId,
+										accumulated,
+										metadata,
+									);
+								}
+							: undefined;
+
+					const opts: ResolvedMessageOptions = {
+						maxRetries: options?.maxRetries ?? 3,
+						continueAfterActions:
+							options?.continueAfterActions ??
+							parseBooleanFromText(
+								String(runtime.getSetting("CONTINUE_AFTER_ACTIONS") ?? "true"),
+							),
+						onStreamChunk: wrappedOnStreamChunk,
+						keepExistingResponses: resolvedKeepExistingResponses,
+						shouldRespondModel: resolvedShouldRespondModel,
+						...(options?.abortSignal
+							? { abortSignal: options.abortSignal }
+							: {}),
+						...(options?.assistantCommitAbortSignal
+							? {
+									assistantCommitAbortSignal:
+										options.assistantCommitAbortSignal,
+								}
+							: {}),
+						...(options?.roomHandlerLease
+							? { roomHandlerLease: options.roomHandlerLease }
+							: {}),
+						...(options?.onSettledActionResult
+							? {
+									onSettledActionResult: options.onSettledActionResult,
+								}
+							: {}),
+						...(options?.onTrajectoryTerminalOwner
+							? {
+									onTrajectoryTerminalOwner: options.onTrajectoryTerminalOwner,
+								}
+							: {}),
+					};
+
+					const deliveredVisibleTexts = new Set<string>();
+					const recordDeliveredVisibleText = (text: string) => {
+						deliveredVisibleTexts.add(
+							normalizeVisibleTextForDuplicateCheck(text),
+						);
+					};
+					const instrumentedCallback = wrapSingleTurnVisibleCallback(
+						runtime,
+						message,
+						callback,
+						recordDeliveredVisibleText,
+						undefined,
+						opts.assistantCommitAbortSignal,
+					);
+					const precommittedVisibleCallback = wrapSingleTurnVisibleCallback(
+						runtime,
+						message,
+						callback,
+						recordDeliveredVisibleText,
+					);
+
+					// A host route may open the timer before calling the message service so
+					// augmentation and response normalization share this same timeline.
+					// Only the layer that creates the timer closes and persists it.
+					const inheritedInferenceTimer = getInferenceTimer();
+					const ownsInferenceTimer = inheritedInferenceTimer === undefined;
+					let inferenceTimer: InferenceTurnTimer | undefined;
+
+					responseSupersessionCleanupOwned = true;
+					try {
+						runtime.logger.info(
 							{
 								src: "service:message",
-								roomId: message.roomId,
-								previousResponseId,
-								responseId,
-							},
-							"Updating response ID",
-						);
-					}
-					roomResponses.push(responseId);
-					agentResponses.set(message.roomId, roomResponses);
-
-					// Start run tracking with roomId for proper log association
-					const runId = runtime.startRun(message.roomId);
-					if (!runId) {
-						runtime.logger.error("Failed to start run tracking");
-						return {
-							didRespond: false,
-							responseContent: null,
-							responseMessages: [],
-							state: { values: {}, data: {}, text: "" } as State,
-							mode: "none",
-						};
-					}
-					const startTime = Date.now();
-
-					// Per-turn inference latency timer. Every stage (composeState,
-					// useModel round-trips, the cloud HTTP fetch, evaluators) records
-					// spans/marks onto this via the inference-timing ALS context; the
-					// breakdown is emitted in the `finally` below. Off the hot path
-					// when no one reads it (records are bounded + cheap).
-					inferenceTimer =
-						inheritedInferenceTimer ??
-						new InferenceTurnTimer({
-							turnId: nextInferenceTurnId(),
-							label: "message-turn",
-							roomId: message.roomId,
-							t0EpochMs: startTime,
-						});
-
-					runTerminalOwner = new MessageRunTerminalOwner(
-						runtime,
-						runId,
-						message,
-						startTime,
-						opts.roomHandlerLease,
-					);
-					opts.runTerminalOwner = runTerminalOwner;
-					if (alwaysDuringTask) {
-						runTerminalOwner.adopt("ALWAYS_DURING", alwaysDuringTask);
-					}
-					opts.onTrajectoryTerminalOwner?.("run");
-
-					// The terminal owner exists before listener dispatch because event
-					// listeners may partially observe RUN_STARTED before another rejects.
-					await runWithInferenceTiming(inferenceTimer, () =>
-						timeInferenceSpan("message:lifecycle:run-started", () =>
-							runtime.emitEvent(EventType.RUN_STARTED, {
-								runtime,
-								source: "messageHandler",
-								runId,
-								messageId: message.id,
-								roomId: message.roomId,
+								agentId: runtime.agentId,
 								entityId: message.entityId,
-								startTime,
-								status: "started",
-							} as RunEventPayload),
-						),
-					);
-					// Structured streaming is handled by dynamicPromptExecFromState for
-					// text fields. Native v5 planner/tool/evaluator events use the same
-					// callback with JSON event chunks so UIs can render tool progress.
-					// We build the context even when there's no onStreamChunk, as
-					// long as we have an abortSignal to propagate — the runtime
-					// reads `streamingContext.abortSignal` to plumb cancellation
-					// into `runtime.useModel` calls.
-					const streamingContext: StreamingContext | undefined =
-						opts.onStreamChunk
-							? {
-									onStreamChunk: opts.onStreamChunk,
-									messageId: responseId,
-									reportError: runtime.reportError.bind(runtime),
-									...(opts.abortSignal
-										? { abortSignal: opts.abortSignal }
-										: {}),
-									onToolCall: async (payload: StreamingToolCallPayload) => {
-										await opts.onStreamChunk?.(
-											JSON.stringify({ type: "tool_call", ...payload }),
-											responseId,
-										);
-									},
-									onToolResult: async (payload: StreamingToolResultPayload) => {
-										await opts.onStreamChunk?.(
-											JSON.stringify({ type: "tool_result", ...payload }),
-											responseId,
-										);
-									},
-									onEvaluation: async (payload: StreamingEvaluationPayload) => {
-										await opts.onStreamChunk?.(
-											JSON.stringify({ type: "evaluation", ...payload }),
-											responseId,
-										);
-									},
-									onContextEvent: async (
-										payload: StreamingContextEventPayload,
-									) => {
-										await opts.onStreamChunk?.(
-											JSON.stringify({ type: "context_event", event: payload }),
-											responseId,
-										);
-									},
-								}
-							: opts.abortSignal
+								roomId: message.roomId,
+							},
+							"Message received",
+						);
+
+						// Track this response ID - ensure map exists for this agent
+						let agentResponses = latestResponseIds.get(runtime.agentId);
+						if (!agentResponses) {
+							agentResponses = new Map<string, string[]>();
+							latestResponseIds.set(runtime.agentId, agentResponses);
+						}
+
+						const roomResponses = agentResponses.get(message.roomId) ?? [];
+						const previousResponseId = roomResponses[roomResponses.length - 1];
+						if (previousResponseId) {
+							logger.debug(
+								{
+									src: "service:message",
+									roomId: message.roomId,
+									previousResponseId,
+									responseId,
+								},
+								"Updating response ID",
+							);
+						}
+						roomResponses.push(responseId);
+						agentResponses.set(message.roomId, roomResponses);
+
+						// Start run tracking with roomId for proper log association
+						const runId = runtime.startRun(message.roomId);
+						if (!runId) {
+							runtime.logger.error("Failed to start run tracking");
+							return {
+								didRespond: false,
+								responseContent: null,
+								responseMessages: [],
+								state: { values: {}, data: {}, text: "" } as State,
+								mode: "none",
+							};
+						}
+						const startTime = Date.now();
+
+						// Per-turn inference latency timer. Every stage (composeState,
+						// useModel round-trips, the cloud HTTP fetch, evaluators) records
+						// spans/marks onto this via the inference-timing ALS context; the
+						// breakdown is emitted in the `finally` below. Off the hot path
+						// when no one reads it (records are bounded + cheap).
+						inferenceTimer =
+							inheritedInferenceTimer ??
+							new InferenceTurnTimer({
+								turnId: nextInferenceTurnId(),
+								label: "message-turn",
+								roomId: message.roomId,
+								t0EpochMs: startTime,
+							});
+
+						runTerminalOwner = new MessageRunTerminalOwner(
+							runtime,
+							runId,
+							message,
+							startTime,
+							opts.roomHandlerLease,
+						);
+						opts.runTerminalOwner = runTerminalOwner;
+						if (alwaysDuringTask) {
+							runTerminalOwner.adopt("ALWAYS_DURING", alwaysDuringTask);
+						}
+						opts.onTrajectoryTerminalOwner?.("run");
+
+						// The terminal owner exists before listener dispatch because event
+						// listeners may partially observe RUN_STARTED before another rejects.
+						await runWithInferenceTiming(inferenceTimer, () =>
+							timeInferenceSpan("message:lifecycle:run-started", () =>
+								runtime.emitEvent(EventType.RUN_STARTED, {
+									runtime,
+									source: "messageHandler",
+									runId,
+									messageId: message.id,
+									roomId: message.roomId,
+									entityId: message.entityId,
+									startTime,
+									status: "started",
+								} as RunEventPayload),
+							),
+						);
+						// Structured streaming is handled by dynamicPromptExecFromState for
+						// text fields. Native v5 planner/tool/evaluator events use the same
+						// callback with JSON event chunks so UIs can render tool progress.
+						// We build the context even when there's no onStreamChunk, as
+						// long as we have an abortSignal to propagate — the runtime
+						// reads `streamingContext.abortSignal` to plumb cancellation
+						// into `runtime.useModel` calls.
+						const streamingContext: StreamingContext | undefined =
+							opts.onStreamChunk
 								? {
-										// No stream callback but caller provided an abort
-										// signal — install a no-op chunk handler so the
-										// streaming-context plumbing carries the signal
-										// down into `runtime.useModel`. The runtime never
-										// invokes onStreamChunk when no streaming is happening.
-										onStreamChunk: async () => undefined,
+										onStreamChunk: opts.onStreamChunk,
 										messageId: responseId,
-										abortSignal: opts.abortSignal,
+										reportError: runtime.reportError.bind(runtime),
+										...(opts.abortSignal
+											? { abortSignal: opts.abortSignal }
+											: {}),
+										onToolCall: async (payload: StreamingToolCallPayload) => {
+											await opts.onStreamChunk?.(
+												JSON.stringify({ type: "tool_call", ...payload }),
+												responseId,
+											);
+										},
+										onToolResult: async (
+											payload: StreamingToolResultPayload,
+										) => {
+											await opts.onStreamChunk?.(
+												JSON.stringify({ type: "tool_result", ...payload }),
+												responseId,
+											);
+										},
+										onEvaluation: async (
+											payload: StreamingEvaluationPayload,
+										) => {
+											await opts.onStreamChunk?.(
+												JSON.stringify({ type: "evaluation", ...payload }),
+												responseId,
+											);
+										},
+										onContextEvent: async (
+											payload: StreamingContextEventPayload,
+										) => {
+											await opts.onStreamChunk?.(
+												JSON.stringify({
+													type: "context_event",
+													event: payload,
+												}),
+												responseId,
+											);
+										},
 									}
-								: undefined;
-					const processingPromise = runtime.turnControllers.runWith(
-						message.roomId,
-						(turnSignal) => {
-							const abortSignal = mergeAbortSignals([
-								opts.abortSignal,
-								turnSignal,
-								responseSupersessionController.signal,
-							]);
-							activeTurnSignal = abortSignal;
-							if (abortSignal) opts.abortSignal = abortSignal;
-							const scopedStreamingContext: StreamingContext | undefined =
-								streamingContext
+								: opts.abortSignal
 									? {
-											...streamingContext,
-											...(abortSignal ? { abortSignal } : {}),
+											// Cancellation-only contexts deliberately omit a chunk
+											// consumer. `useModel` treats a present consumer as the
+											// request to use its streaming transport and parser.
+											messageId: responseId,
+											abortSignal: opts.abortSignal,
+											reportError: runtime.reportError.bind(runtime),
 										}
-									: abortSignal
+									: undefined;
+						const processingPromise = runtime.turnControllers.runWith(
+							message.roomId,
+							(turnSignal) => {
+								const abortSignal = mergeAbortSignals([
+									opts.abortSignal,
+									turnSignal,
+									responseSupersessionController.signal,
+								]);
+								activeTurnSignal = abortSignal;
+								if (abortSignal) opts.abortSignal = abortSignal;
+								const scopedStreamingContext: StreamingContext | undefined =
+									streamingContext
 										? {
-												onStreamChunk: async () => undefined,
-												messageId: responseId,
-												abortSignal,
-												reportError: runtime.reportError.bind(runtime),
+												...streamingContext,
+												...(abortSignal ? { abortSignal } : {}),
 											}
-										: undefined;
-							return runWithInferenceTiming(inferenceTimer, () =>
-								runWithStreamingContext(scopedStreamingContext, () =>
-									this.processMessage(
+										: abortSignal
+											? {
+													messageId: responseId,
+													abortSignal,
+													reportError: runtime.reportError.bind(runtime),
+												}
+											: undefined;
+								return runWithInferenceTiming(inferenceTimer, () =>
+									runWithStreamingContext(scopedStreamingContext, () =>
+										this.processMessage(
+											runtime,
+											message,
+											callback,
+											instrumentedCallback,
+											precommittedVisibleCallback,
+											deliveredVisibleTexts,
+											recordDeliveredVisibleText,
+											responseId,
+											runId,
+											opts,
+										),
+									),
+								);
+							},
+						);
+
+						const result = await processingPromise;
+
+						// Voice: Handle the rest of the message
+						if (firstSentenceSent && result.responseContent?.text) {
+							const fullText = result.responseContent.text;
+							const rest = fullText.replace(firstSentenceText, "").trim();
+							if (rest.length > 0) {
+								// Synthesis remains detached from visible delivery, but its model
+								// capture belongs to this run and must settle before RUN_ENDED.
+								runTerminalOwner.track("remaining-voice", async () => {
+									try {
+										let audioBuffer: Buffer | null = null;
+										const params = buildTextToSpeechParams(
+											runtime,
+											rest,
+											activeTurnSignal,
+										);
+										activeTurnSignal?.throwIfAborted();
+										const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
+											? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
+											: undefined;
+										activeTurnSignal?.throwIfAborted();
+										if (
+											result instanceof ArrayBuffer ||
+											Object.prototype.toString.call(result) ===
+												"[object ArrayBuffer]"
+										) {
+											audioBuffer = Buffer.from(result as ArrayBuffer);
+										} else if (Buffer.isBuffer(result)) {
+											audioBuffer = result;
+										} else if (result instanceof Uint8Array) {
+											audioBuffer = Buffer.from(result);
+										}
+
+										if (audioBuffer && instrumentedCallback) {
+											const audioBase64 = audioBuffer.toString("base64");
+											activeTurnSignal?.throwIfAborted();
+											await instrumentedCallback({
+												text: "",
+												attachments: [
+													{
+														id: v4(),
+														url: `data:audio/wav;base64,${audioBase64}`,
+														title: "Voice Response",
+														source: "voice",
+														description: "Voice response for remaining text",
+														text: rest,
+														contentType: ContentType.AUDIO,
+													},
+												],
+												source: "voice",
+											});
+										}
+									} catch (error) {
+										if (activeTurnSignal?.aborted) return;
+										// error-policy:J4 The text response is complete even
+										// when its optional trailing voice attachment fails.
+										runtime.logger.error(
+											{ error },
+											"Error generating voice for remaining text",
+										);
+										runtime.reportError(
+											"MessageService.remainingVoice",
+											error,
+											{
+												roomId: message.roomId,
+											},
+										);
+									}
+								});
+							}
+						}
+
+						runTerminalSettlement = runTerminalOwner.request("completed");
+						return {
+							...result,
+							trajectoryTerminalOwner: "run",
+						};
+					} catch (error) {
+						runTerminalSettlement = runTerminalOwner?.request("error", error);
+						throw error;
+					} finally {
+						// Close + emit the per-turn latency breakdown. Detached side
+						// effects (post-turn evaluators) intentionally run after this and
+						// are NOT counted in turn latency — that is the proof they don't
+						// stall the user-visible reply.
+						const inferenceSummary = ownsInferenceTimer
+							? emitInferenceTiming(inferenceTimer)
+							: null;
+						if (inferenceSummary) {
+							detachPostDeliverySideEffect(
+								runtime,
+								"persist_inference_timing",
+								() =>
+									persistInferenceTimingSummary(
 										runtime,
 										message,
-										callback,
-										instrumentedCallback,
-										precommittedVisibleCallback,
-										deliveredVisibleTexts,
-										recordDeliveredVisibleText,
-										responseId,
-										runId,
-										opts,
+										inferenceSummary,
 									),
-								),
+								"diagnostic",
 							);
-						},
-					);
+						}
 
-					const result = await processingPromise;
-
-					// Voice: Handle the rest of the message
-					if (firstSentenceSent && result.responseContent?.text) {
-						const fullText = result.responseContent.text;
-						const rest = fullText.replace(firstSentenceText, "").trim();
-						if (rest.length > 0) {
-							// Synthesis remains detached from visible delivery, but its model
-							// capture belongs to this run and must settle before RUN_ENDED.
-							runTerminalOwner.track("remaining-voice", async () => {
-								try {
-									let audioBuffer: Buffer | null = null;
-									const params = buildTextToSpeechParams(
-										runtime,
-										rest,
-										activeTurnSignal,
-									);
-									activeTurnSignal?.throwIfAborted();
-									const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
-										? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
-										: undefined;
-									activeTurnSignal?.throwIfAborted();
-									if (
-										result instanceof ArrayBuffer ||
-										Object.prototype.toString.call(result) ===
-											"[object ArrayBuffer]"
-									) {
-										audioBuffer = Buffer.from(result as ArrayBuffer);
-									} else if (Buffer.isBuffer(result)) {
-										audioBuffer = result;
-									} else if (result instanceof Uint8Array) {
-										audioBuffer = Buffer.from(result);
-									}
-
-									if (audioBuffer && instrumentedCallback) {
-										const audioBase64 = audioBuffer.toString("base64");
-										activeTurnSignal?.throwIfAborted();
-										await instrumentedCallback({
-											text: "",
-											attachments: [
-												{
-													id: v4(),
-													url: `data:audio/wav;base64,${audioBase64}`,
-													title: "Voice Response",
-													source: "voice",
-													description: "Voice response for remaining text",
-													text: rest,
-													contentType: ContentType.AUDIO,
-												},
-											],
-											source: "voice",
-										});
-									}
-								} catch (error) {
-									if (activeTurnSignal?.aborted) return;
-									// error-policy:J4 The text response is complete even
-									// when its optional trailing voice attachment fails.
-									runtime.logger.error(
-										{ error },
-										"Error generating voice for remaining text",
-									);
-									runtime.reportError("MessageService.remainingVoice", error, {
-										roomId: message.roomId,
-									});
-								}
-							});
+						// Ensure latestResponseIds is cleaned up even if processMessage
+						// threw before reaching its own cleanup at the end of the method.
+						clearLatestResponseId(runtime.agentId, message.roomId, responseId);
+						const clearSupersession = () =>
+							clearResponseSupersession(runtime, responseId);
+						if (runTerminalSettlement) {
+							void runTerminalSettlement.then(
+								clearSupersession,
+								clearSupersession,
+							);
+						} else {
+							clearSupersession();
+						}
+						if (message.id) {
+							// Evict both per-turn stateCache entries for this message:
+							// the action-results scratch key AND the base composed-state
+							// key set by composeState (runtime.ts). Without deleting the
+							// base key here it is only cleared when an
+							// `incoming_before_compose` pipeline hook happens to be
+							// registered, so in the common (no-hook) path the Map grew
+							// unbounded — one stale State per processed message.
+							runtime.stateCache.delete(`${message.id}_action_results`);
+							runtime.stateCache.delete(message.id);
 						}
 					}
-
-					runTerminalSettlement = runTerminalOwner.request("completed");
-					return {
-						...result,
-						trajectoryTerminalOwner: "run",
-					};
-				} catch (error) {
-					runTerminalSettlement = runTerminalOwner?.request("error", error);
-					throw error;
-				} finally {
-					// Close + emit the per-turn latency breakdown. Detached side
-					// effects (post-turn evaluators) intentionally run after this and
-					// are NOT counted in turn latency — that is the proof they don't
-					// stall the user-visible reply.
-					const inferenceSummary = ownsInferenceTimer
-						? emitInferenceTiming(inferenceTimer)
-						: null;
-					if (inferenceSummary) {
-						detachPostDeliverySideEffect(
-							runtime,
-							"persist_inference_timing",
-							() =>
-								persistInferenceTimingSummary(
-									runtime,
-									message,
-									inferenceSummary,
-								),
-							"diagnostic",
-						);
-					}
-
-					// Ensure latestResponseIds is cleaned up even if processMessage
-					// threw before reaching its own cleanup at the end of the method.
-					clearLatestResponseId(runtime.agentId, message.roomId, responseId);
-					const clearSupersession = () =>
-						clearResponseSupersession(runtime, responseId);
-					if (runTerminalSettlement) {
-						void runTerminalSettlement.then(
-							clearSupersession,
-							clearSupersession,
-						);
-					} else {
-						clearSupersession();
-					}
-					if (message.id) {
-						// Evict both per-turn stateCache entries for this message:
-						// the action-results scratch key AND the base composed-state
-						// key set by composeState (runtime.ts). Without deleting the
-						// base key here it is only cleared when an
-						// `incoming_before_compose` pipeline hook happens to be
-						// registered, so in the common (no-hook) path the Map grew
-						// unbounded — one stale State per processed message.
-						runtime.stateCache.delete(`${message.id}_action_results`);
-						runtime.stateCache.delete(message.id);
-					}
-				}
-			},
-		);
+				},
+			);
 		} finally {
 			if (!responseSupersessionCleanupOwned) {
 				clearResponseSupersession(runtime, responseId);
@@ -12655,10 +13088,7 @@ export class DefaultMessageService implements IMessageService {
 			{
 				src: "service:message",
 				messagePreview: truncateToCompleteSentence(
-					redactMessageDiagnosticText(
-						runtime,
-						message.content.text || "",
-					),
+					redactMessageDiagnosticText(runtime, message.content.text || ""),
 					50,
 				),
 			},
@@ -12862,7 +13292,11 @@ export class DefaultMessageService implements IMessageService {
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a warm failure only
 		// forfeits the overlap; the compose-time caller re-embeds and fails open.
 		const recallWarmText = message.content?.text;
-		if (typeof recallWarmText === "string" && recallWarmText.trim() !== "") {
+		if (
+			typeof recallWarmText === "string" &&
+			recallWarmText.trim() !== "" &&
+			!isCanonicalModelCapabilityDisabled(runtime, ModelType.TEXT_EMBEDDING)
+		) {
 			const recallWarmMessageId =
 				typeof message.id === "string" ? message.id : undefined;
 			const recallWarmTask = embedRecallQuery(runtime, recallWarmText, {
@@ -13291,9 +13725,7 @@ export class DefaultMessageService implements IMessageService {
 				// trajectories — making the cold-start failure-fallback issue
 				// invisible in bench server logs.
 				try {
-					process.stderr.write(
-						`[v5-runtime-failed] error=${errMsg}\n`,
-					);
+					process.stderr.write(`[v5-runtime-failed] error=${errMsg}\n`);
 				} catch {
 					// error-policy:J5 The same failure is already observed by the
 					// runtime logger and reportError immediately above.
@@ -13619,7 +14051,7 @@ export class DefaultMessageService implements IMessageService {
 				if (mode === "simple") {
 					const committedReplyText =
 						deliverableResponseContent.committedReplyAuthority ===
-								"prefix-stable-v1" &&
+							"prefix-stable-v1" &&
 						typeof deliverableResponseContent.text === "string"
 							? deliverableResponseContent.text
 							: undefined;
@@ -13668,7 +14100,9 @@ export class DefaultMessageService implements IMessageService {
 						);
 						runtime.reportError(
 							"MessageService.committedReplyHookRewrite",
-							new Error("A delivery hook attempted to rewrite committed reply text"),
+							new Error(
+								"A delivery hook attempted to rewrite committed reply text",
+							),
 							{ roomId: message.roomId, responseId },
 						);
 						deliverableResponseContent.text = committedReplyText;
@@ -14044,27 +14478,27 @@ export class DefaultMessageService implements IMessageService {
 				: undefined;
 		const availableActions = actionsData?.map((a) => a.name) ?? [];
 
-			const _logData = {
-				at: date.toString(),
-				timestamp: Math.floor(date.getTime() / 1000),
-				messageId: message.id,
-				userEntityId: message.entityId,
-				input:
-					typeof message.content.text === "string"
-						? redactMessageDiagnosticText(runtime, message.content.text)
-						: message.content.text,
-				thought:
-					typeof responseContent?.thought === "string"
-						? redactMessageDiagnosticText(runtime, responseContent.thought)
-						: responseContent?.thought,
+		const _logData = {
+			at: date.toString(),
+			timestamp: Math.floor(date.getTime() / 1000),
+			messageId: message.id,
+			userEntityId: message.entityId,
+			input:
+				typeof message.content.text === "string"
+					? redactMessageDiagnosticText(runtime, message.content.text)
+					: message.content.text,
+			thought:
+				typeof responseContent?.thought === "string"
+					? redactMessageDiagnosticText(runtime, responseContent.thought)
+					: responseContent?.thought,
 			availableActions,
 			actions: responseContent?.actions,
 			providers: responseContent?.providers,
 			irt: responseContent?.inReplyTo,
-				output:
-					typeof responseContent?.text === "string"
-						? redactMessageDiagnosticText(runtime, responseContent.text)
-						: responseContent?.text,
+			output:
+				typeof responseContent?.text === "string"
+					? redactMessageDiagnosticText(runtime, responseContent.text)
+					: responseContent?.text,
 			entityName,
 			source: message.content.source,
 			channelType: message.content.channelType,

@@ -565,8 +565,11 @@ describe("JsonFileTrajectoryRecorder", () => {
 		await recorder.endTrajectory(id, "finished");
 
 		const trajectory = await recorder.load(id);
-		expect(trajectory?.stages[0]?.model?.costUsd).toBeCloseTo(1.3, 6);
-		expect(trajectory?.metrics.totalCostUsd).toBeCloseTo(1.3, 6);
+		// 1M in @ $0.35 + 1M out @ $0.75 — the canonical Cerebras rates in
+		// features/trajectories/pricing.ts (aligned 2026-08-14; this expectation
+		// was missed when the table moved off the old 1.30 total).
+		expect(trajectory?.stages[0]?.model?.costUsd).toBeCloseTo(1.1, 6);
+		expect(trajectory?.metrics.totalCostUsd).toBeCloseTo(1.1, 6);
 	});
 
 	it("tags every LLM step with priceTableId when cost is annotated", async () => {

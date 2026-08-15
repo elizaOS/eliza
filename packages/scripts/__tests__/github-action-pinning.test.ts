@@ -15,6 +15,7 @@ type WorkflowStep = {
   if?: string;
   name?: string;
   run?: string;
+  uses?: string;
 };
 
 const smokeBrowserInstallCommand =
@@ -102,6 +103,55 @@ function assertSmokeLanesCoreBootstrap(source: string): void {
   }
   if (e2eIndex < 0 || buildIndex >= e2eIndex) {
     throw new Error("Smoke lanes must build the core contract before E2E");
+  }
+}
+
+function assertUiCoreFixtureCoreBootstrap(source: string): void {
+  const workflow = Bun.YAML.parse(source) as {
+    jobs?: { "ui-core-fixture-e2e"?: { steps?: WorkflowStep[] } };
+  };
+  const steps = workflow.jobs?.["ui-core-fixture-e2e"]?.steps ?? [];
+  const setupIndex = steps.findIndex(
+    (step) =>
+      step.name === "Setup workspace dependencies" &&
+      step.uses === "./.github/actions/setup-bun-workspace",
+  );
+  const generationIndex = steps.findIndex(
+    (step) =>
+      step.name === "Ensure generated shared i18n data" &&
+      step.run === "node packages/app-core/scripts/ensure-shared-i18n-data.mjs",
+  );
+  const buildIndex = steps.findIndex(
+    (step) =>
+      step.name === "Build core runtime contract" &&
+      step.run === "bun run build:core",
+  );
+  const cloudFixtureIndex = steps.findIndex(
+    (step) =>
+      step.name === "Frontend hosting e2e" &&
+      step.run === "bun run --cwd packages/ui test:frontend-hosting-e2e",
+  );
+
+  if (
+    setupIndex < 0 ||
+    generationIndex < 0 ||
+    buildIndex < 0 ||
+    cloudFixtureIndex < 0
+  ) {
+    throw new Error(
+      "UI core fixtures must retain setup, generated data, core build, and cloud E2E steps",
+    );
+  }
+  if (
+    !(
+      setupIndex < generationIndex &&
+      generationIndex < buildIndex &&
+      buildIndex < cloudFixtureIndex
+    )
+  ) {
+    throw new Error(
+      "UI core fixtures must generate data and build the edge contract before cloud E2E",
+    );
   }
 }
 
@@ -282,6 +332,39 @@ describe("GitHub action supply-chain references", () => {
     );
   });
 
+  test("builds the compiled edge contract before cloud-backed UI fixtures", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "ui-e2e-gate.yml"),
+      "utf8",
+    );
+
+    expect(() => assertUiCoreFixtureCoreBootstrap(source)).not.toThrow();
+    expect(() =>
+      assertUiCoreFixtureCoreBootstrap(
+        source.replace(
+          "run: bun run build:core",
+          "run: echo core-build-removed",
+        ),
+      ),
+    ).toThrow(
+      "UI core fixtures must retain setup, generated data, core build, and cloud E2E steps",
+    );
+
+    const buildStep = `      - name: Build core runtime contract
+        run: bun run build:core
+
+`;
+    const afterCloudFixture = source
+      .replace(buildStep, "")
+      .replace(
+        "        run: bun run --cwd packages/ui test:frontend-hosting-e2e\n",
+        (command) => `${command}\n${buildStep}`,
+      );
+    expect(() => assertUiCoreFixtureCoreBootstrap(afterCloudFixture)).toThrow(
+      "UI core fixtures must generate data and build the edge contract before cloud E2E",
+    );
+  });
+
   test("builds the consolidated frontend on a hosted runner", () => {
     const source = readFileSync(
       join(githubRoot, "workflows", "quality.yml"),
@@ -303,6 +386,20 @@ describe("GitHub action supply-chain references", () => {
     expect(source).toContain("working-directory: packages/app");
     expect(source).not.toContain("PLAYWRIGHT_INSTALL_CWD=packages/homepage");
     expect(source).not.toContain("playwright install --with-deps chromium");
+  });
+
+  test("leaves the zero-key harness enough time after fleet setup", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "test.yml"),
+      "utf8",
+    );
+    const workflow = Bun.YAML.parse(source) as {
+      jobs?: Record<string, { "timeout-minutes"?: number }>;
+    };
+
+    expect(
+      workflow.jobs?.["zero-key-model-provider-e2e"]?.["timeout-minutes"],
+    ).toBeGreaterThanOrEqual(30);
   });
 
   test("routes homepage deploys through the consolidated Cloudflare workflow", () => {

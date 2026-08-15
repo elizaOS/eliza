@@ -13,7 +13,7 @@ import type {
  * Shell phase for the device-shell foundation (HomePill + AssistantOverlay +
  * ChatSurface). Drives the pill's visual treatment.
  *
- *   booting    — startup not ready; pill dim, no halo.
+ *   booting    — startup not ready and popup closed; pill dim, no halo.
  *   idle       — ready, no overlay; pill solid.
  *   summoned   — overlay open, no active mic/response; faint halo.
  *   listening  — push-to-talk capture in flight; red pulse.

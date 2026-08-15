@@ -29,7 +29,11 @@ const CACHE_DURATION = 3_600_000; // 1 hour
 // ---------------------------------------------------------------------------
 
 const LOCAL_PLUGINS_DIR = "plugins";
-const execFileAsync = promisify(execFile);
+// Guarded for edge isolates: the child_process builtin is absent there, and
+// promisify(undefined) at module scope would kill the whole import. Node hosts
+// get the real promisified binding; edge paths fail at use instead.
+const execFileAsync =
+	typeof execFile === "function" ? promisify(execFile) : (undefined as never);
 
 // ---------------------------------------------------------------------------
 // Wire types for the generated-registry.json format

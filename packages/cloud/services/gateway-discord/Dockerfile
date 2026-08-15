@@ -31,6 +31,7 @@ ARG COMMON_DIR=packages/cloud/services/_common
 FROM base AS deps
 ARG SERVICE_DIR
 ARG COMMON_DIR
+RUN apk add --no-cache python3 make g++ pkgconf opus-dev
 COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
 COPY ${COMMON_DIR}/package.json ${COMMON_DIR}/
 RUN printf '{"name":"gateway-discord-build","private":true,"workspaces":["packages/cloud/services/*"]}\n' > package.json \
@@ -44,12 +45,19 @@ COPY ${COMMON_DIR}/src ${COMMON_DIR}/src
 COPY ${SERVICE_DIR}/tsconfig.json ${SERVICE_DIR}/
 COPY ${SERVICE_DIR}/src ${SERVICE_DIR}/src
 WORKDIR /app/${SERVICE_DIR}
-RUN bun build src/index.ts --outdir dist --target node --external zlib-sync
+RUN bun build src/index.ts --outdir dist --target node \
+    --external zlib-sync \
+    --external @discordjs/voice \
+    --external @discordjs/opus \
+    --external prism-media \
+    --external libsodium-wrappers
 
 # Production stage
 FROM base AS runner
 ARG SERVICE_DIR
 WORKDIR /app
+
+RUN apk add --no-cache ffmpeg opus
 
 ENV NODE_ENV=production
 

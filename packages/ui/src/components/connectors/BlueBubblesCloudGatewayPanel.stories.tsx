@@ -1,18 +1,9 @@
 /** Storybook states for the BlueBubbles iPhone cloud-enrollment surface. */
 
 import type { Meta, StoryObj } from "@storybook/react";
-import type { AppContextValue } from "../../state/types";
-import { AppContext } from "../../state/useApp";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import type { BlueBubblesCloudGatewayApi } from "./BlueBubblesCloudGatewayPanel";
 import { BlueBubblesCloudGatewayPanel } from "./BlueBubblesCloudGatewayPanel";
-
-const mockAppContext = new Proxy({} as AppContextValue, {
-  get(_, prop) {
-    if (prop === "elizaCloudConnected") return true;
-    if (prop === "setActionNotice") return () => {};
-    return () => {};
-  },
-});
 
 const storyApi: BlueBubblesCloudGatewayApi = {
   async listCloudBlueBubblesGateways() {
@@ -83,11 +74,11 @@ const meta = {
   tags: ["autodocs"],
   decorators: [
     (Story) => (
-      <AppContext.Provider value={mockAppContext}>
+      <MockAppProvider value={{ elizaCloudConnected: true }}>
         <div className="mx-auto max-w-2xl p-6">
           <Story />
         </div>
-      </AppContext.Provider>
+      </MockAppProvider>
     ),
   ],
   parameters: { layout: "fullscreen" },

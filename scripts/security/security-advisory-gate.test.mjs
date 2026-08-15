@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, it } from "node:test";
 import {
   canary,
@@ -28,6 +31,14 @@ describe("base-trusted workflow contract", () => {
       workflow,
       /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.sha \}\}/,
     );
+    // Without this pin, import.meta.main can silently evaluate falsy on an
+    // unsupported runner Node - removing the setup-node step left the 18/18
+    // suite green (#19372 review), so the pin needs its own assertion here.
+    assert.match(
+      workflow,
+      /uses: actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020/,
+    );
+    assert.match(workflow, /node-version: "24\.15\.0"/);
   });
 });
 
@@ -94,6 +105,33 @@ describe("deterministic canaries", () => {
       await canary(scenario);
     }
     await assert.rejects(canary("unknown"), /canary failed: unknown/);
+  });
+
+  it("runs when invoked through a symlink in a path containing spaces", () => {
+    const tempDir = mkdtempSync(path.join(tmpdir(), "security advisory gate "));
+    const linkedScript = path.join(tempDir, "security advisory gate.mjs");
+    symlinkSync(
+      new URL("./security-advisory-gate.mjs", import.meta.url),
+      linkedScript,
+    );
+
+    try {
+      // Pinned to "node", not process.execPath: this required lane runs under
+      // Bun (run-script-tests.mjs hands every discovered test to Bun), so
+      // process.execPath resolves to the Bun binary. The production
+      // entrypoint (.github/workflows/security-advisory-gate.yml) always runs
+      // under Node - pinning here is what makes this test actually exercise
+      // the import.meta.main guard on the runtime it needs to work on.
+      const result = spawnSync("node", [linkedScript], {
+        encoding: "utf8",
+        env: { ...process.env, CANARY_SCENARIO: "bypass" },
+      });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /canary passed: bypass/);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 

@@ -3,8 +3,8 @@
  *
  * Owns the cross-cutting state that drives which provider panel is active
  * (cloud / local / subscription / api-key) plus the saga of switching between
- * them. Extracted so the ProviderSwitcher.tsx orchestrator can stay focused on
- * composition.
+ * them. A configured-but-unsigned-in cloud-proxy session defaults the open
+ * panel to Local so first paint matches the provider actually serving.
  */
 import {
   asRecord,
@@ -27,16 +27,47 @@ export type ProviderPanelId = "__cloud__" | "__local__" | string;
 
 const PROVIDER_PANEL_STORAGE_KEY = "eliza.settings.ai-model.panel";
 
-function readRememberedProviderPanel(): ProviderPanelId | null {
+function readRememberedProviderPanel(
+  elizaCloudConnected: boolean,
+): ProviderPanelId | null {
   if (typeof window === "undefined") return null;
   try {
-    return (
+    const remembered =
       new URLSearchParams(window.location.search).get("provider") ??
-      window.localStorage.getItem(PROVIDER_PANEL_STORAGE_KEY)
-    );
+      window.localStorage.getItem(PROVIDER_PANEL_STORAGE_KEY);
+    // A leftover Cloud panel pin from a previous visit would open Cloud
+    // while Local is serving, so both tiles look active. Ignore it until
+    // the account is actually connected.
+    if (remembered === "__cloud__" && !elizaCloudConnected) return null;
+    return remembered;
   } catch {
     return null;
   }
+}
+
+/**
+ * Which intelligence panel should be open when the user has not picked one
+ * this session. A configured-but-unsigned-in cloud-proxy session serves
+ * Local, so the open panel follows Local rather than the stale Cloud pin.
+ */
+export function resolveDefaultIntelligencePanelId({
+  cloudCallsDisabled,
+  cloudRuntimeLocked,
+  elizaCloudConnected,
+  isCloudSelected,
+  resolvedSelectedId,
+}: {
+  cloudCallsDisabled: boolean;
+  cloudRuntimeLocked: boolean;
+  elizaCloudConnected: boolean;
+  isCloudSelected: boolean;
+  resolvedSelectedId: string | null;
+}): ProviderPanelId {
+  if (cloudRuntimeLocked && elizaCloudConnected) return "__cloud__";
+  if (cloudCallsDisabled) return "__local__";
+  if (isCloudSelected && !elizaCloudConnected) return "__local__";
+  if (cloudRuntimeLocked) return "__cloud__";
+  return resolvedSelectedId ?? "__cloud__";
 }
 
 function rememberProviderPanel(panelId: ProviderPanelId): void {
@@ -98,6 +129,7 @@ export interface ProviderSelection {
 export function useProviderSelection(
   availableProviderIds: Set<string>,
   notifySelectionFailure: (prefix: string, err: unknown) => void,
+  elizaCloudConnected: boolean = false,
 ): ProviderSelection {
   const { setActionNotice, handleCloudDisconnect } = useAppSelectorShallow(
     (s) => ({
@@ -114,12 +146,11 @@ export function useProviderSelection(
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
     null,
   );
-  const hasManualPanelSelection = useRef(false);
+  const hasClickedProviderPanel = useRef(false);
   const [selectedProviderPanelId, setSelectedProviderPanelId] =
-    useState<ProviderPanelId | null>(() => readRememberedProviderPanel());
-  if (selectedProviderPanelId !== null) {
-    hasManualPanelSelection.current = true;
-  }
+    useState<ProviderPanelId | null>(() =>
+      readRememberedProviderPanel(elizaCloudConnected),
+    );
 
   const readCloudCallsDisabled = useCallback(
     (cfg: Record<string, unknown>): boolean => {
@@ -304,30 +335,61 @@ export function useProviderSelection(
   const effectiveCloudCallsDisabled = cloudRuntimeLocked
     ? false
     : cloudCallsDisabled;
-  const activeProviderPanelId: ProviderPanelId = effectiveCloudCallsDisabled
-    ? "__local__"
-    : (resolvedSelectedId ?? "__cloud__");
+  const activeProviderPanelId = resolveDefaultIntelligencePanelId({
+    cloudCallsDisabled: effectiveCloudCallsDisabled,
+    cloudRuntimeLocked,
+    elizaCloudConnected,
+    isCloudSelected,
+    resolvedSelectedId,
+  });
   const visibleProviderPanelId: ProviderPanelId =
     selectedProviderPanelId ?? activeProviderPanelId;
 
   useEffect(() => {
-    if (cloudRuntimeLocked && selectedProviderPanelId === "__local__") {
-      hasManualPanelSelection.current = false;
+    if (
+      cloudRuntimeLocked &&
+      elizaCloudConnected &&
+      selectedProviderPanelId === "__local__"
+    ) {
+      hasClickedProviderPanel.current = false;
       setSelectedProviderPanelId("__cloud__");
       return;
     }
-    if (hasManualPanelSelection.current) return;
+    // A restored Cloud pin (or a boot-time connected=true flip) must not
+    // keep Cloud open once we know the account is disconnected — unless the
+    // user clicked Cloud this session to inspect it.
+    if (
+      !elizaCloudConnected &&
+      selectedProviderPanelId === "__cloud__" &&
+      !hasClickedProviderPanel.current
+    ) {
+      setSelectedProviderPanelId("__local__");
+      rememberProviderPanel("__local__");
+      return;
+    }
+    if (hasClickedProviderPanel.current) return;
     setSelectedProviderPanelId(activeProviderPanelId);
-  }, [activeProviderPanelId, cloudRuntimeLocked, selectedProviderPanelId]);
+  }, [
+    activeProviderPanelId,
+    cloudRuntimeLocked,
+    elizaCloudConnected,
+    selectedProviderPanelId,
+  ]);
 
   const handleProviderPanelSelect = useCallback(
     (panelId: string) => {
-      if (cloudRuntimeLocked && panelId === "__local__") return;
-      hasManualPanelSelection.current = true;
+      if (
+        cloudRuntimeLocked &&
+        elizaCloudConnected &&
+        panelId === "__local__"
+      ) {
+        return;
+      }
+      hasClickedProviderPanel.current = true;
       setSelectedProviderPanelId(panelId);
       rememberProviderPanel(panelId);
     },
-    [cloudRuntimeLocked],
+    [cloudRuntimeLocked, elizaCloudConnected],
   );
 
   return {

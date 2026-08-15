@@ -226,6 +226,22 @@ describe("runCapabilityRouterConnect", () => {
     },
   );
 
+  it("rejects a request timeout above the supported timer range before calling the API", async () => {
+    const fetchMock = mockFetch({ success: true });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const code = await runCapabilityRouterConnect({
+      endpointUrl: "https://capability.example.test",
+      requestTimeoutMs: "2147483648",
+    });
+
+    expect(code).toBe(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(error.mock.calls[0]?.[0]).toContain(
+      "request timeout must be a positive integer no greater than 2147483647.",
+    );
+  });
+
   it("surfaces API errors without leaking request tokens", async () => {
     mockFetch({ error: "Unauthorized" }, 401);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});

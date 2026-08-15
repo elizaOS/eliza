@@ -23,6 +23,9 @@
 		"rewriteRelativeImportExtensions": true,
 		"paths": {
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
+			"@elizaos/core/client-public": [
+				"../../packages/core/src/client-public.ts"
+			],
 			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],

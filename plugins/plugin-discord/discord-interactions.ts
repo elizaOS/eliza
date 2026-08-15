@@ -71,6 +71,7 @@ export interface InteractionServiceInternals {
 	clientReadyPromise: Promise<void> | null;
 
 	resolveDiscordEntityId(userId: string): UUID;
+	isOwnerAliasedDiscordUser(userId: string): boolean;
 	getChannelType(channel: Channel): Promise<ChannelType>;
 	registerSlashCommands(commands: DiscordSlashCommand[]): Promise<void>;
 	refreshOwnerDiscordUserIds(client: DiscordClient): Promise<void>;
@@ -431,6 +432,50 @@ export async function buildStandardizedRooms(
 }
 
 /**
+ * Entity record for a guild member sync. Owner-aliased members resolve to the
+ * canonical owner entity, whose identity belongs to the owner: they contribute
+ * a bare entity reference (so create-only sync still links participants)
+ * instead of writing the alias account's display identity onto that entity.
+ */
+function buildMemberEntity(
+	service: InteractionServiceInternals,
+	member: GuildMember,
+): Entity {
+	const entityId = service.resolveDiscordEntityId(member.id);
+	if (service.isOwnerAliasedDiscordUser(member.id)) {
+		return {
+			id: entityId,
+			names: [],
+			agentId: service.runtime.agentId,
+			metadata: {},
+		};
+	}
+	const tag = member.user.bot
+		? `${member.user.username}#${member.user.discriminator}`
+		: member.user.username;
+	return {
+		id: entityId,
+		names: Array.from(
+			new Set(
+				[
+					member.user.username,
+					member.displayName,
+					member.user.globalName,
+				].filter(Boolean) as string[],
+			),
+		),
+		agentId: service.runtime.agentId,
+		metadata: buildDiscordEntityMetadata(
+			member.id,
+			tag,
+			member.displayName || member.user.username,
+			member.user.globalName ?? undefined,
+			member.user.displayAvatarURL(),
+		),
+	};
+}
+
+/**
  * Builds a standardized list of users (entities) from Discord guild members.
  */
 export async function buildStandardizedUsers(
@@ -454,31 +499,8 @@ export async function buildStandardizedUsers(
 
 		try {
 			for (const [, member] of guild.members.cache) {
-				const tag = member.user.bot
-					? `${member.user.username}#${member.user.discriminator}`
-					: member.user.username;
-
 				if (member.id !== botId) {
-					entities.push({
-						id: service.resolveDiscordEntityId(member.id),
-						names: Array.from(
-							new Set(
-								[
-									member.user.username,
-									member.displayName,
-									member.user.globalName,
-								].filter(Boolean) as string[],
-							),
-						),
-						agentId: service.runtime.agentId,
-						metadata: buildDiscordEntityMetadata(
-							member.id,
-							tag,
-							member.displayName || member.user.username,
-							member.user.globalName ?? undefined,
-							member.user.displayAvatarURL(),
-						),
-					});
+					entities.push(buildMemberEntity(service, member));
 				}
 			}
 
@@ -497,30 +519,7 @@ export async function buildStandardizedUsers(
 					if (member.id !== botId) {
 						const entityId = service.resolveDiscordEntityId(member.id);
 						if (!entities.some((u) => u.id === entityId)) {
-							const tag = member.user.bot
-								? `${member.user.username}#${member.user.discriminator}`
-								: member.user.username;
-
-							entities.push({
-								id: entityId,
-								names: Array.from(
-									new Set(
-										[
-											member.user.username,
-											member.displayName,
-											member.user.globalName,
-										].filter(Boolean) as string[],
-									),
-								),
-								agentId: service.runtime.agentId,
-								metadata: buildDiscordEntityMetadata(
-									member.id,
-									tag,
-									member.displayName || member.user.username,
-									member.user.globalName ?? undefined,
-									member.user.displayAvatarURL(),
-								),
-							});
+							entities.push(buildMemberEntity(service, member));
 						}
 					}
 				}
@@ -545,30 +544,7 @@ export async function buildStandardizedUsers(
 
 			for (const [, member] of members) {
 				if (member.id !== botId) {
-					const tag = member.user.bot
-						? `${member.user.username}#${member.user.discriminator}`
-						: member.user.username;
-
-					entities.push({
-						id: service.resolveDiscordEntityId(member.id),
-						names: Array.from(
-							new Set(
-								[
-									member.user.username,
-									member.displayName,
-									member.user.globalName,
-								].filter(Boolean) as string[],
-							),
-						),
-						agentId: service.runtime.agentId,
-						metadata: buildDiscordEntityMetadata(
-							member.id,
-							tag,
-							member.displayName || member.user.username,
-							member.user.globalName ?? undefined,
-							member.user.displayAvatarURL(),
-						),
-					});
+					entities.push(buildMemberEntity(service, member));
 				}
 			}
 		} catch (error) {
@@ -646,14 +622,21 @@ export async function onReady(
 				service.discordSettings,
 			);
 		} catch (error) {
+			// error-policy:J7 profile sync is a best-effort startup step and must not
+			// abort connector readiness. Flattening it to `error.message` discarded
+			// the typed code, context, and cause that say WHICH failure this was, so
+			// hand the error itself to the serializer and to runtime diagnostics.
 			service.runtime.logger.warn(
 				{
 					src: "plugin:discord",
 					agentId: service.runtime.agentId,
-					error: error instanceof Error ? error.message : String(error),
+					err: error,
 				},
 				"Failed to synchronize Discord bot profile from connector settings",
 			);
+			service.runtime.reportError("DiscordService.syncProfile", error, {
+				diagnosticOnly: true,
+			});
 		}
 	}
 	const inviteUrl = readyClientUser?.id

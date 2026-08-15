@@ -846,6 +846,43 @@ describe("evaluatePlannedReplyEgress", () => {
 				actions: [trackedReader],
 			}),
 		).toEqual({ verdict: "allow" });
+
+		const mixedOwnerSurface: Action = {
+			name: "OWNER_TODOS",
+			description: "Read or mutate the owner's tracked Todos.",
+			similes: [],
+			tags: ["resource:tracked-work", "capability:read", "capability:write"],
+			validate: async () => true,
+			handler: async () => ({ success: true }),
+		};
+		const mixedRead: ActionResult = {
+			success: true,
+			userFacingText: FABRICATED_EMPTY_DAY_REPLY,
+			verifiedUserFacing: true,
+			data: { actionName: "OWNER_TODOS" },
+		};
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: FABRICATED_EMPTY_DAY_REPLY,
+				actionResults: [mixedRead],
+				actions: [mixedOwnerSurface],
+			}).verdict,
+		).toBe("reject");
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: FABRICATED_EMPTY_DAY_REPLY,
+				actionResults: [
+					{
+						...mixedRead,
+						data: {
+							actionName: "OWNER_TODOS",
+							claimGrounding: ["empty_tracked_state"],
+						},
+					},
+				],
+				actions: [mixedOwnerSurface],
+			}),
+		).toEqual({ verdict: "allow" });
 	});
 
 	it("does not let an unrelated mutation receipt launder a completion claim", () => {

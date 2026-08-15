@@ -6,15 +6,52 @@
 
 import {
   MessageScroller as MessageScrollerPrimitive,
-  useMessageScroller,
-  useMessageScrollerScrollable,
-  useMessageScrollerVisibility,
+  useMessageScroller as useMessageScrollerPrimitive,
+  useMessageScrollerScrollable as useMessageScrollerScrollablePrimitive,
+  useMessageScrollerVisibility as useMessageScrollerVisibilityPrimitive,
 } from "@shadcn/react/message-scroller";
 import { ArrowDown } from "lucide-react";
 import type * as React from "react";
 
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
+
+type MessageScrollerScrollOptions = {
+  align?: "start" | "center" | "end" | "nearest";
+  behavior?: ScrollBehavior;
+  scrollMargin?: number;
+};
+
+type MessageScrollerControls = {
+  scrollToEnd: (options?: MessageScrollerScrollOptions) => boolean;
+  scrollToMessage: (
+    messageId: string,
+    options?: MessageScrollerScrollOptions,
+  ) => boolean;
+  scrollToStart: (options?: MessageScrollerScrollOptions) => boolean;
+};
+
+type MessageScrollerScrollableState = {
+  start: boolean;
+  end: boolean;
+};
+
+type MessageScrollerVisibilityState = {
+  currentAnchorId: string | null;
+  visibleMessageIds: string[];
+};
+
+function useMessageScroller(): MessageScrollerControls {
+  return useMessageScrollerPrimitive();
+}
+
+function useMessageScrollerScrollable(): MessageScrollerScrollableState {
+  return useMessageScrollerScrollablePrimitive();
+}
+
+function useMessageScrollerVisibility(): MessageScrollerVisibilityState {
+  return useMessageScrollerVisibilityPrimitive();
+}
 
 const MessageScrollerProvider = MessageScrollerPrimitive.Provider;
 

@@ -275,6 +275,7 @@ set -euo pipefail
 HS_HOST=headscale-staging.eliza.app
 HS_LEGACY_HOST=headscale-staging.elizacloud.ai
 HS_RETIRABLE_LEGACY_VHOST=${JSON.stringify(legacyVhost)}
+HS_VHOST=/etc/nginx/conf.d/headscale.conf
 HS_REVIEWED_LEGACY_VHOST_SHA256=${JSON.stringify(options.reviewedSha256 ?? "")}
 HS_REQUIRE_RETIRABLE_LEGACY_VHOST=${options.requireFile ? "true" : "false"}
 HS_ENFORCE_LEGACY_VHOST_DIRECTIVE_ALLOWLIST=${options.enforceDirectiveAllowlist ? "true" : "false"}
@@ -596,7 +597,11 @@ describe("protected Headscale arm workflow", () => {
 });
 
 describe("Headscale migration-overlap remote script", () => {
-  const expectedLegacySource = `server {
+  const expectedLegacySource = `map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+server {
   listen 80;
   listen [::]:80;
   server_name headscale-staging.elizacloud.ai;
@@ -613,6 +618,10 @@ server {
 server_name headscale-staging.eliza.app headscale-staging.elizacloud.ai;
 server_name headscale-staging.eliza.app headscale-staging.elizacloud.ai;
 # configuration file REPLACE_LEGACY_PATH:
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  '' close;
+}
 server_name headscale-staging.elizacloud.ai;
 server_name headscale-staging.elizacloud.ai;
 `;
@@ -807,6 +816,9 @@ server_name headscale-staging.elizacloud.ai;
     expect(result.stdout).toContain(
       "directive-name inventory (values withheld)",
     );
+    expect(result.stdout).toContain(
+      "reviewed-upgrade-map=headscale-websocket-v1 managed-references=$legacy_upgrade_map_managed_references unmanaged-references=",
+    );
     expect(result.stdout).toContain("reviewed-shape=server-blocks:");
     expect(result.stdout).not.toContain(
       "reviewed public routing/TLS directives",
@@ -815,6 +827,26 @@ server_name headscale-staging.elizacloud.ai;
     expect(result.stdout).not.toContain("sudo systemctl restart headscale");
     expect(result.stdout).not.toContain("sudo rm -f --");
     expectBashSyntax(result.stdout);
+  });
+
+  test("accepts only the reviewed two-reference managed-vhost overlap", () => {
+    const managedOverlapConfig = expectedLoadedConfig.replace(
+      "server_name headscale-staging.eliza.app headscale-staging.elizacloud.ai;\nserver_name headscale-staging.eliza.app headscale-staging.elizacloud.ai;",
+      `server_name headscale-staging.eliza.app headscale-staging.elizacloud.ai;
+map $http_upgrade $connection_upgrade {
+server_name headscale-staging.eliza.app headscale-staging.elizacloud.ai;
+proxy_set_header Connection $connection_upgrade;`,
+    );
+    const result = runLegacyVhostInspection(
+      expectedLegacySource,
+      managedOverlapConfig,
+    );
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain(
+      "reviewed-upgrade-map=headscale-websocket-v1 managed-references=2 unmanaged-references=0",
+    );
+    expect(result.stdout).not.toContain("$connection_upgrade");
   });
 
   test("withholds every reviewed directive literal from inspection output", () => {
@@ -934,6 +966,242 @@ server {
     expect(unrelatedDirective.stdout).toContain(
       "directives outside the reviewed retirement allowlist",
     );
+  });
+
+  test("retires only the isolated standard Headscale websocket upgrade map", () => {
+    const inspection = runLegacyVhostInspection(
+      expectedLegacySource,
+      expectedLoadedConfig,
+    );
+    expect(inspection.status).toBe(0);
+    expect(inspection.stdout).toContain(
+      "reviewed-upgrade-map=headscale-websocket-v1 managed-references=0 unmanaged-references=0",
+    );
+    expect(inspection.stdout).not.toContain("$connection_upgrade");
+
+    const valid = runLegacyVhostValidation({
+      source: expectedLegacySource,
+      loadedConfig: expectedLoadedConfig,
+      enforceDirectiveAllowlist: true,
+    });
+    expect(valid.status).toBe(0);
+
+    const doubleQuotedEmptyKey = expectedLegacySource.replace(
+      "''      close;",
+      '""      close;',
+    );
+    const doubleQuotedValid = runLegacyVhostValidation({
+      source: doubleQuotedEmptyKey,
+      loadedConfig: expectedLoadedConfig.replace("'' close;", '"" close;'),
+      enforceDirectiveAllowlist: true,
+    });
+    expect(doubleQuotedValid.status).toBe(0);
+
+    const bracedHttpUpgrade = ["$", "{http_upgrade}"].join("");
+    const bracedConnectionUpgrade = ["$", "{connection_upgrade}"].join("");
+    for (const quotedHeader of [
+      'map "$http_upgrade" "$connection_upgrade" {',
+      "map '$http_upgrade' '$connection_upgrade' {",
+      `map ${bracedHttpUpgrade} ${bracedConnectionUpgrade} {`,
+      `map "${bracedHttpUpgrade}" "${bracedConnectionUpgrade}" {`,
+      "map $http_upgrade $connection_upgrade\n{",
+      `map '${bracedHttpUpgrade}' $connection_upgrade\n{`,
+    ]) {
+      const quotedHeaderValid = runLegacyVhostValidation({
+        source: expectedLegacySource.replace(
+          "map $http_upgrade $connection_upgrade {",
+          quotedHeader,
+        ),
+        loadedConfig: expectedLoadedConfig.replace(
+          "map $http_upgrade $connection_upgrade {",
+          quotedHeader,
+        ),
+        enforceDirectiveAllowlist: true,
+      });
+      expect([
+        quotedHeader,
+        quotedHeaderValid.status,
+        quotedHeaderValid.stdout,
+      ]).toEqual([quotedHeader, 0, ""]);
+    }
+
+    const customOutputVariable = "$headscale_connection_upgrade";
+    const customOutputValid = runLegacyVhostValidation({
+      source: expectedLegacySource.replace(
+        "$connection_upgrade",
+        customOutputVariable,
+      ),
+      loadedConfig: expectedLoadedConfig.replaceAll(
+        "$connection_upgrade",
+        customOutputVariable,
+      ),
+      enforceDirectiveAllowlist: true,
+    });
+    expect(customOutputValid.status).toBe(0);
+    expect(customOutputValid.stdout).toBe("");
+
+    for (const source of [
+      expectedLegacySource.replace("$http_upgrade", "$http_connection"),
+      expectedLegacySource.replace("default upgrade;", "default close;"),
+      expectedLegacySource.replace("''      close;", "''      upgrade;"),
+      expectedLegacySource.replace("  ''      close;\n", ""),
+      expectedLegacySource.replace(
+        "  ''      close;",
+        "  ''      close;\n  ''      close;",
+      ),
+      expectedLegacySource.replace(
+        "  ''      close;",
+        "  ''      close;\n  \"\"      close;",
+      ),
+      expectedLegacySource.replace(
+        "map $http_upgrade $connection_upgrade {",
+        'map "$http_upgrade\' "$connection_upgrade" {',
+      ),
+      expectedLegacySource.replace(
+        "map $http_upgrade $connection_upgrade {",
+        'map "$http_connection" "$connection_upgrade" {',
+      ),
+      expectedLegacySource.replace(
+        "map $http_upgrade $connection_upgrade {",
+        'map "$http_upgrade" "$connection_upgrade" extra {',
+      ),
+      expectedLegacySource.replace(
+        "map $http_upgrade $connection_upgrade {",
+        `map ${["$", "{http_connection}"].join("")} ${bracedConnectionUpgrade} {`,
+      ),
+      expectedLegacySource.replace(
+        "map $http_upgrade $connection_upgrade {",
+        "map $http_upgrade $connection_upgrade\ninclude private.conf;\n{",
+      ),
+      expectedLegacySource.replace(
+        "map $http_upgrade $connection_upgrade {",
+        "map $http_upgrade $connection_upgrade",
+      ),
+    ]) {
+      const invalid = runLegacyVhostValidation({
+        source,
+        loadedConfig: expectedLoadedConfig,
+        enforceDirectiveAllowlist: true,
+      });
+      expect(invalid.status).not.toBe(0);
+      expect(invalid.stdout).toMatch(
+        /unexpected upgrade map shape|unsupported dense directive syntax/u,
+      );
+      if (invalid.stdout.includes("unexpected upgrade map shape")) {
+        expect(invalid.stdout).toMatch(
+          /blocks=\d+ defaults=\d+ empty-close=\d+ endings=\d+ unexpected=\d+/u,
+        );
+      }
+      expect(invalid.stdout).not.toContain("$connection_upgrade");
+    }
+
+    const externallyReferenced = runLegacyVhostValidation({
+      source: expectedLegacySource,
+      loadedConfig: `${expectedLoadedConfig}
+# configuration file /etc/nginx/conf.d/unrelated.conf:
+proxy_set_header Connection $connection_upgrade;
+`,
+      enforceDirectiveAllowlist: true,
+    });
+    expect(externallyReferenced.status).not.toBe(0);
+    expect(externallyReferenced.stdout).toContain(
+      "upgrade-map output is referenced outside the reviewed file",
+    );
+    expect(externallyReferenced.stdout).toContain(
+      "path=/etc/nginx/conf.d/unrelated.conf references=1",
+    );
+    expect(externallyReferenced.stdout).not.toContain("$connection_upgrade");
+
+    const reviewedManagedOverlap = runLegacyVhostValidation({
+      source: expectedLegacySource,
+      loadedConfig: `${expectedLoadedConfig}
+# configuration file /etc/nginx/conf.d/headscale.conf:
+map $http_upgrade $connection_upgrade {
+proxy_set_header Connection $connection_upgrade;
+`,
+      enforceDirectiveAllowlist: true,
+    });
+    expect(reviewedManagedOverlap.status).toBe(0);
+    expect(reviewedManagedOverlap.stdout).toBe("");
+
+    for (const loadedConfig of [
+      `${expectedLoadedConfig}
+# configuration file /etc/nginx/conf.d/headscale.conf:
+proxy_set_header Connection $connection_upgrade;
+`,
+      `${expectedLoadedConfig}
+# configuration file /etc/nginx/conf.d/headscale.conf:
+map $http_upgrade $connection_upgrade {
+proxy_set_header Connection $connection_upgrade;
+# configuration file /etc/nginx/conf.d/unrelated-managed-overlap.conf:
+proxy_set_header Connection $connection_upgrade;
+`,
+    ]) {
+      const invalidManagedOverlap = runLegacyVhostValidation({
+        source: expectedLegacySource,
+        loadedConfig,
+        enforceDirectiveAllowlist: true,
+      });
+      expect(invalidManagedOverlap.status).not.toBe(0);
+      expect(invalidManagedOverlap.stdout).toContain(
+        "upgrade-map output is referenced outside the reviewed file",
+      );
+      expect(invalidManagedOverlap.stdout).not.toContain("$connection_upgrade");
+    }
+
+    const customExternalOutputVariable = "$headscale_connection_upgrade";
+    const customOutputExternallyReferenced = runLegacyVhostValidation({
+      source: expectedLegacySource.replace(
+        "$connection_upgrade",
+        customExternalOutputVariable,
+      ),
+      loadedConfig: `${expectedLoadedConfig.replaceAll("$connection_upgrade", customExternalOutputVariable)}
+# configuration file /etc/nginx/conf.d/unrelated-custom.conf:
+proxy_set_header Connection ${customExternalOutputVariable};
+`,
+      enforceDirectiveAllowlist: true,
+    });
+    expect(customOutputExternallyReferenced.status).not.toBe(0);
+    expect(customOutputExternallyReferenced.stdout).toContain(
+      "upgrade-map output is referenced outside the reviewed file",
+    );
+    expect(customOutputExternallyReferenced.stdout).toContain(
+      "path=/etc/nginx/conf.d/unrelated-custom.conf references=1",
+    );
+    expect(customOutputExternallyReferenced.stdout).not.toContain(
+      customExternalOutputVariable,
+    );
+  }, 60_000);
+
+  test("profiles rejected map headers without exposing their tokens", () => {
+    const otherOutputVariable = runLegacyVhostValidation({
+      source: expectedLegacySource
+        .replace("$http_upgrade", "$http_connection")
+        .replace("$connection_upgrade", "$headscale_connection_upgrade"),
+      loadedConfig: expectedLoadedConfig,
+      enforceDirectiveAllowlist: true,
+    });
+    expect(otherOutputVariable.status).not.toBe(0);
+    expect(otherOutputVariable.stdout).toContain(
+      "upgrade map header profile: candidates=1 fields=2 source-form=other-variable target-form=other-variable extra-fields=no brace=same-line",
+    );
+    expect(otherOutputVariable.stdout).not.toContain(
+      "$headscale_connection_upgrade",
+    );
+
+    const followingLineProfile = runLegacyVhostValidation({
+      source: expectedLegacySource.replace(
+        "map $http_upgrade $connection_upgrade {",
+        "map $http_connection $connection_upgrade\n{",
+      ),
+      loadedConfig: expectedLoadedConfig,
+      enforceDirectiveAllowlist: true,
+    });
+    expect(followingLineProfile.status).not.toBe(0);
+    expect(followingLineProfile.stdout).toContain(
+      "upgrade map header profile: candidates=1 fields=2 source-form=other-variable target-form=exact extra-fields=no brace=following-line",
+    );
+    expect(followingLineProfile.stdout).not.toContain("$http_connection");
   });
 
   test("accepts only the reviewed regular legacy-only two-listener contract", () => {

@@ -11,8 +11,11 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import {
   type ActionResult,
+  AgentRuntime,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
+  type Character,
+  logger as coreLogger,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
   type Memory,
@@ -124,6 +127,10 @@ interface RuntimeOptions {
   configuredSecret?: string;
 }
 
+type RuntimeSecretFragment = Parameters<
+  IAgentRuntime["locateConfiguredSecretFragmentTaint"]
+>[0][number];
+
 function requireActionResult(result: ActionResult | undefined): ActionResult {
   if (!result) throw new Error("Expected SHELL action result");
   return result;
@@ -150,14 +157,26 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   }
 
   const services = new Map<string, unknown>();
+  const character = {
+    name: "coding-tools-test",
+    ...(opts.configuredSecret
+      ? { settings: { secrets: { TEST_SECRET: opts.configuredSecret } } }
+      : {}),
+  } as Character;
+  const secretOwner = new AgentRuntime({ character });
   const runtime = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
+    character,
     getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),
     redactSecrets: vi.fn((text: string) =>
       opts.configuredSecret
         ? text.replaceAll(opts.configuredSecret, "[REDACTED:TEST_SECRET]")
         : text,
+    ),
+    locateConfiguredSecretFragmentTaint: vi.fn(
+      (fragments: readonly RuntimeSecretFragment[]) =>
+        secretOwner.locateConfiguredSecretFragmentTaint(fragments),
     ),
   } as IAgentRuntime;
 
@@ -1883,6 +1902,116 @@ describeIfPosix("shellAction", () => {
     expect(exposed).not.toContain(secret);
   });
 
+  it("applies pattern redaction even without a configured literal secret", async () => {
+    const token = "token-value-123456789";
+    const router = makeShellRouter(async () => ({
+      output: `Bearer ${token}\n`,
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: `printf 'Bearer ${token}'`,
+      }),
+    );
+
+    expect(JSON.stringify(result)).not.toContain(token);
+  });
+
+  it("redacts cwd validation and destructive-confirmation failures", async () => {
+    const secret = "orchid42";
+    const blockedCwd = path.join(process.cwd(), secret);
+    const { runtime } = await makeRuntime({
+      blockedPaths: blockedCwd,
+      configuredSecret: secret,
+    });
+
+    const cwdFailure = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: "true",
+        cwd: blockedCwd,
+      }),
+    );
+    const destructiveFailure = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: `mkfs.${secret} /tmp/${secret}`,
+      }),
+    );
+
+    expect(cwdFailure.success).toBe(false);
+    expect(destructiveFailure.success).toBe(false);
+    expect(JSON.stringify({ cwdFailure, destructiveFailure })).not.toContain(
+      secret,
+    );
+  });
+
+  it("builds planner summaries only from the redacted result command", async () => {
+    const secret = "summary-secret";
+    const router = makeShellRouter(async () => ({
+      output: "ok\n",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({
+      capabilityRouter: router,
+      configuredSecret: secret,
+    });
+    const params = { command: `printf '%s' '${secret}'` };
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, params),
+    );
+
+    const summary = shellAction.summarize?.(result, params);
+    expect(summary).toContain("[REDACTED:TEST_SECRET]");
+    expect(summary).not.toContain(secret);
+  });
+
+  it("redacts cwd values in structured shell logs", async () => {
+    const secret = "log-secret";
+    const missingCwd = path.join(process.cwd(), `${secret}-missing`);
+    const router = makeShellRouter(async () => ({
+      output: "ok\n",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({
+      capabilityRouter: router,
+      configuredSecret: secret,
+    });
+    const logger = coreLogger as unknown as Record<
+      "debug" | "info" | "warn",
+      (...args: unknown[]) => void
+    >;
+    const original = {
+      debug: logger.debug,
+      info: logger.info,
+      warn: logger.warn,
+    };
+    const logs: unknown[] = [];
+    logger.debug = (...args) => logs.push(args);
+    logger.info = (...args) => logs.push(args);
+    logger.warn = (...args) => logs.push(args);
+
+    try {
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, makeMessage(), undefined, {
+          command: "true",
+          cwd: missingCwd,
+        }),
+      );
+      expect(result.success).toBe(true);
+    } finally {
+      logger.debug = original.debug;
+      logger.info = original.info;
+      logger.warn = original.warn;
+    }
+
+    expect(JSON.stringify(logs)).not.toContain(secret);
+    expect(JSON.stringify(logs)).toContain("[REDACTED:TEST_SECRET]");
+  });
+
   it("redacts a configured bare secret from every background session projection", async () => {
     const secret = "violet73";
     const { runtime } = await makeRuntime({ configuredSecret: secret });
@@ -1922,7 +2051,607 @@ describeIfPosix("shellAction", () => {
           unknown
         >
       ).startOffset,
-    ).toBe(0);
+    ).toBe(3);
+  });
+
+  it("omits tainted output when the former fragment marker is itself a secret", async () => {
+    const secret = "[REDACTED:configured-secret-fragment]";
+    const { runtime } = await makeRuntime();
+    runtime.character.settings = {
+      secrets: { "configured-secret-fragment": secret },
+    };
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command:
+          "printf '[REDACTED:'; sleep 0.05; printf 'configured-secret-fragment]'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const stdout = (poll.data as Record<string, unknown>).stdout as Record<
+      string,
+      unknown
+    >;
+
+    expect(stdout.text).toBe("");
+    expect(JSON.stringify(poll)).not.toContain(secret);
+  });
+
+  it("maps a configured secret across ordered stdout and stderr fragments without breaking offsets", async () => {
+    const secret = "marigold9";
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const actor = makeMessage();
+    const command = [
+      "printf '\\x6d\\x61\\x72\\x69X'",
+      "sleep 0.05",
+      "printf '\\x67\\x6f\\x6c\\x64\\x39' >&2",
+      "sleep 0.05",
+      "printf 'later-safe'",
+    ].join("; ");
+    const posts: Array<{ text: string }> = [];
+    const callback = async (content: unknown) => {
+      posts.push(content as { text: string });
+      return [];
+    };
+    const start = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        actor,
+        undefined,
+        { action: "start_background", command },
+        callback,
+      ),
+    );
+    expect((start.data as Record<string, unknown>).command).toBe(command);
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const data = poll.data as Record<string, unknown>;
+    const stdout = data.stdout as Record<string, unknown>;
+    const stderr = data.stderr as Record<string, unknown>;
+
+    expect(JSON.stringify({ stdout, stderr })).not.toContain("mari");
+    expect(JSON.stringify({ stdout, stderr })).not.toContain("gold9");
+    expect(stdout.text).toBe("Xlater-safe");
+    expect(stderr.text).toBe("");
+    expect(stdout.startOffset).toBe(0);
+    expect(stdout.endOffset).toBe("mariXlater-safe".length);
+    expect(stderr.startOffset).toBe(0);
+    expect(stderr.endOffset).toBe("gold9".length);
+    expect(
+      vi
+        .mocked(runtime.locateConfiguredSecretFragmentTaint)
+        .mock.calls.some(
+          ([fragments]) =>
+            fragments.map((fragment) => fragment.source).join(",") ===
+              "stdout,stderr,stdout" &&
+            fragments[0]?.startOffset === 0 &&
+            fragments[1]?.startOffset === 0 &&
+            fragments[2]?.startOffset === "mariX".length,
+        ),
+    ).toBe(true);
+
+    const repeated = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        actor,
+        undefined,
+        {
+          action: "poll_background",
+          handle,
+          stdout_offset: 0,
+          stderr_offset: 0,
+        },
+        callback,
+      ),
+    );
+    expect(repeated.data).toMatchObject({ stdout, stderr });
+    const list = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        actor,
+        undefined,
+        { action: "list_background" },
+        callback,
+      ),
+    );
+    expect(JSON.stringify({ repeated, list, posts })).not.toContain("mari");
+    expect(JSON.stringify({ repeated, list, posts })).not.toContain("gold9");
+
+    const afterTaint = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+        stdout_offset: 4,
+        stderr_offset: 99,
+      }),
+    );
+    const afterData = afterTaint.data as Record<string, unknown>;
+    expect(afterData.stdout).toMatchObject({
+      text: "Xlater-safe",
+      startOffset: 4,
+      endOffset: "mariXlater-safe".length,
+    });
+    expect(afterData.stderr).toMatchObject({
+      text: "",
+      startOffset: "gold9".length,
+      endOffset: "gold9".length,
+    });
+    expect(JSON.stringify(afterTaint)).not.toContain(secret);
+  });
+
+  it("keeps a split configured secret tainted through tiny visible caps", async () => {
+    const secret = "marigold9";
+    const { runtime } = await makeRuntime({
+      configuredSecret: secret,
+      backgroundBufferChars: 5,
+    });
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command:
+          "printf '\\x6d\\x61\\x72\\x69X'; sleep 0.05; printf '\\x67\\x6f\\x6c\\x64\\x39' >&2; sleep 0.05; printf 'later-safe'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const data = poll.data as Record<string, unknown>;
+
+    expect(
+      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
+    ).not.toContain("mari");
+    expect(
+      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
+    ).not.toContain("gold9");
+    expect(data.stdout).toMatchObject({
+      text: "-safe",
+      startOffset: "mariXlater-safe".length - 5,
+      endOffset: "mariXlater-safe".length,
+    });
+    expect((data.stderr as Record<string, unknown>).text).toBe("");
+  });
+
+  it("preserves same-stream event boundaries around harmless bytes", async () => {
+    const secret = "marigold9";
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command:
+          "printf '\\x6d\\x61\\x72\\x69X'; sleep 0.05; printf '\\x67\\x6f\\x6c\\x64\\x39'; sleep 0.05; printf 'later-safe'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const stdout = (poll.data as Record<string, unknown>).stdout as Record<
+      string,
+      unknown
+    >;
+
+    expect(stdout.startOffset).toBe(0);
+    expect(stdout.endOffset).toBe("mariXgold9later-safe".length);
+    expect(stdout.text).toContain("X");
+    expect(stdout.text).toContain("later-safe");
+    expect(JSON.stringify(stdout)).not.toContain("mari");
+    expect(JSON.stringify(stdout)).not.toContain("gold9");
+    expect(
+      vi
+        .mocked(runtime.locateConfiguredSecretFragmentTaint)
+        .mock.calls.some(
+          ([fragments]) =>
+            fragments.map((fragment) => fragment.source).join(",") ===
+            "stdout,stdout,stdout",
+        ),
+    ).toBe(true);
+  });
+
+  it("taints both public stream presentation orders", async () => {
+    const secret = "marigold9";
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command:
+          "printf '\\x67\\x6f\\x6c\\x64\\x39' >&2; sleep 0.05; printf '\\x6d\\x61\\x72\\x69X'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const data = poll.data as Record<string, unknown>;
+    const exposed = JSON.stringify({
+      stdout: data.stdout,
+      stderr: data.stderr,
+    });
+
+    expect(exposed).not.toContain("mari");
+    expect(exposed).not.toContain("gold9");
+    expect((data.stdout as Record<string, unknown>).text).toBe("X");
+    expect((data.stderr as Record<string, unknown>).text).toBe("");
+  });
+
+  it("fails closed when the runtime cannot complete fragment analysis", async () => {
+    const { runtime } = await makeRuntime();
+    vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockReturnValue({
+      status: "incomplete",
+      reason: "resource-limit",
+      ranges: [],
+      maxSecretLength: 128,
+      profileRevision: 1,
+    });
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: "printf 'safe-output'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+
+    expect(
+      ((poll.data as Record<string, unknown>).stdout as Record<string, unknown>)
+        .text,
+    ).toBe("");
+    expect(poll.text).not.toContain("safe-output");
+  });
+
+  it("bounds an incomplete scan and releases later safe output", async () => {
+    const { runtime } = await makeRuntime();
+    vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockImplementation(
+      (fragments: readonly RuntimeSecretFragment[]) =>
+        fragments.some((fragment) => fragment.text.includes("unsafe"))
+          ? {
+              status: "incomplete",
+              reason: "resource-limit",
+              ranges: [],
+              maxSecretLength: 8,
+              profileRevision: 1,
+            }
+          : {
+              status: "complete",
+              ranges: [],
+              maxSecretLength: 8,
+              profileRevision: 1,
+            },
+    );
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command:
+          "printf 'unsafe'; sleep 0.05; printf '12345678'; sleep 0.05; printf 'later-safe'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const stdout = (poll.data as Record<string, unknown>).stdout as Record<
+      string,
+      unknown
+    >;
+
+    expect(stdout.text).toBe("later-safe");
+    expect(stdout.text).not.toContain("unsafe");
+    expect(stdout.text).not.toContain("12345678");
+  });
+
+  it("does not let one stream consume another stream's recovery window", async () => {
+    const { runtime, backgroundShell } = await makeRuntime();
+    let injectedIncomplete = false;
+    vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockImplementation(
+      (fragments: readonly RuntimeSecretFragment[]) => {
+        if (
+          !injectedIncomplete &&
+          fragments.some((fragment) => fragment.text.includes("TRIGGER"))
+        ) {
+          injectedIncomplete = true;
+          return {
+            status: "incomplete",
+            reason: "resource-limit",
+            ranges: [],
+            maxSecretLength: 9,
+            profileRevision: 1,
+          };
+        }
+        return {
+          status: "complete",
+          ranges: [],
+          maxSecretLength: 9,
+          profileRevision: 1,
+        };
+      },
+    );
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: [
+          "printf '\\x6d\\x61\\x72\\x69'",
+          "sleep 0.15",
+          "printf 'TRIGGER' >&2",
+          "sleep 0.15",
+          "printf 'yyyyyyyyy'",
+          "sleep 0.15",
+          "printf '\\x67\\x6f\\x6c\\x64\\x39' >&2",
+        ].join("; "),
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const first = await pollUntil(runtime, actor, handle, (data) => {
+      const stdout = data.stdout as Record<string, unknown> | undefined;
+      const stderr = data.stderr as Record<string, unknown> | undefined;
+      return stdout?.text === "mari" && stderr?.text === "";
+    });
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const status = backgroundShell
+        .list(String(actor.roomId))
+        .find((candidate) => candidate.handle === handle)?.status;
+      if (status === "exited") break;
+      await delay(25);
+    }
+    const later = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+        stdout_offset: 4,
+        stderr_offset: 0,
+      }),
+    );
+    const firstStdout = (
+      (first.data as Record<string, unknown>).stdout as Record<string, unknown>
+    ).text as string;
+    const laterData = later.data as Record<string, unknown>;
+    const laterStderr = (laterData.stderr as Record<string, unknown>)
+      .text as string;
+
+    expect(injectedIncomplete).toBe(true);
+    expect(firstStdout).toBe("mari");
+    expect(laterStderr).toBe("");
+    expect(laterStderr).not.toContain("gold9");
+    expect(firstStdout + laterStderr).not.toContain("marigold9");
+    expect((laterData.stdout as Record<string, unknown>).text).not.toContain(
+      "yyyyyyyyy",
+    );
+  });
+
+  it("keeps an eviction-split configured secret inside the private overlap", async () => {
+    const secret = "violet73";
+    const payload = `${"a".repeat(26)}${secret}${"z".repeat(16)}`;
+    const { runtime } = await makeRuntime({
+      backgroundBufferChars: 20,
+      configuredSecret: secret,
+    });
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: `printf '%s' '${payload}'`,
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(runtime, actor, handle, (data) => {
+      const stdout = data.stdout as Record<string, unknown> | undefined;
+      return data.status === "exited" && stdout?.truncatedBefore === 30;
+    });
+    const stdout = (poll.data as Record<string, unknown>).stdout as Record<
+      string,
+      unknown
+    >;
+
+    expect(stdout.text).toBe("z".repeat(16));
+    expect(stdout.startOffset).toBe(30);
+    expect(JSON.stringify(poll)).not.toContain(secret);
+    expect(JSON.stringify(poll)).not.toContain(secret.slice(4));
+  });
+
+  it("expands the private overlap when a configured secret rotates", async () => {
+    const rotatedSecret = "rotated-secret-value-LEAK_SENTINEL_9Q";
+    const payload = `${"a".repeat(10)}${rotatedSecret}${"z".repeat(8)}`;
+    const { runtime } = await makeRuntime({ backgroundBufferChars: 20 });
+    runtime.character.settings = {
+      secrets: { ROTATED_SECRET: rotatedSecret },
+    };
+    vi.mocked(runtime.redactSecrets).mockImplementation((text: string) =>
+      text.replaceAll(rotatedSecret, "[REDACTED:ROTATED_SECRET]"),
+    );
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: `printf '%s' '${payload}'`,
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(runtime, actor, handle, (data) => {
+      const stdout = data.stdout as Record<string, unknown> | undefined;
+      return (
+        data.status === "exited" &&
+        stdout?.truncatedBefore === payload.length - 20
+      );
+    });
+
+    expect(
+      ((poll.data as Record<string, unknown>).stdout as Record<string, unknown>)
+        .text,
+    ).toBe("z".repeat(8));
+    expect(JSON.stringify(poll)).not.toContain(rotatedSecret.slice(-12));
+  });
+
+  it("invalidates retained output on secret rotation and recovers in a fresh session", async () => {
+    const rotatedSecret = "marigold9";
+    const { runtime, backgroundShell } = await makeRuntime();
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command:
+          "printf '\\x6d\\x61\\x72\\x69X'; sleep 0.05; printf '\\x67\\x6f\\x6c\\x64\\x39' >&2",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const session = backgroundShell
+        .list(String(actor.roomId))
+        .find((candidate) => candidate.handle === handle);
+      if (session?.status === "exited") break;
+      await delay(25);
+    }
+    expect(
+      backgroundShell
+        .list(String(actor.roomId))
+        .find((candidate) => candidate.handle === handle)?.status,
+    ).toBe("exited");
+
+    runtime.character.settings = {
+      secrets: { ROTATED_SECRET: rotatedSecret },
+    };
+    vi.mocked(runtime.redactSecrets).mockImplementation((text: string) =>
+      text.replaceAll(rotatedSecret, "[REDACTED:ROTATED_SECRET]"),
+    );
+
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+        stdout_offset: 0,
+        stderr_offset: 0,
+      }),
+    );
+    const data = poll.data as Record<string, unknown>;
+    expect(
+      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
+    ).not.toContain("mari");
+    expect(
+      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
+    ).not.toContain("gold9");
+    expect((data.stdout as Record<string, unknown>).text).toBe("");
+    expect((data.stderr as Record<string, unknown>).text).toBe("");
+
+    const freshStart = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: "printf 'later-safe'",
+      }),
+    );
+    const freshHandle = (freshStart.data as Record<string, unknown>)
+      .handle as string;
+    const freshPoll = await pollUntil(
+      runtime,
+      actor,
+      freshHandle,
+      (freshData) => freshData.status === "exited",
+    );
+    expect(freshPoll.text).toContain("later-safe");
+  });
+
+  it("omits invalidated output when a rotated secret equals the former marker", async () => {
+    const marker = "[REDACTED:fragment-scan-incomplete]";
+    const { runtime, backgroundShell } = await makeRuntime();
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: "printf 'retained-output'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const session = backgroundShell
+        .list(String(actor.roomId))
+        .find((candidate) => candidate.handle === handle);
+      if (session?.status === "exited") break;
+      await delay(25);
+    }
+
+    runtime.character.settings = {
+      secrets: { "fragment-scan-incomplete": marker },
+    };
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+        stdout_offset: 0,
+      }),
+    );
+
+    expect(JSON.stringify(poll)).not.toContain(marker);
+    expect(
+      ((poll.data as Record<string, unknown>).stdout as Record<string, unknown>)
+        .text,
+    ).toBe("");
+  });
+
+  it("omits output for an oversized profile containing the former marker", async () => {
+    const marker = "[REDACTED:fragment-scan-incomplete]";
+    const { runtime } = await makeRuntime();
+    runtime.character.settings = {
+      secrets: Object.fromEntries(
+        Array.from({ length: 129 }, (_, index) => [
+          index === 0 ? "fragment-scan-incomplete" : `SECRET_${index}`,
+          index === 0
+            ? marker
+            : `secret-value-${index.toString().padStart(3, "0")}`,
+        ]),
+      ),
+    };
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: "printf 'safe-output'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+
+    expect(JSON.stringify(poll)).not.toContain(marker);
+    expect(
+      ((poll.data as Record<string, unknown>).stdout as Record<string, unknown>)
+        .text,
+    ).toBe("");
   });
 });
 

@@ -14,6 +14,12 @@ describe('native Smithers workflow source', () => {
 
   test('rejects missing source, missing default exports, and legacy packages', () => {
     expect(() => validateSmithersSource('')).toThrow('source is required');
+    // Stored records are untrusted at this boundary. Missing or malformed
+    // source values must become the typed error, never a property-access
+    // TypeError or an unsafe compile-time assertion.
+    for (const source of [undefined, null, 42, {}]) {
+      expect(() => validateSmithersSource(source)).toThrow('source is required');
+    }
     expect(() => validateSmithersSource("import { Smithers } from 'smthrs';")).toThrow(
       'default-export'
     );

@@ -48,6 +48,7 @@ import {
   createTierUpgradeTargetWithProvision,
   findLiveTierUpgradeTarget,
 } from "@/lib/services/agent-tier-upgrade-target";
+import { buildDefaultAgentCharacterConfig } from "@/lib/services/default-agent-character";
 import {
   AgentQuotaExceededError,
   elizaSandboxService,
@@ -134,7 +135,7 @@ async function resolveUpgradeSource(
       agentName: "Eliza",
       executionTier: "shared",
       status: "running",
-      agentConfig: { character: { name: "Eliza" } },
+      agentConfig: buildDefaultAgentCharacterConfig(),
       environmentVars: {},
     };
   }

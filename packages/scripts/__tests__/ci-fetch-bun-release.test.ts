@@ -8,6 +8,10 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  validateLocalBunReleaseUrl,
+  waitForBunReleaseServer,
+} from "../ci-await-bun-release-server.mjs";
+import {
   bunReleaseUrls,
   detectLinuxAvx2,
   ensureBunReleaseZip,
@@ -213,6 +217,90 @@ describe("serveBunZip", () => {
           else resolve();
         });
       });
+    }
+  });
+});
+
+describe("waitForBunReleaseServer", () => {
+  it("allows a loaded runner to publish readiness after multiple polls", async () => {
+    let polls = 0;
+    const url = await waitForBunReleaseServer(
+      {
+        pid: 42,
+        urlFile: "/tmp/bun-url",
+        timeoutMs: 30_000,
+        pollIntervalMs: 100,
+      },
+      {
+        exists: () => polls >= 75,
+        read: () => "http://127.0.0.1:12345/bun.zip\n",
+        isAlive: () => true,
+        now: () => polls * 100,
+        sleep: async () => {
+          polls += 1;
+        },
+      },
+    );
+    expect(polls).toBe(75);
+    expect(url).toBe("http://127.0.0.1:12345/bun.zip");
+  });
+
+  it("fails immediately when the detached server exits", async () => {
+    let slept = false;
+    await expect(
+      waitForBunReleaseServer(
+        { pid: 42, urlFile: "/tmp/bun-url", timeoutMs: 30_000 },
+        {
+          exists: () => false,
+          isAlive: () => false,
+          now: () => 0,
+          sleep: async () => {
+            slept = true;
+          },
+        },
+      ),
+    ).rejects.toThrow("exited before publishing");
+    expect(slept).toBe(false);
+  });
+
+  it("times out deterministically and rejects non-loopback URLs", async () => {
+    let elapsedMs = 0;
+    await expect(
+      waitForBunReleaseServer(
+        {
+          pid: 42,
+          urlFile: "/tmp/bun-url",
+          timeoutMs: 250,
+          pollIntervalMs: 100,
+        },
+        {
+          exists: () => false,
+          isAlive: () => true,
+          now: () => elapsedMs,
+          sleep: async (durationMs) => {
+            elapsedMs += durationMs;
+          },
+        },
+      ),
+    ).rejects.toThrow("within 250ms");
+    expect(() =>
+      validateLocalBunReleaseUrl("https://example.com/bun.zip"),
+    ).toThrow("invalid loopback URL");
+  });
+
+  it("pins both composite actions to the bounded diagnostic helper", () => {
+    for (const actionPath of [
+      ".github/actions/setup-bun-workspace/action.yml",
+      ".github/actions/cloud-setup-test-env/action.yml",
+    ]) {
+      const action = readFileSync(actionPath, "utf8");
+      expect(action).toContain(
+        "node packages/scripts/ci-await-bun-release-server.mjs",
+      );
+      expect(action).toContain('--pid "$server_pid"');
+      expect(action).toContain("--timeout-ms 60000");
+      expect(action).toContain("Bun zip server diagnostics");
+      expect(action).not.toContain('while [ "$i" -lt 50 ]');
     }
   });
 });

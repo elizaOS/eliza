@@ -9,6 +9,18 @@ eliza-e2e
 upstreams
 docs
 plugins
+# agent-server's workspace closure (packages/cloud/services/agent-server/Dockerfile)
+!plugins/plugin-cloud-apps
+!plugins/plugin-elizacloud
+!plugins/plugin-native-agent
+!plugins/plugin-native-bun-runtime
+!plugins/plugin-native-camera
+!plugins/plugin-native-llama
+!plugins/plugin-openai
+!plugins/plugin-scheduling
+!plugins/plugin-sql
+!plugins/plugin-web-search
+!plugins/plugin-workflow
 packages/app
 packages/steward
 packages/benchmarks/*

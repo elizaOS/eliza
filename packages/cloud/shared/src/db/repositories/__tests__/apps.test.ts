@@ -60,6 +60,7 @@ const PGLITE_TIMEOUT = 60_000;
 const FRESH_UUID = "00000000-0000-4000-8000-00000000ffff";
 
 let appsService: typeof import("../../../lib/services/apps").appsService;
+let getMaxAppsPerOrg: typeof import("../../../lib/services/apps").getMaxAppsPerOrg;
 let appAnalyticsService: typeof import("../../../lib/services/app-analytics").appAnalyticsService;
 let cache: typeof import("../../../lib/cache/client").cache;
 let CacheKeys: typeof import("../../../lib/cache/keys").CacheKeys;
@@ -107,7 +108,7 @@ beforeAll(async () => {
     return;
   }
   try {
-    ({ appsService } = await import("../../../lib/services/apps"));
+    ({ appsService, getMaxAppsPerOrg } = await import("../../../lib/services/apps"));
     ({ appAnalyticsService } = await import("../../../lib/services/app-analytics"));
     ({ cache } = await import("../../../lib/cache/client"));
     ({ CacheKeys } = await import("../../../lib/cache/keys"));
@@ -132,6 +133,8 @@ beforeAll(async () => {
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
   } catch (error) {
+    // error-policy:J4 — a missing PGlite/schema capability is retained as an
+    // explicit failed fixture state that every integration assertion checks.
     pgliteReady = false;
     // Loud skip: a real DB is required for these assertions; never pass silently.
     console.error(
@@ -684,7 +687,37 @@ describe("AppsService.isNameAvailable", () => {
 });
 
 describe("AppsService.create organization cap", () => {
-  test("treats malformed cap values as invalid and falls back to the default", async () => {
+  test("uses the default cap only when the environment variable is unset", () => {
+    const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+    delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+    try {
+      expect(getMaxAppsPerOrg()).toBe(25);
+    } finally {
+      if (previousLimit !== undefined) {
+        process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = previousLimit;
+      }
+    }
+  });
+
+  test("fails closed on malformed and non-safe configured caps", () => {
+    const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+    try {
+      for (const value of ["", "0", "-1", "1abc", "9007199254740992"]) {
+        process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = value;
+        expect(() => getMaxAppsPerOrg()).toThrow(
+          "ELIZA_CLOUD_MAX_APPS_PER_ORG must be a positive safe integer",
+        );
+      }
+    } finally {
+      if (previousLimit === undefined) {
+        delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+      } else {
+        process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = previousLimit;
+      }
+    }
+  });
+
+  test("rejects create on a malformed cap instead of falling back to the default", async () => {
     expect(pgliteReady).toBe(true);
     const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
     process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "1abc";
@@ -696,15 +729,19 @@ describe("AppsService.create organization cap", () => {
         created_by_user_id: userId,
       });
 
-      const result = await appsService.create({
-        name: "Allowed By Default Cap",
-        organization_id: organizationId,
-        created_by_user_id: userId,
-        app_url: "https://default-cap.example",
+      await expect(
+        appsService.create({
+          name: "Rejected Invalid Cap",
+          organization_id: organizationId,
+          created_by_user_id: userId,
+          app_url: "https://invalid-cap.example",
+        }),
+      ).rejects.toMatchObject({
+        name: "ElizaError",
+        code: "INVALID_MAX_APPS_PER_ORG",
       });
 
-      expect(result.app.organization_id).toBe(organizationId);
-      expect(await appsRepository.countByOrganization(organizationId)).toBe(2);
+      expect(await appsRepository.countByOrganization(organizationId)).toBe(1);
     } finally {
       if (previousLimit === undefined) {
         delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;

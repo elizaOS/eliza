@@ -8,16 +8,14 @@
     "strictNullChecks": true,
     "skipLibCheck": true,
     "types": ["node", "bun", "react", "react-dom"],
-    "typeRoots": [
-      "./node_modules/@types",
-      "../../node_modules/@types"
-    ],
+    "typeRoots": ["./node_modules/@types", "../../node_modules/@types"],
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
       "@elizaos/core/testing": ["../core/src/testing/index.ts"],
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/core/edge": ["../core/src/index.edge.ts"],
       "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/logger": ["../logger/src/index.ts"],
@@ -29,6 +27,17 @@
         "../../plugins/plugin-scheduling/src/index.ts"
       ],
       "@elizaos/plugin-scheduling/*": ["../../plugins/plugin-scheduling/src/*"],
+      "@elizaos/plugin-todos": ["../../plugins/plugin-todos/src/index.ts"],
+      "@elizaos/plugin-todos/edge": ["../../plugins/plugin-todos/src/edge.ts"],
+      "@elizaos/plugin-todos/plugin": [
+        "../../plugins/plugin-todos/src/plugin.ts"
+      ],
+      "@elizaos/plugin-todos/service": [
+        "../../plugins/plugin-todos/src/service.ts"
+      ],
+      "@elizaos/plugin-todos/db/schema": [
+        "../../plugins/plugin-todos/src/db/schema.ts"
+      ],
       "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
       "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
       "@elizaos/plugin-form": ["../../plugins/plugin-form/src/index.ts"],

@@ -13,6 +13,7 @@ import type { CompatRuntimeState } from "./compat-helpers";
 // ── mocks ──────────────────────────────────────────────────────────────
 
 const setActiveMock = vi.fn();
+const setTextRoutingMock = vi.fn();
 
 vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
@@ -92,9 +93,32 @@ vi.mock("../services/providers", () => ({
 }));
 
 vi.mock("../services/routing-preferences", () => ({
+	isRoutingPolicy: (value: unknown) =>
+		typeof value === "string" &&
+		[
+			"manual",
+			"auto",
+			"local-only",
+			"cloud-only",
+			"cheapest",
+			"fastest",
+			"prefer-local",
+			"round-robin",
+		].includes(value),
 	readRoutingPreferences: vi.fn(async () => ({})),
+	ROUTING_POLICIES: [
+		"manual",
+		"auto",
+		"local-only",
+		"cloud-only",
+		"cheapest",
+		"fastest",
+		"prefer-local",
+		"round-robin",
+	],
 	setPolicy: vi.fn(),
 	setPreferredProvider: vi.fn(),
+	setTextRouting: setTextRoutingMock,
 }));
 
 const STATE: CompatRuntimeState = {
@@ -139,11 +163,12 @@ function fakeReq(opts: {
 	method: string;
 	pathname: string;
 	body?: unknown;
+	headers?: http.IncomingHttpHeaders;
 }): http.IncomingMessage {
 	const req = new http.IncomingMessage(new Socket());
 	req.method = opts.method;
 	req.url = opts.pathname;
-	req.headers = { host: "localhost:2138" };
+	req.headers = { host: "localhost:2138", ...opts.headers };
 	Object.defineProperty(req.socket, "remoteAddress", {
 		value: "127.0.0.1",
 		configurable: true,
@@ -153,6 +178,88 @@ function fakeReq(opts: {
 	}
 	return req;
 }
+
+describe("POST /api/local-inference/routing/text", () => {
+	const previousApiToken = process.env.ELIZA_API_TOKEN;
+
+	beforeAll(async () => {
+		handleLocalInferenceCompatRoutes = (
+			await import("./local-inference-compat-routes")
+		).handleLocalInferenceCompatRoutes;
+	}, 120_000);
+
+	afterEach(() => {
+		setTextRoutingMock.mockReset();
+		if (previousApiToken === undefined) delete process.env.ELIZA_API_TOKEN;
+		else process.env.ELIZA_API_TOKEN = previousApiToken;
+	});
+
+	it("publishes both text slots through one authenticated mutation", async () => {
+		process.env.ELIZA_API_TOKEN = "route-secret";
+		setTextRoutingMock.mockResolvedValue({
+			preferredProvider: {
+				TEXT_SMALL: "elizacloud",
+				TEXT_LARGE: "elizacloud",
+			},
+			policy: { TEXT_SMALL: "manual", TEXT_LARGE: "manual" },
+		});
+		const res = fakeRes();
+
+		await handleLocalInferenceCompatRoutes(
+			fakeReq({
+				method: "POST",
+				pathname: "/api/local-inference/routing/text",
+				body: { provider: "elizacloud", policy: "manual" },
+				headers: {
+					authorization: "Bearer route-secret",
+					origin: "https://untrusted.example",
+				},
+			}),
+			res.res,
+			STATE,
+		);
+
+		expect(res.status()).toBe(200);
+		expect(setTextRoutingMock).toHaveBeenCalledOnce();
+		expect(setTextRoutingMock).toHaveBeenCalledWith("elizacloud", "manual");
+	});
+
+	it("rejects an unauthenticated bulk mutation before touching storage", async () => {
+		process.env.ELIZA_API_TOKEN = "route-secret";
+		const res = fakeRes();
+
+		await handleLocalInferenceCompatRoutes(
+			fakeReq({
+				method: "POST",
+				pathname: "/api/local-inference/routing/text",
+				body: { provider: "elizacloud", policy: "manual" },
+				headers: { origin: "https://untrusted.example" },
+			}),
+			res.res,
+			STATE,
+		);
+
+		expect(res.status()).toBe(401);
+		expect(setTextRoutingMock).not.toHaveBeenCalled();
+	});
+
+	it("rejects an invalid policy without a partial write", async () => {
+		const res = fakeRes();
+
+		await handleLocalInferenceCompatRoutes(
+			fakeReq({
+				method: "POST",
+				pathname: "/api/local-inference/routing/text",
+				body: { provider: "elizacloud", policy: "sometimes" },
+			}),
+			res.res,
+			STATE,
+		);
+
+		expect(res.status()).toBe(400);
+		expect(setTextRoutingMock).not.toHaveBeenCalled();
+	});
+});
 
 // ── tests ──────────────────────────────────────────────────────────────
 

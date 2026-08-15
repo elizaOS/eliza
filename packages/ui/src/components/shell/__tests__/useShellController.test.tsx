@@ -422,7 +422,7 @@ describe("useShellController", () => {
 
     act(() => result.current.open());
 
-    expect(result.current.phase).toBe("booting");
+    expect(result.current.phase).toBe("summoned");
     expect(result.current.isOpen).toBe(true);
     // Composer accepts input while booting — pre-ready sends queue (see below).
     expect(result.current.canSend).toBe(true);

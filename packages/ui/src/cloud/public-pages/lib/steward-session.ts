@@ -14,8 +14,8 @@ import {
   type StewardNonceExchangeResponse,
   StewardSessionError,
   sanitizeTelegramAccountClaimContinuation,
+  writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
-import { dispatchStewardSessionChange } from "../../../events/steward-session-event";
 import {
   clearPendingOnboardingSession,
   peekPendingOnboardingSession,
@@ -97,7 +97,10 @@ export async function syncStewardSessionCookie(
   if (telegramContinuation) clearPendingOnboardingSession();
 
   if (typeof window !== "undefined") {
-    dispatchStewardSessionChange("present");
+    // The cookie boundary may be entered directly by an SDK callback or after
+    // the login page already persisted the same token. Canonical storage is
+    // idempotent, so both paths publish one authority transition in total.
+    writeStoredStewardToken(token);
     window.dispatchEvent(
       new CustomEvent("steward-token-sync", { detail: { token } }),
     );

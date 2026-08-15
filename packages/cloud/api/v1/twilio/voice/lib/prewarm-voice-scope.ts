@@ -3,7 +3,7 @@
  * cold database work overlaps call setup, the greeting, and caller speech.
  */
 
-import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
+import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import { logger } from "@/lib/utils/logger";
 import type { Bindings } from "@/types/cloud-worker-env";
 import type { InternalElizaConversationFetchClaims } from "../../../voice/session/lib/internal-eliza-conversation-fetch";
@@ -15,14 +15,16 @@ interface VoicePrewarmExecutionContext {
 type HydrateVoiceScope = (
   env: Bindings,
   claims: InternalElizaConversationFetchClaims,
-  preloadedAgent?: AgentSandbox,
+  preloadedAgent?: SharedRuntimeAgent,
+  options?: { freshConversation?: boolean },
 ) => Promise<void>;
 
 interface ScheduleVoiceScopePrewarmOptions {
-  agent?: AgentSandbox;
+  agent?: SharedRuntimeAgent;
   claims: InternalElizaConversationFetchClaims;
   env: Bindings;
   executionCtx: VoicePrewarmExecutionContext;
+  freshConversation?: boolean;
   hydrateScope?: HydrateVoiceScope;
 }
 
@@ -32,6 +34,7 @@ export function scheduleTwilioVoiceScopePrewarm({
   claims,
   env,
   executionCtx,
+  freshConversation,
   hydrateScope,
 }: ScheduleVoiceScopePrewarmOptions): Promise<void> {
   const prewarm = Promise.resolve()
@@ -40,7 +43,7 @@ export function scheduleTwilioVoiceScopePrewarm({
         hydrateScope ??
         (await import("../../../voice/session/lib/voice-agent-scope-hydration"))
           .hydrateVoiceSharedAgentScope;
-      await hydrate(env, claims, agent);
+      await hydrate(env, claims, agent, { freshConversation });
     })
     .catch((error) => {
       // error-policy:J7 this is a latency hint; the media session retains its

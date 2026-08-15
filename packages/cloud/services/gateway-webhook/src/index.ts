@@ -7,7 +7,11 @@ import type { Platform, PlatformAdapter } from "./adapters/types";
 import { whatsappAdapter } from "./adapters/whatsapp";
 import { getAuthHeader, initAuth, shutdownAuth } from "./auth";
 import { registerForwarderAuthReadinessRoute } from "./forwarder-auth-readiness";
-import { enforceForwarderSecret } from "./internal-auth";
+import {
+  enforceForwarderSecret,
+  validateInternalSecret,
+} from "./internal-auth";
+import { deliverInternalMessage } from "./internal-delivery";
 import { handleInternalEvent } from "./internal-event-handler";
 import { logger } from "./logger";
 import { initProjectConfig, shutdownProjectConfig } from "./project-config";
@@ -63,10 +67,21 @@ app.post("/drain", (c) => {
   return c.json({ status: "draining" });
 });
 
-// ── Internal event delivery (K8s CronJobs, matcher, notifier) ──
+// ── Internal event and connector delivery ──
 
 app.post("/internal/event", async (c) => {
   return handleInternalEvent(c.req.raw, { redis });
+});
+
+app.post("/internal/deliver", async (c) => {
+  if (!validateInternalSecret(c.req.raw)) {
+    return c.json({ success: false, error: "unauthorized" }, 401);
+  }
+  return deliverInternalMessage(c.req.raw, {
+    redis,
+    cloudBaseUrl: ELIZA_CLOUD_URL,
+    getAuthHeader,
+  });
 });
 
 // ── Platform webhooks ──
@@ -181,7 +196,7 @@ async function start() {
 
   if (!process.env.GATEWAY_INTERNAL_SECRET) {
     logger.warn(
-      "GATEWAY_INTERNAL_SECRET is not configured — POST /internal/event will reject all requests",
+      "GATEWAY_INTERNAL_SECRET is not configured — internal delivery routes will reject all requests",
     );
   }
 

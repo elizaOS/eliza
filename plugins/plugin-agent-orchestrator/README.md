@@ -159,6 +159,7 @@ second credential broker, and child trajectories retain their session join key.
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command override. |
 | `ELIZA_ACP_DEFAULT_APPROVAL` | `autonomous` | Approval preset (`read-only`, `auto`, `permissive`, `autonomous`, `full-access`). |
 | `ELIZA_ACP_PROMPT_TIMEOUT_MS` / `ACPX_DEFAULT_TIMEOUT_MS` | `300000` (5m) | Per-prompt timeout. |
+| `ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS` | `5000` (5s) | Maximum adapter-availability preflight wait. Values must be exact decimal integers from `250` through `2147483647`; missing/blank uses the default, and invalid values fail before the adapter probe starts. |
 | `ELIZA_SMITHERS_TIMEOUT_MS` | `300000` (5m) | Maximum Smithers durable-run wall-clock time. Values must be exact decimal integers from `1` through `2147483647`; missing/blank uses the default, and invalid environment or request overrides fail before a worker starts. |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acp` | Where to persist session state when no runtime DB. |
 | `ACPX_DEFAULT_CWD` | runtime cwd | Base directory for spawned agent workdirs. |

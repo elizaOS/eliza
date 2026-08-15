@@ -10,10 +10,7 @@ name: Cloud CF Deploy
 # Per environment:
 # - push to develop  -> staging   (staging.eliza.app, cloud-staging.eliza.app,
 #                                   api-staging.eliza.app)
-# - push to main     -> production (eliza.app, cloud.eliza.app, api.eliza.app)
-# - pull_request     -> build isolated Pages artifacts without credentials;
-#                       `.github/workflows/cloud-cf-pr-preview-deploy.yml`
-#                       performs the trusted `pr-<number>` deployment afterward.
+# Production remains an explicit protected-environment operation.
 #
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
@@ -42,37 +39,53 @@ name: Cloud CF Deploy
 
 on:
   push:
-    branches: [main, develop]
+    branches: [develop]
     paths:
+      - "bun.lock"
+      - "bunfig.toml"
+      - "package.json"
+      - "patches/**"
+      - "plugins/**"
+      - "tsconfig.base.json"
+      - "tsconfig.build.template.json"
+      - "tsconfig.json"
+      - "turbo.json"
+      - "packages/agent/**"
       - "packages/cloud/api/**"
+      - "packages/cloud/routing/**"
       - "packages/cloud/shared/**"
       - "packages/cloud/services/**"
       - "packages/cloud/sdk/**"
       - "packages/cloud/scripts/**"
       - "packages/app/**"
       - "packages/app-core/**"
+      - "packages/auth/**"
+      - "packages/core/**"
+      - "packages/evidence/**"
+      - "packages/elizaos/**"
       - "packages/homepage/**"
+      - "packages/logger/**"
+      - "packages/prompts/**"
+      - "packages/registry/**"
+      - "packages/scripts/build-private-workspace-packages.mjs"
+      - "packages/scripts/build-core-packages.mjs"
+      - "packages/scripts/build-core.mjs"
+      - "packages/scripts/ensure-workspace-symlinks.mjs"
+      - "packages/scripts/lib/repository-file-integrity.mjs"
+      - "packages/scripts/lib/script-metadata.mjs"
+      - "packages/scripts/lib/workspaces.mjs"
+      - "packages/scripts/patch-llama-cpp-capacitor.mjs"
+      - "packages/scripts/patch-nested-core-dist.mjs"
+      - "packages/scripts/patch-punycode-deprecation.mjs"
+      - "packages/scripts/run-turbo.mjs"
+      - "packages/scripts/sync-artifacts.mjs"
       - "packages/shared/**"
+      - "packages/skills/**"
       - "packages/ui/**"
+      - "packages/vault/**"
       - ".github/workflows/cloud-cf-deploy.yml"
       - ".github/workflows/cloud-cf-release.yml"
-      - ".github/workflows/cloud-cf-pr-preview-deploy.yml"
-  pull_request:
-    branches: [main, develop]
-    paths:
-      - "packages/cloud/api/**"
-      - "packages/cloud/shared/**"
-      - "packages/cloud/services/**"
-      - "packages/cloud/sdk/**"
-      - "packages/cloud/scripts/**"
-      - "packages/app/**"
-      - "packages/app-core/**"
-      - "packages/homepage/**"
-      - "packages/shared/**"
-      - "packages/ui/**"
-      - ".github/workflows/cloud-cf-deploy.yml"
       - ".github/workflows/cloud-cf-release.yml"
-      - ".github/workflows/cloud-cf-pr-preview-deploy.yml"
   workflow_dispatch:
     inputs:
       environment:
@@ -280,7 +293,7 @@ jobs:
 
   build-pages:
     name: Build Pages artifacts
-    needs: [validate-deploy-source, resolve-pages-preview-config]
+    needs: [resolve-pages-preview-config]
     if: ${{ github.event_name == 'pull_request' && needs.resolve-pages-preview-config.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30

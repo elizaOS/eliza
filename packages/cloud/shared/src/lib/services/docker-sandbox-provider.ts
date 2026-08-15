@@ -23,6 +23,8 @@ import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
 import {
+  agentCpuUnitsToDockerCpus,
+  buildAgentContainerCpuFlags,
   buildAgentContainerMemoryFlags,
   buildAgentContainerSecurityFlags,
 } from "./agent-container-security";
@@ -46,7 +48,9 @@ import {
   BRIDGE_PORT_MIN,
   buildAgentContainerLabelFlags,
   buildEnsureNetworkCmd,
+  CONTAINER_DURABLE_STATE_DIR,
   dockerPlatformFlag,
+  ensureVolumeVaultPassphrase,
   extractDockerCreateContainerId,
   getContainerName,
   getVolumePath,
@@ -172,6 +176,11 @@ const REPLACEMENT_ATTEMPT_LABEL = "ai.elizaos.replacement-attempt";
 const REPLACEMENT_VPN_SETTLE_OBSERVATIONS = 4;
 const REPLACEMENT_VPN_SETTLE_INTERVAL_MS = 750;
 const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30_000;
+// Converge window for an id-verified container whose attempt label drifted
+// from the fence record (#18032): the immutable Docker id plus a matching
+// deterministic name identify the fenced target beyond doubt, but a young
+// container is still retained in case a concurrent lifecycle op is mid-write.
+const REPLACEMENT_LABEL_MISMATCH_RETIRE_GRACE_MS = 60 * 60 * 1000;
 
 class ReplacementPlacementPersistenceError extends Error {
   constructor(cause: unknown) {
@@ -1305,6 +1314,21 @@ export class DockerSandboxProvider implements SandboxProvider {
         DOCKER_CMD_TIMEOUT_MS,
       );
 
+      // Resolve the per-agent vault master passphrase BEFORE building the
+      // container env. The key persisted on the agent volume is the single
+      // source of truth so a replacement container derives the SAME master
+      // key and can decrypt the vault ciphertext it inherits (#18080 /
+      // #19225). A caller-injected ELIZA_VAULT_PASSPHRASE does not bypass
+      // that lifecycle: it seeds the persisted key on first provision and
+      // must match it afterwards (fail-closed on mismatch), so a later
+      // replacement launched without the override still reads the same key.
+      const vaultPassphrase = await ensureVolumeVaultPassphrase(
+        (cmd, timeoutMs) => ssh.exec(cmd, timeoutMs),
+        volumePath,
+        DOCKER_CMD_TIMEOUT_MS,
+        environmentVars.ELIZA_VAULT_PASSPHRASE,
+      );
+
       // Pull image (may take a while on first run). Log in when registry
       // credentials are configured; otherwise rely on anonymous public pulls.
       logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
@@ -1402,10 +1426,18 @@ export class DockerSandboxProvider implements SandboxProvider {
         AGENT_DISABLE_AUTO_API_TOKEN: "1",
         ELIZA_DISABLE_AUTO_API_TOKEN: "1",
         // V2 image refuses to boot on headless Linux without a passphrase
-        // (no D-Bus keychain). Generate one per container — the vault state
-        // lives only in the per-container PGlite, so a unique per-launch key
-        // is fine.
-        ELIZA_VAULT_PASSPHRASE: environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
+        // (no D-Bus keychain). The key must be STABLE across container
+        // replacement over the same agent volume: the state-dir vault
+        // ciphertext survives on the mount, so a fresh per-launch key would
+        // orphan every stored credential (#18080 / #19225). Always the key
+        // persisted on the agent volume; a caller-injected value only seeds
+        // that key on first provision and must match it afterwards.
+        ELIZA_VAULT_PASSPHRASE: vaultPassphrase,
+        // Durable state root on the `${volumePath}/eliza:/root/.eliza` mount.
+        // Without it the runtime resolves state (including the vault) to
+        // /root/.local/state/eliza in the container's writable layer, which
+        // is lost on the normal container replacement/reschedule path.
+        ELIZA_STATE_DIR: environmentVars.ELIZA_STATE_DIR?.trim() || CONTAINER_DURABLE_STATE_DIR,
         // Gateway service discovery — see SandboxRegistry in app-core.
         // SANDBOX_PUBLIC_URL targets the public Docker host (not the headscale
         // VPN IP set later at line ~653) because the gateways on Railway can't
@@ -1468,6 +1500,16 @@ export class DockerSandboxProvider implements SandboxProvider {
         // env-tunable fleet default applies so a boot-looping agent can never
         // OOM-starve its co-tenants again (staging fleet incident 2026-08-05).
         ...buildAgentContainerMemoryFlags(containerMemoryMb),
+        // Per-container CPU quota (see buildAgentContainerCpuFlags, #18485):
+        // an explicit per-agent `container.cpu` wins; otherwise the
+        // env-tunable fleet default applies so robot-density placement stays
+        // safe — a busy-looping agent is throttled inside its own cgroup
+        // instead of starving every co-tenant on a shared robot box.
+        ...buildAgentContainerCpuFlags(
+          config.container?.cpu !== undefined
+            ? agentCpuUnitsToDockerCpus(config.container.cpu)
+            : containersEnv.agentContainerCpuLimit(),
+        ),
         // Escape-hardening (#12230/#12302): drop ALL kernel capabilities, forbid
         // privilege escalation, and bound the process count — then, under
         // headscale only, re-add exactly NET_ADMIN + /dev/net/tun for the VPN.
@@ -2185,7 +2227,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       node.host_key_fingerprint ?? undefined,
       node.ssh_user ?? DEFAULT_SSH_USERNAME,
     );
-    const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}`;
+    const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}|{{.Name}}|{{.Created}}`;
     // When Docker returned the create id before a later phase failed, inspect
     // that immutable object directly. A same-name replacement can never make
     // the old id look present or authorize deleting the newer occupant.
@@ -2215,14 +2257,16 @@ export class DockerSandboxProvider implements SandboxProvider {
         `[docker-sandbox] Cannot verify replacement identity for ${locator.containerName}: expected one inspect record`,
       );
     }
-    const separator = lines[0]!.indexOf("|");
-    if (separator <= 0) {
+    const fields = lines[0]!.split("|");
+    if (fields.length !== 4 || fields[0]!.trim().length === 0) {
       throw new Error(
         `[docker-sandbox] Cannot verify replacement identity for ${locator.containerName}: malformed inspect record`,
       );
     }
-    const containerId = lines[0]!.slice(0, separator).trim();
-    const attemptId = lines[0]!.slice(separator + 1).trim();
+    const containerId = fields[0]!.trim();
+    const attemptId = fields[1]!.trim();
+    const observedName = fields[2]!.trim().replace(/^\//, "");
+    const observedCreatedAt = Date.parse(fields[3]!.trim());
     if (!/^[a-f0-9]{12,64}$/i.test(containerId)) {
       throw new Error(
         `[docker-sandbox] Cannot verify replacement identity for ${locator.containerName}: invalid Docker id`,
@@ -2247,6 +2291,33 @@ export class DockerSandboxProvider implements SandboxProvider {
           },
         );
         return null;
+      }
+      // With an immutable id the inspect was addressed at the exact persisted
+      // object, so a label mismatch cannot be a name reuse — it is attempt-id
+      // drift between the fence row and the container's create-time label
+      // (#18032). Refusing forever wedges the agent out of every exclusive
+      // lifecycle job, so converge once identity is proven by the stronger
+      // signals: the id matches the fence record, the deterministic name
+      // matches, and the container is old enough that no concurrent
+      // replacement attempt can still be mid-write.
+      if (
+        dockerContainerIdsMatch(locator.containerId, containerId) &&
+        observedName === locator.containerName &&
+        Number.isFinite(observedCreatedAt) &&
+        this.now() - observedCreatedAt >= REPLACEMENT_LABEL_MISMATCH_RETIRE_GRACE_MS
+      ) {
+        logger.warn(
+          "[docker-sandbox] Replacement attempt label drifted from the fence record; converging via id+name identity past the grace window",
+          {
+            nodeId: locator.nodeId,
+            containerName: locator.containerName,
+            containerId,
+            expectedAttemptId: locator.replacementAttemptId,
+            observedAttemptId: attemptId || null,
+            containerAgeMs: this.now() - observedCreatedAt,
+          },
+        );
+        return containerId;
       }
       throw new Error(
         `[docker-sandbox] Replacement attempt label mismatch for ${locator.containerName}`,

@@ -6,6 +6,7 @@
  */
 import {
   addHeader,
+  ElizaError,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -182,7 +183,14 @@ ${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
         error instanceof Error ? error.message : String(error),
       );
       if (typeof runtime?.reportError === "function") {
-        runtime.reportError("shellHistoryProvider", error, {
+        const diagnosticError = new ElizaError(
+          `Shell history context failed: ${errMsg}`,
+          {
+            code: "SHELL_HISTORY_PROVIDER_FAILED",
+            context: { redactedMessage: errMsg },
+          },
+        );
+        runtime.reportError("shellHistoryProvider", diagnosticError, {
           roomId: message.roomId,
           agentId: message.agentId,
         });

@@ -4,10 +4,21 @@
  */
 
 import { z } from "zod";
+import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 
 const TOKEN_VERSION = 1;
 const TOKEN_TTL_SECONDS = 120;
 const CLOCK_SKEW_SECONDS = 5;
+
+const ConversationIdSchema = z
+  .string()
+  .trim()
+  .refine(
+    (value) =>
+      z.string().uuid().safeParse(value).success ||
+      isPersonalSharedAgentId(value),
+    "conversationId must be a UUID or personal Shared agent id",
+  );
 
 const ClaimsSchema = z.object({
   v: z.literal(TOKEN_VERSION),
@@ -19,9 +30,10 @@ const ClaimsSchema = z.object({
   organizationId: z.string().min(1),
   userId: z.string().min(1),
   agentId: z.string().min(1),
-  conversationId: z.string().uuid(),
+  conversationId: ConversationIdSchema,
   calledNumber: z.string().min(1),
   returningCaller: z.boolean(),
+  previousInteractionAt: z.number().int().positive().optional(),
 });
 
 const WireClaimsSchema = z.object({
@@ -34,9 +46,10 @@ const WireClaimsSchema = z.object({
   o: z.string().min(1),
   u: z.string().min(1),
   g: z.string().min(1),
-  n: z.string().uuid(),
+  n: ConversationIdSchema,
   p: z.string().min(1),
   r: z.boolean(),
+  l: z.number().int().positive().optional(),
 });
 
 export type TwilioStreamTokenClaims = z.infer<typeof ClaimsSchema>;
@@ -98,6 +111,9 @@ export async function mintTwilioStreamToken(
         n: claims.conversationId,
         p: claims.calledNumber,
         r: claims.returningCaller,
+        ...(claims.previousInteractionAt
+          ? { l: claims.previousInteractionAt }
+          : {}),
       }),
     ),
   );
@@ -143,6 +159,7 @@ export async function verifyTwilioStreamToken(
       conversationId: wire.data.n,
       calledNumber: wire.data.p,
       returningCaller: wire.data.r,
+      previousInteractionAt: wire.data.l,
     });
     if (!parsed.success) return null;
     const nowSeconds = Math.floor(now() / 1_000);

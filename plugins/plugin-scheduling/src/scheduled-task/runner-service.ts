@@ -170,6 +170,65 @@ export function getScheduledTaskRunnerDeps(
   return depsProvidersByRuntime.get(runtime) ?? null;
 }
 
+// --- Runner boot hooks ------------------------------------------------------
+
+/**
+ * A hook invoked with the freshly constructed runner service the moment
+ * `ScheduledTaskRunnerService.start` produces it. This is the structural
+ * ordering primitive for boot-time seeding (#16309): the hook receives the
+ * live instance, so seed work cannot observe a runtime where the runner does
+ * not exist yet — no timing yield against the service registry is involved.
+ */
+export type ScheduledTaskRunnerBootHook = (
+  service: ScheduledTaskRunnerService,
+) => Promise<void> | void;
+
+const bootHooksByRuntime = new WeakMap<
+  IAgentRuntime,
+  ScheduledTaskRunnerBootHook[]
+>();
+const startedServiceByRuntime = new WeakMap<
+  IAgentRuntime,
+  ScheduledTaskRunnerService
+>();
+
+function runBootHook(
+  runtime: IAgentRuntime,
+  service: ScheduledTaskRunnerService,
+  hook: ScheduledTaskRunnerBootHook,
+): Promise<void> {
+  return Promise.resolve()
+    .then(() => hook(service))
+    .catch((error) => {
+      // error-policy:J7 boot-hook failure (seed/tick bootstrap) is diagnostic:
+      // the runner service itself started, tasks can still be scheduled at
+      // runtime, and reportError makes the failed boot work observable.
+      runtime.reportError("scheduling.runnerBootHook", error, {
+        agentId: runtime.agentId,
+      });
+    });
+}
+
+/**
+ * Register a hook to run when this runtime's runner service starts. If the
+ * service has already started, the hook runs immediately against the live
+ * instance. Hook failures are reported through `runtime.reportError` and
+ * never fail service startup.
+ */
+export function registerScheduledTaskRunnerBootHook(
+  runtime: IAgentRuntime,
+  hook: ScheduledTaskRunnerBootHook,
+): void {
+  const started = startedServiceByRuntime.get(runtime);
+  if (started) {
+    void runBootHook(runtime, started, hook);
+    return;
+  }
+  const hooks = bootHooksByRuntime.get(runtime) ?? [];
+  hooks.push(hook);
+  bootHooksByRuntime.set(runtime, hooks);
+}
+
 // --- Default deps provider (no-PA path) ------------------------------------
 
 const ALL_PROFILES: ReadonlySet<TaskExecutionProfile> = new Set(
@@ -588,6 +647,10 @@ export class ScheduledTaskRunnerService extends Service {
 
   override async stop(): Promise<void> {
     this.runners.clear();
+    const runtime = this.runtime;
+    if (runtime && startedServiceByRuntime.get(runtime) === this) {
+      startedServiceByRuntime.delete(runtime);
+    }
   }
 
   static override async start(
@@ -604,7 +667,17 @@ export class ScheduledTaskRunnerService extends Service {
       { src: SERVICE_TYPE, agentId: runtime.agentId },
       "ScheduledTaskRunnerService started",
     );
-    return new ScheduledTaskRunnerService(runtime);
+    const service = new ScheduledTaskRunnerService(runtime);
+    // Release boot hooks (default-pack seeding, fallback tick bootstrap) with
+    // the live instance: this is what guarantees seed work runs strictly after
+    // the runner exists, independent of service-registry timing (#16309).
+    startedServiceByRuntime.set(runtime, service);
+    const hooks = bootHooksByRuntime.get(runtime) ?? [];
+    bootHooksByRuntime.delete(runtime);
+    for (const hook of hooks) {
+      void runBootHook(runtime, service, hook);
+    }
+    return service;
   }
 
   getRunner(opts: GetScheduledTaskRunnerOptions): ScheduledTaskRunnerHandle {

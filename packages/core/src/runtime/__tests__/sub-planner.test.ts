@@ -360,6 +360,22 @@ describe("sub-planner helpers", () => {
 		});
 	});
 
+	it("keeps replay correlation stable without embedding raw parameters", () => {
+		const canary = "SYNTH-SUBPLANNER-TOKEN-CANARY-3333";
+		const first = subPlannerCallDigest({
+			name: "GOOGLE_CALENDAR",
+			params: { nested: { count: 2, token: canary }, calendar: "primary" },
+		});
+		const reordered = subPlannerCallDigest({
+			name: "GOOGLE_CALENDAR",
+			params: { calendar: "primary", nested: { token: canary, count: 2 } },
+		});
+
+		expect(first).toBe(reordered);
+		expect(first).not.toContain(canary);
+		expect(first).toMatch(/^GOOGLECALENDAR\|[a-f0-9]{64}$/);
+	});
+
 	it("passes child actions to the model as native tool definitions", async () => {
 		const childA = makeAction({
 			name: "CHILD_A",

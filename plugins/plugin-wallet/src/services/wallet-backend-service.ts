@@ -5,12 +5,16 @@
  * (`registerDefaultWalletChainHandlers`). `routeWalletAction` is the single
  * entry point every wallet subaction (`transfer`, `swap`, `bridge`, `gov`,
  * `pump_fun_buy`, …) dispatches through: it resolves the chain handler by
- * alias, validates required params, and for `dryRun`/`mode=prepare` requests
- * returns metadata without invoking the handler's `execute()` (bridge is an
- * exception — it always calls `execute()` so Li.Fi/CCTP routing can surface
- * a real quote). If backend resolution fails at boot, the service still
- * starts so metadata/dry-run stays available; `getWalletBackend()` throws the
- * captured error only when a caller actually needs signing.
+ * alias, validates required params, and for `mode="simulate"` requests
+ * dispatches to the handler's optional `simulate()` (typed
+ * `SIMULATION_UNSUPPORTED` failure when the handler does not opt in — never a
+ * fallback to the `prepare` echo or to `execute()`). For `dryRun`/
+ * `mode=prepare` requests it returns metadata without invoking the handler's
+ * `execute()` (bridge is an exception — it always calls `execute()` so
+ * Li.Fi/CCTP routing can surface a real quote). If backend resolution fails
+ * at boot, the service still starts so metadata/dry-run stays available;
+ * `getWalletBackend()` throws the captured error only when a caller actually
+ * needs signing.
  */
 import {
   type IAgentRuntime,
@@ -149,6 +153,37 @@ export class WalletBackendService extends Service {
     const required = this.validateRequiredParams(params);
     if (required) {
       return required;
+    }
+
+    if (params.mode === "simulate") {
+      const supported =
+        handler.simulation?.supported &&
+        handler.simulation.supportedActions.includes(params.subaction) &&
+        typeof handler.simulate === "function";
+      if (!supported) {
+        return {
+          ok: false,
+          error: "SIMULATION_UNSUPPORTED",
+          detail: `${handler.name} does not support simulation for ${params.subaction}.`,
+        };
+      }
+      try {
+        // Non-null: `supported` above already checked `handler.simulate` is a function.
+        const result = await (
+          handler.simulate as NonNullable<typeof handler.simulate>
+        )(params, this.createContext());
+        return {
+          ok: true,
+          handler: this.toMetadata(handler),
+          result,
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: "EXECUTION_FAILED",
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
     }
 
     if (params.dryRun || params.mode === "prepare") {
@@ -358,6 +393,14 @@ export class WalletBackendService extends Service {
         ...handler.dryRun,
         supportedActions: [...handler.dryRun.supportedActions],
       },
+      ...(handler.simulation
+        ? {
+            simulation: {
+              ...handler.simulation,
+              supportedActions: [...handler.simulation.supportedActions],
+            },
+          }
+        : {}),
     };
   }
 }

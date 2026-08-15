@@ -101,9 +101,13 @@ describe("changed build entrypoints", () => {
       seen.push(options.buildOptions.outdir ?? "");
       return async () => undefined;
     };
+    const edgeBundleIo = {
+      readFile: async () => "",
+      writeFile: async () => undefined,
+    };
     await buildNode(runnerFactory as never);
     await buildBrowser(runnerFactory as never);
-    await buildEdge(runnerFactory as never);
+    await buildEdge(runnerFactory as never, edgeBundleIo);
     await buildTesting(runnerFactory as never);
     await buildNodeOnly({
       argv: ["bun", "build.ts", "--skip-testing"],
@@ -113,6 +117,7 @@ describe("changed build entrypoints", () => {
     await buildAll({
       runnerFactory: runnerFactory as never,
       generateDeclarations: async () => seen.push("dts-all"),
+      edgeBundleIo,
     });
     expect(seen).toContain("dist/node");
     expect(seen).toContain("dist/browser");

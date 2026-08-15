@@ -42,6 +42,19 @@ function generateAndStoreKeypair(runtime: IAgentRuntime): Keypair {
   return keypair;
 }
 
+/**
+ * Read-only public-key lookup: returns the configured wallet's public key or
+ * null when no wallet exists. Unlike `getWalletKey`, this NEVER generates or
+ * persists a keypair — read-only flows (transaction simulation, #16613) must
+ * not mint a secret as a side effect of a lookup.
+ */
+export function getExistingSolanaPublicKey(runtime: IAgentRuntime): PublicKey | null {
+  const publicKeyString =
+    getStringSetting(runtime, "SOLANA_PUBLIC_KEY") ??
+    getStringSetting(runtime, "WALLET_PUBLIC_KEY");
+  return publicKeyString ? new PublicKey(publicKeyString) : null;
+}
+
 export async function getWalletKey(
   runtime: IAgentRuntime,
   requirePrivateKey = true

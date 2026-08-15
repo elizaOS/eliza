@@ -715,6 +715,35 @@ describe("AgentGatewayRouterService phone routing", () => {
     });
     expect(findByPhoneNumberWithOrganization).not.toHaveBeenCalled();
   });
+
+  test("throws a typed failure when a registered BlueBubbles bridge cannot route", async () => {
+    findRunningSandbox.mockResolvedValue({
+      id: "registered-agent",
+      organization_id: "registered-org",
+      user_id: "registered-user",
+      status: "running",
+      agent_config: {},
+    });
+    bridge.mockRejectedValue(new Error("registered bridge unavailable"));
+
+    await expect(
+      newRouter().routeRegisteredBlueBubblesMessage({
+        organizationId: "registered-org",
+        userId: "registered-user",
+        agentId: "registered-agent",
+        from: "+1 (555) 555-0100",
+        to: "+1 (415) 555-0123",
+        body: "retry this message",
+        providerMessageId: "bb-message-retry",
+      }),
+    ).rejects.toMatchObject({
+      code: "BLUEBUBBLES_REGISTERED_BRIDGE_FAILED",
+      context: expect.objectContaining({
+        agentId: "registered-agent",
+        organizationId: "registered-org",
+      }),
+    });
+  });
 });
 
 describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
@@ -866,6 +895,49 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
     expect(result.reason).toBe("owner_agent_not_running");
     expect(result.agentId).toBe("sb-stopped");
     expect(runOnboardingChat).not.toHaveBeenCalled();
+  });
+
+  test("routes an authenticated DM with a canonical deterministic conversation UUID", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue({
+      id: "user-1",
+      organization_id: "org-1",
+    });
+    listOwnerSessions.mockResolvedValue([]);
+    listByOrganization.mockResolvedValue([
+      {
+        id: "sb-running",
+        status: "running",
+        user_id: "user-1",
+        organization_id: "org-1",
+        agent_config: {},
+      },
+    ]);
+    bridge.mockResolvedValue({ result: { text: "hello from eliza" } });
+
+    const result = await newRouter().routeDiscordMessage(discordArgs());
+
+    expect(result).toMatchObject({
+      handled: true,
+      replyText: "hello from eliza",
+      agentId: "sb-running",
+      organizationId: "org-1",
+      userId: "user-1",
+    });
+    expect(bridge).toHaveBeenCalledWith(
+      "sb-running",
+      "org-1",
+      expect.objectContaining({
+        method: "message.send",
+        params: expect.objectContaining({
+          roomId: expect.stringMatching(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+          ),
+          channelType: "DM",
+          source: "discord",
+        }),
+      }),
+    );
+    expect(result.roomId).not.toContain("discord-dm:");
   });
 });
 

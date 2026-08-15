@@ -92,6 +92,12 @@ describe("viewFollowupRoutingEvaluator", () => {
 		vi.restoreAllMocks();
 	});
 
+	it("declares VIEWS as its only deterministic action", () => {
+		expect(viewFollowupRoutingEvaluator.deterministicActions).toEqual([
+			"VIEWS",
+		]);
+	});
+
 	it("routes a content-bearing un-named follow-up through VIEWS", async () => {
 		mockLoopback({ viewId: "notes" });
 		const ctx = context("can you make another one saying wake me at 3am");

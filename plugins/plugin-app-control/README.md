@@ -64,6 +64,12 @@ None are required for basic operation. The plugin auto-discovers the Eliza dashb
 | `AppWorkerHostService` | Runs apps that declare `isolation: "worker"` in a dedicated `node:worker_threads` Worker with typed RPC. |
 | `VerificationRoomBridgeService` | Posts verification results back into the user's chat room once the background coding agent finishes. |
 
+Worker execution is an explicit manifest capability. Static apps declare
+`elizaos.app.worker: false`; apps with an agent-side plugin declare
+`elizaos.app.worker: { "entry": "dist/plugin.js" }`. Only legacy manifests
+that omit `worker` use package-entry and conventional-source discovery. A
+missing explicitly declared entry is reported as a broken or unbuilt worker.
+
 ## Views registered
 
 The plugin contributes a **View Manager** GUI view at `/views` — a browser for all views contributed by loaded plugins.

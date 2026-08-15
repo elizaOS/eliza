@@ -15,6 +15,13 @@ export interface ChatEvent {
   text: string;
   isCommand?: boolean;
   mediaUrls?: string[];
+  /** Provider-owned voice-note metadata; never contains an authenticated URL. */
+  voiceNote?: {
+    fileId: string;
+    durationSeconds: number;
+    sizeBytes?: number;
+    mimeType: "audio/ogg";
+  };
   rawPayload: unknown;
 }
 
@@ -37,7 +44,29 @@ export interface PlatformAdapter {
     event: ChatEvent,
     text: string,
   ): Promise<void>;
+  sendReplyWithReceipt?(
+    config: WebhookConfig,
+    event: ChatEvent,
+    text: string,
+  ): Promise<PlatformDeliveryReceipt>;
   sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void>;
+  /** Resolve provider-owned voice bytes while credentials are still local. */
+  resolveVoiceNote?(
+    config: WebhookConfig,
+    event: ChatEvent,
+  ): Promise<ResolvedVoiceNote>;
+}
+
+export interface PlatformDeliveryReceipt {
+  providerMessageIds: string[];
+}
+
+export interface ResolvedVoiceNote {
+  bytesBase64: string;
+  mimeType: "audio/ogg";
+  filename: string;
+  sizeBytes: number;
+  durationSeconds: number;
 }
 
 export interface WebhookConfig {

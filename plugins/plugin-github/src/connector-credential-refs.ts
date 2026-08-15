@@ -370,46 +370,6 @@ function resolveVaultWriters(
     });
   }
 
-  const secrets = getService(runtime, "SECRETS") as {
-    setGlobal?: (
-      key: string,
-      value: string,
-      config?: { sensitive?: boolean },
-    ) => Promise<boolean> | boolean;
-    set?: (
-      key: string,
-      value: string,
-      context: JsonRecord,
-      config?: { sensitive?: boolean },
-    ) => Promise<boolean> | boolean;
-  } | null;
-  if (
-    typeof secrets?.setGlobal === "function" ||
-    typeof secrets?.set === "function"
-  ) {
-    writers.push({
-      name: "SECRETS",
-      write: async (vaultRef, credential) => {
-        if (typeof secrets.setGlobal === "function") {
-          await secrets.setGlobal(vaultRef, credential.value, {
-            sensitive: true,
-          });
-          return vaultRef;
-        }
-        await secrets.set?.(
-          vaultRef,
-          credential.value,
-          {
-            level: "global",
-            agentId: runtime.agentId,
-            requesterId: runtime.agentId,
-          },
-          { sensitive: true },
-        );
-        return vaultRef;
-      },
-    });
-  }
   return writers;
 }
 

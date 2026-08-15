@@ -60,6 +60,17 @@ describe("shared runtime history merge policy", () => {
       incoming[1],
     ]);
   });
+
+  test("deduplicates retried lifecycle system events by stable event id", () => {
+    const event = {
+      id: "twilio-call:CA1:ended",
+      role: "system" as const,
+      content: "The user ended the phone call.",
+      createdAt: 100,
+    };
+
+    expect(mergeSharedRuntimeHistoryMessages([event], [event], 40)).toEqual([event]);
+  });
 });
 
 describe("shared runtime long-term transcript context", () => {

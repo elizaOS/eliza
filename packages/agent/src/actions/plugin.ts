@@ -610,6 +610,23 @@ function applyListFilter(
   });
 }
 
+/**
+ * Renders the active narrowings of a list request as readable text. `filter`
+ * is an object, so interpolating it directly printed "[object Object]" and
+ * comparing it to "all" was never true — the named filter has to be legible
+ * for "retry without it" to mean anything. Empty string means nothing narrowed.
+ */
+function describeListFilter(filter: ListFilter): string {
+  const parts: string[] = [];
+  if (filter.status) parts.push(`status=${filter.status}`);
+  if (typeof filter.configured === "boolean") {
+    parts.push(`configured=${filter.configured}`);
+  }
+  const search = filter.search?.trim();
+  if (search) parts.push(`search="${search}"`);
+  return parts.join(", ");
+}
+
 async function doList(params: PluginParams): Promise<ActionResult> {
   const base = getApiBase();
   const filter = resolveListFilter(params);
@@ -631,15 +648,28 @@ async function doList(params: PluginParams): Promise<ActionResult> {
   const filtered = applyListFilter(scoped, filter);
 
   const label = type === "connector" ? "Connectors" : "Plugins";
+  const narrowing = describeListFilter(filter);
+  const plural = scoped.length === 1 ? "" : "s";
 
   if (filtered.length === 0) {
+    // Name the scope that produced the emptiness. "No connectors match the
+    // requested filter" reads as "you have no connectors" once the model
+    // paraphrases it: a live turn answered "what apps or connectors am I
+    // connected to" with "You're not connected to anything right now" while
+    // Discord was actively delivering that very reply. An empty result has to
+    // carry what it was narrowed by, and how to widen it.
+    const scopeNote = narrowing
+      ? `${narrowing}; ${scoped.length} ${type}${plural} exist before filtering`
+      : `${scoped.length} ${type}${plural} exist but none are listed under this view`;
     return {
       success: true,
-      text: `No ${type}s match the requested filter.`,
+      text: `No ${type}s match the requested filter (${scopeNote}). This is a filtered view, not a statement that none exist — retry with no filter to see every ${type}.`,
       data: {
         actionName: "PLUGIN",
         op: "list",
         type,
+        filter,
+        totalBeforeFilter: scoped.length,
         count: 0,
         entries: [],
       },
@@ -653,14 +683,23 @@ async function doList(params: PluginParams): Promise<ActionResult> {
     return `- ${entry.name} [${entry.id}] (${status}${active},${configured})`;
   });
 
+  // Same disclosure on the populated branch: a filtered subset rendered under
+  // a bare "Connectors (1):" header reads as the whole roster, and the model
+  // told a user they had one connector while eleven more sat in `scoped`.
+  const header =
+    scoped.length > filtered.length
+      ? `${label} (${filtered.length} of ${scoped.length}; narrowed by ${narrowing} — retry with no filter to see all ${scoped.length}):`
+      : `${label} (${filtered.length}):`;
+
   return {
     success: true,
-    text: [`${label} (${filtered.length}):`, ...lines].join("\n"),
+    text: [header, ...lines].join("\n"),
     data: {
       actionName: "PLUGIN",
       op: "list",
       type,
       count: filtered.length,
+      totalBeforeFilter: scoped.length,
       entries: filtered,
       filter,
     },

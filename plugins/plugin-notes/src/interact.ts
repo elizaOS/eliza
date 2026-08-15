@@ -5,7 +5,7 @@
  */
 
 import {
-  type AppliedEffectReceipt,
+  type EffectReceipt,
   ElizaError,
   type IAgentRuntime,
   isElizaError,
@@ -20,7 +20,7 @@ export interface NotesInteractResult {
   text: string;
   state?: NotesSnapshot;
   data?: unknown;
-  effectReceipts?: readonly AppliedEffectReceipt[];
+  effectReceipts?: readonly EffectReceipt[];
   userFacingEffectReceiptIds?: readonly string[];
   error?: {
     code: string;
@@ -32,6 +32,7 @@ const EXPECTED_FAILURE_CODES = new Set([
   "NOTES_VALIDATION_FAILED",
   "NOTES_NOT_FOUND",
   "NOTES_AMBIGUOUS_NOTE",
+  "NOTES_DELETE_NAME_MISMATCH",
   "NOTES_SERVICE_UNAVAILABLE",
   "NOTES_STORE_UNAVAILABLE",
 ]);
@@ -228,23 +229,33 @@ function mutationSuccess(
   resource: { kind: string; id: string },
   text: string,
   data?: unknown,
+  replayed = false,
 ): NotesInteractResult {
   const observedAt = new Date().toISOString();
   const receiptId = `notes:${capability}:${resource.id}:${state.revision}`;
-  const receipt: AppliedEffectReceipt = {
+  const base = {
     receiptId,
     operation: `notes.${capability}`,
     resource: { ...resource, version: String(state.revision) },
     artifacts: [],
-    idempotency: { key: null, replayed: false },
+    idempotency: { key: replayed ? resource.id : null, replayed },
     observedAt,
-    outcome: "applied",
-    commit: {
-      kind: "durable",
-      id: `notes:revision:${state.revision}`,
-      committedAt: observedAt,
-    },
   };
+  const receipt: EffectReceipt = replayed
+    ? {
+        ...base,
+        outcome: "noop",
+        reason: "An identical note already exists.",
+      }
+    : {
+        ...base,
+        outcome: "applied",
+        commit: {
+          kind: "durable",
+          id: `notes:revision:${state.revision}`,
+          committedAt: observedAt,
+        },
+      };
   return {
     success: true,
     text,
@@ -291,13 +302,20 @@ async function dispatchCapability(
       ...parseNoteContent(params.content),
       ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
     };
-    const { value: note, snapshot } = await service.createNoteWithCommit(input);
+    const {
+      value: note,
+      snapshot,
+      replayed,
+    } = await service.createNoteWithCommit(input);
     return mutationSuccess(
       snapshot,
       capability,
       { kind: "notes.note", id: note.id },
-      `Created note ${quoted(note.title)}.`,
-      { note },
+      replayed
+        ? `Note ${quoted(note.title)} already exists.`
+        : `Created note ${quoted(note.title)}.`,
+      { note, replayed },
+      replayed,
     );
   }
   if (capability === "update-note") {
@@ -313,7 +331,7 @@ async function dispatchCapability(
         : {}),
       ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
     };
-    const { value: note, snapshot } =
+    const updated =
       target.selector === "id"
         ? await service.updateNoteWithCommit(target.value, patch)
         : await service.updateNoteByLookupWithCommit(
@@ -321,34 +339,46 @@ async function dispatchCapability(
             target.value,
             patch,
           );
+    const { value: note, snapshot, consolidatedIds } = updated;
     return mutationSuccess(
       snapshot,
       capability,
       { kind: "notes.note", id: note.id },
-      `Updated note ${quoted(note.title)}.`,
-      { note },
+      consolidatedIds.length > 0
+        ? `Updated note ${quoted(note.title)} and consolidated ${consolidatedIds.length + 1} identical copies.`
+        : `Updated note ${quoted(note.title)}.`,
+      { note, consolidatedCount: consolidatedIds.length, consolidatedIds },
     );
   }
   if (capability === "delete-note") {
-    assertOnlyParams(params, ["id", "query", "title"]);
+    assertOnlyParams(params, ["id", "query", "title", "ownerText"]);
     const target = parseLookupTarget(params, capability, [
       "id",
       "query",
       "title",
     ]);
-    const { value: note, snapshot } =
+    // The user's original words, injected by the VIEWS dispatcher for
+    // destructive capabilities. Id-selected deletes skip the fence (ids come
+    // from structured contexts, not name translation).
+    const ownerText =
+      typeof params.ownerText === "string" ? params.ownerText : undefined;
+    const removed =
       target.selector === "id"
         ? await service.deleteNoteWithCommit(target.value)
         : await service.deleteNoteByLookupWithCommit(
             target.selector,
             target.value,
+            { requireTitleInText: ownerText },
           );
+    const { value: note, snapshot, removedIds } = removed;
     return mutationSuccess(
       snapshot,
       capability,
       { kind: "notes.note", id: note.id },
-      `Deleted note ${quoted(note.title)}.`,
-      { note },
+      removedIds.length > 1
+        ? `Deleted note ${quoted(note.title)} and removed ${removedIds.length} identical copies.`
+        : `Deleted note ${quoted(note.title)}.`,
+      { note, removedCount: removedIds.length, removedIds },
     );
   }
   if (capability === "clear-notes") {

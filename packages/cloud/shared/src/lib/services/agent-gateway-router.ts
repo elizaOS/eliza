@@ -1,4 +1,5 @@
 /** Routes connector messages to their owning Cloud agent and returns transport-ready replies. */
+import { ElizaError } from "@elizaos/core";
 import { createHash, randomUUID } from "crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/client";
@@ -773,16 +774,25 @@ export class AgentGatewayRouterService {
       };
     }
 
+    const targetAgentId =
+      resolved.target.kind === "local-session" && resolved.target.session
+        ? resolved.target.session.runtimeAgentId
+        : (resolved.target.sandbox?.id ?? resolved.agentId ?? args.sender.id);
+    const guildId = args.guildId?.trim();
+    const roomId = buildDirectConversationRoomIdFromIds(
+      targetAgentId,
+      "discord",
+      guildId || args.sender.id,
+      args.channelId,
+    );
     const rpcRequest: BridgeRequest = {
       jsonrpc: "2.0",
       id: randomUUID(),
       method: "message.send",
       params: {
         text: args.content,
-        roomId: args.guildId?.trim()
-          ? `discord-guild:${args.guildId.trim()}:channel:${args.channelId}`
-          : `discord-dm:${args.sender.id}:channel:${args.channelId}`,
-        channelType: args.guildId?.trim() ? "GROUP" : "DM",
+        roomId,
+        channelType: guildId ? "GROUP" : "DM",
         source: "discord",
         sender: {
           id: args.sender.id,
@@ -799,7 +809,7 @@ export class AgentGatewayRouterService {
         },
         metadata: {
           discord: {
-            ...(args.guildId?.trim() ? { guildId: args.guildId.trim() } : {}),
+            ...(guildId ? { guildId } : {}),
             channelId: args.channelId,
             messageId: args.messageId,
           },
@@ -1109,19 +1119,23 @@ export class AgentGatewayRouterService {
         organizationId: routed.organizationId ?? args.organizationId,
       };
     } catch (error) {
+      // error-policy:J2 preserve the transport failure so the webhook boundary
+      // can release its dedupe claim and return a retryable response.
       logger.error("[AgentGatewayRouter] Registered BlueBubbles route failed", {
         gatewayAgentId: args.agentId,
         organizationId: args.organizationId,
         error: error instanceof Error ? error.message : String(error),
       });
-      return {
-        handled: false,
-        reason: "bridge_failed",
-        agentId: args.agentId,
-        userId: args.userId,
-        organizationId: args.organizationId,
-        roomId: extractRoomId(rpcRequest),
-      };
+      throw new ElizaError("Registered BlueBubbles agent bridge failed", {
+        code: "BLUEBUBBLES_REGISTERED_BRIDGE_FAILED",
+        context: {
+          agentId: args.agentId,
+          userId: args.userId,
+          organizationId: args.organizationId,
+          roomId: extractRoomId(rpcRequest),
+        },
+        cause: error instanceof Error ? error : new Error(String(error)),
+      });
     }
   }
 

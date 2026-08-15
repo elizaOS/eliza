@@ -1,10 +1,15 @@
-// Handles v1 cloud API v1 apps id users route traffic with route-local auth expectations.
+/**
+ * Lists an app's users after validating pagination and access at the HTTP boundary.
+ */
+import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+
+const MAX_LIMIT = 100;
 
 /**
  * GET /api/v1/apps/[id]/users
@@ -26,9 +31,17 @@ async function __hono_GET(
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
     const { searchParams } = new URL(request.url);
-    const limit = searchParams.get("limit")
-      ? parseInt(searchParams.get("limit")!, 10)
-      : undefined;
+    const rawLimit = searchParams.get("limit");
+    const limit = parsePositiveInteger(rawLimit);
+    if (
+      rawLimit !== null &&
+      (rawLimit !== rawLimit.trim() || limit === undefined || limit > MAX_LIMIT)
+    ) {
+      return Response.json(
+        { success: false, error: "Invalid limit" },
+        { status: 400 },
+      );
+    }
 
     // Verify the app exists and belongs to the user's organization
     const existingApp = await appsService.getById(id);
@@ -74,6 +87,7 @@ async function __hono_GET(
       },
     });
   } catch (error) {
+    // error-policy:J1 route boundary translates failures into structured HTTP errors.
     logger.error("Failed to get app users:", error);
     return Response.json(
       {

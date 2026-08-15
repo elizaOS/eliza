@@ -228,10 +228,7 @@
       "outputs": []
     },
     "@elizaos/app-core#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
     "@elizaos/app#typecheck": {
@@ -243,10 +240,16 @@
       "outputs": []
     },
     "@elizaos/cloud-api#typecheck": {
+      "dependsOn": ["@elizaos/cloud-shared#typecheck"],
       "outputs": []
     },
     "@elizaos/cloud-shared#typecheck": {
-      "dependsOn": ["@elizaos/plugin-cloud-apps#build"],
+      "dependsOn": [
+        "@elizaos/plugin-cloud-apps#build",
+        "@elizaos/plugin-scheduling#build",
+        "@elizaos/plugin-todos#build",
+        "@elizaos/plugin-web-search#build"
+      ],
       "outputs": []
     },
     "@elizaos/plugin-discord#typecheck": {
@@ -254,7 +257,7 @@
       "outputs": []
     },
     "@elizaos/plugin-calendar#typecheck": {
-      "dependsOn": [],
+      "dependsOn": ["@elizaos/plugin-scheduling#build"],
       "outputs": []
     },
     "@elizaos/plugin-personal-assistant#typecheck": {

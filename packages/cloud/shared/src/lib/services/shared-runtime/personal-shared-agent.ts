@@ -13,6 +13,7 @@ import { getDefaultElizaCharacterData } from "../../utils/default-eliza-characte
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 
 const PERSONAL_SHARED_AGENT_NAMESPACE = "af8f7624-42f8-4da8-bdf1-593b1a0d7f20";
+const PERSONAL_SHARED_DISCORD_GUILD_NAMESPACE = "b9ea4ce5-636d-4ec4-bc75-6308188f883f";
 const PERSONAL_SHARED_AGENT_PREFIX = "personal:";
 
 export interface PersonalSharedAccountIdentity {
@@ -34,6 +35,26 @@ export function isPersonalSharedAgentId(value: string): boolean {
     value,
   );
 }
+
+/**
+ * A public Discord guild room must never reuse the owner's private cross-channel
+ * room. This stable UUID retains channel continuity without importing DM,
+ * phone, SMS, or Telegram history into a room other members can observe.
+ */
+export function personalSharedDiscordGuildRoomId(input: {
+  agentId: string;
+  discordUserId: string;
+  guildId: string;
+  channelId: string;
+}): string {
+  return uuidv5(
+    [input.agentId, input.discordUserId, input.guildId, input.channelId].join(":"),
+    PERSONAL_SHARED_DISCORD_GUILD_NAMESPACE,
+  );
+}
+
+/** Compatibility name retained for existing guild-voice callers. */
+export const personalSharedGuildVoiceRoomId = personalSharedDiscordGuildRoomId;
 
 function localBridgeApiBase(value: string | null): string | null {
   if (!value) return null;

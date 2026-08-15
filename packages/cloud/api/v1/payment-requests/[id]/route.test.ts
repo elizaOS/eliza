@@ -75,9 +75,9 @@ const paymentRequest: PaymentRequestRow = {
   settledAt: null,
   settlementTxRef: "provider-tx-ref",
   settlementProof: { signature: "proof-secret" },
-  expiresAt: new Date("2026-08-12T12:00:00.000Z"),
-  createdAt: new Date("2026-08-12T11:00:00.000Z"),
-  updatedAt: new Date("2026-08-12T11:00:00.000Z"),
+  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  createdAt: new Date(),
+  updatedAt: new Date(),
   metadata: { internal: "do-not-expose" },
 };
 
@@ -106,12 +106,29 @@ describe("GET /api/v1/payment-requests/:id", () => {
         reason: "Premium plan",
         status: "pending",
         hostedUrl: "https://checkout.example.test/session",
-        expiresAt: "2026-08-12T12:00:00.000Z",
+        expiresAt: paymentRequest.expiresAt.toISOString(),
       },
     });
     expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
     expect(getMock).not.toHaveBeenCalled();
     expect(getPublicMock).toHaveBeenCalledWith("pr-1");
+  });
+
+  test("derives expiration and removes the stale public checkout URL", async () => {
+    getPublicMock.mockResolvedValue({
+      ...paymentRequest,
+      expiresAt: new Date(Date.now() - 60_000),
+    });
+
+    const response = await app.request("/pr-1?public=1");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      paymentRequest: {
+        status: "expired",
+        hostedUrl: null,
+      },
+    });
   });
 
   test("returns not found for a missing public payment request without authenticating", async () => {

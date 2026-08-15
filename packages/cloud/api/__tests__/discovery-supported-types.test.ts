@@ -13,13 +13,20 @@ const listPublicMcps = mock(async () => []);
 const cacheGet = mock(async () => null);
 const cacheSet = mock(async () => undefined);
 
+// The exact pagination path also asks each selected catalog for its total
+// (#19083), so a stub missing the count method would fail the handler rather
+// than exercise the type contract under test.
 mock.module("@/lib/services/characters/characters", () => ({
-  charactersService: { listPublic: listPublicAgents },
+  charactersService: {
+    listPublic: listPublicAgents,
+    countPublicCatalog: mock(async () => 0),
+  },
 }));
 
 mock.module("@/lib/services/user-mcps", () => ({
   userMcpsService: {
     listPublic: listPublicMcps,
+    countPublic: mock(async () => 0),
     getPublicProxyUrl: mock(() => "https://app.example.test/mcp"),
   },
 }));
@@ -43,7 +50,8 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-const discoveryRoute = (await import("../v1/discovery/route")).default;
+const discoveryModule = await import("../v1/discovery/route");
+const discoveryRoute = discoveryModule.default;
 const app = new Hono<AppEnv>();
 app.route("/api/v1/discovery", discoveryRoute);
 
@@ -64,6 +72,15 @@ beforeEach(() => {
 });
 
 describe("GET /api/v1/discovery supported type contract", () => {
+  test("uses the same UTF-8 byte order as PostgreSQL C collation", () => {
+    const privateUse = "\uE000 private-use";
+    const astral = "😀 astral";
+
+    expect(
+      [astral, privateUse].sort(discoveryModule.compareUtf8ByteOrder),
+    ).toEqual([privateUse, astral]);
+  });
+
   test("the default request fetches both supported catalogs", async () => {
     const response = await discover();
 

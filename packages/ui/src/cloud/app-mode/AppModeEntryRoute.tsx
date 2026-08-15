@@ -9,8 +9,10 @@
  * agents and routes per `decideAppModeRoute`: any agents → the same-origin
  * chat app (the chat floor — entry never pairing-redirects into a per-agent
  * web UI and never bounces to the console; see `./app-mode` for why the
- * entry-time pairing redirect was removed); no agents at all → the `/join`
- * deploy-first-agent flow. Unauthenticated visitors first get one shot at the
+ * entry-time pairing redirect was removed); no rows at all → the account's
+ * rowless personal Eliza is resolved and bound in place (`./use-personal-entry`),
+ * falling back to `/join` only when that identity cannot be resolved.
+ * Unauthenticated visitors first get one shot at the
  * cross-host SSO bridge (`../sso-bridge/sso-bridge` — only when the
  * domain-wide session marker says the eliza.app auth origin holds a live session and
  * the user did not explicitly sign out here), then the normal login flow, and
@@ -30,6 +32,7 @@ import {
   shouldAutoBridgeToSso,
 } from "../sso-bridge/sso-bridge";
 import { decideAppModeRoute } from "./app-mode";
+import { usePersonalEntry } from "./use-personal-entry";
 
 function EntryNotice({
   label,
@@ -58,6 +61,17 @@ export function AppModeEntryRoute({
   const agentsQuery = useAgents();
   const isCloudManagementPath =
     location.pathname === "/cloud" || location.pathname.startsWith("/cloud/");
+
+  // Rowless personal entry: with zero sandbox rows the personal Eliza is the
+  // account's runtime, so entry resolves + persists its authoritative binding
+  // instead of bouncing to /join (the /join → / → /join loop this fixes).
+  const rowlessEntry =
+    ready &&
+    authenticated &&
+    !isCloudManagementPath &&
+    agentsQuery.data !== undefined &&
+    agentsQuery.data.length === 0;
+  const personalEntry = usePersonalEntry(rowlessEntry);
 
   // Unauthenticated visits may ride the cross-host SSO bridge instead of the
   // local login: when the domain-wide session marker says the auth origin
@@ -126,17 +140,24 @@ export function AppModeEntryRoute({
 
   const route = decideAppModeRoute(agentsQuery.data);
   // Account/billing/admin management remains reachable before an org creates
-  // its first agent. Ordinary product entry needs both an agent and a durable
-  // Cloud binding; /join reuses an existing agent or provisions the first one
-  // and persists that binding before returning to chat.
+  // its first agent. With sandbox rows, ordinary product entry needs a durable
+  // Cloud binding; /join reuses an existing agent and persists that binding
+  // before returning to chat. With ZERO rows, the account's rowless personal
+  // Eliza is the runtime: entry resolves its authoritative binding here and
+  // only falls back to /join (which owns the retryable error UI) when the
+  // identity cannot be resolved.
   if (!isCloudManagementPath) {
-    if (
-      route.kind === "create" ||
-      loadPersistedActiveServer()?.kind !== "cloud"
-    ) {
-      return (
-        <Navigate to={route.kind === "create" ? route.to : "/join"} replace />
-      );
+    if (route.kind === "create") {
+      if (personalEntry.isError) {
+        return <Navigate to="/join" replace />;
+      }
+      if (personalEntry.data === undefined) {
+        return <EntryNotice label="Opening your Eliza" />;
+      }
+      return <>{appElement}</>;
+    }
+    if (loadPersistedActiveServer()?.kind !== "cloud") {
+      return <Navigate to="/join" replace />;
     }
   }
   return <>{appElement}</>;

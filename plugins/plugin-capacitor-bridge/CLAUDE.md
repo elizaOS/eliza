@@ -112,11 +112,24 @@ bun run --cwd plugins/plugin-capacitor-bridge clean           # rm -rf dist .tur
 | `TEXT_EMBEDDING_DIMENSIONS` | Fallback for embedding dimension override. |
 
 ### Timeouts
+All timeout vars accept a canonical decimal integer from 1 through 2147483647 (the max
+`setTimeout` delay); anything else (blank/unset falls back to the default; malformed or
+out-of-range throws `ElizaError` with `code: "INVALID_DEVICE_BRIDGE_TIMEOUT"`).
+
+The three device settings are resolved once in `attachToHttpServer`, before any transport
+or device state is created, and cached on the `MobileDeviceBridge` instance — a malformed
+value fails at attach time, not on the first live RPC. The two bionic settings are module-level
+(no per-instance attach hook) and resolved lazily on first use, then cached — a malformed
+value fails on the first bionic call, not at import time regardless of whether the bridge
+is even enabled.
+
 | Var | Default | Description |
 |---|---|---|
 | `ELIZA_DEVICE_LOAD_TIMEOUT_MS` | 600000 | ms to wait for model load / formatChat. |
 | `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | 600000 | ms to wait for generate / unload. |
 | `ELIZA_DEVICE_EMBED_TIMEOUT_MS` | 600000 | ms to wait for embed. |
+| `ELIZA_BIONIC_REQUEST_TIMEOUT_MS` | 300000 | ms to wait for a bionic-host generate/generateStream call. |
+| `ELIZA_BIONIC_PROBE_TIMEOUT_MS` | 2000 | ms to wait for a bionic host socket probe. |
 
 ### Android-specific
 | Var | Description |

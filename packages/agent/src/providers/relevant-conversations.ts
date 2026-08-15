@@ -121,9 +121,6 @@ export const relevantConversationsProvider: Provider = {
   contextGate: { anyOf: ["memory", "messaging"] },
   cacheStable: false,
   cacheScope: "turn",
-  // Semantic recall is supplemental and can include a remote embed/search.
-  timeoutMs: 10_000,
-  timeoutMode: "degrade",
   alwaysInResponseState: true,
   roleGate: { minRole: "USER" },
 

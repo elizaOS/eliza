@@ -1394,6 +1394,62 @@
       "when": 1786910400000,
       "tag": "0199_personal_account_convergence_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 199,
+      "version": "7",
+      "when": 1786996800000,
+      "tag": "0200_agent_backup_attempt_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 200,
+      "version": "7",
+      "when": 1787083200000,
+      "tag": "0201_reversible_agent_deletion_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1787169600000,
+      "tag": "0202_shared_scheduled_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 202,
+      "version": "7",
+      "when": 1787256000000,
+      "tag": "0203_shared_scheduled_task_tenant_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 203,
+      "version": "7",
+      "when": 1787342400000,
+      "tag": "0204_retain_pre_delete_backup",
+      "breakpoints": true
+    },
+    {
+      "idx": 204,
+      "version": "7",
+      "when": 1787428800000,
+      "tag": "0205_identity_links_transport_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1787515200000,
+      "tag": "0206_shared_todos",
+      "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1787601600000,
+      "tag": "0207_todo_mutation_ledger",
+      "breakpoints": true
     }
   ]
 }

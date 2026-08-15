@@ -27,6 +27,10 @@
  *     order with the conversation id preserved,
  *   - the rowless Shared archive remains intact after the switch, while every
  *     new phone/app turn resolves to the Dedicated runtime instead of splitting.
+ *   - one canonical Shared reminder is imported, activated on Dedicated, and
+ *     retained on Shared only as a committed audit receipt.
+ *   - one canonical Shared Todo and its exactly-once mutation receipt are
+ *     digest-verified and materialized on Dedicated before the route flips.
  */
 
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
@@ -141,6 +145,81 @@ test.describe("shared→dedicated tier upgrade", () => {
       expect(sharedIdentity.json.data?.identity).toMatchObject({
         id: sharedAgentId,
         runtime: "shared",
+      });
+
+      const { createSharedScheduledTaskRunner, executeSharedSchedulingSql } =
+        await import(
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-scheduling"
+        );
+      const sharedTaskRunner = createSharedScheduledTaskRunner(sharedAgentId, {
+        dispatch: async () => undefined,
+      });
+      const scheduledReminder = await sharedTaskRunner.schedule({
+        kind: "reminder",
+        promptInstructions: "call mom",
+        trigger: { kind: "once", atIso: "2026-08-16T17:00:00.000Z" },
+        priority: "medium",
+        respectsGlobalPause: true,
+        source: "user_chat",
+        createdBy: seededUser.userId,
+        ownerVisible: true,
+        executionProfile: "notify-only",
+        metadata: {
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            chatId: "919191",
+          },
+        },
+      });
+      expect(await sharedTaskRunner.list()).toMatchObject([
+        { taskId: scheduledReminder.taskId, promptInstructions: "call mom" },
+      ]);
+      const {
+        createSharedTodoStore,
+        readSharedTodoCutoverState,
+        sharedTodoStorageScope,
+      } = await import(
+        "@elizaos/cloud-shared/lib/services/shared-runtime/shared-todos"
+      );
+      const sharedTodoStore = createSharedTodoStore();
+      const sharedTodoScope = sharedTodoStorageScope({
+        sourceAgentId: sharedAgentId,
+        ownerId: seededUser.userId,
+      });
+      const sharedTodoMutation = await sharedTodoStore.applyMutation({
+        scope: sharedTodoScope,
+        idempotencyKey: "personal-upgrade-todo:create",
+        mutation: {
+          action: "create",
+          input: {
+            roomId: "a5150000-0000-4000-8000-000000000001",
+            content: "Call mom before Friday",
+            activeForm: "Calling mom before Friday",
+            status: "pending",
+            metadata: { source: "shared-upgrade-e2e" },
+          },
+        },
+      });
+      if (sharedTodoMutation.result.action !== "create") {
+        throw new Error("Shared Todo setup did not return its created row");
+      }
+      const sharedTodo = sharedTodoMutation.result.todo;
+      expect(
+        await readSharedTodoCutoverState({
+          sourceAgentId: sharedAgentId,
+          ownerId: seededUser.userId,
+        }),
+      ).toMatchObject({
+        todos: [{ id: sharedTodo.id, content: sharedTodo.content }],
+        mutations: [
+          {
+            mutationId: sharedTodoMutation.mutationId,
+            idempotencyKey: "personal-upgrade-todo:create",
+            operation: "create",
+            applied: true,
+          },
+        ],
       });
 
       // ── 3. Runway credit gate: refused BELOW 3 days of hosting. ────────
@@ -266,6 +345,8 @@ test.describe("shared→dedicated tier upgrade", () => {
 
       // ── 8. Chat continuity: the console's handoff module, for real. ─────
       let switchedBase: string | null = null;
+      let cutoverImportedTodos: number | null = null;
+      let cutoverImportedTodoMutations: number | null = null;
       const baseClient = new ElizaClient(cloudApiBase, authToken);
       const outcome = await runSharedToDedicatedUpgradeHandoff({
         sharedAgentId,
@@ -285,6 +366,8 @@ test.describe("shared→dedicated tier upgrade", () => {
                 runtime?: "dedicated";
                 apiBase?: string;
                 importedMessages?: number;
+                importedTodos?: number;
+                importedTodoMutations?: number;
               };
             }>(
               "POST",
@@ -302,10 +385,14 @@ test.describe("shared→dedicated tier upgrade", () => {
               data.personalElizaId !== options.personalElizaId ||
               data.activeAgentId !== options.dedicatedAgentId ||
               !data.apiBase ||
-              typeof data.importedMessages !== "number"
+              typeof data.importedMessages !== "number" ||
+              typeof data.importedTodos !== "number" ||
+              typeof data.importedTodoMutations !== "number"
             ) {
               throw new Error("cutover returned an invalid Dedicated identity");
             }
+            cutoverImportedTodos = data.importedTodos;
+            cutoverImportedTodoMutations = data.importedTodoMutations;
             return {
               runtime: data.runtime,
               apiBase: data.apiBase,
@@ -329,6 +416,14 @@ test.describe("shared→dedicated tier upgrade", () => {
         outcome.imported,
         "every shared turn was imported into the dedicated agent",
       ).toBe(4);
+      expect(
+        cutoverImportedTodos,
+        "the exact Shared Todo was confirmed before the route flip",
+      ).toBe(1);
+      expect(
+        cutoverImportedTodoMutations,
+        "the exact Shared Todo mutation receipt was confirmed before the route flip",
+      ).toBe(1);
       expect(switchedBase, "switched onto the dedicated base").toBeTruthy();
       expect(switchedBase).not.toContain(
         `/api/v1/eliza/agents/${sharedAgentId}`,
@@ -345,6 +440,73 @@ test.describe("shared→dedicated tier upgrade", () => {
       ).toEqual(["user", "assistant", "user", "assistant"]);
       expect(dedicatedTranscript[0]?.text).toBe(FIRST);
       expect(dedicatedTranscript[2]?.text).toBe(SECOND);
+      expect(
+        await executeSharedSchedulingSql(
+          `SELECT transfer_status FROM app_scheduling.life_scheduled_tasks WHERE id = '${scheduledReminder.taskId}'`,
+        ),
+        "Shared retains a committed audit receipt after Dedicated activation",
+      ).toMatchObject([{ transfer_status: "committed" }]);
+      expect(
+        stack.mocks.controlPlane.store.getScheduledTasksByAgent(
+          dedicatedAgentId,
+          sharedAgentId,
+        ),
+        "the exact Shared reminder is imported and activated only after cutover",
+      ).toMatchObject([
+        {
+          task: {
+            taskId: scheduledReminder.taskId,
+            promptInstructions: "call mom",
+          },
+          sourceAgentId: sharedAgentId,
+          cutoverToken: `personal-cutover:${sharedAgentId}:${dedicatedAgentId}`,
+          active: true,
+        },
+      ]);
+      expect(
+        stack.mocks.controlPlane.store.getTodosByAgent(
+          dedicatedAgentId,
+          sharedAgentId,
+        ),
+        "the canonical Shared Todo is materialized on Dedicated",
+      ).toMatchObject([
+        {
+          sourceId: sharedTodo.id,
+          content: "Call mom before Friday",
+          activeForm: "Calling mom before Friday",
+          metadata: { source: "shared-upgrade-e2e" },
+        },
+      ]);
+      expect(
+        stack.mocks.controlPlane.store.getTodoMutationsByAgent(
+          dedicatedAgentId,
+          sharedAgentId,
+        ),
+        "the exact replay authority is materialized with the Todo",
+      ).toMatchObject([
+        {
+          mutationId: sharedTodoMutation.mutationId,
+          idempotencyKey: "personal-upgrade-todo:create",
+          operation: "create",
+          applied: true,
+          committedAt: sharedTodoMutation.committedAt.toISOString(),
+        },
+      ]);
+      expect(
+        await readSharedTodoCutoverState({
+          sourceAgentId: sharedAgentId,
+          ownerId: seededUser.userId,
+        }),
+        "Shared retains the source Todo and receipt archive after the confirmed switch",
+      ).toMatchObject({
+        todos: [{ id: sharedTodo.id }],
+        mutations: [
+          {
+            mutationId: sharedTodoMutation.mutationId,
+            idempotencyKey: "personal-upgrade-todo:create",
+          },
+        ],
+      });
 
       // ── 9. Shared stays archived; every new turn resolves Dedicated. ────
       expect(

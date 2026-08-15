@@ -5,11 +5,13 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   index,
   jsonb,
   pgSchema,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -46,5 +48,35 @@ export const todosTable = todosSchema.table(
   }),
 );
 
+export const todoMutationsTable = todosSchema.table(
+  "todo_mutations",
+  {
+    agentId: uuid("agent_id").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    mutationId: uuid("mutation_id").primaryKey().defaultRandom(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    operation: text("operation").notNull(),
+    requestDigest: text("request_digest").notNull(),
+    resultJson: jsonb("result_json").notNull(),
+    applied: boolean("applied").notNull(),
+    committedAt: timestamp("committed_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  },
+  (table) => ({
+    scopeKeyUnique: unique(
+      "todo_mutations_agent_entity_idempotency_key_unique",
+    ).on(table.agentId, table.entityId, table.idempotencyKey),
+    scopeCommitIdx: index("idx_todo_mutations_scope_commit").on(
+      table.agentId,
+      table.entityId,
+      table.committedAt,
+      table.mutationId,
+    ),
+  }),
+);
+
 export type TodoRow = typeof todosTable.$inferSelect;
 export type TodoInsert = typeof todosTable.$inferInsert;
+export type TodoMutationRow = typeof todoMutationsTable.$inferSelect;
+export type TodoMutationInsert = typeof todoMutationsTable.$inferInsert;

@@ -1,21 +1,6 @@
 name: Deploy iOS Association
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "packages/homepage/edge/apple-app-site-association.json"
-      - "packages/homepage/edge/apple-app-site-association.ts"
-      - "packages/homepage/edge/apple-app-site-association.test.ts"
-      - "packages/homepage/edge/text-modules.d.ts"
-      - "packages/homepage/edge/tsconfig.json"
-      - "packages/homepage/public/.well-known/apple-app-site-association"
-      - "packages/homepage/scripts/verify-aasa-response.mjs"
-      - "packages/homepage/wrangler-aasa.toml"
-      - "packages/homepage/package.json"
-      - "packages/app-core/platforms/ios/App/App.xcodeproj/project.pbxproj"
-      - "packages/app-core/platforms/ios/App/App/App.entitlements"
-      - ".github/workflows/deploy-aasa.yml"
   workflow_dispatch:
     inputs:
       ref:

@@ -98,6 +98,25 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
   return svc && typeof svc.notify === "function" ? svc : null;
 }
 
+export function triggerNotificationsEnabled(runtime: IAgentRuntime): boolean {
+  const value = runtime.getSetting("ELIZA_DEBUG_TRIGGER_NOTIFICATIONS");
+  return value === true || value === "true" || value === "1";
+}
+
+/**
+ * User-facing creation paths persist `notifyOnOutcome`; internal, migrated, and
+ * legacy triggers omit it and therefore stay off the notification rail. The
+ * diagnostic override is deliberately explicit and per-runtime.
+ */
+function shouldNotifyForTriggerOutcome(
+  runtime: IAgentRuntime,
+  trigger: TriggerConfig,
+): boolean {
+  return (
+    trigger.notifyOnOutcome === true || triggerNotificationsEnabled(runtime)
+  );
+}
+
 const metricsByAgent = new Map<UUID, TriggerMetricsState>();
 
 function getMetrics(agentId: UUID): TriggerMetricsState {
@@ -461,6 +480,37 @@ async function dispatchPrompt(
       userName: "trigger",
       source: room?.source ?? MESSAGE_SOURCE_TRIGGER_PROMPT,
     });
+    // Self-certifying provenance for the owner-exclusive disclosure census
+    // (#19999): the synthetic author stays a durable room participant after
+    // this turn, so the census must be able to verify — not trust — that it is
+    // runtime-made. The marker holds the triggerId whose hash IS this entity's
+    // id; connector-minted entities derive their ids differently and cannot
+    // reproduce the relationship.
+    try {
+      const authorEntity = await runtime.getEntityById(entityId);
+      const marker = (
+        authorEntity?.metadata as
+          | { triggerEntity?: { triggerId?: unknown } }
+          | undefined
+      )?.triggerEntity;
+      if (authorEntity && marker?.triggerId !== trigger.triggerId) {
+        await runtime.updateEntity({
+          ...authorEntity,
+          metadata: {
+            ...authorEntity.metadata,
+            triggerEntity: { triggerId: trigger.triggerId },
+          },
+        });
+      }
+    } catch (err) {
+      // error-policy:J7 a failed marker write must not block the fire; the
+      // census then keeps this participant and the disclosure gate stays
+      // strict until a later fire re-stamps it.
+      runtime.reportError("TriggerRuntime.entityProvenanceMarker", err, {
+        triggerId: trigger.triggerId,
+        entityId,
+      });
+    }
     const releaseInternalActor = registerRuntimeManagedInternalActor(
       runtime,
       entityId,
@@ -603,31 +653,33 @@ export async function executeTriggerTask(
     // Scheduled automations run without the user in the chat loop, so a
     // dispatch failure is otherwise invisible. Surface it on the notification
     // rail (fire-and-forget; never let a notify failure mask the trigger error).
-    void getNotifier(runtime)
-      ?.notify({
-        title: workflowGone
-          ? `Automation "${trigger.displayName}" disabled`
-          : `Automation "${trigger.displayName}" failed`,
-        body: workflowGone
-          ? "Its workflow no longer exists, so the schedule was removed. Recreate the automation if you still need it."
-          : errorMessage.slice(0, 200),
-        category: "workflow",
-        priority: "high",
-        source: "trigger",
-        groupKey: `trigger:${task.id ?? trigger.triggerId}`,
-        data: {
-          taskId: task.id,
-          triggerId: trigger.triggerId,
-          error: errorMessage,
-        },
-      })
-      .catch((error) => {
-        // error-policy:J7 notification diagnostics must not mask dispatch failure.
-        runtime.reportError("TriggerRuntime.notifyFailure", error, {
-          taskId: task.id,
-          triggerId: trigger.triggerId,
+    if (shouldNotifyForTriggerOutcome(runtime, trigger)) {
+      void getNotifier(runtime)
+        ?.notify({
+          title: workflowGone
+            ? `Automation "${trigger.displayName}" disabled`
+            : `Automation "${trigger.displayName}" failed`,
+          body: workflowGone
+            ? "Its workflow no longer exists, so the schedule was removed. Recreate the automation if you still need it."
+            : errorMessage.slice(0, 200),
+          category: "workflow",
+          priority: "high",
+          source: "trigger",
+          groupKey: `trigger:${task.id ?? trigger.triggerId}`,
+          data: {
+            taskId: task.id,
+            triggerId: trigger.triggerId,
+            error: errorMessage,
+          },
+        })
+        .catch((error) => {
+          // error-policy:J7 notification diagnostics must not mask dispatch failure.
+          runtime.reportError("TriggerRuntime.notifyFailure", error, {
+            taskId: task.id,
+            triggerId: trigger.triggerId,
+          });
         });
-      });
+    }
   }
 
   if (status === "success") {
@@ -648,26 +700,28 @@ export async function executeTriggerTask(
     // can see the agent finished the task. Grouped per trigger so a frequently
     // scheduled automation updates ONE rail entry instead of spamming, and
     // fire-and-forget so a notify failure never masks the successful run.
-    void getNotifier(runtime)
-      ?.notify({
-        title: `Automation "${trigger.displayName}" completed`,
-        category: "workflow",
-        priority: "low",
-        source: "trigger",
-        groupKey: `trigger:${task.id ?? trigger.triggerId}`,
-        data: {
-          taskId: task.id,
-          triggerId: trigger.triggerId,
-          workflowExecutionId,
-        },
-      })
-      .catch((error) => {
-        // error-policy:J7 notification diagnostics must not change run success.
-        runtime.reportError("TriggerRuntime.notifySuccess", error, {
-          taskId: task.id,
-          triggerId: trigger.triggerId,
+    if (shouldNotifyForTriggerOutcome(runtime, trigger)) {
+      void getNotifier(runtime)
+        ?.notify({
+          title: `Automation "${trigger.displayName}" completed`,
+          category: "workflow",
+          priority: "low",
+          source: "trigger",
+          groupKey: `trigger:${task.id ?? trigger.triggerId}`,
+          data: {
+            taskId: task.id,
+            triggerId: trigger.triggerId,
+            workflowExecutionId,
+          },
+        })
+        .catch((error) => {
+          // error-policy:J7 notification diagnostics must not change run success.
+          runtime.reportError("TriggerRuntime.notifySuccess", error, {
+            taskId: task.id,
+            triggerId: trigger.triggerId,
+          });
         });
-      });
+    }
   }
 
   const finishedAt = Date.now();
@@ -707,7 +761,18 @@ export async function executeTriggerTask(
   });
 
   let metadataToPersist: TriggerTaskMetadata;
-  if (!nextMetadata) {
+  if (!nextMetadata && !updatedTrigger.enabled) {
+    metadataToPersist = {
+      ...existingMetadata,
+      updatedAt: finishedAt,
+      updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
+      trigger: {
+        ...updatedTrigger,
+        nextRunAtMs: finishedAt + DISABLED_TRIGGER_INTERVAL_MS,
+      },
+      triggerRuns: appendRunRecord(existingMetadata.triggerRuns, runRecord),
+    };
+  } else if (!nextMetadata) {
     metadataToPersist = {
       ...existingMetadata,
       updatedAt: finishedAt,

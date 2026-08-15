@@ -48,7 +48,7 @@ const STOP_WORDS = new Set([
 
 export interface SharedRuntimeHistoryMessageLike {
   id?: string;
-  role: "user" | "assistant";
+  role: "system" | "user" | "assistant";
   content: string;
   createdAt?: number;
   interrupted?: boolean;
@@ -58,7 +58,8 @@ function isPersistedMessage(value: unknown): value is SharedRuntimeHistoryMessag
   return (
     Boolean(value) &&
     typeof value === "object" &&
-    ((value as { role?: unknown }).role === "user" ||
+    ((value as { role?: unknown }).role === "system" ||
+      (value as { role?: unknown }).role === "user" ||
       (value as { role?: unknown }).role === "assistant") &&
     typeof (value as { content?: unknown }).content === "string" &&
     (value as { content: string }).content.trim().length > 0

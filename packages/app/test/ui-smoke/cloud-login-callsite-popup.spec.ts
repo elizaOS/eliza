@@ -102,6 +102,28 @@ async function bootCloudSettings(
 ): Promise<void> {
   await page.setViewportSize(size);
   await seedAppStorage(page);
+  // Since 630ea3396a SettingsView hides `cloudOnly` sections unless the boot
+  // resolves a managed Cloud runtime, and the shared seed pins a LOCAL active
+  // server. This spec exercises the Cloud group's connect CTA, so persist a
+  // cloud-kind server (same-origin apiBase keeps the mocked surface serving);
+  // runs after seedAppStorage so this key wins over the local default.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem(
+        "elizaos:active-server",
+        JSON.stringify({
+          id: "cloud:personal:11111111-1111-5111-8111-111111111111",
+          kind: "cloud",
+          label: "Eliza Cloud",
+          apiBase: location.origin,
+          cloudRuntimeAgentId: "22222222-2222-4222-8222-222222222222",
+          cloudRuntime: "dedicated",
+        }),
+      );
+    } catch {
+      // Sandboxed frames can deny storage; the shell frame is what matters.
+    }
+  });
   await installDefaultAppRoutes(page);
   await installCloudLoginRoutes(page);
   await openAppPath(page, "/settings");

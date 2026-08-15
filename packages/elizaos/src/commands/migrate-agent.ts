@@ -93,7 +93,7 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
 
   const firewall = opts.noFirewall ? false : (opts.firewall ?? true);
   const memoryDays = opts.memoryDays ? Number(opts.memoryDays) : 14;
-  if (Number.isNaN(memoryDays) || memoryDays < 0) {
+  if (!Number.isFinite(memoryDays) || memoryDays < 0) {
     fail("--memory-days must be a non-negative number.");
   }
 

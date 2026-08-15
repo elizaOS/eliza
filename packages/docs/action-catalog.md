@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 11
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 166
+- **Registered runtime actions:** 168
 
 ## Actions
 
@@ -440,6 +440,7 @@ list. Regenerate this document after changing the registered action surface.
 - `MEMORY` — `packages/agent/src/actions/memories.ts`
 - `MESSAGE` — `packages/core/src/features/advanced-capabilities/actions/message.ts`, `packages/core/src/features/messaging/triage/actions/draftFollowup.ts`, `packages/core/src/features/messaging/triage/actions/draftReply.ts`, `packages/core/src/features/messaging/triage/actions/listInbox.ts`, `packages/core/src/features/messaging/triage/actions/manageMessage.ts`, `packages/core/src/features/messaging/triage/actions/respondToMessage.ts`, `packages/core/src/features/messaging/triage/actions/scheduleDraftSend.ts`, `packages/core/src/features/messaging/triage/actions/searchMessages.ts`, `packages/core/src/features/messaging/triage/actions/sendDraft.ts`, `packages/core/src/features/messaging/triage/actions/triageMessages.ts`
 - `MODEL_SWITCH` — `plugins/plugin-app-control/src/actions/model-switch.ts`
+- `NOTES` — `plugins/plugin-notes/src/action.ts`
 - `NOTIFY` — `packages/agent/src/actions/notify.ts`
 - `ORCHESTRATOR_STATUS_COMMAND` — `plugins/plugin-task-coordinator/src/orchestrator-command.ts`
 - `OWNER_ALARMS` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
@@ -465,6 +466,7 @@ list. Regenerate this document after changing the registered action surface.
 - `PROXY_STATUS` — `plugins/plugin-anthropic-proxy/src/actions/proxy-status.action.ts`
 - `REDACT_TRANSCRIPT` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
 - `REGENERATE_APP_API_KEY` — `plugins/plugin-cloud-apps/src/actions/regenerate-app-api-key.ts`
+- `REMINDERS` — `plugins/plugin-scheduling/src/shared-reminders.ts`
 - `RESOLVE_REFERENT` — `plugins/plugin-personal-assistant/src/actions/resolve-referent.ts`
 - `RESOLVE_REQUEST` — `plugins/plugin-personal-assistant/src/actions/resolve-request.ts`
 - `RETRIEVE_CHILD_AGENT_RESULTS` — `packages/core/src/features/sub-agent-credentials/actions/retrieve-child-agent-results.ts`
@@ -509,7 +511,7 @@ list. Regenerate this document after changing the registered action surface.
 - `VOICE_CALL` — `plugins/plugin-personal-assistant/src/actions/voice-call.ts`
 - `WALLET` — `plugins/plugin-wallet/src/chains/wallet-action.ts`
 - `WEB_FETCH` — `plugins/plugin-coding-tools/src/actions/web-fetch.ts`
-- `WEB_SEARCH` — `plugins/plugin-coding-tools/src/actions/web-search.ts`
+- `WEB_SEARCH` — `plugins/plugin-coding-tools/src/actions/web-search.ts`, `plugins/plugin-web-search/src/edge.ts`
 - `WINDOW` — `plugins/plugin-computeruse/src/actions/window.ts`
 - `WITHDRAW_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/withdraw-app-earnings.ts`
 - `WORK_THREAD` — `plugins/plugin-personal-assistant/src/actions/work-thread.ts`

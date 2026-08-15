@@ -345,6 +345,11 @@ function hydrateInferenceAdmissionGate(
   return hydration;
 }
 
+/** Hydrate an organization's durable admission gate before an interactive turn. */
+export async function warmInferenceAdmissionGate(organizationId: string): Promise<void> {
+  await hydrateInferenceAdmissionGate(organizationId, gateStub(organizationId));
+}
+
 function scheduleGateHydration(
   organizationId: string,
   stub: RuntimeDurableObjectStub,

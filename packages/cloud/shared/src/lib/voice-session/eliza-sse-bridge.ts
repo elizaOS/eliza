@@ -89,6 +89,10 @@ export interface ElizaSseBridgeRequest {
   model: string;
   /** The authoritative user turn (from stt_final). */
   transcript: string;
+  /** Trusted in-process voice lifecycle turns may enter history as system events. */
+  messageRole?: "system";
+  /** Stable provider lifecycle id used by the room's durable replay ledger. */
+  clientMessageId?: string;
   /** Agent this session is scoped to (from the verified token claims). */
   agentId: string;
   /** Conversation this session writes into (from the verified token claims). */
@@ -193,7 +197,7 @@ export async function streamElizaConversation(
   onDelta: (text: string) => void,
 ): Promise<ElizaSseBridgeResult> {
   const fetchImpl = request.fetchImpl ?? fetch;
-  const clientMessageId = voiceClientMessageIdForTrace(request.traceId);
+  const clientMessageId = request.clientMessageId ?? voiceClientMessageIdForTrace(request.traceId);
   let response: Response;
   try {
     const endpoint = canonicalConversationStreamUrl(
@@ -223,6 +227,7 @@ export async function streamElizaConversation(
         text: request.transcript,
         clientMessageId,
         channelType: VOICE_CHANNEL_TYPE,
+        ...(request.messageRole ? { messageRole: request.messageRole } : {}),
         metadata: {
           clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
         },

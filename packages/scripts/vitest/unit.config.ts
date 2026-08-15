@@ -48,6 +48,17 @@ const unitAliasEntries: ModuleAlias[] = [
     localElizaCoreReplacement
       ? [
           {
+            // Keep the separately bundled public client entry ahead of the
+            // prefix-matching bare-core alias below.
+            find: /^@elizaos\/core\/client-public$/,
+            replacement: path.join(
+              path.dirname(localElizaCoreReplacement),
+              localElizaCoreReplacement.endsWith(".ts")
+                ? "client-public.ts"
+                : "client-public.js",
+            ),
+          },
+          {
             // Published-only CI disables the repo-local eliza checkout, so unit tests must fall back to the installed package entry in that mode.
             find: "@elizaos/core",
             replacement: localElizaCoreReplacement,

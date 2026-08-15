@@ -1,18 +1,11 @@
 /**
  * composeState purity guard: the default Stage-1 provider set must never
  * acquire a hidden LLM round-trip (`runtime.useModel`) or an external network
- * fetch during state composition — those belong to declared-`timeoutMs`
+ * fetch during state composition. Those belong in explicitly selected
  * providers or the action path, not the ambient compose that gates every
- * message turn's latency. Uses a real in-memory AgentRuntime with the REAL
- * basic + advanced capability provider bundles; `useModel` is patched to
- * throw and `globalThis.fetch` is stubbed to record, so any regression that
- * sneaks a model call or a fetch into a default provider fails loudly here.
- *
- * Note: dynamic/private providers (FACTS, RELATIONSHIPS, replyContext, ...)
- * are registered but deliberately NOT run by the default compose path — the
- * runtime filters `!private && !dynamic` when no include list is given. This
- * test locks the ambient set that runs on every turn; explicitly-included
- * dynamic providers own their own budgets via declared `timeoutMs`.
+ * message turn's latency. The real basic and advanced provider bundles run
+ * against an in-memory runtime while instrumented model and fetch boundaries
+ * make accidental remote work observable.
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
@@ -72,9 +65,8 @@ describe("composeState default-provider purity", () => {
 	it("runs the real Stage-1 bundle with zero useModel calls and zero external fetches", async () => {
 		const runtime = await makeRuntime();
 
-		// Any model call during compose is a latency regression by definition:
-		// record it AND throw so the offending provider degrades to empty and
-		// the counter below fails the test with the model type in the message.
+		// Any model call during ambient compose is a latency regression; throwing
+		// also prevents the test from accepting a fabricated provider result.
 		const modelCalls: string[] = [];
 		runtime.useModel = (async (modelType: unknown) => {
 			modelCalls.push(String(modelType));

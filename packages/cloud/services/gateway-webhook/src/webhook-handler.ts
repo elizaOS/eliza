@@ -28,6 +28,7 @@ const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
 const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
 const TELEGRAM_TYPING_REFRESH_MS = 4_000;
+const PERSONAL_SHARED_VOICE_TIMEOUT_MS = 90_000;
 
 class TelegramEgressAlreadyClaimedError extends Error {
   override readonly name = "TelegramEgressAlreadyClaimedError";
@@ -42,6 +43,12 @@ interface HandlerDeps {
   cloudBaseUrl: string;
   getAuthHeader: () => { Authorization: string };
   reacquireAuthHeader?: () => Promise<Record<string, string>>;
+}
+
+interface PersonalSharedDeliveryTiming {
+  cloudMs: number;
+  egressMs: number;
+  cloudServerTiming: string | null;
 }
 
 export async function handleWebhook(
@@ -283,7 +290,7 @@ async function processMessage(
   if (!explicitAgentId && isPersonalElizaTransport(adapter.platform)) {
     const stopTyping = beginTypingFeedback(adapter, config, event);
     try {
-      await sendPersonalSharedReply(
+      const timing = await sendPersonalSharedReply(
         adapter,
         config,
         event,
@@ -295,6 +302,9 @@ async function processMessage(
         project,
         platform: adapter.platform,
         messageId: event.messageId,
+        cloudMs: timing.cloudMs,
+        cloudServerTiming: timing.cloudServerTiming,
+        egressMs: timing.egressMs,
         totalMs: Date.now() - startedAt,
       });
     } finally {
@@ -565,9 +575,22 @@ async function sendPersonalSharedReply(
   deps: HandlerDeps,
   project: string,
   beforeEgress?: () => Promise<void>,
-): Promise<void> {
+): Promise<PersonalSharedDeliveryTiming> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
+  const voiceNote = event.voiceNote
+    ? await adapter.resolveVoiceNote?.(config, event)
+    : undefined;
+  if (event.voiceNote && !voiceNote) {
+    throw new PersonalSharedPreEgressError(
+      "connector cannot resolve the supplied voice note",
+    );
+  }
+  const cloudStartedAt = Date.now();
+  // Voice turns can spend most of the 120-second processing lease in STT + the
+  // model. Only a stale-auth retry is safe inline; provider/transport failures
+  // reopen the webhook for Telegram's durable retry instead of overlapping it.
+  const maxAttempts = voiceNote ? 2 : PERSONAL_SHARED_ATTEMPTS;
   const postMessage = (authHeader: Record<string, string>) =>
     fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
       method: "POST",
@@ -576,10 +599,13 @@ async function sendPersonalSharedReply(
         adapter.platform === "telegram"
           ? {
               platform: "telegram",
+              project,
+              chatId: event.chatId,
               telegramUserId: event.senderId,
               displayName: event.senderName,
               messageId: `telegram:${project}:${event.messageId}`,
-              message: event.text,
+              ...(event.text ? { message: event.text } : {}),
+              ...(voiceNote ? { voiceNote } : {}),
             }
           : {
               platform: adapter.platform,
@@ -588,16 +614,18 @@ async function sendPersonalSharedReply(
               message: event.text,
             },
       ),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(
+        voiceNote ? PERSONAL_SHARED_VOICE_TIMEOUT_MS : 30_000,
+      ),
     });
 
   let authHeader: Record<string, string> = getAuthHeader();
   let response: Response | null = null;
   let lastTransportError: unknown;
-  for (let attempt = 1; attempt <= PERSONAL_SHARED_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       response = await postMessage(authHeader);
-      if (response.status === 401 && attempt < PERSONAL_SHARED_ATTEMPTS) {
+      if (response.status === 401 && attempt < maxAttempts) {
         authHeader = await reauth();
         continue;
       }
@@ -606,13 +634,14 @@ async function sendPersonalSharedReply(
         response.status === 425 ||
         response.status === 429 ||
         response.status >= 500;
-      if (response.ok || !retryable || attempt === PERSONAL_SHARED_ATTEMPTS) {
+      if (response.ok || !retryable || attempt === maxAttempts) {
         break;
       }
+      if (voiceNote) break;
     } catch (error) {
       response = null;
       lastTransportError = error;
-      if (attempt === PERSONAL_SHARED_ATTEMPTS) break;
+      if (voiceNote || attempt === maxAttempts) break;
     }
     const retryAfterSeconds = Number.parseInt(
       response?.headers.get("Retry-After") ?? "",
@@ -644,7 +673,9 @@ async function sendPersonalSharedReply(
       `personal Shared chat failed (${response.status}) ${diagnostics}`,
     );
   }
+  const cloudServerTiming = response.headers.get("Server-Timing");
   const body: unknown = await response.json();
+  const cloudMs = Date.now() - cloudStartedAt;
   const reply =
     body && typeof body === "object" && "data" in body
       ? (body.data as { reply?: unknown } | null)?.reply
@@ -656,9 +687,17 @@ async function sendPersonalSharedReply(
   }
   // Empty is the agent's deliberate shouldRespond=no result. It is a
   // successful turn with no provider egress, not a malformed response.
-  if (reply.length === 0) return;
+  if (reply.length === 0) {
+    return { cloudMs, egressMs: 0, cloudServerTiming };
+  }
+  const egressStartedAt = Date.now();
   await beforeEgress?.();
   await adapter.sendReply(config, event, reply);
+  return {
+    cloudMs,
+    egressMs: Date.now() - egressStartedAt,
+    cloudServerTiming,
+  };
 }
 
 async function sendOnboardingReply(

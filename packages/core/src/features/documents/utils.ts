@@ -8,8 +8,6 @@
  */
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import * as mammoth from "mammoth";
-import { extractText } from "unpdf";
 import { v5 as uuidv5 } from "uuid";
 
 const PLAIN_TEXT_CONTENT_TYPES = [
@@ -48,6 +46,9 @@ export async function extractTextFromFileBuffer(
 		"application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 	) {
 		try {
+			// Loaded on use: mammoth is a CJS parser whose static import drags the
+			// whole docx toolchain into every consumer bundle (edge included).
+			const mammoth = await import("mammoth");
 			const result = await mammoth.extractRawText({ buffer: fileBuffer });
 			return result.value;
 		} catch (docxError) {
@@ -118,6 +119,9 @@ export async function convertPdfToTextFromBuffer(
 			),
 		);
 
+		// Loaded on use like mammoth above: unpdf's static import would pin the
+		// PDF toolchain into every consumer bundle (edge included).
+		const { extractText } = await import("unpdf");
 		const result = await extractText(uint8Array, {
 			mergePages: true,
 		});
@@ -304,68 +308,13 @@ export function isBinaryContentType(
 	return binaryExtensions.includes(fileExt);
 }
 
-const DOCUMENT_TITLE_MAX_LENGTH = 80;
-
-function truncateDocumentLabel(value: string): string {
-	return value.length > DOCUMENT_TITLE_MAX_LENGTH
-		? `${value.slice(0, DOCUMENT_TITLE_MAX_LENGTH - 1).trimEnd()}…`
-		: value;
-}
-
-export function stripDocumentFilenameExtension(filename: string): string {
-	const trimmed = filename.trim();
-	if (!trimmed) return "";
-
-	const lastDot = trimmed.lastIndexOf(".");
-	if (lastDot <= 0) return trimmed;
-	return trimmed.slice(0, lastDot);
-}
-
-export function deriveDocumentTitle(
-	content: string,
-	fallback = "Document note",
-): string {
-	const lines = content
-		.replace(/\r\n/g, "\n")
-		.split("\n")
-		.map((line) => line.trim())
-		.filter((line) => line.length > 0);
-
-	for (const line of lines) {
-		if (/^path:\s+/i.test(line)) continue;
-		const candidate = line
-			.replace(/^#+\s*/, "")
-			.replace(/^[-*]\s+/, "")
-			.replace(/^\d+[.)]\s+/, "")
-			.trim();
-		if (candidate.length > 0) {
-			return truncateDocumentLabel(candidate);
-		}
-	}
-
-	return fallback;
-}
-
-export function createDocumentNoteFilename(
-	title: string,
-	extension = "txt",
-): string {
-	const asciiTitle = Array.from(title.normalize("NFKD"))
-		.filter((character) => character.charCodeAt(0) <= 0x7f)
-		.join("");
-	const normalizedTitle = asciiTitle
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 64);
-
-	const basename =
-		normalizedTitle.length > 0 ? normalizedTitle : "document-note";
-	const normalizedExtension = extension.replace(/^\./, "").trim();
-	return normalizedExtension.length > 0
-		? `${basename}.${normalizedExtension}`
-		: basename;
-}
+// Pure naming helpers live in ./naming so light consumers can import them
+// without the parser graph; re-exported here for compatibility.
+export {
+	createDocumentNoteFilename,
+	deriveDocumentTitle,
+	stripDocumentFilenameExtension,
+} from "./naming.ts";
 
 export function isTextBackedDocumentContent(
 	contentType: string,

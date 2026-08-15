@@ -10,6 +10,12 @@ import { evaluateConnectorAccountPolicies } from "../connectors/account-manager"
 import { ElizaError } from "../errors";
 import { checkSenderRole } from "../roles";
 import {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticArgs,
+	projectToolDiagnosticValue,
+	type ToolDiagnosticTextRedactor,
+} from "../security/tool-diagnostics";
+import {
 	authorizeOwnerExclusiveDisclosure,
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
@@ -334,6 +340,50 @@ function runWithMessageTrajectoryContext<T>(
 	);
 }
 
+/**
+ * Resolve prompt-side redaction placeholders the model copied into tool args
+ * (matrix F16, tj-b6bf03e81193a2): settings values are redacted in prompts as
+ * `[REDACTED:<NAME>]`, the model faithfully reproduces the placeholder in an
+ * argument (`entityId: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]"`), and schema/UUID
+ * validation rejects it — every tool wanting the admin entity id fails.
+ *
+ * Deliberately narrow: only full-string placeholders whose setting name ends
+ * in `_ENTITY_ID` (non-credential identifiers) resolve, and only when the
+ * runtime setting exists and is UUID-shaped. Credential-class placeholders
+ * stay unresolved by design — substituting bearer secrets into tool args
+ * would hand them to any tool that echoes its inputs. The broader design
+ * (resolvable redaction aliases) is a flagged follow-up.
+ *
+ * The RECORDED tool call keeps the placeholder (this transforms only the
+ * executed-args copy), so resolved ids never enter trajectories.
+ */
+const REDACTED_ENTITY_REF = /^\[REDACTED:([A-Z0-9_]*_ENTITY_ID)\]$/;
+const UUID_SHAPE =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function resolveRedactedSettingRefs(
+	runtime: Pick<IAgentRuntime, "getSetting" | "logger">,
+	args: Record<string, unknown>,
+): Record<string, unknown> {
+	let changed = false;
+	const resolved: Record<string, unknown> = { ...args };
+	for (const [key, value] of Object.entries(args)) {
+		if (typeof value !== "string") continue;
+		const match = REDACTED_ENTITY_REF.exec(value);
+		if (!match?.[1]) continue;
+		const settingValue = runtime.getSetting(match[1]);
+		if (typeof settingValue === "string" && UUID_SHAPE.test(settingValue)) {
+			resolved[key] = settingValue;
+			changed = true;
+			runtime.logger?.debug?.(
+				{ src: "runtime:tool-args", argument: key, setting: match[1] },
+				"Resolved redaction placeholder in tool argument",
+			);
+		}
+	}
+	return changed ? resolved : args;
+}
+
 export async function executePlannedToolCall(
 	runtime: IAgentRuntime,
 	ctx: ExecutePlannedToolCallContext,
@@ -341,12 +391,17 @@ export async function executePlannedToolCall(
 	options: ExecutePlannedToolCallOptions = {},
 ): Promise<ActionResult> {
 	options.abortSignal?.throwIfAborted();
+	// Diagnostic projection for every copy of the arguments that leaves the
+	// execution path (streaming observers, lifecycle events, trajectories).
+	// The handler itself receives the exact validated values.
+	const redactDiagnosticText = composeToolDiagnosticRedactor(runtime);
 	const action = (options.actions ?? runtime.actions).find(
 		(candidate) => candidate.name === toolCall.name,
 	);
 	if (!action) {
 		return emitToolResult(
 			toolCall,
+			redactDiagnosticText,
 			failureResult(toolCall.name, `Action not found: ${toolCall.name}`),
 		);
 	}
@@ -354,7 +409,11 @@ export async function executePlannedToolCall(
 	const executorCtx = await withResolvedUserRoles(runtime, ctx);
 	const gateFailure = actionGateFailure(action, executorCtx);
 	if (gateFailure) {
-		return emitToolResult(toolCall, failureResult(action.name, gateFailure));
+		return emitToolResult(
+			toolCall,
+			redactDiagnosticText,
+			failureResult(action.name, gateFailure),
+		);
 	}
 	if (action.disclosureGate?.require === "owner_exclusive") {
 		const disclosure = await authorizeOwnerExclusiveDisclosure(
@@ -364,6 +423,7 @@ export async function executePlannedToolCall(
 		if (!disclosure.allowed) {
 			return emitToolResult(
 				toolCall,
+				redactDiagnosticText,
 				failureResult(
 					action.name,
 					`Owner-private disclosure denied: ${disclosure.reason}`,
@@ -383,7 +443,10 @@ export async function executePlannedToolCall(
 			dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
 		),
 	);
-	const validation = validateToolArgs(action, argsForValidation);
+	const validation = validateToolArgs(
+		action,
+		resolveRedactedSettingRefs(runtime, argsForValidation),
+	);
 	if (!validation.valid) {
 		// The planner correlates a corrected retry with this failed operation by
 		// removing only arguments the schema rejected. Keeping this structural
@@ -392,6 +455,7 @@ export async function executePlannedToolCall(
 		const invalidParameterNames = validation.invalidParameterNames ?? [];
 		return emitToolResult(
 			toolCall,
+			redactDiagnosticText,
 			failureResult(
 				action.name,
 				validation.errors.join("; ") ||
@@ -442,12 +506,14 @@ export async function executePlannedToolCall(
 			// planner-visible failed tool result with the original error attached.
 			return emitToolResult(
 				toolCall,
+				redactDiagnosticText,
 				failureResult(action.name, stringifyError(error), { error }),
 			);
 		}
 		if (!valid) {
 			return emitToolResult(
 				toolCall,
+				redactDiagnosticText,
 				failureResult(
 					action.name,
 					`Action ${action.name} is not available for the current state`,
@@ -467,6 +533,7 @@ export async function executePlannedToolCall(
 	if (!accountPolicy.allowed) {
 		return emitToolResult(
 			toolCall,
+			redactDiagnosticText,
 			failureResult(
 				action.name,
 				accountPolicy.reason ??
@@ -599,6 +666,9 @@ export async function executePlannedToolCall(
 						},
 					}),
 				{
+					// Raw here by design: completeActionTrajectoryStep owns the
+					// diagnostic projection for every settlement, so the handler-adjacent
+					// copy stays exact and the egress copy is projected once.
 					parameters: isContentRecord(validation.args) ? validation.args : {},
 					projectResult: (result) =>
 						projectSettledResultForObserver(action, result),
@@ -633,16 +703,21 @@ export async function executePlannedToolCall(
 				roomId,
 				world: worldId,
 				content: {
-					text: resultForEvent.text ?? `Action ${action.name} completed`,
+					text: redactDiagnosticText(
+						resultForEvent.text ?? `Action ${action.name} completed`,
+					),
 					actions: [action.name],
 					actionStatus: resultForEvent.success ? "completed" : "failed",
-					actionResult: actionResultToContentRecord(resultForEvent, {
-						suppressData: suppressActionResult,
-					}),
+					actionResult: projectToolDiagnosticValue(
+						actionResultToContentRecord(resultForEvent, {
+							suppressData: suppressActionResult,
+						}),
+						redactDiagnosticText,
+					) as Record<string, ContentValue>,
 					source: executorCtx.message.content.source,
 					error:
 						typeof resultForEvent.error === "string"
-							? resultForEvent.error
+							? redactDiagnosticText(resultForEvent.error)
 							: undefined,
 				},
 			})
@@ -676,13 +751,14 @@ export async function executePlannedToolCall(
 			});
 		}
 	}
-	return emitToolResult(toolCall, resultForEvent, {
+	return emitToolResult(toolCall, redactDiagnosticText, resultForEvent, {
 		suppressData: suppressActionResult,
 	});
 }
 
 async function emitToolResult(
 	toolCall: PlannerToolCall | PlannedToolCall,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
 	result: ActionResult,
 	options: { suppressData?: boolean } = {},
 ): Promise<ActionResult> {
@@ -691,8 +767,12 @@ async function emitToolResult(
 	const streamingToolCall = plannedToolCallToStreamingToolCall(
 		toolCall,
 		status,
+		redactDiagnosticText,
 	);
-	streamingToolCall.result = actionResultToStreamingResult(result, options);
+	streamingToolCall.result = projectToolDiagnosticValue(
+		actionResultToStreamingResult(result, options),
+		redactDiagnosticText,
+	) as ToolCall["result"];
 	await emitStreamingHook(streamingContext, "onToolResult", {
 		toolCall: streamingToolCall,
 		toolCallId: streamingToolCall.id,
@@ -756,11 +836,18 @@ async function resolveToolCallUserRoles(
 function plannedToolCallToStreamingToolCall(
 	toolCall: PlannerToolCall | PlannedToolCall,
 	status: "completed" | "failed",
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
 ): ToolCall {
+	// The raw call id/name survive for correlation with the pending-phase
+	// stream event; argument values are projected because stream observers are
+	// a diagnostic surface, not the execution path.
 	return {
 		id: toolCall.id ?? toolCall.name,
 		name: toolCall.name,
-		arguments: normalizeToolArgs(toolCall) as ToolCall["arguments"],
+		arguments: (projectToolDiagnosticArgs(
+			normalizeToolArgs(toolCall),
+			redactDiagnosticText,
+		) ?? {}) as ToolCall["arguments"],
 		status,
 	};
 }

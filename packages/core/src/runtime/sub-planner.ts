@@ -16,6 +16,7 @@ import type { Action, ActionResult, IAgentRuntime } from "../types";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { JSONSchema, ToolDefinition } from "../types/model";
 import { canActionRun } from "./action-gate";
+import { hashString, stableJsonStringify } from "./context-hash";
 import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
@@ -165,16 +166,8 @@ export type SubPlannerExecute = (
 ) => Promise<ActionResult> | ActionResult;
 
 export function subPlannerCallDigest(toolCall: PlannerToolCall): string {
-	const canonical = JSON.stringify(toolCall.params ?? {}, (_key, value) =>
-		value && typeof value === "object" && !Array.isArray(value)
-			? Object.fromEntries(
-					Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-						a.localeCompare(b),
-					),
-				)
-			: value,
-	);
-	return `${normalizeSubPlannerActionIdentifier(toolCall.name)}|${canonical}`;
+	const canonical = stableJsonStringify(toolCall.params ?? {});
+	return `${normalizeSubPlannerActionIdentifier(toolCall.name)}|${hashString(canonical)}`;
 }
 
 function priorNonRetryableSubstep(
@@ -369,6 +362,7 @@ export async function runSubPlanner(
 					resolvedChildAction,
 					result,
 					toolCall.params,
+					params.runtime,
 				),
 			});
 		},

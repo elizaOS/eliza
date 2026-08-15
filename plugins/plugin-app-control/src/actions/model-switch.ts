@@ -20,6 +20,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	State,
+	UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
@@ -53,6 +54,31 @@ export interface ModelSwitchActionDeps {
 }
 
 const REQUEST_TIMEOUT_MS = 150_000;
+export const MODEL_SWITCH_TARGET_CHOICE_TAG = "MODEL_SWITCH_TARGET_CHOICE";
+const AWAITING_CHOICE_TAG = "AWAITING_CHOICE";
+const modelSwitchAgentOperations = new Map<UUID, Promise<void>>();
+
+async function withModelSwitchAgentLock<T>(
+	runtime: IAgentRuntime,
+	operation: () => Promise<T>,
+): Promise<T> {
+	const key = runtime.agentId;
+	const previous = modelSwitchAgentOperations.get(key);
+	let release: () => void = () => undefined;
+	const current = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	modelSwitchAgentOperations.set(key, current);
+	if (previous) await previous;
+	try {
+		return await operation();
+	} finally {
+		release();
+		if (modelSwitchAgentOperations.get(key) === current) {
+			modelSwitchAgentOperations.delete(key);
+		}
+	}
+}
 
 async function defaultSwitchModel(request: {
 	target: ModelSwitchTarget;
@@ -108,7 +134,46 @@ const SWITCH_VERB_RE = /\b(switch|use|change|move|go|run|swap)\b/i;
 // satisfy the noun requirement without the word "model".
 const MODEL_NOUN_RE =
 	/\b(model|inference|llm|eliza[\s-]?1|gemma|eliza\s?cloud|on[\s-]?device)\b/i;
-const MODEL_ID_RE = /\beliza-1-[a-z0-9-]+\b/i;
+const MODEL_ID_RE = /\b[a-z][a-z0-9]*(?:-[a-z0-9]+){2,}\b/i;
+
+type ParsedModelSwitchIntent =
+	| { kind: "request"; request: { target: ModelSwitchTarget; model?: string } }
+	| { kind: "needs-target" };
+
+function parseModelSwitchIntent(text: string): ParsedModelSwitchIntent | null {
+	const trimmed = text.trim();
+	if (!trimmed || !SWITCH_VERB_RE.test(trimmed)) return null;
+
+	const model = MODEL_ID_RE.exec(trimmed)?.[0]?.toLowerCase();
+	const namesInference =
+		MODEL_NOUN_RE.test(trimmed) ||
+		LOCAL_TARGET_RE.test(trimmed) ||
+		CLOUD_TARGET_RE.test(trimmed);
+	if (!namesInference) return null;
+
+	const wantsLocal =
+		LOCAL_TARGET_RE.test(trimmed) || Boolean(model?.startsWith("eliza-1-"));
+	const wantsCloud = CLOUD_TARGET_RE.test(trimmed);
+	if (wantsLocal === wantsCloud) return { kind: "needs-target" };
+
+	return {
+		kind: "request",
+		request: {
+			target: wantsCloud ? "cloud" : "local",
+			...(model ? { model } : {}),
+		},
+	};
+}
+
+/**
+ * Whether the user is asking to change inference, even when they have not yet
+ * named a sanctioned target. The action must remain exposed for that shape so
+ * its handler can ask for the missing target instead of letting SETTINGS
+ * shadow the dedicated model authority.
+ */
+export function isModelSwitchIntent(text: string): boolean {
+	return parseModelSwitchIntent(text) !== null;
+}
 
 /**
  * Deterministic target/model extraction from an explicit option or the
@@ -119,31 +184,72 @@ export function inferModelSwitchRequest(
 	text: string,
 	options?: Record<string, unknown>,
 ): { target: ModelSwitchTarget; model?: string } | null {
-	const explicitTarget = readStringOption(options, "target")?.toLowerCase();
-	const explicitModel = readStringOption(options, "model") ?? undefined;
-	if (explicitTarget === "local" || explicitTarget === "cloud") {
+	const trimmed = text.trim();
+	if (!trimmed) {
+		const explicitTarget = readStringOption(options, "target")?.toLowerCase();
+		const explicitModel = readStringOption(options, "model") ?? undefined;
+		if (explicitTarget !== "local" && explicitTarget !== "cloud") return null;
 		return {
 			target: explicitTarget,
 			...(explicitModel && { model: explicitModel }),
 		};
 	}
+	const parsed = parseModelSwitchIntent(trimmed);
+	return parsed?.kind === "request" ? parsed.request : null;
+}
 
-	const trimmed = text.trim();
-	if (!trimmed) return null;
-	const model = explicitModel ?? MODEL_ID_RE.exec(trimmed)?.[0]?.toLowerCase();
+export function isModelSwitchTargetChoice(text: string): boolean {
+	return /^(?:local|cloud)$/i.test(text.trim());
+}
 
-	// A named Eliza-1 tier implies the local target even without the word
-	// "local" ("switch to eliza-1-4b").
-	const wantsLocal = LOCAL_TARGET_RE.test(trimmed) || Boolean(model);
-	const wantsCloud = CLOUD_TARGET_RE.test(trimmed);
-	if (wantsLocal === wantsCloud) return null; // ambiguous or absent
-	if (!SWITCH_VERB_RE.test(trimmed) || !MODEL_NOUN_RE.test(trimmed))
-		return null;
+async function findPendingModelSwitchTargets(
+	runtime: IAgentRuntime,
+	roomId: UUID,
+) {
+	const tasks = await runtime.getTasks({
+		roomId,
+		tags: [MODEL_SWITCH_TARGET_CHOICE_TAG],
+		agentIds: [runtime.agentId],
+	});
+	return tasks.filter(
+		(task) => task.metadata?.choiceActionName === "MODEL_SWITCH" && task.id,
+	);
+}
 
-	return {
-		target: wantsCloud ? "cloud" : "local",
-		...(model ? { model } : {}),
-	};
+export async function hasPendingModelSwitchTarget(
+	runtime: IAgentRuntime,
+	roomId: UUID,
+): Promise<boolean> {
+	return (await findPendingModelSwitchTargets(runtime, roomId)).length > 0;
+}
+
+async function persistPendingModelSwitchTarget(
+	runtime: IAgentRuntime,
+	roomId: UUID,
+): Promise<void> {
+	if (await hasPendingModelSwitchTarget(runtime, roomId)) return;
+	await runtime.createTask({
+		name: "MODEL_SWITCH target choice",
+		description: "Awaiting an explicit local or cloud inference target",
+		agentId: runtime.agentId,
+		roomId,
+		tags: [MODEL_SWITCH_TARGET_CHOICE_TAG, AWAITING_CHOICE_TAG],
+		metadata: {
+			options: [
+				{ name: "local", description: "Run inference on this device" },
+				{ name: "cloud", description: "Run inference in Eliza Cloud" },
+			],
+			choiceActionName: "MODEL_SWITCH",
+		},
+	});
+}
+
+async function clearPendingModelSwitchTarget(
+	runtime: IAgentRuntime,
+	roomId: UUID,
+): Promise<void> {
+	const pending = await findPendingModelSwitchTargets(runtime, roomId);
+	await Promise.all(pending.map((task) => runtime.deleteTask(task.id as UUID)));
 }
 
 /**
@@ -218,8 +324,8 @@ export function createModelSwitchAction(
 			{
 				name: "target",
 				description:
-					"Where text inference should run: local (on-device Eliza-1) or cloud (Eliza Cloud).",
-				required: true,
+					"Where text inference should run: local (on-device Eliza-1) or cloud (Eliza Cloud). Omit when the user has not named a target; the action will ask them to choose without changing anything.",
+				required: false,
 				schema: { type: "string", enum: ["local", "cloud"] },
 			},
 			{
@@ -232,113 +338,167 @@ export function createModelSwitchAction(
 		],
 
 		validate: async (
-			_runtime: IAgentRuntime,
+			runtime: IAgentRuntime,
 			message: Memory,
 		): Promise<boolean> => {
+			const text = userRequestMessageText(message);
+			if (isModelSwitchIntent(text)) return true;
 			return (
-				inferModelSwitchRequest(userRequestMessageText(message), undefined) !==
-				null
+				isModelSwitchTargetChoice(text) &&
+				(await hasPendingModelSwitchTarget(runtime, message.roomId))
 			);
 		},
 
 		handler: async (
-			_runtime: IAgentRuntime,
+			runtime: IAgentRuntime,
 			message: Memory,
 			_state?: State,
 			options?: HandlerOptions,
 			callback?: HandlerCallback,
-		): Promise<ActionResult> => {
-			const request = inferModelSwitchRequest(
-				userRequestMessageText(message),
-				options,
-			);
-			if (!request) {
-				// The ask IS the turn's complete answer: verified + turnComplete
-				// make the callback the sole delivery instead of double-messaging
-				// with the evaluator; the un-resolved state stays in values.
-				const reply =
-					'Tell me where to run inference — "switch to the local model" or "use Eliza Cloud". You can also name a tier, e.g. "use eliza-1-4b".';
-				await callback?.({ text: reply });
-				return {
-					success: true,
-					text: "No inference target named; asked the user where to run inference.",
-					userFacingText: reply,
-					verifiedUserFacing: true,
-					turnComplete: true,
-					values: { awaitingTarget: true },
-				};
-			}
-
-			const refusal = sanctionedModelError(request.target, request.model);
-			if (refusal) {
-				await callback?.({ text: refusal });
-				return {
-					success: false,
-					text: refusal,
-					values: { target: request.target, model: request.model },
-				};
-			}
-
-			logger.info(
-				`[plugin-app-control] MODEL_SWITCH target=${request.target}${request.model ? ` model=${request.model}` : ""}`,
-			);
-
-			// This is the external commit boundary. A turn cancelled during parsing or
-			// validation must never switch the global runtime. Once the request starts,
-			// however, the route owns settlement: do not attach the turn signal to the
-			// in-flight mutation or rewrite its eventual authoritative result as an abort.
-			options?.abortSignal?.throwIfAborted();
-			try {
-				const outcome = await switchModel(request);
-				if (!outcome.ok) {
-					const reply = `I couldn't switch the model: ${outcome.error ?? "unknown error"}.`;
+		): Promise<ActionResult> =>
+			withModelSwitchAgentLock(runtime, async () => {
+				const userText = userRequestMessageText(message);
+				const isTargetChoice = isModelSwitchTargetChoice(userText);
+				const pendingTargets = await findPendingModelSwitchTargets(
+					runtime,
+					message.roomId,
+				);
+				if (isTargetChoice && pendingTargets.length === 0) {
+					const reply =
+						'That model choice is no longer pending. Tell me the full switch you want, such as "switch to the local model" or "use Eliza Cloud".';
 					await callback?.({ text: reply });
 					return {
 						success: false,
 						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
+					};
+				}
+				const request = isTargetChoice
+					? { target: userText.trim().toLowerCase() as ModelSwitchTarget }
+					: inferModelSwitchRequest(userText, options);
+				if (!request) {
+					await persistPendingModelSwitchTarget(runtime, message.roomId);
+					// The ask IS the turn's complete answer: verified + turnComplete
+					// make the callback the sole delivery instead of double-messaging
+					// with the evaluator; the un-resolved state stays in values.
+					const reply =
+						'Tell me where to run inference — "switch to the local model" or "use Eliza Cloud". You can also name a tier, e.g. "use eliza-1-4b".';
+					await callback?.({ text: reply });
+					return {
+						success: true,
+						text: "No inference target named; asked the user where to run inference.",
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
+						values: { awaitingTarget: true },
+					};
+				}
+
+				if (pendingTargets.length > 0) {
+					try {
+						await clearPendingModelSwitchTarget(runtime, message.roomId);
+					} catch (err) {
+						// error-policy:J4 A task-store failure becomes a visible refusal
+						// before the global inference backend can be mutated.
+						const messageText =
+							err instanceof Error ? err.message : String(err);
+						logger.error(
+							`[plugin-app-control] MODEL_SWITCH could not claim pending choice: ${messageText}`,
+						);
+						const reply =
+							"I couldn't safely record that model choice, so I didn't switch anything. Please try again.";
+						await callback?.({ text: reply });
+						return {
+							success: false,
+							text: reply,
+							userFacingText: reply,
+							verifiedUserFacing: true,
+							turnComplete: true,
+						};
+					}
+				}
+
+				const refusal = sanctionedModelError(request.target, request.model);
+				if (refusal) {
+					await callback?.({ text: refusal });
+					return {
+						success: false,
+						text: refusal,
+						userFacingText: refusal,
+						verifiedUserFacing: true,
+						turnComplete: true,
 						values: { target: request.target, model: request.model },
 					};
 				}
-				const reply = narrate(outcome);
-				await callback?.({ text: reply });
-				// The switch confirmation is the complete answer to a
-				// single-operation turn: verified + turnComplete make the callback
-				// the sole delivery instead of double-messaging with the evaluator.
-				return {
-					success: true,
-					text: reply,
-					userFacingText: reply,
-					verifiedUserFacing: true,
-					turnComplete: true,
-					values: {
-						target: outcome.target ?? request.target,
-						model: outcome.model,
-						status: outcome.status,
-					},
-					data: {
-						target: outcome.target ?? request.target,
-						model: outcome.model,
-						displayName: outcome.displayName,
-						status: outcome.status,
-						...(outcome.downloadSizeGb !== undefined
-							? { downloadSizeGb: outcome.downloadSizeGb }
-							: {}),
-					},
-				};
-			} catch (err) {
-				const messageText = err instanceof Error ? err.message : String(err);
-				logger.error(
-					`[plugin-app-control] MODEL_SWITCH failed: ${messageText}`,
+
+				logger.info(
+					`[plugin-app-control] MODEL_SWITCH target=${request.target}${request.model ? ` model=${request.model}` : ""}`,
 				);
-				const reply = `I couldn't switch the model: ${messageText}.`;
-				await callback?.({ text: reply });
-				return {
-					success: false,
-					text: reply,
-					values: { target: request.target, model: request.model },
-				};
-			}
-		},
+
+				// This is the external commit boundary. A turn cancelled during parsing or
+				// validation must never switch the global runtime. Once the request starts,
+				// however, the route owns settlement: do not attach the turn signal to the
+				// in-flight mutation or rewrite its eventual authoritative result as an abort.
+				options?.abortSignal?.throwIfAborted();
+				try {
+					const outcome = await switchModel(request);
+					if (!outcome.ok) {
+						const reply = `I couldn't switch the model: ${outcome.error ?? "unknown error"}.`;
+						await callback?.({ text: reply });
+						return {
+							success: false,
+							text: reply,
+							userFacingText: reply,
+							verifiedUserFacing: true,
+							turnComplete: true,
+							values: { target: request.target, model: request.model },
+						};
+					}
+					const reply = narrate(outcome);
+					await callback?.({ text: reply });
+					// The switch confirmation is the complete answer to a
+					// single-operation turn: verified + turnComplete make the callback
+					// the sole delivery instead of double-messaging with the evaluator.
+					return {
+						success: true,
+						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
+						values: {
+							target: outcome.target ?? request.target,
+							model: outcome.model,
+							status: outcome.status,
+						},
+						data: {
+							target: outcome.target ?? request.target,
+							model: outcome.model,
+							displayName: outcome.displayName,
+							status: outcome.status,
+							...(outcome.downloadSizeGb !== undefined
+								? { downloadSizeGb: outcome.downloadSizeGb }
+								: {}),
+						},
+					};
+				} catch (err) {
+					const messageText = err instanceof Error ? err.message : String(err);
+					logger.error(
+						`[plugin-app-control] MODEL_SWITCH failed: ${messageText}`,
+					);
+					const reply = `I couldn't switch the model: ${messageText}.`;
+					await callback?.({ text: reply });
+					return {
+						success: false,
+						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
+						values: { target: request.target, model: request.model },
+					};
+				}
+			}),
 	};
 }
 

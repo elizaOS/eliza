@@ -201,33 +201,40 @@ export function linkShareOwnText(text: string): string {
 		.trim();
 }
 
+const WEB_SEARCH_NEGATION_PATTERN =
+	/\b(?:(?:do\s+not|don['’]?t|never(?!\s+mind\b))\b[^.!?;]{0,64}\b(?:google\b|(?:browse|search|look\s+up|use)\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b)|without\b[^.!?;]{0,32}\b(?:brows(?:e|ing)|search(?:ing)?|look(?:ing)?\s+up|us(?:e|ing))\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b)/iu;
+const EXPLICIT_WEB_SEARCH_PATTERN =
+	/\b(?:search\s+(?:the\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu;
+const INTENT_CLAUSE_BOUNDARY_PATTERN =
+	/\s*(?:;|\b(?:but|however|instead)\b)\s*/iu;
+
+function intentClauses(text: string): string[] {
+	return text
+		.toLowerCase()
+		.split(INTENT_CLAUSE_BOUNDARY_PATTERN)
+		.map((clause) => clause.trim())
+		.filter(Boolean);
+}
+
+function explicitlyAsksWebSearch(text: string): boolean {
+	return intentClauses(text).some(
+		(clause) =>
+			!WEB_SEARCH_NEGATION_PATTERN.test(clause) &&
+			EXPLICIT_WEB_SEARCH_PATTERN.test(clause),
+	);
+}
+
 export function looksLikeWebSearchRequest(text: string): boolean {
-	const normalized = text.toLowerCase();
-	if (!normalized.trim()) {
-		return false;
-	}
-
-	if (
-		/\b(?:do not|don't|dont|without)\s+(?:browse|search|google|look\s+up|use)\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b/iu.test(
-			normalized,
-		)
-	) {
-		return false;
-	}
-
-	const explicitlyAsksSearch =
-		/\b(?:search\s+(?:the\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu.test(
-			normalized,
-		);
 	const asksCurrentInfo =
-		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|rn|atm|up[- ]?to[- ]?date)\b/iu.test(
-			normalized,
-		);
+		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|rn|atm|up[- ]?to[- ]?date)\b/iu;
 	const mentionsMarketOrNews =
-		/\b(?:price|prices|quote|btc|bitcoin|eth|ethereum|stock|stocks?|ticker|market|markets?|exchange rate|news|headline|headlines|weather)\b/iu.test(
-			normalized,
-		);
-	return explicitlyAsksSearch || (asksCurrentInfo && mentionsMarketOrNews);
+		/\b(?:price|prices|quote|btc|bitcoin|eth|ethereum|stock|stocks?|ticker|market|markets?|exchange rate|news|headline|headlines|weather)\b/iu;
+	return intentClauses(text).some(
+		(clause) =>
+			!WEB_SEARCH_NEGATION_PATTERN.test(clause) &&
+			(EXPLICIT_WEB_SEARCH_PATTERN.test(clause) ||
+				(asksCurrentInfo.test(clause) && mentionsMarketOrNews.test(clause))),
+	);
 }
 
 export function findAvailableActionName(
@@ -354,14 +361,22 @@ export function isShellDirectActionName(
  * - "shell" / "coding" / "settings-write" / "web": explicit intent phrasing
  *   in the message.
  * - "owner-goals": concrete owner goal create/save/confirm phrasing.
+ * - "owner-routines": habit/routine commitment phrasing, including recurring
+ *   cadences ("3 times a day") — an owner mutation, never navigation.
+ * - "owner-scheduled-admin": snooze/reschedule/skip verbs acting on an
+ *   existing scheduled item — owner mutations that navigation cannot satisfy.
+ * - "owner-reads": a possessive owner-data read ("list my personal todos",
+ *   "what are my reminders") — the read-side mirror of the mutation rule
+ *   above: data asks are owner-domain evidence, and VIEWS can only navigate,
+ *   so a registered owner reader outranks the view-capability overlap.
  * - "view-surface": an operation verb PLUS an explicit UI-surface noun
  *   (view/window/panel/app/screen/ui) — strong navigation evidence.
  * - "view-navigation": the message is nothing but a bare registered surface
  *   name ("settings") — the voice-transcription navigation contract (#9950).
- * - "view-capability": only an incidental token overlap between the message
- *   and a views action's tag/simile vocabulary (e.g. "whats 17 TIMES 23"
- *   matching the "screen-time" tag via TIME). Weak evidence — observed live
- *   hijacking already-answered trivial chat turns into a required-tool
+ * - "view-capability": a navigation-shaped message whose tokens cover a views
+ *   action's tag/simile phrase ("get my screen time" covering screen-time).
+ *   Still the weakest evidence — an earlier variant that matched partial
+ *   phrases hijacked already-answered trivial chat turns into a required-tool
  *   planner deadlock (trajectories tj-501e594bfb23a7, tj-5d1c9601f33e8d).
  */
 export type DirectCurrentRequestCandidateKind =
@@ -369,6 +384,11 @@ export type DirectCurrentRequestCandidateKind =
 	| "coding"
 	| "settings-write"
 	| "owner-goals"
+	| "owner-routines"
+	| "owner-reads"
+	| "owner-scheduled-admin"
+	| "owner-work-thread"
+	| "media-generation"
 	| "view-surface"
 	| "view-navigation"
 	| "view-capability"
@@ -381,6 +401,23 @@ export interface DirectCurrentRequestCandidateInference {
 
 const EMPTY_DIRECT_CANDIDATE_INFERENCE: DirectCurrentRequestCandidateInference =
 	{ names: [], kind: null };
+
+// Owner routine/habit surface, in preference order. Matches the personal
+// assistant's OWNER_ROUTINES action by name or by its declared similes
+// (findAvailableActionName matches either), so runtimes exposing only a
+// legacy habit action still resolve.
+const OWNER_ROUTINES_ACTION_NAMES = [
+	"OWNER_ROUTINES",
+	"ROUTINES",
+	"ROUTINE",
+	"TRACK_HABIT",
+	"CREATE_ROUTINE",
+	"CREATE_HABIT",
+	"DAILY_HABIT",
+	"HABITS",
+	"HABIT",
+	"RECURRING_TASK",
+] as const;
 
 const OWNER_GOALS_ACTION_NAMES = [
 	"OWNER_GOALS",
@@ -548,6 +585,344 @@ function findOwnerGoalsActionName(
 	return findAvailableActionName(actions, OWNER_GOALS_ACTION_NAMES);
 }
 
+/**
+ * Detects an owner commitment to a recurring habit/routine — the phrasing that
+ * live hijacked into a VIEWS catalog dump ("25 pushups, 3 times a day …",
+ * #17028). Three legs: an explicit recurring cadence ("N times a day/week"),
+ * a habit/routine noun coupled with a write verb, or a recurring reminder ask.
+ * Advice questions ("how many times a day should I …") are excluded so the
+ * detector never converts an information ask into a mutation candidate.
+ */
+function looksLikeOwnerRoutineWriteRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized) return false;
+	// A leading question word marks an advice/lookup ask, not a commitment.
+	// "can/could you …" polite imperatives are deliberately NOT excluded.
+	if (
+		/^\s*(?:what|whats|what's|how|why|when|where|is|are|does|should)\b/iu.test(
+			normalized,
+		)
+	) {
+		return false;
+	}
+	const hasRecurringCadence =
+		/\b\d+\s+times?\s+(?:a|per|each|every)\s+(?:day|week|month)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:every|each)\s+(?:day|morning|evening|night|week(?:day)?)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:daily|weekly)\b/iu.test(normalized);
+	if (
+		/\b\d+\s+times?\s+(?:a|per|each|every)\s+(?:day|week|month)\b/iu.test(
+			normalized,
+		)
+	) {
+		return true;
+	}
+	const hasRoutineNoun = /\b(?:habit|routine)s?\b/iu.test(normalized);
+	const hasWriteVerb =
+		/\b(?:track|start|create|add|set\s+up|save|log|schedule|build|make)\b/iu.test(
+			normalized,
+		);
+	if (hasRoutineNoun && hasWriteVerb) return true;
+	if (
+		/\bremind\s+me\b/iu.test(normalized) &&
+		(hasRecurringCadence || hasRoutineNoun)
+	) {
+		return true;
+	}
+	return hasRecurringCadence && /\bschedule\b/iu.test(normalized);
+}
+
+function findOwnerRoutinesActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string | undefined {
+	return findAvailableActionName(actions, OWNER_ROUTINES_ACTION_NAMES);
+}
+
+const SCHEDULED_ADMIN_ACTION_NAMES = [
+	"OWNER_REMINDERS",
+	"SCHEDULED_TASKS",
+	"REMINDERS",
+	"REMINDER",
+] as const;
+
+/**
+ * Detects admin operations on an existing scheduled item ("snooze the water
+ * the ficus reminder until 6pm sunday", "skip today's checkin",
+ * "reschedule my dentist reminder"). Live miss (matrix F5,
+ * tj-a793149be84b86): with no deterministic candidate the turn fell through
+ * to the view/app overlap, routed to APP, and failed "could not find that
+ * active item" without ever reaching the reminders surface. Same
+ * owner-domain-evidence rule as the mutation legs: these verbs act on owner
+ * data; navigation cannot satisfy them.
+ */
+function looksLikeScheduledItemAdminRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized) return false;
+	if (!/\b(?:snooze|reschedule|postpone|unsnooze|skip)\b/iu.test(normalized)) {
+		return false;
+	}
+	return /\b(?:reminders?|tasks?|check[- ]?ins?|alarms?|follow[- ]?ups?)\b/iu.test(
+		normalized,
+	);
+}
+
+function findScheduledAdminActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string | undefined {
+	return findAvailableActionName(actions, SCHEDULED_ADMIN_ACTION_NAMES);
+}
+
+const MEDIA_GENERATION_ACTION_NAMES = [
+	"GENERATE_MEDIA",
+	"GENERATE_IMAGE",
+	"CREATE_IMAGE",
+] as const;
+
+/**
+ * Detects an explicit media-generation ask ("make me a pixel-art castle
+ * image", "generate a picture of a lighthouse"). Live regression (matrix
+ * F35, tj-fcf8c1c21be91f): Stage-1 classified a styled image ask as
+ * ["simple"] with no candidates, the planner ran with HANDLE_RESPONSE only,
+ * and the model declared "I don't have an image generator" — an hour after
+ * the same runtime generated and delivered one. Capability self-belief
+ * follows tool exposure, so the deterministic candidate is what keeps the
+ * answer consistent. Generation verbs must pair with a visual-artifact noun:
+ * "create a todo" and "draw up a plan" never match.
+ */
+function looksLikeMediaGenerationRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized || looksLikeActionExplanationRequest(normalized)) {
+		return false;
+	}
+	return /\b(?:generate|make|draw|create|render|paint|produce)\b[^.!?]{0,60}\b(?:image|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif)s?\b/iu.test(
+		normalized,
+	);
+}
+
+function findMediaGenerationActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string | undefined {
+	return findAvailableActionName(actions, MEDIA_GENERATION_ACTION_NAMES);
+}
+
+const WORK_THREAD_ACTION_NAMES = [
+	"WORK_THREAD",
+	"OWNER_TASKS",
+	"WORK_THREADS",
+] as const;
+
+/**
+ * Detects an explicit work-thread lifecycle ask ("start a work thread: plan
+ * the garage cleanout", "resume the kitchen reno work thread"). Live
+ * regression (matrix F27, tj-ee16a14fea597e): Stage-1 classified the ask as
+ * bare ["general"] with no candidates, the planner ran with HANDLE_RESPONSE
+ * only, and the model composed a fictional surface refusal ("can't do that
+ * here — dm me") — the same drift class as the owner-item delete leg. The
+ * phrase "work thread" is the surface's own vocabulary, so the deterministic
+ * candidate is precise.
+ */
+function looksLikeWorkThreadRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized || looksLikeActionExplanationRequest(normalized)) {
+		return false;
+	}
+	return /\b(?:start|open|kick ?off|begin|resume|continue|pick (?:up|back up))\b[^.!?]{0,40}\bwork[- ]threads?\b/iu.test(
+		normalized,
+	);
+}
+
+function findWorkThreadActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string | undefined {
+	return findAvailableActionName(actions, WORK_THREAD_ACTION_NAMES);
+}
+
+/**
+ * Detects a destructive owner-item operation ("delete the reminder named
+ * water the ficus", "cancel the call marco reminder", "remove my dentist
+ * alarm") and names the owning domain. Live regression (matrix F31,
+ * tj-f02205ae366226 family): Stage-1 classified exact-name reminder deletes
+ * as ["simple"] with no candidates, the turn planned with HANDLE_RESPONSE
+ * only, and the model composed a fictional surface refusal ("can't delete
+ * reminders here — dm me") that then self-reinforced through conversation
+ * history. Deletes are owner mutations on existing data — the same
+ * owner-domain-evidence rule as the other mutation legs — resolved
+ * per-domain through the same preference lists the read leg uses.
+ */
+function detectOwnerItemDeleteDomain(text: string): OwnerLifeReadDomain | null {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized || looksLikeActionExplanationRequest(normalized)) {
+		return null;
+	}
+	// Surface-noun asks stay with the navigation legs ("close the reminders
+	// tab" is view work, not a data mutation).
+	if (
+		/\b(?:view|views|page|screen|tab|panel|window|ui|dashboard|app)\b/iu.test(
+			normalized,
+		)
+	) {
+		return null;
+	}
+	if (
+		!/\b(?:delete|remove|cancel|clear|get\s+rid\s+of|stop\s+tracking)\b/iu.test(
+			normalized,
+		)
+	) {
+		return null;
+	}
+	for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
+		// Finance records have no named-item delete surface; "clear my
+		// spending" is not an item deletion.
+		if (domain === "finances") continue;
+		if (noun.test(normalized)) return domain;
+	}
+	return null;
+}
+
+/**
+ * Owner-life domains with a possessive read shape. Each maps to its reader
+ * surface in preference order: the personal-assistant umbrella first, then the
+ * standalone domain plugin's action names, so lean stacks (one todo owner per
+ * deployment) resolve their reader too.
+ */
+type OwnerLifeReadDomain =
+	| "todos"
+	| "goals"
+	| "reminders"
+	| "routines"
+	| "alarms"
+	| "finances";
+
+const BLOCKED_OWNER_LIFE_READ = Symbol("blocked-owner-life-read");
+
+const OWNER_READ_ACTION_NAMES_BY_DOMAIN: Record<
+	OwnerLifeReadDomain,
+	readonly string[]
+> = {
+	todos: ["OWNER_TODOS", "TODOS", "TODO", "TODO_LIST", "LIST_TODOS"],
+	goals: OWNER_GOALS_ACTION_NAMES,
+	reminders: ["OWNER_REMINDERS", "REMINDERS", "REMINDER", "LIST_REMINDERS"],
+	routines: OWNER_ROUTINES_ACTION_NAMES,
+	alarms: ["OWNER_ALARMS", "ALARMS", "ALARM"],
+	finances: ["OWNER_FINANCES", "FINANCES"],
+};
+
+const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
+	["todos", /\b(?:todos?|to[- ]dos?|todo\s+list|task\s+list)\b/iu],
+	["goals", /\bgoals?\b/iu],
+	["reminders", /\breminders?\b/iu],
+	["routines", /\b(?:routines?|habits?)\b/iu],
+	["alarms", /\balarms?\b/iu],
+	["finances", /\b(?:finances|budget|spending|expenses)\b/iu],
+];
+
+function ownerLifeReadDomainsInPossessiveScopes(
+	normalized: string,
+): Set<OwnerLifeReadDomain> {
+	const domains = new Set<OwnerLifeReadDomain>();
+	for (const match of normalized.matchAll(/\b(?:my|our)\b([^,;.!?]*)/giu)) {
+		const rawScope = match[1] ?? "";
+		const scope =
+			rawScope.split(
+				/\b(?:about|concerning|regarding|for|due|from|on|in|with|where|that|which|because)\b/iu,
+				1,
+			)[0] ?? "";
+		// "Spending habits" names finance data; treating the trailing generic
+		// habit noun as a routine would make registry order decide the surface.
+		const domainScope = scope.replace(
+			/\b(?:finance|financial|spending|expenses?)\s+habits?\b/giu,
+			"finances",
+		);
+		for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
+			if (noun.test(domainScope)) domains.add(domain);
+		}
+	}
+	return domains;
+}
+
+/**
+ * Detects a possessive owner-data READ ("list my personal todos", "what are
+ * my reminders for today") — the read-side mirror of the owner-mutation rule
+ * (#17028 / fead478cfa): a data ask is owner-domain evidence, and VIEWS can
+ * only navigate, so it must never degrade into the view-capability overlap
+ * (live: "list my personal todos" routed to VIEWS view-disambiguation, then
+ * failed on an undeclared get-todos capability). Explicit UI-surface nouns
+ * stay with the navigation legs, and advice/organizing questions stay chat.
+ */
+function detectOwnerLifeReadDomain(
+	text: string,
+): OwnerLifeReadDomain | typeof BLOCKED_OWNER_LIFE_READ | null {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized) return null;
+	// Surface-noun asks are navigation, owned by the earlier view legs.
+	if (
+		/\b(?:view|views|page|screen|tab|panel|window|ui|dashboard|app)\b/iu.test(
+			normalized,
+		)
+	) {
+		return null;
+	}
+	const domains = ownerLifeReadDomainsInPossessiveScopes(normalized);
+	if (domains.size === 0) return null;
+	// Mutation shapes belong to the write detectors above (or the model);
+	// "check off"/"mark ... done" are completions, not reads.
+	if (
+		/\b(?:add|create|set|save|track|make|store|delete|remove|cancel|clear|update|edit|rename|complete|finish|snooze|reschedule)\b/iu.test(
+			normalized,
+		) ||
+		/\bcheck(?:ed)?\s+off\b/iu.test(normalized) ||
+		/\bmark\b[\s\S]{0,40}\b(?:done|complete|off)\b/iu.test(normalized)
+	) {
+		return BLOCKED_OWNER_LIFE_READ;
+	}
+	// Advice, quoted examples, negated commands, and metalinguistic discussion
+	// mention owner nouns without requesting the underlying private records.
+	if (
+		/\b(?:advice|tips?|suggestions?|recommendations?)\b/iu.test(normalized) ||
+		/\bhow\s+to\b/iu.test(normalized) ||
+		/\bhow\s+(?:do|can|could|should|would)\s+(?:i|we)\b/iu.test(normalized) ||
+		/\b(?:how(?:\s+(?:do|can|could|should|would))?(?:\s+(?:i|we))?|ways?|methods?|approaches?|strategies?)\b[^.!?]{0,80}\b(?:organize|manage|track|plan|improve|handle|structure|prioritize|budget)\w*\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:what|which)\s+should\s+(?:i|we)\b/iu.test(normalized) ||
+		/\b(?:help|teach|guide)\s+(?:me|us)\b/iu.test(normalized) ||
+		/\b(?:when|if)\s+i\s+say\b/iu.test(normalized) ||
+		/\b(?:the\s+)?(?:phrase|sentence|wording|utterance|quote|quoted)\b/iu.test(
+			normalized,
+		) ||
+		/["“][^"”]*\b(?:my|our)\b[^"”]*["”]/u.test(normalized) ||
+		/‘[^’]*\b(?:my|our)\b[^’]*’/u.test(normalized) ||
+		/(?:^|[^\p{L}\p{N}])'[^'\r\n]*\b(?:my|our)\b[^'\r\n]*'(?![\p{L}\p{N}])/u.test(
+			normalized,
+		) ||
+		/\b(?:do\s+not|don['’]?t|never(?!\s+mind\b))\b(?:(?!\b(?:but|however|instead)\b)[^.!?;]){0,96}\b(?:list|show|tell|give|read|check|see|look|review|go\s+over)\b/iu.test(
+			normalized,
+		)
+	) {
+		return BLOCKED_OWNER_LIFE_READ;
+	}
+	const hasReadShape =
+		/\b(?:list|show|what(?:'s|s| is| are)(?:\s+(?:on|in))?|do i have|have i got|any(?:thing)?\s+(?:on|in|left|due)|tell me|give me|read(?:\s+(?:me|out))?|check|see|look at|go over|review)\b/iu.test(
+			normalized,
+		);
+	if (!hasReadShape) return null;
+	if (domains.size !== 1) return BLOCKED_OWNER_LIFE_READ;
+	return domains.values().next().value ?? null;
+}
+
+function findOwnerLifeReadActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	domain: OwnerLifeReadDomain,
+): string | undefined {
+	return findAvailableActionName(
+		actions,
+		OWNER_READ_ACTION_NAMES_BY_DOMAIN[domain],
+	);
+}
+
 export function inferDirectCurrentRequestCandidateActions(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
@@ -624,6 +999,102 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (bareViewNavigationAction) {
 		return { names: [bareViewNavigationAction], kind: "view-navigation" };
 	}
+	// Owner mutations outrank navigation: a commitment to create/track/schedule
+	// something must never degrade into a view-catalog dump because a domain
+	// word incidentally overlaps a views tag (#17028). When the phrasing is an
+	// owner mutation but no owner surface is registered, the turn deliberately
+	// yields NO deterministic candidate — the model handles it and the
+	// unresolvable-capability path declines explicitly — instead of falling
+	// through to the weak view-capability overlap below.
+	if (looksLikeOwnerRoutineWriteRequest(messageText)) {
+		const ownerRoutinesAction = findOwnerRoutinesActionName(actions);
+		if (ownerRoutinesAction) {
+			return { names: [ownerRoutinesAction], kind: "owner-routines" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	if (looksLikeOwnerGoalWriteRequest(messageText)) {
+		const ownerGoalsAction = findOwnerGoalsActionName(actions);
+		if (ownerGoalsAction) {
+			return { names: [ownerGoalsAction], kind: "owner-goals" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Scheduled-item admin verbs (snooze/reschedule/skip) are owner mutations
+	// on existing data; without a deterministic candidate they fall through to
+	// the view/app overlap and fail off-surface (matrix F5). Same
+	// no-candidate-on-missing-surface rule as the other mutation legs.
+	if (looksLikeScheduledItemAdminRequest(messageText)) {
+		const scheduledAdminAction = findScheduledAdminActionName(actions);
+		if (scheduledAdminAction) {
+			return { names: [scheduledAdminAction], kind: "owner-scheduled-admin" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Destructive owner-item operations are owner mutations on existing data.
+	// Stage-1 drift can classify an exact-name delete as simple chat (matrix
+	// F31); the deterministic candidate keeps the turn on the planning path
+	// where the owning umbrella can act, ask, or fail closed on its own
+	// surface. Same no-candidate-on-missing-surface rule as the legs above.
+	const ownerDeleteDomain = detectOwnerItemDeleteDomain(messageText);
+	if (ownerDeleteDomain) {
+		const ownerDeleteAction = findOwnerLifeReadActionName(
+			actions,
+			ownerDeleteDomain,
+		);
+		if (ownerDeleteAction) {
+			return { names: [ownerDeleteAction], kind: "owner-scheduled-admin" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Work-thread lifecycle asks name the surface's own vocabulary; without a
+	// deterministic candidate Stage-1 drift leaves the turn tool-less and the
+	// model invents a surface refusal (matrix F27). Same
+	// no-candidate-on-missing-surface rule as the legs above.
+	if (looksLikeWorkThreadRequest(messageText)) {
+		const workThreadAction = findWorkThreadActionName(actions);
+		if (workThreadAction) {
+			return { names: [workThreadAction], kind: "owner-work-thread" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Media-generation asks: capability self-belief follows tool exposure, so
+	// a Stage-1 drift that leaves the turn tool-less makes the model deny a
+	// capability it demonstrably has (matrix F35). Unlike the owner legs, a
+	// missing surface yields no candidate AND no forced escalation — an agent
+	// genuinely without a generator should answer honestly from chat.
+	if (looksLikeMediaGenerationRequest(messageText)) {
+		const mediaAction = findMediaGenerationActionName(actions);
+		if (mediaAction) {
+			return { names: [mediaAction], kind: "media-generation" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Owner reads outrank the view-capability overlap for the same reason the
+	// mutations above do (read-side of fead478cfa): "list my personal todos"
+	// wants the data, and VIEWS can only navigate. With no registered owner
+	// reader the turn yields NO deterministic candidate rather than degrading
+	// into the view catalog.
+	const webLookupActions = looksLikeWebSearchRequest(messageText)
+		? findWebLookupActionNames(actions)
+		: [];
+	const ownerReadDomain = detectOwnerLifeReadDomain(messageText);
+	if (ownerReadDomain === BLOCKED_OWNER_LIFE_READ) {
+		if (explicitlyAsksWebSearch(messageText) && webLookupActions.length > 0) {
+			return { names: webLookupActions, kind: "web" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	if (ownerReadDomain) {
+		const ownerReadAction = findOwnerLifeReadActionName(
+			actions,
+			ownerReadDomain,
+		);
+		if (ownerReadAction) {
+			return { names: [ownerReadAction], kind: "owner-reads" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
 	const viewCapabilityAction = findViewCapabilityActionName(
 		actions,
 		messageText,
@@ -631,15 +1102,8 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (viewCapabilityAction) {
 		return { names: [viewCapabilityAction], kind: "view-capability" };
 	}
-	if (looksLikeWebSearchRequest(messageText)) {
-		const lookupActions = findWebLookupActionNames(actions);
-		if (lookupActions.length > 0) return { names: lookupActions, kind: "web" };
-	}
-	if (looksLikeOwnerGoalWriteRequest(messageText)) {
-		const ownerGoalsAction = findOwnerGoalsActionName(actions);
-		if (ownerGoalsAction) {
-			return { names: [ownerGoalsAction], kind: "owner-goals" };
-		}
+	if (webLookupActions.length > 0) {
+		return { names: webLookupActions, kind: "web" };
 	}
 	return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 }
@@ -737,6 +1201,17 @@ function hasLayoutDirectionToken(tokens: readonly string[]): boolean {
 const VIEW_REQUEST_OPERATION_TOKENS: ReadonlySet<string> = new Set<string>(
 	Object.values(VIEW_REQUEST_OPERATION_GROUPS).flat(),
 );
+
+// Operation groups that read as navigation over the view surface. The
+// mutation groups (create/update/delete) are deliberately absent: VIEWS can
+// only navigate, so a mutation verb is owner-domain evidence (#17028).
+const VIEW_NAVIGATION_OPERATION_GROUP_NAMES = [
+	"read",
+	"open",
+	"close",
+	"layout",
+	"pin",
+] as const;
 
 const VIEW_REQUEST_GENERIC_TOKENS: ReadonlySet<string> = new Set<string>([
 	"ACTION",
@@ -1001,6 +1476,23 @@ function findViewCapabilityActionName(
 	) {
 		return undefined;
 	}
+	// VIEWS can only NAVIGATE. Mutation verbs alone (create/update/delete) are
+	// owner-domain evidence, not view evidence — "add a savings goal" must not
+	// select the view catalog just because a "goals" tag exists (#17028). The
+	// capability leg needs navigation-shaped intent: a read/open/close/layout/
+	// pin operation, a directional qualifier, or an explicit UI-surface noun.
+	const hasNavigationOperation = VIEW_NAVIGATION_OPERATION_GROUP_NAMES.some(
+		(group) => messageOperationGroups.has(group),
+	);
+	if (
+		!hasNavigationOperation &&
+		!hasLayoutDirectionToken(messageTokens) &&
+		![...VIEW_REQUEST_SURFACE_TOKENS].some((token) =>
+			messageTokenSet.has(token),
+		)
+	) {
+		return undefined;
+	}
 
 	for (const viewAction of viewActions) {
 		for (const alias of [
@@ -1017,15 +1509,22 @@ function findViewCapabilityActionName(
 			) {
 				continue;
 			}
-			const targetTokens = aliasTokens
-				.map(normalizeSingularToken)
-				.filter(
-					(token) =>
-						!VIEW_REQUEST_OPERATION_TOKENS.has(token) &&
-						!VIEW_REQUEST_GENERIC_TOKENS.has(token),
-				);
-			if (targetTokens.length === 0) continue;
-			if (targetTokens.every((token) => messageTokenSet.has(token))) {
+			// Multiword capability tags are PHRASES: every non-operation token —
+			// generic ones like SCREEN included — must appear in the message.
+			// Filtering generics out let "screen-time" collapse to the bare TIME
+			// token, so "whats 17 times 23" and "3 times a day" matched a
+			// screen-time capability (#17028, tj-501e594bfb23a7). At least one
+			// concrete (non-generic) token is still required so purely generic
+			// aliases ("view-capability") never match on their own vocabulary.
+			const singularAliasTokens = aliasTokens.map(normalizeSingularToken);
+			const requiredTokens = singularAliasTokens.filter(
+				(token) => !VIEW_REQUEST_OPERATION_TOKENS.has(token),
+			);
+			const concreteTokens = requiredTokens.filter(
+				(token) => !VIEW_REQUEST_GENERIC_TOKENS.has(token),
+			);
+			if (concreteTokens.length === 0) continue;
+			if (requiredTokens.every((token) => messageTokenSet.has(token))) {
 				return viewActionName;
 			}
 		}
@@ -1060,7 +1559,7 @@ function normalizeSingularToken(token: string): string {
 	if (token.length > 3 && token.endsWith("IES")) {
 		return `${token.slice(0, -3)}Y`;
 	}
-	if (token.length > 3 && token.endsWith("S")) {
+	if (token.length > 3 && token.endsWith("S") && !token.endsWith("SS")) {
 		return token.slice(0, -1);
 	}
 	return token;

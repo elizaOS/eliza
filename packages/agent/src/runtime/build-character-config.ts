@@ -26,6 +26,7 @@ import {
   applyAdvancedCapabilitySettings,
   resolveAdvancedCapabilitiesEnabled,
 } from "./advanced-capabilities-config.ts";
+import { projectConnectorSettings } from "./project-connector-settings.ts";
 
 /**
  * Build a Character object from the runtime ElizaConfig.
@@ -50,11 +51,16 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // Prefer the UI-level assistant name when it diverges from the bundled
   // preset entry so renames take effect immediately across prompts/logging.
   const configuredName = configuredUiName || configuredAgentName;
+  // A rename alone must not erase the default operating persona: a custom
+  // name that matches no bundled preset still inherits the default preset
+  // (its {{name}} tokens pick up the custom name at prompt time). Only an
+  // explicit replacement system prompt opts the agent out of that
+  // inheritance (#17026).
   const bundledPreset =
     resolveStylePresetById(uiConfig.presetId, language) ??
     resolveStylePresetByAvatarIndex(uiConfig.avatarIndex, language) ??
     resolveStylePresetByName(configuredName, language) ??
-    (configuredName ? undefined : getDefaultStylePreset(language));
+    (agentEntry?.system ? undefined : getDefaultStylePreset(language));
   const name =
     configuredName ??
     bundledPreset?.name ??
@@ -75,6 +81,14 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
       ? agentEntry.topics
       : bundledPreset?.topics;
   const postExamples = agentEntry?.postExamples ?? bundledPreset?.postExamples;
+  // In-character failure replies. The runtime reads
+  // `character.templates.{authFailed,insufficientCredits,noModelProvider,
+  // rateLimited,transientFailure}Reply` only after every model call has already
+  // failed, so without this the persona drops into voice-neutral framework text
+  // at the worst possible moment. Sourced from the preset alone: `AgentConfig`
+  // has no `templates` field (its Zod schema is `.strict()`), so there is no
+  // config-level spelling to prefer here.
+  const templates = bundledPreset?.templates;
   const messageExamples =
     agentEntry?.messageExamples ?? bundledPreset?.messageExamples;
   const advancedMemory =
@@ -268,10 +282,14 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     capabilityHints.length > 0
       ? `${systemWithoutCapabilityHints}\n\n${capabilityHints.join("\n")}`
       : systemWithoutCapabilityHints;
-  const mergedSettings = {
-    ...(agentEntry?.settings ?? {}),
-    ...settings,
-  };
+  const connectorProjection = projectConnectorSettings(
+    {
+      ...(agentEntry?.settings ?? {}),
+      ...settings,
+    },
+    config.connectors,
+  );
+  Object.assign(secrets, connectorProjection.secrets);
 
   return mergeCharacterDefaults({
     name,
@@ -281,11 +299,12 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     ...(topics ? { topics } : {}),
     ...(style ? { style } : {}),
     ...(adjectives ? { adjectives } : {}),
+    ...(templates ? { templates: { ...templates } } : {}),
     ...(postExamples ? { postExamples } : {}),
     ...(mappedExamples ? { messageExamples: mappedExamples } : {}),
     ...(knowledge ? { knowledge } : {}),
     advancedMemory,
-    settings: mergedSettings,
+    settings: connectorProjection.settings,
     secrets,
   });
 }

@@ -35,8 +35,23 @@ const DEAD_GLOBALS = [
 describe("mobile bundle anchors (no write-only globalThis pinning)", () => {
   const binSource = read("bin.ts");
   const androidSource = read("runtime/android-app-plugins.ts");
+  const bootHooksSource = read("runtime/boot-hooks.ts");
   const mobileBuildScript = readFileSync(
     path.resolve(agentSrc, "..", "scripts", "build-mobile-bundle.mjs"),
+    "utf8",
+  );
+  const localInferenceRuntimeSource = readFileSync(
+    path.resolve(
+      agentSrc,
+      "..",
+      "..",
+      "..",
+      "plugins",
+      "plugin-local-inference",
+      "src",
+      "runtime",
+      "ensure-local-inference-handler.ts",
+    ),
     "utf8",
   );
 
@@ -63,6 +78,21 @@ describe("mobile bundle anchors (no write-only globalThis pinning)", () => {
   it("does not null-stub the AOSP local-inference bootstrap package", () => {
     expect(mobileBuildScript).not.toMatch(
       /"@elizaos\/plugin-native-inference"\s*:\s*path\.join\(\s*stubsDir\s*,\s*"null-plugin\.cjs"\s*\)/,
+    );
+  });
+
+  it("keeps the AOSP native-inference adapter visible to the mobile bundler", () => {
+    expect(localInferenceRuntimeSource).toContain(
+      'import("@elizaos/plugin-native-inference")',
+    );
+    expect(localInferenceRuntimeSource).not.toContain(
+      'new Function("id", "return import(id)")',
+    );
+  });
+
+  it("keeps a literal importer for the local-inference boot hook", () => {
+    expect(bootHooksSource).toMatch(
+      /import\(\s*"@elizaos\/plugin-local-inference\/runtime"\s*\)/,
     );
   });
 });

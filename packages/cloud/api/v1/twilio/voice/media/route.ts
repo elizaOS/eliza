@@ -56,6 +56,11 @@ import {
   encodeTwilioMedia,
 } from "../lib/twilio-media-codec";
 import { verifyTwilioStreamToken } from "../lib/twilio-stream-token";
+import {
+  callEndedEvent,
+  callOpeningGreeting,
+  callStartedEvent,
+} from "../lib/voice-continuity";
 
 const app = new Hono<AppEnv>();
 // Twilio sends 20 ms frames immediately after `start`. A cold Hyperdrive
@@ -63,8 +68,6 @@ const app = new Hono<AppEnv>();
 // window instead of terminating ordinary first calls before setup completes.
 const MAX_PENDING_MEDIA_FRAMES = 512;
 const DEFAULT_MAX_CALL_SECONDS = 30 * 60;
-const FIRST_CALL_GREETING = "hello? who's this?";
-const RETURNING_CALLER_GREETING = "hey whats up";
 const bootstrapGate = new TwilioBootstrapGate();
 
 const TwilioStreamEventSchema = z.discriminatedUnion("event", [
@@ -315,9 +318,10 @@ app.get("/", async (c) => {
     clearAudio() {
       if (!streamSid) return;
       sendEvent({ event: "clear", streamSid });
-      logger.info("[twilio-media] caller turn-start flushed buffered audio", {
-        streamSid,
-      });
+      logger.info(
+        "[twilio-media] confirmed caller speech flushed buffered audio",
+        { streamSid },
+      );
     },
     close(code, reason) {
       releaseBootstrap();
@@ -387,6 +391,14 @@ app.get("/", async (c) => {
     });
     const callExpSeconds =
       Math.floor(Date.now() / 1_000) + resolveMaxCallSeconds(env);
+    const prewarmAndRecordCallStart = async (): Promise<void> => {
+      await elizaFetch.recordLifecycleEvent({
+        id: `twilio-call:${claims.callSid}:started`,
+        content: callStartedEvent(claims.previousInteractionAt),
+        createdAt: Date.now(),
+      });
+      await elizaFetch.prewarm?.();
+    };
     session = new VoiceSession({
       sessionId: claims.sessionId,
       jti: claims.jti,
@@ -411,16 +423,25 @@ app.get("/", async (c) => {
       elizaAuthorization,
       elizaModel: resolveElizaModel(env),
       fetchImpl: elizaFetch,
-      prewarmElizaContext: elizaFetch.prewarm,
-      openingGreeting: claims.returningCaller
-        ? RETURNING_CALLER_GREETING
-        : FIRST_CALL_GREETING,
+      prewarmElizaContext: prewarmAndRecordCallStart,
+      openingGreeting: callOpeningGreeting(claims.returningCaller),
       usageStore,
       usageLimits: resolveVoiceUsageLimits(env),
       isRevoked: (jti) =>
         isVoiceSessionTokenRevoked(jti, rawRedis ?? undefined),
       onTeardownRevoke: (jti, expSeconds) =>
         revokeVoiceSessionToken(jti, expSeconds),
+      onTeardown: (reason) => {
+        const persistence = runWithCloudBindingsAsync(workerBindings, () =>
+          elizaFetch.recordLifecycleEvent({
+            id: `twilio-call:${claims.callSid}:ended`,
+            content: callEndedEvent(reason),
+            createdAt: Date.now(),
+          }),
+        );
+        executionContext?.waitUntil(persistence);
+        return persistence;
+      },
       downlink,
     });
     session.start();

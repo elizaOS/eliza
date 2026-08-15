@@ -51,6 +51,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  describeUserReference,
   FOLLOW_UP_CAPABLE_ACTION_TAG,
   findEntityByName,
   getConfiguredOwnerEntityIds,
@@ -686,11 +687,49 @@ async function handleRead(
       : undefined;
 
     if (!resolvedEntityId && name) {
+      const matchLimit = 5;
       const snapshot = await graphService.getGraphSnapshot({
         search: name,
-        limit: 1,
+        limit: matchLimit + 1,
       });
       if (snapshot && snapshot.people.length > 0) {
+        if (snapshot.people.length > 1) {
+          const hasMore = snapshot.people.length > matchLimit;
+          const matches = snapshot.people
+            .slice(0, matchLimit)
+            .map((person) => ({
+              entityId: person.primaryEntityId,
+              displayName: person.displayName,
+            }));
+          const choices = matches
+            .map(
+              (person) =>
+                `${person.displayName} (entityId: ${person.entityId})`,
+            )
+            .join(", ");
+          const count = hasMore
+            ? `at least ${snapshot.people.length}`
+            : String(snapshot.people.length);
+          const queryLabel = describeUserReference(name, "that name");
+          return {
+            success: false,
+            text: `${queryLabel} matched ${count} contacts: ${choices}${hasMore ? ", and more" : ""}. Ask which contact they mean, then retry with that entityId. No person's private details were read.`,
+            values: {
+              success: false,
+              error: "AMBIGUOUS_CONTACT",
+              matchCount: snapshot.people.length,
+              matchCountCapped: hasMore,
+            },
+            data: {
+              actionName: CONTACT_ACTION,
+              op: "read",
+              error: "AMBIGUOUS_CONTACT",
+              matches,
+              hasMore,
+            },
+            error: "AMBIGUOUS_CONTACT",
+          };
+        }
         resolvedEntityId = snapshot.people[0].primaryEntityId;
       }
     }

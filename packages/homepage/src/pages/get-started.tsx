@@ -424,6 +424,7 @@ function ProvisioningChatStep({
     containerStatus,
     isLoading,
     isReady,
+    hasObservedStatus,
     provisioningError,
   } = useElizaAppProvisioningChat(true, onboardingSessionId);
   const [input, setInput] = useState("");
@@ -437,32 +438,39 @@ function ProvisioningChatStep({
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || isLoading) return;
+    if (!text || !hasObservedStatus || isLoading) return;
     setInput("");
     await sendMessage(text);
     inputRef.current?.focus();
-  }, [input, isLoading, sendMessage]);
+  }, [hasObservedStatus, input, isLoading, sendMessage]);
 
   const provisioningFailed =
     provisioningError !== null || containerStatus === "error";
+  const isDedicatedOff = containerStatus === "none";
   const statusLabel = isReady
     ? t("homepage_eliza.getStarted.statusReady", {
         defaultValue: "Ready! Connecting...",
       })
-    : provisioningFailed
-      ? (provisioningError ??
-        t("homepage_eliza.getStarted.statusFailed", {
-          defaultValue: "Setup failed — please refresh.",
-        }))
-      : t("homepage_eliza.getStarted.statusSettingUp", {
-          defaultValue: "Setting up your AI space...",
-        });
+    : isDedicatedOff
+      ? t("homepage_eliza.getStarted.statusDedicatedOff", {
+          defaultValue: "Dedicated compute off",
+        })
+      : provisioningFailed
+        ? (provisioningError ??
+          t("homepage_eliza.getStarted.statusFailed", {
+            defaultValue: "Setup failed — please refresh.",
+          }))
+        : t("homepage_eliza.getStarted.statusSettingUp", {
+            defaultValue: "Checking your Cloud status...",
+          });
 
   const statusColor = isReady
     ? "#4ade80"
-    : provisioningFailed
-      ? "#f87171"
-      : "#229ED9";
+    : isDedicatedOff
+      ? "#a3a3a3"
+      : provisioningFailed
+        ? "#f87171"
+        : "#229ED9";
 
   return (
     <div style={{ width: "100%", maxWidth: "420px", fontFamily: SANS }}>
@@ -475,7 +483,7 @@ function ProvisioningChatStep({
             borderRadius: "50%",
             backgroundColor: statusColor,
             animation:
-              isReady || provisioningFailed
+              isReady || isDedicatedOff || provisioningFailed
                 ? "none"
                 : "gs-pulse 2s ease-in-out infinite",
             flexShrink: 0,
@@ -484,7 +492,7 @@ function ProvisioningChatStep({
         <span className="text-xs text-neutral-500 uppercase tracking-widest">
           {statusLabel}
         </span>
-        {!isReady && (
+        {hasObservedStatus && !isReady && !isDedicatedOff && (
           <button
             type="button"
             onClick={onContinue}
@@ -573,9 +581,13 @@ function ProvisioningChatStep({
               ? t("homepage_eliza.getStarted.chatPlaceholderReady", {
                   defaultValue: "Ready!",
                 })
-              : t("homepage_eliza.getStarted.chatPlaceholderAsk", {
-                  defaultValue: "Ask me anything...",
-                })
+              : isDedicatedOff
+                ? t("homepage_eliza.getStarted.chatPlaceholderDedicatedOff", {
+                    defaultValue: "Dedicated is off — continue to Eliza",
+                  })
+                : t("homepage_eliza.getStarted.chatPlaceholderAsk", {
+                    defaultValue: "Ask me anything...",
+                  })
           }
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -585,7 +597,7 @@ function ProvisioningChatStep({
               void handleSend();
             }
           }}
-          disabled={isLoading}
+          disabled={!hasObservedStatus || isLoading || isDedicatedOff}
           style={{
             flex: 1,
             height: 44,
@@ -602,19 +614,26 @@ function ProvisioningChatStep({
         <button
           type="button"
           onClick={() => void handleSend()}
-          disabled={isLoading || !input.trim()}
+          disabled={
+            !hasObservedStatus || isLoading || isDedicatedOff || !input.trim()
+          }
           style={{
             width: 44,
             height: 44,
             borderRadius: 22,
             border: "none",
             background:
-              isLoading || !input.trim() ? "rgba(0,0,0,0.15)" : "#1a1a1a",
+              !hasObservedStatus || isLoading || isDedicatedOff || !input.trim()
+                ? "rgba(0,0,0,0.15)"
+                : "#1a1a1a",
             color: "#fff",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            cursor: isLoading || !input.trim() ? "not-allowed" : "pointer",
+            cursor:
+              !hasObservedStatus || isLoading || isDedicatedOff || !input.trim()
+                ? "not-allowed"
+                : "pointer",
             transition: "background 0.15s",
           }}
         >
@@ -622,7 +641,7 @@ function ProvisioningChatStep({
         </button>
       </div>
 
-      {isReady && (
+      {(isReady || isDedicatedOff) && (
         <Button
           onClick={onContinue}
           className="w-full h-[52px] rounded-full bg-neutral-900 text-white font-medium hover:bg-neutral-800 transition-colors mt-4"
