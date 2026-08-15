@@ -13,6 +13,16 @@
   },
   "exports": {
     "./package.json": "./package.json",
+    "./endpoint-config": {
+      "types": "./dist/utils/config.d.ts",
+      "eliza-source": {
+        "types": "./src/utils/config.ts",
+        "import": "./src/utils/config.ts",
+        "default": "./src/utils/config.ts"
+      },
+      "import": "./dist/utils/config.js",
+      "default": "./dist/utils/config.js"
+    },
     ".": {
       "types": "./dist/index.node.d.ts",
       "eliza-source": {
@@ -129,7 +139,6 @@
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run",
     "test:unit": "vitest run __tests__/unit/",
-    "test:integration": "vitest run __tests__/integration/",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-elizacloud -- bun run build:unlocked",
     "build:unlocked": "bun run build.ts && bun run build:views && node scripts/verify-built-package.mjs",

@@ -32,6 +32,7 @@
 
 import {
   canonicalCloudPathForLegacyDashboard,
+  LANDING_AB_HOSTNAMES,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/shared/elizacloud/domain-contract";
@@ -63,6 +64,9 @@ export function resolveCanonicalPageRedirect(
   requestUrl: string,
 ): string | null {
   const url = new URL(requestUrl);
+  // A/B landing hosts serve the variant in place; redirecting them to the
+  // canonical marketing origin would send every visitor to the control.
+  if (LANDING_AB_HOSTNAMES.includes(url.hostname.toLowerCase())) return null;
   const classified = classifyElizaHostname(url.hostname);
   if (!classified.environment) return null;
 

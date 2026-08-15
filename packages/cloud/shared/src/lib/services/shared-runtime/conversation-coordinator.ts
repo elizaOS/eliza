@@ -6,12 +6,12 @@
  * deployment fault cannot fall through to repository-backed execution.
  */
 
-import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
+import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 
@@ -19,10 +19,57 @@ export interface SharedConversationCoordinatorOptions {
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
+  /** Personal operations are server-selected and always platform-funded. */
+  agentKind?: "sandbox" | "personal";
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
   namespace: RuntimeDurableObjectNamespace;
+}
+
+export interface SharedCutoverSeal {
+  token: string;
+  leaseMs: number;
+  organizationId: string;
+  dedicatedAgentId: string;
+}
+
+export interface PersonalProvisionalHistoryConvergence {
+  token: string;
+  holderId: string;
+  sourceAgentId: string;
+  targetAgentId: string;
+  targetUserId: string;
+  targetOrganizationId: string;
+  leaseMs: number;
+}
+
+export type PreparedPersonalProvisionalHistoryConvergence =
+  | { alreadyAliased: true }
+  | { alreadyAliased: false; history: SharedTurnMessage[] };
+
+/**
+ * Hydrate one conversation object's read-only history and turn-ingress modules.
+ * Voice startup uses this under its fixed greeting; no message is created.
+ */
+export async function coordinateSharedConversationPrewarm(
+  agentId: string,
+  roomId: string,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  const namespace = requireHistoryCoordinator(options);
+  const response = await coordinatorStub(namespace, agentId, roomId).fetch(
+    "https://shared-runtime.internal/prewarm",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: "prewarm", agentId, roomId }),
+    },
+  );
+  await requireCoordinatorResponse(response, "conversation prewarm");
+  // The Durable Object releases its per-room queue when the response body is
+  // consumed. Drain this tiny acknowledgement before the first real turn.
+  await response.arrayBuffer();
 }
 
 /**
@@ -118,7 +165,7 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
 }
 
 export async function coordinateSharedBridge(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   rpc: BridgeRequest,
   options: SharedConversationCoordinatorOptions,
 ): Promise<BridgeResponse> {
@@ -128,14 +175,18 @@ export async function coordinateSharedBridge(
     .fetch("https://shared-runtime.internal/bridge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operation: "bridge", agent, rpc }),
+      body: JSON.stringify({
+        operation: options.agentKind === "personal" ? "personal-bridge" : "bridge",
+        agent,
+        rpc,
+      }),
     });
   await requireCoordinatorResponse(response, "conversation");
   return (await response.json()) as BridgeResponse;
 }
 
 export async function coordinateSharedStream(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   rpc: BridgeRequest,
   options: SharedConversationCoordinatorOptions,
 ): Promise<Response> {
@@ -145,7 +196,11 @@ export async function coordinateSharedStream(
     .fetch("https://shared-runtime.internal/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operation: "stream", agent, rpc }),
+      body: JSON.stringify({
+        operation: options.agentKind === "personal" ? "personal-stream" : "stream",
+        agent,
+        rpc,
+      }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     });
   return await requireCoordinatorResponse(response, "stream");
@@ -223,4 +278,226 @@ export async function coordinateSharedHistory(
   await requireCoordinatorResponse(response, "conversation history");
   const body = (await response.json()) as { history: SharedTurnMessage[] };
   return body.history;
+}
+
+/**
+ * Queue behind any in-flight Shared turn, seal admission for later turns, and
+ * return the exact authoritative snapshot covered by that seal. The bounded
+ * lease prevents a crashed cutover request from stranding Shared forever.
+ */
+export async function coordinateSharedCutoverSeal(
+  agentId: string,
+  roomId: string,
+  seal: SharedCutoverSeal,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<SharedTurnMessage[]> {
+  const namespace = requireHistoryCoordinator(options);
+  const response = await coordinatorStub(namespace, agentId, roomId).fetch(
+    "https://shared-runtime.internal/cutover-seal",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "cutover-seal",
+        agentId,
+        roomId,
+        token: seal.token,
+        leaseMs: seal.leaseMs,
+        organizationId: seal.organizationId,
+        dedicatedAgentId: seal.dedicatedAgentId,
+      }),
+    },
+  );
+  await requireCoordinatorResponse(response, "personal cutover seal");
+  const body = (await response.json()) as { history: SharedTurnMessage[] };
+  return body.history;
+}
+
+async function coordinateSharedCutoverTransition(
+  agentId: string,
+  roomId: string,
+  token: string,
+  operation: "cutover-release" | "cutover-commit",
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  const namespace = requireHistoryCoordinator(options);
+  const response = await coordinatorStub(namespace, agentId, roomId).fetch(
+    `https://shared-runtime.internal/${operation}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operation, token }),
+    },
+  );
+  await requireCoordinatorResponse(response, `personal ${operation}`);
+}
+
+/** Release a failed cutover's exact lease so Shared resumes immediately. */
+export async function coordinateSharedCutoverRelease(
+  agentId: string,
+  roomId: string,
+  token: string,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  await coordinateSharedCutoverTransition(agentId, roomId, token, "cutover-release", options);
+}
+
+/** Permanently close Shared admission after the Dedicated marker commits. */
+export async function coordinateSharedCutoverCommit(
+  agentId: string,
+  roomId: string,
+  token: string,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  await coordinateSharedCutoverTransition(agentId, roomId, token, "cutover-commit", options);
+}
+
+/**
+ * Reserves the target against Dedicated cutover, then seals the source and
+ * captures its complete transcript. The caller commits the account transaction
+ * before passing this snapshot to the commit step, so a rejected account merge
+ * cannot contaminate the target.
+ */
+export async function preparePersonalProvisionalHistoryConvergence(
+  plan: PersonalProvisionalHistoryConvergence,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<PreparedPersonalProvisionalHistoryConvergence> {
+  const namespace = requireHistoryCoordinator(options);
+  try {
+    const reserved = await coordinatorStub(namespace, plan.targetAgentId, plan.targetAgentId).fetch(
+      "https://shared-runtime.internal/provisional-convergence-reserve",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: "provisional-convergence-reserve",
+          agentId: plan.targetAgentId,
+          token: plan.token,
+          holderId: plan.holderId,
+          leaseMs: plan.leaseMs,
+        }),
+      },
+    );
+    await requireCoordinatorResponse(reserved, "provisional convergence reservation");
+    await reserved.arrayBuffer();
+
+    const sealed = await coordinatorStub(namespace, plan.sourceAgentId, plan.sourceAgentId).fetch(
+      "https://shared-runtime.internal/provisional-convergence-seal",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: "provisional-convergence-seal",
+          agentId: plan.sourceAgentId,
+          token: plan.token,
+          holderId: plan.holderId,
+          targetAgentId: plan.targetAgentId,
+          targetUserId: plan.targetUserId,
+          targetOrganizationId: plan.targetOrganizationId,
+          leaseMs: plan.leaseMs,
+        }),
+      },
+    );
+    await requireCoordinatorResponse(sealed, "provisional convergence seal");
+    const sealedBody = (await sealed.json()) as {
+      alreadyAliased?: boolean;
+      history?: SharedTurnMessage[];
+    };
+    if (sealedBody.alreadyAliased) return { alreadyAliased: true };
+    if (!Array.isArray(sealedBody.history)) {
+      throw new Error("Provisional convergence seal returned no history snapshot");
+    }
+    return { alreadyAliased: false, history: sealedBody.history };
+  } catch (error) {
+    // error-policy:J6 a failed prepare releases only this attempt's holder;
+    // the original coordinator failure remains the observable result.
+    try {
+      await releasePersonalProvisionalHistoryConvergence(plan, options);
+    } catch (releaseError) {
+      // error-policy:J6 the prepare failure remains primary; both bounded
+      // leases self-expire, and this breadcrumb makes delayed recovery visible.
+      logger.warn("[shared-runtime] Failed to release provisional convergence leases", {
+        sourceAgentId: plan.sourceAgentId,
+        token: plan.token,
+        error: releaseError instanceof Error ? releaseError.message : String(releaseError),
+      });
+    }
+    throw error;
+  }
+}
+
+/** Imports the sealed transcript once, then installs the durable source-room alias. */
+export async function commitPersonalProvisionalHistoryConvergence(
+  plan: PersonalProvisionalHistoryConvergence,
+  prepared: PreparedPersonalProvisionalHistoryConvergence,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  const namespace = requireHistoryCoordinator(options);
+  if (!prepared.alreadyAliased) {
+    const imported = await coordinatorStub(namespace, plan.targetAgentId, plan.targetAgentId).fetch(
+      "https://shared-runtime.internal/provisional-convergence-import",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: "provisional-convergence-import",
+          agentId: plan.targetAgentId,
+          token: plan.token,
+          holderId: plan.holderId,
+          history: prepared.history,
+        }),
+      },
+    );
+    await requireCoordinatorResponse(imported, "provisional convergence import");
+    await imported.arrayBuffer();
+  }
+  const response = await coordinatorStub(namespace, plan.sourceAgentId, plan.sourceAgentId).fetch(
+    "https://shared-runtime.internal/provisional-convergence-alias",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "provisional-convergence-alias",
+        token: plan.token,
+        targetAgentId: plan.targetAgentId,
+        targetUserId: plan.targetUserId,
+        targetOrganizationId: plan.targetOrganizationId,
+      }),
+    },
+  );
+  await requireCoordinatorResponse(response, "provisional convergence alias");
+  await response.arrayBuffer();
+  await releasePersonalProvisionalHistoryConvergence(plan, options);
+}
+
+/** Releases this attempt's source seal and target reservation. */
+export async function releasePersonalProvisionalHistoryConvergence(
+  plan: Pick<
+    PersonalProvisionalHistoryConvergence,
+    "token" | "holderId" | "sourceAgentId" | "targetAgentId"
+  >,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  const namespace = requireHistoryCoordinator(options);
+  const responses = await Promise.all(
+    [plan.sourceAgentId, plan.targetAgentId].map(
+      async (agentId) =>
+        await coordinatorStub(namespace, agentId, agentId).fetch(
+          "https://shared-runtime.internal/provisional-convergence-release",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              operation: "provisional-convergence-release",
+              token: plan.token,
+              holderId: plan.holderId,
+            }),
+          },
+        ),
+    ),
+  );
+  for (const response of responses) {
+    await requireCoordinatorResponse(response, "provisional convergence release");
+    await response.arrayBuffer();
+  }
 }

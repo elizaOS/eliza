@@ -1,10 +1,14 @@
 /**
  * Exercises the mobile smoke CLI's host-side protocol, parsing, retry, and filesystem boundaries.
+ * Also covers fail-closed numeric env overrides so a typo cannot become a 1 ms
+ * timer or skip the AbortController timeout gate.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const fakeDirectory = fs.mkdtempSync(
   path.join(os.tmpdir(), "eliza-mobile-tools-"),
@@ -542,5 +546,268 @@ describe("mobile smoke failure states", () => {
       diagnostics.keys["eliza:ios-full-bun-smoke:request"].defaultsValue,
     ).toBeNull();
     await smoke.main();
+  });
+});
+
+const SMOKE_SCRIPT = fileURLToPath(
+  new URL("./mobile-local-chat-smoke.mjs", import.meta.url),
+);
+
+function runSmokeCli(envOverrides) {
+  return spawnSync(process.execPath, [SMOKE_SCRIPT, "--platform", "skip"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ...envOverrides,
+    },
+    timeout: 8_000,
+  });
+}
+
+describe("resolveMobileSmokeNumericEnv", () => {
+  it("keeps every documented default when knobs are unset or empty", () => {
+    expect(smoke.resolveMobileSmokeNumericEnv({})).toEqual({
+      iosFullBunSmokeContextSize: smoke.DEFAULT_IOS_FULL_BUN_SMOKE_CONTEXT_SIZE,
+      androidFullTurnTimeoutMs: smoke.DEFAULT_ANDROID_FULL_TURN_TIMEOUT_MS,
+      androidHealthProbeTimeoutMs:
+        smoke.DEFAULT_ANDROID_HEALTH_PROBE_TIMEOUT_MS,
+      androidTransientRetryAttempts:
+        smoke.DEFAULT_ANDROID_TRANSIENT_RETRY_ATTEMPTS,
+      androidTransientRetryDelayMs:
+        smoke.DEFAULT_ANDROID_TRANSIENT_RETRY_DELAY_MS,
+      androidStabilitySamples: smoke.DEFAULT_ANDROID_STABILITY_SAMPLES,
+      androidStabilityDelayMs: smoke.DEFAULT_ANDROID_STABILITY_DELAY_MS,
+      androidStabilityAttempts: smoke.DEFAULT_ANDROID_STABILITY_ATTEMPTS,
+      androidLocalInferenceReadyAttempts:
+        smoke.DEFAULT_ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS,
+      androidLocalInferenceReadyDelayMs:
+        smoke.DEFAULT_ANDROID_LOCAL_INFERENCE_READY_DELAY_MS,
+      androidSmokeModelContextSize:
+        smoke.DEFAULT_ANDROID_SMOKE_MODEL_CONTEXT_SIZE,
+      androidSmokeModelSizeBytesOverride: null,
+    });
+    expect(
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_FULL_TURN_TIMEOUT_MS: "",
+        ANDROID_HEALTH_PROBE_TIMEOUT_MS: "   ",
+      }).androidFullTurnTimeoutMs,
+    ).toBe(smoke.DEFAULT_ANDROID_FULL_TURN_TIMEOUT_MS);
+  });
+
+  it("accepts canonical timer and count overrides through the Node ceiling", () => {
+    const parsed = smoke.resolveMobileSmokeNumericEnv({
+      ANDROID_FULL_TURN_TIMEOUT_MS: "800",
+      ANDROID_HEALTH_PROBE_TIMEOUT_MS: "60000",
+      ANDROID_TRANSIENT_RETRY_ATTEMPTS: "1",
+      ANDROID_STABILITY_DELAY_MS: "0",
+      ANDROID_SMOKE_MODEL_CONTEXT_SIZE: "4096",
+      ANDROID_SMOKE_MODEL_SIZE_BYTES: "4",
+    });
+    expect(parsed.androidFullTurnTimeoutMs).toBe(800);
+    expect(parsed.androidHealthProbeTimeoutMs).toBe(60000);
+    expect(parsed.androidTransientRetryAttempts).toBe(1);
+    expect(parsed.androidStabilityDelayMs).toBe(0);
+    expect(parsed.androidSmokeModelContextSize).toBe(4096);
+    expect(parsed.androidSmokeModelSizeBytesOverride).toBe(4);
+  });
+
+  it("rejects scientific notation, partial tokens, and timer overflow", () => {
+    for (const value of [
+      "1e3",
+      "8abc",
+      "0x10",
+      "0.4",
+      "abc",
+      "-1",
+      "0",
+      String(smoke.MAX_TIMER_DELAY_MS + 1),
+    ]) {
+      expect(() =>
+        smoke.resolveMobileSmokeNumericEnv({
+          ANDROID_FULL_TURN_TIMEOUT_MS: value,
+        }),
+      ).toThrow(/ANDROID_FULL_TURN_TIMEOUT_MS/);
+    }
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_HEALTH_PROBE_TIMEOUT_MS: "abc",
+      }),
+    ).toThrow(/ANDROID_HEALTH_PROBE_TIMEOUT_MS/);
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_TRANSIENT_RETRY_ATTEMPTS: "1e3",
+      }),
+    ).toThrow(/ANDROID_TRANSIENT_RETRY_ATTEMPTS/);
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_SMOKE_MODEL_CONTEXT_SIZE: "8abc",
+      }),
+    ).toThrow(/ANDROID_SMOKE_MODEL_CONTEXT_SIZE/);
+  });
+
+  it("rejects leading-zero spellings the shared helpers would accept", () => {
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_TRANSIENT_RETRY_ATTEMPTS: "0008",
+      }),
+    ).toThrow(/ANDROID_TRANSIENT_RETRY_ATTEMPTS.*leading zeros/);
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({ ANDROID_STABILITY_DELAY_MS: "00" }),
+    ).toThrow(/ANDROID_STABILITY_DELAY_MS.*leading zeros/);
+    expect(
+      smoke.resolveMobileSmokeNumericEnv({ ANDROID_STABILITY_DELAY_MS: "0" })
+        .androidStabilityDelayMs,
+    ).toBe(0);
+  });
+
+  it("bounds context sizes at the operational cap, rejecting the known-OOM full width", () => {
+    for (const name of [
+      "IOS_FULL_BUN_SMOKE_CONTEXT_SIZE",
+      "ANDROID_SMOKE_MODEL_CONTEXT_SIZE",
+    ]) {
+      expect(
+        smoke.resolveMobileSmokeNumericEnv({
+          [name]: String(smoke.MAX_MODEL_CONTEXT_TOKENS),
+        }),
+      ).toBeTruthy();
+      // 131072 is the model's format ceiling AND the documented phone OOM
+      // width — it must be a rejection case, not the bound.
+      for (const value of [
+        String(smoke.MAX_MODEL_CONTEXT_TOKENS + 1),
+        "131072",
+        String(Number.MAX_SAFE_INTEGER),
+      ]) {
+        expect(() =>
+          smoke.resolveMobileSmokeNumericEnv({ [name]: value }),
+        ).toThrow(new RegExp(name));
+      }
+    }
+  });
+
+  it("bounds count knobs at the operational loop maximum", () => {
+    for (const name of [
+      "ANDROID_TRANSIENT_RETRY_ATTEMPTS",
+      "ANDROID_STABILITY_SAMPLES",
+      "ANDROID_STABILITY_ATTEMPTS",
+      "ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS",
+    ]) {
+      for (const value of [
+        String(smoke.MAX_LOOP_COUNT + 1),
+        String(Number.MAX_SAFE_INTEGER),
+      ]) {
+        expect(() =>
+          smoke.resolveMobileSmokeNumericEnv({ [name]: value }),
+        ).toThrow(new RegExp(name));
+      }
+    }
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_SMOKE_MODEL_SIZE_BYTES: String(smoke.MAX_MODEL_SIZE_BYTES + 1),
+      }),
+    ).toThrow(/ANDROID_SMOKE_MODEL_SIZE_BYTES/);
+  });
+
+  it("budgets count per-attempt work, not only delay (review counterexamples)", () => {
+    // 10000 attempts at delay 0 with a max probe timeout asserted a zero
+    // delay-budget but could consume ~680 years of probe work.
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_TRANSIENT_RETRY_ATTEMPTS: String(smoke.MAX_LOOP_COUNT),
+        ANDROID_TRANSIENT_RETRY_DELAY_MS: "0",
+        ANDROID_HEALTH_PROBE_TIMEOUT_MS: String(smoke.MAX_TIMER_DELAY_MS),
+      }),
+    ).toThrow(/loop budget/);
+    // A max probe or full-turn timeout alone now exceeds the composite
+    // stability/retry budgets at the documented default attempt counts.
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_HEALTH_PROBE_TIMEOUT_MS: String(smoke.MAX_TIMER_DELAY_MS),
+      }),
+    ).toThrow(/loop budget/);
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_FULL_TURN_TIMEOUT_MS: String(smoke.MAX_TIMER_DELAY_MS),
+      }),
+    ).toThrow(/loop budget/);
+  });
+
+  it("rejects over-budget loop combinations and inconsistent stability windows", () => {
+    // 10_000 attempts × 8_640_001ms ≈ 2.7 years — each value alone is legal.
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS: String(smoke.MAX_LOOP_COUNT),
+        ANDROID_LOCAL_INFERENCE_READY_DELAY_MS: "8640001",
+      }),
+    ).toThrow(/loop budget/);
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_TRANSIENT_RETRY_ATTEMPTS: "100",
+        ANDROID_TRANSIENT_RETRY_DELAY_MS: "864001",
+      }),
+    ).toThrow(/ANDROID_TRANSIENT_RETRY_ATTEMPTS.*loop budget/s);
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_STABILITY_SAMPLES: "10",
+        ANDROID_STABILITY_ATTEMPTS: "5",
+      }),
+    ).toThrow(/ANDROID_STABILITY_SAMPLES.*exceeds ANDROID_STABILITY_ATTEMPTS/);
+    // The documented defaults stay well inside every budget.
+    expect(smoke.resolveMobileSmokeNumericEnv({})).toBeTruthy();
+  });
+});
+
+describe("readiness request timeout boundary", () => {
+  it("a never-settling readiness fetch rejects within the probe timeout", async () => {
+    // requestOptionalJson used to issue an un-timed fetch, so one hung
+    // readiness endpoint outlived any loop budget. Harness probe timeout is
+    // 50ms (module preamble), so the hang must reject fast.
+    const hang = Bun.serve({
+      port: 0,
+      fetch: () => new Promise(() => {}),
+    });
+    try {
+      const startedAt = Date.now();
+      await expect(
+        smoke.requestOptionalJson(
+          "GET",
+          "/api/local-inference/hub",
+          `http://127.0.0.1:${hang.port}`,
+        ),
+      ).rejects.toThrow();
+      expect(Date.now() - startedAt).toBeLessThan(2_000);
+    } finally {
+      hang.stop(true);
+    }
+  });
+});
+
+describe("mobile smoke numeric env CLI boundary", () => {
+  it("rejects ANDROID_FULL_TURN_TIMEOUT_MS=1e3 before device or API work", () => {
+    const result = runSmokeCli({ ANDROID_FULL_TURN_TIMEOUT_MS: "1e3" });
+    expect(result.status).not.toBe(0);
+    const combined = `${result.stdout}${result.stderr}`;
+    expect(combined).toMatch(/ANDROID_FULL_TURN_TIMEOUT_MS/);
+    expect(combined).not.toContain("timed out after 1ms");
+    expect(combined).not.toContain("TimeoutOverflowWarning");
+    expect(combined).not.toContain("[local-chat-smoke]");
+  });
+
+  it("rejects overflowing and partial timeout tokens before spawn work", () => {
+    for (const value of ["8abc", "2147483648", "0.4"]) {
+      const result = runSmokeCli({ ANDROID_FULL_TURN_TIMEOUT_MS: value });
+      expect(result.status).not.toBe(0);
+      const combined = `${result.stdout}${result.stderr}`;
+      expect(combined).toMatch(/ANDROID_FULL_TURN_TIMEOUT_MS/);
+      expect(combined).not.toContain("TimeoutOverflowWarning");
+      expect(combined).not.toContain("[local-chat-smoke]");
+    }
+  });
+
+  it("rejects ANDROID_HEALTH_PROBE_TIMEOUT_MS=abc instead of hanging without a timer", () => {
+    const result = runSmokeCli({ ANDROID_HEALTH_PROBE_TIMEOUT_MS: "abc" });
+    expect(result.status).not.toBe(0);
+    const combined = `${result.stdout}${result.stderr}`;
+    expect(combined).toMatch(/ANDROID_HEALTH_PROBE_TIMEOUT_MS/);
+    expect(combined).not.toContain("[local-chat-smoke]");
   });
 });

@@ -81,7 +81,7 @@ export function renderDiscordInteractions(
 	const { blocks, cleanedText } = parseInteractionBlocks(content.text ?? "");
 	if (blocks.length === 0) {
 		return {
-			text: content.text ?? "",
+			text: cleanedText,
 			components: [],
 			needsFreeTextReply: false,
 		};

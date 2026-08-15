@@ -37,6 +37,8 @@ import {
 export interface VoiceSessionDownlink {
   sendControl(frame: ServerControlFrame): void;
   sendAudio(bytes: Uint8Array): void;
+  /** Flush transport-buffered playback that may outlive server-side TTS. */
+  clearAudio?(): void;
   close(code: number, reason: string): void;
 }
 

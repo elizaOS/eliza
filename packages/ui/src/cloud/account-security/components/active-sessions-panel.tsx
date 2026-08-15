@@ -5,7 +5,11 @@
  */
 
 import { useEffect, useState } from "react";
-import { BrandCard, CornerBrackets } from "../../../cloud-ui";
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "../../../components/settings/settings-layout";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
@@ -71,81 +75,72 @@ export function ActiveSessionsPanel() {
   }, []);
 
   return (
-    <BrandCard className="relative">
-      <CornerBrackets size="sm" className="opacity-50" />
-      <div className="relative z-10 space-y-4">
-        <div>
-          <h3 className="text-lg font-bold text-txt-strong">
-            {t("cloud.activeSessions.title", {
-              defaultValue: "Active sessions",
-            })}
-          </h3>
-          <p className="text-sm text-muted">
-            {t("cloud.activeSessions.description", {
-              defaultValue:
-                "Devices and browsers currently signed in to your account.",
-            })}
-          </p>
-        </div>
+    <SettingsStack data-testid="cloud-active-sessions">
+      <SettingsGroup
+        title={t("cloud.activeSessions.title", {
+          defaultValue: "Active sessions",
+        })}
+        description={t("cloud.activeSessions.description", {
+          defaultValue:
+            "Devices and browsers currently signed in to your account.",
+        })}
+      >
         {state.kind === "loading" ? (
-          <p className="text-sm text-muted">
-            {t("cloud.activeSessions.loading", {
+          <SettingsRow
+            label={t("cloud.activeSessions.loading", {
               defaultValue: "Loading sessions...",
             })}
-          </p>
+          />
         ) : state.kind === "unavailable" ? (
-          <p className="text-sm text-muted">
-            {t("cloud.activeSessions.notAvailable", {
+          <SettingsRow
+            label={t("cloud.activeSessions.notAvailable", {
               reason: state.reason ?? "",
               defaultValue: "Session listing is unavailable on this server.",
             })}
-          </p>
+          />
         ) : state.kind === "error" ? (
-          <p className="text-sm text-red-600 dark:text-red-300">
-            {state.message}
-          </p>
+          <SettingsRow tone="danger" label={state.message} />
         ) : state.sessions.length === 0 ? (
-          <p className="text-sm text-muted">
-            {t("cloud.activeSessions.noOther", {
+          <SettingsRow
+            label={t("cloud.activeSessions.noOther", {
               defaultValue: "No other active sessions found.",
             })}
-          </p>
+          />
         ) : (
-          <ul className="divide-y divide-border">
-            {state.sessions.map((session) => (
-              <li
+          state.sessions.map((session) => {
+            const device =
+              session.device ??
+              t("cloud.activeSessions.unknownDevice", {
+                defaultValue: "Unknown device",
+              });
+            return (
+              <SettingsRow
                 key={session.id}
-                className="flex items-center justify-between gap-3 py-2 text-sm"
-              >
-                <div className="space-y-0.5">
-                  <p className="font-medium text-txt-strong">
-                    {session.device ??
-                      t("cloud.activeSessions.unknownDevice", {
-                        defaultValue: "Unknown device",
-                      })}
+                active={Boolean(session.current)}
+                label={
+                  <span className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span>{device}</span>
                     {session.current ? (
-                      <span className="ml-2 rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-green-700 dark:text-green-300">
+                      <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
                         {t("cloud.activeSessions.current", {
                           defaultValue: "current",
                         })}
                       </span>
                     ) : null}
-                  </p>
-                  <p className="font-mono text-[11px] text-muted">
-                    {t("cloud.activeSessions.ipLastSeen", {
-                      ip: session.ip ?? "-",
-                      lastSeen: session.last_seen
-                        ? new Date(session.last_seen).toLocaleString()
-                        : "-",
-                      defaultValue: "{{ip}} - last seen {{lastSeen}}",
-                    })}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
+                  </span>
+                }
+                description={t("cloud.activeSessions.ipLastSeen", {
+                  ip: session.ip ?? "-",
+                  lastSeen: session.last_seen
+                    ? new Date(session.last_seen).toLocaleString()
+                    : "-",
+                  defaultValue: "{{ip}} - last seen {{lastSeen}}",
+                })}
+              />
+            );
+          })
         )}
-      </div>
-    </BrandCard>
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

@@ -277,6 +277,65 @@ describe("transcribeCloudWav", () => {
     expect(fetchWithCsrfMock).toHaveBeenCalledTimes(2);
   });
 
+  it("waits for a deferred cloud STT route that is still starting", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchWithCsrfMock
+        .mockResolvedValueOnce(
+          jsonResponse({ error: "feature_starting" }, false, 503),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({ error: "feature_starting" }, false, 503),
+        )
+        .mockResolvedValueOnce(jsonResponse({ text: "runtime ready" }));
+
+      const pending = transcribeCloudWav(new Uint8Array([1]));
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      await expect(pending).resolves.toBe("runtime ready");
+      expect(fetchWithCsrfMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops the startup wait immediately when the caller cancels", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchWithCsrfMock.mockResolvedValue(
+        jsonResponse({ error: "feature_starting" }, false, 503),
+      );
+      const controller = new AbortController();
+      const pending = transcribeCloudWav(new Uint8Array([1]), {
+        signal: controller.signal,
+      });
+      await Promise.resolve();
+      controller.abort();
+
+      await expect(pending).rejects.toThrow(/cancelled/);
+      expect(fetchWithCsrfMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails loud when deferred route startup exceeds the bounded window", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchWithCsrfMock.mockResolvedValue(
+        jsonResponse({ error: "feature_starting" }, false, 503),
+      );
+      const pending = transcribeCloudWav(new Uint8Array([1]));
+      const assertion = expect(pending).rejects.toThrow(/feature_starting/);
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      await assertion;
+      expect(fetchWithCsrfMock).toHaveBeenCalledTimes(31);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does NOT retry a terminal 4xx client error (#voice-V4)", async () => {
     fetchWithCsrfMock.mockResolvedValue(
       jsonResponse({ error: "no api key" }, false, 401),

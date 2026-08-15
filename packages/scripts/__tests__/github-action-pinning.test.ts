@@ -305,6 +305,20 @@ describe("GitHub action supply-chain references", () => {
     expect(source).not.toContain("playwright install --with-deps chromium");
   });
 
+  test("leaves the zero-key harness enough time after fleet setup", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "test.yml"),
+      "utf8",
+    );
+    const workflow = Bun.YAML.parse(source) as {
+      jobs?: Record<string, { "timeout-minutes"?: number }>;
+    };
+
+    expect(
+      workflow.jobs?.["zero-key-model-provider-e2e"]?.["timeout-minutes"],
+    ).toBeGreaterThanOrEqual(30);
+  });
+
   test("routes homepage deploys through the consolidated Cloudflare workflow", () => {
     // The entry workflow owns the homepage trigger paths and the unprivileged
     // preview build; the Pages project it deploys into is bound in the reusable

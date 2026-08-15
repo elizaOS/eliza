@@ -6,7 +6,10 @@
  */
 
 import { runWithDbCacheAsync } from "@/db/client";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import {
+  type AgentSandbox,
+  agentSandboxesRepository,
+} from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
@@ -19,15 +22,18 @@ import type { InternalElizaConversationFetchClaims } from "./internal-eliza-conv
 export async function hydrateVoiceSharedAgentScope(
   env: Bindings,
   claims: InternalElizaConversationFetchClaims,
+  preloadedAgent?: AgentSandbox,
 ): Promise<void> {
   await runWithCloudBindingsAsync(
     env as unknown as Record<string, unknown>,
     () =>
       runWithDbCacheAsync(async () => {
-        const agent = await agentSandboxesRepository.findByIdAndOrg(
-          claims.agentId,
-          claims.organizationId,
-        );
+        const agent =
+          preloadedAgent ??
+          (await agentSandboxesRepository.findByIdAndOrg(
+            claims.agentId,
+            claims.organizationId,
+          ));
         if (
           !agent ||
           agent.id !== claims.agentId ||

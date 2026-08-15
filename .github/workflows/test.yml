@@ -794,7 +794,7 @@ jobs:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"

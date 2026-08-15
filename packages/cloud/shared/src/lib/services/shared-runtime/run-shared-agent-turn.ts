@@ -26,6 +26,7 @@ import {
   getInteractiveCerebrasLanguageModel,
   hasLanguageModelProviderConfigured,
 } from "../../providers/language-model";
+import { resolveSharedCapabilityWall, type SharedCapabilityWall } from "./shared-capability-wall";
 import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-intent";
 
 export interface SharedTurnMessage {
@@ -89,6 +90,8 @@ export interface RunSharedAgentTurnResult {
    * `done` SSE frame so the PWA opens the view. See shared-nav-intent.ts.
    */
   navIntent?: SharedNavIntent;
+  /** Typed refusal for a tool or device action Shared cannot execute. */
+  capabilityWall?: SharedCapabilityWall;
 }
 
 export type SharedAgentTurnStreamPart =
@@ -110,6 +113,8 @@ export interface RunSharedAgentTurnStreamResult {
    * PWA opens the view. See shared-nav-intent.ts.
    */
   navIntent?: SharedNavIntent;
+  /** Typed refusal for a tool or device action Shared cannot execute. */
+  capabilityWall?: SharedCapabilityWall;
 }
 
 /**
@@ -192,6 +197,13 @@ function buildSystemPrompt(character: SharedAgentCharacter): string {
         .join("\n- ")}`,
     );
   }
+  parts.push(
+    "Shared runtime boundaries:\n" +
+      "- You can converse, reason, draft, and help the user plan.\n" +
+      "- You have no external tools, live browser, connected accounts, calendar, reminders, calling, messaging, purchasing, notes store, shell, filesystem, or code execution in this runtime.\n" +
+      "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, searched live data, or changed anything outside this conversation.\n" +
+      "- When an ambiguous follow-up asks you to execute a prior external action, state that the action needs Dedicated and offer the useful planning or drafting help you can provide here.",
+  );
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
 }
 
@@ -227,6 +239,17 @@ export async function runSharedAgentTurn(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
+
+  const capabilityWall = resolveSharedCapabilityWall(message);
+  if (capabilityWall) {
+    return {
+      reply: capabilityWall.reply,
+      history: appendTurn(input.history, message, capabilityWall.reply, input.messageIds),
+      model: "capability-wall",
+      degraded: false,
+      capabilityWall,
+    };
+  }
 
   // Deterministic in-app navigation fast path (no LLM, no plugin). A Tier-0
   // shared agent has no VIEWS action, so "go to settings" would otherwise be a
@@ -307,6 +330,23 @@ export async function runSharedAgentTurnStream(
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
 
+  const capabilityWall = resolveSharedCapabilityWall(message);
+  if (capabilityWall) {
+    const reply = capabilityWall.reply;
+    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
+      yield { type: "text-delta", text: reply };
+      yield { type: "finish", text: reply };
+    })();
+    return {
+      model: "capability-wall",
+      degraded: false,
+      reply,
+      history: appendTurn(input.history, message, reply, input.messageIds),
+      parts,
+      capabilityWall,
+    };
+  }
+
   // Deterministic in-app navigation fast path (no LLM, no plugin). Synthesize a
   // one-shot stream that yields the confirmation text so the SSE shape is
   // identical to a normal turn; the caller reads `navIntent` to attach a VIEWS
@@ -361,9 +401,11 @@ export async function runSharedAgentTurnStream(
 
     const providerReader = result.fullStream.getReader();
     let providerStreamDone = false;
+    let providerStreamCancelled = false;
     let providerCancelPromise: Promise<void> | null = null;
     const cancel = async (reason?: unknown): Promise<void> => {
       if (providerStreamDone) return;
+      providerStreamCancelled = true;
       providerCancelPromise ??= providerReader.cancel(reason).finally(() => {
         providerStreamDone = true;
       });
@@ -371,11 +413,26 @@ export async function runSharedAgentTurnStream(
     };
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
       let reply = "";
+      let finishSeen = false;
       try {
         for (;;) {
           const next = await providerReader.read();
           if (next.done) {
             providerStreamDone = true;
+            if (!finishSeen && !providerStreamCancelled) {
+              // Some AI SDK provider streams close cleanly after their text deltas
+              // without forwarding a finish part. The SDK result promises are the
+              // authoritative completion signal: they reject for a failed stream.
+              const finalText = (await result.text).trim();
+              if (!finalText) {
+                throw new Error("provider stream ended without text or a finish part");
+              }
+              yield {
+                type: "finish",
+                text: finalText,
+                usage: await result.totalUsage,
+              };
+            }
             break;
           }
           const part = next.value;
@@ -383,7 +440,13 @@ export async function runSharedAgentTurnStream(
             reply += part.text;
             yield { type: "text-delta", text: part.text };
           }
+          if (part.type === "error") {
+            throw part.error instanceof Error
+              ? part.error
+              : new Error("provider stream reported an unknown error");
+          }
           if (part.type === "finish") {
+            finishSeen = true;
             yield {
               type: "finish",
               text: reply.trim() || "…",

@@ -17,7 +17,13 @@ type WorkflowDefinition = {
   source: string;
   language: "tsx";
   active: boolean;
-  steps: Array<{ id: string; label: string; kind: "task"; agent: string }>;
+  steps: Array<{
+    id: string;
+    label: string;
+    kind: "task";
+    agent: string;
+    dependsOn?: string[];
+  }>;
   widgets: Array<{
     id: string;
     title: string;
@@ -65,12 +71,29 @@ async function installWorkflowApi(page: Page) {
         ...body,
         inputSchema: {
           type: "object",
-          required: ["topic"],
+          required: ["topic", "notify"],
           properties: {
             topic: { type: "string", title: "Topic" },
             limit: { type: "integer", title: "Limit", default: 5 },
+            notify: { type: "boolean", title: "Notify" },
           },
         },
+        steps: [
+          {
+            id: "digest",
+            label: "Build digest",
+            kind: "task",
+            agent: "elizaOS",
+            dependsOn: [],
+          },
+          {
+            id: "publish",
+            label: "Publish",
+            kind: "task",
+            agent: "elizaOS",
+            dependsOn: ["digest"],
+          },
+        ],
         id: "smithers-digest",
         versionId: "v1",
         createdAt: now,
@@ -254,6 +277,29 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
+test("first trigger saves and refreshes an unsaved workflow", async ({
+  page,
+}) => {
+  const api = await installWorkflowApi(page);
+  await openAppPath(page, "/automations");
+  await expect(page.getByTestId("automations-shell")).toBeVisible({
+    timeout: 60_000,
+  });
+  await page.getByRole("button", { name: "New automation" }).click();
+  await page.getByRole("button", { name: "New workflow" }).click();
+  await page.getByRole("button", { name: "Add workflow trigger" }).click();
+  await page.getByRole("button", { name: "Repeat" }).click();
+  await page.getByLabel("Interval minutes").fill("15");
+  await page.getByRole("button", { name: "Save trigger" }).click();
+
+  await expect(page.getByTitle("Repeat · 15m")).toBeVisible();
+  expect(api.getCreateCount()).toBe(1);
+  expect(api.getTrigger()).toMatchObject({
+    workflowId: "smithers-digest",
+    intervalMs: 900_000,
+  });
+});
+
 test("workflow studio creates, executes, inspects, and reloads a Smithers workflow", async ({
   page,
 }) => {
@@ -275,9 +321,9 @@ test("workflow studio creates, executes, inspects, and reloads a Smithers workfl
   const source = `/** @jsxImportSource smthrs */
 import { createSmithers } from "smthrs/create";
 import { z } from "zod";
-const { Workflow, Task, smithers, outputs } = createSmithers({ result: z.object({ message: z.string() }) });
+const { Workflow, Task, smithers, outputs } = createSmithers({ output: z.object({ message: z.string() }) });
 const agent = globalThis.__elizaSmithers.agent;
-export default smithers(() => <Workflow name="digest"><Task id="digest" output={outputs.result} agent={agent}>Create the digest.</Task></Workflow>);`;
+export default smithers(() => <Workflow name="digest"><Task id="digest" output={outputs.output} agent={agent}>Create the digest.</Task></Workflow>);`;
   await page.getByTestId("smithers-source-editor").fill(source);
   await page.locator('[data-agent-id="save-workflow"]').click();
 
@@ -310,7 +356,11 @@ export default smithers(() => <Workflow name="digest"><Task id="digest" output={
   await page.getByLabel("Topic").fill("release");
   await page.getByRole("button", { name: "Run workflow" }).click();
   await expect.poll(api.getRunCount).toBe(1);
-  expect(api.getRunInput()).toEqual({ topic: "release", limit: 5 });
+  expect(api.getRunInput()).toEqual({
+    topic: "release",
+    limit: 5,
+    notify: false,
+  });
   await expect(page.getByText("run-smithers").first()).toBeVisible();
   await expect(page.getByText("Digest ready")).toBeVisible({
     timeout: 10_000,
@@ -327,6 +377,9 @@ export default smithers(() => <Workflow name="digest"><Task id="digest" output={
     /Create the digest/,
     { timeout: 60_000 },
   );
+  await page.getByRole("button", { name: "Build" }).click();
+  await expect(page.getByText("Build digest", { exact: true })).toBeVisible();
+  await expect(page.getByText("Publish", { exact: true })).toBeVisible();
   await expect(page.getByTitle(/After Collect/)).toBeVisible();
   expect(api.getCreateCount()).toBe(1);
   expect(api.getRunCount()).toBe(1);

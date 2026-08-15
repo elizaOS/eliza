@@ -62,6 +62,16 @@ Representative examples:
   summary; it downloads by artifact id, decrypts only after every identity
   check, and never creates a replacement plan. Plaintext plan files are
   shredded on every plan/apply outcome.
+- `arm-headscale-control-plane.yml` is the protected Hetzner Headscale
+  convergence path. Its default operation converges the environment-fixed
+  canonical/legacy overlap. Staging additionally exposes a read-only inspection
+  of the exact reviewed `/etc/nginx/conf.d/headscale-staging.conf` artifact and
+  a separate explicit retirement operation. The latter validates the regular
+  root-owned legacy-only two-listener contract, requires the exact SHA-256
+  emitted by the reviewed inspection, backs up both nginx files, and
+  restores them on any ownership, SAN, nginx, reload, public-health, router,
+  environment-write, worker-restart, or final service-liveness failure.
+  Production has no legacy-file cleanup path.
 - `deploy-tunnel-proxy.yml` is the protected Railway + Headscale convergence
   path for the customer tunnel proxy. It validates canonical staging/production
   hosts, rotates the reusable `tag:eliza-proxy` enrollment key without logging
@@ -72,6 +82,42 @@ Representative examples:
   `pages-domains` Terraform plan. That root owns the exact provider-generated
   CNAME/TXT values as DNS-only records and imports existing records only by
   reviewed Cloudflare id.
+- `deploy-gateway-webhook.yml` is the protected Railway release path for the
+  multi-platform webhook gateway. Staging dispatches must select `develop` and
+  production dispatches must select `main`. The workflow validates the exact
+  protected Railway project, environment, service, and public URL; uploads the
+  exact dispatch SHA from the repository root with a byte-identical root copy
+  of the tracked service `railway.toml`; follows the returned deployment id to
+  success; proves that exact id remains active around the public probes; and
+  verifies the applied Dockerfile/health manifest, live health, and canonical
+  cloud/agent fallback routing pair. It also sends a headerless `GET` to the
+  dedicated `/ready/forwarder-auth/eliza-app` contract and requires the exact
+  enforced-gate 401 response before reasserting the active deployment. A
+  disabled secret or mismatched forwarded project produces a distinct non-401
+  readiness failure; the probe never enters provider or message handling and
+  refuses supplied forwarder-secret headers without comparing them. Configure
+  environment variables
+  `RAILWAY_PROJECT_ID`, `RAILWAY_ENVIRONMENT_ID`,
+  `RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK`, and
+  `ELIZA_APP_WEBHOOK_GATEWAY_URL`, with `RAILWAY_TOKEN` as an environment
+  secret. Existing sensitive service values stay in Railway and are checked by
+  name without being printed or rewritten, including the required
+  `ELIZA_APP_WEBHOOK_GATEWAY_SECRET` BFF-forwarding trust gate. Staging is
+  protected by the workflow's exact `develop` branch and environment-scoped
+  configuration gates but does not currently require a reviewer; production
+  retains its required-reviewer approval.
+
+  The dispatch choice and selected GitHub Environment use the same exact name;
+  Railway service names are separate targets:
+
+  | Dispatch / GitHub Environment | Source branch | Railway service |
+  | --- | --- | --- |
+  | `staging` | `develop` | `gateway-webhook-stg` |
+  | `production` | `main` | `gateway-webhook` |
+
+  The pinned Railway CLI is invoked without a relative path so its explicit
+  project selector archives the absolute current repository root. Passing `.`
+  with Railway CLI v5.38.0 fails its pre-upload archive-prefix check.
 - `voice-code-bench.yml` retains the bounded real-ASR benchmark.
 
 These workflows use `workflow_dispatch` and never run for pull requests.

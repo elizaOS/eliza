@@ -159,6 +159,8 @@ second credential broker, and child trajectories retain their session join key.
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command override. |
 | `ELIZA_ACP_DEFAULT_APPROVAL` | `autonomous` | Approval preset (`read-only`, `auto`, `permissive`, `autonomous`, `full-access`). |
 | `ELIZA_ACP_PROMPT_TIMEOUT_MS` / `ACPX_DEFAULT_TIMEOUT_MS` | `300000` (5m) | Per-prompt timeout. |
+| `ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS` | `5000` (5s) | Maximum adapter-availability preflight wait. Values must be exact decimal integers from `250` through `2147483647`; missing/blank uses the default, and invalid values fail before the adapter probe starts. |
+| `ELIZA_SMITHERS_TIMEOUT_MS` | `300000` (5m) | Maximum Smithers durable-run wall-clock time. Values must be exact decimal integers from `1` through `2147483647`; missing/blank uses the default, and invalid environment or request overrides fail before a worker starts. |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acp` | Where to persist session state when no runtime DB. |
 | `ACPX_DEFAULT_CWD` | runtime cwd | Base directory for spawned agent workdirs. |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap. |
@@ -170,6 +172,8 @@ second credential broker, and child trajectories retain their session join key.
 | `ACPX_PROGRESS_MODE` / `ELIZA_SUB_AGENT_PROGRESS_MODE` | `compact` | Sub-agent progress UX: `compact` delays and edits one status message, `threaded` preserves per-task threads, `silent` disables visible progress. |
 | `ACPX_PROGRESS_DELAY_MS` / `ELIZA_SUB_AGENT_PROGRESS_DELAY_MS` | `15000` | Delay before the first visible progress message, so short tasks only show the final answer. |
 | `ACPX_PROGRESS_REACTIONS` / `ELIZA_SUB_AGENT_PROGRESS_REACTIONS` | unset | Set to `1` to add progress reactions in `threaded` mode. |
+| `SMITHERS_DB_PROVIDER` | `sqlite` | Smithers task storage: `sqlite` or `postgres`. `pglite` fails closed with `SMITHERS_PGLITE_INCOMPATIBLE` until the upstream Smithers adapter dependency closure is compatible. |
+| `SMITHERS_DB_URL` | unset | Required PostgreSQL connection string when `SMITHERS_DB_PROVIDER=postgres`. |
 
 ### Native transport status
 

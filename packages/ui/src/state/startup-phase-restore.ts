@@ -60,6 +60,7 @@ import {
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
   isManagedCloudSharedAgentBase,
+  isPersonalSharedElizaId,
   resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
@@ -114,10 +115,14 @@ const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
 const RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL = "https://eliza.app";
 
 function recoverCloudAgentId(active: PersistedActiveServer): string | null {
+  const runtimeId = active.cloudRuntimeAgentId?.trim() ?? "";
+  if (isCloudPairAgentId(runtimeId) || isPersonalSharedElizaId(runtimeId)) {
+    return runtimeId;
+  }
   const rawId = active.id?.startsWith("cloud:")
     ? active.id.slice("cloud:".length).trim()
     : "";
-  if (isCloudPairAgentId(rawId)) return rawId;
+  if (isCloudPairAgentId(rawId) || isPersonalSharedElizaId(rawId)) return rawId;
   const baseAgentId = dedicatedCloudAgentIdFromBase(active.apiBase);
   return isCloudPairAgentId(baseAgentId) ? baseAgentId : null;
 }
@@ -206,11 +211,11 @@ function backfillCloudApiBase(
   const pageAgentId = pageOrigin
     ? dedicatedCloudAgentIdFromBase(pageOrigin)
     : null;
-  const dedicatedApiBase =
-    pageAgentId && pageAgentId.toLowerCase() === agentId.toLowerCase()
+  const dedicatedApiBase = isCloudPairAgentId(agentId)
+    ? pageAgentId && pageAgentId.toLowerCase() === agentId.toLowerCase()
       ? pageOrigin
-      : buildDedicatedCloudAgentApiBase(agentId, cloudApiBase);
-  if (!dedicatedApiBase) return active;
+      : buildDedicatedCloudAgentApiBase(agentId, cloudApiBase)
+    : null;
   const sharedApiBase = buildCloudSharedAgentApiBase(
     resolveDirectCloudAuthApiBase(cloudApiBase),
     agentId,
@@ -224,9 +229,11 @@ function backfillCloudApiBase(
   // can reject them without fabricating a canonical server-owned address.
   if (!managedBase) return active;
 
-  const repairedApiBase = isDirectCloudSharedAgentBase(active.apiBase)
-    ? sharedApiBase
-    : dedicatedApiBase;
+  const useSharedApiBase =
+    active.cloudRuntime === "shared" ||
+    isDirectCloudSharedAgentBase(active.apiBase);
+  const repairedApiBase = useSharedApiBase ? sharedApiBase : dedicatedApiBase;
+  if (!repairedApiBase) return active;
   if (active.apiBase === repairedApiBase) return active;
 
   const updated: PersistedActiveServer = {
@@ -743,7 +750,12 @@ export function canRestoreActiveServer(args: {
     const rawId = args.server.id?.startsWith("cloud:")
       ? args.server.id.slice("cloud:".length).trim()
       : "";
-    return isCloudPairAgentId(rawId);
+    return (
+      isCloudPairAgentId(args.server.cloudRuntimeAgentId) ||
+      isPersonalSharedElizaId(args.server.cloudRuntimeAgentId ?? "") ||
+      isCloudPairAgentId(rawId) ||
+      isPersonalSharedElizaId(rawId)
+    );
   }
 
   return false;

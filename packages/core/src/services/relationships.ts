@@ -2335,8 +2335,8 @@ export class RelationshipsService extends Service {
 
 	/**
 	 * Kick a background relationships-graph build so cold rolodex turns after
-	 * restart hit the stale-while-revalidate cache instead of blocking the
-	 * event loop past the 3s provider deadline (#17932).
+	 * restart hit the stale-while-revalidate cache instead of blocking provider
+	 * composition on the first graph build (#17932).
 	 */
 	prewarmGraphModel(): void {
 		if (!this.runtime) return;

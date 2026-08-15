@@ -96,6 +96,22 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "deleted_at" timestamp,
   PRIMARY KEY ("id")
 )`,
+  `CREATE TABLE IF NOT EXISTS "personal_account_convergences" (
+  "token" text NOT NULL,
+  "source_user_id" uuid NOT NULL,
+  "source_organization_id" uuid NOT NULL,
+  "source_agent_id" text NOT NULL,
+  "target_user_id" uuid NOT NULL,
+  "target_organization_id" uuid NOT NULL,
+  "target_agent_id" text NOT NULL,
+  "phone_number" text NOT NULL,
+  "telegram_id" text NOT NULL,
+  "steward_user_id" text NOT NULL,
+  "status" text NOT NULL DEFAULT 'pending_alias',
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at" timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY ("token")
+)`,
   `CREATE TABLE IF NOT EXISTS "user_characters" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),
   "organization_id" uuid NOT NULL,
