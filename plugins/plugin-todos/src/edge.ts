@@ -60,7 +60,6 @@ export type {
   TodoMutationResult,
   TodoScope,
   TodoScopeConvergenceInput,
-  TodoScopeConvergenceReceipt,
   TodoStore,
   UpdateTodoInput,
   WriteTodoListInput,

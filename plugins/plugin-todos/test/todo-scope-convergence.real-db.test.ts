@@ -105,27 +105,16 @@ describe("Todo identity-scope convergence — real PGlite", () => {
       worldIdMap: { [sourceWorldId]: targetWorldId },
     };
 
-    let rolledBackReceipt:
-      | Awaited<ReturnType<typeof convergeTodoScopesInTransaction>>
-      | undefined;
     await expect(
       db.transaction(async (tx) => {
-        rolledBackReceipt = await convergeTodoScopesInTransaction(tx, input);
+        await convergeTodoScopesInTransaction(tx, input);
         throw new Error("force convergence rollback");
       }),
     ).rejects.toThrow("force convergence rollback");
     expect(await store.readCutoverState(sourceScope)).toEqual(sourceBefore);
     expect(await store.readCutoverState(targetScope)).toEqual(targetBefore);
 
-    const receipt = await db.transaction((tx) =>
-      convergeTodoScopesInTransaction(tx, input),
-    );
-    expect(receipt).toEqual(rolledBackReceipt);
-    expect(receipt).toMatchObject({
-      sourceTodoCount: 2,
-      sourceMutationCount: 2,
-    });
-    expect(receipt.sourceDigest).toMatch(/^[a-f0-9]{64}$/);
+    await db.transaction((tx) => convergeTodoScopesInTransaction(tx, input));
     expect(await store.readCutoverState(sourceScope)).toEqual({
       todos: [],
       mutations: [],
@@ -189,9 +178,7 @@ describe("Todo identity-scope convergence — real PGlite", () => {
         },
       },
     });
-    expect(
-      await db.transaction((tx) => convergeTodoScopesInTransaction(tx, input)),
-    ).toMatchObject({ sourceTodoCount: 0, sourceMutationCount: 0 });
+    await db.transaction((tx) => convergeTodoScopesInTransaction(tx, input));
     expect((await store.readCutoverState(targetScope)).todos).toHaveLength(3);
   }, 180_000);
 

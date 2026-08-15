@@ -35,7 +35,6 @@ import {
   type TodoMutationResult,
   type TodoScope,
   type TodoScopeConvergenceInput,
-  type TodoScopeConvergenceReceipt,
   type TodoStore,
   type UpdateTodoInput,
   type WriteTodoListInput,
@@ -650,65 +649,17 @@ function assertMutationResultScope(
   }
 }
 
-async function todoScopeStateDigest(
-  sourceScope: TodoScope,
-  todoRows: TodoRow[],
-  mutationRows: TodoMutationRow[],
-): Promise<string> {
-  const serialized = JSON.stringify(
-    canonicalize({
-      version: 1,
-      sourceScope,
-      todos: todoRows.map((row) => ({
-        id: row.id,
-        entityId: row.entityId,
-        agentId: row.agentId,
-        roomId: row.roomId ?? null,
-        worldId: row.worldId ?? null,
-        content: row.content,
-        activeForm: row.activeForm,
-        status: row.status,
-        parentTodoId: row.parentTodoId ?? null,
-        parentTrajectoryStepId: row.parentTrajectoryStepId ?? null,
-        metadata: row.metadata,
-        createdAt: row.createdAt.toISOString(),
-        updatedAt: row.updatedAt.toISOString(),
-        completedAt: row.completedAt?.toISOString() ?? null,
-      })),
-      mutations: mutationRows.map((row) => ({
-        mutationId: row.mutationId,
-        entityId: row.entityId,
-        agentId: row.agentId,
-        idempotencyKey: row.idempotencyKey,
-        operation: row.operation,
-        requestDigest: row.requestDigest,
-        resultJson: row.resultJson,
-        applied: row.applied,
-        committedAt: row.committedAt.toISOString(),
-      })),
-    }),
-  );
-  if (serialized === undefined) {
-    throw todoScopeConvergenceError("source state is not serializable", {
-      sourceAgentId: sourceScope.agentId,
-      sourceEntityId: sourceScope.entityId,
-    });
-  }
-  return sha256(serialized);
-}
-
 /**
  * Atomically move Todo state and replay authority between two identity scopes.
- * The receipt binds the exact pre-move rows so the account-convergence record
- * can prove what was transferred even though a source-empty retry cannot
- * reconstruct provenance from the merged target scope.
+ * The caller owns the surrounding identity transaction, so any validation or
+ * remapping failure rolls both the storage move and identity merge back.
  */
 export async function convergeTodoScopesInTransaction<
   TSchema extends Record<string, unknown>,
 >(
   tx: TodoTransaction<TSchema>,
   input: TodoScopeConvergenceInput,
-): Promise<TodoScopeConvergenceReceipt> {
+): Promise<void> {
   if (
     input.sourceScope.agentId === input.targetScope.agentId &&
     input.sourceScope.entityId === input.targetScope.entityId
@@ -740,17 +691,8 @@ export async function convergeTodoScopesInTransaction<
       ),
     )
     .orderBy(asc(todoMutationsTable.mutationId));
-  const receipt = {
-    sourceTodoCount: sourceTodoRows.length,
-    sourceMutationCount: sourceMutationRows.length,
-    sourceDigest: await todoScopeStateDigest(
-      input.sourceScope,
-      sourceTodoRows,
-      sourceMutationRows,
-    ),
-  };
   if (sourceTodoRows.length === 0 && sourceMutationRows.length === 0) {
-    return receipt;
+    return;
   }
 
   const sourceTodos = sourceTodoRows.map((row) => {
@@ -863,7 +805,6 @@ export async function convergeTodoScopesInTransaction<
       );
     }
   }
-  return receipt;
 }
 
 /** Import mutation replay authority inside the caller's existing SQL transaction. */
@@ -1694,7 +1635,6 @@ export {
   type TodoMutationResult,
   type TodoScope,
   type TodoScopeConvergenceInput,
-  type TodoScopeConvergenceReceipt,
   type TodoStore,
   type UpdateTodoInput,
   type WriteTodoListInput,

@@ -128,12 +128,6 @@ export interface TodoScopeConvergenceInput {
   worldIdMap?: Readonly<Record<string, string | null>>;
 }
 
-export interface TodoScopeConvergenceReceipt {
-  sourceTodoCount: number;
-  sourceMutationCount: number;
-  sourceDigest: string;
-}
-
 export interface TodoStore {
   applyMutation(input: TodoMutationInput): Promise<TodoMutationExecution>;
   readCutoverState(scope: TodoScope): Promise<TodoCutoverState>;
