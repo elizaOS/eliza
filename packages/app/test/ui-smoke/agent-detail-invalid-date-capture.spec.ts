@@ -14,6 +14,19 @@ import {
 
 test.use({ video: "on" });
 
+const TEST_AUTH_ENABLED =
+  process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
+  process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true";
+
+// The /dashboard cloud-console shell only renders in a renderer built with
+// VITE_PLAYWRIGHT_TEST_AUTH=true (the Steward test-auth route shell); without
+// it the app never leaves boot. Same gate as cloud-console-routes.spec.ts and
+// the cloud-surfaces audit, which share these fixtures.
+test.skip(
+  !TEST_AUTH_ENABLED,
+  "set VITE_PLAYWRIGHT_TEST_AUTH=true so StewardProvider renders the cloud console route shell",
+);
+
 test("agent detail page renders explicit fallbacks for a malformed agent timestamp", async ({
   page,
 }) => {

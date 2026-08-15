@@ -7,7 +7,6 @@ import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
-  openSettingsSection,
   seedAppStorage,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
@@ -238,33 +237,15 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(page, testInfo, "walkthrough-1-launcher-disconnected");
 
-      // Agent-first cloud setup: Settings → Cloud → Overview → Connect Cloud.
-      // (The cloud group's overview section registers with defaultLabel
-      // "Overview" and defaultTitle "Eliza Cloud" — settings-sections.ts.)
-      await openAppPath(page, "/settings");
-      await openSettingsSection(page, /^Overview$/);
-      const connectButton = page.getByRole("button", {
-        name: /Connect Cloud|Connect Eliza Cloud/i,
-      });
-      await expect(connectButton.first()).toBeVisible({ timeout: 30_000 });
-      await screenshot(page, testInfo, "walkthrough-2-settings-cloud-section");
-
-      // Completing the (stubbed) login flips the backend status; the UI must
-      // observe it through its own status poll — the same signal a real
-      // device-code/Steward completion produces.
+      // Since the eliza.app consolidation (0468c1850a3) the local-runtime
+      // Settings hub no longer hosts a Cloud group (its sections are cloudOnly
+      // and render only for a managed-cloud runtime target), so cloud connect
+      // happens outside this shell (on eliza.app). Flip the stubbed backend
+      // status directly — the same signal a completed external device-code /
+      // Steward login produces — and let the UI observe it through its own
+      // status poll.
       state.connected = true;
-      await connectButton.first().click();
-      await expect(
-        page.getByRole("button", { name: /Open Eliza Cloud/i }).first(),
-      ).toBeVisible({ timeout: 60_000 });
-      await expect(
-        page.getByRole("button", { name: /Open Eliza Cloud/i }).first(),
-      ).toContainText("Cloud connected");
-      await screenshot(
-        page,
-        testInfo,
-        "walkthrough-3-settings-cloud-connected",
-      );
+      await screenshot(page, testInfo, "walkthrough-2-backend-connected");
 
       await openAppPath(page, "/views");
       await expect(page.getByTestId("launcher")).toBeVisible({
@@ -294,8 +275,8 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
           notePath,
           [
             "Recorded by launcher-cloud-gating.spec.ts (cloud setup walkthrough).",
-            "Flow: launcher without cloud-apps tile → Settings → Eliza Cloud →",
-            "Connect Cloud → status flips connected → launcher still shows only",
+            "Flow: launcher without cloud-apps tile → backend cloud status flips",
+            "connected (external eliza.app login) → launcher still shows only",
             "the My Apps tile (the studio lives inside My Apps).",
             "",
             "Repro: bun run --cwd packages/app test:e2e -- --project=chromium test/ui-smoke/launcher-cloud-gating.spec.ts",

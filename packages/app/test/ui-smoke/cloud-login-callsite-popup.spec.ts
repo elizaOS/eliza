@@ -99,9 +99,25 @@ async function installCloudLoginRoutes(page: Page): Promise<void> {
 async function bootCloudSettings(
   page: Page,
   size: { width: number; height: number },
+  apiBase: string,
 ): Promise<void> {
   await page.setViewportSize(size);
-  await seedAppStorage(page);
+  // Since the eliza.app consolidation (0468c1850a3) the Cloud settings group
+  // is cloudOnly: it renders only when the startup coordinator restores a
+  // cloud-managed runtime target (activeServerToTarget maps a persisted
+  // kind:"cloud" server to "cloud-managed"). Seed that restored server so the
+  // real Settings → Cloud → Overview surface (the CTA callsite under test)
+  // mounts, exactly as it does for a managed-cloud shell; no Steward session
+  // is seeded, so the section renders the disconnected Connect CTA.
+  await seedAppStorage(page, {
+    "elizaos:active-server": JSON.stringify({
+      id: "cloud:ui-smoke-callsite",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase,
+    }),
+    "eliza:mobile-runtime-mode": "cloud",
+  });
   await installDefaultAppRoutes(page);
   await installCloudLoginRoutes(page);
   await openAppPath(page, "/settings");
@@ -118,6 +134,7 @@ test.describe("cloud login callsite — interactive popup opens from the real Se
   for (const viewport of VIEWPORTS) {
     test(`clicking the connect CTA opens the eliza-cloud-auth popup on ${viewport.name}`, async ({
       page,
+      baseURL,
     }, testInfo) => {
       const consoleLogs: string[] = [];
       const networkLogs: string[] = [];
@@ -144,7 +161,9 @@ test.describe("cloud login callsite — interactive popup opens from the real Se
         }
       });
 
-      await bootCloudSettings(page, viewport);
+      const apiBase = (baseURL ?? "").replace(/\/$/, "");
+      expect(apiBase, "Playwright baseURL must be configured").toBeTruthy();
+      await bootCloudSettings(page, viewport, apiBase);
       await screenshot(page, testInfo, `${viewport.name}-1-before-connect-cta`);
 
       // The interactive path must open a REAL popup named eliza-cloud-auth.
