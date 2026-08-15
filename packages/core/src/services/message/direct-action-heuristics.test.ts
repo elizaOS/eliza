@@ -1319,4 +1319,46 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 			).kind,
 		).not.toBe("owner-scheduled-admin");
 	});
+
+	it("work-thread lifecycle asks hint the work-thread surface (F27, tj-ee16a14fea597e)", () => {
+		const workThread = { name: "WORK_THREAD", similes: [], tags: [] };
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, workThread],
+				"start a work thread: plan the garage cleanout",
+			),
+		).toEqual({ names: ["WORK_THREAD"], kind: "owner-work-thread" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, workThread],
+				"resume the kitchen reno work thread",
+			),
+		).toEqual({ names: ["WORK_THREAD"], kind: "owner-work-thread" });
+		// No work-thread surface registered: yield nothing, never the view/app
+		// overlap.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction],
+				"start a work thread: plan the garage cleanout",
+			),
+		).toEqual({ names: [], kind: null });
+		// Explanations and bare mentions stay chat.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, workThread],
+				"what is a work thread",
+			).kind,
+		).not.toBe("owner-work-thread");
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, workThread],
+				"the work thread idea sounds nice",
+			).kind,
+		).not.toBe("owner-work-thread");
+	});
 });
