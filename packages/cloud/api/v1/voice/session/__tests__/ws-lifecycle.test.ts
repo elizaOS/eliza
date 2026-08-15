@@ -464,6 +464,7 @@ async function connectSession(opts: {
   fetchImpl: typeof fetch;
   inkSocketFactory?: () => CartesiaInkWebSocket;
   sttReconnectDelaysMs?: readonly number[];
+  sttConnectTimeoutMs?: number;
   prewarmElizaContext?: () => Promise<void>;
   openingGreeting?: string;
   cacheWarmingRetryDelaysMs?: readonly number[];
@@ -521,6 +522,9 @@ async function connectSession(opts: {
           : {}),
         ...(opts.sttReconnectDelaysMs
           ? { sttReconnectDelaysMs: opts.sttReconnectDelaysMs }
+          : {}),
+        ...(opts.sttConnectTimeoutMs !== undefined
+          ? { sttConnectTimeoutMs: opts.sttConnectTimeoutMs }
           : {}),
         usageStore,
         usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
@@ -2537,6 +2541,78 @@ describe("voice-session WS lifecycle", () => {
     replacement!.emitOpen();
     await flush();
     expect(replacement!.sentChunks).toHaveLength(1);
+  });
+
+  test("replacement Ink that never opens consumes the retry budget and fails closed", async () => {
+    const client = new FakeClientSocket();
+    let first: FakeInkSocket | null = null;
+    let stalled: FakeInkSocket | null = null;
+    let attempts = 0;
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["ok."]),
+      sttReconnectDelaysMs: [0],
+      sttConnectTimeoutMs: 10,
+      inkSocketFactory: () => {
+        attempts += 1;
+        if (attempts === 1) {
+          first = new FakeInkSocket();
+          return first;
+        }
+        stalled = new FakeInkSocket({ autoOpen: false });
+        return stalled;
+      },
+    });
+
+    first!.close(1006, "provider gone");
+    await flush();
+
+    expect(attempts).toBe(2);
+    expect(stalled!.closed).toBe(true);
+    expect(client.closedWith).toEqual({ code: 1000, reason: "error" });
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "stt_reconnecting",
+        retryable: true,
+      }),
+    );
+  });
+
+  test("a replacement that opens cancels its connection timeout", async () => {
+    const client = new FakeClientSocket();
+    let first: FakeInkSocket | null = null;
+    let replacement: FakeInkSocket | null = null;
+    let attempts = 0;
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["ok."]),
+      sttReconnectDelaysMs: [0],
+      sttConnectTimeoutMs: 10,
+      inkSocketFactory: () => {
+        attempts += 1;
+        if (attempts === 1) {
+          first = new FakeInkSocket();
+          return first;
+        }
+        replacement = new FakeInkSocket({ autoOpen: false });
+        queueMicrotask(() => replacement!.emitOpen());
+        return replacement;
+      },
+    });
+
+    first!.close(1006, "provider gone");
+    await flush();
+
+    expect(attempts).toBe(2);
+    expect(replacement!.closed).toBe(false);
+    expect(client.closedWith).toBeNull();
+    replacement!.emitTurn("turn.start");
+    replacement!.emitTurn("turn.end", "still listening");
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "stt_final", text: "still listening" }),
+    );
   });
 
   test("Ink reconnect exhaustion fails the call closed", async () => {
