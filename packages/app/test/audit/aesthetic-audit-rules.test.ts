@@ -320,6 +320,20 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
         }),
       ),
     ).toBe("good");
+    expect(
+      computeVerdict(
+        finding({ viewType: "tui", readableChars: 0, semanticReady: false }),
+      ),
+    ).toBe("good");
+    expect(
+      computeVerdict(
+        finding({
+          slug: "builtin-chat",
+          readableChars: 0,
+          semanticReady: false,
+        }),
+      ),
+    ).toBe("good");
   });
 
   it("the no-blue rule still applies to overlay surfaces", () => {

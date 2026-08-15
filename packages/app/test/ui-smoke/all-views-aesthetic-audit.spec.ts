@@ -398,50 +398,68 @@ async function readViewPaint(
       ];
       const visibleText: string[] = [];
       const loadingLabels = new Set<string>();
-      const visibleLabelCache = new Map<Element, string>();
-      const visibleLabelFor = (element: Element): string => {
-        let container = element;
-        while (container.parentElement) {
-          const display = getComputedStyle(container).display;
-          if (display !== "contents" && !display.startsWith("inline")) break;
-          container = container.parentElement;
-        }
-        const cached = visibleLabelCache.get(container);
-        if (cached !== undefined) return cached;
-
+      const terminalLoadingLabel = new RegExp(terminalLoadingPattern, "i");
+      const visibleTextOf = (element: Element): string => {
         const pieces: string[] = [];
-        const walker = document.createTreeWalker(
-          container,
-          NodeFilter.SHOW_TEXT,
-        );
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
           const owner = node.parentElement;
           const text = node.textContent?.trim();
           if (owner && text && isVisibleInViewport(owner)) pieces.push(text);
         }
-        const label = pieces.join(" ").replace(/\s+/g, " ").trim();
-        visibleLabelCache.set(container, label);
-        return label;
+        return pieces.join(" ").replace(/\s+/g, " ").trim();
+      };
+      // Candidate loader labels are contiguous visible inline/text runs bounded
+      // by block-level siblings, so a bare `<span>Loading</span>` next to ready
+      // block content stays terminal while `<span>Loading</span>
+      // <span>history</span>` reads as one descriptive phrase.
+      const inlineRunLabels = (container: Element): string[] => {
+        const labels: string[] = [];
+        let run: string[] = [];
+        const flush = () => {
+          const label = run.join(" ").replace(/\s+/g, " ").trim();
+          if (label) labels.push(label);
+          run = [];
+        };
+        for (const child of container.childNodes) {
+          if (child.nodeType === Node.TEXT_NODE) {
+            const owner = child.parentElement;
+            const text = child.textContent?.trim();
+            if (owner && text && isVisibleInViewport(owner)) run.push(text);
+            continue;
+          }
+          if (!(child instanceof Element)) continue;
+          if (!isVisibleInViewport(child)) continue;
+          const display = getComputedStyle(child).display;
+          if (display === "contents" || display.startsWith("inline")) {
+            const text = visibleTextOf(child);
+            if (text) run.push(text);
+          } else {
+            flush();
+          }
+        }
+        flush();
+        return labels;
       };
       for (const element of elements) {
         if (!isVisibleInViewport(element)) continue;
-        const visibleLabel = visibleLabelFor(element);
         for (const child of element.childNodes) {
           if (child.nodeType !== Node.TEXT_NODE) continue;
           const text = child.textContent?.trim();
           if (text) visibleText.push(text);
         }
-        const explicitLoading =
-          element.getAttribute("data-view-status") === "loading";
-        const exactLoadingLabel = new RegExp(terminalLoadingPattern, "i").test(
-          visibleLabel,
-        );
-        if (explicitLoading || exactLoadingLabel) {
+        if (element.getAttribute("data-view-status") === "loading") {
           loadingLabels.add(
-            visibleLabel ||
+            visibleTextOf(element) ||
               element.textContent?.trim().replace(/\s+/g, " ") ||
               '[data-view-status="loading"]',
           );
+        }
+        const display = getComputedStyle(element).display;
+        if (display !== "contents" && !display.startsWith("inline")) {
+          for (const label of inlineRunLabels(element)) {
+            if (terminalLoadingLabel.test(label)) loadingLabels.add(label);
+          }
         }
         if (
           element instanceof HTMLInputElement ||
@@ -1547,6 +1565,16 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     expect(loadingRenderStateIssues(terminalLoading)).toEqual([
       "dynamic view remained in its loading state after 12 seconds: Loading",
     ]);
+
+    await viewRoot.evaluate((root) => {
+      root.innerHTML = "<h1>Tasks</h1><span>Loading</span>";
+    });
+    await expect(
+      readViewPaint(viewRoot, overlay, tasksPolicy.expectation),
+    ).resolves.toMatchObject({
+      semanticReady: true,
+      loadingStateLabels: ["Loading"],
+    });
 
     for (const descriptiveLoading of [
       "<div>Loading <span>history</span></div>",

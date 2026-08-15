@@ -557,9 +557,9 @@ export function computeVerdict(finding: VerdictFinding): AestheticVerdict {
   if (
     finding.consoleErrors.length > 0 ||
     (finding.renderStateIssues?.length ?? 0) > 0 ||
-    finding.semanticReady === false ||
     (!exempt &&
-      (finding.qualityIssues.length > 0 ||
+      (finding.semanticReady === false ||
+        finding.qualityIssues.length > 0 ||
         (finding.semanticReady === null && finding.readableChars < 10)))
   ) {
     return "broken";
