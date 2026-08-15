@@ -46,13 +46,6 @@ interface DirectMessagePage {
   fetchNext?: (maxResults?: number) => Promise<unknown>;
 }
 
-/**
- * Upper bound on DM pages fetched per poll (50 events each). A catch-up burst
- * beyond this is processed newest-first and the truncation is logged; the X DM
- * timeline itself only retains ~30 days, so hitting this bound is pathological.
- */
-const MAX_DM_PAGES_PER_POLL = 20;
-
 function parseBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value !== "string" || !value.trim()) return fallback;
@@ -79,6 +72,20 @@ function compareEventIds(left: string, right: string): number {
     // fall back to explicit lexicographic ordering instead of guessing.
     return left.localeCompare(right);
   }
+}
+
+/** A received Twitter API error proves rejection; transport failures do not. */
+function rejectedByTwitterStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const candidate = error as {
+    code?: unknown;
+    status?: unknown;
+    data?: { status?: unknown };
+  };
+  const status = candidate.data?.status ?? candidate.status ?? candidate.code;
+  return typeof status === "number" && status >= 400 && status <= 599
+    ? status
+    : null;
 }
 
 export class TwitterDirectMessageClient {
@@ -174,27 +181,24 @@ export class TwitterDirectMessageClient {
     // accumulates events across fetches. The first (watermark) poll only
     // needs the newest event, so it never paginates.
     if (cursor) {
-      let fetchedPages = 1;
-      while (
-        page.done === false &&
-        typeof page.fetchNext === "function" &&
-        fetchedPages < MAX_DM_PAGES_PER_POLL
-      ) {
+      while (page.done === false && typeof page.fetchNext === "function") {
         const fetched = collectEvents();
         const oldest = fetched[fetched.length - 1];
         if (oldest && compareEventIds(oldest.id, cursor) <= 0) break;
+        const priorCount = fetched.length;
+        const priorOldestId = oldest?.id;
         await page.fetchNext(50);
-        fetchedPages += 1;
-      }
-      if (fetchedPages >= MAX_DM_PAGES_PER_POLL && page.done === false) {
-        logger.warn(
-          {
-            src: "plugin:x",
-            accountId: this.client.accountId,
-            fetchedPages,
-          },
-          "X DM catch-up hit the per-poll page bound; older events beyond it are skipped",
-        );
+        const nextFetched = collectEvents();
+        const nextOldest = nextFetched[nextFetched.length - 1];
+        if (
+          page.done === false &&
+          nextFetched.length <= priorCount &&
+          nextOldest?.id === priorOldestId
+        ) {
+          throw new Error(
+            "X DM paginator made no progress before reaching the durable cursor.",
+          );
+        }
       }
     }
 
@@ -341,7 +345,10 @@ export class TwitterDirectMessageClient {
     // Captures a reply-send failure even if the message service swallows the
     // callback rejection, so settlement below can distinguish "delivered or
     // deliberately silent" from "send failed, retry next poll".
-    let deliveryError: unknown = null;
+    const delivery: {
+      failure: { error: unknown; acceptance: "rejected" | "unknown" } | null;
+    } = { failure: null };
+    let settled = false;
     const callback: HandlerCallback = async (response: Content) => {
       const text =
         typeof response.text === "string" ? response.text.trim() : "";
@@ -362,11 +369,24 @@ export class TwitterDirectMessageClient {
           ? await api.v2.sendDmInConversation(conversationId, { text })
           : await api.v2.sendDmToParticipant(senderId, { text });
       } catch (error) {
-        // error-policy:J2 record the delivery failure for the settlement gate
-        // below, then rethrow unchanged so the message loop also observes it.
-        deliveryError = error;
+        // error-policy:J2 preserve the provider error for the settlement gate.
+        // An HTTP rejection is safe to retry; a transport failure has unknown
+        // acceptance and must be terminal to avoid duplicating a delivered DM.
+        delivery.failure = {
+          error,
+          acceptance:
+            rejectedByTwitterStatus(error) === null ? "unknown" : "rejected",
+        };
+        if (delivery.failure.acceptance === "unknown") {
+          await this.runtime.setCache(settledKey, "unknown_acceptance");
+          settled = true;
+        }
         throw error;
       }
+      // Persist delivery settlement before the response memory: a database
+      // failure after X accepted the DM must never turn into a duplicate send.
+      await this.runtime.setCache(settledKey, "delivered");
+      settled = true;
       const sentResult = sent as {
         data?: { dm_event_id?: string };
         dm_event_id?: string;
@@ -411,16 +431,52 @@ export class TwitterDirectMessageClient {
       return [responseMemory];
     };
 
-    await this.runtime.messageService.handleMessage(
-      this.runtime,
-      inboundMemory,
-      callback,
-    );
-    if (deliveryError) {
-      throw deliveryError instanceof Error
-        ? deliveryError
-        : new Error(String(deliveryError));
+    let messageLoopError: unknown = null;
+    try {
+      await this.runtime.messageService.handleMessage(
+        this.runtime,
+        inboundMemory,
+        callback,
+      );
+    } catch (error) {
+      // error-policy:J2 the settlement state below determines whether this
+      // failure is safe to retry; otherwise preserve it for the poll boundary.
+      messageLoopError = error;
     }
-    await this.runtime.setCache(settledKey, "1");
+    if (delivery.failure?.acceptance === "rejected") {
+      throw delivery.failure.error instanceof Error
+        ? delivery.failure.error
+        : new Error(String(delivery.failure.error));
+    }
+    if (delivery.failure?.acceptance === "unknown") {
+      // error-policy:J7 an acceptance-unknown send is deliberately not retried;
+      // surface it through diagnostics while allowing the cursor to advance.
+      this.runtime.reportError(
+        "XDirectMessages.deliveryAcceptanceUnknown",
+        delivery.failure.error,
+        { accountId: this.client.accountId, eventId: event.id, conversationId },
+      );
+      return;
+    }
+    if (messageLoopError) {
+      if (settled) {
+        // error-policy:J7 X already accepted the reply, so persistence or
+        // post-callback diagnostics cannot be allowed to trigger a resend.
+        this.runtime.reportError(
+          "XDirectMessages.postDelivery",
+          messageLoopError,
+          {
+            accountId: this.client.accountId,
+            eventId: event.id,
+            conversationId,
+          },
+        );
+        return;
+      }
+      throw messageLoopError instanceof Error
+        ? messageLoopError
+        : new Error(String(messageLoopError));
+    }
+    if (!settled) await this.runtime.setCache(settledKey, "silent");
   }
 }

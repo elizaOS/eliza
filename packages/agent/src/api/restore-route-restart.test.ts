@@ -92,6 +92,7 @@ describe("POST /api/restore runtime lifecycle", () => {
       await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
 
       let restartCalls = 0;
+      let failNextRestart = true;
       let disposeCurrentBeforeBuild = false;
       api = await startApiServer({
         port: 0,
@@ -101,6 +102,10 @@ describe("POST /api/restore runtime lifecycle", () => {
           restartCalls += 1;
           disposeCurrentBeforeBuild =
             options?.disposeCurrentBeforeBuild === true;
+          if (failNextRestart) {
+            failNextRestart = false;
+            return null;
+          }
           const replacement = new AgentRuntime({
             logLevel: "fatal",
             plugins: [],
@@ -122,6 +127,33 @@ describe("POST /api/restore runtime lifecycle", () => {
       expect(snapshotResponse.status).toBe(200);
       const snapshot = await snapshotResponse.json();
 
+      const failedRestoreResponse = await fetch(
+        `http://127.0.0.1:${api.port}/api/restore`,
+        {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify(snapshot),
+        },
+      );
+      expect(failedRestoreResponse.status).toBe(500);
+      expect(disposeCurrentBeforeBuild).toBe(true);
+
+      const failedHealthResponse = await fetch(
+        `http://127.0.0.1:${api.port}/api/health`,
+        { headers },
+      );
+      expect(failedHealthResponse.status).toBe(200);
+      await expect(failedHealthResponse.json()).resolves.toMatchObject({
+        canRespond: false,
+      });
+      const failedAgentResponse = await fetch(
+        `http://127.0.0.1:${api.port}/api/agents`,
+        { headers },
+      );
+      await expect(failedAgentResponse.json()).resolves.toMatchObject({
+        agents: [{ status: "error" }],
+      });
+
       const restoreResponse = await fetch(
         `http://127.0.0.1:${api.port}/api/restore`,
         {
@@ -136,7 +168,7 @@ describe("POST /api/restore runtime lifecycle", () => {
         restored: true,
         requiresRestart: false,
       });
-      expect(restartCalls).toBe(1);
+      expect(restartCalls).toBe(2);
       expect(disposeCurrentBeforeBuild).toBe(true);
 
       const restored = new PGlite(`file://${targetDir}`);

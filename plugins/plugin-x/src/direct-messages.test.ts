@@ -142,49 +142,26 @@ describe("TwitterDirectMessageClient", () => {
 
   it("pages through the DM timeline until the cursor before replying", async () => {
     vi.useFakeTimers();
-    // Newest-first accumulating paginator: first fetch returns the newest
-    // page, fetchNext merges the older page containing the cursor boundary.
-    const newestPage = [
-      {
-        id: "205",
-        sender_id: "person-1",
-        dm_conversation_id: "conversation-1",
-        text: "message five",
-        event_type: "MessageCreate",
-      },
-      {
-        id: "204",
-        sender_id: "person-1",
-        dm_conversation_id: "conversation-1",
-        text: "message four",
-        event_type: "MessageCreate",
-      },
-    ];
-    const olderPage = [
-      {
-        id: "203",
-        sender_id: "person-1",
-        dm_conversation_id: "conversation-1",
-        text: "message three",
-        event_type: "MessageCreate",
-      },
-      {
-        id: "200",
-        sender_id: "person-1",
-        dm_conversation_id: "conversation-1",
-        text: "already handled",
-        event_type: "MessageCreate",
-      },
-    ];
+    // Use more than the former 20-page safety bound. Every page must be
+    // collected before the cursor advances or messages 201-203 are lost.
+    const event = (id: number) => ({
+      id: String(id),
+      sender_id: "person-1",
+      dm_conversation_id: "conversation-1",
+      text: `message ${id}`,
+      event_type: "MessageCreate",
+    });
+    let nextId = 221;
     const paginator = {
-      events: [...newestPage],
+      events: [event(222)],
       includes: {
         users: [{ id: "person-1", username: "alice", name: "Alice" }],
       },
       done: false,
       fetchNext: vi.fn(async () => {
-        paginator.events.push(...olderPage);
-        paginator.done = true;
+        paginator.events.push(event(nextId));
+        if (nextId === 200) paginator.done = true;
+        nextId -= 1;
         return paginator;
       }),
     };
@@ -239,14 +216,12 @@ describe("TwitterDirectMessageClient", () => {
     const dmClient = new TwitterDirectMessageClient(client, runtime, state);
 
     await dmClient.start();
-    expect(paginator.fetchNext).toHaveBeenCalledTimes(1);
-    expect(handleMessage).toHaveBeenCalledTimes(3);
-    expect(sent).toEqual([
-      "echo:message three",
-      "echo:message four",
-      "echo:message five",
-    ]);
-    expect(cache.get("twitter/agent/agent-user-id/dm_cursor")).toBe("205");
+    expect(paginator.fetchNext).toHaveBeenCalledTimes(22);
+    expect(handleMessage).toHaveBeenCalledTimes(22);
+    expect(sent).toHaveLength(22);
+    expect(sent[0]).toBe("echo:message 201");
+    expect(sent[21]).toBe("echo:message 222");
+    expect(cache.get("twitter/agent/agent-user-id/dm_cursor")).toBe("222");
 
     await dmClient.stop();
   });
@@ -263,7 +238,11 @@ describe("TwitterDirectMessageClient", () => {
     const listDmEvents = vi.fn(async () => ({ events: [event] }));
     const sendDmToParticipant = vi
       .fn()
-      .mockRejectedValueOnce(new Error("X send temporarily unavailable"))
+      .mockRejectedValueOnce(
+        Object.assign(new Error("X send temporarily unavailable"), {
+          code: 503,
+        }),
+      )
       .mockResolvedValue({ data: { dm_event_id: "reply-301" } });
     const cache = new Map<string, string>();
     cache.set("twitter/agent/agent-user-id/dm_cursor", "300");
@@ -332,6 +311,80 @@ describe("TwitterDirectMessageClient", () => {
     expect(sendDmToParticipant).toHaveBeenCalledTimes(2);
     expect(handleMessage).toHaveBeenCalledTimes(2);
 
+    await dmClient.stop();
+  });
+
+  it("does not resend when a transport failure has unknown provider acceptance", async () => {
+    vi.useFakeTimers();
+    const event = {
+      id: "401",
+      sender_id: "person-1",
+      dm_conversation_id: "conversation-1",
+      text: "did that send?",
+      event_type: "MessageCreate",
+    };
+    const sendDmToParticipant = vi.fn(async () => {
+      throw new Error("socket closed before the response");
+    });
+    const cache = new Map<string, string>([
+      ["twitter/agent/agent-user-id/dm_cursor", "400"],
+    ]);
+    const reportError = vi.fn();
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      getCache: async (key: string) => cache.get(key),
+      setCache: async (key: string, value: string) => {
+        cache.set(key, value);
+      },
+      getMemoryById: async () => null,
+      createMemory: vi.fn(async () => undefined),
+      ensureWorldExists: vi.fn(async () => undefined),
+      updateWorld: vi.fn(async () => undefined),
+      ensureRoomExists: vi.fn(async () => undefined),
+      ensureConnection: vi.fn(async () => undefined),
+      messageService: {
+        handleMessage: async (
+          _runtime: IAgentRuntime,
+          _memory: Memory,
+          callback: (response: { text: string }) => Promise<Memory[]>,
+        ) => {
+          await callback({ text: "Possibly delivered" }).catch(() => []);
+        },
+      },
+      reportError,
+      getSetting: vi.fn(() => null),
+    } as unknown as IAgentRuntime;
+    const client = {
+      accountId: "agent",
+      profile: { id: "agent-user-id", username: "elizamakesmagic" },
+      twitterClient: {
+        getV2Client: async () => ({
+          v2: {
+            listDmEvents: async () => ({ events: [event] }),
+            sendDmToParticipant,
+          },
+        }),
+      },
+    } as unknown as ClientBase;
+    const dmClient = new TwitterDirectMessageClient(client, runtime, {
+      TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
+    } as unknown as TwitterClientState);
+
+    await dmClient.start();
+    expect(sendDmToParticipant).toHaveBeenCalledTimes(1);
+    expect(cache.get("twitter/agent/agent-user-id/dm_cursor")).toBe("401");
+    expect(cache.get("twitter/agent/agent-user-id/dm_settled/401")).toBe(
+      "unknown_acceptance",
+    );
+    expect(reportError).toHaveBeenCalledWith(
+      "XDirectMessages.deliveryAcceptanceUnknown",
+      expect.any(Error),
+      expect.objectContaining({ eventId: "401" }),
+    );
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(sendDmToParticipant).toHaveBeenCalledTimes(1);
     await dmClient.stop();
   });
 });

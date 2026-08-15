@@ -1625,7 +1625,18 @@ async function handleRequest(
       const previousRuntime = state.runtime;
       const newRuntime = await ctx.onRestart(options);
       if (!newRuntime) {
-        state.agentState = previousState;
+        state.agentState = options?.disposeCurrentBeforeBuild
+          ? "error"
+          : previousState;
+        if (options?.disposeCurrentBeforeBuild) {
+          state.startup = {
+            ...state.startup,
+            phase: "error",
+            lastError:
+              "Runtime replacement failed after the current runtime was disposed",
+            lastErrorAt: Date.now(),
+          };
+        }
         state.broadcastStatus?.();
         return false;
       }
@@ -1657,7 +1668,18 @@ async function handleRequest(
       logger.warn(
         `[eliza-api] Runtime reload failed: ${err instanceof Error ? err.message : String(err)}`,
       );
-      state.agentState = previousState;
+      state.agentState = options?.disposeCurrentBeforeBuild
+        ? "error"
+        : previousState;
+      if (options?.disposeCurrentBeforeBuild) {
+        state.startup = {
+          ...state.startup,
+          phase: "error",
+          lastError:
+            "Runtime replacement failed after the current runtime was disposed",
+          lastErrorAt: Date.now(),
+        };
+      }
       state.broadcastStatus?.();
       return false;
     }

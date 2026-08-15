@@ -628,6 +628,8 @@ class TwitterAutomationService {
             audit,
           }),
         );
+      } else if (credentials.refreshToken === null) {
+        writes.push(deleteRoleSecret(organizationId, role, "oauth2RefreshToken", audit));
       }
     }
 
@@ -879,7 +881,7 @@ class TwitterAutomationService {
       stored.oauth2ExpiresAt === null ||
       nowSeconds >= stored.oauth2ExpiresAt - OAUTH2_BROKER_REFRESH_MARGIN_SECONDS;
 
-    if (!needsRefresh || !stored.oauth2RefreshToken) {
+    if (!needsRefresh) {
       return {
         authMode: "oauth2",
         accessToken: stored.oauth2AccessToken,
@@ -887,6 +889,11 @@ class TwitterAutomationService {
         scope: stored.oauth2Scope,
         twitterUserId: stored.twitterUserId,
       };
+    }
+    if (!stored.oauth2RefreshToken) {
+      throw new Error(
+        `Stored X OAuth2 ${role} token is expired but has no refresh token; reconnect the X account`,
+      );
     }
 
     const refreshKey = `${organizationId}:${role}`;

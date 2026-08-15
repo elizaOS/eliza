@@ -254,5 +254,35 @@ describe("TwitterAutomationService error policy", () => {
       // The stale token remains stored, never silently vended.
       expect(secretStore.TWITTER_AGENT_OAUTH2_ACCESS_TOKEN).toBe("stale-tok");
     });
+
+    test("an expired token without a refresh token fails closed", async () => {
+      secretStore.TWITTER_AGENT_OAUTH2_ACCESS_TOKEN = "stale-tok";
+      secretStore.TWITTER_AGENT_OAUTH2_EXPIRES_AT = String(Math.floor(Date.now() / 1000) - 10);
+      const service = await loadService();
+      await expect(service.getBrokerCredentials("org-1", "user-1", "agent")).rejects.toThrow(
+        /expired.*no refresh token/i,
+      );
+    });
+  });
+
+  describe("storeCredentials (OAuth2 reconnect contract)", () => {
+    test("an explicit missing refresh token deletes the obsolete stored token", async () => {
+      secretStore.TWITTER_AGENT_OAUTH2_REFRESH_TOKEN = "obsolete-refresh";
+      const service = await loadService();
+      await service.storeCredentials(
+        "org-1",
+        "user-1",
+        {
+          accessToken: "new-access",
+          refreshToken: null,
+          expiresAt: Math.floor(Date.now() / 1000) + 7200,
+          authMode: "oauth2",
+        },
+        "agent",
+      );
+
+      expect(secretStore.TWITTER_AGENT_OAUTH2_ACCESS_TOKEN).toBe("new-access");
+      expect(secretStore.TWITTER_AGENT_OAUTH2_REFRESH_TOKEN).toBeUndefined();
+    });
   });
 });
