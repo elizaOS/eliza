@@ -55,12 +55,9 @@ export function createHostExecutionBaseline(
 }
 
 /** Capture once. Later calls cannot replace the boot authority. */
-export function captureHostExecutionBaseline(
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-): HostExecutionBaseline {
+export function captureHostExecutionBaseline(): HostExecutionBaseline {
   if (capturedBaseline) return capturedBaseline;
-  capturedBaseline = createHostExecutionBaseline(env, platform);
+  capturedBaseline = createHostExecutionBaseline(process.env);
   return capturedBaseline;
 }
 
@@ -88,11 +85,21 @@ export function resolveHostExecutable(nameOrPath: string): string | undefined {
   const trimmed = nameOrPath.trim();
   if (!trimmed || trimmed.includes("\0")) return undefined;
   const candidates: string[] = [];
+  const baseline = getHostExecutionBaseline();
+  const authorityDirectories =
+    baseline.path?.split(path.delimiter).map((entry) => path.resolve(entry)) ??
+    [];
   if (path.isAbsolute(trimmed)) {
-    candidates.push(trimmed);
+    const candidate = path.resolve(trimmed);
+    const candidateDirectory = path.dirname(candidate);
+    const isAuthorized = authorityDirectories.some((directory) =>
+      process.platform === "win32"
+        ? directory.toLowerCase() === candidateDirectory.toLowerCase()
+        : directory === candidateDirectory,
+    );
+    if (isAuthorized) candidates.push(candidate);
   } else if (!trimmed.includes("/") && !trimmed.includes("\\")) {
-    const baseline = getHostExecutionBaseline();
-    for (const entry of baseline.path?.split(path.delimiter) ?? []) {
+    for (const entry of authorityDirectories) {
       candidates.push(path.join(entry, trimmed));
       if (process.platform === "win32" && path.extname(trimmed) === "") {
         candidates.push(path.join(entry, `${trimmed}.exe`));

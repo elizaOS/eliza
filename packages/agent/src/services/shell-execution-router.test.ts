@@ -109,6 +109,23 @@ describe("runShell", () => {
     expect(result.stdout).toBe(getHostExecutionBaseline().path);
   });
 
+  it("rejects an executable absolute path outside the boot PATH authority", async () => {
+    if (process.platform === "win32") return;
+    const executable = path.join(tmpDir, "outside-path");
+    await fsp.writeFile(executable, "#!/bin/sh\nexit 0\n");
+    await fsp.chmod(executable, 0o755);
+
+    const result = await runShell({
+      command: executable,
+      args: [],
+      toolName: "test:absolute-path-authority",
+      timeoutMs: 5_000,
+    });
+
+    expect(result.exitCode).toBe(-1);
+    expect(result.stderr).toContain("outside the boot PATH authority");
+  });
+
   it("strips dangerous spawn env vars from the host child, passes benign ones", async () => {
     const result = await runShell({
       command: process.execPath,
