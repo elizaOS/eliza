@@ -80,6 +80,28 @@ describe("NOTES operation parsing", () => {
     expect(result.text).toContain("wifi is on the fridge");
   });
 
+  it("a scoped read answers the topic asked, never the whole store", async () => {
+    const runtime = await harness();
+    await run(runtime, {
+      action: "create",
+      content: "the plumber comes thursday morning",
+    });
+    await run(runtime, { action: "create", content: "spare key under the mat" });
+
+    const match = await run(runtime, { action: "list", content: "plumber" });
+    expect(match.success).toBe(true);
+    expect(match.text).toContain("plumber comes thursday");
+    // The unrelated note stays out of a scoped answer.
+    expect(match.text).not.toContain("spare key");
+
+    const absent = await run(runtime, { action: "list", content: "dentist" });
+    expect(absent.success).toBe(true);
+    // An empty match is an explicit absence — not a dump of everything else.
+    expect(absent.text).toContain('any notes about "dentist"');
+    expect(absent.text).not.toContain("spare key");
+    expect(absent.text).not.toContain("plumber");
+  });
+
   it("routes each implemented operation to its own outcome", async () => {
     const runtime = await harness();
     const created = await run(runtime, {
