@@ -315,18 +315,129 @@ jobs:
             FROM agent_sandboxes
             WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
             SQL
-      - name: Roll out the final restore-safe X agent image
-        shell: bash
-        env:
-          AGENT_IMAGE_CANARY_MODE: upgrade
-          AGENT_IMAGE_CANARY_TARGET_DIGEST: sha256:21759473466dcde83a610ba438649944016896472b6ef51e5450efcc382924bc
-          AGENT_IMAGE_CANARY_REQUEST_ID: 1f96fbdf-bc55-4487-bd29-3199d01b8752
-          AGENT_IMAGE_CANARY_EXPECTED_DEPLOY_COMMIT: bd0e955fa00351016c06f27b01de9d1ab12ddd06
-          AGENT_IMAGE_CANARY_EVIDENCE_PATH: ${{ runner.temp }}/eliza-x-final-canary.json
-        run: |
-          set -euo pipefail
-          bun packages/cloud/scripts/admin/agent-image-canary-live.ts
-          jq '{verdict,mode,image,execution,failure}' "$AGENT_IMAGE_CANARY_EVIDENCE_PATH"
+      - name: Retire the stale restart and stage the final image
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 5m
+          envs: ELIZACLOUD_API_KEY
+          script: |
+            set -euo pipefail
+            work="$(mktemp -d)"
+            trap 'rm -rf "$work"' EXIT
+            agent_id=4602b3be-2c01-4e7e-9cdc-849604e1bef7
+            restart_job=2561d9f5-c79f-4ccf-8e97-41b9d1205e89
+            old_image=ghcr.io/elizaos/eliza-demo@sha256:ddbcccf17776cd26ada045f7e0acbb5df31a629e0d53ce1042297cb837fa53ea
+            new_image=ghcr.io/elizaos/eliza-demo@sha256:21759473466dcde83a610ba438649944016896472b6ef51e5450efcc382924bc
+            database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            database_url="${database_url/sslmode=no-verify/sslmode=require}"
+            readarray -t placement < <(psql "$database_url" -v ON_ERROR_STOP=1 -Atc \
+              "SELECT node_id, container_name FROM agent_sandboxes WHERE id = '$agent_id' AND status = 'running' AND docker_image = '$old_image' AND lifecycle_job_id = '$restart_job' AND replacement_cleanup_sandbox_id IS NULL")
+            test "${#placement[@]}" -eq 1
+            IFS='|' read -r node_id container_name <<<"${placement[0]}"
+            test "$container_name" = "agent-$agent_id"
+            psql "$database_url" -v ON_ERROR_STOP=1 <<SQL
+            BEGIN;
+            DO \$\$
+            DECLARE changed integer;
+            BEGIN
+              UPDATE jobs
+              SET status = 'failed',
+                  error = 'Operator quiesced closed-PGlite restart for restore-safe image recovery',
+                  execution_quiesced_at = NOW(),
+                  completed_at = NOW(),
+                  updated_at = NOW()
+              WHERE id = '$restart_job'
+                AND agent_id = '$agent_id'
+                AND type = 'agent_restart'
+                AND status = 'in_progress';
+              GET DIAGNOSTICS changed = ROW_COUNT;
+              IF changed <> 1 THEN
+                RAISE EXCEPTION 'exact restart job did not match';
+              END IF;
+              UPDATE agent_sandboxes
+              SET status = 'provisioning',
+                  lifecycle_job_id = NULL,
+                  lifecycle_execution_generation = NULL,
+                  error_message = 'Operator staging restore-safe runtime image',
+                  updated_at = NOW()
+              WHERE id = '$agent_id'
+                AND status = 'running'
+                AND node_id = '$node_id'
+                AND container_name = '$container_name'
+                AND docker_image = '$old_image'
+                AND lifecycle_job_id = '$restart_job'
+                AND replacement_cleanup_sandbox_id IS NULL;
+              GET DIAGNOSTICS changed = ROW_COUNT;
+              IF changed <> 1 THEN
+                RAISE EXCEPTION 'exact running placement did not match';
+              END IF;
+            END \$\$;
+            COMMIT;
+            SQL
+            containers_key="$(sed -n 's/^CONTAINERS_SSH_KEY=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            printf '%s' "$containers_key" | base64 -d > "$work/key"
+            chmod 600 "$work/key"
+            curl --silent --show-error --fail --max-time 30 \
+              --header "Authorization: Bearer $ELIZACLOUD_API_KEY" \
+              --output "$work/node.json" \
+              "https://api.eliza.app/api/v1/admin/docker-nodes/$node_id"
+            node_host="$(jq -er '.data.hostname' "$work/node.json")"
+            node_user="$(jq -er '.data.sshUser' "$work/node.json")"
+            node_port="$(jq -er '.data.sshPort' "$work/node.json")"
+            ssh -i "$work/key" -p "$node_port" \
+              -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile="$work/known_hosts" \
+              "$node_user@$node_host" \
+              "set -euo pipefail; test \"\$(docker inspect --format '{{.Config.Image}}' '$container_name')\" = '$old_image'; docker stop --time 20 '$container_name' >/dev/null || true; docker rm '$container_name' >/dev/null; test -z \"\$(docker ps -aq --filter 'name=^/$container_name\$')\""
+            sleep 15
+            psql "$database_url" -v ON_ERROR_STOP=1 <<SQL
+            BEGIN;
+            DO \$\$
+            DECLARE changed integer;
+            BEGIN
+              UPDATE agent_sandboxes AS sandbox
+              SET status = 'stopped',
+                  sandbox_id = NULL,
+                  bridge_url = NULL,
+                  health_url = NULL,
+                  node_id = NULL,
+                  container_name = NULL,
+                  bridge_port = NULL,
+                  web_ui_port = NULL,
+                  headscale_ip = NULL,
+                  docker_image = '$new_image',
+                  image_digest = 'sha256:21759473466dcde83a610ba438649944016896472b6ef51e5450efcc382924bc',
+                  previous_docker_image = NULL,
+                  previous_image_digest = NULL,
+                  error_message = NULL,
+                  updated_at = NOW()
+              WHERE sandbox.id = '$agent_id'
+                AND sandbox.status = 'provisioning'
+                AND sandbox.node_id = '$node_id'
+                AND sandbox.container_name = '$container_name'
+                AND sandbox.docker_image = '$old_image'
+                AND NOT EXISTS (
+                  SELECT 1 FROM jobs
+                  WHERE jobs.agent_id = sandbox.id::text
+                    AND jobs.status IN ('pending', 'in_progress')
+                )
+                AND EXISTS (
+                  SELECT 1 FROM agent_sandbox_backups AS backup
+                  WHERE backup.sandbox_record_id = sandbox.id
+                );
+              GET DIAGNOSTICS changed = ROW_COUNT;
+              IF changed <> 1 THEN
+                RAISE EXCEPTION 'staged placement changed before finalization';
+              END IF;
+            END \$\$;
+            COMMIT;
+            SELECT id, status, docker_image
+            FROM agent_sandboxes
+            WHERE id = '$agent_id';
+            SQL
 
   changes:
     name: Classify changed paths
