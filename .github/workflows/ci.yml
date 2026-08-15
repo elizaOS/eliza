@@ -531,16 +531,17 @@ jobs:
               # base branch advanced after the branch point would scan the
               # base-only commits it never added (#17971/#17984/#19687).
               # Resolve the real merge base and use a two-dot range so `git
-              # log` traverses exactly the PR-introduced commits. If the merge
-              # base cannot be resolved (e.g. an unexpected shallow clone),
-              # fall back to scanning only the head commit rather than the
-              # whole history.
-              MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA" || true)"
-              if [ -z "$MERGE_BASE" ]; then
-                range="-1 ${HEAD_SHA}"
-              else
-                range="${MERGE_BASE}..${HEAD_SHA}"
+              # log` traverses exactly the PR-introduced commits. Fail closed
+              # with an actionable error if the merge base cannot be resolved
+              # (empty result or non-zero exit, e.g. an unexpected shallow or
+              # incomplete graph): scanning only the head commit would silently
+              # leave earlier PR commits unscanned while this required security
+              # job still passed.
+              if ! MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA")" || [ -z "$MERGE_BASE" ]; then
+                echo "::error::gitleaks: could not resolve the merge base of base ${BASE_SHA} and head ${HEAD_SHA}; refusing to scan an incomplete commit range. Ensure the checkout has full history (fetch-depth: 0)." >&2
+                exit 1
               fi
+              range="${MERGE_BASE}..${HEAD_SHA}"
             else
               range="${BASE_SHA}..${HEAD_SHA}"
             fi
