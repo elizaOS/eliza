@@ -516,7 +516,17 @@ jobs:
             jq -e '.success == true' "$response_file" >/dev/null
             psql "$database_url" -v ON_ERROR_STOP=1 -c \
               "SELECT id, type, status, created_at FROM jobs WHERE agent_id = '$agent_id' ORDER BY created_at DESC LIMIT 3"
+      - name: Deploy the canonical X identity hotfix
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 8m
+          envs: ELIZACLOUD_API_KEY
+          script_path: .github/scripts/x-identity-hotfix-deploy.sh
       - name: Enqueue the exact corrected runtime job
+        if: false
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
