@@ -409,7 +409,8 @@ async function actionList({
 }: ActionHandlerArgs): Promise<ActionResult> {
   const includeCompleted = readBoolean(params.includeCompleted) ?? false;
   const hasLimit = Object.hasOwn(params, "limit");
-  if (hasLimit && !isValidTodoListLimit(params.limit)) {
+  const rawLimit = hasLimit ? params.limit : undefined;
+  if (hasLimit && !isValidTodoListLimit(rawLimit)) {
     return failure(
       "invalid_param",
       "limit must be a positive safe integer number (omit for unlimited results)",
@@ -420,7 +421,7 @@ async function actionList({
     agentId: scope.agentId,
     includeCompleted,
   };
-  if (hasLimit) filter.limit = params.limit as number;
+  if (hasLimit) filter.limit = rawLimit as number;
   const todos = await service.list(filter);
   const text = renderMarkdown(todos);
   await emit(callback, text);

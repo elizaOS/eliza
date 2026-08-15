@@ -142,16 +142,17 @@ export class TodosService extends Service {
   async list(filter: TodoFilter): Promise<Todo[]> {
     let limit: number | undefined;
     if (Object.hasOwn(filter, "limit")) {
-      if (!isValidTodoListLimit(filter.limit)) {
+      const rawLimit = filter.limit;
+      if (!isValidTodoListLimit(rawLimit)) {
         throw new ElizaError(
           `${TODOS_LOG_PREFIX} limit must be a positive safe integer`,
           {
             code: TODO_LIST_LIMIT_ERROR_CODE,
-            context: { receivedType: typeof filter.limit },
+            context: { receivedType: typeof rawLimit },
           },
         );
       }
-      limit = filter.limit;
+      limit = rawLimit;
     }
 
     const db = this.getDb();

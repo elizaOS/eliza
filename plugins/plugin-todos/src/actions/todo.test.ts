@@ -666,6 +666,23 @@ describe("TODO action", () => {
       expect(service.listCallCount).toBe(1);
     });
 
+    it("reads a supplied limit once before validation and use", async () => {
+      let reads = 0;
+      const parameters = {
+        action: "list",
+        get limit() {
+          reads += 1;
+          return reads === 1 ? 1 : undefined;
+        },
+      };
+
+      const result = await invoke(runtime, parameters);
+
+      expect(result.success).toBe(true);
+      expect((result.data as { todos: unknown[] }).todos).toHaveLength(1);
+      expect(reads).toBe(1);
+    });
+
     it.each([
       ["zero", 0],
       ["negative", -5],
@@ -694,6 +711,30 @@ describe("TODO action", () => {
   });
 
   describe("TodosService.list limit validation", () => {
+    it("uses the same single-read limit value for the database query", async () => {
+      let reads = 0;
+      const limit = vi.fn(async () => []);
+      const orderBy = vi.fn(() => ({ limit }));
+      const where = vi.fn(() => ({ orderBy }));
+      const from = vi.fn(() => ({ where }));
+      const select = vi.fn(() => ({ from }));
+      const directService = new TodosService({
+        db: { select },
+      } as unknown as IAgentRuntime);
+      const filter = {
+        entityId: ENTITY,
+        get limit() {
+          reads += 1;
+          return reads === 1 ? 1 : undefined;
+        },
+      };
+
+      await directService.list(filter);
+
+      expect(reads).toBe(1);
+      expect(limit).toHaveBeenCalledWith(1);
+    });
+
     it.each([
       ["zero", 0],
       ["negative", -1],
