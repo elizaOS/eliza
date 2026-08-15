@@ -154,6 +154,8 @@ export {
 export {
   createSchedulingSqlScheduledTaskLogStore,
   createSchedulingSqlScheduledTaskStore,
+  type DueScheduledTaskRef,
+  listDueScheduledTaskRefs,
   parseScheduledTaskLogRow,
   parseScheduledTaskRow,
   type SchedulingSqlStoreOptions,

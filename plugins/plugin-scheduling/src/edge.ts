@@ -46,15 +46,6 @@ export {
   registerBuiltInGates,
   type TaskGateRegistry,
 } from "./scheduled-task/gate-registry.js";
-export {
-  createRuntimeSchedulingSqlExecutor,
-  createSchedulingSqlScheduledTaskLogStore,
-  createSchedulingSqlScheduledTaskStore,
-  parseScheduledTaskLogRow,
-  parseScheduledTaskRow,
-  type SchedulingSqlExecutor,
-  type SchedulingSqlStoreOptions,
-} from "./scheduled-task/index.js";
 export { computeNextFireAt } from "./scheduled-task/next-fire-at.js";
 export {
   ChannelKeyError,
@@ -73,11 +64,25 @@ export {
   TestNoopScheduledTaskDispatcher,
 } from "./scheduled-task/runner.js";
 export {
+  createRuntimeSchedulingSqlExecutor,
+  extractRows,
+  type SchedulingSqlExecutor,
+} from "./scheduled-task/sql.js";
+export {
   createInMemoryScheduledTaskLogStore,
   createStateLogger,
   type ScheduledTaskLogStore,
   STATE_LOG_DEFAULT_RETENTION_DAYS,
 } from "./scheduled-task/state-log.js";
+export {
+  createSchedulingSqlScheduledTaskLogStore,
+  createSchedulingSqlScheduledTaskStore,
+  type DueScheduledTaskRef,
+  listDueScheduledTaskRefs,
+  parseScheduledTaskLogRow,
+  parseScheduledTaskRow,
+  type SchedulingSqlStoreOptions,
+} from "./scheduled-task/store.js";
 export {
   OWNER_LOCAL_TZ,
   resolveTriggerTz,

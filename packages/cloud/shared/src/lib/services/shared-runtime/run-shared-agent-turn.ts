@@ -21,6 +21,7 @@
  */
 
 import { replaceNameTokens } from "@elizaos/core";
+import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import { generateText, streamText } from "ai";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import {
@@ -80,6 +81,10 @@ export interface RunSharedAgentTurnInput {
   execution?: {
     engine: "eliza-runtime";
     agentKey: string;
+    reminders?: {
+      delivery: SharedReminderDelivery;
+      runner: ScheduledTaskRunner;
+    };
   };
 }
 
@@ -207,7 +212,10 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  * from `@elizaos/core`'s prompt builder; the shared turn talks to the provider
  * directly, so it is the only renderer on this side.
  */
-function buildSystemPrompt(character: SharedAgentCharacter): string {
+function buildSystemPrompt(
+  character: SharedAgentCharacter,
+  capabilities: { reminders: boolean },
+): string {
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
   if (system) parts.push(system);
@@ -223,7 +231,10 @@ function buildSystemPrompt(character: SharedAgentCharacter): string {
     "Shared runtime boundaries:\n" +
       "- You can converse, reason, draft, help the user plan, and use WEB_SEARCH for current public information.\n" +
       "- WEB_SEARCH reads public results only; it does not operate websites, access accounts, submit forms, or make changes.\n" +
-      "- You have no connected accounts, calendar, reminders, calling, messaging, purchasing, notes store, shell, filesystem, browser control, or code execution in this runtime.\n" +
+      (capabilities.reminders
+        ? "- REMINDERS can create, list, snooze, complete, and dismiss reminders delivered to this private chat.\n"
+        : "- Reminders are unavailable on this transport.\n") +
+      "- You have no connected accounts, calendar, calling, arbitrary messaging, purchasing, notes store, shell, filesystem, browser control, or code execution in this runtime.\n" +
       "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything outside this conversation.\n" +
       "- When an ambiguous follow-up asks you to execute a prior external action, state that the action needs Dedicated and offer the useful planning or drafting help you can provide here.",
   );
@@ -264,7 +275,10 @@ export async function runSharedAgentTurn(
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
 
-  const capabilityWall = resolveSharedCapabilityWall(message);
+  const remindersEnabled = Boolean(input.execution?.reminders);
+  const capabilityWall = resolveSharedCapabilityWall(message, {
+    reminders: remindersEnabled,
+  });
   if (capabilityWall) {
     return {
       reply: capabilityWall.reply,
@@ -318,7 +332,12 @@ export async function runSharedAgentTurn(
     const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
     return await runSharedElizaRuntimeTurn({
       ...input,
-      character: { ...input.character, system: buildSystemPrompt(input.character) },
+      character: {
+        ...input.character,
+        system: buildSystemPrompt(input.character, {
+          reminders: remindersEnabled,
+        }),
+      },
       agentKey: input.execution.agentKey,
       model: modelId,
     });
@@ -326,7 +345,9 @@ export async function runSharedAgentTurn(
 
   try {
     const model = getInteractiveCerebrasLanguageModel(modelId);
-    const system = buildSystemPrompt(input.character);
+    const system = buildSystemPrompt(input.character, {
+      reminders: remindersEnabled,
+    });
     const messages = [
       ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
       { role: input.messageRole ?? ("user" as const), content: message },
@@ -375,8 +396,11 @@ export async function runSharedAgentTurnStream(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
+  const remindersEnabled = false;
 
-  const capabilityWall = resolveSharedCapabilityWall(message);
+  const capabilityWall = resolveSharedCapabilityWall(message, {
+    reminders: remindersEnabled,
+  });
   if (capabilityWall) {
     const reply = capabilityWall.reply;
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
@@ -428,7 +452,9 @@ export async function runSharedAgentTurnStream(
 
   try {
     const model = getInteractiveCerebrasLanguageModel(modelId);
-    const system = buildSystemPrompt(input.character);
+    const system = buildSystemPrompt(input.character, {
+      reminders: remindersEnabled,
+    });
     const messages = [
       ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
       { role: input.messageRole ?? ("user" as const), content: message },

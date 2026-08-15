@@ -409,7 +409,6 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
-        "@elizaos/plugin-web-search": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
         "tsx": "4.21.0",
@@ -686,7 +685,9 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-cloud-apps": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/plugin-web-search": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@fal-ai/client": "^1.10.1",
         "@modelcontextprotocol/sdk": "^1.29.0",

@@ -482,6 +482,49 @@ describe("SharedRuntimeChatService", () => {
     });
   });
 
+  test("enables reminders only for platform-funded turns with trusted Telegram delivery", async () => {
+    const service = new SharedRuntimeChatService();
+    const trustedRpc = {
+      ...rpc,
+      params: {
+        ...rpc.params,
+        trustedDelivery: {
+          platform: "telegram",
+          project: "eliza-app",
+          chatId: "123456789",
+        },
+      },
+    };
+
+    await service.bridge(agent, trustedRpc, {
+      ...harness(),
+      funding: "platform",
+      executionEngine: "eliza-runtime",
+    });
+    expect(lastTurnInput?.execution).toEqual({
+      engine: "eliza-runtime",
+      agentKey: agent.id,
+      reminders: {
+        runner: expect.any(Object),
+        delivery: {
+          platform: "telegram",
+          project: "eliza-app",
+          chatId: "123456789",
+        },
+      },
+    });
+
+    await service.bridge(agent, trustedRpc, {
+      ...harness(),
+      funding: "organization-credits",
+      executionEngine: "eliza-runtime",
+    });
+    expect(lastTurnInput?.execution).toEqual({
+      engine: "eliza-runtime",
+      agentKey: agent.id,
+    });
+  });
+
   test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();

@@ -37,6 +37,34 @@ const SCHEDULING_SCHEMA = "app_scheduling";
 const TASK_TABLE = `${SCHEDULING_SCHEMA}.life_scheduled_tasks`;
 const LOG_TABLE = `${SCHEDULING_SCHEMA}.life_scheduled_task_log`;
 
+export interface DueScheduledTaskRef {
+  agentId: string;
+  taskId: string;
+}
+
+export async function listDueScheduledTaskRefs(
+  executeSql: SchedulingSqlExecutor,
+  options: { dueAtIso: string; limit?: number },
+): Promise<DueScheduledTaskRef[]> {
+  const limit = Math.min(Math.max(Math.trunc(options.limit ?? 100), 1), 500);
+  const rows = await executeSql(
+    `SELECT agent_id, id
+       FROM ${TASK_TABLE}
+      WHERE kind = 'reminder'
+        AND next_fire_at IS NOT NULL
+        AND next_fire_at <= ${sqlQuote(options.dueAtIso)}::timestamptz
+        AND (state_json::jsonb ->> 'status') IN (
+          'scheduled', 'fired', 'acknowledged', 'completed', 'skipped', 'expired', 'failed'
+        )
+      ORDER BY next_fire_at ASC, agent_id ASC, id ASC
+      LIMIT ${sqlInteger(limit)}`,
+  );
+  return rows.map((row) => ({
+    agentId: toText(row.agent_id),
+    taskId: toText(row.id),
+  }));
+}
+
 function isoNow(): string {
   return new Date().toISOString();
 }

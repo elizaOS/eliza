@@ -4,11 +4,34 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
+
+const scheduledInputs: Array<Record<string, unknown>> = [];
+const reminderRunner = {
+  async schedule(input: Record<string, unknown>) {
+    scheduledInputs.push(input);
+    return {
+      taskId: "shared-reminder-1",
+      ...input,
+      state: { status: "scheduled", followupCount: 0 },
+    };
+  },
+  async list() {
+    return [];
+  },
+  async apply() {
+    throw new Error("Reminder mutation is outside this runtime planning test");
+  },
+  async pipeline() {
+    return [];
+  },
+} satisfies ScheduledTaskRunner;
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
 
 beforeEach(() => {
+  scheduledInputs.length = 0;
   process.env.CEREBRAS_API_KEY = "shared-runtime-test-key";
   process.env.NODE_ENV = "production";
 });
@@ -274,5 +297,159 @@ describe("Shared Eliza Workerd runtime", () => {
       completionTokens: 36,
       totalTokens: 156,
     });
+  });
+
+  test("plans REMINDERS through the genuine plugin and pins the current private chat", async () => {
+    const modelRequests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      modelRequests.push(request);
+      const call = modelRequests.length;
+      if (call === 1) {
+        return Response.json({
+          id: "chatcmpl-shared-reminder-stage-one",
+          object: "chat.completion",
+          created: 0,
+          model: "gemma-4-31b",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "shared-reminder-handle-response",
+                    type: "function",
+                    function: {
+                      name: "HANDLE_RESPONSE",
+                      arguments: JSON.stringify({
+                        shouldRespond: "RESPOND",
+                        thought: "The user asked for a reminder.",
+                        contexts: ["reminders"],
+                        intents: [],
+                        candidateActionNames: ["REMINDERS"],
+                        requiresTool: true,
+                        replyText: "",
+                        replyEffectStatus: "none",
+                        facts: [],
+                        relationships: [],
+                        addressedTo: [],
+                      }),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: { prompt_tokens: 30, completion_tokens: 12, total_tokens: 42 },
+        });
+      }
+      if (call === 2) {
+        return Response.json({
+          id: "chatcmpl-shared-reminder-plan",
+          object: "chat.completion",
+          created: 0,
+          model: "gemma-4-31b",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "shared-reminder-action",
+                    type: "function",
+                    function: {
+                      name: "REMINDERS",
+                      arguments: JSON.stringify({
+                        operation: "create",
+                        reminderText: "stand up and stretch",
+                        inMinutes: 2,
+                      }),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: { prompt_tokens: 40, completion_tokens: 10, total_tokens: 50 },
+        });
+      }
+      return Response.json({
+        id: "chatcmpl-shared-reminder-finish",
+        object: "chat.completion",
+        created: 0,
+        model: "gemma-4-31b",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: JSON.stringify({
+                success: true,
+                decision: "FINISH",
+                thought: "The reminder is stored.",
+                messageToUser: "i'll remind you in two minutes",
+              }),
+            },
+            finish_reason: "stop",
+          },
+        ],
+        usage: { prompt_tokens: 50, completion_tokens: 14, total_tokens: 64 },
+      });
+    }) as typeof fetch;
+
+    const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+    const result = await runSharedAgentTurn({
+      character: {
+        name: "Shared Eliza",
+        system: "You are Eliza.",
+        model: "gemma-4-31b",
+      },
+      history: [],
+      message: "remind me in two minutes to stand up and stretch",
+      messageIds: {
+        user: "7d734b8f-1ac5-456a-8bf3-9cd61dd546ef",
+        assistant: "83de2c02-ec48-48d6-a734-c665b27d23cf",
+      },
+      execution: {
+        engine: "eliza-runtime",
+        agentKey: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
+        reminders: {
+          runner: reminderRunner,
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            chatId: "123456789",
+          },
+        },
+      },
+    });
+
+    expect(result.reply).toBe("i'll remind you in two minutes");
+    expect(scheduledInputs).toHaveLength(1);
+    expect(scheduledInputs[0]).toMatchObject({
+      kind: "reminder",
+      promptInstructions: "stand up and stretch",
+      trigger: { kind: "once" },
+      output: { destination: "channel", target: "current_dm" },
+      metadata: {
+        delivery: {
+          platform: "telegram",
+          project: "eliza-app",
+          chatId: "123456789",
+        },
+      },
+    });
+    expect(modelRequests).toHaveLength(4);
+    expect(
+      (modelRequests[1].tools as Array<{ function?: { name?: string } }>).some(
+        (tool) => tool.function?.name === "REMINDERS",
+      ),
+    ).toBe(true);
   });
 });

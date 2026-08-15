@@ -174,6 +174,8 @@ function request(body: unknown, authorization = "Bearer test-secret") {
 
 const valid = {
   platform: "telegram",
+  project: "eliza-app",
+  chatId: "123456789",
   telegramUserId: "123456789",
   telegramUsername: "nubs",
   displayName: "Nubs",
@@ -238,6 +240,11 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
       "telegram:eliza:42",
       "platform",
+      {
+        platform: "telegram",
+        project: "eliza-app",
+        chatId: "123456789",
+      },
     );
   });
 
@@ -401,6 +408,7 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
       "blooio:eliza:message-42",
       "platform",
+      undefined,
     );
   });
 

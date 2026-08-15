@@ -18,6 +18,7 @@ import {
   type ToolChoice,
   type ToolDefinition,
 } from "@elizaos/core/edge";
+import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { webSearchEdgeAction, webSearchEdgePlugin } from "@elizaos/plugin-web-search/edge";
 import { generateText, type JSONSchema7, jsonSchema, type ModelMessage, type ToolSet } from "ai";
 import { getInteractiveCerebrasLanguageModel } from "../../providers/language-model";
@@ -157,6 +158,13 @@ export async function runSharedElizaRuntimeTurn(
       [ModelType.TEXT_LARGE]: modelHandler,
     },
   };
+  const reminderPlugin = input.execution?.reminders
+    ? createSharedRemindersEdgePlugin({
+        runner: input.execution.reminders.runner,
+        agentId: input.agentKey,
+        delivery: input.execution.reminders.delivery,
+      })
+    : undefined;
   const runtime = new AgentRuntime({
     agentId: stringToUuid(input.agentKey),
     character: {
@@ -170,7 +178,7 @@ export async function runSharedElizaRuntimeTurn(
       },
     },
     adapter,
-    plugins: [modelPlugin, webSearchEdgePlugin],
+    plugins: [modelPlugin, webSearchEdgePlugin, ...(reminderPlugin ? [reminderPlugin] : [])],
     logLevel: "error",
     actionPlanning: true,
     checkShouldRespond: false,
@@ -184,6 +192,12 @@ export async function runSharedElizaRuntimeTurn(
     await runtime.initialize({ skipMigrations: true });
     if (!runtime.actions.some((action) => action.name === webSearchEdgeAction.name)) {
       throw new Error("Eliza Shared runtime initialized without its WEB_SEARCH action");
+    }
+    if (
+      input.execution?.reminders &&
+      !runtime.actions.some((action) => action.name === "REMINDERS")
+    ) {
+      throw new Error("Eliza Shared runtime initialized without its REMINDERS action");
     }
     const entityId = stringToUuid(`${input.agentKey}:owner`);
     const roomId = stringToUuid(`${input.agentKey}:conversation`);
