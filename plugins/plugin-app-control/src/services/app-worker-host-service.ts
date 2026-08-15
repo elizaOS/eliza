@@ -104,6 +104,16 @@ const WORKER_ENTRY = existsSync(SOURCE_WORKER_ENTRY)
 	: DIST_WORKER_ENTRY;
 const SHUTDOWN_GRACE_MS = 5_000;
 
+class WorkerBootError extends Error {
+	constructor(
+		readonly kind: "no-worker-surface" | "error",
+		message: string,
+	) {
+		super(message);
+		this.name = "WorkerBootError";
+	}
+}
+
 function readString(value: unknown): string | null {
 	if (typeof value !== "string") return null;
 	const trimmed = value.trim();
@@ -165,31 +175,16 @@ async function resolvePluginEntryPath(
 		!Array.isArray(pkg.exports)
 			? readStringFromExports((pkg.exports as Record<string, unknown>)["."])
 			: null);
-	const declared = [
+	const candidates = [
 		exportsEntry,
 		readString(pkg.module),
 		readString(pkg.main),
+		"src/index.ts",
+		"src/index.js",
+		"dist/index.js",
+		"index.ts",
+		"index.js",
 	].filter((candidate): candidate is string => candidate !== null);
-
-	// The conventional fallbacks apply ONLY to a package that declares no entry
-	// at all. A package that declared one whose file is absent is unbuilt, and
-	// importing some source file it never pointed at turns that into a
-	// different, misleading story: a static frontend app (index.html +
-	// src/index.tsx, no agent-side module) declares `main: "./dist/index.js"`,
-	// the fallback imports its React entry instead, and the worker reports
-	// "no plugin export found in module" on every boot — for an app that has no
-	// worker surface at all. Resolving nothing is the honest answer here; the
-	// caller already renders it as "no worker plugin entry found".
-	const candidates =
-		declared.length > 0
-			? declared
-			: [
-					"src/index.ts",
-					"src/index.js",
-					"dist/index.js",
-					"index.ts",
-					"index.js",
-				];
 
 	for (const candidate of candidates) {
 		const resolved = path.isAbsolute(candidate)
@@ -303,22 +298,30 @@ export class AppWorkerHostService extends Service {
 		if (!pluginEntryPath) {
 			return {
 				ok: false,
-				kind: "no-worker-surface",
+				kind: "error",
 				reason: `No worker plugin entry found for app ${slug} under ${entry.directory}`,
 			};
 		}
-		const snapshot = await this.spawn({
-			slug,
-			isolation: "worker",
-			// path.basename contains the slug to a single segment so a traversal
-			// slug (e.g. "../../etc") from an untrusted app manifest cannot escape
-			// the app-state dir (defense-in-depth; register() also rejects it).
-			statePath: path.join(this.stateDir, "app-state", path.basename(slug)),
-			requestedPermissions: entry.requestedPermissions ?? null,
-			grantedNamespaces: view?.grantedNamespaces ?? [],
-			pluginEntryPath,
-		});
-		return { ok: true, snapshot };
+		try {
+			const snapshot = await this.spawn({
+				slug,
+				isolation: "worker",
+				// path.basename contains the slug to a single segment so a traversal
+				// slug (e.g. "../../etc") from an untrusted app manifest cannot escape
+				// the app-state dir (defense-in-depth; register() also rejects it).
+				statePath: path.join(this.stateDir, "app-state", path.basename(slug)),
+				requestedPermissions: entry.requestedPermissions ?? null,
+				grantedNamespaces: view?.grantedNamespaces ?? [],
+				pluginEntryPath,
+			});
+			return { ok: true, snapshot };
+		} catch (error) {
+			return {
+				ok: false,
+				kind: error instanceof WorkerBootError ? error.kind : "error",
+				reason: error instanceof Error ? error.message : String(error),
+			};
+		}
 	}
 
 	/**
@@ -370,6 +373,7 @@ export class AppWorkerHostService extends Service {
 					ok: boolean;
 					result?: unknown;
 					reason?: string;
+					kind?: "no-worker-surface" | "error";
 				};
 				if (msg.id === 0) {
 					if (msg.ok === true) {
@@ -377,7 +381,8 @@ export class AppWorkerHostService extends Service {
 						resolve();
 					} else {
 						reject(
-							new Error(
+							new WorkerBootError(
+								msg.kind ?? "error",
 								msg.reason ?? "Worker boot failed (no reason supplied)",
 							),
 						);

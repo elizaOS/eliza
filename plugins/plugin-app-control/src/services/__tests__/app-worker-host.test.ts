@@ -514,9 +514,23 @@ describe("AppWorkerHostService worker bridge", () => {
 			} as unknown as IAgentRuntime;
 		}
 
-		it("does not import a source file the package never declared", async () => {
-			// Declares an entry that is absent (unbuilt static app) but ships a
-			// src/index.ts a naive fallback would have imported.
+		function validPluginSource(name: string): string {
+			return `export default {
+	name: "${name}",
+	actions: [{
+		name: "SOURCE_PING",
+		description: "fixture",
+		similes: [],
+		validate: async () => true,
+		handler: async () => ({ success: true }),
+	}],
+};\n`;
+		}
+
+		it("classifies a source module with no plugin export as static", async () => {
+			// Local app loading deliberately falls back to source when the declared
+			// build is absent. Capability is decided from the loaded module, not file
+			// absence, so valid source plugins are not silently disabled.
 			const dir = mkdtempSync(path.join(tmpdir(), "app-static-"));
 			writeFileSync(
 				path.join(dir, "package.json"),
@@ -545,33 +559,77 @@ describe("AppWorkerHostService worker bridge", () => {
 			expect(result.reason).toContain("No worker plugin entry found");
 		});
 
-		it("still uses the conventional fallbacks when nothing is declared", async () => {
+		it("boots a valid source plugin when its declared build is absent", async () => {
 			const dir = mkdtempSync(path.join(tmpdir(), "app-undeclared-"));
 			writeFileSync(
 				path.join(dir, "package.json"),
-				JSON.stringify({ name: "undeclared-app" }),
+				JSON.stringify({ name: "source-plugin", main: "./dist/index.js" }),
 			);
 			mkdirSync(path.join(dir, "src"), { recursive: true });
-			writeFileSync(path.join(dir, "src", "index.ts"), "export default {};\n");
+			writeFileSync(
+				path.join(dir, "src", "index.ts"),
+				validPluginSource("source-plugin"),
+			);
 
 			const svc = new AppWorkerHostService(
 				makeRegistryRuntime({
-					slug: "undeclared-app",
+					slug: "source-plugin",
 					directory: dir,
 					isolation: "worker",
 				}),
 			);
-			// Resolution succeeds here, so the call proceeds to a real spawn — which
-			// may then reject because the fixture is not a plugin. Either way it got
-			// PAST classification, which is the only thing this pins.
-			const outcome = await svc
-				.startForRegisteredApp("undeclared-app")
-				.then((r) => (r.ok ? "ok" : r.kind))
-				.catch(() => "threw-during-spawn");
-			await svc.stop().catch(() => {});
+			const outcome = await svc.startForRegisteredApp("source-plugin");
+			await svc.stop();
 			rmSync(dir, { recursive: true, force: true });
 
-			expect(outcome).not.toBe("no-worker-surface");
+			expect(outcome.ok).toBe(true);
+		});
+
+		it("reports a missing declared worker artifact when no source fallback exists", async () => {
+			const dir = mkdtempSync(path.join(tmpdir(), "app-missing-worker-"));
+			writeFileSync(
+				path.join(dir, "package.json"),
+				JSON.stringify({ name: "missing-worker", main: "./dist/index.js" }),
+			);
+			const svc = new AppWorkerHostService(
+				makeRegistryRuntime({
+					slug: "missing-worker",
+					directory: dir,
+					isolation: "worker",
+				}),
+			);
+			const outcome = await svc.startForRegisteredApp("missing-worker");
+			rmSync(dir, { recursive: true, force: true });
+
+			expect(outcome.ok).toBe(false);
+			if (outcome.ok) return;
+			expect(outcome.kind).toBe("error");
+			expect(outcome.reason).toContain("No worker plugin entry found");
+		});
+
+		it("keeps the conventional source fallback for legacy packages with no entry", async () => {
+			const dir = mkdtempSync(path.join(tmpdir(), "app-legacy-worker-"));
+			writeFileSync(
+				path.join(dir, "package.json"),
+				JSON.stringify({ name: "legacy-worker" }),
+			);
+			mkdirSync(path.join(dir, "src"), { recursive: true });
+			writeFileSync(
+				path.join(dir, "src", "index.ts"),
+				validPluginSource("legacy-worker"),
+			);
+			const svc = new AppWorkerHostService(
+				makeRegistryRuntime({
+					slug: "legacy-worker",
+					directory: dir,
+					isolation: "worker",
+				}),
+			);
+			const outcome = await svc.startForRegisteredApp("legacy-worker");
+			await svc.stop();
+			rmSync(dir, { recursive: true, force: true });
+
+			expect(outcome.ok).toBe(true);
 		});
 	});
 });
