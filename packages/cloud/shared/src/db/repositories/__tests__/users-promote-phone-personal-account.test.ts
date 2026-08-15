@@ -389,8 +389,11 @@ describe("UsersRepository phone identity transactions (real PGlite)", () => {
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
     const owner = await usersRepository.findByPhoneNumberWithOrganization(phoneNumber);
-    expect([firstClaimant.user.id, secondClaimant.user.id]).toContain(owner?.id);
-    const loser = owner?.id === firstClaimant.user.id ? secondClaimant : firstClaimant;
+    if (!owner) {
+      throw new Error("Expected one concurrent claimant to own the verified phone number");
+    }
+    expect([firstClaimant.user.id, secondClaimant.user.id]).toContain(owner.id);
+    const loser = owner.id === firstClaimant.user.id ? secondClaimant : firstClaimant;
     const [loserCanonical] = await dbWrite.select().from(users).where(eq(users.id, loser.user.id));
     const [loserProjection] = await dbWrite
       .select()
