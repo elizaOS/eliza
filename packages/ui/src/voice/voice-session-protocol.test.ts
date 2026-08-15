@@ -53,6 +53,40 @@ describe("voice session server protocol", () => {
     ).toBeNull();
   });
 
+  it("accepts only bounded non-empty assistant progress captions", () => {
+    expect(
+      parseServerControl(
+        JSON.stringify({
+          t: "assistant_progress",
+          text: "I’m thinking through your request.",
+          traceId: "trace-1",
+        }),
+      ),
+    ).toEqual({
+      t: "assistant_progress",
+      text: "I’m thinking through your request.",
+      traceId: "trace-1",
+    });
+    expect(
+      parseServerControl(
+        JSON.stringify({
+          t: "assistant_progress",
+          text: "",
+          traceId: "trace-1",
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseServerControl(
+        JSON.stringify({
+          t: "assistant_progress",
+          text: "x".repeat(161),
+          traceId: "trace-1",
+        }),
+      ),
+    ).toBeNull();
+  });
+
   it("accepts a bounded navigate-view handoff", () => {
     expect(
       parseServerControl(

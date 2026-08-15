@@ -94,6 +94,13 @@ export interface ServerLlmFirstTextEvent {
   traceId: string;
 }
 
+/** Exact caption for a bounded, server-authorized spoken progress preamble. */
+export interface ServerAssistantProgressEvent {
+  t: "assistant_progress";
+  text: string;
+  traceId: string;
+}
+
 export interface ServerSpeakingStartEvent {
   t: "speaking_start";
   traceId: string;
@@ -162,6 +169,7 @@ export type ServerControlFrame =
   | ServerSttEagerEotEvent
   | ServerSttFinalEvent
   | ServerLlmFirstTextEvent
+  | ServerAssistantProgressEvent
   | ServerSpeakingStartEvent
   | ServerSpeakingEndEvent
   | ServerTurnEndEvent
@@ -236,6 +244,12 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
     case "speaking_start":
     case "speaking_end":
       return traceId ? { t, traceId } : null;
+    case "assistant_progress": {
+      const text = readFrameText(frame.text, 160);
+      return text !== null && text.trim().length > 0 && traceId
+        ? { t, text, traceId }
+        : null;
+    }
     case "turn_end": {
       const outcome = frame.outcome;
       return traceId && isServerTurnOutcome(outcome)
@@ -331,6 +345,7 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
   "stt_eager_eot",
   "stt_final",
   "llm_first_text",
+  "assistant_progress",
   "speaking_start",
   "speaking_end",
   "turn_end",

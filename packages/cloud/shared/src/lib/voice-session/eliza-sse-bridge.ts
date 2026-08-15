@@ -21,6 +21,7 @@
  */
 
 import {
+  type ChatTurnStatus,
   REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX,
   REALTIME_VOICE_CLIENT_TRANSPORT,
   type VoiceOutputPolicy,
@@ -56,6 +57,8 @@ export interface ElizaSseBridgeRequest {
   systemPrompt?: string;
   /** Per-turn trace id, propagated via the voice trace header. */
   traceId: string;
+  /** Content-free canonical phase updates used by bounded voice progress. */
+  onStatus?: (status: ChatTurnStatus) => void;
   /** Abort → cancels the fetch → cancels the upstream provider stream. */
   signal: AbortSignal;
   /** Injectable fetch for tests; defaults to global fetch. */
@@ -320,6 +323,11 @@ export async function streamElizaConversation(
             "upstream_error",
           );
         }
+        if (payloadType === "status") {
+          const status = extractChatTurnStatus(payload);
+          if (status) request.onStatus?.(status);
+          continue;
+        }
         const update = extractTextUpdate(payload);
         if (update) applyTextUpdate(update);
       }
@@ -344,6 +352,47 @@ export async function streamElizaConversation(
     "Eliza agent stream ended before its terminal reply",
     "protocol_error",
   );
+}
+
+const CHAT_TURN_STATUS_KINDS = new Set<ChatTurnStatus["kind"]>([
+  "thinking",
+  "streaming",
+  "running_action",
+  "running_tool",
+  "evaluating",
+  "waking",
+  "speaking",
+]);
+
+/** Parse only the bounded, content-free status fields voice progress needs. */
+function extractChatTurnStatus(payload: string): ChatTurnStatus | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed) || parsed.type !== "status") return null;
+  const kind = parsed.kind;
+  if (typeof kind !== "string" || !CHAT_TURN_STATUS_KINDS.has(kind as ChatTurnStatus["kind"])) {
+    return null;
+  }
+  const label = readBoundedString(parsed.label);
+  const actionName = readBoundedString(parsed.actionName);
+  const toolName = readBoundedString(parsed.toolName);
+  if (
+    (parsed.label !== undefined && !label) ||
+    (parsed.actionName !== undefined && !actionName) ||
+    (parsed.toolName !== undefined && !toolName)
+  ) {
+    return null;
+  }
+  return {
+    kind: kind as ChatTurnStatus["kind"],
+    ...(label ? { label } : {}),
+    ...(actionName ? { actionName } : {}),
+    ...(toolName ? { toolName } : {}),
+  };
 }
 
 function canonicalConversationStreamUrl(

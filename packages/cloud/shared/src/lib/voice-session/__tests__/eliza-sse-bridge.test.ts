@@ -84,6 +84,38 @@ describe("eliza sse bridge", () => {
     expect(result).toEqual({ completed: true, aborted: false });
   });
 
+  test("forwards only validated content-free status frames", async () => {
+    const statuses: unknown[] = [];
+    const fetchImpl = (async () =>
+      sseResponse([
+        `data: ${JSON.stringify({ type: "status", kind: "thinking" })}\n\n`,
+        `data: ${JSON.stringify({ type: "status", kind: "running_tool", toolName: "WEB_SEARCH" })}\n\n`,
+        `data: ${JSON.stringify({ type: "status", kind: "unknown", label: "do not trust" })}\n\n`,
+        `data: ${JSON.stringify({ type: "done", fullText: "Done." })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "search",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-status",
+        signal: new AbortController().signal,
+        fetchImpl,
+        onStatus: (status) => statuses.push(status),
+      },
+      () => {},
+    );
+
+    expect(statuses).toEqual([
+      { kind: "thinking" },
+      { kind: "running_tool", toolName: "WEB_SEARCH" },
+    ]);
+  });
+
   test("returns a valid terminal voice-output directive without replacing canonical text", async () => {
     const deltas: string[] = [];
     const fetchImpl = (async () =>

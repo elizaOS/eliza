@@ -124,6 +124,22 @@ describe("protocol framing", () => {
       });
     }
   });
+
+  test("serializes an exact assistant progress caption", () => {
+    expect(
+      JSON.parse(
+        serializeServerFrame({
+          t: "assistant_progress",
+          text: "I’m thinking through your request.",
+          traceId: "trace-1",
+        }),
+      ),
+    ).toEqual({
+      t: "assistant_progress",
+      text: "I’m thinking through your request.",
+      traceId: "trace-1",
+    });
+  });
 });
 
 describe("phrase aggregator", () => {

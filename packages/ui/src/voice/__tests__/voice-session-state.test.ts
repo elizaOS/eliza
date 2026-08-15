@@ -55,6 +55,19 @@ describe("voice-session-state machine (§7.4)", () => {
     expect(loopToListening(s).phase).toBe("listening");
   });
 
+  it("keeps a progress caption in thinking until audio starts", () => {
+    const next = applyServerEvent(
+      { ...fresh(), phase: "thinking", traceId: "T1" },
+      {
+        t: "assistant_progress",
+        text: "I’m thinking through your request.",
+        traceId: "T1",
+      },
+    );
+    expect(next.phase).toBe("thinking");
+    expect(next.traceId).toBe("T1");
+  });
+
   it("an empty final (noise EOT) terminates the turn instead of stranding 'thinking' (#16662)", () => {
     let s = applyClientAction(fresh(), { type: "client/connect" });
     s = applyServerEvent(s, {

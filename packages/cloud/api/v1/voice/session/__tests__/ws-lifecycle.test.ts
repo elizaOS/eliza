@@ -413,6 +413,7 @@ function makeLocalTokenFetch(
 
 function makeControlledCanonicalChunkFetch(): {
   fetchImpl: typeof fetch;
+  enqueueStatus: (status: Record<string, unknown>) => void;
   enqueueChunk: (chunk: string) => void;
   finish: () => void;
   ready: Promise<void>;
@@ -441,6 +442,13 @@ function makeControlledCanonicalChunkFetch(): {
         encoder.encode(`event: chunk\ndata: ${JSON.stringify({ chunk })}\n\n`),
       );
     },
+    enqueueStatus(status: Record<string, unknown>) {
+      controller?.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({ type: "status", ...status })}\n\n`,
+        ),
+      );
+    },
     finish() {
       controller?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller?.close();
@@ -467,6 +475,7 @@ async function connectSession(opts: {
   sttConnectTimeoutMs?: number;
   semanticEotMergeWindowMs?: number;
   semanticEotMaxHoldMs?: number;
+  voiceProgressSpokenThresholdMs?: number;
   prewarmElizaContext?: () => Promise<void>;
   openingGreeting?: string;
   cacheWarmingRetryDelaysMs?: readonly number[];
@@ -533,6 +542,12 @@ async function connectSession(opts: {
           : {}),
         ...(opts.semanticEotMaxHoldMs !== undefined
           ? { semanticEotMaxHoldMs: opts.semanticEotMaxHoldMs }
+          : {}),
+        ...(opts.voiceProgressSpokenThresholdMs !== undefined
+          ? {
+              voiceProgressSpokenThresholdMs:
+                opts.voiceProgressSpokenThresholdMs,
+            }
           : {}),
         usageStore,
         usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
@@ -1724,6 +1739,82 @@ describe("voice-session WS lifecycle", () => {
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("a slow canonical turn speaks one captioned progress preamble before the final answer", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+      voiceProgressSpokenThresholdMs: 10,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "look something up");
+    await controlled.ready;
+    controlled.enqueueStatus({
+      kind: "running_tool",
+      toolName: "WEB_SEARCH",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const progress = client.controlFrames.filter(
+      (frame) => frame.t === "assistant_progress",
+    );
+    expect(progress).toEqual([
+      expect.objectContaining({
+        text: "I'm checking web search.",
+      }),
+    ]);
+    let synthesisRequests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => typeof entry.transcript === "string");
+    expect(synthesisRequests).toEqual([
+      expect.objectContaining({
+        transcript: "I'm checking web search.",
+        continue: true,
+      }),
+    ]);
+
+    // Further status churn cannot exceed the one-preamble production cap.
+    controlled.enqueueStatus({ kind: "evaluating" });
+    controlled.enqueueChunk("Here is the answer.");
+    controlled.finish();
+    await flush();
+    await flush();
+
+    synthesisRequests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => typeof entry.transcript === "string");
+    expect(synthesisRequests).toEqual([
+      expect.objectContaining({
+        transcript: "I'm checking web search.",
+        continue: true,
+      }),
+      expect.objectContaining({
+        transcript: "Here is the answer.",
+        continue: false,
+      }),
+    ]);
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "usage",
+        ttsChars:
+          "I'm checking web search.".length + "Here is the answer.".length,
+      }),
+    );
   });
 
   test("the one terminal Cartesia input carries continue:false and is never empty", async () => {

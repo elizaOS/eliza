@@ -867,6 +867,7 @@ export function createVoiceSessionClient(
         );
         break;
       case "navigate_view":
+      case "assistant_progress":
       case "usage":
       case "error":
         if (!turnAuthority.acceptsResponseControlTrace(event.traceId)) {
@@ -922,6 +923,9 @@ export function createVoiceSessionClient(
         break;
       case "llm_first_text":
         mark("llm_first_text", event.traceId);
+        break;
+      case "assistant_progress":
+        mark("assistant_progress", event.traceId);
         break;
       case "speaking_start":
         mark("speaking_start", event.traceId);

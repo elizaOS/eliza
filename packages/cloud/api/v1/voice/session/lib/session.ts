@@ -27,7 +27,15 @@
  * revoke — same-worker or cross-device — stops uplink to Cartesia in <=500ms.
  */
 
-import { projectVoiceOutput, type VoiceOutputPolicy } from "@elizaos/shared";
+import {
+  type ChatTurnStatus,
+  createVoiceProgressState,
+  isVoiceProgressSpeechAuthorized,
+  projectVoiceOutput,
+  reduceVoiceProgress,
+  type VoiceOutputPolicy,
+  type VoiceProgressState,
+} from "@elizaos/shared";
 import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
 import {
   CartesiaSonicTtsAdapter,
@@ -112,6 +120,9 @@ const SEMANTIC_EOT_MERGE_WINDOW_MS = 900;
 /** A provider turn that resumed but never finalized cannot hold memory forever. */
 const SEMANTIC_EOT_MAX_HOLD_MS = 5_000;
 const SEMANTIC_EOT_ACTIVE_RECHECK_MS = 100;
+/** One short, truthful preamble keeps a slow local turn from feeling frozen. */
+const VOICE_PROGRESS_SPOKEN_THRESHOLD_MS = 900;
+const VOICE_PROGRESS_MAX_SPOKEN_UPDATES = 1;
 const CACHE_WARMING_CODES = new Set([
   "agent_cache_warming",
   "shared_runtime_cache_warming",
@@ -187,6 +198,76 @@ function mergeTranscriptFragments(
   return `${left} ${right}`;
 }
 
+function boundedProgressName(value: string | undefined): string | null {
+  if (!value) return null;
+  const normalized = value
+    .replace(/[_-]+/gu, " ")
+    .replace(/[^\p{L}\p{N}. ]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, 64);
+  return normalized || null;
+}
+
+function progressForStatus(status: ChatTurnStatus): {
+  phase: string;
+  displayMarkdown: string;
+  spokenCandidate: string;
+} | null {
+  switch (status.kind) {
+    case "thinking":
+      return {
+        phase: status.kind,
+        displayMarkdown: "I’m thinking through your request.",
+        spokenCandidate: "I’m thinking through your request.",
+      };
+    case "waking":
+      return {
+        phase: status.kind,
+        displayMarkdown: "I’m waking the agent now.",
+        spokenCandidate: "I’m waking the agent now.",
+      };
+    case "running_action": {
+      const name = boundedProgressName(status.actionName);
+      const text = name
+        ? `I’m working on ${name.toLocaleLowerCase("en-US")}.`
+        : "I’m completing the action.";
+      return {
+        phase: status.kind,
+        displayMarkdown: text,
+        spokenCandidate: text,
+      };
+    }
+    case "running_tool": {
+      const name = boundedProgressName(status.toolName);
+      const text = name
+        ? `I’m checking ${name.toLocaleLowerCase("en-US")}.`
+        : "I’m checking that now.";
+      return {
+        phase: status.kind,
+        displayMarkdown: text,
+        spokenCandidate: text,
+      };
+    }
+    case "evaluating":
+      return {
+        phase: status.kind,
+        displayMarkdown: "I’m checking the result.",
+        spokenCandidate: "I’m checking the result.",
+      };
+    case "streaming":
+      return {
+        phase: status.kind,
+        displayMarkdown: "I’m putting the answer together.",
+        spokenCandidate: "I’m putting the answer together.",
+      };
+    case "speaking":
+      return null;
+    default:
+      return null;
+  }
+}
+
 export interface VoiceSessionConfig {
   sessionId: string;
   jti: string;
@@ -231,6 +312,8 @@ export interface VoiceSessionConfig {
   semanticEotMergeWindowMs?: number;
   /** Deterministic test override for a resumed provider turn that never ends. */
   semanticEotMaxHoldMs?: number;
+  /** Deterministic test override; production waits 900ms before one preamble. */
+  voiceProgressSpokenThresholdMs?: number;
 
   // Metering (SEC-15). Server-derived only.
   usageStore: VoiceUsageStore;
@@ -1118,6 +1201,110 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       return tts;
     };
 
+    const progressOwner = {
+      responseId: traceId,
+      taskId: "agent-turn",
+      ownerEpoch: this.turnCounter,
+    } as const;
+    let progressState: VoiceProgressState = createVoiceProgressState({
+      ...progressOwner,
+      atMs: this.now(),
+    });
+    let progressStatus: ChatTurnStatus = { kind: "thinking" };
+    let progressTimer: ReturnType<typeof setTimeout> | null = null;
+    const progressConfig = {
+      spokenThresholdMs:
+        this.config.voiceProgressSpokenThresholdMs ??
+        VOICE_PROGRESS_SPOKEN_THRESHOLD_MS,
+      maxSpokenUpdates: VOICE_PROGRESS_MAX_SPOKEN_UPDATES,
+    } as const;
+    const clearProgressTimer = () => {
+      if (progressTimer !== null) {
+        clearTimeout(progressTimer);
+        progressTimer = null;
+      }
+    };
+    const finishProgress = (type: "final" | "cancel") => {
+      clearProgressTimer();
+      progressState = reduceVoiceProgress(progressState, {
+        ...progressOwner,
+        type,
+        atMs: this.now(),
+      }).state;
+    };
+    const tryProgress = () => {
+      progressTimer = null;
+      if (
+        abort.signal.aborted ||
+        this.closed ||
+        this.currentVoiceTurnId !== traceId
+      ) {
+        return;
+      }
+      const progress = progressForStatus(progressStatus);
+      if (!progress) return;
+      const transition = reduceVoiceProgress(
+        progressState,
+        {
+          ...progressOwner,
+          type: "progress",
+          atMs: this.now(),
+          ...progress,
+          isSpecific: true,
+          importance: "normal",
+        },
+        progressConfig,
+      );
+      progressState = transition.state;
+      const start = transition.effects.find(
+        (effect) => effect.type === "progress_speech/start",
+      );
+      if (
+        !start ||
+        !isVoiceProgressSpeechAuthorized(progressState, start.speechId) ||
+        abort.signal.aborted ||
+        this.currentVoiceTurnId !== traceId
+      ) {
+        return;
+      }
+      // Send the byte-equal caption before provider audio can arrive. The
+      // phrase is fixed/bounded by the shared projector and shares the final
+      // response's cancellable TTS context.
+      this.send({
+        t: "assistant_progress",
+        text: start.speechText,
+        traceId,
+      });
+      this.turnTtsChars += start.speechText.length;
+      ensureTts().sendPhrase({
+        text: start.speechText,
+        continueContext: true,
+      });
+    };
+    const scheduleProgress = () => {
+      clearProgressTimer();
+      if (progressState.terminal || progressState.spokenUpdates > 0) return;
+      const dueAt =
+        progressState.startedAtMs +
+        Math.max(0, progressConfig.spokenThresholdMs);
+      progressTimer = setTimeout(tryProgress, Math.max(0, dueAt - this.now()));
+    };
+    const updateProgressStatus = (status: ChatTurnStatus) => {
+      progressStatus = status;
+      if (
+        this.now() - progressState.startedAtMs >=
+        progressConfig.spokenThresholdMs
+      ) {
+        clearProgressTimer();
+        tryProgress();
+      } else {
+        scheduleProgress();
+      }
+    };
+    abort.signal.addEventListener("abort", () => finishProgress("cancel"), {
+      once: true,
+    });
+
     try {
       // Open the provider in parallel with the LLM request. Whole-answer safety
       // intentionally delays text until the terminal frame, so overlapping the
@@ -1128,6 +1315,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // turn does not await readiness because the final input queues in the
       // adapter, so consume that designed rejection on fast teardown.
       void prewarmedTts.opened.catch(() => undefined);
+      scheduleProgress();
 
       const elizaPrewarm = this.elizaPrewarm;
       if (elizaPrewarm) {
@@ -1148,6 +1336,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         traceId,
         signal: abort.signal,
         fetchImpl: this.config.fetchImpl,
+        onStatus: updateProgressStatus,
       };
       const onDelta = (delta: string) => {
         if (this.currentVoiceTurnId !== traceId) return;
@@ -1203,8 +1392,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
       if (result.aborted) {
         // Interruption already handled the teardown of this turn's TTS.
+        finishProgress("cancel");
         return;
       }
+
+      finishProgress("final");
 
       if (result.viewHandoff) {
         this.send({
@@ -1256,12 +1448,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         return;
       }
 
-      this.turnTtsChars = safeSpeechText.length;
+      this.turnTtsChars += safeSpeechText.length;
       ensureTts().sendPhrase({
         text: safeSpeechText,
         continueContext: false,
       });
     } catch (error) {
+      finishProgress("cancel");
       // error-policy:J1 boundary translation — the LLM/TTS turn is the async
       // boundary; provider failures become a structured client `error` frame.
       if (this.currentVoiceTurnId !== traceId) return;

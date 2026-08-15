@@ -15,6 +15,81 @@ declare module "@elizaos/shared" {
 
   export type VoiceOutputPolicy = "say" | "show" | "both" | "never_speak";
 
+  export interface ChatTurnStatus {
+    kind:
+      | "thinking"
+      | "streaming"
+      | "running_action"
+      | "running_tool"
+      | "evaluating"
+      | "waking"
+      | "speaking";
+    label?: string;
+    actionName?: string;
+    toolName?: string;
+  }
+
+  export interface VoiceProgressState {
+    responseId: string;
+    taskId: string;
+    ownerEpoch: number;
+    startedAtMs: number;
+    lastEventAtMs: number;
+    userSpeechActive: boolean;
+    userSpeechSequence: number;
+    lastUserSpeechEndedAtMs: number | null;
+    lastSpokenAtMs: number | null;
+    spokenUpdates: number;
+    speechCounter: number;
+    activeSpeechId: string | null;
+    terminal: boolean;
+  }
+
+  export interface VoiceProgressEffectStart {
+    type: "progress_speech/start";
+    responseId: string;
+    taskId: string;
+    ownerEpoch: number;
+    speechId: string;
+    speechText: string;
+  }
+
+  export interface VoiceProgressTransition {
+    state: VoiceProgressState;
+    effects: readonly (
+      | VoiceProgressEffectStart
+      | {
+          type: "progress_speech/cancel";
+          responseId: string;
+          taskId: string;
+          ownerEpoch: number;
+          speechId: string;
+          reason: "user_speech" | "final" | "cancel";
+        }
+    )[];
+  }
+
+  export function createVoiceProgressState(input: {
+    responseId: string;
+    taskId: string;
+    ownerEpoch: number;
+    atMs: number;
+  }): VoiceProgressState;
+
+  export function reduceVoiceProgress(
+    state: VoiceProgressState,
+    event: Record<string, unknown>,
+    config?: {
+      spokenThresholdMs?: number;
+      maxSpokenUpdates?: number;
+    },
+  ): VoiceProgressTransition;
+
+  export function isVoiceProgressSpeechAuthorized(
+    state: VoiceProgressState,
+    speechId: string,
+  ): boolean;
+
   export type VoiceArtifactKind =
     | "audio"
     | "code"

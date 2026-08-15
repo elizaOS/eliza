@@ -259,6 +259,16 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.status).toBe("thinking");
 
     await act(async () => {
+      sock.emitControl({
+        t: "assistant_progress",
+        text: "I’m thinking through your request.",
+        traceId: "T1",
+      });
+      await flushAsync();
+    });
+    expect(result.current.notice).toBe("I’m thinking through your request.");
+
+    await act(async () => {
       sock.emitControl({ t: "speaking_start", traceId: "T1" });
       sock.emitAudio(new Uint8Array(320));
       await flushAsync();
@@ -281,6 +291,7 @@ describe("useRealtimeVoiceSession", () => {
     });
     await waitFor(() => expect(result.current.status).toBe("listening"));
     expect(result.current.agentSpeaking).toBe(false);
+    expect(result.current.notice).toBeNull();
 
     // Clean stop → bye + teardown.
     await act(async () => {

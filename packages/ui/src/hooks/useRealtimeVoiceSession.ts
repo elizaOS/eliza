@@ -408,6 +408,15 @@ export function useRealtimeVoiceSession(
           setTranscriptFinal(event.text);
           setTranscriptPartial("");
           break;
+        case "assistant_progress":
+          // Byte-equal caption for the bounded progress audio. The existing
+          // composer notice lane is aria-live and avoids a second status card.
+          setNotice(event.text);
+          break;
+        case "turn_end":
+        case "interrupted":
+          setNotice(null);
+          break;
         case "ready":
           // A fresh session: clear the previous turn's transcript.
           setNotice(null);
