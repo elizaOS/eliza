@@ -97,6 +97,69 @@ export class TwitterDirectMessageClient {
     );
   }
 
+  private personalDmRouterUrl(): string | null {
+    const value =
+      this.state.TWITTER_PERSONAL_DM_ROUTER_URL ??
+      getSetting(this.runtime, "TWITTER_PERSONAL_DM_ROUTER_URL");
+    return value?.trim() ? value.trim() : null;
+  }
+
+  private async routePersonalDm(params: {
+    recipientTwitterUserId: string;
+    senderTwitterUserId: string;
+    senderUsername: string;
+    displayName: string;
+    dmEventId: string;
+    message: string;
+  }): Promise<string> {
+    const url = this.personalDmRouterUrl();
+    if (!url) throw new Error("X personal DM router is not configured");
+    const token =
+      getSetting(this.runtime, "TWITTER_BROKER_TOKEN") ??
+      getSetting(this.runtime, "ELIZAOS_CLOUD_API_KEY");
+    if (!token) {
+      throw new Error(
+        "X personal DM routing requires TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY",
+      );
+    }
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(params),
+      signal: AbortSignal.timeout(120_000),
+    });
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      // error-policy:J3 the Cloud router response is untrusted transport input.
+      throw new Error(
+        `X personal DM router returned invalid JSON (${response.status})`,
+      );
+    }
+    const reply =
+      payload &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      "data" in payload &&
+      payload.data &&
+      typeof payload.data === "object" &&
+      !Array.isArray(payload.data) &&
+      "reply" in payload.data &&
+      typeof payload.data.reply === "string"
+        ? payload.data.reply.trim()
+        : "";
+    if (!response.ok || !reply) {
+      throw new Error(
+        `X personal DM router rejected delivery (${response.status})`,
+      );
+    }
+    return reply;
+  }
+
   async start(): Promise<void> {
     this.isRunning = true;
     await this.poll();
@@ -330,11 +393,6 @@ export class TwitterDirectMessageClient {
       createdAt,
     };
 
-    if (!this.runtime.messageService) {
-      await createMemorySafe(this.runtime, inboundMemory, "messages");
-      throw new Error("X DM auto-reply requires runtime.messageService.");
-    }
-
     // Captures a reply-send failure even if the message service swallows the
     // callback rejection, so settlement below can distinguish "delivered or
     // deliberately silent" from "send failed, retry next poll".
@@ -449,11 +507,29 @@ export class TwitterDirectMessageClient {
       return [responseMemory];
     };
 
-    await this.runtime.messageService.handleMessage(
-      this.runtime,
-      inboundMemory,
-      callback,
-    );
+    const personalRouterUrl = this.personalDmRouterUrl();
+    if (personalRouterUrl) {
+      await createMemorySafe(this.runtime, inboundMemory, "messages");
+      const reply = await this.routePersonalDm({
+        recipientTwitterUserId: this.client.profile?.id ?? "",
+        senderTwitterUserId: senderId,
+        senderUsername: username,
+        displayName,
+        dmEventId: event.id,
+        message: event.text?.trim() ?? "",
+      });
+      await callback({ text: reply });
+    } else {
+      if (!this.runtime.messageService) {
+        await createMemorySafe(this.runtime, inboundMemory, "messages");
+        throw new Error("X DM auto-reply requires runtime.messageService.");
+      }
+      await this.runtime.messageService.handleMessage(
+        this.runtime,
+        inboundMemory,
+        callback,
+      );
+    }
     if (deliveryError) {
       throw deliveryError instanceof Error
         ? deliveryError

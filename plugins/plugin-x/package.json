@@ -180,6 +180,12 @@
         "default": "agent",
         "sensitive": false
       },
+      "TWITTER_PERSONAL_DM_ROUTER_URL": {
+        "type": "string",
+        "description": "Optional Eliza Cloud endpoint that routes DMs to the sender's personal Shared or Dedicated agent.",
+        "required": false,
+        "sensitive": false
+      },
       "TWITTER_TARGET_USERS": {
         "type": "string",
         "description": "Comma-separated list of Twitter usernames the bot should interact with. Use '*' for all users.",

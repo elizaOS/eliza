@@ -13,9 +13,107 @@ import type { TwitterClientState } from "./types";
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("TwitterDirectMessageClient", () => {
+  it("routes configured DMs to personal Eliza without invoking the public agent", async () => {
+    vi.useFakeTimers();
+    const listDmEvents = vi.fn(async () => ({
+      events: [
+        {
+          id: "501",
+          sender_id: "111",
+          dm_conversation_id: "conversation-1",
+          text: "what is on my calendar?",
+          event_type: "MessageCreate",
+        },
+      ],
+      includes: { users: [{ id: "111", username: "alice", name: "Alice" }] },
+    }));
+    const sendDmToParticipant = vi.fn(async () => ({
+      data: { dm_event_id: "reply-501" },
+    }));
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              identity: { id: "personal-agent", runtime: "dedicated" },
+              reply: "Your next event is at 2 PM.",
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const cache = new Map<string, string>([
+      ["twitter/agent/222/dm_cursor", "500"],
+    ]);
+    const handleMessage = vi.fn();
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      getCache: async (key: string) => cache.get(key),
+      setCache: async (key: string, value: string) => {
+        cache.set(key, value);
+      },
+      deleteCache: async (key: string) => cache.delete(key),
+      getMemoryById: async () => null,
+      createMemory: vi.fn(async () => undefined),
+      ensureWorldExists: vi.fn(async () => undefined),
+      updateWorld: vi.fn(async () => undefined),
+      ensureRoomExists: vi.fn(async () => undefined),
+      ensureConnection: vi.fn(async () => undefined),
+      messageService: { handleMessage },
+      reportError: vi.fn(),
+      getSetting: vi.fn((key: string) =>
+        key === "TWITTER_BROKER_TOKEN" ? "test-broker-token" : null,
+      ),
+    } as unknown as IAgentRuntime;
+    const client = {
+      accountId: "agent",
+      profile: { id: "222", username: "elizamakesmagic" },
+      twitterClient: {
+        getV2Client: async () => ({
+          v2: { listDmEvents, sendDmToParticipant },
+        }),
+      },
+    } as unknown as ClientBase;
+    const dmClient = new TwitterDirectMessageClient(client, runtime, {
+      TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
+      TWITTER_PERSONAL_DM_ROUTER_URL:
+        "https://cloud.eliza.app/api/v1/twitter/personal-message",
+    });
+
+    await dmClient.start();
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://cloud.eliza.app/api/v1/twitter/personal-message",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: "Bearer test-broker-token",
+        }),
+        body: JSON.stringify({
+          recipientTwitterUserId: "222",
+          senderTwitterUserId: "111",
+          senderUsername: "alice",
+          displayName: "Alice",
+          dmEventId: "501",
+          message: "what is on my calendar?",
+        }),
+      }),
+    );
+    expect(sendDmToParticipant).toHaveBeenCalledWith("111", {
+      text: "Your next event is at 2 PM.",
+    });
+    expect(cache.get("twitter/agent/222/dm_cursor")).toBe("501");
+    await dmClient.stop();
+  });
+
   it("watermarks history, then handles and replies to each new DM once", async () => {
     vi.useFakeTimers();
     const pages = [
