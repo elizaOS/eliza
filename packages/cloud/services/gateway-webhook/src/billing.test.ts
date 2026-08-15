@@ -21,7 +21,7 @@ describe("resolveTwilioSmsCostPerSegment strict parsing", () => {
     expect(resolveTwilioSmsCostPerSegment(0.02)).toBe(0.02);
   });
 
-  test("falls back to the default when configuration is absent", () => {
+  test("falls back to the default when configuration is absent or whitespace-only", () => {
     expect(resolveTwilioSmsCostPerSegment(undefined)).toBe(
       DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD,
     );
@@ -31,9 +31,16 @@ describe("resolveTwilioSmsCostPerSegment strict parsing", () => {
     expect(resolveTwilioSmsCostPerSegment("")).toBe(
       DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD,
     );
+    // A stray space must not classify as valid $0/segment.
+    expect(resolveTwilioSmsCostPerSegment(" ")).toBe(
+      DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD,
+    );
+    expect(resolveTwilioSmsCostPerSegment("\t\n")).toBe(
+      DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD,
+    );
   });
 
-  test("rejects malformed prefix, multi-dot, non-finite and negative values", () => {
+  test("rejects malformed prefix, multi-dot, non-decimal, non-finite and negative values", () => {
     for (const raw of [
       "0.01USD",
       "1.2.3",
@@ -42,6 +49,9 @@ describe("resolveTwilioSmsCostPerSegment strict parsing", () => {
       "Infinity",
       "-1",
       "-0.01",
+      "0x10",
+      "0b101",
+      "0o17",
     ]) {
       expect(resolveTwilioSmsCostPerSegment(raw)).toBe(
         DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD,
@@ -55,10 +65,12 @@ describe("resolveTwilioSmsCostPerSegment strict parsing", () => {
       "0.01",
       " 0.01 ",
       "",
+      " ",
       "0.01USD",
       "1.2.3",
       "abc",
       "-1",
+      "0x10",
     ]) {
       expect(resolveTwilioSmsCostPerSegment(raw)).toBe(sharedResolve(raw));
     }
@@ -75,11 +87,13 @@ describe("classifyTwilioSmsCostConfig", () => {
     });
     expect(classifyTwilioSmsCostConfig(null)).toEqual({ status: "absent" });
     expect(classifyTwilioSmsCostConfig("")).toEqual({ status: "absent" });
+    expect(classifyTwilioSmsCostConfig(" ")).toEqual({ status: "absent" });
     expect(classifyTwilioSmsCostConfig("0.01USD")).toEqual({
       status: "invalid",
     });
     expect(classifyTwilioSmsCostConfig("1.2.3")).toEqual({ status: "invalid" });
     expect(classifyTwilioSmsCostConfig("-1")).toEqual({ status: "invalid" });
+    expect(classifyTwilioSmsCostConfig("0x10")).toEqual({ status: "invalid" });
     expect(classifyTwilioSmsCostConfig(" 0.01 ")).toEqual({
       status: "valid",
       value: 0.01,
