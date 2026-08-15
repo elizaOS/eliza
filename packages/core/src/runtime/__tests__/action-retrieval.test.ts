@@ -960,3 +960,31 @@ describe("canonical OWNER_* fallbacks for non-PA topologies", () => {
 		expect(response.results[0]).toMatchObject({ name: "OWNER_REMINDERS" });
 	});
 });
+
+describe("F21 alias rows: email + terminal candidates bind to real parents", () => {
+	it("email-shaped candidates alias to the inbox triage umbrella", () => {
+		expect(parentAliasesForCandidateAction("EMAIL")).toEqual([
+			"MESSAGE",
+			"INBOX",
+		]);
+		expect(parentAliasesForCandidateAction("EMAIL_SEARCH")).toEqual([
+			"MESSAGE",
+			"INBOX",
+		]);
+		expect(parentAliasesForCandidateAction("CHECK_INBOX")).toEqual([
+			"MESSAGE",
+			"INBOX",
+		]);
+	});
+
+	it("terminal-shaped candidates alias to the shell surface", () => {
+		expect(parentAliasesForCandidateAction("TERMINAL_COMMAND")).toEqual([
+			"SHELL",
+			"TERMINAL_SHELL",
+		]);
+		expect(parentAliasesForCandidateAction("RUN_COMMAND")).toEqual([
+			"SHELL",
+			"TERMINAL_SHELL",
+		]);
+	});
+});
