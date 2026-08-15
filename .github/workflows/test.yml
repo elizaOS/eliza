@@ -125,6 +125,10 @@ jobs:
             else
               docker start "$target" >/dev/null
             fi
+            sleep 5
+            docker exec "$target" sh -lc \
+              'test "$(grep -o "userId: senderId" /app/plugins/plugin-x/dist/index.js | wc -l)" -eq 1 && sed -i "s/userId: senderId/userId: entityId/" /app/plugins/plugin-x/dist/index.js'
+            docker restart "$target" >/dev/null
             sleep 15
             after="$(docker inspect --format '{{.State.Status}}' "$target")"
             test "$after" = running
