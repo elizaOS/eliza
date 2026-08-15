@@ -340,6 +340,31 @@ export async function executeBrowserAutofillLogin(
     `[browser-autofill-login] domain=${domain} tabId=${matchingTab.id} submit=${submit} filled=${filled}`,
   );
 
+  if (!filled) {
+    const text = `No login inputs found on ${domain} (tab ${matchingTab.id})${fillReason ? `: ${fillReason}` : "."}`;
+    return {
+      text,
+      success: false,
+      values: {
+        success: false,
+        error: "AGENT_AUTOFILL_NO_INPUTS",
+        domain,
+        tabId: matchingTab.id,
+        filled,
+        subaction: AUTOFILL_SUBACTION,
+        ...(fillReason ? { fillReason } : {}),
+      },
+      data: {
+        actionName: "BROWSER",
+        subaction: AUTOFILL_SUBACTION,
+        domain,
+        tabId: matchingTab.id,
+        filled,
+        ...(fillReason ? { fillReason } : {}),
+      },
+    };
+  }
+
   return {
     text: submit
       ? `Filled and submitted login on ${domain} (tab ${matchingTab.id}).`
