@@ -70,6 +70,7 @@ export function toNamedMessageExamples(
 export function buildCloudElizaPersona() {
   const preset = getDefaultStylePreset();
   return {
+    id: preset.id,
     name: preset.name,
     system: `${preset.system}${CLOUD_MEMORY_SYSTEM}`,
     bio: [CLOUD_MEMORY_BIO, ...preset.bio],
