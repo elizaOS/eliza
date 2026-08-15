@@ -143,7 +143,7 @@ export const Ambient: Story = { args: { controller: makeController() } };
 
 /**
  * Login / first-run onboarding: the chat opens edge-to-edge full-bleed and the
- * composer placeholder reads "Ask Eliza anything, or sign in above" — the
+ * composer placeholder reads "Message Eliza anything, or sign in above" — the
  * composer is typeable (#12178), so the copy invites it rather than reading as
  * locked.
  */

@@ -54,13 +54,25 @@ export function extractBarePackageSpecifiers(source: string): string[] {
   return [...found].sort();
 }
 
+/**
+ * Whether a package is an elizaOS *runtime plugin* — the post-release-installable
+ * class that `shouldBundleDiscoveredPackage` may drop from the packaged bundle.
+ *
+ * Scope matters. Third-party ecosystems name ordinary hard dependencies
+ * `plugin-*` too (`@octokit/plugin-request-log`, `@jimp/plugin-resize`,
+ * `@milkdown/plugin-history`). Treating those as post-release plugins excluded
+ * them from the runtime bundle while their dependents shipped, so the packaged
+ * agent died at startup with `Cannot find module` — a crash loop with no UI.
+ * Only `@elizaos/plugin-*` and the unscoped `plugin-*` form used by local
+ * plugin projects are elizaOS runtime plugins.
+ */
 export function isRuntimePluginPackage(packageName: string): boolean {
   if (!packageName) return false;
   if (packageName.startsWith("plugin-")) return true;
   if (!packageName.startsWith("@")) return false;
 
-  const [, scopedName] = packageName.split("/");
-  return scopedName.startsWith("plugin-");
+  const [scope, scopedName] = packageName.split("/");
+  return scope === "@elizaos" && (scopedName?.startsWith("plugin-") ?? false);
 }
 
 export function shouldBundleDiscoveredPackage(

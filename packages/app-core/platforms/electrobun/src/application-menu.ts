@@ -278,18 +278,10 @@ function buildQuitMenuItem(
   isMac: boolean,
   appName: string,
 ): ApplicationMenuItem {
-  if (isMac) {
-    return {
-      label: `Quit ${appName}`,
-      role: "quit",
-      accelerator: "Command+Q",
-    };
-  }
-
   return {
     label: `Quit ${appName}`,
     action: "quit",
-    accelerator: "Ctrl+Q",
+    accelerator: isMac ? "Command+Q" : "Ctrl+Q",
   };
 }
 

@@ -6069,7 +6069,7 @@
   "chatsurface.startVoice": "Start voice input",
   "chatsurface.listening": "Listening",
   "chatsurface.notListening": "Not listening",
-  "chatsurface.inputPlaceholder": "Ask {{appName}}…",
+  "chatsurface.inputPlaceholder": "Message {{appName}}…",
   "chatsurface.messageLabel": "Message {{appName}}",
   "chatsurface.send": "Send message",
   "chatsurface.vision": "Show {{appName}} my screen",

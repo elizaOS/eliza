@@ -67,6 +67,27 @@ await runBrowserFixtureE2E(
       (await page.getByTestId("shell-chat-surface").count()) === 0,
       "RESTING: the open composer is not mounted until the bar is opened",
     );
+    const resting = await page.getByTestId("shell-home-pill").evaluate((pill) => {
+      const mark = pill.querySelector('[data-testid="shell-home-pill-mark"]');
+      const markRect = mark?.getBoundingClientRect();
+      return {
+        text: pill.textContent?.trim() ?? "",
+        pillWidth: Math.round(pill.getBoundingClientRect().width),
+        pillHeight: Math.round(pill.getBoundingClientRect().height),
+        markWidth: Math.round(markRect?.width ?? 0),
+        markHeight: Math.round(markRect?.height ?? 0),
+        markBackground: mark ? getComputedStyle(mark).backgroundColor : "",
+      };
+    });
+    assert(
+      resting.text === "" &&
+        resting.pillWidth === 64 &&
+        resting.pillHeight === 32 &&
+        resting.markWidth === 48 &&
+        resting.markHeight === 10 &&
+        resting.markBackground.includes("0.95"),
+      `RESTING: only the 48x10 white Flow handle is painted (${JSON.stringify(resting)})`,
+    );
     await snap(page, "resting-homepill");
 
     // 2) OPEN: click the pill → AssistantOverlay mounts the glass ChatSurface.
@@ -74,6 +95,31 @@ await runBrowserFixtureE2E(
     await page.waitForSelector('[data-testid="shell-assistant-overlay"]', { timeout: 8000 });
     await page.waitForSelector('[data-testid="shell-chat-surface"]', { timeout: 8000 });
     await page.waitForTimeout(900);
+    const glass = await page.getByTestId("shell-assistant-overlay").evaluate((panel) => {
+      const style = getComputedStyle(panel);
+      const rect = panel.getBoundingClientRect();
+      const pill = document.querySelector('[data-testid="shell-home-pill"]');
+      const pillRect = pill?.getBoundingClientRect();
+      return {
+        tier: panel.getAttribute("data-glass-tier"),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        bottom: Math.round(rect.bottom),
+        pillTop: Math.round(pillRect?.top ?? 0),
+        pillGap: Math.round((pillRect?.top ?? 0) - rect.bottom),
+        radius: style.borderRadius,
+        backdrop: style.backdropFilter || style.webkitBackdropFilter,
+        background: style.backgroundColor,
+      };
+    });
+    assert(
+      glass.tier?.startsWith("css-") &&
+        glass.radius === "24px" &&
+        glass.backdrop.includes("blur(30px)") &&
+        glass.bottom < glass.pillTop &&
+        glass.pillGap >= 8,
+      `OPEN: conversation is translucent glass and sits above the pill (${JSON.stringify(glass)})`,
+    );
     await snap(page, "open-composer");
 
     // 3) The composer shows mic + VISION + send (the #9953 acceptance addition).

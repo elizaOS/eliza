@@ -14,6 +14,7 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 
+import { GlassStyles } from "../../../glass";
 import { MockAppProvider } from "../../../storybook/mock-providers";
 import { AssistantOverlay } from "../AssistantOverlay";
 import { ChatSurface } from "../ChatSurface";
@@ -122,6 +123,7 @@ function BottomBarShell() {
 const root = createRoot(document.getElementById("root") as HTMLElement);
 root.render(
   <MockAppProvider>
+    <GlassStyles />
     <BottomBarShell />
   </MockAppProvider>,
 );

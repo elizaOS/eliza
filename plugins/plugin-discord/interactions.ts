@@ -18,6 +18,7 @@ import {
 	type InteractionBlock,
 	type NeutralButton,
 	parseInteractionBlocks,
+	stripDashboardOnlyMarkers,
 	toNeutralLayout,
 } from "@elizaos/core";
 import type { DiscordActionRow, DiscordComponentOptions } from "./types";
@@ -133,9 +134,13 @@ export function renderDiscordInteractions(
 		}
 	}
 
-	const text = [cleanedText, ...extraLines]
-		.filter((s) => s.trim().length > 0)
-		.join("\n\n");
+	// Parsed blocks can add fallback prose after the first cleanup. Apply the
+	// dashboard-only marker boundary to the complete Discord message as well.
+	const text = stripDashboardOnlyMarkers(
+		[cleanedText, ...extraLines]
+			.filter((s) => s.trim().length > 0)
+			.join("\n\n"),
+	);
 	return { text, components: visibleRows, needsFreeTextReply };
 }
 

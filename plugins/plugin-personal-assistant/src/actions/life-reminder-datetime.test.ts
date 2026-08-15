@@ -43,6 +43,7 @@ import {
   resolveOnceDueAt,
   runLifeConnectedQuery,
   runLifeOperationHandler,
+  textStatesExplicitUnscheduled,
   wantsEarlierReminderNudge,
 } from "./life.js";
 
@@ -763,6 +764,67 @@ describe("runLifeOperationHandler definition update targeting", () => {
   });
 });
 
+const MULTILINGUAL_CONTRADICTORY_UNSCHEDULED_TEXTS = [
+  ["English", "add buy milk with no due date, but tomorrow at 9"],
+  ["Spanish", "añade comprar leche sin fecha, pero mañana a las 9"],
+  ["Portuguese", "adicionar comprar leite sem prazo, mas amanhã às 9"],
+  ["Chinese", "添加买牛奶，没有截止日期，但明天九点"],
+  ["Japanese", "牛乳を買う、期限なし、でも明日の9時"],
+  ["Korean", "우유 사기, 마감일 없이, 하지만 내일 9시"],
+  [
+    "Vietnamese",
+    "thêm việc mua sữa không có ngày đến hạn, nhưng ngày mai lúc 9 giờ",
+  ],
+  [
+    "Tagalog",
+    "idagdag ang bumili ng gatas, walang takdang petsa, pero bukas ng alas 9",
+  ],
+] as const;
+
+describe("explicit unscheduled owner authority", () => {
+  it.each([
+    "add buy milk with no due date",
+    "add buy milk as an undated task",
+    "añade comprar leche sin fecha",
+    "adicionar comprar leite sem prazo",
+    "添加买牛奶，没有截止日期",
+    "牛乳を買う、期限なし",
+    "우유 사기, 마감일 없이",
+    "thêm việc mua sữa không có ngày đến hạn",
+    "idagdag ang bumili ng gatas, walang takdang petsa",
+  ])("accepts an explicit no-date phrase in %p", (text) => {
+    expect(textStatesExplicitUnscheduled(text)).toBe(true);
+  });
+
+  it.each(MULTILINGUAL_CONTRADICTORY_UNSCHEDULED_TEXTS)(
+    "rejects contradictory explicit scheduling in %s",
+    (_language, text) => {
+      expect(textStatesExplicitUnscheduled(text)).toBe(false);
+    },
+  );
+
+  it.each([
+    "add buy milk as a todo",
+    "add buy milk tomorrow at 9 as a todo",
+    "no due date, but actually schedule it tomorrow at 9",
+    "not a plain todo — schedule it tomorrow",
+    "add buy milk every monday",
+    "someday in two weeks",
+    "whenever, end of the month",
+    "no due date, but in two weeks",
+    "no schedule, after the meeting",
+    "plain todo a week from friday",
+    "not an undated task",
+    "don't make it a plain todo",
+    "sin fecha, pero mañana",
+    "sem prazo, mas amanhã",
+    "không có ngày đến hạn, nhưng ngày mai",
+    "walang takdang petsa, pero bukas",
+  ])("rejects omitted or contradicted no-date authority in %p", (text) => {
+    expect(textStatesExplicitUnscheduled(text)).toBe(false);
+  });
+});
+
 describe("runLifeOperationHandler clarification contract", () => {
   beforeEach(() => {
     serviceState.createCalls.length = 0;
@@ -824,6 +886,87 @@ describe("runLifeOperationHandler clarification contract", () => {
       }),
     ]);
   });
+
+  it.each([
+    "add buy milk as a todo",
+    "add buy milk tomorrow at 9 as a todo",
+    "someday in two weeks",
+    "whenever, end of the month",
+  ])(
+    "does not treat planner-only unscheduled output as explicit for %p",
+    async (ownerText) => {
+      const runtime = makeRuntime((prompt) => {
+        if (prompt.includes("create_definition request")) {
+          return taskPlanJson({
+            requestKind: "todo",
+            title: "Buy milk",
+            cadenceKind: "unscheduled",
+          });
+        }
+        return "";
+      });
+
+      const result = await runLifeOperationHandler(
+        runtime,
+        makeMessage(ownerText),
+        undefined,
+        {
+          parameters: {
+            action: "create",
+            intent: ownerText,
+            ownerSurface: "OWNER_TODOS",
+          },
+        } as HandlerOptions,
+      );
+
+      expect(result).toMatchObject({
+        success: false,
+        values: {
+          error: "MISSING_DEFINITION_FIELD",
+          missingField: "schedule",
+        },
+      });
+      expect(serviceState.createCalls).toHaveLength(0);
+    },
+  );
+
+  it.each(MULTILINGUAL_CONTRADICTORY_UNSCHEDULED_TEXTS)(
+    "rejects a contradicted no-date todo through the handler in %s",
+    async (_language, ownerText) => {
+      const runtime = makeRuntime((prompt) => {
+        if (prompt.includes("create_definition request")) {
+          return taskPlanJson({
+            requestKind: "todo",
+            title: "Buy milk",
+            cadenceKind: "unscheduled",
+          });
+        }
+        return "";
+      });
+
+      const result = await runLifeOperationHandler(
+        runtime,
+        makeMessage(ownerText),
+        undefined,
+        {
+          parameters: {
+            action: "create",
+            intent: ownerText,
+            ownerSurface: "OWNER_TODOS",
+          },
+        } as HandlerOptions,
+      );
+
+      expect(result).toMatchObject({
+        success: false,
+        values: {
+          error: "MISSING_DEFINITION_FIELD",
+          missingField: "schedule",
+        },
+      });
+      expect(serviceState.createCalls).toHaveLength(0);
+    },
+  );
 
   it("does not turn an undated reminder into a non-firing definition", async () => {
     const runtime = makeRuntime((prompt) => {

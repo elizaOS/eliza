@@ -479,7 +479,7 @@ describe("ChatOverlay first-run gating", () => {
     // The composer unlocks.
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
-    expect(input.placeholder).toBe("Ask Eliza");
+    expect(input.placeholder).toBe("Message Eliza");
 
     // A later re-render with onboarding still complete must NOT force another
     // detent change — the half-settle is a one-shot falling edge.
