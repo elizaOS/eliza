@@ -165,55 +165,66 @@ describe("buildDiscordConnectionMetadataUpdate", () => {
 });
 
 describe("DiscordGatewayConnection editor concurrency", () => {
-  it("loads the exact row on open and preserves the draft across a 409 refresh", async () => {
-    const connectionId = "33333333-3333-4333-8333-333333333333";
-    const characterId = "44444444-4444-4444-8444-444444444444";
-    const baseConnection = {
-      id: connectionId,
-      applicationId: "discord-app",
-      botUserId: null,
-      characterId,
-      status: "connected" as const,
-      errorMessage: null,
-      guildCount: 1,
-      eventsReceived: 2,
-      eventsRouted: 2,
-      isActive: true,
-      metadata: {
-        responseMode: "keyword" as const,
-        keywords: ["support"],
-        enabledChannels: ["channel-allow"],
-        ownerDiscordUserId: "111111111111111",
-      },
-      connectedAt: null,
-      lastHeartbeat: null,
-      createdAt: "2026-08-15T09:00:00.000Z",
-      editVersion: "1",
-    };
-    const openedConnection = { ...baseConnection, editVersion: "2" };
-    const conflictedConnection = {
-      ...baseConnection,
-      editVersion: "3",
-      metadata: {
-        ...baseConnection.metadata,
-        disabledChannels: ["concurrent-channel-deny"],
-      },
-    };
-    let detailReads = 0;
-    let patchAttempts = 0;
+  const connectionId = "33333333-3333-4333-8333-333333333333";
+  const characterId = "44444444-4444-4444-8444-444444444444";
+  const concurrentCharacterId = "66666666-6666-4666-8666-666666666666";
+  const baseConnection = {
+    id: connectionId,
+    applicationId: "discord-app",
+    botUserId: null,
+    characterId,
+    status: "connected" as const,
+    errorMessage: null,
+    guildCount: 1,
+    eventsReceived: 2,
+    eventsRouted: 2,
+    isActive: true,
+    metadata: {
+      responseMode: "keyword" as const,
+      keywords: ["support"],
+      enabledChannels: ["channel-allow"],
+      ownerDiscordUserId: "111111111111111",
+    },
+    connectedAt: null,
+    lastHeartbeat: null,
+    createdAt: "2026-08-15T09:00:00.000Z",
+    editVersion: "1",
+  };
+  const openedConnection = { ...baseConnection, editVersion: "2" };
+  const conflictedConnection = {
+    ...baseConnection,
+    characterId: concurrentCharacterId,
+    isActive: false,
+    metadata: {
+      ...baseConnection.metadata,
+      responseMode: "mention" as const,
+      disabledChannels: ["concurrent-channel-deny"],
+      ownerDiscordUserId: "999999999999999",
+      dmPolicy: "pairing" as const,
+      dmAllowFrom: ["777777777777777"],
+    },
+    editVersion: "3",
+  };
 
+  function mockConnectionApi(repeatConflict: boolean) {
+    const requests = { detailReads: 0, patchAttempts: 0 };
     apiMock.mockImplementation(
       async (path: string, options?: { method?: string; json?: unknown }) => {
         if (path === "/api/v1/discord/connections") {
           return { connections: [baseConnection] };
         }
         if (path === "/api/v1/dashboard") {
-          return { agents: [{ id: characterId, name: "Cloud Agent" }] };
+          return {
+            agents: [
+              { id: characterId, name: "Cloud Agent" },
+              { id: concurrentCharacterId, name: "Concurrent Agent" },
+            ],
+          };
         }
         if (path === `/api/v1/discord/connections/${connectionId}`) {
           if (options?.method === "PATCH") {
-            patchAttempts += 1;
-            if (patchAttempts === 1) {
+            requests.patchAttempts += 1;
+            if (requests.patchAttempts === 1 || repeatConflict) {
               throw new MockApiError(409, "CONFLICT", "Connection changed");
             }
             return {
@@ -221,41 +232,119 @@ describe("DiscordGatewayConnection editor concurrency", () => {
               connection: { ...conflictedConnection, editVersion: "4" },
             };
           }
-          detailReads += 1;
+          requests.detailReads += 1;
           return {
             connection:
-              detailReads === 1 ? openedConnection : conflictedConnection,
+              requests.detailReads === 1
+                ? openedConnection
+                : {
+                    ...conflictedConnection,
+                    editVersion: String(requests.detailReads + 1),
+                  },
           };
         }
         throw new Error(`Unexpected API request: ${path}`);
       },
     );
+    return requests;
+  }
 
+  async function openEditor() {
     render(createElement(DiscordGatewayConnection));
     fireEvent.click(await screen.findByText("App: {{appId}}"));
+    return screen.findByDisplayValue("111111111111111");
+  }
 
-    const ownerInput = await screen.findByDisplayValue("111111111111111");
-    expect(detailReads).toBe(1);
-    fireEvent.change(ownerInput, { target: { value: "555555555555555" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
-
-    await waitFor(() => expect(detailReads).toBe(2));
-    expect(screen.getByDisplayValue("555555555555555")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
-
-    await waitFor(() => expect(patchAttempts).toBe(2));
-    const patchCalls = apiMock.mock.calls.filter(
+  function patchCalls() {
+    return apiMock.mock.calls.filter(
       ([path, options]) =>
         path === `/api/v1/discord/connections/${connectionId}` &&
         options?.method === "PATCH",
     );
-    expect(patchCalls[1]?.[1]?.json).toMatchObject({
+  }
+
+  it("blocks stale retries until the user explicitly keeps the draft", async () => {
+    const requests = mockConnectionApi(true);
+    const ownerInput = await openEditor();
+    const tokenInput = screen.getByPlaceholderText(
+      "Leave empty to keep current token",
+    );
+    fireEvent.change(ownerInput, { target: { value: "555555555555555" } });
+    fireEvent.change(tokenInput, { target: { value: "replacement-token" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    expect(
+      await screen.findByText("Connection settings changed elsewhere"),
+    ).toBeTruthy();
+    const blockedSave = screen.getByRole("button", { name: "Save Changes" });
+    expect((blockedSave as HTMLButtonElement).disabled).toBe(true);
+    expect(requests.patchAttempts).toBe(1);
+    expect(screen.getByDisplayValue("555555555555555")).toBeTruthy();
+    expect(screen.getByDisplayValue("replacement-token")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Keep my draft and overwrite latest",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => expect(requests.patchAttempts).toBe(2));
+    expect(patchCalls()[1]?.[1]?.json).toMatchObject({
+      characterId,
+      isActive: true,
       expectedEditVersion: "3",
+      botToken: "replacement-token",
       metadata: {
+        responseMode: "keyword",
         keywords: ["support"],
         enabledChannels: ["channel-allow"],
         disabledChannels: ["concurrent-channel-deny"],
         ownerDiscordUserId: "555555555555555",
+      },
+    });
+    await waitFor(() => expect(requests.detailReads).toBe(3));
+    expect(
+      screen.getByText("Connection settings changed elsewhere"),
+    ).toBeTruthy();
+  });
+
+  it("reloads all latest visible fields and clears a local token draft", async () => {
+    const requests = mockConnectionApi(false);
+    const ownerInput = await openEditor();
+    const tokenInput = screen.getByPlaceholderText(
+      "Leave empty to keep current token",
+    );
+    fireEvent.change(ownerInput, { target: { value: "555555555555555" } });
+    fireEvent.change(tokenInput, { target: { value: "replacement-token" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await screen.findByText("Connection settings changed elsewhere");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Reload latest and discard my draft",
+      }),
+    );
+
+    expect(screen.getByDisplayValue("999999999999999")).toBeTruthy();
+    expect(
+      screen.getByPlaceholderText("Leave empty to keep current token"),
+    ).toHaveProperty("value", "");
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => expect(requests.patchAttempts).toBe(2));
+    expect(patchCalls()[1]?.[1]?.json).toEqual({
+      characterId: concurrentCharacterId,
+      isActive: false,
+      expectedEditVersion: "3",
+      metadata: {
+        responseMode: "mention",
+        keywords: ["support"],
+        enabledChannels: ["channel-allow"],
+        disabledChannels: ["concurrent-channel-deny"],
+        ownerDiscordUserId: "999999999999999",
+        dmPolicy: "pairing",
+        dmAllowFrom: ["777777777777777"],
       },
     });
     await waitFor(() =>

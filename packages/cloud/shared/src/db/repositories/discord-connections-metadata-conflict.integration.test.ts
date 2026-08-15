@@ -79,7 +79,7 @@ afterAll(async () => {
   await closeDatabaseConnectionsForTests();
 });
 
-describe("discordConnectionsRepository.updateIfUnchanged", () => {
+describe("discordConnectionsRepository.updateConfiguration", () => {
   test("heartbeat and stats do not invalidate a configuration edit", async () => {
     const initial = await discordConnectionsRepository.findById(CONNECTION_ID);
     expect(initial).not.toBeNull();
@@ -97,12 +97,29 @@ describe("discordConnectionsRepository.updateIfUnchanged", () => {
     const afterTelemetry = await discordConnectionsRepository.findById(CONNECTION_ID);
     expect(afterTelemetry?.edit_version).toBe(initial.edit_version);
 
-    const updated = await discordConnectionsRepository.updateIfUnchanged(
+    const updated = await discordConnectionsRepository.updateConfiguration(
       CONNECTION_ID,
       { metadata: { responseMode: "mention" } },
       initialRevision,
     );
     expect(updated?.edit_version).toBe("1");
+  });
+
+  test("a legacy versionless update remains atomic and advances the revision", async () => {
+    const updated = await discordConnectionsRepository.updateConfiguration(CONNECTION_ID, {
+      metadata: {
+        responseMode: "mention",
+        keywords: ["support"],
+        enabledChannels: ["channel-allow"],
+      },
+    });
+
+    expect(updated?.edit_version).toBe("1");
+    expect(updated?.metadata).toEqual({
+      responseMode: "mention",
+      keywords: ["support"],
+      enabledChannels: ["channel-allow"],
+    });
   });
 
   test("a stale metadata and token update writes nothing", async () => {
@@ -111,7 +128,7 @@ describe("discordConnectionsRepository.updateIfUnchanged", () => {
     if (!initial) throw new Error("seeded Discord connection is required");
     expect(initial.edit_version).toMatch(/^\d+$/);
     const initialRevision = Number(initial.edit_version);
-    const current = await discordConnectionsRepository.updateIfUnchanged(
+    const current = await discordConnectionsRepository.updateConfiguration(
       CONNECTION_ID,
       {
         metadata: {
@@ -125,7 +142,7 @@ describe("discordConnectionsRepository.updateIfUnchanged", () => {
     );
     expect(current).not.toBeNull();
 
-    const stale = await discordConnectionsRepository.updateIfUnchanged(
+    const stale = await discordConnectionsRepository.updateConfiguration(
       CONNECTION_ID,
       {
         metadata: {
@@ -157,12 +174,12 @@ describe("discordConnectionsRepository.updateIfUnchanged", () => {
     if (!initial) throw new Error("seeded Discord connection is required");
     const initialRevision = Number(initial.edit_version);
     const [first, second] = await Promise.all([
-      discordConnectionsRepository.updateIfUnchanged(
+      discordConnectionsRepository.updateConfiguration(
         CONNECTION_ID,
         { metadata: { responseMode: "mention" } },
         initialRevision,
       ),
-      discordConnectionsRepository.updateIfUnchanged(
+      discordConnectionsRepository.updateConfiguration(
         CONNECTION_ID,
         { metadata: { responseMode: "always" } },
         initialRevision,
@@ -188,7 +205,7 @@ describe("discordConnectionsRepository.updateIfUnchanged", () => {
     expect(afterToken?.edit_version).toBe("1");
     expect(afterToken?.bot_token_encrypted).not.toBe("original-ciphertext");
 
-    const stale = await discordConnectionsRepository.updateIfUnchanged(
+    const stale = await discordConnectionsRepository.updateConfiguration(
       CONNECTION_ID,
       { metadata: { responseMode: "always" } },
       0,

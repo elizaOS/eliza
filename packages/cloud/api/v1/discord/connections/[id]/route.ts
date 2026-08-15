@@ -33,12 +33,14 @@ const UpdateConnectionSchema = z
     // Response behavior configuration
     metadata: DiscordConnectionMetadataSchema,
 
-    // Every configuration mutation is fenced by the revision the editor read.
+    // Current editors fence mutations by the revision they read. Optionality
+    // preserves the established v1 contract for existing API clients.
     expectedEditVersion: z
       .string()
       .regex(/^\d+$/)
       .transform(Number)
-      .pipe(z.number().int().nonnegative().max(2_147_483_647)),
+      .pipe(z.number().int().nonnegative().max(2_147_483_647))
+      .optional(),
   })
   .refine(
     (data) =>
@@ -172,7 +174,7 @@ async function __hono_PATCH(
   }
 
   const updates: Parameters<
-    typeof discordConnectionsRepository.updateIfUnchanged
+    typeof discordConnectionsRepository.updateConfiguration
   >[1] = {};
 
   if (data.botToken) {
@@ -197,7 +199,7 @@ async function __hono_PATCH(
     updates.metadata = data.metadata;
   }
 
-  const updated = await discordConnectionsRepository.updateIfUnchanged(
+  const updated = await discordConnectionsRepository.updateConfiguration(
     id,
     updates,
     data.expectedEditVersion,
@@ -207,9 +209,12 @@ async function __hono_PATCH(
     return Response.json(
       {
         success: false,
-        error: "Connection changed since editing began. Refresh and try again.",
+        error:
+          data.expectedEditVersion === undefined
+            ? "Connection not found"
+            : "Connection changed since editing began. Refresh and try again.",
       },
-      { status: 409 },
+      { status: data.expectedEditVersion === undefined ? 404 : 409 },
     );
   }
 

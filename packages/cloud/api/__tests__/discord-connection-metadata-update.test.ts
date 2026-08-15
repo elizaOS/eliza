@@ -64,7 +64,7 @@ const updatedConnection: DiscordConnectionWithVersion = {
 
 const findById = mock(async () => connection);
 const findByOrganizationId = mock(async () => [connection]);
-const updateIfUnchanged = mock(
+const updateConfiguration = mock(
   async (): Promise<DiscordConnectionWithVersion | null> => updatedConnection,
 );
 const realAuthSnapshot = { ...realAuth };
@@ -96,7 +96,7 @@ beforeAll(async () => {
       ...realRepositoriesSnapshot.discordConnectionsRepository,
       findById,
       findByOrganizationId,
-      updateIfUnchanged,
+      updateConfiguration,
     },
   }));
   const detailRoute = (await import("../v1/discord/connections/[id]/route"))
@@ -109,8 +109,8 @@ beforeAll(async () => {
 beforeEach(() => {
   findById.mockClear();
   findByOrganizationId.mockClear();
-  updateIfUnchanged.mockClear();
-  updateIfUnchanged.mockResolvedValue(updatedConnection);
+  updateConfiguration.mockClear();
+  updateConfiguration.mockResolvedValue(updatedConnection);
 });
 
 afterAll(() => {
@@ -142,13 +142,22 @@ describe("PATCH /api/v1/discord/connections/:id metadata concurrency", () => {
     expect(await list.text()).toContain('"editVersion":"4271"');
   });
 
-  test("requires the row version for whole-metadata replacement", async () => {
+  test("keeps versionless v1 clients on one atomic revision-advancing update", async () => {
     const response = await patch({
       metadata: { responseMode: "mention" },
     });
 
-    expect(response.status).toBe(400);
-    expect(updateIfUnchanged).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(updateConfiguration).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      { metadata: { responseMode: "mention" } },
+      undefined,
+      undefined,
+    );
+    expect(await response.json()).toMatchObject({
+      success: true,
+      connection: { editVersion: "4272" },
+    });
   });
 
   test("sends token and metadata through one conditional repository update", async () => {
@@ -165,8 +174,8 @@ describe("PATCH /api/v1/discord/connections/:id metadata concurrency", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(updateIfUnchanged).toHaveBeenCalledTimes(1);
-    expect(updateIfUnchanged).toHaveBeenCalledWith(
+    expect(updateConfiguration).toHaveBeenCalledTimes(1);
+    expect(updateConfiguration).toHaveBeenCalledWith(
       CONNECTION_ID,
       {
         assigned_pod: null,
@@ -183,7 +192,7 @@ describe("PATCH /api/v1/discord/connections/:id metadata concurrency", () => {
   });
 
   test("returns 409 and performs no legacy fallback when the row changed", async () => {
-    updateIfUnchanged.mockResolvedValueOnce(null);
+    updateConfiguration.mockResolvedValueOnce(null);
     const response = await patch({
       metadata: { responseMode: "always" },
       expectedEditVersion: "4271",
@@ -196,13 +205,13 @@ describe("PATCH /api/v1/discord/connections/:id metadata concurrency", () => {
         error: "Connection changed since editing began. Refresh and try again.",
       }),
     );
-    expect(updateIfUnchanged).toHaveBeenCalledTimes(1);
+    expect(updateConfiguration).toHaveBeenCalledTimes(1);
   });
 
   test("rejects an edit-version-only no-op", async () => {
     const response = await patch({ expectedEditVersion: "4271" });
 
     expect(response.status).toBe(400);
-    expect(updateIfUnchanged).not.toHaveBeenCalled();
+    expect(updateConfiguration).not.toHaveBeenCalled();
   });
 });

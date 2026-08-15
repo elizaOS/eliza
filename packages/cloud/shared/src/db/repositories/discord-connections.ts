@@ -39,27 +39,41 @@ const discordConnectionVersionedColumns = {
   ),
 };
 
+interface DiscordBotTokenColumns {
+  bot_token_encrypted: string;
+  encrypted_dek: string;
+  token_nonce: string;
+  token_auth_tag: string;
+  encryption_key_id: string;
+}
+
+async function encryptDiscordBotToken(botToken: string): Promise<DiscordBotTokenColumns> {
+  const encryption = getEncryptionService();
+  const { encryptedValue, encryptedDek, nonce, authTag, keyId } =
+    await encryption.encrypt(botToken);
+  return {
+    bot_token_encrypted: encryptedValue,
+    encrypted_dek: encryptedDek,
+    token_nonce: nonce,
+    token_auth_tag: authTag,
+    encryption_key_id: keyId,
+  };
+}
+
 /** Valid connection status values (matches migration CHECK constraint) */
 type ConnectionStatus = "pending" | "connecting" | "connected" | "disconnected" | "error";
 
 export const discordConnectionsRepository = {
   async create(input: CreateConnectionInput): Promise<DiscordConnection> {
-    const encryption = getEncryptionService();
-    const { encryptedValue, encryptedDek, nonce, authTag, keyId } = await encryption.encrypt(
-      input.botToken,
-    );
+    const tokenColumns = await encryptDiscordBotToken(input.botToken);
 
     const [connection] = await db
       .insert(discordConnections)
       .values({
+        ...tokenColumns,
         organization_id: input.organizationId,
         character_id: input.characterId,
         application_id: input.applicationId,
-        bot_token_encrypted: encryptedValue,
-        encrypted_dek: encryptedDek,
-        token_nonce: nonce,
-        token_auth_tag: authTag,
-        encryption_key_id: keyId,
         intents: input.intents,
         metadata: input.metadata,
       })
@@ -316,28 +330,21 @@ export const discordConnectionsRepository = {
   },
 
   /**
-   * Publishes an editor snapshot only while the configuration revision still
-   * matches. Telemetry and gateway liveness writes deliberately do not advance
-   * this counter, so an active connection remains editable between heartbeats.
+   * Publishes one complete configuration snapshot and advances its revision.
+   * New editors provide the revision they read; legacy v1 clients may omit it
+   * and retain their former last-writer-wins contract during migration.
+   * Telemetry and gateway liveness writes never advance this counter.
    */
-  async updateIfUnchanged(
+  async updateConfiguration(
     id: string,
     updates: Partial<typeof discordConnections.$inferInsert>,
-    expectedConfigurationRevision: number,
+    expectedConfigurationRevision?: number,
     newBotToken?: string,
   ): Promise<DiscordConnectionWithVersion | null> {
-    let tokenUpdates: Partial<typeof discordConnections.$inferInsert> = {};
-    if (newBotToken !== undefined) {
-      const encryption = getEncryptionService();
-      const { encryptedValue, encryptedDek, nonce, authTag, keyId } =
-        await encryption.encrypt(newBotToken);
-      tokenUpdates = {
-        bot_token_encrypted: encryptedValue,
-        encrypted_dek: encryptedDek,
-        token_nonce: nonce,
-        token_auth_tag: authTag,
-        encryption_key_id: keyId,
-      };
+    const tokenUpdates = newBotToken === undefined ? {} : await encryptDiscordBotToken(newBotToken);
+    const conditions = [eq(discordConnections.id, id)];
+    if (expectedConfigurationRevision !== undefined) {
+      conditions.push(eq(discordConnections.configuration_revision, expectedConfigurationRevision));
     }
 
     const [connection] = await db
@@ -348,12 +355,7 @@ export const discordConnectionsRepository = {
         configuration_revision: sql`${discordConnections.configuration_revision} + 1`,
         updated_at: new Date(),
       })
-      .where(
-        and(
-          eq(discordConnections.id, id),
-          eq(discordConnections.configuration_revision, expectedConfigurationRevision),
-        ),
-      )
+      .where(and(...conditions))
       .returning(discordConnectionVersionedColumns);
 
     return connection ?? null;
@@ -462,18 +464,12 @@ export const discordConnectionsRepository = {
     connectionId: string,
     newBotToken: string,
   ): Promise<DiscordConnection | null> {
-    const encryption = getEncryptionService();
-    const { encryptedValue, encryptedDek, nonce, authTag, keyId } =
-      await encryption.encrypt(newBotToken);
+    const tokenColumns = await encryptDiscordBotToken(newBotToken);
 
     const [connection] = await db
       .update(discordConnections)
       .set({
-        bot_token_encrypted: encryptedValue,
-        encrypted_dek: encryptedDek,
-        token_nonce: nonce,
-        token_auth_tag: authTag,
-        encryption_key_id: keyId,
+        ...tokenColumns,
         configuration_revision: sql`${discordConnections.configuration_revision} + 1`,
         updated_at: new Date(),
       })

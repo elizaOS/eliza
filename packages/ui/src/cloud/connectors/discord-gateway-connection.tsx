@@ -30,6 +30,11 @@ import {
   ConnectionInstructions,
 } from "../../cloud-ui/components/connection-card";
 import { DiscordIcon } from "../../cloud-ui/components/icons";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import {
@@ -134,6 +139,24 @@ interface DiscordGatewayConnectionEditState {
   expectedEditVersion: string;
   botToken: string;
   isActive: boolean;
+  pendingConflict: DiscordGatewayConnection | null;
+}
+
+function editStateFromConnection(
+  connection: DiscordGatewayConnection,
+): DiscordGatewayConnectionEditState {
+  return {
+    characterId: connection.characterId || "",
+    responseMode: connection.metadata?.responseMode || "always",
+    ownerDiscordUserId: connection.metadata?.ownerDiscordUserId || "",
+    dmPolicy: connection.metadata?.dmPolicy || "open",
+    dmAllowFrom: (connection.metadata?.dmAllowFrom || []).join(", "),
+    storedMetadata: connection.metadata,
+    expectedEditVersion: connection.editVersion,
+    botToken: "",
+    isActive: connection.isActive,
+    pendingConflict: null,
+  };
 }
 
 function apiErrorMessage(error: unknown, fallback: string): string {
@@ -245,8 +268,8 @@ export function DiscordGatewayConnection() {
     [t],
   );
 
-  const refreshConnectionForEdit = useCallback(
-    async (connectionId: string, preserveDraft: boolean) => {
+  const fetchLatestConnection = useCallback(
+    async (connectionId: string): Promise<DiscordGatewayConnection> => {
       const data = await api<{ connection: DiscordGatewayConnection }>(
         `/api/v1/discord/connections/${connectionId}`,
       );
@@ -257,33 +280,20 @@ export function DiscordGatewayConnection() {
           entry.id === connectionId ? connection : entry,
         ),
       );
-      setEditState((current) => {
-        const existing = current[connectionId];
-        const refreshed =
-          preserveDraft && existing
-            ? {
-                ...existing,
-                storedMetadata: connection.metadata,
-                expectedEditVersion: connection.editVersion,
-              }
-            : {
-                characterId: connection.characterId || "",
-                responseMode: connection.metadata?.responseMode || "always",
-                ownerDiscordUserId:
-                  connection.metadata?.ownerDiscordUserId || "",
-                dmPolicy: connection.metadata?.dmPolicy || "open",
-                dmAllowFrom: (connection.metadata?.dmAllowFrom || []).join(
-                  ", ",
-                ),
-                storedMetadata: connection.metadata,
-                expectedEditVersion: connection.editVersion,
-                botToken: "",
-                isActive: connection.isActive,
-              };
-        return { ...current, [connectionId]: refreshed };
-      });
+      return connection;
     },
     [],
+  );
+
+  const refreshConnectionForEdit = useCallback(
+    async (connectionId: string) => {
+      const connection = await fetchLatestConnection(connectionId);
+      setEditState((current) => ({
+        ...current,
+        [connectionId]: editStateFromConnection(connection),
+      }));
+    },
+    [fetchLatestConnection],
   );
 
   const fetchCharacters = useCallback(
@@ -474,6 +484,15 @@ export function DiscordGatewayConnection() {
   const handleSaveChanges = async (connId: string) => {
     const edit = editState[connId];
     if (!edit) return;
+    if (edit.pendingConflict) {
+      toast.error(
+        t("cloud.discord.resolveConnectionConflict", {
+          defaultValue:
+            "Choose whether to reload the latest settings or keep your draft before saving.",
+        }),
+      );
+      return;
+    }
 
     const parsedDmAllowFrom = parseSnowflakeList(edit.dmAllowFrom);
     if (parsedDmAllowFrom === null) {
@@ -533,14 +552,27 @@ export function DiscordGatewayConnection() {
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         try {
-          await refreshConnectionForEdit(connId, true);
+          const latestConnection = await fetchLatestConnection(connId);
+          setEditState((current) => {
+            const existing = current[connId];
+            if (!existing) return current;
+            return {
+              ...current,
+              [connId]: {
+                ...existing,
+                pendingConflict: latestConnection,
+              },
+            };
+          });
           toast.error(
             t("cloud.discord.connectionChanged", {
               defaultValue:
-                "Connection settings changed elsewhere. The latest settings were loaded and your edits were preserved; review and save again.",
+                "Connection settings changed elsewhere. Choose which version to keep before saving again.",
             }),
           );
         } catch {
+          // error-policy:J4 The editor stays visibly blocked until it can load
+          // the authoritative row that superseded the user's stale snapshot.
           toast.error(
             t("cloud.discord.connectionChangedRefreshFailed", {
               defaultValue:
@@ -596,8 +628,10 @@ export function DiscordGatewayConnection() {
   const initEditState = async (connectionId: string) => {
     setLoadingEditId(connectionId);
     try {
-      await refreshConnectionForEdit(connectionId, false);
+      await refreshConnectionForEdit(connectionId);
     } catch {
+      // error-policy:J4 A failed exact-row read leaves the editor unavailable
+      // rather than rendering stale list data as an editable configuration.
       toast.error(
         t("cloud.discord.fetchConnectionFailed", {
           defaultValue: "Failed to load the latest connection settings",
@@ -612,7 +646,14 @@ export function DiscordGatewayConnection() {
 
   const updateEditState = (
     connId: string,
-    field: string,
+    field:
+      | "characterId"
+      | "responseMode"
+      | "ownerDiscordUserId"
+      | "dmPolicy"
+      | "dmAllowFrom"
+      | "botToken"
+      | "isActive",
     value: string | boolean,
   ) => {
     setEditState((prev) => ({
@@ -622,6 +663,28 @@ export function DiscordGatewayConnection() {
         [field]: value,
       },
     }));
+  };
+
+  const resolveEditConflict = (
+    connId: string,
+    resolution: "reload" | "keep-draft",
+  ) => {
+    setEditState((current) => {
+      const edit = current[connId];
+      const latest = edit?.pendingConflict;
+      if (!edit || !latest) return current;
+
+      const resolved =
+        resolution === "reload"
+          ? editStateFromConnection(latest)
+          : {
+              ...edit,
+              storedMetadata: latest.metadata,
+              expectedEditVersion: latest.editVersion,
+              pendingConflict: null,
+            };
+      return { ...current, [connId]: resolved };
+    });
   };
 
   const getInviteUrl = (appId: string) => {
@@ -792,6 +855,73 @@ export function DiscordGatewayConnection() {
                         )}
                         {loadingEditId !== conn.id && edit && (
                           <>
+                            {edit.pendingConflict && (
+                              <Alert>
+                                <AlertCircle aria-hidden />
+                                <AlertTitle>
+                                  {t("cloud.discord.connectionConflictTitle", {
+                                    defaultValue:
+                                      "Connection settings changed elsewhere",
+                                  })}
+                                </AlertTitle>
+                                <AlertDescription>
+                                  <p>
+                                    {t(
+                                      "cloud.discord.connectionConflictDescription",
+                                      {
+                                        defaultValue:
+                                          "Reload the latest settings and discard this draft, or explicitly keep this draft and overwrite the newer settings on your next save.",
+                                      },
+                                    )}
+                                  </p>
+                                  {edit.botToken && (
+                                    <p>
+                                      {t(
+                                        "cloud.discord.connectionConflictTokenWarning",
+                                        {
+                                          defaultValue:
+                                            "Keeping this draft may replace a bot token that was rotated elsewhere.",
+                                        },
+                                      )}
+                                    </p>
+                                  )}
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() =>
+                                        resolveEditConflict(conn.id, "reload")
+                                      }
+                                    >
+                                      {t(
+                                        "cloud.discord.reloadLatestSettings",
+                                        {
+                                          defaultValue:
+                                            "Reload latest and discard my draft",
+                                        },
+                                      )}
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={() =>
+                                        resolveEditConflict(
+                                          conn.id,
+                                          "keep-draft",
+                                        )
+                                      }
+                                    >
+                                      {t("cloud.discord.keepDraftSettings", {
+                                        defaultValue:
+                                          "Keep my draft and overwrite latest",
+                                      })}
+                                    </Button>
+                                  </div>
+                                </AlertDescription>
+                              </Alert>
+                            )}
+
                             {/* Character Selection */}
                             <div className="grid gap-4 sm:grid-cols-2">
                               <div className="space-y-2">
@@ -1066,7 +1196,10 @@ export function DiscordGatewayConnection() {
 
                               <Button
                                 onClick={() => handleSaveChanges(conn.id)}
-                                disabled={savingId === conn.id}
+                                disabled={
+                                  savingId === conn.id ||
+                                  edit.pendingConflict !== null
+                                }
                               >
                                 {savingId === conn.id ? (
                                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
