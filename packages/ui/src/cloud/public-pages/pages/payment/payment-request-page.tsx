@@ -84,21 +84,34 @@ function formatAmount(amountCents: number, currency: string): string {
   }
 }
 
-function formatDate(value: string | null): string | null {
-  if (!value) return null;
+type Deadline =
+  | { kind: "none" }
+  | { kind: "invalid" }
+  | { kind: "valid"; valueMs: number };
+
+const MAX_TIMER_DELAY_MS = 2 ** 31 - 1;
+
+/** Parses the server deadline without turning malformed input into a payable request. */
+function parseDeadline(value: string | null): Deadline {
+  if (value === null) return { kind: "none" };
+  const valueMs = Date.parse(value);
+  return Number.isFinite(valueMs)
+    ? { kind: "valid", valueMs }
+    : { kind: "invalid" };
+}
+
+function formatDeadline(deadline: Deadline): string | null {
+  if (deadline.kind !== "valid") return null;
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(new Date(deadline.valueMs));
 }
 
-/** True once a parseable deadline is at or before `nowMs`; requests without a deadline never pass it. */
-function isDeadlinePassed(expiresAt: string | null, nowMs: number): boolean {
-  if (!expiresAt) return false;
-  const deadline = Date.parse(expiresAt);
-  return Number.isFinite(deadline) && deadline <= nowMs;
+function isDeadlinePassed(deadline: Deadline, nowMs: number): boolean {
+  return deadline.kind === "valid" && deadline.valueMs <= nowMs;
 }
 
 function isPayableStatus(status: PaymentRequestStatus): boolean {
@@ -111,9 +124,16 @@ function isPayableStatus(status: PaymentRequestStatus): boolean {
  */
 type PageError =
   | { kind: "request-failed"; cause: unknown }
-  | { kind: "no-checkout-url" };
+  | { kind: "no-checkout-url" }
+  | { kind: "invalid-deadline" };
 
 function errorMessage(error: PageError, t: TFn): string {
+  if (error.kind === "invalid-deadline") {
+    return t("cloud.paymentRequest.invalidExpiry", {
+      defaultValue:
+        "This payment request has an invalid expiry date and cannot be paid.",
+    });
+  }
   if (error.kind === "no-checkout-url") {
     return t("cloud.paymentRequest.noCheckoutUrl", {
       defaultValue: "This payment request has no hosted checkout URL yet.",
@@ -202,18 +222,28 @@ export default function PaymentRequestPage() {
   // cannot keep a stale enabled Pay button across the request's expiry.
   const expiresAt = paymentRequest?.expiresAt ?? null;
   useEffect(() => {
-    if (!expiresAt) return;
-    const deadline = Date.parse(expiresAt);
-    if (!Number.isFinite(deadline)) return;
-    const delay = deadline - Date.now();
-    if (delay <= 0) return;
-    // setTimeout clamps delays above 2^31-1; cap so far-future deadlines
-    // never fire immediately (they are re-armed on any reload anyway).
-    const timer = window.setTimeout(
-      () => setNowMs(Date.now()),
-      Math.min(delay + 1, 2 ** 31 - 1),
-    );
-    return () => window.clearTimeout(timer);
+    const deadline = parseDeadline(expiresAt);
+    if (deadline.kind !== "valid") return;
+
+    let timer: number | undefined;
+    const armTimer = () => {
+      const remainingMs = deadline.valueMs - Date.now();
+      if (remainingMs <= 0) {
+        setNowMs(Date.now());
+        return;
+      }
+      // Browser timers cannot represent delays above 2^31-1 ms. Wake at that
+      // boundary and re-arm until the actual deadline rather than expiring early.
+      timer = window.setTimeout(
+        armTimer,
+        Math.min(remainingMs + 1, MAX_TIMER_DELAY_MS),
+      );
+    };
+
+    armTimer();
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [expiresAt]);
 
   const beginCheckout = useCallback(async () => {
@@ -230,9 +260,11 @@ export default function PaymentRequestPage() {
       const freshNow = Date.now();
       setPaymentRequest(fresh);
       setNowMs(freshNow);
+      const freshDeadline = parseDeadline(fresh.expiresAt);
       const payable =
         isPayableStatus(fresh.status) &&
-        !isDeadlinePassed(fresh.expiresAt, freshNow);
+        freshDeadline.kind !== "invalid" &&
+        !isDeadlinePassed(freshDeadline, freshNow);
       if (!payable) {
         setIsPaying(false);
         return;
@@ -299,7 +331,10 @@ export default function PaymentRequestPage() {
   }
 
   const isPaid = paymentRequest.status === "settled";
-  const deadlinePassed = isDeadlinePassed(paymentRequest.expiresAt, nowMs);
+  const deadline = parseDeadline(paymentRequest.expiresAt);
+  const deadlinePassed = isDeadlinePassed(deadline, nowMs);
+  const hasInvalidPayableDeadline =
+    isPayableStatus(paymentRequest.status) && deadline.kind === "invalid";
   const isExpired =
     paymentRequest.status === "expired" ||
     paymentRequest.status === "canceled" ||
@@ -307,11 +342,15 @@ export default function PaymentRequestPage() {
     (isPayableStatus(paymentRequest.status) && deadlinePassed);
   const canPay =
     isPayableStatus(paymentRequest.status) &&
+    !hasInvalidPayableDeadline &&
     !deadlinePassed &&
     Boolean(paymentRequest.hostedUrl);
-  const expiresLabel = formatDate(paymentRequest.expiresAt);
+  const expiresLabel = formatDeadline(deadline);
   const shortId = paymentRequest.id.slice(0, 8);
   const provider = providerLabel(paymentRequest.provider, t);
+  const displayedError: PageError | null = hasInvalidPayableDeadline
+    ? { kind: "invalid-deadline" }
+    : error;
 
   return (
     <div className="theme-cloud min-h-[100dvh] bg-bg px-4 py-8 text-txt sm:px-6 lg:px-8">
@@ -333,26 +372,30 @@ export default function PaymentRequestPage() {
             <div className="mt-3 text-sm text-muted">
               {isPaid
                 ? t("cloud.paymentRequest.paid", { defaultValue: "Paid" })
-                : isExpired
-                  ? paymentRequest.status === "canceled"
-                    ? t("cloud.paymentRequest.cancelled", {
-                        defaultValue: "Cancelled",
-                      })
-                    : paymentRequest.status === "failed"
-                      ? t("cloud.paymentRequest.failed", {
-                          defaultValue: "Failed",
+                : hasInvalidPayableDeadline
+                  ? t("cloud.paymentRequest.invalidExpiryShort", {
+                      defaultValue: "Invalid expiry date",
+                    })
+                  : isExpired
+                    ? paymentRequest.status === "canceled"
+                      ? t("cloud.paymentRequest.cancelled", {
+                          defaultValue: "Cancelled",
                         })
-                      : t("cloud.paymentRequest.expired", {
-                          defaultValue: "Expired",
+                      : paymentRequest.status === "failed"
+                        ? t("cloud.paymentRequest.failed", {
+                            defaultValue: "Failed",
+                          })
+                        : t("cloud.paymentRequest.expired", {
+                            defaultValue: "Expired",
+                          })
+                    : expiresLabel
+                      ? t("cloud.paymentRequest.pendingExpires", {
+                          date: expiresLabel,
+                          defaultValue: "Pending - expires {{date}}",
                         })
-                  : expiresLabel
-                    ? t("cloud.paymentRequest.pendingExpires", {
-                        date: expiresLabel,
-                        defaultValue: "Pending - expires {{date}}",
-                      })
-                    : t("cloud.paymentRequest.pending", {
-                        defaultValue: "Pending",
-                      })}
+                      : t("cloud.paymentRequest.pending", {
+                          defaultValue: "Pending",
+                        })}
             </div>
             {paymentRequest.reason && (
               <p className="mt-3 max-w-md text-sm text-muted-strong">
@@ -361,10 +404,10 @@ export default function PaymentRequestPage() {
             )}
           </div>
 
-          {error && (
+          {displayedError && (
             <div className="mt-7 flex items-center gap-3 border border-destructive/30 bg-destructive-subtle p-3 text-sm text-txt">
               <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
-              <span>{errorMessage(error, t)}</span>
+              <span>{errorMessage(displayedError, t)}</span>
             </div>
           )}
 

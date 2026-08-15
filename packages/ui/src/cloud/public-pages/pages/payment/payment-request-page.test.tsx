@@ -1,9 +1,10 @@
 /**
  * Verifies the public payment request page against the server DTO contract:
  * generation-keyed loads (an out-of-order stale response cannot overwrite the
- * current route), deadline-derived Pay eligibility that flips as time passes,
- * pre-checkout server revalidation, and user-facing provider labels. Uses a
- * jsdom harness with the API client and router mocked; component is real.
+ * current route), deadline-derived Pay eligibility that rejects malformed
+ * values and re-arms long timers, pre-checkout server revalidation, and
+ * user-facing provider labels. The component is real; the API client and
+ * router are mocked under jsdom.
  */
 // @vitest-environment jsdom
 
@@ -105,6 +106,7 @@ describe("PaymentRequestPage public DTO contract", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   beforeEach(() => {
@@ -211,6 +213,66 @@ describe("PaymentRequestPage public DTO contract", () => {
     ).toBe(true);
   });
 
+  it("fails closed and renders an explicit error for a malformed expiry date", async () => {
+    apiMock.mockResolvedValue({
+      success: true,
+      paymentRequest: publicPaymentRequest({ expiresAt: "not-a-date" }),
+    });
+
+    render(<PaymentRequestPage />);
+
+    expect(await screen.findByText("Invalid expiry date")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "This payment request has an invalid expiry date and cannot be paid.",
+      ),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /pay with wallet/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it("re-arms timers beyond the browser delay limit until the real deadline", async () => {
+    const browserTimerLimitMs = 2 ** 31 - 1;
+    const startMs = Date.UTC(2030, 0, 1);
+    const deadlineMs = startMs + browserTimerLimitMs + 60_000;
+    vi.useFakeTimers();
+    vi.setSystemTime(startMs);
+    apiMock.mockResolvedValue({
+      success: true,
+      paymentRequest: publicPaymentRequest({
+        expiresAt: new Date(deadlineMs).toISOString(),
+      }),
+    });
+
+    render(<PaymentRequestPage />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const button = screen.getByRole("button", {
+      name: /pay with wallet/i,
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+
+    await act(async () => {
+      vi.advanceTimersByTime(browserTimerLimitMs);
+    });
+    expect(button.disabled).toBe(false);
+    expect(screen.queryByText("Expired")).toBeNull();
+    expect(vi.getTimerCount()).toBe(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_001);
+    });
+    expect(button.disabled).toBe(true);
+    expect(screen.getByText("Expired")).toBeTruthy();
+  });
+
   it("flips Pay to disabled when the deadline passes while the page is open", async () => {
     apiMock.mockResolvedValue({
       success: true,
@@ -286,6 +348,32 @@ describe("PaymentRequestPage public DTO contract", () => {
     await waitFor(() =>
       expect(assign).toHaveBeenCalledWith("https://example.com/checkout/fresh"),
     );
+  });
+
+  it("blocks navigation when revalidation returns a malformed deadline", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign, href: "https://eliza.example/pay" });
+
+    apiMock
+      .mockResolvedValueOnce({
+        success: true,
+        paymentRequest: publicPaymentRequest(),
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        paymentRequest: publicPaymentRequest({ expiresAt: "not-a-date" }),
+      });
+
+    render(<PaymentRequestPage />);
+
+    const button = await screen.findByRole("button", {
+      name: /pay with wallet/i,
+    });
+    fireEvent.click(button);
+
+    expect(await screen.findByText("Invalid expiry date")).toBeTruthy();
+    expect(assign).not.toHaveBeenCalled();
+    expect((button as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("blocks navigation when revalidation reports the deadline has passed", async () => {
