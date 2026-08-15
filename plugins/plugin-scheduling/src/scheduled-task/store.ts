@@ -51,6 +51,11 @@ export async function listDueScheduledTaskRefs(
     `SELECT agent_id, id
        FROM ${TASK_TABLE}
       WHERE kind = 'reminder'
+        AND transfer_status IS NULL
+        AND COALESCE(
+          metadata_json::jsonb #>> '{sharedCutoverImport,status}',
+          ''
+        ) <> 'reserved'
         AND next_fire_at IS NOT NULL
         AND next_fire_at <= ${sqlQuote(options.dueAtIso)}::timestamptz
         AND (state_json::jsonb ->> 'status') IN (
@@ -305,6 +310,11 @@ export function createSchedulingSqlScheduledTaskStore(
                 version = version + 1
           WHERE agent_id = ${sqlQuote(agentId)}
             AND id = ${sqlQuote(args.taskId)}
+            AND transfer_status IS NULL
+            AND COALESCE(
+              metadata_json::jsonb #>> '{sharedCutoverImport,status}',
+              ''
+            ) <> 'reserved'
             ${stateGuard}
           RETURNING *`,
       );

@@ -85,6 +85,9 @@ export async function ensureSchedulingTables(exec: SqlExecutor): Promise<void> {
       owner_visible BOOLEAN NOT NULL DEFAULT TRUE,
       metadata_json TEXT NOT NULL DEFAULT '{}',
       execution_profile TEXT,
+      transfer_token TEXT,
+      transfer_target_agent_id TEXT,
+      transfer_status TEXT,
       version INTEGER NOT NULL DEFAULT 1,
       next_fire_at TIMESTAMPTZ,
       created_at TEXT NOT NULL,
@@ -94,6 +97,12 @@ export async function ensureSchedulingTables(exec: SqlExecutor): Promise<void> {
   await exec(
     `ALTER TABLE ${TARGET_SCHEMA}.life_scheduled_tasks
        ADD COLUMN IF NOT EXISTS execution_profile TEXT`,
+  );
+  await exec(
+    `ALTER TABLE ${TARGET_SCHEMA}.life_scheduled_tasks
+       ADD COLUMN IF NOT EXISTS transfer_token TEXT,
+       ADD COLUMN IF NOT EXISTS transfer_target_agent_id TEXT,
+       ADD COLUMN IF NOT EXISTS transfer_status TEXT`,
   );
   await exec(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduling_tasks_agent_idempotency

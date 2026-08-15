@@ -20,7 +20,7 @@
  *  - route only shared-eligible agents here (see `agent-tier.ts`)
  */
 
-import { replaceNameTokens } from "@elizaos/core";
+import { replaceNameTokens } from "@elizaos/core/edge";
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import { generateText, streamText } from "ai";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";

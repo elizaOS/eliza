@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS "app_scheduling"."life_scheduled_tasks" (
   "owner_visible" boolean DEFAULT true NOT NULL,
   "metadata_json" text DEFAULT '{}' NOT NULL,
   "execution_profile" text,
+  "transfer_token" text,
+  "transfer_target_agent_id" text,
+  "transfer_status" text,
   "version" integer DEFAULT 1 NOT NULL,
   "next_fire_at" timestamp with time zone,
   "created_at" text NOT NULL,
@@ -50,6 +53,10 @@ CREATE INDEX IF NOT EXISTS "idx_scheduling_tasks_global_due"
     AND ("state_json"::jsonb ->> 'status') IN (
       'scheduled', 'fired', 'acknowledged', 'completed', 'skipped', 'expired', 'failed'
     );
+
+CREATE INDEX IF NOT EXISTS "idx_scheduling_tasks_transfer"
+  ON "app_scheduling"."life_scheduled_tasks" ("agent_id", "transfer_token")
+  WHERE "transfer_status" IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS "app_scheduling"."life_scheduled_task_log" (
   "id" text PRIMARY KEY NOT NULL,

@@ -127,6 +127,7 @@ export {
   ScheduledTaskRunnerService,
 } from "./runner-service.js";
 export {
+  isScheduledTask,
   scheduledTaskFilterSchema,
   scheduledTaskInputSchema,
   scheduledTaskSchema,
