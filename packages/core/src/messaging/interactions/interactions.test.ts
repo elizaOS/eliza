@@ -19,6 +19,7 @@ import {
 	isInteractionCallback,
 	MAX_CALLBACK_BYTES,
 } from "./callback";
+import { stripDashboardOnlyMarkers } from "./dashboard-markers";
 import {
 	buildInteractionUrlResolver,
 	FORM_FREE_TEXT_INVITE,
@@ -903,5 +904,24 @@ describe("unclaimed interaction markers never ship as prose", () => {
 	it("leaves block-free ordinary prose byte-identical through the renderer", () => {
 		const text = "i read [the docs] and [section 2] carefully.";
 		expect(renderInteractionsAsPlainText(text).text).toBe(text);
+	});
+});
+
+describe("stripDashboardOnlyMarkers", () => {
+	it("removes CONFIG plugin-card markers and tidies the gap they leave", () => {
+		const input =
+			"You'll need to connect Google Calendar first.\n\n[CONFIG:google_calendars]\n\nThen I can list your events.";
+		expect(stripDashboardOnlyMarkers(input)).toBe(
+			"You'll need to connect Google Calendar first.\n\nThen I can list your events.",
+		);
+	});
+
+	it("leaves ordinary prose and interaction grammar untouched", () => {
+		const untouched =
+			"[FOLLOWUPS]\nnavigate:/apps/reminders=Open reminders\n[/FOLLOWUPS]\nPlain text with [brackets] that are not markers.";
+		expect(stripDashboardOnlyMarkers(untouched)).toBe(untouched);
+		expect(stripDashboardOnlyMarkers("no markers at all")).toBe(
+			"no markers at all",
+		);
 	});
 });
