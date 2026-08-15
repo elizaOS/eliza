@@ -136,23 +136,43 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
     vi.clearAllMocks();
   });
 
-  it("renders the wallet divider + both chain intent buttons when siwe AND siws are served", async () => {
+  it("collapses served wallets behind More options, expanding to the divider + both chain intent buttons", {
+    timeout: 15000,
+  }, async () => {
     providerFlags.siwe = true;
     providerFlags.siws = true;
 
     await renderSection();
+
+    // #19212 subtask D: wallets are a secondary path — first paint shows only
+    // the More options toggle, never the wallet buttons themselves.
+    const toggle = await screen.findByRole("button", {
+      name: /More options/i,
+    });
+    expect(screen.queryByText("or sign in with a wallet")).toBeNull();
+    expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Solana wallet/i })).toBeNull();
+
+    fireEvent.click(toggle);
 
     await waitFor(() =>
       expect(screen.getByText("or sign in with a wallet")).toBeTruthy(),
     );
     expect(screen.getByRole("button", { name: /EVM wallet/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Solana wallet/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /More options/i })).toBeNull();
   });
 
-  it("renders only the served chain's button (siwe only → EVM, no Solana)", async () => {
+  it("expands to only the served chain's button (siwe only → EVM, no Solana)", {
+    timeout: 15000,
+  }, async () => {
     providerFlags.siwe = true;
 
     await renderSection();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /More options/i }),
+    );
 
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /EVM wallet/i })).toBeTruthy(),
@@ -167,6 +187,7 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Google/i })).toBeTruthy(),
     );
+    expect(screen.queryByRole("button", { name: /More options/i })).toBeNull();
     expect(screen.queryByText("or sign in with a wallet")).toBeNull();
     expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Solana wallet/i })).toBeNull();

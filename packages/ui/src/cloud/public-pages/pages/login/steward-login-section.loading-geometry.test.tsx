@@ -83,9 +83,10 @@ vi.mock("../../lib/login-return-to", () => ({
 import StewardLoginSection from "./steward-login-section";
 
 // The skeleton's 44px rows: email input, passkey + magic-link, three OAuth
-// buttons (Google/Discord/GitHub), two wallet buttons. Must track the
-// fully-enabled option stack in login-section-skeleton.tsx.
-const SKELETON_TOUCH_ROWS = 8;
+// buttons (Google/Discord/GitHub), one collapsed "More options" wallet toggle
+// (#19212 subtask D). Must track the fully-enabled option stack in
+// login-section-skeleton.tsx.
+const SKELETON_TOUCH_ROWS = 7;
 
 function countTouchRows(scope: HTMLElement): number {
   return scope.querySelectorAll(".h-touch").length;

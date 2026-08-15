@@ -8,8 +8,8 @@
  * responsive grids), so the card keeps one height and position across states.
  *
  * The skeleton mirrors the fully-enabled provider layout (email field,
- * passkey/magic-link row, OAuth grid, wallet grid) — the effective shape of the
- * production tenants. A tenant with fewer providers gets a loading card
+ * passkey/magic-link row, OAuth grid, collapsed wallet toggle) — the effective
+ * shape of the production tenants. A tenant with fewer providers gets a loading card
  * slightly taller than its final form rather than a mid-load jump.
  */
 
@@ -63,13 +63,8 @@ export function LoginOptionsSkeleton({
         <GhostRow animated={animated} className="h-touch" />
         <GhostRow animated={animated} className="h-touch sm:col-span-2" />
       </div>
-      {/* "or sign in with a wallet" divider row. */}
-      <GhostRow animated={animated} className="mx-auto h-4 w-32" />
-      {/* EVM + Solana wallet row. */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <GhostRow animated={animated} className="h-touch" />
-        <GhostRow animated={animated} className="h-touch" />
-      </div>
+      {/* Collapsed "More options" wallet toggle row (#19212 subtask D). */}
+      <GhostRow animated={animated} className="h-touch w-full" />
     </div>
   );
 }

@@ -197,11 +197,10 @@ describe("StewardLoginSection passkey capability gating", () => {
     expect(screen.queryByRole("button", { name: /Passkey/i })).toBeNull();
     expect(screen.getByRole("button", { name: /Magic Link/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Google/i })).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Passkey sign-in is not available here. Use Google, Discord, or Magic Link, or open this sign-in link on another device.",
-      ),
-    ).toBeTruthy();
+    // #19212 subtask D: an unusable passkey is not advertised at all — no
+    // "unavailable" banner, no capability chatter, just the working options.
+    expect(screen.queryByText(/Passkey sign-in is not available/i)).toBeNull();
+    expect(screen.queryByText(/Checking passkey availability/i)).toBeNull();
 
     fireEvent.change(input, { target: { value: "person@example.com" } });
     fireEvent.keyDown(input, { key: "Enter" });

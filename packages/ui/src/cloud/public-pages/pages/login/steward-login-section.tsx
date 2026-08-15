@@ -378,6 +378,9 @@ export default function StewardLoginSection() {
   // Wallet libs mount only on intent: the first wallet-button click renders
   // the (lazy) providers + buttons and auto-starts that wallet's flow.
   const [walletButtonsMounted, setWalletButtonsMounted] = useState(false);
+  // Wallet options render collapsed behind "More options" so email remains the
+  // single primary credential on first paint (#19212 subtask D).
+  const [walletOptionsExpanded, setWalletOptionsExpanded] = useState(false);
   const [autoStartWallet, setAutoStartWallet] = useState<WalletKind | null>(
     null,
   );
@@ -1503,24 +1506,13 @@ export default function StewardLoginSection() {
         )}
       </div>
 
-      {showPasskey ? (
+      {/* When the host cannot use passkeys the option simply does not exist:
+          no capability banner, no "checking" chatter — email stays the one
+          primary path (#19212 subtask D). */}
+      {showPasskey && (
         <p className="text-center text-xs text-muted">
           {t("cloud.login.signupHint", {
             defaultValue: "New here? Passkey sets up your account in seconds.",
-          })}
-        </p>
-      ) : passkeyCapability === null ? (
-        <p className="text-center text-xs text-muted" role="status">
-          {t("cloud.login.checkingPasskey", {
-            defaultValue:
-              "Checking passkey availability. You can continue with Magic Link or another sign-in method now.",
-          })}
-        </p>
-      ) : (
-        <p className="text-center text-xs text-muted">
-          {t("cloud.login.passkeyUnavailable", {
-            defaultValue:
-              "Passkey sign-in is not available here. Use Google, Discord, or Magic Link, or open this sign-in link on another device.",
           })}
         </p>
       )}
@@ -1635,7 +1627,23 @@ export default function StewardLoginSection() {
         </div>
       )}
 
-      {showWallets && (
+      {/* Wallet sign-in is a secondary path: it stays collapsed behind a
+          single "More options" toggle so the first screen keeps email as the
+          only primary credential (#19212 subtask D). */}
+      {showWallets && !walletOptionsExpanded && (
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={() => setWalletOptionsExpanded(true)}
+          disabled={isLoading}
+          aria-expanded={false}
+          className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+        >
+          {t("cloud.login.moreOptions", { defaultValue: "More options" })}
+        </Button>
+      )}
+
+      {showWallets && walletOptionsExpanded && (
         <>
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-border" />
