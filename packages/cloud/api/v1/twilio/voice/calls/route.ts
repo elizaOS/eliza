@@ -4,10 +4,10 @@
  */
 
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbRead, dbWrite } from "@/db/helpers";
+import { dbWrite } from "@/db/helpers";
 import { usersRepository } from "@/db/repositories/users";
 import { idempotencyKeys } from "@/db/schemas";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -160,7 +160,7 @@ app.post("/", async (c) => {
     .update(`${auth.id}:${idempotencyHeader}`)
     .digest("hex");
   const idempotencyKey = `twilio-call:${idempotencyDigest}`;
-  const [claim] = await dbWrite
+  let [claim] = await dbWrite
     .insert(idempotencyKeys)
     .values({
       key: idempotencyKey,
@@ -171,23 +171,35 @@ app.post("/", async (c) => {
     .returning({ key: idempotencyKeys.key });
 
   if (!claim) {
-    const [existing] = await dbRead
-      .select({ expires_at: idempotencyKeys.expires_at })
-      .from(idempotencyKeys)
-      .where(eq(idempotencyKeys.key, idempotencyKey))
-      .limit(1);
-    if (existing?.expires_at && existing.expires_at < new Date()) {
-      await dbWrite
-        .delete(idempotencyKeys)
-        .where(eq(idempotencyKeys.key, idempotencyKey));
+    const now = new Date();
+    await dbWrite
+      .delete(idempotencyKeys)
+      .where(
+        and(
+          eq(idempotencyKeys.key, idempotencyKey),
+          lt(idempotencyKeys.expires_at, now),
+        ),
+      );
+
+    [claim] = await dbWrite
+      .insert(idempotencyKeys)
+      .values({
+        key: idempotencyKey,
+        source: "twilio-voice-outbound",
+        expires_at: new Date(now.getTime() + IDEMPOTENCY_TTL_MS),
+      })
+      .onConflictDoNothing({ target: idempotencyKeys.key })
+      .returning({ key: idempotencyKeys.key });
+
+    if (!claim) {
+      return c.json(
+        {
+          error: "This call request was already submitted",
+          code: "duplicate_call",
+        },
+        409,
+      );
     }
-    return c.json(
-      {
-        error: "This call request was already submitted",
-        code: "duplicate_call",
-      },
-      409,
-    );
   }
 
   try {

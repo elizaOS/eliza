@@ -59,9 +59,6 @@ export const documentsProvider: Provider = {
 	contextGate: { anyOf: ["documents", "knowledge"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	// Retrieval is supplemental context and may include an embedding round-trip.
-	timeoutMs: 10_000,
-	timeoutMode: "degrade",
 	roleGate: { minRole: "USER" },
 
 	get: async (runtime: IAgentRuntime, message: Memory) => {

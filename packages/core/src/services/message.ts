@@ -11681,14 +11681,12 @@ export class DefaultMessageService implements IMessageService {
 								}
 							: opts.abortSignal
 								? {
-										// No stream callback but caller provided an abort
-										// signal — install a no-op chunk handler so the
-										// streaming-context plumbing carries the signal
-										// down into `runtime.useModel`. The runtime never
-										// invokes onStreamChunk when no streaming is happening.
-										onStreamChunk: async () => undefined,
+										// Cancellation-only contexts deliberately omit a chunk
+										// consumer. `useModel` treats a present consumer as the
+										// request to use its streaming transport and parser.
 										messageId: responseId,
 										abortSignal: opts.abortSignal,
+										reportError: runtime.reportError.bind(runtime),
 									}
 								: undefined;
 					const processingPromise = runtime.turnControllers.runWith(
@@ -11706,7 +11704,6 @@ export class DefaultMessageService implements IMessageService {
 										}
 									: abortSignal
 										? {
-												onStreamChunk: async () => undefined,
 												messageId: responseId,
 												abortSignal,
 												reportError: runtime.reportError.bind(runtime),
