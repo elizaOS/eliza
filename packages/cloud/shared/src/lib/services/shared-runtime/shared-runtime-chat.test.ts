@@ -15,6 +15,7 @@ let turnError: Error | null;
 let streamTurnError: Error | null;
 let turnCalls = 0;
 let lastTurnInput: Record<string, unknown> | undefined;
+const turnInputs: Record<string, unknown>[] = [];
 let lastStreamTurnInput: Record<string, unknown> | undefined;
 let streamTurnCalls = 0;
 let admissionError: Error | null;
@@ -166,6 +167,7 @@ mock.module("./run-shared-agent-turn", () => ({
     turnCalls++;
     lastTurnRole = input.messageRole;
     lastTurnInput = input;
+    turnInputs.push(input);
     if (turnError) throw turnError;
     const history = Array.isArray(turn.history)
       ? turn.history.map((message, index) =>
@@ -368,6 +370,7 @@ beforeEach(() => {
   streamTurnError = null;
   turnCalls = 0;
   lastTurnInput = undefined;
+  turnInputs.length = 0;
   lastStreamTurnInput = undefined;
   streamTurnCalls = 0;
   characterReads = 0;
@@ -1088,6 +1091,20 @@ describe("SharedRuntimeChatService", () => {
     method: "message.send",
     params: { text: "hello", roomId: "room-1", clientMessageId: "client-key-1" },
   };
+
+  test("an unkeyed client may reuse a JSON-RPC id without reusing durable message identities", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    await service.bridge(agent, rpc, h);
+    await service.bridge(agent, rpc, h);
+
+    const first = turnInputs[0]?.messageIds as { user: string; assistant: string } | undefined;
+    const second = turnInputs[1]?.messageIds as { user: string; assistant: string } | undefined;
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(second).not.toEqual(first);
+  });
 
   test("a replayed clientMessageId admits, dispatches, and bills exactly once (#18045)", async () => {
     const service = new SharedRuntimeChatService();

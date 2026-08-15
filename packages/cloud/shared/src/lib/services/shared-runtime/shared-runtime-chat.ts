@@ -264,22 +264,20 @@ async function claimSharedTurn(
   return decision.state === "replay" ? decision.result : undefined;
 }
 
-function rpcTurnIdentity(rpc: BridgeRequest): string {
-  if (typeof rpc.id === "string" || typeof rpc.id === "number") {
-    return String(rpc.id);
-  }
-  return crypto.randomUUID();
-}
-
 function turnMessageIds(
   agentId: string,
   roomId: string,
-  rpc: BridgeRequest,
+  clientMessageId: string | undefined,
 ): {
   user: string;
   assistant: string;
 } {
-  const turn = rpcTurnIdentity(rpc);
+  // JSON-RPC ids correlate one connection's responses; clients may restart
+  // their counters and legitimately reuse `1`. Only the durable client key is
+  // a cross-session mutation identity. An unkeyed request therefore receives
+  // fresh message ids and accepts the documented loss of retry deduplication
+  // instead of colliding with an old Todo ledger entry.
+  const turn = clientMessageId ?? crypto.randomUUID();
   return {
     user: stableUuid(`shared-runtime:${agentId}:${roomId}:${turn}:user`),
     assistant: stableUuid(`shared-runtime:${agentId}:${roomId}:${turn}:assistant`),
@@ -831,7 +829,7 @@ export class SharedRuntimeChatService {
       throw error;
     }
 
-    const messageIds = turnMessageIds(agent.id, roomId, rpc);
+    const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
@@ -987,7 +985,7 @@ export class SharedRuntimeChatService {
       }
       throw error;
     }
-    const messageIds = turnMessageIds(agent.id, roomId, rpc);
+    const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     const generationAbort = new AbortController();
     const abortFromRequest = () => {
       generationAbort.abort(options.abortSignal?.reason);
