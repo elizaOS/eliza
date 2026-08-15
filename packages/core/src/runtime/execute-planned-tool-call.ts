@@ -70,10 +70,20 @@ export interface ExecutePlannedToolCallContext {
 	responses?: Memory[];
 }
 
+export interface ToolArgAliasCapability {
+	/** Exact redacted token emitted into this turn's planner context. */
+	token: `[REDACTED:]`;
+	/** Already-authorized value; never read from a model-authored setting name. */
+	value: string;
+	kind: "entity_id";
+}
+
 export type ExecutePlannedToolCallOptions = HandlerOptions & {
 	actions?: readonly Action[];
 	onStreamChunk?: StreamChunkCallback;
 	abortSignal?: AbortSignal;
+	/** Per-turn values authorized before the planner-to-executor boundary. */
+	toolArgAliases?: readonly ToolArgAliasCapability[];
 	/**
 	 * Observes the normalized handler result immediately after settlement and
 	 * before post-execution bookkeeping can fail. Sensitive and owner-exclusive
@@ -341,47 +351,58 @@ function runWithMessageTrajectoryContext<T>(
 }
 
 /**
- * Resolve prompt-side redaction placeholders the model copied into tool args
- * (matrix F16, tj-b6bf03e81193a2): settings values are redacted in prompts as
- * `[REDACTED:<NAME>]`, the model faithfully reproduces the placeholder in an
- * argument (`entityId: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]"`), and schema/UUID
- * validation rejects it — every tool wanting the admin entity id fails.
- *
- * Deliberately narrow: only full-string placeholders whose setting name ends
- * in `_ENTITY_ID` (non-credential identifiers) resolve, and only when the
- * runtime setting exists and is UUID-shaped. Credential-class placeholders
- * stay unresolved by design — substituting bearer secrets into tool args
- * would hand them to any tool that echoes its inputs. The broader design
- * (resolvable redaction aliases) is a flagged follow-up.
- *
- * The RECORDED tool call keeps the placeholder (this transforms only the
- * executed-args copy), so resolved ids never enter trajectories.
+ * Resolve only exact tokens carried by this turn's typed capability set.
+ * The model cannot name a runtime setting here: aliases were authorized before
+ * execution, and the raw planner call remains unchanged for redacted diagnostics.
  */
-const REDACTED_ENTITY_REF = /^\[REDACTED:([A-Z0-9_]*_ENTITY_ID)\]$/;
-const UUID_SHAPE =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export function resolveRedactedSettingRefs(
-	runtime: Pick<IAgentRuntime, "getSetting" | "logger">,
+export function resolveToolArgAliases(
 	args: Record<string, unknown>,
+	capabilities: readonly ToolArgAliasCapability[] = [],
 ): Record<string, unknown> {
-	let changed = false;
-	const resolved: Record<string, unknown> = { ...args };
-	for (const [key, value] of Object.entries(args)) {
-		if (typeof value !== "string") continue;
-		const match = REDACTED_ENTITY_REF.exec(value);
-		if (!match?.[1]) continue;
-		const settingValue = runtime.getSetting(match[1]);
-		if (typeof settingValue === "string" && UUID_SHAPE.test(settingValue)) {
-			resolved[key] = settingValue;
-			changed = true;
-			runtime.logger?.debug?.(
-				{ src: "runtime:tool-args", argument: key, setting: match[1] },
-				"Resolved redaction placeholder in tool argument",
-			);
+	const aliases = new Map(
+		capabilities
+			.filter(
+				(capability) =>
+					capability.kind === "entity_id" &&
+					UUID_SHAPE.test(capability.value),
+			)
+			.map((capability) => [capability.token, capability.value] as const),
+	);
+	if (aliases.size === 0) return args;
+
+	const resolveValue = (value: unknown): { value: unknown; changed: boolean } => {
+		if (typeof value === "string") {
+			const resolved = aliases.get(value);
+			return resolved === undefined
+				? { value, changed: false }
+				: { value: resolved, changed: true };
 		}
-	}
-	return changed ? resolved : args;
+		if (Array.isArray(value)) {
+			let changed = false;
+			const resolved = value.map((entry) => {
+				const next = resolveValue(entry);
+				changed ||= next.changed;
+				return next.value;
+			});
+			return changed ? { value: resolved, changed } : { value, changed };
+		}
+		if (isContentRecord(value)) {
+			let changed = false;
+			const resolved: Record<string, unknown> = {};
+			for (const [key, entry] of Object.entries(value)) {
+				const next = resolveValue(entry);
+				changed ||= next.changed;
+				resolved[key] = next.value;
+			}
+			return changed ? { value: resolved, changed } : { value, changed };
+		}
+		return { value, changed: false };
+	};
+
+	const resolved = resolveValue(args);
+	return resolved.changed
+		? (resolved.value as Record<string, unknown>)
+		: args;
 }
 
 export async function executePlannedToolCall(
@@ -445,7 +466,7 @@ export async function executePlannedToolCall(
 	);
 	const validation = validateToolArgs(
 		action,
-		resolveRedactedSettingRefs(runtime, argsForValidation),
+		resolveToolArgAliases(argsForValidation, options.toolArgAliases),
 	);
 	if (!validation.valid) {
 		// The planner correlates a corrected retry with this failed operation by
