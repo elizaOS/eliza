@@ -1,7 +1,8 @@
 /** Verifies the development Vite subprocess uses the direct TypeScript config loader. */
 
+import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, test } from "vitest";
 import { resolveViteCommand } from "./dev-ui-vite.mjs";
 
@@ -28,4 +29,32 @@ test("resolveViteCommand uses workspace source while skipping config bundling", 
     "--port",
     "2138",
   ]);
+});
+
+test("resolveViteCommand stays Node-backed when its caller runs under Bun", () => {
+  const helperUrl = pathToFileURL(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "dev-ui-vite.mjs"),
+  ).href;
+  const script = `
+    import { resolveViteCommand } from ${JSON.stringify(helperUrl)};
+    const resolved = resolveViteCommand({ appDir: ${JSON.stringify(appDir)} });
+    process.stdout.write(resolved.command);
+  `;
+  const resolution = spawnSync("bun", ["--eval", script], {
+    encoding: "utf8",
+    env: { ...process.env, ELIZA_NODE_PATH: "" },
+  });
+
+  expect(resolution.status, resolution.stderr).toBe(0);
+  const nodePath = resolution.stdout.trim();
+  const runtime = spawnSync(
+    nodePath,
+    [
+      "--eval",
+      "process.stdout.write(process.versions.bun ? 'bun' : 'node:' + process.versions.node)",
+    ],
+    { encoding: "utf8" },
+  );
+  expect(runtime.status, runtime.stderr).toBe(0);
+  expect(runtime.stdout).toMatch(/^node:24\./);
 });
