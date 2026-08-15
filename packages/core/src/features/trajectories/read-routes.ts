@@ -331,11 +331,17 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 					},
 				);
 			}
-			const limit = Math.min(
-				500,
-				Math.max(1, Number(url.searchParams.get("limit")) || 50),
-			);
-			const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+			const rawLimit = url.searchParams.get("limit");
+			const requestedLimit = rawLimit === null ? Number.NaN : Number(rawLimit);
+			const limit = Number.isFinite(requestedLimit)
+				? Math.min(500, Math.max(1, Math.trunc(requestedLimit)))
+				: 50;
+			const rawOffset = url.searchParams.get("offset");
+			const requestedOffset =
+				rawOffset === null ? Number.NaN : Number(rawOffset);
+			const offset = Number.isFinite(requestedOffset)
+				? Math.max(0, Math.trunc(requestedOffset))
+				: 0;
 			const result = await service.listTrajectories({
 				limit,
 				offset,

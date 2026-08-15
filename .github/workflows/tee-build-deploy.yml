@@ -1,12 +1,6 @@
 name: Build, Push & Deploy to Phala Cloud
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "packages/app-core/deploy/Dockerfile.ci"
-      - "packages/app-core/deploy/docker-compose.yml"
   workflow_dispatch:
     inputs:
       logLevel:

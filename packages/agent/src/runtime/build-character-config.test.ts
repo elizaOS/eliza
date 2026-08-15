@@ -2,11 +2,16 @@
  * Tests buildCharacterFromConfig's translation of an ElizaConfig into a runtime
  * Character: the Matrix connector secret/settings boundary (public identifiers
  * stay plain settings, credentials become redacted secrets) and passthrough of
- * per-agent settings and knowledge directories.
+ * per-agent settings, canonical Slack connector policy, and knowledge directories.
  */
+import {
+  connectorAccountCredentialSettingKey,
+  connectorBaseCredentialSettingKey,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";
+import { ElizaSchema } from "../config/zod-schema.ts";
 import { buildCharacterFromConfig } from "./build-character-config.ts";
 import { applySandboxCharacterFromEnv } from "./sandbox-character.ts";
 
@@ -86,6 +91,16 @@ describe("Matrix connector secret/settings boundary", () => {
     const secrets = (character.secrets ?? {}) as Record<string, unknown>;
     expect("MATRIX_VERIFY_ALLOWLIST" in settings).toBe(false);
     expect("MATRIX_ACCESS_TOKEN" in secrets).toBe(false);
+  });
+});
+
+describe("connector credential setting keys", () => {
+  it("keeps distinct account identifiers in separate secret slots", () => {
+    expect(
+      connectorAccountCredentialSettingKey("slack", "support-east", "botToken"),
+    ).not.toBe(
+      connectorAccountCredentialSettingKey("slack", "support_east", "botToken"),
+    );
   });
 });
 
@@ -183,7 +198,7 @@ describe("agent entry character passthrough", () => {
           },
         ],
       },
-    } as ElizaConfig);
+    } as unknown as ElizaConfig);
 
     expect(character.settings?.discord).toEqual({ autoReply: true });
     expect(character.settings?.ADVANCED_CAPABILITIES).toBe("true");
@@ -211,5 +226,185 @@ describe("agent entry character passthrough", () => {
         },
       },
     ]);
+  });
+});
+
+describe("connector policy projection", () => {
+  it("merges partial account overrides without dropping base credentials", () => {
+    const character = buildCharacterFromConfig({
+      connectors: {
+        slack: {
+          accounts: {
+            support: {
+              botToken: "xoxb-base",
+              appToken: "xapp-base",
+              channels: { support: { enabled: true } },
+            },
+          },
+        },
+      },
+      agents: {
+        list: [
+          {
+            name: "Tester",
+            system: "x",
+            settings: {
+              slack: {
+                accounts: {
+                  support: {
+                    userToken: "xoxp-override",
+                    channels: { support: { requireMention: true } },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    } as unknown as ElizaConfig);
+
+    expect(character.secrets).toMatchObject({
+      [connectorAccountCredentialSettingKey("slack", "support", "botToken")]:
+        "xoxb-base",
+      [connectorAccountCredentialSettingKey("slack", "support", "appToken")]:
+        "xapp-base",
+      [connectorAccountCredentialSettingKey("slack", "support", "userToken")]:
+        "xoxp-override",
+    });
+    const slackSettings = character.settings?.slack as
+      | { accounts?: Record<string, unknown> }
+      | undefined;
+    expect(slackSettings?.accounts?.support).toMatchObject({
+      channels: { support: { requireMention: true } },
+    });
+  });
+
+  it("strips vault refs instead of projecting them as secret material", () => {
+    const character = buildCharacterFromConfig({
+      connectors: {
+        slack: {
+          botToken: "vault://connectors.slack.token",
+          accounts: {
+            support: {
+              botToken: "vault://connectors.slack.support.token",
+              channels: { support: { enabled: true } },
+            },
+          },
+        },
+      },
+      agents: { list: [{ name: "Tester", system: "x" }] },
+    } as unknown as ElizaConfig);
+
+    const secrets = character.secrets ?? {};
+    expect(secrets).not.toHaveProperty(
+      connectorBaseCredentialSettingKey("slack", "botToken"),
+    );
+    expect(secrets).not.toHaveProperty(
+      connectorAccountCredentialSettingKey("slack", "support", "botToken"),
+    );
+    // The ref never leaks into plain settings either — the boot chain's
+    // vault resolution lane is the only consumer of vault:// pointers.
+    expect(JSON.stringify(character.settings)).not.toContain("vault://");
+  });
+
+  it("projects Slack policy while keeping every account credential secret", () => {
+    const persisted = ElizaSchema.parse({
+      connectors: {
+        slack: {
+          botToken: "xoxb-top-secret",
+          appToken: "xapp-top-secret",
+          userToken: "xoxp-top-secret",
+          signingSecret: "top-signing-secret",
+          channels: { ops: { requireMention: true, users: ["U123"] } },
+          dm: { policy: "allowlist", allowFrom: ["U123"] },
+          accounts: {
+            support: {
+              botToken: "xoxb-account-secret",
+              appToken: "xapp-account-secret",
+              userToken: "xoxp-account-secret",
+              signingSecret: "account-signing-secret",
+              channels: { support: { enabled: false } },
+            },
+          },
+        },
+      },
+    });
+    const slack = persisted.connectors?.slack;
+    const character = buildCharacterFromConfig(
+      persisted as unknown as ElizaConfig,
+    );
+
+    const projectedSlack = character.settings?.slack as typeof slack;
+    expect(projectedSlack?.groupPolicy).toBe("allowlist");
+    expect(projectedSlack?.channels).toEqual(slack?.channels);
+    expect(projectedSlack?.accounts?.support?.channels).toEqual(
+      slack?.accounts?.support?.channels,
+    );
+    expect(projectedSlack).not.toBe(slack);
+    expect(projectedSlack?.channels).not.toBe(slack?.channels);
+
+    const plainSettings = JSON.stringify(character.settings);
+    for (const secret of [
+      "xoxb-top-secret",
+      "xapp-top-secret",
+      "xoxp-top-secret",
+      "top-signing-secret",
+      "xoxb-account-secret",
+      "xapp-account-secret",
+      "xoxp-account-secret",
+      "account-signing-secret",
+    ]) {
+      expect(plainSettings).not.toContain(secret);
+    }
+    expect(projectedSlack).not.toHaveProperty("botToken");
+    expect(projectedSlack).not.toHaveProperty("appToken");
+    expect(projectedSlack).not.toHaveProperty("userToken");
+    expect(projectedSlack).not.toHaveProperty("signingSecret");
+    expect(projectedSlack?.accounts?.support).not.toHaveProperty("botToken");
+    expect(projectedSlack?.accounts?.support).not.toHaveProperty("appToken");
+    expect(projectedSlack?.accounts?.support).not.toHaveProperty("userToken");
+    expect(projectedSlack?.accounts?.support).not.toHaveProperty(
+      "signingSecret",
+    );
+
+    const secrets = character.secrets ?? {};
+    expect(secrets).not.toHaveProperty("SLACK_CONNECTOR_CREDENTIALS_JSON");
+    for (const [field, value] of Object.entries({
+      botToken: "xoxb-top-secret",
+      appToken: "xapp-top-secret",
+      userToken: "xoxp-top-secret",
+      signingSecret: "top-signing-secret",
+    })) {
+      expect(secrets[connectorBaseCredentialSettingKey("slack", field)]).toBe(
+        value,
+      );
+    }
+    for (const [field, value] of Object.entries({
+      botToken: "xoxb-account-secret",
+      appToken: "xapp-account-secret",
+      userToken: "xoxp-account-secret",
+      signingSecret: "account-signing-secret",
+    })) {
+      expect(
+        secrets[
+          connectorAccountCredentialSettingKey("slack", "support", field)
+        ],
+      ).toBe(value);
+    }
+  });
+
+  it("keeps canonical schema defaults strict without affecting env-only boot", () => {
+    const persisted = ElizaSchema.parse({ connectors: { slack: {} } });
+    const configured = buildCharacterFromConfig(
+      persisted as unknown as ElizaConfig,
+    );
+    expect(configured.settings?.slack).toMatchObject({
+      groupPolicy: "allowlist",
+      mode: "socket",
+      userTokenReadOnly: true,
+    });
+
+    const envOnly = buildCharacterFromConfig(CONFIG);
+    expect(envOnly.settings?.slack).toBeUndefined();
   });
 });

@@ -19,6 +19,9 @@ import { userCharacters } from "./user-characters";
  * Zod schema for runtime validation of Discord connection metadata.
  * Use this when accepting metadata from external sources (APIs, user input).
  */
+/** Discord user snowflake: 15-20 decimal digits. */
+const DiscordSnowflakeSchema = z.string().regex(/^\d{15,20}$/);
+
 export const DiscordConnectionMetadataSchema = z
   .object({
     enabledChannels: z.array(z.string()).optional(),
@@ -26,10 +29,24 @@ export const DiscordConnectionMetadataSchema = z
     responseMode: z.enum(["always", "mention", "keyword"]).optional(),
     keywords: z.array(z.string()).optional(),
     /** Discord user snowflake treated as the bot owner. */
-    ownerDiscordUserId: z
-      .string()
-      .regex(/^\d{15,20}$/)
-      .optional(),
+    ownerDiscordUserId: DiscordSnowflakeSchema.optional(),
+    /**
+     * All Discord user snowflakes treated as bot owners. Mirrors the agent
+     * plugin's ELIZA_DISCORD_OWNER_USER_IDS_JSON; owners always pass DM
+     * gating (except under the "disabled" policy).
+     */
+    ownerDiscordUserIds: z.array(DiscordSnowflakeSchema).optional(),
+    /**
+     * DM gating policy, mirroring the agent plugin's DISCORD_DM_POLICY enum.
+     * Unset preserves the gateway's historical behavior ("open"). The
+     * gateway has no pairing flow, so "pairing" admits owners only.
+     */
+    dmPolicy: z.enum(["open", "allowlist", "pairing", "disabled"]).optional(),
+    /**
+     * Additional Discord user snowflakes allowed to DM the bot under the
+     * "allowlist" policy. Mirrors the agent plugin's DISCORD_ALLOW_FROM.
+     */
+    dmAllowFrom: z.array(DiscordSnowflakeSchema).optional(),
   })
   .refine(
     (data) => {
@@ -131,6 +148,20 @@ export const discordConnections = pgTable(
      *
      * @property {string[]} keywords - Trigger words for "keyword" responseMode.
      *   Case-insensitive substring matching. Required when responseMode is "keyword".
+     *
+     * @property {string} ownerDiscordUserId - Discord user snowflake treated as
+     *   the bot owner; always passes DM gating except under "disabled".
+     *
+     * @property {string[]} ownerDiscordUserIds - Additional owner snowflakes,
+     *   mirroring the agent plugin's ELIZA_DISCORD_OWNER_USER_IDS_JSON.
+     *
+     * @property {"open" | "allowlist" | "pairing" | "disabled"} dmPolicy - Who
+     *   may direct-message the bot (mirrors DISCORD_DM_POLICY). Unset keeps the
+     *   historical open behavior; "pairing" admits owners only because the
+     *   gateway has no pairing flow; "disabled" blocks all DMs.
+     *
+     * @property {string[]} dmAllowFrom - Extra user snowflakes admitted under
+     *   the "allowlist" policy (mirrors DISCORD_ALLOW_FROM).
      *
      * @example
      * // Bot responds only when mentioned in #general channel

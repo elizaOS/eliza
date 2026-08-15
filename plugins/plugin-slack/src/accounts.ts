@@ -8,12 +8,38 @@
  * `SlackService` reads these to build one runtime per workspace; the OWNER vs
  * AGENT role decides whether outbound posts use the user or bot token.
  */
-import type { ConnectorAccountRole, IAgentRuntime } from "@elizaos/core";
+import {
+  type ConnectorAccountRole,
+  connectorAccountCredentialSettingKey,
+  connectorBaseCredentialSettingKey,
+  ElizaError,
+  type IAgentRuntime,
+} from "@elizaos/core";
+import type {
+  SlackAccountConfig as CanonicalSlackAccountConfig,
+  SlackChannelConfig,
+  SlackDmConfig,
+} from "./config";
+
+export type {
+  SlackActionConfig,
+  SlackChannelConfig,
+  SlackDmConfig,
+  SlackReactionNotificationMode,
+  SlackSlashCommandConfig,
+} from "./config";
 
 /**
  * Default account identifier used when no specific account is configured
  */
 export const DEFAULT_ACCOUNT_ID = "default";
+
+const SLACK_CREDENTIAL_KEYS = [
+  "appToken",
+  "botToken",
+  "signingSecret",
+  "userToken",
+] as const;
 
 /**
  * Source of the Slack token
@@ -21,76 +47,9 @@ export const DEFAULT_ACCOUNT_ID = "default";
 export type SlackTokenSource = "env" | "config" | "character" | "none";
 
 /**
- * DM-specific configuration
- */
-export interface SlackDmConfig {
-  /** If false, ignore all incoming Slack DMs */
-  enabled?: boolean;
-  /** Direct message access policy */
-  policy?: "open" | "disabled" | "allowlist";
-  /** Allowlist for DM senders (ids or names) */
-  allowFrom?: Array<string | number>;
-  /** Reply-to mode for DMs */
-  replyToMode?: "off" | "first" | "all";
-}
-
-/**
- * Channel-specific configuration
- */
-export interface SlackChannelConfig {
-  /** If false, ignore this channel */
-  enabled?: boolean;
-  /** Require bot mention to respond */
-  requireMention?: boolean;
-  /** User allowlist for this channel */
-  users?: Array<string | number>;
-  /** Reply-to mode for this channel */
-  replyToMode?: "off" | "first" | "all";
-}
-
-/**
- * Reaction notification mode
- */
-export type SlackReactionNotificationMode = "off" | "own" | "all" | "allowlist";
-
-/**
- * Slash command configuration
- */
-export interface SlackSlashCommandConfig {
-  /** Enable slash commands */
-  enabled?: boolean;
-  /** Slash command name (without leading /) */
-  command?: string;
-}
-
-/**
- * Action toggles for Slack features
- */
-export interface SlackActionConfig {
-  /** Enable reactions */
-  reactions?: boolean;
-  /** Enable pins */
-  pins?: boolean;
-  /** Enable file uploads */
-  files?: boolean;
-  /** Enable message editing */
-  edit?: boolean;
-  /** Enable message deletion */
-  delete?: boolean;
-  /** Enable emoji list */
-  emojiList?: boolean;
-  /** Enable member info */
-  memberInfo?: boolean;
-}
-
-/**
  * Configuration for a single Slack account
  */
-export interface SlackAccountConfig {
-  /** Optional display name for this account */
-  name?: string;
-  /** If false, do not start this Slack account */
-  enabled?: boolean;
+export type SlackAccountConfig = CanonicalSlackAccountConfig & {
   /**
    * Account role. AGENT (the default) means outbound API calls are made
    * with the bot token (xoxb-) and represent the agent identity. OWNER
@@ -99,52 +58,19 @@ export interface SlackAccountConfig {
    * user who installed the integration.
    */
   role?: ConnectorAccountRole;
-  /** Slack bot token (xoxb-...) */
-  botToken?: string;
-  /** Slack app-level token (xapp-...) */
-  appToken?: string;
-  /** Slack signing secret */
-  signingSecret?: string;
-  /** Slack user token (xoxp-...) for user actions */
-  userToken?: string;
-  /** Controls how channel messages are handled */
-  groupPolicy?: "open" | "disabled" | "allowlist";
-  /** Outbound text chunk size (chars) */
-  textChunkLimit?: number;
-  /** Max media size in MB */
-  mediaMaxMb?: number;
-  /** Reaction notification mode */
-  reactionNotifications?: SlackReactionNotificationMode;
-  /** Reaction allowlist when mode is 'allowlist' */
-  reactionAllowlist?: Array<string | number>;
-  /** Reply-to mode */
-  replyToMode?: "off" | "first" | "all";
-  /** Reply-to mode by chat type */
-  replyToModeByChatType?: Record<string, "off" | "first" | "all">;
-  /** Per-action toggles */
-  actions?: SlackActionConfig;
-  /** Slash command configuration */
-  slashCommand?: SlackSlashCommandConfig;
-  /** DM configuration */
-  dm?: SlackDmConfig;
-  /** Per-channel configuration keyed by channel ID */
-  channels?: Record<string, SlackChannelConfig>;
   /** Allowed channel IDs */
   allowedChannelIds?: string[];
   /** Whether to ignore bot messages */
   shouldIgnoreBotMessages?: boolean;
   /** Whether to respond only to mentions */
   shouldRespondOnlyToMentions?: boolean;
-}
+};
 
 /**
  * Multi-account Slack configuration structure
  */
-export interface SlackMultiAccountConfig {
+export interface SlackMultiAccountConfig extends SlackAccountConfig {
   /** Default/base configuration applied to all accounts */
-  enabled?: boolean;
-  botToken?: string;
-  appToken?: string;
   /** Per-account configuration overrides */
   accounts?: Record<string, SlackAccountConfig>;
 }
@@ -169,6 +95,21 @@ export interface ResolvedSlackAccount {
   botTokenSource: SlackTokenSource;
   appTokenSource: SlackTokenSource;
   config: SlackAccountConfig;
+  /**
+   * Structured per-channel config for this account, hoisted out of `config`
+   * so `SlackService` reads one field instead of re-deriving the merge on
+   * every inbound event. Empty object when nothing is configured.
+   */
+  channels: Record<string, SlackChannelConfig>;
+  /** Structured DM config for this account, hoisted alongside `channels`. */
+  dm?: SlackDmConfig;
+  /**
+   * Account-level mention default, if the account sets one explicitly.
+   * `undefined` means "fall through to the global env flag".
+   */
+  requireMention?: boolean;
+  /** True when a structured authorization policy was explicitly configured. */
+  hasStructuredPolicy: boolean;
 }
 
 /**
@@ -231,19 +172,69 @@ export function normalizeSlackAccountRole(raw: unknown): ConnectorAccountRole {
 /**
  * Gets the multi-account configuration from runtime settings
  */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readPrivateCredentials(
+  runtime: IAgentRuntime,
+  accountId?: string,
+): SlackMultiAccountConfig {
+  const result: SlackAccountConfig = {};
+  for (const field of SLACK_CREDENTIAL_KEYS) {
+    const key = accountId
+      ? connectorAccountCredentialSettingKey("slack", accountId, field)
+      : connectorBaseCredentialSettingKey("slack", field);
+    const value = runtime.getSetting(key);
+    if (typeof value === "string" && value.trim()) result[field] = value;
+  }
+  return result;
+}
+
 function getMultiAccountConfig(
   runtime: IAgentRuntime,
 ): SlackMultiAccountConfig {
   const characterSlack = runtime.character.settings?.slack as
     | SlackMultiAccountConfig
     | undefined;
+  const publicConfig = isRecord(characterSlack) ? characterSlack : {};
+  const publicAccounts = isRecord(publicConfig.accounts)
+    ? publicConfig.accounts
+    : {};
+  const accountIds = new Set(Object.keys(publicAccounts));
+  const accounts = Object.fromEntries(
+    Array.from(accountIds).map((accountId) => [
+      accountId,
+      {
+        ...(isRecord(publicAccounts[accountId])
+          ? publicAccounts[accountId]
+          : {}),
+        ...readPrivateCredentials(runtime, accountId),
+      },
+    ]),
+  );
 
   return {
-    enabled: characterSlack?.enabled,
-    botToken: characterSlack?.botToken,
-    appToken: characterSlack?.appToken,
-    accounts: characterSlack?.accounts,
-  };
+    ...publicConfig,
+    ...readPrivateCredentials(runtime),
+    ...(accountIds.size > 0 ? { accounts } : {}),
+  } as SlackMultiAccountConfig;
+}
+
+function containsStructuredPolicy(config: SlackAccountConfig): boolean {
+  return [
+    "allowBots",
+    "requireMention",
+    "groupPolicy",
+    "dm",
+    "channels",
+    "actions",
+    "commands",
+    "configWrites",
+    "slashCommand",
+    "reactionNotifications",
+    "reactionAllowlist",
+  ].some((key) => Object.hasOwn(config, key));
 }
 
 /**
@@ -257,13 +248,25 @@ export function listSlackAccountIds(runtime: IAgentRuntime): string[] {
     return [DEFAULT_ACCOUNT_ID];
   }
 
-  const ids = Array.from(
-    new Set(
-      Object.keys(accounts)
-        .map((id) => normalizeAccountId(id))
-        .filter(Boolean),
-    ),
-  );
+  const normalizedToConfigured = new Map<string, string>();
+  for (const configuredId of Object.keys(accounts)) {
+    const normalized = normalizeAccountId(configuredId);
+    const existing = normalizedToConfigured.get(normalized);
+    if (existing !== undefined && existing !== configuredId) {
+      throw new ElizaError(
+        "Slack account identifiers collide after normalization",
+        {
+          code: "SLACK_ACCOUNT_ID_COLLISION",
+          context: {
+            normalizedAccountId: normalized,
+            configuredIds: [existing, configuredId],
+          },
+        },
+      );
+    }
+    normalizedToConfigured.set(normalized, configuredId);
+  }
+  const ids = Array.from(normalizedToConfigured.keys());
   if (ids.length === 0) {
     return [DEFAULT_ACCOUNT_ID];
   }
@@ -364,6 +367,7 @@ export function resolveSlackAccount(
 ): ResolvedSlackAccount {
   const normalizedAccountId = normalizeAccountId(accountId);
   const multiConfig = getMultiAccountConfig(runtime);
+  const configuredAccount = getAccountConfig(runtime, normalizedAccountId);
 
   const baseEnabled = multiConfig.enabled !== false;
   const merged = mergeSlackAccountConfig(runtime, normalizedAccountId);
@@ -417,6 +421,20 @@ export function resolveSlackAccount(
     : undefined;
   const role = normalizeSlackAccountRole(merged.role ?? envRole);
 
+  // Hoist the structured channel/DM config so the service can gate inbound
+  // messages without walking `config` per event. Filters out null/non-object
+  // entries up front — the zod schema marks each value optional, so an
+  // explicit `null` reaches us intact.
+  const channels: Record<string, SlackChannelConfig> = {};
+  if (merged.channels && typeof merged.channels === "object") {
+    for (const [channelKey, channelConfig] of Object.entries(merged.channels)) {
+      if (!channelConfig || typeof channelConfig !== "object") continue;
+      const trimmed = channelKey.trim();
+      if (!trimmed) continue;
+      channels[trimmed] = channelConfig;
+    }
+  }
+
   return {
     accountId: normalizedAccountId,
     enabled,
@@ -429,6 +447,12 @@ export function resolveSlackAccount(
     botTokenSource,
     appTokenSource,
     config: merged,
+    channels,
+    dm: merged.dm,
+    requireMention: merged.requireMention,
+    hasStructuredPolicy:
+      containsStructuredPolicy(multiConfig) ||
+      (configuredAccount ? containsStructuredPolicy(configuredAccount) : false),
   };
 }
 
@@ -459,13 +483,18 @@ export function resolveSlackReplyToMode(
   chatType?: string | null,
 ): "off" | "first" | "all" {
   const normalized = chatType?.toLowerCase().trim();
+  const chatTypeKey =
+    normalized === "direct" ||
+    normalized === "group" ||
+    normalized === "channel"
+      ? normalized
+      : undefined;
 
-  // Check chat type specific override
   if (
-    normalized &&
-    account.config.replyToModeByChatType?.[normalized] !== undefined
+    chatTypeKey &&
+    account.config.replyToModeByChatType?.[chatTypeKey] !== undefined
   ) {
-    return account.config.replyToModeByChatType[normalized] ?? "off";
+    return account.config.replyToModeByChatType[chatTypeKey] ?? "off";
   }
 
   // Check DM-specific setting

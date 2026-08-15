@@ -9,7 +9,7 @@ name: Deploy Eliza Provisioning Worker
 
 on:
   push:
-    branches: [develop, main]
+    branches: [develop]
     paths:
       - '.github/workflows/deploy-eliza-provisioning-worker.yml'
       - 'packages/cloud/scripts/admin/daemons/provisioning-worker.ts'
