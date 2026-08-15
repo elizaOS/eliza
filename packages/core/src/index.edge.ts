@@ -40,7 +40,7 @@ export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
 export * from "./errors";
-export * from "./features/basic-capabilities/index";
+export * from "./features/basic-capabilities/index.edge";
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
 export * from "./logger";

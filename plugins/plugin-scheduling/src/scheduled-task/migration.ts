@@ -86,6 +86,7 @@ export async function ensureSchedulingTables(exec: SqlExecutor): Promise<void> {
       metadata_json TEXT NOT NULL DEFAULT '{}',
       execution_profile TEXT,
       transfer_token TEXT,
+      transfer_holder_token TEXT,
       transfer_target_agent_id TEXT,
       transfer_status TEXT,
       version INTEGER NOT NULL DEFAULT 1,
@@ -101,6 +102,7 @@ export async function ensureSchedulingTables(exec: SqlExecutor): Promise<void> {
   await exec(
     `ALTER TABLE ${TARGET_SCHEMA}.life_scheduled_tasks
        ADD COLUMN IF NOT EXISTS transfer_token TEXT,
+       ADD COLUMN IF NOT EXISTS transfer_holder_token TEXT,
        ADD COLUMN IF NOT EXISTS transfer_target_agent_id TEXT,
        ADD COLUMN IF NOT EXISTS transfer_status TEXT`,
   );

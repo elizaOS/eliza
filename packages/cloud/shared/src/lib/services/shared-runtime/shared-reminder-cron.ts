@@ -105,7 +105,9 @@ function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher {
       }
       const result = (await response.json()) as {
         acceptedAt?: unknown;
+        acceptanceUnknown?: unknown;
         idempotencyKey?: unknown;
+        providerMessageIds?: unknown;
       };
       const acceptedAt =
         typeof result.acceptedAt === "string" ? result.acceptedAt : new Date().toISOString();
@@ -113,7 +115,14 @@ function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher {
         ok: true,
         channelKey: "current_dm",
         target: delivery.chatId,
-        metadata: { idempotencyKey, acceptedAt },
+        metadata: {
+          idempotencyKey,
+          acceptedAt,
+          acceptanceUnknown: result.acceptanceUnknown === true,
+          providerMessageIds: Array.isArray(result.providerMessageIds)
+            ? result.providerMessageIds.filter((id): id is string => typeof id === "string")
+            : [],
+        },
       };
     },
   };

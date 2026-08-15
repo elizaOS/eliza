@@ -46,6 +46,7 @@ export const lifeScheduledTasks = appSchedulingPgSchema.table(
     metadataJson: text("metadata_json").notNull().default("{}"),
     executionProfile: text("execution_profile"),
     transferToken: text("transfer_token"),
+    transferHolderToken: text("transfer_holder_token"),
     transferTargetAgentId: text("transfer_target_agent_id"),
     transferStatus: text("transfer_status"),
     version: integer("version").notNull().default(1),

@@ -5,6 +5,7 @@ import { logger } from "../logger";
 import type {
   ChatEvent,
   PlatformAdapter,
+  PlatformDeliveryReceipt,
   ResolvedVoiceNote,
   WebhookConfig,
 } from "./types";
@@ -16,6 +17,20 @@ export const TELEGRAM_VOICE_MAX_BYTES = 8 * 1024 * 1024;
 const TELEGRAM_API_TIMEOUT_MS = 10_000;
 export const TELEGRAM_VOICE_MAX_DURATION_SECONDS = 15 * 60;
 const TELEGRAM_FILE_FETCH_TIMEOUT_MS = 30_000;
+
+class TelegramApiTransportError extends Error {
+  constructor(method: string) {
+    super(`Telegram API ${method} transport failed`);
+    this.name = "TelegramApiTransportError";
+  }
+}
+
+class TelegramApiResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TelegramApiResponseError";
+  }
+}
 
 async function telegramApi<T>(
   botToken: string,
@@ -34,11 +49,11 @@ async function telegramApi<T>(
   } catch {
     // error-policy:J3 a fetch implementation may include the credential-bearing
     // URL in its error, so translate before the adapter boundary logs it.
-    throw new Error(`Telegram API ${method} transport failed`);
+    throw new TelegramApiTransportError(method);
   }
   const data = await response.json();
   if (!data.ok) {
-    throw new Error(
+    throw new TelegramApiResponseError(
       data.description ??
         `Telegram API error: ${data.error_code ?? response.status}`,
     );
@@ -102,6 +117,45 @@ interface TelegramMessage {
 interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
+}
+
+async function sendTelegramReply(
+  config: WebhookConfig,
+  event: ChatEvent,
+  text: string,
+): Promise<PlatformDeliveryReceipt> {
+  if (!config.botToken) throw new Error("Missing botToken for Telegram reply");
+
+  const providerMessageIds: string[] = [];
+  for (const chunk of splitMessage(text)) {
+    try {
+      const message = await telegramApi<TelegramMessage>(
+        config.botToken,
+        "sendMessage",
+        {
+          chat_id: event.chatId,
+          text: chunk,
+          parse_mode: "Markdown",
+        },
+      );
+      providerMessageIds.push(String(message.message_id));
+    } catch (err) {
+      if (!(err instanceof TelegramApiResponseError)) throw err;
+      logger.warn("Telegram sendMessage failed, retrying without Markdown", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      const message = await telegramApi<TelegramMessage>(
+        config.botToken,
+        "sendMessage",
+        {
+          chat_id: event.chatId,
+          text: chunk,
+        },
+      );
+      providerMessageIds.push(String(message.message_id));
+    }
+  }
+  return { providerMessageIds };
 }
 
 export const telegramAdapter: PlatformAdapter = {
@@ -307,27 +361,11 @@ export const telegramAdapter: PlatformAdapter = {
     event: ChatEvent,
     text: string,
   ): Promise<void> {
-    if (!config.botToken)
-      throw new Error("Missing botToken for Telegram reply");
+    await sendTelegramReply(config, event, text);
+  },
 
-    const chunks = splitMessage(text);
-    for (const chunk of chunks) {
-      try {
-        await telegramApi(config.botToken, "sendMessage", {
-          chat_id: event.chatId,
-          text: chunk,
-          parse_mode: "Markdown",
-        });
-      } catch (err) {
-        logger.warn("Telegram sendMessage failed, retrying without Markdown", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        await telegramApi(config.botToken, "sendMessage", {
-          chat_id: event.chatId,
-          text: chunk,
-        });
-      }
-    }
+  async sendReplyWithReceipt(config, event, text) {
+    return sendTelegramReply(config, event, text);
   },
 
   async sendTypingIndicator(

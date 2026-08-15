@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS "app_scheduling"."life_scheduled_tasks" (
   "metadata_json" text DEFAULT '{}' NOT NULL,
   "execution_profile" text,
   "transfer_token" text,
+  "transfer_holder_token" text,
   "transfer_target_agent_id" text,
   "transfer_status" text,
   "version" integer DEFAULT 1 NOT NULL,
