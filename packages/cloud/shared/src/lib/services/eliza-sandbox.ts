@@ -2145,7 +2145,10 @@ export class ElizaSandboxService {
             status: precheck.status,
             error: errorMessage,
           });
-          return { success: false, error: "Failed to delete sandbox" };
+          return {
+            success: false,
+            error: `Failed to delete sandbox: ${errorMessage}`,
+          };
         }
       }
     }

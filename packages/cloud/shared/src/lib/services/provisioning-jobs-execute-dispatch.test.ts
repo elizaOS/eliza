@@ -665,6 +665,36 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("agent_delete persists the underlying teardown cause for daemon observability", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE));
+    const teardownError =
+      "Failed to delete sandbox: docker stop -> daemon hung; docker rm -f -> daemon hung";
+    stub("executeDeletion", {
+      success: false,
+      retryable: false,
+      containerStopped: false,
+      rowDeleted: false,
+      error: teardownError,
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ failed: 1, retried: 0 });
+      expect(ctx.updateSpy.mock.calls[0]?.[1]?.result).toMatchObject({
+        containerStopped: false,
+        rowDeleted: false,
+        error: teardownError,
+      });
+      expect(res.errors[0]?.error).toBe(teardownError);
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("a transient pre-deletion capture requeues for free and tallies the free retry", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE));
     stub("executeDeletion", {

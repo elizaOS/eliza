@@ -464,7 +464,16 @@ app.delete("/", async (c) => {
       );
     }
 
-    if (existing.execution_tier === "shared" && !expectedIdentity) {
+    // Only sandbox-less shared agents (legacy workerd-shared rows) take the
+    // fast synchronous path. A sandbox-backed shared row owns a real
+    // container whose teardown belongs on the async job queue: attempting it
+    // synchronously here can hang the request on SSH/provider init and, on
+    // failure, surfaced an opaque 500 instead of the job record (#15802).
+    if (
+      existing.execution_tier === "shared" &&
+      !expectedIdentity &&
+      !existing.sandbox_id
+    ) {
       const result = await elizaSandboxService.deleteAgent(
         agentId,
         user.organization_id,
@@ -531,8 +540,14 @@ app.delete("/", async (c) => {
 
     // Best-effort wake of the worker so the user does not wait for the
     // next cron tick. Same pattern as the provision path.
-    void provisioningJobService.triggerImmediate(c.env).catch(() => {
-      // Logged inside the service; nothing actionable here.
+    void provisioningJobService.triggerImmediate(c.env).catch((error) => {
+      // error-policy:J5 The durable queued job remains observable to the
+      // scheduled worker; this warning observes an eager-wake rejection.
+      logger.warn("[agent-api] Immediate delete worker trigger rejected", {
+        agentId,
+        orgId: user.organization_id,
+        error,
+      });
     });
 
     logger.info("[agent-api] Agent delete enqueued", {

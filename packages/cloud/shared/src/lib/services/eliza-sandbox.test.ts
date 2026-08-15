@@ -4738,7 +4738,9 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     try {
       const res = (await svc.deleteAgent(AGENT, ORG)) as { success: boolean; error?: string };
       expect(res.success).toBe(false);
-      expect(res.error).toBe("Failed to delete sandbox");
+      expect(res.error).toBe(
+        "Failed to delete sandbox: docker stop -> daemon hung; docker rm -f -> daemon hung",
+      );
       // Critically: the row delete is never attempted when the container may
       // still be running.
       expect(commit).not.toHaveBeenCalled();
@@ -4859,7 +4861,9 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     try {
       const res = (await svc.deleteAgent(AGENT, ORG)) as { success: boolean; error?: string };
       expect(res.success).toBe(false);
-      expect(res.error).toBe("Failed to delete sandbox");
+      expect(res.error).toBe(
+        'Failed to delete sandbox: [docker-sandbox] Missing port data for "sandbox-e06bb509": bridge=null, webUi=null',
+      );
       expect(commit).not.toHaveBeenCalled();
     } finally {
       prepare.mockRestore();
