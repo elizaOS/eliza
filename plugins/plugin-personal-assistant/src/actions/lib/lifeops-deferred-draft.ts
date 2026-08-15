@@ -7,7 +7,14 @@
  * `lifeDraft`; this module owns the parsing, expiry, and reuse-mode
  * decision so the umbrella action can stay focused on dispatch.
  */
-import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  ActionResult,
+  IAgentRuntime,
+  Memory,
+  ResponseHandlerEvaluator,
+  ResponseHandlerEvaluatorContext,
+  State,
+} from "@elizaos/core";
 import {
   ModelType,
   parseJsonModelRecord,
@@ -27,6 +34,33 @@ export const DRAFT_EXPIRY_MS = 5 * 60 * 1000;
 /** Maximum conversation turns before a deferred draft expires. */
 export const DRAFT_MAX_TURNS = 3;
 const DEFERRED_LIFE_DRAFT_CACHE_PREFIX = "lifeops:deferred-draft";
+
+const LIFE_CONFIRMATION_VETO_RE =
+  /\b(?:no|not|don t|do not|cancel|hold off|wait|later|change)\b/u;
+const LIFE_CONFIRMATION_CUE_RE =
+  /\b(?:ok|okay|yes|yep|yeah|sure|confirm|confirmed|approve|approved|save it|save that|save this|save the goal|set it|lock it in|do it|looks good|that works|go ahead)\b/u;
+
+/**
+ * Detects owner consent to persist a previewed LifeOps draft. Consent is
+ * sentence-scoped so an unrelated negated clause cannot veto a clear approval,
+ * while a negation in the approving sentence still fails closed.
+ */
+export function isExplicitLifeCreateConfirmation(text: string): boolean {
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/u);
+  for (const sentence of sentences) {
+    const normalized = sentence
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+    if (!normalized || LIFE_CONFIRMATION_VETO_RE.test(normalized)) {
+      continue;
+    }
+    if (LIFE_CONFIRMATION_CUE_RE.test(normalized)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export type DeferredLifeDefinitionDraft = {
   intent: string;
@@ -77,6 +111,11 @@ export type DeferredLifeDraft =
   | DeferredLifeDefinitionDraft
   | DeferredLifeGoalDraft;
 
+export type DeferredLifeDraftCacheState =
+  | { kind: "draft"; draft: DeferredLifeDraft }
+  | { kind: "invalidated" }
+  | { kind: "none" };
+
 export type DeferredLifeDraftReuseMode = "confirm" | "edit";
 export type DeferredLifeDraftFollowupMode =
   | DeferredLifeDraftReuseMode
@@ -99,10 +138,34 @@ export async function readDeferredLifeDraftCache(
   runtime: IAgentRuntime,
   message: Memory,
 ): Promise<DeferredLifeDraft | null> {
+  const state = await readDeferredLifeDraftCacheState(runtime, message);
+  return state.kind === "draft" ? state.draft : null;
+}
+
+export async function readDeferredLifeDraftCacheState(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<DeferredLifeDraftCacheState> {
   const stored = await asCacheRuntime(runtime).getCache<unknown>(
     deferredLifeDraftCacheKey(runtime, message),
   );
-  return coerceDeferredLifeDraft(stored);
+  const draft = coerceDeferredLifeDraft(stored);
+  if (draft) {
+    return { kind: "draft", draft };
+  }
+  if (stored && typeof stored === "object") {
+    const record = stored as Record<string, unknown>;
+    const createdAt =
+      typeof record.createdAt === "number" ? record.createdAt : NaN;
+    if (
+      record.invalidated === true &&
+      Number.isFinite(createdAt) &&
+      Date.now() - createdAt < DRAFT_EXPIRY_MS
+    ) {
+      return { kind: "invalidated" };
+    }
+  }
+  return { kind: "none" };
 }
 
 export async function writeDeferredLifeDraftCache(
@@ -129,6 +192,22 @@ export async function clearDeferredLifeDraftCache(
 ): Promise<void> {
   await asCacheRuntime(runtime).deleteCache(
     deferredLifeDraftCacheKey(runtime, message),
+  );
+}
+
+export async function invalidateDeferredLifeDraftCache(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<void> {
+  await asCacheRuntime(runtime).setCache(
+    deferredLifeDraftCacheKey(runtime, message),
+    {
+      invalidated: true,
+      createdAt: Date.now(),
+      ...(message.id !== undefined && message.id !== null
+        ? { sourceMessageId: String(message.id) }
+        : {}),
+    },
   );
 }
 
@@ -417,14 +496,22 @@ export function countTurnsSinceLatestDeferredLifeDraft(
   return turns;
 }
 
-export function latestDeferredLifeDraft(
+type LatestDeferredLifeDraftState =
+  | { kind: "draft"; draft: DeferredLifeDraft }
+  | { kind: "invalidated" }
+  | { kind: "none" };
+
+function latestDeferredLifeDraftState(
   state: State | undefined,
-): DeferredLifeDraft | null {
+): LatestDeferredLifeDraftState {
   for (const result of [...stateActionResults(state)].reverse()) {
     const resultData =
       result.data && typeof result.data === "object"
         ? (result.data as Record<string, unknown>)
         : null;
+    if (resultData?.lifeDraftInvalidated === true) {
+      return { kind: "invalidated" };
+    }
     const completedCreate =
       result.success &&
       resultData &&
@@ -432,17 +519,32 @@ export function latestDeferredLifeDraft(
       ((resultData.definition && typeof resultData.definition === "object") ||
         (resultData.goal && typeof resultData.goal === "object"));
     if (completedCreate) {
-      return null;
+      return { kind: "none" };
     }
 
     const candidate = coerceDeferredLifeDraft(result.data?.lifeDraft);
     if (candidate) {
-      return candidate;
+      return { kind: "draft", draft: candidate };
     }
   }
 
   const messageDrafts = stateMessageDrafts(state);
-  return messageDrafts.at(-1) ?? null;
+  const draft = messageDrafts.at(-1);
+  return draft ? { kind: "draft", draft } : { kind: "none" };
+}
+
+export function latestDeferredLifeDraft(
+  state: State | undefined,
+): DeferredLifeDraft | null {
+  const latest = latestDeferredLifeDraftState(state);
+  return latest.kind === "draft" ? latest.draft : null;
+}
+
+/** True while the newest deferred-draft terminal marker rejects stale consent. */
+export function latestDeferredLifeDraftIsInvalidated(
+  state: State | undefined,
+): boolean {
+  return latestDeferredLifeDraftState(state).kind === "invalidated";
 }
 
 export function deferredLifeDraftExpiryReason(args: {
@@ -467,6 +569,111 @@ export function deferredLifeDraftExpiryReason(args: {
   }
   return null;
 }
+
+const OWNER_TODOS_ACTION = "OWNER_TODOS";
+
+function isDeferredOwnerTodoDraft(
+  draft: DeferredLifeDraft | null,
+): draft is DeferredLifeDefinitionDraft {
+  if (
+    draft?.operation !== "create_definition" ||
+    draft.request.kind !== "task"
+  ) {
+    return false;
+  }
+
+  const ownerSurface = draft.request.metadata?.ownerSurface;
+  return (
+    ownerSurface === OWNER_TODOS_ACTION ||
+    (ownerSurface === undefined && draft.request.cadence.kind === "unscheduled")
+  );
+}
+
+async function deferredOwnerTodoDraft(
+  context: ResponseHandlerEvaluatorContext,
+): Promise<DeferredLifeDefinitionDraft | null> {
+  const stateDraft = latestDeferredLifeDraft(context.state);
+  const draft =
+    stateDraft ??
+    (await readDeferredLifeDraftCache(context.runtime, context.message));
+  if (!isDeferredOwnerTodoDraft(draft)) {
+    return null;
+  }
+
+  const turnsSinceDraft = stateDraft
+    ? (countTurnsSinceLatestDeferredLifeDraft(context.state) ?? 0) + 1
+    : undefined;
+  return deferredLifeDraftExpiryReason({ draft, turnsSinceDraft }) === null
+    ? draft
+    : null;
+}
+
+// The runtime calls shouldRun() and evaluate() with the same context object.
+// Retaining the promise weakly avoids a second persistent-cache read on the
+// confirmation turn without extending the draft's lifetime.
+const deferredOwnerTodoDraftByContext = new WeakMap<
+  ResponseHandlerEvaluatorContext,
+  Promise<DeferredLifeDefinitionDraft | null>
+>();
+
+function routedOwnerTodoDraft(
+  context: ResponseHandlerEvaluatorContext,
+): Promise<DeferredLifeDefinitionDraft | null> {
+  const existing = deferredOwnerTodoDraftByContext.get(context);
+  if (existing) {
+    return existing;
+  }
+  const pending = deferredOwnerTodoDraft(context);
+  deferredOwnerTodoDraftByContext.set(context, pending);
+  return pending;
+}
+
+/**
+ * Keeps an acknowledged owner-Todo draft on its durable action path when the
+ * Stage-1 model omits the owning action or claims the save already completed.
+ */
+export const deferredOwnerTodoRoutingEvaluator: ResponseHandlerEvaluator = {
+  name: "lifeops.deferred-owner-todo-routing",
+  description:
+    "Routes owner consent or an applied completion claim for a pending Todo draft through OWNER_TODOS before completion text can reach the user.",
+  priority: 25,
+  async shouldRun(context) {
+    const ownerConfirmedDraft = isExplicitLifeCreateConfirmation(
+      typeof context.message.content.text === "string"
+        ? context.message.content.text
+        : "",
+    );
+    if (
+      context.messageHandler.processMessage !== "RESPOND" ||
+      (context.messageHandler.plan.replyEffectStatus !== "applied" &&
+        !ownerConfirmedDraft) ||
+      !context.runtime.actions.some(
+        (action) => action.name === OWNER_TODOS_ACTION,
+      )
+    ) {
+      return false;
+    }
+    return (await routedOwnerTodoDraft(context)) !== null;
+  },
+  async evaluate(context) {
+    const draft = await routedOwnerTodoDraft(context);
+    if (!draft) {
+      return undefined;
+    }
+    return {
+      requiresTool: true,
+      addContexts: ["tasks"],
+      clearCandidateActions: true,
+      addCandidateActions: [OWNER_TODOS_ACTION],
+      clearParentActionHints: true,
+      addParentActionHints: [OWNER_TODOS_ACTION],
+      clearReply: true,
+      debug: [
+        `pending owner Todo draft "${draft.request.title}" requires a durable OWNER_TODOS result before completion`,
+      ],
+    };
+  },
+};
 
 function formatPromptRecord(value: unknown): string {
   if (value === null || value === undefined) {

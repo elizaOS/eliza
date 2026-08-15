@@ -7,7 +7,13 @@
  * than a hand-rolled fragment. The dynamic Google connector import is stubbed so
  * init runs without the optional third-party plugin present.
  */
-import type { IAgentRuntime, Plugin, TaskWorker, UUID } from "@elizaos/core";
+import {
+  getDirectActionRoutingRules,
+  type IAgentRuntime,
+  type Plugin,
+  type TaskWorker,
+  type UUID,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Isolate PA's own init wiring (registries, workers, policies, the scheduler
@@ -108,6 +114,21 @@ describe("personalAssistantPlugin.init scheduler identity", () => {
     } else {
       process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = originalEnv;
     }
+  });
+
+  it("registers first-turn action routes before plugin discovery yields", async () => {
+    const { runtime } = createRecordingRuntime();
+
+    const initialization = personalAssistantPlugin.init?.({}, runtime);
+
+    expect(getDirectActionRoutingRules(runtime).map((rule) => rule.id)).toEqual(
+      expect.arrayContaining([
+        "lifeops.owner-todo-undated-create",
+        "lifeops.owner-reminder-create",
+        "lifeops.tracked-work-recap",
+      ]),
+    );
+    await initialization;
   });
 
   it("registers the LifeOps worker identity even when the scheduler is disabled", async () => {

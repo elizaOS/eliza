@@ -73,6 +73,8 @@ describe("DefinitionsDomain unscheduled cadence boundary", () => {
       kind: "task",
       title: "Undated task",
     });
+    expect(repository.createDefinition).toHaveBeenCalledTimes(1);
+    expect(repository.createDefinition).toHaveBeenCalledWith(result.definition);
     expect(deps.refreshDefinitionOccurrences).toHaveBeenCalledWith(
       expect.objectContaining({
         cadence: { kind: "unscheduled" },
@@ -83,7 +85,35 @@ describe("DefinitionsDomain unscheduled cadence boundary", () => {
       "00000000-0000-0000-0000-000000000001",
       result.definition.id,
     );
-    expect(result.performance).toBeDefined();
+    expect(result.performance).toEqual({
+      lastCompletedAt: null,
+      lastSkippedAt: null,
+      lastActivityAt: null,
+      totalScheduledCount: 0,
+      totalCompletedCount: 0,
+      totalSkippedCount: 0,
+      totalPendingCount: 0,
+      currentOccurrenceStreak: 0,
+      bestOccurrenceStreak: 0,
+      currentPerfectDayStreak: 0,
+      bestPerfectDayStreak: 0,
+      last7Days: {
+        scheduledCount: 0,
+        completedCount: 0,
+        skippedCount: 0,
+        pendingCount: 0,
+        completionRate: 0,
+        perfectDayCount: 0,
+      },
+      last30Days: {
+        scheduledCount: 0,
+        completedCount: 0,
+        skippedCount: 0,
+        pendingCount: 0,
+        completionRate: 0,
+        perfectDayCount: 0,
+      },
+    });
   });
 
   it.each(["habit", "routine"] as const)(

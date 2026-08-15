@@ -20,6 +20,10 @@ import {
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import {
+  normalizeKeywordMatchText,
+  textStatesExplicitRecurrence,
+} from "@elizaos/shared";
+import {
   LIFEOPS_REMINDER_INTENSITIES,
   type LifeOpsReminderIntensity,
 } from "../../contracts/index.js";
@@ -29,6 +33,7 @@ import {
 } from "../../lifeops/defaults.js";
 import { normalizeExplicitTimeZoneToken } from "../../lifeops/time/timezone.js";
 import { getZonedDateParts } from "../../lifeops/time.js";
+import { UNDATED_TODO_EXTRACTION_GUIDANCE } from "./undated-todo-intent.js";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -92,6 +97,47 @@ const VALID_REQUEST_KINDS = new Set(["alarm", "reminder"]);
 const VALID_CREATE_PLAN_MODES = new Set(["create", "respond"]);
 const DEFAULT_CREATE_PLAN_RESPONSE =
   "Restate the reminder in one sentence with the task and timing.";
+
+const UNSPECIFIED_SCHEDULE_DIRECTIVE_SOURCE = [
+  String.raw`\bi\s+(?:(?:have|had)\s+not|haven['’]?t|hadn['’]?t|did\s+not|didn['’]?t|still\s+(?:have|need)\s+to)\s+(?:say|said|specify|specified|give|given|decide|decided)\s+(?:when|the\s+(?:date|day|time|timing|schedule))\b`,
+  String.raw`\bwithout\s+(?:saying|specifying|giving|deciding)\s+(?:when|the\s+(?:date|day|time|timing|schedule))\b`,
+  String.raw`\bno\s+(?:date|day|time|timing|schedule)(?:\s*(?:or|and|\/)\s*(?:date|day|time|timing|schedule))*(?:\s+(?:yet|provided|specified|given|decided|set))?\b`,
+  String.raw`\b(?:the\s+)?(?:date|day|time|timing|schedule)\s+(?:is\s+)?(?:not|isn['’]?t)\s+(?:provided|specified|given|decided|set)\b`,
+  String.raw`\b(?:do\s+not|don['’]?t)\s+(?:guess|pick|infer|assume|invent|choose|make\s+up)\s+(?:a\s+|the\s+)?(?:date|day|time|timing|schedule)\b`,
+  String.raw`\bask\s+me\s+(?:when|for\s+(?:a\s+|the\s+)?(?:date|day|time|timing|schedule))\b`,
+].join("|");
+
+const EXPLICIT_ONE_SHOT_SCHEDULE_RE =
+  /\b(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening|weekend|week|month)|next\s+(?:day|week|month|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|monday|tuesday|wednesday|thursday|friday|saturday|sunday|morning|afternoon|evening|noon|midnight|january|february|march|april|may|june|july|august|september|october|november|december)\b|\b(?:at|around|by|before|after)\s+\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?\b|\b(?:on|by|before|after)?\s*(?:the\s+)?\d{1,2}(?:st|nd|rd|th)\b|\bin\s+\d+\s+(?:minutes?|hours?|days?|weeks?|months?)\b|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/iu;
+
+/** True when the current owner text itself supplies a schedule. */
+export function textStatesExplicitSchedule(text: string): boolean {
+  const normalized = normalizeKeywordMatchText(text);
+  return (
+    textStatesExplicitRecurrence(normalized) ||
+    EXPLICIT_ONE_SHOT_SCHEDULE_RE.test(normalized)
+  );
+}
+
+/**
+ * True when the owner explicitly says a schedule is still unknown or tells
+ * the agent not to invent one. A later concrete time directive wins, so a
+ * correction such as "I had not said when; use Friday" remains actionable.
+ */
+export function textExplicitlyLeavesScheduleUnspecified(text: string): boolean {
+  const normalized = normalizeKeywordMatchText(text);
+  const matches = [
+    ...normalized.matchAll(
+      new RegExp(UNSPECIFIED_SCHEDULE_DIRECTIVE_SOURCE, "giu"),
+    ),
+  ];
+  const directive = matches.at(-1);
+  if (!directive || directive.index === undefined) {
+    return false;
+  }
+  const suffix = normalized.slice(directive.index + directive[0].length);
+  return !textStatesExplicitSchedule(suffix);
+}
 
 const EMPTY_TASK_CREATE_PLAN: ExtractedTaskCreatePlan = {
   mode: "respond",
@@ -170,7 +216,7 @@ function buildExtractionPrompt(
     "- title: short name for the task (2-5 words)",
     "- description: brief description if the user provided context",
     '- cadenceKind: one of "unscheduled", "once", "daily", "weekly", "times_per_day", "interval"',
-    '  - "unscheduled" — ONLY when the user explicitly declines a date or schedule for this item ("no due date", "no time needed", "just a plain todo", "someday"). A merely omitted date is NOT unscheduled — keep asking via mode="respond" as before.',
+    UNDATED_TODO_EXTRACTION_GUIDANCE,
     '  - "once" — a specific dated and/or timed event that happens a single time (e.g. "april 17 at 8pm", "tomorrow at 9", "set an alarm for 7am")',
     '  - "daily" — happens every day, typically with one time or window (e.g. "every morning", "every night")',
     '  - "weekly" — happens on specific weekdays (e.g. "every Sunday", "Mon/Wed/Fri")',
@@ -178,6 +224,7 @@ function buildExtractionPrompt(
     '  - "interval" — happens every N minutes/hours (e.g. "every 2 hours")',
     '  If the request names a specific calendar date OR a specific wall-clock time without a recurrence word, pick "once".',
     '  A deadline phrase IS a dated "once" task: "by the 20th" / "before Friday" / "due on the 28th" means cadenceKind="once" with the deadline as its date (dueDate for a named date, dueWeekday for a weekday). Never use mode="respond" to ask for an exact time on a deadline ask — the owner already gave the date that matters.',
+    '  If the owner explicitly says they have not provided the date/time yet or tells you not to guess one, choose mode="respond", leave cadenceKind and every due/time field null, and ask when. Never invent a default schedule against that instruction.',
     "- windows: list of time windows like [morning, night, afternoon, evening]",
     "- weekdays: list of weekday numbers (0=Sun, 1=Mon, ..., 6=Sat) for weekly tasks",
     '- timeOfDay: specific time in HH:MM 24h format like "15:00" or "08:30" if mentioned',
@@ -370,6 +417,8 @@ function buildRepairPrompt(args: {
     'mode must be "create" or "respond".',
     "If mode is respond, include a short clarifying response.",
     "If mode is create, response must be null.",
+    "",
+    UNDATED_TODO_EXTRACTION_GUIDANCE,
     "",
     `User request: ${promptText(args.intent)}`,
     "Recent conversation:",
