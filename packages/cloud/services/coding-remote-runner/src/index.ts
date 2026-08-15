@@ -239,7 +239,7 @@ async function routeRequest(
   context: RunnerContext,
 ): Promise<Response> {
   if (request.method === "GET" && url.pathname === "/health") {
-    return publicHealthResponse(context.config);
+    return publicHealthResponse();
   }
 
   const routeKey = `${request.method} ${url.pathname}`;
@@ -256,13 +256,8 @@ async function routeRequest(
     : jsonResponse(404, { error: "not found" });
 }
 
-function publicHealthResponse(config: RunnerConfig): Response {
-  return jsonResponse(200, {
-    ok: true,
-    workspaceRoot: config.workspaceRoot,
-    containerWorkspaceRoot: config.containerWorkspaceRoot,
-    authConfigured: Boolean(config.token),
-  });
+function publicHealthResponse(): Response {
+  return jsonResponse(200, { ok: true });
 }
 
 function privateHealthResponse(config: RunnerConfig): Response {
