@@ -33,6 +33,7 @@ import {
 	ROLE_RANK,
 	recordOwnerGrant,
 	recordRoleGrant,
+	resolveCanonicalOwnerId,
 	resolveEntityRole,
 	resolveWorldForMessage,
 } from "./roles.ts";
@@ -104,6 +105,25 @@ describe("getEntityRole", () => {
 		expect(getEntityRole(meta, "e1")).toBe("ADMIN");
 		expect(getEntityRole(meta, "e2")).toBe("GUEST");
 		expect(getEntityRole(undefined, "e1")).toBe("GUEST");
+	});
+});
+
+describe("resolveCanonicalOwnerId", () => {
+	it("rejects legacy connector platform IDs before UUID-backed role lookups", () => {
+		const runtime = {
+			agentId: "agent-1",
+			getSetting: () => null,
+		} as IAgentRuntime;
+		expect(
+			resolveCanonicalOwnerId(runtime, {
+				ownership: { ownerId: "1830340867737178112" },
+			}),
+		).toBeNull();
+		expect(
+			resolveCanonicalOwnerId(runtime, {
+				ownership: { ownerId: "74324797-3dee-09e3-8c56-526a3caa1a69" },
+			}),
+		).toBe("74324797-3dee-09e3-8c56-526a3caa1a69");
 	});
 });
 
@@ -555,8 +575,8 @@ describe("connector metadata is registry-driven, not Discord-special-cased (#120
 	});
 
 	it("uses stored sender metadata when live connector metadata has no stable id", async () => {
-		const ownerEntityId = "owner-entity";
-		const senderEntityId = "sender-entity";
+		const ownerEntityId = "00000000-0000-0000-0000-000000000101";
+		const senderEntityId = "00000000-0000-0000-0000-000000000102";
 		const runtime = {
 			agentId: "agent-1",
 			getSetting: () => undefined,
