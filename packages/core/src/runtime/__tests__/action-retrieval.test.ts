@@ -143,11 +143,10 @@ describe("action catalogue and retrieval", () => {
 		});
 	});
 
-	it("resolves a simile candidate hint to its catalog parent (BASH -> SHELL)", () => {
-		// The live regression this locks: Stage-1 hints candidateActions=["BASH"]
-		// (the documented canonical hint) but the parent action is named SHELL with
-		// BASH only as a simile. Without simile resolution the hint is dead and the
-		// surface cut hands the planner unrelated keyword matches instead.
+	it("normalizes simile candidate hints before resolving catalog parents", () => {
+		// Stage-1 producers may use lower- or camel-cased spellings while action
+		// metadata remains canonical. Both must resolve through the same exact-hint
+		// path rather than falling through to unrelated keyword matches.
 		const catalog = buildActionCatalog([
 			{
 				name: "SHELL",
@@ -157,15 +156,17 @@ describe("action catalogue and retrieval", () => {
 			},
 			...actions,
 		]);
-		const response = retrieveActions({
-			catalog,
-			messageText: "how much disk space is left on the server",
-			candidateActions: ["BASH"],
-		});
-		expect(response.results[0]).toMatchObject({
-			name: "SHELL",
-			matchedBy: expect.arrayContaining(["exact"]),
-		});
+		for (const candidateAction of ["bash", "runCommand"]) {
+			const response = retrieveActions({
+				catalog,
+				messageText: "how much disk space is left on the server",
+				candidateActions: [candidateAction],
+			});
+			expect(response.results[0]).toMatchObject({
+				name: "SHELL",
+				matchedBy: expect.arrayContaining(["exact"]),
+			});
+		}
 	});
 
 	it("drops a simile claimed by multiple parents instead of first-writer-wins (#16561)", () => {
@@ -251,7 +252,7 @@ describe("action catalogue and retrieval", () => {
 		const response = retrieveActions({
 			catalog,
 			messageText: "message my contact",
-			candidateActions: ["EMAIL"],
+			candidateActions: ["email"],
 		});
 		expect(response.results[0]?.name).toBe("EMAIL");
 	});
