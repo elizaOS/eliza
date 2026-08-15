@@ -108,6 +108,11 @@ import {
 } from "./runtime/turn-controller";
 import { BM25 } from "./search";
 import {
+	locateConfiguredSecretFragmentTaint,
+	type SecretFragment,
+	type SecretFragmentTaint,
+} from "./security/fragment-redaction.js";
+import {
 	authorizeOwnerExclusiveDisclosure,
 	CompositeEntityRecognizer,
 	DEFAULT_PSEUDONYM_BLOCKLIST,
@@ -11296,6 +11301,15 @@ ${section_end}`;
 			return text;
 		}
 		return redactWithSecrets(text, { secrets, applyPatterns: true });
+	}
+
+	locateConfiguredSecretFragmentTaint(
+		fragments: readonly SecretFragment[],
+	): SecretFragmentTaint {
+		return locateConfiguredSecretFragmentTaint(
+			fragments,
+			this.getSecretsForRedaction(),
+		);
 	}
 
 	async clearAllAgentMemories(): Promise<void> {
