@@ -74,10 +74,14 @@ describe("Shared reminder cron", () => {
   test("two concurrent sweeps delegate one delivery to the runner CAS", async () => {
     const requests: Request[] = [];
     globalThis.fetch = mock(async (input, init) => {
-      requests.push(new Request(input, init));
+      const request = new Request(input, init);
+      requests.push(request);
+      const body = (await request.clone().json()) as Record<string, unknown>;
       return Response.json({
         success: true,
+        idempotencyKey: body.idempotencyKey,
         acceptedAt: "2026-08-14T20:00:00.100Z",
+        providerMessageIds: ["provider-message-1"],
       });
     }) as typeof fetch;
 
@@ -131,9 +135,13 @@ describe("Shared reminder cron", () => {
   test("routes Discord and Blooio through their provider-owned destinations", async () => {
     const requests: Request[] = [];
     globalThis.fetch = mock(async (input, init) => {
-      requests.push(new Request(input, init));
+      const request = new Request(input, init);
+      requests.push(request);
+      const body = (await request.clone().json()) as Record<string, unknown>;
       return Response.json({
         success: true,
+        idempotencyKey: body.idempotencyKey,
+        acceptedAt: "2026-08-15T20:00:00.100Z",
         providerMessageIds: [`provider-${requests.length}`],
       });
     }) as typeof fetch;
@@ -229,6 +237,75 @@ describe("Shared reminder cron", () => {
       raced: 0,
       deferred: 1,
       failed: 0,
+    });
+  });
+
+  for (const payload of [
+    {},
+    { success: true },
+    {
+      success: true,
+      idempotencyKey: "wrong-occurrence",
+      acceptedAt: "2026-08-14T20:00:00.100Z",
+      providerMessageIds: ["provider-message-1"],
+    },
+    {
+      success: true,
+      idempotencyKey: "reminder-1:2026-08-14T20:00:00.000Z",
+      acceptedAt: "not-a-date",
+      providerMessageIds: ["provider-message-1"],
+    },
+    {
+      success: true,
+      idempotencyKey: "reminder-1:2026-08-14T20:00:00.000Z",
+      acceptedAt: "2026-08-14T20:00:00.100Z",
+      providerMessageIds: [],
+    },
+  ]) {
+    test("does not fire from an unverified 2xx connector response", async () => {
+      globalThis.fetch = mock(async () => Response.json(payload)) as typeof fetch;
+
+      await expect(processDueSharedReminders(env)).resolves.toEqual({
+        scanned: 1,
+        fired: 0,
+        raced: 0,
+        deferred: 1,
+        failed: 0,
+      });
+    });
+  }
+
+  test("preserves explicit pre-provider rejection on a 503 response", async () => {
+    const dispatcher = sharedReminderDispatcher(env);
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        {
+          success: false,
+          acceptance: "not_accepted",
+          retryable: true,
+        },
+        { status: 503 },
+      ),
+    ) as typeof fetch;
+
+    await expect(
+      dispatcher.dispatch({
+        taskId: "reminder-1",
+        promptInstructions: "stand up",
+        firedAtIso: "2026-08-14T20:00:00.000Z",
+        metadata: {
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            chatId: "123456789",
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "rate_limited",
+      retryAfterMinutes: 1,
+      acceptance: "not_accepted",
     });
   });
 });

@@ -159,7 +159,9 @@ async function sendBlooioMessage(
       `Blooio send error (${response.status}): ${responseText}`,
     );
   }
-  if (!responseText) return [];
+  if (!responseText) {
+    throw new Error("Blooio accepted delivery without a provider receipt");
+  }
   let result: unknown;
   try {
     result = JSON.parse(responseText);
@@ -168,7 +170,9 @@ async function sendBlooioMessage(
     // message receipt before the scheduler records the occurrence as fired.
     throw new Error("Blooio accepted delivery without a valid JSON receipt");
   }
-  if (!result || typeof result !== "object") return [];
+  if (!result || typeof result !== "object") {
+    throw new Error("Blooio accepted delivery without a provider receipt");
+  }
   const record = result as Record<string, unknown>;
   const id =
     typeof record.id === "string"
@@ -176,7 +180,10 @@ async function sendBlooioMessage(
       : typeof record.message_id === "string"
         ? record.message_id
         : undefined;
-  return id ? [id] : [];
+  if (!id?.trim()) {
+    throw new Error("Blooio accepted delivery without a provider receipt");
+  }
+  return [id.trim()];
 }
 
 // Blooio's documented verification contract rejects deliveries older than
