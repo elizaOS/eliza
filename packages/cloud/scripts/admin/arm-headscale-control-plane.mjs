@@ -707,8 +707,25 @@ validate_retirable_legacy_vhost() {
   legacy_upgrade_map_external_references=$(printf '%s\\n' \\
     "$legacy_upgrade_map_external_reference_profile" \\
     | awk -F '\\t' '{ count += $2 } END { print count + 0 }')
+  legacy_upgrade_map_managed_references=$(printf '%s\\n' \\
+    "$legacy_upgrade_map_external_reference_profile" \\
+    | awk -F '\\t' -v managed="\${HS_VHOST:-}" \\
+        '$1 == managed { count += $2 } END { print count + 0 }')
+  legacy_upgrade_map_external_path_count=$(printf '%s\\n' \\
+    "$legacy_upgrade_map_external_reference_profile" \\
+    | awk -F '\\t' 'NF == 2 { count += 1 } END { print count + 0 }')
+  # The managed vhost is backed up and replaced before legacy removal, then
+  # this validator runs again. No other loaded owner or reference count is safe.
+  legacy_upgrade_map_has_reviewed_managed_overlap=false
   if [ "$legacy_has_upgrade_map" = "true" ] \\
-      && [ "$legacy_upgrade_map_external_references" -ne 0 ]; then
+      && [ "$legacy_upgrade_map_external_references" -eq 2 ] \\
+      && [ "$legacy_upgrade_map_managed_references" -eq 2 ] \\
+      && [ "$legacy_upgrade_map_external_path_count" -eq 1 ]; then
+    legacy_upgrade_map_has_reviewed_managed_overlap=true
+  fi
+  if [ "$legacy_has_upgrade_map" = "true" ] \\
+      && [ "$legacy_upgrade_map_external_references" -ne 0 ] \\
+      && [ "$legacy_upgrade_map_has_reviewed_managed_overlap" != "true" ]; then
     echo "legacy Headscale upgrade-map output is referenced outside the reviewed file (paths and counts only):"
     printf '%s\\n' "$legacy_upgrade_map_external_reference_profile" \\
       | awk -F '\\t' '{ printf "path=%s references=%d\\n", $1, $2 }'
@@ -1156,6 +1173,7 @@ HS_RETIRABLE_LEGACY_VHOST=${shellQuote(retirableLegacyVhost ?? "")}
 HS_REQUIRE_RETIRABLE_LEGACY_VHOST=true
 HS_ENFORCE_LEGACY_VHOST_DIRECTIVE_ALLOWLIST=false
 HS_REVIEWED_LEGACY_VHOST_SHA256=""
+HS_VHOST=/etc/nginx/conf.d/headscale.conf
 
 if [ -z "$HS_RETIRABLE_LEGACY_VHOST" ] \\
     || ! sudo test -e "$HS_RETIRABLE_LEGACY_VHOST"; then
@@ -1171,9 +1189,9 @@ echo "reviewed-sha256=$legacy_vhost_sha256"
 echo "--- reviewed nginx directive-name inventory (values withheld) ---"
 printf '%s\\n' "$legacy_vhost_directives" | sort | uniq -c
 if [ "$legacy_has_upgrade_map" = "true" ]; then
-  echo "reviewed-upgrade-map=headscale-websocket-v1 external-references=0"
+  echo "reviewed-upgrade-map=headscale-websocket-v1 managed-references=$legacy_upgrade_map_managed_references unmanaged-references=$((legacy_upgrade_map_external_references - legacy_upgrade_map_managed_references))"
 else
-  echo "reviewed-upgrade-map=absent external-references=0"
+  echo "reviewed-upgrade-map=absent managed-references=0 unmanaged-references=0"
 fi
 echo "reviewed-shape=server-blocks:$legacy_server_block_count server-names:$legacy_server_name_count exact-host:$HS_LEGACY_HOST"
 echo "Legacy Headscale vhost passed the read-only retirement preflight"
