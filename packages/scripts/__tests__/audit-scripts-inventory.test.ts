@@ -128,11 +128,6 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
         reason:
           "2/24 tests parse docs/testing/hitl-identity-slots.md, deleted from the tree; lifeops-owner repair tracked in #19448",
       },
-      {
-        file: "scripts/lifeops/env-layers.test.mjs",
-        reason:
-          "1/14 tests pin a stale layered-env consumer list; lifeops-owner repair tracked in #19448",
-      },
     ]);
     expect(inv.summary.totalScriptTests).toBe(inv.scriptTests.discoveredCount);
   });
