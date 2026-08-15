@@ -32,23 +32,26 @@ export const listCloudAppsAction: Action = {
   name: "LIST_CLOUD_APPS",
   // "LIST_APPS" is deliberately NOT claimed: plugin-app-control's APP action
   // owns it for device-installed apps, and a simile claimed by two parents is
-  // dropped from routing as ambiguous (#16561).
+  // dropped from routing as ambiguous (#16561). Every simile stays explicitly
+  // cloud-qualified (#17363): generic aliases like MY_APPS / GET_APPS /
+  // WHAT_APPS_DO_I_HAVE collide with local installed-app ownership and let an
+  // ambiguous "my apps" turn land on the cloud inventory.
   similes: [
-    "MY_APPS",
-    "GET_APPS",
-    "WHAT_APPS_DO_I_HAVE",
     "MY_CLOUD_APPS",
     "CLOUD_APPS",
+    "GET_CLOUD_APPS",
+    "WHAT_CLOUD_APPS_DO_I_HAVE",
     "LIST_ELIZA_CLOUD_APPS",
     "MY_DEPLOYED_APPS",
-    "MY_SITES",
+    "MY_HOSTED_APPS",
+    "MY_CLOUD_SITES",
   ],
   description:
     "List the Eliza Cloud apps the user owns — the hosted apps and sites they created or deployed on Eliza Cloud (name, URL, deployment status, and credits/earnings when present). Use when the user asks what apps they have, to see their apps, their cloud apps, or the sites/apps they've made or deployed. Not for apps installed or running on this device.",
   descriptionCompressed:
     "List the user's Eliza Cloud apps (name/url/status); not locally installed apps.",
   routingHint:
-    "The user's own Eliza Cloud apps -> LIST_CLOUD_APPS. 'List my apps', 'my cloud apps', 'what apps do I have on eliza cloud', 'sites/apps I've made or deployed' is LIST_CLOUD_APPS; apps installed or running on this device are APP (NOT this action).",
+    "The user's own Eliza Cloud apps -> LIST_CLOUD_APPS. 'List my cloud apps', 'my deployed apps', 'what apps do I have on eliza cloud' is LIST_CLOUD_APPS; a generic 'list my apps' and apps installed or running on this device are APP (NOT this action). Read-only inventory: launching, opening, deleting, creating, or deploying an app is never this action.",
   // Read-only inventory lookup; safe on any user turn. "general" mirrors the
   // APP action's rationale (#9950): Stage-1 routinely classifies unambiguous
   // app asks ("list my cloud apps") as general context; without it this
@@ -75,6 +78,12 @@ export const listCloudAppsAction: Action = {
         success: false,
         text: "No Eliza Cloud API key configured.",
         userFacingText: NO_KEY_MESSAGE,
+        // A sole handled failure whose callback text IS the complete honest
+        // outcome: verified + turnComplete let the terminal failure gate end
+        // the turn with exactly one reply instead of an evaluator paraphrase
+        // re-delivering it (#17363).
+        verifiedUserFacing: true,
+        turnComplete: true,
         data: { reason: "no_key" },
       };
     }
@@ -91,6 +100,9 @@ export const listCloudAppsAction: Action = {
         success: false,
         text: "Failed to list Eliza Cloud apps.",
         userFacingText: ERROR_MESSAGE,
+        // Same single-delivery contract as the no-key path (#17363).
+        verifiedUserFacing: true,
+        turnComplete: true,
         error: err instanceof Error ? err : new Error(String(err)),
         data: { reason: "error" },
       };
@@ -103,6 +115,11 @@ export const listCloudAppsAction: Action = {
         success: true,
         text: "User has no Eliza Cloud apps.",
         userFacingText: EMPTY_MESSAGE,
+        // The empty inventory IS the complete answer: verified + turnComplete
+        // keep the evaluator from paraphrasing the already-delivered callback
+        // text into a second bubble (#17363).
+        verifiedUserFacing: true,
+        turnComplete: true,
         data: { count: 0, apps: [] },
       };
     }
@@ -138,7 +155,10 @@ export const listCloudAppsAction: Action = {
 
   examples: [
     [
-      { name: "{{user}}", content: { text: "what apps do I have?" } },
+      {
+        name: "{{user}}",
+        content: { text: "what apps do I have on eliza cloud?" },
+      },
       {
         name: "{{agent}}",
         content: {

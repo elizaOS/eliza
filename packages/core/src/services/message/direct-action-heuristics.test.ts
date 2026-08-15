@@ -1156,13 +1156,44 @@ describe("cloud-apps surface request inference", () => {
 		}
 	});
 
-	it("falls back to local APP when no cloud-apps action is registered", () => {
+	it("never degrades a cloud-qualified ask to local APP when no cloud-apps action is registered (#17363)", () => {
 		expect(
 			inferDirectCurrentRequestCandidateActions(
 				[viewsAction, appAction],
 				"list my cloud apps",
 			),
-		).toEqual(["VIEWS", "APP"]);
+		).toEqual(["VIEWS"]);
+	});
+
+	it("leaves cloud lifecycle/mutation asks to the full planner (#17363)", () => {
+		for (const message of [
+			"launch my cloud app",
+			"delete my deployed app",
+			"open the cloud app settings",
+			"create a new cloud app",
+			"deploy my app to the cloud",
+			"restart the hosted app",
+		]) {
+			const candidates = inferDirectCurrentRequestCandidateActions(
+				[viewsAction, appAction, cloudAppsAction],
+				message,
+			);
+			expect(candidates).not.toContain("LIST_CLOUD_APPS");
+			expect(candidates).not.toContain("APP");
+		}
+	});
+
+	it("leaves compound cloud inventory turns to the full planner (#17363)", () => {
+		for (const message of [
+			"list my cloud apps and then delete the old one",
+			"show my cloud apps; also check my agents",
+		]) {
+			const candidates = inferDirectCurrentRequestCandidateActions(
+				[viewsAction, appAction, cloudAppsAction],
+				message,
+			);
+			expect(candidates).not.toContain("LIST_CLOUD_APPS");
+		}
 	});
 
 	it("resolves the cloud action by simile when the canonical name differs", () => {

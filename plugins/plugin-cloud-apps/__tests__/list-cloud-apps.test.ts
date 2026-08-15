@@ -140,9 +140,11 @@ describe("LIST_CLOUD_APPS", () => {
           .count,
       ).toBe(0);
       expect(cb.calls[0]?.text).toContain("haven't created any apps");
-      // The canned empty message is not a verified terminal answer — the
-      // evaluator still runs and may add guidance (e.g. how to create one).
-      expect(result?.turnComplete).toBeUndefined();
+      // The empty inventory IS the complete answer (#17363): verified +
+      // turnComplete keep the evaluator from paraphrasing the delivered
+      // callback text into a second user-visible bubble.
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
     });
 
     it("degrades gracefully when no Cloud API key is configured", async () => {
@@ -161,6 +163,11 @@ describe("LIST_CLOUD_APPS", () => {
           .reason,
       ).toBe("no_key");
       expect(cb.calls[0]?.text).toContain("no Cloud API key");
+      // A sole handled failure that already delivered its explanation owns
+      // the turn (#17363): success stays false while verified + turnComplete
+      // let the terminal failure gate end it with exactly one reply.
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
     });
 
     it("handles a Cloud API error without throwing", async () => {
@@ -181,6 +188,9 @@ describe("LIST_CLOUD_APPS", () => {
           .reason,
       ).toBe("error");
       expect(cb.calls[0]?.text).toContain("couldn't fetch");
+      // Same single-delivery contract as the no-key path (#17363).
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
     });
 
     it("does not translate a callback failure into an API error", async () => {
@@ -209,5 +219,26 @@ describe("LIST_CLOUD_APPS", () => {
       expect(delivered[0]).toContain("Delivered Once");
       expect(delivered[0]).not.toContain("Cloud API returned an error");
     });
+  });
+});
+
+// #17363: generic aliases (MY_APPS, GET_APPS, WHAT_APPS_DO_I_HAVE, MY_SITES)
+// collide with local installed-app ownership; every routing alias must stay
+// explicitly cloud/deployed/hosted-qualified.
+describe("LIST_CLOUD_APPS aliases stay cloud-specific", () => {
+  it("carries no generic installed-app alias", () => {
+    const generic = [
+      "MY_APPS",
+      "GET_APPS",
+      "WHAT_APPS_DO_I_HAVE",
+      "MY_SITES",
+      "LIST_APPS",
+    ];
+    for (const alias of generic) {
+      expect(listCloudAppsAction.similes ?? []).not.toContain(alias);
+    }
+    for (const alias of listCloudAppsAction.similes ?? []) {
+      expect(/CLOUD|DEPLOYED|HOSTED|ELIZA/.test(alias)).toBe(true);
+    }
   });
 });

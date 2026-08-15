@@ -1383,13 +1383,74 @@ const CLOUD_APP_QUALIFIER_TOKENS: ReadonlySet<string> = new Set<string>([
 	"HOSTED",
 ]);
 
+// Lifecycle/mutation verbs that disqualify an app-shaped ask from the
+// read-only cloud inventory surface (#17363). "launch my cloud app" or
+// "delete the deployed app" must stay with the full planner (and the
+// lifecycle-owning actions it arbitrates), never be pinned to
+// LIST_CLOUD_APPS by the incidental cloud qualifier. Compared in
+// singular-normalized token space.
+const APP_LIFECYCLE_VERB_TOKENS: ReadonlySet<string> = new Set<string>([
+	"LAUNCH",
+	"OPEN",
+	"START",
+	"RUN",
+	"STOP",
+	"CLOSE",
+	"KILL",
+	"RESTART",
+	"DELETE",
+	"REMOVE",
+	"UNINSTALL",
+	"INSTALL",
+	"CREATE",
+	"MAKE",
+	"BUILD",
+	"DEPLOY",
+	"REDEPLOY",
+	"PUBLISH",
+	"UPDATE",
+	"EDIT",
+	"RENAME",
+	"CONFIGURE",
+	"SETTING",
+]);
+
+// Positive inventory evidence: at least one of these must appear for a
+// cloud-qualified app ask to be treated as a read-only inventory request.
+const APP_INVENTORY_EVIDENCE_TOKENS: ReadonlySet<string> = new Set<string>([
+	"LIST",
+	"SHOW",
+	"WHAT",
+	"WHICH",
+	"SEE",
+	"VIEW",
+	"DISPLAY",
+	"GET",
+	"HAVE",
+	"MY",
+	"MINE",
+	"INVENTORY",
+]);
+
+// Multi-clause connectives: a compound turn ("list my cloud apps and then
+// delete the old one") carries more than one request, so the deterministic
+// inventory pin must yield to the full planner (#17363).
+const COMPOUND_APP_REQUEST_PATTERN =
+	/\b(?:and|then|also|after(?:wards)?|next|plus)\b|;/iu;
+
 // Resolve the app action an app-shaped message targets. A cloud qualifier next
 // to the APP token pins the ask to the user's hosted Eliza Cloud apps, where
 // the local app-control action is wrong by its own routing contract — without
 // this the cloud-apps action is never on the planner surface and the local APP
-// action wins by forfeit. Falls back to the local app-control surface when no
-// cloud-apps action is registered, so those runtimes keep their previous
-// candidates.
+// action wins by forfeit.
+//
+// The cloud pin is deliberately narrow (#17363): only a single-clause,
+// read-only inventory request qualifies. Lifecycle/mutation verbs and
+// compound turns yield NO deterministic app candidate — the full planner
+// arbitrates them — and a cloud-qualified ask never degrades to the
+// local-device app-control action, whether the cloud action is absent or the
+// ask is lifecycle-shaped: local installed-app inventory would silently
+// answer a question about hosted Eliza Cloud apps.
 function findAppActionNameForAppRequest(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 	messageText: string,
@@ -1401,11 +1462,12 @@ function findAppActionNameForAppRequest(
 		return undefined;
 	}
 	if (tokens.some((token) => CLOUD_APP_QUALIFIER_TOKENS.has(token))) {
-		const cloudAppsAction = findAvailableActionName(
-			actions,
-			CLOUD_APPS_ACTION_NAMES,
-		);
-		if (cloudAppsAction) return cloudAppsAction;
+		const isSingleClauseInventoryAsk =
+			!tokens.some((token) => APP_LIFECYCLE_VERB_TOKENS.has(token)) &&
+			tokens.some((token) => APP_INVENTORY_EVIDENCE_TOKENS.has(token)) &&
+			!COMPOUND_APP_REQUEST_PATTERN.test(messageText);
+		if (!isSingleClauseInventoryAsk) return undefined;
+		return findAvailableActionName(actions, CLOUD_APPS_ACTION_NAMES);
 	}
 	return findAvailableActionName(actions, APP_CONTROL_ACTION_NAMES);
 }

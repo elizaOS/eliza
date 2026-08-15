@@ -1,5 +1,5 @@
 /**
- * Live-lane scenario: a real LLM answers "what apps do I have?" against the
+ * Live-lane scenario: a real LLM answers "what apps do I have on eliza cloud?" against the
  * Eliza Cloud Apps read surface. Needs live model credentials (live-only lane).
  */
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
@@ -43,7 +43,7 @@ function expectCloudAppsListResult(ctx: ScenarioContext): string | undefined {
  * Live trajectory for the Eliza Cloud Apps read-core (#10218).
  *
  * FOLLOW-UP EVIDENCE — lane: "live-only". This needs BOTH a live model (to route
- * "what apps do I have?" to LIST_CLOUD_APPS) AND a real `ELIZAOS_CLOUD_API_KEY`
+ * "what apps do I have on eliza cloud?" to LIST_CLOUD_APPS) AND a real `ELIZAOS_CLOUD_API_KEY`
  * (so `client.listApps()` reaches Eliza Cloud). It is intentionally excluded
  * from the keyless `pr-deterministic` lane: LIST_CLOUD_APPS calls the Cloud API,
  * which cannot be satisfied by a proxy fixture. Run it manually with a key:
@@ -58,7 +58,7 @@ function expectCloudAppsListResult(ctx: ScenarioContext): string | undefined {
 export default scenario({
   id: "cloud-apps-read-core",
   lane: "live-only",
-  title: "Eliza Cloud Apps read-core: what apps do I have?",
+  title: "Eliza Cloud Apps read-core: what apps do I have on eliza cloud?",
   domain: "cloud-apps",
   status: "active",
   requires: {
@@ -68,7 +68,7 @@ export default scenario({
     {
       kind: "message",
       name: "user asks for their cloud apps",
-      text: "what apps do I have?",
+      text: "what apps do I have on eliza cloud?",
     },
   ],
   finalChecks: [
