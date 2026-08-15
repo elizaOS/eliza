@@ -2003,7 +2003,7 @@ describe("runLifeOperationHandler explicitly undated owner todos", () => {
       return "";
     });
 
-    const result = await runLifeOperationHandler(
+    const preview = await runLifeOperationHandler(
       runtime,
       makeMessage("add submit expense report tomorrow as a todo"),
       undefined,
@@ -2017,7 +2017,35 @@ describe("runLifeOperationHandler explicitly undated owner todos", () => {
       } as HandlerOptions,
     );
 
-    expect(result.success).toBe(true);
+    expect(preview.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+    expect(preview.data).toMatchObject({
+      actionName: "OWNER_TODOS",
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+      preview: {
+        cadence: { kind: "once" },
+        kind: "task",
+        title: "Submit expense report",
+      },
+    });
+
+    const confirm = await runLifeOperationHandler(
+      runtime,
+      makeMessage("yes, save that todo"),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "definition",
+          ownerSurface: "OWNER_TODOS",
+          intent: "save the submit expense report todo",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(confirm.success).toBe(true);
     expect(serviceState.createCalls).toHaveLength(1);
     expect(serviceState.createCalls[0]).toMatchObject({
       cadence: { kind: "once" },
