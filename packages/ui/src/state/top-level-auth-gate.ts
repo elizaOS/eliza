@@ -52,16 +52,23 @@ export function topLevelAuthGateOwnsSurface(
  * resolves starts agent/status/chat pollers that all 401. First-run still owns
  * its in-chat login surface, so this only applies to normal post-onboarding
  * sessions.
+ *
+ * `preserveMountedOnboardingShell` is the one deliberate exception: a shell
+ * that already hosted onboarding stays mounted while the completion-edge auth
+ * probe resolves, because swapping it for StartupScreen remounts ChatOverlay
+ * and destroys its FULL -> HALF completion transition. The caller must bound
+ * that flag to the completion edge (clear it once the probe settles) so a
+ * later credential refetch still holds the shell at the auth boundary.
  */
 export function authProbeShouldHoldShell(
   coordinatorPhase: string,
   firstRunComplete: boolean | null | undefined,
   authPhase: string,
-  shellAlreadyMounted = false,
+  preserveMountedOnboardingShell = false,
 ): boolean {
   return (
     authPhase === "loading" &&
-    !shellAlreadyMounted &&
+    !preserveMountedOnboardingShell &&
     !firstRunOwnsLoginSurface(coordinatorPhase, firstRunComplete)
   );
 }

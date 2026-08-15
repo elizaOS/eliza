@@ -2004,22 +2004,6 @@ function AppContent() {
     startupCoordinator.phase,
     firstRunCloudProvisionedContainer,
   );
-  // The first-run chat must survive its completion edge. Completion starts an
-  // auth probe, but replacing the already-painted shell with StartupScreen
-  // remounts ChatOverlay and loses its FULL -> HALF transition state. Returning
-  // sessions still hold before their first shell paint; only a shell that
-  // actually hosted onboarding may remain mounted while this probe resolves.
-  const firstRunShellPaintedRef = useRef(false);
-  // Record during render rather than an effect: stored-session adoption can
-  // complete onboarding in the same commit that first paints the shell, so an
-  // effect would run too late to protect the immediately-following auth probe.
-  if (
-    isShellPaintableNow &&
-    !bootstrapGateHolds &&
-    firstRunComplete === false
-  ) {
-    firstRunShellPaintedRef.current = true;
-  }
   // Runtime-target adoption can remount the shell on the exact render where
   // first-run completes. Retain that completion edge above the remount and let
   // the next ChatOverlay acknowledge it after applying the HALF detent.
@@ -2120,6 +2104,40 @@ function AppContent() {
       (isAgentlessCloudOrigin &&
         firstRunOwnsLoginSurface(startupCoordinator.phase, firstRunComplete)),
   });
+  // The first-run chat must survive its completion edge. Completion starts an
+  // auth probe, but replacing the already-painted shell with StartupScreen
+  // remounts ChatOverlay and loses its FULL -> HALF transition state. Remember
+  // only a shell painted while first-run owned the login surface, and forget
+  // it as soon as that probe resolves so a later credential refetch still
+  // returns to the startup/auth boundary instead of exposing the shell.
+  const onboardingShellMountedRef = useRef(false);
+  const firstRunOwnsAuthSurface = firstRunOwnsLoginSurface(
+    startupCoordinator.phase,
+    firstRunComplete,
+  );
+  // Record during render as well as in the settle effect below: stored-session
+  // adoption can complete onboarding in the same commit that first paints the
+  // shell, and the completion-edge probe must already see the shell as mounted
+  // on that render — the effect alone would run one commit too late.
+  if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
+    onboardingShellMountedRef.current = true;
+  }
+  useEffect(() => {
+    if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
+      onboardingShellMountedRef.current = true;
+    } else if (authState.phase !== "loading") {
+      onboardingShellMountedRef.current = false;
+    }
+  }, [
+    authState.phase,
+    bootstrapGateHolds,
+    firstRunOwnsAuthSurface,
+    isShellPaintableNow,
+  ]);
+  const preserveMountedOnboardingShell =
+    onboardingShellMountedRef.current &&
+    firstRunComplete === true &&
+    authState.phase === "loading";
   // #15132: after a dedicated cloud agent's container upgrade the persisted
   // agent credential is stale (every agent-subdomain call 401s) while the cloud
   // session is still valid. Rather than dead-end at the agent's internal
@@ -2716,7 +2734,7 @@ function AppContent() {
         startupCoordinator.phase,
         firstRunComplete,
         authState.phase,
-        firstRunShellPaintedRef.current,
+        preserveMountedOnboardingShell,
       )
     ) {
       return (

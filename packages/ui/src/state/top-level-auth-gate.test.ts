@@ -112,6 +112,12 @@ describe("authProbeShouldHoldShell — pre-auth poll suppression", () => {
       false,
     );
   });
+
+  it("still holds an ordinary shell when a later auth probe starts", () => {
+    expect(authProbeShouldHoldShell("ready", true, "loading", false)).toBe(
+      true,
+    );
+  });
 });
 
 describe("shouldShowRemoteAgentPairingGate — LAN standalone agent auth", () => {
