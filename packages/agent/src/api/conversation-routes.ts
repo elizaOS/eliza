@@ -3487,6 +3487,7 @@ export async function handleConversationRoutes(
             if (result.imported) importedScheduledTasks += 1;
             else skippedScheduledTasks += 1;
           } catch (err) {
+            // error-policy:J1 the conversation import boundary reports the exact failing task.
             error(
               res,
               `Scheduled task import failed at task ${i}: ${getErrorMessage(err)}`,
@@ -3508,6 +3509,7 @@ export async function handleConversationRoutes(
               if (result.activated) activatedScheduledTasks += 1;
               else skippedActivatedScheduledTasks += 1;
             } catch (err) {
+              // error-policy:J1 the conversation import boundary reports the exact failing task.
               error(
                 res,
                 `Scheduled task activation failed at task ${i}: ${getErrorMessage(err)}`,

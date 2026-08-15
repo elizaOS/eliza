@@ -135,6 +135,7 @@ export async function deliverInternalMessage(
       acceptedAt,
     });
   } catch (error) {
+    // error-policy:J1 the connector boundary releases ownership and returns a retryable failure.
     await dependencies.redis.del(dedupeKey);
     logger.error("Shared reminder delivery failed", {
       project: delivery.project,

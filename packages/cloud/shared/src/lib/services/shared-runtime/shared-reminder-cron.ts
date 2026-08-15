@@ -69,6 +69,7 @@ function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher {
           signal: AbortSignal.timeout(10_000),
         });
       } catch (error) {
+        // error-policy:J1 connector dispatch returns an explicit unknown-acceptance failure.
         return {
           ok: false,
           reason: "transport_error",

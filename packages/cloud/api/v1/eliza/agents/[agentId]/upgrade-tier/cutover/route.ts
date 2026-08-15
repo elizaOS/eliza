@@ -298,6 +298,7 @@ app.post("/", async (c) => {
           token: sealToken,
         });
       } catch (error) {
+        // error-policy:J1 the cutover boundary translates an ownership conflict for retry.
         if (error instanceof SharedReminderCutoverConflictError) {
           return json(
             {
