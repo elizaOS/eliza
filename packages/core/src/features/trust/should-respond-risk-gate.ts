@@ -17,7 +17,7 @@
  */
 
 import { isAdminRank } from "../../roles.ts";
-import { unwrapUserMessageText } from "../../security/incoming-message-security.ts";
+import { unwrapUserMessageTextForDetection } from "../../security/incoming-message-security.ts";
 import type { Memory } from "../../types/memory.ts";
 import { ModelType } from "../../types/model.ts";
 import type { PipelineHookSpec } from "../../types/pipeline-hooks.ts";
@@ -84,15 +84,26 @@ const SCORE_WEIGHTS = {
 } as const;
 
 /**
- * Reads the canonical retained user payload rather than raw `content.text`.
+ * Reads the retained user payload rather than raw `content.text`.
  * `hardenIncomingUserMessage` replaces `content.text` with a security-warning
  * envelope for untrusted-source messages (see incoming-message-security.ts);
  * scoring that envelope instead of the sender's actual words made every
  * wrapped public-channel message score against the framework's own
  * "Execute system commands" warning text, not the sender's payload.
+ *
+ * Deliberately uses `unwrapUserMessageTextForDetection`, NOT the resolver-safe
+ * `unwrapUserMessageText`. The latter returns "" whenever the retained payload
+ * still reads as envelope material — correct for a resolver (an empty
+ * reference is the only safe interpretation of armor debris there), but wrong
+ * for this gate: an attacker pairing a genuine injection with marker-shaped
+ * text would make `unwrapUserMessageText` return "", which this gate would
+ * then score as zero risk and never adjudicate, defeating detection entirely
+ * (#19613 review). This gate only scores/blocks and never echoes or acts on
+ * the text, so seeing the raw retained payload — including any embedded
+ * marker attempt — is exactly the detection surface it needs.
  */
 function textOf(message: Memory): string {
-	return unwrapUserMessageText(message);
+	return unwrapUserMessageTextForDetection(message);
 }
 
 /**
