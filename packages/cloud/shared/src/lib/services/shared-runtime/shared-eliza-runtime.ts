@@ -18,6 +18,7 @@ import {
   type ToolChoice,
   type ToolDefinition,
 } from "@elizaos/core/edge";
+import { webSearchEdgeAction, webSearchEdgePlugin } from "@elizaos/plugin-web-search/edge";
 import { generateText, type JSONSchema7, jsonSchema, type ModelMessage, type ToolSet } from "ai";
 import { getInteractiveCerebrasLanguageModel } from "../../providers/language-model";
 import type {
@@ -110,7 +111,7 @@ export async function runSharedElizaRuntimeTurn(
   const modelHandler = async (
     _runtime: IAgentRuntime,
     params: GenerateTextParams,
-  ): Promise<NativeTextModelResult> => {
+  ): Promise<string | NativeTextModelResult> => {
     if (!providerDispatched) {
       providerDispatched = true;
       await input.onProviderDispatch?.();
@@ -130,6 +131,9 @@ export async function runSharedElizaRuntimeTurn(
       ...(params.signal ? { abortSignal: params.signal } : {}),
     });
     usage = addUsage(usage, normalizeUsage(result.usage));
+    if (result.toolCalls.length === 0) {
+      return result.text;
+    }
     return {
       text: result.text,
       toolCalls: result.toolCalls.map((call) => ({
@@ -166,9 +170,9 @@ export async function runSharedElizaRuntimeTurn(
       },
     },
     adapter,
-    plugins: [modelPlugin],
+    plugins: [modelPlugin, webSearchEdgePlugin],
     logLevel: "error",
-    actionPlanning: false,
+    actionPlanning: true,
     checkShouldRespond: false,
     enableAutonomy: false,
     enableDocuments: false,
@@ -178,6 +182,9 @@ export async function runSharedElizaRuntimeTurn(
 
   try {
     await runtime.initialize({ skipMigrations: true });
+    if (!runtime.actions.some((action) => action.name === webSearchEdgeAction.name)) {
+      throw new Error("Eliza Shared runtime initialized without its WEB_SEARCH action");
+    }
     const entityId = stringToUuid(`${input.agentKey}:owner`);
     const roomId = stringToUuid(`${input.agentKey}:conversation`);
     await runtime.ensureConnection({

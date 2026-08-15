@@ -11,19 +11,15 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { searchKeylessWeb } from "@elizaos/core";
 import {
   failureToActionResult,
   readNumberParam,
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
-import { guardedTextHttpRequest } from "../lib/web-http.js";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
 
-const PARALLEL_MCP_URL = "https://search.parallel.ai/mcp";
-const EXA_MCP_URL = "https://mcp.exa.ai/mcp";
-const WEB_SEARCH_READ_BYTES = 256 * 1024;
-const WEB_SEARCH_RESULT_CHARS = 4_000;
 const DEFAULT_NUM_RESULTS = 6;
 
 function readBooleanEnv(name: string): boolean | undefined {
@@ -51,52 +47,6 @@ export function isCodingWebSearchEnabled(): boolean {
   const inline = readBooleanEnv("ELIZA_INLINE_WEB_SEARCH");
   if (inline !== undefined) return inline;
   return true;
-}
-
-function parseMcpResultText(body: string): string | undefined {
-  const fromPayload = (payload: string): string | undefined => {
-    const trimmed = payload.trim();
-    if (!trimmed.startsWith("{")) return undefined;
-    try {
-      const data = JSON.parse(trimmed) as {
-        error?: unknown;
-        result?: { isError?: boolean; content?: Array<{ text?: string }> };
-      };
-      if (data.error || data.result?.isError) return undefined;
-      const text = data.result?.content?.find((item) => item.text)?.text;
-      return text && text.trim().length > 0 ? text : undefined;
-    } catch {
-      return undefined;
-    }
-  };
-  const direct = fromPayload(body);
-  if (direct) return direct;
-  for (const line of body.split("\n")) {
-    if (!line.startsWith("data: ")) continue;
-    const parsed = fromPayload(line.slice(6));
-    if (parsed) return parsed;
-  }
-  return undefined;
-}
-
-async function callSearchMcp(
-  url: string,
-  toolName: string,
-  args: Record<string, unknown>,
-): Promise<string | undefined> {
-  const response = await guardedTextHttpRequest(url, {
-    method: "POST",
-    maxBytes: WEB_SEARCH_READ_BYTES,
-    headers: { Accept: "application/json, text/event-stream" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: { name: toolName, arguments: args },
-    }),
-  });
-  if (!response.ok) return undefined;
-  return parseMcpResultText(response.text);
 }
 
 export const webSearchAction: Action = {
@@ -155,21 +105,8 @@ export const webSearchAction: Action = {
         : DEFAULT_NUM_RESULTS;
 
     try {
-      let provider = "parallel";
-      let results = await callSearchMcp(PARALLEL_MCP_URL, "web_search", {
-        objective: query,
-        search_queries: [query],
-      });
-      if (!results) {
-        provider = "exa";
-        results = await callSearchMcp(EXA_MCP_URL, "web_search_exa", {
-          query,
-          type: "auto",
-          numResults,
-          livecrawl: "fallback",
-        });
-      }
-      if (!results) {
+      const result = await searchKeylessWeb(query, { resultCount: numResults });
+      if (!result) {
         const result = failureToActionResult(
           { reason: "no_match", message: "search returned no usable results" },
           { action: "WEB_SEARCH", provider: null },
@@ -177,17 +114,14 @@ export const webSearchAction: Action = {
         return result;
       }
 
-      const value =
-        results.length > WEB_SEARCH_RESULT_CHARS
-          ? `${results.slice(0, WEB_SEARCH_RESULT_CHARS)}\n[truncated]`
-          : results;
-      return successActionResult(value, {
+      return successActionResult(result.text, {
         action: "WEB_SEARCH",
-        provider,
-        result_chars: value.length,
-        truncated: results.length > WEB_SEARCH_RESULT_CHARS,
+        provider: result.provider,
+        result_chars: result.text.length,
+        truncated: result.truncated,
       });
     } catch (error) {
+      // error-policy:J1 Action failures are returned to the planner for recovery.
       const message = error instanceof Error ? error.message : String(error);
       const result = failureToActionResult(
         { reason: "io_error", message },

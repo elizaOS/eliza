@@ -409,6 +409,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-web-search": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
         "tsx": "4.21.0",

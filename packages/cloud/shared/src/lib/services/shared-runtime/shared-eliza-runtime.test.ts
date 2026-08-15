@@ -116,4 +116,163 @@ describe("Shared Eliza Workerd runtime", () => {
       ),
     ).toBe(true);
   });
+
+  test("plans WEB_SEARCH and grounds the final reply in the free search result", async () => {
+    const modelRequests: Array<Record<string, unknown>> = [];
+    const searchRequests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url) === "https://search.parallel.ai/mcp") {
+        searchRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json({
+          jsonrpc: "2.0",
+          id: "shared-web-search",
+          result: {
+            content: [
+              {
+                type: "text",
+                text: "ElizaOS launched a new public release today. Source: https://elizaos.ai/news",
+              },
+            ],
+          },
+        });
+      }
+
+      const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      modelRequests.push(request);
+      const call = modelRequests.length;
+      if (call === 1) {
+        return Response.json({
+          id: "chatcmpl-shared-search-stage-one",
+          object: "chat.completion",
+          created: 0,
+          model: "gemma-4-31b",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "shared-search-handle-response",
+                    type: "function",
+                    function: {
+                      name: "HANDLE_RESPONSE",
+                      arguments: JSON.stringify({
+                        shouldRespond: "RESPOND",
+                        thought: "Current information requires public web search.",
+                        contexts: ["web"],
+                        intents: [],
+                        candidateActionNames: ["WEB_SEARCH"],
+                        requiresTool: true,
+                        replyText: "",
+                        replyEffectStatus: "none",
+                        facts: [],
+                        relationships: [],
+                        addressedTo: [],
+                      }),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: { prompt_tokens: 30, completion_tokens: 12, total_tokens: 42 },
+        });
+      }
+      if (call === 2) {
+        return Response.json({
+          id: "chatcmpl-shared-search-plan",
+          object: "chat.completion",
+          created: 0,
+          model: "gemma-4-31b",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "shared-search-action",
+                    type: "function",
+                    function: {
+                      name: "WEB_SEARCH",
+                      arguments: JSON.stringify({ query: "latest ElizaOS news" }),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: { prompt_tokens: 40, completion_tokens: 10, total_tokens: 50 },
+        });
+      }
+      return Response.json({
+        id: "chatcmpl-shared-search-finish",
+        object: "chat.completion",
+        created: 0,
+        model: "gemma-4-31b",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content:
+                call === 5
+                  ? "A new ElizaOS public release was announced today, according to the project news page."
+                  : JSON.stringify({
+                      success: true,
+                      decision: "FINISH",
+                      thought: "Answer from the public result.",
+                      messageToUser:
+                        "A new ElizaOS public release was announced today, according to the project news page.",
+                    }),
+            },
+            finish_reason: "stop",
+          },
+        ],
+        usage: { prompt_tokens: 50, completion_tokens: 14, total_tokens: 64 },
+      });
+    }) as typeof fetch;
+
+    const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+    const result = await runSharedAgentTurn({
+      character: {
+        name: "Shared Eliza",
+        system: "You are Eliza.",
+        model: "gemma-4-31b",
+      },
+      history: [],
+      message: "What is the latest ElizaOS news?",
+      messageIds: {
+        user: "6328e4cb-4a1f-4d9c-a2fd-769e5fd33aa1",
+        assistant: "059e33bc-8215-49f4-841f-7642e7505bc7",
+      },
+      execution: {
+        engine: "eliza-runtime",
+        agentKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
+      },
+    });
+
+    expect(searchRequests).toHaveLength(1);
+    expect(searchRequests[0]).toMatchObject({
+      method: "tools/call",
+      params: {
+        name: "web_search",
+        arguments: { objective: "latest ElizaOS news" },
+      },
+    });
+    expect(result.reply).toBe(
+      "A new ElizaOS public release was announced today, according to the project news page.",
+    );
+    expect(modelRequests).toHaveLength(3);
+    expect(result.usage).toMatchObject({
+      promptTokens: 120,
+      completionTokens: 36,
+      totalTokens: 156,
+    });
+  });
 });

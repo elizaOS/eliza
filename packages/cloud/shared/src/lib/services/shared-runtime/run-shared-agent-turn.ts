@@ -221,9 +221,10 @@ function buildSystemPrompt(character: SharedAgentCharacter): string {
   }
   parts.push(
     "Shared runtime boundaries:\n" +
-      "- You can converse, reason, draft, and help the user plan.\n" +
-      "- You have no external tools, live browser, connected accounts, calendar, reminders, calling, messaging, purchasing, notes store, shell, filesystem, or code execution in this runtime.\n" +
-      "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, searched live data, or changed anything outside this conversation.\n" +
+      "- You can converse, reason, draft, help the user plan, and use WEB_SEARCH for current public information.\n" +
+      "- WEB_SEARCH reads public results only; it does not operate websites, access accounts, submit forms, or make changes.\n" +
+      "- You have no connected accounts, calendar, reminders, calling, messaging, purchasing, notes store, shell, filesystem, browser control, or code execution in this runtime.\n" +
+      "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything outside this conversation.\n" +
       "- When an ambiguous follow-up asks you to execute a prior external action, state that the action needs Dedicated and offer the useful planning or drafting help you can provide here.",
   );
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;

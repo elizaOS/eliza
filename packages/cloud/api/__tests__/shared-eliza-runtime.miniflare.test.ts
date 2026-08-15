@@ -15,6 +15,8 @@ describe("Shared Eliza runtime in Workerd", () => {
   let miniflare: Miniflare;
   let modelServer: ReturnType<typeof Bun.serve>;
   const modelRequests: Array<Record<string, unknown>> = [];
+  const outboundRequests: string[] = [];
+  let searchPlannerRequests = 0;
   const liveModelUrl = process.env.SHARED_ELIZA_LIVE_MODEL_URL?.replace(
     /\/+$/,
     "",
@@ -28,6 +30,115 @@ describe("Shared Eliza runtime in Workerd", () => {
       async fetch(request) {
         const body = (await request.json()) as Record<string, unknown>;
         modelRequests.push(body);
+        if (JSON.stringify(body).includes("latest ElizaOS release")) {
+          searchPlannerRequests += 1;
+          if (searchPlannerRequests === 1) {
+            return Response.json({
+              id: "chatcmpl-workerd-search-stage-one",
+              object: "chat.completion",
+              created: 0,
+              model: "shared-runtime-probe",
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: "assistant",
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: "workerd-search-stage-one",
+                        type: "function",
+                        function: {
+                          name: "HANDLE_RESPONSE",
+                          arguments: JSON.stringify({
+                            shouldRespond: "RESPOND",
+                            contexts: ["web"],
+                            intents: [],
+                            candidateActionNames: ["WEB_SEARCH"],
+                            requiresTool: true,
+                            replyText: "",
+                            replyEffectStatus: "none",
+                            facts: [],
+                            relationships: [],
+                            addressedTo: [],
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+              usage: {
+                prompt_tokens: 30,
+                completion_tokens: 12,
+                total_tokens: 42,
+              },
+            });
+          }
+          if (searchPlannerRequests === 2) {
+            return Response.json({
+              id: "chatcmpl-workerd-search-plan",
+              object: "chat.completion",
+              created: 0,
+              model: "shared-runtime-probe",
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: "assistant",
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: "workerd-search-action",
+                        type: "function",
+                        function: {
+                          name: "WEB_SEARCH",
+                          arguments: JSON.stringify({
+                            query: "latest ElizaOS release",
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+              usage: {
+                prompt_tokens: 40,
+                completion_tokens: 10,
+                total_tokens: 50,
+              },
+            });
+          }
+          return Response.json({
+            id: "chatcmpl-workerd-search-finish",
+            object: "chat.completion",
+            created: 0,
+            model: "shared-runtime-probe",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: JSON.stringify({
+                    success: true,
+                    decision: "FINISH",
+                    thought: "Answer from the public web result.",
+                    messageToUser:
+                      "I found the latest ElizaOS release through the live public search plugin.",
+                  }),
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 50,
+              completion_tokens: 14,
+              total_tokens: 64,
+            },
+          });
+        }
         if (liveModelUrl && liveModelId) {
           return await fetch(`${liveModelUrl}/chat/completions`, {
             method: "POST",
@@ -155,6 +266,16 @@ describe("Shared Eliza runtime in Workerd", () => {
     miniflare = new Miniflare({
       compatibilityDate: "2026-04-01",
       compatibilityFlags: ["nodejs_compat"],
+      outboundService: async (request: Request) => {
+        outboundRequests.push(request.url);
+        return await fetch(request.url, {
+          method: request.method,
+          headers: Object.fromEntries(request.headers),
+          ...(request.method === "GET" || request.method === "HEAD"
+            ? {}
+            : { body: await request.arrayBuffer() }),
+        });
+      },
       bindings: {
         NODE_ENV: "production",
         OPENROUTER_API_KEY: "workerd-shared-runtime-key",
@@ -218,4 +339,32 @@ describe("Shared Eliza runtime in Workerd", () => {
       ),
     ).toBe(true);
   }, 120_000);
+
+  test.skipIf(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH !== "1")(
+    "plans and runs the genuine edge search plugin inside Workerd",
+    async () => {
+      const response = await miniflare.dispatchFetch(
+        "https://runtime.test/search-turn",
+      );
+      const body = await response.text();
+      expect(outboundRequests, body).toContain(
+        "https://search.parallel.ai/mcp",
+      );
+      expect(response.status, body).toBe(200);
+      const result = JSON.parse(body) as {
+        reply: string;
+        degraded: boolean;
+        usage?: { totalTokens?: number };
+      };
+      expect(result).toMatchObject({
+        reply:
+          "I found the latest ElizaOS release through the live public search plugin.",
+        degraded: false,
+        usage: { totalTokens: 156 },
+      });
+      expect(searchPlannerRequests).toBe(3);
+      expect(modelRequests).toHaveLength(4);
+    },
+    120_000,
+  );
 });

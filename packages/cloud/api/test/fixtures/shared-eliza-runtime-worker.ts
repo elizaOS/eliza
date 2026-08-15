@@ -3,6 +3,7 @@
  * deterministic OpenAI-compatible endpoint supplies the model response.
  */
 
+import { searchKeylessWeb } from "@elizaos/core/edge";
 import { runWithCloudBindingsAsync } from "../../../shared/src/lib/runtime/cloud-bindings";
 import { runSharedAgentTurn } from "../../../shared/src/lib/services/shared-runtime/run-shared-agent-turn";
 
@@ -13,8 +14,35 @@ type Env = {
 };
 
 export default {
-  async fetch(_request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     return await runWithCloudBindingsAsync(env, async () => {
+      const url = new URL(request.url);
+      if (url.pathname === "/search-turn") {
+        const result = await runSharedAgentTurn({
+          character: {
+            name: "Shared Eliza Workerd Probe",
+            system: "You are Eliza.",
+            model: "local/shared-runtime-probe",
+          },
+          history: [],
+          message: "What is the latest ElizaOS release?",
+          messageIds: {
+            user: "6328e4cb-4a1f-4d9c-a2fd-769e5fd33aa1",
+            assistant: "059e33bc-8215-49f4-841f-7642e7505bc7",
+          },
+          execution: {
+            engine: "eliza-runtime",
+            agentKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
+          },
+        });
+        return Response.json(result);
+      }
+      if (url.pathname === "/search") {
+        const result = await searchKeylessWeb(url.searchParams.get("q") ?? "");
+        return Response.json(result ?? { error: "search unavailable" }, {
+          status: result ? 200 : 503,
+        });
+      }
       const result = await runSharedAgentTurn({
         character: {
           name: "Shared Eliza Workerd Probe",

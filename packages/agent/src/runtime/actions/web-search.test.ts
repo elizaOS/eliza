@@ -2,7 +2,7 @@
  * Behavioral and routing-contract tests for the WEB_SEARCH action:
  * inline-vs-server capability gating, provider fallback (parallel → exa),
  * response parsing, result-length capping, and fresh-data handoff to WEB_FETCH.
- * DNS and the pinned fetch to each MCP endpoint are stubbed, so no real network.
+ * The shared transport fetch is stubbed, so no real network leaves the suite.
  */
 import type {
   ActionParameters,
@@ -11,16 +11,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  __setDnsLookupImplForTests,
-  __setPinnedFetchImplForTests,
-} from "../custom-actions.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { webSearch } from "./web-search.ts";
-
-// A public IP so resolveUrlSafety skips real DNS and hits the pinned-fetch
-// impl, which we mock — no real network for either MCP endpoint.
-const PUBLIC_IP = "93.184.216.34";
 
 const mcpJson = (text: string): string =>
   JSON.stringify({
@@ -44,21 +36,22 @@ const mcpToolError = (text: string): string =>
   });
 
 /**
- * Route each provider's mocked body by hostname (parallel vs exa). A missing
- * key returns HTTP 500 so the action treats that provider as failed.
+ * Route each provider's mocked body by hostname. A missing key returns HTTP
+ * 500 so the action treats that provider as failed.
  */
 function mockProviders(byHost: { parallel?: string; exa?: string }): void {
-  __setDnsLookupImplForTests(async () => [{ address: PUBLIC_IP, family: 4 }]);
-  __setPinnedFetchImplForTests(async ({ url }) => {
-    const host = (url as URL).hostname;
+  vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+    const host = new URL(String(input)).hostname;
     if (host.includes("parallel")) {
       return new Response(byHost.parallel ?? "", {
         status: byHost.parallel === undefined ? 500 : 200,
+        headers: { "content-type": "application/json" },
       });
     }
     if (host.includes("exa")) {
       return new Response(byHost.exa ?? "", {
         status: byHost.exa === undefined ? 500 : 200,
+        headers: { "content-type": "application/json" },
       });
     }
     return new Response("", { status: 404 });
@@ -90,8 +83,7 @@ describe("WEB_SEARCH action", () => {
   const originalServer = process.env.ELIZA_SERVER_WEB_SEARCH;
 
   afterEach(() => {
-    __setPinnedFetchImplForTests(null);
-    __setDnsLookupImplForTests(null);
+    vi.unstubAllGlobals();
     if (original === undefined) delete process.env.ELIZA_WEB_SEARCH;
     else process.env.ELIZA_WEB_SEARCH = original;
     if (originalInline === undefined)
@@ -209,6 +201,7 @@ describe("WEB_SEARCH action", () => {
     mockProviders({ parallel: mcpJson("y".repeat(20_000)) });
     const { result } = await runHandler({ query: "x" });
     expect(result.success).toBe(true);
-    expect((result.text ?? "").length).toBe(4_000);
+    expect((result.text ?? "").length).toBe(4_012);
+    expect(result.data).toMatchObject({ truncated: true });
   });
 });
