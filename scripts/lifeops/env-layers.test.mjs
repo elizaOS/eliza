@@ -524,6 +524,22 @@ function writeSecretInChild(
       ...(${JSON.stringify(options.lockWaitMs ?? null)} === null
         ? {}
         : { lockWaitMs: ${JSON.stringify(options.lockWaitMs ?? null)} }),
+      ...(${JSON.stringify(options.beforeCommitWaitPath ?? null)} === null
+        ? {}
+        : {
+            beforeCommit: (() => {
+              let fired = false;
+              return () => {
+                if (fired) return;
+                fired = true;
+                const wp = ${JSON.stringify(options.beforeCommitWaitPath ?? null)};
+                const deadline = Date.now() + 8000;
+                while (!existsSync(wp) && Date.now() < deadline) {
+                  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+                }
+              };
+            })(),
+          }),
       afterRead: waitPath
         ? () => {
             const deadline = Date.now() + 5000;
@@ -623,13 +639,12 @@ test("an aged live writer keeps lock ownership until its transaction finishes", 
   }
 });
 
-test("a displaced writer fails loudly instead of committing a lost update", async () => {
+test("a usurped advisory lock can neither block nor lose a fenced commit", async () => {
   const base = tempDir("env-layers-owned-lock-");
   try {
     const lockPath = `${join(base, ".env")}.lock`;
     const waitPath = join(base, "release-writer");
     const writer = writeSecretInChild(base, "TOKEN", "secret", waitPath, {
-      allowFailure: true,
       lockWaitMs: 500,
     });
     const started = Date.now();
@@ -642,23 +657,68 @@ test("a displaced writer fails loudly instead of committing a lost update", asyn
     const replacementOwner = `${process.pid}:${"a".repeat(32)}\n`;
     writeFileSync(lockPath, replacementOwner, { mode: 0o600 });
     writeFileSync(waitPath, "go\n");
-    const result = await writer;
+    await writer;
 
-    // Commit-time ownership verification: the displaced writer must not
-    // commit, must leave the usurper's record intact, and must exit loudly
-    // once the held foreign lock starves its retries.
-    assert.notEqual(result.code, 0);
-    assert.match(
-      result.stderr,
-      /lock ownership lost|timed out waiting for lock/,
-    );
+    // The lock is advisory: the displaced writer commits through the
+    // generation fence, and only the record it owns is ever released.
+    const parsed = parseDotenv(readFileSync(join(base, ".env"), "utf8"));
+    assert.equal(parsed.TOKEN, "secret");
     assert.equal(readFileSync(lockPath, "utf8"), replacementOwner);
-    assert.equal(existsSync(join(base, ".env")), false);
     unlinkSync(lockPath);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
 }, 20_000);
+
+test("the verify-vs-commit interleaving cannot lose an update (fence regression)", async () => {
+  // The review's exact order: A reads and pauses before commit; C acquires
+  // the pathname, reads the same stale content; A commits; C commits from
+  // its stale read. The generation fence makes C's first commit lose the
+  // link race, forcing a re-read that includes A's key — both must survive.
+  const base = tempDir("env-layers-fence-order-");
+  try {
+    const goA = join(base, "go-a");
+    const goC = join(base, "go-c");
+    const a = writeSecretInChild(base, "KEY_A", "aaa", null, {
+      beforeCommitWaitPath: goA,
+      lockWaitMs: 200,
+    });
+    const c = writeSecretInChild(base, "KEY_C", "ccc", null, {
+      beforeCommitWaitPath: goC,
+      lockWaitMs: 200,
+    });
+    // Both children are now paused at beforeCommit having read the same
+    // (empty) base. Release A first, give it time to commit, then C.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+    writeFileSync(goA, "go\n");
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 700);
+    writeFileSync(goC, "go\n");
+    await Promise.all([a, c]);
+
+    const parsed = parseDotenv(readFileSync(join(base, ".env"), "utf8"));
+    assert.equal(parsed.KEY_A, "aaa");
+    assert.equal(parsed.KEY_C, "ccc");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+}, 20_000);
+
+test("an external hand-edit between fenced writes is adopted as the base", () => {
+  const base = tempDir("env-layers-external-edit-");
+  try {
+    const envPath = join(base, ".env");
+    writeSecret("FIRST", "one", { scope: "repo", repoRoot: base, processEnv: {} });
+    // Operator hand-edits the converged view after the refresh completed.
+    writeFileSync(envPath, `${readFileSync(envPath, "utf8")}HAND=edit\n`);
+    writeSecret("SECOND", "two", { scope: "repo", repoRoot: base, processEnv: {} });
+    const parsed = parseDotenv(readFileSync(envPath, "utf8"));
+    assert.equal(parsed.FIRST, "one");
+    assert.equal(parsed.HAND, "edit");
+    assert.equal(parsed.SECOND, "two");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
 
 test("a reclaim stampede over a dead owner admits exactly one writer at a time", async () => {
   const base = tempDir("env-layers-reclaim-stampede-");
