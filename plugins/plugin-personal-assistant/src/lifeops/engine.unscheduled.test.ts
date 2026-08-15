@@ -5,8 +5,8 @@
  * extractor's `cadenceKind`. No runtime graph; deterministic.
  */
 import { describe, expect, it } from "vitest";
-import { buildCadenceFromLlmParams } from "../actions/life.ts";
 import type { ExtractedTaskParams } from "../actions/lib/extract-task-plan.ts";
+import { buildCadenceFromLlmParams } from "../actions/life.ts";
 import type { LifeOpsTaskDefinition } from "../contracts/index.js";
 import { materializeDefinitionOccurrences } from "./engine.ts";
 import { normalizeCadence } from "./service-normalize-task.ts";
