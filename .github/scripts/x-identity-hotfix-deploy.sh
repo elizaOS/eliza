@@ -1,24 +1,11 @@
 #!/usr/bin/env bash
-# Converges the exact Eliza X replacement fence and retries its pinned image.
+# Enqueues the pinned Eliza X runtime after its replacement fence is retired.
 set -euo pipefail
 
 agent_id=4602b3be-2c01-4e7e-9cdc-849604e1bef7
 expected_image=ghcr.io/elizaos/eliza-demo@sha256:9b4baaaa657d1c79cee47eb00b6e2f46e2b24729ce7d9b0357e9611f27abdc49
 database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
 database_url="${database_url/sslmode=no-verify/sslmode=require}"
-organization_id="$(psql "$database_url" -v ON_ERROR_STOP=1 -Atc "SELECT organization_id FROM agent_sandboxes WHERE id = '$agent_id' AND status = 'provisioning' AND docker_image = '$expected_image' AND replacement_cleanup_sandbox_id = 'agent-$agent_id' AND replacement_cleanup_node_id = 'eliza-core-prod-5' AND replacement_cleanup_container_name = 'agent-$agent_id' AND replacement_cleanup_attempt_id = 'b4d19d85-3426-407f-88f7-7f4a4bac7778' AND NOT EXISTS (SELECT 1 FROM jobs WHERE agent_id = '$agent_id' AND status IN ('pending','in_progress'))")"
-test -n "$organization_id"
-
-cd /opt/eliza
-TARGET_AGENT_ID="$agent_id" TARGET_ORG_ID="$organization_id" \
-  /home/deploy/.bun/bin/bun --env-file=cloud/.env.local -e '
-    const { elizaSandboxService } = await import("./packages/cloud/shared/src/lib/services/eliza-sandbox.ts");
-    await elizaSandboxService.convergeReplacementCleanupFence(
-      process.env.TARGET_AGENT_ID,
-      process.env.TARGET_ORG_ID,
-    );
-    process.stdout.write("exact X replacement cleanup converged\n");
-  '
 
 psql "$database_url" -v ON_ERROR_STOP=1 <<SQL
 BEGIN;
@@ -32,7 +19,6 @@ BEGIN
       error_message = NULL,
       updated_at = NOW()
   WHERE id = '$agent_id'
-    AND organization_id = '$organization_id'
     AND status = 'provisioning'
     AND docker_image = '$expected_image'
     AND node_id IS NULL
@@ -46,7 +32,7 @@ BEGIN
     );
   GET DIAGNOSTICS changed = ROW_COUNT;
   IF changed <> 1 THEN
-    RAISE EXCEPTION 'converged X placement did not match';
+    RAISE EXCEPTION 'retired X placement did not match';
   END IF;
   INSERT INTO jobs (
     type, status, data, data_storage, agent_id,
