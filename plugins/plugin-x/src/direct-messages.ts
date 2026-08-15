@@ -223,7 +223,7 @@ export class TwitterDirectMessageClient {
     await this.runtime.ensureConnection({
       entityId,
       roomId,
-      userId: senderId,
+      userId: entityId,
       userName: username,
       name: displayName,
       source: "x",

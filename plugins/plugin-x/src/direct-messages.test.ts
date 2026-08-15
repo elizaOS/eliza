@@ -117,6 +117,9 @@ describe("TwitterDirectMessageClient", () => {
 
     await vi.advanceTimersByTimeAsync(15_000);
     expect(handleMessage).toHaveBeenCalledTimes(1);
+    const connection = vi.mocked(runtime.ensureConnection).mock.calls[0]?.[0];
+    expect(connection?.entityId).toBe(connection?.userId);
+    expect(connection?.userId).not.toBe("person-1");
     expect(sendDmToParticipant).toHaveBeenCalledWith("person-1", {
       text: "Hi Alice",
     });
