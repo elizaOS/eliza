@@ -42,11 +42,12 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	// from the streaming scanner's value-exact redaction (guarded-stream
 	// split-equivalence). The structural distinguisher: auth-param BWS appears
 	// BEFORE the "=" (`name = value`), while padding is always glued to its
-	// token — so a glued "=" only accepts an immediate value char or a quoted
-	// value, and BWS'd values (quoted or unquoted) require whitespace before
-	// the "=" too.
+	// token — so a glued "=" accepts an immediate value char, a quoted value,
+	// or one complete unquoted token followed by a comma/end-of-line. That last
+	// boundary preserves valid `name= value` BWS without treating the first word
+	// of `token68= trailing prose` as a parameter value.
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=/~]+)`,
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+((?=[A-Za-z][A-Za-z0-9!#$%&'*+.^_|~-]*(?:=(?:[^=\s]|[ \t]+")|[ \t]+=[ \t]*[^=\s]))[^\r\n]+)(?=[\r\n]|$)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+((?=[A-Za-z][A-Za-z0-9!#$%&'*+.^_|~-]*(?:=(?:[^=\s]|[ \t]+"|[ \t]+[^=\s,]+(?=[ \t]*(?:,|$)))|[ \t]+=[ \t]*[^=\s]))[^\r\n]+)(?=[\r\n]|$)`,
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+([A-Za-z0-9._~+/\-]{8,}={0,})(?=[\r\n]|$)`,
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z0-9._~+/\-]{18,}={0,})(?=[\r\n]|$)`,
 	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
