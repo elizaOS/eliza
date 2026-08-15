@@ -17,11 +17,13 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 const nativeSetTimeout = globalThis.setTimeout;
 
 // Capture every fetch invocation so tests can assert on the request body.
-const fetchCalls: Array<{ url: string; body: unknown }> = [];
+const fetchCalls: Array<{ url: string; method: string; body: unknown }> = [];
 
 // The mock returns a provisioning-pending response so the poll loop keeps
 // running until the test deliberately flips the status to "running".
 let nextStatus = "pending";
+let statusResponseSuccess = true;
+let releaseStatusResponse: (() => void) | null = null;
 
 // --- Controllable poll scheduler ---
 // Production recursively schedules setTimeout(cb, 5000). We capture the
@@ -49,7 +51,31 @@ const clientMock = {
         parsedBody = bodyStr;
       }
     }
-    fetchCalls.push({ url, body: parsedBody });
+    fetchCalls.push({
+      url,
+      method: init?.method?.toUpperCase() ?? "GET",
+      body: parsedBody,
+    });
+
+    if (url === "/api/eliza-app/provisioning-agent") {
+      if (releaseStatusResponse) {
+        await new Promise<void>((resolve) => {
+          const release = releaseStatusResponse;
+          releaseStatusResponse = () => {
+            release?.();
+            resolve();
+          };
+        });
+      }
+      return {
+        success: statusResponseSuccess,
+        data: {
+          status: nextStatus,
+          agentId: null,
+          bridgeUrl: null,
+        },
+      };
+    }
 
     if (url === "/api/eliza-app/onboarding/chat") {
       const isStatusOnly =
@@ -154,6 +180,8 @@ interface ObservedState {
   containerStatus: string;
   isReady: boolean;
   provisioningError: string | null;
+  hasObservedStatus: boolean;
+  sendMessage: (content: string) => Promise<void>;
 }
 
 function mountHook(
@@ -166,6 +194,8 @@ function mountHook(
     containerStatus: "pending",
     isReady: false,
     provisioningError: null,
+    hasObservedStatus: false,
+    sendMessage: async () => undefined,
   };
 
   function TestHarness() {
@@ -179,6 +209,8 @@ function mountHook(
         containerStatus: result.containerStatus,
         isReady: result.isReady,
         provisioningError: result.provisioningError,
+        hasObservedStatus: result.hasObservedStatus,
+        sendMessage: result.sendMessage,
       };
     });
     return React.createElement("div");
@@ -202,6 +234,8 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     setupDom();
     fetchCalls.length = 0;
     nextStatus = "pending";
+    statusResponseSuccess = true;
+    releaseStatusResponse = null;
     capturedTimers = [];
     activeTimers = new Set();
   });
@@ -209,6 +243,64 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
   afterEach(() => {
     activeWindow?.close();
     activeWindow = null;
+  });
+
+  test("organic mount reads status with GET and stops when Dedicated compute is off", async () => {
+    nextStatus = "none";
+    const { getState, unmount } = mountHook(true, null);
+
+    await waitForEffects(150);
+
+    const statusCalls = fetchCalls.filter(
+      (call) => call.url === "/api/eliza-app/provisioning-agent",
+    );
+    expect(statusCalls).toHaveLength(1);
+    expect(statusCalls.every((call) => call.method === "GET")).toBe(true);
+    expect(fetchCalls.some((call) => call.method === "POST")).toBe(false);
+    expect(getState().containerStatus).toBe("none");
+    expect([...activeTimers].filter((timer) => !timer.cleared)).toHaveLength(0);
+
+    unmount();
+  });
+
+  test("a failed initial status read cannot reach legacy chat", async () => {
+    statusResponseSuccess = false;
+    const { getState, unmount } = mountHook(true, null);
+
+    await waitForEffects(150);
+    await getState().sendMessage("hello");
+
+    expect(getState().hasObservedStatus).toBe(false);
+    expect(
+      fetchCalls.filter(
+        (call) =>
+          call.url === "/api/eliza-app/provisioning-agent/chat" &&
+          call.method === "POST",
+      ),
+    ).toHaveLength(0);
+
+    unmount();
+  });
+
+  test("a pending initial status read cannot reach legacy chat", async () => {
+    releaseStatusResponse = () => undefined;
+    const { getState, unmount } = mountHook(true, null);
+
+    await waitForEffects(50);
+    await getState().sendMessage("hello");
+
+    expect(getState().hasObservedStatus).toBe(false);
+    expect(
+      fetchCalls.filter(
+        (call) =>
+          call.url === "/api/eliza-app/provisioning-agent/chat" &&
+          call.method === "POST",
+      ),
+    ).toHaveLength(0);
+
+    releaseStatusResponse?.();
+    await waitForEffects(50);
+    unmount();
   });
 
   test("immediate poll sends statusOnly:true with no message field", async () => {
@@ -228,7 +320,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
       return body?.statusOnly === true;
     });
 
-    expect(pollCalls.length).toBeGreaterThanOrEqual(1);
+    expect(pollCalls).toHaveLength(1);
 
     // Every poll call must have statusOnly:true and must NOT have a message field
     for (const call of pollCalls) {
