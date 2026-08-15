@@ -539,7 +539,7 @@ jobs:
               > "$work/nodes"
             while IFS='|' read -r node_id node_host node_port node_user; do
               echo "NODE $node_id"
-              ssh -i "$work/key" -p "$node_port" \
+              ssh -n -i "$work/key" -p "$node_port" \
                 -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new \
                 -o UserKnownHostsFile="$work/known_hosts" \
                 "$node_user@$node_host" \
