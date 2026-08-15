@@ -51,11 +51,16 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // Prefer the UI-level assistant name when it diverges from the bundled
   // preset entry so renames take effect immediately across prompts/logging.
   const configuredName = configuredUiName || configuredAgentName;
+  // A rename alone must not erase the default operating persona: a custom
+  // name that matches no bundled preset still inherits the default preset
+  // (its {{name}} tokens pick up the custom name at prompt time). Only an
+  // explicit replacement system prompt opts the agent out of that
+  // inheritance (#17026).
   const bundledPreset =
     resolveStylePresetById(uiConfig.presetId, language) ??
     resolveStylePresetByAvatarIndex(uiConfig.avatarIndex, language) ??
     resolveStylePresetByName(configuredName, language) ??
-    (configuredName ? undefined : getDefaultStylePreset(language));
+    (agentEntry?.system ? undefined : getDefaultStylePreset(language));
   const name =
     configuredName ??
     bundledPreset?.name ??

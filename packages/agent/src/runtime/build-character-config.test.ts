@@ -104,18 +104,33 @@ describe("connector credential setting keys", () => {
   });
 });
 
-describe("last-resort character system prompt", () => {
-  it("keeps the configured identity conversational without changing it", () => {
+describe("custom-name persona inheritance", () => {
+  it("inherits the default preset when a custom name matches no preset", () => {
     const character = buildCharacterFromConfig({
       agents: { list: [{ name: "Zzyzx Quorra" }] },
     } as ElizaConfig);
 
-    expect(character.system?.split("\n\n", 1)[0]).toBe(
-      "You are {{name}}, an autonomous AI agent powered by elizaOS.",
-    );
+    // A rename alone must not erase the default operating persona; {{name}}
+    // tokens pick up the custom name at prompt time.
+    expect(character.name).toBe("Zzyzx Quorra");
+    expect(character.system).toContain("You're {{name}}");
+    expect(character.style?.all?.length ?? 0).toBeGreaterThan(0);
+    expect(character.style?.chat?.length ?? 0).toBeGreaterThan(0);
     expect(character.system).not.toMatch(
       /JSON only|Return one JSON object|No prose|fences|markdown/,
     );
+  });
+
+  it("respects an explicit replacement system prompt without preset backfill", () => {
+    const character = buildCharacterFromConfig({
+      agents: {
+        list: [{ name: "Zzyzx Quorra", system: "You are a pirate. Arr." }],
+      },
+    } as ElizaConfig);
+
+    expect(character.system).toContain("You are a pirate. Arr.");
+    expect(character.system).not.toContain("You're {{name}}");
+    expect(character.style).toBeUndefined();
   });
 });
 
