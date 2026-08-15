@@ -22,7 +22,7 @@ import type {
 // DM Configuration
 // ============================================================
 
-type SlackDmConfig = {
+export type SlackDmConfig = {
   /** If false, ignore all incoming Slack DMs. Default: true. */
   enabled?: boolean;
   /** Direct message access policy (default: pairing). */
@@ -33,13 +33,15 @@ type SlackDmConfig = {
   groupEnabled?: boolean;
   /** Optional allowlist for group DM channels (ids or slugs). */
   groupChannels?: Array<string | number>;
+  /** Reply threading for direct messages. */
+  replyToMode?: ReplyToMode;
 };
 
 // ============================================================
 // Channel Configuration
 // ============================================================
 
-type SlackChannelConfig = {
+export type SlackChannelConfig = {
   /** If false, disable the bot in this channel. (Alias for allow: false.) */
   enabled?: boolean;
   /** Legacy channel allow toggle; prefer enabled. */
@@ -63,13 +65,13 @@ type SlackChannelConfig = {
 // Reaction Configuration
 // ============================================================
 
-type SlackReactionNotificationMode = "off" | "own" | "all" | "allowlist";
+export type SlackReactionNotificationMode = "off" | "own" | "all" | "allowlist";
 
 // ============================================================
 // Action Configuration
 // ============================================================
 
-type SlackActionConfig = {
+export type SlackActionConfig = {
   reactions?: boolean;
   messages?: boolean;
   pins?: boolean;
@@ -84,7 +86,7 @@ type SlackActionConfig = {
 // Slash Command Configuration
 // ============================================================
 
-type SlackSlashCommandConfig = {
+export type SlackSlashCommandConfig = {
   /** Enable handling for the configured slash command (default: false). */
   enabled?: boolean;
   /** Slash command name (default: "otto"). */
@@ -110,7 +112,7 @@ export type SlackThreadConfig = {
 // Account Configuration
 // ============================================================
 
-type SlackAccountConfig = {
+export type SlackAccountConfig = {
   /** Optional display name for this account (used in CLI/UI lists). */
   name?: string;
   /** Slack connection mode (socket|http). Default: socket. */

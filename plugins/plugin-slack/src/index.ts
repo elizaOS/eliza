@@ -206,6 +206,19 @@ export {
   stripSlackFormatting,
   truncateText,
 } from "./formatting";
+export {
+  isSlackChannelIdKey,
+  normalizeSlackSlug,
+  SlackAccountPolicyResolver,
+  type SlackAccountPolicyResolverOptions,
+  type SlackConversationKind,
+  type SlackInboundDenyReason,
+  type SlackInboundEventContext,
+  type SlackInboundPolicyDecision,
+  type SlackPairingDecision,
+  SlackPolicyConfigurationError,
+  type SlackPolicyDirectoryClient,
+} from "./policy";
 // Export service for direct access
 export { SlackService } from "./service";
 // Export types
