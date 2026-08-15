@@ -176,6 +176,32 @@ describe("parseFactsAndRelationshipsOutput", () => {
 		]);
 	});
 
+	it("prefers structured tool-call args over conversational preamble text", () => {
+		// Providers running with toolChoice "required" can still emit a
+		// conversational preamble in `text` ("Here are the extracted facts:")
+		// alongside the real structured payload in toolCalls. Reading the
+		// preamble first fails the JSON parse and crashes the stage with
+		// FACTS_MODEL_OUTPUT_INVALID, so the tool-call args must win.
+		const result = parseFactsAndRelationshipsOutput({
+			text: "Here are the extracted facts:",
+			toolCalls: [
+				{
+					arguments:
+						'{"facts":["Alice lives in Paris"],"relationships":[],"thought":"dedup"}',
+				},
+			],
+		});
+		expect(result.facts).toEqual(["Alice lives in Paris"]);
+	});
+
+	it("falls back to text when the tool call carries no usable args", () => {
+		const result = parseFactsAndRelationshipsOutput({
+			text: '{"facts":["b"],"relationships":[],"thought":"t"}',
+			toolCalls: [{ type: "tool-call" }],
+		});
+		expect(result.facts).toEqual(["b"]);
+	});
+
 	it("parses tool-call args under `args` and `params` keys too", () => {
 		const viaArgs = parseFactsAndRelationshipsOutput({
 			toolCalls: [{ args: { facts: ["x"], relationships: [], thought: "" } }],
