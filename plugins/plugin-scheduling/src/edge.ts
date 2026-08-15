@@ -147,6 +147,7 @@ export {
 export {
   createSharedRemindersEdgeAction,
   createSharedRemindersEdgePlugin,
+  SHARED_CUTOVER_GATEWAY_CHANNEL,
   SHARED_REMINDERS_EDGE_COMPATIBILITY,
   type SharedReminderDelivery,
   type SharedRemindersEdgePluginOptions,
