@@ -243,6 +243,7 @@ jobs:
             WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
             SQL
       - name: Cache the clean image and release the failed provision
+        if: false
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -314,6 +315,30 @@ jobs:
             FROM agent_sandboxes
             WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
             SQL
+      - name: Converge the exact replacement cleanup fence
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            database_url="${database_url/sslmode=no-verify/sslmode=require}"
+            organization_id="$(psql "$database_url" -v ON_ERROR_STOP=1 -Atc "SELECT organization_id FROM agent_sandboxes WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'")"
+            test -n "$organization_id"
+            cd /opt/eliza/cloud
+            TARGET_AGENT_ID=4602b3be-2c01-4e7e-9cdc-849604e1bef7 \
+              TARGET_ORG_ID="$organization_id" \
+              /home/deploy/.bun/bin/bun --env-file=.env.local -e '
+                const { elizaSandboxService } = await import("./packages/cloud/shared/src/lib/services/eliza-sandbox.ts");
+                await elizaSandboxService.convergeReplacementCleanupFence(
+                  process.env.TARGET_AGENT_ID,
+                  process.env.TARGET_ORG_ID,
+                );
+                process.stdout.write("exact replacement cleanup converged\n");
+              '
 
   changes:
     name: Classify changed paths
