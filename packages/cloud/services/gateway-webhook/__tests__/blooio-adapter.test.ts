@@ -353,6 +353,21 @@ describe("blooio sendReply", () => {
     ).resolves.toEqual({ providerMessageIds: ["out_receipt_1"] });
   });
 
+  for (const responseBody of ["", "{}", '{"accepted":true}']) {
+    test(`rejects a 2xx response without a durable receipt: ${responseBody || "empty"}`, async () => {
+      globalThis.fetch = (async () =>
+        new Response(responseBody, { status: 200 })) as typeof fetch;
+
+      await expect(
+        blooioAdapter.sendReplyWithReceipt?.(
+          makeConfig(),
+          chatEvent,
+          "remember this",
+        ),
+      ).rejects.toThrow(/provider receipt|valid JSON receipt/);
+    });
+  }
+
   test("pins a v4 reply to the exact inbound WhatsApp channel", async () => {
     let body: Record<string, unknown> = {};
     globalThis.fetch = (async (
@@ -360,7 +375,7 @@ describe("blooio sendReply", () => {
       init?: RequestInit,
     ) => {
       body = JSON.parse(String(init?.body));
-      return new Response("{}", { status: 200 });
+      return Response.json({ id: "out_whatsapp_1" });
     }) as typeof fetch;
 
     await blooioAdapter.sendReply(
@@ -387,7 +402,7 @@ describe("blooio sendReply", () => {
       init?: RequestInit,
     ) => {
       body = JSON.parse(String(init?.body));
-      return new Response("{}", { status: 200 });
+      return Response.json({ id: "out_priority_1" });
     }) as typeof fetch;
 
     await blooioAdapter.sendReply(
@@ -441,7 +456,7 @@ describe("blooio sendTypingIndicator", () => {
     let called = false;
     globalThis.fetch = (async () => {
       called = true;
-      return new Response("{}", { status: 200 });
+      return Response.json({ id: "out_channel_1" });
     }) as typeof fetch;
 
     await blooioAdapter.sendTypingIndicator(
