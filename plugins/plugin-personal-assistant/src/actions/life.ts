@@ -2369,11 +2369,17 @@ const EXPLICIT_SCHEDULED_TODO_PATTERNS = [
   /\b(?:a|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:days?|weeks?|months?|years?)\s+from\s+(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
   /\b(?:every|each|daily|weekly|monthly|yearly)\b/i,
   /\b\d{4}-\d{2}-\d{2}\b/,
-  /\b(?:hoy|mañana|esta noche|cada (?:día|semana|mes|año))\b/i,
-  /\b(?:hoje|amanh[ãa]|esta noite|todos os dias|toda semana|todo mês|todo ano)/i,
-  /(?:hôm nay|ngày mai|tối nay|hàng ngày|hàng tuần|hàng tháng|hàng năm)/i,
-  /\b(?:ngayon|bukas|mamayang gabi|araw-araw|lingguhan|buwanan|taunan)\b/i,
-  /(?:今天|明天|今晚|每天|每周|每週|每月|每年|今日|明日|今夜|毎日|毎週|毎月|毎年|오늘|내일|오늘 밤|매일|매주|매월|매년)/,
+  /(?:hoy|mañana|esta noche|próxim[oa] (?:día|semana|mes|año)|cada (?:día|semana|mes|año)|diariamente|semanalmente|mensualmente|anualmente)/i,
+  /(?:a las?|dentro de)\s+(?:\d+|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)(?:\s+(?:minutos?|horas?|días?|semanas?|meses?|años?))?/i,
+  /(?:hoje|amanhã|esta noite|próxim[oa] (?:dia|semana|m[eê]s|ano)|cada (?:dia|semana|m[eê]s|ano)|diariamente|semanalmente|mensalmente|anualmente)/i,
+  /(?:às?|dentro de)\s+(?:\d+|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez)(?:\s+(?:minutos?|horas?|dias?|semanas?|meses?|anos?))?/i,
+  /(?:今天|明天|今晚|每天|每周|每週|每月|每年)/,
+  /(?:今日|明日|今夜|毎日|毎週|毎月|毎年)/,
+  /(?:오늘|내일|오늘 밤|매일|매주|매월|매년)/,
+  /(?:hôm nay|hom nay|ngày mai|ngay mai|tối nay|toi nay|tuần tới|tuan toi|tháng tới|thang toi|năm tới|nam toi|mỗi ngày|moi ngay|hàng tuần|hang tuan|hàng tháng|hang thang|hàng năm|hang nam)/i,
+  /(?:lúc|luc)\s*\d{1,2}\s*(?:giờ|gio)|(?:trong|sau)\s+(?:\d+|một|mot|hai|ba|bốn|bon|năm|nam|sáu|sau|bảy|bay|tám|tam|chín|chin|mười|muoi)\s+(?:phút|phut|giờ|gio|ngày|ngay|tuần|tuan|tháng|thang|năm|nam)/i,
+  /(?:ngayon|bukas|mamayang gabi|sa susunod na (?:araw|linggo|buwan|taon)|araw-araw|lingguhan|buwan-buwan|taun-taon)/i,
+  /(?:alas\s+\d{1,2}|sa loob ng\s+(?:\d+|isa|dalawa|tatlo|apat|lima|anim|pito|walo|siyam|sampu)\s+(?:minuto|oras|araw|linggo|buwan|taon))/i,
 ] as const;
 
 const NEGATED_UNSCHEDULED_PATTERNS = [

@@ -764,6 +764,23 @@ describe("runLifeOperationHandler definition update targeting", () => {
   });
 });
 
+const MULTILINGUAL_CONTRADICTORY_UNSCHEDULED_TEXTS = [
+  ["English", "add buy milk with no due date, but tomorrow at 9"],
+  ["Spanish", "añade comprar leche sin fecha, pero mañana a las 9"],
+  ["Portuguese", "adicionar comprar leite sem prazo, mas amanhã às 9"],
+  ["Chinese", "添加买牛奶，没有截止日期，但明天九点"],
+  ["Japanese", "牛乳を買う、期限なし、でも明日の9時"],
+  ["Korean", "우유 사기, 마감일 없이, 하지만 내일 9시"],
+  [
+    "Vietnamese",
+    "thêm việc mua sữa không có ngày đến hạn, nhưng ngày mai lúc 9 giờ",
+  ],
+  [
+    "Tagalog",
+    "idagdag ang bumili ng gatas, walang takdang petsa, pero bukas ng alas 9",
+  ],
+] as const;
+
 describe("explicit unscheduled owner authority", () => {
   it.each([
     "add buy milk with no due date",
@@ -778,6 +795,13 @@ describe("explicit unscheduled owner authority", () => {
   ])("accepts an explicit no-date phrase in %p", (text) => {
     expect(textStatesExplicitUnscheduled(text)).toBe(true);
   });
+
+  it.each(MULTILINGUAL_CONTRADICTORY_UNSCHEDULED_TEXTS)(
+    "rejects contradictory explicit scheduling in %s",
+    (_language, text) => {
+      expect(textStatesExplicitUnscheduled(text)).toBe(false);
+    },
+  );
 
   it.each([
     "add buy milk as a todo",
@@ -871,6 +895,44 @@ describe("runLifeOperationHandler clarification contract", () => {
   ])(
     "does not treat planner-only unscheduled output as explicit for %p",
     async (ownerText) => {
+      const runtime = makeRuntime((prompt) => {
+        if (prompt.includes("create_definition request")) {
+          return taskPlanJson({
+            requestKind: "todo",
+            title: "Buy milk",
+            cadenceKind: "unscheduled",
+          });
+        }
+        return "";
+      });
+
+      const result = await runLifeOperationHandler(
+        runtime,
+        makeMessage(ownerText),
+        undefined,
+        {
+          parameters: {
+            action: "create",
+            intent: ownerText,
+            ownerSurface: "OWNER_TODOS",
+          },
+        } as HandlerOptions,
+      );
+
+      expect(result).toMatchObject({
+        success: false,
+        values: {
+          error: "MISSING_DEFINITION_FIELD",
+          missingField: "schedule",
+        },
+      });
+      expect(serviceState.createCalls).toHaveLength(0);
+    },
+  );
+
+  it.each(MULTILINGUAL_CONTRADICTORY_UNSCHEDULED_TEXTS)(
+    "rejects a contradicted no-date todo through the handler in %s",
+    async (_language, ownerText) => {
       const runtime = makeRuntime((prompt) => {
         if (prompt.includes("create_definition request")) {
           return taskPlanJson({
