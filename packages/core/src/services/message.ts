@@ -239,7 +239,9 @@ import type {
 } from "../types/components";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { ContextDefinition, RoleGateRole } from "../types/contexts";
+import type { EffectReceipt } from "../types/effects";
 import {
+	hasAppliedUserFacingEffectProof,
 	mergeEffectReceipts,
 	resolveAppliedUserFacingEffectReceipts,
 	resolveUserFacingEffectReceipts,
@@ -1871,12 +1873,15 @@ export function subAgentCompletionRelayBody(
 }
 
 /**
- * The most recent completed tool result whose `userFacingText` can still
- * rescue a turn after the planner loop dies: successful, non-terminal, and not
- * already delivered to the user through an action callback. Diagnostic
- * `text` is never a candidate — the wire contract says it must not render as
- * assistant prose — so a turn whose tools produced only diagnostics still
- * falls through to the caller's failure handling.
+ * The most recent settled tool result whose `userFacingText` can still rescue
+ * a turn after the planner loop dies: non-terminal, not already delivered to
+ * the user through an action callback, and carrying reportable user-facing
+ * prose. Success is not required — a verified or otherwise composed failure
+ * `userFacingText` is still the outcome the turn produced and must not be
+ * discarded for a generic "no result" / ack line. Diagnostic `text` is never
+ * a candidate — the wire contract says it must not render as assistant prose
+ * — so a turn whose tools produced only diagnostics still falls through to
+ * the caller's failure handling.
  */
 export function preservedSettledToolResult(
 	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
@@ -1884,7 +1889,7 @@ export function preservedSettledToolResult(
 ): (PlannerToolResult & { userFacingText: string }) | undefined {
 	for (let index = settled.length - 1; index >= 0; index--) {
 		const entry = settled[index];
-		if (entry?.result.success !== true) continue;
+		if (!entry) continue;
 		if (isTerminalPlannerToolName(entry.name)) continue;
 		const candidate = entry.result.userFacingText?.trim();
 		if (!candidate) continue;
@@ -1901,6 +1906,72 @@ export function preservedSettledToolResult(
 		return { ...entry.result, userFacingText: candidate };
 	}
 	return undefined;
+}
+
+/**
+ * True when a result proves an async handoff was accepted so work continues
+ * after this turn. Prefer applied/commit receipt evidence when present;
+ * otherwise require `success: true` (the minimum acceptance bar). A failed
+ * spawn that only shares an action name/flag must not license an "On it." ack.
+ */
+export function resultAcceptsAsyncHandoff(
+	result: Pick<
+		ActionResult,
+		| "success"
+		| "effectReceipts"
+		| "verifiedUserFacing"
+		| "userFacingText"
+		| "userFacingEffectReceiptIds"
+	>,
+): boolean {
+	if (hasAppliedUserFacingEffectProof(result)) {
+		return true;
+	}
+	const receipts = result.effectReceipts;
+	if (Array.isArray(receipts) && receipts.length > 0) {
+		for (const receipt of receipts) {
+			if (effectReceiptProvesHandoffAcceptance(receipt)) {
+				return true;
+			}
+		}
+		// Receipts were attached but none prove acceptance — do not fall through
+		// to a bare success flag that may lag a failed commit attempt.
+		return false;
+	}
+	return result.success === true;
+}
+
+function effectReceiptProvesHandoffAcceptance(receipt: EffectReceipt): boolean {
+	if (receipt.outcome === "applied") {
+		return (
+			typeof receipt.commit?.id === "string" &&
+			receipt.commit.id.trim().length > 0
+		);
+	}
+	// A replayed no-op re-observes an earlier committed handoff this turn.
+	return receipt.outcome === "noop" && receipt.idempotency.replayed === true;
+}
+
+/**
+ * True when at least one action result this turn both resolves to a registered
+ * `asyncHandoff` action and proves the handoff was accepted (receipt/commit
+ * evidence preferred; minimally success with no contradicting receipts).
+ */
+export function actionResultsIncludeAcceptedAsyncHandoff(
+	actions: readonly Action[] | undefined,
+	actionResults: readonly ActionResult[],
+): boolean {
+	if (!actions || actions.length === 0 || actionResults.length === 0) {
+		return false;
+	}
+	const acceptedNames: string[] = [];
+	for (const result of actionResults) {
+		if (!resultAcceptsAsyncHandoff(result)) continue;
+		const name =
+			typeof result.data?.actionName === "string" ? result.data.actionName : "";
+		if (name.length > 0) acceptedNames.push(name);
+	}
+	return candidateActionsIncludeAsyncHandoff(actions, acceptedNames);
 }
 
 /**
@@ -1929,18 +2000,19 @@ export const NO_REPORTABLE_TOOL_OUTCOME_MESSAGE =
  * ran several real tool calls and delivered only `"On it."` /
  * `"checking your week"`, with no outcome and no failure. Precedence:
  *
- *   1. A completed tool's own undelivered `userFacingText` — the outcome the
- *      turn actually produced and the planner failed to relay.
+ *   1. A tool's own undelivered `userFacingText` — success or reportable
+ *      failure — the outcome the turn actually produced and the planner
+ *      failed to relay.
  *   2. Silence, when an action already delivered visible text through its own
  *      callback: the user has the outcome, and a trailing ack would be a
  *      redundant, out-of-order second bubble.
- *   3. The ack, ONLY when an action flagged `asyncHandoff` actually executed
- *      this turn. That work continues after the turn returns, so "on it" is
- *      the honest outcome and the real result arrives in a later message.
+ *   3. The ack, ONLY when an `asyncHandoff` action was successfully accepted
+ *      this turn (prefer receipt/commit evidence; minimally `success` with no
+ *      contradicting receipts). A failed spawn must not end on "On it."
  *   4. Otherwise a plain statement that the work produced nothing reportable.
  *
  * Keyed on turn shape — did tools run, did anything reach the user, does the
- * executed work outlive the turn — never on the wording of the drafted ack.
+ * accepted work outlive the turn — never on the wording of the drafted ack.
  */
 export function answerlessToolTurnReport(args: {
 	settledToolResults: ReadonlyArray<{
@@ -1958,12 +2030,9 @@ export function answerlessToolTurnReport(args: {
 	);
 	if (preserved) return preserved.userFacingText;
 	if (args.deliveredVisibleTexts.size > 0) return "";
-	const executedActionNames = args.actionResults
-		.map((result) =>
-			typeof result.data?.actionName === "string" ? result.data.actionName : "",
-		)
-		.filter((name) => name.length > 0);
-	if (candidateActionsIncludeAsyncHandoff(args.actions, executedActionNames)) {
+	if (
+		actionResultsIncludeAcceptedAsyncHandoff(args.actions, args.actionResults)
+	) {
 		return args.stageOneAck || ASYNC_HANDOFF_ACK_MESSAGE;
 	}
 	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;

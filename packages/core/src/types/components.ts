@@ -486,10 +486,11 @@ export interface Action {
 	 *     synchronous retrieval turns deliver one reply — the answer — on
 	 *     every channel.
 	 *   - Whether a turn that ran tool work and produced no planner prose may
-	 *     end on an ack instead of reporting an outcome. Only an executed
-	 *     async-handoff action licenses that; a synchronous turn must report
-	 *     the tool's result or say plainly that it produced none, because no
-	 *     further work follows the turn.
+	 *     end on an ack instead of reporting an outcome. Only a successfully
+	 *     accepted async-handoff result licenses that (prefer receipt/commit
+	 *     evidence; minimally `success`). A failed spawn must report the
+	 *     failure (or say plainly that nothing reportable was produced),
+	 *     never a misleading progress ack.
 	 *
 	 * Promoted subactions inherit the parent's flag.
 	 */

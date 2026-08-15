@@ -356,14 +356,32 @@ describe("preservedSettledToolResult candidate selection", () => {
 		expect(picked?.userFacingText).toBe(USER_FACING);
 	});
 
-	it("skips failed results, terminals, and results without user-facing text", () => {
+	it("picks a reportable failure userFacingText over discarding the outcome", () => {
+		const picked = preservedSettledToolResult(
+			[
+				settle("LOOKUP", {
+					success: false,
+					userFacingText: "failed op: permission denied",
+					verifiedUserFacing: true,
+				}),
+			],
+			new Set(),
+		);
+		expect(picked?.userFacingText).toBe("failed op: permission denied");
+		expect(picked?.success).toBe(false);
+	});
+
+	it("skips terminals and results without user-facing text", () => {
 		expect(
 			preservedSettledToolResult(
 				[
-					settle("LOOKUP", { success: false, userFacingText: "failed op" }),
 					settle("REPLY", { userFacingText: "terminal reply text" }),
 					settle("MEMORY_CREATE", { text: "Stored memory ev-1." }),
-					settle("MEMORY_CREATE", { userFacingText: "   " }),
+					settle("MEMORY_CREATE", {
+						success: false,
+						text: "write failed",
+						userFacingText: "   ",
+					}),
 				],
 				new Set(),
 			),

@@ -326,6 +326,66 @@ describe("answerless tool turn", () => {
 		expect(result.responseContent?.text).toBe(STAGE_ONE_ACK);
 	});
 
+	it("does not keep the ack when an asyncHandoff spawn fails to accept", async () => {
+		const harness = await createHarness({
+			actions: [
+				{
+					name: "LOOKUP",
+					asyncHandoff: true,
+					result: {
+						success: false,
+						text: "spawn rejected: no coding backend available",
+						error: "no coding backend available",
+					},
+				},
+			],
+			plannerToolNames: ["LOOKUP"],
+			evaluatorScript: [EVALUATOR_CONTINUE],
+		});
+
+		const result = await runTurn(harness, "build me the thing");
+
+		// A failed spawn shares the action name/flag but no work continues —
+		// shipping "On it." would claim a handoff that never started.
+		const delivered = visibleTexts(harness.callbacks);
+		expect(delivered).toEqual([NO_REPORTABLE_TOOL_OUTCOME_MESSAGE]);
+		expect(delivered).not.toContain(STAGE_ONE_ACK);
+		expect(result.responseContent?.text).toBe(
+			NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
+		);
+	});
+
+	it("delivers a failed sync tool's userFacingText instead of the ack or generic no-result line", async () => {
+		const failureFacing =
+			"Couldn't open bot.log: permission denied on the workspace path.";
+		const harness = await createHarness({
+			actions: [
+				{
+					name: "LOOKUP",
+					result: {
+						success: false,
+						text: DIAGNOSTIC,
+						userFacingText: failureFacing,
+						verifiedUserFacing: true,
+					},
+				},
+			],
+			plannerToolNames: ["LOOKUP"],
+			evaluatorScript: [EVALUATOR_CONTINUE],
+		});
+
+		const result = await runTurn(
+			harness,
+			"read me the last few lines of the bot log",
+		);
+
+		const delivered = visibleTexts(harness.callbacks);
+		expect(delivered).toEqual([failureFacing]);
+		expect(delivered).not.toContain(STAGE_ONE_ACK);
+		expect(delivered).not.toContain(NO_REPORTABLE_TOOL_OUTCOME_MESSAGE);
+		expect(result.responseContent?.text).toBe(failureFacing);
+	});
+
 	it("adds no trailing ack when an action already delivered the outcome", async () => {
 		const harness = await createHarness({
 			actions: [
