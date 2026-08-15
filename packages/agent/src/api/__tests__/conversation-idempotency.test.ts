@@ -31,6 +31,7 @@ import type {
   AgentRuntime,
   EffectReceipt,
   Memory,
+  StreamChunkMetadata,
 } from "@elizaos/core";
 import {
   executePlannedToolCall,
@@ -39,6 +40,10 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import {
+  COMMITTED_SPEECH_PROTOCOL,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+} from "@elizaos/shared";
 import {
   afterAll,
   afterEach,
@@ -60,9 +65,13 @@ let resetChatDedupe: () => void;
 let getChatDedupeTtlMs: () => number;
 let markChatMessageSeen: typeof import("../chat-routes.ts")["isDuplicateChatMessage"];
 let setChatOutcome: typeof import("../chat-routes.ts")["setChatMessageIdOutcome"];
+let TurnControllerRegistryForTests: typeof import("@elizaos/core")["TurnControllerRegistry"];
 
 beforeAll(async () => {
   vi.resetModules();
+  ({ TurnControllerRegistry: TurnControllerRegistryForTests } = await import(
+    "@elizaos/core"
+  ));
   const chatRoutes = await import("../chat-routes.ts");
   resetChatDedupe = chatRoutes.__resetChatDedupeForTests;
   getChatDedupeTtlMs = chatRoutes.__getChatDedupeTtlMsForTests;
@@ -230,6 +239,7 @@ function createHarness(
     reportError: vi.fn(),
     abortTurn: vi.fn(),
     roomHandlerQueue: new RoomHandlerQueue(options),
+    turnControllers: new TurnControllerRegistryForTests(),
     adapter: { db: {} } as never,
   } satisfies Partial<AgentRuntime> & Record<string, unknown>;
 
@@ -329,9 +339,14 @@ async function runRoute(
 
 function parseDataFrames(record: MockResponseRecord): Array<{
   type: string;
+  text?: string;
   fullText?: string;
   messageId?: string;
   agentName?: string;
+  interrupted?: boolean;
+  provisional?: boolean;
+  preserveUserRequestedFormat?: boolean;
+  speechText?: string;
   transcriptVisibility?: "internal";
   thought?: string;
   usage?: unknown;
@@ -349,9 +364,14 @@ function parseDataFrames(record: MockResponseRecord): Array<{
       (line) =>
         JSON.parse(line.slice("data: ".length)) as {
           type: string;
+          text?: string;
           fullText?: string;
           messageId?: string;
           agentName?: string;
+          interrupted?: boolean;
+          provisional?: boolean;
+          preserveUserRequestedFormat?: boolean;
+          speechText?: string;
           transcriptVisibility?: "internal";
           thought?: string;
           usage?: unknown;
@@ -933,6 +953,731 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(
       parseDataFrames(replay.record).find((frame) => frame.type === "done"),
     ).toEqual(secondDone);
+  });
+
+  it("SSE: persists the authoritative visible model snapshot on abort and durably replays it as interrupted", async () => {
+    const { state, handleMessage, createMemory, storedMemories } =
+      createHarness();
+    const abortError = Object.assign(
+      new Error("Turn aborted: replacement arrived"),
+      {
+        name: "TurnAbortedError",
+        code: "TURN_ABORTED",
+      },
+    );
+    handleMessage.mockImplementationOnce(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        _callback: unknown,
+        options?: {
+          onStreamChunk?: (
+            chunk: string,
+            messageId?: string,
+            accumulated?: string,
+          ) => Promise<void> | void;
+        },
+      ) => {
+        await options?.onStreamChunk?.(
+          "Cancellation domans are important.",
+          undefined,
+          "Cancellation domans are important.",
+        );
+        await options?.onStreamChunk?.(
+          "Cancellation domains are important.",
+          undefined,
+          "Cancellation domains are important.",
+        );
+        throw abortError;
+      },
+    );
+    const body = {
+      text: "explain cancellation domains",
+      clientMessageId: "sse-interrupted-prefix-replay-1",
+    };
+
+    const first = await runRoute("POST", STREAM_PATH, state, body);
+    const firstFrames = parseDataFrames(first.record);
+    expect(firstFrames.some((frame) => frame.type === "done")).toBe(false);
+    expect(firstFrames).toContainEqual(
+      expect.objectContaining({
+        type: "token",
+        fullText: "Cancellation domains are important.",
+      }),
+    );
+
+    const assistantMemories = storedMemories.filter(
+      (memory) => memory.entityId === AGENT_ID,
+    );
+    expect(assistantMemories).toHaveLength(1);
+    expect(assistantMemories[0]?.content).toMatchObject({
+      text: "Cancellation domains are important.",
+      interrupted: true,
+    });
+    const assistantId = assistantMemories[0]?.id;
+    expect(assistantId).toBeDefined();
+    const persistsAfterAbort = createMemory.mock.calls.length;
+
+    resetChatDedupe();
+    const replay = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterAbort);
+    expect(
+      parseDataFrames(replay.record).find((frame) => frame.type === "done"),
+    ).toMatchObject({
+      fullText: "Cancellation domains are important.",
+      messageId: assistantId,
+      interrupted: true,
+    });
+    expect(
+      storedMemories.filter((memory) => memory.entityId === AGENT_ID),
+    ).toHaveLength(1);
+  });
+
+  it("SSE: a shorter authoritative snapshot retracts the stale durable suffix before abort replay", async () => {
+    const { state, handleMessage, createMemory, storedMemories } =
+      createHarness();
+    const abortError = Object.assign(
+      new Error("Turn aborted after authoritative contraction"),
+      { name: "TurnAbortedError", code: "TURN_ABORTED" },
+    );
+    const longerVisible =
+      "The latest authority keeps this prefix and retracts stale words.";
+    const shorterAuthority = "The latest authority keeps this prefix";
+    handleMessage.mockImplementationOnce(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        _callback: unknown,
+        options?: {
+          onStreamChunk?: (
+            chunk: string,
+            messageId?: string,
+            accumulated?: string,
+          ) => Promise<void> | void;
+        },
+      ) => {
+        await options?.onStreamChunk?.(longerVisible, undefined, longerVisible);
+        await options?.onStreamChunk?.(
+          "authoritative contraction",
+          undefined,
+          shorterAuthority,
+        );
+        throw abortError;
+      },
+    );
+    const body = {
+      text: "contract the authoritative snapshot",
+      clientMessageId: "sse-shorter-authority-abort-1",
+    };
+
+    const first = await runRoute("POST", STREAM_PATH, state, body);
+    expect(
+      parseDataFrames(first.record).some((frame) => frame.type === "done"),
+    ).toBe(false);
+    const assistantMemories = storedMemories.filter(
+      (memory) => memory.entityId === AGENT_ID,
+    );
+    expect(assistantMemories).toHaveLength(1);
+    expect(assistantMemories[0]?.content).toMatchObject({
+      text: shorterAuthority,
+      interrupted: true,
+    });
+    expect(assistantMemories[0]?.content.text).not.toContain("stale words");
+    const assistantId = assistantMemories[0]?.id;
+    const persistsAfterAbort = createMemory.mock.calls.length;
+
+    resetChatDedupe();
+    const replay = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterAbort);
+    expect(
+      parseDataFrames(replay.record).find((frame) => frame.type === "done"),
+    ).toMatchObject({
+      fullText: shorterAuthority,
+      messageId: assistantId,
+      interrupted: true,
+    });
+  });
+
+  it.each([
+    ["response", '{"response":"yes"}'],
+    ["reply", '{"reply":"yes"}'],
+  ])(
+    "SSE: preserves exact requested JSON through tokens, persistence, history, and replay (%s)",
+    async (field, exactJson) => {
+      const { state, handleMessage, createMemory, storedMemories } =
+        createHarness();
+      handleMessage.mockImplementationOnce(
+        async (
+          _runtime: unknown,
+          _message: unknown,
+          _callback: unknown,
+          options?: {
+            onStreamChunk?: (
+              chunk: string,
+              messageId?: string,
+              accumulated?: string,
+              metadata?: StreamChunkMetadata,
+            ) => Promise<void> | void;
+          },
+        ) => {
+          await options?.onStreamChunk?.(exactJson, undefined, exactJson, {
+            authority: "committed_reply",
+            visibleFormat: "json",
+          });
+          return {
+            didRespond: true,
+            responseContent: {
+              text: exactJson,
+              preserveUserRequestedFormat: true,
+            },
+            responseMessages: [],
+          };
+        },
+      );
+      const body = {
+        text: `Reply with strict JSON using the ${field} field.`,
+        clientMessageId: `voice:exact-json-${field}-1`,
+        channelType: "VOICE_DM",
+        metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+        streamProtocol: "delta-v2",
+        voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+      };
+
+      const first = await runRoute("POST", STREAM_PATH, state, body);
+      const firstFrames = parseDataFrames(first.record);
+      let accumulated = "";
+      for (const frame of firstFrames) {
+        if (frame.type !== "token") continue;
+        if (typeof frame.fullText === "string" && frame.text === undefined) {
+          accumulated = frame.fullText;
+        } else if (typeof frame.text === "string") {
+          accumulated += frame.text;
+        }
+      }
+      expect(accumulated).toBe(exactJson);
+      expect(
+        firstFrames.some((frame) => frame.type === "voice_speech_segment"),
+      ).toBe(false);
+      const firstDone = firstFrames.find((frame) => frame.type === "done");
+      expect(firstDone).toMatchObject({
+        fullText: exactJson,
+        preserveUserRequestedFormat: true,
+      });
+
+      const assistantMemories = storedMemories.filter(
+        (memory) => memory.entityId === AGENT_ID,
+      );
+      expect(assistantMemories).toHaveLength(1);
+      expect(assistantMemories[0]?.content).toMatchObject({
+        text: exactJson,
+        preserveUserRequestedFormat: true,
+      });
+      const assistantId = assistantMemories[0]?.id;
+      expect(assistantId).toBeDefined();
+
+      const history = await runRoute(
+        "GET",
+        "/api/conversations/conv-1/messages",
+        state,
+        {},
+      );
+      const historyPayload = history.captured.payload as {
+        messages: Array<{
+          id: string;
+          role: string;
+          text: string;
+          preserveUserRequestedFormat?: boolean;
+        }>;
+      };
+      expect(
+        historyPayload.messages.find((message) => message.id === assistantId),
+      ).toMatchObject({
+        role: "assistant",
+        text: exactJson,
+        preserveUserRequestedFormat: true,
+      });
+
+      const persistsAfterFirst = createMemory.mock.calls.length;
+      resetChatDedupe();
+      const replay = await runRoute("POST", STREAM_PATH, state, body);
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      expect(createMemory).toHaveBeenCalledTimes(persistsAfterFirst);
+      expect(
+        parseDataFrames(replay.record).find((frame) => frame.type === "done"),
+      ).toMatchObject({
+        fullText: exactJson,
+        messageId: assistantId,
+        preserveUserRequestedFormat: true,
+      });
+    },
+  );
+
+  it("SSE: durably replays the exact visible prefix, including the not-yet-speakable tail, after voice abort", async () => {
+    const { state, handleMessage, createMemory, storedMemories } =
+      createHarness();
+    const committed =
+      "This complete sentence is deliberately long enough for safe speech.";
+    const visiblePrefix = `${committed} Next`;
+    handleMessage.mockImplementationOnce(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        _callback: unknown,
+        options?: {
+          onStreamChunk?: (
+            chunk: string,
+            messageId?: string,
+            accumulated?: string,
+          ) => Promise<void> | void;
+        },
+      ) => {
+        await options?.onStreamChunk?.(visiblePrefix, undefined, visiblePrefix);
+        throw Object.assign(new Error("Turn aborted: confirmed_speech"), {
+          name: "TurnAbortedError",
+          code: "TURN_ABORTED",
+        });
+      },
+    );
+    const body = {
+      text: "explain committed cancellation",
+      clientMessageId: "voice:committed-prefix-replay-1",
+      channelType: "VOICE_DM",
+      metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+      streamProtocol: "delta-v2",
+      voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+    };
+
+    const first = await runRoute("POST", STREAM_PATH, state, body);
+    const firstFrames = parseDataFrames(first.record);
+    expect(firstFrames).toContainEqual(
+      expect.objectContaining({
+        type: "voice_speech_segment",
+        speechText: committed,
+      }),
+    );
+    expect(firstFrames.some((frame) => frame.type === "done")).toBe(false);
+
+    const assistantMemories = storedMemories.filter(
+      (memory) => memory.entityId === AGENT_ID,
+    );
+    expect(assistantMemories).toHaveLength(1);
+    expect(assistantMemories[0]?.content).toMatchObject({
+      text: visiblePrefix,
+      interrupted: true,
+    });
+    const assistantId = assistantMemories[0]?.id;
+    expect(assistantId).toBeDefined();
+    const persistsAfterAbort = createMemory.mock.calls.length;
+
+    resetChatDedupe();
+    const replay = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterAbort);
+    expect(
+      parseDataFrames(replay.record).find((frame) => frame.type === "done"),
+    ).toMatchObject({
+      fullText: visiblePrefix,
+      messageId: assistantId,
+      interrupted: true,
+    });
+    expect(
+      storedMemories.filter((memory) => memory.entityId === AGENT_ID),
+    ).toHaveLength(1);
+  });
+
+  it("SSE: preserves irrevocable speech when generation fails after a committed segment", async () => {
+    const { state, handleMessage, createMemory, storedMemories } =
+      createHarness();
+    const committedSpeech =
+      "This complete sentence is deliberately long enough for safe speech.";
+    handleMessage.mockImplementationOnce(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        _callback: unknown,
+        options?: {
+          onStreamChunk?: (
+            chunk: string,
+            messageId?: string,
+            accumulated?: string,
+            metadata?: StreamChunkMetadata,
+          ) => Promise<void> | void;
+        },
+      ) => {
+        await options?.onStreamChunk?.(
+          committedSpeech,
+          undefined,
+          committedSpeech,
+          { authority: "committed_reply", visibleFormat: "text" },
+        );
+        throw new Error("private action transport detail");
+      },
+    );
+    const body = {
+      text: "create a reminder",
+      clientMessageId: "voice:spoken-before-action-failure-1",
+      channelType: "VOICE_DM",
+      metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+      streamProtocol: "delta-v2",
+      voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+    };
+
+    const first = await runRoute("POST", STREAM_PATH, state, body);
+    const firstFrames = parseDataFrames(first.record);
+    expect(firstFrames).toContainEqual(
+      expect.objectContaining({
+        type: "voice_speech_segment",
+        speechText: committedSpeech,
+      }),
+    );
+    expect(firstFrames).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        code: "generation_failed_after_committed_speech",
+      }),
+    );
+    expect(first.record.writes.join("")).not.toContain(
+      "private action transport detail",
+    );
+
+    const assistantMemories = storedMemories.filter(
+      (memory) => memory.entityId === AGENT_ID,
+    );
+    expect(assistantMemories).toHaveLength(1);
+    expect(assistantMemories[0]?.content).toMatchObject({
+      text: committedSpeech,
+      interrupted: true,
+    });
+    const assistantId = assistantMemories[0]?.id;
+    const persistsAfterFailure = createMemory.mock.calls.length;
+
+    resetChatDedupe();
+    const replay = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterFailure);
+    expect(
+      parseDataFrames(replay.record).find((frame) => frame.type === "done"),
+    ).toMatchObject({
+      fullText: committedSpeech,
+      messageId: assistantId,
+      interrupted: true,
+    });
+  });
+
+  it("SSE: freezes an exact stopped prefix before any speakable segment even after an action ran", async () => {
+    const { state, handleMessage, createMemory, storedMemories } =
+      createHarness();
+    const unfinishedPrefix = "Found the newest matching record";
+    handleMessage.mockImplementationOnce(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        callback?: (
+          content: { actions: string[] },
+          actionName?: string,
+        ) => Promise<unknown> | unknown,
+        options?: {
+          onStreamChunk?: (
+            chunk: string,
+            messageId?: string,
+            accumulated?: string,
+            metadata?: StreamChunkMetadata,
+          ) => Promise<void> | void;
+        },
+      ) => {
+        // Mirrors committed action streaming: the tool still reports status and
+        // non-text payloads, while its provisional prose is withheld from the
+        // authoritative display/speech source.
+        await callback?.({ actions: ["SEARCH"] }, "SEARCH");
+        await options?.onStreamChunk?.(
+          unfinishedPrefix,
+          undefined,
+          unfinishedPrefix,
+          { authority: "committed_reply", visibleFormat: "text" },
+        );
+        throw Object.assign(new Error("Turn aborted: confirmed_speech"), {
+          name: "TurnAbortedError",
+          code: "TURN_ABORTED",
+        });
+      },
+    );
+    const body = {
+      text: "find the newest matching record",
+      clientMessageId: "voice:unfinished-action-prefix-1",
+      channelType: "VOICE_DM",
+      metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+      streamProtocol: "delta-v2",
+      voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+    };
+
+    const first = await runRoute("POST", STREAM_PATH, state, body);
+    const firstFrames = parseDataFrames(first.record);
+    expect(firstFrames).toContainEqual(
+      expect.objectContaining({
+        type: "token",
+        text: unfinishedPrefix,
+      }),
+    );
+    expect(
+      firstFrames.some((frame) => frame.type === "voice_speech_segment"),
+    ).toBe(false);
+    expect(firstFrames.some((frame) => frame.type === "done")).toBe(false);
+
+    const assistantMemories = storedMemories.filter(
+      (memory) => memory.entityId === AGENT_ID,
+    );
+    expect(assistantMemories).toHaveLength(1);
+    expect(assistantMemories[0]?.content).toMatchObject({
+      text: unfinishedPrefix,
+      interrupted: true,
+    });
+    const assistantId = assistantMemories[0]?.id;
+    const persistsAfterAbort = createMemory.mock.calls.length;
+
+    resetChatDedupe();
+    const replay = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterAbort);
+    expect(
+      parseDataFrames(replay.record).find((frame) => frame.type === "done"),
+    ).toMatchObject({
+      fullText: unfinishedPrefix,
+      messageId: assistantId,
+      interrupted: true,
+    });
+  });
+
+  it("SSE: never persists a prefix from a core-superseded room turn", async () => {
+    const { state, handleMessage, storedMemories } = createHarness();
+    const oldPrefix = "This old response prefix was superseded.";
+    handleMessage.mockImplementationOnce(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        _callback: unknown,
+        options?: {
+          onStreamChunk?: (
+            chunk: string,
+            messageId?: string,
+            accumulated?: string,
+            metadata?: StreamChunkMetadata,
+          ) => Promise<void> | void;
+        },
+      ) => {
+        await options?.onStreamChunk?.(oldPrefix, undefined, oldPrefix, {
+          authority: "committed_reply",
+          visibleFormat: "text",
+        });
+        throw Object.assign(
+          new Error("Turn aborted: Response superseded by a newer room turn"),
+          {
+            name: "TurnAbortedError",
+            code: "TURN_ABORTED",
+            reason: "Response superseded by a newer room turn",
+          },
+        );
+      },
+    );
+
+    const first = await runRoute("POST", STREAM_PATH, state, {
+      text: "start an answer that will be replaced",
+      clientMessageId: "sse-superseded-prefix-1",
+    });
+
+    expect(
+      parseDataFrames(first.record).some((frame) => frame.type === "done"),
+    ).toBe(false);
+    expect(
+      storedMemories.filter((memory) => memory.entityId === AGENT_ID),
+    ).toEqual([]);
+  });
+
+  it("SSE: never persists provisional action progress as an interrupted assistant reply", async () => {
+    const { state, handleMessage, storedMemories } = createHarness();
+    const progress = "I'm thinking through your request.";
+    handleMessage.mockImplementationOnce(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        callback?: (
+          content: { text: string; actionStatus: string },
+          actionName?: string,
+        ) => Promise<unknown> | unknown,
+      ) => {
+        await callback?.(
+          { text: progress, actionStatus: "progress" },
+          "SEARCH",
+        );
+        throw Object.assign(new Error("Turn aborted: replacement arrived"), {
+          name: "TurnAbortedError",
+          code: "TURN_ABORTED",
+        });
+      },
+    );
+
+    const first = await runRoute("POST", STREAM_PATH, state, {
+      text: "search for it",
+      clientMessageId: "sse-action-progress-abort-1",
+    });
+
+    expect(parseDataFrames(first.record)).toContainEqual(
+      expect.objectContaining({
+        type: "token",
+        provisional: true,
+      }),
+    );
+    expect(first.record.writes.join("")).toContain(progress);
+    expect(
+      storedMemories.filter((memory) => memory.entityId === AGENT_ID),
+    ).toEqual([]);
+  });
+
+  it("SSE: reconciles a core-persisted reply after delivery abort without creating a duplicate assistant row", async () => {
+    const { state, handleMessage, createMemory, storedMemories } =
+      createHarness();
+    const committedPrefix = "The first safe sentence.";
+    const coreAssistantId = stringToUuid(
+      "core-persisted-before-delivery-abort",
+    ) as UUID;
+    handleMessage.mockImplementationOnce(
+      async (
+        runtime: AgentRuntime,
+        message: Memory,
+        _callback: unknown,
+        options?: {
+          onStreamChunk?: (
+            chunk: string,
+            messageId?: string,
+            accumulated?: string,
+          ) => Promise<void> | void;
+        },
+      ) => {
+        await options?.onStreamChunk?.(
+          committedPrefix,
+          undefined,
+          committedPrefix,
+        );
+        await runtime.createMemory(
+          {
+            id: coreAssistantId,
+            entityId: AGENT_ID,
+            agentId: AGENT_ID,
+            roomId: ROOM_ID,
+            content: {
+              text: `${committedPrefix} A suffix persisted before delivery noticed cancellation.`,
+              inReplyTo: message.id,
+              thought: "Private Stage-1 response brief.",
+              actionCallbackHistory: ["Provisional action progress."],
+            },
+            createdAt: Date.now(),
+          },
+          "messages",
+        );
+        throw Object.assign(new Error("Turn aborted: delivery callback"), {
+          name: "TurnAbortedError",
+          code: "TURN_ABORTED",
+        });
+      },
+    );
+    const body = {
+      text: "give me two sentences",
+      clientMessageId: "sse-core-persist-race-abort-1",
+    };
+
+    await runRoute("POST", STREAM_PATH, state, body);
+
+    const assistantMemories = storedMemories.filter(
+      (memory) => memory.entityId === AGENT_ID,
+    );
+    expect(assistantMemories).toHaveLength(1);
+    expect(assistantMemories[0]).toMatchObject({
+      id: coreAssistantId,
+      content: {
+        text: committedPrefix,
+        interrupted: true,
+      },
+    });
+    expect(assistantMemories[0]?.content).not.toHaveProperty("thought");
+    expect(assistantMemories[0]?.content).not.toHaveProperty(
+      "actionCallbackHistory",
+    );
+    const persistsAfterAbort = createMemory.mock.calls.length;
+
+    resetChatDedupe();
+    const replay = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterAbort);
+    expect(
+      parseDataFrames(replay.record).find((frame) => frame.type === "done"),
+    ).toMatchObject({
+      fullText: committedPrefix,
+      messageId: coreAssistantId,
+      interrupted: true,
+    });
+    expect(
+      storedMemories.filter((memory) => memory.entityId === AGENT_ID),
+    ).toHaveLength(1);
+  });
+
+  it("SSE: carries a core fail-closed interrupted result through live and durable done outcomes", async () => {
+    const { state, handleMessage, createMemory, storedMemories } =
+      createHarness();
+    const committedPrefix = "Only this committed sentence survives.";
+    const coreAssistantId = stringToUuid(
+      "core-fail-closed-interrupted-assistant",
+    ) as UUID;
+    handleMessage.mockImplementationOnce(
+      async (runtime: AgentRuntime, message: Memory) => {
+        const response: Memory = {
+          id: coreAssistantId,
+          entityId: AGENT_ID,
+          agentId: AGENT_ID,
+          roomId: ROOM_ID,
+          content: {
+            text: committedPrefix,
+            interrupted: true,
+            inReplyTo: message.id,
+          },
+          createdAt: Date.now(),
+        };
+        await runtime.createMemory(response, "messages");
+        return {
+          didRespond: true,
+          responseContent: response.content,
+          responseMessages: [response],
+          persistedResponseMessageIds: [coreAssistantId],
+          mode: "simple" as const,
+        };
+      },
+    );
+    const body = {
+      text: "trigger a terminal divergence",
+      clientMessageId: "sse-core-interrupted-outcome-1",
+    };
+
+    const first = await runRoute("POST", STREAM_PATH, state, body);
+    const firstDone = parseDataFrames(first.record).find(
+      (frame) => frame.type === "done",
+    );
+    expect(firstDone).toMatchObject({
+      fullText: committedPrefix,
+      messageId: coreAssistantId,
+      interrupted: true,
+    });
+    const persistsAfterFirst = createMemory.mock.calls.length;
+
+    resetChatDedupe();
+    const replay = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterFirst);
+    expect(
+      parseDataFrames(replay.record).find((frame) => frame.type === "done"),
+    ).toEqual(firstDone);
+    expect(
+      storedMemories.filter((memory) => memory.entityId === AGENT_ID),
+    ).toHaveLength(1);
   });
 
   it("SSE: a completed turn survives transport disconnect and the retry replays it", async () => {

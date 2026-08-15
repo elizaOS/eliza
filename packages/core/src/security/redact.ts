@@ -41,6 +41,9 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	// Cerebras inference keys (csk-…) — a distinct prefix from OpenAI's sk-,
 	// routinely echoed by sub-agent stdout as the model key in use.
 	String.raw`\b(csk-[A-Za-z0-9_-]{8,})\b`,
+	// Cartesia provider keys use an underscore prefix and are commonly pasted as
+	// bare values, so name-based assignment redaction alone cannot catch them.
+	String.raw`\b(sk_car_[A-Za-z0-9_-]{12,})\b`,
 	// Stripe secret + restricted keys (underscore form) — sk_live_/sk_test_/rk_live_/rk_test_.
 	// Distinct shape from the OpenAI sk- above; Stripe is the payment processor so a leaked
 	// sk_live_ is catastrophic, and these often appear as bare values (not under a *_SECRET name).

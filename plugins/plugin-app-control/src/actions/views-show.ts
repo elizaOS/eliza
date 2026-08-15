@@ -469,6 +469,8 @@ export interface RunViewsShowInput {
 	viewType?: ViewType;
 	callback?: HandlerCallback;
 	originatingClientId?: string;
+	/** Exact external navigation admission boundary supplied by VIEWS. */
+	admitEffect?: () => void;
 }
 
 export async function runViewsShow({
@@ -478,6 +480,7 @@ export async function runViewsShow({
 	viewType,
 	callback,
 	originatingClientId,
+	admitEffect,
 }: RunViewsShowInput): Promise<ActionResult> {
 	const messageText = userRequestMessageText(message);
 	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
@@ -567,6 +570,7 @@ export async function runViewsShow({
 		: undefined;
 	const navigationLabel =
 		canonicalTarget?.viewId === view.id ? canonicalTarget.label : view.label;
+	admitEffect?.();
 	const result = await navigateToView(
 		view,
 		viewType,

@@ -7,6 +7,7 @@ import {
   type VoiceTraceMark,
 } from "../voice-session-client";
 import type { VoiceSessionClientDiagnosticEvent } from "../voice-session-media-diagnostics";
+import type { ServerControlFrame } from "../voice-session-protocol";
 import {
   FakeMicAudioContext,
   FakeMicWorkletAudioContext,
@@ -650,6 +651,76 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     },
   );
 
+  it.each(["speaking_end", "turn_end"] as const)(
+    "rejects duplicate same-trace speaking and PCM after %s completes a turn",
+    async (terminalFrame) => {
+      const mint = makeMintFetch();
+      const ws = makeWsFactory();
+      const playback = new FakePlaybackAudioContext(16_000);
+      const marks: VoiceTraceMark[] = [];
+      const client = createVoiceSessionClient({
+        agentId: "11111111-1111-1111-1111-111111111111",
+        conversationId: "22222222-2222-2222-2222-222222222222",
+        getConsentNonce: async () => "late-audio-after-complete",
+        fetch: mint.fetch,
+        webSocketFactory: ws.factory,
+        getUserMedia: fakeGetUserMedia(),
+        createMicAudioContext: () => new FakeMicAudioContext(16_000),
+        createPlaybackAudioContext: () => playback,
+        onTraceMark: (mark) => marks.push(mark),
+      });
+      await client.start();
+      await flush();
+      const socket = ws.last();
+      socket.emitOpen();
+      socket.emitControl({
+        t: "ready",
+        sessionId: "session-late-audio-after-complete",
+        traceId: "trace-ready",
+      });
+      await flush();
+      socket.emitControl({
+        t: "stt_final",
+        text: "Complete this answer",
+        traceId: "trace-complete",
+      });
+      socket.emitControl({ t: "speaking_start", traceId: "trace-complete" });
+      if (terminalFrame === "speaking_end") {
+        socket.emitControl({ t: "speaking_end", traceId: "trace-complete" });
+      } else {
+        socket.emitControl({
+          t: "turn_end",
+          outcome: "spoken",
+          traceId: "trace-complete",
+        });
+      }
+      const speakingMarksBeforeDuplicate = marks.filter(
+        (mark) => mark.name === "speaking_start",
+      ).length;
+
+      socket.emitControl({ t: "speaking_start", traceId: "trace-complete" });
+      socket.emitAudio(new Uint8Array(320).fill(127));
+
+      expect(client.state.phase).toBe("listening");
+      expect(
+        marks.filter((mark) => mark.name === "speaking_start"),
+      ).toHaveLength(speakingMarksBeforeDuplicate);
+      expect(marks.map((mark) => mark.name)).not.toContain("downlink_audio");
+      expect(marks.map((mark) => mark.name)).not.toContain(
+        "first_audio_playout",
+      );
+      expect(marks.map((mark) => mark.name)).toContain(
+        "not_reached(coordinator_stale_response)",
+      );
+      expect(marks.map((mark) => mark.name)).toContain(
+        "not_reached(stale_downlink_audio)",
+      );
+      const rendered = playbackScriptNodeOf(playback).render(20);
+      expect(rendered.every((sample) => sample === 0)).toBe(true);
+      await client.stop();
+    },
+  );
+
   it("recovers from a malformed turn_end at terminal usage without stranding Thinking", async () => {
     const mint = makeMintFetch();
     const ws = makeWsFactory();
@@ -742,6 +813,318 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     sock.emitControl({ t: "interrupted", reason: "explicit", traceId: "T1" });
     expect(client.state.phase).toBe("listening");
     await client.stop();
+  });
+
+  it("retracts the active display on a manual barge-in before any audio exists", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const { client, marks } = baseDeps(mint, ws);
+    await client.start();
+    await flush();
+    const socket = ws.last();
+    socket.emitOpen();
+    socket.emitControl({
+      t: "ready",
+      sessionId: "session-manual-barge",
+      traceId: "trace-ready",
+    });
+    await flush();
+    socket.emitControl({
+      t: "stt_final",
+      text: "Begin the answer",
+      traceId: "trace-manual-barge",
+    });
+    socket.emitControl({
+      t: "assistant_display",
+      text: "Only this prefix is visible.",
+      traceId: "trace-manual-barge",
+    });
+
+    client.bargeIn();
+
+    expect(marks).toContainEqual(
+      expect.objectContaining({
+        name: "output_retracted",
+        traceId: "trace-manual-barge",
+      }),
+    );
+    expect(socket.sentControls()).toContainEqual({ t: "barge_in" });
+    await client.stop();
+  });
+
+  it("rejects late same-trace speaking and PCM after a manual barge-in", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const playback = new FakePlaybackAudioContext(16_000);
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "late-audio-after-stop",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => playback,
+      onTraceMark: (mark) => marks.push(mark),
+    });
+    await client.start();
+    await flush();
+    const socket = ws.last();
+    socket.emitOpen();
+    socket.emitControl({
+      t: "ready",
+      sessionId: "session-late-audio-after-stop",
+      traceId: "trace-ready",
+    });
+    await flush();
+    socket.emitControl({
+      t: "stt_final",
+      text: "Begin the answer",
+      traceId: "trace-stopped",
+    });
+    socket.emitControl({
+      t: "assistant_display",
+      text: "Visible before Stop.",
+      traceId: "trace-stopped",
+    });
+
+    client.bargeIn();
+    const phaseAfterBargeIn = client.state.phase;
+    socket.emitControl({ t: "speaking_start", traceId: "trace-stopped" });
+    socket.emitAudio(new Uint8Array(320).fill(127));
+
+    expect(client.state.phase).toBe(phaseAfterBargeIn);
+    expect(marks.map((mark) => mark.name)).not.toContain("speaking_start");
+    expect(marks.map((mark) => mark.name)).not.toContain("downlink_audio");
+    expect(marks.map((mark) => mark.name)).not.toContain("first_audio_playout");
+    expect(marks.map((mark) => mark.name)).toContain(
+      "not_reached(coordinator_stale_response)",
+    );
+    expect(marks.map((mark) => mark.name)).toContain(
+      "not_reached(stale_downlink_audio)",
+    );
+    const rendered = playbackScriptNodeOf(playback).render(20);
+    expect(rendered.every((sample) => sample === 0)).toBe(true);
+    await client.stop();
+  });
+
+  it("retracts the exact active display on supersession without requiring buffered audio and rejects late content frames", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const marks: VoiceTraceMark[] = [];
+    const visibleEvents: ServerControlFrame[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "display-retract",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      onTraceMark: (mark) => marks.push(mark),
+      onServerEvent: (event) => visibleEvents.push(event),
+    });
+    await client.start();
+    await flush();
+    const socket = ws.last();
+    socket.emitOpen();
+    socket.emitControl({
+      t: "ready",
+      sessionId: "session-display-retract",
+      traceId: "trace-ready",
+    });
+    await flush();
+
+    socket.emitControl({
+      t: "stt_final",
+      text: "Give me a long answer",
+      traceId: "trace-old",
+    });
+    socket.emitControl({
+      t: "assistant_display",
+      text: "Visible old prefix.",
+      traceId: "trace-old",
+    });
+    // A confirmed replacement turn revokes the old output before any PCM was
+    // queued. The display cutoff must therefore not depend on playback state.
+    socket.emitControl({
+      t: "stt_partial",
+      text: "Actually, replace it",
+      traceId: "trace-new",
+    });
+
+    expect(marks).toContainEqual(
+      expect.objectContaining({
+        name: "output_retracted",
+        traceId: "trace-old",
+      }),
+    );
+    expect(marks.map((mark) => mark.name)).not.toContain(
+      "playback_interrupted",
+    );
+
+    socket.emitControl({
+      t: "assistant_display",
+      text: "Visible old prefix. Hidden late suffix.",
+      traceId: "trace-old",
+    });
+    socket.emitControl({
+      t: "assistant_output",
+      displayMarkdown: "Visible old prefix. Hidden late suffix.",
+      speechText: "Visible old prefix. Hidden late suffix.",
+      displayTruncated: false,
+      traceId: "trace-old",
+    });
+
+    expect(
+      visibleEvents.filter(
+        (event) =>
+          (event.t === "assistant_display" || event.t === "assistant_output") &&
+          event.traceId === "trace-old",
+      ),
+    ).toEqual([
+      {
+        t: "assistant_display",
+        text: "Visible old prefix.",
+        traceId: "trace-old",
+      },
+    ]);
+    expect(marks).toContainEqual(
+      expect.objectContaining({
+        name: "not_reached(retracted_display)",
+        traceId: "trace-old",
+      }),
+    );
+    await client.stop();
+  });
+
+  it("retracts an active zero-audio display immediately when reconnect begins", async () => {
+    const mint = makeMintFetch([{}, {}]);
+    const ws = makeWsFactory();
+    const marks: VoiceTraceMark[] = [];
+    const visibleEvents: ServerControlFrame[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "reconnect-display-retract",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      onTraceMark: (mark) => marks.push(mark),
+      onServerEvent: (event) => visibleEvents.push(event),
+      reconnectBackoffMs: 0,
+    });
+    await client.start();
+    await flush();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({
+      t: "ready",
+      sessionId: "session-before-reconnect",
+      traceId: "trace-ready",
+    });
+    await flush();
+    first.emitControl({
+      t: "stt_final",
+      text: "Start an answer",
+      traceId: "trace-before-reconnect",
+    });
+    first.emitControl({
+      t: "assistant_display",
+      text: "Visible before reconnect.",
+      traceId: "trace-before-reconnect",
+    });
+
+    first.emitClose(1006, "network switch");
+
+    expect(marks).toContainEqual(
+      expect.objectContaining({
+        name: "output_retracted",
+        traceId: "trace-before-reconnect",
+      }),
+    );
+    await flush();
+    expect(ws.sockets).toHaveLength(2);
+    const second = ws.last();
+    second.emitOpen();
+    second.emitControl({
+      t: "ready",
+      sessionId: "session-after-reconnect",
+      traceId: "trace-ready-after-reconnect",
+    });
+    second.emitControl({
+      t: "speaking_start",
+      traceId: "trace-before-reconnect",
+    });
+    second.emitControl({
+      t: "assistant_display",
+      text: "Visible after reconnect with a reused trace.",
+      traceId: "trace-before-reconnect",
+    });
+
+    expect(visibleEvents).toContainEqual({
+      t: "assistant_display",
+      text: "Visible after reconnect with a reused trace.",
+      traceId: "trace-before-reconnect",
+    });
+    await client.stop();
+  });
+
+  it("retracts a still-revealing terminal display on manual stop even after the response settled without audio", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "manual-stop-display-retract",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      onTraceMark: (mark) => marks.push(mark),
+    });
+    await client.start();
+    await flush();
+    const socket = ws.last();
+    socket.emitOpen();
+    socket.emitControl({
+      t: "ready",
+      sessionId: "session-manual-stop",
+      traceId: "trace-ready",
+    });
+    await flush();
+    socket.emitControl({
+      t: "stt_final",
+      text: "Show a long answer",
+      traceId: "trace-manual-stop",
+    });
+    socket.emitControl({
+      t: "assistant_output",
+      displayMarkdown: "A terminal answer whose visual reveal is still active.",
+      speechText: null,
+      displayTruncated: false,
+      traceId: "trace-manual-stop",
+    });
+    socket.emitControl({
+      t: "turn_end",
+      outcome: "displayed",
+      traceId: "trace-manual-stop",
+    });
+
+    await client.stop();
+
+    expect(marks).toContainEqual(
+      expect.objectContaining({
+        name: "output_retracted",
+        traceId: "trace-manual-stop",
+      }),
+    );
   });
 
   it("provisionally pauses on local speech and resumes retained audio after no server confirmation", async () => {
@@ -1109,6 +1492,78 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
         .render(400)
         .every((value) => value === 0),
     ).toBe(true);
+    await client.stop();
+  });
+
+  it("flushes buffered response audio on turn_end(error) after speaking_end", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const pbCtx = new FakePlaybackAudioContext(16_000);
+    const marks: VoiceTraceMark[] = [];
+    const diagnostics: VoiceSessionClientDiagnosticEvent[] = [];
+    const visibleEvents: ServerControlFrame[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "error-terminal",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => pbCtx,
+      onTraceMark: (mark) => marks.push(mark),
+      onDiagnostic: (event) => diagnostics.push(event),
+      onServerEvent: (event) => visibleEvents.push(event),
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s", traceId: "T-error" });
+    await flush();
+    await client.unlockPlayback();
+    sock.emitControl({ t: "speaking_start", traceId: "T-error" });
+    sock.emitControl({
+      t: "assistant_display",
+      text: "Frozen committed prefix.",
+      traceId: "T-error",
+    });
+    sock.emitAudio(floatSpeaking(300));
+    sock.emitControl({ t: "speaking_end", traceId: "T-error" });
+    sock.emitControl({
+      t: "assistant_display",
+      text: "Frozen committed prefix. Hidden late suffix.",
+      traceId: "T-error",
+    });
+
+    sock.emitControl({ t: "turn_end", outcome: "error", traceId: "T-error" });
+
+    expect(client.state.phase).toBe("listening");
+    expect(
+      playbackScriptNodeOf(pbCtx)
+        .render(400)
+        .every((value) => value === 0),
+    ).toBe(true);
+    expect(marks.map((mark) => mark.name)).toContain("playback_interrupted");
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        type: "playback_interrupted",
+        traceId: "T-error",
+        sequence: expect.any(Number),
+      }),
+    );
+    expect(
+      visibleEvents.filter(
+        (event) =>
+          event.t === "assistant_display" && event.traceId === "T-error",
+      ),
+    ).toEqual([
+      {
+        t: "assistant_display",
+        text: "Frozen committed prefix.",
+        traceId: "T-error",
+      },
+    ]);
     await client.stop();
   });
 
@@ -2218,6 +2673,70 @@ describe("transport-loss recovery (stop-class hardening)", () => {
     await settleTimers(80);
     expect(marks.some((m) => m.name === "token_rotation")).toBe(true);
     expect(mint.calls).toHaveLength(2);
+    expect(errors).toEqual([]);
+    await client.stop();
+  });
+
+  it("defers a due rotation until queued PCM drains after speaking_end", async () => {
+    const epochMs = Date.now();
+    const mint = makeMintFetch([
+      { token: "A", expiresAtMs: epochMs + 2_000 },
+      { token: "B", expiresAtMs: epochMs + 60_000 },
+    ]);
+    const ws = makeWsFactory();
+    const playback = new FakePlaybackAudioContext(16_000);
+    const { client, marks, errors } = recoveryClient(mint, ws, {
+      createPlaybackAudioContext: () => playback,
+      rotationLeadMs: 1_980,
+      // A completed playout drain should resume a due rotation immediately;
+      // this deliberately-large polling interval proves the drain owns it.
+      rotationRecheckMs: 10_000,
+      epochNow: () => epochMs,
+    });
+    await client.start();
+    await flush();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "ready", sessionId: "s1", traceId: "T-tail" });
+    await flush();
+    first.emitControl({ t: "speaking_start", traceId: "T-tail" });
+    first.emitAudio(floatSpeaking(1_600));
+    first.emitControl({ t: "speaking_end", traceId: "T-tail" });
+    expect(client.state.phase).toBe("listening");
+
+    // Rotation is due, but the server terminal arrived before the browser's
+    // audible tail drained. The old transport and exact PCM queue stay intact.
+    await settleTimers(80);
+    expect(marks.some((mark) => mark.name === "token_rotation_deferred")).toBe(
+      true,
+    );
+    expect(marks.some((mark) => mark.name === "token_rotation")).toBe(false);
+    expect(mint.calls).toHaveLength(1);
+    expect(ws.sockets).toHaveLength(1);
+    expect(first.closed).toBeNull();
+    expect(first.sentControls().some((control) => control.t === "bye")).toBe(
+      false,
+    );
+    expect(
+      playbackScriptNodeOf(playback)
+        .render(200)
+        .some((sample) => sample !== 0),
+    ).toBe(true);
+
+    // The exact accepted drain releases the pending rotation immediately,
+    // without waiting for the 10-second safety recheck.
+    playbackScriptNodeOf(playback).render(1_600);
+    await flush();
+    expect(marks.some((mark) => mark.name === "playback_drained")).toBe(true);
+    expect(marks.some((mark) => mark.name === "token_rotation")).toBe(true);
+    expect(
+      marks.findIndex((mark) => mark.name === "playback_drained"),
+    ).toBeLessThan(marks.findIndex((mark) => mark.name === "token_rotation"));
+    expect(first.sentControls().some((control) => control.t === "bye")).toBe(
+      true,
+    );
+    expect(mint.calls).toHaveLength(2);
+    expect(ws.sockets).toHaveLength(2);
     expect(errors).toEqual([]);
     await client.stop();
   });

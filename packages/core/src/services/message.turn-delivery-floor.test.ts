@@ -523,11 +523,9 @@ describe("race-superseded turns keep addressed responses", () => {
 		expect(result.didRespond).toBe(true);
 	});
 
-	it("still delivers the honest failure reply when the failing turn was superseded mid-generation", async () => {
-		// The dropped-turn incident on a slow backend: turn 1's model call dies
-		// AND a newer message already superseded the turn. The failure reply
-		// must survive the race check — the user watched the agent engage a DM
-		// and silence is not an acceptable terminal state.
+	it("does not deliver a stale failure reply after the turn is superseded mid-generation", async () => {
+		// Once the newer room turn takes ownership, the older request must stop
+		// without emitting a fallback that can arrive after the newer answer.
 		const secondReply = `second answer. probe-${v4()}`;
 		const firstDeliveries: Content[] = [];
 		const secondDeliveries: Content[] = [];
@@ -555,23 +553,22 @@ describe("race-superseded turns keep addressed responses", () => {
 			throw RATE_LIMIT_ERROR;
 		});
 
-		const result = await h.service.handleMessage(
-			h.runtime,
-			h.makeMessage("whats my favorite color?"),
-			async (content) => {
-				firstDeliveries.push(content);
-				return [];
-			},
-		);
+		await expect(
+			h.service.handleMessage(
+				h.runtime,
+				h.makeMessage("whats my favorite color?"),
+				async (content) => {
+					firstDeliveries.push(content);
+					return [];
+				},
+			),
+		).rejects.toThrow("Response superseded by a newer room turn");
 		await drainPostDeliveryTasks(h.runtime);
 
 		expect(secondTurn).not.toBeNull();
 		expect(visibleTexts(secondDeliveries)).toEqual([secondReply]);
-		// The superseded failing turn still delivered exactly one honest reply.
-		expect(result.didRespond).toBe(true);
-		expect(visibleTexts(firstDeliveries)).toHaveLength(1);
-		// And its delivery is observable even though the reply is transient.
-		expect(messageSentTexts(h)).toContain(visibleTexts(firstDeliveries)[0]);
+		expect(firstDeliveries).toEqual([]);
+		expect(messageSentTexts(h)).toEqual([secondReply]);
 	});
 });
 

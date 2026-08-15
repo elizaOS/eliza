@@ -16,6 +16,7 @@ import type {
 	Action,
 	ActionResult,
 	HandlerCallback,
+	HandlerOptions,
 	IAgentRuntime,
 	Memory,
 	State,
@@ -244,7 +245,7 @@ export function createModelSwitchAction(
 			_runtime: IAgentRuntime,
 			message: Memory,
 			_state?: State,
-			options?: Record<string, unknown>,
+			options?: HandlerOptions,
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
 			const request = inferModelSwitchRequest(
@@ -282,6 +283,11 @@ export function createModelSwitchAction(
 				`[plugin-app-control] MODEL_SWITCH target=${request.target}${request.model ? ` model=${request.model}` : ""}`,
 			);
 
+			// This is the external commit boundary. A turn cancelled during parsing or
+			// validation must never switch the global runtime. Once the request starts,
+			// however, the route owns settlement: do not attach the turn signal to the
+			// in-flight mutation or rewrite its eventual authoritative result as an abort.
+			options?.abortSignal?.throwIfAborted();
 			try {
 				const outcome = await switchModel(request);
 				if (!outcome.ok) {

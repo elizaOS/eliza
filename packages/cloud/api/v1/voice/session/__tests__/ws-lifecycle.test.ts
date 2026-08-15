@@ -125,9 +125,11 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
   readyState = 0;
   sent: string[] = [];
   closed = false;
+  private readonly autoAudio: boolean;
   private listeners = new Map<string, Set<(e: unknown) => void>>();
 
-  constructor() {
+  constructor(opts?: { autoAudio?: boolean }) {
+    this.autoAudio = opts?.autoAudio ?? true;
     FakeCartesiaSocket.instances.push(this);
     queueMicrotask(() => {
       this.readyState = 1;
@@ -139,7 +141,11 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
     // On the first non-cancel generation request, stream one audio chunk.
     const msg = JSON.parse(data) as { cancel?: boolean; transcript?: string };
     if (msg.cancel) return;
-    if (typeof msg.transcript === "string" && msg.transcript.length > 0) {
+    if (
+      this.autoAudio &&
+      typeof msg.transcript === "string" &&
+      msg.transcript.length > 0
+    ) {
       queueMicrotask(() => {
         if (this.closed) return;
         const pcm = Buffer.from(new Uint8Array([1, 2, 3, 4])).toString(
@@ -425,6 +431,7 @@ function makeControlledCanonicalChunkFetch(): {
   enqueueChunk: (chunk: string) => void;
   enqueueSpeechSegment: (segment: Record<string, unknown>) => void;
   finish: () => void;
+  fail: (error?: unknown) => void;
   ready: Promise<void>;
 } {
   const encoder = new TextEncoder();
@@ -467,7 +474,45 @@ function makeControlledCanonicalChunkFetch(): {
       controller?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller?.close();
     },
+    fail(error: unknown = new Error("synthetic canonical stream failure")) {
+      controller?.error(error);
+    },
     ready,
+  };
+}
+
+function enqueueCommittedSpeechPrefix(
+  controlled: ReturnType<typeof makeControlledCanonicalChunkFetch>,
+  sentences: readonly string[],
+  terminalSuffix: string,
+): { canonical: string; committedChars: number } {
+  const sources = sentences.map((sentence, index) =>
+    index === 0 ? sentence : ` ${sentence}`,
+  );
+  const canonical = `${sources.join("")}${terminalSuffix}`;
+  controlled.enqueueChunk(canonical);
+
+  let sourceStart = 0;
+  for (const [sequence, sentence] of sentences.entries()) {
+    const source = sources[sequence]!;
+    const sourceEnd = sourceStart + source.length;
+    controlled.enqueueSpeechSegment({
+      type: "voice_speech_segment",
+      version: 1,
+      sequence,
+      sourceStart,
+      sourceEnd,
+      speechText: sentence,
+    });
+    sourceStart = sourceEnd;
+  }
+
+  return {
+    canonical,
+    committedChars: sentences.reduce(
+      (total, sentence) => total + sentence.length,
+      0,
+    ),
   };
 }
 
@@ -484,6 +529,7 @@ const CLAIMS = {
 async function connectSession(opts: {
   client: FakeClientSocket;
   fetchImpl: typeof fetch;
+  cartesiaSocketFactory?: () => FakeCartesiaSocket;
   inkSocketFactory?: () => CartesiaInkWebSocket;
   sttReconnectDelaysMs?: readonly number[];
   sttConnectTimeoutMs?: number;
@@ -522,7 +568,8 @@ async function connectSession(opts: {
           opts.inkSocketFactory ?? (() => new FakeInkSocket()),
         cartesiaApiKey: "ct-key",
         cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
-        cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
+        cartesiaWebSocketFactory:
+          opts.cartesiaSocketFactory ?? (() => new FakeCartesiaSocket()),
         fishAudioEnabled: opts.fish?.enabled,
         fishAudioApiKey: opts.fish?.enabled ? "fish-key" : undefined,
         fishAudioReferenceId: opts.fish?.enabled ? "fish-voice" : undefined,
@@ -719,6 +766,7 @@ describe("voice-session WS lifecycle", () => {
     expect(requests[0].body).toEqual({
       text: "hello agent",
       clientMessageId: expect.stringContaining("voice:sess-lifecycle:turn:1:"),
+      channelType: "VOICE_DM",
       metadata: { clientTransport: "realtime_voice" },
       streamProtocol: "delta-v2",
       voiceSpeechProtocol: "committed-segments-v1",
@@ -1415,13 +1463,14 @@ describe("voice-session WS lifecycle", () => {
     await connectSession({ client, fetchImpl: controlled.fetchImpl });
     const ink = FakeInkSocket.instances.at(-1)!;
     ink.emitTurn("turn.start");
-    ink.emitTurn("turn.end", "give me two useful sentences");
+    ink.emitTurn("turn.end", "give me three useful sentences");
     await controlled.ready;
 
     const first =
       "A safe complete sentence can start speaking before completion.";
     const second = " A second safe sentence closes the response.";
-    controlled.enqueueChunk(`${first}${second}`);
+    const third = " A third safe sentence closes the response.";
+    controlled.enqueueChunk(`${first}${second}${third}`);
     controlled.enqueueSpeechSegment({
       type: "voice_speech_segment",
       version: 1,
@@ -1429,6 +1478,14 @@ describe("voice-session WS lifecycle", () => {
       sourceStart: 0,
       sourceEnd: first.length,
       speechText: first,
+    });
+    controlled.enqueueSpeechSegment({
+      type: "voice_speech_segment",
+      version: 1,
+      sequence: 1,
+      sourceStart: first.length,
+      sourceEnd: first.length + second.length,
+      speechText: second.trim(),
     });
     await flush();
     await flush();
@@ -1466,11 +1523,338 @@ describe("voice-session WS lifecycle", () => {
       expect.objectContaining({ transcript: first, continue: true }),
       expect.objectContaining({
         transcript: second.trim(),
+        continue: true,
+      }),
+      expect.objectContaining({
+        transcript: third.trim(),
         continue: false,
       }),
     ]);
     expect(requests.map((entry) => entry.transcript).join(" ")).toBe(
-      `${first} ${second.trim()}`,
+      `${first} ${second.trim()} ${third.trim()}`,
+    );
+    expect(
+      requests.reduce(
+        (total, entry) => total + (entry.transcript?.length ?? 0),
+        0,
+      ),
+    ).toBeLessThanOrEqual(600);
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "assistant_output",
+        displayMarkdown: `${first}${second}${third}`,
+        speechText: third.trim(),
+      }),
+    );
+
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "usage",
+        ttsChars: first.length + second.trim().length + third.trim().length,
+      }),
+    );
+  });
+
+  test.each([
+    ["near-full committed budget", 37, 570, 30],
+    ["zero remaining budget", 39, 600, 0],
+  ])(
+    "does not project a terminal suffix past the %s",
+    async (_case, safeWordRepetitions, expectedCommittedChars, expectedRemaining) => {
+      const sentence = `${"safe ".repeat(safeWordRepetitions)}okay.`;
+      const suffix =
+        " This terminal suffix is deliberately long enough to cross the remaining turn budget.";
+      const controlled = makeControlledCanonicalChunkFetch();
+      const client = new FakeClientSocket();
+      await connectSession({ client, fetchImpl: controlled.fetchImpl });
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "give me a bounded response");
+      await controlled.ready;
+
+      const { canonical, committedChars } = enqueueCommittedSpeechPrefix(
+        controlled,
+        [sentence, sentence, sentence],
+        suffix,
+      );
+      expect(committedChars).toBe(expectedCommittedChars);
+      expect(600 - committedChars).toBe(expectedRemaining);
+      controlled.finish();
+      await flush();
+      await flush();
+
+      const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+      const requests = cartesia.sent
+        .map(
+          (entry) =>
+            JSON.parse(entry) as {
+              transcript?: string;
+              continue?: boolean;
+            },
+        )
+        .filter((entry) => typeof entry.transcript === "string");
+      expect(requests).toHaveLength(3);
+      expect(requests.map((entry) => entry.transcript)).toEqual([
+        sentence,
+        sentence,
+        sentence,
+      ]);
+      expect(
+        requests.slice(0, 2).every((entry) => entry.continue === true),
+      ).toBe(true);
+      expect(requests.at(-1)).toMatchObject({
+        continue: false,
+      });
+      expect(requests.at(-1)?.transcript).toBe(sentence);
+      expect(cartesia.sentText()).not.toContain(suffix.trim());
+      expect(cartesia.sentText().length).toBe(expectedCommittedChars);
+      expect(cartesia.sentText().length).toBeLessThanOrEqual(600);
+      expect(cartesia.closed).toBe(false);
+      expect(client.controlFrames).toContainEqual(
+        expect.objectContaining({
+          t: "assistant_output",
+          displayMarkdown: canonical,
+          speechText: null,
+        }),
+      );
+      expect(client.controlFrames.find((frame) => frame.t === "error")).toBe(
+        undefined,
+      );
+      expect(client.controlFrames.some((frame) => frame.t === "turn_end")).toBe(
+        false,
+      );
+
+      cartesia.emitDone();
+      await flush();
+      expect(cartesia.closed).toBe(true);
+      expect(client.controlFrames).toContainEqual(
+        expect.objectContaining({ t: "turn_end", outcome: "spoken" }),
+      );
+      expect(client.controlFrames).toContainEqual(
+        expect.objectContaining({
+          t: "usage",
+          ttsChars: expectedCommittedChars,
+        }),
+      );
+    },
+  );
+
+  test("drains delayed committed audio before settling a budget-complete turn", async () => {
+    const sentence = `${"safe ".repeat(39)}okay.`;
+    const suffix =
+      " This terminal suffix must remain display-only after the speech budget is exhausted.";
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+      cartesiaSocketFactory: () => new FakeCartesiaSocket({ autoAudio: false }),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "give me a bounded response");
+    await controlled.ready;
+
+    enqueueCommittedSpeechPrefix(
+      controlled,
+      [sentence, sentence, sentence],
+      suffix,
+    );
+    controlled.finish();
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent.map(
+      (entry) =>
+        JSON.parse(entry) as {
+          cancel?: boolean;
+          transcript?: string;
+          continue?: boolean;
+        },
+    );
+    expect(requests.filter((entry) => entry.transcript)).toHaveLength(3);
+    expect(requests.at(-1)).toMatchObject({
+      continue: false,
+    });
+    expect(requests.at(-1)?.transcript).toBe(sentence);
+    expect(requests.some((entry) => entry.cancel === true)).toBe(false);
+    expect(cartesia.closed).toBe(false);
+    expect(client.audioFrames).toHaveLength(0);
+    expect(client.controlFrames.some((frame) => frame.t === "turn_end")).toBe(
+      false,
+    );
+
+    cartesia.emitAudio();
+    expect(client.audioFrames).toHaveLength(1);
+    expect(client.controlTypes()).toContain("speaking_start");
+    expect(client.controlTypes()).not.toContain("speaking_end");
+
+    cartesia.emitDone();
+    await flush();
+    expect(cartesia.closed).toBe(true);
+    expect(client.controlTypes()).toContain("speaking_end");
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "turn_end", outcome: "spoken" }),
+    );
+  });
+
+  test("drains a retained committed phrase when the canonical stream later fails", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+      cartesiaSocketFactory: () => new FakeCartesiaSocket({ autoAudio: false }),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "begin a safe answer");
+    await controlled.ready;
+
+    const committed =
+      "This committed sentence remains truthful after the stream fails.";
+    controlled.enqueueChunk(committed);
+    controlled.enqueueSpeechSegment({
+      type: "voice_speech_segment",
+      version: 1,
+      sequence: 0,
+      sourceStart: 0,
+      sourceEnd: committed.length,
+      speechText: committed,
+    });
+    await flush();
+    expect(FakeCartesiaSocket.instances.at(-1)!.sentText()).toBe("");
+
+    controlled.fail(new Error("SYNTHETIC-PRIVATE-UPSTREAM-DETAIL"));
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent.map(
+      (entry) =>
+        JSON.parse(entry) as {
+          cancel?: boolean;
+          transcript?: string;
+          continue?: boolean;
+        },
+    );
+    expect(requests).toContainEqual(
+      expect.objectContaining({
+        transcript: committed,
+        continue: false,
+      }),
+    );
+    expect(requests.some((entry) => entry.cancel === true)).toBe(false);
+    expect(client.controlFrames.some((frame) => frame.t === "turn_end")).toBe(
+      false,
+    );
+    expect(JSON.stringify(client.controlFrames)).not.toContain(
+      "SYNTHETIC-PRIVATE-UPSTREAM-DETAIL",
+    );
+
+    cartesia.emitAudio();
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "turn_end", outcome: "spoken" }),
+    );
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "usage", ttsChars: committed.length }),
+    );
+  });
+
+  test("does not reconnect before retained speech drains after a fatal protocol error", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+      cartesiaSocketFactory: () => new FakeCartesiaSocket({ autoAudio: false }),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "begin a safe answer");
+    await controlled.ready;
+
+    const committed = "This validated sentence must finish playing.";
+    controlled.enqueueChunk(committed);
+    controlled.enqueueSpeechSegment({
+      type: "voice_speech_segment",
+      version: 1,
+      sequence: 0,
+      sourceStart: 0,
+      sourceEnd: committed.length,
+      speechText: committed,
+    });
+    await flush();
+
+    // A second segment with a noncontiguous sequence is a fatal committed-
+    // speech protocol violation at the bridge boundary.
+    controlled.enqueueSpeechSegment({
+      type: "voice_speech_segment",
+      version: 1,
+      sequence: 2,
+      sourceStart: committed.length,
+      sourceEnd: committed.length + 4,
+      speechText: "late",
+    });
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "protocol_error",
+        retryable: true,
+      }),
+    );
+    expect(client.controlFrames.some((frame) => frame.t === "turn_end")).toBe(
+      false,
+    );
+    expect(cartesia.sentText()).toBe(committed);
+    expect(cartesia.sent.some((entry) => entry.includes('"cancel":true'))).toBe(
+      false,
+    );
+
+    cartesia.emitAudio();
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "turn_end", outcome: "spoken" }),
+    );
+  });
+
+  test("does not expose writable upstream error names", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({ client, fetchImpl: controlled.fetchImpl });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "please answer");
+    await controlled.ready;
+
+    const privateError = new Error("SYNTHETIC-PRIVATE-MESSAGE");
+    privateError.name = "SYNTHETIC-PRIVATE-NAME-555-12-3456";
+    controlled.fail(privateError);
+    await flush();
+    await flush();
+
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "llm_error",
+        retryable: true,
+      }),
+    );
+    expect(JSON.stringify(client.controlFrames)).not.toContain(
+      "SYNTHETIC-PRIVATE",
+    );
+    expect(JSON.stringify(fakeLogger.logger.warn.mock.calls)).not.toContain(
+      "SYNTHETIC-PRIVATE",
     );
   });
 

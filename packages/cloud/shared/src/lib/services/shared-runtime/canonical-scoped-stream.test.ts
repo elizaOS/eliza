@@ -6,6 +6,12 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { ChannelType } from "@elizaos/core";
+import {
+  COMMITTED_SPEECH_PROTOCOL,
+  DELTA_STREAM_PROTOCOL,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+} from "@elizaos/shared";
 import { RateLimitError } from "../../api/errors";
 import * as coordinatorActual from "./conversation-coordinator";
 
@@ -123,6 +129,64 @@ describe("handleCanonicalScopedAgentStream", () => {
       // The params marker is what admits the id to the coordinator's durable
       // claim/replay/conflict boundary — a generated id must never carry it.
       params: { clientMessageId: "client-id-9" },
+    });
+  });
+
+  test("preserves the exact realtime VOICE_DM negotiation through the bridge RPC", async () => {
+    const res = await handleCanonicalScopedAgentStream({
+      ...BASE,
+      userId: "user-voice-1",
+      body: {
+        text: "hello by voice",
+        clientMessageId: "voice:trace-9",
+        channelType: ChannelType.VOICE_DM,
+        metadata: {
+          clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+          untrustedExtra: "drop-me",
+        },
+        streamProtocol: DELTA_STREAM_PROTOCOL,
+        voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const rpc = (coordinateSharedStream.mock.calls[0] as unknown[])[1];
+    expect(rpc).toEqual({
+      jsonrpc: "2.0",
+      id: "voice:trace-9",
+      method: "message.send",
+      params: {
+        text: "hello by voice",
+        roomId: BASE.conversationId,
+        clientMessageId: "voice:trace-9",
+        userId: "user-voice-1",
+        source: "voice",
+        channelType: ChannelType.VOICE_DM,
+        metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+        streamProtocol: DELTA_STREAM_PROTOCOL,
+        voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+      },
+    });
+  });
+
+  test("does not negotiate unknown stream, speech, channel, or transport values", async () => {
+    await handleCanonicalScopedAgentStream({
+      ...BASE,
+      body: {
+        text: "plain chat",
+        channelType: "FUTURE_VOICE",
+        metadata: { clientTransport: "future_voice", privileged: true },
+        streamProtocol: "delta-v3",
+        voiceSpeechProtocol: "unverified-provider-sentences",
+      },
+    });
+
+    const rpc = (coordinateSharedStream.mock.calls[0] as unknown[])[1] as {
+      params: Record<string, unknown>;
+    };
+    expect(rpc.params).toEqual({
+      text: "plain chat",
+      roomId: BASE.conversationId,
     });
   });
 

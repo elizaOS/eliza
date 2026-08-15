@@ -48,6 +48,7 @@ import {
   revertedEffectReceiptIds,
   runWithInferenceTiming,
   runWithTrajectoryContext,
+  type StreamChunkMetadata,
   stringToUuid,
   type TrustedApiPrincipal,
   tagsMayProduceEffects,
@@ -290,6 +291,8 @@ const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 export interface ChatMessageIdOutcome {
   text: string;
   agentName: string;
+  /** Preserve validated user-requested literal/JSON bytes across replay. */
+  preserveUserRequestedFormat?: boolean;
   messageId?: UUID;
   userMessageId?: UUID;
   assistantEphemeral?: boolean;
@@ -946,6 +949,10 @@ export interface AccountConnectRequest {
 export interface ChatGenerationResult {
   text: string;
   agentName: string;
+  /** The visible reply intentionally ended at its already-committed prefix. */
+  interrupted?: boolean;
+  /** Preserve core-validated user-requested literal/JSON bytes end to end. */
+  preserveUserRequestedFormat?: boolean;
   /** Machine-only final text that must not render as assistant prose. */
   transcriptVisibility?: "internal";
   /** The agent's internal reasoning for this turn, when the model emitted one. */
@@ -995,8 +1002,16 @@ export interface ChatActionResultSummary {
 export type ChatStreamTextOrigin = "model" | "action_callback";
 
 export interface ChatGenerateOptions {
-  onChunk?: (chunk: string, origin?: ChatStreamTextOrigin) => void;
-  onSnapshot?: (text: string, origin?: ChatStreamTextOrigin) => void;
+  onChunk?: (
+    chunk: string,
+    origin?: ChatStreamTextOrigin,
+    metadata?: StreamChunkMetadata,
+  ) => void;
+  onSnapshot?: (
+    text: string,
+    origin?: ChatStreamTextOrigin,
+    metadata?: StreamChunkMetadata,
+  ) => void;
   /**
    * In-flight phase changes for the rich status indicator. Emitted additively
    * alongside `onChunk`/`onSnapshot` — `thinking` before the first visible
@@ -1172,6 +1187,32 @@ function isInternalStructuredStreamText(text: string): boolean {
   }
 }
 
+function isCommittedRequestedJsonStream(
+  metadata: StreamChunkMetadata | undefined,
+): boolean {
+  return (
+    metadata?.authority === "committed_reply" &&
+    metadata.visibleFormat === "json"
+  );
+}
+
+function normalizeCommittedStreamMetadata(
+  metadata: StreamChunkMetadata | undefined,
+): StreamChunkMetadata | undefined {
+  return metadata?.authority === "committed_reply" &&
+    (metadata.visibleFormat === "text" || metadata.visibleFormat === "json")
+    ? metadata
+    : undefined;
+}
+
+function committedRequestedJsonMetadata(
+  content: Content | null | undefined,
+): StreamChunkMetadata | undefined {
+  return content?.preserveUserRequestedFormat === true
+    ? { authority: "committed_reply", visibleFormat: "json" }
+    : undefined;
+}
+
 function firstNonEmptyString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -1325,11 +1366,10 @@ function getLatestVisibleResponseMessageText(
     if (content?.transcriptVisibility === "internal") {
       continue;
     }
+    const rawText = extractCompatTextContent(content);
     const text =
-      typeof extractCompatTextContent(content) === "string"
-        ? extractCompatTextContent(content).trim()
-        : "";
-    if (!text || isNoResponsePlaceholder(text)) {
+      content?.preserveUserRequestedFormat === true ? rawText : rawText.trim();
+    if (!text.trim() || isNoResponsePlaceholder(text)) {
       continue;
     }
     return text;
@@ -2349,11 +2389,15 @@ export function normalizeChatResponseText(
   text: string,
   logBuffer: LogEntry[],
   runtime?: AgentRuntime | null,
+  options?: { preserveUserRequestedFormat?: boolean },
 ): string {
   // Both fallback strings can hit this path; either should be re-routed to
   // the insufficient-credits reply when a recent credits log explains why
   // generation produced nothing.
-  const visibleText = extractAssistantReplyText(text) ?? text;
+  const visibleText =
+    options?.preserveUserRequestedFormat === true
+      ? text
+      : (extractAssistantReplyText(text) ?? text);
   const trimmed = visibleText.trim();
   if (
     (trimmed === PROVIDER_ISSUE_CHAT_REPLY ||
@@ -3214,6 +3258,7 @@ async function generateChatResponseWithTiming(
     const originalUserText = String(extractCompatTextContent(message.content));
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
+    let preserveUserRequestedFormatFromStream = false;
     // Snapshot consumers can replace prior text. Append-only transports need
     // their independently observed prefix so finalization can prove the
     // authoritative reply still matches bytes that have left the process.
@@ -3262,20 +3307,34 @@ async function generateChatResponseWithTiming(
     const emitChunk = (
       chunk: string,
       origin: ChatStreamTextOrigin = "model",
+      metadata?: StreamChunkMetadata,
     ): void => {
       if (!chunk) return;
+      if (isCommittedRequestedJsonStream(metadata)) {
+        preserveUserRequestedFormatFromStream = true;
+      }
       markFirstVisibleReply();
       responseText += chunk;
       if (opts?.onChunk) {
-        opts.onChunk(chunk, origin);
+        if (metadata) {
+          opts.onChunk(chunk, origin, metadata);
+        } else {
+          // Preserve the established observable callback arity for callers
+          // that do not participate in committed-speech metadata.
+          opts.onChunk(chunk, origin);
+        }
         appendOnlyText += chunk;
       }
     };
     const emitSnapshot = (
       text: string,
       origin: ChatStreamTextOrigin = "model",
+      metadata?: StreamChunkMetadata,
     ): void => {
       if (!text) return;
+      if (isCommittedRequestedJsonStream(metadata)) {
+        preserveUserRequestedFormatFromStream = true;
+      }
       // Skip when the snapshot matches the current responseText exactly:
       // re-emitting the same fullText forces clients to re-render an identical
       // bubble (and on-the-wire bytes for nothing).
@@ -3283,7 +3342,11 @@ async function generateChatResponseWithTiming(
       responseText = text;
       if (opts?.onSnapshot) {
         markFirstVisibleReply();
-        opts.onSnapshot(text, origin);
+        if (metadata) {
+          opts.onSnapshot(text, origin, metadata);
+        } else {
+          opts.onSnapshot(text, origin);
+        }
       }
     };
     const claimStreamSource = (
@@ -3303,6 +3366,7 @@ async function generateChatResponseWithTiming(
       chunk: string,
       accumulated?: string,
       origin: ChatStreamTextOrigin = "model",
+      metadata?: StreamChunkMetadata,
     ): void => {
       // StreamChunkCallback defines `chunk` as a delta. Structured extractors
       // additionally provide their authoritative accumulation, which lets this
@@ -3310,15 +3374,15 @@ async function generateChatResponseWithTiming(
       // overlap. Applying overlap deduplication to genuine deltas corrupts valid
       // boundaries such as "Fast " + "streaming " and repeated tokens.
       if (accumulated === undefined) {
-        emitChunk(chunk, origin);
+        emitChunk(chunk, origin, metadata);
         return;
       }
       if (accumulated === responseText) return;
       if (accumulated.startsWith(responseText)) {
-        emitChunk(accumulated.slice(responseText.length), origin);
+        emitChunk(accumulated.slice(responseText.length), origin, metadata);
         return;
       }
-      emitSnapshot(accumulated, origin);
+      emitSnapshot(accumulated, origin, metadata);
     };
     const captureCallbackBaseline = (): void => {
       if (preCallbackText === null) {
@@ -3329,6 +3393,7 @@ async function generateChatResponseWithTiming(
     const replaceCallbackText = (
       incoming: string,
       origin: ChatStreamTextOrigin = "action_callback",
+      metadata?: StreamChunkMetadata,
     ): void => {
       captureCallbackBaseline();
       const baseline = preCallbackText ?? "";
@@ -3347,25 +3412,30 @@ async function generateChatResponseWithTiming(
         (opts?.onSnapshot || appendOnlyText === responseText)
       ) {
         const delta = nextText.slice(responseText.length);
-        emitChunk(delta, origin);
+        emitChunk(delta, origin, metadata);
         // emitChunk already advanced responseText; re-emit snapshot for
         // legacy clients that only handle fullText updates.
-        opts?.onSnapshot?.(nextText, origin);
+        if (metadata) {
+          opts?.onSnapshot?.(nextText, origin, metadata);
+        } else {
+          opts?.onSnapshot?.(nextText, origin);
+        }
         return;
       }
-      emitSnapshot(nextText, origin);
+      emitSnapshot(nextText, origin, metadata);
     };
     const applyCallbackTextUpdate = (
       content: Content,
       incoming: string,
       origin: ChatStreamTextOrigin = "action_callback",
+      metadata?: StreamChunkMetadata,
     ): void => {
       captureCallbackBaseline();
       if (resolveCallbackMergeMode(content) === "append") {
-        appendIncomingText(incoming, undefined, origin);
+        appendIncomingText(incoming, undefined, origin, metadata);
         return;
       }
-      replaceCallbackText(incoming, origin);
+      replaceCallbackText(incoming, origin, metadata);
     };
 
     // Inbound event consumers may persist correlation state or apply
@@ -3689,9 +3759,12 @@ async function generateChatResponseWithTiming(
                     }
 
                     const chunk = extractCompatTextContent(content);
-                    const visibleChunk = isInternalStructuredStreamText(chunk)
-                      ? ""
-                      : chunk;
+                    const callbackMetadata =
+                      committedRequestedJsonMetadata(content);
+                    const visibleChunk =
+                      callbackMetadata || !isInternalStructuredStreamText(chunk)
+                        ? chunk
+                        : "";
                     const attributedActionName =
                       normalizeActionName(actionName);
                     const progressCallback = isProgressActionCallback(content);
@@ -3721,6 +3794,7 @@ async function generateChatResponseWithTiming(
                       content,
                       visibleChunk,
                       attributedActionName ? "action_callback" : "model",
+                      callbackMetadata,
                     );
                     if (attributedActionName) {
                       recordActionCallback(
@@ -3752,9 +3826,15 @@ async function generateChatResponseWithTiming(
                           chunk: string,
                           _messageId?: string,
                           accumulated?: string,
+                          metadata?: StreamChunkMetadata,
                         ) => {
                           if (!chunk) return;
-                          if (isInternalStructuredStreamText(chunk)) {
+                          const committedMetadata =
+                            normalizeCommittedStreamMetadata(metadata);
+                          if (
+                            !committedMetadata &&
+                            isInternalStructuredStreamText(chunk)
+                          ) {
                             // A native planner/tool step, not visible reply text:
                             // fork it onto the working indicator + inline tool row
                             // instead of leaking JSON into the bubble.
@@ -3767,7 +3847,12 @@ async function generateChatResponseWithTiming(
                             return;
                           }
                           if (!claimStreamSource("onStreamChunk")) return;
-                          appendIncomingText(chunk, accumulated);
+                          appendIncomingText(
+                            chunk,
+                            accumulated,
+                            "model",
+                            committedMetadata,
+                          );
                         }
                       : undefined,
                   },
@@ -4045,6 +4130,15 @@ async function generateChatResponseWithTiming(
       result?.responseContent,
       ...(result?.responseMessages ?? []).map((entry) => entry.content),
     ];
+    const preserveUserRequestedFormat =
+      preserveUserRequestedFormatFromStream ||
+      resultContentCandidates.some(
+        (content) => content?.preserveUserRequestedFormat === true,
+      );
+    const authoritativeStreamMetadata: StreamChunkMetadata | undefined =
+      preserveUserRequestedFormat
+        ? { authority: "committed_reply", visibleFormat: "json" }
+        : undefined;
     const resultText =
       responseMessageText ||
       extractCompatTextContent(result?.responseContent) ||
@@ -4058,9 +4152,9 @@ async function generateChatResponseWithTiming(
     // Fallback: if callbacks weren't used for text, stream + return final text.
     if (!responseText && resultText && resultTextVisibility !== "internal") {
       if (opts?.onSnapshot) {
-        emitSnapshot(resultText);
+        emitSnapshot(resultText, "model", authoritativeStreamMetadata);
       } else {
-        emitChunk(resultText);
+        emitChunk(resultText, "model", authoritativeStreamMetadata);
       }
     } else if (
       visibleCallbackDeliveries === 0 &&
@@ -4069,7 +4163,11 @@ async function generateChatResponseWithTiming(
       resultText !== responseText &&
       resultText.startsWith(responseText)
     ) {
-      emitChunk(resultText.slice(responseText.length));
+      emitChunk(
+        resultText.slice(responseText.length),
+        "model",
+        authoritativeStreamMetadata,
+      );
     } else if (
       visibleCallbackDeliveries === 0 &&
       resultText &&
@@ -4079,7 +4177,7 @@ async function generateChatResponseWithTiming(
       !blockedUnexecutedActionPayload
     ) {
       if (opts?.onSnapshot) {
-        emitSnapshot(resultText);
+        emitSnapshot(resultText, "model", authoritativeStreamMetadata);
       } else {
         responseText = resultText;
       }
@@ -4113,9 +4211,12 @@ async function generateChatResponseWithTiming(
     const exactDocumentValue = generationAbortController.signal.aborted
       ? null
       : await resolveExactDocumentValueForChat(runtime, message);
-    const normalizedResponseText = trimWalletProgressPrefix(
-      exactDocumentValue || responseText || resultText || "",
-    );
+    const unnormalizedResponseText = preserveUserRequestedFormat
+      ? responseText || resultText || ""
+      : exactDocumentValue || responseText || resultText || "";
+    const normalizedResponseText = preserveUserRequestedFormat
+      ? unnormalizedResponseText
+      : trimWalletProgressPrefix(unnormalizedResponseText);
     const intentionalNoResponse = isIntentionalNoResponseResult(
       result,
       normalizedResponseText,
@@ -4159,7 +4260,17 @@ async function generateChatResponseWithTiming(
       const remainingText = authoritativeText.slice(appendOnlyText.length);
       if (remainingText) {
         markFirstVisibleReply();
-        opts.onChunk(remainingText);
+        if (authoritativeStreamMetadata) {
+          opts.onChunk(
+            remainingText,
+            "model",
+            authoritativeStreamMetadata,
+          );
+        } else {
+          // Historical append-only terminal completion is a one-argument
+          // callback. Add provenance only when there is actual metadata.
+          opts.onChunk(remainingText);
+        }
         appendOnlyText += remainingText;
       }
     }
@@ -4180,6 +4291,9 @@ async function generateChatResponseWithTiming(
             const content = {
               ...result.responseContent,
               text: finalText,
+              ...(preserveUserRequestedFormat
+                ? { preserveUserRequestedFormat: true }
+                : {}),
             } satisfies Content;
             delete content.transcriptVisibility;
             if (transcriptVisibility) {
@@ -4191,6 +4305,9 @@ async function generateChatResponseWithTiming(
           ? ({
               text: finalText,
               ...(transcriptVisibility ? { transcriptVisibility } : {}),
+              ...(preserveUserRequestedFormat
+                ? { preserveUserRequestedFormat: true }
+                : {}),
             } satisfies Content)
           : null;
     const responseRecord = responseContent as
@@ -4229,6 +4346,7 @@ async function generateChatResponseWithTiming(
       responseContent.thought.trim()
         ? responseContent.thought
         : undefined;
+    const interrupted = responseContent?.interrupted === true;
     const actionResultSummaries = summarizeRuntimeActionResults(
       runtime,
       typeof message.id === "string" ? message.id : undefined,
@@ -4271,6 +4389,10 @@ async function generateChatResponseWithTiming(
     return {
       text: finalText,
       agentName,
+      ...(interrupted ? { interrupted: true } : {}),
+      ...(preserveUserRequestedFormat
+        ? { preserveUserRequestedFormat: true }
+        : {}),
       ...(transcriptVisibility ? { transcriptVisibility } : {}),
       ...(thought ? { thought } : {}),
       ...(intentionalNoResponse
@@ -4761,6 +4883,7 @@ export async function handleChatRoutes(
 
         let fullText = "";
         let transcriptVisibility: "internal" | undefined;
+        let preserveUserRequestedFormat = false;
 
         {
           const runtime = state.runtime;
@@ -4798,7 +4921,10 @@ export async function handleChatRoutes(
             state.agentName,
             {
               abortSignal: disconnectTracker.signal,
-              onChunk: (chunk) => {
+              onChunk: (chunk, _origin, metadata) => {
+                if (isCommittedRequestedJsonStream(metadata)) {
+                  preserveUserRequestedFormat = true;
+                }
                 fullText += chunk;
                 if (chunk) sendChunk({ content: chunk }, null);
               },
@@ -4807,6 +4933,8 @@ export async function handleChatRoutes(
             },
           );
           transcriptVisibility = result.transcriptVisibility;
+          preserveUserRequestedFormat ||=
+            result.preserveUserRequestedFormat === true;
           if (result.localInference && !fullText) {
             fullText =
               result.transcriptVisibility === "internal" ? "" : result.text;
@@ -4821,6 +4949,7 @@ export async function handleChatRoutes(
           fullText,
           state.logBuffer,
           state.runtime,
+          { preserveUserRequestedFormat },
         );
         if (
           (fullText.trim().length === 0 || isNoResponsePlaceholder(fullText)) &&
@@ -4896,6 +5025,7 @@ export async function handleChatRoutes(
       let localInference: LocalInferenceChatMetadata | undefined;
       let failureKind: ChatFailureKind | undefined;
       let transcriptVisibility: "internal" | undefined;
+      let preserveUserRequestedFormat = false;
 
       {
         if (!state.runtime) {
@@ -4948,6 +5078,8 @@ export async function handleChatRoutes(
         );
         syncRuntimeCharacterToChatStateConfig(state);
         transcriptVisibility = result.transcriptVisibility;
+        preserveUserRequestedFormat =
+          result.preserveUserRequestedFormat === true;
         responseText =
           result.transcriptVisibility === "internal" ? "" : result.text;
         localInference = result.localInference;
@@ -4976,6 +5108,7 @@ export async function handleChatRoutes(
               responseText,
               state.logBuffer,
               state.runtime,
+              { preserveUserRequestedFormat },
             );
       json(res, {
         id,
@@ -5146,9 +5279,17 @@ export async function handleChatRoutes(
         let fullText = "";
         let outputTokens = 0;
         let transcriptVisibility: "internal" | undefined;
+        let preserveUserRequestedFormat = false;
 
-        const onDelta = (chunk: string) => {
+        const onDelta = (
+          chunk: string,
+          _origin?: ChatStreamTextOrigin,
+          metadata?: StreamChunkMetadata,
+        ) => {
           if (!chunk) return;
+          if (isCommittedRequestedJsonStream(metadata)) {
+            preserveUserRequestedFormat = true;
+          }
           fullText += chunk;
           writeSseJson(
             res,
@@ -5203,6 +5344,8 @@ export async function handleChatRoutes(
             },
           );
           transcriptVisibility = generation.transcriptVisibility;
+          preserveUserRequestedFormat ||=
+            generation.preserveUserRequestedFormat === true;
           outputTokens = generation.usage?.completionTokens ?? outputTokens;
           syncRuntimeCharacterToChatStateConfig(state);
         }
@@ -5211,6 +5354,7 @@ export async function handleChatRoutes(
           fullText,
           state.logBuffer,
           state.runtime,
+          { preserveUserRequestedFormat },
         );
         if (
           (fullText.trim().length === 0 || isNoResponsePlaceholder(fullText)) &&
@@ -5286,6 +5430,7 @@ export async function handleChatRoutes(
       let inputTokens = estimateTokenCount(prompt);
       let outputTokens = 0;
       let transcriptVisibility: "internal" | undefined;
+      let preserveUserRequestedFormat = false;
 
       {
         if (!state.runtime) {
@@ -5338,6 +5483,8 @@ export async function handleChatRoutes(
         );
         syncRuntimeCharacterToChatStateConfig(state);
         transcriptVisibility = result.transcriptVisibility;
+        preserveUserRequestedFormat =
+          result.preserveUserRequestedFormat === true;
         responseText =
           result.transcriptVisibility === "internal" ? "" : result.text;
         if (result.usage) {
@@ -5353,6 +5500,7 @@ export async function handleChatRoutes(
               responseText,
               state.logBuffer,
               state.runtime,
+              { preserveUserRequestedFormat },
             );
       json(res, {
         id,
@@ -5498,11 +5646,18 @@ export async function handleChatRoutes(
               result.text,
               state.logBuffer,
               state.runtime,
+              {
+                preserveUserRequestedFormat:
+                  result.preserveUserRequestedFormat === true,
+              },
             );
 
       json(res, {
         response: resolvedText,
         agentName: result.agentName,
+        ...(result.preserveUserRequestedFormat
+          ? { preserveUserRequestedFormat: true }
+          : {}),
         ...(result.failureKind ? { failureKind: result.failureKind } : {}),
         ...(result.localInference
           ? { localInference: result.localInference }

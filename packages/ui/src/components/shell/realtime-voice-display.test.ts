@@ -56,7 +56,7 @@ describe("realtime voice display", () => {
     expect(realtimeVoiceDisplayIsAnimating(state)).toBe(true);
   });
 
-  it("binds terminal output to the exact row and completes only after local playout drains", () => {
+  it("binds terminal output to the exact row and keeps pacing after local playout drains", () => {
     const longAnswer = `The visible prefix ${"continues with useful detail. ".repeat(24)}`;
     const exactRow = { ...canonical, content: longAnswer };
     let state = stream("The visible prefix ");
@@ -100,10 +100,133 @@ describe("realtime voice display", () => {
       traceId: "trace-1",
       atMs: 2_510,
     });
+    expect(realtimeVoiceDisplayIsAnimating(state)).toBe(true);
+    expect(
+      projectRealtimeVoiceDisplayMessages([exactRow], state)[0],
+    ).toMatchObject({ id: exactRow.id });
+    expect(
+      projectRealtimeVoiceDisplayMessages([exactRow], state)[0]?.content,
+    ).not.toBe(exactRow.content);
+
+    state = reduceRealtimeVoiceDisplay(state, {
+      type: "tick",
+      atMs: 30_000,
+    });
     expect(realtimeVoiceDisplayIsAnimating(state)).toBe(false);
     expect(
       projectRealtimeVoiceDisplayMessages([exactRow], state)[0],
     ).toMatchObject({ id: exactRow.id, content: exactRow.content });
+  });
+
+  it("keeps a display-only terminal response on the paced reveal clock", () => {
+    const longAnswer = "D".repeat(640);
+    const exactRow = { ...canonical, content: longAnswer };
+    let state = reduceRealtimeVoiceDisplay(EMPTY_REALTIME_VOICE_DISPLAY_STATE, {
+      type: "output",
+      traceId: "trace-display-only",
+      messageId: exactRow.id,
+      displayMarkdown: longAnswer,
+      speechText: null,
+      displayTruncated: false,
+      atMs: 1_000,
+    });
+
+    state = reduceRealtimeVoiceDisplay(state, {
+      type: "turn_end",
+      traceId: "trace-display-only",
+      outcome: "displayed",
+      atMs: 1_010,
+    });
+    expect(
+      projectRealtimeVoiceDisplayMessages([exactRow], state)[0]?.content,
+    ).toBe("D".repeat(48));
+    expect(realtimeVoiceDisplayIsAnimating(state)).toBe(true);
+
+    state = reduceRealtimeVoiceDisplay(state, { type: "tick", atMs: 2_010 });
+    expect(
+      projectRealtimeVoiceDisplayMessages([exactRow], state)[0]?.content,
+    ).toBe("D".repeat(96));
+    expect(realtimeVoiceDisplayIsAnimating(state)).toBe(true);
+  });
+
+  it.each(["stopped", "error", "no_response"] as const)(
+    "freezes the already displayed prefix on turn_end(%s) and suppresses its hidden suffix",
+    (outcome) => {
+      const longAnswer = `Visible terminal prefix. ${"Hidden suffix. ".repeat(30)}`;
+      const exactRow = { ...canonical, content: longAnswer };
+      let state = reduceRealtimeVoiceDisplay(
+        EMPTY_REALTIME_VOICE_DISPLAY_STATE,
+        {
+          type: "output",
+          traceId: `trace-${outcome}`,
+          messageId: exactRow.id,
+          displayMarkdown: longAnswer,
+          speechText: longAnswer,
+          displayTruncated: false,
+          atMs: 1_000,
+        },
+      );
+      state = reduceRealtimeVoiceDisplay(state, {
+        type: "tick",
+        atMs: 1_500,
+      });
+      const visibleAtTerminal = state.turns[0]?.visibleText;
+      expect(visibleAtTerminal).not.toBe(longAnswer);
+
+      state = reduceRealtimeVoiceDisplay(state, {
+        type: "turn_end",
+        traceId: `trace-${outcome}`,
+        outcome,
+        atMs: 1_501,
+      });
+      state = reduceRealtimeVoiceDisplay(state, {
+        type: "output",
+        traceId: `trace-${outcome}`,
+        messageId: exactRow.id,
+        displayMarkdown: longAnswer,
+        speechText: longAnswer,
+        displayTruncated: false,
+        atMs: 1_502,
+      });
+      state = reduceRealtimeVoiceDisplay(state, {
+        type: "tick",
+        atMs: 50_000,
+      });
+
+      expect(state.turns[0]).toMatchObject({
+        displayMarkdown: visibleAtTerminal,
+        visibleText: visibleAtTerminal,
+        speechText: null,
+        phase: "interrupted",
+        serverOutcome: outcome,
+      });
+      expect(
+        projectRealtimeVoiceDisplayMessages([exactRow], state)[0],
+      ).toMatchObject({
+        content: visibleAtTerminal,
+        interrupted: true,
+      });
+    },
+  );
+
+  it("suppresses an interrupted canonical row when no assistant text was ever displayed", () => {
+    let state = reduceRealtimeVoiceDisplay(EMPTY_REALTIME_VOICE_DISPLAY_STATE, {
+      type: "output",
+      traceId: "trace-empty-error",
+      messageId: canonical.id,
+      displayMarkdown: "",
+      speechText: null,
+      displayTruncated: false,
+      atMs: 1_000,
+    });
+    state = reduceRealtimeVoiceDisplay(state, {
+      type: "turn_end",
+      traceId: "trace-empty-error",
+      outcome: "error",
+      atMs: 1_001,
+    });
+
+    expect(projectRealtimeVoiceDisplayMessages([canonical], state)).toEqual([]);
   });
 
   it("never dumps a long terminal-only response into an empty overlay", () => {
@@ -347,6 +470,54 @@ describe("realtime voice display", () => {
     });
   });
 
+  it("retains every frozen canonical prefix while its conversation remains active", () => {
+    let state = EMPTY_REALTIME_VOICE_DISPLAY_STATE;
+    const canonicalRows: ShellMessage[] = [];
+    const frozenPrefixes = new Map<string, string>();
+
+    for (let index = 1; index <= 6; index += 1) {
+      const traceId = `trace-interrupted-${index}`;
+      const messageId = `assistant-interrupted-${index}`;
+      const fullAnswer = `Answer ${index}: ${"hidden canonical suffix ".repeat(8)}`;
+      canonicalRows.push({
+        id: messageId,
+        role: "assistant",
+        content: fullAnswer,
+        createdAt: index,
+      });
+      state = reduceRealtimeVoiceDisplay(state, {
+        type: "output",
+        traceId,
+        messageId,
+        displayMarkdown: fullAnswer,
+        speechText: fullAnswer,
+        displayTruncated: false,
+        atMs: index * 1_000,
+      });
+      const visibleText = state.turns.find(
+        (turn) => turn.traceId === traceId,
+      )?.visibleText;
+      expect(visibleText).toBeTruthy();
+      expect(visibleText).not.toBe(fullAnswer);
+      frozenPrefixes.set(messageId, visibleText as string);
+      state = reduceRealtimeVoiceDisplay(state, {
+        type: "interrupted",
+        traceId,
+        atMs: index * 1_000 + 1,
+      });
+    }
+
+    expect(state.turns).toHaveLength(canonicalRows.length);
+    const projected = projectRealtimeVoiceDisplayMessages(canonicalRows, state);
+    expect(projected).toHaveLength(canonicalRows.length);
+    for (const message of projected) {
+      expect(message).toMatchObject({
+        content: frozenPrefixes.get(message.id),
+        interrupted: true,
+      });
+    }
+  });
+
   it("still marks a fully revealed but audibly playing answer interrupted", () => {
     let state = stream("A short complete answer.");
     state = reduceRealtimeVoiceDisplay(state, {
@@ -376,6 +547,16 @@ describe("realtime voice display", () => {
     expect(projectRealtimeVoiceDisplayMessages([], state)[0]?.content).toBe(
       "First response.",
     );
+    state = reduceRealtimeVoiceDisplay(state, {
+      type: "interrupted",
+      traceId: "trace-1",
+      atMs: 1_101,
+    });
+    expect(state.turns[0]?.phase).toBe("complete");
+    expect(projectRealtimeVoiceDisplayMessages([], state)[0]).toMatchObject({
+      content: "First response.",
+      interrupted: false,
+    });
     state = reduceRealtimeVoiceDisplay(state, {
       type: "stream",
       traceId: "trace-2",

@@ -25,6 +25,7 @@ import type {
 	Action,
 	ActionResult,
 	HandlerCallback,
+	HandlerOptions,
 	IAgentRuntime,
 	Memory,
 	State,
@@ -1817,6 +1818,7 @@ async function handleSet(
 	request: SettingsRequest,
 	routeFetch: SettingsRouteFetch,
 	callback: HandlerCallback | undefined,
+	abortSignal?: AbortSignal,
 ): Promise<ActionResult> {
 	if (!request.sectionId) {
 		// Planner-facing only: the evaluator owns asking the user, in voice.
@@ -1917,15 +1919,27 @@ async function handleSet(
 	logger.info(
 		`[SettingsAction] set section=${request.sectionId} key=${keyName} value=${parsedValue}`,
 	);
+	let effectAdmitted = false;
+	const settlingRouteFetch: SettingsRouteFetch = (routeRequest) => {
+		// Reads remain preflight. Check cancellation at the first mutating request,
+		// then let every step in that admitted operation settle. In particular, a
+		// config PUT followed by a live-shell broadcast must not become a retryable
+		// abort after the config has already persisted.
+		if (routeRequest.method !== "GET" && !effectAdmitted) {
+			abortSignal?.throwIfAborted();
+			effectAdmitted = true;
+		}
+		return routeFetch(routeRequest);
+	};
 	const outcome = writable.apply
 		? await writable.apply({
 				keyName,
 				request,
-				routeFetch,
+				routeFetch: settlingRouteFetch,
 				value: parsedValue,
 			})
 		: writable.buildRequest && parsedValue !== null
-			? await routeFetch(writable.buildRequest(parsedValue))
+			? await settlingRouteFetch(writable.buildRequest(parsedValue))
 			: {
 					ok: false,
 					detail: `no route handler is registered for ${request.sectionId} ${keyName}`,
@@ -2192,7 +2206,7 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			_runtime: IAgentRuntime,
 			_message: Memory,
 			_state?: State,
-			options?: Record<string, unknown>,
+			options?: HandlerOptions,
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
 			const request = parseSettingsRequest(normalizeActionOptions(options));
@@ -2221,7 +2235,7 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 				return handleGet(request, callback);
 			}
 
-			return handleSet(request, routeFetch, callback);
+			return handleSet(request, routeFetch, callback, options?.abortSignal);
 		},
 	};
 }

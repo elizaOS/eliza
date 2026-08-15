@@ -7,7 +7,11 @@
 
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
-import { asRecord } from "@elizaos/shared";
+import {
+  asRecord,
+  REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+} from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type { Conversation, CustomActionDef } from "../api";
 import {
@@ -20,6 +24,7 @@ import {
   client,
   type ImageAttachment,
   type MessageAttachmentContentType,
+  type OptimisticChatRetryEnvelope,
 } from "../api";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
 import {
@@ -92,6 +97,8 @@ interface ActiveChatTurn {
   controller: AbortController;
   conversationId: string | null;
   roomId: string | null;
+  /** Exact logical request identity used to isolate Stop across tabs/sessions. */
+  abortClientMessageId: string | null;
   abortServerTurn: (() => void) | null;
 }
 
@@ -243,15 +250,193 @@ function hasNewerUserTurn(
 function abortServerConversationTurn(
   roomId: string | null | undefined,
   reason: string,
+  exactClientMessageId?: string | null,
 ): void {
   if (!roomId) return;
   // error-policy:J6 best-effort abort signal for a turn the user already
   // stopped locally; the server also ends the turn when the SSE closes.
-  void client.abortConversationTurn(roomId, reason).catch((err) => {
+  const request = exactClientMessageId
+    ? client.abortConversationTurn(roomId, reason, exactClientMessageId)
+    : client.abortConversationTurn(roomId, reason);
+  void request.catch((err) => {
     logger.warn(
       `[useChatSend] abortConversationTurn(${roomId}) failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   });
+}
+
+function resolveExactAbortClientMessageId(
+  clientMessageId: string,
+  metadata: Record<string, unknown> | undefined,
+): string | null {
+  if (metadata?.clientTransport !== REALTIME_VOICE_CLIENT_TRANSPORT) {
+    return null;
+  }
+  if (!clientMessageId.startsWith(REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX)) {
+    return null;
+  }
+  return clientMessageId.length > REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX.length
+    ? clientMessageId
+    : null;
+}
+
+function resolveAbortClientMessageId(clientMessageId: string): string | null {
+  const normalized = clientMessageId.trim();
+  return normalized === clientMessageId &&
+    normalized.length > 0 &&
+    normalized.length <= 128
+    ? normalized
+    : null;
+}
+
+const EXACT_VOICE_RETRY_STRING_METADATA_KEYS = [
+  "uiView",
+  "uiTab",
+  "uiViewPath",
+  "uiTimeZone",
+  "replyToMessageId",
+  "voiceSource",
+  "speakerEntityId",
+] as const;
+
+const EXACT_VOICE_RETRY_SPEAKER_STRING_KEYS = [
+  "entityId",
+  "sourceId",
+  "source",
+  "channelId",
+  "roomId",
+] as const;
+
+function boundedMetadataString(
+  value: unknown,
+  maxLength: number,
+): string | undefined {
+  return typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= maxLength
+    ? value
+    : undefined;
+}
+
+function boundedMetadataStringList(
+  value: unknown,
+  maxItems: number,
+  maxItemLength: number,
+): string[] | undefined {
+  if (!Array.isArray(value) || value.length > maxItems) return undefined;
+  const values = value.filter(
+    (entry): entry is string =>
+      typeof entry === "string" &&
+      entry.length > 0 &&
+      entry.length <= maxItemLength,
+  );
+  return values.length === value.length ? values : undefined;
+}
+
+/**
+ * Exact realtime voice retries must reproduce the server fingerprint, but an
+ * optimistic row must not become a general-purpose metadata/PII cache. Build a
+ * compact allowlisted envelope and use it for BOTH the first request and any
+ * replay. Unknown caller metadata is therefore neither transmitted nor kept on
+ * this privileged exact-voice path; ordinary chat metadata remains unchanged.
+ */
+function buildExactVoiceRetryEnvelope(
+  channelType: ConversationChannelType,
+  clientMessageId: string,
+  metadata: Record<string, unknown> | undefined,
+): OptimisticChatRetryEnvelope | undefined {
+  if (!resolveExactAbortClientMessageId(clientMessageId, metadata)) {
+    return undefined;
+  }
+
+  const voiceTurnId = clientMessageId.slice(
+    REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX.length,
+  );
+  const safeMetadata: Record<string, unknown> = {
+    clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+    voiceTurnId,
+  };
+  for (const key of EXACT_VOICE_RETRY_STRING_METADATA_KEYS) {
+    const value = boundedMetadataString(metadata?.[key], 2_048);
+    if (value !== undefined) safeMetadata[key] = value;
+  }
+
+  const capabilities = boundedMetadataStringList(
+    metadata?.uiViewCapabilities,
+    32,
+    128,
+  );
+  if (capabilities) safeMetadata.uiViewCapabilities = capabilities;
+
+  const speechEndedAtMs = metadata?.voiceSpeechEndedAtMs;
+  if (
+    typeof speechEndedAtMs === "number" &&
+    Number.isSafeInteger(speechEndedAtMs) &&
+    speechEndedAtMs >= 0
+  ) {
+    safeMetadata.voiceSpeechEndedAtMs = speechEndedAtMs;
+  }
+
+  const turnSignal = asRecord(metadata?.voiceTurnSignal);
+  if (turnSignal) {
+    const safeTurnSignal: Record<string, unknown> = {};
+    if (
+      typeof turnSignal.endOfTurnProbability === "number" &&
+      Number.isFinite(turnSignal.endOfTurnProbability) &&
+      turnSignal.endOfTurnProbability >= 0 &&
+      turnSignal.endOfTurnProbability <= 1
+    ) {
+      safeTurnSignal.endOfTurnProbability = turnSignal.endOfTurnProbability;
+    }
+    if (
+      turnSignal.nextSpeaker === "agent" ||
+      turnSignal.nextSpeaker === "user" ||
+      turnSignal.nextSpeaker === "unknown"
+    ) {
+      safeTurnSignal.nextSpeaker = turnSignal.nextSpeaker;
+    }
+    if (
+      typeof turnSignal.agentShouldSpeak === "boolean" ||
+      turnSignal.agentShouldSpeak === null
+    ) {
+      safeTurnSignal.agentShouldSpeak = turnSignal.agentShouldSpeak;
+    }
+    for (const key of ["source", "model"] as const) {
+      const value = boundedMetadataString(turnSignal[key], 128);
+      if (value !== undefined) safeTurnSignal[key] = value;
+    }
+    if (Object.keys(safeTurnSignal).length > 0) {
+      safeMetadata.voiceTurnSignal = safeTurnSignal;
+    }
+  }
+
+  const voiceSpeaker = asRecord(metadata?.voiceSpeaker);
+  if (voiceSpeaker) {
+    const safeVoiceSpeaker: Record<string, unknown> = {};
+    for (const key of EXACT_VOICE_RETRY_SPEAKER_STRING_KEYS) {
+      const value = boundedMetadataString(voiceSpeaker[key], 512);
+      if (value !== undefined) safeVoiceSpeaker[key] = value;
+    }
+    if (Object.keys(safeVoiceSpeaker).length > 0) {
+      safeMetadata.voiceSpeaker = safeVoiceSpeaker;
+    }
+  }
+
+  const routing = asRecord(metadata?.__responseContext);
+  const primaryContext = boundedMetadataString(routing?.primaryContext, 128);
+  const secondaryContexts = boundedMetadataStringList(
+    routing?.secondaryContexts,
+    32,
+    128,
+  );
+  if (primaryContext || secondaryContexts) {
+    safeMetadata.__responseContext = {
+      ...(primaryContext ? { primaryContext } : {}),
+      ...(secondaryContexts ? { secondaryContexts } : {}),
+    };
+  }
+
+  return { channelType, metadata: safeMetadata };
 }
 
 export interface QueuedChatSend {
@@ -262,6 +447,8 @@ export interface QueuedChatSend {
   metadata?: Record<string, unknown>;
   /** Stable idempotency key for the initial request and route-level recovery. */
   clientMessageId: string;
+  /** Exact, allowlisted realtime voice request envelope for optimistic retry. */
+  optimisticRetryEnvelope?: OptimisticChatRetryEnvelope;
   /** Stable local row identities for this queued logical turn. */
   optimisticTurn: {
     userMsgId: string;
@@ -292,6 +479,7 @@ interface ChatSendTextInternalOptions extends ChatSendTextOptions {
   [CHAT_SEND_IDENTITY_OVERRIDE]?: {
     clientMessageId: string;
     optimisticTurn: QueuedChatSend["optimisticTurn"];
+    retryEnvelope?: OptimisticChatRetryEnvelope;
   };
 }
 
@@ -316,7 +504,10 @@ function createOptimisticTurn(
 }
 
 function createOptimisticUserMessage(
-  turn: Pick<QueuedChatSend, "rawInput" | "images" | "optimisticTurn">,
+  turn: Pick<
+    QueuedChatSend,
+    "rawInput" | "images" | "optimisticTurn" | "optimisticRetryEnvelope"
+  >,
 ): ConversationMessage {
   const { userMsgId, timestamp } = turn.optimisticTurn;
   const rawText = turn.rawInput.trim();
@@ -346,6 +537,9 @@ function createOptimisticUserMessage(
         ? "Please review the attached image."
         : rawText,
     timestamp,
+    ...(turn.optimisticRetryEnvelope
+      ? { optimisticRetryEnvelope: turn.optimisticRetryEnvelope }
+      : {}),
     ...(attachments ? { attachments } : {}),
   };
 }
@@ -964,7 +1158,11 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
       }
 
-      if (!data.text.trim()) {
+      const hasTerminalText =
+        data.preserveUserRequestedFormat === true
+          ? data.text.length > 0
+          : data.text.trim().length > 0;
+      if (!hasTerminalText) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           ...(data.failureKind
@@ -972,6 +1170,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             : { mode: "drop" }),
         });
       } else if (
+        data.preserveUserRequestedFormat === true ||
         shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
         (options.includeReasoning && data.reasoning) ||
         data.messageId
@@ -1326,7 +1525,11 @@ export function useChatSend(deps: UseChatSendDeps) {
         activeConversationIdRef.current ?? activeTurn?.conversationId ?? null,
       );
       if (activeTurn?.roomId) {
-        abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop");
+        abortServerConversationTurn(
+          activeTurn.roomId,
+          "ui-chat-stop",
+          activeTurn.abortClientMessageId,
+        );
       }
       if (activeTurn?.abortServerTurn) {
         activeTurn.controller.signal.removeEventListener(
@@ -1678,6 +1881,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         text: string;
         timestamp: number;
         attachments?: ConversationMessage["attachments"];
+        optimisticRetryEnvelope?: OptimisticChatRetryEnvelope;
       },
     ) => {
       const sentText = turn.text.trim();
@@ -1691,6 +1895,9 @@ export function useChatSend(deps: UseChatSendDeps) {
             role: "user",
             text: turn.text,
             timestamp: turn.timestamp,
+            ...(turn.optimisticRetryEnvelope
+              ? { optimisticRetryEnvelope: turn.optimisticRetryEnvelope }
+              : {}),
             ...(turn.attachments?.length
               ? { attachments: turn.attachments }
               : {}),
@@ -1717,6 +1924,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       const channelType = turn.channelType;
       const imagesToSend = turn.images;
       const clientMessageId = turn.clientMessageId;
+      const abortClientMessageId = resolveAbortClientMessageId(clientMessageId);
       let controller: AbortController | null = null;
       let abortServerTurn: (() => void) | null = null;
       let convRoomId: string | null = null;
@@ -1893,7 +2101,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       controller = new AbortController();
       chatAbortRef.current = controller;
       abortServerTurn = () => {
-        abortServerConversationTurn(convRoomId, "ui-chat-abort");
+        abortServerConversationTurn(
+          convRoomId,
+          "ui-chat-abort",
+          abortClientMessageId,
+        );
       };
       controller.signal.addEventListener("abort", abortServerTurn, {
         once: true,
@@ -1902,6 +2114,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         controller,
         conversationId: convId,
         roomId: convRoomId,
+        abortClientMessageId,
         abortServerTurn,
       };
       startStreamingTurn(convId, assistantMsgId);
@@ -1979,6 +2192,23 @@ export function useChatSend(deps: UseChatSendDeps) {
             mode: "rekey",
             persistedMessageId: data.userMessageId,
           });
+          // Durable history now owns the user turn, so the local replay
+          // envelope has served its only purpose. Do not retain routing ids or
+          // voice transport metadata on an otherwise settled transcript row.
+          setConversationMessagesForConversation(convId, (prev) =>
+            prev.map((message) => {
+              if (
+                !message.optimisticRetryEnvelope ||
+                (message.id !== data.userMessageId &&
+                  message.clientRenderId !== userMsgId)
+              ) {
+                return message;
+              }
+              const settledMessage = { ...message };
+              delete settledMessage.optimisticRetryEnvelope;
+              return settledMessage;
+            }),
+          );
         }
         const interruptedPartial = reconcileTerminalStream(
           convId,
@@ -2061,6 +2291,9 @@ export function useChatSend(deps: UseChatSendDeps) {
             timestamp: now,
             ...(optimisticAttachments
               ? { attachments: optimisticAttachments }
+              : {}),
+            ...(turn.optimisticRetryEnvelope
+              ? { optimisticRetryEnvelope: turn.optimisticRetryEnvelope }
               : {}),
           });
         }
@@ -2195,6 +2428,24 @@ export function useChatSend(deps: UseChatSendDeps) {
               type: "active-conversation",
               conversationId: conversation.id,
             });
+
+            // The replay is a continuation of the same logical turn, but its
+            // abort authority moved to the recreated conversation. Update both
+            // the mutable closure target and the mounted Stop ref before the
+            // retry can stall, so cancellation never posts to the deleted room.
+            convRoomId = resolveAbortRoomId(
+              conversation.id,
+              conversation.roomId,
+              undefined,
+            );
+            const activeReplayTurn = activeChatTurnRef.current;
+            if (activeReplayTurn?.controller === controller) {
+              activeChatTurnRef.current = {
+                ...activeReplayTurn,
+                conversationId: conversation.id,
+                roomId: convRoomId,
+              };
+            }
 
             // Seed the recreated conversation with the user turn + an empty
             // assistant placeholder, then REPLAY as a token stream — the 404
@@ -2372,6 +2623,9 @@ export function useChatSend(deps: UseChatSendDeps) {
                 ...(optimisticAttachments
                   ? { attachments: optimisticAttachments }
                   : {}),
+                ...(turn.optimisticRetryEnvelope
+                  ? { optimisticRetryEnvelope: turn.optimisticRetryEnvelope }
+                  : {}),
               });
             }
           }
@@ -2534,6 +2788,8 @@ export function useChatSend(deps: UseChatSendDeps) {
         return;
       }
 
+      const identityOverride = options?.[CHAT_SEND_IDENTITY_OVERRIDE];
+      const retryEnvelope = identityOverride?.retryEnvelope;
       // Claim + clear the active reply target here — the single chokepoint every
       // real user turn (composer send + overlay/voice send()) funnels through —
       // so one Reply affordance covers all surfaces and a second send never
@@ -2542,16 +2798,16 @@ export function useChatSend(deps: UseChatSendDeps) {
       // `metadata.replyToMessageId`; the API boundary lifts it onto
       // `content.inReplyTo`, which drives the REPLY_CONTEXT provider.
       const replyTarget = chatReplyTargetRef.current;
-      const metadata =
-        replyTarget && !asRecord(options?.metadata)?.replyToMessageId
+      const metadata = retryEnvelope
+        ? retryEnvelope.metadata
+        : replyTarget && !asRecord(options?.metadata)?.replyToMessageId
           ? { ...options?.metadata, replyToMessageId: replyTarget.messageId }
           : options?.metadata;
-      if (replyTarget) {
+      if (replyTarget && !retryEnvelope) {
         chatReplyTargetRef.current = null;
         setChatReplyTarget(null);
       }
 
-      const identityOverride = options?.[CHAT_SEND_IDENTITY_OVERRIDE];
       const clientMessageId =
         identityOverride?.clientMessageId ??
         options?.clientMessageId ??
@@ -2561,9 +2817,19 @@ export function useChatSend(deps: UseChatSendDeps) {
         createOptimisticTurn(clientMessageId);
       const conversationId =
         options?.conversationId ?? activeConversationIdRef.current ?? null;
+      const channelType =
+        retryEnvelope?.channelType ?? options?.channelType ?? "DM";
+      const routedMetadata = retryEnvelope
+        ? retryEnvelope.metadata
+        : buildChatViewMetadata(tab, metadata);
+      const optimisticRetryEnvelope = buildExactVoiceRetryEnvelope(
+        channelType,
+        clientMessageId,
+        routedMetadata,
+      );
       const queuedTurn = {
         rawInput,
-        channelType: options?.channelType ?? "DM",
+        channelType,
         // Pin the target conversation at ENQUEUE, not at drain (#10700). The
         // shell send() path (voice converse turns + tapped suggestions) omits
         // conversationId, so without this the queued turn resolved its target
@@ -2576,8 +2842,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         // rather than spawning its own.
         conversationId,
         images: options?.images,
-        metadata: buildChatViewMetadata(tab, metadata),
+        metadata: optimisticRetryEnvelope?.metadata ?? routedMetadata,
         clientMessageId,
+        ...(optimisticRetryEnvelope ? { optimisticRetryEnvelope } : {}),
         optimisticTurn,
       } satisfies Omit<QueuedChatSend, "resolve" | "reject">;
 
@@ -2633,6 +2900,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     async (
       channelType: ConversationChannelType = "DM",
       options?: {
+        clientMessageId?: string;
         metadata?: Record<string, unknown>;
       },
     ) => {
@@ -2661,6 +2929,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         channelType,
         conversationId: activeConversationIdRef.current,
         images: imagesToSend,
+        clientMessageId: options?.clientMessageId,
         metadata: options?.metadata,
       });
     },
@@ -2759,6 +3028,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
 
         const now = Date.now();
+        const clientMessageId = generateChatClientMessageId();
         const userMsgId = `temp-action-${now}`;
         const assistantMsgId = `temp-action-resp-${now}`;
 
@@ -2780,7 +3050,11 @@ export function useChatSend(deps: UseChatSendDeps) {
         controller = new AbortController();
         chatAbortRef.current = controller;
         abortServerTurn = () => {
-          abortServerConversationTurn(convRoomId, "ui-chat-abort");
+          abortServerConversationTurn(
+            convRoomId,
+            "ui-chat-abort",
+            clientMessageId,
+          );
         };
         controller.signal.addEventListener("abort", abortServerTurn, {
           once: true,
@@ -2789,6 +3063,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           controller,
           conversationId: convId,
           roomId: convRoomId,
+          abortClientMessageId: clientMessageId,
           abortServerTurn,
         };
         startStreamingTurn(convId, assistantMsgId);
@@ -2834,6 +3109,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             // coalesced into the current transport burst with the text.
             undefined,
             (event) => scheduleToolEvent(convId, assistantMsgId, event),
+            clientMessageId,
           );
 
           // Commit any token parked by the throttle before the terminal
@@ -3064,6 +3340,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       const clientMessageId = optimisticUserId.startsWith("temp-")
         ? optimisticUserId.slice("temp-".length)
         : "";
+      const retryEnvelope = userMsg.optimisticRetryEnvelope;
       setConversationMessages((prev) =>
         prev.filter(
           (m) =>
@@ -3081,6 +3358,7 @@ export function useChatSend(deps: UseChatSendDeps) {
                   assistantMsgId: `temp-resp-${clientMessageId}`,
                   timestamp: userMsg.timestamp,
                 },
+                ...(retryEnvelope ? { retryEnvelope } : {}),
               },
             }
           : {}),

@@ -11,7 +11,10 @@
  * inline code-span protection. Each delta has a dedicated test naming it.
  */
 import { describe, expect, it } from "vitest";
-import { sanitizeOutboundText } from "./outbound-sanitize";
+import {
+	isSafeUserVisibleJsonText,
+	sanitizeOutboundText,
+} from "./outbound-sanitize";
 
 describe("sanitizeOutboundText — reasoning tags (Discord characterization)", () => {
 	it("strips paired reasoning tags with their contents", () => {
@@ -34,6 +37,8 @@ describe("sanitizeOutboundText — reasoning tags (Discord characterization)", (
 			"reasoning",
 			"reflection",
 			"thought",
+			"analysis",
+			"scratchpad",
 			"antthinking",
 		]) {
 			expect(
@@ -75,6 +80,29 @@ describe("sanitizeOutboundText — native tool-call syntax", () => {
 				"Let me try the weather action for current conditions.<tool_call>get_weather",
 			),
 		).toBe("Let me try the weather action for current conditions.");
+	});
+
+	it.each([
+		{
+			input: '<tool_calls>{"name":"BROWSER"}</tool_calls>Public.',
+			expected: "Public.",
+		},
+		{
+			input: "<tools>PRIVATE PLAN</tools>Public.",
+			expected: "Public.",
+		},
+		{
+			input: '<|python_tag|>os.system("id") Public.',
+			expected: "",
+		},
+	])("strips native $input control syntax", ({ input, expected }) => {
+		expect(sanitizeOutboundText(input)).toBe(expected);
+	});
+
+	it("drops GPT-OSS Harmony framing and private channels outside code", () => {
+		const harmony =
+			"Safe prefix.<|channel|>analysis<|message|>Private chain.<|channel|>final<|message|>Public.<|end|>";
+		expect(sanitizeOutboundText(harmony)).toBe("Safe prefix.");
 	});
 
 	it("strips paired tool_call and function_call blocks with contents", () => {
@@ -194,6 +222,53 @@ describe("sanitizeOutboundText — nested, malformed, and adversarial shapes", (
 });
 
 describe("sanitizeOutboundText — fenced code preservation", () => {
+	it.each([
+		{
+			type: "tool_use",
+			id: "toolu_1",
+			name: "BROWSER",
+			input: { url: "https://example.test" },
+		},
+		{
+			tool_calls: [
+				{
+					function: { name: "BROWSER", arguments: "{}" },
+				},
+			],
+		},
+	])("rejects provider-native JSON control shapes: $%#", (value) => {
+		expect(isSafeUserVisibleJsonText(JSON.stringify(value))).toBe(false);
+	});
+
+	it.each([
+		{ name: "BROWSER", arguments: { url: "https://secret.test" } },
+		{ name: "get_weather", input: { city: "Boston" } },
+		{ tool: "BROWSER", args: { url: "https://secret.test" } },
+		[{ name: "BROWSER", arguments: "{}" }],
+	])("rejects a bare native function-call record: $%#", (value) => {
+		expect(isSafeUserVisibleJsonText(JSON.stringify(value))).toBe(false);
+	});
+
+	it("preserves machine-tag literals inside structurally safe JSON", () => {
+		const text = JSON.stringify({
+			example: "<tool_call>BROWSER</tool_call>",
+			documentation: "<analysis>literal</analysis>",
+		});
+		expect(sanitizeOutboundText(text)).toBe(text);
+	});
+
+	it.each([
+		JSON.stringify("literal <tool_call>BROWSER</tool_call> docs"),
+		JSON.stringify("<analysis>literal docs</analysis>"),
+		"42",
+		"true",
+		"false",
+		"null",
+	])("preserves a structurally safe JSON scalar: %s", (text) => {
+		expect(isSafeUserVisibleJsonText(text)).toBe(true);
+		expect(sanitizeOutboundText(text)).toBe(text);
+	});
+
 	it("preserves tool_call syntax inside fenced code blocks", () => {
 		const text =
 			"Example:\n```xml\n<tool_call>get_weather</tool_call>\n```\nThat is the format.";

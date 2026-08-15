@@ -433,6 +433,10 @@ async function buildFixtures(): Promise<Fixture[]> {
 				["aws-access-key", "AKIAABCDEFGH12345678"],
 				["github-token", "ghp_ABCDEFGHIJ1234567890abcdefghij123456"],
 				["openai-key", "sk-ABCDEFGHIJ1234567890abcd"],
+				[
+					"cartesia-key",
+					["sk", "car", "ABCDEFGHIJ1234567890abcd"].join("_"),
+				],
 				["slack-token", "xoxb-123456789012-abcdefghij"],
 				["telegram-bot-token", "1234567890:AAABCDEFGHIJ1234567890abcdefghij12"],
 				["google-api-key", "AIzaABCDEFGHIJ1234567890abcdefghij12345"],

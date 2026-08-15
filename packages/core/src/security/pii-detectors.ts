@@ -344,6 +344,9 @@ export const PII_DETECTORS: readonly PiiDetector[] = [
 	},
 	// OpenAI-style key.
 	{ kind: "openai-key", pattern: /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/g },
+	// Cartesia API key. Keep this distinct from OpenAI so policy and diagnostics
+	// can identify the provider family without retaining credential bytes.
+	{ kind: "cartesia-key", pattern: /\bsk_car_[A-Za-z0-9_-]{12,}\b/g },
 	// Slack tokens.
 	{ kind: "slack-token", pattern: /\bxox[baprs]-[0-9A-Za-z-]{10,}\b/g },
 	// Private key PEM block.

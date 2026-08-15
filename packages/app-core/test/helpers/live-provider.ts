@@ -152,6 +152,7 @@ function getLiveTestBaseUrlOverride(
 
 export type LiveProviderName =
   | "cerebras"
+  | "zai"
   | "groq"
   | "openai"
   | "anthropic"
@@ -229,6 +230,18 @@ const PROVIDERS: Array<{
     largeModelEnvVar: "OPENAI_LARGE_MODEL",
     defaultSmallModel: DEFAULT_CEREBRAS_TEXT_MODEL,
     defaultLargeModel: DEFAULT_CEREBRAS_TEXT_MODEL,
+  },
+  {
+    name: "zai",
+    plugin: "@elizaos/plugin-zai",
+    keyEnvVars: ["ZAI_API_KEY", "Z_AI_API_KEY"],
+    keyEnvVarAliases: ["ELIZA_E2E_ZAI_API_KEY"],
+    baseUrlEnvVar: "ZAI_BASE_URL",
+    defaultBaseUrl: "https://api.z.ai/api/paas/v4",
+    smallModelEnvVar: "ZAI_SMALL_MODEL",
+    largeModelEnvVar: "ZAI_LARGE_MODEL",
+    defaultSmallModel: "glm-4.5-air",
+    defaultLargeModel: "glm-5.1",
   },
   {
     name: "groq",
@@ -410,7 +423,7 @@ function buildLiveProviderConfig(
  * Select the first available LLM provider based on environment variables.
  * Returns null if no provider API keys are found.
  *
- * Preference order: cerebras -> groq -> openai -> anthropic -> google -> openrouter.
+ * Preference order: cerebras -> zai -> groq -> openai -> anthropic -> google -> openrouter.
  */
 // ---------------------------------------------------------------------------
 // CLI-subscription provider (@elizaos/plugin-cli-inference)

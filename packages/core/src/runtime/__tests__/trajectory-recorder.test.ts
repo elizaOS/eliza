@@ -303,6 +303,51 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(reloaded?.rootMessage.sender).toBe("user-1");
 	});
 
+	it("recursively redacts every persisted string in JSON trajectory artifacts", async () => {
+		const secret = ["sk", "car", "trajectory", "fixture", "12345678"].join(
+			"_",
+		);
+		const email = ["alice", "example.test"].join("@");
+		const redactText = (text: string) =>
+			text.replaceAll(secret, "[REDACTED_SECRET]").replaceAll(
+				email,
+				"[REDACTED_EMAIL]",
+			);
+		const recorder = createJsonFileTrajectoryRecorder({
+			rootDir: tmpDir,
+			redactText,
+		});
+		const id = recorder.startTrajectory({
+			agentId: "agent-redaction",
+			rootMessage: {
+				id: "msg-redaction",
+				text: `Contact ${email} with ${secret}`,
+			},
+		});
+		await recorder.recordStage(id, {
+			stageId: "stage-redaction",
+			kind: "messageHandler",
+			startedAt: 1,
+			endedAt: 2,
+			latencyMs: 1,
+			model: {
+				modelType: "RESPONSE_HANDLER",
+				messages: [{ role: "user", content: `${secret} ${email}` }],
+				response: JSON.stringify({ nested: { secret, email } }),
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+
+		const raw = await fs.readFile(
+			path.join(tmpDir, "agent-redaction", `${id}.json`),
+			"utf8",
+		);
+		expect(raw).not.toContain(secret);
+		expect(raw).not.toContain(email);
+		expect(raw).toContain("[REDACTED_SECRET]");
+		expect(raw).toContain("[REDACTED_EMAIL]");
+	});
+
 	it("does not count an interim CONTINUE evaluation as an evaluator failure", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({

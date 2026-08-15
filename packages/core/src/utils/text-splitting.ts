@@ -2,27 +2,44 @@
  * Splits text into the first sentence and the rest of the text.
  * Handles common abbreviations to avoid false positives.
  */
+const SENTENCE_ABBREVIATIONS = new Set([
+	"mr",
+	"mrs",
+	"ms",
+	"dr",
+	"prof",
+	"sr",
+	"jr",
+	"st",
+	"vs",
+	"etc",
+	"e.g",
+	"i.e",
+]);
+
+/**
+ * Returns whether the period at `periodOffset` belongs to a common
+ * abbreviation rather than ending a sentence. Offsets are UTF-16 code-unit
+ * offsets, matching `RegExp#index` and `String#slice`.
+ */
+export function isAbbreviationPeriod(
+	text: string,
+	periodOffset: number,
+): boolean {
+	if (text[periodOffset] !== ".") return false;
+	const precedingToken = text.slice(0, periodOffset).match(/([\w.]+)$/)?.[1];
+	if (!precedingToken) return false;
+	return SENTENCE_ABBREVIATIONS.has(
+		precedingToken.replace(/\.$/, "").toLowerCase(),
+	);
+}
+
 export function extractFirstSentence(text: string): {
 	first: string;
 	rest: string;
 } {
 	// Regex for finding sentence boundaries.
 	// Looks for a period, question mark, or exclamation mark followed by a space or end of string.
-	const abbreviations = [
-		"Mr",
-		"Mrs",
-		"Ms",
-		"Dr",
-		"Prof",
-		"Sr",
-		"Jr",
-		"St",
-		"vs",
-		"etc",
-		"e.g",
-		"i.e",
-	];
-
 	let boundaryIndex = -1;
 
 	// Simple iteration to find the first valid boundary
@@ -37,35 +54,7 @@ export function extractFirstSentence(text: string): {
 				nextChar === '"' ||
 				nextChar === "'"
 			) {
-				// Potential boundary. Check prior context for abbreviations.
-				// We look at the word preceding the punctuation.
-				const preText = text.substring(0, i);
-				// Include "." in the preceding word so dotted abbreviations match.
-				// \w excludes ".", so the old \b(\w+)$ extracted only "g" from
-				// "e.g" — the "e.g"/"i.e" list entries were dead and those got split
-				// mid-token (the first-sentence / TTS early-emit path chopped "e.g."
-				// into "e."). Strip a trailing dot before comparing to the list.
-				// No prefix anchor: leftmost matching captures the maximal trailing
-				// [\w.] run, and any other char (space, quote, paren, asterisk, dash)
-				// or start-of-string delimits it — a (?:^|\s) anchor rejected
-				// punctuation-preceded abbreviations ('"Dr' / '(Mr') that the
-				// original \b handled, chopping mid-name.
-				const lastWordMatch = preText.match(/([\w.]+)$/);
-
-				let isAbbreviation = false;
-				if (lastWordMatch) {
-					const lastWord = lastWordMatch[1].replace(/\.$/, "");
-					// Case insensitive check
-					if (
-						abbreviations.some(
-							(abbr) => abbr.toLowerCase() === lastWord.toLowerCase(),
-						)
-					) {
-						isAbbreviation = true;
-					}
-				}
-
-				if (!isAbbreviation) {
+				if (!isAbbreviationPeriod(text, i)) {
 					boundaryIndex = i + 1;
 					break;
 				}

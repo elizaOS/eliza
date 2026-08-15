@@ -86,14 +86,26 @@ export function createErrorReportedEscalationHandler(
     // TASK_WORKER_MISSING failure into Shadow's chat. Still counted? No: skip
     // before record() so a quiet-code storm can't even accumulate toward a trip.
     if (QUIET_ERROR_CODES.has(payload.code)) return;
-    const { count, shouldEscalate } = tracker.record(payload.code, Date.now());
+    // `UNCLASSIFIED` is intentionally common. Counting by code alone lets
+    // unrelated failures from different services combine into a false burst,
+    // which previously surfaced a provider diagnostic in the active chat after
+    // only two failed replies. Keep the in-memory identity exact to the
+    // sanitized report boundary without ever placing it on a user channel.
+    const failureIdentity = `${payload.scope}\u0000${payload.code}\u0000${payload.message}`;
+    const { count, shouldEscalate } = tracker.record(
+      failureIdentity,
+      Date.now(),
+    );
     if (!shouldEscalate) return;
 
     const reason = `Systemic failure ${payload.code} reported ${count} times within ${windowMinutes}m`;
-    const context = payload.context
-      ? ` ${JSON.stringify(payload.context)}`
-      : "";
-    const text = `Repeated runtime failure "${payload.code}" from [${payload.scope}]: ${payload.message}${context}`;
+    // Escalation channels are user-visible. Full error messages and context
+    // remain in structured diagnostics; they may contain room/entity IDs,
+    // provider response bodies, endpoints, or other internal material that
+    // must never become an assistant message.
+    const text =
+      "I hit the same internal problem several times in a short window. " +
+      "The details are available in diagnostics, and I have kept them out of this chat.";
 
     try {
       await EscalationService.startEscalation(runtime, reason, text);

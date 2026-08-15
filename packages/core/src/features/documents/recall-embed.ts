@@ -258,7 +258,11 @@ export async function embedRecallQuery(
 	if (signal?.aborted) {
 		throw signal.reason ?? new DOMException("Aborted", "AbortError");
 	}
-	const normalized = normalizeQuery(queryText);
+	// Recall embeddings are model calls too. Redact configured and pattern
+	// credentials before cache-key construction and provider ingress so a pasted
+	// token cannot bypass the guarded text-generation seams.
+	const providerQueryText = runtime.redactSecrets?.(queryText) ?? queryText;
+	const normalized = normalizeQuery(providerQueryText);
 	if (!normalized) {
 		return null;
 	}
@@ -307,7 +311,7 @@ export async function embedRecallQuery(
 			// surface as an unhandled rejection instead of degraded recall.
 			pending = Promise.resolve(
 				runtime.useModel(ModelType.TEXT_EMBEDDING, {
-					text: queryText,
+					text: providerQueryText,
 					...(signal ? { signal } : {}),
 				}) as Promise<number[]>,
 			);
@@ -382,8 +386,12 @@ export function aliasRecallQuery(
 	runtime: IAgentRuntime,
 	options: { messageId?: string; sourceText: string; aliasText: string },
 ): void {
-	const sourceKey = normalizeQuery(options.sourceText);
-	const aliasKey = normalizeQuery(options.aliasText);
+	const sourceKey = normalizeQuery(
+		runtime.redactSecrets?.(options.sourceText) ?? options.sourceText,
+	);
+	const aliasKey = normalizeQuery(
+		runtime.redactSecrets?.(options.aliasText) ?? options.aliasText,
+	);
 	if (!sourceKey || !aliasKey || sourceKey === aliasKey) {
 		return;
 	}

@@ -564,6 +564,12 @@ export interface GenerateTextParams {
 	stopSequences?: string[];
 	onStreamChunk?: StreamChunkCallback;
 	/**
+	 * Require the runtime's carry-safe secret/PII stream scanner for this call,
+	 * even when the optional whole-runtime secret-swap feature is disabled.
+	 * Internal runtime metadata: it is removed before provider dispatch.
+	 */
+	streamSecurity?: "required";
+	/**
 	 * Marks this generation as text that will be shown to the user, so local
 	 * voice mode may route the same stream to TTS. Internal structured calls
 	 * (planner, evaluators, tool repair, should-ignore JSON) must leave this

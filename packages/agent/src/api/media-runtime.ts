@@ -115,6 +115,9 @@ export function registerMediaPipelineHook(runtime: IAgentRuntime): void {
   runtime.registerPipelineHook({
     id: "media-persist-inline-attachments",
     phase: "outgoing_before_deliver",
+    // This hook only rewrites attachment URLs/thumbnails. The text body is
+    // byte-preserving, so committed reply prefixes remain authoritative.
+    textMutation: "none",
     handler: async (_rt, ctx) => {
       if (ctx.phase !== "outgoing_before_deliver") return;
       const attachments = ctx.content?.attachments;

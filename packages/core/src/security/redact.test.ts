@@ -125,6 +125,13 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(out).toContain("…");
 	});
 
+	it("masks a bare Cartesia key even when it is not in the known-secret map", () => {
+		const key = ["sk", "car", "0123456789abcdefghijklmnop"].join("_");
+		const out = redactSensitiveText(`voice key ${key} end`);
+		expect(out).not.toContain(key);
+		expect(out).toContain("…");
+	});
+
 	it("masks a GitHub PAT and a Bearer token", () => {
 		const ghp = `ghp_${"a".repeat(30)}`;
 		expect(redactSensitiveText(`use ${ghp}`)).not.toContain(ghp);

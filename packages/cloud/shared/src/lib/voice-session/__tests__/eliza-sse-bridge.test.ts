@@ -7,7 +7,10 @@ import { describe, expect, test } from "bun:test";
 import { COMMITTED_SPEECH_PROTOCOL, REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 
 import {
+  ElizaSseBridgeError,
+  registerElizaSseStreamFailureAbort,
   streamElizaConversation,
+  VOICE_CHANNEL_TYPE,
   VOICE_TRACE_HEADER,
   voiceClientMessageIdForTrace,
 } from "../eliza-sse-bridge";
@@ -122,6 +125,7 @@ describe("eliza sse bridge", () => {
     );
 
     expect(requestBody).toMatchObject({
+      channelType: VOICE_CHANNEL_TYPE,
       streamProtocol: "delta-v2",
       voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
     });
@@ -164,6 +168,7 @@ describe("eliza sse bridge", () => {
     );
 
     expect(requestBody).not.toHaveProperty("voiceSpeechProtocol");
+    expect(requestBody).toHaveProperty("channelType", VOICE_CHANNEL_TYPE);
   });
 
   test("fails closed on unnegotiated or source-divergent committed speech", async () => {
@@ -825,6 +830,7 @@ describe("eliza sse bridge", () => {
     expect(seenBody).toEqual({
       text: "hi",
       clientMessageId: "voice:t",
+      channelType: VOICE_CHANNEL_TYPE,
       metadata: {
         clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
       },
@@ -945,7 +951,123 @@ describe("eliza sse bridge", () => {
       ),
     ).rejects.toMatchObject({
       code: "upstream_error",
-      message: expect.stringContaining("agent failed"),
+      message: "Eliza agent stream reported an error",
+      upstreamMessage: undefined,
+    });
+  });
+
+  test.each([
+    {
+      label: "structured",
+      frame: `data: ${JSON.stringify({
+        type: "error",
+        message: "SYNTHETIC-PII-555-12-3456",
+      })}\n\n`,
+    },
+    {
+      label: "malformed",
+      frame: "event: error\ndata: SYNTHETIC-PII-555-12-3456\n\n",
+    },
+  ])("does not retain raw $label SSE error payloads", async ({ frame }) => {
+    const fetchImpl = (async () => sseResponse([frame])) as unknown as typeof fetch;
+    let thrown: unknown;
+
+    try {
+      await streamElizaConversation(
+        {
+          endpoint: "http://x",
+          authorization: "Bearer s",
+          model: "m",
+          transcript: "hi",
+          agentId: "agent-1",
+          conversationId: "conv-1",
+          traceId: "sensitive-error",
+          signal: new AbortController().signal,
+          fetchImpl,
+        },
+        () => {},
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ElizaSseBridgeError);
+    expect(JSON.stringify(thrown)).not.toContain("SYNTHETIC-PII-555-12-3456");
+    expect((thrown as Error).message).not.toContain("SYNTHETIC-PII-555-12-3456");
+  });
+
+  test("does not retain raw fetch failure details", async () => {
+    const fetchImpl = (async () => {
+      throw new Error("SYNTHETIC-PII-555-12-3456");
+    }) as unknown as typeof fetch;
+
+    await expect(
+      streamElizaConversation(
+        {
+          endpoint: "http://x",
+          authorization: "Bearer s",
+          model: "m",
+          transcript: "hi",
+          agentId: "agent-1",
+          conversationId: "conv-1",
+          traceId: "sensitive-fetch-error",
+          signal: new AbortController().signal,
+          fetchImpl,
+        },
+        () => {},
+      ),
+    ).rejects.toMatchObject({
+      message: "Eliza SSE request failed",
+      code: "upstream_error",
+    });
+  });
+
+  test("signals the registered runtime abort after a malformed stream reaches EOF", async () => {
+    let streamFailureReason: unknown;
+    let streamFailureAbortCalls = 0;
+    const fetchImpl = (async () => {
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                type: "voice_speech_segment",
+                version: 1,
+                sequence: 0,
+              })}\n\n`,
+            ),
+          );
+          controller.close();
+        },
+      });
+      return registerElizaSseStreamFailureAbort(new Response(body, { status: 200 }), (reason) => {
+        streamFailureAbortCalls += 1;
+        streamFailureReason = reason;
+      });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      streamElizaConversation(
+        {
+          endpoint: "http://x",
+          authorization: "Bearer s",
+          model: "m",
+          transcript: "hi",
+          agentId: "agent-1",
+          conversationId: "conv-1",
+          traceId: "malformed-stream",
+          signal: new AbortController().signal,
+          voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+          fetchImpl,
+        },
+        () => {},
+      ),
+    ).rejects.toMatchObject({ code: "protocol_error", retryable: false });
+    expect(streamFailureAbortCalls).toBe(1);
+    expect(streamFailureReason).toMatchObject({
+      code: "protocol_error",
+      retryable: false,
     });
   });
 

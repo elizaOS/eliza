@@ -10,12 +10,18 @@ import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import { type Character, ModelType } from "../../types";
 
-function makeRuntime(enabled: boolean): AgentRuntime {
+function makeRuntime(
+	enabled: boolean,
+	extraSecrets: Record<string, string> = {},
+): AgentRuntime {
 	return new AgentRuntime({
 		character: {
 			name: "SecretSwapAgent",
 			bio: "test",
-			secrets: { WEBHOOK_SECRET: "whsec_1234567890abcdef" },
+			secrets: {
+				WEBHOOK_SECRET: "whsec_1234567890abcdef",
+				...extraSecrets,
+			},
 			settings: {
 				ELIZA_SECRET_SWAP_ENABLED: enabled,
 			},
@@ -41,7 +47,8 @@ describe("AgentRuntime.useModel secret swap", () => {
 		});
 
 		// Placeholders are per-session nonce'd (`__ELIZA_SECRET_<nonce>_<n>__`) so
-		// they cannot be forged from user/model text; assert by shape, not literal.
+		// they cannot be forged from user/model text. PII swapping is disabled in
+		// this fixture, so the secret vault remains the fail-closed owner of email.
 		const placeholderRe = /__ELIZA_SECRET_[0-9a-f]{8,}_\d+__/g;
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(seenPrompt?.match(placeholderRe)).toHaveLength(2);
@@ -128,5 +135,47 @@ describe("AgentRuntime.useModel secret swap", () => {
 		expect(streamedChunks.join("")).not.toContain("whsec_1234567890abcdef");
 		expect(result).toMatch(placeholderRe);
 		expect(result).not.toContain("whsec_1234567890abcdef");
+	});
+
+	it("enforces carry-safe streaming per call even when the global swap toggle is disabled", async () => {
+		const runtime = makeRuntime(false, {
+			BOUNDARY_SECRET: "alpha. omega",
+		});
+		const streamedChunks: string[] = [];
+		let providerSawRuntimePolicy = false;
+		async function* textStream() {
+			yield "Leak alpha. o";
+			yield "mega stays hidden. Safe close.";
+		}
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async (_runtime, params: Record<string, unknown>) => {
+				providerSawRuntimePolicy = "streamSecurity" in params;
+				return {
+					text: Promise.resolve(
+						"Leak alpha. omega stays hidden. Safe close.",
+					),
+					textStream: textStream(),
+					usage: Promise.resolve({}),
+					finishReason: Promise.resolve("stop"),
+				};
+			},
+			"test",
+		);
+
+		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
+			prompt: "Describe the safe result.",
+			stream: true,
+			streamSecurity: "required",
+			onStreamChunk: (chunk: string) => streamedChunks.push(chunk),
+		});
+
+		const visible = streamedChunks.join("");
+		expect(providerSawRuntimePolicy).toBe(false);
+		expect(visible).toContain("__ELIZA_SECRET_");
+		expect(visible).not.toContain("alpha");
+		expect(visible).not.toContain("omega");
+		expect(String(result)).not.toContain("alpha");
+		expect(String(result)).not.toContain("omega");
 	});
 });

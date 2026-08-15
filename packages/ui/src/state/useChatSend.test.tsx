@@ -7,6 +7,11 @@
  *
  * @vitest-environment jsdom
  */
+
+import {
+  REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+} from "@elizaos/shared";
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -236,6 +241,8 @@ describe("useChatSend stop handling", () => {
       });
       await started.promise;
     });
+    const clientMessageId = mocks.client.sendConversationMessageStream.mock
+      .calls[0]?.[9] as string;
 
     act(() => {
       result.current.handleChatStop();
@@ -249,6 +256,107 @@ describe("useChatSend stop handling", () => {
     expect(mocks.client.abortConversationTurn).toHaveBeenCalledWith(
       "room-1",
       "ui-chat-stop",
+      clientMessageId,
+    );
+  });
+
+  it("keeps the exact realtime VOICE_DM id bound from stream request through Stop", async () => {
+    const started = deferred();
+    mockStreamingUntilAbort(started);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+    const voiceTurnId = "browser-turn-7";
+    const clientMessageId = `${REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX}${voiceTurnId}`;
+    deps.chatInputRef.current = "exact voice request";
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.handleChatSend("VOICE_DM", {
+        clientMessageId,
+        metadata: {
+          clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+          voiceTurnId,
+        },
+      });
+      await started.promise;
+    });
+
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledWith(
+      "conv-1",
+      "exact voice request",
+      expect.any(Function),
+      "VOICE_DM",
+      expect.any(AbortSignal),
+      undefined,
+      expect.objectContaining({
+        clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+        voiceTurnId,
+      }),
+      expect.any(Function),
+      expect.any(Function),
+      clientMessageId,
+    );
+
+    act(() => {
+      result.current.interruptActiveChatPipeline();
+    });
+    await act(async () => {
+      await sendPromise;
+    });
+
+    expect(mocks.client.abortConversationTurn).toHaveBeenCalledTimes(1);
+    expect(mocks.client.abortConversationTurn).toHaveBeenCalledWith(
+      "room-1",
+      "ui-chat-stop",
+      clientMessageId,
+    );
+  });
+
+  it.each([
+    {
+      label: "voice-prefixed id without the realtime marker",
+      clientMessageId: `${REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX}unmarked-turn`,
+      metadata: { voiceTurnId: "unmarked-turn" },
+    },
+    {
+      label: "realtime marker without a voice-prefixed id",
+      clientMessageId: "ordinary-chat-request",
+      metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+    },
+  ])("targets $label without widening Stop to the room", async (testCase) => {
+    const started = deferred();
+    mockStreamingUntilAbort(started);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+    deps.chatInputRef.current = "not an exact realtime request";
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.handleChatSend("VOICE_DM", {
+        clientMessageId: testCase.clientMessageId,
+        metadata: testCase.metadata,
+      });
+      await started.promise;
+    });
+
+    act(() => {
+      result.current.interruptActiveChatPipeline();
+    });
+    await act(async () => {
+      await sendPromise;
+    });
+
+    expect(mocks.client.abortConversationTurn).toHaveBeenCalledTimes(1);
+    expect(mocks.client.abortConversationTurn).toHaveBeenCalledWith(
+      "room-1",
+      "ui-chat-stop",
+      testCase.clientMessageId,
     );
   });
 
@@ -266,6 +374,8 @@ describe("useChatSend stop handling", () => {
       sendPromise = result.current.sendChatText("hello");
       await started.promise;
     });
+    const clientMessageId = mocks.client.sendConversationMessageStream.mock
+      .calls[0]?.[9] as string;
 
     act(() => {
       result.current.handleChatStop();
@@ -279,6 +389,39 @@ describe("useChatSend stop handling", () => {
     expect(mocks.client.abortConversationTurn).toHaveBeenCalledWith(
       "room-new",
       "ui-chat-stop",
+      clientMessageId,
+    );
+  });
+
+  it("keeps action-message Stop scoped to its own generated request id", async () => {
+    const started = deferred();
+    mockStreamingUntilAbort(started);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendActionMessage("run the safe action");
+      await started.promise;
+    });
+    const clientMessageId = mocks.client.sendConversationMessageStream.mock
+      .calls[0]?.[9] as string;
+
+    act(() => {
+      result.current.handleChatStop();
+    });
+    await act(async () => {
+      await sendPromise;
+    });
+
+    expect(clientMessageId).toEqual(expect.any(String));
+    expect(mocks.client.abortConversationTurn).toHaveBeenCalledWith(
+      "room-1",
+      "ui-chat-stop",
+      clientMessageId,
     );
   });
 
@@ -655,6 +798,68 @@ describe("useChatSend 404 recovery", () => {
     ).toBe(true);
   });
 
+  it("retargets exact Stop authority to the recreated room while replay is running", async () => {
+    const replayStarted = deferred();
+    mocks.client.sendConversationMessageStream
+      .mockRejectedValueOnce(http404())
+      .mockImplementationOnce(
+        (
+          _id: string,
+          _text: string,
+          _onToken: (token: string, accumulatedText?: string) => void,
+          _channelType: string,
+          signal?: AbortSignal,
+        ) => {
+          replayStarted.resolve();
+          return new Promise((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(abortError()), {
+              once: true,
+            });
+          });
+        },
+      );
+    mocks.client.createConversation.mockResolvedValue({
+      conversation: conversation("conv-new", "room-new"),
+    });
+    mocks.client.abortConversationTurn.mockResolvedValue({ aborted: true });
+    const deps = makeDeps({
+      activeConversationId: "conv-old",
+      conversations: [conversation("conv-old", "room-old")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+    const voiceTurnId = "recreated-room-turn";
+    const clientMessageId = `${REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX}${voiceTurnId}`;
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("keep the exact stop target", {
+        conversationId: "conv-old",
+        channelType: "VOICE_DM",
+        clientMessageId,
+        metadata: {
+          clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+          voiceTurnId,
+        },
+      });
+      await replayStarted.promise;
+    });
+
+    act(() => result.current.interruptActiveChatPipeline());
+    await act(async () => sendPromise);
+
+    expect(mocks.client.abortConversationTurn).toHaveBeenCalledTimes(1);
+    expect(mocks.client.abortConversationTurn).toHaveBeenCalledWith(
+      "room-new",
+      "ui-chat-stop",
+      clientMessageId,
+    );
+    expect(mocks.client.abortConversationTurn).not.toHaveBeenCalledWith(
+      "room-old",
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
   it("surfaces a send-failure notice on a non-cloud base when createConversation 404s (#12267: a silent return read as a lost message)", async () => {
     mockStream404();
     mocks.client.createConversation.mockRejectedValue(http404());
@@ -743,6 +948,42 @@ describe("useChatSend always streams (#9174)", () => {
     ).toEqual(
       expect.arrayContaining(["persisted-user", "persisted-assistant"]),
     );
+  });
+
+  it("commits marked terminal text byte-for-byte without a terminal message id", async () => {
+    const authoritativeText = ' \n{"response":"yes"}\n ';
+    const streamedPrefix = authoritativeText.slice(0, -1);
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        onToken(streamedPrefix, streamedPrefix);
+        return {
+          text: authoritativeText,
+          completed: true,
+          preserveUserRequestedFormat: true as const,
+          userMessageId: "persisted-user-exact",
+        };
+      },
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("return exact JSON", {
+        conversationId: "conv-1",
+      });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.find(
+      (message) => message.role === "assistant",
+    );
+    expect(assistant?.text).toBe(authoritativeText);
   });
 });
 
@@ -1928,6 +2169,129 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
     // temp- user id → cannot truncate; resend still fires.
     expect(mocks.client.truncateConversationMessages).not.toHaveBeenCalled();
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    expect(mocks.client.sendConversationMessageStream.mock.calls[0]?.[3]).toBe(
+      "DM",
+    );
+  });
+
+  it("replays an optimistic Talk turn with the exact sanitized VOICE_DM fingerprint envelope", async () => {
+    const voiceTurnId = "talk-retry-after-lost-terminal";
+    const clientMessageId = `${REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX}${voiceTurnId}`;
+    mocks.client.sendConversationMessageStream
+      .mockRejectedValueOnce(
+        new TypeError("connection closed after the request was uploaded"),
+      )
+      .mockResolvedValueOnce({
+        text: "already accepted",
+        completed: true,
+        messageId: "persisted-assistant",
+        userMessageId: "persisted-user",
+      });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    // Model a successful history replacement after the transport loses the
+    // terminal frame. The request may already be admitted server-side, but its
+    // optimistic row is all the UI can retry from until settled replay returns.
+    deps.loadConversationMessages = vi.fn(async () => {
+      deps.setConversationMessages([]);
+      return { ok: true as const };
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("continue aloud", {
+        conversationId: "conv-1",
+        channelType: "VOICE_DM",
+        clientMessageId,
+        metadata: {
+          clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+          voiceTurnId,
+          replyToMessageId: "safe-message-id",
+          voiceSource: "browser-native",
+          voiceSpeechEndedAtMs: 1_786_790_000_000,
+          voiceTurnSignal: {
+            endOfTurnProbability: 0.92,
+            nextSpeaker: "agent",
+            agentShouldSpeak: true,
+            source: "client-ambient+diarization",
+          },
+          voiceSpeaker: {
+            entityId: "entity-owner",
+            source: "browser",
+            name: "Private Person",
+            userName: "person@example.com",
+          },
+          // Exact Talk requests intentionally do not transmit or retain
+          // arbitrary caller metadata on the optimistic retry row.
+          privateEmail: "person@example.com",
+          authorization: "Bearer should-not-survive",
+        },
+      });
+    });
+
+    const firstCall = mocks.client.sendConversationMessageStream.mock.calls[0];
+    const firstMetadata = firstCall?.[6] as Record<string, unknown> | undefined;
+    expect(firstCall?.[3]).toBe("VOICE_DM");
+    expect(firstCall?.[9]).toBe(clientMessageId);
+    expect(firstMetadata).toMatchObject({
+      clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+      voiceTurnId,
+      replyToMessageId: "safe-message-id",
+      voiceSource: "browser-native",
+      voiceSpeechEndedAtMs: 1_786_790_000_000,
+      voiceTurnSignal: {
+        endOfTurnProbability: 0.92,
+        nextSpeaker: "agent",
+        agentShouldSpeak: true,
+        source: "client-ambient+diarization",
+      },
+      voiceSpeaker: {
+        entityId: "entity-owner",
+        source: "browser",
+      },
+    });
+    expect(firstMetadata).not.toHaveProperty("privateEmail");
+    expect(firstMetadata).not.toHaveProperty("authorization");
+    expect(firstMetadata).not.toHaveProperty("voiceSpeaker.name");
+    expect(firstMetadata).not.toHaveProperty("voiceSpeaker.userName");
+
+    const optimisticUser = deps.conversationMessagesRef.current.find(
+      (message) => message.role === "user",
+    );
+    const failedAssistant = deps.conversationMessagesRef.current.find(
+      (message) => message.role === "assistant",
+    );
+    expect(optimisticUser?.id).toBe(`temp-${clientMessageId}`);
+    expect(optimisticUser?.optimisticRetryEnvelope).toEqual({
+      channelType: "VOICE_DM",
+      metadata: firstMetadata,
+    });
+    expect(failedAssistant?.failureKind).toBe("provider_issue");
+
+    await act(async () => {
+      await result.current.handleChatRetry(failedAssistant?.id ?? "missing");
+      await vi.waitFor(() => {
+        expect(
+          mocks.client.sendConversationMessageStream,
+        ).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    const retryCall = mocks.client.sendConversationMessageStream.mock.calls[1];
+    expect(retryCall?.[3]).toBe(firstCall?.[3]);
+    expect(retryCall?.[6]).toEqual(firstMetadata);
+    expect(retryCall?.[9]).toBe(clientMessageId);
+    expect(mocks.client.truncateConversationMessages).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(
+        deps.conversationMessagesRef.current.find(
+          (message) => message.id === "persisted-user",
+        )?.optimisticRetryEnvelope,
+      ).toBeUndefined();
+    });
   });
 
   it("retries only the selected optimistic turn and preserves an unrelated turn without duplicate terminal rows", async () => {

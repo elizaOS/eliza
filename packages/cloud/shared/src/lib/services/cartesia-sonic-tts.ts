@@ -446,8 +446,15 @@ export class CartesiaSonicTtsStream {
     this.sendOrQueue(JSON.stringify(removeUndefinedFields(payload)));
   }
 
-  finish(): void {
-    this.sendPhrase({ text: "", continueContext: false });
+  finish(): never {
+    // Cartesia's live API rejects an empty terminal transcript. Callers must
+    // retain real validated text and send that phrase with continueContext:false
+    // rather than fabricating filler or issuing a request the provider rejects.
+    throw new CartesiaSonicTtsError(
+      "Cartesia stream completion requires a non-empty terminal phrase",
+      "TERMINAL_TEXT_REQUIRED",
+      { contextId: this.contextId },
+    );
   }
 
   cancel(reason?: string): void {

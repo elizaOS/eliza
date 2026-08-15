@@ -171,6 +171,17 @@ describe("CartesiaSonicTtsAdapter", () => {
     ]);
   });
 
+  test("fails closed instead of sending an empty terminal transcript", () => {
+    const { adapter, socket } = makeHarness();
+    const stream = adapter.createStream({ contextId: "ctx-1" }, {});
+    socket().emitOpen();
+
+    expect(() => stream.finish()).toThrow(
+      "Cartesia stream completion requires a non-empty terminal phrase",
+    );
+    expect(socket().sent).toEqual([]);
+  });
+
   test("discards queued synthesis when cancellation happens before open", async () => {
     const { adapter, socket } = makeHarness();
     const stream = adapter.createStream({ contextId: "ctx-1" }, {});

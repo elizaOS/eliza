@@ -50,6 +50,29 @@ function registerStreamingModel(runtime: AgentRuntime): void {
 }
 
 describe("AgentRuntime.useModel model_stream_chunk hooks", () => {
+	it("fails committed-reply compatibility closed for undeclared output mutators", () => {
+		const runtime = makeRuntime();
+		expect(runtime.canStreamCommittedReplyText()).toBe(true);
+
+		runtime.registerPipelineHook({
+			id: "attachment-only",
+			phase: "outgoing_before_deliver",
+			textMutation: "none",
+			handler: () => undefined,
+		});
+		expect(runtime.canStreamCommittedReplyText()).toBe(true);
+
+		runtime.registerPipelineHook({
+			id: "unknown-post-model-mutator",
+			phase: "post_model",
+			handler: () => undefined,
+		});
+		expect(runtime.canStreamCommittedReplyText()).toBe(false);
+
+		runtime.unregisterPipelineHook("unknown-post-model-mutator");
+		expect(runtime.canStreamCommittedReplyText()).toBe(true);
+	});
+
 	it("streams with zero hooks registered (fast path) and still delivers every chunk downstream", async () => {
 		const runtime = makeRuntime();
 		registerStreamingModel(runtime);

@@ -9,6 +9,10 @@
 // in-memory Storage so hands-free persistence is real.
 
 import {
+  REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+} from "@elizaos/shared";
+import {
   NAVIGATE_VIEW_EVENT,
   VOICE_SETTINGS_APPLY_EVENT,
 } from "@elizaos/shared/events";
@@ -306,10 +310,24 @@ vi.mock("../useShellVoiceOutput", () => ({
 // real native subscription never runs in jsdom.
 const wakeListenMock = vi.hoisted(() => ({
   lastEnabled: undefined as boolean | undefined,
+  lastOptions: undefined as
+    | {
+        enabled: boolean;
+        alwaysOn: boolean;
+        onOpen: () => void;
+        onClose: () => void;
+      }
+    | undefined,
 }));
 vi.mock("../../../voice/useWakeListenWindow", () => ({
-  useWakeListenWindow: (opts: { enabled: boolean }) => {
+  useWakeListenWindow: (opts: {
+    enabled: boolean;
+    alwaysOn: boolean;
+    onOpen: () => void;
+    onClose: () => void;
+  }) => {
     wakeListenMock.lastEnabled = opts.enabled;
+    wakeListenMock.lastOptions = opts;
     return { phase: "idle" as const };
   },
 }));
@@ -337,6 +355,7 @@ afterEach(() => {
   voiceOutputMock.lastTurnVoiceSeen = undefined;
   voiceOutputMock.cloudConnectedSeen = undefined;
   wakeListenMock.lastEnabled = undefined;
+  wakeListenMock.lastOptions = undefined;
   realtimeVoiceMock.enabled = false;
   realtimeVoiceMock.options = null;
   realtimeVoiceMock.startOutcome = { kind: "live" };
@@ -972,9 +991,23 @@ describe("useShellController — voice capture routing", () => {
 
     act(() => fireFinalTranscript("what's the weather"));
     expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
-    expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
+    const options = appMock.value.sendChatText.mock.calls[0]?.[1] as
+      | {
+          channelType?: string;
+          clientMessageId?: string;
+          metadata?: Record<string, unknown>;
+        }
+      | undefined;
+    expect(options).toMatchObject({
       channelType: "VOICE_DM",
+      metadata: {
+        clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+        voiceTurnId: expect.any(String),
+      },
     });
+    expect(options?.clientMessageId).toBe(
+      `${REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX}${String(options?.metadata?.voiceTurnId)}`,
+    );
   });
 
   it("engage does not open the mic when the mic grant is known-denied", async () => {
@@ -1241,9 +1274,20 @@ describe("useShellController — voice capture routing", () => {
     );
     const meta = appMock.value.sendChatText.mock.calls[0]?.[1] as {
       channelType?: string;
-      metadata?: { transcriptionMode?: boolean };
+      clientMessageId?: string;
+      metadata?: {
+        clientTransport?: string;
+        voiceTurnId?: string;
+        transcriptionMode?: boolean;
+      };
     };
     expect(meta?.channelType).toBe("VOICE_DM");
+    expect(meta?.metadata?.clientTransport).toBe(
+      REALTIME_VOICE_CLIENT_TRANSPORT,
+    );
+    expect(meta?.clientMessageId).toBe(
+      `${REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX}${meta?.metadata?.voiceTurnId}`,
+    );
     expect(meta?.metadata?.transcriptionMode).toBeUndefined();
     // Crucially, transcription did NOT exit — recording continues.
     expect(result.current.transcriptionMode).toBe(true);
@@ -2171,6 +2215,44 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     }
   });
 
+  it("opens a cold realtime wake window without persisting always-on or self-closing", async () => {
+    window.localStorage.setItem(
+      "eliza:voice:continuous-chat-mode",
+      "vad-gated",
+    );
+    saveWakeWordEnabled(true);
+    const { result, rerender } = renderHook(() => useShellController());
+
+    expect(wakeListenMock.lastOptions).toMatchObject({
+      enabled: true,
+      alwaysOn: false,
+    });
+    await act(async () => {
+      wakeListenMock.lastOptions?.onOpen();
+      await Promise.resolve();
+    });
+
+    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+    expect(result.current.handsFree).toBe(true);
+    expect(
+      window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+    ).toBe("vad-gated");
+
+    rerender();
+    expect(wakeListenMock.lastOptions?.alwaysOn).toBe(false);
+    expect(realtimeVoiceMock.stop).not.toHaveBeenCalled();
+
+    await act(async () => {
+      wakeListenMock.lastOptions?.onClose();
+      await Promise.resolve();
+    });
+    expect(realtimeVoiceMock.stop).toHaveBeenCalledTimes(1);
+    expect(result.current.handsFree).toBe(false);
+    expect(
+      window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+    ).toBe("vad-gated");
+  });
+
   it("routes programmatic converse capture to one realtime session", async () => {
     const { result } = renderHook(() => useShellController());
 
@@ -2518,6 +2600,61 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     });
     expect(result.current.messages[0]).toMatchObject({
       content: "The whole declaration continues",
+      interrupted: true,
+    });
+  });
+
+  it("freezes a paced voice row on output retraction even when no audio was buffered", () => {
+    const fullAnswer = `Visible prefix. ${"Hidden terminal suffix. ".repeat(20)}`;
+    appMock.value.conversationMessages = [
+      {
+        id: "assistant-zero-audio-retract",
+        role: "assistant",
+        text: fullAnswer,
+        timestamp: 1_000,
+      },
+    ];
+    const { result } = renderHook(() => useShellController());
+    const clientOptions = realtimeVoiceMock.options?.clientOptions;
+
+    act(() => {
+      clientOptions?.onServerEvent?.({
+        t: "assistant_display",
+        text: "Visible prefix.",
+        traceId: "trace-zero-audio-retract",
+      });
+      clientOptions?.onServerEvent?.({
+        t: "assistant_output",
+        displayMarkdown: fullAnswer,
+        speechText: null,
+        displayTruncated: false,
+        messageId: "assistant-zero-audio-retract",
+        traceId: "trace-zero-audio-retract",
+      });
+    });
+    const visibleAtRetract = result.current.messages[0]?.content;
+    expect(visibleAtRetract).toBe("Visible prefix.");
+
+    act(() => {
+      clientOptions?.onTraceMark?.({
+        name: "output_retracted",
+        traceId: "trace-zero-audio-retract",
+        atMs: performance.now(),
+      });
+      // The reducer retains the cutoff tombstone, so even a late terminal
+      // replay from an older client/server pairing cannot expose the suffix.
+      clientOptions?.onServerEvent?.({
+        t: "assistant_output",
+        displayMarkdown: fullAnswer,
+        speechText: fullAnswer,
+        displayTruncated: false,
+        messageId: "assistant-zero-audio-retract",
+        traceId: "trace-zero-audio-retract",
+      });
+    });
+
+    expect(result.current.messages[0]).toMatchObject({
+      content: visibleAtRetract,
       interrupted: true,
     });
   });

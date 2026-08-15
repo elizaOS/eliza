@@ -11,7 +11,10 @@ import {
   hasCommittedRealtimeVoiceIngress,
   REALTIME_VOICE_CLIENT_TRANSPORT,
 } from "@elizaos/shared";
+import { COMMITTED_SPEECH_PROTOCOL } from "@elizaos/shared/voice/incremental-speech-segments";
 import {
+  registerElizaSseStreamFailureAbort,
+  VOICE_CHANNEL_TYPE,
   VOICE_STREAM_PROTOCOL,
   VOICE_TRACE_HEADER,
   voiceClientMessageIdForTrace,
@@ -585,7 +588,7 @@ export function createLocalRuntimeConversationFetch(
       );
     }
     responseExposed = true;
-    return callerSignal
+    const exposedResponse = callerSignal
       ? bindRuntimeAbortToResponse({
           response,
           signal: callerSignal,
@@ -593,6 +596,10 @@ export function createLocalRuntimeConversationFetch(
           abortRuntimeTurn: startAbortBarrier,
         })
       : response;
+    return registerElizaSseStreamFailureAbort(
+      exposedResponse,
+      startAbortBarrier,
+    );
   }) as typeof fetch;
 }
 
@@ -661,14 +668,15 @@ function bindRuntimeAbortToResponse(options: {
         }
         controller.enqueue(chunk.value);
       } catch (error) {
-        if (signal.aborted) {
-          try {
-            await abortRuntimeTurn();
-          } catch (abortError) {
-            void abortError;
-            // error-policy:J6 The aborted stream remains the caller-visible
-            // outcome; the next-turn barrier retains the control failure.
-          }
+        try {
+          // A committed response-body failure leaves the runtime turn's fate
+          // unknown even when the caller did not initiate an AbortSignal. The
+          // exact barrier must therefore settle before this read failure escapes.
+          await abortRuntimeTurn();
+        } catch (abortError) {
+          void abortError;
+          // error-policy:J6 The failed stream remains the caller-visible
+          // outcome; the next-turn barrier retains the control failure.
         }
         cleanup();
         controller.error(error);
@@ -843,8 +851,10 @@ function resolveRequestUrl(input: RequestInfo | URL): URL {
 function parseRequestBody(body: BodyInit | null | undefined): {
   text: string;
   clientMessageId: string;
+  channelType: typeof VOICE_CHANNEL_TYPE;
   metadata: { clientTransport: typeof REALTIME_VOICE_CLIENT_TRANSPORT };
   streamProtocol: typeof VOICE_STREAM_PROTOCOL;
+  voiceSpeechProtocol: typeof COMMITTED_SPEECH_PROTOCOL;
 } {
   if (typeof body !== "string") {
     throw new LocalRuntimeConversationFetchError(
@@ -855,8 +865,10 @@ function parseRequestBody(body: BodyInit | null | undefined): {
     const parsed = JSON.parse(body) as {
       text?: unknown;
       clientMessageId?: unknown;
+      channelType?: unknown;
       metadata?: unknown;
       streamProtocol?: unknown;
+      voiceSpeechProtocol?: unknown;
     };
     if (typeof parsed.text !== "string" || parsed.text.trim() === "") {
       throw new LocalRuntimeConversationFetchError(
@@ -884,16 +896,28 @@ function parseRequestBody(body: BodyInit | null | undefined): {
         "local voice conversation transport metadata is required",
       );
     }
+    if (parsed.channelType !== VOICE_CHANNEL_TYPE) {
+      throw new LocalRuntimeConversationFetchError(
+        "local voice conversation channel type is required",
+      );
+    }
     if (parsed.streamProtocol !== VOICE_STREAM_PROTOCOL) {
       throw new LocalRuntimeConversationFetchError(
         "local voice conversation delta stream protocol is required",
       );
     }
+    if (parsed.voiceSpeechProtocol !== COMMITTED_SPEECH_PROTOCOL) {
+      throw new LocalRuntimeConversationFetchError(
+        "local voice conversation committed speech protocol is required",
+      );
+    }
     return {
       text: parsed.text,
       clientMessageId: parsed.clientMessageId,
+      channelType: parsed.channelType,
       metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
       streamProtocol: parsed.streamProtocol,
+      voiceSpeechProtocol: parsed.voiceSpeechProtocol,
     };
   } catch (error) {
     // error-policy:J3 The generated upstream body crosses a transport boundary;

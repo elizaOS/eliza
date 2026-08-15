@@ -9,7 +9,6 @@
 
 import type { ShellMessage } from "./shell-state";
 
-const MAX_RETAINED_INTERRUPTED_TURNS = 4;
 const INITIAL_REVEAL_CODE_POINTS = 48;
 /**
  * Fast enough to feel live, but slow enough that a long answer remains aligned
@@ -164,6 +163,30 @@ function advanceReveal(turn: RealtimeVoiceDisplayTurn, atMs: number) {
   };
 }
 
+function freezeDisplayedPrefix(
+  turn: RealtimeVoiceDisplayTurn,
+  atMs: number,
+  serverOutcome?: RealtimeVoiceTurnOutcome,
+): RealtimeVoiceDisplayTurn {
+  const visibleText = turn.visibleText;
+  return {
+    ...turn,
+    // Once delivery is retracted, the unrevealed terminal target is no longer
+    // display truth. Truncate the retained source as well as freezing the
+    // projection so no later event can accidentally resurrect the suffix.
+    displayMarkdown: visibleText,
+    speechText: null,
+    displayTruncated:
+      turn.displayTruncated || visibleText !== turn.displayMarkdown,
+    visibleText,
+    playbackActive: false,
+    phase: "interrupted",
+    lastRevealAtMs: Math.max(turn.lastRevealAtMs, atMs),
+    revealCarryCodePoints: 0,
+    ...(serverOutcome ? { serverOutcome } : {}),
+  };
+}
+
 function mapTrace(
   state: RealtimeVoiceDisplayState,
   traceId: string,
@@ -183,11 +206,12 @@ function retainedInterruptedTurns(
   state: RealtimeVoiceDisplayState,
   currentTraceId: string,
 ): RealtimeVoiceDisplayTurn[] {
-  return state.turns
-    .filter(
-      (turn) => turn.traceId !== currentTraceId && turn.phase === "interrupted",
-    )
-    .slice(-MAX_RETAINED_INTERRUPTED_TURNS + 1);
+  // A canonical row can remain in the loaded transcript for the whole active
+  // conversation. Dropping its interrupted projection earlier would expose the
+  // persisted hidden suffix again; `conversation_changed` is the safe reset.
+  return state.turns.filter(
+    (turn) => turn.traceId !== currentTraceId && turn.phase === "interrupted",
+  );
 }
 
 export function reduceRealtimeVoiceDisplay(
@@ -241,9 +265,6 @@ export function reduceRealtimeVoiceDisplay(
         return mapTrace(state, event.traceId, (turn) => ({
           ...turn,
           ...(event.messageId ? { messageId: event.messageId } : {}),
-          displayMarkdown: event.displayMarkdown,
-          speechText: event.speechText,
-          displayTruncated: event.displayTruncated,
         }));
       }
       const visibleText = revealTargetFromExisting(
@@ -321,13 +342,12 @@ export function reduceRealtimeVoiceDisplay(
             : turn;
         }
         if (turn.serverOutcome === "spoken") {
+          const revealComplete =
+            turn.visibleText.length >= turn.displayMarkdown.length;
           return {
             ...turn,
             playbackActive: false,
-            visibleText: turn.displayMarkdown,
-            phase: "complete",
-            lastRevealAtMs: Math.max(turn.lastRevealAtMs, event.atMs),
-            revealCarryCodePoints: 0,
+            phase: revealComplete ? "complete" : "revealing",
           };
         }
         return {
@@ -350,46 +370,41 @@ export function reduceRealtimeVoiceDisplay(
           continue;
         }
         const turns = [...state.turns];
-        turns[index] = {
-          ...turn,
-          playbackActive: false,
-          phase: "interrupted",
-          lastRevealAtMs: Math.max(turn.lastRevealAtMs, event.atMs),
-          revealCarryCodePoints: 0,
-        };
+        turns[index] = freezeDisplayedPrefix(turn, event.atMs);
         return { turns };
       }
       return state;
     }
     case "interrupted":
       return mapTrace(state, event.traceId, (turn) =>
-        turn.phase === "interrupted"
+        turn.phase === "interrupted" || turn.phase === "complete"
           ? turn
-          : {
-              ...turn,
-              playbackActive: false,
-              phase: "interrupted",
-              lastRevealAtMs: Math.max(turn.lastRevealAtMs, event.atMs),
-              revealCarryCodePoints: 0,
-            },
+          : freezeDisplayedPrefix(turn, event.atMs),
       );
     case "turn_end":
       return mapTrace(state, event.traceId, (turn) => {
         if (turn.phase === "interrupted") return turn;
+        if (
+          event.outcome === "stopped" ||
+          event.outcome === "error" ||
+          event.outcome === "no_response"
+        ) {
+          return freezeDisplayedPrefix(turn, event.atMs, event.outcome);
+        }
+        const revealComplete =
+          turn.visibleText.length >= turn.displayMarkdown.length;
         if (event.outcome === "spoken" && turn.playbackActive) {
           return {
             ...turn,
             serverOutcome: event.outcome,
-            phase: turn.phase === "revealing" ? "revealing" : "speaking",
+            phase: revealComplete ? "speaking" : "revealing",
           };
         }
         return {
           ...turn,
           serverOutcome: event.outcome,
           playbackActive: false,
-          visibleText: turn.displayMarkdown,
-          phase: "complete",
-          lastRevealAtMs: Math.max(turn.lastRevealAtMs, event.atMs),
+          phase: revealComplete ? "complete" : "revealing",
         };
       });
   }
@@ -438,23 +453,27 @@ export function projectRealtimeVoiceDisplayMessages(
       break;
     }
   }
-  const projected = messages.map((message, messageIndex) => {
-    if (message.role !== "assistant") return message;
+  const projected = messages.flatMap((message, messageIndex) => {
+    if (message.role !== "assistant") return [message];
     const turn = [...unmatched.values()].find(
       (candidate) =>
         candidate.messageId === message.id ||
         (!candidate.messageId &&
           fallbackIndexByTrace.get(candidate.traceId) === messageIndex),
     );
-    if (!turn) return message;
+    if (!turn) return [message];
     unmatched.delete(turn.traceId);
-    return {
-      ...message,
-      content: turn.visibleText,
-      interrupted: turn.phase === "interrupted",
-    };
+    if (!turn.visibleText) return [];
+    return [
+      {
+        ...message,
+        content: turn.visibleText,
+        interrupted: turn.phase === "interrupted",
+      },
+    ];
   });
   for (const turn of unmatched.values()) {
+    if (!turn.visibleText) continue;
     projected.push({
       id: `voice-display:${turn.traceId}`,
       role: "assistant",

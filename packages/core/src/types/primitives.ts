@@ -96,6 +96,22 @@ export interface Content {
 	text?: string;
 
 	/**
+	 * The user explicitly requested a machine-readable/literal format and core
+	 * validated these exact bytes as user-visible output. Modern transports and
+	 * history readers must preserve the string byte-for-byte instead of applying
+	 * legacy `{reply}` / `{response}` envelope extraction. Only literal `true`
+	 * has authority; absent/false retains legacy normalization.
+	 */
+	preserveUserRequestedFormat?: boolean;
+
+	/**
+	 * Core emitted this reply through the append-only committed display stream.
+	 * The terminal delivery boundary must preserve the exact visible bytes even
+	 * if a text-mutating hook is registered after streaming already began.
+	 */
+	committedReplyAuthority?: "prefix-stable-v1";
+
+	/**
 	 * Core-validated effect receipts grounding this exact visible text. Plugins
 	 * cannot establish proof by setting this field alone; the delivery boundary
 	 * also requires non-serialized core binding metadata.

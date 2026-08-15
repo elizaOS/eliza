@@ -212,6 +212,59 @@ function hasConfiguredHostsPath(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+/**
+ * Tracks the exact process environment keys changed by one real-test runtime.
+ * Restoring only touched keys avoids both provider leakage and clobbering
+ * unrelated environment changes made elsewhere in the test process.
+ */
+export function createProcessEnvMutationScope(
+  environment: NodeJS.ProcessEnv = process.env,
+): {
+  set: (key: string, value: string) => void;
+  unset: (key: string) => void;
+  restore: () => void;
+} {
+  const originalValues = new Map<
+    string,
+    { existed: boolean; value: string | undefined }
+  >();
+  let restored = false;
+
+  const remember = (key: string): void => {
+    if (restored) {
+      throw new Error("Cannot mutate a restored process environment scope");
+    }
+    if (!originalValues.has(key)) {
+      originalValues.set(key, {
+        existed: Object.hasOwn(environment, key),
+        value: environment[key],
+      });
+    }
+  };
+
+  return {
+    set(key, value) {
+      remember(key);
+      environment[key] = value;
+    },
+    unset(key) {
+      remember(key);
+      delete environment[key];
+    },
+    restore() {
+      if (restored) return;
+      for (const [key, original] of originalValues) {
+        if (original.existed) {
+          environment[key] = original.value;
+        } else {
+          delete environment[key];
+        }
+      }
+      restored = true;
+    },
+  };
+}
+
 function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
   const apiKey =
     process.env.CEREBRAS_API_KEY?.trim() ||
@@ -291,39 +344,36 @@ export async function createRealTestRuntime(
     options?.removePgliteDirOnCleanup ??
     (options?.pgliteDir === undefined && !isInMemoryPgliteDataDir(pgliteDir));
   const restoreWindow = suppressWindowDuringNodeRuntime();
+  const environment = createProcessEnvMutationScope();
   let selfControlTempDir: string | null = null;
 
-  const prevPgliteDir = process.env.PGLITE_DATA_DIR;
-  const prevWebsiteBlockerHostsPath =
-    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
-  const prevSelfControlHostsPath = process.env.SELFCONTROL_HOSTS_FILE_PATH;
-  process.env.PGLITE_DATA_DIR = pgliteDir;
-
-  if (
-    !hasConfiguredHostsPath(process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH) &&
-    !hasConfiguredHostsPath(process.env.SELFCONTROL_HOSTS_FILE_PATH)
-  ) {
-    selfControlTempDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "eliza-real-selfcontrol-"),
-    );
-    const testHostsFilePath = path.join(selfControlTempDir, "hosts");
-    fs.mkdirSync(path.dirname(testHostsFilePath), { recursive: true });
-    if (!fs.existsSync(testHostsFilePath)) {
-      fs.writeFileSync(testHostsFilePath, "127.0.0.1 localhost\n", "utf8");
-    }
-    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH = testHostsFilePath;
-    process.env.SELFCONTROL_HOSTS_FILE_PATH = testHostsFilePath;
-  }
-
-  // Apply local embedding defaults so PGLite vector search works
-  if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
-    process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
-  }
-  if (!process.env.EMBEDDING_DIMENSION?.trim()) {
-    process.env.EMBEDDING_DIMENSION = "384";
-  }
-
   try {
+    environment.set("PGLITE_DATA_DIR", pgliteDir);
+
+    if (
+      !hasConfiguredHostsPath(process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH) &&
+      !hasConfiguredHostsPath(process.env.SELFCONTROL_HOSTS_FILE_PATH)
+    ) {
+      selfControlTempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "eliza-real-selfcontrol-"),
+      );
+      const testHostsFilePath = path.join(selfControlTempDir, "hosts");
+      fs.mkdirSync(path.dirname(testHostsFilePath), { recursive: true });
+      if (!fs.existsSync(testHostsFilePath)) {
+        fs.writeFileSync(testHostsFilePath, "127.0.0.1 localhost\n", "utf8");
+      }
+      environment.set("WEBSITE_BLOCKER_HOSTS_FILE_PATH", testHostsFilePath);
+      environment.set("SELFCONTROL_HOSTS_FILE_PATH", testHostsFilePath);
+    }
+
+    // Apply local embedding defaults so PGLite vector search works
+    if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
+      environment.set("LOCAL_EMBEDDING_DIMENSIONS", "384");
+    }
+    if (!process.env.EMBEDDING_DIMENSION?.trim()) {
+      environment.set("EMBEDDING_DIMENSION", "384");
+    }
+
     const character = createCharacter({
       name: options?.characterName ?? "TestAgent",
     });
@@ -359,6 +409,17 @@ export async function createRealTestRuntime(
             "GOOGLE_API_KEY",
             "GROQ_API_KEY",
             "OPENROUTER_API_KEY",
+            "ZAI_API_KEY",
+            "Z_AI_API_KEY",
+          ],
+          zai: [
+            "ANTHROPIC_API_KEY",
+            "GOOGLE_GENERATIVE_AI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GROQ_API_KEY",
+            "OPENROUTER_API_KEY",
+            "CEREBRAS_API_KEY",
+            "OPENAI_API_KEY",
           ],
           openai: [
             "ANTHROPIC_API_KEY",
@@ -367,6 +428,8 @@ export async function createRealTestRuntime(
             "GROQ_API_KEY",
             "OPENROUTER_API_KEY",
             "CEREBRAS_API_KEY",
+            "ZAI_API_KEY",
+            "Z_AI_API_KEY",
           ],
           anthropic: [
             "GOOGLE_GENERATIVE_AI_API_KEY",
@@ -374,12 +437,16 @@ export async function createRealTestRuntime(
             "GROQ_API_KEY",
             "OPENROUTER_API_KEY",
             "CEREBRAS_API_KEY",
+            "ZAI_API_KEY",
+            "Z_AI_API_KEY",
           ],
           google: [
             "ANTHROPIC_API_KEY",
             "GROQ_API_KEY",
             "OPENROUTER_API_KEY",
             "CEREBRAS_API_KEY",
+            "ZAI_API_KEY",
+            "Z_AI_API_KEY",
           ],
           groq: [
             "ANTHROPIC_API_KEY",
@@ -387,6 +454,8 @@ export async function createRealTestRuntime(
             "GOOGLE_API_KEY",
             "OPENROUTER_API_KEY",
             "CEREBRAS_API_KEY",
+            "ZAI_API_KEY",
+            "Z_AI_API_KEY",
           ],
           openrouter: [
             "ANTHROPIC_API_KEY",
@@ -394,14 +463,16 @@ export async function createRealTestRuntime(
             "GOOGLE_API_KEY",
             "GROQ_API_KEY",
             "CEREBRAS_API_KEY",
+            "ZAI_API_KEY",
+            "Z_AI_API_KEY",
           ],
         };
         for (const competingKey of COMPETING_KEYS_BY_PROVIDER[providerName] ??
           []) {
-          delete process.env[competingKey];
+          environment.unset(competingKey);
         }
         for (const [key, value] of Object.entries(providerConfig.env)) {
-          process.env[key] = value;
+          environment.set(key, value);
         }
         applyRuntimeSettings(runtime, providerConfig.env);
         try {
@@ -504,9 +575,8 @@ export async function createRealTestRuntime(
     // are intentionally optional in a given test stay best-effort.
     for (const plugin of options?.plugins ?? []) {
       for (const service of plugin.services ?? []) {
-        const serviceType = (
-          service as unknown as { serviceType?: string }
-        ).serviceType;
+        const serviceType = (service as unknown as { serviceType?: string })
+          .serviceType;
         if (!serviceType) continue;
         try {
           await runtime.getServiceLoadPromise(serviceType);
@@ -575,23 +645,7 @@ export async function createRealTestRuntime(
       } catch (err) {
         logger.debug(`[real-runtime] runtime.close() error: ${err}`);
       }
-      // Restore previous env
-      if (prevPgliteDir !== undefined) {
-        process.env.PGLITE_DATA_DIR = prevPgliteDir;
-      } else {
-        delete process.env.PGLITE_DATA_DIR;
-      }
-      if (prevWebsiteBlockerHostsPath !== undefined) {
-        process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH =
-          prevWebsiteBlockerHostsPath;
-      } else {
-        delete process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
-      }
-      if (prevSelfControlHostsPath !== undefined) {
-        process.env.SELFCONTROL_HOSTS_FILE_PATH = prevSelfControlHostsPath;
-      } else {
-        delete process.env.SELFCONTROL_HOSTS_FILE_PATH;
-      }
+      environment.restore();
       restoreWindow();
       if (removePgliteDirOnCleanup) {
         try {
@@ -611,11 +665,7 @@ export async function createRealTestRuntime(
 
     return { runtime, pgliteDir, providerName, providerConfig, cleanup };
   } catch (error) {
-    if (prevPgliteDir !== undefined) {
-      process.env.PGLITE_DATA_DIR = prevPgliteDir;
-    } else {
-      delete process.env.PGLITE_DATA_DIR;
-    }
+    environment.restore();
     restoreWindow();
     if (removePgliteDirOnCleanup) {
       try {

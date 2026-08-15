@@ -144,10 +144,14 @@ type MessageService = NonNullable<AgentRuntime["messageService"]>;
 function createMessageService(
   reply: string,
   transcriptVisibility?: "internal",
+  preserveUserRequestedFormat = false,
 ): MessageService {
   const content = {
     text: reply,
     ...(transcriptVisibility ? { transcriptVisibility } : {}),
+    ...(preserveUserRequestedFormat
+      ? { preserveUserRequestedFormat: true }
+      : {}),
   };
   return {
     async handleMessage(_runtime, _message, _callback, _options) {
@@ -581,6 +585,107 @@ describe("compatibility transport transcript visibility", () => {
       .map((choice) => choice.delta?.content ?? "")
       .join("");
     expect(text).toBe("callback reply");
+  });
+
+  it("preserves core-validated requested JSON bytes on every compatibility transport", async () => {
+    const exactJson = '{"response":"yes"}';
+    const agentId = stringToUuid("requested-json-compat-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createMessageService(exactJson, undefined, true),
+    });
+
+    const openAi = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        messages: [{ role: "user", content: "Return strict JSON" }],
+      },
+      runtime,
+    });
+    expect(await openAi.invoke()).toBe(true);
+    expect(
+      (
+        parseResponseBody(openAi.record) as {
+          choices: Array<{ message: { content: string } }>;
+        }
+      ).choices[0]?.message.content,
+    ).toBe(exactJson);
+
+    const openAiStream = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        stream: true,
+        messages: [{ role: "user", content: "Return strict JSON" }],
+      },
+      runtime,
+    });
+    expect(await openAiStream.invoke()).toBe(true);
+    const openAiStreamText = (
+      parseSseJsonFrames(openAiStream.record) as Array<{
+        choices?: Array<{ delta?: { content?: string } }>;
+      }>
+    )
+      .flatMap((frame) => frame.choices ?? [])
+      .map((choice) => choice.delta?.content ?? "")
+      .join("");
+    expect(openAiStreamText).toBe(exactJson);
+
+    const anthropic = createCtx({
+      method: "POST",
+      pathname: "/v1/messages",
+      body: {
+        model: "eliza",
+        max_tokens: 128,
+        messages: [{ role: "user", content: "Return strict JSON" }],
+      },
+      runtime,
+    });
+    expect(await anthropic.invoke()).toBe(true);
+    expect(
+      (
+        parseResponseBody(anthropic.record) as {
+          content: Array<{ text: string }>;
+        }
+      ).content[0]?.text,
+    ).toBe(exactJson);
+
+    const anthropicStream = createCtx({
+      method: "POST",
+      pathname: "/v1/messages",
+      body: {
+        model: "eliza",
+        max_tokens: 128,
+        stream: true,
+        messages: [{ role: "user", content: "Return strict JSON" }],
+      },
+      runtime,
+    });
+    expect(await anthropicStream.invoke()).toBe(true);
+    const anthropicStreamText = (
+      parseSseJsonFrames(anthropicStream.record) as Array<{
+        type?: string;
+        delta?: { text?: string };
+      }>
+    )
+      .filter((frame) => frame.type === "content_block_delta")
+      .map((frame) => frame.delta?.text ?? "")
+      .join("");
+    expect(anthropicStreamText).toBe(exactJson);
+
+    const legacy = createCtx({
+      method: "POST",
+      pathname: `/api/agents/${agentId}/message`,
+      body: { userId: "user-1", text: "Return strict JSON" },
+      runtime,
+    });
+    expect(await legacy.invoke()).toBe(true);
+    expect(parseResponseBody(legacy.record)).toMatchObject({
+      response: exactJson,
+      preserveUserRequestedFormat: true,
+    });
   });
 
   it("cancels an OpenAI-compatible stream when the request is aborted", async () => {

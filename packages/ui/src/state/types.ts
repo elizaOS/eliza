@@ -715,7 +715,10 @@ export interface AppActions {
   // Chat
   handleChatSend: (
     channelType?: ConversationChannelType,
-    options?: { metadata?: Record<string, unknown> },
+    options?: {
+      clientMessageId?: string;
+      metadata?: Record<string, unknown>;
+    },
   ) => Promise<void>;
   handleChatStop: () => void;
   /**

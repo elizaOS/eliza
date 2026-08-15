@@ -688,6 +688,16 @@ function isTurnAbortError(err: unknown): boolean {
   );
 }
 
+function isResponseSupersessionAbort(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const reason = (err as Error & { reason?: unknown }).reason;
+  const detail = typeof reason === "string" ? reason : err.message;
+  // This is the exact core response-ownership abort. User stop/barge-in and
+  // transport disconnects may preserve an already-visible prefix; a newer room
+  // turn must never make the older assistant row durable.
+  return /response superseded by a newer room turn/iu.test(detail);
+}
+
 function isExactRealtimeVoiceRequest(
   clientMessageId: string | undefined,
   metadata: Record<string, unknown> | undefined,
@@ -704,12 +714,12 @@ function isExactRealtimeVoiceRequest(
 }
 
 /**
- * Exact voice cancellation has an explicit route-owned assistant commit
+ * Request-scoped cancellation has an explicit route-owned assistant commit
  * boundary. A generic transport disconnect may still finish a durable reply
- * for idempotent replay, but a realtime replacement that wins before this
- * boundary must not add an assistant answer the caller never heard.
+ * for idempotent replay, but an exact Stop that wins before this boundary must
+ * not add an assistant answer the requesting tab never received.
  */
-function assertExactVoiceAssistantCommitCanBegin(
+function assertRequestAssistantCommitCanBegin(
   admission: TurnRequestAdmission | null,
 ): void {
   admission?.signal.throwIfAborted();
@@ -950,7 +960,9 @@ async function resolvePersistedAssistantTurn(
     if (
       generatedText !== text ||
       (userMessageId !== undefined &&
-        generatedTurn.content.inReplyTo !== userMessageId)
+        generatedTurn.content.inReplyTo !== userMessageId) ||
+      generatedTurn.content.preserveUserRequestedFormat !==
+        persistedContent.preserveUserRequestedFormat
     ) {
       try {
         await runtime.roomHandlerQueue.runInLease(
@@ -1236,6 +1248,7 @@ export function buildPersistedAssistantContent(
         responseContent?: Content | null;
         responseMessages?: Array<{ id?: string; content?: Content }>;
         transcriptVisibility?: "internal";
+        preserveUserRequestedFormat?: boolean;
       }
     | null
     | undefined,
@@ -1262,6 +1275,10 @@ export function buildPersistedAssistantContent(
     result?.transcriptVisibility === "internal"
       ? ("internal" as const)
       : undefined;
+  const preserveUserRequestedFormat =
+    result?.preserveUserRequestedFormat === true ||
+    responseContent?.preserveUserRequestedFormat === true ||
+    responseMessageContent?.preserveUserRequestedFormat === true;
   const persistedResponseMessageContent = responseMessageContent
     ? { ...responseMessageContent }
     : {};
@@ -1284,12 +1301,18 @@ export function buildPersistedAssistantContent(
         ...(inReplyTo ? { inReplyTo } : {}),
         ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
+        ...(preserveUserRequestedFormat
+          ? { preserveUserRequestedFormat: true }
+          : {}),
       }
     : {
         text,
         ...(inReplyTo ? { inReplyTo } : {}),
         ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
+        ...(preserveUserRequestedFormat
+          ? { preserveUserRequestedFormat: true }
+          : {}),
       };
 }
 
@@ -1332,6 +1355,7 @@ const DURABLE_CHAT_OUTCOME_KEYS = new Set([
   "localInference",
   "noResponseReason",
   "interrupted",
+  "preserveUserRequestedFormat",
 ]);
 
 function isChannelType(value: unknown): value is ChannelType {
@@ -1449,7 +1473,9 @@ function parseDurableConversationChatOutcome(
     (outcome.noResponseReason !== undefined &&
       outcome.noResponseReason !== "ignored") ||
     (outcome.interrupted !== undefined &&
-      typeof outcome.interrupted !== "boolean")
+      typeof outcome.interrupted !== "boolean") ||
+    (outcome.preserveUserRequestedFormat !== undefined &&
+      typeof outcome.preserveUserRequestedFormat !== "boolean")
   ) {
     return null;
   }
@@ -1503,6 +1529,9 @@ function parseDurableConversationChatOutcome(
       ? { noResponseReason: "ignored" as const }
       : {}),
     ...(outcome.interrupted === true ? { interrupted: true } : {}),
+    ...(outcome.preserveUserRequestedFormat === true
+      ? { preserveUserRequestedFormat: true }
+      : {}),
   };
 }
 
@@ -1614,6 +1643,9 @@ function buildRecoveredConversationChatOutcome(
       ? { noResponseReason: "ignored" as const }
       : {}),
     ...(content.interrupted === true ? { interrupted: true } : {}),
+    ...(content.preserveUserRequestedFormat === true
+      ? { preserveUserRequestedFormat: true }
+      : {}),
   };
 }
 
@@ -2032,6 +2064,10 @@ function buildGenerationMessageIdOutcome(
     agentName: result.agentName,
     ...(messageId ? { messageId } : {}),
     ...terminal,
+    ...(result.interrupted ? { interrupted: true } : {}),
+    ...(result.preserveUserRequestedFormat
+      ? { preserveUserRequestedFormat: true }
+      : {}),
     ...(result.transcriptVisibility
       ? { transcriptVisibility: result.transcriptVisibility }
       : {}),
@@ -2076,6 +2112,9 @@ function buildConversationJsonOutcome(
       ? { noResponseReason: outcome.noResponseReason }
       : {}),
     ...(outcome.interrupted ? { interrupted: true } : {}),
+    ...(outcome.preserveUserRequestedFormat
+      ? { preserveUserRequestedFormat: true }
+      : {}),
   };
 }
 
@@ -2401,6 +2440,8 @@ type ConversationRouteMessageRecord = {
   accountConnect?: AccountConnectRequest;
   /** The user stopped this assistant presentation at the persisted prefix. */
   interrupted?: boolean;
+  /** Preserve core-validated user-requested literal/JSON bytes. */
+  preserveUserRequestedFormat?: boolean;
 };
 
 // Greeting lookup and persistence share the room's history-writer boundary.
@@ -3090,6 +3131,8 @@ export async function handleConversationRoutes(
             content.accountConnect,
           );
           const interrupted = content.interrupted === true;
+          const preserveUserRequestedFormat =
+            content.preserveUserRequestedFormat === true;
           const role = m.entityId === agentId ? "assistant" : "user";
           const rawText = formatConversationMessageText(
             (m.content as { text?: string })?.text ?? "",
@@ -3099,7 +3142,9 @@ export async function handleConversationRoutes(
             transcriptVisibility === "internal"
               ? ""
               : role === "assistant"
-                ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
+                ? normalizeChatResponseText(rawText, state.logBuffer, runtime, {
+                    preserveUserRequestedFormat,
+                  })
                 : rawText;
           const attachments = selectAttachmentsForViewer(
             m,
@@ -3181,6 +3226,9 @@ export async function handleConversationRoutes(
             ...(failureKind ? { failureKind } : {}),
             ...(accountConnect ? { accountConnect } : {}),
             ...(interrupted ? { interrupted: true } : {}),
+            ...(preserveUserRequestedFormat
+              ? { preserveUserRequestedFormat: true }
+              : {}),
           } satisfies ConversationRouteMessageRecord;
         })
         // Drop action-log memories that have no visible text (e.g.
@@ -3963,8 +4011,8 @@ export async function handleConversationRoutes(
         streamProtocol === "delta-v2" &&
         voiceSpeechProtocol === COMMITTED_SPEECH_PROTOCOL,
     );
-    let exactVoiceAdmission: TurnRequestAdmission | null = null;
-    let exactVoiceAbortListener: (() => void) | null = null;
+    let requestAdmission: TurnRequestAdmission | null = null;
+    let requestAbortListener: (() => void) | null = null;
     let heartbeatInterval: ReturnType<typeof setInterval> | undefined;
     let streamInitialized = false;
     let exactVoiceIngressAcknowledged = false;
@@ -3985,20 +4033,19 @@ export async function handleConversationRoutes(
         finishStreamResponse();
         return true;
       }
-      if (exactVoiceClientMessageId && runtime) {
+      if (clientMessageId && runtime) {
         try {
-          exactVoiceAdmission =
-            runtime.turnControllers.registerRequestAdmission(
-              conv.roomId,
-              exactVoiceClientMessageId,
-            );
+          requestAdmission = runtime.turnControllers.registerRequestAdmission(
+            conv.roomId,
+            clientMessageId,
+          );
         } catch (err) {
           if (!(err instanceof DuplicateTurnRequestAdmissionError)) throw err;
           // A byte-identical retry joins the existing chat-idempotency owner or
           // recovers its durable user row below. It must not open a second
           // cancellation capability, but neither may a lost ingress ack be
           // converted into a 30-second 409 dead zone.
-          exactVoiceAdmission = null;
+          requestAdmission = null;
         }
       }
 
@@ -4023,9 +4070,12 @@ export async function handleConversationRoutes(
         );
         exactVoiceIngressAcknowledged = true;
       };
-      const markExactVoiceIngressCommitted = () => {
-        if (!exactVoiceClientMessageId) return;
-        if (!exactVoiceAdmission) {
+      const markRequestIngressCommitted = () => {
+        if (!clientMessageId) return;
+        if (!requestAdmission) {
+          // An ordinary same-id replay joins the original idempotency owner;
+          // that owner's admission remains the only exact abort capability.
+          if (!exactVoiceClientMessageId) return;
           throw new ElizaError(
             "Realtime voice ingress acknowledgement has no owned admission",
             {
@@ -4037,10 +4087,10 @@ export async function handleConversationRoutes(
             },
           );
         }
-        if (exactVoiceAdmission.requestIngressState === "pending") {
-          exactVoiceAdmission.markIngressCommitted();
+        if (requestAdmission.requestIngressState === "pending") {
+          requestAdmission.markIngressCommitted();
         }
-        if (exactVoiceAdmission.requestIngressState !== "committed") {
+        if (requestAdmission.requestIngressState !== "committed") {
           throw new ElizaError(
             "Realtime voice ingress could not be acknowledged as durable",
             {
@@ -4048,27 +4098,26 @@ export async function handleConversationRoutes(
               context: {
                 roomId: conv.roomId,
                 clientMessageId: exactVoiceClientMessageId,
-                ingressState: exactVoiceAdmission.requestIngressState,
-                ingressFailure: exactVoiceAdmission.requestIngressFailure,
+                ingressState: requestAdmission.requestIngressState,
+                ingressFailure: requestAdmission.requestIngressFailure,
               },
             },
           );
         }
         acknowledgeExactVoiceIngress();
       };
-      const attachExactVoiceAbort = () => {
-        if (!exactVoiceAdmission || exactVoiceAbortListener) return;
-        const admission = exactVoiceAdmission;
-        exactVoiceAbortListener = () => {
+      const attachRequestAbort = () => {
+        if (!requestAdmission || requestAbortListener) return;
+        const admission = requestAdmission;
+        requestAbortListener = () => {
           disconnectTracker.abort(
-            admission.signal.reason ??
-              new Error("Realtime voice request cancelled"),
+            admission.signal.reason ?? new Error("Chat request cancelled"),
           );
         };
-        admission.signal.addEventListener("abort", exactVoiceAbortListener, {
+        admission.signal.addEventListener("abort", requestAbortListener, {
           once: true,
         });
-        if (admission.signal.aborted) exactVoiceAbortListener();
+        if (admission.signal.aborted) requestAbortListener();
       };
       const initializeStream = () => {
         if (streamInitialized) return;
@@ -4091,7 +4140,7 @@ export async function handleConversationRoutes(
           if (disconnectTracker.checkConnectionClosed()) return;
           writeConversationStreamHeartbeat(res, disconnectTracker);
         }, 5000);
-        attachExactVoiceAbort();
+        attachRequestAbort();
       };
       const finishCommittedExactVoiceWithoutStream = () => {
         stopHeartbeat();
@@ -4198,11 +4247,11 @@ export async function handleConversationRoutes(
         return true;
       }
       if (idempotencyAdmission.kind === "settled") {
+        if (requestAdmission) markRequestIngressCommitted();
         if (exactVoiceClientMessageId) {
-          if (exactVoiceAdmission) {
-            markExactVoiceIngressCommitted();
+          if (requestAdmission) {
             if (
-              exactVoiceAdmission.signal.aborted ||
+              requestAdmission.signal.aborted ||
               disconnectTracker.isAborted()
             ) {
               finishCommittedExactVoiceWithoutStream();
@@ -4281,11 +4330,11 @@ export async function handleConversationRoutes(
         }
         if (durableRecovery.kind === "settled") {
           await settleTurnReservation(durableRecovery.outcome);
+          if (requestAdmission) markRequestIngressCommitted();
           if (exactVoiceClientMessageId) {
-            if (exactVoiceAdmission) {
-              markExactVoiceIngressCommitted();
+            if (requestAdmission) {
               if (
-                exactVoiceAdmission.signal.aborted ||
+                requestAdmission.signal.aborted ||
                 disconnectTracker.isAborted()
               ) {
                 finishCommittedExactVoiceWithoutStream();
@@ -4307,7 +4356,7 @@ export async function handleConversationRoutes(
           finishStreamResponse();
           return true;
         }
-        if (exactVoiceClientMessageId && !exactVoiceAdmission) {
+        if (exactVoiceClientMessageId && !requestAdmission) {
           // Registration and chat-idempotency ownership are separate maps. A
           // prior owner can release its chat reservation between our rejected
           // registration and admission below. In that TOCTOU case, only a
@@ -4398,7 +4447,7 @@ export async function handleConversationRoutes(
             clientMessageId ?? null,
             runtimeTurnLease,
           );
-          markExactVoiceIngressCommitted();
+          markRequestIngressCommitted();
           assertConversationConnectionRuntime(
             state.runtime,
             connectionDescriptor,
@@ -4416,7 +4465,7 @@ export async function handleConversationRoutes(
 
         if (exactVoiceClientMessageId) {
           if (
-            exactVoiceAdmission?.signal.aborted ||
+            requestAdmission?.signal.aborted ||
             disconnectTracker.isAborted()
           ) {
             try {
@@ -4452,7 +4501,7 @@ export async function handleConversationRoutes(
                   state.runtime,
                   connectionDescriptor,
                 );
-                assertExactVoiceAssistantCommitCanBegin(exactVoiceAdmission);
+                assertRequestAssistantCommitCanBegin(requestAdmission);
                 const routeOwnedId = crypto.randomUUID() as UUID;
                 const persisted = await persistAssistantConversationMemory(
                   runtime,
@@ -4519,6 +4568,16 @@ export async function handleConversationRoutes(
         const endActiveChatTurn = beginActiveChatTurn(state);
 
         let streamedText = "";
+        // This is deliberately independent from `streamedText`: that aggregate
+        // also contains provisional action callbacks, while an interrupted
+        // durable reply may contain only model text that actually crossed the
+        // visible stream boundary. Once provisional action text appears, an
+        // authoritative model snapshot is required before the candidate becomes
+        // persistable again; appending a model delta to a provisional surface is
+        // not enough to prove what the final visible prefix is.
+        let committedVisibleModelText = "";
+        let modelSnapshotRequiredAfterAction = false;
+        let preserveUserRequestedFormat = false;
         // The route already wrote a `thinking` status when the SSE channel opened;
         // collapse the identical opening status generateChatResponse re-emits so
         // the wire carries each phase transition once. Distinct consecutive phases
@@ -4548,7 +4607,7 @@ export async function handleConversationRoutes(
           const persisted = await persistAssistantConversationMemory(
             runtime,
             conv.roomId,
-            { text, inReplyTo: messageToStore.id },
+            { text, inReplyTo: messageToStore.id, interrupted: true },
             channelType,
             turnStartedAt,
             routeOwnedId,
@@ -4559,20 +4618,135 @@ export async function handleConversationRoutes(
             agentName: state.agentName,
             ...(persisted?.id ? { messageId: persisted.id } : {}),
             userMessageId: messageToStore.id,
+            interrupted: true,
           };
           await settleTurnReservation(outcome);
           return true;
         };
+        const persistInterruptedModelPrefix = async (): Promise<boolean> => {
+          const text = committedVisibleModelText;
+          if (!text) return false;
+          if (!runtimeTurnLease) {
+            throw new Error(
+              "Interrupted model-prefix persistence requires the active room lease",
+            );
+          }
+          const userMessageId = messageToStore.id;
+          if (!userMessageId) {
+            throw new ElizaError(
+              "Interrupted model-prefix persistence requires the durable user message id",
+              {
+                code: "CONVERSATION_INTERRUPTED_USER_MESSAGE_ID_MISSING",
+                context: { conversationId: conv.id, roomId: conv.roomId },
+              },
+            );
+          }
+
+          // Core persists the final simple reply concurrently with its delivery
+          // callback. If transport cancellation wins that callback after the DB
+          // write, generateChatResponse throws without returning the response ID.
+          // Reconcile that correlated row before creating a route-owned one so a
+          // stopped turn can never acquire two assistant messages.
+          const transformedUserMessageId = createUniqueUuid(
+            runtime,
+            userMessageId,
+          );
+          const existingAssistant = (
+            await runtime.getMemories({
+              roomId: conv.roomId,
+              tableName: "messages",
+              start: turnStartedAt,
+              limit: 1_000,
+              orderBy: "createdAt",
+              orderDirection: "asc",
+            })
+          )
+            .filter(
+              (memory): memory is PersistedAssistantMemory =>
+                typeof memory.id === "string" &&
+                memory.entityId === runtime.agentId &&
+                memory.agentId === runtime.agentId &&
+                memory.content.transcriptVisibility !== "internal" &&
+                (memory.content.inReplyTo === userMessageId ||
+                  memory.content.inReplyTo === transformedUserMessageId) &&
+                typeof memory.content.text === "string" &&
+                memory.content.text.startsWith(text),
+            )
+            .at(-1);
+
+          let persisted: PersistedAssistantMemory;
+          if (existingAssistant) {
+            const content: Content = {
+              text,
+              inReplyTo: userMessageId,
+              interrupted: true,
+              source: MESSAGE_SOURCE_CLIENT_CHAT,
+              channelType,
+              ...(preserveUserRequestedFormat
+                ? { preserveUserRequestedFormat: true }
+                : {}),
+            };
+            await runtime.roomHandlerQueue.runInLease(
+              conv.roomId,
+              runtimeTurnLease,
+              () =>
+                runtime.updateMemory({
+                  ...existingAssistant,
+                  content,
+                }),
+            );
+            persisted = { ...existingAssistant, content };
+          } else {
+            const routeOwnedId = stringToUuid(
+              `conversation-interrupted:${userMessageId}`,
+            ) as UUID;
+            const created = await persistAssistantConversationMemory(
+              runtime,
+              conv.roomId,
+              {
+                text,
+                inReplyTo: userMessageId,
+                interrupted: true,
+                ...(preserveUserRequestedFormat
+                  ? { preserveUserRequestedFormat: true }
+                  : {}),
+              },
+              channelType,
+              turnStartedAt,
+              routeOwnedId,
+              runtimeTurnLease,
+            );
+            if (!created?.id) {
+              throw new AssistantReplyPersistenceError(
+                "Interrupted model-prefix persistence returned no durable message id",
+              );
+            }
+            persisted = { ...created, id: created.id as UUID };
+          }
+
+          conv.updatedAt = new Date().toISOString();
+          await settleTurnReservation({
+            text,
+            agentName: state.agentName,
+            messageId: persisted.id,
+            userMessageId,
+            interrupted: true,
+            ...(preserveUserRequestedFormat
+              ? { preserveUserRequestedFormat: true }
+              : {}),
+          });
+          return true;
+        };
         try {
-          const result = await generateChatResponse(
+          const generatedResult = await generateChatResponse(
             runtime,
             routedUserMessage,
             state.agentName,
             {
               abortSignal: disconnectTracker.signal,
-              ...(exactVoiceAdmission
+              ...(requestAdmission
                 ? {
-                    assistantCommitAbortSignal: exactVoiceAdmission.signal,
+                    assistantCommitAbortSignal: requestAdmission.signal,
                   }
                 : {}),
               roomHandlerLease: runtimeTurnLease,
@@ -4605,7 +4779,7 @@ export async function handleConversationRoutes(
                 }
                 writeChatToolSse(res, event);
               },
-              onChunk: (chunk, origin) => {
+              onChunk: (chunk, origin, metadata) => {
                 if (!chunk) return;
                 if (
                   disconnectTracker.isAborted() ||
@@ -4613,21 +4787,41 @@ export async function handleConversationRoutes(
                 ) {
                   return;
                 }
+                const actionCallback = origin === "action_callback";
+                const preservesJson =
+                  metadata?.authority === "committed_reply" &&
+                  metadata.visibleFormat === "json";
+                const committedText =
+                  metadata?.authority === "committed_reply" &&
+                  metadata.visibleFormat === "text";
+                if (preservesJson) {
+                  preserveUserRequestedFormat = true;
+                  speechSegmenter?.disable();
+                }
                 const speechSegments =
-                  origin === "model"
-                    ? (speechSegmenter?.observeModelDelta(chunk) ?? [])
+                  origin === "model" && !preservesJson
+                    ? ((committedText
+                        ? speechSegmenter?.observeCommittedModelDelta(chunk)
+                        : speechSegmenter?.observeModelDelta(chunk)) ?? [])
                     : [];
-                if (origin === "action_callback") speechSegmenter?.disable();
+                if (actionCallback) {
+                  speechSegmenter?.disable();
+                  committedVisibleModelText = "";
+                  modelSnapshotRequiredAfterAction = true;
+                }
                 streamedText += chunk;
                 // Action-callback text is provisional on the wire: the final reply
                 // may replace it wholesale, and a voice client must not speak text
                 // it cannot retract. Text rendering remains unchanged.
                 tokenWriter.writeChunk(res, chunk, streamedText, {
-                  provisional: origin === "action_callback",
+                  provisional: actionCallback,
                 });
+                if (!actionCallback && !modelSnapshotRequiredAfterAction) {
+                  committedVisibleModelText += chunk;
+                }
                 writeSpeechSegments(speechSegments);
               },
-              onSnapshot: (text, origin) => {
+              onSnapshot: (text, origin, metadata) => {
                 if (!text) return;
                 if (
                   disconnectTracker.isAborted() ||
@@ -4635,11 +4829,38 @@ export async function handleConversationRoutes(
                 ) {
                   return;
                 }
+                const actionCallback = origin === "action_callback";
+                const preservesJson =
+                  metadata?.authority === "committed_reply" &&
+                  metadata.visibleFormat === "json";
+                const committedText =
+                  metadata?.authority === "committed_reply" &&
+                  metadata.visibleFormat === "text";
+                if (preservesJson) {
+                  preserveUserRequestedFormat = true;
+                  speechSegmenter?.disable();
+                }
                 const speechSegments =
-                  origin === "model"
-                    ? (speechSegmenter?.observeModelSnapshot(text) ?? [])
+                  origin === "model" && !preservesJson
+                    ? ((committedText
+                        ? speechSegmenter?.observeCommittedModelSnapshot(text)
+                        : speechSegmenter?.observeModelSnapshot(text)) ?? [])
                     : [];
-                if (origin === "action_callback") speechSegmenter?.disable();
+                if (actionCallback) {
+                  speechSegmenter?.disable();
+                  committedVisibleModelText = "";
+                  modelSnapshotRequiredAfterAction = true;
+                }
+                if (!actionCallback) {
+                  // Persistence follows the latest authoritative model
+                  // snapshot even when the append-only UI deliberately keeps a
+                  // previously rendered longer prefix. Otherwise an abort at
+                  // this boundary can durably resurrect text the producer just
+                  // retracted. A post-action model snapshot also re-establishes
+                  // the persistable candidate immediately.
+                  committedVisibleModelText = text;
+                  modelSnapshotRequiredAfterAction = false;
+                }
                 // Action callbacks may be the first visible source for a turn. An
                 // authoritative snapshot therefore has to be able to establish the
                 // stream, not merely revise text emitted by a model-token source.
@@ -4652,11 +4873,15 @@ export async function handleConversationRoutes(
                   text.length < streamedText.length &&
                   streamedText.startsWith(text)
                 ) {
+                  // The segmenter has already validated this authoritative
+                  // snapshot. Do not discard any newly committed segment merely
+                  // because the display projection remains monotonic.
+                  writeSpeechSegments(speechSegments);
                   return;
                 }
                 streamedText = text;
                 tokenWriter.writeSnapshot(res, streamedText, {
-                  provisional: origin === "action_callback",
+                  provisional: actionCallback,
                 });
                 writeSpeechSegments(speechSegments);
               },
@@ -4665,6 +4890,14 @@ export async function handleConversationRoutes(
               preferredLanguage,
             },
           );
+          preserveUserRequestedFormat ||=
+            generatedResult.preserveUserRequestedFormat === true;
+          const result = preserveUserRequestedFormat
+            ? {
+                ...generatedResult,
+                preserveUserRequestedFormat: true as const,
+              }
+            : generatedResult;
           generationResult = result;
           assertConversationConnectionRuntime(
             state.runtime,
@@ -4677,8 +4910,16 @@ export async function handleConversationRoutes(
               result.text,
               state.logBuffer,
               runtime,
+              {
+                preserveUserRequestedFormat:
+                  result.preserveUserRequestedFormat === true,
+              },
             );
-            speechSegmenter?.assertTerminalText(resolvedText);
+            if (!result.preserveUserRequestedFormat) {
+              speechSegmenter?.assertTerminalText(resolvedText);
+            } else {
+              speechSegmenter?.disable();
+            }
             if (
               !disconnectTracker.isAborted() &&
               !streamedText &&
@@ -4706,7 +4947,7 @@ export async function handleConversationRoutes(
               channelType,
               runtimeTurnLease,
               messageToStore.id,
-              exactVoiceAdmission?.signal,
+              requestAdmission?.signal,
             );
             assertConversationConnectionRuntime(
               state.runtime,
@@ -4809,7 +5050,25 @@ export async function handleConversationRoutes(
                 clientMessageId ?? null,
               )
             ) {
-              if (
+              if (isResponseSupersessionAbort(terminalError)) {
+                // Same-room response ownership moved to a newer turn. Unlike a
+                // user stop, this is not a frozen presentation boundary: making
+                // the old prefix durable would resurrect a superseded answer on
+                // reconnect/history.
+                releaseTurnReservation();
+              } else if (
+                exactVoiceClientMessageId &&
+                (await persistInterruptedModelPrefix())
+              ) {
+                logger.info(
+                  {
+                    conversationId: conv.id,
+                    roomId: conv.roomId,
+                    committedModelTextLength: committedVisibleModelText.length,
+                  },
+                  "[ConversationStream] preserved exact interrupted visible model prefix",
+                );
+              } else if (
                 exactVoiceClientMessageId &&
                 (await persistCommittedSpeech())
               ) {
@@ -4843,7 +5102,39 @@ export async function handleConversationRoutes(
                   releaseTurnReservation();
                 }
               } else {
-                releaseTurnReservation();
+                try {
+                  if (await persistInterruptedModelPrefix()) {
+                    logger.info(
+                      {
+                        conversationId: conv.id,
+                        roomId: conv.roomId,
+                        committedModelTextLength:
+                          committedVisibleModelText.length,
+                      },
+                      "[ConversationStream] preserved interrupted committed model prefix",
+                    );
+                  } else {
+                    releaseTurnReservation();
+                  }
+                } catch (persistError) {
+                  // error-policy:J1 this route boundary cannot report a durable
+                  // stopped outcome when its correlated assistant write failed.
+                  logger.warn(
+                    {
+                      err: getErrorMessage(persistError),
+                      conversationId: conv.id,
+                      roomId: conv.roomId,
+                    },
+                    "[ConversationStream] failed to preserve interrupted model prefix",
+                  );
+                  releaseTurnReservation();
+                  if (!disconnectTracker.isAborted()) {
+                    writeSse(res, {
+                      type: "error",
+                      message: getErrorMessage(persistError),
+                    });
+                  }
+                }
               }
             }
           } else if (terminalError instanceof CommittedSpeechProtocolError) {
@@ -4877,6 +5168,46 @@ export async function handleConversationRoutes(
                 message: getErrorMessage(terminalError),
               });
             }
+          } else if (speechSegmenter?.committedSourceText) {
+            // Committed speech is an irrevocable user-facing side effect. A
+            // later action callback can invalidate the current display
+            // candidate, but a generic generation failure must still make the
+            // already-spoken prefix durable instead of replacing it with an
+            // unrelated provider-failure sentence.
+            logger.warn(
+              {
+                conversationId: conv.id,
+                roomId: conv.roomId,
+                committedSpeechLength:
+                  speechSegmenter.committedSourceText.length,
+              },
+              "[ConversationStream] generation failed after speech was committed",
+            );
+            try {
+              if (
+                !(await persistInterruptedModelPrefix()) &&
+                !(await persistCommittedSpeech())
+              ) {
+                releaseTurnReservation();
+              }
+            } catch (persistError) {
+              logger.warn(
+                {
+                  err: getErrorMessage(persistError),
+                  conversationId: conv.id,
+                  roomId: conv.roomId,
+                },
+                "[ConversationStream] failed to preserve speech after generation failure",
+              );
+              releaseTurnReservation();
+            }
+            if (!disconnectTracker.isAborted()) {
+              writeSse(res, {
+                type: "error",
+                code: "generation_failed_after_committed_speech",
+                message: getChatFailureReply(terminalError, state.logBuffer),
+              });
+            }
           } else if (
             isCallbackHistoryPersistenceError(terminalError) ||
             terminalError instanceof AssistantReplyPersistenceError
@@ -4893,29 +5224,36 @@ export async function handleConversationRoutes(
               });
             }
           } else if (!disconnectTracker.isAborted()) {
-            // If text was already streamed to the client (e.g. the initial
-            // response succeeded but planner follow-up failed), use the
-            // streamed text as the final reply instead of replacing it with a
-            // generic fallback.
-            if (streamedText) {
+            // Recover only text that crossed the authoritative model boundary.
+            // Action-callback prose is provisional until a settled result or a
+            // post-action model snapshot replaces it; promoting that callback
+            // after an exception could turn an uncommitted success/status claim
+            // into durable history.
+            if (committedVisibleModelText) {
               logger.warn(
                 {
                   err: getErrorMessage(terminalError),
-                  streamedTextLength: streamedText.length,
+                  streamedTextLength: committedVisibleModelText.length,
                 },
-                "Post-generation error after text was already streamed — using streamed text",
+                "Post-generation error after authoritative text was streamed — preserving authoritative text",
               );
               try {
                 assertConversationConnectionRuntime(
                   state.runtime,
                   connectionDescriptor,
                 );
-                assertExactVoiceAssistantCommitCanBegin(exactVoiceAdmission);
+                assertRequestAssistantCommitCanBegin(requestAdmission);
                 const routeOwnedId = crypto.randomUUID() as UUID;
                 const persisted = await persistAssistantConversationMemory(
                   runtime,
                   conv.roomId,
-                  { text: streamedText, inReplyTo: messageToStore.id },
+                  {
+                    text: committedVisibleModelText,
+                    inReplyTo: messageToStore.id,
+                    ...(preserveUserRequestedFormat
+                      ? { preserveUserRequestedFormat: true }
+                      : {}),
+                  },
                   channelType,
                   turnStartedAt,
                   routeOwnedId,
@@ -4927,10 +5265,13 @@ export async function handleConversationRoutes(
                 );
                 conv.updatedAt = new Date().toISOString();
                 const outcome: ChatMessageIdOutcome = {
-                  text: streamedText,
+                  text: committedVisibleModelText,
                   agentName: state.agentName,
                   ...(persisted?.id ? { messageId: persisted.id } : {}),
                   userMessageId: messageToStore.id,
+                  ...(preserveUserRequestedFormat
+                    ? { preserveUserRequestedFormat: true }
+                    : {}),
                 };
                 await settleTurnReservation(outcome);
                 writeConversationDoneSse(res, outcome);
@@ -4962,6 +5303,10 @@ export async function handleConversationRoutes(
                       generationResult.text,
                       state.logBuffer,
                       runtime,
+                      {
+                        preserveUserRequestedFormat:
+                          generationResult.preserveUserRequestedFormat === true,
+                      },
                     )
                   : "";
                 const exactPersistedResponse =
@@ -5068,7 +5413,7 @@ export async function handleConversationRoutes(
                   state.runtime,
                   connectionDescriptor,
                 );
-                assertExactVoiceAssistantCommitCanBegin(exactVoiceAdmission);
+                assertRequestAssistantCommitCanBegin(requestAdmission);
                 const routeOwnedId = crypto.randomUUID() as UUID;
                 const persisted = await persistAssistantConversationMemory(
                   runtime,
@@ -5136,14 +5481,14 @@ export async function handleConversationRoutes(
       } finally {
         clearInterval(heartbeatInterval);
         try {
-          if (exactVoiceAdmission && exactVoiceAbortListener) {
-            exactVoiceAdmission.signal.removeEventListener(
+          if (requestAdmission && requestAbortListener) {
+            requestAdmission.signal.removeEventListener(
               "abort",
-              exactVoiceAbortListener,
+              requestAbortListener,
             );
           }
         } finally {
-          exactVoiceAdmission?.finish();
+          requestAdmission?.finish();
         }
       }
     }
@@ -5490,6 +5835,10 @@ export async function handleConversationRoutes(
               result.text,
               state.logBuffer,
               runtime,
+              {
+                preserveUserRequestedFormat:
+                  result.preserveUserRequestedFormat === true,
+              },
             );
             const persistedAssistant = await resolvePersistedAssistantTurn(
               runtime,

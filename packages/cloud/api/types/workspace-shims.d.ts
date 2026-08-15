@@ -7,6 +7,8 @@
  */
 
 declare module "@elizaos/shared" {
+  export const COMMITTED_SPEECH_PROTOCOL: "committed-segments-v1";
+  export const DELTA_STREAM_PROTOCOL: "delta-v2";
   export const REALTIME_VOICE_CLIENT_TRANSPORT: "realtime_voice";
   export const REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX: "voice:";
   export const REALTIME_VOICE_INGRESS_HEADER: "X-Eliza-Realtime-Voice-Ingress";

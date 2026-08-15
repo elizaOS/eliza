@@ -108,6 +108,12 @@ const REVOCATION_POLL_MS = 400;
 const MAX_OUTSTANDING_METER_WINDOWS = 2;
 /** Whole-answer speech is bounded before it crosses the provider boundary. */
 const VOICE_TTS_MAX_SPEECH_CHARS = 600;
+/**
+ * The shared projector intentionally clamps smaller limits up to 40 chars so
+ * ordinary standalone replies remain useful. A turn with less room left must
+ * skip its terminal suffix instead of accidentally expanding that allowance.
+ */
+const VOICE_TTS_MIN_PROJECTABLE_SPEECH_CHARS = 40;
 /** Human-readable interim captions do not benefit from provider-rate redraws. */
 const STT_PARTIAL_EMIT_INTERVAL_MS = 40;
 /**
@@ -1172,6 +1178,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     let lastDisplaySnapshot = "";
     let committedSpeechSourceEnd = 0;
     let committedSpeechChars = 0;
+    let retainedCommittedTtsText = "";
     const sendDisplaySnapshot = (force = false): void => {
       if (!this.turnAuthority.isCurrent(lease) || abort.signal.aborted) return;
       const boundedCanonicalText = canonicalDisplayText.slice(
@@ -1395,7 +1402,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           if (
             abort.signal.aborted ||
             !this.turnAuthority.isCurrent(lease) ||
-            segment.sourceStart !== committedSpeechSourceEnd
+            segment.sourceStart !== committedSpeechSourceEnd ||
+            segment.speechText.length >
+              VOICE_TTS_MAX_SPEECH_CHARS -
+                this.turnTtsChars -
+                retainedCommittedTtsText.length
           ) {
             return;
           }
@@ -1406,18 +1417,26 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           finishProgress("final");
           committedSpeechSourceEnd = segment.sourceEnd;
           committedSpeechChars += segment.speechText.length;
-          this.turnTtsChars += segment.speechText.length;
           this.send({
             t: "trace_mark",
             name: "speakable_text_ready",
             traceId,
           });
-          this.send({ t: "trace_mark", name: "tts_requested", traceId });
-          ensureTts().sendPhrase({
-            text: segment.speechText,
-            continueContext: true,
-            flush: true,
-          });
+          // Keep exactly one complete committed phrase in reserve. Cartesia
+          // has no empty-text context-close control, so the final real phrase
+          // must carry continue:false. When another segment arrives, the prior
+          // phrase is proven nonterminal and can synthesize immediately without
+          // splitting a sentence or degrading prosody.
+          if (retainedCommittedTtsText) {
+            this.turnTtsChars += retainedCommittedTtsText.length;
+            this.send({ t: "trace_mark", name: "tts_requested", traceId });
+            ensureTts().sendPhrase({
+              text: retainedCommittedTtsText,
+              continueContext: true,
+              flush: true,
+            });
+          }
+          retainedCommittedTtsText = segment.speechText;
         },
       };
       this.send({ t: "trace_mark", name: "router_decided", traceId });
@@ -1519,23 +1538,36 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       const terminalSpeechSource = canonicalDisplayText.slice(
         committedSpeechSourceEnd,
       );
-      const projection = projectVoiceOutput(
-        {
-          policy,
-          display: { markdown: terminalSpeechSource },
-          ...(result.outputDirective?.spoken === undefined
-            ? {}
-            : { spoken: result.outputDirective.spoken }),
-        },
-        { maxSpeechChars: VOICE_TTS_MAX_SPEECH_CHARS },
+      const remainingTtsChars = Math.max(
+        0,
+        VOICE_TTS_MAX_SPEECH_CHARS -
+          this.turnTtsChars -
+          retainedCommittedTtsText.length,
       );
+      const terminalProjectionSkippedForBudget =
+        remainingTtsChars < VOICE_TTS_MIN_PROJECTABLE_SPEECH_CHARS;
+      const projection = terminalProjectionSkippedForBudget
+        ? null
+        : projectVoiceOutput(
+            {
+              policy,
+              display: { markdown: terminalSpeechSource },
+              ...(result.outputDirective?.spoken === undefined
+                ? {}
+                : { spoken: result.outputDirective.spoken }),
+            },
+            { maxSpeechChars: remainingTtsChars },
+          );
       if (abort.signal.aborted || !this.turnAuthority.isCurrent(lease)) return;
 
       // Captions are the speech contract, not a separately normalized view.
       // A future projector regression must fail closed instead of sending bytes
       // that captions would misrepresent.
       const safeSpeechText =
-        projection.captions === projection.speechText
+        projection &&
+        projection.captions === projection.speechText &&
+        projection.captions !== null &&
+        projection.captions.length <= remainingTtsChars
           ? projection.captions
           : null;
       const displayMarkdown = canonicalDisplayText.slice(
@@ -1553,10 +1585,25 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       });
       if (!safeSpeechText) {
         if (committedSpeechChars > 0) {
+          if (SPOKEN_TRANSCRIPT_RE.test(retainedCommittedTtsText)) {
+            // The retained tail is already part of a canonical committed speech
+            // segment. Use those truthful, previously captioned bytes to close
+            // the provider context; queued early audio then drains under the
+            // normal onComplete authority. This also handles an unspeakable or
+            // over-budget terminal display suffix without leaking it to TTS.
+            this.turnTtsChars += retainedCommittedTtsText.length;
+            this.send({ t: "trace_mark", name: "tts_requested", traceId });
+            ensureTts().sendPhrase({
+              text: retainedCommittedTtsText,
+              continueContext: false,
+            });
+            retainedCommittedTtsText = "";
+            return;
+          }
           // A later unsafe suffix cannot revoke audio that the canonical route
-          // already committed, and Cartesia rejects an empty terminal request.
-          // Stop this context after the safe prefix without inventing filler or
-          // leaking the blocked suffix; the persisted prefix remains truthful.
+          // already committed. Stop this context after the safe prefix without
+          // inventing filler or leaking the blocked suffix; the persisted prefix
+          // remains truthful.
           this.send({
             t: "error",
             code: "terminal_speech_projection_blocked",
@@ -1580,14 +1627,25 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
 
       if (safeSpeechText) {
-        this.turnTtsChars += safeSpeechText.length;
         this.send({ t: "trace_mark", name: "speakable_text_ready", traceId });
+        if (retainedCommittedTtsText) {
+          this.turnTtsChars += retainedCommittedTtsText.length;
+          this.send({ t: "trace_mark", name: "tts_requested", traceId });
+          ensureTts().sendPhrase({
+            text: retainedCommittedTtsText,
+            continueContext: true,
+            flush: true,
+          });
+          retainedCommittedTtsText = "";
+        }
+        this.turnTtsChars += safeSpeechText.length;
         this.send({ t: "trace_mark", name: "tts_requested", traceId });
+        ensureTts().sendPhrase({
+          text: safeSpeechText,
+          continueContext: false,
+        });
+        return;
       }
-      ensureTts().sendPhrase({
-        text: safeSpeechText,
-        continueContext: false,
-      });
     } catch (error) {
       finishProgress("cancel");
       // error-policy:J1 boundary translation — the LLM/TTS turn is the async
@@ -1595,22 +1653,35 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       if (!this.turnAuthority.isCurrent(lease)) return;
       const bridgeError =
         error instanceof ElizaSseBridgeError ? error : undefined;
+      const hasRetainedCommittedSpeech = SPOKEN_TRANSCRIPT_RE.test(
+        retainedCommittedTtsText,
+      );
       logger.warn("[voice-session] Eliza response turn failed", {
         traceId,
         code: bridgeError?.upstreamCode ?? bridgeError?.code,
         status: bridgeError?.status,
-        message:
-          bridgeError?.upstreamMessage ??
-          (error instanceof Error ? error.message : String(error)),
+        ...(bridgeError?.upstreamMessage
+          ? { message: bridgeError.upstreamMessage }
+          : {}),
+        // Do not forward a writable Error.name from an arbitrary fetch/reader
+        // implementation into logs. Provider-owned details belong only in the
+        // bridge's bounded, sanitized diagnostic fields above.
+        errorClass: bridgeError ? "ElizaSseBridgeError" : "UpstreamError",
       });
       this.send({
         t: "error",
         code: bridgeError
           ? (bridgeError.upstreamCode ?? bridgeError.code)
-          : error instanceof Error
-            ? error.name
-            : "llm_error",
-        retryable: bridgeError ? bridgeError.retryable : true,
+          : "llm_error",
+        // A validated committed phrase owns this turn and the current socket
+        // remains usable. Mark even an otherwise-fatal protocol error as a
+        // retryable turn failure so the browser does not reconnect/flush its
+        // playback queue before that irrevocable phrase drains.
+        retryable: hasRetainedCommittedSpeech
+          ? true
+          : bridgeError
+            ? bridgeError.retryable
+            : true,
         ...(bridgeError?.status ? { upstreamStatus: bridgeError.status } : {}),
         ...(bridgeError?.upstreamMessage
           ? { upstreamMessage: bridgeError.upstreamMessage }
@@ -1619,6 +1690,36 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           ? { upstreamSnippet: bridgeError.upstreamSnippet }
           : {}),
       });
+      if (hasRetainedCommittedSpeech) {
+        // The canonical route already crossed the committed-speech boundary.
+        // A later stream failure cannot revoke that persisted/captioned phrase.
+        // Close with the retained real text (never an empty/filler request) and
+        // let provider completion drain it before the spoken terminal.
+        try {
+          this.send({ t: "trace_mark", name: "tts_requested", traceId });
+          ensureTts().sendPhrase({
+            text: retainedCommittedTtsText,
+            continueContext: false,
+          });
+          this.turnTtsChars += retainedCommittedTtsText.length;
+          retainedCommittedTtsText = "";
+          return;
+        } catch (ttsError) {
+          // error-policy:J1 boundary translation — a synchronous provider
+          // queue failure cannot escape the already-active response task.
+          logger.warn(
+            "[voice-session] retained speech terminalization failed",
+            {
+              traceId,
+              errorClass: "TtsQueueError",
+            },
+          );
+          this.ttsStream?.cancel("retained_speech_terminalization_failed");
+          this.finishTurn(lease, "error");
+          void ttsError;
+          return;
+        }
+      }
       // The socket is already open because it was prewarmed before the LLM
       // request. Do not leak an idle provider connection when that request or
       // stream fails before a projected TTS input is sent. finishTurn has not

@@ -14,11 +14,16 @@
  * and the overlay stay in lock-step without double-mounting this hook.
  */
 import {
+  REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+} from "@elizaos/shared";
+import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
 } from "@elizaos/shared/events";
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import * as React from "react";
+import { generateChatClientMessageId } from "../../api/client-base";
 import type {
   ChatTurnStatus,
   ImageAttachment,
@@ -637,6 +642,20 @@ export function useShellController(): ShellController {
         correlated: Boolean(mark.traceId),
       });
       if (!mark.traceId) return;
+      if (mark.name === "output_retracted") {
+        // The coordinator revokes visible output even when no PCM was ever
+        // buffered (reconnect, manual stop, or pre-audio supersession). Freeze
+        // the exact paced prefix at that authority boundary.
+        dispatchRealtimeVoiceDisplay({
+          type: "interrupted",
+          traceId: mark.traceId,
+          atMs: mark.atMs,
+        });
+        // This is a UI authority signal, not a latency milestone. Keeping it
+        // out of the trace collector avoids creating a new orphan trace after
+        // a response already completed normally.
+        return;
+      }
       const completed = realtimeTraceCollectorRef.current?.accept(mark);
       if (completed) {
         const marks = completed.trace.marks;
@@ -803,6 +822,11 @@ export function useShellController(): ShellController {
   }, [activeConversationId]);
 
   const realtimeVoiceWantedRef = React.useRef(false);
+  // A wake-word window may temporarily own realtime voice without changing the
+  // user's persisted continuous-chat preference. Keep that ownership separate
+  // from a normal Talk engage so closing the bounded window cannot stop a
+  // subsequently persistent session or leave always-on latched across reloads.
+  const realtimeVoiceTemporaryRef = React.useRef(false);
   // True once the CURRENT wanted session has reached live; distinguishes a
   // mid-session death (parked by the effect below startRealtimeVoice) from an
   // initial start failure (owned by startRealtimeVoice's outcome handling).
@@ -1451,9 +1475,16 @@ export function useShellController(): ShellController {
                   turn,
                   respondContext,
                 );
+                const voiceTurnId = generateChatClientMessageId();
                 send(turn, {
                   channelType: "VOICE_DM",
-                  metadata: { voiceSource: lastBackend, voiceTurnSignal },
+                  clientMessageId: `${REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX}${voiceTurnId}`,
+                  metadata: {
+                    clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+                    voiceTurnId,
+                    voiceSource: lastBackend,
+                    voiceTurnSignal,
+                  },
                 });
               },
             });
@@ -1562,9 +1593,13 @@ export function useShellController(): ShellController {
               // Capture the assistant's spoken reply into the transcript too, so
               // the parallel chat is part of the record.
               recordReplyIntoTranscriptRef.current = true;
+              const voiceTurnId = generateChatClientMessageId();
               send(command, {
                 channelType: "VOICE_DM",
+                clientMessageId: `${REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX}${voiceTurnId}`,
                 metadata: {
+                  clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+                  voiceTurnId,
                   voiceSource: lastBackend,
                   voiceTurnSignal: buildVoiceTurnSignal(
                     command,
@@ -2069,9 +2104,13 @@ export function useShellController(): ShellController {
   }, [chatSending, handleChatStop, voiceOutput.stopSpeaking]);
 
   const stopRealtimeVoice = React.useCallback(() => {
+    const wasTemporary = realtimeVoiceTemporaryRef.current;
+    realtimeVoiceTemporaryRef.current = false;
     realtimeVoiceWantedRef.current = false;
     realtimeVoiceWasActiveRef.current = false;
-    saveContinuousChatMode(priorContinuousModeRef.current);
+    if (!wasTemporary) {
+      saveContinuousChatMode(priorContinuousModeRef.current);
+    }
     setHandsFree(false);
     handsFreeRef.current = false;
     if (captureRef.current) stopCapture();
@@ -2079,71 +2118,90 @@ export function useShellController(): ShellController {
     voiceOutput.stopSpeaking();
   }, [stopCapture, voiceOutput.stopSpeaking]);
 
-  const startRealtimeVoice = React.useCallback(async () => {
-    if (!realtimeVoiceEnabled) return;
-    if (
-      realtimeVoiceWantedRef.current ||
-      realtimeVoiceRef.current.active ||
-      realtimeVoiceRef.current.connecting
-    ) {
-      return;
-    }
+  const startRealtimeVoice = React.useCallback(
+    async (temporary = false) => {
+      if (!realtimeVoiceEnabled) return;
+      if (
+        realtimeVoiceWantedRef.current ||
+        realtimeVoiceRef.current.active ||
+        realtimeVoiceRef.current.connecting
+      ) {
+        // A persistent user engage may promote an already-open wake window. The
+        // transport remains the same, but ownership and persistence now belong to
+        // Talk rather than the bounded wake lifecycle.
+        if (!temporary && realtimeVoiceTemporaryRef.current) {
+          realtimeVoiceTemporaryRef.current = false;
+          saveContinuousChatMode("always-on");
+        }
+        return;
+      }
 
-    const prior = loadContinuousChatMode();
-    if (prior !== "always-on") priorContinuousModeRef.current = prior;
-    saveContinuousChatMode("always-on");
-    realtimeVoiceWantedRef.current = true;
-    realtimeVoiceWasActiveRef.current = false;
-    setRealtimeVoiceBoundaryError(null);
-    setHandsFree(true);
-    handsFreeRef.current = true;
-    setIsOpen(true);
-    if (captureRef.current) stopCapture();
+      const prior = loadContinuousChatMode();
+      if (prior !== "always-on") priorContinuousModeRef.current = prior;
+      if (!temporary) saveContinuousChatMode("always-on");
+      realtimeVoiceTemporaryRef.current = temporary;
+      realtimeVoiceWantedRef.current = true;
+      realtimeVoiceWasActiveRef.current = false;
+      setRealtimeVoiceBoundaryError(null);
+      setHandsFree(true);
+      handsFreeRef.current = true;
+      setIsOpen(true);
+      if (captureRef.current) stopCapture();
 
-    let conversationId = activeConversationIdRef.current?.trim() || null;
-    if (!conversationId) {
-      conversationId = await ensureActiveConversationForVoice();
-      if (!realtimeVoiceWantedRef.current) return;
-    }
-    if (!conversationId) {
-      const message =
-        "Cartesia voice needs an active conversation. Tap Talk to retry.";
+      let conversationId = activeConversationIdRef.current?.trim() || null;
+      if (!conversationId) {
+        conversationId = await ensureActiveConversationForVoice();
+        if (!realtimeVoiceWantedRef.current) return;
+      }
+      if (!conversationId) {
+        const message =
+          "Cartesia voice needs an active conversation. Tap Talk to retry.";
+        const failedTemporaryStart = realtimeVoiceTemporaryRef.current;
+        realtimeVoiceTemporaryRef.current = false;
+        realtimeVoiceWantedRef.current = false;
+        if (!failedTemporaryStart) {
+          saveContinuousChatMode(priorContinuousModeRef.current);
+        }
+        setHandsFree(false);
+        handsFreeRef.current = false;
+        setRealtimeVoiceBoundaryError(message);
+        setActionNotice(message, "error", 6000);
+        return;
+      }
+
+      const outcome = await realtimeVoiceRef.current.start();
+      if (!realtimeVoiceWantedRef.current) {
+        if (outcome.kind === "live") void realtimeVoiceRef.current.stop();
+        return;
+      }
+      if (outcome.kind === "live") return;
+
+      const message = describeRealtimeVoiceFailure(
+        outcome,
+        realtimeVoiceRef.current.error?.message || null,
+      );
+      const failedTemporaryStart = realtimeVoiceTemporaryRef.current;
+      realtimeVoiceTemporaryRef.current = false;
       realtimeVoiceWantedRef.current = false;
-      saveContinuousChatMode(priorContinuousModeRef.current);
+      if (!failedTemporaryStart) {
+        saveContinuousChatMode(priorContinuousModeRef.current);
+      }
       setHandsFree(false);
       handsFreeRef.current = false;
       setRealtimeVoiceBoundaryError(message);
+      if (outcome.kind === "error" && outcome.error.kind === "permission") {
+        setMicPermission("denied");
+        micPermissionRef.current = "denied";
+      }
       setActionNotice(message, "error", 6000);
-      return;
-    }
-
-    const outcome = await realtimeVoiceRef.current.start();
-    if (!realtimeVoiceWantedRef.current) {
-      if (outcome.kind === "live") void realtimeVoiceRef.current.stop();
-      return;
-    }
-    if (outcome.kind === "live") return;
-
-    const message = describeRealtimeVoiceFailure(
-      outcome,
-      realtimeVoiceRef.current.error?.message || null,
-    );
-    realtimeVoiceWantedRef.current = false;
-    saveContinuousChatMode(priorContinuousModeRef.current);
-    setHandsFree(false);
-    handsFreeRef.current = false;
-    setRealtimeVoiceBoundaryError(message);
-    if (outcome.kind === "error" && outcome.error.kind === "permission") {
-      setMicPermission("denied");
-      micPermissionRef.current = "denied";
-    }
-    setActionNotice(message, "error", 6000);
-  }, [
-    ensureActiveConversationForVoice,
-    realtimeVoiceEnabled,
-    setActionNotice,
-    stopCapture,
-  ]);
+    },
+    [
+      ensureActiveConversationForVoice,
+      realtimeVoiceEnabled,
+      setActionNotice,
+      stopCapture,
+    ],
+  );
   startRealtimeVoiceRef.current = () => {
     void startRealtimeVoice();
   };
@@ -2178,9 +2236,13 @@ export function useShellController(): ShellController {
     if (realtimeVoice.active || realtimeVoice.connecting) return;
     if (!realtimeVoiceWasActiveRef.current) return;
     if (!realtimeVoiceWantedRef.current) return;
+    const wasTemporary = realtimeVoiceTemporaryRef.current;
+    realtimeVoiceTemporaryRef.current = false;
     realtimeVoiceWasActiveRef.current = false;
     realtimeVoiceWantedRef.current = false;
-    saveContinuousChatMode(priorContinuousModeRef.current);
+    if (!wasTemporary) {
+      saveContinuousChatMode(priorContinuousModeRef.current);
+    }
     setHandsFree(false);
     handsFreeRef.current = false;
     setActionNotice(realtimeVoice.error.message, "error", 6000);
@@ -2339,18 +2401,29 @@ export function useShellController(): ShellController {
     onOpen: React.useCallback(() => {
       setIsOpen(true);
       if (realtimeVoiceEnabled) {
-        startRealtimeVoiceRef.current();
+        // Wake owns a bounded, ephemeral realtime session. It must not persist
+        // always-on or the hook will observe its own engage as a user setting,
+        // reset the wake window, and immediately stop the new session.
+        void startRealtimeVoice(true);
         return;
       }
       setHandsFree(true);
       handsFreeRef.current = true;
       voiceOutput.unlockAudio();
       if (!responding && !captureRef.current) startCapture("converse");
-    }, [realtimeVoiceEnabled, responding, startCapture, voiceOutput]),
+    }, [
+      realtimeVoiceEnabled,
+      responding,
+      startCapture,
+      startRealtimeVoice,
+      voiceOutput,
+    ]),
     onClose: React.useCallback(() => {
       // Close the temporary window without disturbing a persisted mode.
       if (realtimeVoiceEnabled) {
-        stopRealtimeVoiceRef.current();
+        if (realtimeVoiceTemporaryRef.current) {
+          stopRealtimeVoiceRef.current();
+        }
         return;
       }
       setHandsFree(false);

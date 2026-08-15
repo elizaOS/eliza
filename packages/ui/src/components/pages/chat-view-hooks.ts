@@ -8,6 +8,10 @@
  */
 
 import {
+  REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+} from "@elizaos/shared";
+import {
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -199,7 +203,10 @@ export function useChatVoiceController(options: {
   handleChatEdit: (messageId: string, text: string) => Promise<boolean>;
   handleChatSend: (
     channelType?: ConversationChannelType,
-    options?: { metadata?: Record<string, unknown> },
+    options?: {
+      clientMessageId?: string;
+      metadata?: Record<string, unknown>;
+    },
   ) => Promise<void>;
   isComposerLocked: boolean;
   isGameModal: boolean;
@@ -391,7 +398,9 @@ export function useChatVoiceController(options: {
       setTimeout(
         () =>
           void handleChatSend("VOICE_DM", {
+            clientMessageId: `${REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX}${voiceTurnId}`,
             metadata: {
+              clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
               voiceTurnId,
               voiceSpeechEndedAtMs: Math.round(speechEndedAtMs),
               voiceSource: event?.turn.source ?? event?.turn.metadata?.source,

@@ -5,6 +5,12 @@
  * SSE/CORS response shape used by HTTP routes and in-process voice turns.
  */
 
+import { ChannelType } from "@elizaos/core";
+import {
+  COMMITTED_SPEECH_PROTOCOL,
+  DELTA_STREAM_PROTOCOL,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+} from "@elizaos/shared";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
@@ -51,6 +57,34 @@ function elapsedMs(startedAt: number): number {
   return Math.round((nowMs() - startedAt) * 10) / 10;
 }
 
+function requestRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/**
+ * Preserve only the exact, additive voice/stream capabilities understood by
+ * the canonical agent contract. Unknown client values stay un-negotiated;
+ * arbitrary metadata never crosses the shared-runtime trust boundary.
+ */
+function canonicalRequestCapabilities(body: unknown): Record<string, unknown> {
+  const parsed = requestRecord(body);
+  const metadata = requestRecord(parsed?.metadata);
+  return {
+    ...(parsed?.channelType === ChannelType.VOICE_DM ? { channelType: ChannelType.VOICE_DM } : {}),
+    ...(metadata?.clientTransport === REALTIME_VOICE_CLIENT_TRANSPORT
+      ? { metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT } }
+      : {}),
+    ...(parsed?.streamProtocol === DELTA_STREAM_PROTOCOL
+      ? { streamProtocol: DELTA_STREAM_PROTOCOL }
+      : {}),
+    ...(parsed?.voiceSpeechProtocol === COMMITTED_SPEECH_PROTOCOL
+      ? { voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL }
+      : {}),
+  };
+}
+
 function addStreamTimingHeaders(response: Response, timings: Record<string, number>): Response {
   const headers = new Headers(response.headers);
   const entries = Object.entries(timings).filter(([, duration]) => Number.isFinite(duration));
@@ -82,6 +116,7 @@ export async function handleCanonicalScopedAgentStream(
       ? (request.body as { text: string }).text
       : "";
   const clientMessageId = sharedTurnClientMessageId(request.body);
+  const capabilities = canonicalRequestCapabilities(request.body);
   timings.parse = elapsedMs(parseStartedAt);
   if (!text.trim()) {
     return applyCorsHeaders(
@@ -102,6 +137,7 @@ export async function handleCanonicalScopedAgentStream(
       roomId: request.conversationId,
       ...(clientMessageId ? { clientMessageId } : {}),
       ...(request.userId ? { userId: request.userId, source: "voice" } : {}),
+      ...capabilities,
     },
   };
 

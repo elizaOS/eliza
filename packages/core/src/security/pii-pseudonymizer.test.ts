@@ -164,6 +164,147 @@ describe("PseudonymSession", () => {
 		expect(s.restoreText(swapped)).toBe(text);
 	});
 
+	it("keeps genuine Elias Vargas distinct from the earlier Max Okafor surrogate", () => {
+		const s = new PseudonymSession({ salt: "mc-0" });
+		s.learnSpans("Max Okafor | Diego Castro", [
+			{ kind: "person", value: "Max Okafor" },
+			{ kind: "person", value: "Diego Castro" },
+		]);
+		const firstMaxWire = s.substituteText("Max Okafor");
+		expect(firstMaxWire).toBe("Elias Vargas");
+
+		s.learnSpans("Elias Vargas | Diego", [
+			{ kind: "person", value: "Elias Vargas" },
+			{ kind: "person", value: "Diego" },
+		]);
+		const text = "Max Okafor | Diego Castro | Elias Vargas | Diego";
+		const swapped = s.substituteText(text);
+		const max = s.entries.find((entry) => entry.value === "Max Okafor");
+		const elias = s.entries.find((entry) => entry.value === "Elias Vargas");
+
+		expect(max?.surrogate).not.toBe(firstMaxWire);
+		expect(elias?.surrogate).toBeTruthy();
+		expect(elias?.surrogate).not.toBe(max?.surrogate);
+		expect(new Set(s.entries.map((entry) => entry.surrogate)).size).toBe(
+			s.entries.length,
+		);
+		expect(s.restoreText(swapped)).toBe(text);
+		expect(s.substituteText(swapped)).toBe(swapped);
+
+		// A response already issued by the first call still belongs to Max. The
+		// later genuine Elias passes through its current surrogate and restores to
+		// Elias, so the same bytes are disambiguated by their model-call context.
+		expect(s.restoreText(firstMaxWire)).toBe("Max Okafor");
+		expect(s.restoreText(s.substituteText("Elias Vargas"))).toBe(
+			"Elias Vargas",
+		);
+
+		// Repeated observations are stable and never rotate either entry again.
+		const mappings = s.entries;
+		s.learnSpans(text, [
+			{ kind: "person", value: "Max Okafor" },
+			{ kind: "person", value: "Elias Vargas" },
+			{ kind: "person", value: "Elias Vargas" },
+		]);
+		expect(s.entries).toEqual(mappings);
+	});
+
+	it("uses an explicit mode to protect active surrogates during a substituted rescan", async () => {
+		const s = sessionWith(
+			[
+				{ kind: "person", value: "Max Okafor" },
+				{ kind: "person", value: "Elias Vargas" },
+			],
+			{ salt: "mc-0" },
+		);
+		await s.learn("Max Okafor");
+		const substituted = s.substituteText("Max Okafor");
+		const mapping = s.entries[0];
+
+		await s.learn(substituted, { inputAlreadyPseudonymized: true });
+
+		expect(s.entries).toEqual([mapping]);
+		expect(s.substituteText(substituted)).toBe(substituted);
+		expect(s.restoreText(substituted)).toBe("Max Okafor");
+
+		// The provenance flag is call-scoped, not sticky. The same bytes arriving as
+		// raw input on a later model call become their own real identity.
+		await s.learn(substituted);
+		expect(s.size).toBe(2);
+		expect(s.restoreText(s.substituteText(substituted))).toBe("Elias Vargas");
+		expect(s.restoreText(substituted)).toBe("Max Okafor");
+	});
+
+	it("still learns fresh hook text in substituted-rescan mode", () => {
+		const s = new PseudonymSession({ salt: "mc-0" });
+		s.learnSpans("Max Okafor", [{ kind: "person", value: "Max Okafor" }]);
+		const maxWire = s.substituteText("Max Okafor");
+		const postHookText = `${maxWire} asked New Person`;
+
+		s.learnSpans(
+			postHookText,
+			[
+				{ kind: "person", value: maxWire },
+				{ kind: "person", value: "New Person" },
+			],
+			{ inputAlreadyPseudonymized: true },
+		);
+
+		expect(s.entries.map((entry) => entry.value)).toEqual([
+			"Max Okafor",
+			"New Person",
+		]);
+		expect(s.substituteText(postHookText)).not.toContain("New Person");
+	});
+
+	it("is collision-safe for either learn order and across entity kinds", () => {
+		const run = (
+			order: readonly { kind: string; value: string }[],
+		): PseudonymSession => {
+			const s = new PseudonymSession({ salt: "mc-0" });
+			for (const entry of order) {
+				s.learnSpans(entry.value, [entry]);
+			}
+			return s;
+		};
+		const max = { kind: "person", value: "Max Okafor" };
+		const elias = { kind: "org", value: "Elias Vargas" };
+		const text = `${max.value} | ${elias.value}`;
+
+		for (const order of [
+			[max, elias],
+			[elias, max],
+		] as const) {
+			const first = run(order);
+			const repeat = run(order);
+			expect(first.restoreText(first.substituteText(text))).toBe(text);
+			expect(
+				first.entries.find((entry) => entry.value === elias.value)?.kind,
+			).toBe("org");
+			expect(first.entries).toEqual(repeat.entries);
+			expect(new Set(first.entries.map((entry) => entry.surrogate)).size).toBe(
+				2,
+			);
+		}
+	});
+
+	it("keeps collision rotations isolated to their owning session", () => {
+		const a = new PseudonymSession({ salt: "mc-0" });
+		const b = new PseudonymSession({ salt: "mc-0" });
+		for (const s of [a, b]) {
+			s.learnSpans("Max Okafor", [{ kind: "person", value: "Max Okafor" }]);
+		}
+		const sharedInitialWire = b.substituteText("Max Okafor");
+		expect(sharedInitialWire).toBe("Elias Vargas");
+
+		a.learnSpans("Elias Vargas", [{ kind: "location", value: "Elias Vargas" }]);
+
+		expect(a.size).toBe(2);
+		expect(b.size).toBe(1);
+		expect(b.entries[0]?.surrogate).toBe(sharedInitialWire);
+		expect(b.restoreText(sharedInitialWire)).toBe("Max Okafor");
+	});
+
 	it("pseudonymizes a regex-detected street address", async () => {
 		const s = new PseudonymSession({
 			salt: "fixed-test-salt",

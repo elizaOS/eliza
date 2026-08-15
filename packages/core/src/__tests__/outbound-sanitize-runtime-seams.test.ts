@@ -18,6 +18,14 @@ function newRuntime(name: string): AgentRuntime {
 }
 
 describe("outbound sanitization at the runtime seams (#15888)", () => {
+	it("runs provider-pattern redaction even without configured character secrets", () => {
+		const runtime = newRuntime("outbound-seams-pattern-only");
+		const key = ["sk", "car", "0123456789abcdefghijklmnop"].join("_");
+		const redacted = runtime.redactSecrets(`voice key ${key}`);
+		expect(redacted).not.toContain(key);
+		expect(redacted).toContain("…");
+	});
+
 	it("sanitizes machine syntax at the outgoing_before_deliver phase with no hooks registered", async () => {
 		const runtime = newRuntime("outbound-seams-phase");
 		const content: Content = {

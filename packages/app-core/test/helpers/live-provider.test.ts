@@ -9,6 +9,9 @@ describe("selectLiveProvider", () => {
     for (const key of [
       "CEREBRAS_API_KEY",
       "ELIZA_E2E_CEREBRAS_API_KEY",
+      "ZAI_API_KEY",
+      "Z_AI_API_KEY",
+      "ELIZA_E2E_ZAI_API_KEY",
       "GROQ_API_KEY",
       "ELIZA_E2E_GROQ_API_KEY",
       "OPENAI_API_KEY",
@@ -114,6 +117,33 @@ describe("selectLiveProvider", () => {
     expect(provider?.env.CEREBRAS_MODEL).toBe("gemma-4-31b");
     expect(provider?.env.OPENAI_SMALL_MODEL).toBe("gemma-4-31b");
     expect(provider?.env.OPENAI_LARGE_MODEL).toBe("gemma-4-31b");
+  });
+
+  it("selects z.ai explicitly with its GLM models and canonical runtime env", async () => {
+    vi.stubEnv("ZAI_API_KEY", "zai_test_key");
+
+    const { selectLiveProvider } = await import("./live-provider.ts");
+
+    const provider = selectLiveProvider("zai");
+    expect(provider?.name).toBe("zai");
+    expect(provider?.pluginPackage).toBe("@elizaos/plugin-zai");
+    expect(provider?.baseUrl).toBe("https://api.z.ai/api/paas/v4");
+    expect(provider?.smallModel).toBe("glm-4.5-air");
+    expect(provider?.largeModel).toBe("glm-5.1");
+    expect(provider?.env.ZAI_API_KEY).toBe("zai_test_key");
+    expect(provider?.env.Z_AI_API_KEY).toBe("zai_test_key");
+    expect(provider?.env.ZAI_SMALL_MODEL).toBe("glm-4.5-air");
+    expect(provider?.env.ZAI_LARGE_MODEL).toBe("glm-5.1");
+  });
+
+  it("accepts the legacy z.ai key alias and propagates the canonical name", async () => {
+    vi.stubEnv("Z_AI_API_KEY", "zai_legacy_test_key");
+
+    const { selectLiveProvider } = await import("./live-provider.ts");
+
+    const provider = selectLiveProvider("zai");
+    expect(provider?.apiKey).toBe("zai_legacy_test_key");
+    expect(provider?.env.ZAI_API_KEY).toBe("zai_legacy_test_key");
   });
 
   it("resolves Cerebras vault references in the async selector", async () => {

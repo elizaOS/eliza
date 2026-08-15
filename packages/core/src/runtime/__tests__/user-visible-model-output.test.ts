@@ -97,6 +97,31 @@ describe("sanitizeUserVisibleModelOutput", () => {
 		}
 	});
 
+	it.each([
+		'action: BROWSER, parameters: {"url":"https://example.com"}',
+		'{action: BROWSER, parameters: {"url":"https://example.com"}}',
+		'action = BROWSER; parameters = {"url":"https://example.com"}',
+		'tool: WEB_SEARCH input={"query":"weather"}',
+	])("rejects a compact one-line model control dialect: %s", (candidate) => {
+		expect(sanitizeUserVisibleModelOutput(candidate)).toMatchObject({
+			kind: "control",
+			malformed: true,
+		});
+	});
+
+	it.each([
+		"Action: BROWSER is the heading used in this documentation.",
+		"The action: BROWSER, parameters: {} example is discussed below.",
+		'action: proceed, parameters: {"step":1}',
+	])("preserves prose and non-runtime compact lookalikes: %s", (candidate) => {
+		expect(sanitizeUserVisibleModelOutput(candidate)).toEqual({
+			kind: "text",
+			text: candidate,
+			format: "plain",
+			fieldPath: [],
+		});
+	});
+
 	it("rejects single-line fences and nested OpenAI function-call records", () => {
 		expect(
 			sanitizeUserVisibleModelOutput(

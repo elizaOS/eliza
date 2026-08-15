@@ -188,6 +188,44 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 		expect(String(result)).not.toContain("Dana Whitfield");
 	});
 
+	it("keeps email in the reversible PII lane when the required secret guard is also active", async () => {
+		const runtime = makeRuntime(true);
+		const email = "alice@example.com";
+		const streamedChunks: string[] = [];
+		let providerPrompt = "";
+		let providerReply = "";
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async (_rt, params: { prompt: string }) => {
+				providerPrompt = params.prompt;
+				providerReply = params.prompt.replace("Repeat ", "Email ");
+				return {
+					text: Promise.resolve(providerReply),
+					textStream: (async function* () {
+						yield providerReply.slice(0, 7);
+						yield providerReply.slice(7);
+					})(),
+					usage: Promise.resolve({}),
+					finishReason: Promise.resolve("stop"),
+				};
+			},
+			"test",
+		);
+
+		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
+			prompt: `Repeat ${email} now.`,
+			stream: true,
+			streamSecurity: "required",
+			onStreamChunk: (chunk: string) => streamedChunks.push(chunk),
+		});
+
+		expect(providerPrompt).not.toContain(email);
+		expect(providerPrompt).not.toContain("__ELIZA_SECRET_");
+		expect(streamedChunks.join("")).toBe(`Email ${email} now.`);
+		expect(String(result)).not.toContain(email);
+		expect(String(result)).not.toContain("__ELIZA_SECRET_");
+	});
+
 	it("pseudonymizes a street address with the built-in regex recognizer (no model needed)", async () => {
 		const runtime = makeRuntime(true);
 		let seenPrompt = "";

@@ -147,6 +147,10 @@ describe("detectPii — other classes", () => {
 			"github-token",
 		);
 		expect(kinds("xoxb-12345-67890-abcdefghij")).toContain("slack-token");
+		const cartesia = ["sk", "car", "0123456789abcdefghijklmnop"].join(
+			"_",
+		);
+		expect(kinds(cartesia)).toContain("cartesia-key");
 	});
 	it("PEM private key block", () => {
 		const pem =

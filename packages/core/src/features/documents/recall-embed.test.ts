@@ -126,6 +126,34 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 		expect(vec).toEqual([0.1, 0.2, 0.3]);
 	});
 
+	test("redacts credentials before embedding and uses the same safe cache key", async () => {
+		const seen: string[] = [];
+		const { runtime, calls } = makeRuntime({
+			embed: async ({ text }) => {
+				seen.push(text);
+				return [0.4, 0.5];
+			},
+		});
+		const secret = ["sk", "car", "recall", "fixture", "12345678"].join(
+			"_",
+		);
+		const redact = vi
+			.spyOn(runtime, "redactSecrets")
+			.mockImplementation((text) => text.replaceAll(secret, "[REDACTED]"));
+
+		await expect(
+			embedRecallQuery(runtime, `Find ${secret}`, { messageId: MSG_A }),
+		).resolves.toEqual([0.4, 0.5]);
+		await expect(
+			embedRecallQuery(runtime, "Find [REDACTED]", { messageId: MSG_A }),
+		).resolves.toEqual([0.4, 0.5]);
+
+		expect(redact).toHaveBeenCalled();
+		expect(calls.count).toBe(1);
+		expect(seen).toEqual(["Find [REDACTED]"]);
+		expect(JSON.stringify(seen)).not.toContain(secret);
+	});
+
 	test("awaits the full embed — a slow-but-resolving embed returns its real vector (no app-level race truncates it to a silent BM25 fallback)", async () => {
 		const { runtime } = makeRuntime({
 			embed: () =>

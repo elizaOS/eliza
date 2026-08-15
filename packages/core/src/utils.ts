@@ -1405,4 +1405,8 @@ export {
 	isSyntheticConversationArtifactMemory,
 	isSyntheticConversationArtifactText,
 } from "./utils/synthetic-conversation-artifact";
-export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";
+export {
+	extractFirstSentence,
+	hasFirstSentence,
+	isAbbreviationPeriod,
+} from "./utils/text-splitting";

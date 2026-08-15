@@ -80,9 +80,17 @@ describe("shared conversation coordinator", () => {
     } as never;
     const rpc = {
       jsonrpc: "2.0" as const,
-      id: "rpc-1",
+      id: "voice:trace-1",
       method: "message.send",
-      params: { text: "hi", roomId: "room-1" },
+      params: {
+        text: "hi",
+        roomId: "room-1",
+        clientMessageId: "voice:trace-1",
+        channelType: "VOICE_DM",
+        metadata: { clientTransport: "realtime_voice" },
+        streamProtocol: "delta-v2",
+        voiceSpeechProtocol: "committed-segments-v1",
+      },
     };
     const executionCtx = { waitUntil() {} };
     const abortController = new AbortController();
@@ -111,6 +119,9 @@ describe("shared conversation coordinator", () => {
       "prewarm",
       "history",
     ]);
+    expect((envelopes[1] as { rpc: { params: Record<string, unknown> } }).rpc.params).toEqual(
+      rpc.params,
+    );
     expect(signals).toEqual([undefined, abortController.signal, undefined, undefined]);
     expect(directBridge).not.toHaveBeenCalled();
     expect(directStream).not.toHaveBeenCalled();

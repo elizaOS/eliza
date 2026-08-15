@@ -1238,6 +1238,12 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 */
 	registerPipelineHook(spec: import("./pipeline-hooks").PipelineHookSpec): void;
 	unregisterPipelineHook(id: string): void;
+	/**
+	 * True when every hook that can run after model bytes arrive explicitly
+	 * preserves reply text. Irrevocable visible streaming must fail closed when
+	 * this capability is absent or false.
+	 */
+	canStreamCommittedReplyText(): boolean;
 	applyPipelineHooks(
 		phase: import("./pipeline-hooks").PipelineHookPhase,
 		ctx: import("./pipeline-hooks").PipelineHookContext,

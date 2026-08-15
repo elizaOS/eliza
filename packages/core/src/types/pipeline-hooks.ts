@@ -278,6 +278,16 @@ export interface PipelineHookSpec {
 	id: string;
 	phase: PipelineHookPhase;
 	/**
+	 * Output-text mutation contract used by irrevocable visible streaming.
+	 *
+	 * Hooks in `post_model` and `outgoing_before_deliver` may rewrite the final
+	 * reply after provider bytes have arrived. Such rewrites are incompatible
+	 * with a client-visible prefix that cannot be recalled, so those phases are
+	 * treated as `may_change` unless the hook explicitly attests `none`.
+	 * Other phases do not participate in this output compatibility check.
+	 */
+	textMutation?: "none" | "may_change";
+	/**
 	 * Lower runs first within the same scheduling group (mutators, then serial readers, then concurrent), same idea as `Provider.position` in `composeState`.
 	 * Ties break on `id` lexicographically. Ignored for `parallel_with_should_respond` (see phase note).
 	 */
@@ -350,6 +360,7 @@ export function pipelineHookMetricRoomId(ctx: PipelineHookContext): UUID {
 export type ResolvedPipelineHook = {
 	id: string;
 	phase: PipelineHookPhase;
+	textMutation: "none" | "may_change";
 	/** Resolved from `position ?? 0` (provider-style ordering). */
 	position: number;
 	schedule: PipelineHookSchedule;
@@ -375,6 +386,11 @@ export function resolvePipelineHookSpec(
 	return {
 		id: spec.id,
 		phase,
+		textMutation:
+			spec.textMutation ??
+			(phase === "post_model" || phase === "outgoing_before_deliver"
+				? "may_change"
+				: "none"),
 		position: spec.position ?? 0,
 		schedule: spec.schedule ?? defaultPipelineHookSchedule(phase),
 		mutatesPrimary:

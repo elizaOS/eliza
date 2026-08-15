@@ -62,6 +62,17 @@ export class VoiceSessionTurnAuthority {
   private authorityRevision = 0;
   private activeWireTraceId: string | null = null;
   private activeWireResponseId: ResponseId | null = null;
+  /**
+   * Response traces whose output authority was finished or explicitly
+   * retracted.
+   *
+   * Some servers can deliver a queued `speaking_start` after a local Stop or
+   * superseding transcript. `speaking_start` normally supports bootstrapping an
+   * unsolicited opening greeting, so response-null alone cannot distinguish
+   * that legitimate case from a late frame. Keep the revoked wire identity
+   * until a newly accepted transcript deliberately reuses it.
+   */
+  private readonly revokedWireTraceIds = new Set<string>();
   private audioIngressResponseId: ResponseId | null = null;
   private playbackOwner: PlaybackOwner | null = null;
 
@@ -95,6 +106,7 @@ export class VoiceSessionTurnAuthority {
     this.coordinator = createTurnCoordinatorState({ sessionId, atMs, policy });
     this.activeWireTraceId = null;
     this.activeWireResponseId = null;
+    this.revokedWireTraceIds.clear();
     this.audioIngressResponseId = null;
     this.playbackOwner = null;
     return { epoch: this.authorityEpoch, sessionId };
@@ -217,6 +229,16 @@ export class VoiceSessionTurnAuthority {
       ? "respond"
       : "no_response",
   ): VoiceAuthorityTransition {
+    // Gateway trace ids are monotonic within one accepted session. Replaying a
+    // committed or terminal trace is therefore a duplicate frame sequence, not
+    // a legitimate replacement turn. Cross-session reuse remains valid because
+    // openSession clears the trace authority and tombstones together.
+    if (
+      this.isCurrentWireTrace(traceId) ||
+      this.revokedWireTraceIds.has(traceId)
+    ) {
+      return this.noop(false, "stale_response");
+    }
     if (disposition === "no_response" && this.coordinator?.speechAttempt) {
       const transition = this.rejectProvisionalSpeech(
         this.coordinator.speechAttempt.id,
@@ -296,6 +318,9 @@ export class VoiceSessionTurnAuthority {
     traceId: string,
     atMs: number,
   ): VoiceAuthorityTransition {
+    if (this.revokedWireTraceIds.has(traceId)) {
+      return this.noop(false, "stale_response");
+    }
     let responseId = this.currentWireResponse(traceId);
     let bootstrap: VoiceAuthorityTransition | null = null;
     if (!responseId && !this.coordinator?.response) {
@@ -396,13 +421,13 @@ export class VoiceSessionTurnAuthority {
 
   acceptSpeakingEnded(traceId: string, atMs: number): VoiceAuthorityTransition {
     const responseId = this.currentWireResponse(traceId);
-    this.audioIngressResponseId = null;
     if (!responseId) {
       return this.isCurrentWireTrace(traceId)
         ? this.noop(true)
         : this.noop(false, "stale_response");
     }
-    return this.publish([
+    this.audioIngressResponseId = null;
+    const transition = this.publish([
       (state) => ({
         type: "response/settled",
         sessionId: state.sessionId,
@@ -411,6 +436,13 @@ export class VoiceSessionTurnAuthority {
         outcome: "spoken",
       }),
     ]);
+    if (transition.accepted) {
+      // `speaking_end` is itself a terminal audio boundary. Keep the wire
+      // trace bound for the following `turn_end`, but prevent a duplicate
+      // `speaking_start` from bootstrapping a fresh response in between.
+      this.revokedWireTraceIds.add(traceId);
+    }
+    return transition;
   }
 
   acceptTurnEnded(
@@ -423,8 +455,11 @@ export class VoiceSessionTurnAuthority {
     }
     let transition: VoiceAuthorityTransition;
     const responseId = this.currentWireResponse(traceId);
-    if (outcome === "stopped") {
-      transition = this.publish([
+    if (
+      outcome !== "spoken" &&
+      (outcome === "stopped" || responseId || this.activeWireResponseId)
+    ) {
+      const terminal = this.publish([
         (state) => ({
           type: "interrupt/explicit",
           sessionId: state.sessionId,
@@ -432,6 +467,21 @@ export class VoiceSessionTurnAuthority {
           reason: "user_stop",
         }),
       ]);
+      // The gateway emits the legacy `speaking_end` boundary before the
+      // authoritative `turn_end`. A later non-spoken terminal must still
+      // revoke any queued browser playout even though the coordinator response
+      // was already settled. Only an explicit stopped outcome retracts display
+      // here; displayed/no-response/error have their own wire projection and
+      // must not be mislabeled as a user interruption.
+      transition =
+        outcome === "stopped"
+          ? terminal
+          : {
+              ...terminal,
+              effects: terminal.effects.filter(
+                (effect) => effect.type !== "output/retract",
+              ),
+            };
     } else if (responseId) {
       transition = this.publish([
         (state) => ({
@@ -451,6 +501,10 @@ export class VoiceSessionTurnAuthority {
       transition = this.noop(true);
     }
     if (transition.accepted) {
+      // A terminal turn permanently retires this wire response. Without this
+      // tombstone, a delayed duplicate `speaking_start` can be mistaken for an
+      // unsolicited opening greeting and bootstrap fresh audio authority.
+      this.revokedWireTraceIds.add(traceId);
       this.activeWireTraceId = null;
       this.activeWireResponseId = null;
       this.audioIngressResponseId = null;
@@ -558,6 +612,12 @@ export class VoiceSessionTurnAuthority {
 
   acceptsResponseControlTrace(traceId: string | undefined): boolean {
     return traceId === undefined || this.isCurrentWireTrace(traceId);
+  }
+
+  acceptsResponseContentTrace(traceId: string): boolean {
+    return (
+      this.isCurrentWireTrace(traceId) && !this.revokedWireTraceIds.has(traceId)
+    );
   }
 
   isPlaybackEffectAuthorized(
@@ -669,6 +729,12 @@ export class VoiceSessionTurnAuthority {
     }
     this.coordinator = draft;
     this.authorityRevision += 1;
+    if (
+      this.activeWireTraceId &&
+      effects.some((effect) => effect.type === "output/retract")
+    ) {
+      this.revokedWireTraceIds.add(this.activeWireTraceId);
+    }
     return {
       accepted: true,
       effects,

@@ -32,16 +32,158 @@ describe("VoiceSessionTurnAuthority", () => {
 
     expect(second).not.toBe(first);
     expect(authority.acceptSpeakingStarted("trace-b", 8).accepted).toBe(true);
+    expect(authority.authorizeAudioFrame()?.responseId).toBe(second);
     expect(authority.acceptSpeakingEnded("trace-a", 9)).toMatchObject({
       accepted: false,
       rejection: "stale_response",
     });
+    expect(authority.authorizeAudioFrame()?.responseId).toBe(second);
     expect(authority.acceptTurnEnded("trace-a", "spoken", 10)).toMatchObject({
       accepted: false,
       rejection: "stale_response",
     });
     expect(authority.state?.response?.id).toBe(second);
     expect(authority.state?.response?.status).toBe("speaking");
+  });
+
+  it("does not let a late same-trace speaking start revive explicitly retracted output", () => {
+    const authority = new VoiceSessionTurnAuthority();
+    committedResponse(authority, "trace-stopped");
+
+    const interrupted = authority.explicitInterrupt(3);
+    expect(interrupted.accepted).toBe(true);
+    expect(interrupted.effects).toContainEqual(
+      expect.objectContaining({ type: "output/retract" }),
+    );
+    expect(authority.state?.response).toBeNull();
+
+    expect(authority.acceptSpeakingStarted("trace-stopped", 4)).toMatchObject({
+      accepted: false,
+      rejection: "stale_response",
+    });
+    expect(authority.authorizeAudioFrame()).toBeNull();
+    expect(authority.state?.response).toBeNull();
+  });
+
+  it("requires a fresh trace for a replacement turn within the same session", () => {
+    const authority = new VoiceSessionTurnAuthority();
+    committedResponse(authority, "trace-reused");
+    expect(authority.explicitInterrupt(3).accepted).toBe(true);
+    expect(authority.acceptPartialTranscript("replacement", 4).accepted).toBe(
+      true,
+    );
+    expect(
+      authority.commitTranscript("replacement", "trace-reused", 5).accepted,
+    ).toBe(false);
+    expect(
+      authority.commitTranscript("replacement", "trace-replacement", 6)
+        .accepted,
+    ).toBe(true);
+
+    expect(
+      authority.acceptSpeakingStarted("trace-replacement", 7).accepted,
+    ).toBe(true);
+    expect(authority.authorizeAudioFrame()).not.toBeNull();
+  });
+
+  it("does not revive a completed response from a replayed final-frame sequence", () => {
+    const authority = new VoiceSessionTurnAuthority();
+    committedResponse(authority, "trace-duplicate");
+    expect(authority.acceptSpeakingStarted("trace-duplicate", 3).accepted).toBe(
+      true,
+    );
+    expect(
+      authority.acceptTurnEnded("trace-duplicate", "spoken", 4).accepted,
+    ).toBe(true);
+
+    expect(
+      authority.commitTranscript("hello", "trace-duplicate", 5),
+    ).toMatchObject({ accepted: false, rejection: "stale_response" });
+    expect(authority.acceptSpeakingStarted("trace-duplicate", 6)).toMatchObject(
+      { accepted: false, rejection: "stale_response" },
+    );
+    expect(authority.authorizeAudioFrame()).toBeNull();
+  });
+
+  it("does not let duplicate same-trace speaking revive a completed turn", () => {
+    const authority = new VoiceSessionTurnAuthority();
+    committedResponse(authority, "trace-complete");
+    expect(authority.acceptSpeakingStarted("trace-complete", 3).accepted).toBe(
+      true,
+    );
+    expect(
+      authority.acceptTurnEnded("trace-complete", "spoken", 4).accepted,
+    ).toBe(true);
+
+    expect(authority.acceptSpeakingStarted("trace-complete", 5)).toMatchObject({
+      accepted: false,
+      rejection: "stale_response",
+    });
+    expect(authority.authorizeAudioFrame()).toBeNull();
+    expect(authority.state?.response).toBeNull();
+
+    expect(authority.acceptPartialTranscript("next", 6).accepted).toBe(true);
+    expect(authority.commitTranscript("next", "trace-next", 7).accepted).toBe(
+      true,
+    );
+    expect(authority.acceptSpeakingStarted("trace-next", 8).accepted).toBe(
+      true,
+    );
+  });
+
+  it("does not let duplicate same-trace speaking revive after speaking ends", () => {
+    const authority = new VoiceSessionTurnAuthority();
+    committedResponse(authority, "trace-spoken");
+    expect(authority.acceptSpeakingStarted("trace-spoken", 3).accepted).toBe(
+      true,
+    );
+    expect(authority.acceptSpeakingEnded("trace-spoken", 4).accepted).toBe(
+      true,
+    );
+
+    expect(authority.acceptSpeakingStarted("trace-spoken", 5)).toMatchObject({
+      accepted: false,
+      rejection: "stale_response",
+    });
+    expect(authority.authorizeAudioFrame()).toBeNull();
+    expect(authority.state?.response).toBeNull();
+    expect(authority.acceptsResponseContentTrace("trace-spoken")).toBe(false);
+    expect(
+      authority.acceptTurnEnded("trace-spoken", "spoken", 6).accepted,
+    ).toBe(true);
+  });
+
+  it("flushes queued playout on an error terminal after legacy speaking_end", () => {
+    const authority = new VoiceSessionTurnAuthority();
+    committedResponse(authority, "trace-error");
+    expect(authority.acceptSpeakingStarted("trace-error", 3).accepted).toBe(
+      true,
+    );
+    const audio = authority.authorizeAudioFrame();
+    expect(audio).not.toBeNull();
+    expect(
+      authority.acceptPlaybackEnqueued(audio as never, 7, 4).accepted,
+    ).toBe(true);
+    expect(authority.acceptSpeakingEnded("trace-error", 5).accepted).toBe(true);
+
+    const terminal = authority.acceptTurnEnded("trace-error", "error", 6);
+
+    expect(terminal.accepted).toBe(true);
+    expect(terminal.effects).toContainEqual({
+      type: "playback/flush",
+      responseId: audio?.responseId,
+    });
+    expect(terminal.effects).not.toContainEqual(
+      expect.objectContaining({ type: "output/retract" }),
+    );
+    expect(
+      authority.acknowledgePlaybackFlush(terminal, audio?.responseId as never),
+    ).toBe(true);
+    expect(authority.playbackResponseId).toBeNull();
+    expect(authority.acceptPlaybackDrained(7, 7)).toMatchObject({
+      accepted: false,
+      rejection: "stale_playback",
+    });
   });
 
   it("rejects stale prior-response audio and exact older playback drains", () => {

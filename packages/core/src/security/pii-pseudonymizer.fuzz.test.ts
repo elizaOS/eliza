@@ -229,6 +229,7 @@ describe("pii-pseudonymizer fuzz (seeded, 3000 iterations)", () => {
 		for (let iter = 0; iter < 1500; iter += 1) {
 			const s = new PseudonymSession({ salt: `mc-${iter % 7}` });
 			const learned = new Set<string>();
+			const issuedReverseMappings = new Map<string, string>();
 			const calls = randInt(rng, 2, 6);
 			for (let c = 0; c < calls; c += 1) {
 				// Build this call's roster: some fresh people, and — to force the bug —
@@ -264,6 +265,19 @@ describe("pii-pseudonymizer fuzz (seeded, 3000 iterations)", () => {
 				const valueSet = new Set(s.entries.map((e) => e.value.toLowerCase()));
 				for (const sur of surrogs) {
 					expect(valueSet.has(sur.toLowerCase())).toBe(false);
+				}
+
+				// Every wire value ever issued stays owned by exactly one original,
+				// including retired surrogates from before a later real-value collision.
+				for (const entry of s.entries) {
+					const previousOwner = issuedReverseMappings.get(entry.surrogate);
+					if (previousOwner !== undefined) {
+						expect(previousOwner).toBe(entry.value);
+					}
+					issuedReverseMappings.set(entry.surrogate, entry.value);
+				}
+				for (const [surrogate, original] of issuedReverseMappings) {
+					expect(s.restoreText(surrogate)).toBe(original);
 				}
 			}
 		}

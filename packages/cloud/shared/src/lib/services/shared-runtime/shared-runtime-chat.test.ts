@@ -273,6 +273,18 @@ const rpc = {
   method: "message.send",
   params: { text: "hello", roomId: "room-1" },
 };
+const realtimeVoiceRpc = {
+  ...rpc,
+  id: "voice:trace-1",
+  params: {
+    ...rpc.params,
+    clientMessageId: "voice:trace-1",
+    channelType: "VOICE_DM",
+    metadata: { clientTransport: "realtime_voice" },
+    streamProtocol: "delta-v2",
+    voiceSpeechProtocol: "committed-segments-v1",
+  },
+};
 
 type TestMessage = {
   id?: string;
@@ -582,7 +594,9 @@ describe("SharedRuntimeChatService", () => {
       reply: "Eliza is temporarily unavailable (no shared model configured).",
     };
 
-    const body = await (await new SharedRuntimeChatService().stream(agent, rpc, harness())).text();
+    const body = await (
+      await new SharedRuntimeChatService().stream(agent, realtimeVoiceRpc, harness())
+    ).text();
     const frames = body
       .split("\n\n")
       .filter(Boolean)
@@ -596,6 +610,7 @@ describe("SharedRuntimeChatService", () => {
 
     expect(frames.map((frame) => frame.event)).toEqual(["chunk", "done"]);
     expect(frames.map((frame) => frame.data.type)).toEqual(["token", "done"]);
+    expect(frames[0]?.data).not.toHaveProperty("fullText");
     expect(frames[1]?.data.fullText).toBe(
       "Eliza is temporarily unavailable (no shared model configured).",
     );
@@ -627,6 +642,59 @@ describe("SharedRuntimeChatService", () => {
     const fullText = doneData.fullText;
     expect(fullText).toBe(doneData.text);
     expect(typeof fullText === "string" && fullText.length > 0).toBe(true);
+  });
+
+  test("delta-v2 voice streams raw JSON deltas once without fabricating committed speech", async () => {
+    const exactJson = '{"answer":"ok"}';
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: '{"answer":' };
+        yield { type: "text-delta", text: '"ok"}' };
+        yield {
+          type: "finish",
+          text: exactJson,
+          usage: { inputTokens: 2, outputTokens: 2 },
+        };
+      })(),
+    };
+    const h = harness();
+
+    const response = await new SharedRuntimeChatService().stream(agent, realtimeVoiceRpc, h);
+    const body = await response.text();
+    const frames = body
+      .split("\n\n")
+      .filter(Boolean)
+      .map((frame) => {
+        const lines = frame.split("\n");
+        return {
+          event: lines.find((line) => line.startsWith("event: "))?.slice(7),
+          data: JSON.parse(
+            lines.find((line) => line.startsWith("data: "))?.slice(6) ?? "{}",
+          ) as Record<string, unknown>,
+        };
+      });
+
+    expect(frames.map((frame) => frame.event)).toEqual(["chunk", "chunk", "done"]);
+    const chunks = frames.filter((frame) => frame.event === "chunk");
+    expect(chunks.map((frame) => frame.data.text).join("")).toBe(exactJson);
+    for (const chunk of chunks) {
+      expect(chunk.data).not.toHaveProperty("fullText");
+    }
+    const terminalFrames = frames.filter((frame) => frame.event === "done");
+    expect(terminalFrames).toHaveLength(1);
+    expect(terminalFrames[0]?.data).toMatchObject({
+      text: exactJson,
+      fullText: exactJson,
+      type: "done",
+    });
+    expect(body).not.toContain("voice_speech_segment");
+    expect(h.history().at(-1)).toMatchObject({
+      role: "assistant",
+      content: exactJson,
+      interrupted: false,
+    });
+    await Promise.all(h.background);
   });
 
   test("stream error and no-parts paths conservatively settle unknown usage", async () => {
@@ -704,10 +772,13 @@ describe("SharedRuntimeChatService", () => {
       })(),
     };
 
-    const response = await service.stream(agent, rpc, h);
+    const response = await service.stream(agent, realtimeVoiceRpc, h);
     const reader = response.body!.getReader();
     const first = await reader.read();
-    expect(new TextDecoder().decode(first.value)).toContain("partial");
+    const firstFrame = new TextDecoder().decode(first.value);
+    expect(firstFrame).toContain("partial");
+    expect(firstFrame).not.toContain("fullText");
+    expect(firstFrame).not.toContain("voice_speech_segment");
     const cancellation = reader.cancel("barge-in");
     let guardTimer: ReturnType<typeof setTimeout> | undefined;
     const cancellationOutcome = await Promise.race([
@@ -1000,10 +1071,10 @@ describe("SharedRuntimeChatService", () => {
     const { store } = memoryTurnClaims();
     const options = { ...h, turnClaims: store };
 
-    const first = await service.stream(agent, keyedRpc, options);
+    const first = await service.stream(agent, realtimeVoiceRpc, options);
     const firstBody = await first.text();
     await Promise.all(h.background);
-    const second = await service.stream(agent, keyedRpc, options);
+    const second = await service.stream(agent, realtimeVoiceRpc, options);
     const secondBody = await second.text();
 
     expect(streamTurnCalls).toBe(1);
@@ -1018,5 +1089,10 @@ describe("SharedRuntimeChatService", () => {
     expect(secondDone.fullText).toBe("hello back");
     expect(secondDone.messageId).toBe(firstDone.messageId);
     expect(secondDone.userMessageId).toBe(firstDone.userMessageId);
+    const replayFrames = secondBody.split("\n\n").filter(Boolean);
+    expect(replayFrames.filter((frame) => frame.startsWith("event: chunk"))).toHaveLength(1);
+    expect(replayFrames.filter((frame) => frame.startsWith("event: done"))).toHaveLength(1);
+    expect(replayFrames[0]).not.toContain("fullText");
+    expect(secondBody).not.toContain("voice_speech_segment");
   });
 });

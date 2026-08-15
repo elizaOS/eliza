@@ -34,6 +34,8 @@ import {
 
 export interface EscalationState {
   id: string;
+  /** Runtime owner of this escalation; never coalesce across agents. */
+  agentId: string;
   reason: string;
   text: string;
   currentStep: number;
@@ -82,10 +84,20 @@ async function loadActiveFromCache(
   runtime: IAgentRuntime,
 ): Promise<EscalationState | null> {
   try {
-    const state = await runtime.getCache<EscalationState>(
-      escalationCacheKey(runtime),
-    );
-    return state ?? null;
+    const state = await runtime.getCache<
+      Omit<EscalationState, "agentId"> & { agentId?: string }
+    >(escalationCacheKey(runtime));
+    if (!state) return null;
+    const agentId = String(runtime.agentId);
+    if (state.agentId && state.agentId !== agentId) {
+      logger.warn(
+        `[escalation] Ignoring escalation cache owned by another agent`,
+      );
+      return null;
+    }
+    // Legacy cache rows predate the explicit owner field but already live
+    // under an agent-scoped key, so bind them to the runtime that loaded them.
+    return { ...state, agentId };
   } catch (err) {
     logger.debug(
       "[escalation] Failed to load escalation state from cache",
@@ -362,7 +374,7 @@ export class EscalationService {
     reason: string,
     text: string,
   ): Promise<EscalationState> {
-    const existing = EscalationService.getActiveEscalationSync();
+    const existing = EscalationService.getActiveEscalationSync(runtime);
     if (existing) {
       existing.reason = `${existing.reason}; ${reason}`;
       existing.text = `${existing.text}\n---\n${text}`;
@@ -389,6 +401,7 @@ export class EscalationService {
 
     const state: EscalationState = {
       id: escalationId,
+      agentId: String(runtime.agentId),
       reason,
       text,
       currentStep: 0,
@@ -434,7 +447,9 @@ export class EscalationService {
     escalationId: string,
   ): Promise<void> {
     const state = activeEscalations.get(escalationId);
-    if (!state || state.resolved) return;
+    if (!state || state.resolved || state.agentId !== String(runtime.agentId)) {
+      return;
+    }
 
     const config = loadEscalationConfig();
     const channels = resolveChannels(config);
@@ -498,10 +513,12 @@ export class EscalationService {
 
   static async resolveEscalation(
     escalationId: string,
-    runtime?: IAgentRuntime,
+    runtime: IAgentRuntime,
   ): Promise<void> {
     const state = activeEscalations.get(escalationId);
-    if (!state || state.resolved) return;
+    if (!state || state.resolved || state.agentId !== String(runtime.agentId)) {
+      return;
+    }
 
     state.resolved = true;
     state.resolvedAt = Date.now();
@@ -514,9 +531,7 @@ export class EscalationService {
 
     logger.info(`[escalation] Resolved ${escalationId}`);
 
-    if (runtime) {
-      await persistState(runtime, state);
-    }
+    await persistState(runtime, state);
 
     // Drop the resolved escalation from the in-memory map. getActiveEscalationSync
     // ignores resolved entries and the resolved state is persisted to cache, so
@@ -524,9 +539,13 @@ export class EscalationService {
     activeEscalations.delete(escalationId);
   }
 
-  static getActiveEscalationSync(): EscalationState | null {
+  static getActiveEscalationSync(
+    runtime: Pick<IAgentRuntime, "agentId"> | string,
+  ): EscalationState | null {
+    const agentId =
+      typeof runtime === "string" ? runtime : String(runtime.agentId);
     for (const state of activeEscalations.values()) {
-      if (!state.resolved) return state;
+      if (!state.resolved && state.agentId === agentId) return state;
     }
     return null;
   }
@@ -534,7 +553,7 @@ export class EscalationService {
   static async getActiveEscalation(
     runtime: IAgentRuntime,
   ): Promise<EscalationState | null> {
-    const cached = EscalationService.getActiveEscalationSync();
+    const cached = EscalationService.getActiveEscalationSync(runtime);
     if (cached) return cached;
 
     const persisted = await loadActiveFromCache(runtime);

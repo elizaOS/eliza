@@ -7,6 +7,7 @@
  */
 
 import crypto from "node:crypto";
+import { DELTA_STREAM_PROTOCOL } from "@elizaos/shared";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import {
   InsufficientCreditsError as InsufficientCreditsApiError,
@@ -850,6 +851,11 @@ export class SharedRuntimeChatService {
     const params = record(rpc.params) ?? {};
     const text = stringValue(params.text);
     if (!text) return sseError("message.send requires params.text");
+    const deltaStream = params.streamProtocol === DELTA_STREAM_PROTOCOL;
+    // `voiceSpeechProtocol` deliberately remains a preserved RPC capability,
+    // not an instruction to derive speech from raw provider deltas. This
+    // runtime can emit committed speech only after its producer supplies an
+    // append-only, privacy/effect-gated authority distinct from `text-delta`.
     const roomId = channelId(agent.id, params);
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
@@ -861,7 +867,7 @@ export class SharedRuntimeChatService {
             userMessageId: replay.userMessageId,
             chunk: replay.text,
             text: replay.text,
-            fullText: replay.text,
+            ...(deltaStream ? {} : { fullText: replay.text }),
             timestamp: Date.now(),
           }) +
             chatSseFrame("done", {
@@ -949,7 +955,7 @@ export class SharedRuntimeChatService {
           userMessageId: messageIds.user,
           chunk: reply,
           text: reply,
-          fullText: reply,
+          ...(deltaStream ? {} : { fullText: reply }),
           timestamp: Date.now(),
         }) +
           chatSseFrame("done", {
@@ -1043,7 +1049,7 @@ export class SharedRuntimeChatService {
                     userMessageId: messageIds.user,
                     chunk: part.text,
                     text: part.text,
-                    fullText: streamedReply,
+                    ...(deltaStream ? {} : { fullText: streamedReply }),
                     timestamp: Date.now(),
                   }),
                 ),

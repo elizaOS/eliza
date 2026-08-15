@@ -5,7 +5,33 @@
  * mid-abbreviation.
  */
 import { describe, expect, it } from "vitest";
-import { extractFirstSentence } from "./text-splitting.ts";
+import {
+	extractFirstSentence,
+	isAbbreviationPeriod,
+} from "./text-splitting.ts";
+
+describe("isAbbreviationPeriod", () => {
+	it.each([
+		"Please ask Dr. Smith for the details.",
+		"Please ask Mr. Smith for the details.",
+		"Review e.g. the first example before continuing.",
+		"Use the primary option, i.e. the first toggle.",
+		'Please ask "Dr. Smith" for the details.',
+		"Please ask (Mr. Smith) for the details.",
+	])("recognizes the first abbreviation period in %j", (text) => {
+		const abbreviationEnd = /(?:Dr|Mr|e\.g|i\.e)\./.exec(text);
+		expect(abbreviationEnd).not.toBeNull();
+		const periodOffset =
+			(abbreviationEnd?.index ?? 0) + (abbreviationEnd?.[0].length ?? 0) - 1;
+		expect(isAbbreviationPeriod(text, periodOffset)).toBe(true);
+	});
+
+	it("does not classify a genuine sentence terminator or non-period", () => {
+		const text = "The review is complete. Next";
+		expect(isAbbreviationPeriod(text, text.indexOf("."))).toBe(false);
+		expect(isAbbreviationPeriod("Is it complete?", 14)).toBe(false);
+	});
+});
 
 describe("extractFirstSentence", () => {
 	it("does not split inside dotted abbreviations (e.g. / i.e.)", () => {

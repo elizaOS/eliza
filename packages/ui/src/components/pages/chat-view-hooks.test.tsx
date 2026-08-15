@@ -8,6 +8,10 @@
  */
 
 import {
+  REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+} from "@elizaos/shared";
+import {
   act,
   cleanup,
   fireEvent,
@@ -225,6 +229,47 @@ describe("useChatVoiceController voice playback unlock", () => {
     });
 
     expect(stopSpeaking).not.toHaveBeenCalled();
+  });
+
+  it("binds a finalized browser transcript to one exact realtime VOICE_DM request", async () => {
+    vi.useFakeTimers();
+    const handleChatSend = vi.fn(async () => {});
+    const setState = vi.fn();
+    renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        handleChatSend,
+        setState,
+      }),
+    );
+
+    const onTranscript = useVoiceChatMock.mock.calls.at(-1)?.[0].onTranscript;
+    expect(onTranscript).toBeTypeOf("function");
+    await act(async () => {
+      onTranscript?.("Reply with exact JSON", {
+        text: "Reply with exact JSON",
+        mode: "compose",
+        isFinal: true,
+        turn: {
+          id: "browser-turn-7",
+          text: "Reply with exact JSON",
+          mode: "compose",
+          isFinal: true,
+          source: "browser",
+        },
+      });
+      await vi.advanceTimersByTimeAsync(50);
+    });
+
+    expect(setState).toHaveBeenCalledWith("chatInput", "Reply with exact JSON");
+    expect(handleChatSend).toHaveBeenCalledWith("VOICE_DM", {
+      clientMessageId: `${REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX}browser-turn-7`,
+      metadata: expect.objectContaining({
+        clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+        voiceTurnId: "browser-turn-7",
+        voiceSource: "browser",
+      }),
+    });
   });
 
   it("passes message telemetry through manual Play message speech", () => {

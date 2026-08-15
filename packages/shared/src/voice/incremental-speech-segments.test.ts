@@ -12,6 +12,33 @@ import {
 const FIRST_SENTENCE =
   "This first complete sentence is deliberately long enough to speak.";
 
+const ABBREVIATION_SENTENCES = [
+  {
+    label: "Dr.",
+    abbreviation: "Dr.",
+    sentence:
+      "Please consult the attending physician Dr. Smith before proceeding.",
+  },
+  {
+    label: "Mr.",
+    abbreviation: "Mr.",
+    sentence:
+      "Please consult the attending physician Mr. Smith before proceeding.",
+  },
+  {
+    label: "e.g.",
+    abbreviation: "e.g.",
+    sentence:
+      "Please review the supporting examples, e.g. the first case, before proceeding.",
+  },
+  {
+    label: "i.e.",
+    abbreviation: "i.e.",
+    sentence:
+      "Please use the primary toggle, i.e. the first option, before proceeding.",
+  },
+] as const;
+
 describe("committed incremental speech", () => {
   test("publishes the exact additive protocol name", () => {
     expect(COMMITTED_SPEECH_PROTOCOL).toBe("committed-segments-v1");
@@ -30,6 +57,64 @@ describe("committed incremental speech", () => {
         speechText: FIRST_SENTENCE,
       },
     ]);
+  });
+
+  test("speaks an explicitly committed first sentence without fake lookahead", () => {
+    const segmenter = new CommittedSpeechSegmenter();
+    expect(segmenter.observeCommittedModelDelta(FIRST_SENTENCE)).toEqual([
+      {
+        type: "voice_speech_segment",
+        version: 1,
+        sequence: 0,
+        sourceStart: 0,
+        sourceEnd: FIRST_SENTENCE.length,
+        speechText: FIRST_SENTENCE,
+      },
+    ]);
+  });
+
+  test.each(ABBREVIATION_SENTENCES)(
+    "does not speak $label before an arbitrary model delta proves the real sentence boundary",
+    ({ sentence }) => {
+      const segmenter = new CommittedSpeechSegmenter();
+      const segments = segmenter.observeModelDelta(`${sentence} Next`);
+
+      expect(segments).toHaveLength(1);
+      expect(segments[0]?.sourceStart).toBe(0);
+      expect(segments[0]?.sourceEnd).toBe(sentence.length);
+      expect(segmenter.committedSourceText).toBe(sentence);
+    },
+  );
+
+  test.each(ABBREVIATION_SENTENCES)(
+    "does not trust $label at the end of a committed delta",
+    ({ abbreviation, sentence }) => {
+      const segmenter = new CommittedSpeechSegmenter();
+      const abbreviationEnd =
+        sentence.indexOf(abbreviation) + abbreviation.length;
+
+      expect(
+        segmenter.observeCommittedModelDelta(
+          sentence.slice(0, abbreviationEnd),
+        ),
+      ).toEqual([]);
+      const segments = segmenter.observeCommittedModelDelta(
+        sentence.slice(abbreviationEnd),
+      );
+
+      expect(segments).toHaveLength(1);
+      expect(segments[0]?.sourceStart).toBe(0);
+      expect(segments[0]?.sourceEnd).toBe(sentence.length);
+      expect(segmenter.committedSourceText).toBe(sentence);
+    },
+  );
+
+  test("never trusts an arbitrary provider callback that ends at decimal or URL punctuation", () => {
+    const version = new CommittedSpeechSegmenter();
+    expect(version.observeModelDelta("The release is version 1.")).toEqual([]);
+
+    const url = new CommittedSpeechSegmenter();
+    expect(url.observeModelDelta("Read https://example.")).toEqual([]);
   });
 
   test("assembles arbitrary chunks before checking secrets and structure", () => {

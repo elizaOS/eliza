@@ -32,7 +32,10 @@ const { collectReferencedMedia, mediaFileRoute, registerMediaPipelineHook } =
 
 type Memory = import("@elizaos/core").Memory;
 
-type CapturedHook = { handler: (rt: unknown, ctx: unknown) => unknown };
+type CapturedHook = {
+  textMutation?: "none" | "may_change";
+  handler: (rt: unknown, ctx: unknown) => unknown;
+};
 
 /** Mock runtime that captures the registered pipeline hook for invocation. */
 function captureHookRuntime(): {
@@ -59,6 +62,7 @@ describe("registerMediaPipelineHook", () => {
     const { runtime, getHook } = captureHookRuntime();
     registerMediaPipelineHook(runtime);
     const hook = getHook();
+    expect(hook.textMutation).toBe("none");
 
     const ctx = {
       phase: "outgoing_before_deliver" as const,

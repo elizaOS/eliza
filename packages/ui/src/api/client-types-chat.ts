@@ -300,6 +300,16 @@ export interface AccountConnectRequest {
   reason?: string;
 }
 
+/**
+ * UI-local request identity retained only while an optimistic realtime voice
+ * turn can still be retried. The metadata is the small, allowlisted envelope
+ * that was sent on the first attempt; server-loaded history never carries it.
+ */
+export interface OptimisticChatRetryEnvelope {
+  channelType: ConversationChannelType;
+  metadata: Record<string, unknown>;
+}
+
 export interface ConversationMessage {
   id: string;
   /**
@@ -307,8 +317,20 @@ export interface ConversationMessage {
    * durable server id. Never sent as the domain message identifier.
    */
   clientRenderId?: string;
+  /**
+   * Exact optimistic retry envelope for a realtime voice turn. This is local
+   * presentation state, not domain message content, and is discarded when a
+   * history reload replaces the optimistic row.
+   */
+  optimisticRetryEnvelope?: OptimisticChatRetryEnvelope;
   role: "user" | "assistant";
   text: string;
+  /**
+   * Strict server assertion that `text` is already the authoritative user-
+   * visible payload and must bypass legacy `{reply}` / `{response}` envelope
+   * normalization. Only literal boolean `true` activates this contract.
+   */
+  preserveUserRequestedFormat?: boolean;
   timestamp: number;
   /** Machine-only assistant output excluded from the rendered transcript. */
   transcriptVisibility?: "internal";

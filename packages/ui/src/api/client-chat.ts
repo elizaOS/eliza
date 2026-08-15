@@ -311,6 +311,7 @@ declare module "./client-base" {
     ): Promise<{
       text: string;
       agentName: string;
+      preserveUserRequestedFormat?: boolean;
       noResponseReason?: "ignored";
       failureKind?: ChatFailureKind;
       localInference?: LocalInferenceChatMetadata;
@@ -326,6 +327,7 @@ declare module "./client-base" {
       text: string;
       agentName: string;
       completed: boolean;
+      preserveUserRequestedFormat?: true;
       noResponseReason?: "ignored";
       usage?: ChatTokenUsage;
       failureKind?: ChatFailureKind;
@@ -499,6 +501,7 @@ declare module "./client-base" {
     ): Promise<{
       text: string;
       agentName: string;
+      preserveUserRequestedFormat?: boolean;
       transcriptVisibility?: "internal";
       blocks?: ContentBlock[];
       noResponseReason?: "ignored";
@@ -539,6 +542,7 @@ declare module "./client-base" {
       text: string;
       agentName: string;
       completed: boolean;
+      preserveUserRequestedFormat?: true;
       transcriptVisibility?: "internal";
       /** Agent reasoning/thought for this turn, when the model emitted one. */
       reasoning?: string;
@@ -569,6 +573,7 @@ declare module "./client-base" {
     abortConversationTurn(
       roomId: string,
       reason?: string,
+      clientMessageId?: string,
     ): Promise<{ aborted: boolean; roomId: string; reason: string }>;
     requestGreeting(
       id: string,
@@ -1114,7 +1119,10 @@ ElizaClient.prototype.getConversationMessages = async function (
   return {
     messages: response.messages.map((message) => {
       if (message.role !== "assistant") return message;
-      const text = this.normalizeAssistantText(message.text);
+      const text = this.normalizeAssistantText(message.text, {
+        preserveUserRequestedFormat:
+          message.preserveUserRequestedFormat === true,
+      });
       return text === message.text ? message : { ...message, text };
     }),
     ...(typeof response.hasMore === "boolean"
@@ -1333,6 +1341,7 @@ ElizaClient.prototype.sendConversationMessage = async function (
   const response = await this.fetch<{
     text: string;
     agentName: string;
+    preserveUserRequestedFormat?: boolean;
     transcriptVisibility?: "internal";
     blocks?: ContentBlock[];
     noResponseReason?: "ignored";
@@ -1354,7 +1363,10 @@ ElizaClient.prototype.sendConversationMessage = async function (
     text:
       response.noResponseReason === "ignored"
         ? ""
-        : this.normalizeAssistantText(response.text),
+        : this.normalizeAssistantText(response.text, {
+            preserveUserRequestedFormat:
+              response.preserveUserRequestedFormat === true,
+          }),
   };
 };
 
@@ -1389,11 +1401,15 @@ ElizaClient.prototype.abortConversationTurn = async function (
   this: ElizaClient,
   roomId,
   reason = "ui-abort",
+  clientMessageId?,
 ) {
   return this.fetch(`/api/turns/${encodeURIComponent(roomId)}/abort`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify({
+      reason,
+      ...(clientMessageId ? { clientMessageId } : {}),
+    }),
   });
 };
 

@@ -1031,11 +1031,22 @@ export interface ActionContext {
  *   Present when the emission originates from a structured field extractor.
  *   Undefined for raw-token streams (useModel without an extractor) where no
  *   field-level accumulation exists.
+ * @param metadata - Optional authority/format facts minted by a validated
+ *   producer. Raw model/provider callbacks omit it. Consumers must treat only
+ *   literal known values as authoritative.
  */
+export interface StreamChunkMetadata {
+	/** Bytes crossed the post-routing committed-reply safety boundary. */
+	authority?: "committed_reply";
+	/** Exact user-visible representation of this committed accumulation. */
+	visibleFormat?: "text" | "json";
+}
+
 export type StreamChunkCallback = (
 	chunk: string,
 	messageId?: string,
 	accumulated?: string,
+	metadata?: StreamChunkMetadata,
 ) => void | Promise<void>;
 
 /**

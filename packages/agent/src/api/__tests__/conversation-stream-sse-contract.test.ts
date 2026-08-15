@@ -34,6 +34,7 @@ import {
   type Memory,
   ModelType,
   RoomHandlerQueue,
+  type StreamChunkMetadata,
   stringToUuid,
   TurnAbortedError,
   TurnControllerRegistry,
@@ -341,7 +342,11 @@ function createModelBackedMessageService() {
  * the delta writer emits for it.
  */
 function createChunkPlanMessageService(
-  chunks: Array<{ chunk: string; accumulated?: string }>,
+  chunks: Array<{
+    chunk: string;
+    accumulated?: string;
+    metadata?: StreamChunkMetadata;
+  }>,
   finalText: string,
   thought: string,
 ): NonNullable<AgentRuntime["messageService"]> {
@@ -356,12 +361,13 @@ function createChunkPlanMessageService(
           chunk: string,
           messageId?: string,
           accumulated?: string,
+          metadata?: StreamChunkMetadata,
         ) => Promise<void> | void;
       },
     ) {
-      for (const { chunk, accumulated } of chunks) {
+      for (const { chunk, accumulated, metadata } of chunks) {
         await Promise.resolve();
-        await options?.onStreamChunk?.(chunk, undefined, accumulated);
+        await options?.onStreamChunk?.(chunk, undefined, accumulated, metadata);
       }
       return {
         didRespond: true,
@@ -470,6 +476,24 @@ function createFailedCallbackWithoutSyntheticFallbackMessageService(): NonNullab
       shouldRespond: true,
       skipEvaluation: true,
       reason: "failed-callback-without-synthetic-fallback-stream-contract-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
+function createThrowAfterProvisionalCallbackMessageService(): NonNullable<
+  AgentRuntime["messageService"]
+> {
+  return {
+    async handleMessage(_runtime, _message, callback) {
+      await callback?.({ text: "Reminder created for 9:00 AM." }, "REMIND_ME");
+      throw new Error("private action transport detail");
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "throw-after-provisional-action-callback-stream-contract-test",
     }),
     deleteMessage: async () => undefined,
     clearChannel: async () => undefined,
@@ -997,6 +1021,74 @@ describe("conversation stream SSE contract (#10712)", () => {
       ),
     ).toHaveLength(1);
     expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+  });
+
+  it("isolates ordinary chat Stop by client message id across same-room tabs", async () => {
+    const clientMessageId = "ordinary-tab-request-a";
+    requestClientMessageId = clientMessageId;
+    const started = createDeferred();
+    const gate = createDeferred();
+    let generationSignal: AbortSignal | undefined;
+    const service = {
+      async handleMessage(
+        _runtime: AgentRuntime,
+        _message: Memory,
+        _callback: unknown,
+        options?: { abortSignal?: AbortSignal },
+      ) {
+        generationSignal = options?.abortSignal;
+        started.resolve();
+        await gate.promise;
+        options?.abortSignal?.throwIfAborted();
+        return {
+          didRespond: true,
+          responseContent: { text: "should not finish" },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "ordinary-request-cancellation-isolation-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    } satisfies NonNullable<AgentRuntime["messageService"]>;
+    const { ctx, record, state } = createCtx(service);
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+
+    const turn = handleConversationRoutes(ctx);
+    await started.promise;
+    expect(
+      runtime.turnControllers.hasRequestAdmission(ROOM_ID, clientMessageId),
+    ).toBe(true);
+    const otherTab = runtime.turnControllers.registerRequestAdmission(
+      ROOM_ID,
+      "ordinary-tab-request-b",
+    );
+
+    const stopped = runtime.turnControllers.abortRequestAdmission(
+      ROOM_ID,
+      clientMessageId,
+      "ui-chat-stop",
+    );
+    expect(stopped).toMatchObject({
+      requestObserved: true,
+      requestAborted: true,
+    });
+    expect(generationSignal?.aborted).toBe(true);
+    expect(otherTab.signal.aborted).toBe(false);
+
+    gate.resolve();
+    await Promise.all([turn, stopped.settlement]);
+    expect(
+      parseSsePayloads(record.writes).some(
+        (payload) => payload.type === "done",
+      ),
+    ).toBe(false);
+    expect(otherTab.signal.aborted).toBe(false);
+    otherTab.finish();
   });
 
   it("persists and acknowledges an exact voice pre-abort once without generation or assistant output", async () => {
@@ -2204,6 +2296,56 @@ describe("conversation stream SSE contract (#10712)", () => {
     );
   });
 
+  it("does not promote provisional action callback text when generation throws before settlement", async () => {
+    requestStreamProtocol = "delta-v2";
+    const provisionalText = "Reminder created for 9:00 AM.";
+    const { ctx, record } = createCtx(
+      createThrowAfterProvisionalCallbackMessageService(),
+    );
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    await handleConversationRoutes(ctx);
+
+    const payloads = parseSsePayloads(record.writes);
+    expect(payloads.filter((payload) => payload.type === "token")).toEqual([
+      {
+        type: "token",
+        fullText: provisionalText,
+        provisional: true,
+      },
+    ]);
+    expect(payloads.some((payload) => payload.type === "error")).toBe(false);
+    expect(payloads.find((payload) => payload.type === "done")).toMatchObject({
+      type: "done",
+      fullText: "Sorry, I'm having a provider issue",
+      failureKind: "provider_issue",
+    });
+    expect(JSON.stringify(payloads)).not.toContain(
+      "private action transport detail",
+    );
+    expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+    expect(persistAssistantConversationMemory).toHaveBeenCalledWith(
+      expect.anything(),
+      ROOM_ID,
+      expect.objectContaining({
+        text: "Sorry, I'm having a provider issue",
+      }),
+      ChannelType.DM,
+      undefined,
+      expect.any(String),
+      expect.anything(),
+    );
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalledWith(
+      expect.anything(),
+      ROOM_ID,
+      expect.objectContaining({ text: provisionalText }),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
   it("uses this turn's exact persisted response id instead of a room-latest guess", async () => {
     const responseId = stringToUuid("persisted-callback-response") as UUID;
     const { ctx, record, state } = createCtx(
@@ -2830,6 +2972,46 @@ describe("conversation stream SSE contract (#10712)", () => {
     ).toBe(false);
   });
 
+  it("speaks an upstream-committed first sentence without waiting for fake lookahead", async () => {
+    const firstSentence =
+      "This complete sentence is deliberately long enough for safe speech.";
+    requestStreamProtocol = "delta-v2";
+    requestVoiceSpeechProtocol = COMMITTED_SPEECH_PROTOCOL;
+    useExactRealtimeVoiceRequest("voice:committed-first-sentence-contract");
+    const fixture = createCtx(
+      createChunkPlanMessageService(
+        [
+          {
+            chunk: firstSentence,
+            accumulated: firstSentence,
+            metadata: {
+              authority: "committed_reply",
+              visibleFormat: "text",
+            },
+          },
+        ],
+        firstSentence,
+        "upstream committed response",
+      ),
+    );
+
+    await handleConversationRoutes(fixture.ctx);
+
+    const payloads = parseSsePayloads(fixture.record.writes);
+    const segmentIndex = payloads.findIndex(
+      (payload) => payload.type === "voice_speech_segment",
+    );
+    const doneIndex = payloads.findIndex((payload) => payload.type === "done");
+    expect(segmentIndex).toBeGreaterThan(-1);
+    expect(segmentIndex).toBeLessThan(doneIndex);
+    expect(payloads[segmentIndex]).toMatchObject({
+      type: "voice_speech_segment",
+      sequence: 0,
+      sourceEnd: firstSentence.length,
+      speechText: firstSentence,
+    });
+  });
+
   it("fails closed and persists only the committed prefix after a model rewrite", async () => {
     const committed =
       "This complete sentence is deliberately long enough for safe speech.";
@@ -2867,7 +3049,7 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(persistAssistantConversationMemory).toHaveBeenCalledWith(
       expect.anything(),
       ROOM_ID,
-      expect.objectContaining({ text: committed }),
+      expect.objectContaining({ text: committed, interrupted: true }),
       ChannelType.DM,
       expect.any(Number),
       expect.any(String),
@@ -2879,6 +3061,7 @@ describe("conversation stream SSE contract (#10712)", () => {
   it("preserves the already-authorized prefix when an exact turn aborts", async () => {
     const committed =
       "This complete sentence is deliberately long enough for safe speech.";
+    const visiblePrefix = `${committed} Next`;
     requestStreamProtocol = "delta-v2";
     requestVoiceSpeechProtocol = COMMITTED_SPEECH_PROTOCOL;
     useExactRealtimeVoiceRequest("voice:committed-abort-contract");
@@ -2895,11 +3078,7 @@ describe("conversation stream SSE contract (#10712)", () => {
           ) => Promise<void> | void;
         },
       ) {
-        await options?.onStreamChunk?.(
-          `${committed} Next`,
-          undefined,
-          `${committed} Next`,
-        );
+        await options?.onStreamChunk?.(visiblePrefix, undefined, visiblePrefix);
         throw new TurnAbortedError("confirmed_speech");
       },
       shouldRespond: () => ({
@@ -2917,7 +3096,7 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(persistAssistantConversationMemory).toHaveBeenCalledWith(
       expect.anything(),
       ROOM_ID,
-      expect.objectContaining({ text: committed }),
+      expect.objectContaining({ text: visiblePrefix, interrupted: true }),
       ChannelType.DM,
       expect.any(Number),
       expect.any(String),

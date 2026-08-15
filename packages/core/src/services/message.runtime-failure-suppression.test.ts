@@ -235,6 +235,63 @@ describe("v5 runtime failure before a respond decision", () => {
 		).toEqual(["RESPONSE_HANDLER"]);
 		expect(deliveries).toEqual([]);
 	});
+
+	it("redacts provider message, stack, body, URL, report, and stderr diagnostics", async () => {
+		const secret = "sk-live-diagnostic-secret";
+		const email = "nubs@example.com";
+		const privateMarker = "SYNTHETIC-PRIVATE-PROVIDER-DIAGNOSTIC";
+		const providerError = Object.assign(
+			new Error(`Bad Request ${privateMarker} for ${email} using ${secret}`),
+			{
+				statusCode: 400,
+				responseBody: JSON.stringify({
+					message: `${privateMarker}: rejected ${email} using ${secret}`,
+				}),
+				url: `https://provider.example/private/${privateMarker}?token=${secret}`,
+			},
+		);
+		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+		runtime.useModel = vi.fn(async () => {
+			throw providerError;
+		}) as IAgentRuntime["useModel"];
+		runtime.redactSecrets = vi.fn((text: string) =>
+			text.replaceAll(secret, "[REDACTED_SECRET]"),
+		);
+		const stderr = vi
+			.spyOn(process.stderr, "write")
+			.mockImplementation(() => true);
+
+		const message = makeMessage({ channelType: ChannelType.DM });
+		await new DefaultMessageService().handleMessage(
+			runtime,
+			message,
+			async () => [],
+		);
+
+		const warnCall = (
+			runtime.logger.warn as ReturnType<typeof vi.fn>
+		).mock.calls.find((call) => call[1] === "v5 message runtime failed");
+		const reportCall = (
+			runtime.reportError as ReturnType<typeof vi.fn>
+		).mock.calls.find((call) => call[0] === "MessageService.v5Runtime");
+		const diagnostics = JSON.stringify({
+			warnCall,
+			reportCall: reportCall?.map((entry) =>
+				entry instanceof Error
+					? { name: entry.name, message: entry.message, stack: entry.stack }
+					: entry,
+			),
+			stderr: stderr.mock.calls,
+		});
+		expect(diagnostics).not.toContain(secret);
+		expect(diagnostics).not.toContain(email);
+		expect(diagnostics).not.toContain(privateMarker);
+		expect(diagnostics).not.toContain("provider.example");
+		expect(diagnostics).not.toContain(String(message.entityId));
+		expect(diagnostics).not.toContain(String(message.roomId));
+		expect(diagnostics).toContain("Model provider request failed (HTTP 400)");
+		expect(diagnostics).toContain('"providerStatus":400');
+	});
 });
 
 describe("planner failure after a promoted stage-1 answer", () => {

@@ -1,3 +1,4 @@
+import { isAbbreviationPeriod } from "@elizaos/core";
 import { projectVoiceOutput } from "./voice-output-envelope";
 
 export const COMMITTED_SPEECH_PROTOCOL = "committed-segments-v1" as const;
@@ -154,13 +155,24 @@ export function validateCommittedSpeechSegment(
   };
 }
 
-function sentenceBoundaries(text: string, start: number): number[] {
+function sentenceBoundaries(
+  text: string,
+  start: number,
+  trustCommittedEndBoundary: boolean,
+): number[] {
   const boundaries: number[] = [];
-  const matcher = /[.!?…](?:["'’”)\]]*)(?=\s)/gu;
+  const matcher = /[.!?…](?:["'’”)\]]*)(?=\s|$)/gu;
   matcher.lastIndex = start;
   for (let match = matcher.exec(text); match; match = matcher.exec(text)) {
     const end = match.index + match[0].length;
-    if (/\S/u.test(text.slice(end))) boundaries.push(end);
+    if (isAbbreviationPeriod(text, match.index)) continue;
+    const trailingText = text.slice(end);
+    if (
+      /\S/u.test(trailingText) ||
+      (trustCommittedEndBoundary && !/\S/u.test(trailingText))
+    ) {
+      boundaries.push(end);
+    }
   }
   return boundaries;
 }
@@ -191,7 +203,20 @@ export class CommittedSpeechSegmenter {
   observeModelDelta(chunk: string): readonly CommittedSpeechSegment[] {
     if (!chunk) return [];
     this.authoritativeText += chunk;
-    return this.drainSegments();
+    return this.drainSegments(false);
+  }
+
+  /**
+   * Observe text that an upstream append-only display gate has already made
+   * irrevocable. Unlike arbitrary provider callback boundaries, the end of a
+   * committed delta may safely prove a sentence boundary without waiting for a
+   * later token. This is the low-latency path used only with explicit
+   * `authority: "committed_reply"` stream metadata.
+   */
+  observeCommittedModelDelta(chunk: string): readonly CommittedSpeechSegment[] {
+    if (!chunk) return [];
+    this.authoritativeText += chunk;
+    return this.drainSegments(true);
   }
 
   observeModelSnapshot(text: string): readonly CommittedSpeechSegment[] {
@@ -205,7 +230,22 @@ export class CommittedSpeechSegmenter {
       return [];
     }
     this.authoritativeText = text;
-    return this.drainSegments();
+    return this.drainSegments(false);
+  }
+
+  /** Snapshot counterpart to {@link observeCommittedModelDelta}. */
+  observeCommittedModelSnapshot(
+    text: string,
+  ): readonly CommittedSpeechSegment[] {
+    this.assertRetainsCommittedPrefix(text);
+    if (
+      text.length < this.authoritativeText.length &&
+      this.authoritativeText.startsWith(text)
+    ) {
+      return [];
+    }
+    this.authoritativeText = text;
+    return this.drainSegments(true);
   }
 
   assertTerminalText(text: string): void {
@@ -220,7 +260,9 @@ export class CommittedSpeechSegmenter {
     }
   }
 
-  private drainSegments(): readonly CommittedSpeechSegment[] {
+  private drainSegments(
+    trustCommittedEndBoundary: boolean,
+  ): readonly CommittedSpeechSegment[] {
     if (
       this.disabled ||
       this.validationState.nextSequence >= MAX_COMMITTED_SPEECH_SEGMENTS ||
@@ -235,6 +277,7 @@ export class CommittedSpeechSegmenter {
       const boundaries = sentenceBoundaries(
         this.authoritativeText,
         sourceStart,
+        trustCommittedEndBoundary,
       );
       let selected: { sourceEnd: number; speechText: string } | null = null;
       for (const sourceEnd of boundaries) {

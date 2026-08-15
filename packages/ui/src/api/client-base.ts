@@ -100,6 +100,12 @@ type StreamChatEvent = {
   text?: string;
   fullText?: string;
   /**
+   * `type: "done"` only — strict producer assertion that `fullText` is the
+   * authoritative user-visible payload and must bypass legacy response-
+   * envelope extraction and whitespace normalization.
+   */
+  preserveUserRequestedFormat?: boolean;
+  /**
    * `type: "token"` only — the carried text is an in-flight action-callback
    * delivery the turn's final reply may replace wholesale. Text bubbles render
    * it exactly like any streamed text; voice output must NOT synthesize it
@@ -245,6 +251,7 @@ type StreamChatState = {
   doneAssistantEphemeral: boolean;
   doneHistoryRefreshRequired: boolean;
   doneInterrupted: boolean;
+  donePreserveUserRequestedFormat: boolean;
   doneThought: string | null;
   doneNoResponseReason: "ignored" | null;
   doneUsage: ChatTokenUsage | undefined;
@@ -415,6 +422,9 @@ function applyStreamChatDoneEvent(
   }
   if (parsed.interrupted === true) {
     state.doneInterrupted = true;
+  }
+  if (parsed.preserveUserRequestedFormat === true) {
+    state.donePreserveUserRequestedFormat = true;
   }
   if (typeof parsed.thought === "string" && parsed.thought.trim()) {
     state.doneThought = parsed.thought;
@@ -2319,8 +2329,12 @@ export class ElizaClient {
 
   // --- Text normalization helpers (used by chat domain methods) ---
 
-  normalizeAssistantText(text: string): string {
+  normalizeAssistantText(
+    text: string,
+    options?: { preserveUserRequestedFormat?: boolean },
+  ): string {
     if (typeof text !== "string") return GENERIC_NO_RESPONSE_TEXT;
+    if (options?.preserveUserRequestedFormat === true) return text;
     const stripped = stripAssistantStageDirections(
       extractAssistantReplyText(text) ?? text,
     );
@@ -2396,6 +2410,12 @@ export class ElizaClient {
     assistantEphemeral?: boolean;
     historyRefreshRequired?: boolean;
     interrupted?: boolean;
+    /**
+     * True only when the producer asserts that `text` is already the exact
+     * user-requested visible payload and legacy envelope normalization was
+     * intentionally bypassed.
+     */
+    preserveUserRequestedFormat?: true;
   }> {
     // Idempotency key for the chat send. The HTTP chat path (POST
     // /api/chat[/:conversationId]/stream) lives in
@@ -2451,6 +2471,7 @@ export class ElizaClient {
       doneAssistantEphemeral: false,
       doneHistoryRefreshRequired: false,
       doneInterrupted: false,
+      donePreserveUserRequestedFormat: false,
       doneThought: null,
       doneNoResponseReason: null,
       doneUsage: undefined,
@@ -2572,7 +2593,10 @@ export class ElizaClient {
       streamState.doneNoResponseReason === "ignored" ||
       (!streamState.receivedDone && rawReplyText.trim().length === 0)
         ? ""
-        : this.normalizeAssistantText(rawReplyText);
+        : this.normalizeAssistantText(rawReplyText, {
+            preserveUserRequestedFormat:
+              streamState.donePreserveUserRequestedFormat,
+          });
     return {
       text: resolvedText,
       agentName: streamState.doneAgentName ?? "Eliza",
@@ -2596,6 +2620,9 @@ export class ElizaClient {
         ? { historyRefreshRequired: true }
         : {}),
       ...(streamState.doneInterrupted ? { interrupted: true } : {}),
+      ...(streamState.donePreserveUserRequestedFormat
+        ? { preserveUserRequestedFormat: true as const }
+        : {}),
       ...(streamState.doneNoResponseReason
         ? { noResponseReason: streamState.doneNoResponseReason }
         : {}),

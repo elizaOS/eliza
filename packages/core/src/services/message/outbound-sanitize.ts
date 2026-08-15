@@ -46,11 +46,15 @@ const MACHINE_SYNTAX_TAGS = [
 	"reasoning",
 	"reflection",
 	"thought",
+	"analysis",
+	"scratchpad",
 	"antthinking",
 	// Native model tool-call syntax (glm/qwen-family `<tool_call>`, gemini-style
 	// `<function_call>`). Machine syntax, never user-facing prose — strip it
 	// like reasoning tags.
 	"tool_call",
+	"tool_calls",
+	"tools",
 	"function_call",
 ] as const;
 
@@ -61,7 +65,7 @@ const SELF_CLOSING_ARTIFACTS_RE =
 // every shape SELF_CLOSING_ARTIFACTS_RE strips (delta 1: the Discord original
 // omitted `eot_id` here, so a lone sentinel slipped through to the wire).
 const QUICK_TAG_RE =
-	/<\/?(?:thinking|reasoning|reflection|thought|antthinking|tool_call|function_call|final|STOP|END|end_turn|eot_id)\b|<\|(?:end|stop|im_end|eot_id)/i;
+	/<\/?(?:thinking|reasoning|reflection|thought|analysis|scratchpad|antthinking|tool_call|tool_calls|tool|tools|function_call|final|STOP|END|end_turn|eot_id)\b|<\|(?:end|stop|im_end|eot_id|python_tag|start|channel|message)/i;
 const CODE_BLOCK_RE = /```[\s\S]*?```/g;
 // An inline code span: a backtick run, non-backtick single-line content, and a
 // closing run of exactly the same length (CommonMark's matched-run rule; the
@@ -75,6 +79,86 @@ const INLINE_CODE_RE = /(`+)[^`\n]+?\1(?!`)/g;
 // NUL-marker on the wire.
 const CODE_SENTINEL_PREFIX = "\x00CB";
 
+const RESERVED_VISIBLE_JSON_KEYS = new Set([
+	"shouldrespond",
+	"processmessage",
+	"replytext",
+	"messagetouser",
+	"thought",
+	"reasoning",
+	"analysis",
+	"scratchpad",
+	"contexts",
+	"candidateactionnames",
+	"requirestool",
+	"facts",
+	"action",
+	"actions",
+	"parameters",
+	"toolcalls",
+	"tool_calls",
+	"tool_call",
+	"tool_use",
+	"tool",
+	"tools",
+	"toolcallid",
+	"function",
+	"functioncall",
+	"function_call",
+	"decision",
+	"route",
+]);
+
+function containsReservedVisibleJsonKey(value: unknown): boolean {
+	if (Array.isArray(value)) {
+		return value.some((entry) => containsReservedVisibleJsonKey(entry));
+	}
+	if (!value || typeof value !== "object") return false;
+	const record = value as Record<string, unknown>;
+	const discriminator = record.type;
+	if (
+		typeof discriminator === "string" &&
+		["tool_use", "tool_call", "function_call"].includes(
+			discriminator.toLowerCase(),
+		)
+	) {
+		return true;
+	}
+	const carriesNativeArguments = ["arguments", "args", "input"].some(
+		(key) => Object.hasOwn(record, key),
+	);
+	if (
+		carriesNativeArguments &&
+		(typeof record.name === "string" ||
+			typeof record.tool === "string" ||
+			(record.tool !== null && typeof record.tool === "object"))
+	) {
+		return true;
+	}
+	for (const [key, entry] of Object.entries(value)) {
+		if (RESERVED_VISIBLE_JSON_KEYS.has(key.toLowerCase())) return true;
+		if (containsReservedVisibleJsonKey(entry)) return true;
+	}
+	return false;
+}
+
+/**
+ * True only for a complete JSON value that contains no runtime reply, routing,
+ * reasoning, action, or tool-control keys at any depth. Callers use
+ * this shared proof before preserving JSON string bytes that resemble model
+ * tags; JSON structure, rather than regex over string values, owns the safety
+ * decision.
+ */
+export function isSafeUserVisibleJsonText(text: string): boolean {
+	const trimmed = text.trim();
+	if (!trimmed) return false;
+	try {
+		return !containsReservedVisibleJsonKey(JSON.parse(trimmed) as unknown);
+	} catch {
+		return false;
+	}
+}
+
 /**
  * Strip machine syntax from outbound agent text. Paired tags are removed with
  * their contents; an unclosed tag is removed to end-of-text (the live-observed
@@ -84,6 +168,7 @@ const CODE_SENTINEL_PREFIX = "\x00CB";
  * already-sanitized text is a no-op.
  */
 export function sanitizeOutboundText(text: string): string {
+	if (isSafeUserVisibleJsonText(text)) return text;
 	if (!text || !QUICK_TAG_RE.test(text)) {
 		return text;
 	}
@@ -98,7 +183,12 @@ export function sanitizeOutboundText(text: string): string {
 	let processed = text.replace(CODE_BLOCK_RE, saveSpan);
 	processed = processed.replace(INLINE_CODE_RE, saveSpan);
 
+	processed = processed.replace(
+		/<\|(?:start|channel|message)\|>[\s\S]*$/gi,
+		"",
+	);
 	processed = processed.replace(SELF_CLOSING_ARTIFACTS_RE, "");
+	processed = processed.replace(/<\|python_tag\|>[\s\S]*$/gi, "");
 
 	for (const tag of MACHINE_SYNTAX_TAGS) {
 		const paired = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "gi");

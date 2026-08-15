@@ -20,6 +20,7 @@
  * decoding path, no live model.
  */
 
+import { ChannelType } from "@elizaos/core";
 import {
   type ChatTurnStatus,
   REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX,
@@ -44,6 +45,40 @@ export const VOICE_CONVERSATION_HEADER = "X-Eliza-Conversation-Id";
 export const VOICE_ORGANIZATION_HEADER = "X-Eliza-Organization-Id";
 export const VOICE_USER_HEADER = "X-Eliza-User-Id";
 export const VOICE_STREAM_PROTOCOL = "delta-v2" as const;
+/** Exact channel classification required by core's realtime voice semantics. */
+export const VOICE_CHANNEL_TYPE = ChannelType.VOICE_DM;
+const streamFailureAbortByResponse = new WeakMap<
+  Response,
+  (reason: unknown) => Promise<void> | void
+>();
+
+/**
+ * Attach a same-process failure capability to a response without changing its
+ * HTTP contract. The local loopback adapter registers its exact request-abort
+ * barrier here so the bridge can trigger it even after a malformed stream has
+ * already reached EOF and reader cancellation can no longer reach its source.
+ */
+export function registerElizaSseStreamFailureAbort(
+  response: Response,
+  abort: (reason: unknown) => Promise<void> | void,
+): Response {
+  streamFailureAbortByResponse.set(response, abort);
+  return response;
+}
+
+function signalElizaSseStreamFailure(response: Response, reason: unknown): void {
+  const abort = streamFailureAbortByResponse.get(response);
+  if (!abort) return;
+  streamFailureAbortByResponse.delete(response);
+  try {
+    void Promise.resolve(abort(reason)).catch(() => undefined);
+  } catch (ignoredError) {
+    void ignoredError;
+    // error-policy:J6 The original protocol/transport failure remains the
+    // caller-visible result; replacement admission observes the retained
+    // local-runtime barrier if its dispatch failed.
+  }
+}
 
 export interface ElizaSseBridgeRequest {
   /** API origin hosting the canonical agent conversation routes. */
@@ -187,6 +222,7 @@ export async function streamElizaConversation(
       body: JSON.stringify({
         text: request.transcript,
         clientMessageId,
+        channelType: VOICE_CHANNEL_TYPE,
         metadata: {
           clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
         },
@@ -206,10 +242,7 @@ export async function streamElizaConversation(
     if (isAbortError(error) || request.signal.aborted) {
       return { completed: false, aborted: true };
     }
-    throw new ElizaSseBridgeError(
-      `Eliza SSE request failed: ${error instanceof Error ? error.message : String(error)}`,
-      "upstream_error",
-    );
+    throw new ElizaSseBridgeError("Eliza SSE request failed", "upstream_error");
   }
 
   if (!response.ok) {
@@ -296,7 +329,7 @@ export async function streamElizaConversation(
       } catch (error) {
         // error-policy:J2 abort discrimination — an aborted read is the
         // designed barge-in outcome; real stream errors rethrow to the caller.
-        if (isAbortError(error) || request.signal.aborted) {
+        if (request.signal.aborted) {
           return { completed: false, aborted: true };
         }
         throw error;
@@ -338,9 +371,16 @@ export async function streamElizaConversation(
           };
         }
         if (eventType === "error" || payloadType === "error") {
+          const upstreamError = extractStreamError(payload);
           throw new ElizaSseBridgeError(
-            `Eliza agent stream error: ${extractErrorMessage(payload)}`,
+            upstreamError.message
+              ? `Eliza agent stream error: ${upstreamError.message}`
+              : "Eliza agent stream reported an error",
             "upstream_error",
+            undefined,
+            upstreamError.code,
+            upstreamError.retryable,
+            upstreamError.message,
           );
         }
         if (payloadType === "status") {
@@ -397,6 +437,16 @@ export async function streamElizaConversation(
         if (update) applyTextUpdate(update);
       }
     }
+    if (request.signal.aborted) return { completed: false, aborted: true };
+    throw new ElizaSseBridgeError(
+      "Eliza agent stream ended before its terminal reply",
+      "protocol_error",
+    );
+  } catch (error) {
+    if (!request.signal.aborted) {
+      signalElizaSseStreamFailure(response, error);
+    }
+    throw error;
   } finally {
     request.signal.removeEventListener("abort", cancelReaderOnAbort);
     if (abortCancellation) {
@@ -411,12 +461,6 @@ export async function streamElizaConversation(
       }
     }
   }
-
-  if (request.signal.aborted) return { completed: false, aborted: true };
-  throw new ElizaSseBridgeError(
-    "Eliza agent stream ended before its terminal reply",
-    "protocol_error",
-  );
 }
 
 const CHAT_TURN_STATUS_KINDS = new Set<ChatTurnStatus["kind"]>([
@@ -558,15 +602,29 @@ async function readUpstreamError(response: Response): Promise<{
   }
 }
 
-function extractErrorMessage(payload: string): string {
+function extractStreamError(payload: string): {
+  code?: string;
+  message?: string;
+  retryable: boolean;
+} {
   try {
-    const parsed = JSON.parse(payload) as { message?: unknown };
-    if (typeof parsed.message === "string" && parsed.message.trim()) return parsed.message;
-  } catch (error) {
-    // Preserve a bounded raw payload when the canonical route returns malformed JSON.
-    return payload.slice(0, 256) || `unknown agent stream error: ${String(error)}`;
+    const parsed = JSON.parse(payload) as {
+      code?: unknown;
+      message?: unknown;
+      retryable?: unknown;
+    };
+    const rawCode = typeof parsed.code === "string" ? parsed.code : "";
+    const rawMessage = typeof parsed.message === "string" ? parsed.message.trim() : "";
+    return {
+      ...(SAFE_UPSTREAM_CODE.test(rawCode) ? { code: rawCode } : {}),
+      ...(isSafePublicUpstreamMessage(rawMessage) ? { message: rawMessage.slice(0, 512) } : {}),
+      retryable: typeof parsed.retryable === "boolean" ? parsed.retryable : true,
+    };
+  } catch {
+    // error-policy:J3 malformed canonical SSE errors become a typed generic
+    // failure; raw payload bytes are never retained in logs or control state.
+    return { retryable: true };
   }
-  return payload.slice(0, 256) || "unknown agent stream error";
 }
 
 function extractPayloadType(payload: string): string | null {

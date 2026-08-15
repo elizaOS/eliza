@@ -9,6 +9,7 @@ import type {
 	Action,
 	ActionResult,
 	HandlerCallback,
+	HandlerOptions,
 	IAgentRuntime,
 	Memory,
 	State,
@@ -2161,17 +2162,20 @@ async function runViewsClose({
 	options,
 	viewType,
 	callback,
+	admitEffect,
 }: {
 	client: ViewsClient;
 	message: Memory;
 	options?: Record<string, unknown>;
 	viewType?: ViewType;
 	callback?: HandlerCallback;
+	admitEffect: () => void;
 }): Promise<ActionResult> {
 	// Security-unwrapped user words — never the raw (possibly enveloped)
 	// content.text; the envelope's warning contains verbs the extractors match.
 	const text = userRequestMessageText(message);
 	if (isCloseAllRequest(text, options)) {
+		admitEffect();
 		const result = await navigateViewWithShellAction(
 			"__all__",
 			"close-all",
@@ -2232,6 +2236,7 @@ async function runViewsClose({
 		resolvedViewType = viewType ?? resolution.view.viewType;
 	}
 
+	admitEffect();
 	const result = await navigateViewWithShellAction(
 		viewId,
 		"close",
@@ -2260,6 +2265,7 @@ async function runViewsLayout({
 	options,
 	viewType,
 	callback,
+	admitEffect,
 }: {
 	client: ViewsClient;
 	message: Memory;
@@ -2267,6 +2273,7 @@ async function runViewsLayout({
 	options?: Record<string, unknown>;
 	viewType?: ViewType;
 	callback?: HandlerCallback;
+	admitEffect: () => void;
 }): Promise<ActionResult> {
 	// Security-unwrapped user words — never the raw (possibly enveloped)
 	// content.text; the envelope's warning contains verbs the extractors match.
@@ -2319,6 +2326,7 @@ async function runViewsLayout({
 	const resolvedViewType = layoutOnlyFollowup
 		? (primary.viewType ?? viewType)
 		: (viewType ?? primary.viewType);
+	admitEffect();
 	const result = await navigateViewLayout({
 		viewId: primary.id,
 		action,
@@ -2891,11 +2899,17 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			runtime: IAgentRuntime,
 			message: Memory,
 			_state?: State,
-			options?: Record<string, unknown>,
+			options?: HandlerOptions,
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
 			const run = async (): Promise<ActionResult> => {
 				const actionOptions = normalizeActionOptions(options);
+				let effectAdmitted = false;
+				const admitEffect = () => {
+					if (effectAdmitted) return;
+					options?.abortSignal?.throwIfAborted();
+					effectAdmitted = true;
+				};
 				const client = clientFactory();
 				// Security-unwrapped user words — never the raw (possibly enveloped)
 				// content.text; the envelope's warning contains verbs the extractors match.
@@ -2907,6 +2921,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				if (isChoiceReply(text)) {
 					if (await hasPendingViewsCreateIntent(runtime, roomId)) {
 						const views = await client.listViews();
+						admitEffect();
 						return runViewsCreate({
 							runtime,
 							message,
@@ -2925,6 +2940,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				) {
 					if (await hasPendingDeleteConfirm(runtime, roomId)) {
 						const views = await client.listViews();
+						admitEffect();
 						return runViewsDelete({
 							runtime,
 							message,
@@ -3024,6 +3040,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							viewType,
 							callback,
 							originatingClientId: readViewInteractionClientId(message),
+							admitEffect,
 						});
 
 					case "close":
@@ -3033,6 +3050,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							options: actionOptions,
 							viewType,
 							callback,
+							admitEffect,
 						});
 
 					case "search": {
@@ -3048,6 +3066,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							pluginName: "core",
 							available: true,
 						};
+						admitEffect();
 						const result = await navigateToPath(
 							managerView.path,
 							managerView.label,
@@ -3078,6 +3097,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							!Array.isArray(actionOptions?.payload)
 								? (actionOptions.payload as Record<string, unknown>)
 								: {};
+						admitEffect();
 						const result = await broadcastViewEvent(eventType, payload);
 						await callback?.({ text: result.text });
 						return {
@@ -3229,12 +3249,19 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 									await callback?.({ text: reply });
 									return { success: false, text: reply };
 								}
+								admitEffect();
 								return (
 									(await browserAction.handler(
 										runtime,
 										message,
 										_state,
-										{ ...options, parameters: browserParameters },
+										{
+											...options,
+											// The parent operation has admitted this mutation. The nested
+											// handler must settle it even if the original turn now aborts.
+											abortSignal: undefined,
+											parameters: browserParameters,
+										},
 										callback,
 									)) ?? {
 										success: true,
@@ -3285,6 +3312,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							actionOptions.timeoutMs > 0
 								? actionOptions.timeoutMs
 								: 5_000;
+						admitEffect();
 						const interaction = await interactWithView(
 							viewId,
 							capability,
@@ -3330,6 +3358,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 					case "create": {
 						const views = await client.listViews();
+						admitEffect();
 						return runViewsCreate({
 							runtime,
 							message,
@@ -3342,6 +3371,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 					case "edit": {
 						const views = await client.listViews();
+						admitEffect();
 						return runViewsEdit({
 							runtime,
 							message,
@@ -3354,6 +3384,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 					case "icon": {
 						const views = await client.listViews();
+						admitEffect();
 						return runViewsIcon({
 							runtime,
 							message,
@@ -3365,6 +3396,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					}
 
 					case "rollback":
+						admitEffect();
 						return runViewsRollback({
 							runtime,
 							message,
@@ -3375,6 +3407,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					case "delete":
 					case "remove": {
 						const views = await client.listViews();
+						admitEffect();
 						return runViewsDelete({
 							runtime,
 							message,
@@ -3416,6 +3449,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							viewType ??
 							pinView.viewType ??
 							(await resolveViewTypeForId(client, pinView.id));
+						admitEffect();
 						const pinResult = await pinViewAsTab(
 							pinView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
@@ -3465,6 +3499,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							viewType ??
 							windowView.viewType ??
 							(await resolveViewTypeForId(client, windowView.id));
+						admitEffect();
 						const windowResult = await openViewInWindow(
 							windowView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
@@ -3497,6 +3532,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							options: actionOptions,
 							viewType,
 							callback,
+							admitEffect,
 						});
 				}
 			};
@@ -3735,11 +3771,14 @@ export function createViewsAliasAction(
 			? "Close, hide, or dismiss every open UI view/tab -> CLOSE_ALL_VIEWS. Never use this to open a view or delete a plugin."
 			: "Close, hide, or dismiss one open UI view/tab -> CLOSE_VIEW. Never use this to open a view or delete a plugin.",
 		handler: async (runtime, message, state, options, callback) => {
-			const actionOptions = {
-				...normalizeActionOptions(options),
-				action: "close",
-				mode: "close",
-				...(closeAll ? { all: true, target: "__all__" } : {}),
+			const actionOptions: HandlerOptions = {
+				...options,
+				parameters: {
+					...normalizeActionOptions(options),
+					action: "close",
+					mode: "close",
+					...(closeAll ? { all: true, target: "__all__" } : {}),
+				},
 			};
 			return action.handler(runtime, message, state, actionOptions, callback);
 		},

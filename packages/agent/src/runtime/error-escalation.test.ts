@@ -93,12 +93,78 @@ describe("ERROR_REPORTED escalation handler", () => {
     const [, reason, text] = spy.mock.calls[0];
     expect(reason).toContain("DB_DOWN");
     expect(reason).toContain("3");
-    expect(text).toContain("failure DB_DOWN");
+    expect(text).toContain("details are available in diagnostics");
+    expect(text).not.toContain("failure DB_DOWN");
 
     // Further reports within the reset window do not spam.
     await handler(payload("DB_DOWN"));
     await handler(payload("DB_DOWN"));
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not combine generic codes across scopes or messages", async () => {
+    const spy = vi
+      .spyOn(EscalationService, "startEscalation")
+      .mockResolvedValue({} as never);
+    const tracker = new ErrorEscalationTracker(2, 10 * 60 * 1000);
+    const handler = createErrorReportedEscalationHandler(
+      {} as IAgentRuntime,
+      tracker,
+      10,
+    );
+
+    await handler({
+      ...payload("UNCLASSIFIED"),
+      scope: "EmbeddingWarmup",
+      message: "embedding provider unavailable",
+    });
+    await handler({
+      ...payload("UNCLASSIFIED"),
+      scope: "MessageService.v5Runtime",
+      message: "chat provider unavailable",
+    });
+    expect(spy).not.toHaveBeenCalled();
+
+    await handler({
+      ...payload("UNCLASSIFIED"),
+      scope: "MessageService.v5Runtime",
+      message: "chat provider unavailable",
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps diagnostic payloads out of the owner-visible escalation", async () => {
+    const spy = vi
+      .spyOn(EscalationService, "startEscalation")
+      .mockResolvedValue({} as never);
+    const tracker = new ErrorEscalationTracker(1, 10 * 60 * 1000);
+    const handler = createErrorReportedEscalationHandler(
+      {} as IAgentRuntime,
+      tracker,
+      10,
+    );
+
+    await handler({
+      ...payload("UNCLASSIFIED"),
+      scope: "MessageService.v5Runtime",
+      message: "Unauthorized: Wrong API Key",
+      context: {
+        entityId: "private-entity-id",
+        roomId: "private-room-id",
+        providerError: {
+          responseBodyExcerpt: "private-provider-body",
+          url: "https://provider.invalid/v1/chat/completions",
+        },
+      },
+    });
+
+    const [, , text] = spy.mock.calls[0];
+    expect(text).toContain("details are available in diagnostics");
+    expect(text).not.toContain("Wrong API Key");
+    expect(text).not.toContain("private-entity-id");
+    expect(text).not.toContain("private-room-id");
+    expect(text).not.toContain("private-provider-body");
+    expect(text).not.toContain("provider.invalid");
   });
 
   it("never escalates internal scheduler-plumbing codes into owner chat (SHADOW-ACCOUNT-DEBUG)", async () => {
@@ -197,6 +263,57 @@ describe("EscalationService coalescing (real service)", () => {
     expect(second.id).toBe(first.id);
     expect(second.text).toContain("first burst");
     expect(second.text).toContain("second burst");
-    expect(EscalationService.getActiveEscalationSync()?.id).toBe(first.id);
+    expect(EscalationService.getActiveEscalationSync(runtime)?.id).toBe(
+      first.id,
+    );
+  });
+
+  it("keeps simultaneous escalations isolated by runtime", async () => {
+    const makeRuntime = (agentId: string) =>
+      ({
+        agentId,
+        character: { name: agentId },
+        getRoomsForParticipant: async () => [],
+        getRoom: async () => null,
+        getWorld: async () => null,
+        getService: () => null,
+        getEntityById: async () => null,
+        getMemoriesByRoomIds: async () => [],
+        setCache: vi.fn(async () => true),
+        getCache: vi.fn(async () => null),
+        deleteCache: vi.fn(async () => true),
+        sendMessageToTarget: vi.fn(async () => {}),
+      }) as unknown as IAgentRuntime;
+    const runtimeA = makeRuntime("agent-a");
+    const runtimeB = makeRuntime("agent-b");
+
+    const escalationA = await EscalationService.startEscalation(
+      runtimeA,
+      "failure A",
+      "safe A",
+    );
+    const escalationB = await EscalationService.startEscalation(
+      runtimeB,
+      "failure B",
+      "safe B",
+    );
+
+    expect(escalationB.id).not.toBe(escalationA.id);
+    expect(escalationA.text).toBe("safe A");
+    expect(escalationB.text).toBe("safe B");
+    expect(EscalationService.getActiveEscalationSync(runtimeA)?.id).toBe(
+      escalationA.id,
+    );
+    expect(EscalationService.getActiveEscalationSync(runtimeB)?.id).toBe(
+      escalationB.id,
+    );
+    expect(runtimeA.setCache).toHaveBeenCalledWith(
+      "agent:escalation:active:agent-a",
+      expect.objectContaining({ agentId: "agent-a", text: "safe A" }),
+    );
+    expect(runtimeB.setCache).toHaveBeenCalledWith(
+      "agent:escalation:active:agent-b",
+      expect.objectContaining({ agentId: "agent-b", text: "safe B" }),
+    );
   });
 });

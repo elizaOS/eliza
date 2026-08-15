@@ -2,10 +2,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const generateTextMock = vi.fn(async () => ({ text: "ok", usage: undefined }));
+const streamTextMock = vi.fn((_options?: { onError?: (event: { error: unknown }) => void }) => ({
+  textStream: (async function* () {
+    yield "go";
+    yield "go";
+    yield " stop";
+  })(),
+  usage: Promise.resolve(undefined),
+  finishReason: Promise.resolve("stop"),
+}));
 const createOpenAICompatibleMock = vi.fn(() => (modelName: string) => ({ modelName }));
+const loggerWarnMock = vi.fn();
 
 vi.mock("ai", () => ({
   generateText: generateTextMock,
+  streamText: streamTextMock,
 }));
 
 vi.mock("@ai-sdk/openai-compatible", () => ({
@@ -25,14 +36,214 @@ vi.mock("@elizaos/core", () => ({
       this.context = options.context;
     }
   },
-  logger: { log: vi.fn() },
+  logger: { log: vi.fn(), warn: loggerWarnMock },
   ModelType: { TEXT_SMALL: "TEXT_SMALL", TEXT_LARGE: "TEXT_LARGE" },
 }));
 
 describe("z.ai text parameter resolution", () => {
   beforeEach(() => {
     generateTextMock.mockClear();
+    streamTextMock.mockClear();
     createOpenAICompatibleMock.mockClear();
+    loggerWarnMock.mockClear();
+  });
+
+  it("advertises both GLM text handlers as streamable to the core runtime", async () => {
+    const { zaiPlugin } = await import("../index");
+
+    expect(zaiPlugin.modelMetadata).toEqual({
+      TEXT_SMALL: { streamable: true },
+      TEXT_LARGE: { streamable: true },
+    });
+  });
+
+  it("streams authoritative GLM deltas without coalescing repeated tokens", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+    const chunks: string[] = [];
+    const { handleTextLarge } = await import("../models/text");
+
+    await expect(
+      handleTextLarge(runtime as never, {
+        prompt: "repeat a word",
+        stream: true,
+        onStreamChunk: async (chunk: string) => {
+          chunks.push(chunk);
+        },
+      })
+    ).resolves.toBe("gogo stop");
+
+    expect(chunks).toEqual(["go", "go", " stop"]);
+    expect(streamTextMock).toHaveBeenCalledTimes(1);
+    expect(generateTextMock).not.toHaveBeenCalled();
+  });
+
+  it("passes the caller abort signal to the GLM streaming transport", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+    const controller = new AbortController();
+    const { handleTextSmall } = await import("../models/text");
+
+    await handleTextSmall(
+      runtime as never,
+      {
+        prompt: "hello",
+        stream: true,
+        signal: controller.signal,
+        onStreamChunk: () => undefined,
+      } as never
+    );
+
+    expect(streamTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ abortSignal: controller.signal })
+    );
+  });
+
+  it("stops forwarding GLM deltas when the caller aborts mid-stream", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+    const controller = new AbortController();
+    const chunks: string[] = [];
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(
+      handleTextSmall(
+        runtime as never,
+        {
+          prompt: "hello",
+          stream: true,
+          signal: controller.signal,
+          onStreamChunk: (chunk: string) => {
+            chunks.push(chunk);
+            controller.abort(new DOMException("stopped", "AbortError"));
+          },
+        } as never
+      )
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(chunks).toEqual(["go"]);
+  });
+
+  it("rejects when the final downstream chunk callback aborts a one-chunk stream", async () => {
+    streamTextMock.mockImplementationOnce(() => ({
+      textStream: (async function* () {
+        yield "only";
+      })(),
+      usage: Promise.resolve(undefined),
+      finishReason: Promise.resolve("stop"),
+    }));
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+    const controller = new AbortController();
+    const chunks: string[] = [];
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(
+      handleTextSmall(
+        runtime as never,
+        {
+          prompt: "hello",
+          stream: true,
+          signal: controller.signal,
+          onStreamChunk: (chunk: string) => {
+            chunks.push(chunk);
+            controller.abort(new DOMException("stopped", "AbortError"));
+          },
+        } as never
+      )
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(chunks).toEqual(["only"]);
+  });
+
+  it("warns without exposing provider details when stream usage is unavailable", async () => {
+    streamTextMock.mockImplementationOnce(() => ({
+      textStream: (async function* () {
+        yield "ok";
+      })(),
+      usage: Promise.reject(new Error("sensitive usage payload")),
+      finishReason: Promise.resolve("stop"),
+    }));
+    const reportError = vi.fn();
+    const runtime = {
+      character: {},
+      reportError,
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(
+      handleTextSmall(runtime as never, {
+        prompt: "hello",
+        stream: true,
+        onStreamChunk: () => undefined,
+      })
+    ).resolves.toBe("ok");
+
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      "[z.ai] TEXT_SMALL stream usage metadata was unavailable"
+    );
+    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain("sensitive usage payload");
+    expect(reportError).toHaveBeenCalledWith(
+      "zai.stream-usage",
+      expect.objectContaining({
+        code: "MODEL_USAGE_UNAVAILABLE",
+        message: "[z.ai] TEXT_SMALL stream usage metadata was unavailable",
+      }),
+      { modelType: "TEXT_SMALL", modelName: "glm-4.5-air" }
+    );
+    expect(JSON.stringify(reportError.mock.calls)).not.toContain("sensitive usage payload");
+  });
+
+  it("rejects a provider stream failure instead of fabricating an empty completion", async () => {
+    const providerError = new Error("z.ai stream failed");
+    streamTextMock.mockImplementationOnce((options) => {
+      options?.onError?.({ error: providerError });
+      return {
+        textStream: (async function* () {})(),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve(undefined),
+      };
+    });
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(
+      handleTextSmall(runtime as never, {
+        prompt: "hello",
+        stream: true,
+        onStreamChunk: () => undefined,
+      })
+    ).rejects.toBe(providerError);
   });
 
   it("passes topP and temperature to z.ai's OpenAI-compatible API", async () => {

@@ -10,7 +10,11 @@ import {
   REALTIME_VOICE_INGRESS_COMMITTED_V1,
   REALTIME_VOICE_INGRESS_HEADER,
 } from "@elizaos/shared";
-import { streamElizaConversation } from "../../../../../shared/src/lib/voice-session/eliza-sse-bridge";
+import { COMMITTED_SPEECH_PROTOCOL } from "@elizaos/shared/voice/incremental-speech-segments";
+import {
+  streamElizaConversation,
+  VOICE_CHANNEL_TYPE,
+} from "../../../../../shared/src/lib/voice-session/eliza-sse-bridge";
 import {
   createLocalRuntimeConversationFetch,
   LocalRuntimeConversationFetchError,
@@ -22,6 +26,10 @@ const COMMITTED_STREAM_HEADERS = {
   "Content-Type": "text/event-stream",
   [REALTIME_VOICE_INGRESS_HEADER]: REALTIME_VOICE_INGRESS_COMMITTED_V1,
 };
+const EXACT_REALTIME_VOICE_REQUEST = {
+  channelType: VOICE_CHANNEL_TYPE,
+  voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+} as const;
 
 function committedAbortStatus(
   clientMessageId: string,
@@ -81,10 +89,12 @@ describe("local runtime conversation fetch", () => {
         body: JSON.stringify({
           text: "hello locally",
           clientMessageId: "voice:trace-a",
+          channelType: VOICE_CHANNEL_TYPE,
           metadata: {
             clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
           },
           streamProtocol: "delta-v2",
+          voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
         }),
       },
     );
@@ -103,10 +113,12 @@ describe("local runtime conversation fetch", () => {
     expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({
       text: "hello locally",
       clientMessageId: "voice:trace-a",
+      channelType: VOICE_CHANNEL_TYPE,
       metadata: {
         clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
       },
       streamProtocol: "delta-v2",
+      voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
     });
     const headers = new Headers(calls[1]?.init?.headers);
     expect(headers.has("Authorization")).toBe(false);
@@ -118,7 +130,7 @@ describe("local runtime conversation fetch", () => {
     await response.body?.cancel();
   });
 
-  test("preserves provisional delta-v2 authority through the loopback adapter", async () => {
+  test("preserves the exact voice capability, channel, and delta authority through the loopback adapter", async () => {
     const calls: Array<{ url: string; body: unknown }> = [];
     const downstream = (async (
       input: RequestInfo | URL,
@@ -167,6 +179,7 @@ describe("local runtime conversation fetch", () => {
         conversationId: CONVERSATION_ID,
         traceId: "trace-provisional-loopback",
         signal: new AbortController().signal,
+        voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
         fetchImpl: createLocalRuntimeConversationFetch(
           "http://127.0.0.1:31337",
           downstream,
@@ -183,10 +196,128 @@ describe("local runtime conversation fetch", () => {
         body: {
           text: "make your personality warmer",
           clientMessageId: "voice:trace-provisional-loopback",
+          channelType: VOICE_CHANNEL_TYPE,
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
+          voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
         },
       },
+    ]);
+  });
+
+  test("malformed SSE exact-aborts the old runtime turn before admitting a replacement", async () => {
+    const encoder = new TextEncoder();
+    const streamIds: string[] = [];
+    const abortIds: string[] = [];
+    let releaseAbort: ((response: Response) => void) | undefined;
+    const abortResponse = new Promise<Response>((resolve) => {
+      releaseAbort = resolve;
+    });
+    let signalAbortRequested: (() => void) | undefined;
+    const abortRequested = new Promise<void>((resolve) => {
+      signalAbortRequested = resolve;
+    });
+    const downstream = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname === "/api/conversations") {
+        return Response.json({
+          conversations: [{ id: CONVERSATION_ID, roomId: ROOM_ID }],
+        });
+      }
+      if (pathname === `/api/turns/${ROOM_ID}/abort`) {
+        const { clientMessageId } = JSON.parse(String(init?.body)) as {
+          clientMessageId: string;
+        };
+        abortIds.push(clientMessageId);
+        signalAbortRequested?.();
+        return abortResponse;
+      }
+
+      const { clientMessageId } = JSON.parse(String(init?.body)) as {
+        clientMessageId: string;
+      };
+      streamIds.push(clientMessageId);
+      if (clientMessageId === "voice:malformed-old") {
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: "voice_speech_segment",
+                    version: 1,
+                    sequence: 0,
+                  })}\n\n`,
+                ),
+              );
+              controller.close();
+            },
+          }),
+          { headers: COMMITTED_STREAM_HEADERS },
+        );
+      }
+      return new Response(
+        `event: done\ndata: ${JSON.stringify({
+          type: "done",
+          fullText: "replacement complete",
+        })}\n\n`,
+        { headers: COMMITTED_STREAM_HEADERS },
+      );
+    }) as typeof fetch;
+    const loopback = createLocalRuntimeConversationFetch(
+      "http://127.0.0.1:31337",
+      downstream,
+      { abortTimeoutMs: 250, abortRetryDelayMs: 1 },
+    );
+    const run = (traceId: string, controller: AbortController) =>
+      streamElizaConversation(
+        {
+          endpoint: "https://cloud.example",
+          authorization: "Bearer local-secret",
+          model: "m",
+          transcript: "hello locally",
+          agentId: "agent-a",
+          conversationId: CONVERSATION_ID,
+          traceId,
+          signal: controller.signal,
+          voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+          fetchImpl: loopback,
+        },
+        () => {},
+      );
+
+    const firstController = new AbortController();
+    await expect(run("malformed-old", firstController)).rejects.toMatchObject({
+      code: "protocol_error",
+      retryable: false,
+    });
+    expect(firstController.signal.aborted).toBe(false);
+    await abortRequested;
+
+    let replacementSettled = false;
+    const replacement = run(
+      "malformed-replacement",
+      new AbortController(),
+    ).then((result) => {
+      replacementSettled = true;
+      return result;
+    });
+    await Promise.resolve();
+    expect(replacementSettled).toBe(false);
+    expect(streamIds).toEqual(["voice:malformed-old"]);
+
+    releaseAbort?.(Response.json(committedAbortStatus("voice:malformed-old")));
+    await expect(replacement).resolves.toEqual({
+      completed: true,
+      aborted: false,
+    });
+    expect(abortIds).toEqual(["voice:malformed-old"]);
+    expect(streamIds).toEqual([
+      "voice:malformed-old",
+      "voice:malformed-replacement",
     ]);
   });
 
@@ -234,6 +365,7 @@ describe("local runtime conversation fetch", () => {
         body: JSON.stringify({
           text: "hello locally",
           clientMessageId: `voice:${traceId}`,
+          ...EXACT_REALTIME_VOICE_REQUEST,
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
         }),
@@ -329,6 +461,7 @@ describe("local runtime conversation fetch", () => {
         body: JSON.stringify({
           text: "hello locally",
           clientMessageId: `voice:${traceId}`,
+          ...EXACT_REALTIME_VOICE_REQUEST,
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
         }),
@@ -398,6 +531,7 @@ describe("local runtime conversation fetch", () => {
         body: JSON.stringify({
           text: "hello locally",
           clientMessageId: `voice:${traceId}`,
+          ...EXACT_REALTIME_VOICE_REQUEST,
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
         }),
@@ -495,6 +629,7 @@ describe("local runtime conversation fetch", () => {
         body: JSON.stringify({
           text: "keep this transcript",
           clientMessageId: `voice:${traceId}`,
+          ...EXACT_REALTIME_VOICE_REQUEST,
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
         }),
@@ -571,6 +706,7 @@ describe("local runtime conversation fetch", () => {
         body: JSON.stringify({
           text: "hello locally",
           clientMessageId: `voice:${traceId}`,
+          ...EXACT_REALTIME_VOICE_REQUEST,
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
         }),
@@ -651,6 +787,7 @@ describe("local runtime conversation fetch", () => {
         body: JSON.stringify({
           text: "the correction must remain in context",
           clientMessageId: "voice:retry-ingress",
+          ...EXACT_REALTIME_VOICE_REQUEST,
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
         }),
@@ -670,6 +807,7 @@ describe("local runtime conversation fetch", () => {
         body: JSON.stringify({
           text: "now answer both turns",
           clientMessageId: "voice:after-retry",
+          ...EXACT_REALTIME_VOICE_REQUEST,
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
         }),
@@ -707,6 +845,7 @@ describe("local runtime conversation fetch", () => {
           body: JSON.stringify({
             text: "hello",
             clientMessageId: "voice:missing-ingress-ack",
+            ...EXACT_REALTIME_VOICE_REQUEST,
             metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
             streamProtocol: "delta-v2",
           }),
@@ -757,6 +896,7 @@ describe("local runtime conversation fetch", () => {
         body: JSON.stringify({
           text: "hello locally",
           clientMessageId: `voice:${traceId}`,
+          ...EXACT_REALTIME_VOICE_REQUEST,
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
         }),
@@ -841,6 +981,7 @@ describe("local runtime conversation fetch", () => {
         body: JSON.stringify({
           text: "hello locally",
           clientMessageId: `voice:${traceId}`,
+          ...EXACT_REALTIME_VOICE_REQUEST,
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
         }),
@@ -912,6 +1053,7 @@ describe("local runtime conversation fetch", () => {
       body: JSON.stringify({
         text: "retain even if the response is lost",
         clientMessageId: `voice:${traceId}`,
+        ...EXACT_REALTIME_VOICE_REQUEST,
         metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
         streamProtocol: "delta-v2",
       }),
@@ -974,6 +1116,7 @@ describe("local runtime conversation fetch", () => {
         body: JSON.stringify({
           text: "hello locally",
           clientMessageId: `voice:${traceId}`,
+          ...EXACT_REALTIME_VOICE_REQUEST,
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
         }),
@@ -1039,6 +1182,7 @@ describe("local runtime conversation fetch", () => {
         body: JSON.stringify({
           text: "stop",
           clientMessageId: "voice:fast-stop",
+          ...EXACT_REALTIME_VOICE_REQUEST,
           metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
           streamProtocol: "delta-v2",
         }),
@@ -1076,7 +1220,7 @@ describe("local runtime conversation fetch", () => {
     ).rejects.toThrow(LocalRuntimeConversationFetchError);
   });
 
-  test("rejects malformed or empty conversation bodies", async () => {
+  test("rejects malformed, empty, or downgraded conversation bodies", async () => {
     const bridge = createLocalRuntimeConversationFetch(
       "http://127.0.0.1:31337",
     );
@@ -1097,6 +1241,36 @@ describe("local runtime conversation fetch", () => {
         }),
       }),
     ).rejects.toThrow(LocalRuntimeConversationFetchError);
+    await expect(
+      bridge(url, {
+        method: "POST",
+        body: JSON.stringify({
+          text: "hello",
+          clientMessageId: "voice:invalid-channel",
+          channelType: "DM",
+          metadata: {
+            clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+          },
+          streamProtocol: "delta-v2",
+          voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+        }),
+      }),
+    ).rejects.toThrow("channel type is required");
+    await expect(
+      bridge(url, {
+        method: "POST",
+        body: JSON.stringify({
+          text: "hello",
+          clientMessageId: "voice:invalid-speech-protocol",
+          channelType: VOICE_CHANNEL_TYPE,
+          metadata: {
+            clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+          },
+          streamProtocol: "delta-v2",
+          voiceSpeechProtocol: "terminal-only",
+        }),
+      }),
+    ).rejects.toThrow("committed speech protocol is required");
     await expect(
       bridge(url, {
         method: "POST",

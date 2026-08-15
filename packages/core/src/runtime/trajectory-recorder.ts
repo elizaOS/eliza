@@ -936,16 +936,52 @@ function sanitizeForRecord(
 	return String(value);
 }
 
-function cloneForRecord<T>(value: T): T {
-	return sanitizeForRecord(value) as T;
+function redactRecordStrings(
+	value: unknown,
+	redactText?: (text: string) => string,
+): unknown {
+	if (!redactText) return value;
+	if (typeof value === "string") {
+		try {
+			return redactText(value);
+		} catch {
+			// error-policy:J4 An observability redactor must fail closed. A broken
+			// redactor may cost diagnostic detail, but must never make the recorder
+			// fall back to persisting the original sensitive string.
+			return "[REDACTION_FAILED]";
+		}
+	}
+	if (Array.isArray(value)) {
+		return value.map((entry) => redactRecordStrings(entry, redactText));
+	}
+	if (value && typeof value === "object") {
+		return Object.fromEntries(
+			Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+				key,
+				redactRecordStrings(entry, redactText),
+			]),
+		);
+	}
+	return value;
+}
+
+function cloneForRecord<T>(
+	value: T,
+	redactText?: (text: string) => string,
+): T {
+	return redactRecordStrings(sanitizeForRecord(value), redactText) as T;
 }
 
 function cloneRootMessageForRecord(
 	rootMessage: StartTrajectoryInput["rootMessage"],
+	redactText?: (text: string) => string,
 ): RecordedTrajectory["rootMessage"] {
 	return {
 		id: String(rootMessage.id),
-		text: truncateRecordString(String(rootMessage.text)),
+		text: cloneForRecord(
+			truncateRecordString(String(rootMessage.text)),
+			redactText,
+		),
 		sender:
 			rootMessage.sender === undefined
 				? undefined
@@ -1185,6 +1221,12 @@ export interface CreateJsonFileRecorderOptions {
 	rootDir?: string;
 	logger?: RecorderLogger;
 	enabled?: boolean;
+	/**
+	 * Required by message-runtime call sites that can contain user/provider text.
+	 * It is applied recursively to every persisted string, including root input,
+	 * model prompts/responses, action I/O, errors, and terminal snapshots.
+	 */
+	redactText?: (text: string) => string;
 	reportError?: (
 		scope: string,
 		error: unknown,
@@ -1199,6 +1241,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 	private readonly markdownDir: string;
 	private readonly logger?: RecorderLogger;
 	private readonly reportError?: CreateJsonFileRecorderOptions["reportError"];
+	private readonly redactText?: CreateJsonFileRecorderOptions["redactText"];
 	private readonly enabled: boolean;
 	private readonly markdownEnabled: boolean;
 	private readonly active = new Map<string, MutableTrajectory>();
@@ -1209,6 +1252,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		this.markdownDir = resolveTrajectoryMarkdownDir(this.rootDir);
 		this.logger = opts.logger;
 		this.reportError = opts.reportError;
+		this.redactText = opts.redactText;
 		this.enabled =
 			opts.enabled !== undefined
 				? opts.enabled
@@ -1248,7 +1292,10 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			taskId: correlation.taskId,
 			sessionId: correlation.sessionId,
 			parentStepId: correlation.parentStepId,
-			rootMessage: cloneRootMessageForRecord(input.rootMessage),
+			rootMessage: cloneRootMessageForRecord(
+				input.rootMessage,
+				this.redactText,
+			),
 			startedAt: Date.now(),
 			status: "running",
 			stages: [],
@@ -1295,7 +1342,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			return;
 		}
 
-		const recordedStage = cloneForRecord(stage);
+		const recordedStage = cloneForRecord(stage, this.redactText);
 		annotateStageCost(recordedStage, this.logger);
 		trajectory.stages.push(recordedStage);
 		applyMetricsForStage(trajectory.metrics, recordedStage);
@@ -1399,7 +1446,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 
 	private queueFlushTrajectory(trajectory: MutableTrajectory): Promise<void> {
 		const trajectoryId = trajectory.trajectoryId;
-		const snapshot = cloneForRecord(trajectory);
+		const snapshot = cloneForRecord(trajectory, this.redactText);
 		const previous = this.flushQueues.get(trajectoryId) ?? Promise.resolve();
 		// error-policy:J5 rejection-suppression — a prior flush's failure (already
 		// surfaced inside flushSnapshot) must not chain-block this snapshot's flush.

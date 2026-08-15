@@ -1727,6 +1727,11 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 	}
 
+	private static readonly SECRET_SWAP_PSEUDONYM_KINDS = [
+		"email",
+		"phone",
+	] as const;
+
 	private createSecretSwapSession(): SecretSwapSession {
 		const toSecretStrings = (
 			values: Record<string, unknown> | undefined,
@@ -1765,6 +1770,15 @@ export class AgentRuntime implements IAgentRuntime {
 			exemptValues: parseSecretSwapExemptValues(
 				this.getSetting(SECRET_SWAP_EXEMPT_VALUES_SETTING),
 			),
+			// These are identity/contact PII rather than credentials. Secret
+			// placeholders are intentionally never restored to visible output, while
+			// PseudonymSession restores its fluent surrogates for the requesting user.
+			// Hand them over only when that lane is actually enabled; otherwise the
+			// secret vault remains the fail-closed owner and raw contact PII cannot
+			// reach the provider.
+			disabledKinds: this.isPiiSwapEnabled()
+				? AgentRuntime.SECRET_SWAP_PSEUDONYM_KINDS
+				: undefined,
 		});
 	}
 
@@ -1784,7 +1798,9 @@ export class AgentRuntime implements IAgentRuntime {
 	 * the blocklist so the model's identity is never pseudonymized.
 	 */
 	private createPiiSwapSession(): PseudonymSession {
-		const recognizers: PiiEntityRecognizer[] = [new RegexEntityRecognizer()];
+		const recognizers: PiiEntityRecognizer[] = [
+			new RegexEntityRecognizer({ email: true, phone: true }),
+		];
 		const nerService = this.getService(PII_ENTITY_RECOGNIZER_SERVICE) as
 			| (Service & Partial<PiiEntityRecognizerService>)
 			| null;
@@ -2104,6 +2120,14 @@ export class AgentRuntime implements IAgentRuntime {
 			const e = this.pipelineHookEntries[i];
 			this.pipelineHookIdToIndex.set(e.id, i);
 		}
+	}
+
+	canStreamCommittedReplyText(): boolean {
+		return ["post_model", "outgoing_before_deliver"].every((phase) =>
+			this.hooksForPhase(phase as PipelineHookPhase).every(
+				(hook) => hook.textMutation === "none",
+			),
+		);
 	}
 
 	/**
@@ -6853,12 +6877,19 @@ export class AgentRuntime implements IAgentRuntime {
 					signal?: AbortSignal;
 					streamStructured?: boolean;
 					responseSkeleton?: ResponseSkeleton;
+					streamSecurity?: "required";
 				}
 				const streamingCtx = getStreamingContext();
 				const paramsAsStreaming = isPlainObject(modelParams)
 					? (modelParams as StreamingParams)
 					: undefined;
 				const paramsChunk = paramsAsStreaming?.onStreamChunk;
+				const requireGuardedStream =
+					paramsAsStreaming?.streamSecurity === "required";
+				// Runtime-only policy. Do not pass it to providers or provider logs.
+				if (paramsAsStreaming?.streamSecurity !== undefined) {
+					delete paramsAsStreaming.streamSecurity;
+				}
 				const ctxChunk = streamingCtx?.onStreamChunk;
 				const msgId = streamingCtx?.messageId;
 				const abortSignal = streamingCtx?.abortSignal;
@@ -6905,6 +6936,7 @@ export class AgentRuntime implements IAgentRuntime {
 							})
 						: undefined;
 				let handlerDeliveredStream = false;
+				let returnedStreamOwnsDelivery = false;
 				let streamedText = "";
 				let secretSwapSession: SecretSwapSession | null = null;
 				let guardScanner: GuardedStreamScanner | null = null;
@@ -7018,6 +7050,13 @@ export class AgentRuntime implements IAgentRuntime {
 					resolvedAcceptsHandlerStream &&
 					(paramsChunk || ctxChunk || structuredExtractor)
 						? async (chunk) => {
+								// A streamable handler must expose one authoritative delivery
+								// source per call. Some adapters both invoke this callback and
+								// return a TextStreamResult backed by the same provider stream.
+								// Once the runtime starts pulling that returned stream, ignore
+								// late callback echoes rather than duplicating visible bytes.
+								// Do not compare chunk content: repeated model tokens are valid.
+								if (returnedStreamOwnsDelivery) return;
 								handlerDeliveredStream = true;
 								await deliverModelStreamChunk(chunk);
 							}
@@ -7050,7 +7089,7 @@ export class AgentRuntime implements IAgentRuntime {
 				);
 
 				if (
-					this.isSecretSwapEnabled() &&
+					(this.isSecretSwapEnabled() || requireGuardedStream) &&
 					!binaryModels.includes(resolvedModelKey)
 				) {
 					// Reuse one session per turn so every model call in the turn shares a
@@ -7139,7 +7178,9 @@ export class AgentRuntime implements IAgentRuntime {
 						effectiveSystemPrompt,
 					);
 					if (postHookText !== piiIngressText) {
-						await piiSwapSession.learn(postHookText);
+						await piiSwapSession.learn(postHookText, {
+							inputAlreadyPseudonymized: true,
+						});
 					}
 					modelParams = piiSwapSession.substituteInValue(modelParams);
 					const postHookSystemPrompt = resolveEffectiveSystemPrompt({
@@ -7278,8 +7319,14 @@ export class AgentRuntime implements IAgentRuntime {
 				if (
 					shouldStream &&
 					(paramsChunk || ctxChunk) &&
+					!handlerDeliveredStream &&
 					isTextStreamResult(rawResponse)
 				) {
+					// The handler did not push any bytes before returning, so its
+					// TextStreamResult is authoritative. Set this before the first
+					// iterator pull: a malformed adapter may invoke its callback from
+					// inside the generator, and that echo must not race the pull path.
+					returnedStreamOwnsDelivery = true;
 					// Consume the provider stream inside the recording scope, mirroring
 					// the pass-through TextStreamResult wrapper below. Async generators
 					// do not inherit AsyncLocalStorage context from their creation, and
@@ -7457,6 +7504,36 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 
 					return resultRef.current as R;
+				}
+
+				if (handlerDeliveredStream && isTextStreamResult(rawResponse)) {
+					// Callback delivery already committed the authoritative bytes.
+					// Collapse the duplicate returned stream to the accumulated callback
+					// text without pulling it again. Preserve the same native tool/usage
+					// envelope contract as the returned-stream branch above.
+					const streamRaw = rawResponse as {
+						toolCalls?: unknown;
+						finishReason?: unknown;
+						usage?: unknown;
+						providerMetadata?: unknown;
+					};
+					if ("toolCalls" in streamRaw) {
+						resultRef.current = {
+							text: streamedText,
+							toolCalls: await Promise.resolve(streamRaw.toolCalls),
+							finishReason:
+								"finishReason" in streamRaw
+									? await Promise.resolve(streamRaw.finishReason)
+									: undefined,
+							usage:
+								"usage" in streamRaw
+									? await Promise.resolve(streamRaw.usage)
+									: undefined,
+							providerMetadata: streamRaw.providerMetadata,
+						};
+					} else {
+						resultRef.current = streamedText;
+					}
 				}
 
 				if (handlerDeliveredStream) {
@@ -11307,15 +11384,20 @@ ${section_end}`;
 	 * Returns an empty object if no secrets are configured.
 	 */
 	private getSecretsForRedaction(): Record<string, string> {
-		const secrets = this.character.settings?.secrets;
-		if (!secrets || typeof secrets !== "object") {
-			return {};
-		}
-		// Filter to only include string values
-		const result: Record<string, string> = {};
-		for (const [key, value] of Object.entries(secrets)) {
-			if (typeof value === "string" && value.length > 0) {
-				result[key] = value;
+		// Match the carry-safe swap catalog: provider/env secrets plus both
+		// character secret stores. Character settings win on duplicate names.
+		const result = deriveKnownSecrets(
+			process.env as Record<string, string | undefined>,
+		);
+		for (const source of [
+			this.character.secrets,
+			this.character.settings?.secrets,
+		]) {
+			if (!source || typeof source !== "object") continue;
+			for (const [key, value] of Object.entries(source)) {
+				if (typeof value === "string" && value.length > 0) {
+					result[key] = value;
+				}
 			}
 		}
 		return result;
@@ -11330,9 +11412,9 @@ ${section_end}`;
 			return text;
 		}
 		const secrets = this.getSecretsForRedaction();
-		if (Object.keys(secrets).length === 0) {
-			return text;
-		}
+		// Pattern redaction is mandatory even when this runtime has no configured
+		// known-secret catalog. Bare provider tokens pasted by a user do not need
+		// to match a configured value before logs, memory, or output scrub them.
 		return redactWithSecrets(text, { secrets, applyPatterns: true });
 	}
 
@@ -11933,7 +12015,7 @@ ${section_end}`;
 	): Promise<void> {
 		// Apply secret redaction (same as createMemory) to prevent plaintext secrets
 		const secrets = this.getSecretsForRedaction();
-		if (Object.keys(secrets).length > 0 && memory.content.text) {
+		if (memory.content.text) {
 			memory = {
 				...memory,
 				content: {
@@ -12071,7 +12153,7 @@ ${section_end}`;
 
 		// Redact any secrets from memory content before storing
 		const secrets = this.getSecretsForRedaction();
-		if (Object.keys(secrets).length > 0 && memory.content.text) {
+		if (memory.content.text) {
 			memory = {
 				...memory,
 				content: {

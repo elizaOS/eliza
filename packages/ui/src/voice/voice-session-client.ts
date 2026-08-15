@@ -145,7 +145,7 @@ function openNativeVoiceWebSocket(url: string): VoiceWebSocketLike {
 
 export type VoiceWebSocketFactory = (url: string) => VoiceWebSocketLike;
 
-/** A client playout trace mark, carrying the server-issued traceId. */
+/** A content-free client lifecycle/playout mark with server trace ownership. */
 export interface VoiceTraceMark {
   name: string;
   traceId: string | null;
@@ -200,7 +200,7 @@ export interface VoiceSessionClientOptions {
   ) => void;
   /** Fired for each raw server control event (after state fold). */
   onServerEvent?: (event: ServerControlFrame) => void;
-  /** Fired for each client playout trace mark. */
+  /** Fired for each content-free client lifecycle/playout trace mark. */
   onTraceMark?: (mark: VoiceTraceMark) => void;
   /** Fired for content-free capture/playout device diagnostics. */
   onDiagnostic?: (event: VoiceSessionClientDiagnosticEvent) => void;
@@ -361,6 +361,11 @@ export function createVoiceSessionClient(
   // selects the pre-live vs live reconnect budget.
   let everLiveThisLifecycle = false;
   let rotationTimer: ReturnType<typeof setTimeout> | null = null;
+  // A rotation can become due after the server has ended its speaking phase
+  // while browser playout still owns an audible PCM tail. Keep that due state
+  // separate from the reducer phase so the exact sequenced drain can release
+  // it immediately without cutting or flushing queued audio.
+  let rotationAwaitingIdleBoundary = false;
   // Epoch expiry of the CURRENT minted token; rotation never fires past it
   // (the server has already severed — the reactive recovery path owns it).
   let rotationDeadlineMs: number | null = null;
@@ -376,6 +381,8 @@ export function createVoiceSessionClient(
   let pendingAcousticSpeechEndedAtMs: number | null = null;
   const playbackTraceBySequence = new Map<number, string | null>();
   const playbackStartedTraceIds = new Set<string>();
+  let activeDisplayTraceId: string | null = null;
+  const retractedDisplayTraceIds = new Set<string>();
   const turnAuthority = new VoiceSessionTurnAuthority();
   const authorityTimers = new Map<string, ReturnType<typeof setTimeout>>();
   // Whether the caller explicitly stopped us (clean bye) — suppresses reconnect.
@@ -393,6 +400,14 @@ export function createVoiceSessionClient(
       // error-policy:J7 trace-mark listeners are diagnostics; a throwing listener must never break audio or transport.
       void ignoredError;
     }
+  };
+
+  const retractActiveDisplay = (fallbackTraceId: string | null): void => {
+    const traceId = activeDisplayTraceId ?? fallbackTraceId;
+    activeDisplayTraceId = null;
+    if (!traceId || retractedDisplayTraceIds.has(traceId)) return;
+    retractedDisplayTraceIds.add(traceId);
+    mark("output_retracted", traceId);
   };
 
   const emitDiagnostic = (event: VoiceSessionClientDiagnosticEvent): void => {
@@ -540,9 +555,15 @@ export function createVoiceSessionClient(
           }
           break;
         }
+        case "output/retract":
+          // Output ownership is independent of browser PCM. A response can be
+          // visibly streaming before the first audio frame, or can still be on
+          // the paced reveal clock after server settlement. Publish the exact
+          // cutoff even when playback/flush had no buffered sequence to report.
+          retractActiveDisplay(state.traceId);
+          break;
         case "model/abort":
         case "tts/cancel":
-        case "output/retract":
         case "progress/cancel":
         case "turn/commit_revision":
         case "turn/end":
@@ -643,6 +664,7 @@ export function createVoiceSessionClient(
       clearTimeout(rotationTimer);
       rotationTimer = null;
     }
+    rotationAwaitingIdleBoundary = false;
   };
 
   async function mintOnce(
@@ -832,6 +854,14 @@ export function createVoiceSessionClient(
       return;
     }
 
+    if (
+      (event.t === "assistant_display" || event.t === "assistant_output") &&
+      retractedDisplayTraceIds.has(event.traceId)
+    ) {
+      mark("not_reached(retracted_display)", event.traceId);
+      return;
+    }
+
     const atMs = now();
     let authorityTransition: VoiceAuthorityTransition | null = null;
     switch (event.t) {
@@ -846,6 +876,11 @@ export function createVoiceSessionClient(
             speechConfirmationTimeoutMs:
               provisionalBargeInConfirmationTimeoutMs,
           });
+          // Trace ids are scoped to the accepted voice session. A reconnecting
+          // provider may legitimately reuse one, so old display tombstones must
+          // not suppress the new session's opening response.
+          activeDisplayTraceId = null;
+          retractedDisplayTraceIds.clear();
         }
         if (!turnAuthority.isReadySession(event.sessionId)) return;
         break;
@@ -903,6 +938,11 @@ export function createVoiceSessionClient(
       case "assistant_progress":
       case "assistant_display":
       case "assistant_output":
+        if (!turnAuthority.acceptsResponseContentTrace(event.traceId)) {
+          mark("not_reached(stale_control)", event.traceId);
+          return;
+        }
+        break;
       case "trace_mark":
       case "usage":
       case "error":
@@ -925,6 +965,17 @@ export function createVoiceSessionClient(
         authorityTransition,
         "traceId" in event ? (event.traceId ?? state.traceId) : state.traceId,
       );
+      if (event.t === "stt_final" && SPOKEN_TRANSCRIPT_RE.test(event.text)) {
+        // The accepted commit is the only boundary that may legitimately
+        // reuse a wire trace. It also ends ownership of any prior display that
+        // had no coordinator output left to retract.
+        retractedDisplayTraceIds.delete(event.traceId);
+        activeDisplayTraceId = null;
+      }
+    }
+
+    if (event.t === "assistant_display" || event.t === "assistant_output") {
+      activeDisplayTraceId = event.traceId;
     }
 
     setState(applyServerEvent(state, event));
@@ -1323,13 +1374,20 @@ export function createVoiceSessionClient(
     if (recoveryPromise) return;
     if (rotationDeadlineMs !== null && epochNow() >= rotationDeadlineMs) {
       // Token already expired — the server sever + reactive path own recovery.
+      rotationAwaitingIdleBoundary = false;
       return;
     }
     const socket = ws;
-    if (!socket || connPhase !== "open") return;
-    if (state.phase !== "listening") {
-      // Mid-turn: never cut audible speech or an in-flight transcription.
-      // Re-check until the turn completes or the deadline passes.
+    if (!socket || connPhase !== "open") {
+      rotationAwaitingIdleBoundary = false;
+      return;
+    }
+    if (state.phase !== "listening" || playbackMayHaveAudio) {
+      // Mid-turn or browser PCM still queued: never cut audible speech, its
+      // local tail, or an in-flight transcription. The accepted playout drain
+      // releases this latch immediately; the timer remains a safety re-check
+      // for non-audio turn boundaries.
+      rotationAwaitingIdleBoundary = true;
       mark("token_rotation_deferred", state.traceId);
       rotationTimer = setTimeout(() => {
         rotationTimer = null;
@@ -1337,6 +1395,7 @@ export function createVoiceSessionClient(
       }, rotationRecheckMs);
       return;
     }
+    rotationAwaitingIdleBoundary = false;
     mark("token_rotation", state.traceId);
     requestRecovery("token_rotation", generation, socket, {
       budgeted: false,
@@ -1396,6 +1455,9 @@ export function createVoiceSessionClient(
   ): Promise<void> {
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
     clearRotationTimer();
+    // Freeze any paced caption immediately. This is deliberately independent
+    // of PCM ownership: the connection can fail after text but before audio.
+    retractActiveDisplay(state.traceId);
     const reconnecting = turnAuthority.enterReconnecting(now());
     applyAuthorityEffects(reconnecting);
     clearAuthorityTimers();
@@ -1496,6 +1558,9 @@ export function createVoiceSessionClient(
   }
 
   async function stop(): Promise<void> {
+    // A manual session stop is also a display cutoff, including a terminal
+    // answer whose server work settled but whose local reveal is still paced.
+    retractActiveDisplay(state.traceId);
     disposed = true;
     intentionalClose = true;
     microphoneMuted = false;
@@ -1576,6 +1641,8 @@ export function createVoiceSessionClient(
       everLiveThisLifecycle = false;
       microphoneMuted = false;
       pendingAcousticSpeechEndedAtMs = null;
+      activeDisplayTraceId = null;
+      retractedDisplayTraceIds.clear();
       setPlaybackMayHaveAudio(false);
       clearAuthorityTimers();
       setState({ ...INITIAL_VOICE_SESSION_STATE, phase: "connecting" });
@@ -1645,6 +1712,10 @@ export function createVoiceSessionClient(
                 sequence,
               });
               mark("playback_drained", traceId, atMs);
+              if (rotationAwaitingIdleBoundary) {
+                clearRotationTimer();
+                attemptRotation(generation);
+              }
             }
           },
         });

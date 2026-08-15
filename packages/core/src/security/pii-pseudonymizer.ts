@@ -18,9 +18,12 @@
  * real recipient.
  *
  * Guarantees this module is built to keep (exercised by the fuzz/red-team suites):
- * - **Deterministic + consistent.** The same original maps to the same surrogate
- *   everywhere in a session (a per-session random salt makes the mapping
- *   *unlinkable* across sessions so a provider cannot correlate turns).
+ * - **Deterministic + consistent.** The same original maps to the same active
+ *   surrogate everywhere in a session (a per-session random salt makes the
+ *   mapping *unlinkable* across sessions so a provider cannot correlate turns).
+ *   If a later real value is byte-for-byte equal to that surrogate, the active
+ *   mapping is deterministically rotated; every previously issued surrogate
+ *   remains reversible so an in-flight reply still restores to its owner.
  * - **Bijective + reversible.** Two different originals never share a surrogate,
  *   and every minted surrogate is collision-checked against the learned corpus
  *   and every other surrogate — so restore is exact. The only hard rule on the
@@ -79,6 +82,19 @@ export interface PseudonymSessionOptions {
 	 * recognizer emitting single-character or stopword spans. Default 2.
 	 */
 	minValueLength?: number;
+}
+
+/** Controls how one recognizer pass interprets values already minted by a session. */
+export interface PseudonymLearnOptions {
+	/**
+	 * Set only when the recognizer is rescanning text that the same session has
+	 * already substituted (for example after a `pre_model` hook). Active
+	 * surrogates in that text are then treated as protected wire values rather than
+	 * learned as surrogate-of-surrogate identities. Raw/new model-call input must
+	 * leave this false so a genuine person whose name happens to equal an earlier
+	 * surrogate receives a distinct mapping.
+	 */
+	inputAlreadyPseudonymized?: boolean;
 }
 
 /**
@@ -468,18 +484,26 @@ export class PseudonymSession {
 	private readonly minValueLength: number;
 
 	private readonly valueToEntry = new Map<string, PseudonymEntry>();
+	/**
+	 * Reverse mappings for every surrogate ever issued by this session. Active
+	 * entries and retired entries intentionally coexist: a reply from an earlier
+	 * model call can arrive after a cross-call collision rotates the active
+	 * surrogate, and it must still restore to the original that owned it.
+	 */
 	private readonly surrogateToEntry = new Map<string, PseudonymEntry>();
-	/** Lowercased surrogates in use, for O(1) collision checks when minting. */
+	/** Lowercased surrogates belonging to the current entries only. */
+	private readonly activeSurrogatesLower = new Set<string>();
+	/** Lowercased surrogates ever issued, for O(1) mint collision checks. */
 	private readonly usedSurrogatesLower = new Set<string>();
 	/**
 	 * Every swappable real value ever learned, lowercased. The value namespace and
-	 * the surrogate namespace are kept mutually exclusive: a surrogate is never
-	 * minted equal to a known value, and — because `learn()` is called once per
-	 * model call and a *later* call can introduce a real value equal to an
-	 * *earlier* call's surrogate — any existing entry whose surrogate collides with
-	 * a newly-learned value is re-minted. Without this, two distinct people could
-	 * collapse onto one surrogate, breaking the round-trip and misdelivering the
-	 * restored value at the execution boundary.
+	 * the active surrogate namespace are kept mutually exclusive: a surrogate is
+	 * never minted equal to a known value, and — because `learn()` is called once
+	 * per model call and a *later* call can introduce a real value equal to an
+	 * *earlier* call's surrogate — any existing entry whose active surrogate
+	 * collides with a newly-learned value is re-minted. The retired reverse mapping
+	 * is retained. Without both halves, two distinct people could collapse onto one
+	 * surrogate or a late reply could restore to the wrong person.
 	 */
 	private readonly knownValuesLower = new Set<string>();
 	/**
@@ -541,10 +565,13 @@ export class PseudonymSession {
 	 * prompt text before the (synchronous) substitution passes. Idempotent: text
 	 * already learned re-uses existing mappings.
 	 */
-	async learn(text: string): Promise<void> {
+	async learn(
+		text: string,
+		options: PseudonymLearnOptions = {},
+	): Promise<void> {
 		if (!this.recognizer || !text) return;
 		const spans = await this.recognizer.recognize(text);
-		this.learnSpans(text, spans);
+		this.learnSpans(text, spans, options);
 	}
 
 	/**
@@ -552,14 +579,25 @@ export class PseudonymSession {
 	 * in. Exposed so callers with their own recognizer (or a batch of recognizers)
 	 * can drive the vault without this class importing a model.
 	 */
-	learnSpans(sourceText: string, spans: readonly EntitySpan[]): void {
+	learnSpans(
+		sourceText: string,
+		spans: readonly EntitySpan[],
+		options: PseudonymLearnOptions = {},
+	): void {
 		if (sourceText) this.corpusLower += `\n${sourceText.toLowerCase()}`;
 		// 1. Register every swappable incoming value into the value namespace first,
-		//    so both the re-mint check and any new mint below see the full set.
+		//    so both the re-mint check and any new mint below see the full set. A
+		//    recognized value equal to an active surrogate is deliberately treated as
+		//    a NEW real value for raw input. The recognizer cannot tell a genuine
+		//    "Elias Vargas" from an already-substituted "Elias Vargas" without caller
+		//    provenance; `inputAlreadyPseudonymized` is the explicit, narrowly-scoped
+		//    signal for the latter. Raw input fails closed: the new value passes through
+		//    a fresh surrogate, while the retired reverse mapping still repairs
+		//    provider bytes issued before the rotation.
 		const incoming: { value: string; kind: string }[] = [];
 		for (const span of spans) {
 			const value = span.value.trim();
-			if (!this.isSwappable(value, span.kind)) continue;
+			if (!this.isSwappable(value, span.kind, options)) continue;
 			this.knownValuesLower.add(value.toLowerCase());
 			if (!this.valueToEntry.has(value))
 				incoming.push({ value, kind: span.kind });
@@ -576,10 +614,20 @@ export class PseudonymSession {
 	}
 
 	/** True when a value/kind pair is eligible for swapping. */
-	private isSwappable(value: string, kind: string): boolean {
+	private isSwappable(
+		value: string,
+		kind: string,
+		options: PseudonymLearnOptions,
+	): boolean {
 		if (value.length < this.minValueLength) return false;
 		if (this.disabledKinds.has(kind)) return false;
 		if (this.blocklist.has(value.toLowerCase())) return false;
+		if (
+			options.inputAlreadyPseudonymized === true &&
+			this.activeSurrogatesLower.has(value.toLowerCase())
+		) {
+			return false;
+		}
 		return true;
 	}
 
@@ -617,13 +665,16 @@ export class PseudonymSession {
 		// which the runtime relies on when it substitutes params twice per call
 		// (before and after the pre_model hook). Value and surrogate string sets are
 		// disjoint (a surrogate is never present in the learned corpus, and every
-		// value is), so there is no key collision.
+		// value is), so there is no key collision among the active entries.
 		this.substituteReplacer = compileReplacer([
 			...entries.map((e) => ({ from: e.value, to: e.surrogate })),
 			...entries.map((e) => ({ from: e.surrogate, to: e.surrogate })),
 		]);
 		this.restoreReplacer = compileReplacer(
-			entries.map((e) => ({ from: e.surrogate, to: e.value })),
+			[...this.surrogateToEntry.entries()].map(([surrogate, entry]) => ({
+				from: surrogate,
+				to: entry.value,
+			})),
 		);
 		this.replacersDirty = false;
 	}
@@ -661,18 +712,23 @@ export class PseudonymSession {
 		const entry: PseudonymEntry = { value, surrogate, kind };
 		this.valueToEntry.set(value, entry);
 		this.surrogateToEntry.set(surrogate, entry);
+		this.activeSurrogatesLower.add(surrogate.toLowerCase());
 		this.usedSurrogatesLower.add(surrogate.toLowerCase());
 		this.maxToken = Math.max(this.maxToken, value.length, surrogate.length);
 		this.replacersDirty = true;
 		return entry;
 	}
 
-	/** Replace an entry's surrogate with a fresh one (cross-call collision fix). */
+	/**
+	 * Replace an entry's active surrogate with a fresh one. The old reverse map
+	 * and reservation remain live for replies already in flight; deleting either
+	 * would make a late provider chunk unrestorable or allow the same wire token to
+	 * be minted for another original.
+	 */
 	private remintEntry(entry: PseudonymEntry): void {
 		const fresh = this.mintUniqueSurrogate(entry.value, entry.kind);
 		if (fresh.toLowerCase() === entry.surrogate.toLowerCase()) return;
-		this.surrogateToEntry.delete(entry.surrogate);
-		this.usedSurrogatesLower.delete(entry.surrogate.toLowerCase());
+		this.activeSurrogatesLower.delete(entry.surrogate.toLowerCase());
 		const next: PseudonymEntry = {
 			value: entry.value,
 			surrogate: fresh,
@@ -680,6 +736,7 @@ export class PseudonymSession {
 		};
 		this.valueToEntry.set(entry.value, next);
 		this.surrogateToEntry.set(fresh, next);
+		this.activeSurrogatesLower.add(fresh.toLowerCase());
 		this.usedSurrogatesLower.add(fresh.toLowerCase());
 		this.maxToken = Math.max(this.maxToken, fresh.length);
 		this.replacersDirty = true;
@@ -696,16 +753,31 @@ export class PseudonymSession {
 		const valueLower = value.toLowerCase();
 		for (let attempt = 0; attempt < 512; attempt += 1) {
 			const candidate = mintSurrogate(this.salt, kind, value, attempt);
-			const candidateLower = candidate.toLowerCase();
-			if (candidateLower === valueLower) continue;
-			if (this.usedSurrogatesLower.has(candidateLower)) continue;
-			if (this.knownValuesLower.has(candidateLower)) continue;
-			if (this.valueToEntry.has(candidate)) continue;
-			if (this.corpusLower.includes(candidateLower)) continue;
-			return candidate;
+			if (this.isAvailableSurrogate(candidate, valueLower)) return candidate;
 		}
-		// Exhausted the deterministic space (astronomically unlikely): fall back to
-		// a salted, obviously-unique token rather than risk an ambiguous restore.
-		return `${mintSurrogate(this.salt, kind, value, 0)} ${fnv1a(`${this.salt}${value}${this.size}`).toString(36)}`;
+		// Exhausted the fluent pool's first probes: append a deterministic salted
+		// discriminator, but still collision-check it. Never use session size in the
+		// suffix (the same original must probe the same sequence), and never return an
+		// unchecked fallback that could make reverse ownership ambiguous.
+		for (let attempt = 512; attempt < 4096; attempt += 1) {
+			const base = mintSurrogate(this.salt, kind, value, attempt);
+			const suffix = fnv1a(
+				`${this.salt}\0${kind}\0${value}\0fallback\0${attempt}`,
+			).toString(36);
+			const candidate = `${base} ${suffix}`;
+			if (this.isAvailableSurrogate(candidate, valueLower)) return candidate;
+		}
+		// Fail closed without embedding the sensitive original in the diagnostic.
+		throw new Error("PII pseudonym surrogate namespace exhausted");
+	}
+
+	private isAvailableSurrogate(candidate: string, valueLower: string): boolean {
+		const candidateLower = candidate.toLowerCase();
+		if (candidateLower === valueLower) return false;
+		if (this.usedSurrogatesLower.has(candidateLower)) return false;
+		if (this.knownValuesLower.has(candidateLower)) return false;
+		if (this.valueToEntry.has(candidate)) return false;
+		if (this.corpusLower.includes(candidateLower)) return false;
+		return true;
 	}
 }
