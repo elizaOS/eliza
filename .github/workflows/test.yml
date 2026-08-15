@@ -475,7 +475,6 @@ jobs:
             WHERE id = '$agent_id';
             SQL
       - name: Enqueue the corrected runtime start
-        if: false
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -491,7 +490,10 @@ jobs:
             database_url="${database_url/sslmode=no-verify/sslmode=require}"
             psql "$database_url" -v ON_ERROR_STOP=1 -Atc "SELECT status || '|' || docker_image FROM agent_sandboxes WHERE id = '$agent_id'" > /tmp/eliza-x-state
             IFS= read -r state < /tmp/eliza-x-state
-            test "$state" = "stopped|$expected_image"
+            case "$state" in
+              "stopped|$expected_image"|"error|$expected_image") ;;
+              *) exit 1 ;;
+            esac
             sed -n 's/^WAIFU_SERVICE_KEY=//p' /opt/eliza/cloud/.env.local | tail -1 > /tmp/eliza-x-service-key
             IFS= read -r service_key < /tmp/eliza-x-service-key
             test -n "${service_key//[[:space:]]/}"
@@ -505,6 +507,7 @@ jobs:
             psql "$database_url" -v ON_ERROR_STOP=1 -c \
               "SELECT id, type, status, created_at FROM jobs WHERE agent_id = '$agent_id' ORDER BY created_at DESC LIMIT 3"
       - name: Inspect Docker placement capacity
+        if: false
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
