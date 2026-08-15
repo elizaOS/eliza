@@ -41,12 +41,31 @@ function loadCodes(): Map<string, number> {
   for (const [code, amount] of Object.entries(codes)) {
     const normalized = code?.trim().toLowerCase();
     if (!normalized) continue;
-    const num = typeof amount === "number" ? amount : parseFloat(String(amount));
-    if (!isNaN(num) && num > 0) {
+    // The documented contract declares `amount` as a number; the string
+    // branch is a defensive sanity check on malformed JSON and must be
+    // strict — parseFloat accepts a numeric prefix ("25credits" -> 25) and
+    // returns Infinity for "Infinity", which then passes an isNaN-only
+    // guard and could reach addCredits as a non-finite grant (#20132).
+    // Require a complete canonical non-negative decimal string and accept
+    // only finite positive values on both branches.
+    let num: number;
+    if (typeof amount === "number") {
+      num = amount;
+    } else {
+      const raw = String(amount).trim();
+      if (!/^\d+(?:\.\d+)?$/.test(raw)) continue;
+      num = Number(raw);
+    }
+    if (Number.isFinite(num) && num > 0) {
       map.set(normalized, num);
     }
   }
   return map;
+}
+
+/** Test hook: the codes map is cached per process; tests need to re-read env. */
+export function resetSignupCodesCacheForTests(): void {
+  cachedCodes = null;
 }
 
 /** WHY cache: Env is read once per process; no need to re-parse on every redeem. */
