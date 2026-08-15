@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { readAliasedEnv } from "@elizaos/shared";
+import { resolveHostExecutable } from "@elizaos/shared/host-execution-env";
 
 export const TERMINAL_TOOL_NAMES = [
   "sh",
@@ -46,8 +47,6 @@ export interface TerminalSupport {
   reason?: TerminalUnsupportedReason;
   message?: string;
 }
-
-const ANDROID_PATH_ENTRIES = ["/system/bin", "/system/xbin", "/vendor/bin"];
 
 export function isAndroidRuntime(): boolean {
   return (
@@ -96,30 +95,13 @@ function executableExists(candidate: string): boolean {
   }
 }
 
-function pathEntries(): string[] {
-  const entries = (process.env.PATH ?? "")
-    .split(path.delimiter)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  if (isAndroidRuntime()) {
-    for (const entry of ANDROID_PATH_ENTRIES) {
-      if (!entries.includes(entry)) entries.push(entry);
-    }
-  }
-  return entries;
-}
-
 export function resolveExecutable(nameOrPath: string): string | undefined {
   const trimmed = nameOrPath.trim();
   if (!trimmed) return undefined;
-  if (trimmed.includes("/") || path.isAbsolute(trimmed)) {
+  if (path.isAbsolute(trimmed)) {
     return executableExists(trimmed) ? trimmed : undefined;
   }
-  for (const entry of pathEntries()) {
-    const candidate = path.join(entry, trimmed);
-    if (executableExists(candidate)) return candidate;
-  }
-  return undefined;
+  return resolveHostExecutable(trimmed);
 }
 
 function firstExecutable(candidates: readonly string[]): string | undefined {
@@ -131,25 +113,6 @@ function firstExecutable(candidates: readonly string[]): string | undefined {
 }
 
 export function resolveTerminalShell(): ShellResolution {
-  const explicitEntries = [
-    ["CODING_TOOLS_SHELL", process.env.CODING_TOOLS_SHELL] as const,
-    ["SHELL", process.env.SHELL] as const,
-  ];
-  for (const [key, raw] of explicitEntries) {
-    const value = raw?.trim();
-    if (!value) continue;
-    const resolved = resolveExecutable(value);
-    if (resolved) {
-      return {
-        shell: resolved,
-        args: ["-c"],
-        available: true,
-        source:
-          key === "CODING_TOOLS_SHELL" ? "env:CODING_TOOLS_SHELL" : "env:SHELL",
-      };
-    }
-  }
-
   const candidates = isAndroidRuntime()
     ? ["/system/bin/sh", "sh"]
     : ["/bin/bash", "bash", "/bin/sh", "sh"];

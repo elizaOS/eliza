@@ -213,6 +213,16 @@
       "import": "./dist/restart.js",
       "default": "./dist/restart.js"
     },
+    "./host-execution-env": {
+      "types": "./dist/host-execution-env.d.ts",
+      "eliza-source": {
+        "types": "./src/host-execution-env.ts",
+        "import": "./src/host-execution-env.ts",
+        "default": "./src/host-execution-env.ts"
+      },
+      "import": "./dist/host-execution-env.js",
+      "default": "./dist/host-execution-env.js"
+    },
     "./sandbox-registry": {
       "types": "./dist/sandbox-registry.d.ts",
       "eliza-source": {

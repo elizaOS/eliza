@@ -29,6 +29,10 @@ export default defineConfig({
         find: /^@elizaos\/shared$/,
         replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
       },
+      {
+        find: /^@elizaos\/shared\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/shared/src/$1.ts"),
+      },
     ],
     conditions: ["node"],
   },

@@ -2,6 +2,10 @@
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  __resetHostExecutionBaselineForTests,
+  captureHostExecutionBaseline,
+} from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   detectTerminalSupport,
@@ -29,6 +33,9 @@ let tempDir = "";
 beforeEach(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
   tempDir = mkdtempSync(path.join(tmpdir(), "ct-cap-"));
+  process.env.PATH = tempDir;
+  __resetHostExecutionBaselineForTests();
+  captureHostExecutionBaseline();
 });
 
 afterEach(() => {
@@ -38,6 +45,7 @@ afterEach(() => {
     else process.env[key] = value;
   }
   rmSync(tempDir, { recursive: true, force: true });
+  __resetHostExecutionBaselineForTests();
 });
 
 function executable(name: string): string {
@@ -48,10 +56,10 @@ function executable(name: string): string {
 }
 
 describe("coding-tools terminal capability detection", () => {
-  it("uses CODING_TOOLS_SHELL for Android shell selection", () => {
-    const shell = executable("aosp-sh");
+  it("ignores mutable shell overrides and selects from the boot PATH", () => {
+    const shell = executable("sh");
     process.env.ELIZA_PLATFORM = "android";
-    process.env.CODING_TOOLS_SHELL = shell;
+    process.env.CODING_TOOLS_SHELL = executable("aosp-sh");
     process.env.SHELL = "/definitely/missing";
     process.env.PATH = tempDir;
 
@@ -59,7 +67,7 @@ describe("coding-tools terminal capability detection", () => {
 
     expect(resolved.available).toBe(true);
     expect(resolved.command).toBe(shell);
-    expect(resolved.source).toBe("env:CODING_TOOLS_SHELL");
+    expect(resolved.source).toBe("candidate");
   });
 
   it("detects Android PATH binaries without invoking which", () => {

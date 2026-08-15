@@ -21,6 +21,7 @@ import path from "node:path";
 import process from "node:process";
 import * as readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { runBootHooks } from "./boot-hooks.ts";
 import {
   type BootContext,
@@ -3985,6 +3986,9 @@ function ensureChatLogListenerAttached(): void {
 export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
+  // Programmatic hosts bypass bin.ts, so establish the same one-shot authority
+  // before config loading and static plugin registration here as well.
+  captureHostExecutionBaseline();
   opts?.abortSignal?.throwIfAborted();
   const bootContext =
     opts?.bootContext ?? createBootContext({ observePhase: opts?.onBootPhase });
