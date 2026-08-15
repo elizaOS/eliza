@@ -55,4 +55,99 @@ describe("ensureConnection", () => {
 			[secondCallerId]: "connector_admin",
 		});
 	});
+
+	it("preserves the entity's per-source identity when a later connection omits identity fields", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		const agentId = stringToUuid("connection-identity-agent");
+		const ownerEntityId = stringToUuid("connection-identity-owner");
+		const worldId = stringToUuid("connection-identity-world");
+		const base = {
+			agentId,
+			entityId: ownerEntityId,
+			roomId: stringToUuid("connection-identity-room"),
+			worldId,
+			messageServerId: stringToUuid("connection-identity-server"),
+			source: "discord",
+			channelId: "connection-identity-channel",
+		};
+
+		await ensureConnection(adapter, {
+			...base,
+			userId: stringToUuid("owner-wire-id"),
+			name: "Owner Display",
+			userName: "owner_handle",
+		});
+
+		// An owner-aliased author (webhook or alias account) ensures the same
+		// canonical entity without identity fields; the recorded identity and
+		// names must survive untouched.
+		await ensureConnection(adapter, base);
+
+		const [entity] = await adapter.getEntitiesByIds([ownerEntityId]);
+		expect(entity?.metadata?.discord).toEqual({
+			id: stringToUuid("owner-wire-id"),
+			name: "Owner Display",
+			userName: "owner_handle",
+		});
+		expect(entity?.names).toEqual(["Owner Display", "owner_handle"]);
+	});
+
+	it("merges per-source identity field-by-field instead of replacing the record", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		const agentId = stringToUuid("connection-merge-agent");
+		const entityId = stringToUuid("connection-merge-entity");
+		const base = {
+			agentId,
+			entityId,
+			roomId: stringToUuid("connection-merge-room"),
+			worldId: stringToUuid("connection-merge-world"),
+			messageServerId: stringToUuid("connection-merge-server"),
+			source: "discord",
+			channelId: "connection-merge-channel",
+		};
+
+		await ensureConnection(adapter, {
+			...base,
+			userId: stringToUuid("merge-wire-id"),
+			name: "Original Name",
+			userName: "original_handle",
+		});
+		await ensureConnection(adapter, { ...base, name: "Renamed" });
+
+		const [entity] = await adapter.getEntitiesByIds([entityId]);
+		expect(entity?.metadata?.discord).toEqual({
+			id: stringToUuid("merge-wire-id"),
+			name: "Renamed",
+			userName: "original_handle",
+		});
+	});
+
+	it("keeps identity records from different sources side by side", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		const agentId = stringToUuid("connection-sources-agent");
+		const entityId = stringToUuid("connection-sources-entity");
+		const shared = {
+			agentId,
+			entityId,
+			roomId: stringToUuid("connection-sources-room"),
+			worldId: stringToUuid("connection-sources-world"),
+			messageServerId: stringToUuid("connection-sources-server"),
+			channelId: "connection-sources-channel",
+		};
+
+		await ensureConnection(adapter, {
+			...shared,
+			source: "discord",
+			userName: "discord_handle",
+		});
+		await ensureConnection(adapter, {
+			...shared,
+			source: "telegram",
+			userName: "telegram_handle",
+		});
+
+		const [entity] = await adapter.getEntitiesByIds([entityId]);
+		expect(entity?.metadata?.discord).toEqual({ userName: "discord_handle" });
+		expect(entity?.metadata?.telegram).toEqual({ userName: "telegram_handle" });
+	});
 });

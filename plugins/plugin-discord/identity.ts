@@ -82,6 +82,21 @@ export function resolveDiscordRuntimeEntityId(
 	return createUniqueUuid(runtime, userId);
 }
 
+/**
+ * True when a resolved runtime entity id was substituted for this Discord user
+ * rather than derived from it — i.e. the user reached the canonical owner
+ * entity through the owner alias list. Aliased authors act with the owner's
+ * standing, but their wire identity (webhook or alias account) must never be
+ * written onto the canonical entity's identity metadata.
+ */
+export function isAliasedDiscordEntityId(
+	runtime: IAgentRuntime,
+	userId: string,
+	resolvedEntityId: string,
+): boolean {
+	return resolvedEntityId !== createUniqueUuid(runtime, userId);
+}
+
 export function extractDiscordOwnerUserIds(application: unknown): string[] {
 	const applicationRecord = asRecord(application);
 	if (!applicationRecord) {

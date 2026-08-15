@@ -144,6 +144,7 @@ import { getDiscordSettings } from "./environment";
 import {
 	extractDiscordOwnerUserIds,
 	extractDiscordTeamAdminUserIds,
+	isAliasedDiscordEntityId,
 	parseDiscordOwnerUserIds,
 	resolveDiscordRuntimeEntityId,
 	resolveElizaOwnerEntityId,
@@ -1330,6 +1331,8 @@ export class DiscordService extends Service implements IDiscordService {
 				parent.isVoiceChannelClaimed(guildId, channelId),
 			resolveDiscordEntityId: (userId: string) =>
 				parent.resolveDiscordEntityId(userId),
+			isOwnerAliasedDiscordUser: (userId: string) =>
+				parent.isOwnerAliasedDiscordUser(userId),
 			getChannelType: (channel: Channel) => parent.getChannelType(channel),
 			isGuildTextBasedChannel,
 			buildMemoryFromMessage: (
@@ -3975,6 +3978,20 @@ export class DiscordService extends Service implements IDiscordService {
 			userId,
 			this.ownerDiscordUserIds,
 		) as UUID;
+	}
+
+	/**
+	 * True when the Discord user reaches the canonical owner entity through the
+	 * owner alias list rather than through its own derived entity id. Aliased
+	 * identities must never contribute display names or metadata to the
+	 * canonical entity.
+	 */
+	public isOwnerAliasedDiscordUser(userId: string): boolean {
+		return isAliasedDiscordEntityId(
+			this.runtime,
+			userId,
+			this.resolveDiscordEntityId(userId),
+		);
 	}
 
 	/**
