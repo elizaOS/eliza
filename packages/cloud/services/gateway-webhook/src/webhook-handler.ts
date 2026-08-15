@@ -45,6 +45,12 @@ interface HandlerDeps {
   reacquireAuthHeader?: () => Promise<Record<string, string>>;
 }
 
+interface PersonalSharedDeliveryTiming {
+  cloudMs: number;
+  egressMs: number;
+  cloudServerTiming: string | null;
+}
+
 export async function handleWebhook(
   request: Request,
   adapter: PlatformAdapter,
@@ -284,7 +290,7 @@ async function processMessage(
   if (!explicitAgentId && isPersonalElizaTransport(adapter.platform)) {
     const stopTyping = beginTypingFeedback(adapter, config, event);
     try {
-      await sendPersonalSharedReply(
+      const timing = await sendPersonalSharedReply(
         adapter,
         config,
         event,
@@ -296,6 +302,9 @@ async function processMessage(
         project,
         platform: adapter.platform,
         messageId: event.messageId,
+        cloudMs: timing.cloudMs,
+        cloudServerTiming: timing.cloudServerTiming,
+        egressMs: timing.egressMs,
         totalMs: Date.now() - startedAt,
       });
     } finally {
@@ -566,7 +575,7 @@ async function sendPersonalSharedReply(
   deps: HandlerDeps,
   project: string,
   beforeEgress?: () => Promise<void>,
-): Promise<void> {
+): Promise<PersonalSharedDeliveryTiming> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const voiceNote = event.voiceNote
@@ -577,6 +586,7 @@ async function sendPersonalSharedReply(
       "connector cannot resolve the supplied voice note",
     );
   }
+  const cloudStartedAt = Date.now();
   // Voice turns can spend most of the 120-second processing lease in STT + the
   // model. Only a stale-auth retry is safe inline; provider/transport failures
   // reopen the webhook for Telegram's durable retry instead of overlapping it.
@@ -663,7 +673,9 @@ async function sendPersonalSharedReply(
       `personal Shared chat failed (${response.status}) ${diagnostics}`,
     );
   }
+  const cloudServerTiming = response.headers.get("Server-Timing");
   const body: unknown = await response.json();
+  const cloudMs = Date.now() - cloudStartedAt;
   const reply =
     body && typeof body === "object" && "data" in body
       ? (body.data as { reply?: unknown } | null)?.reply
@@ -675,9 +687,17 @@ async function sendPersonalSharedReply(
   }
   // Empty is the agent's deliberate shouldRespond=no result. It is a
   // successful turn with no provider egress, not a malformed response.
-  if (reply.length === 0) return;
+  if (reply.length === 0) {
+    return { cloudMs, egressMs: 0, cloudServerTiming };
+  }
+  const egressStartedAt = Date.now();
   await beforeEgress?.();
   await adapter.sendReply(config, event, reply);
+  return {
+    cloudMs,
+    egressMs: Date.now() - egressStartedAt,
+    cloudServerTiming,
+  };
 }
 
 async function sendOnboardingReply(

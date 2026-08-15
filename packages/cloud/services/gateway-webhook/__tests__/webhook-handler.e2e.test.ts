@@ -1,10 +1,11 @@
 /** Exercises gateway webhook routing with deterministic cloud-service fixtures. */
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type {
   ChatEvent,
   PlatformAdapter,
   WebhookConfig,
 } from "../src/adapters/types";
+import { logger } from "../src/logger";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
 
@@ -424,6 +425,9 @@ describe("gateway webhook handler e2e routing", () => {
       sendReply,
     };
     const redis = new MemoryRedis();
+    const completionLog = spyOn(logger, "info").mockImplementation(
+      () => undefined,
+    );
     let sharedBody: Record<string, unknown> | null = null;
     globalThis.fetch = mock(async (input, init) => {
       const url = String(input);
@@ -440,7 +444,10 @@ describe("gateway webhook handler e2e routing", () => {
           }),
           {
             status: 200,
-            headers: { "content-type": "application/json" },
+            headers: {
+              "content-type": "application/json",
+              "server-timing": "account;dur=5.2, shared;dur=17.8",
+            },
           },
         );
       }
@@ -475,6 +482,18 @@ describe("gateway webhook handler e2e routing", () => {
       expect.anything(),
       event,
       "start with the launch checklist",
+    );
+    expect(completionLog).toHaveBeenCalledWith(
+      "Personal Eliza connector message completed",
+      expect.objectContaining({
+        project: "eliza-app",
+        platform: "telegram",
+        messageId: "update-personal-1",
+        cloudMs: expect.any(Number),
+        cloudServerTiming: "account;dur=5.2, shared;dur=17.8",
+        egressMs: expect.any(Number),
+        totalMs: expect.any(Number),
+      }),
     );
   });
 

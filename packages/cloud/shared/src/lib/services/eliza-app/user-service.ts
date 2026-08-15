@@ -12,7 +12,9 @@
  */
 
 import { organizationsRepository } from "../../../db/repositories/organizations";
+import { findReusableTelegramPersonalDelivery } from "../../../db/repositories/personal-shared-deliveries";
 import { type UserWithOrganization, usersRepository } from "../../../db/repositories/users";
+import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
 import type { Organization } from "../../../db/schemas/organizations";
 import type { NewUser, User } from "../../../db/schemas/users";
 import { SIGNUP_CREDIT_POLICY } from "../../signup-credits";
@@ -20,7 +22,13 @@ import { isUniqueConstraintError } from "../../utils/db-errors";
 import { isValidEmail, maskEmailForLogging } from "../../utils/email-validation";
 import { logger } from "../../utils/logger";
 import { isValidE164, normalizePhoneNumber } from "../../utils/phone-normalization";
+import {
+  findActivePersonalDedicatedTarget,
+  isAuthoritativePersonalDedicatedTarget,
+} from "../agent-tier-upgrade-target";
 import { apiKeysService } from "../api-keys";
+import { readUpgradedFromAgentId } from "../eliza-agent-config";
+import { personalSharedAgentId } from "../shared-runtime/personal-shared-agent";
 import { redeemSignupCode } from "../signup-code";
 import type { TelegramAuthData } from "./telegram-auth";
 
@@ -28,6 +36,14 @@ export interface FindOrCreateResult {
   user: User;
   organization: Organization;
   isNew: boolean;
+}
+
+export interface TelegramPersonalDeliveryResult {
+  userId: string;
+  organizationId: string;
+  dedicatedTarget: Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config"> | null;
+  isNew: boolean;
+  resolution: "single-query-repeat" | "exact-dedicated-fallback" | "locked-create-or-repair";
 }
 
 function generateSlugFromTelegram(username?: string, telegramId?: string): string {
@@ -175,6 +191,102 @@ class ElizaAppUserService {
       },
     );
     return result;
+  }
+
+  /**
+   * Resolves an established Telegram account and its active runtime in one
+   * read-only statement. Missing, stale, or conflicting projections retain the
+   * existing sender-locked convergence transaction as the only repair writer.
+   */
+  async resolvePersonalDeliveryByTelegram(params: {
+    telegramId: string;
+    username?: string;
+    firstName?: string;
+    displayName?: string;
+  }): Promise<TelegramPersonalDeliveryResult> {
+    const telegramId = params.telegramId.trim();
+    if (!/^\d{1,20}$/.test(telegramId)) {
+      throw new Error("Trusted Telegram transport supplied an invalid sender id");
+    }
+    const username = params.username?.trim() || undefined;
+    const firstName = params.firstName?.trim() || undefined;
+    const displayName = params.displayName?.trim() || firstName || username || "Eliza user";
+
+    const reusable = await findReusableTelegramPersonalDelivery({
+      telegramId,
+      telegramUsername: username,
+      telegramFirstName: firstName,
+    });
+    if (reusable) {
+      const personalAgentId = personalSharedAgentId({
+        userId: reusable.userId,
+        organizationId: reusable.organizationId,
+      });
+      const candidate = reusable.dedicatedCandidate;
+      let dedicatedTarget: TelegramPersonalDeliveryResult["dedicatedTarget"] = null;
+      let resolution: TelegramPersonalDeliveryResult["resolution"] = "single-query-repeat";
+      if (candidate) {
+        if (readUpgradedFromAgentId(candidate.agent_config) === personalAgentId) {
+          dedicatedTarget = isAuthoritativePersonalDedicatedTarget(candidate, personalAgentId)
+            ? candidate
+            : null;
+        } else {
+          dedicatedTarget = await findActivePersonalDedicatedTarget(
+            reusable.organizationId,
+            personalAgentId,
+          );
+          resolution = "exact-dedicated-fallback";
+        }
+      }
+      logger.info("[ElizaAppUserService] Reused Telegram personal account", {
+        userId: reusable.userId,
+        organizationId: reusable.organizationId,
+        telegramId,
+        resolution,
+      });
+      return {
+        userId: reusable.userId,
+        organizationId: reusable.organizationId,
+        dedicatedTarget,
+        isNew: false,
+        resolution,
+      };
+    }
+
+    const result = await usersRepository.findOrCreateTelegramPersonalAccount({
+      telegramId,
+      telegramUsername: username,
+      telegramFirstName: firstName,
+      displayName,
+      organizationName: `${displayName}'s Workspace`,
+      organizationSlug: generateSlugFromTelegram(username, telegramId),
+    });
+    const personalAgentId = personalSharedAgentId({
+      userId: result.user.id,
+      organizationId: result.organization.id,
+    });
+    const dedicatedTarget = await findActivePersonalDedicatedTarget(
+      result.organization.id,
+      personalAgentId,
+    );
+    logger.info(
+      result.isNew
+        ? "[ElizaAppUserService] Created Telegram personal account"
+        : "[ElizaAppUserService] Repaired Telegram personal account",
+      {
+        userId: result.user.id,
+        organizationId: result.organization.id,
+        telegramId,
+        resolution: "locked-create-or-repair",
+      },
+    );
+    return {
+      userId: result.user.id,
+      organizationId: result.organization.id,
+      dedicatedTarget,
+      isNew: result.isNew,
+      resolution: "locked-create-or-repair",
+    };
   }
 
   /**
