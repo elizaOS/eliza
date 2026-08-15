@@ -10,9 +10,10 @@
  *   - LLM: `streamElizaConversation` (existing SSE / Cerebras pass-through). No
  *     new LLM client.
  *   - TTS: Fish Audio when `ELIZA_TTS_FISH_ENABLED` is true; otherwise
- *     `CartesiaSonicTtsAdapter` (#15949). Canonical assistant text is buffered
- *     through its explicit terminal frame, projected once through the shared
- *     speech/display safety policy, then sent as at most one synthesis input.
+ *     `CartesiaSonicTtsAdapter` (#15949). The canonical route may explicitly
+ *     commit safe, irrevocable sentence prefixes for early synthesis; every
+ *     remaining terminal suffix is projected through the same shared safety
+ *     policy before it can cross the provider boundary.
  *
  * Interruption (contract §7.5): telephony trusts Ink semantic turn-start;
  * browser/local sessions wait for confirmed caller words while local playback
@@ -36,6 +37,10 @@ import {
   type VoiceOutputPolicy,
   type VoiceProgressState,
 } from "@elizaos/shared";
+import {
+  COMMITTED_SPEECH_PROTOCOL,
+  type CommittedSpeechSegment,
+} from "@elizaos/shared/voice/incremental-speech-segments";
 import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
 import {
   CartesiaSonicTtsAdapter,
@@ -1165,6 +1170,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     let tts: RealtimeTtsStream | null = null;
     let canonicalDisplayText = "";
     let lastDisplaySnapshot = "";
+    let committedSpeechSourceEnd = 0;
+    let committedSpeechChars = 0;
     const sendDisplaySnapshot = (force = false): void => {
       if (!this.turnAuthority.isCurrent(lease) || abort.signal.aborted) return;
       const boundedCanonicalText = canonicalDisplayText.slice(
@@ -1383,6 +1390,35 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         signal: abort.signal,
         fetchImpl: this.config.fetchImpl,
         onStatus: updateProgressStatus,
+        voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+        onSpeechSegment: (segment: CommittedSpeechSegment) => {
+          if (
+            abort.signal.aborted ||
+            !this.turnAuthority.isCurrent(lease) ||
+            segment.sourceStart !== committedSpeechSourceEnd
+          ) {
+            return;
+          }
+          // The canonical route and bridge have independently projected and
+          // validated this exact sentence. From this point it is irrevocable:
+          // enqueue it immediately, and let a later terminal request close the
+          // same provider context without repeating the prefix.
+          finishProgress("final");
+          committedSpeechSourceEnd = segment.sourceEnd;
+          committedSpeechChars += segment.speechText.length;
+          this.turnTtsChars += segment.speechText.length;
+          this.send({
+            t: "trace_mark",
+            name: "speakable_text_ready",
+            traceId,
+          });
+          this.send({ t: "trace_mark", name: "tts_requested", traceId });
+          ensureTts().sendPhrase({
+            text: segment.speechText,
+            continueContext: true,
+            flush: true,
+          });
+        },
       };
       this.send({ t: "trace_mark", name: "router_decided", traceId });
       this.send({ t: "trace_mark", name: "llm_requested", traceId });
@@ -1467,10 +1503,26 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       const policy = resolveRuntimeVoiceOutputPolicy(
         result.outputDirective?.policy,
       );
+      if (
+        committedSpeechSourceEnd > 0 &&
+        result.outputDirective &&
+        (policy !== "both" || result.outputDirective.spoken !== undefined)
+      ) {
+        throw new ElizaSseBridgeError(
+          "Eliza agent terminal voice output contradicts committed speech",
+          "protocol_error",
+          undefined,
+          undefined,
+          false,
+        );
+      }
+      const terminalSpeechSource = canonicalDisplayText.slice(
+        committedSpeechSourceEnd,
+      );
       const projection = projectVoiceOutput(
         {
           policy,
-          display: { markdown: canonicalDisplayText },
+          display: { markdown: terminalSpeechSource },
           ...(result.outputDirective?.spoken === undefined
             ? {}
             : { spoken: result.outputDirective.spoken }),
@@ -1500,6 +1552,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         traceId,
       });
       if (!safeSpeechText) {
+        if (committedSpeechChars > 0) {
+          // A later unsafe suffix cannot revoke audio that the canonical route
+          // already committed, and Cartesia rejects an empty terminal request.
+          // Stop this context after the safe prefix without inventing filler or
+          // leaking the blocked suffix; the persisted prefix remains truthful.
+          this.send({
+            t: "error",
+            code: "terminal_speech_projection_blocked",
+            retryable: false,
+          });
+          this.ttsStream?.cancel("terminal_speech_projection_blocked");
+          this.finishTurn(lease, "error");
+          return;
+        }
         // The canonical route has already persisted/displayed non-empty output.
         // Cancel only the speculative provider context and report that truthful
         // outcome; `no_response` is reserved for an actually empty answer.
@@ -1513,9 +1579,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         return;
       }
 
-      this.turnTtsChars += safeSpeechText.length;
-      this.send({ t: "trace_mark", name: "speakable_text_ready", traceId });
-      this.send({ t: "trace_mark", name: "tts_requested", traceId });
+      if (safeSpeechText) {
+        this.turnTtsChars += safeSpeechText.length;
+        this.send({ t: "trace_mark", name: "speakable_text_ready", traceId });
+        this.send({ t: "trace_mark", name: "tts_requested", traceId });
+      }
       ensureTts().sendPhrase({
         text: safeSpeechText,
         continueContext: false,

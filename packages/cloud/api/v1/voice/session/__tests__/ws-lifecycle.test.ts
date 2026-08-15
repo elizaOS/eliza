@@ -423,6 +423,7 @@ function makeControlledCanonicalChunkFetch(): {
   fetchImpl: typeof fetch;
   enqueueStatus: (status: Record<string, unknown>) => void;
   enqueueChunk: (chunk: string) => void;
+  enqueueSpeechSegment: (segment: Record<string, unknown>) => void;
   finish: () => void;
   ready: Promise<void>;
 } {
@@ -455,6 +456,11 @@ function makeControlledCanonicalChunkFetch(): {
         encoder.encode(
           `data: ${JSON.stringify({ type: "status", ...status })}\n\n`,
         ),
+      );
+    },
+    enqueueSpeechSegment(segment: Record<string, unknown>) {
+      controller?.enqueue(
+        encoder.encode(`data: ${JSON.stringify(segment)}\n\n`),
       );
     },
     finish() {
@@ -715,6 +721,7 @@ describe("voice-session WS lifecycle", () => {
       clientMessageId: expect.stringContaining("voice:sess-lifecycle:turn:1:"),
       metadata: { clientTransport: "realtime_voice" },
       streamProtocol: "delta-v2",
+      voiceSpeechProtocol: "committed-segments-v1",
     });
     expect(requests[0].headers.authorization).toBe("Bearer eliza-server");
     expect(requests[0].headers["x-service-key"]).toBe("Bearer eliza-server");
@@ -1400,6 +1407,71 @@ describe("voice-session WS lifecycle", () => {
     expect(aborted).toBe(true);
     expect(cartesia.closed).toBe(true);
     expect(cartesia.sentText()).toBe("");
+  });
+
+  test("speaks only an explicitly committed safe prefix before model completion", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({ client, fetchImpl: controlled.fetchImpl });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "give me two useful sentences");
+    await controlled.ready;
+
+    const first =
+      "A safe complete sentence can start speaking before completion.";
+    const second = " A second safe sentence closes the response.";
+    controlled.enqueueChunk(`${first}${second}`);
+    controlled.enqueueSpeechSegment({
+      type: "voice_speech_segment",
+      version: 1,
+      sequence: 0,
+      sourceStart: 0,
+      sourceEnd: first.length,
+      speechText: first,
+    });
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    let requests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as {
+            transcript?: string;
+            continue?: boolean;
+            flush?: boolean;
+          },
+      )
+      .filter((entry) => typeof entry.transcript === "string");
+    expect(requests).toEqual([
+      expect.objectContaining({
+        transcript: first,
+        continue: true,
+        flush: true,
+      }),
+    ]);
+    expect(client.controlTypes()).not.toContain("assistant_output");
+
+    controlled.finish();
+    await flush();
+    await flush();
+    requests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => typeof entry.transcript === "string");
+    expect(requests).toEqual([
+      expect.objectContaining({ transcript: first, continue: true }),
+      expect.objectContaining({
+        transcript: second.trim(),
+        continue: false,
+      }),
+    ]);
+    expect(requests.map((entry) => entry.transcript).join(" ")).toBe(
+      `${first} ${second.trim()}`,
+    );
   });
 
   test("projects safe terminal prose into exactly one bounded TTS input", async () => {
