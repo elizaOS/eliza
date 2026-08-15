@@ -520,6 +520,8 @@ jobs:
             psql "$database_url" -v ON_ERROR_STOP=1 -c \
               "SELECT node_id, enabled, placement_state, status, capacity, allocated_count, last_health_check, updated_at FROM docker_nodes ORDER BY node_id"
             psql "$database_url" -v ON_ERROR_STOP=1 -c \
+              "SELECT node_id, metadata->>'environment' AS environment, metadata->>'capacityProvisional' AS capacity_provisional, metadata->>'architecture' AS architecture, metadata->>'platform' AS platform FROM docker_nodes ORDER BY node_id"
+            psql "$database_url" -v ON_ERROR_STOP=1 -c \
               "SELECT node_id, count(*) AS active_agent_rows FROM agent_sandboxes WHERE node_id IS NOT NULL AND status NOT IN ('stopped','error','sleeping','deletion_failed') GROUP BY node_id ORDER BY node_id"
             psql "$database_url" -v ON_ERROR_STOP=1 -c \
               "SELECT node_id, count(*) AS active_app_rows FROM containers WHERE node_id IS NOT NULL AND status NOT IN ('failed','stopped','deleted') GROUP BY node_id ORDER BY node_id"
