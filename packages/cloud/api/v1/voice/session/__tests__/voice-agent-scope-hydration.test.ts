@@ -61,6 +61,19 @@ const warmInferenceAdmissionSnapshot = mock(async () => undefined);
 mock.module("@/lib/services/inference-admission-snapshot", () => ({
   warmInferenceAdmissionSnapshot,
 }));
+const calculateCost = mock(async () => ({
+  inputCost: 0,
+  outputCost: 0,
+  totalCost: 0,
+}));
+mock.module("@/lib/pricing", () => ({
+  calculateCost,
+  getProviderFromModel: () => "cerebras",
+  normalizeModelName: (model: string) => model.replace(/^cerebras\//, ""),
+}));
+mock.module("@/lib/voice-session/config", () => ({
+  resolveElizaModel: () => "cerebras/gemma-4-31b",
+}));
 
 const { cache } = await import("@/lib/cache/client");
 const { CacheKeys } = await import("@/lib/cache/keys");
@@ -90,6 +103,7 @@ afterEach(async () => {
   findByIdAndOrg.mockClear();
   findByIdInOrganization.mockClear();
   warmInferenceAdmissionSnapshot.mockClear();
+  calculateCost.mockClear();
   findByIdInOrganization.mockImplementation(async () => linkedCharacter);
 });
 
@@ -113,6 +127,13 @@ test("one cold hydration warms BOTH the scope gate and the linked character", as
     );
     expect(warmInferenceAdmissionSnapshot).toHaveBeenCalledWith(
       ORGANIZATION_ID,
+    );
+    expect(calculateCost).toHaveBeenCalledWith(
+      "gemma-4-31b",
+      "cerebras",
+      1,
+      1,
+      "bitrouter",
     );
   });
 });
