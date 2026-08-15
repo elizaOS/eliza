@@ -5,7 +5,9 @@
     "composite": false,
     "declaration": false,
     "declarationMap": false,
+    "types": ["node"],
     "paths": {
+      "@elizaos/agent": ["../../agent/src/index.ts"],
       "@elizaos/scenario-runner/scenario-assertions": [
         "../../scenario-runner/src/scenario-assertions.ts"
       ],

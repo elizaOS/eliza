@@ -10,6 +10,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { promotedParentRoutingHint } from "../actions/promote-subactions";
+import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
@@ -178,22 +179,93 @@ function isCodingFullSurfaceMode(): boolean {
 const DEFAULT_CODING_PLANNER_MAX_TOKENS = 16384;
 
 /**
+ * Canonical form for an operator-facing positive-integer budget knob: a
+ * positive decimal integer with no sign, whitespace, leading zero, decimal
+ * point, or exponent. Matches the fail-fast precedent for numeric env config
+ * (issues #19148, #19295) so a misconfigured budget surfaces instead of
+ * silently coercing (`"1e2"` → 100, `"3.9"` → 3) or falling back to a default
+ * (`"80oops"` → NaN → default) — the exact error each ceiling exists to catch.
+ */
+const CANONICAL_POSITIVE_INTEGER = /^[1-9][0-9]*$/;
+
+/**
+ * Resolve one operator-facing positive-integer budget setting. An unset or
+ * empty value keeps `defaultValue` (preserving the historical "unset ⇒ default"
+ * behavior). Any other value must be a canonical positive decimal integer
+ * ({@link CANONICAL_POSITIVE_INTEGER}); anything else throws a fatal typed
+ * {@link ElizaError} naming the setting, the received value, and the accepted
+ * range, so a runaway-planner ceiling can never silently degrade to a default.
+ */
+export function resolvePositivePlannerInt(
+	envVarName: string,
+	rawValue: string | undefined,
+	defaultValue: number,
+): number {
+	if (rawValue === undefined || rawValue === "") {
+		return defaultValue;
+	}
+	if (!CANONICAL_POSITIVE_INTEGER.test(rawValue)) {
+		throw new ElizaError(
+			`${envVarName} must be a positive decimal integer (e.g. "80"), got: ${JSON.stringify(
+				rawValue,
+			)}`,
+			{
+				code: "PLANNER_BUDGET_ENV_INVALID",
+				severity: "fatal",
+				context: { setting: envVarName, received: rawValue },
+			},
+		);
+	}
+	return Number(rawValue);
+}
+
+/**
  * Resolve the planner's per-call `maxTokens`: the small chat default, or — in
  * coding/full-surface mode — a budget large enough to emit a full file in one
  * tool call ({@link DEFAULT_CODING_PLANNER_MAX_TOKENS}, overridable via
- * `ELIZA_CODING_PLANNER_MAX_TOKENS`).
+ * `ELIZA_CODING_PLANNER_MAX_TOKENS`). A set-but-malformed override throws via
+ * {@link resolvePositivePlannerInt} rather than silently defaulting.
  */
 function resolvePlannerMaxTokens(): number {
 	if (!isCodingFullSurfaceMode()) {
-		const chatRaw = Number(process.env.ELIZA_PLANNER_MAX_TOKENS);
-		return Number.isFinite(chatRaw) && chatRaw > 0
-			? Math.floor(chatRaw)
-			: DEFAULT_PLANNER_MAX_TOKENS;
+		return resolvePositivePlannerInt(
+			"ELIZA_PLANNER_MAX_TOKENS",
+			process.env.ELIZA_PLANNER_MAX_TOKENS,
+			DEFAULT_PLANNER_MAX_TOKENS,
+		);
 	}
-	const raw = Number(process.env.ELIZA_CODING_PLANNER_MAX_TOKENS);
-	return Number.isFinite(raw) && raw > 0
-		? Math.floor(raw)
-		: DEFAULT_CODING_PLANNER_MAX_TOKENS;
+	return resolvePositivePlannerInt(
+		"ELIZA_CODING_PLANNER_MAX_TOKENS",
+		process.env.ELIZA_CODING_PLANNER_MAX_TOKENS,
+		DEFAULT_CODING_PLANNER_MAX_TOKENS,
+	);
+}
+
+/**
+ * Coding-mode tool-call ceiling (default 80): the max number of tool calls a
+ * coding build may make before the loop terminates. Overridable via
+ * `ELIZA_CODING_MAX_TOOL_CALLS`; a set-but-malformed value throws.
+ */
+export function resolveCodingMaxToolCalls(): number {
+	return resolvePositivePlannerInt(
+		"ELIZA_CODING_MAX_TOOL_CALLS",
+		process.env.ELIZA_CODING_MAX_TOOL_CALLS,
+		80,
+	);
+}
+
+/**
+ * Coding-mode required-tool miss budget (default 8): how many times a coding
+ * build may answer with a terminal REPLY instead of acting before the loop
+ * gives up. Overridable via `ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES`; a
+ * set-but-malformed value throws.
+ */
+export function resolveCodingMaxRequiredToolMisses(): number {
+	return resolvePositivePlannerInt(
+		"ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES",
+		process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES,
+		8,
+	);
 }
 
 interface RawPlannerOutput {
@@ -265,20 +337,14 @@ async function runPlannerLoopIterations(
 	// Raise the ceiling for coding builds (still bounded). Overridable via
 	// ELIZA_CODING_MAX_TOOL_CALLS.
 	const codingMode = isCodingFullSurfaceMode();
-	const codingMaxToolCalls = ((): number => {
-		const raw = Number(process.env.ELIZA_CODING_MAX_TOOL_CALLS);
-		return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 80;
-	})();
+	const codingMaxToolCalls = resolveCodingMaxToolCalls();
 	// Weak coding models (e.g. Cerebras glm-4.7) sometimes answer a trivial build
 	// with a terminal REPLY ("Creating the app now…") instead of calling FILE.
 	// The action-first gate below re-prompts that, but the chat default of 3
 	// misses gives up too soon to convert a stubborn narrator — give coding
 	// builds more attempts to actually act. Overridable via
 	// ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES.
-	const codingMaxRequiredToolMisses = ((): number => {
-		const raw = Number(process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES);
-		return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 8;
-	})();
+	const codingMaxRequiredToolMisses = resolveCodingMaxRequiredToolMisses();
 	const config = ((): ChainingLoopConfig => {
 		const merged = mergeChainingLoopConfig(params.config);
 		return codingMode

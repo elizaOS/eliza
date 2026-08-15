@@ -17,6 +17,7 @@ const repo = "elizaOS/eliza";
 const defaultOrigin = "https://eliza.app";
 const expectedGatewayNumber = "+18087881821";
 const expectedFormattedNumber = "+1 (808) 788-1821";
+export const messageButtonAccessibleName = "Text Eliza";
 const rejectedWhatsAppNumbers = [
   "+14155238886",
   "+15551649988",
@@ -121,7 +122,7 @@ export function evaluatePublicSurface(surface, config) {
     "message-copy-fallback",
     surface.messageButtonCount === 1 &&
       surface.copiedPhone === expectedGatewayNumber &&
-      surface.copyNotice === "Phone number copied",
+      surface.copyNotice === "Copied!",
     `buttons=${surface.messageButtonCount} clipboard=${surface.copiedPhone || "empty"} notice=${surface.copyNotice || "missing"}`,
   );
   check(
@@ -212,7 +213,10 @@ async function inspectPublicSurface(origin) {
             .filter((value) => typeof value === "string"),
         );
 
-    const messageButton = page.getByRole("button", { name: "Message Eliza" });
+    const messageButton = page.getByRole("button", {
+      name: messageButtonAccessibleName,
+      exact: true,
+    });
     const messageButtonCount = await messageButton.count();
     let copiedPhone = "";
     let copyNotice = "";

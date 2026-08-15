@@ -15,6 +15,7 @@ let providerConfigured = true;
 let generateTextImpl: (options?: {
   abortSignal?: AbortSignal;
   messages?: Array<{ role: string; content: string }>;
+  system?: string;
 }) => Promise<{ text: string; usage?: unknown }> = async () => ({
   text: "ok reply",
 });
@@ -69,8 +70,10 @@ mock.module("../../providers/language-model", () => ({
 }));
 
 mock.module("ai", () => ({
-  generateText: async (options?: { messages?: Array<{ role: string; content: string }> }) =>
-    generateTextImpl(options),
+  generateText: async (options?: {
+    messages?: Array<{ role: string; content: string }>;
+    system?: string;
+  }) => generateTextImpl(options),
   streamText: (options?: StreamTextOptions) => {
     lastStreamTextOptions = options;
     return streamTextImpl(options);
@@ -147,6 +150,57 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     });
     expect(degradedTurn.degraded).toBe(true);
     expect(dispatches).toBe(1);
+  });
+
+  test("blocks unsupported Shared actions before provider dispatch", async () => {
+    let dispatches = 0;
+    generateTextImpl = async () => {
+      throw new Error("capability-gated requests must not reach a model");
+    };
+
+    const turn = await runSharedAgentTurn({
+      character: {
+        name: "Eliza",
+        system: "You are Eliza.",
+        model: "gpt-oss-120b",
+      },
+      history: [],
+      message: "book me dinner for four tomorrow",
+      onProviderDispatch: async () => {
+        dispatches++;
+      },
+    });
+
+    expect(turn.model).toBe("capability-wall");
+    expect(turn.capabilityWall?.capability).toBe("bookings");
+    expect(turn.reply).toContain("need Dedicated");
+    expect(dispatches).toBe(0);
+  });
+
+  test("tells the model the same capability truth for ambiguous follow-ups", async () => {
+    let system = "";
+    generateTextImpl = async (options) => {
+      system = options?.system ?? "";
+      return { text: "I can help draft that here." };
+    };
+
+    await runSharedAgentTurn({
+      character: {
+        name: "Eliza",
+        system: "Be helpful.",
+        model: "gpt-oss-120b",
+      },
+      history: [
+        { role: "user", content: "draft a message to Sam" },
+        { role: "assistant", content: "Here is a draft." },
+      ],
+      message: "yes, do it",
+    });
+
+    expect(system).toContain("Shared runtime boundaries");
+    expect(system).toContain("no external tools");
+    expect(system).toContain("Never claim that you performed");
+    expect(system).toContain("needs Dedicated");
   });
 
   test("an internal inference/provider failure throws (propagates) instead of degrading", async () => {

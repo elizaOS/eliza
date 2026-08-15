@@ -575,6 +575,47 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.agentId).toBe("agent-forced-new");
   });
 
+  it("returns the exact create identity when cancellation arrives after acceptance", async () => {
+    const controller = new AbortController();
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+    createCloudCompatAgent.mockImplementation(async () => {
+      controller.abort(new DOMException("signed out", "AbortError"));
+      return {
+        success: true,
+        created: true,
+        data: {
+          agentId: "agent-cancelled",
+          agentName: "Authoritative Eliza",
+          jobId: "provision-job",
+          status: "provisioning",
+          nodeId: null,
+          message: "accepted",
+          createdAt: "2026-08-14T12:00:00.000Z",
+          executionTier: "dedicated-always" as const,
+        },
+      };
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      signal: controller.signal,
+    });
+
+    expect(result).toMatchObject({
+      agentId: "agent-cancelled",
+      created: true,
+      cleanupReceipt: {
+        deleteCondition: {
+          expectedAgentName: "Authoritative Eliza",
+          expectedCreatedAt: "2026-08-14T12:00:00.000Z",
+          expectedExecutionTier: "dedicated-always",
+        },
+      },
+    });
+  });
+
   it("rejects an existing-agent response to forceCreate without binding or inspecting that agent", async () => {
     const { client, createCloudCompatAgent, getCloudCompatAgent } =
       fakeClient();
