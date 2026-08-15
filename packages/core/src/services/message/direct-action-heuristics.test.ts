@@ -1240,4 +1240,71 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 			).kind,
 		).not.toBe("owner-scheduled-admin");
 	});
+
+	it("owner-item deletes hint the owning umbrella (F31, tj-f02205ae366226)", () => {
+		const reminders = { name: "OWNER_REMINDERS", similes: [], tags: [] };
+		const alarms = { name: "OWNER_ALARMS", similes: [], tags: [] };
+		const todos = { name: "OWNER_TODOS", similes: [], tags: [] };
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		const registered = [viewsAction, appAction, reminders, alarms, todos];
+		// The live F31 shapes: exact-name deletes that Stage-1 classified as
+		// simple chat, producing a fictional "can't delete reminders here — dm
+		// me" surface refusal with no tool exposed.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"delete the reminder named water the ficus",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"delete both water the ficus reminders",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"cancel the call marco reminder",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"remove my dentist alarm",
+			),
+		).toEqual({ names: ["OWNER_ALARMS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"delete the todo about sandpaper",
+			),
+		).toEqual({ names: ["OWNER_TODOS"], kind: "owner-scheduled-admin" });
+		// Delete verb with no owner surface registered: yield nothing, never
+		// the view/app overlap.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction],
+				"delete the reminder named water the ficus",
+			),
+		).toEqual({ names: [], kind: null });
+		// Surface-noun asks stay with navigation, and explanation requests stay
+		// chat.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"close the reminders tab",
+			).kind,
+		).not.toBe("owner-scheduled-admin");
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"how do i delete a reminder",
+			).kind,
+		).not.toBe("owner-scheduled-admin");
+	});
 });
