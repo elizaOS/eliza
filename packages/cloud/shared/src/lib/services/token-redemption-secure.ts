@@ -1284,12 +1284,46 @@ export class SecureTokenRedemptionService {
   // FRAUD DETECTION
   // ========================================
 
-  /** Parses a non-negative SQL aggregate without allowing corrupt values to disable checks. */
+  /**
+   * Parses a non-negative SQL SUM/NUMERIC aggregate. String input must be a
+   * canonical PostgreSQL NUMERIC text shape — a plain integer or fixed-point
+   * decimal with no sign prefix, exponent, hexadecimal, whitespace padding,
+   * leading zero, leading dot, or trailing dot — so coercion-only shapes
+   * like `1e2` / `0x10` / `+1` / `" 100.00"` / `.5` / `01.0` fail closed
+   * instead of Number-coercing into plausible amounts (#19948). Numeric
+   * driver values stay accepted when finite and non-negative.
+   */
   private parseFraudAggregate(value: unknown): number | null {
     if (value === null || value === undefined) return null;
-    const raw = typeof value === "number" ? value : Number(String(value).trim() || "NaN");
+    let raw: number;
+    if (typeof value === "number") {
+      raw = value;
+    } else {
+      if (typeof value !== "string") return null;
+      if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) return null;
+      raw = Number(value);
+    }
     if (!Number.isFinite(raw) || raw < 0) return null;
     return raw;
+  }
+
+  /**
+   * Parses a SQL `COUNT(*)` / `COUNT(DISTINCT …)` aggregate. A count can only
+   * ever be a canonical non-negative safe integer, so fractional (`0.5`),
+   * exponent (`1e2`), hexadecimal (`0x10`), sign-prefixed (`+1`),
+   * whitespace-padded (`" 1 "`), leading-zero, negative, non-finite, and
+   * unsafe-integer shapes are corrupt and fail closed to manual review
+   * instead of being Number-coerced into a plausible count (#19948).
+   */
+  private parseFraudCountAggregate(value: unknown): number | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "number") {
+      return Number.isSafeInteger(value) && value >= 0 ? value : null;
+    }
+    if (typeof value !== "string") return null;
+    if (!/^(?:0|[1-9][0-9]*)$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
   }
 
   /** Shared corrupt-aggregate outcome: flag for admin review, never skip silently. */
@@ -1330,7 +1364,7 @@ export class SecureTokenRedemptionService {
         AND created_at >= ${oneHourAgo}
       `);
 
-      const recentCount = this.parseFraudAggregate(
+      const recentCount = this.parseFraudCountAggregate(
         (recentEarnings.rows[0] as { count: string })?.count,
       );
       const recentTotal = this.parseFraudAggregate(
@@ -1397,7 +1431,7 @@ export class SecureTokenRedemptionService {
         AND status IN ('completed', 'approved', 'processing', 'pending')
       `);
 
-      const otherUsersCount = this.parseFraudAggregate(
+      const otherUsersCount = this.parseFraudCountAggregate(
         (sharedAddressCheck.rows[0] as { user_count: string })?.user_count,
       );
       if (otherUsersCount === null) {
