@@ -8,6 +8,7 @@
  * buildFailureReplyPrompt shapes the in-character apology (never answering on the
  * merits), and stripReasoningBlocks removes <think> spans from the raw reply.
  */
+import { stripReasoningArtifacts } from "../../runtime/reasoning-artifacts";
 import { ModelType } from "../../types/model";
 
 type ErrorWithStatus = {
@@ -329,10 +330,7 @@ export function buildFailureReplyPrompt(recentMessages: string): string {
 }
 
 export function stripReasoningBlocks(raw: string): string {
-	return raw
-		.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
-		.replace(/^[\s\S]*?<\/think>/i, "")
-		.replace(/<think\b[^>]*>[\s\S]*$/gi, "")
+	return stripReasoningArtifacts(raw)
 		.replace(/\/?\bno_think\b/gi, "")
 		.trim();
 }
