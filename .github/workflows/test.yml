@@ -109,8 +109,14 @@ jobs:
               ssh -i "$work/key" -p "$port" \
                 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
                 -o UserKnownHostsFile="$work/known_hosts" \
-                "$user@$host" \
-                'set -euo pipefail; target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7; if docker inspect "$target" >/dev/null 2>&1; then docker rm -f "$target" >/dev/null; fi; ! docker inspect "$target" >/dev/null 2>&1'
+                "$user@$host" 'bash -s' <<'REMOTE'
+              set -euo pipefail
+              target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7
+              if docker inspect "$target" >/dev/null 2>&1; then
+                docker rm -f "$target" >/dev/null
+              fi
+              ! docker inspect "$target" >/dev/null 2>&1
+              REMOTE
             done
             set -a
             . /opt/eliza/cloud/.env.local
