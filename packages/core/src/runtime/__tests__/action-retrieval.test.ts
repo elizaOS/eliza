@@ -709,6 +709,68 @@ describe("action catalogue and retrieval", () => {
 		]);
 	});
 
+	// Todo-shaped invented names must hint both todo owners: the
+	// personal-assistant umbrella and plugin-todos' TODO parent. Deployments
+	// load one or the other; the resolver keeps whichever is registered.
+	it("hints todo candidates at OWNER_TODOS and TODO", () => {
+		for (const candidate of [
+			"ADD_TODO",
+			"CREATE_TODO",
+			"TODO_CREATE",
+			"TODO_ADD",
+			"NEW_TODO",
+			"SAVE_TODO",
+			"TODOS",
+			"TODO_LIST",
+			"LIST_TODOS",
+			"GET_TODOS",
+			"SHOW_TODOS",
+			"READ_TODOS",
+			"USER_TODOS_READ",
+			"COMPLETE_TODO",
+			"TODO_COMPLETE",
+			"DELETE_TODO",
+			"REMOVE_TODO",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual([
+				"OWNER_TODOS",
+				"TODO",
+			]);
+		}
+		// Bare TODO hints only the owner umbrella: when plugin-todos is loaded
+		// its TODO action resolves directly by name before aliases apply.
+		expect(parentAliasesForCandidateAction("TODO")).toEqual(["OWNER_TODOS"]);
+	});
+
+	it("hints alarm candidates at OWNER_ALARMS and TRIGGER", () => {
+		for (const candidate of [
+			"ADD_ALARM",
+			"SET_ALARM",
+			"CREATE_ALARM",
+			"ALARM_CREATE",
+			"WAKE_ME_UP",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual([
+				"OWNER_ALARMS",
+				"TRIGGER",
+			]);
+		}
+	});
+
+	it("hints finance candidates at OWNER_FINANCES", () => {
+		for (const candidate of [
+			"FINANCE",
+			"SPENDING",
+			"SPENDING_SUMMARY",
+			"BUDGET",
+			"EXPENSES",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual([
+				"OWNER_FINANCES",
+			]);
+		}
+	});
+
 	it("leaves non-permission candidates off the SETTINGS parent", () => {
 		// A bare person-scoped access revoke is BLOCK, not a settings write; view /
 		// app surface candidates keep their existing VIEWS/APP hints untouched.
