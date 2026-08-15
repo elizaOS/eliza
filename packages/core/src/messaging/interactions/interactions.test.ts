@@ -652,6 +652,23 @@ describe("renderInteractionsAsPlainText", () => {
 		expect(text).toContain("Tell me what changed.");
 		expect(text).toContain(FORM_FREE_TEXT_INVITE);
 	});
+
+	it("strips dashboard markers contributed by parsed block fallbacks", () => {
+		const taskId = "abc12345-def6-7890-abcd-ef1234567890";
+		expect(
+			renderInteractionsAsPlainText(
+				`[TASK:${taskId}]Ship it [CONFIG:@elizaos/plugin-gmail][/TASK]`,
+			),
+		).toEqual({ text: "Ship it", hadBlocks: true });
+
+		const form = JSON.stringify({
+			title: "Configure account [CONFIG:@elizaos/plugin-gmail]",
+			fields: [{ name: "account", type: "text" }],
+		});
+		const rendered = renderInteractionsAsPlainText(`[FORM]${form}[/FORM]`);
+		expect(rendered.hadBlocks).toBe(true);
+		expect(rendered.text).toBe(`Configure account\n\n${FORM_FREE_TEXT_INVITE}`);
+	});
 });
 
 describe("renderContentInteractionsAsPlainText", () => {
@@ -673,6 +690,21 @@ describe("renderContentInteractionsAsPlainText", () => {
 		expect(text).toBe(
 			"Connect this account.\n\nConnect GitHub to continue\nhttps://oauth.test/consent",
 		);
+	});
+
+	it("strips dashboard markers contributed by typed interactions", () => {
+		const rendered = renderContentInteractionsAsPlainText({
+			text: "Review:",
+			interactions: [
+				{
+					kind: "task",
+					threadId: "task-1",
+					title: "Ship it [CONFIG:@elizaos/plugin-gmail]",
+				},
+			],
+		});
+
+		expect(rendered).toEqual({ text: "Review:\n\nShip it", hadBlocks: true });
 	});
 });
 
