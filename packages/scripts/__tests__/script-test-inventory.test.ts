@@ -81,6 +81,11 @@ describe("packages/scripts executable-test inventory", () => {
       "packages/scripts/a/b/.spec.cjs",
       "packages/scripts/a/b/not-a-test.ts",
       "packages/other/ignored.test.ts",
+      "scripts/tooling.test.mjs",
+      "scripts/nested/deep/case.SPEC.TS",
+      "scripts/not-a-test.mjs",
+      "scripts-adjacent/ignored.test.mjs",
+      "packages/ui/scripts/ignored.test.ts",
     ];
     expect(inventory(files).files.map(({ file }) => file)).toEqual([
       "packages/cloud/scripts/nested.SPEC.MTS",
@@ -96,6 +101,8 @@ describe("packages/scripts executable-test inventory", () => {
       "packages/scripts/a/b/name_spec.js",
       "packages/scripts/a/b/name_test.tsx",
       "packages/scripts/root.test.ts",
+      "scripts/nested/deep/case.SPEC.TS",
+      "scripts/tooling.test.mjs",
     ]);
     expect(() =>
       inventory(["packages\\scripts\\cloud\\nested.test.ts"]),
@@ -906,6 +913,21 @@ jobs:
         reason:
           "the release-candidate workflow owns this slow real-registry transport test",
       },
+      {
+        file: "scripts/federated-agent-charter-conformance.test.mjs",
+        reason:
+          "crashes at import: validates docs/federated-agent-charter.schema.json, deleted from the tree; repair or retirement tracked in #19448",
+      },
+      {
+        file: "scripts/lifeops/connector-paths.test.mjs",
+        reason:
+          "2/24 tests parse docs/testing/hitl-identity-slots.md, deleted from the tree; lifeops-owner repair tracked in #19448",
+      },
+      {
+        file: "scripts/lifeops/env-layers.test.mjs",
+        reason:
+          "1/14 tests pin a stale layered-env consumer list; lifeops-owner repair tracked in #19448",
+      },
     ]);
     expect(
       result.files.some(
@@ -918,6 +940,14 @@ jobs:
         ({ file }) =>
           file ===
           "packages/scripts/test-console/__tests__/connections-coverage.test.ts",
+      ),
+    ).toBe(true);
+    // The #19445 gap: root-level scripts/ tests must be discovered, the
+    // security-advisory-gate suite among them.
+    expect(
+      result.files.some(
+        ({ file }) =>
+          file === "scripts/security/security-advisory-gate.test.mjs",
       ),
     ).toBe(true);
     for (const entry of result.files) {
