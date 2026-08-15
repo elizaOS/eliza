@@ -331,17 +331,32 @@ async function doSearch(
 ): Promise<ActionResult> {
   const type =
     params.type && MEMORY_TYPES.includes(params.type) ? params.type : undefined;
+  // Read-only salvage (matrix F16): a mangled planner-copied UUID is an
+  // unusable *filter*, and failing the whole search over it turns a
+  // recoverable turn into a failed one. Searching without the filter is a
+  // superset of the intended scope, so ignore the id and say so in the
+  // result. Destructive ops keep parseUuidParam's hard fail — a mangled id
+  // must never widen a delete's scope.
   const entityParam = parseUuidParam(params.entityId, "entityId");
-  if (!entityParam.ok) return entityParam.result;
   const roomParam = parseUuidParam(params.roomId, "roomId");
-  if (!roomParam.ok) return roomParam.result;
+  const ignoredIdNotes: string[] = [];
+  if (!entityParam.ok) {
+    ignoredIdNotes.push(
+      `ignored invalid entityId "${params.entityId?.trim()}" (searched all entities)`,
+    );
+  }
+  if (!roomParam.ok) {
+    ignoredIdNotes.push(
+      `ignored invalid roomId "${params.roomId?.trim()}" (searched all rooms)`,
+    );
+  }
   const query = params.query?.trim();
   const limit = clampLimit(params.limit, 50);
 
   const scope = {
     type,
-    entityId: entityParam.id,
-    roomId: roomParam.id,
+    entityId: entityParam.ok ? entityParam.id : undefined,
+    roomId: roomParam.ok ? roomParam.id : undefined,
     query,
   };
   const scan = await collectCandidates(runtime, { ...scope, limit });
@@ -366,6 +381,9 @@ async function doSearch(
     success: true,
     text: [
       `${renderNote} (filters: ${describeSearchScope(scope)}).`,
+      ...(ignoredIdNotes.length > 0
+        ? [`Note: ${ignoredIdNotes.join("; ")}.`]
+        : []),
       describeScanWindow(scan),
       ...lines,
     ].join("\n"),
@@ -685,19 +703,25 @@ export const memoryAction: Action = {
       required: false,
       schema: { type: "string" as const, enum: [...MEMORY_TYPES] },
     },
+    // entityId/roomId carry no schema `pattern` on purpose (matrix F16): a
+    // planner-copied UUID arrives mangled often enough (live: a dropped hex
+    // char in the roomId first segment, tj-b0c123243cb39e) that the
+    // validate-tool-args pattern check failed the whole call before the
+    // handler could apply its per-op policy — search salvages by ignoring the
+    // unusable filter, destructive ops still hard-fail via parseUuidParam.
     {
       name: "entityId",
       description:
         "search: optional entity UUID from a previous result. Omit it when no exact UUID is known.",
       required: false,
-      schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
+      schema: { type: "string" as const },
     },
     {
       name: "roomId",
       description:
         'search: optional room UUID from a previous result. Omit it to search all stored rooms; never pass a source label such as "chat".',
       required: false,
-      schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
+      schema: { type: "string" as const },
     },
     {
       name: "query",
