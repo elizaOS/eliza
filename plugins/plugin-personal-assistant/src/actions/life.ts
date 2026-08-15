@@ -98,6 +98,8 @@ import {
 import {
   type ExtractedTaskParams,
   extractTaskCreatePlanWithLlm,
+  textExplicitlyLeavesScheduleUnspecified,
+  textStatesExplicitSchedule,
 } from "./lib/extract-task-plan.js";
 import {
   type ExtractedUpdateFields,
@@ -114,9 +116,12 @@ import {
   type DeferredLifeGoalDraft,
   deferredLifeDraftExpiryReason,
   extractDeferredLifeDraftFollowupWithLlm,
+  invalidateDeferredLifeDraftCache,
+  isExplicitLifeCreateConfirmation,
   isLifeSaveRetraction,
   latestDeferredLifeDraft,
-  readDeferredLifeDraftCache,
+  latestDeferredLifeDraftIsInvalidated,
+  readDeferredLifeDraftCacheState,
   readRecentLifeSaveCache,
   writeDeferredLifeDraftCache,
   writeRecentLifeSaveCache,
@@ -125,6 +130,10 @@ import {
   applyOwnerPolicyConfigureEscalation,
   applyOwnerPolicySetReminder,
 } from "./lib/owner-policy-writes.js";
+import {
+  textContradictsExplicitUndatedTodo,
+  textStatesExplicitUndatedTodo,
+} from "./lib/undated-todo-intent.js";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -519,6 +528,7 @@ async function routeLifeSubaction(args: {
 function resolveDeferredLifeDraftReuseMode(args: {
   details: Record<string, unknown> | undefined;
   draft: DeferredLifeDraft | null;
+  draftIsFromPriorTurn: boolean;
   explicitConfirmation?: boolean;
   explicitOperation: LifeOperation | undefined;
   llmMode?: DeferredLifeDraftFollowupMode;
@@ -533,8 +543,12 @@ function resolveDeferredLifeDraftReuseMode(args: {
     return null;
   }
 
-  if (detailBoolean(args.details, "confirmed") === true) {
-    return "confirm";
+  // A planner can call the same action more than once while settling one
+  // message. Only an explicit owner confirmation may reuse a draft whose
+  // source turn cannot be proven older; planner flags and classifications are
+  // never evidence that the owner saw the preview.
+  if (!args.draftIsFromPriorTurn && args.explicitConfirmation !== true) {
+    return null;
   }
 
   const explicitOperation = args.explicitOperation
@@ -548,44 +562,24 @@ function resolveDeferredLifeDraftReuseMode(args: {
     return null;
   }
 
+  // Substantive follow-up text wins over planner-authored confirmation flags.
+  // Otherwise “keep it undated, but Friday” can be treated as approval and
+  // persist a changed schedule the owner has never previewed.
+  if (args.llmMode === "edit") {
+    return "edit";
+  }
+
   if (args.explicitConfirmation === true) {
     return "confirm";
   }
 
-  if (args.llmMode === "confirm" || args.llmMode === "edit") {
-    return args.llmMode;
+  if (
+    args.llmMode === "confirm" ||
+    detailBoolean(args.details, "confirmed") === true
+  ) {
+    return "confirm";
   }
   return null;
-}
-
-const LIFE_CONFIRMATION_VETO_RE =
-  /\b(?:no|not|don t|do not|cancel|hold off|wait|later|change)\b/u;
-const LIFE_CONFIRMATION_CUE_RE =
-  /\b(?:ok|okay|yes|yep|yeah|sure|confirm|confirmed|approve|approved|save it|save that|save this|save the goal|set it|lock it in|do it|looks good|that works|go ahead)\b/u;
-
-// Sentence-scoped on purpose: a message-wide negation veto turned "yes lock
-// it in! and can it bug me before friday too, not just friday morning" into
-// a non-confirmation, so three consecutive confirmed creates previewed and
-// nothing persisted (#16941 live). A sentence that carries its own negation
-// ("don't save that one") still never counts as consent.
-function isExplicitLifeCreateConfirmation(text: string): boolean {
-  const sentences = text.split(/(?<=[.!?])\s+|\n+/u);
-  for (const sentence of sentences) {
-    const normalized = sentence
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, " ")
-      .trim();
-    if (!normalized) {
-      continue;
-    }
-    if (LIFE_CONFIRMATION_VETO_RE.test(normalized)) {
-      continue;
-    }
-    if (LIFE_CONFIRMATION_CUE_RE.test(normalized)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // A confirmation is "bare" when stripping the yes-cues and politeness filler
@@ -2374,64 +2368,6 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
   return undefined;
 }
 
-const EXPLICIT_SCHEDULED_TODO_PATTERNS = [
-  /\b(?:today|tomorrow|tonight|next (?:day|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i,
-  /\b(?:at|by|on)\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
-  /\bin\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|a|an)\s+(?:minutes?|hours?|days?|weeks?|months?|years?)\b/i,
-  /\b(?:at|by|before|after)\s+(?:the\s+)?(?:start|beginning|middle|end)\s+of\s+(?:the\s+|this\s+|next\s+)?(?:day|week|month|year)\b/i,
-  /\b(?:before|after)\s+(?:the\s+)?(?:meeting|game|work|school|lunch|dinner|appointment|trip|flight|event)\b/i,
-  /\b(?:a|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:days?|weeks?|months?|years?)\s+from\s+(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
-  /\b(?:every|each|daily|weekly|monthly|yearly)\b/i,
-  /\b\d{4}-\d{2}-\d{2}\b/,
-  /(?:hoy|mañana|esta noche|próxim[oa] (?:día|semana|mes|año)|cada (?:día|semana|mes|año)|diariamente|semanalmente|mensualmente|anualmente)/i,
-  /(?:a las?|dentro de)\s+(?:\d+|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)(?:\s+(?:minutos?|horas?|días?|semanas?|meses?|años?))?/i,
-  /(?:hoje|amanhã|esta noite|próxim[oa] (?:dia|semana|m[eê]s|ano)|cada (?:dia|semana|m[eê]s|ano)|diariamente|semanalmente|mensalmente|anualmente)/i,
-  /(?:às?|dentro de)\s+(?:\d+|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez)(?:\s+(?:minutos?|horas?|dias?|semanas?|meses?|anos?))?/i,
-  /(?:今天|明天|今晚|每天|每周|每週|每月|每年)/,
-  /(?:今日|明日|今夜|毎日|毎週|毎月|毎年)/,
-  /(?:오늘|내일|오늘 밤|매일|매주|매월|매년)/,
-  /(?:hôm nay|hom nay|ngày mai|ngay mai|tối nay|toi nay|tuần tới|tuan toi|tháng tới|thang toi|năm tới|nam toi|mỗi ngày|moi ngay|hàng tuần|hang tuan|hàng tháng|hang thang|hàng năm|hang nam)/i,
-  /(?:lúc|luc)\s*\d{1,2}\s*(?:giờ|gio)|(?:trong|sau)\s+(?:\d+|một|mot|hai|ba|bốn|bon|năm|nam|sáu|sau|bảy|bay|tám|tam|chín|chin|mười|muoi)\s+(?:phút|phut|giờ|gio|ngày|ngay|tuần|tuan|tháng|thang|năm|nam)/i,
-  /(?:ngayon|bukas|mamayang gabi|sa susunod na (?:araw|linggo|buwan|taon)|araw-araw|lingguhan|buwan-buwan|taun-taon)/i,
-  /(?:alas\s+\d{1,2}|sa loob ng\s+(?:\d+|isa|dalawa|tatlo|apat|lima|anim|pito|walo|siyam|sampu)\s+(?:minuto|oras|araw|linggo|buwan|taon))/i,
-] as const;
-
-const NEGATED_UNSCHEDULED_PATTERNS = [
-  /\b(?:not|never)\s+(?:an?\s+)?(?:plain|undated|unscheduled)\s+(?:todo|task|item)\b/i,
-  /\b(?:do not|don't|dont)\s+(?:make|save|add|create)(?:\s+it)?\s+(?:as\s+)?(?:an?\s+)?(?:plain|undated|unscheduled)\s+(?:todo|task|item)\b/i,
-] as const;
-
-const EXPLICIT_UNSCHEDULED_PATTERNS = [
-  /\bno (?:due )?date\b/i,
-  /\bwithout (?:a )?(?:due )?date\b/i,
-  /\bno (?:schedule|scheduled time|time needed|required time)\b/i,
-  /\b(?:plain|undated|unscheduled) (?:todo|task|item)\b/i,
-  /\bjust (?:a )?(?:plain )?(?:todo|task)\b/i,
-  /\b(?:sin fecha|sin plazo|sin horario)\b/i,
-  /\b(?:sem data|sem prazo|sem hor[aá]rio)\b/i,
-  /(?:没有|沒有|无|無)(?:截止日期|到期日|日期|时间|時間|日程)/,
-  /(?:期限|締め切り|日付|予定)(?:は)?なし/,
-  /(?:마감일|날짜|일정) 없이/,
-  /(?:không|khong) (?:có |co )?(?:ngày đến hạn|ngay den han|lịch|lich)/i,
-  /(?:walang takdang petsa|walang iskedyul)/i,
-] as const;
-
-/** Require current user-authored text before trusting model-only no-date shape. */
-export function textStatesExplicitUnscheduled(text: string): boolean {
-  const normalized = normalizeLifeInputText(text);
-  if (
-    EXPLICIT_SCHEDULED_TODO_PATTERNS.some((pattern) =>
-      pattern.test(normalized),
-    ) ||
-    NEGATED_UNSCHEDULED_PATTERNS.some((pattern) => pattern.test(normalized))
-  ) {
-    return false;
-  }
-  return EXPLICIT_UNSCHEDULED_PATTERNS.some((pattern) =>
-    pattern.test(normalized),
-  );
-}
-
 /**
  * Convert LLM-extracted params into a typed LifeOpsCadence.
  * Returns null when the LLM output is insufficient to construct a
@@ -3864,12 +3800,28 @@ async function runLifeOperationHandlerInner(
   );
   const details = params.details;
   const stateDeferredDraft = latestDeferredLifeDraft(state);
-  const cachedDeferredDraft = stateDeferredDraft
-    ? null
-    : await readDeferredLifeDraftCache(runtime, message);
+  const cachedDeferredDraftState = await readDeferredLifeDraftCacheState(
+    runtime,
+    message,
+  );
+  const cachedDeferredDraft =
+    cachedDeferredDraftState.kind === "draft"
+      ? cachedDeferredDraftState.draft
+      : null;
   const deferredDraft = stateDeferredDraft ?? cachedDeferredDraft;
+  const deferredDraftIsInvalidated =
+    deferredDraft === null &&
+    (latestDeferredLifeDraftIsInvalidated(state) ||
+      cachedDeferredDraftState.kind === "invalidated");
   const explicitCreateConfirmation =
     isExplicitLifeCreateConfirmation(currentText);
+  const currentMessageId =
+    message.id !== undefined && message.id !== null ? String(message.id) : "";
+  const draftSourceMessageId = deferredDraft?.sourceMessageId?.trim() ?? "";
+  const draftIsFromPriorTurn =
+    currentMessageId.length > 0 &&
+    draftSourceMessageId.length > 0 &&
+    draftSourceMessageId !== currentMessageId;
   const turnsSinceDraft =
     deferredDraft != null
       ? (countTurnsSinceLatestDeferredLifeDraft(state) ?? 0) + 1
@@ -3898,7 +3850,7 @@ async function runLifeOperationHandlerInner(
     turnsSinceDraft,
   });
   if (draftExpiryReason && deferredDraftFollowupMode === "confirm") {
-    await clearDeferredLifeDraftCache(runtime, message);
+    await invalidateDeferredLifeDraftCache(runtime, message);
     const fallback =
       "That LifeOps draft expired. Please restate it and I'll preview it again.";
     return {
@@ -3917,7 +3869,7 @@ async function runLifeOperationHandlerInner(
     };
   }
   if (deferredDraftFollowupMode === "cancel") {
-    await clearDeferredLifeDraftCache(runtime, message);
+    await invalidateDeferredLifeDraftCache(runtime, message);
     const fallback = "Okay, I won't save it yet.";
     return {
       success: true,
@@ -4030,6 +3982,7 @@ async function runLifeOperationHandlerInner(
   const deferredDraftReuseMode = resolveDeferredLifeDraftReuseMode({
     details,
     draft: deferredDraft,
+    draftIsFromPriorTurn,
     explicitConfirmation: explicitCreateConfirmation,
     explicitOperation: explicitSubaction,
     llmMode: deferredDraftFollowupMode,
@@ -4261,17 +4214,12 @@ async function runLifeOperationHandlerInner(
   // child nothing was saved, and the real confirm turn duplicated the row.
   const plannerAssertedConfirmed =
     params.confirmed === true || detailBoolean(details, "confirmed") === true;
-  const currentMessageId =
-    message.id !== undefined && message.id !== null ? String(message.id) : "";
-  const priorTurnDraftPending =
-    deferredDraft != null &&
-    (deferredDraft.sourceMessageId === undefined ||
-      currentMessageId === "" ||
-      deferredDraft.sourceMessageId !== currentMessageId);
   const createConfirmed =
     deferredDraftReuseMode === "confirm" ||
     explicitCreateConfirmation ||
-    (plannerAssertedConfirmed && priorTurnDraftPending);
+    (plannerAssertedConfirmed &&
+      draftIsFromPriorTurn &&
+      deferredDraftReuseMode !== "edit");
 
   try {
     const createDefinition = async () => {
@@ -4313,6 +4261,36 @@ async function runLifeOperationHandlerInner(
       const explicitMetadata = detailObject(details, "metadata") as
         | Record<string, unknown>
         | undefined;
+      const rejectsStaleInvalidatedDraftConfirmation =
+        deferredDraftIsInvalidated &&
+        explicitCreateConfirmation &&
+        !textStatesExplicitUndatedTodo(currentText) &&
+        !textStatesExplicitSchedule(currentText);
+      if (rejectsStaleInvalidatedDraftConfirmation) {
+        await invalidateDeferredLifeDraftCache(runtime, message);
+        const text =
+          "That draft is no longer active. Restate what you want saved, including its timing or that it has no due date.";
+        return {
+          success: false as const,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          values: {
+            success: false,
+            error: "MISSING_DEFINITION_FIELD",
+            missingField: "schedule",
+            requiresConfirmation: true,
+            awaitingUserInput: true,
+          },
+          data: {
+            actionName: ownerSurfaceActionName,
+            lifeDraftInvalidated: true,
+            missingField: "schedule",
+            requiresConfirmation: true,
+            awaitingUserInput: true,
+          },
+        };
+      }
 
       // Owner's stored timezone fact (travel-aware), used as the fallback zone
       // for a conversational create when no zone was stated out loud and no
@@ -4455,12 +4433,35 @@ async function runLifeOperationHandlerInner(
             deferredDefinitionDraft?.request.timezone ??
             windowPolicy?.timezone,
         ) ?? ownerFactTimeZone;
+      const ownerDefinitionAction = ownerDefinitionSurface(
+        ownerSurfaceActionName,
+      );
       if (
-        cadence?.kind === "unscheduled" &&
-        (ownerSurfaceActionName !== "OWNER_TODOS" ||
-          (!reuseDeferredDraft && !textStatesExplicitUnscheduled(currentText)))
+        ownerDefinitionAction !== null &&
+        ownerDefinitionAction !== "OWNER_TODOS" &&
+        textExplicitlyLeavesScheduleUnspecified(currentText)
       ) {
         cadence = undefined;
+        if (editingDeferredDefinitionDraft) {
+          await invalidateDeferredLifeDraftCache(runtime, message);
+        }
+      }
+      const confirmsValidatedUndatedDraft =
+        deferredDraftReuseMode === "confirm" &&
+        deferredDefinitionDraft?.request.cadence.kind === "unscheduled";
+      if (
+        (editingDeferredDefinitionDraft &&
+          deferredDefinitionDraft.request.cadence.kind === "unscheduled" &&
+          textContradictsExplicitUndatedTodo(currentText)) ||
+        (cadence?.kind === "unscheduled" &&
+          (ownerSurfaceActionName !== "OWNER_TODOS" ||
+            (!confirmsValidatedUndatedDraft &&
+              !textStatesExplicitUndatedTodo(currentText))))
+      ) {
+        cadence = undefined;
+        if (editingDeferredDefinitionDraft) {
+          await invalidateDeferredLifeDraftCache(runtime, message);
+        }
       }
       const timedRequestKind = llmRequestKind;
       const nativeAppleMetadata =
@@ -4551,6 +4552,9 @@ async function runLifeOperationHandlerInner(
           },
           data: {
             actionName: ownerSurfaceActionName,
+            ...(editingDeferredDefinitionDraft
+              ? { lifeDraftInvalidated: true }
+              : {}),
             missingField: "schedule",
             requiresConfirmation: true,
             awaitingUserInput: true,
@@ -4567,23 +4571,26 @@ async function runLifeOperationHandlerInner(
           | CreateLifeOpsDefinitionRequest["kind"]
           | undefined) ??
         (ownerSurfaceActionName === "OWNER_TODOS" ? "task" : "habit");
-      const leadShaped = applyLeadUpReminderShape({
-        cadence,
-        plan:
-          (detailObject(details, "reminderPlan") as
-            | CreateLifeOpsDefinitionRequest["reminderPlan"]
-            | undefined) ??
-          deferredDefinitionDraft?.request.reminderPlan ??
-          buildDefaultReminderPlan(`${title} reminder`),
-        ownerText: messageText(message),
-        title,
-        milestones: resolveMilestoneLabels({
-          details,
-          intent,
-          ownerText: messageText(message),
-          multiStep: llmPlan?.multiStep === true,
-        }),
-      });
+      const leadShaped =
+        cadence.kind === "unscheduled"
+          ? { cadence, plan: null }
+          : applyLeadUpReminderShape({
+              cadence,
+              plan:
+                (detailObject(details, "reminderPlan") as
+                  | CreateLifeOpsDefinitionRequest["reminderPlan"]
+                  | undefined) ??
+                deferredDefinitionDraft?.request.reminderPlan ??
+                buildDefaultReminderPlan(`${title} reminder`),
+              ownerText: messageText(message),
+              title,
+              milestones: resolveMilestoneLabels({
+                details,
+                intent,
+                ownerText: messageText(message),
+                multiStep: llmPlan?.multiStep === true,
+              }),
+            });
       const definitionDraft: DeferredLifeDefinitionDraft = {
         intent,
         operation: "create_definition",

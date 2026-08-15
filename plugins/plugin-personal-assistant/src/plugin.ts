@@ -71,6 +71,7 @@ import { credentialsAction } from "./actions/credentials.js";
 import { ownerDocumentsAction } from "./actions/document.js";
 import { entityAction } from "./actions/entity.js";
 import { householdCoordinationAction } from "./actions/household-coordination.js";
+import { deferredOwnerTodoRoutingEvaluator } from "./actions/lib/lifeops-deferred-draft.js";
 import {
   ownerAlarmsAction,
   ownerFinancesAction,
@@ -239,6 +240,7 @@ import {
   createActivitySignalBus,
   registerActivitySignalBus,
 } from "./lifeops/signals/bus.js";
+import { createUndatedOwnerTodoDirectRoutingRule } from "./lifeops/todos/direct-routing.js";
 import { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
 import { isDarwin } from "./platform/host.js";
 import { browserBridgeProvider } from "./provider.js";
@@ -784,7 +786,10 @@ const rawPersonalAssistantPlugin: Plugin = {
     // registerLifeOpsScheduledTaskRunnerDeps(runtime) in init() instead, so
     // there is exactly one runner service per runtime.
   ],
-  responseHandlerEvaluators: [ownerProfileExtractionEvaluator],
+  responseHandlerEvaluators: [
+    deferredOwnerTodoRoutingEvaluator,
+    ownerProfileExtractionEvaluator,
+  ],
   responseHandlerFieldEvaluators: [threadOpsFieldEvaluator],
   // Post-turn evaluators join the runtime's single merged SMALL-model
   // evaluation call (EvaluatorService) — no extra model round-trip per turn.
@@ -854,6 +859,26 @@ const rawPersonalAssistantPlugin: Plugin = {
       handleMeetingTranscriptFinalized(
         payload as EventPayload & MeetingTranscriptFinalizedPayload,
       ),
+    );
+
+    // These registries participate in the first inbound turn. Establish them
+    // before plugin discovery yields so a newly ready runtime cannot briefly
+    // answer an actionable request as plain chat.
+    registerCandidateActionBackstopRule(
+      runtime,
+      createScheduledTaskCandidateBackstopRule(),
+    );
+    registerDirectActionRoutingRule(
+      runtime,
+      createTrackedWorkRecapDirectRoutingRule(),
+    );
+    registerDirectActionRoutingRule(
+      runtime,
+      createOwnerReminderDirectRoutingRule(),
+    );
+    registerDirectActionRoutingRule(
+      runtime,
+      createUndatedOwnerTodoDirectRoutingRule(),
     );
 
     // When LIFEOPS_USE_MOCKOON=1, redirect every external connector base URL
@@ -1031,21 +1056,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     // confirms via CHOOSE_OPTION (issue #10723).
     registerOwnerSendApprovalWorker(runtime);
     registerSendPolicy(runtime, createOwnerSendPolicy());
-    // Candidate-action backstop: protect LifeOps scheduled-task candidates from
-    // the core coding-delegation backstop on genuine scheduled-task turns.
-    registerCandidateActionBackstopRule(
-      runtime,
-      createScheduledTaskCandidateBackstopRule(),
-    );
-    registerDirectActionRoutingRule(
-      runtime,
-      createTrackedWorkRecapDirectRoutingRule(),
-    );
-    registerDirectActionRoutingRule(
-      runtime,
-      createOwnerReminderDirectRoutingRule(),
-    );
-
     // First-party adapters backed by LifeOps services. Gmail and X replace the
     // core default adapters so MESSAGE triage operations operate on real
     // connected data.

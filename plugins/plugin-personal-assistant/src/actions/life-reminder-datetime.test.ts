@@ -16,6 +16,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
   UUID,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,6 +34,10 @@ import {
   writeRecentLifeSaveCache,
 } from "./lib/lifeops-deferred-draft.js";
 import {
+  textContradictsExplicitUndatedTodo,
+  textStatesExplicitUndatedTodo,
+} from "./lib/undated-todo-intent.js";
+import {
   applyLeadUpReminderShape,
   buildCadenceFromLlmParams,
   buildCadenceFromUpdateFields,
@@ -43,7 +48,6 @@ import {
   resolveOnceDueAt,
   runLifeConnectedQuery,
   runLifeOperationHandler,
-  textStatesExplicitUnscheduled,
   wantsEarlierReminderNudge,
 } from "./life.js";
 
@@ -785,6 +789,7 @@ describe("explicit unscheduled owner authority", () => {
   it.each([
     "add buy milk with no due date",
     "add buy milk as an undated task",
+    "add buy milk someday",
     "añade comprar leche sin fecha",
     "adicionar comprar leite sem prazo",
     "添加买牛奶，没有截止日期",
@@ -793,13 +798,14 @@ describe("explicit unscheduled owner authority", () => {
     "thêm việc mua sữa không có ngày đến hạn",
     "idagdag ang bumili ng gatas, walang takdang petsa",
   ])("accepts an explicit no-date phrase in %p", (text) => {
-    expect(textStatesExplicitUnscheduled(text)).toBe(true);
+    expect(textStatesExplicitUndatedTodo(text)).toBe(true);
   });
 
   it.each(MULTILINGUAL_CONTRADICTORY_UNSCHEDULED_TEXTS)(
     "rejects contradictory explicit scheduling in %s",
     (_language, text) => {
-      expect(textStatesExplicitUnscheduled(text)).toBe(false);
+      expect(textStatesExplicitUndatedTodo(text)).toBe(false);
+      expect(textContradictsExplicitUndatedTodo(text)).toBe(true);
     },
   );
 
@@ -821,7 +827,7 @@ describe("explicit unscheduled owner authority", () => {
     "không có ngày đến hạn, nhưng ngày mai",
     "walang takdang petsa, pero bukas",
   ])("rejects omitted or contradicted no-date authority in %p", (text) => {
-    expect(textStatesExplicitUnscheduled(text)).toBe(false);
+    expect(textStatesExplicitUndatedTodo(text)).toBe(false);
   });
 });
 
@@ -857,7 +863,12 @@ describe("runLifeOperationHandler clarification contract", () => {
 
     expect(preview).toMatchObject({
       success: false,
-      data: { deferred: true, saved: false, requiresConfirmation: true },
+      data: {
+        deferred: true,
+        saved: false,
+        requiresConfirmation: true,
+        lifeDraft: { request: { reminderPlan: null } },
+      },
     });
     expect(serviceState.createCalls).toHaveLength(0);
 
@@ -883,8 +894,267 @@ describe("runLifeOperationHandler clarification contract", () => {
       expect.objectContaining({
         kind: "task",
         cadence: { kind: "unscheduled" },
+        reminderPlan: null,
       }),
     ]);
+  });
+
+  it("does not treat a future confirmation clause as current consent", async () => {
+    const ownerText =
+      "Create a personal todo titled Buy oat milk. It has no due date or reminder. Preview it first and do not save until I confirm.";
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "todo",
+          title: "Buy oat milk",
+          cadenceKind: "unscheduled",
+        });
+      }
+      return "";
+    });
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(ownerText),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          confirmed: true,
+          intent: ownerText,
+          ownerSurface: "OWNER_TODOS",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: { deferred: true, saved: false, requiresConfirmation: true },
+    });
+    expect(serviceState.createCalls).toHaveLength(0);
+  });
+
+  it.each([
+    "Add tomorrow's agenda with no due date.",
+    "Add Tomorrow, and Tomorrow, and Tomorrow to my reading list with no due date.",
+  ])(
+    "keeps temporal title nouns distinct from a real schedule in %p",
+    async (ownerText) => {
+      const runtime = makeRuntime((prompt) => {
+        if (prompt.includes("create_definition request")) {
+          return taskPlanJson({
+            requestKind: "todo",
+            title: "Reading list item",
+            cadenceKind: "unscheduled",
+          });
+        }
+        return "";
+      });
+
+      const result = await runLifeOperationHandler(
+        runtime,
+        makeMessage(ownerText),
+        undefined,
+        {
+          parameters: {
+            action: "create",
+            intent: ownerText,
+            ownerSurface: "OWNER_TODOS",
+          },
+        } as HandlerOptions,
+      );
+
+      expect(result).toMatchObject({
+        success: false,
+        data: { deferred: true, saved: false, requiresConfirmation: true },
+      });
+      expect(serviceState.createCalls).toHaveLength(0);
+    },
+  );
+
+  it("rejects a contradicted edit even when extraction resolves the later date", async () => {
+    const runtime = makeRuntime((prompt) => {
+      if (
+        prompt.includes(
+          "Decide how the assistant should interpret the user's follow-up",
+        )
+      ) {
+        return JSON.stringify({ mode: "edit" });
+      }
+      if (prompt.includes("create_definition request")) {
+        if (prompt.includes("Keep it with no due date, but Friday")) {
+          return taskPlanJson({
+            requestKind: "todo",
+            title: "Buy oat milk",
+            cadenceKind: "once",
+            dueWeekday: 5,
+          });
+        }
+        if (
+          prompt.includes(
+            "Yes, confirm and save the edited Book dentist visit task now",
+          )
+        ) {
+          return taskPlanJson({
+            requestKind: "todo",
+            title: "Book dentist visit",
+            cadenceKind: "weekly",
+            weekdays: [5],
+            windows: ["morning"],
+          });
+        }
+        return taskPlanJson({
+          requestKind: "todo",
+          title: "Buy oat milk",
+          cadenceKind: "unscheduled",
+        });
+      }
+      return "";
+    });
+
+    const preview = await runLifeOperationHandler(
+      runtime,
+      makeMessage("Add buy milk with no due date."),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          intent: "Add buy milk with no due date.",
+          ownerSurface: "OWNER_TODOS",
+        },
+      } as HandlerOptions,
+    );
+    expect(preview).toMatchObject({
+      success: false,
+      data: { deferred: true, saved: false, requiresConfirmation: true },
+    });
+
+    const edit = await runLifeOperationHandler(
+      runtime,
+      {
+        ...makeMessage("Keep it with no due date, but Friday."),
+        id: "00000000-0000-0000-0000-000000000006",
+      } as Memory,
+      { data: { actionResults: [preview] } } as unknown as State,
+      {
+        parameters: {
+          action: "create",
+          confirmed: true,
+          intent: "Keep it with no due date, but Friday.",
+          ownerSurface: "OWNER_TODOS",
+          details: { confirmed: true },
+        },
+      } as HandlerOptions,
+    );
+
+    expect(edit).toMatchObject({
+      success: false,
+      values: {
+        error: "MISSING_DEFINITION_FIELD",
+        missingField: "schedule",
+      },
+      data: { lifeDraftInvalidated: true },
+    });
+
+    const confirmation = await runLifeOperationHandler(
+      runtime,
+      {
+        ...makeMessage(
+          "Yes, confirm and save the edited Book dentist visit task now.",
+        ),
+        id: "00000000-0000-0000-0000-000000000008",
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          confirmed: true,
+          intent:
+            "Yes, confirm and save the edited Book dentist visit task now.",
+          ownerSurface: "OWNER_TODOS",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(confirmation).toMatchObject({
+      success: false,
+      values: {
+        error: "MISSING_DEFINITION_FIELD",
+        missingField: "schedule",
+      },
+    });
+    expect(serviceState.createCalls).toHaveLength(0);
+  });
+
+  it("keeps a valid explicit undated edit as a preview without writing", async () => {
+    const runtime = makeRuntime((prompt) => {
+      if (
+        prompt.includes(
+          "Decide how the assistant should interpret the user's follow-up",
+        )
+      ) {
+        return JSON.stringify({ mode: "edit" });
+      }
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "todo",
+          title: "Buy oat milk",
+          cadenceKind: "unscheduled",
+        });
+      }
+      return "";
+    });
+
+    const preview = await runLifeOperationHandler(
+      runtime,
+      makeMessage("Add buy milk with no due date."),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          intent: "Add buy milk with no due date.",
+          ownerSurface: "OWNER_TODOS",
+        },
+      } as HandlerOptions,
+    );
+    expect(preview).toMatchObject({
+      success: false,
+      data: { deferred: true, saved: false, requiresConfirmation: true },
+    });
+
+    const edit = await runLifeOperationHandler(
+      runtime,
+      {
+        ...makeMessage("Rename it Buy oat milk, still no due date."),
+        id: "00000000-0000-0000-0000-000000000007",
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          intent: "Rename it Buy oat milk, still no due date.",
+          ownerSurface: "OWNER_TODOS",
+          title: "Buy oat milk",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(edit).toMatchObject({
+      success: false,
+      data: {
+        deferred: true,
+        saved: false,
+        requiresConfirmation: true,
+        lifeDraft: {
+          request: {
+            cadence: { kind: "unscheduled" },
+            reminderPlan: null,
+            title: "Buy oat milk",
+          },
+        },
+      },
+    });
+    expect(serviceState.createCalls).toHaveLength(0);
   });
 
   it.each([
@@ -1114,6 +1384,51 @@ describe("runLifeOperationHandler clarification contract", () => {
       },
     });
     expect(retry.effectReceipts).toEqual(result.effectReceipts);
+    expect(serviceState.createCalls).toHaveLength(0);
+  });
+
+  it("rejects a model-invented date when the owner explicitly withheld timing", async () => {
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Call Mom",
+          cadenceKind: "once",
+          dueInDays: 1,
+          timeOfDay: "09:00",
+        });
+      }
+      return "When should it happen?";
+    });
+    const ownerText = "Remind me to call Mom, but I have not said when.";
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(ownerText),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          intent: ownerText,
+          ownerSurface: "OWNER_REMINDERS",
+          title: "Call Mom",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      values: {
+        error: "MISSING_DEFINITION_FIELD",
+        missingField: "schedule",
+        awaitingUserInput: true,
+      },
+      data: {
+        actionName: "OWNER_REMINDERS",
+        missingField: "schedule",
+        awaitingUserInput: true,
+      },
+    });
     expect(serviceState.createCalls).toHaveLength(0);
   });
 });
@@ -2251,6 +2566,36 @@ describe("runLifeOperationHandler consent gate (#16941)", () => {
       "00000000-0000-0000-0000-000000000011",
       CHILD_ASK,
     );
+
+    const preview = await runLifeOperationHandler(runtime, message, undefined, {
+      parameters: { action: "create_reminder", intent: CHILD_ASK },
+    } as HandlerOptions);
+    expect(preview.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+
+    const recall = await runLifeOperationHandler(runtime, message, undefined, {
+      parameters: {
+        action: "create_reminder",
+        intent: CHILD_ASK,
+        confirmed: true,
+      },
+    } as HandlerOptions);
+
+    expect(recall.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+    expect(recall.data).toMatchObject({
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+    });
+  });
+
+  it("fails closed when a same-turn re-call has no stable message id", async () => {
+    // Some connector/runtime boundaries do not carry Memory.id into the action
+    // invocation. An absent id cannot prove the cached preview came from an
+    // earlier owner turn, so planner-confirmed reuse must remain a preview.
+    const runtime = routineRuntime();
+    const message = makeMessage(CHILD_ASK);
 
     const preview = await runLifeOperationHandler(runtime, message, undefined, {
       parameters: { action: "create_reminder", intent: CHILD_ASK },
