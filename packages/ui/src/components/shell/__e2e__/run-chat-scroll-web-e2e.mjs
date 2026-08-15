@@ -26,6 +26,7 @@ import {
   stubElizaCore,
   stubNodeBuiltins,
 } from "../../../testing/e2e-runner/esbuild-stubs.ts";
+import { FILE_FIXTURE_BOOTSTRAP } from "../../../testing/e2e-runner/fixture-bundle.ts";
 import { touchDragHold } from "../../../testing/real-touch-gestures.ts";
 
 // `ENGINE=webkit` runs the SAME harness under WebKit — the iOS Safari layout
@@ -60,7 +61,7 @@ const result = await build({
 const js = result.outputFiles[0].text;
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>chat scroll web e2e</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
+<script>${FILE_FIXTURE_BOOTSTRAP}</script>
 <style>html,body{margin:0;height:100%;background:#0a0d16}</style>
 </head><body><div id="root"></div><script>${js}</script></body></html>`;
 const htmlPath = join(outDir, "chat-scroll-web.html");
