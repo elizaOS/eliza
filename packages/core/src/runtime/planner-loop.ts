@@ -4719,7 +4719,7 @@ function plannerResultValues(
 export function singleVerifiedUserFacingToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	for (const step of [...trajectory.steps].reverse()) {
+	for (const step of [...(trajectory.archivedSteps ?? []), ...trajectory.steps].reverse()) {
 		const result = step.result;
 		if (
 			result?.verifiedUserFacing === true &&
@@ -4734,7 +4734,7 @@ export function singleVerifiedUserFacingToolResultText(
 		}
 	}
 
-	const successfulToolSteps = trajectory.steps.filter(
+	const successfulToolSteps = [...(trajectory.archivedSteps ?? []), ...trajectory.steps].filter(
 		(step) => step.toolCall && step.result?.success === true,
 	);
 	if (successfulToolSteps.length !== 1) return undefined;
@@ -4764,7 +4764,7 @@ function codingActionSummary(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	const parts: string[] = [];
-	for (const step of trajectory.steps) {
+	for (const step of [...(trajectory.archivedSteps ?? []), ...trajectory.steps]) {
 		if (step.result?.success === false) continue;
 		const summary = step.result?.summary?.trim();
 		if (summary) {
