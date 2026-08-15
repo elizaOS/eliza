@@ -35,6 +35,8 @@ export interface CanonicalScopedStreamRequest {
   conversationId: string;
   userId?: string;
   agentKind?: "sandbox" | "personal";
+  /** Set only by the authenticated in-process voice adapter for lifecycle turns. */
+  trustedMessageRole?: "system";
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
@@ -113,6 +115,7 @@ export async function handleCanonicalScopedAgentStream(
       namespace: request.namespace,
       executionCtx: request.executionCtx,
       agentKind: request.agentKind,
+      trustedMessageRole: request.trustedMessageRole,
     });
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {

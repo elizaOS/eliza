@@ -47,6 +47,7 @@ function loadProductionLifecycle() {
     clientWidth: 1200,
     clientHeight: 800,
     getContext: () => drawingContext,
+    addEventListener: noOp,
   };
   context.document = {
     hidden: false,

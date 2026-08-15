@@ -125,9 +125,7 @@ describe("dispatchBufferedRequest", () => {
 				coalesced: false,
 			});
 			expect(runDueTasks).toHaveBeenCalledOnce();
-			expect(runDueTasks).toHaveBeenCalledWith({
-				maxWallTimeMs: expect.any(Number),
-			});
+			expect(runDueTasks).toHaveBeenCalledWith();
 			expect(calls).toHaveLength(0);
 		} finally {
 			if (previousToken === undefined) delete process.env.ELIZA_API_TOKEN;
@@ -158,6 +156,18 @@ describe("dispatchBufferedRequest", () => {
 				body: "not-json",
 			});
 			expect(invalid.status).toBe(400);
+
+			const expired = await dispatchBufferedRequest(wakeRuntime, route, {
+				method: "POST",
+				path: "/api/internal/wake",
+				headers: { authorization: `Bearer ${"b".repeat(64)}` },
+				body: { kind: "refresh", deadlineMs: Date.now() - 1 },
+			});
+			expect(expired.status).toBe(408);
+			expect(JSON.parse(expired.body)).toEqual({
+				ok: false,
+				error: "wake_deadline_expired",
+			});
 			expect(runDueTasks).not.toHaveBeenCalled();
 		} finally {
 			if (previousToken === undefined) delete process.env.ELIZA_API_TOKEN;
@@ -173,7 +183,7 @@ describe("dispatchBufferedRequest", () => {
 			method: "POST",
 			path: "/api/internal/wake",
 			headers: { authorization: `Bearer ${"c".repeat(64)}` },
-			body: { kind: "processing", deadlineMs: Date.now() - 1 },
+			body: { kind: "processing", deadlineMs: Date.now() + 5_000 },
 		};
 		try {
 			const unavailable = await dispatchBufferedRequest(
@@ -206,8 +216,8 @@ describe("dispatchBufferedRequest", () => {
 				payload,
 			);
 			expect(recovered.status).toBe(200);
-			expect(runDueTasks).toHaveBeenNthCalledWith(1, { maxWallTimeMs: 1_000 });
-			expect(runDueTasks).toHaveBeenNthCalledWith(2, { maxWallTimeMs: 1_000 });
+			expect(runDueTasks).toHaveBeenNthCalledWith(1);
+			expect(runDueTasks).toHaveBeenNthCalledWith(2);
 		} finally {
 			if (previousToken === undefined) delete process.env.ELIZA_API_TOKEN;
 			else process.env.ELIZA_API_TOKEN = previousToken;
@@ -238,7 +248,8 @@ describe("dispatchBufferedRequest", () => {
 		};
 		try {
 			const first = dispatchBufferedRequest(firstRuntime, route, payload);
-			await vi.waitFor(() => expect(firstRun).toHaveBeenCalledOnce());
+			await Promise.resolve();
+			expect(firstRun).toHaveBeenCalledOnce();
 			const coalesced = dispatchBufferedRequest(firstRuntime, route, payload);
 			const replacement = await dispatchBufferedRequest(
 				replacementRuntime,

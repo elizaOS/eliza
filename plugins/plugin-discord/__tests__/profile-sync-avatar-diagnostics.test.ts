@@ -1,22 +1,15 @@
 /**
- * Pins the failure diagnostic of Discord profile-avatar resolution.
- *
- * The avatar source is probed against several local roots. When every probe
- * misses, the reported error must name the SOURCE and the paths tried — not
- * one arbitrary candidate's ENOENT, which sends a reader hunting for a single
- * file that was never the real input. The aggregate must not overreach either:
- * a candidate that failed for any reason OTHER than absence exists as far as
- * the probe loop knows, so summarizing it as nonexistence trades one fabricated
- * diagnosis for another. Deterministic: a duck-typed clientUser, a minimal fake
- * runtime, and a real temp directory for the unreadable case; no Discord
- * client, network, or model.
+ * Exercises Discord avatar candidate failures without a Discord client or
+ * network. Mocked and real filesystem failures distinguish expected path
+ * misses from present-but-unreadable candidates while proving diagnostics do
+ * not disclose configured sources or resolved local paths.
  */
 
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { syncDiscordClientProfile } from "../profileSync.ts";
 import type { DiscordSettings } from "../types.ts";
 
@@ -34,12 +27,23 @@ function fakeRuntime(avatar: string | undefined): IAgentRuntime {
 }
 
 const clientUser = {
-	username: "eliza",
+	username: "Eliza",
 	setAvatar: async () => undefined,
 	setUsername: async () => undefined,
 };
 
+function fsError(code: string, sensitivePath: string): NodeJS.ErrnoException {
+	return Object.assign(new Error(`${code}: cannot read '${sensitivePath}'`), {
+		code,
+		path: sensitivePath,
+	});
+}
+
 const tempDirectories: string[] = [];
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 afterAll(async () => {
 	await Promise.all(
@@ -50,108 +54,103 @@ afterAll(async () => {
 });
 
 describe("Discord profile avatar resolution diagnostics", () => {
-	it("names the source and every candidate path when none resolve", async () => {
-		// A web path served from blob storage in cloud — there is no local file
-		// for it on a self-hosted box, which is exactly the live case.
-		const settings = {
-			syncProfile: true,
-			profileAvatar: "/avatars/does-not-exist-anywhere.png",
-		} as unknown as DiscordSettings;
+	it.each(["EACCES", "EISDIR", "EMFILE", "EIO"])(
+		"preserves %s as a read failure without probing or disclosing more paths",
+		async (code) => {
+			const source = "/private/customer/secret-avatar.png";
+			const readFile = vi
+				.spyOn(fs, "readFile")
+				.mockRejectedValue(fsError(code, source));
 
-		const error = await syncDiscordClientProfile(
-			fakeRuntime(undefined),
-			clientUser,
-			settings,
-		).then(
-			() => null,
-			(e: unknown) => e,
-		);
+			const error = await syncDiscordClientProfile(
+				fakeRuntime(source),
+				clientUser,
+				{ syncProfile: true } as DiscordSettings,
+			).then(
+				() => null,
+				(value: unknown) => value,
+			);
 
-		expect(error).toBeInstanceOf(Error);
-		const message = (error as Error).message;
-		// The input the caller actually supplied.
-		expect(message).toContain("/avatars/does-not-exist-anywhere.png");
-		// Evidence that a SET of paths was probed, so nobody chases one file.
-		expect(message).toContain("candidate path(s)");
-		// The old behaviour rethrew a bare fs error naming a single path.
-		expect(message).not.toMatch(/^ENOENT/);
-	});
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe(
+				"DISCORD_PROFILE_AVATAR_READ_FAILED",
+			);
+			expect((error as ElizaError).context?.fsCode).toBe(code);
+			expect((error as Error).cause).toMatchObject({ code });
+			expect(String(error)).not.toContain(source);
+			expect(String((error as Error).cause)).not.toContain(source);
+			expect(JSON.stringify((error as ElizaError).context)).not.toContain(
+				source,
+			);
+			expect(readFile).toHaveBeenCalledTimes(2);
+		},
+	);
 
-	it("does not report an unreadable candidate as nonexistent", async () => {
-		// A directory at the resolved path exists but cannot be read as a file
-		// (EISDIR). Before this fix the probe loop swallowed the errno and the
-		// aggregate claimed "none of N candidate path(s) exist" — nonexistence
-		// asserted about a path that is demonstrably there.
+	it.each(["ENOENT", "ENOTDIR"])(
+		"aggregates %s misses without exposing configured or candidate paths",
+		async (code) => {
+			const source = "/private/customer/missing-avatar.png";
+			const readFile = vi
+				.spyOn(fs, "readFile")
+				.mockRejectedValue(fsError(code, source));
+
+			const error = await syncDiscordClientProfile(
+				fakeRuntime(undefined),
+				clientUser,
+				{ syncProfile: true, profileAvatar: source } as DiscordSettings,
+			).then(
+				() => null,
+				(value: unknown) => value,
+			);
+
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe(
+				"DISCORD_PROFILE_AVATAR_NOT_FOUND",
+			);
+			expect((error as ElizaError).context?.candidateCount).toBeGreaterThan(1);
+			expect(readFile.mock.calls.length).toBeGreaterThan(2);
+			expect(String(error)).not.toContain(source);
+			expect(JSON.stringify((error as ElizaError).context)).not.toContain(
+				source,
+			);
+		},
+	);
+
+	it("classifies a real directory candidate as unreadable without disclosing it", async () => {
 		const directory = await fs.mkdtemp(
 			path.join(os.tmpdir(), "discord-avatar-probe-"),
 		);
 		tempDirectories.push(directory);
-		const settings = {
-			syncProfile: true,
-			profileAvatar: directory,
-		} as unknown as DiscordSettings;
 
 		const error = await syncDiscordClientProfile(
 			fakeRuntime(undefined),
 			clientUser,
-			settings,
+			{ syncProfile: true, profileAvatar: directory } as DiscordSettings,
 		).then(
 			() => null,
-			(e: unknown) => e,
-		);
-
-		// The absence claim must NOT be made about a path that is right there.
-		const message = (error as Error).message;
-		expect(message).not.toContain("candidate path(s) exist");
-		expect(message).toContain("other than absence");
-
-		expect(error).toBeInstanceOf(ElizaError);
-		const elizaError = error as ElizaError;
-		expect(elizaError.code).toBe("DISCORD_PROFILE_AVATAR_UNREADABLE");
-		// The errno that actually explains the failure survives as the cause.
-		expect((elizaError.cause as NodeJS.ErrnoException | undefined)?.code).toBe(
-			"EISDIR",
-		);
-		expect(elizaError.context?.source).toBe(directory);
-	});
-
-	it("carries a typed code and the underlying cause when every probe misses", async () => {
-		const settings = {
-			syncProfile: true,
-			profileAvatar: "/avatars/does-not-exist-anywhere.png",
-		} as unknown as DiscordSettings;
-
-		const error = await syncDiscordClientProfile(
-			fakeRuntime(undefined),
-			clientUser,
-			settings,
-		).then(
-			() => null,
-			(e: unknown) => e,
+			(value: unknown) => value,
 		);
 
 		expect(error).toBeInstanceOf(ElizaError);
-		const elizaError = error as ElizaError;
-		expect(elizaError.code).toBe("DISCORD_PROFILE_AVATAR_NOT_FOUND");
-		expect((elizaError.cause as NodeJS.ErrnoException | undefined)?.code).toBe(
-			"ENOENT",
+		expect((error as ElizaError).code).toBe(
+			"DISCORD_PROFILE_AVATAR_READ_FAILED",
 		);
-		expect(Array.isArray(elizaError.context?.candidates)).toBe(true);
+		expect((error as ElizaError).context?.fsCode).toBe("EISDIR");
+		expect((error as Error).cause).toMatchObject({ code: "EISDIR" });
+		expect(String(error)).not.toContain(directory);
+		expect(String((error as Error).cause)).not.toContain(directory);
+		expect(JSON.stringify((error as ElizaError).context)).not.toContain(
+			directory,
+		);
 	});
 
 	it("leaves the avatar untouched when profile sync is disabled", async () => {
-		let called = false;
-		const settings = { syncProfile: false } as unknown as DiscordSettings;
+		const setAvatar = vi.fn(async () => undefined);
 		await syncDiscordClientProfile(
-			fakeRuntime("/avatars/does-not-exist-anywhere.png"),
-			{
-				...clientUser,
-				setAvatar: async () => {
-					called = true;
-				},
-			},
-			settings,
+			fakeRuntime("/private/customer/avatar.png"),
+			{ ...clientUser, setAvatar },
+			{ syncProfile: false } as DiscordSettings,
 		);
-		expect(called).toBe(false);
+		expect(setAvatar).not.toHaveBeenCalled();
 	});
 });

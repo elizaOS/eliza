@@ -3586,8 +3586,17 @@ function normalizeStepForPersistence(
     access: PersistedProviderAccess,
     index: number,
   ): PersistedProviderAccess => {
+    const { providerId, providerName, timestamp, purpose, data, ...extras } =
+      access;
     const bounded = snapshotCaptureParams(
-      { ...access },
+      {
+        providerId,
+        providerName,
+        timestamp,
+        purpose,
+        data,
+        ...extras,
+      },
       step.stepId,
     );
     return parsePersistedProviderAccess(

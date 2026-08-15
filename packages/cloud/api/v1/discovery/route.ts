@@ -121,41 +121,80 @@ async function sha256Short(input: string, length = 12): Promise<string> {
     .substring(0, length);
 }
 
-const querySchema = z.object({
-  query: z.string().optional(),
-  types: z
-    .string()
-    .transform((value) => value.split(",").map((type) => type.trim()))
-    .pipe(z.array(serviceTypeSchema).min(1))
-    .optional(),
-  categories: z
-    .string()
-    .transform((s) => s.split(","))
-    .optional(),
-  tags: z
-    .string()
-    .transform((s) => s.split(","))
-    .optional(),
-  mcpTools: z
-    .string()
-    .transform((s) => s.split(","))
-    .optional(),
-  a2aSkills: z
-    .string()
-    .transform((s) => s.split(","))
-    .optional(),
-  x402Only: z
-    .string()
-    .transform((s) => s === "true")
-    .optional(),
-  activeOnly: z
-    .string()
-    .transform((s) => s === "true")
-    .optional()
-    .default(true),
-  limit: z.coerce.number().min(1).max(200).optional().default(50),
-  offset: z.coerce.number().min(0).optional().default(0),
-});
+/** The listPublic repositories clamp a single window to this many rows. */
+const REPOSITORY_WINDOW_CLAMP = 200;
+/**
+ * Per-source scan ceiling for the bounded path (memory-only filters). Hitting
+ * it forces hasMore=true so a truncated scan is never reported as complete.
+ */
+const BOUNDED_SCAN_CEILING = 1_000;
+/**
+ * Largest prefix an unauthenticated caller may make either path scan. The
+ * bound applies to `offset + limit`, not offset alone: otherwise an offset at
+ * the ceiling plus a 200-row page would exceed the advertised per-source cap.
+ */
+const MAX_PAGE_DEPTH = BOUNDED_SCAN_CEILING;
+
+const querySchema = z
+  .object({
+    query: z.string().optional(),
+    types: z
+      .string()
+      .transform((value) => value.split(",").map((type) => type.trim()))
+      .pipe(z.array(serviceTypeSchema).min(1))
+      .optional(),
+    categories: z
+      .string()
+      .transform((s) => s.split(","))
+      .optional(),
+    tags: z
+      .string()
+      .transform((s) => s.split(","))
+      .optional(),
+    mcpTools: z
+      .string()
+      .transform((s) => s.split(","))
+      .optional(),
+    a2aSkills: z
+      .string()
+      .transform((s) => s.split(","))
+      .optional(),
+    x402Only: z
+      .string()
+      .transform((s) => s === "true")
+      .optional(),
+    activeOnly: z
+      .string()
+      .transform((s) => s === "true")
+      .optional()
+      .default(true),
+    limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+    offset: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_PAGE_DEPTH - 1)
+      .optional()
+      .default(0),
+  })
+  .refine((params) => params.offset + params.limit <= MAX_PAGE_DEPTH, {
+    message: `offset + limit must not exceed ${MAX_PAGE_DEPTH}`,
+    path: ["offset"],
+  });
+
+/** Compare strings in PostgreSQL `COLLATE "C"` order for UTF-8 databases. */
+const UTF8_ENCODER = new TextEncoder();
+
+export function compareUtf8ByteOrder(left: string, right: string): number {
+  const leftBytes = UTF8_ENCODER.encode(left);
+  const rightBytes = UTF8_ENCODER.encode(right);
+  const sharedLength = Math.min(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < sharedLength; index += 1) {
+    const difference = leftBytes[index] - rightBytes[index];
+    if (difference !== 0) return difference;
+  }
+  return leftBytes.length - rightBytes.length;
+}
 
 const app = new Hono<AppEnv>();
 
@@ -189,66 +228,165 @@ app.get("/", async (c) => {
 
     logger.debug("[Discovery] Cache miss, fetching fresh data", { params });
 
-    const services: DiscoveredService[] = [];
     const types: ServiceType[] = params.types ?? ["agent", "mcp"];
 
-    if (types.includes("agent")) {
-      const localAgents = await fetchLocalAgents(
-        params,
-        c.env.NEXT_PUBLIC_APP_URL,
-      );
-      services.push(...localAgents);
+    // Pagination contract (#19076/#19083): the offset is applied exactly once,
+    // to the merged agent+mcp stream ordered by name. Two regimes:
+    //
+    // - Exact path (no memory-only filters): `total` comes from dedicated SQL
+    //   COUNT queries under listPublic's own conditions, and the page comes
+    //   from per-source name-ordered prefix windows of depth offset+limit —
+    //   sized to the request, so a first page fetches only what it needs, and
+    //   correct at arbitrary offsets because the merged top-D is always
+    //   contained in the union of each source's top-D — provided the SQL sort
+    //   and the merge comparator agree. The repositories sort by name
+    //   COLLATE "C" (id tiebreak) and the merge below compares UTF-8 bytes,
+    //   including for astral-plane characters. The shared total order keeps
+    //   prefix-window pagination from dropping or duplicating boundary rows.
+    //
+    // - Bounded path (tags / multi-category / x402Only, which SQL cannot
+    //   express here): sources are scanned to exhaustion up to a per-source
+    //   ceiling. If any source still had rows at the ceiling, hasMore is
+    //   forced true and total is explicitly a lower bound — never a
+    //   healthy-looking "complete" answer over a truncated scan.
+    const memoryOnlyFilters =
+      Boolean(params.tags?.length) ||
+      (params.categories?.length ?? 0) > 1 ||
+      Boolean(params.x402Only);
+
+    const byNameUtf8ByteOrder = (
+      a: DiscoveredService,
+      b: DiscoveredService,
+    ) => {
+      const nameOrder = compareUtf8ByteOrder(a.name, b.name);
+      return nameOrder !== 0 ? nameOrder : compareUtf8ByteOrder(a.id, b.id);
+    };
+
+    const applyMemoryFilters = (rows: DiscoveredService[]) => {
+      let filtered = rows;
+      if (params.query) {
+        const query = params.query.toLowerCase();
+        filtered = filtered.filter(
+          (s) =>
+            s.name.toLowerCase().includes(query) ||
+            s.description.toLowerCase().includes(query),
+        );
+      }
+      if (params.x402Only) {
+        filtered = filtered.filter((s) => s.x402Support);
+      }
+      if (params.activeOnly) {
+        filtered = filtered.filter((s) => s.active);
+      }
+      if (params.categories?.length) {
+        filtered = filtered.filter(
+          (s) => s.category && params.categories?.includes(s.category),
+        );
+      }
+      if (params.tags?.length) {
+        filtered = filtered.filter((s) =>
+          s.tags.some((tag) => params.tags?.includes(tag)),
+        );
+      }
+      return dedupeDiscoveredServices(filtered);
+    };
+
+    const pageDepth = params.offset + params.limit;
+    // Exact path fetches only the requested depth; the bounded path scans to
+    // exhaustion or its ceiling.
+    let perSourceDepth = memoryOnlyFilters ? BOUNDED_SCAN_CEILING : pageDepth;
+
+    let services: DiscoveredService[] = [];
+    let anySourceTruncated = false;
+    let windowed: DiscoveredService[] = [];
+
+    // Dedupe can collapse rows inside the fetched prefixes (organizations may
+    // expose the same slug+name+description MCP), underfilling the requested
+    // window even though deeper unique rows exist. Refill by extending the
+    // prefix depth until the window fills, every source is exhausted, or the
+    // scan ceiling is reached. Refetching from row zero keeps the prefix
+    // argument intact; extra passes only happen when a duplicate actually
+    // collapsed inside the window, which is rare.
+    for (;;) {
+      services = [];
+      anySourceTruncated = false;
+
+      if (types.includes("agent")) {
+        const { rows, truncated } = await fetchLocalAgents(
+          params,
+          perSourceDepth,
+          c.env.NEXT_PUBLIC_APP_URL,
+        );
+        services.push(...rows);
+        anySourceTruncated ||= truncated;
+      }
+
+      if (types.includes("mcp")) {
+        const { rows, truncated } = await fetchLocalMcps(
+          params,
+          perSourceDepth,
+          c.env.NEXT_PUBLIC_APP_URL,
+        );
+        services.push(...rows);
+        anySourceTruncated ||= truncated;
+      }
+
+      windowed = applyMemoryFilters(services).sort(byNameUtf8ByteOrder);
+      if (windowed.length >= pageDepth || !anySourceTruncated) break;
+      if (perSourceDepth >= BOUNDED_SCAN_CEILING) break;
+      // Grow geometrically (#19246): every duplicate identity found so far
+      // hints at more, so doubling reaches any window within the scan
+      // ceiling in O(log ceiling) passes instead of a linear crawl whose
+      // pathological worst case re-walks the prefix ~ceiling/shortfall times.
+      perSourceDepth = Math.min(BOUNDED_SCAN_CEILING, perSourceDepth * 2);
     }
 
-    if (types.includes("mcp")) {
-      const localMcps = await fetchLocalMcps(params, c.env.NEXT_PUBLIC_APP_URL);
-      services.push(...localMcps);
-    }
-
-    let filtered = services;
-
-    if (params.query) {
-      const query = params.query.toLowerCase();
-      filtered = filtered.filter(
-        (s) =>
-          s.name.toLowerCase().includes(query) ||
-          s.description.toLowerCase().includes(query),
-      );
-    }
-
-    if (params.x402Only) {
-      filtered = filtered.filter((s) => s.x402Support);
-    }
-
-    if (params.activeOnly) {
-      filtered = filtered.filter((s) => s.active);
-    }
-
-    if (params.categories?.length) {
-      filtered = filtered.filter(
-        (s) => s.category && params.categories?.includes(s.category),
-      );
-    }
-
-    if (params.tags?.length) {
-      filtered = filtered.filter((s) =>
-        s.tags.some((tag) => params.tags?.includes(tag)),
-      );
-    }
-
-    filtered = dedupeDiscoveredServices(filtered);
-    filtered.sort((a, b) => a.name.localeCompare(b.name));
-
-    const total = filtered.length;
+    const filtered = windowed;
     const paginated = filtered.slice(
       params.offset,
       params.offset + params.limit,
     );
 
+    let total: number;
+    let hasMore: boolean;
+    if (memoryOnlyFilters) {
+      // Bounded path: exact when every source was exhausted; otherwise the
+      // count is a lower bound and hasMore must not claim completion.
+      total = filtered.length;
+      hasMore = params.offset + paginated.length < total || anySourceTruncated;
+    } else {
+      // Exact path: dedicated counts under the same SQL conditions as the
+      // list windows. The activeOnly filter is already exact here (agents are
+      // always active; the mcp source lists status "live" only), and the
+      // query filter is symmetric between list and count. Both counts are of
+      // identities rather than raw rows: the mcp source counts DISTINCT
+      // slug+name+description because cross-org republishes collapse under
+      // getDiscoveryKey, while agent keys embed the character id and so can
+      // never collide. Remaining divergences (SQL trim() vs JS .trim() over
+      // non-space Unicode whitespace) can only over-report, never invent a
+      // missing page.
+      const counts = await Promise.all([
+        types.includes("agent")
+          ? charactersService.countPublicCatalog({
+              search: params.query,
+              category: sqlCategory(params),
+            })
+          : Promise.resolve(0),
+        types.includes("mcp")
+          ? userMcpsService.countPublic({
+              search: params.query,
+              category: sqlCategory(params),
+            })
+          : Promise.resolve(0),
+      ]);
+      total = counts[0] + counts[1];
+      hasMore = params.offset + paginated.length < total;
+    }
+
     const result: DiscoveryResponse = {
       services: paginated,
       total,
-      hasMore: params.offset + paginated.length < total,
+      hasMore,
       pagination: {
         limit: params.limit,
         offset: params.offset,
@@ -266,19 +404,52 @@ app.get("/", async (c) => {
   }
 });
 
+/**
+ * The SQL layer may only restrict by category when exactly one category is
+ * requested. Multi-category requests take the bounded in-memory path, and
+ * pushing just the first category down would starve the scan of every other
+ * requested category's rows before the in-memory filter ever saw them.
+ */
+function sqlCategory(params: z.infer<typeof querySchema>): string | undefined {
+  return params.categories?.length === 1 ? params.categories[0] : undefined;
+}
+
+/**
+ * Fetches the first `depth` public agents in the shared name order, walking
+ * repository windows as needed. `truncated` reports rows remained beyond the
+ * requested depth, so bounded-path callers can refuse to claim completion.
+ */
 async function fetchLocalAgents(
   params: z.infer<typeof querySchema>,
+  depth: number,
   appUrlEnv?: string,
-): Promise<DiscoveredService[]> {
+): Promise<{ rows: DiscoveredService[]; truncated: boolean }> {
   const baseUrl = appUrlEnv || "https://cloud.eliza.app";
   const source = resolveDiscoverySource(baseUrl);
 
-  let characters = await charactersService.listPublic({
-    search: params.query,
-    category: params.categories?.[0],
-    limit: params.limit,
-    offset: params.offset,
-  });
+  let characters: Awaited<ReturnType<typeof charactersService.listPublic>> = [];
+  // Read one row past the requested depth: a source holding exactly `depth`
+  // rows must report truncated=false, and only the extra row distinguishes
+  // exact fit from "more rows remain".
+  const probeDepth = depth + 1;
+  for (let sourceOffset = 0; characters.length < probeDepth; ) {
+    const windowLimit = Math.min(
+      probeDepth - characters.length,
+      REPOSITORY_WINDOW_CLAMP,
+    );
+    const page = await charactersService.listPublic({
+      search: params.query,
+      category: sqlCategory(params),
+      limit: windowLimit,
+      offset: sourceOffset,
+      orderBy: "name",
+    });
+    characters = characters.concat(page);
+    sourceOffset += page.length;
+    if (page.length < windowLimit) break;
+  }
+  const truncated = characters.length > depth;
+  characters = characters.slice(0, depth);
 
   if (params.query) {
     const query = params.query.toLowerCase();
@@ -300,13 +471,14 @@ async function fetchLocalAgents(
   }
 
   if (params.categories && params.categories.length > 1) {
-    // Repo filters on the first category; filter the rest in-memory.
+    // sqlCategory() pushes no category down when more than one is requested,
+    // so the full requested set is narrowed here instead.
     characters = characters.filter((char) =>
       params.categories?.includes(char.category ?? ""),
     );
   }
 
-  return characters.map((char): DiscoveredService => {
+  const rows = characters.map((char): DiscoveredService => {
     // description must come out a string: getDiscoveryKey() and the query
     // filter call .trim()/.toLowerCase() on it, so a non-string non-array bio
     // (user-controlled jsonb, e.g. `{}`) would otherwise 500 every catalog
@@ -343,23 +515,42 @@ async function fetchLocalAgents(
         : { type: "free", description: "Free to use" },
     };
   });
+  return { rows, truncated };
 }
 
+/** MCP twin of fetchLocalAgents: name-ordered prefix windows to `depth`. */
 async function fetchLocalMcps(
   params: z.infer<typeof querySchema>,
+  depth: number,
   appUrlEnv?: string,
-): Promise<DiscoveredService[]> {
+): Promise<{ rows: DiscoveredService[]; truncated: boolean }> {
   const baseUrl = appUrlEnv || "https://cloud.eliza.app";
   const source = resolveDiscoverySource(baseUrl);
 
-  const mcps = await userMcpsService.listPublic({
-    category: params.categories?.[0],
-    search: params.query,
-    limit: params.limit,
-    offset: params.offset,
-  });
+  let mcps: Awaited<ReturnType<typeof userMcpsService.listPublic>> = [];
+  // See fetchLocalAgents: the extra row is what separates an exact fit from a
+  // genuinely truncated scan.
+  const probeDepth = depth + 1;
+  for (let sourceOffset = 0; mcps.length < probeDepth; ) {
+    const windowLimit = Math.min(
+      probeDepth - mcps.length,
+      REPOSITORY_WINDOW_CLAMP,
+    );
+    const page = await userMcpsService.listPublic({
+      category: sqlCategory(params),
+      search: params.query,
+      limit: windowLimit,
+      offset: sourceOffset,
+      orderBy: "name",
+    });
+    mcps = mcps.concat(page);
+    sourceOffset += page.length;
+    if (page.length < windowLimit) break;
+  }
+  const truncated = mcps.length > depth;
+  mcps = mcps.slice(0, depth);
 
-  return mcps.map(
+  const rows = mcps.map(
     (mcp): DiscoveredService => ({
       id: mcp.id,
       name: mcp.name,
@@ -392,6 +583,7 @@ async function fetchLocalMcps(
               },
     }),
   );
+  return { rows, truncated };
 }
 
 export default app;

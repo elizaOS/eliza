@@ -20,7 +20,17 @@ import {
   type User,
 } from "discord.js";
 import { reconcileDiscordConnectionReady } from "./connection-lifecycle";
+import {
+  type DiscordInstallWelcomeJob,
+  DiscordInstallWelcomeQueue,
+} from "./discord-install-welcome-queue";
+import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
 import { logger } from "./logger";
+import {
+  createManagedGuildVoiceCloudBridge,
+  MANAGED_GUILD_VOICE_INTENT,
+  ManagedGuildVoiceController,
+} from "./managed-guild-voice";
 import {
   deliverManagedReply,
   postManagedAgentMessageWithRetry,
@@ -59,6 +69,13 @@ interface GatewayRedis {
   srem(key: string, ...members: string[]): Promise<number>;
   smembers(key: string): Promise<string[]>;
   lpush(key: string, ...values: string[]): Promise<number>;
+  lmove(
+    source: string,
+    destination: string,
+    whereFrom: "left" | "right",
+    whereTo: "left" | "right",
+  ): Promise<string | null>;
+  lrem(key: string, count: number, value: string): Promise<number>;
   ltrim(key: string, start: number, stop: number): Promise<string>;
 }
 
@@ -209,6 +226,18 @@ const GREETING_POLL_INTERVAL_MS = parseIntEnv(
   15_000,
 );
 
+/** User-installed apps expose bot DMs but may omit freeform message events. */
+const ELIZA_APP_DM_POLL_INTERVAL_MS = parseIntEnv(
+  "ELIZA_APP_DM_POLL_INTERVAL_MS",
+  2_000,
+  500,
+);
+const ELIZA_APP_DM_CHANNELS_KEY = "discord:eliza-app-bot:dm-channels";
+const ELIZA_APP_DM_STATE_PREFIX = "discord:eliza-app-bot:dm-state:";
+const ELIZA_APP_DM_CLAIM_PREFIX = "discord:eliza-app-bot:dm-message:";
+const ELIZA_APP_DM_STATE_TTL_SECONDS = 180 * 24 * 60 * 60;
+const ELIZA_APP_DM_CLAIM_TTL_SECONDS = 7 * 24 * 60 * 60;
+
 /** How often to check/renew leadership (3 seconds) */
 const ELIZA_APP_LEADER_CHECK_INTERVAL_MS = 3000;
 
@@ -355,6 +384,13 @@ export class GatewayManager {
    * provider nonce also recover correctly from abrupt process termination.
    */
   private greetingDrainInFlight: Promise<void> | null = null;
+  /** Poll fallback for user-installed bot DMs that omit Gateway message events. */
+  private dmPollInterval: NodeJS.Timeout | null = null;
+  private dmPollInFlight: Promise<void> | null = null;
+  /** Durable user-install welcome delivery, active on the system-bot leader. */
+  private installWelcomeQueue: DiscordInstallWelcomeQueue | null = null;
+  /** Live guild audio, owned by the same leader as the system-bot token. */
+  private managedGuildVoice: ManagedGuildVoiceController | null = null;
   /** Interval for leader election checks */
   private elizaAppLeaderInterval: NodeJS.Timeout | null = null;
 
@@ -390,6 +426,25 @@ export class GatewayManager {
         "Redis URL provided without token - failover disabled. Set REDIS_URL (TCP) or KV_REST_API_TOKEN/redisToken (Upstash).",
       );
     }
+
+    const elizaAppEnabled =
+      process.env.ELIZA_APP_DISCORD_BOT_ENABLED === "true";
+    const elizaAppBotToken = process.env.ELIZA_APP_DISCORD_BOT_TOKEN?.trim();
+    if (elizaAppEnabled && elizaAppBotToken && this.redis) {
+      this.installWelcomeQueue = new DiscordInstallWelcomeQueue(
+        this.redis,
+        elizaAppBotToken,
+      );
+    }
+  }
+
+  async enqueueDiscordInstallWelcome(
+    job: DiscordInstallWelcomeJob,
+  ): Promise<void> {
+    if (!this.installWelcomeQueue) {
+      throw new Error("Discord install welcome queue is unavailable");
+    }
+    await this.installWelcomeQueue.enqueue(job);
   }
 
   /**
@@ -584,6 +639,7 @@ export class GatewayManager {
     if (this.tokenRefreshTimeout) clearTimeout(this.tokenRefreshTimeout);
     if (this.elizaAppLeaderInterval) clearInterval(this.elizaAppLeaderInterval);
     if (this.greetingPollInterval) clearInterval(this.greetingPollInterval);
+    if (this.dmPollInterval) clearInterval(this.dmPollInterval);
     this.voiceHandler.stopCleanupJob();
 
     // Let an in-flight delivery acknowledge before disconnecting. This is an
@@ -592,6 +648,10 @@ export class GatewayManager {
     if (this.greetingDrainInFlight) {
       await this.greetingDrainInFlight;
       this.greetingDrainInFlight = null;
+    }
+    if (this.dmPollInFlight) {
+      await this.dmPollInFlight;
+      this.dmPollInFlight = null;
     }
 
     // Release Eliza App bot leadership for faster failover
@@ -1891,6 +1951,7 @@ export class GatewayManager {
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
+        MANAGED_GUILD_VOICE_INTENT,
       ],
       // Partials required for DM support - DM channels are not cached by default
       partials: [Partials.Channel, Partials.Message],
@@ -1903,10 +1964,44 @@ export class GatewayManager {
         userId: this.elizaAppClient?.user?.id,
       });
       this.startGreetingPolling();
+      this.startDmPolling();
+      void this.installWelcomeQueue?.start().catch((error) => {
+        logger.error("Failed to start Discord install welcome queue", {
+          error: sanitizeError(error),
+        });
+      });
+      if (process.env.ELIZA_APP_DISCORD_GUILD_VOICE_ENABLED === "true") {
+        const client = this.elizaAppClient;
+        if (client && !this.managedGuildVoice) {
+          this.managedGuildVoice = new ManagedGuildVoiceController({
+            client,
+            bridge: createManagedGuildVoiceCloudBridge({
+              apiBaseUrl: this.config.elizaCloudUrl,
+              getAuthorizationHeader: () => this.getAuthHeader(),
+            }),
+          });
+          void this.managedGuildVoice.start().catch((error) => {
+            logger.error("Failed to start managed Discord guild voice", {
+              error: sanitizeError(error),
+            });
+          });
+        }
+      }
     });
 
     this.elizaAppClient.on(Events.MessageCreate, async (message: Message) => {
+      if (!message.guild) {
+        const claimed = await this.claimElizaAppDmMessage(message.id);
+        if (!claimed) return;
+      }
       await this.handleElizaAppMessage(message);
+      if (!message.guild) {
+        await this.trackElizaAppDm(
+          message.channelId,
+          message.author.id,
+          message.id,
+        );
+      }
     });
 
     this.elizaAppClient.on(Events.Error, (error: Error) => {
@@ -1941,9 +2036,17 @@ export class GatewayManager {
    * Disconnect the Eliza App bot.
    */
   private async disconnectElizaAppBot(): Promise<void> {
+    if (this.managedGuildVoice) {
+      await this.managedGuildVoice.stop();
+      this.managedGuildVoice = null;
+    }
     if (this.greetingPollInterval) {
       clearInterval(this.greetingPollInterval);
       this.greetingPollInterval = null;
+    }
+    if (this.dmPollInterval) {
+      clearInterval(this.dmPollInterval);
+      this.dmPollInterval = null;
     }
     // Let an in-flight delivery acknowledge before disconnecting. A crash or
     // forced shutdown remains safe through lease expiry and nonce deduplication.
@@ -1951,6 +2054,11 @@ export class GatewayManager {
       await this.greetingDrainInFlight;
       this.greetingDrainInFlight = null;
     }
+    if (this.dmPollInFlight) {
+      await this.dmPollInFlight;
+      this.dmPollInFlight = null;
+    }
+    await this.installWelcomeQueue?.stop();
     if (this.elizaAppClient) {
       logger.info("Disconnecting Eliza App bot", {
         podName: this.config.podName,
@@ -2031,11 +2139,12 @@ export class GatewayManager {
           },
         ),
       sendDirectMessage: async (userId, content, deliveryNonce) => {
-        await client.users.send(userId, {
+        const sent = await client.users.send(userId, {
           content,
           nonce: deliveryNonce,
           enforceNonce: true,
         });
+        await this.trackElizaAppDm(sent.channelId, userId, sent.id);
       },
       isTerminalError: isTerminalDiscordDirectMessageError,
       refreshAuth: () => this.refreshToken(),
@@ -2067,6 +2176,132 @@ export class GatewayManager {
         }
       },
     });
+  }
+
+  private startDmPolling(): void {
+    if (this.dmPollInterval) return;
+    const run = (): void => {
+      if (this.dmPollInFlight) return;
+      const poll = this.pollElizaAppDms()
+        .catch((error) => {
+          // error-policy:J1 This timer callback is the background-job boundary;
+          // durable cursors and per-message claims make the next poll safe.
+          logger.error("Error polling Eliza App Discord DMs", {
+            error: sanitizeError(error),
+          });
+        })
+        .finally(() => {
+          if (this.dmPollInFlight === poll) this.dmPollInFlight = null;
+        });
+      this.dmPollInFlight = poll;
+    };
+    run();
+    this.dmPollInterval = setInterval(run, ELIZA_APP_DM_POLL_INTERVAL_MS);
+    logger.info("Eliza App DM fallback polling started", {
+      podName: this.config.podName,
+      intervalMs: ELIZA_APP_DM_POLL_INTERVAL_MS,
+    });
+  }
+
+  private dmStateKey(channelId: string): string {
+    return `${ELIZA_APP_DM_STATE_PREFIX}${channelId}`;
+  }
+
+  private async trackElizaAppDm(
+    channelId: string,
+    userId: string,
+    lastMessageId: string,
+  ): Promise<void> {
+    if (!this.redis) return;
+    const state: TrackedDiscordDm = { channelId, userId, lastMessageId };
+    await this.redis.sadd(ELIZA_APP_DM_CHANNELS_KEY, channelId);
+    await this.redis.setex(
+      this.dmStateKey(channelId),
+      ELIZA_APP_DM_STATE_TTL_SECONDS,
+      JSON.stringify(state),
+    );
+  }
+
+  private async listTrackedElizaAppDms(): Promise<TrackedDiscordDm[]> {
+    if (!this.redis) return [];
+    const channelIds = await this.redis.smembers(ELIZA_APP_DM_CHANNELS_KEY);
+    const tracked: TrackedDiscordDm[] = [];
+    for (const channelId of channelIds) {
+      const state = await this.redis.get<TrackedDiscordDm>(
+        this.dmStateKey(channelId),
+      );
+      if (
+        !state ||
+        state.channelId !== channelId ||
+        !state.userId ||
+        !/^\d+$/.test(state.lastMessageId)
+      ) {
+        await this.redis.srem(ELIZA_APP_DM_CHANNELS_KEY, channelId);
+        await this.redis.del(this.dmStateKey(channelId));
+        continue;
+      }
+      tracked.push(state);
+    }
+    return tracked;
+  }
+
+  private async claimElizaAppDmMessage(messageId: string): Promise<boolean> {
+    if (!this.redis) return true;
+    const result = await this.redis.set(
+      `${ELIZA_APP_DM_CLAIM_PREFIX}${messageId}`,
+      "1",
+      { ex: ELIZA_APP_DM_CLAIM_TTL_SECONDS, nx: true },
+    );
+    return result === "OK";
+  }
+
+  private async pollElizaAppDms(): Promise<void> {
+    const client = this.elizaAppClient;
+    if (!this.redis || !this.isElizaAppLeader || !client?.isReady()) return;
+
+    const report = await pollTrackedDiscordDms<Message>({
+      listTracked: () => this.listTrackedElizaAppDms(),
+      fetchAfter: async (state) => {
+        const channel = await client.channels.fetch(state.channelId);
+        if (!channel?.isDMBased() || !("messages" in channel)) {
+          throw Object.assign(new Error("Tracked channel is not a bot DM"), {
+            code: 10003,
+          });
+        }
+        const messages = await channel.messages.fetch({
+          after: state.lastMessageId,
+          limit: 50,
+          cache: false,
+        });
+        return [...messages.values()];
+      },
+      claimMessage: (messageId) => this.claimElizaAppDmMessage(messageId),
+      routeMessage: (message) => this.handleElizaAppMessage(message),
+      updateCursor: (state, messageId) =>
+        this.trackElizaAppDm(state.channelId, state.userId, messageId),
+      removeTracked: async (state) => {
+        if (!this.redis) return;
+        await this.redis.srem(ELIZA_APP_DM_CHANNELS_KEY, state.channelId);
+        await this.redis.del(this.dmStateKey(state.channelId));
+      },
+      isTerminalChannelError: (error) => {
+        const code =
+          error && typeof error === "object"
+            ? (error as { code?: unknown }).code
+            : undefined;
+        return code === 10003 || code === 50001 || code === 50007;
+      },
+      onError: (state, error) => {
+        logger.warn("Failed to poll tracked Eliza App Discord DM", {
+          channelId: state.channelId,
+          error: sanitizeError(error),
+        });
+      },
+    });
+
+    if (report.routed > 0 || report.removed > 0) {
+      logger.info("Eliza App DM fallback poll completed", { ...report });
+    }
   }
 
   /**

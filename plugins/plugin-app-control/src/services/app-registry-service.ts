@@ -34,6 +34,10 @@ import {
 	recognisedNamespacesForRaw,
 	registerCuratedApp,
 } from "@elizaos/shared";
+import {
+	type AppWorkerCapability,
+	parseAppWorkerCapability,
+} from "../app-worker-manifest.js";
 
 export const APP_REGISTRY_SERVICE_TYPE = "app-registry";
 
@@ -73,6 +77,12 @@ export interface AppRegistryEntry extends ElizaCuratedAppDefinition {
 	 * `readPersisted` defaults those to `"none"` for compatibility.
 	 */
 	isolation?: AppIsolation;
+	/**
+	 * Explicit `elizaos.app.worker` capability. `false` is a static app,
+	 * `{ entry }` is a declared worker plugin, and absence selects the legacy
+	 * compatibility resolver for entries written before this contract existed.
+	 */
+	worker?: AppWorkerCapability;
 }
 
 export interface RegisterContext {
@@ -125,9 +135,17 @@ export type SetGrantedNamespacesResult =
 	| SetGrantedNamespacesError;
 
 interface AppWorkerHostServiceLike {
-	startForRegisteredApp?: (
-		slug: string,
-	) => Promise<{ ok: boolean; reason?: string }>;
+	startForRegisteredApp?: (slug: string) => Promise<{
+		ok: boolean;
+		/**
+		 * `"no-worker-surface"` when the app simply has no agent-side module to
+		 * spawn — routine, since external trust promotes every app to
+		 * isolation:"worker" including static frontends. Anything else is a real
+		 * spawn failure. Optional so older host builds still satisfy the shape.
+		 */
+		kind?: "no-worker-surface" | "error";
+		reason?: string;
+	}>;
 	stopWorker?: (slug: string) => Promise<void>;
 }
 
@@ -198,6 +216,8 @@ async function readPersisted(file: string): Promise<PersistedShape> {
 				continue;
 			}
 		}
+		const workerResult = parseAppWorkerCapability(candidate.worker);
+		if (!workerResult.ok) continue;
 		// Default `trust` for back-compat with entries written before the
 		// trust field was persisted. Directory-loaded entries are by
 		// construction external; first-party entries (when added) get an
@@ -211,7 +231,14 @@ async function readPersisted(file: string): Promise<PersistedShape> {
 			candidate.isolation === "worker" ? "worker" : "none";
 		const isolation: AppIsolation =
 			trust === "external" ? "worker" : declaredIsolation;
-		entries.push({ ...candidate, trust, isolation });
+		entries.push({
+			...candidate,
+			trust,
+			isolation,
+			...(workerResult.capability !== undefined
+				? { worker: workerResult.capability }
+				: {}),
+		});
 	}
 	return { version: 1, entries };
 }
@@ -360,6 +387,12 @@ export class AppRegistryService extends Service {
 				)} (slug must match [a-zA-Z0-9_-]+)`,
 			);
 		}
+		const workerResult = parseAppWorkerCapability(entry.worker);
+		if (!workerResult.ok) {
+			throw new Error(
+				`[plugin-app-control] refusing malformed ${workerResult.path}: ${workerResult.reason}`,
+			);
+		}
 		const trust: AppTrust = ctx.trust ?? entry.trust ?? "external";
 		// External-app policy: apps loaded as `trust: "external"` default to
 		// `isolation: "worker"` even if they did not declare it. Apps
@@ -372,7 +405,14 @@ export class AppRegistryService extends Service {
 		const declaredIsolation: AppIsolation = entry.isolation ?? "none";
 		const isolation: AppIsolation =
 			trust === "external" ? "worker" : declaredIsolation;
-		const persistedEntry: AppRegistryEntry = { ...entry, trust, isolation };
+		const persistedEntry: AppRegistryEntry = {
+			...entry,
+			trust,
+			isolation,
+			...(workerResult.capability !== undefined
+				? { worker: workerResult.capability }
+				: {}),
+		};
 		registerCuratedApp(persistedEntry);
 
 		const persisted = await readPersisted(this.registryPath);
@@ -597,9 +637,18 @@ export class AppRegistryService extends Service {
 		try {
 			const result = await hostService.startForRegisteredApp(slug);
 			if (!result.ok) {
-				logger.warn(
-					`[plugin-app-control] auto-spawn failed for slug=${slug}: ${result.reason ?? "unknown"}`,
-				);
+				// A static app has nothing to spawn; that is the expected outcome
+				// of promoting every external app to isolation:"worker", not a
+				// failure worth a warning on every registration.
+				if (result.kind === "no-worker-surface") {
+					logger.debug(
+						`[plugin-app-control] no worker surface for slug=${slug}: ${result.reason ?? "unknown"}`,
+					);
+				} else {
+					logger.warn(
+						`[plugin-app-control] auto-spawn failed for slug=${slug}: ${result.reason ?? "unknown"}`,
+					);
+				}
 			}
 		} catch (error) {
 			logger.warn(

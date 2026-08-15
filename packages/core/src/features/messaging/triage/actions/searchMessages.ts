@@ -116,13 +116,29 @@ export const searchMessagesAction: Action = {
 	): Promise<ActionResult> => {
 		const filters = parseSearchMessagesParams(options);
 		const service = getDefaultTriageService();
-		const hits = await service.search(runtime, filters);
+		const { refs: hits, receipt } = await service.searchWithReceipt(
+			runtime,
+			filters,
+		);
 
 		const sourcesHit = new Set(hits.map((m) => m.source));
-		const text =
+		const gaps = [
+			...receipt.unregistered.map((source) => `${source} (not registered)`),
+			...receipt.unavailable.map((source) => `${source} (unavailable)`),
+			...receipt.failed.map((source) => `${source} (failed)`),
+		];
+		const coverage = `Searched ${receipt.succeeded.length} of ${receipt.requested.length} requested source(s)${gaps.length > 0 ? `; not searched: ${gaps.join(", ")}` : ""}.`;
+		const capEvidence =
+			receipt.hasMore === true
+				? ` More matches were returned by the measured limit+1 probe beyond the ${receipt.limit} shown.`
+				: receipt.hasMore === false
+					? ` The measured limit+1 probe returned no match beyond the ${receipt.limit} shown; connector-internal completeness is unknown.`
+					: " No result cap was probed; connector-internal completeness is unknown.";
+		const text = `${
 			hits.length === 0
-				? "No matching messages found across connected channels."
-				: `Found ${hits.length} match(es) across ${sourcesHit.size} channel(s).`;
+				? "No matching messages were returned."
+				: `Found ${hits.length} match(es) from ${sourcesHit.size} source(s).`
+		} ${coverage}${capEvidence}`;
 
 		logger.info(
 			`[SearchMessages] ${hits.length} hits across [${[...sourcesHit].join(",")}]`,
@@ -135,6 +151,25 @@ export const searchMessagesAction: Action = {
 			text,
 			data: {
 				count: hits.length,
+				scope: {
+					requestedSources: receipt.requested,
+					succeededSources: receipt.succeeded,
+					unregisteredSources: receipt.unregistered,
+					unavailableSources: receipt.unavailable,
+					failedSources: receipt.failed,
+					filtersApplied: {
+						worldIds: (filters.worldIds?.length ?? 0) > 0,
+						channelIds: (filters.channelIds?.length ?? 0) > 0,
+						sender: filters.sender !== undefined,
+						content: filters.content !== undefined,
+						tags: (filters.tags?.length ?? 0) > 0,
+						since: filters.sinceMs !== undefined,
+						until: filters.untilMs !== undefined,
+					},
+					limit: receipt.limit,
+					hasMore: receipt.hasMore,
+					retrievalCompleteness: "unknown_beyond_connector_windows",
+				},
 				messages: hits.map((m) => ({
 					id: m.id,
 					source: m.source,

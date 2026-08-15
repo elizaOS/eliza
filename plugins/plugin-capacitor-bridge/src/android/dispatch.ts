@@ -158,7 +158,7 @@ function jsonResponse(
 }
 
 interface AndroidTaskServiceLike {
-	runDueTasks(options?: { maxWallTimeMs?: number }): Promise<unknown>;
+	runDueTasks(): Promise<unknown>;
 }
 
 // Runtime replacement can overlap an outgoing agent's final wake with the new
@@ -247,7 +247,9 @@ async function directAndroidWakeRoute(
 	}
 
 	const startedAt = Date.now();
-	const maxWallTimeMs = Math.max(1_000, parsed.deadlineMs - startedAt);
+	if (parsed.deadlineMs <= startedAt) {
+		return jsonResponse(408, { ok: false, error: "wake_deadline_expired" });
+	}
 	let coalesced = false;
 	try {
 		const existing = androidWakeInFlight.get(runtime);
@@ -257,7 +259,7 @@ async function directAndroidWakeRoute(
 		} else {
 			const wake = (
 				service as typeof service & AndroidTaskServiceLike
-			).runDueTasks({ maxWallTimeMs });
+			).runDueTasks();
 			androidWakeInFlight.set(runtime, wake);
 			try {
 				await wake;

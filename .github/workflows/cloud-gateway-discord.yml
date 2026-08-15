@@ -1,9 +1,8 @@
 name: Cloud Gateway Discord
 
-# CI for the gateway-discord service. The service is deployed to Railway
-# (see packages/cloud/services/gateway-discord/railway.toml); Railway auto-
-# deploys on push to the watched branch, so this workflow only runs tests
-# and a build sanity check.
+# CI for the gateway-discord service. The current Railway services are uploaded
+# explicitly and have no connected repository source, so this workflow validates
+# source and protected configuration but does not claim or perform a deployment.
 #
 # AWS EKS / Terraform / Helm deploy jobs were removed as part of the AWS
 # retirement (see packages/cloud/infra/cloud/AWS_RETIREMENT.md).
@@ -25,7 +24,7 @@ on:
       - "packages/cloud/shared/src/db/**/discord-connections.ts"
       - ".github/workflows/cloud-gateway-discord.yml"
   pull_request:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - "packages/cloud/services/gateway-discord/**"
       - "packages/cloud/shared/src/lib/services/gateway-discord/**"
@@ -56,6 +55,35 @@ permissions:
   contents: read
 
 jobs:
+  trusted-config:
+    name: Trusted configuration
+    if: github.event_name == 'push'
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
+
+      - name: Enforce trusted messaging gateway configuration
+        run: bun run preflight:messaging-gateways:strict -- --channels=shared,telegram,discord
+        env:
+          ELIZACLOUD_API_URL: ${{ secrets.ELIZACLOUD_API_URL }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
+          ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
+          ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
+          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+          ELIZA_APP_DISCORD_APPLICATION_ID: ${{ secrets.ELIZA_APP_DISCORD_APPLICATION_ID }}
+          ELIZA_APP_DISCORD_CLIENT_SECRET: ${{ secrets.ELIZA_APP_DISCORD_CLIENT_SECRET }}
+          ELIZA_APP_DISCORD_BOT_TOKEN: ${{ secrets.ELIZA_APP_DISCORD_BOT_TOKEN }}
+
   test:
     name: Test
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -86,23 +114,6 @@ jobs:
           ELIZA_APP_DISCORD_APPLICATION_ID: ci-contract-value
           ELIZA_APP_DISCORD_CLIENT_SECRET: ci-contract-value
           ELIZA_APP_DISCORD_BOT_TOKEN: ci-contract-value
-
-      - name: Enforce trusted messaging gateway configuration
-        if: github.event_name != 'pull_request'
-        # Trusted branch runs enforce the repository's real deployment
-        # configuration. The gateway URL is a repository variable in the
-        # canonical Cloudflare deploy workflow; credentials remain secrets.
-        run: bun run preflight:messaging-gateways:strict -- --channels=shared,telegram,discord
-        env:
-          ELIZACLOUD_API_URL: ${{ secrets.ELIZACLOUD_API_URL }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-          ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
-          ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
-          ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
-          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
-          ELIZA_APP_DISCORD_APPLICATION_ID: ${{ secrets.ELIZA_APP_DISCORD_APPLICATION_ID }}
-          ELIZA_APP_DISCORD_CLIENT_SECRET: ${{ secrets.ELIZA_APP_DISCORD_CLIENT_SECRET }}
-          ELIZA_APP_DISCORD_BOT_TOKEN: ${{ secrets.ELIZA_APP_DISCORD_BOT_TOKEN }}
 
       - name: Run service tests
         working-directory: packages/cloud/services/gateway-discord

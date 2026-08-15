@@ -10,6 +10,7 @@ import type {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { validateToolArgs } from "../../../../packages/core/src/actions/validate-tool-args.js";
 import { currentTodosProvider } from "../providers/current-todos.js";
 import { TODO_LIST_LIMIT_ERROR_CODE, TodosService } from "../service.js";
 import { TODOS_SERVICE_TYPE } from "../types.js";
@@ -656,6 +657,27 @@ describe("TODO action", () => {
       expect(result.success).toBe(true);
       const data = result.data as { todos: unknown[] };
       expect(data.todos.length).toBe(3);
+    });
+
+    it("rejects unsafe limits at the planner boundary before persistence", () => {
+      const accepted = validateToolArgs(todoAction, {
+        action: "list",
+        limit: Number.MAX_SAFE_INTEGER,
+      });
+      const rejected = validateToolArgs(todoAction, {
+        action: "list",
+        limit: Number.MAX_SAFE_INTEGER + 1,
+      });
+
+      expect(accepted.valid).toBe(true);
+      expect(accepted.args).toEqual({
+        action: "list",
+        limit: Number.MAX_SAFE_INTEGER,
+      });
+      expect(rejected.valid).toBe(false);
+      expect(rejected.args).toBeUndefined();
+      expect(rejected.invalidParameterNames).toEqual(["limit"]);
+      expect(service.listCallCount).toBe(0);
     });
 
     it("omitted limit returns all results (unlimited)", async () => {

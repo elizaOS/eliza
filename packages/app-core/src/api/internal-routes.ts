@@ -25,13 +25,8 @@ import type { CompatRuntimeState } from "./compat-route-shared";
 import { readCompatJsonBody } from "./compat-route-shared";
 import { sendJson } from "./response";
 
-/**
- * The runtime contract is `runDueTasks(): Promise<void>`. The optional
- * `maxWallTimeMs` is currently advisory and is passed through for services
- * that support deadline-bounded execution.
- */
 interface TaskServiceLike {
-  runDueTasks(options?: { maxWallTimeMs?: number }): Promise<unknown>;
+  runDueTasks(): Promise<unknown>;
 }
 
 function isTaskServiceLike(
@@ -170,22 +165,25 @@ function safeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-let runDueTasksInFlight: Promise<unknown> | null = null;
+const runDueTasksInFlight = new WeakMap<TaskServiceLike, Promise<unknown>>();
 
 async function runDueTasksOnce(
   service: Service & TaskServiceLike,
-  options: { maxWallTimeMs: number },
 ): Promise<{ coalesced: boolean }> {
-  if (runDueTasksInFlight !== null) {
-    await runDueTasksInFlight;
+  const existing = runDueTasksInFlight.get(service);
+  if (existing !== undefined) {
+    await existing;
     return { coalesced: true };
   }
-  runDueTasksInFlight = service.runDueTasks(options);
+  const wake = service.runDueTasks();
+  runDueTasksInFlight.set(service, wake);
   try {
-    await runDueTasksInFlight;
+    await wake;
     return { coalesced: false };
   } finally {
-    runDueTasksInFlight = null;
+    if (runDueTasksInFlight.get(service) === wake) {
+      runDueTasksInFlight.delete(service);
+    }
   }
 }
 
@@ -254,13 +252,16 @@ export async function handleInternalWakeRoute(
   }
 
   const startedAt = Date.now();
-  // Deadline is the absolute target wall time the caller wants us done by.
-  // Clamp to at least 1s so an already-expired deadline can't pin runDueTasks
-  // to a zero/negative budget.
-  const maxWallTimeMs = Math.max(1000, parsed.deadlineMs - startedAt);
+  if (parsed.deadlineMs <= startedAt) {
+    sendJson(res, 408, { ok: false, error: "wake_deadline_expired" });
+    return true;
+  }
 
   try {
-    const result = await runDueTasksOnce(taskService, { maxWallTimeMs });
+    // TaskService has no preemptive execution budget. The native transport owns
+    // its hard IPC timeout while this promise remains registered for coalescing
+    // until the real task run settles.
+    const result = await runDueTasksOnce(taskService);
     const durationMs = Date.now() - startedAt;
     wakeTelemetry.lastWakeFiredAt = startedAt;
     wakeTelemetry.lastWakeKind = parsed.kind;
