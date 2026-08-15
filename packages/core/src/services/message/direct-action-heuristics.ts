@@ -387,6 +387,7 @@ export type DirectCurrentRequestCandidateKind =
 	| "owner-routines"
 	| "owner-reads"
 	| "owner-scheduled-admin"
+	| "owner-work-thread"
 	| "view-surface"
 	| "view-navigation"
 	| "view-capability"
@@ -671,6 +672,38 @@ function findScheduledAdminActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 ): string | undefined {
 	return findAvailableActionName(actions, SCHEDULED_ADMIN_ACTION_NAMES);
+}
+
+const WORK_THREAD_ACTION_NAMES = [
+	"WORK_THREAD",
+	"OWNER_TASKS",
+	"WORK_THREADS",
+] as const;
+
+/**
+ * Detects an explicit work-thread lifecycle ask ("start a work thread: plan
+ * the garage cleanout", "resume the kitchen reno work thread"). Live
+ * regression (matrix F27, tj-ee16a14fea597e): Stage-1 classified the ask as
+ * bare ["general"] with no candidates, the planner ran with HANDLE_RESPONSE
+ * only, and the model composed a fictional surface refusal ("can't do that
+ * here — dm me") — the same drift class as the owner-item delete leg. The
+ * phrase "work thread" is the surface's own vocabulary, so the deterministic
+ * candidate is precise.
+ */
+function looksLikeWorkThreadRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized || looksLikeActionExplanationRequest(normalized)) {
+		return false;
+	}
+	return /\b(?:start|open|kick ?off|begin|resume|continue|pick (?:up|back up))\b[^.!?]{0,40}\bwork[- ]threads?\b/iu.test(
+		normalized,
+	);
+}
+
+function findWorkThreadActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string | undefined {
+	return findAvailableActionName(actions, WORK_THREAD_ACTION_NAMES);
 }
 
 /**
@@ -977,6 +1010,17 @@ export function inferDirectCurrentRequestCandidateInference(
 		);
 		if (ownerDeleteAction) {
 			return { names: [ownerDeleteAction], kind: "owner-scheduled-admin" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Work-thread lifecycle asks name the surface's own vocabulary; without a
+	// deterministic candidate Stage-1 drift leaves the turn tool-less and the
+	// model invents a surface refusal (matrix F27). Same
+	// no-candidate-on-missing-surface rule as the legs above.
+	if (looksLikeWorkThreadRequest(messageText)) {
+		const workThreadAction = findWorkThreadActionName(actions);
+		if (workThreadAction) {
+			return { names: [workThreadAction], kind: "owner-work-thread" };
 		}
 		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}
