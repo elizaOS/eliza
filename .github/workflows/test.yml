@@ -190,7 +190,7 @@ jobs:
             FROM agent_sandboxes
             WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
             SQL
-      - name: Inspect the exact stalled provision execution
+      - name: Release the terminal lifecycle generation fence
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -202,18 +202,44 @@ jobs:
             database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
             database_url="${database_url/sslmode=no-verify/sslmode=require}"
             psql "$database_url" -v ON_ERROR_STOP=1 <<'SQL'
-            SELECT id, status, lifecycle_job_id, lifecycle_execution_generation,
-                   node_id, container_name
+            BEGIN;
+            UPDATE jobs
+            SET status = 'failed',
+                error = 'Operator superseded provision blocked by terminal lifecycle owner',
+                execution_quiesced_at = NOW(),
+                completed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = '41634d57-c296-40c2-9ad7-dbf90a6eac1e'
+              AND agent_id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'
+              AND type = 'agent_provision'
+              AND status = 'in_progress'
+              AND execution_generation = 'b6de5aa0-3929-4f7d-ab59-0e2021cba835';
+            DO $$
+            DECLARE changed integer;
+            BEGIN
+              UPDATE agent_sandboxes AS sandbox
+              SET lifecycle_job_id = NULL,
+                  lifecycle_execution_generation = NULL,
+                  updated_at = NOW()
+              WHERE sandbox.id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'
+                AND sandbox.status = 'stopped'
+                AND sandbox.lifecycle_job_id = 'c87baa5a-fb91-4747-8eac-3b5757b868da'
+                AND sandbox.lifecycle_execution_generation = 'c2f8723b-08d0-40c4-91bd-a578d48434c6'
+                AND EXISTS (
+                  SELECT 1 FROM jobs AS owner
+                  WHERE owner.id = sandbox.lifecycle_job_id
+                    AND owner.status = 'failed'
+                    AND owner.execution_quiesced_at IS NOT NULL
+                );
+              GET DIAGNOSTICS changed = ROW_COUNT;
+              IF changed <> 1 THEN
+                RAISE EXCEPTION 'terminal lifecycle ownership fence did not match';
+              END IF;
+            END $$;
+            COMMIT;
+            SELECT id, status, lifecycle_job_id, lifecycle_execution_generation
             FROM agent_sandboxes
             WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
-            SELECT id, type, status, execution_generation, execution_quiesced_at,
-                   attempts, updated_at
-            FROM jobs
-            WHERE id IN (
-              'c87baa5a-fb91-4747-8eac-3b5757b868da',
-              '41634d57-c296-40c2-9ad7-dbf90a6eac1e'
-            )
-            ORDER BY created_at;
             SQL
 
   changes:
