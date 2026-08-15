@@ -49,16 +49,20 @@ describe("ChatTurnStatus contract", () => {
 });
 
 describe("ChatFailureKind contract", () => {
-  it("covers exactly the six turn-failure discriminators", () => {
+  it("covers exactly the ten turn-failure discriminators", () => {
     const kinds: ChatFailureKind[] = [
       "insufficient_credits",
+      "missing_capability",
       "no_provider",
+      "planner_exhaustion",
       "provider_issue",
       "generation_timeout",
       "rate_limited",
+      "handler_error",
+      "persistence_error",
       "local_inference",
     ];
     expect(new Set(kinds).size).toBe(kinds.length);
-    expect(kinds).toHaveLength(6);
+    expect(kinds).toHaveLength(10);
   });
 });

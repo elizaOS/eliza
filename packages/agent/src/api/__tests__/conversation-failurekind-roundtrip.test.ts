@@ -345,6 +345,38 @@ describe("conversation failureKind round-trip", () => {
     expect(assistant?.failureKind).toBe("insufficient_credits");
   });
 
+  it.each([
+    "handler_error",
+    "missing_capability",
+    "persistence_error",
+    "planner_exhaustion",
+  ] as const)(
+    "GET /messages preserves the %s structured runtime cause",
+    async (failureKind:
+      | "handler_error"
+      | "missing_capability"
+      | "persistence_error"
+      | "planner_exhaustion") => {
+      const state = createState([
+        userMemory(),
+        assistantMemory({ text: "Structured failure.", failureKind }),
+      ]);
+      const { ctx, captured } = createCtx(
+        "GET",
+        "/api/conversations/conv-1/messages",
+        state,
+      );
+
+      await handleConversationRoutes(ctx);
+
+      const payload = captured.payload as {
+        messages: Array<{ role: string; failureKind?: string }>;
+      };
+      const assistant = payload.messages.find((m) => m.role === "assistant");
+      expect(assistant?.failureKind).toBe(failureKind);
+    },
+  );
+
   it("GET /messages omits failureKind for a normal (successful) turn", async () => {
     const state = createState([
       userMemory(),
@@ -400,6 +432,33 @@ describe("conversation failureKind round-trip", () => {
     const payload = captured.payload as { failureKind?: string };
     expect(payload.failureKind).toBe("insufficient_credits");
   });
+
+  it.each([
+    "handler_error",
+    "missing_capability",
+    "persistence_error",
+    "planner_exhaustion",
+  ] as const)(
+    "non-streaming JSON accepts the %s durable outcome discriminator",
+    async (failureKind:
+      | "handler_error"
+      | "missing_capability"
+      | "persistence_error"
+      | "planner_exhaustion") => {
+      generateResult = { failureKind };
+      const state = createState();
+      const { ctx, captured } = createCtx(
+        "POST",
+        "/api/conversations/conv-1/messages",
+        state,
+      );
+
+      await handleConversationRoutes(ctx);
+
+      const payload = captured.payload as { failureKind?: string };
+      expect(payload.failureKind).toBe(failureKind);
+    },
+  );
 });
 
 describe("conversation transcript visibility round-trip", () => {

@@ -13062,6 +13062,9 @@ export class DefaultMessageService implements IMessageService {
 				result = strategyResult;
 			} else {
 				_usedV5Runtime = true;
+				// No thrown trajectory error reaches this fallback-only branch, so
+				// there is no structural capability/exhaustion cause to preserve.
+				// Keep the default generic transient classification.
 				result = await this.buildStructuredFailureReply(
 					runtime,
 					message,
@@ -14463,10 +14466,22 @@ export class DefaultMessageService implements IMessageService {
 				// Not transient: retrying cannot succeed until the capability is
 				// enabled, so the default names the gap instead of inviting a
 				// retry (#17027 AC6).
+				const tmpl = runtime.character.templates?.missingCapabilityFailureReply;
+				const fallbackTmpl = runtime.character.templates?.transientFailureReply;
 				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					(typeof fallbackTmpl === "function"
+						? fallbackTmpl({ state })
+						: fallbackTmpl) ||
 					"I can't do that here right now - it needs a capability that isn't available in this setup.";
 			} else if (cause === "planner_exhaustion") {
+				const tmpl = runtime.character.templates?.plannerExhaustionFailureReply;
+				const fallbackTmpl = runtime.character.templates?.transientFailureReply;
 				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					(typeof fallbackTmpl === "function"
+						? fallbackTmpl({ state })
+						: fallbackTmpl) ||
 					"I ran out of attempts before I could finish that. Nothing was completed - please try again.";
 			} else {
 				const tmpl = runtime.character.templates?.transientFailureReply;
@@ -14478,10 +14493,12 @@ export class DefaultMessageService implements IMessageService {
 
 		replyText = truncateToCompleteSentence(replyText.trim(), 2000);
 
-		// Credit exhaustion is not transient — it persists until the user tops
-		// up — so the synthetic reply carries the structural kind downstream
-		// consumers already key on (chat DTO failureKind gate, recent-messages
-		// synthetic-failure filter) instead of masquerading as a blip.
+		// Preserve the terminal cause at the delivery boundary. Provider failures
+		// encountered while generating the apology take precedence because the
+		// canned reply describes that condition. Capability, action, persistence,
+		// auth, and credit failures remain stable until their cause changes;
+		// throttling, planner exhaustion, and generic infrastructure failures can
+		// be retried without presenting a durable success record.
 		const failureKind =
 			attempt.kind === "creditsExhausted"
 				? "insufficient_credits"
@@ -14498,9 +14515,7 @@ export class DefaultMessageService implements IMessageService {
 			failureKind,
 			elizaSyntheticFailure: true,
 			transient:
-				failureKind === "transient_failure" ||
-				failureKind === "rate_limited" ||
-				failureKind === "provider_issue",
+				failureKind === "transient_failure" || failureKind === "rate_limited",
 			doNotPersist: true,
 			text: replyText,
 			responseId,

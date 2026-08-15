@@ -77,12 +77,12 @@ export interface ChatToolCallEvent {
  */
 export type ChatFailureKind =
   | "insufficient_credits"
+  | "missing_capability"
   | "no_provider"
+  | "planner_exhaustion"
   | "provider_issue"
   | "generation_timeout"
   | "rate_limited"
-  | "missing_capability"
   | "handler_error"
   | "persistence_error"
-  | "planner_exhaustion"
   | "local_inference";

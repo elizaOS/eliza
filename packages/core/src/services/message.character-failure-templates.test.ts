@@ -1,5 +1,5 @@
 /**
- * Proves the five `character.templates.*Reply` keys are genuinely wired: when
+ * Proves the seven `character.templates.*Reply` keys are genuinely wired: when
  * every model call fails, the connector delivery path must emit the
  * character's own string instead of the voice-neutral framework default, so a
  * persona does not visibly break at the worst possible moment.
@@ -22,6 +22,7 @@ import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CharacterFailureTemplates } from "../contracts/first-run-options";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { TrajectoryLimitExceeded } from "../runtime/limits";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { TurnControllerRegistry } from "../runtime/turn-controller";
 import { createMockRuntime } from "../testing/mock-runtime";
@@ -50,7 +51,9 @@ const RUN_ID = "00000000-0000-0000-0000-00000000002d" as UUID;
 const TEMPLATES = {
 	authFailedReply: "sentinel: my key isn't being accepted.",
 	insufficientCreditsReply: "sentinel: my provider is out of credits.",
+	missingCapabilityFailureReply: "sentinel: i cannot use that capability here.",
 	noModelProviderReply: "sentinel: i have no model provider yet.",
+	plannerExhaustionFailureReply: "sentinel: i could not finish in time.",
 	rateLimitedReply: "sentinel: my provider is throttling me.",
 	transientFailureReply: "sentinel: something broke on my end.",
 } satisfies Required<CharacterFailureTemplates>;
@@ -76,6 +79,22 @@ function authError(): Error {
 
 function transientError(): Error {
 	return new Error("socket hang up");
+}
+
+function missingCapabilityError(): Error {
+	return new TrajectoryLimitExceeded({
+		kind: "unavailable_tool_calls",
+		max: 3,
+		observed: 4,
+	});
+}
+
+function plannerExhaustionError(): Error {
+	return new TrajectoryLimitExceeded({
+		kind: "required_tool_misses",
+		max: 3,
+		observed: 4,
+	});
 }
 
 function makeMessage(overrides: Partial<Content> = {}): Memory {
@@ -197,7 +216,7 @@ async function runTurn(
 
 /**
  * Each row is one failure classification, its triggering error, and the
- * template key the runtime must read for it. Driving all five off one table
+ * template key the runtime must read for it. Driving all seven off one table
  * makes an unwired key impossible to miss.
  */
 const CASES = [
@@ -223,6 +242,18 @@ const CASES = [
 		kind: "other transient failure",
 		key: "transientFailureReply",
 		error: transientError,
+		options: {},
+	},
+	{
+		kind: "missing capability",
+		key: "missingCapabilityFailureReply",
+		error: missingCapabilityError,
+		options: {},
+	},
+	{
+		kind: "planner exhaustion",
+		key: "plannerExhaustionFailureReply",
+		error: plannerExhaustionError,
 		options: {},
 	},
 	{
@@ -284,6 +315,22 @@ describe("character failure templates on the connector delivery path", () => {
 			}
 		});
 	}
+
+	it.each([
+		["missing capability", missingCapabilityError],
+		["planner exhaustion", plannerExhaustionError],
+	] as const)(
+		"keeps the character voice for %s through transientFailureReply compatibility",
+		async (_label: string, makeError: () => Error) => {
+			const visibleTexts = await runTurn(makeError(), {
+				templates: {
+					transientFailureReply: TEMPLATES.transientFailureReply,
+				},
+			});
+
+			expect(visibleTexts).toEqual([TEMPLATES.transientFailureReply]);
+		},
+	);
 
 	it("keeps the framework insufficient-credits default reachable", async () => {
 		// Guards the fallback expression itself: if `|| INSUFFICIENT_CREDITS_REPLY`

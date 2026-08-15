@@ -137,13 +137,13 @@ describe("buildFailureReplyPrompt", () => {
  * that killed the runtime, never from prose.
  */
 describe("classifyStructuredFailureCause", () => {
-	it("maps required_tool_misses to missing_capability", () => {
+	it("maps required_tool_misses to planner_exhaustion", () => {
 		const error = new TrajectoryLimitExceeded({
 			kind: "required_tool_misses",
 			max: 3,
 			observed: 4,
 		});
-		expect(classifyStructuredFailureCause(error)).toBe("missing_capability");
+		expect(classifyStructuredFailureCause(error)).toBe("planner_exhaustion");
 	});
 
 	it("maps unavailable_tool_calls to missing_capability", () => {

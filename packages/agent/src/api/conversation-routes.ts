@@ -1408,13 +1408,13 @@ function parseDurableConversationChatOutcome(
         !outcome.actionResults.every(isDurableChatActionResult))) ||
     (outcome.failureKind !== undefined &&
       outcome.failureKind !== "insufficient_credits" &&
+      outcome.failureKind !== "missing_capability" &&
       outcome.failureKind !== "no_provider" &&
+      outcome.failureKind !== "planner_exhaustion" &&
       outcome.failureKind !== "provider_issue" &&
       outcome.failureKind !== "rate_limited" &&
-      outcome.failureKind !== "missing_capability" &&
       outcome.failureKind !== "handler_error" &&
       outcome.failureKind !== "persistence_error" &&
-      outcome.failureKind !== "planner_exhaustion" &&
       outcome.failureKind !== "local_inference") ||
     (outcome.accountConnect !== undefined &&
       normalizeAccountConnectRequest(outcome.accountConnect) === null) ||
@@ -1514,13 +1514,13 @@ function buildRecoveredConversationChatOutcome(
   const content = memory.content as Content;
   const failureKind =
     content.failureKind === "insufficient_credits" ||
+    content.failureKind === "missing_capability" ||
     content.failureKind === "no_provider" ||
+    content.failureKind === "planner_exhaustion" ||
     content.failureKind === "provider_issue" ||
     content.failureKind === "rate_limited" ||
-    content.failureKind === "missing_capability" ||
     content.failureKind === "handler_error" ||
     content.failureKind === "persistence_error" ||
-    content.failureKind === "planner_exhaustion" ||
     content.failureKind === "local_inference"
       ? content.failureKind
       : undefined;
@@ -2990,7 +2990,11 @@ export async function handleConversationRoutes(
                 : undefined;
           const failureKind: ChatFailureKind | undefined =
             rawFailureKind === "insufficient_credits" ||
+            rawFailureKind === "handler_error" ||
+            rawFailureKind === "missing_capability" ||
             rawFailureKind === "no_provider" ||
+            rawFailureKind === "persistence_error" ||
+            rawFailureKind === "planner_exhaustion" ||
             rawFailureKind === "provider_issue" ||
             rawFailureKind === "rate_limited" ||
             rawFailureKind === "local_inference"

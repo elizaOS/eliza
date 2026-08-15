@@ -4198,8 +4198,12 @@ async function generateChatResponseWithTiming(
           : undefined;
     const failureKind =
       rawFailureKind === "insufficient_credits" ||
+      rawFailureKind === "handler_error" ||
       rawFailureKind === "local_inference" ||
+      rawFailureKind === "missing_capability" ||
       rawFailureKind === "no_provider" ||
+      rawFailureKind === "persistence_error" ||
+      rawFailureKind === "planner_exhaustion" ||
       rawFailureKind === "provider_issue" ||
       rawFailureKind === "rate_limited"
         ? rawFailureKind

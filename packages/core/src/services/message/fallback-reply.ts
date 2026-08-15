@@ -309,10 +309,9 @@ export function isModelProviderFallbackError(
  * distinguishable user-facing replies instead of one generic
  * "something flaked" template:
  *
- * - `missing_capability` — the planner required a tool it could never call
- *   (the tool was requested but not exposed, or the requirement exhausted
- *   without a single valid call). Retrying cannot help; the honest reply
- *   names the gap.
+ * - `missing_capability` — the planner requested a tool which was not
+ *   registered or otherwise invocable in this runtime. Retrying cannot help;
+ *   the honest reply names the gap.
  * - `planner_exhaustion` — the planner ran out of budget (tool calls,
  *   repeated failures, token budget) before finishing. Retrying may help.
  * - `transient` — a model/provider/infrastructure error; the pre-existing
@@ -328,10 +327,11 @@ export type StructuredFailureCause =
 /**
  * Classify the error that aborted the message runtime into a
  * `StructuredFailureCause`. Trajectory-limit aborts are the only errors
- * that structurally identify their cause today: `required_tool_misses` and
- * `unavailable_tool_calls` mean the turn demanded a capability that was
- * never successfully invocable, while the remaining limit kinds mean the
- * planner exhausted its budget mid-task. Everything else stays `transient`.
+ * that structurally identify their cause today. Only
+ * `unavailable_tool_calls` proves a capability is absent. A
+ * `required_tool_misses` limit can occur with a registered tool when the model
+ * repeatedly emits no usable call, so it is planner exhaustion and retryable.
+ * Everything else stays `transient`.
  */
 export function classifyStructuredFailureCause(
 	error: unknown,
@@ -339,6 +339,7 @@ export function classifyStructuredFailureCause(
 	if (error instanceof TrajectoryLimitExceeded) {
 		switch (error.kind) {
 			case "required_tool_misses":
+				return "planner_exhaustion";
 			case "unavailable_tool_calls":
 				return "missing_capability";
 			case "repeated_failures":
