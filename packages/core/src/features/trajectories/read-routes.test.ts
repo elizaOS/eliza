@@ -107,34 +107,6 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 		expect(b.trajectories[1]).toMatchObject({ id: "t2", status: "error" });
 	});
 
-	it("normalizes trajectory pagination before forwarding it", async () => {
-		let receivedLimit: number | undefined;
-		let receivedOffset: number | undefined;
-		const service = {
-			listTrajectories: async (options: {
-				limit?: number;
-				offset?: number;
-			}) => {
-				receivedLimit = options.limit;
-				receivedOffset = options.offset;
-				return { trajectories: [], total: 0 };
-			},
-		};
-		const { res, get } = mockRes();
-		const handled = await tryHandleTrajectoryReadRoutes({
-			pathname: "/api/trajectories",
-			method: "GET",
-			url: url("/api/trajectories?limit=1.5&offset=Infinity"),
-			runtime: runtimeWith(service),
-			res,
-		});
-
-		expect(handled).toBe(true);
-		expect(get().status).toBe(200);
-		expect(receivedLimit).toBe(1);
-		expect(receivedOffset).toBe(0);
-	});
-
 	it("forwards the search param to the SQL reader so only matches return", async () => {
 		const rows = [
 			{ id: "match-1", status: "completed", llmCallCount: 1 },
@@ -394,5 +366,71 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 		expect(handled).toBe(true);
 		expect(get().status).toBe(200);
 		expect(get().body).toMatchObject({ totalTrajectories: 5 });
+	});
+
+	it("falls back to pagination defaults for absent and non-finite params (#19960)", async () => {
+		const seen: Array<{ limit?: number; offset?: number }> = [];
+		const service = {
+			listTrajectories: async (query: { limit?: number; offset?: number }) => {
+				seen.push(query);
+				return { trajectories: [], total: 0 };
+			},
+		};
+		for (const qs of [
+			"/api/trajectories",
+			"/api/trajectories?limit=&offset=",
+			"/api/trajectories?limit=abc&offset=xyz",
+			"/api/trajectories?limit=Infinity&offset=-Infinity",
+			"/api/trajectories?limit=NaN&offset=1e400",
+		]) {
+			const { res } = mockRes();
+			const handled = await tryHandleTrajectoryReadRoutes({
+				pathname: "/api/trajectories",
+				method: "GET",
+				url: url(qs),
+				runtime: runtimeWith(service),
+				res,
+			});
+			expect(handled).toBe(true);
+		}
+		// absent/empty/non-finite never reach the SQL clause — the defaults do.
+		expect(seen.map((q) => [q.limit, q.offset])).toEqual([
+			[50, 0],
+			[50, 0],
+			[50, 0],
+			[50, 0],
+			[50, 0],
+		]);
+	});
+
+	it("truncates fractional pagination params and keeps the 1..500 / non-negative bounds (#19960)", async () => {
+		const seen: Array<{ limit?: number; offset?: number }> = [];
+		const service = {
+			listTrajectories: async (query: { limit?: number; offset?: number }) => {
+				seen.push(query);
+				return { trajectories: [], total: 0 };
+			},
+		};
+		for (const qs of [
+			"/api/trajectories?limit=1.5&offset=2.9", // truncate toward zero
+			"/api/trajectories?limit=999.5&offset=-3.7", // clamp high / floor low
+			"/api/trajectories?limit=0", // explicit zero clamps to the lower bound
+			"/api/trajectories?limit=4e2&offset=5e1", // exponent forms parse then bound
+		]) {
+			const { res } = mockRes();
+			await tryHandleTrajectoryReadRoutes({
+				pathname: "/api/trajectories",
+				method: "GET",
+				url: url(qs),
+				runtime: runtimeWith(service),
+				res,
+			});
+		}
+		expect(seen.map((q) => [q.limit, q.offset])).toEqual([
+			[1, 2],
+			[500, 0],
+			[1, 0],
+			[400, 50],
+		]);
 	});
 });
