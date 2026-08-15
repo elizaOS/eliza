@@ -1125,6 +1125,52 @@ describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
 		expect(routed.plan.candidateActions ?? []).toEqual([]);
 	});
 
+	it("recovers answered VIEWS-overlap reads to the one possessive owner domain", () => {
+		const ownerReaders: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "OWNER_TODOS", similes: [], tags: [] },
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_FINANCES", similes: [], tags: [] },
+		];
+		for (const [messageText, expected] of [
+			["what's on my todo list? i'd like to know", "OWNER_TODOS"],
+			["show my reminders about goal planning", "OWNER_REMINDERS"],
+			["what are my spending habits?", "OWNER_FINANCES"],
+		] as const) {
+			const routed = messageHandlerFromFieldResult(
+				stageOneAnswered("Let me check."),
+				undefined,
+				{
+					actions: [replyAction, viewsAction, ...ownerReaders],
+					messageText,
+				},
+			);
+
+			expect(routed.plan.simple).toBe(false);
+			expect(routed.plan.requiresTool).toBe(true);
+			expect(routed.plan.candidateActions).toEqual([expected]);
+		}
+	});
+
+	it("keeps mixed owner domains out of the VIEWS recovery path", () => {
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("Which records should I review?"),
+			undefined,
+			{
+				actions: [
+					replyAction,
+					viewsAction,
+					{ name: "OWNER_GOALS", similes: [], tags: [] },
+					{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+				],
+				messageText: "show my goals and reminders",
+			},
+		);
+
+		expect(routed.plan.simple).toBe(true);
+		expect(routed.plan.requiresTool).toBe(false);
+		expect(routed.plan.candidateActions ?? []).toEqual([]);
+	});
+
 	it("suppression is keyed on the answered shape — an unanswered turn still escalates", () => {
 		// A genuine weak capability overlap (settings tag with only directional
 		// operation evidence) keeps the original valve behavior: unanswered
