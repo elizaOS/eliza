@@ -5409,11 +5409,17 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 		return messageHandler;
 	}
 
+	const stageOneCandidateActions =
+		getMessageHandlerCandidateActions(messageHandler);
+	const composedCandidateActions =
+		directCurrentInference.kind === "owner-reads"
+			? directCurrentCandidateActions
+			: uniqueActionNames([
+					...stageOneCandidateActions,
+					...directCurrentCandidateActions,
+				]);
 	const runnableCandidateActions = filterRunnableCandidateActions(
-		uniqueActionNames([
-			...getMessageHandlerCandidateActions(messageHandler),
-			...directCurrentCandidateActions,
-		]),
+		composedCandidateActions,
 		runtimeContext,
 	);
 	if (runnableCandidateActions.length === 0) return messageHandler;
@@ -8127,19 +8133,22 @@ export async function runV5MessageRuntimeStage1(args: {
 		// evaluator that cleared Stage-1 candidates has already established an
 		// authoritative route from richer runtime state, so the generic text
 		// heuristic must not undo that decision.
-		const directPlannerCandidateActions =
-			inferDirectCurrentRequestCandidateActions(
-				args.runtime.actions ?? [],
-				getUserMessageText(args.message) ?? "",
-			);
+		const directPlannerInference = inferDirectCurrentRequestCandidateInference(
+			args.runtime.actions ?? [],
+			getUserMessageText(args.message) ?? "",
+		);
+		const directPlannerCandidateActions = directPlannerInference.names;
 		if (
 			directPlannerCandidateActions.length > 0 &&
 			!responseHandlerEvaluation.candidateActionsClearedByEvaluators
 		) {
-			messageHandler.plan.candidateActions = uniqueActionNames([
-				...getMessageHandlerCandidateActions(messageHandler),
-				...directPlannerCandidateActions,
-			]);
+			messageHandler.plan.candidateActions =
+				directPlannerInference.kind === "owner-reads"
+					? directPlannerCandidateActions
+					: uniqueActionNames([
+							...getMessageHandlerCandidateActions(messageHandler),
+							...directPlannerCandidateActions,
+						]);
 		}
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 		let earlyReplyText = actionOwnsResponseHandlerEarlyReply(

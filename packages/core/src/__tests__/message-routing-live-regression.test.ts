@@ -180,6 +180,34 @@ emotion: none`;
 	});
 });
 
+describe("owner-read candidate authority", () => {
+	it("replaces an invented Stage-1 VIEWS capability with the proven owner reader", () => {
+		const routed = applyDirectCurrentCandidateBackstopToMessageHandler(
+			{
+				processMessage: "RESPOND",
+				thought: "",
+				plan: {
+					contexts: ["general"],
+					reply: "I'll check that.",
+					simple: false,
+					requiresTool: true,
+					candidateActions: ["VIEWS.get_reminders", "OWNER_FINANCES"],
+				},
+			},
+			{
+				actions: [
+					{ name: "OWNER_REMINDERS" },
+					{ name: "OWNER_FINANCES" },
+					{ name: "VIEWS" },
+				] as Action[],
+				messageText: "Show my reminders about goal planning.",
+			},
+		);
+
+		expect(routed.plan.candidateActions).toEqual(["OWNER_REMINDERS"]);
+	});
+});
+
 describe("reply that QUOTES a field transcript — diagnosis workflow (follow-up to #11712)", () => {
 	// Live regression: a user pastes a leaked `shouldRespond:/replyText:`
 	// transcript into discord and asks the bot to diagnose it (this repo's own
