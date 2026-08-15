@@ -5,6 +5,8 @@
  * isolation, and serialization logic — no snapshot field is hand-assembled.
  */
 import { describe, expect, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
+import { DrizzleQueryError } from "drizzle-orm";
 import { type AccountLimitsSources, buildAccountLimitsSnapshot } from "./account-limits-snapshot";
 
 const GIB_5 = 5n * 1024n * 1024n * 1024n;
@@ -20,7 +22,7 @@ function healthySources(overrides: Partial<AccountLimitsSources> = {}): AccountL
     storageQuota: async () => ({ bytesUsed: 123n, bytesLimit: GIB_5 }),
     inferenceRateTier: async () => ({ completionsRpm: 60, embeddingsRpm: 120 }),
     maxCloudCharacters: (balance, settings) => {
-      const custom = settings?.max_agents as number | undefined;
+      const custom = (settings as { max_agents?: number } | undefined)?.max_agents;
       if (custom && custom > 0) return custom;
       return balance >= 10 ? 100 : 5;
     },
@@ -43,9 +45,11 @@ describe("buildAccountLimitsSnapshot", () => {
     });
     expect(snapshot.agentSandboxes).toEqual({
       source: "agent-sandbox-quota",
-      state: "available",
       used: 2,
-      nonEagerCreateLimit: 100,
+      nonEagerCreate: { state: "available", limit: 5 },
+      eagerManagedCreate: { state: "available", limit: 100 },
+      state: "available",
+      nonEagerCreateLimit: 5,
       eagerManagedCreateLimit: 100,
     });
     expect(snapshot.containers).toEqual({
@@ -80,11 +84,14 @@ describe("buildAccountLimitsSnapshot", () => {
     const snapshot = await buildAccountLimitsSnapshot(
       healthySources({
         cloudCharacterCount: async () => 100,
+        sandboxQuotaCount: async () => 5,
         containerQuota: async () => ({ current: 11, max: 10 }),
         appCount: async () => 26,
       }),
     );
     expect(snapshot.cloudCharacters.state).toBe("at-limit");
+    expect(snapshot.agentSandboxes.nonEagerCreate.state).toBe("at-limit");
+    expect(snapshot.agentSandboxes.eagerManagedCreate.state).toBe("available");
     expect(snapshot.containers.state).toBe("over-limit");
     expect(snapshot.apps.state).toBe("over-limit");
   });
@@ -100,7 +107,7 @@ describe("buildAccountLimitsSnapshot", () => {
     );
     expect(snapshot.cloudCharacters.limit).toBe(7);
     // The sandbox ceiling ignores the character override and follows balance.
-    expect(snapshot.agentSandboxes.nonEagerCreateLimit).toBe(5);
+    expect(snapshot.agentSandboxes.nonEagerCreate.limit).toBe(5);
   });
 
   test("a missing storage row maps only to the schema default with zero usage", async () => {
@@ -131,7 +138,7 @@ describe("buildAccountLimitsSnapshot", () => {
     const snapshot = await buildAccountLimitsSnapshot(
       healthySources({
         containerQuota: async () => {
-          throw new Error("containers repository unreachable");
+          throw new DrizzleQueryError("select container quota", [], new Error("offline"));
         },
       }),
     );
@@ -146,18 +153,43 @@ describe("buildAccountLimitsSnapshot", () => {
     expect(snapshot.inferenceRateLimits.state).toBe("available");
   });
 
+  test("a container source failure is unavailable rather than a fabricated zero cap", async () => {
+    const snapshot = await buildAccountLimitsSnapshot(
+      healthySources({
+        containerQuota: async () => ({
+          current: 4,
+          max: 0,
+          sourceUnavailable: true,
+        }),
+      }),
+    );
+
+    expect(snapshot.containers).toEqual({
+      source: "container-quota",
+      state: "unavailable",
+      reason: "container quota source is unavailable",
+    });
+  });
+
   test("an unreadable org row marks only balance-derived ceilings unavailable, never free-tier", async () => {
     const snapshot = await buildAccountLimitsSnapshot(
       healthySources({
         orgBilling: async () => {
-          throw new Error("Organization not found");
+          throw new ElizaError("Organization source unavailable", {
+            code: "ACCOUNT_LIMIT_SOURCE_UNAVAILABLE",
+            severity: "fatal",
+          });
         },
       }),
     );
     expect(snapshot.cloudCharacters.state).toBe("unavailable");
     expect(snapshot.cloudCharacters.limit).toBeUndefined();
-    expect(snapshot.agentSandboxes.state).toBe("unavailable");
-    expect(snapshot.agentSandboxes.nonEagerCreateLimit).toBeUndefined();
+    expect(snapshot.agentSandboxes.used).toBe(2);
+    expect(snapshot.agentSandboxes.nonEagerCreate).toEqual({ state: "available", limit: 5 });
+    expect(snapshot.agentSandboxes.eagerManagedCreate).toEqual({
+      state: "unavailable",
+      reason: "source read failed",
+    });
     // Sources that do not need the balance still report.
     expect(snapshot.containers.state).toBe("available");
     expect(snapshot.storage.state).toBe("available");
@@ -184,7 +216,8 @@ describe("buildAccountLimitsSnapshot", () => {
       }),
     );
     expect(snapshot.cloudCharacters.state).toBe("unavailable");
-    expect(snapshot.agentSandboxes.state).toBe("unavailable");
+    expect(snapshot.agentSandboxes.nonEagerCreate.state).toBe("available");
+    expect(snapshot.agentSandboxes.eagerManagedCreate.state).toBe("unavailable");
     expect(snapshot.containers.state).toBe("unavailable");
     expect(snapshot.inferenceRateLimits.state).toBe("unavailable");
     expect(snapshot.storage.state).toBe("unavailable");
@@ -205,11 +238,15 @@ describe("buildAccountLimitsSnapshot", () => {
 
     expect(snapshot.cloudCharacters).toMatchObject({
       state: "unavailable",
-      reason: "cloud character limit is not a usable non-negative integer",
+      reason: "cloud character limit is not a usable positive integer",
     });
-    expect(snapshot.agentSandboxes).toMatchObject({
+    expect(snapshot.agentSandboxes.nonEagerCreate).toEqual({
       state: "unavailable",
-      reason: "sandbox limit is not a usable non-negative integer",
+      reason: "non-eager sandbox limit is not a usable positive integer",
+    });
+    expect(snapshot.agentSandboxes.eagerManagedCreate).toEqual({
+      state: "unavailable",
+      reason: "eager sandbox limit is not a usable positive integer",
     });
     expect(snapshot.storage).toMatchObject({
       state: "unavailable",
@@ -225,5 +262,17 @@ describe("buildAccountLimitsSnapshot", () => {
       "source",
       "state",
     ]);
+  });
+
+  test("unexpected implementation defects escape instead of becoming a successful snapshot", async () => {
+    await expect(
+      buildAccountLimitsSnapshot(
+        healthySources({
+          cloudCharacterCount: async () => {
+            throw new TypeError("programming defect");
+          },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(TypeError);
   });
 });

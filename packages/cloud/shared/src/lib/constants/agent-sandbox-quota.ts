@@ -13,10 +13,43 @@
  * `POST /api/v1/coding-containers`) so the ceiling can't drift between them;
  * trusted internal multi-agent callers pass no cap and stay uncapped.
  */
-export function getMaxNonTerminalAgentsForOrg(creditBalance: number | undefined): number {
-  const balance = Number(creditBalance ?? 0);
-  if (balance >= 100.0) return 500;
-  if (balance >= 10.0) return 100;
-  if (balance >= 1.0) return 20;
-  return 5;
+
+import { ElizaError } from "@elizaos/core";
+
+export type AgentSandboxLimitSource = "organizations.credit_balance" | "default_free_tier";
+
+export interface AgentSandboxLimitResolution {
+  limit: number;
+  source: AgentSandboxLimitSource;
+}
+
+/** Resolve the sandbox ceiling together with the authoritative source used. */
+export function resolveMaxNonTerminalAgentsForOrg(
+  creditBalance: unknown,
+): AgentSandboxLimitResolution {
+  if (creditBalance === undefined) {
+    return { limit: 5, source: "default_free_tier" };
+  }
+  if (typeof creditBalance !== "number" || !Number.isFinite(creditBalance)) {
+    throw new ElizaError("Agent sandbox quota credit balance must be a finite number", {
+      code: "INVALID_AGENT_SANDBOX_QUOTA_SOURCE",
+      context: { source: "organizations.credit_balance" },
+      severity: "fatal",
+    });
+  }
+
+  if (creditBalance >= 100.0) {
+    return { limit: 500, source: "organizations.credit_balance" };
+  }
+  if (creditBalance >= 10.0) {
+    return { limit: 100, source: "organizations.credit_balance" };
+  }
+  if (creditBalance >= 1.0) {
+    return { limit: 20, source: "organizations.credit_balance" };
+  }
+  return { limit: 5, source: "organizations.credit_balance" };
+}
+
+export function getMaxNonTerminalAgentsForOrg(creditBalance: unknown): number {
+  return resolveMaxNonTerminalAgentsForOrg(creditBalance).limit;
 }
