@@ -219,7 +219,10 @@ describe("logger", () => {
   });
 
   it("dispatches singleton, factory, and child logs exactly once", () => {
-    const factoryLogger = createLogger({ level: "trace", namespace: "factory" });
+    const factoryLogger = createLogger({
+      level: "trace",
+      namespace: "factory",
+    });
     const childLogger = factoryLogger.child({ namespace: "child" });
     const listener = vi.fn<(entry: LogEntry) => void>();
     const unsubscribe = addLogListener(listener);
