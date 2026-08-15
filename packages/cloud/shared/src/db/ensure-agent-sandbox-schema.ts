@@ -36,7 +36,9 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
       ADD COLUMN IF NOT EXISTS "replacement_cleanup_allocation_counted" boolean,
       ADD COLUMN IF NOT EXISTS "replacement_cleanup_created_at" timestamptz,
       ADD COLUMN IF NOT EXISTS "previous_image_digest" text,
-      ADD COLUMN IF NOT EXISTS "previous_docker_image" text
+      ADD COLUMN IF NOT EXISTS "previous_docker_image" text,
+      ADD COLUMN IF NOT EXISTS "last_backup_attempt_at" timestamptz,
+      ADD COLUMN IF NOT EXISTS "backup_unsupported_reason" text
   `);
 
   await dbWrite.execute(sql`
