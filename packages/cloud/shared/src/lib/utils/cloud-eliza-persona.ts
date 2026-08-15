@@ -45,6 +45,24 @@ export const CLOUD_RECALL_EXAMPLE: { user: string; content: { text: string } }[]
   { user: "{{agentName}}", content: { text: RECALL_REPLY } },
 ];
 
+/** Adapts preset speaker tokens to the runtime/character-row message shape. */
+export function toNamedMessageExamples(
+  groups: readonly (readonly { user: string; content: { text: string } }[])[],
+  agentName: string,
+): { name: string; content: { text: string } }[][] {
+  return groups.map((group) =>
+    group.map((turn) => ({
+      name:
+        turn.user === "{{agentName}}"
+          ? agentName
+          : turn.user === "{{user1}}"
+            ? "{{name1}}"
+            : turn.user,
+      content: { text: turn.content.text },
+    })),
+  );
+}
+
 /**
  * The shipped persona with the cloud memory delta applied, still in preset
  * shape. Callers map it into whatever shape they store.

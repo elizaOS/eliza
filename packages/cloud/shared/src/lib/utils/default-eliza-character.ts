@@ -7,40 +7,10 @@
  * keys, `name`-keyed message turns, and DB-only columns. Editing the persona
  * means editing the preset, so the two can no longer drift apart.
  */
-import { buildCloudElizaPersona } from "./cloud-eliza-persona";
+import { buildCloudElizaPersona, toNamedMessageExamples } from "./cloud-eliza-persona";
 
 const ELIZA_AVATAR_URL =
   "https://raw.githubusercontent.com/elizaOS/eliza-avatars/refs/heads/master/Eliza/portrait.png";
-
-/**
- * Preset turns key the speaker as `user` and address the agent with
- * `{{agentName}}`; the characters table keys it as `name` and stores the literal
- * agent name, with `{{name1}}` for the human.
- */
-interface PresetTurn {
-  user?: string;
-  name?: string;
-  content?: { text?: string };
-}
-
-function toRowSpeaker(turn: PresetTurn, agentName: string): string {
-  const speaker = turn.user ?? turn.name;
-  if (speaker === "{{agentName}}") return agentName;
-  if (speaker === "{{user1}}") return "{{name1}}";
-  return speaker ?? "{{name1}}";
-}
-
-function toRowExamples(
-  groups: readonly (readonly PresetTurn[])[],
-  agentName: string,
-): Record<string, unknown>[][] {
-  return groups.map((group) =>
-    group.map((turn) => ({
-      name: toRowSpeaker(turn, agentName),
-      content: { text: turn.content?.text ?? "" },
-    })),
-  );
-}
 
 /**
  * Returns the default Eliza character data for new accounts.
@@ -53,7 +23,7 @@ export function getDefaultElizaCharacterData() {
     name: persona.name,
     bio: [...persona.bio] as string[],
     system: persona.system,
-    message_examples: toRowExamples(persona.messageExamples, persona.name),
+    message_examples: toNamedMessageExamples(persona.messageExamples, persona.name),
     post_examples: [...persona.postExamples],
     avatar_url: ELIZA_AVATAR_URL,
     // Deliberately empty. Baked-in knowledge is retrieval-gated to the

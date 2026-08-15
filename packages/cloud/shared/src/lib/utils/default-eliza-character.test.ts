@@ -88,18 +88,7 @@ describe("getDefaultElizaCharacterData", () => {
     expect(defaultAgent.character.style).toEqual(character.style);
     expect(defaultAgent.character.postExamples).toEqual(character.post_examples);
 
-    const hostedExamples = defaultAgent.character.messageExamples.map((group) =>
-      group.map((turn) => ({
-        name:
-          turn.user === "{{agentName}}"
-            ? character.name
-            : turn.user === "{{user1}}"
-              ? "{{name1}}"
-              : turn.user,
-        content: { text: turn.content.text },
-      })),
-    );
-    expect(hostedExamples).toEqual(character.message_examples);
+    expect(defaultAgent.character.messageExamples).toEqual(character.message_examples);
   });
 });
 
