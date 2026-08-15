@@ -1,9 +1,10 @@
 /**
- * Validates affected-scoped test lane markers in CI workflows (#19351).
- *
- * These tests ensure that test lanes gated on changed paths (affected-scoped)
- * are visibly distinct from passing lanes when zero packages execute. The
- * "— not affected" marker and GitHub notice output make the vacuous case clear.
+ * Locks the affected-scoped CI lanes' vacuous-case reporting (#19351): a lane
+ * that executes zero packages must be distinguishable from a passing lane in
+ * the PR checks list itself. Each affected-scoped job carries a dynamic name
+ * that appends "— not affected" from the same `changes` output that gates its
+ * work, and the skip step emits a `::notice::` annotation for the job log.
+ * Reads the real workflow file; deterministic, no mocks.
  */
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -11,109 +12,60 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
-const ciWorkflowPath = join(repoRoot, ".github", "workflows", "ci.yml");
+const ciContent = readFileSync(
+	join(repoRoot, ".github", "workflows", "ci.yml"),
+	"utf8",
+);
 
-describe("affected-scoped test lane markers (#19351)", () => {
-  const ciContent = readFileSync(ciWorkflowPath, "utf8");
+// Each lane's job-name gate must be the exact negation of the condition that
+// runs its work, so "— not affected" can never appear on a job that executed.
+const lanes = [
+	{
+		job: "Tests (server)",
+		gate: "needs.changes.outputs.server != 'true'",
+	},
+	{
+		job: "Tests (client)",
+		gate: "needs.changes.outputs.client != 'true'",
+	},
+	{
+		job: "Tests (plugins)",
+		gate: "needs.changes.outputs.plugins != 'true'",
+	},
+	{
+		job: "Smoke",
+		gate: "needs.changes.outputs.zero_key != 'true'",
+	},
+	{
+		job: "Smoke lanes",
+		gate: "needs.changes.outputs.desktop != 'true' && needs.changes.outputs.cloud != 'true' && needs.changes.outputs.zero_key != 'true'",
+	},
+] as const;
 
-  const lanes = [
-    { name: "server", jobName: "tests_server" },
-    { name: "client", jobName: "tests_client" },
-    { name: "plugins", jobName: "tests_plugins" },
-    { name: "e2e shard", jobName: "smoke" },
-    { name: "smoke lane", jobName: "smoke_lanes" },
-  ];
+describe("affected-scoped lane vacuous-case visibility (#19351)", () => {
+	test.each(lanes)(
+		"$job job name appends '— not affected' from its own gate",
+		({ job, gate }) => {
+			const dynamicName = `name: "${job}\${{ ${gate} && ' — not affected' || '' }}"`;
+			expect(ciContent).toContain(dynamicName);
+		},
+	);
 
-  test("all affected-scoped lanes have '— not affected' markers", () => {
-    for (const { name } of lanes) {
-      expect(
-        ciContent,
-        `lane "${name}" should have '— not affected' marker`,
-      ).toContain(`— not affected (${name})`);
-    }
-  });
+	test.each(lanes)(
+		"$job skip step annotates the vacuous case under the same gate",
+		({ gate }) => {
+			// The skip step pairs the gated ::notice with the dynamic job name;
+			// find at least one not-affected step guarded by this exact gate.
+			const stepPattern = new RegExp(
+				`- name: — not affected [^\\n]*\\n\\s+if: ${gate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n\\s+run: echo "::notice::`,
+			);
+			expect(ciContent).toMatch(stepPattern);
+		},
+	);
 
-  test("all '— not affected' markers use GitHub notice output", () => {
-    for (const { name } of lanes) {
-      const marker = `— not affected (${name})`;
-      const markerIndex = ciContent.indexOf(marker);
-      expect(markerIndex, `marker "${marker}" should be found`).toBeGreaterThan(
-        -1,
-      );
-
-      const section = ciContent.slice(
-        markerIndex,
-        markerIndex + 500,
-      );
-      expect(
-        section,
-        `lane "${name}" should use GitHub notice output`,
-      ).toContain("::notice::Lane not affected by changes");
-    }
-  });
-
-  test("'— not affected' markers include vacuous-case message", () => {
-    for (const { name } of lanes) {
-      const marker = `— not affected (${name})`;
-      const markerIndex = ciContent.indexOf(marker);
-      const section = ciContent.slice(
-        markerIndex,
-        markerIndex + 500,
-      );
-      expect(
-        section,
-        `lane "${name}" should document zero packages executed`,
-      ).toContain("0 packages executed");
-    }
-  });
-
-  test("no lanes use the old 'No affected' naming", () => {
-    // Ensure all old-style messages have been replaced
-    expect(ciContent).not.toContain("No affected server lane");
-    expect(ciContent).not.toContain("No affected client lane");
-    expect(ciContent).not.toContain("No affected plugin lane");
-    expect(ciContent).not.toContain("No affected e2e shard");
-    expect(ciContent).not.toContain("No affected smoke lane");
-    expect(ciContent).not.toContain("No server test lane is affected");
-    expect(ciContent).not.toContain("No client test lane is affected");
-    expect(ciContent).not.toContain("No deterministic E2E lane is affected");
-    expect(ciContent).not.toContain("No desktop, cloud, or deterministic E2E");
-  });
-
-  test("'— not affected' steps maintain conditional gates", () => {
-    // Verify each not-affected step has its conditional if clause
-    const gateTests = [
-      {
-        lane: "server",
-        gate: "needs.changes.outputs.server != 'true'",
-      },
-      {
-        lane: "client",
-        gate: "needs.changes.outputs.client != 'true'",
-      },
-      {
-        lane: "plugins",
-        gate: "needs.changes.outputs.plugins != 'true'",
-      },
-      {
-        lane: "e2e shard",
-        gate: "needs.changes.outputs.zero_key != 'true'",
-      },
-      {
-        lane: "smoke lane",
-        gate: "needs.changes.outputs.desktop != 'true' && needs.changes.outputs.cloud != 'true' && needs.changes.outputs.zero_key != 'true'",
-      },
-    ];
-
-    for (const { lane, gate } of gateTests) {
-      const marker = `— not affected (${lane})`;
-      const markerIndex = ciContent.indexOf(marker);
-      const section = ciContent.slice(markerIndex, markerIndex + 300);
-
-      expect(
-        section,
-        `lane "${lane}" should have correct conditional gate`,
-      ).toContain(`if: ${gate}`);
-    }
-  });
+	test("a plain static name never shadows the dynamic one", () => {
+		for (const { job } of lanes) {
+			expect(ciContent).not.toContain(`    name: ${job}\n`);
+		}
+	});
 });

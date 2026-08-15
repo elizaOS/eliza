@@ -124,7 +124,7 @@ jobs:
         run: bun run test:scripts
 
   tests_server:
-    name: Tests (server)
+    name: "Tests (server)${{ needs.changes.outputs.server != 'true' && ' — not affected' || '' }}"
     needs: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -152,7 +152,7 @@ jobs:
         run: echo "::notice::Lane not affected by changes — 0 packages executed"
 
   tests_client:
-    name: Tests (client)
+    name: "Tests (client)${{ needs.changes.outputs.client != 'true' && ' — not affected' || '' }}"
     needs: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -180,7 +180,7 @@ jobs:
         run: echo "::notice::Lane not affected by changes — 0 packages executed"
 
   tests_plugins:
-    name: Tests (plugins)
+    name: "Tests (plugins)${{ needs.changes.outputs.plugins != 'true' && ' — not affected' || '' }}"
     needs: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -208,7 +208,7 @@ jobs:
         run: echo "::notice::Lane not affected by changes — 0 packages executed"
 
   smoke:
-    name: Smoke
+    name: "Smoke${{ needs.changes.outputs.zero_key != 'true' && ' — not affected' || '' }}"
     needs: changes
     runs-on: ubuntu-24.04
     # 725 Playwright tests that the suite's one-live-stack-per-process
@@ -274,7 +274,7 @@ jobs:
   # alone added 15.2 minutes to shard 1 and made it the straggler at 45.5
   # minutes while every sibling finished under 37.
   smoke_lanes:
-    name: Smoke lanes
+    name: "Smoke lanes${{ needs.changes.outputs.desktop != 'true' && needs.changes.outputs.cloud != 'true' && needs.changes.outputs.zero_key != 'true' && ' — not affected' || '' }}"
     needs: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 60
