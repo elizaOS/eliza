@@ -20,6 +20,10 @@ import { computeNextCronRunAtMs } from "@elizaos/core/edge";
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
 import { resolveLocalHHMMToIso } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
+import {
+  formatLocalHHMM,
+  resolveOwnerWindowBoundsMinutes,
+} from "./window-bounds.js";
 import type {
   OwnerFactsView,
   ScheduledTask,
@@ -56,32 +60,32 @@ function nextWindowStartIso(
 ): string | null {
   const facts = context.ownerFacts;
   const timeZone = facts.timezone ?? "UTC";
-  const morningStart = facts.morningWindow?.start;
-  const eveningStart = facts.eveningWindow?.start;
-  const eveningEnd = facts.eveningWindow?.end;
-  let candidateTimes: Array<string | undefined>;
+  const { morningStart, morningEnd, eveningStart, eveningEnd } =
+    resolveOwnerWindowBoundsMinutes(facts);
+  let candidateMinutes: number[];
   switch (windowKey) {
     case "morning":
-      candidateTimes = [morningStart];
+      candidateMinutes = [morningStart];
       break;
     case "afternoon":
-      candidateTimes = [facts.morningWindow?.end];
+      candidateMinutes = [morningEnd];
       break;
     case "evening":
-      candidateTimes = [eveningStart];
+      candidateMinutes = [eveningStart];
       break;
     case "night":
-      candidateTimes = [eveningEnd, "00:00"];
+      candidateMinutes = [eveningEnd, 0];
       break;
     case "morning_or_night":
-      candidateTimes = [morningStart, eveningEnd];
+      candidateMinutes = [morningStart, eveningEnd];
       break;
     case "morning_or_evening":
-      candidateTimes = [morningStart, eveningStart];
+      candidateMinutes = [morningStart, eveningStart];
       break;
     default:
       return null;
   }
+  const candidateTimes = candidateMinutes.map(formatLocalHHMM);
   const nowMs = context.now.getTime();
   const today = candidateTimes
     .map((hhmm) => resolveLocalHHMMToIso(context.now, hhmm, timeZone, 0))
