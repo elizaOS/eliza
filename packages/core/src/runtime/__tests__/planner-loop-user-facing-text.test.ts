@@ -260,7 +260,8 @@ describe("singleVerifiedUserFacingToolResultText — canonical tool filter", () 
 		).toBeUndefined();
 	});
 
-	it("returns undefined when two successful tools both have results", () => {		// Genuine ambiguity — caller falls through to evaluator/fallback.
+	it("returns undefined when two successful tools both have results", () => {
+		// Genuine ambiguity — caller falls through to evaluator/fallback.
 		const secondVerified = {
 			...verifiedStep,
 			iteration: 2,
@@ -563,7 +564,8 @@ describe("codingActionSummary — archived steps", () => {
 	});
 });
 
-// A weak planner (gpt-oss-class) sometimes hallucinates its own TASKS spawn-arg// object into messageToUser, leaking {"task":…,"agentType":"opencode",…} to the
+// A weak planner (gpt-oss-class) sometimes hallucinates its own TASKS spawn-arg
+// object into messageToUser, leaking {"task":…,"agentType":"opencode",…} to the
 // user instead of spawning + narrating the sub-agent's real result (battery #3).
 // userSafeFinalMessage suppresses it via this structural shape detector.
 describe("looksLikeSpawnEnvelopeJson — spawn-arg leak detector", () => {
