@@ -45,4 +45,10 @@ describe("Shared capability wall", () => {
     ).toBeNull();
     expect(resolveSharedCapabilityWall("remind me in two minutes")?.capability).toBe("reminders");
   });
+
+  test("does not falsely claim voice and messaging require Dedicated", () => {
+    const wall = resolveSharedCapabilityWall("call Mom");
+    expect(wall?.reply).toContain("connected voice and messaging channels");
+    expect(wall?.reply).not.toContain("Dedicated");
+  });
 });
