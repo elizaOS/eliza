@@ -7,6 +7,7 @@
  */
 
 import { type TOAuth2Scope, TwitterApi } from "twitter-api-v2";
+import { cache } from "../../cache/client";
 import { logger } from "../../utils/logger";
 import type { OAuthConnectionRole } from "../oauth/types";
 import { secretsService } from "../secrets";
@@ -86,6 +87,44 @@ function oauth2ExpiryFromLifetime(expiresInSeconds: number | undefined): number 
 
 /** Refresh this many seconds ahead of the stored expiry so vended tokens outlive transit. */
 const OAUTH2_BROKER_REFRESH_MARGIN_SECONDS = 5 * 60;
+
+/**
+ * Cross-isolate mutual exclusion for OAuth2 refresh (#19873 P1): the
+ * refresh token is SINGLE-USE, and the per-instance `refreshRequests` map
+ * cannot stop two Worker isolates from burning the same one (the second
+ * gets invalid_grant and X may revoke the whole grant family). The lease is
+ * held only for the token round-trip + store write.
+ */
+const OAUTH2_REFRESH_LEASE_MS = 30_000;
+const OAUTH2_REFRESH_WAIT_POLL_MS = 1_500;
+
+function refreshLeaseKey(organizationId: string, role: OAuthConnectionRole): string {
+  return `x-oauth2-refresh:${organizationId}:${role}`;
+}
+
+function freshStoredOAuth2Broker(stored: Awaited<ReturnType<typeof getRoleCredentials>>): {
+  authMode: "oauth2";
+  accessToken: string;
+  expiresAt: number | null;
+  scope: string | null;
+  twitterUserId: string | null;
+} | null {
+  if (!stored.oauth2AccessToken) return null;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (
+    stored.oauth2ExpiresAt === null ||
+    nowSeconds >= stored.oauth2ExpiresAt - OAUTH2_BROKER_REFRESH_MARGIN_SECONDS
+  ) {
+    return null;
+  }
+  return {
+    authMode: "oauth2",
+    accessToken: stored.oauth2AccessToken,
+    expiresAt: stored.oauth2ExpiresAt,
+    scope: stored.oauth2Scope,
+    twitterUserId: stored.twitterUserId,
+  };
+}
 
 function roleSecretName(
   role: OAuthConnectionRole,
@@ -591,6 +630,26 @@ class TwitterAutomationService {
         deleteRoleSecret(organizationId, role, "oauth2ExpiresAt", audit),
       );
     } else {
+      // The refresh token is the only irreplaceable value in the rotated
+      // tuple: the previous one is burned at X the moment the rotation
+      // succeeds. Persist it FIRST, alone, and awaited — if any later write
+      // fails, the stored refresh token is already the new valid one and the
+      // next refresh self-heals. The prior all-parallel write could persist a
+      // new access token while LOSING the new refresh token, permanently
+      // stranding the account on the burned one (#19873 P1). Note the
+      // sibling writes below start executing at creation, so sequencing
+      // requires awaiting here, not reordering the array.
+      if (credentials.refreshToken) {
+        await upsertRoleSecret({
+          organizationId,
+          userId,
+          name: roleSecretName(role, "oauth2RefreshToken"),
+          value: credentials.refreshToken,
+          audit,
+        });
+      } else if (credentials.refreshToken === null) {
+        await deleteRoleSecret(organizationId, role, "oauth2RefreshToken", audit);
+      }
       writes.push(
         upsertRoleSecret({
           organizationId,
@@ -618,19 +677,6 @@ class TwitterAutomationService {
             })
           : deleteRoleSecret(organizationId, role, "oauth2ExpiresAt", audit),
       );
-      if (credentials.refreshToken) {
-        writes.push(
-          upsertRoleSecret({
-            organizationId,
-            userId,
-            name: roleSecretName(role, "oauth2RefreshToken"),
-            value: credentials.refreshToken,
-            audit,
-          }),
-        );
-      } else if (credentials.refreshToken === null) {
-        writes.push(deleteRoleSecret(organizationId, role, "oauth2RefreshToken", audit));
-      }
     }
 
     await Promise.all(writes);
@@ -911,7 +957,7 @@ class TwitterAutomationService {
     const refreshKey = `${organizationId}:${role}`;
     const pending = this.refreshRequests.get(refreshKey);
     if (pending) return pending;
-    const request = this.refreshOAuth2BrokerToken(
+    const request = this.refreshOAuth2BrokerTokenExclusive(
       organizationId,
       userId,
       role,
@@ -921,6 +967,66 @@ class TwitterAutomationService {
     });
     this.refreshRequests.set(refreshKey, request);
     return request;
+  }
+
+  /**
+   * Cross-isolate wrapper around {@link refreshOAuth2BrokerToken} (#19873 P1).
+   * The in-memory `refreshRequests` map dedupes only within one isolate; this
+   * lease serializes refreshes ACROSS isolates so the single-use refresh token
+   * is burned exactly once. The loser never contacts X: it waits for the
+   * winner's store write and returns the freshly stored token. When no shared
+   * cache backend exists, per-isolate dedupe is the honest ceiling and the
+   * refresh proceeds as before.
+   */
+  private async refreshOAuth2BrokerTokenExclusive(
+    organizationId: string,
+    userId: string,
+    role: OAuthConnectionRole,
+    refreshToken: string,
+  ): Promise<{
+    authMode: "oauth2";
+    accessToken: string;
+    expiresAt: number | null;
+    scope: string | null;
+    twitterUserId: string | null;
+  }> {
+    const leaseKey = refreshLeaseKey(organizationId, role);
+    let acquired: boolean;
+    try {
+      acquired = await cache.setIfNotExists(leaseKey, "1", OAUTH2_REFRESH_LEASE_MS);
+    } catch {
+      // No shared cache backend — cross-isolate exclusion is unsupported;
+      // keep the per-isolate behavior instead of failing the refresh.
+      return this.refreshOAuth2BrokerToken(organizationId, userId, role, refreshToken);
+    }
+
+    if (acquired) {
+      try {
+        // Double-check under the lease: another isolate may have completed a
+        // refresh between our staleness read and the lease grant. Returning
+        // the stored token avoids burning the (now stale) refresh token.
+        const alreadyFresh = freshStoredOAuth2Broker(
+          await getRoleCredentials(organizationId, role),
+        );
+        if (alreadyFresh) return alreadyFresh;
+        return await this.refreshOAuth2BrokerToken(organizationId, userId, role, refreshToken);
+      } finally {
+        // Best-effort release; an expired lease self-heals via the TTL.
+        await cache.del(leaseKey).catch(() => undefined);
+      }
+    }
+
+    // Lease lost: an isolate elsewhere is mid-refresh with the same
+    // single-use token. Wait for its store write instead of racing it.
+    const deadline = Date.now() + OAUTH2_REFRESH_LEASE_MS + OAUTH2_REFRESH_WAIT_POLL_MS;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, OAUTH2_REFRESH_WAIT_POLL_MS));
+      const refreshed = freshStoredOAuth2Broker(await getRoleCredentials(organizationId, role));
+      if (refreshed) return refreshed;
+    }
+    throw new Error(
+      `X OAuth2 ${role} refresh is contended and the winning isolate did not persist a fresh token in time; retry shortly`,
+    );
   }
 
   private async refreshOAuth2BrokerToken(
