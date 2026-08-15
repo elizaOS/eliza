@@ -356,6 +356,10 @@ export function isShellDirectActionName(
  * - "owner-goals": concrete owner goal create/save/confirm phrasing.
  * - "owner-routines": habit/routine commitment phrasing, including recurring
  *   cadences ("3 times a day") — an owner mutation, never navigation.
+ * - "owner-reads": a possessive owner-data read ("list my personal todos",
+ *   "what are my reminders") — the read-side mirror of the mutation rule
+ *   above: data asks are owner-domain evidence, and VIEWS can only navigate,
+ *   so a registered owner reader outranks the view-capability overlap.
  * - "view-surface": an operation verb PLUS an explicit UI-surface noun
  *   (view/window/panel/app/screen/ui) — strong navigation evidence.
  * - "view-navigation": the message is nothing but a bare registered surface
@@ -372,6 +376,7 @@ export type DirectCurrentRequestCandidateKind =
 	| "settings-write"
 	| "owner-goals"
 	| "owner-routines"
+	| "owner-reads"
 	| "view-surface"
 	| "view-navigation"
 	| "view-capability"
@@ -624,6 +629,100 @@ function findOwnerRoutinesActionName(
 	return findAvailableActionName(actions, OWNER_ROUTINES_ACTION_NAMES);
 }
 
+/**
+ * Owner-life domains with a possessive read shape. Each maps to its reader
+ * surface in preference order: the personal-assistant umbrella first, then the
+ * standalone domain plugin's action names, so lean stacks (one todo owner per
+ * deployment) resolve their reader too.
+ */
+type OwnerLifeReadDomain =
+	| "todos"
+	| "goals"
+	| "reminders"
+	| "routines"
+	| "alarms"
+	| "finances";
+
+const OWNER_READ_ACTION_NAMES_BY_DOMAIN: Record<
+	OwnerLifeReadDomain,
+	readonly string[]
+> = {
+	todos: ["OWNER_TODOS", "TODOS", "TODO", "TODO_LIST", "LIST_TODOS"],
+	goals: OWNER_GOALS_ACTION_NAMES,
+	reminders: ["OWNER_REMINDERS", "REMINDERS", "REMINDER", "LIST_REMINDERS"],
+	routines: OWNER_ROUTINES_ACTION_NAMES,
+	alarms: ["OWNER_ALARMS", "ALARMS", "ALARM"],
+	finances: ["OWNER_FINANCES", "FINANCES"],
+};
+
+const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
+	["todos", /\b(?:todos?|to[- ]dos?|todo\s+list|task\s+list)\b/iu],
+	["goals", /\bgoals?\b/iu],
+	["reminders", /\breminders?\b/iu],
+	["routines", /\b(?:routines?|habits?)\b/iu],
+	["alarms", /\balarms?\b/iu],
+	["finances", /\b(?:finances|spending|expenses)\b/iu],
+];
+
+/**
+ * Detects a possessive owner-data READ ("list my personal todos", "what are
+ * my reminders for today") — the read-side mirror of the owner-mutation rule
+ * (#17028 / fead478cfa): a data ask is owner-domain evidence, and VIEWS can
+ * only navigate, so it must never degrade into the view-capability overlap
+ * (live: "list my personal todos" routed to VIEWS view-disambiguation, then
+ * failed on an undeclared get-todos capability). Explicit UI-surface nouns
+ * stay with the navigation legs, and advice/organizing questions stay chat.
+ */
+function detectOwnerLifeReadDomain(text: string): OwnerLifeReadDomain | null {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized) return null;
+	// Surface-noun asks are navigation, owned by the earlier view legs.
+	if (
+		/\b(?:view|views|page|screen|tab|panel|window|ui|dashboard|app)\b/iu.test(
+			normalized,
+		)
+	) {
+		return null;
+	}
+	// A read needs a possessive anchor; adjectives may sit between it and the
+	// domain noun ("my personal todos", "our shared reminders").
+	const possessiveDomain =
+		/\b(?:my|our)\b(?:\s+\w+){0,2}\s+(?:todos?|to[- ]dos?|todo\s+list|task\s+list|goals?|reminders?|routines?|habits?|alarms?|finances|spending|expenses)\b/iu.test(
+			normalized,
+		);
+	if (!possessiveDomain) return null;
+	// Mutation shapes belong to the write detectors above (or the model);
+	// "check off"/"mark ... done" are completions, not reads.
+	if (
+		/\b(?:add|create|set|save|track|make|store|delete|remove|cancel|clear|update|edit|rename|complete|finish|snooze|reschedule)\b/iu.test(
+			normalized,
+		) ||
+		/\bcheck(?:ed)?\s+off\b/iu.test(normalized) ||
+		/\bmark\b[\s\S]{0,40}\b(?:done|complete|off)\b/iu.test(normalized)
+	) {
+		return null;
+	}
+	const hasReadShape =
+		/\b(?:list|show|what(?:'s|s| is| are)(?:\s+(?:on|in))?|do i have|have i got|any(?:thing)?\s+(?:on|in|left|due)|tell me|give me|read(?:\s+(?:me|out))?|check|see|look at|go over|review)\b/iu.test(
+			normalized,
+		);
+	if (!hasReadShape) return null;
+	for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
+		if (noun.test(normalized)) return domain;
+	}
+	return null;
+}
+
+function findOwnerLifeReadActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	domain: OwnerLifeReadDomain,
+): string | undefined {
+	return findAvailableActionName(
+		actions,
+		OWNER_READ_ACTION_NAMES_BY_DOMAIN[domain],
+	);
+}
+
 export function inferDirectCurrentRequestCandidateActions(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
@@ -718,6 +817,22 @@ export function inferDirectCurrentRequestCandidateInference(
 		const ownerGoalsAction = findOwnerGoalsActionName(actions);
 		if (ownerGoalsAction) {
 			return { names: [ownerGoalsAction], kind: "owner-goals" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Owner reads outrank the view-capability overlap for the same reason the
+	// mutations above do (read-side of fead478cfa): "list my personal todos"
+	// wants the data, and VIEWS can only navigate. With no registered owner
+	// reader the turn yields NO deterministic candidate rather than degrading
+	// into the view catalog.
+	const ownerReadDomain = detectOwnerLifeReadDomain(messageText);
+	if (ownerReadDomain) {
+		const ownerReadAction = findOwnerLifeReadActionName(
+			actions,
+			ownerReadDomain,
+		);
+		if (ownerReadAction) {
+			return { names: [ownerReadAction], kind: "owner-reads" };
 		}
 		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}
