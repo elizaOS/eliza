@@ -13,7 +13,12 @@ const twitterApiBehavior: { me: () => Promise<MeResult> } = {
   me: async () => ({ data: { username: "alice", id: "42" } }),
 };
 const oauth2Behavior: {
-  requestToken: () => Promise<{ access_token?: string; refresh_token?: string; scope?: string }>;
+  requestToken: () => Promise<{
+    access_token?: string;
+    refresh_token?: string;
+    scope?: string;
+    expires_in?: number;
+  }>;
 } = {
   requestToken: async () => ({ access_token: "access-tok", scope: "tweet.read tweet.write" }),
 };
@@ -39,6 +44,25 @@ mock.module("./oauth2-client", () => ({
 mock.module("../secrets", () => ({
   secretsService: {
     get: async (_org: string, name: string) => secretStore[name] ?? null,
+    create: async (args: { name: string; value: string }) => {
+      if (secretStore[args.name] != null) {
+        throw new Error(`Secret '${args.name}' already exists`);
+      }
+      secretStore[args.name] = args.value;
+    },
+    list: async () =>
+      Object.entries(secretStore)
+        .filter(([, value]) => value != null)
+        .map(([name]) => ({ id: name, name })),
+    rotate: async (id: string, _org: string, value: string) => {
+      secretStore[id] = value;
+    },
+    delete: async (id: string) => {
+      delete secretStore[id];
+    },
+    deleteByName: async (_org: string, name: string) => {
+      delete secretStore[name];
+    },
   },
 }));
 
@@ -153,6 +177,82 @@ describe("TwitterAutomationService error policy", () => {
       expect(status.connected).toBe(true);
       expect(status.username).toBe("alice");
       expect(status.error).toBeUndefined();
+    });
+  });
+
+  describe("getBrokerCredentials (OAuth2 refresh/rotate contract)", () => {
+    test("vends the stored token with expires_at while it is still fresh, without refreshing", async () => {
+      const freshExpiry = Math.floor(Date.now() / 1000) + 3600;
+      secretStore.TWITTER_AGENT_OAUTH2_ACCESS_TOKEN = "fresh-tok";
+      secretStore.TWITTER_AGENT_OAUTH2_REFRESH_TOKEN = "refresh-1";
+      secretStore.TWITTER_AGENT_OAUTH2_EXPIRES_AT = String(freshExpiry);
+      oauth2Behavior.requestToken = async () => {
+        throw new Error("refresh must not run for a fresh token");
+      };
+      const service = await loadService();
+      const result = await service.getBrokerCredentials("org-1", "user-1", "agent");
+      expect(result).toEqual({
+        authMode: "oauth2",
+        accessToken: "fresh-tok",
+        expiresAt: freshExpiry,
+        scope: null,
+        twitterUserId: null,
+      });
+    });
+
+    test("an expired token is refreshed, the rotated secrets persist, and the fresh token is vended", async () => {
+      secretStore.TWITTER_AGENT_OAUTH2_ACCESS_TOKEN = "stale-tok";
+      secretStore.TWITTER_AGENT_OAUTH2_REFRESH_TOKEN = "refresh-1";
+      secretStore.TWITTER_AGENT_OAUTH2_EXPIRES_AT = String(Math.floor(Date.now() / 1000) - 10);
+      oauth2Behavior.requestToken = async () => ({
+        access_token: "rotated-tok",
+        refresh_token: "refresh-2",
+        scope: "tweet.read dm.read dm.write",
+        expires_in: 7200,
+      });
+      const service = await loadService();
+      const before = Math.floor(Date.now() / 1000);
+      const result = await service.getBrokerCredentials("org-1", "user-1", "agent");
+      if (!result || result.authMode !== "oauth2") {
+        throw new Error("expected an oauth2 broker credential");
+      }
+      expect(result.accessToken).toBe("rotated-tok");
+      expect(result.expiresAt).toBeGreaterThanOrEqual(before + 7200);
+      expect(secretStore.TWITTER_AGENT_OAUTH2_ACCESS_TOKEN).toBe("rotated-tok");
+      expect(secretStore.TWITTER_AGENT_OAUTH2_REFRESH_TOKEN).toBe("refresh-2");
+      expect(Number(secretStore.TWITTER_AGENT_OAUTH2_EXPIRES_AT)).toBe(result.expiresAt as number);
+    });
+
+    test("a token with no recorded expiry (legacy) forces a refresh rather than vending blind", async () => {
+      secretStore.TWITTER_AGENT_OAUTH2_ACCESS_TOKEN = "legacy-tok";
+      secretStore.TWITTER_AGENT_OAUTH2_REFRESH_TOKEN = "refresh-1";
+      oauth2Behavior.requestToken = async () => ({
+        access_token: "rotated-tok",
+        expires_in: 7200,
+      });
+      const service = await loadService();
+      const result = await service.getBrokerCredentials("org-1", "user-1", "agent");
+      if (!result || result.authMode !== "oauth2") {
+        throw new Error("expected an oauth2 broker credential");
+      }
+      expect(result.accessToken).toBe("rotated-tok");
+      // X did not rotate the refresh token, so the original one is retained.
+      expect(secretStore.TWITTER_AGENT_OAUTH2_REFRESH_TOKEN).toBe("refresh-1");
+    });
+
+    test("a refresh failure propagates instead of vending a token known to be stale", async () => {
+      secretStore.TWITTER_AGENT_OAUTH2_ACCESS_TOKEN = "stale-tok";
+      secretStore.TWITTER_AGENT_OAUTH2_REFRESH_TOKEN = "refresh-1";
+      secretStore.TWITTER_AGENT_OAUTH2_EXPIRES_AT = String(Math.floor(Date.now() / 1000) - 10);
+      oauth2Behavior.requestToken = async () => {
+        throw new Error("token endpoint returned 400 invalid_grant");
+      };
+      const service = await loadService();
+      await expect(service.getBrokerCredentials("org-1", "user-1", "agent")).rejects.toThrow(
+        /invalid_grant/,
+      );
+      // The stale token remains stored, never silently vended.
+      expect(secretStore.TWITTER_AGENT_OAUTH2_ACCESS_TOKEN).toBe("stale-tok");
     });
   });
 });

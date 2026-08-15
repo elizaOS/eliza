@@ -10,6 +10,7 @@ import { ElizaError, logger } from "@elizaos/core";
 import { TwitterApi } from "twitter-api-v2";
 import type {
   TwitterAuthProvider,
+  TwitterBrokerProvider,
   TwitterOAuth1Provider,
 } from "./auth-providers/types";
 import type { Profile } from "./profile";
@@ -36,9 +37,36 @@ export class TwitterAuth {
     return typeof candidate.getOAuth1Credentials === "function";
   }
 
+  private isBrokerProvider(p: TwitterAuthProvider): p is TwitterBrokerProvider {
+    const candidate = p as { getBrokerCredentials?: unknown };
+    return typeof candidate.getBrokerCredentials === "function";
+  }
+
   private async ensureClientInitialized(): Promise<void> {
     if (this.loggedOut) {
       throw new Error("Twitter API client not initialized");
+    }
+    if (this.isBrokerProvider(this.provider)) {
+      const credentials = await this.provider.getBrokerCredentials();
+      if (credentials.mode === "oauth1") {
+        if (this.v2Client && this.lastAccessToken === credentials.accessToken)
+          return;
+        this.v2Client = new TwitterApi({
+          appKey: credentials.appKey,
+          appSecret: credentials.appSecret,
+          accessToken: credentials.accessToken,
+          accessSecret: credentials.accessSecret,
+        });
+        this.lastAccessToken = credentials.accessToken;
+      } else if (
+        !this.v2Client ||
+        this.lastAccessToken !== credentials.accessToken
+      ) {
+        this.v2Client = new TwitterApi(credentials.accessToken);
+        this.lastAccessToken = credentials.accessToken;
+      }
+      this.authenticated = true;
+      return;
     }
     if (this.isOAuth1Provider(this.provider)) {
       if (this.v2Client) return;

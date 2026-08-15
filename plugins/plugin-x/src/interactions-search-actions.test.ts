@@ -30,6 +30,7 @@ function createRuntime(
     ensureConnection: vi.fn(async () => undefined),
     ensureRoomExists: vi.fn(async () => undefined),
     ensureWorldExists: vi.fn(async () => undefined),
+    updateWorld: vi.fn(async () => undefined),
     getCache: vi.fn(async () => undefined),
     setCache: vi.fn(async () => undefined),
     getMemoryById: vi.fn(async () => null),

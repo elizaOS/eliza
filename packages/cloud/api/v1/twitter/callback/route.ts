@@ -183,6 +183,7 @@ app.get("/", async (c) => {
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
           scope: tokens.scope,
+          expiresAt: tokens.expiresAt,
           screenName: tokens.screenName,
           twitterUserId: tokens.userId,
           authMode: "oauth2",

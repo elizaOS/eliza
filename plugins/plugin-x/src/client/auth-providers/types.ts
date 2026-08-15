@@ -3,17 +3,18 @@
  * access token (an OAuth 2.0 Bearer token or the OAuth 1.0a access token), and the
  * optional `TwitterOAuth1Provider` extension additionally exposes the four-part
  * OAuth 1.0a credentials for request signing. Implemented by `env.ts` and
- * `oauth2-pkce.ts`; selected by `factory.ts`.
+ * `oauth2-pkce.ts`, and `broker.ts`; selected by `factory.ts`.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { TwitterClientState } from "../../types";
 
-export type TwitterAuthMode = "env" | "oauth";
+export type TwitterAuthMode = "env" | "oauth" | "broker";
 
 /**
  * Primary abstraction: obtain a valid access token for Twitter/X API calls.
  *
  * - For OAuth2 PKCE mode, this is the OAuth2 user access token (Bearer).
+ * - For broker mode, this is the user token vended by Eliza Cloud.
  * - For env mode, this returns the OAuth1 access token string
  *   (and the provider may expose additional fields via `getOAuth1Credentials()`).
  */
@@ -32,6 +33,15 @@ export interface OAuth1Credentials {
   appSecret: string;
   accessToken: string;
   accessSecret: string;
+}
+
+export type BrokerAuthCredentials =
+  | { mode: "oauth2"; accessToken: string }
+  | ({ mode: "oauth1" } & OAuth1Credentials);
+
+/** Managed brokers resolve their concrete OAuth protocol at request time. */
+export interface TwitterBrokerProvider extends TwitterAuthProvider {
+  getBrokerCredentials(): Promise<BrokerAuthCredentials>;
 }
 
 /**

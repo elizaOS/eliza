@@ -1259,8 +1259,18 @@ const resolvePluginConfigMutationRejections =
 // Route handler
 // ---------------------------------------------------------------------------
 
+export interface RuntimeRestartOptions {
+  /**
+   * The active adapter has already been closed to replace its on-disk data.
+   * The host must fully dispose that runtime before opening the replacement.
+   */
+  disposeCurrentBeforeBuild?: boolean;
+}
+
 interface RequestContext {
-  onRestart: (() => Promise<AgentRuntime | null>) | null;
+  onRestart:
+    | ((options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>)
+    | null;
   onRuntimeSwapped?: () => void;
   onRuntimeActivated?: (
     previousRuntime: AgentRuntime | null,
@@ -1594,7 +1604,10 @@ async function handleRequest(
     });
   };
 
-  const restartRuntime = async (reason: string): Promise<boolean> => {
+  const restartRuntime = async (
+    reason: string,
+    options?: RuntimeRestartOptions,
+  ): Promise<boolean> => {
     if (!ctx?.onRestart) {
       return false;
     }
@@ -1610,7 +1623,7 @@ async function handleRequest(
 
     try {
       const previousRuntime = state.runtime;
-      const newRuntime = await ctx.onRestart();
+      const newRuntime = await ctx.onRestart(options);
       if (!newRuntime) {
         state.agentState = previousState;
         state.broadcastStatus?.();
@@ -1884,7 +1897,15 @@ async function handleRequest(
     }
     try {
       const result = await restoreAgentSnapshot(state.runtime, body);
-      json(res, result);
+      const restarted = await restartRuntime("agent backup restored", {
+        disposeCurrentBeforeBuild: true,
+      });
+      if (!restarted) {
+        throw new Error(
+          "Backup restored, but the runtime could not restart on the restored database",
+        );
+      }
+      json(res, { ...result, requiresRestart: false });
     } catch (err) {
       logger.error(
         {
@@ -3456,7 +3477,7 @@ export async function startApiServer(opts?: {
    * Should stop the current runtime, create a new one, and return it.
    * If omitted the endpoint returns 501 (not supported in this mode).
    */
-  onRestart?: () => Promise<AgentRuntime | null>;
+  onRestart?: (options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>;
   /** Runs after the server atomically publishes the replacement runtime. */
   onRuntimeActivated?: (
     previousRuntime: AgentRuntime | null,

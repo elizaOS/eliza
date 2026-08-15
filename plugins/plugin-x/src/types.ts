@@ -17,6 +17,7 @@ import type {
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import type { Tweet as ClientTweet, Mention } from "./client/tweets";
+import type { TwitterDirectMessageClient } from "./direct-messages";
 import type { TwitterConfig } from "./environment";
 import type { TwitterInteractionClient } from "./interactions";
 import type { TwitterPostClient } from "./post";
@@ -78,6 +79,7 @@ export interface ITwitterClient {
   client: ClientBase;
   post?: TwitterPostClient;
   interaction?: TwitterInteractionClient;
+  directMessages?: TwitterDirectMessageClient;
 }
 
 /**
