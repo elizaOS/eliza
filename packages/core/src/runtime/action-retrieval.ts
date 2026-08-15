@@ -1271,18 +1271,34 @@ function shouldUseRecentConversationForActionSearch(
 	);
 }
 
+// App-surface control blocks ([FORM]/[CHOICE]/[FOLLOWUPS]/[TASK]/[CHECKLIST]
+// and single-line [CONFIG:…] markers) travel inline in delivered message text.
+// When a prior turn's reply carried one, its wire vocabulary ("navigate",
+// "apps", "open", "prompt", …) is UI plumbing, not user intent — left in the
+// retrieval window it floods keyword/bm25 scoring toward view/app actions and
+// can evict the stage-1 candidate entirely (live tj-f8bdfafb488900: a reminder
+// delete routed to CLOSE_ALL_VIEWS off a leaked [FOLLOWUPS] block). Strip the
+// blocks from the conversation window before tokenization; the current user
+// message is never stripped.
+const CONTROL_BLOCK_MARKER_RE =
+	/\[[ \t]*(?:FORM|CHOICE[^\]]*|FOLLOWUPS[^\]]*|TASK:[^\]]*|CHECKLIST)[ \t]*\][\s\S]*?\[[ \t]*\/[ \t]*(?:FORM|CHOICE|FOLLOWUPS|TASK|CHECKLIST)[ \t]*\]|\[CONFIG:[^\]]*\]/g;
+
+export function stripControlBlockMarkers(text: string): string {
+	return text.replace(CONTROL_BLOCK_MARKER_RE, " ");
+}
+
 function normalizeTextList(
 	value: string | readonly string[] | undefined,
 ): string[] {
 	if (typeof value === "string") {
-		return [value];
+		return [stripControlBlockMarkers(value).trim()].filter(Boolean);
 	}
 	if (!Array.isArray(value)) {
 		return [];
 	}
 	return value
 		.filter((entry): entry is string => typeof entry === "string")
-		.map((entry) => entry.trim())
+		.map((entry) => stripControlBlockMarkers(entry).trim())
 		.filter(Boolean);
 }
 
