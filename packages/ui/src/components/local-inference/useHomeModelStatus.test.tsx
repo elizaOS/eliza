@@ -3,8 +3,8 @@
 
 /**
  * Unit coverage for the home-surface model-status hook: it stays `not-required`
- * for cloud/remote/unauthenticated runtimes and derives readiness from the hub
- * fetch. Runtime-mode and the API client are mocked (jsdom, no network).
+ * for external runtimes, tracks local readiness, and releases a stale local
+ * gate after deferred Cloud registration. Network seams are mocked in jsdom.
  */
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -29,6 +29,7 @@ const runtimeModeMock = vi.hoisted(() => ({
 const clientMock = vi.hoisted(() => ({
   getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
   getModelsConfig: vi.fn(),
+  getConfig: vi.fn(),
   getLocalInferenceHub: vi.fn(),
 }));
 
@@ -104,6 +105,11 @@ function setRuntimeMode(mode: "loading" | "local" | "cloud" | "remote") {
 beforeEach(() => {
   clientMock.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
   clientMock.getModelsConfig.mockResolvedValue({});
+  clientMock.getConfig.mockResolvedValue({
+    serviceRouting: {
+      llmText: { backend: "ollama", transport: "direct" },
+    },
+  });
   clientMock.getLocalInferenceHub.mockResolvedValue(emptyHub);
   eventSourceMock.openEventSource.mockClear();
   authMock.authenticated = true;
@@ -160,6 +166,68 @@ describe("useHomeModelStatus", () => {
     expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(1);
     expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
     expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
+  });
+
+  it("clears a stale local gate after deferred Eliza Cloud registration", async () => {
+    clientMock.getModelsConfig.mockResolvedValueOnce({}).mockResolvedValue({
+      activeChat: {
+        provider: "elizacloud",
+        family: "ELIZAOS_CLOUD",
+        endpoint: "https://api.eliza.app/v1",
+      },
+    });
+    clientMock.getConfig.mockResolvedValue({
+      serviceRouting: {
+        llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    });
+    clientMock.getLocalInferenceHub.mockResolvedValue({
+      textReadiness: {
+        slots: {
+          TEXT_SMALL: {
+            status: "missing",
+            modelId: "eliza-1-2b",
+            modelName: "eliza-1-2b",
+          },
+        },
+      },
+    });
+
+    const { result } = renderHook(() => useHomeModelStatus());
+
+    await waitFor(
+      () => {
+        expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2);
+      },
+      { timeout: 2_500 },
+    );
+    expect(result.current.kind).toBe("not-required");
+    expect(result.current.blocksSend).toBe(false);
+    const stream = eventSourceMock.openEventSource.mock.results[0]?.value;
+    expect(stream?.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed and stops local tracking when the deferred route probe fails", async () => {
+    clientMock.getModelsConfig
+      .mockResolvedValueOnce({})
+      .mockRejectedValue(new Error("route unavailable"));
+    clientMock.getConfig.mockResolvedValue({
+      serviceRouting: {
+        llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    });
+
+    const { result } = renderHook(() => useHomeModelStatus());
+
+    await waitFor(
+      () => {
+        expect(result.current.kind).toBe("error");
+      },
+      { timeout: 2_500 },
+    );
+    expect(result.current.blocksSend).toBe(true);
+    const stream = eventSourceMock.openEventSource.mock.results[0]?.value;
+    expect(stream?.close).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces a routing probe failure instead of inventing local readiness", async () => {
