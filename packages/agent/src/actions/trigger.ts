@@ -52,6 +52,7 @@ import {
 } from "../triggers/runtime.ts";
 import {
   buildTriggerMetadata,
+  computeNextCronRunAtMs,
   DISABLED_TRIGGER_INTERVAL_MS,
   normalizeTriggerIntervalMs,
   parseCronExpression,
@@ -319,6 +320,7 @@ function describeSchedule(
   t: TriggerConfig,
   messageTimeZone: string,
   nowMs = Date.now(),
+  persistedNextRunAtMs?: number,
 ): string {
   if (t.triggerType === "interval") {
     return (
@@ -331,6 +333,24 @@ function describeSchedule(
       ? describeOnceAt(t.scheduledAtIso, nowMs, messageTimeZone)
       : null;
     return friendly ?? "soon";
+  }
+  // A cron trigger capped at one run IS a one-shot: it fires at the next
+  // occurrence and never again. Describing it by its cron shape ("every
+  // morning at 9am") reports a recurrence the trigger cannot have — the live
+  // shape: "remind me tomorrow at 9am" confirmed back as "every morning".
+  if (t.maxRuns === 1 && t.cronExpression) {
+    const nextMs =
+      persistedNextRunAtMs ??
+      computeNextCronRunAtMs(
+        t.cronExpression,
+        nowMs,
+        t.timezone ?? messageTimeZone,
+      );
+    const friendly =
+      nextMs !== null
+        ? describeOnceAt(new Date(nextMs).toISOString(), nowMs, messageTimeZone)
+        : null;
+    if (friendly) return friendly;
   }
   if (!t.timezone || t.timezone !== messageTimeZone) {
     return "on its saved recurring schedule";
@@ -762,7 +782,12 @@ async function opCreate(
   // A prompt trigger IS a reminder to the person who asked for it; a workflow
   // trigger is a scheduled job. Either way the schedule reads as a human
   // phrase — the machine forms live in `data` below.
-  const schedule = describeSchedule(triggerConfig, messageTimeZone);
+  const schedule = describeSchedule(
+    triggerConfig,
+    messageTimeZone,
+    Date.now(),
+    metadata.trigger?.nextRunAtMs,
+  );
   const label = displayLabel(displayName);
   return okCommitted(
     "create",
@@ -894,6 +919,8 @@ async function opUpdate(
     `Updated "${displayLabel(next.displayName)}" — ${describeSchedule(
       next,
       messageTimeZone,
+      Date.now(),
+      metadata.trigger?.nextRunAtMs,
     )}.`,
     triggerReceipt("update", String(task.id), { key: null }),
     {
