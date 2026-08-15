@@ -1,6 +1,6 @@
 /** Delivers authenticated proactive messages through the gateway-owned connector. */
 
-import { telegramAdapter } from "./adapters/telegram";
+import { TelegramApiResponseError, telegramAdapter } from "./adapters/telegram";
 import type { ChatEvent } from "./adapters/types";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
@@ -196,6 +196,38 @@ export async function deliverInternalMessage(
       providerMessageIds: receipt.providerMessageIds,
     });
   } catch (error) {
+    if (error instanceof TelegramApiResponseError) {
+      await dependencies.redis.del(dedupeKey);
+      const status =
+        error.errorCode === 401 ||
+        error.errorCode === 403 ||
+        error.errorCode === 429
+          ? error.errorCode
+          : 422;
+      logger.warn("Telegram explicitly rejected Shared reminder delivery", {
+        project: delivery.project,
+        idempotencyKey: delivery.idempotencyKey,
+        errorCode: error.errorCode,
+      });
+      return Response.json(
+        {
+          success: false,
+          error: "provider rejected delivery",
+          retryable: true,
+          acceptance: "not_accepted",
+          idempotencyKey: delivery.idempotencyKey,
+        },
+        {
+          status,
+          headers:
+            status === 429
+              ? {
+                  "Retry-After": String(error.retryAfterSeconds ?? 1),
+                }
+              : undefined,
+        },
+      );
+    }
     // error-policy:J1 once connector dispatch starts, the provider may have
     // accepted the message even if its response or our receipt write failed.
     if (!connectorAttempted) await dependencies.redis.del(dedupeKey);

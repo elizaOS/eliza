@@ -225,6 +225,67 @@ describe("internal proactive delivery", () => {
     ]);
   });
 
+  test("releases the delivery claim when Telegram explicitly rate-limits the first send", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const redis = new MemoryRedis();
+    globalThis.fetch = mock(async () =>
+      Response.json({
+        ok: false,
+        error_code: 429,
+        description: "Too Many Requests: retry later",
+        parameters: { retry_after: 7 },
+      }),
+    ) as typeof fetch;
+
+    const first = await deliverInternalMessage(request(), dependencies(redis));
+    const retry = await deliverInternalMessage(request(), dependencies(redis));
+
+    expect(first.status).toBe(429);
+    expect(first.headers.get("Retry-After")).toBe("7");
+    await expect(first.json()).resolves.toMatchObject({
+      success: false,
+      acceptance: "not_accepted",
+    });
+    expect(retry.status).toBe(429);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(redis.store).toEqual(new Map());
+  });
+
+  test("releases the claim when the plain-text retry is explicitly forbidden", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const redis = new MemoryRedis();
+    const bodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = mock(async (input, init) => {
+      const outgoing = new Request(input, init);
+      bodies.push((await outgoing.json()) as Record<string, unknown>);
+      if (bodies.length === 1) {
+        return Response.json({
+          ok: false,
+          error_code: 400,
+          description: "Bad Request: can't parse entities",
+        });
+      }
+      return Response.json({
+        ok: false,
+        error_code: 403,
+        description: "Forbidden: bot was blocked by the user",
+      });
+    }) as typeof fetch;
+
+    const response = await deliverInternalMessage(
+      request(),
+      dependencies(redis),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      acceptance: "not_accepted",
+    });
+    expect(bodies).toHaveLength(2);
+    expect(redis.store).toEqual(new Map());
+  });
+
   test("rejects model-controlled or malformed recipients before egress", async () => {
     const redis = new MemoryRedis();
     globalThis.fetch = mock(async () => {

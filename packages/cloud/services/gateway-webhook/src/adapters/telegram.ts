@@ -25,11 +25,26 @@ class TelegramApiTransportError extends Error {
   }
 }
 
-class TelegramApiResponseError extends Error {
-  constructor(message: string) {
+export class TelegramApiResponseError extends Error {
+  constructor(
+    message: string,
+    readonly errorCode: number,
+    readonly retryAfterSeconds?: number,
+  ) {
     super(message);
     this.name = "TelegramApiResponseError";
   }
+}
+
+function isMarkdownFormattingRejection(
+  error: TelegramApiResponseError,
+): boolean {
+  return (
+    error.errorCode === 400 &&
+    /(?:can't parse entities|can't find end of (?:the )?entity|unsupported (?:start|end) tag)/i.test(
+      error.message,
+    )
+  );
 }
 
 async function telegramApi<T>(
@@ -51,11 +66,33 @@ async function telegramApi<T>(
     // URL in its error, so translate before the adapter boundary logs it.
     throw new TelegramApiTransportError(method);
   }
-  const data = await response.json();
+  const data = (await response.json()) as {
+    ok?: unknown;
+    result?: unknown;
+    description?: unknown;
+    error_code?: unknown;
+    parameters?: { retry_after?: unknown };
+  };
   if (!data.ok) {
+    const errorCode =
+      typeof data.error_code === "number" &&
+      Number.isInteger(data.error_code) &&
+      data.error_code >= 400 &&
+      data.error_code <= 599
+        ? data.error_code
+        : response.status;
+    const retryAfterSeconds =
+      typeof data.parameters?.retry_after === "number" &&
+      Number.isInteger(data.parameters.retry_after) &&
+      data.parameters.retry_after > 0
+        ? data.parameters.retry_after
+        : undefined;
     throw new TelegramApiResponseError(
-      data.description ??
-        `Telegram API error: ${data.error_code ?? response.status}`,
+      typeof data.description === "string"
+        ? data.description
+        : `Telegram API error: ${errorCode}`,
+      errorCode,
+      retryAfterSeconds,
     );
   }
   return data.result as T;
@@ -140,9 +177,14 @@ async function sendTelegramReply(
       );
       providerMessageIds.push(String(message.message_id));
     } catch (err) {
-      if (!(err instanceof TelegramApiResponseError)) throw err;
+      if (
+        !(err instanceof TelegramApiResponseError) ||
+        !isMarkdownFormattingRejection(err)
+      ) {
+        throw err;
+      }
       logger.warn("Telegram sendMessage failed, retrying without Markdown", {
-        error: err instanceof Error ? err.message : String(err),
+        error: err.message,
       });
       const message = await telegramApi<TelegramMessage>(
         config.botToken,
