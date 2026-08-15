@@ -45,6 +45,32 @@ export const CLOUD_RECALL_EXAMPLE: { user: string; content: { text: string } }[]
   { user: "{{agentName}}", content: { text: RECALL_REPLY } },
 ];
 
+interface PresetTurn {
+  user: string;
+  content: { text: string };
+}
+
+/**
+ * Projects preset speaker keys into the name-keyed character contract used by
+ * Cloud persistence and the hosted runtime loader.
+ */
+export function toCloudCharacterMessageExamples(
+  groups: readonly (readonly PresetTurn[])[],
+  agentName: string,
+): Array<Array<{ name: string; content: { text: string } }>> {
+  return groups.map((group) =>
+    group.map((turn) => ({
+      name:
+        turn.user === "{{agentName}}"
+          ? agentName
+          : turn.user === "{{user1}}"
+            ? "{{name1}}"
+            : turn.user,
+      content: { ...turn.content },
+    })),
+  );
+}
+
 /**
  * The shipped persona with the cloud memory delta applied, still in preset
  * shape. Callers map it into whatever shape they store.
