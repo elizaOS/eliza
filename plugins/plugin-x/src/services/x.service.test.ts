@@ -1,6 +1,8 @@
 /** Unit tests for X account status and trusted multi-account connector routing. Network clients are deterministic fakes. */
 import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import type { ClientBase } from "../base";
+import type { AuthenticatedTwitterSession } from "../client/auth";
 import type { TwitterClientState } from "../types";
 import { TwitterClientInstance, XService } from "./x.service";
 
@@ -23,6 +25,22 @@ function runtimeWithSettings(settings: Record<string, string>): IAgentRuntime {
 
 function serviceWithRuntime(settings: Record<string, string>): XService {
   return new XService(runtimeWithSettings(settings));
+}
+
+function dmSession(userId: string, v2: object): AuthenticatedTwitterSession {
+  return {
+    client: { v2 },
+    profile: { userId, username: `user-${userId}`, location: "" },
+    revision: 1,
+  } as unknown as AuthenticatedTwitterSession;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
 }
 
 describe("XService account status", () => {
@@ -263,28 +281,29 @@ describe("XService trusted account routing", () => {
   it("ignores spoofed content account metadata in the unscoped send handler", async () => {
     const runtime = runtimeWithSettings({});
     const service = new XService(runtime);
+    const sendDmToParticipant = vi.fn(async () => ({ dm_event_id: "dm-1" }));
+    const session = dmSession("current-user", { sendDmToParticipant });
+    const withAuthenticatedSession = vi.fn(
+      async <T>(
+        operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+      ) => operation(session),
+    );
+    const base = {
+      twitterClient: {
+        withAuthenticatedSession,
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    } as unknown as ClientBase;
     const getClient = vi
       .spyOn(
         service as unknown as {
           getTwitterClientForAccount: (accountId: unknown) => Promise<{
-            client: Record<string, never>;
+            client: ClientBase;
           }>;
         },
         "getTwitterClientForAccount",
       )
-      .mockResolvedValue({ client: {} });
-    const sendXDirectMessage = vi
-      .spyOn(
-        service as unknown as {
-          sendXDirectMessage: (
-            accountId: string,
-            recipient: string,
-            text: string,
-          ) => Promise<{ messageId: string | null }>;
-        },
-        "sendXDirectMessage",
-      )
-      .mockResolvedValue({ messageId: "dm-1" });
+      .mockResolvedValue({ client: base });
 
     await service.handleSendMessage(
       runtime,
@@ -296,10 +315,213 @@ describe("XService trusted account routing", () => {
     );
 
     expect(getClient).toHaveBeenCalledWith("default");
-    expect(sendXDirectMessage).toHaveBeenCalledWith(
-      "default",
-      "123456",
-      "hello",
+    expect(withAuthenticatedSession).toHaveBeenCalledOnce();
+    expect(sendDmToParticipant).toHaveBeenCalledWith("123456", {
+      text: "hello",
+    });
+  });
+
+  it("keeps DM recipient lookup and send inside one authenticated session", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    let sessionActive = false;
+    const sendDmToParticipant = vi.fn(async () => {
+      expect(sessionActive).toBe(true);
+      return { dm_event_id: "dm-bound" };
+    });
+    const session = dmSession("account-a", { sendDmToParticipant });
+    const fetchProfile = vi.fn(async () => {
+      expect(sessionActive).toBe(true);
+      return { id: "987654" };
+    });
+    const withAuthenticatedSession = vi.fn(
+      async <T>(
+        operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+      ) => {
+        sessionActive = true;
+        try {
+          return await operation(session);
+        } finally {
+          sessionActive = false;
+        }
+      },
     );
+    const base = {
+      fetchProfile,
+      twitterClient: {
+        withAuthenticatedSession,
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+
+    await service.handleSendMessage(
+      runtime,
+      {
+        source: "x",
+        metadata: { xUsername: "alice" },
+      } as TargetInfo,
+      { text: "hello alice" } as Content,
+    );
+
+    expect(withAuthenticatedSession).toHaveBeenCalledOnce();
+    expect(fetchProfile).toHaveBeenCalledWith("alice");
+    expect(sendDmToParticipant).toHaveBeenCalledWith("987654", {
+      text: "hello alice",
+    });
+  });
+
+  it("does not send after credentials rotate during DM recipient lookup", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    let current = true;
+    const profile = deferred<{ id: string }>();
+    const sendA = vi.fn();
+    const sendB = vi.fn();
+    const session = dmSession("account-a", { sendDmToParticipant: sendA });
+    const base = {
+      fetchProfile: vi.fn(() => profile.promise),
+      twitterClient: {
+        withAuthenticatedSession: async <T>(
+          operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+        ) => operation(session),
+        isAuthenticatedSessionCurrent: () => current,
+      },
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+
+    const send = service.handleSendMessage(
+      runtime,
+      {
+        source: "x",
+        metadata: { xUsername: "alice" },
+      } as TargetInfo,
+      { text: "do not cross accounts" } as Content,
+    );
+    await vi.waitFor(() => expect(base.fetchProfile).toHaveBeenCalledOnce());
+    current = false;
+    profile.resolve({ id: "987654" });
+
+    await expect(send).rejects.toMatchObject({
+      code: "X_AUTH_SESSION_ROTATED",
+    });
+    expect(sendA).not.toHaveBeenCalled();
+    expect(sendB).not.toHaveBeenCalled();
+  });
+
+  it("keeps conversation DM sends inside one authenticated session", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    let sessionActive = false;
+    const sendDmInConversation = vi.fn(async () => {
+      expect(sessionActive).toBe(true);
+      return { dm_event_id: "conversation-reply" };
+    });
+    const session = dmSession("account-a", { sendDmInConversation });
+    const withAuthenticatedSession = vi.fn(
+      async <T>(
+        operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+      ) => {
+        sessionActive = true;
+        try {
+          return await operation(session);
+        } finally {
+          sessionActive = false;
+        }
+      },
+    );
+    const base = {
+      twitterClient: {
+        withAuthenticatedSession,
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+
+    await expect(
+      service.sendDirectMessageToConversationForAccount("account-a", {
+        conversationId: "conversation-1",
+        text: "hello group",
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      status: 201,
+      messageId: "conversation-reply",
+    });
+    expect(withAuthenticatedSession).toHaveBeenCalledOnce();
+    expect(sendDmInConversation).toHaveBeenCalledWith("conversation-1", {
+      text: "hello group",
+    });
+  });
+
+  it("classifies recent DMs with the captured session profile", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    async function* events() {
+      yield {
+        id: "1",
+        sender_id: "current-user",
+        participant_ids: ["current-user", "alice"],
+        text: "outbound",
+      };
+      yield {
+        id: "2",
+        sender_id: "alice",
+        participant_ids: ["current-user", "alice"],
+        text: "inbound",
+      };
+    }
+    const iterator = Object.assign(events(), {
+      includes: {
+        users: [
+          { id: "current-user", username: "current" },
+          { id: "alice", username: "alice" },
+        ],
+      },
+    });
+    const session = dmSession("current-user", {
+      listDmEvents: vi.fn(async () => iterator),
+    });
+    const base = {
+      profile: { id: "stale-user", username: "stale" },
+      twitterClient: {
+        withAuthenticatedSession: async <T>(
+          operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+        ) => operation(session),
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+
+    const messages = await (
+      service as unknown as {
+        listRecentDirectMessages: (
+          accountId: string,
+          limit: number,
+        ) => Promise<Array<{ isInbound: boolean }>>;
+      }
+    ).listRecentDirectMessages("account-a", 10);
+
+    expect(messages.map((message) => message.isInbound)).toEqual([false, true]);
   });
 });

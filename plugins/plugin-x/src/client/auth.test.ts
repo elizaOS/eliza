@@ -940,6 +940,90 @@ describe("TwitterAuth credential rotation", () => {
     expect(twitterApiHarness.twitterApiConstructor).toHaveBeenCalledTimes(2);
   });
 
+  it("streams authenticated generators one provider step at a time and closes on cancellation", async () => {
+    twitterApiHarness.profiles.push(user("account-a"));
+    const client = new Client();
+    client.updateAuth(new TwitterAuth(rotatingBroker(oauth1()).provider));
+    await expect(client.me()).resolves.toMatchObject({ userId: "account-a" });
+
+    const source = {
+      next: vi
+        .fn<() => Promise<IteratorResult<string>>>()
+        .mockResolvedValueOnce({ done: false, value: "first" })
+        .mockResolvedValueOnce({ done: false, value: "second" }),
+      return: vi.fn(async () => ({
+        done: true as const,
+        value: undefined,
+      })),
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+    };
+    const generator = (
+      client as unknown as {
+        authenticatedGenerator<T>(
+          operation: (auth: TwitterAuth) => AsyncIterable<T>,
+        ): AsyncGenerator<T, void>;
+      }
+    ).authenticatedGenerator(() => source);
+
+    await expect(generator.next()).resolves.toEqual({
+      done: false,
+      value: "first",
+    });
+    expect(source.next).toHaveBeenCalledOnce();
+
+    await generator.return();
+
+    expect(source.next).toHaveBeenCalledOnce();
+    expect(source.return).toHaveBeenCalledOnce();
+  });
+
+  it("stops an authenticated generator before another page after credentials rotate", async () => {
+    twitterApiHarness.profiles.push(user("account-a"), user("account-b"));
+    const client = new Client();
+    client.updateAuth(new TwitterAuth(rotatingBroker(oauth1()).provider));
+    await expect(client.me()).resolves.toMatchObject({ userId: "account-a" });
+
+    const source = {
+      next: vi
+        .fn<() => Promise<IteratorResult<string>>>()
+        .mockResolvedValueOnce({ done: false, value: "account-a-page" })
+        .mockResolvedValueOnce({ done: false, value: "stale-page" }),
+      return: vi.fn(async () => ({
+        done: true as const,
+        value: undefined,
+      })),
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+    };
+    const generator = (
+      client as unknown as {
+        authenticatedGenerator<T>(
+          operation: (auth: TwitterAuth) => AsyncIterable<T>,
+        ): AsyncGenerator<T, void>;
+      }
+    ).authenticatedGenerator(() => source);
+
+    await expect(generator.next()).resolves.toEqual({
+      done: false,
+      value: "account-a-page",
+    });
+    client.updateAuth(
+      new TwitterAuth(
+        rotatingBroker(oauth1({ accessSecret: "account-b-secret" })).provider,
+      ),
+    );
+    await expect(client.me()).resolves.toMatchObject({ userId: "account-b" });
+
+    await expect(generator.next()).rejects.toMatchObject({
+      code: "X_AUTH_SESSION_ROTATED",
+    });
+    expect(source.next).toHaveBeenCalledOnce();
+    expect(source.return).toHaveBeenCalledOnce();
+  });
+
   it("keeps nested public provider calls on the active Client session", async () => {
     twitterApiHarness.profiles.push(user("account-a"));
     const client = new Client();

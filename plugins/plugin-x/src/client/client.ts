@@ -175,16 +175,52 @@ export class Client {
   ): AsyncGenerator<T, void> {
     const client = this;
     return (async function* () {
-      // Public generator limits are bounded. Collecting under one lease avoids
-      // mixing account generations between lazily fetched pages.
-      const values = await client.withAuthenticatedSession(async () => {
-        const collected: T[] = [];
-        for await (const value of operation(client.requireAuth())) {
-          collected.push(value);
+      let iterator: AsyncIterator<T> | undefined;
+      let iteratorSession:
+        | Pick<
+            Awaited<ReturnType<TwitterAuth["getAuthenticatedSession"]>>,
+            "client" | "revision"
+          >
+        | undefined;
+      let completed = false;
+
+      try {
+        while (true) {
+          // One provider step holds one credential lease. This preserves
+          // streaming and lets consumer cancellation or credential rotation
+          // stop pagination between pages instead of draining the full source.
+          const result = await client.withAuthenticatedSession(
+            async (currentSession) => {
+              if (!iterator) {
+                iteratorSession = currentSession;
+                iterator = operation(client.requireAuth())[
+                  Symbol.asyncIterator
+                ]();
+              } else if (
+                !iteratorSession ||
+                iteratorSession.client !== currentSession.client ||
+                iteratorSession.revision !== currentSession.revision
+              ) {
+                throw new ElizaError(
+                  "X credentials rotated while an authenticated iterator was active",
+                  { code: "X_AUTH_SESSION_ROTATED" },
+                );
+              }
+              return iterator.next();
+            },
+          );
+
+          if (result.done) {
+            completed = true;
+            return;
+          }
+          yield result.value;
         }
-        return collected;
-      });
-      yield* values;
+      } finally {
+        if (!completed && iterator?.return) {
+          await iterator.return();
+        }
+      }
     })();
   }
 
