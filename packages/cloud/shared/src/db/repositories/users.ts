@@ -7,6 +7,7 @@ import {
   sharedRuntimeWorldId,
   sharedTodoStorageScope,
 } from "../../lib/services/shared-runtime/shared-runtime-storage-identity";
+import type { DbTransaction } from "../client";
 import { type SqlExecutor, sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type Organization, organizations } from "../schemas/organizations";
@@ -20,6 +21,12 @@ import { type NewUser, type User, users } from "../schemas/users";
 export type { NewUser, User, UserIdentity };
 
 export type IdentityProvider = "steward" | "telegram" | "discord" | "whatsapp" | "phone";
+export type MessagingIdentityProvider = Exclude<IdentityProvider, "steward">;
+
+export type LinkMessagingIdentityResult =
+  | { status: "linked"; user: User }
+  | { status: "user_not_found" }
+  | { status: "handle_conflict" };
 
 /**
  * Maps a messaging-platform name as it appears on the wire to the identity
@@ -114,6 +121,11 @@ export interface TelegramIdentityLink {
   telegram_username?: string | null;
   telegram_first_name?: string | null;
   telegram_photo_url?: string | null;
+}
+
+export interface WhatsAppIdentityLink {
+  whatsapp_id: string;
+  whatsapp_name?: string | null;
 }
 
 export interface FindOrCreatePhonePersonalAccountResult {
@@ -2250,10 +2262,128 @@ export class UsersRepository {
     });
   }
 
+  /**
+   * Resolves and binds a channel handle using the caller's transaction. This
+   * lets identity-link code consumption commit atomically with both identity
+   * rows; a failed projection write therefore leaves the code pending.
+   */
+  async linkMessagingIdentityInTransaction(
+    tx: DbTransaction,
+    userId: string,
+    provider: MessagingIdentityProvider,
+    platformId: string,
+    platformName?: string,
+  ): Promise<LinkMessagingIdentityResult> {
+    const ownerPredicates =
+      provider === "telegram"
+        ? [eq(users.telegram_id, platformId), eq(userIdentities.telegram_id, platformId)]
+        : provider === "discord"
+          ? [eq(users.discord_id, platformId), eq(userIdentities.discord_id, platformId)]
+          : provider === "whatsapp"
+            ? [eq(users.whatsapp_id, platformId), eq(userIdentities.whatsapp_id, platformId)]
+            : [eq(users.phone_number, platformId), eq(userIdentities.phone_number, platformId)];
+    const [canonicalOwner] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(ownerPredicates[0])
+      .limit(1);
+    const [projectionOwner] = await tx
+      .select({ userId: userIdentities.user_id })
+      .from(userIdentities)
+      .where(ownerPredicates[1])
+      .limit(1);
+    if (
+      (canonicalOwner && canonicalOwner.id !== userId) ||
+      (projectionOwner && projectionOwner.userId !== userId)
+    ) {
+      return { status: "handle_conflict" };
+    }
+
+    const now = new Date();
+    const identity =
+      provider === "telegram"
+        ? { telegram_id: platformId, telegram_username: platformName ?? null }
+        : provider === "discord"
+          ? { discord_id: platformId, discord_username: platformName ?? platformId }
+          : provider === "whatsapp"
+            ? { whatsapp_id: platformId, whatsapp_name: platformName ?? null }
+            : { phone_number: platformId, phone_verified: true };
+    const targetPredicate =
+      provider === "phone"
+        ? and(
+            eq(users.id, userId),
+            or(
+              isNull(users.phone_number),
+              eq(users.phone_number, platformId),
+              sql`${users.phone_verified} IS NOT TRUE`,
+            ),
+          )
+        : eq(users.id, userId);
+    const [updated] = await tx
+      .update(users)
+      .set({ ...identity, updated_at: now })
+      .where(targetPredicate)
+      .returning();
+    if (!updated) {
+      const [existing] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
+      return existing ? { status: "handle_conflict" } : { status: "user_not_found" };
+    }
+
+    await tx
+      .insert(userIdentities)
+      .values({
+        user_id: userId,
+        steward_user_id: updated.steward_user_id,
+        is_anonymous: updated.is_anonymous,
+        anonymous_session_id: updated.anonymous_session_id,
+        expires_at: updated.expires_at,
+        ...identity,
+        updated_at: now,
+      })
+      .onConflictDoUpdate({
+        target: userIdentities.user_id,
+        set: { ...identity, updated_at: now },
+      });
+    return { status: "linked", user: updated };
+  }
+
   /** Links Discord on the canonical user and routing projection atomically. */
   async linkDiscordIdentity(
     userId: string,
     identity: DiscordIdentityLink,
+  ): Promise<User | undefined> {
+    return dbWrite.transaction(async (tx) => {
+      const updatedAt = new Date();
+      const [updated] = await tx
+        .update(users)
+        .set({ ...identity, updated_at: updatedAt })
+        .where(eq(users.id, userId))
+        .returning();
+      if (!updated) return undefined;
+
+      await tx
+        .insert(userIdentities)
+        .values({
+          user_id: userId,
+          steward_user_id: updated.steward_user_id,
+          is_anonymous: updated.is_anonymous,
+          anonymous_session_id: updated.anonymous_session_id,
+          expires_at: updated.expires_at,
+          ...identity,
+          updated_at: updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: userIdentities.user_id,
+          set: { ...identity, updated_at: updatedAt },
+        });
+      return updated;
+    });
+  }
+
+  /** Links WhatsApp on the canonical user and routing projection atomically. */
+  async linkWhatsAppIdentity(
+    userId: string,
+    identity: WhatsAppIdentityLink,
   ): Promise<User | undefined> {
     return dbWrite.transaction(async (tx) => {
       const updatedAt = new Date();

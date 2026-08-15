@@ -27,6 +27,7 @@ import {
   assertRequiredBundledPackagesLanded,
   assertTarSafeRuntimePaths,
   copyPackageDir,
+  ensureResolvedWorkspaceRuntimeEntriesBuilt,
   expandWorkspacePattern,
   getRuntimeDependencies,
   getRuntimeDependencyEntries,
@@ -844,6 +845,105 @@ describe("getWorkspacePackageRuntimeCopyEntries", () => {
       expect(
         getWorkspacePackageRuntimeCopyEntries("invalid", sourceDir),
       ).toBeNull();
+    } finally {
+      rmSync(sourceDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("ensureResolvedWorkspaceRuntimeEntriesBuilt", () => {
+  it("builds a source-only workspace package before its runtime export is copied", () => {
+    const sourceDir = mkdtempSync(
+      path.join(process.cwd(), ".copy-runtime-source-only-"),
+    );
+    try {
+      writeFileSync(
+        path.join(sourceDir, "package.json"),
+        JSON.stringify({
+          name: "@elizaos/source-only-runtime",
+          main: "./dist/index.js",
+          scripts: { build: "node build.mjs" },
+        }),
+      );
+      writeFileSync(
+        path.join(sourceDir, "build.mjs"),
+        [
+          'import { mkdirSync, writeFileSync } from "node:fs";',
+          'mkdirSync("dist", { recursive: true });',
+          'writeFileSync("dist/index.js", "export const ready = true;\\n");',
+        ].join("\n"),
+      );
+
+      const packageJsonPath = path.join(sourceDir, "package.json");
+      expect(existsSync(path.join(sourceDir, "dist", "index.js"))).toBe(false);
+
+      ensureResolvedWorkspaceRuntimeEntriesBuilt(
+        "@elizaos/source-only-runtime",
+        { sourceDir, packageJsonPath },
+      );
+
+      expect(existsSync(path.join(sourceDir, "dist", "index.js"))).toBe(true);
+    } finally {
+      rmSync(sourceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails when a workspace build leaves its declared runtime export missing", () => {
+    const sourceDir = mkdtempSync(
+      path.join(process.cwd(), ".copy-runtime-missing-export-"),
+    );
+    try {
+      writeFileSync(
+        path.join(sourceDir, "package.json"),
+        JSON.stringify({
+          name: "@elizaos/missing-runtime",
+          main: "./dist/index.js",
+          scripts: { build: 'node -e "process.exit(0)"' },
+        }),
+      );
+
+      expect(() =>
+        ensureResolvedWorkspaceRuntimeEntriesBuilt("@elizaos/missing-runtime", {
+          sourceDir,
+          packageJsonPath: path.join(sourceDir, "package.json"),
+        }),
+      ).toThrow(
+        /build completed without producing its declared runtime entries/,
+      );
+    } finally {
+      rmSync(sourceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails fast when a workspace build exits non-zero after writing its export", () => {
+    const sourceDir = mkdtempSync(
+      path.join(process.cwd(), ".copy-runtime-failed-build-"),
+    );
+    try {
+      writeFileSync(
+        path.join(sourceDir, "package.json"),
+        JSON.stringify({
+          name: "@elizaos/failed-runtime",
+          main: "./dist/index.js",
+          scripts: { build: "node build.mjs" },
+        }),
+      );
+      writeFileSync(
+        path.join(sourceDir, "build.mjs"),
+        [
+          'import { mkdirSync, writeFileSync } from "node:fs";',
+          'mkdirSync("dist", { recursive: true });',
+          'writeFileSync("dist/index.js", "export const partial = true;\\n");',
+          "process.exit(1);",
+        ].join("\n"),
+      );
+
+      expect(() =>
+        ensureResolvedWorkspaceRuntimeEntriesBuilt("@elizaos/failed-runtime", {
+          sourceDir,
+          packageJsonPath: path.join(sourceDir, "package.json"),
+        }),
+      ).toThrow();
     } finally {
       rmSync(sourceDir, { recursive: true, force: true });
     }

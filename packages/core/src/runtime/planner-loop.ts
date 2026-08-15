@@ -69,6 +69,7 @@ import { runEvaluator } from "./evaluator";
 import {
 	extractJsonObjects,
 	parseJsonObject,
+	parsePseudoTagToolInvocations,
 	stringifyForModel,
 	stripJsonStructuralJunkReply,
 } from "./json-output";
@@ -3310,11 +3311,27 @@ function parseNativeMarkupToolCalls(
 
 /**
  * Recover tool calls a weak model emitted as text — JSON objects first, then
- * the native `<tool_call>` markup — when no structured call was parsed.
+ * the native `<tool_call>` markup, then `<ACTION_NAME>{json}</ACTION_NAME>`
+ * pseudo-tags — when no structured call was parsed. The pseudo-tag dialect
+ * puts the action name in the TAG and only the args in the JSON body, so
+ * neither earlier parser can see it (matrix F38, tj-9129a432454364: a
+ * `<NOTES_CREATE>{…}</NOTES_CREATE>` was stripped from the reply and never
+ * executed).
  */
 function recoverEmbeddedToolCalls(text: string): PlannerToolCall[] {
 	const fromJson = parseEmbeddedToolCalls(text);
-	return fromJson.length > 0 ? fromJson : parseNativeMarkupToolCalls(text);
+	if (fromJson.length > 0) return fromJson;
+	const fromNativeMarkup = parseNativeMarkupToolCalls(text);
+	if (fromNativeMarkup.length > 0) return fromNativeMarkup;
+	const calls: PlannerToolCall[] = [];
+	for (const invocation of parsePseudoTagToolInvocations(text)) {
+		const call = normalizeToolCall({
+			action: invocation.name,
+			parameters: invocation.params,
+		});
+		if (call) calls.push(call);
+	}
+	return calls;
 }
 
 /**
