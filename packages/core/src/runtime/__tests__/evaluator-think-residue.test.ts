@@ -6,6 +6,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
 import { isUnsafeUserVisibleText, runPlannerLoop } from "../planner-loop";
+import { stripReasoningArtifacts } from "../reasoning-artifacts";
 
 const ENVELOPE =
 	'```json\n{ "success": true, "decision": "FINISH", "thought": "Documents store is empty.", "messageToUser": "Your documents store is empty." }\n```';
@@ -27,6 +28,18 @@ describe("evaluator reasoning-residue parsing", () => {
 		const output = parseEvaluatorOutput(ENVELOPE);
 		expect(output.parseError).toBeUndefined();
 		expect(output.messageToUser).toBe("Your documents store is empty.");
+	});
+});
+
+describe("canonical reasoning sanitizer", () => {
+	it.each([
+		["<think>hidden</think>Visible", "Visible"],
+		["<THINK >hidden</THINK >Visible", "Visible"],
+		["<thinking>hidden</thinking>Visible", "Visible"],
+		["< reasoning >hidden</ reasoning >Visible", "Visible"],
+		["Visible<reasoning>dangling", "Visible"],
+	])("strips provider artifact %s", (raw, expected) => {
+		expect(stripReasoningArtifacts(raw)).toBe(expected);
 	});
 });
 
