@@ -476,6 +476,88 @@ describe("gateway webhook handler e2e routing", () => {
     );
   });
 
+  test("resolves captionless Telegram voice bytes before the trusted Shared boundary", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "update-voice-1",
+      chatId: "chat-1",
+      chatType: "private",
+      senderId: "123456789",
+      senderName: "Ada",
+      text: "",
+      voiceNote: {
+        fileId: "provider-file-id",
+        durationSeconds: 2,
+        sizeBytes: 8,
+        mimeType: "audio/ogg",
+      },
+      rawPayload: {},
+    };
+    const resolveVoiceNote = mock(async () => ({
+      bytesBase64: Buffer.from("OggSdata").toString("base64"),
+      mimeType: "audio/ogg" as const,
+      filename: "telegram-update-voice-1.ogg",
+      sizeBytes: 8,
+      durationSeconds: 2,
+    }));
+    const sendReply = mock(async () => undefined);
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      getDedupeScope: () => "scope",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      resolveVoiceNote,
+      sendTypingIndicator: mock(async () => undefined),
+      sendReply,
+    };
+    const redis = new MemoryRedis();
+    let sharedBody: Record<string, unknown> | null = null;
+    globalThis.fetch = mock(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/api/internal/eliza-app/personal-shared/messages")) {
+        sharedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ data: { reply: "I heard you" } });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/telegram", {
+        method: "POST",
+        body: "{}",
+      }),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    expect(resolveVoiceNote).toHaveBeenCalledWith(expect.anything(), event);
+    expect(sharedBody).toEqual({
+      platform: "telegram",
+      telegramUserId: "123456789",
+      displayName: "Ada",
+      messageId: "telegram:eliza-app:update-voice-1",
+      voiceNote: {
+        bytesBase64: Buffer.from("OggSdata").toString("base64"),
+        mimeType: "audio/ogg",
+        filename: "telegram-update-voice-1.ogg",
+        sizeBytes: 8,
+        durationSeconds: 2,
+      },
+    });
+    expect(sendReply).toHaveBeenCalledWith(
+      expect.anything(),
+      event,
+      "I heard you",
+    );
+  });
+
   test("retries personal Shared with fresh auth and the same message id", async () => {
     configureEnv();
     const redis = new MemoryRedis();

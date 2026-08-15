@@ -8,7 +8,10 @@
  */
 
 import { unwrapUserMessageText } from "../../../security/incoming-message-security.ts";
-import type { TopicSearchHit } from "../../../services/channel-topics.ts";
+import {
+	CHANNEL_TOPICS_LRU_CAPACITY,
+	type TopicSearchHit,
+} from "../../../services/channel-topics.ts";
 import type {
 	Action,
 	ActionResult,
@@ -23,7 +26,10 @@ import {
 
 interface TopicSearchService {
 	searchTopics(query: string, limit?: number): TopicSearchHit[];
+	getTopicsForAllRooms?(): Record<string, string[]>;
 }
+
+const RESULT_LIMIT = 10;
 
 function getTopicsService(
 	runtime: IAgentRuntime,
@@ -91,21 +97,39 @@ export const channelTopicSearchAction: Action = {
 				data: { actionName: "SEARCH_CHANNEL_TOPICS" },
 			};
 		}
-		const hits = svc.searchTopics(query, 10);
+		const probedHits = svc.searchTopics(query, RESULT_LIMIT + 1);
+		const hasMore = probedHits.length > RESULT_LIMIT;
+		const hits = probedHits.slice(0, RESULT_LIMIT);
+		const roomCount = svc.getTopicsForAllRooms
+			? Object.keys(svc.getTopicsForAllRooms()).length
+			: null;
+		const scopeText =
+			roomCount === null
+				? `the in-memory room topic index (up to ${CHANNEL_TOPICS_LRU_CAPACITY} recent distinct topics per active or hydrated room)`
+				: `${roomCount} active or hydrated room(s) in memory (up to ${CHANNEL_TOPICS_LRU_CAPACITY} recent distinct topics per room)`;
 		const text =
 			hits.length === 0
-				? `No channels found discussing ${describeQuery(query)}.`
+				? `No channels in ${scopeText} matched ${describeQuery(query)}.`
 				: `Channels discussing ${describeQuery(query)}:\n${hits
 						.map((h) => `- ${h.roomId}: ${h.matchedTopics.join(", ")}`)
-						.join("\n")}`;
+						.join(
+							"\n",
+						)}${hasMore ? `\n- More matches exist beyond the ${RESULT_LIMIT} shown.` : ""}\n\nScope: searched ${scopeText}; rooms not active or hydrated since process start were not scanned.`;
 		return {
 			success: true,
 			text,
-			values: { success: true, matchCount: hits.length },
+			values: { success: true, matchCount: hits.length, hasMore },
 			data: {
 				actionName: "SEARCH_CHANNEL_TOPICS",
 				query: queryLogView(query),
 				hits,
+				scope: {
+					kind: "in_memory_lru",
+					roomCount,
+					topicsPerRoom: CHANNEL_TOPICS_LRU_CAPACITY,
+					limit: RESULT_LIMIT,
+					hasMore,
+				},
 			},
 		};
 	},

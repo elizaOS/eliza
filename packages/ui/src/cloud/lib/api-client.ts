@@ -26,7 +26,11 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { getElizaApiToken } from "@elizaos/shared";
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
 import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   resolveDirectCloudAuthApiBase,
@@ -149,14 +153,9 @@ function readStewardToken(): string | null {
 
 function clearStoredStewardTokenIfCurrent(token: string): void {
   if (typeof window === "undefined") return;
-  try {
-    if (window.localStorage.getItem(STEWARD_TOKEN_KEY) === token) {
-      window.localStorage.removeItem(STEWARD_TOKEN_KEY);
-      window.dispatchEvent(new CustomEvent("steward-token-sync"));
-    }
-  } catch {
-    // error-policy:J6 best-effort drain of a rejected token — the fallback
-    // token path proceeds either way.
+  if (readStoredStewardToken() === token) {
+    clearStoredStewardToken();
+    window.dispatchEvent(new CustomEvent("steward-token-sync"));
   }
 }
 

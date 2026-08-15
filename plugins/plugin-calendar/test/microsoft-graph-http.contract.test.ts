@@ -682,11 +682,12 @@ describe("Microsoft Graph calendar HTTP contract", () => {
         return ref;
       },
     };
+    // Durable vault-shaped writer: rotation must persist through a durable
+    // store (`set`), never the in-memory SECRETS `setGlobal` path (#18080).
     const secretService = {
       getGlobal: async (key: string) => secrets.get(key) ?? null,
-      setGlobal: async (key: string, value: string) => {
+      set: async (key: string, value: string) => {
         secrets.set(key, value);
-        return true;
       },
     };
     const fetchImpl = vi.fn(

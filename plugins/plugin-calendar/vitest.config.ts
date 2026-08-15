@@ -81,6 +81,20 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        // plugin-scheduling (source-aliased below) imports @elizaos/core/edge;
+        // vite's test-mode resolver misses linked-package subpath exports, so
+        // pin it to the edge source entry the same way the other workspace
+        // packages are pinned.
+        find: /^@elizaos\/core\/edge$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "core",
+          "src",
+          "index.edge.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/plugin-google-workspace$/,
         replacement: path.join(pluginGoogleSrc, "index.ts"),
       },

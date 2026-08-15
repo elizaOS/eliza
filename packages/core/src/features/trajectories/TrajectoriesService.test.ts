@@ -91,8 +91,15 @@ describe("TrajectoriesService", () => {
 	it("persists LLM calls with bounded JSON-safe payloads", async () => {
 		const trajectoryId = "00000000-0000-4000-8000-000000000010";
 		const stepId = "00000000-0000-4000-8000-000000000011";
+		const runtimeSecret = "SYNTH-CORE-DB-RUNTIME-SECRET-1111";
+		const flagCanary = "SYNTH-CORE-DB-FLAG-CANARY-2222";
+		const uriCanary = "SYNTH-CORE-DB-URI-CANARY-3333";
 		const row = makeTrajectoryRow(trajectoryId, stepId);
-		const service = new TrajectoriesService(createRuntimeWithoutSql());
+		const service = new TrajectoriesService({
+			...createRuntimeWithoutSql(),
+			redactSecrets: (text: string) =>
+				text.split(runtimeSecret).join("[REDACTED:DB_CANARY]"),
+		} as IAgentRuntime);
 		const serviceInternals = service as unknown as {
 			stepToTrajectory: Map<string, string>;
 			executeRawSql: (
@@ -129,12 +136,31 @@ describe("TrajectoriesService", () => {
 			model: "gpt-oss-120b",
 			modelType: "RESPONSE_HANDLER",
 			provider: "cerebras",
+			runId: "run-identity-1",
+			roomId: "room-identity-1",
+			messageId: "message-identity-1",
+			executionTraceId: "trace-identity-1",
 			systemPrompt: "system",
 			userPrompt: "user",
-			messages: [{ role: "user", content: "m".repeat(120_000), circular }],
+			messages: [
+				{
+					role: "assistant",
+					content: `--token=${flagCanary} ${runtimeSecret} ${"m".repeat(120_000)}`,
+					circular,
+				},
+			],
 			tools: { circular },
+			toolCalls: [
+				{
+					id: "call-1",
+					name: "CANARY_TOOL",
+					args: {
+						target: `https://user:${uriCanary}@synthetic.invalid/`,
+					},
+				},
+			],
 			providerMetadata: circular,
-			response: "ok",
+			response: `ok ${runtimeSecret}`,
 			temperature: 0,
 			maxTokens: 1024,
 			purpose: "action",
@@ -159,19 +185,91 @@ describe("TrajectoriesService", () => {
 		expect(updates[0].length).toBeLessThan(350_000);
 
 		const persisted = JSON.parse(row.steps_json);
+		const persistedJson = JSON.stringify(persisted);
+		expect(persistedJson).not.toContain(runtimeSecret);
+		expect(persistedJson).not.toContain(flagCanary);
+		expect(persistedJson).not.toContain(uriCanary);
 		const call = persisted[0].llmCalls[0];
 		expect(call.messages[0].content).toMatch(/\.{3}\[truncated\]$/);
-		expect(call.tools.circular.self).toBe("[Circular]");
+		expect(call.tools.circular.self).toBe("[REDACTED]");
 		expect(call.tools.circular.fn).toBe("[Function toolHandler]");
-		expect(call.providerMetadata.self).toBe("[Circular]");
+		expect(call.providerMetadata.self).toBe("[REDACTED]");
 		expect(call.providerOrder).toEqual(["CHARACTER"]);
+		expect(call.runId).toBe("run-identity-1");
+		expect(call.roomId).toBe("room-identity-1");
+		expect(call.messageId).toBe("message-identity-1");
+		expect(call.executionTraceId).toBe("trace-identity-1");
 		expect(call.providerAttributions[0]).toMatchObject({
 			providerName: "CHARACTER",
 			tokenCount: 8,
 			position: 0,
-			spanStart: 5,
-			spanEnd: 19,
+			tokenCountEstimated: true,
 		});
+		expect(call.providerAttributions[0].spanStart).toBeUndefined();
+		expect(call.providerAttributions[0].spanEnd).toBeUndefined();
+	});
+
+	it("projects the complete action settlement including interceptor reasoning", async () => {
+		const trajectoryId = "00000000-0000-4000-8000-000000000012";
+		const stepId = "00000000-0000-4000-8000-000000000013";
+		const runtimeSecret = "SYNTH-SETTLEMENT-RUNTIME-SECRET-4444";
+		const flagCanary = "SYNTH-SETTLEMENT-FLAG-CANARY-5555";
+		const row = makeTrajectoryRow(trajectoryId, stepId);
+		const runtime = {
+			...createRuntimeWithoutSql(),
+			redactSecrets: (text: string) =>
+				text.split(runtimeSecret).join("[REDACTED:SETTLEMENT]"),
+		} as IAgentRuntime;
+		const service = new TrajectoriesService(runtime);
+		const serviceInternals = service as unknown as {
+			stepToTrajectory: Map<string, string>;
+			executeRawSql: (
+				sqlText: string,
+			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+			executeRawSqlTransaction: <T>(
+				work: (
+					execute: (sqlText: string) => Promise<{
+						rows: Array<Record<string, unknown>>;
+						columns: string[];
+					}>,
+				) => Promise<T>,
+			) => Promise<T>;
+		};
+
+		serviceInternals.stepToTrajectory.set(stepId, trajectoryId);
+		serviceInternals.executeRawSql = async (sqlText: string) => {
+			if (sqlText.includes("SELECT * FROM trajectories")) {
+				return { rows: [row], columns: Object.keys(row) };
+			}
+			if (sqlText.includes("UPDATE trajectories SET")) {
+				const stepsJson = extractSqlStringAssignment(sqlText, "steps_json");
+				if (stepsJson) row.steps_json = stepsJson;
+			}
+			return { rows: [], columns: [] };
+		};
+		serviceInternals.executeRawSqlTransaction = (work) =>
+			work(serviceInternals.executeRawSql);
+
+		service.completeStep(trajectoryId, stepId, {
+			actionType: "CANARY_TOOL",
+			actionName: "CANARY_TOOL",
+			parameters: { command: `run --token=${flagCanary}`, retries: 2 },
+			llmCallId: "llm-call-identity-1",
+			success: false,
+			result: { error: `rejected ${runtimeSecret}` },
+			error: `rejected ${runtimeSecret}`,
+			reasoning: `Action CANARY_TOOL failed with --token=${flagCanary}`,
+		});
+		await service.flushWriteQueue(trajectoryId);
+
+		const persisted = JSON.parse(row.steps_json)[0].action;
+		const serialized = JSON.stringify(persisted);
+		expect(serialized).not.toContain(runtimeSecret);
+		expect(serialized).not.toContain(flagCanary);
+		expect(persisted.actionName).toBe("CANARY_TOOL");
+		expect(persisted.llmCallId).toBe("llm-call-identity-1");
+		expect(persisted.parameters.retries).toBe(2);
+		expect(persisted.reasoning).toContain("Action CANARY_TOOL failed");
 	});
 
 	it("keeps empty step objects parseable across queued step writes", async () => {

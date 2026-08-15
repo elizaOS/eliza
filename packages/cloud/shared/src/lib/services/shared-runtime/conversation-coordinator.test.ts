@@ -32,6 +32,7 @@ const {
   coordinateSharedBridge,
   coordinateSharedConversationPrewarm,
   coordinateSharedHistory,
+  coordinateSharedLifecycleEvent,
   coordinateSharedStream,
   preparePersonalProvisionalHistoryConvergence,
   purgeSharedConversationRooms,
@@ -115,6 +116,66 @@ describe("shared conversation coordinator", () => {
     expect(directBridge).not.toHaveBeenCalled();
     expect(directStream).not.toHaveBeenCalled();
     expect(directHistory).not.toHaveBeenCalled();
+  });
+
+  test("keeps trusted roles server-side and sends stable lifecycle event ids", async () => {
+    const envelopes: Array<Record<string, unknown>> = [];
+    const namespace = {
+      getByName: () => ({
+        fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+          const envelope = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          envelopes.push(envelope);
+          return envelope.operation === "personal-stream"
+            ? new Response("event: done\ndata: {}\n\n")
+            : Response.json({ success: true });
+        },
+      }),
+    };
+    const agent = {
+      id: "personal:11111111-1111-4111-a111-111111111111",
+      organization_id: "org-1",
+      user_id: "11111111-1111-4111-a111-111111111111",
+      execution_tier: "shared",
+    } as never;
+    const rpc = {
+      jsonrpc: "2.0" as const,
+      id: "rpc-1",
+      method: "message.send",
+      params: { text: "call started", roomId: agent.id },
+    };
+    const executionCtx = { waitUntil() {} };
+
+    await coordinateSharedStream(agent, rpc, {
+      namespace,
+      executionCtx,
+      agentKind: "personal",
+      trustedMessageRole: "system",
+    });
+    await coordinateSharedLifecycleEvent(
+      agent.id,
+      agent.id,
+      { id: "twilio-call:CA1:ended", content: "Call ended.", createdAt: 123 },
+      { namespace },
+    );
+
+    expect(envelopes).toEqual([
+      {
+        operation: "personal-stream",
+        agent,
+        rpc,
+        trustedMessageRole: "system",
+      },
+      {
+        operation: "lifecycle",
+        agentId: agent.id,
+        roomId: agent.id,
+        event: {
+          id: "twilio-call:CA1:ended",
+          content: "Call ended.",
+          createdAt: 123,
+        },
+      },
+    ]);
   });
 
   test("preserves cache warming as a retryable coordinator error", async () => {

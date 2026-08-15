@@ -342,8 +342,13 @@ class UserMcpsService {
     search?: string;
     limit?: number;
     offset?: number;
+    orderBy?: "name";
   }): Promise<UserMcp[]> {
     return userMcpsRepository.listPublic({ ...options, status: "live" });
+  }
+
+  async countPublic(options?: { search?: string; category?: string }): Promise<number> {
+    return userMcpsRepository.countPublic({ ...options, status: "live" });
   }
 
   /**

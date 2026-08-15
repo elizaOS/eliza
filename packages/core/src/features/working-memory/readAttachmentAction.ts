@@ -37,11 +37,11 @@ import {
 	type UUID,
 } from "../../types/index.ts";
 import { getLocalServerUrl } from "../../utils.ts";
-import { DocumentService } from "../documents/service.ts";
 import {
 	createDocumentNoteFilename,
 	deriveDocumentTitle,
-} from "../documents/utils.ts";
+} from "../documents/naming.ts";
+import type { DocumentService } from "../documents/service.ts";
 import {
 	listConversationAttachments,
 	readAttachmentRecords,
@@ -621,9 +621,9 @@ async function saveAttachmentAsDocument(params: {
 		};
 	}
 
-	const service = params.runtime.getService<DocumentService>(
-		DocumentService.serviceType,
-	);
+	// Type-only DocumentService import + the literal service type keep the
+	// fs/parser-heavy service module out of this action's bundle graph.
+	const service = params.runtime.getService<DocumentService>("documents");
 	if (!service) {
 		const text =
 			"I can't save documents right now — document storage isn't available.";

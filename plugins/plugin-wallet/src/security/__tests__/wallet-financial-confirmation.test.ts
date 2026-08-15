@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { isConfirmed } from "../../chains/evm/actions/helpers.js";
 import {
   gateWalletFinancialExecution,
+  requiresWalletFinancialConfirmation,
   walletFinancialPendingKey,
   walletFinancialPreview,
 } from "../wallet-financial-confirmation.js";
@@ -160,5 +161,30 @@ describe("wallet-financial-confirmation", () => {
     });
     expect(bridge).toContain("default slippage");
     expect(bridge).not.toContain("undefined");
+  });
+
+  it("skips the gate for mode=simulate even when dryRun is false (GH #16613: never signs or submits)", async () => {
+    const runtime = runtimeWithCache();
+    const params = {
+      subaction: "swap" as const,
+      chain: "solana",
+      fromToken: "SOL",
+      toToken: "USDC",
+      amount: "1",
+      mode: "simulate" as const,
+      dryRun: false,
+    };
+
+    expect(requiresWalletFinancialConfirmation(params)).toBe(false);
+
+    const gate = await gateWalletFinancialExecution({
+      runtime,
+      message: message("simulate a swap"),
+      params,
+    });
+    expect(gate.proceed).toBe(true);
+    // No cache write means requireConfirmation's pending-key bookkeeping
+    // never ran — simulate short-circuited before the gate touched state.
+    expect(runtime.setCache).not.toHaveBeenCalled();
   });
 });

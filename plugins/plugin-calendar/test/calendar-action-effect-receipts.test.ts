@@ -655,89 +655,100 @@ describe("CALENDAR effect receipt settlement", () => {
   });
 
   it("uses timezone-grounded calendar extraction instead of a contradictory outer-planner instant", async () => {
-    const approval = {
-      requestId: "calendar-timezone-approval",
-      action: "schedule_event" as const,
-      state: "pending" as const,
-      acceptedAt: APPROVAL_ACCEPTED_AT,
-      idempotencyKey: "calendar-timezone-proof",
-      replayed: false,
-      text: "Approval request calendar-timezone-approval is ready.",
-    };
-    let extractionPrompt = "";
-    const runJsonModel = vi.fn(async (args: { prompt: string }) => {
-      if (!args.prompt.includes("Extract calendar event creation fields")) {
-        return null;
-      }
-      extractionPrompt = args.prompt;
-      return {
-        rawResponse: JSON.stringify({
+    // The fixture's extraction says "tomorrow" is Aug 5, which is only
+    // coherent when today is Aug 4 in the event's zone. The stated-day guard
+    // now enforces exactly that coherence at the create boundary, so an
+    // unpinned clock would (correctly) snap the fixture's date to the real
+    // tomorrow and the assertion would drift with the wall clock.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-04T19:00:00.000Z"));
+    try {
+      const approval = {
+        requestId: "calendar-timezone-approval",
+        action: "schedule_event" as const,
+        state: "pending" as const,
+        acceptedAt: APPROVAL_ACCEPTED_AT,
+        idempotencyKey: "calendar-timezone-proof",
+        replayed: false,
+        text: "Approval request calendar-timezone-approval is ready.",
+      };
+      let extractionPrompt = "";
+      const runJsonModel = vi.fn(async (args: { prompt: string }) => {
+        if (!args.prompt.includes("Extract calendar event creation fields")) {
+          return null;
+        }
+        extractionPrompt = args.prompt;
+        return {
+          rawResponse: JSON.stringify({
+            title: "Demo",
+            startAt: "2026-08-05T09:00:00-07:00",
+            endAt: "2026-08-05T10:00:00-07:00",
+            timeZone: "America/Los_Angeles",
+          }),
+          parsed: {
+            title: "Demo",
+            startAt: "2026-08-05T09:00:00-07:00",
+            endAt: "2026-08-05T10:00:00-07:00",
+            timeZone: "America/Los_Angeles",
+          },
+        };
+      });
+      const prepareCalendarEventCreate = vi.fn(
+        async (_url: URL, request: Record<string, unknown>) => ({
+          ...request,
+          side: "owner" as const,
+          grantId: "connector-account:calendar-owner",
+          calendarId: "primary",
+        }),
+      );
+      const service = {
+        getCalendarFeed: vi.fn(async () => feed([])),
+        prepareCalendarEventCreate,
+      };
+      const action = createCalendarActionRunner(
+        deps({
+          runJsonModel,
+          mutationGateway: {
+            schedule: vi.fn(async () => approval),
+            modify: vi.fn(),
+            cancel: vi.fn(),
+          },
+        }),
+      );
+      const delivered: Content[] = [];
+
+      const result = await execute({
+        action,
+        service,
+        actor: message("Add demo tomorrow at 9am."),
+        parameters: {
+          subaction: "create_event",
           title: "Demo",
+          details: {
+            startAt: "2026-08-05T09:00:00Z",
+            endAt: "2026-08-05T10:00:00Z",
+            timeZone: "America/Los_Angeles",
+          },
+        },
+        delivered,
+      });
+
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      expect(extractionPrompt).toContain(
+        "for 9am in America/Los_Angeles emit 09:00 with the applicable -07:00/-08:00 offset, never 09:00Z",
+      );
+      expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({
           startAt: "2026-08-05T09:00:00-07:00",
           endAt: "2026-08-05T10:00:00-07:00",
           timeZone: "America/Los_Angeles",
         }),
-        parsed: {
-          title: "Demo",
-          startAt: "2026-08-05T09:00:00-07:00",
-          endAt: "2026-08-05T10:00:00-07:00",
-          timeZone: "America/Los_Angeles",
-        },
-      };
-    });
-    const prepareCalendarEventCreate = vi.fn(
-      async (_url: URL, request: Record<string, unknown>) => ({
-        ...request,
-        side: "owner" as const,
-        grantId: "connector-account:calendar-owner",
-        calendarId: "primary",
-      }),
-    );
-    const service = {
-      getCalendarFeed: vi.fn(async () => feed([])),
-      prepareCalendarEventCreate,
-    };
-    const action = createCalendarActionRunner(
-      deps({
-        runJsonModel,
-        mutationGateway: {
-          schedule: vi.fn(async () => approval),
-          modify: vi.fn(),
-          cancel: vi.fn(),
-        },
-      }),
-    );
-    const delivered: Content[] = [];
-
-    const result = await execute({
-      action,
-      service,
-      actor: message("Add demo tomorrow at 9am."),
-      parameters: {
-        subaction: "create_event",
-        title: "Demo",
-        details: {
-          startAt: "2026-08-05T09:00:00Z",
-          endAt: "2026-08-05T10:00:00Z",
-          timeZone: "America/Los_Angeles",
-        },
-      },
-      delivered,
-    });
-
-    expect(result.success, JSON.stringify(result)).toBe(true);
-    expect(extractionPrompt).toContain(
-      "for 9am in America/Los_Angeles emit 09:00 with the applicable -07:00/-08:00 offset, never 09:00Z",
-    );
-    expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
-      expect.any(URL),
-      expect.objectContaining({
-        startAt: "2026-08-05T09:00:00-07:00",
-        endAt: "2026-08-05T10:00:00-07:00",
-        timeZone: "America/Los_Angeles",
-      }),
-    );
-    expectBoundDelivery(delivered, result);
+      );
+      expectBoundDelivery(delivered, result);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports an authoritative queue replay as a no-op", async () => {
@@ -983,6 +994,113 @@ describe("CALENDAR effect receipt settlement", () => {
       unknown
     >;
     expect(request.grantId).toBe("connector-account:calendar-owner");
+  });
+
+  it("drops planner key debris only from structured routing controls", async () => {
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, _request?: Record<string, unknown>) => feed(),
+    );
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service: { getCalendarFeed },
+      actor: message("whats on my calendar tomorrow"),
+      parameters: {
+        subaction: "feed",
+        details: {
+          calendar_id: ",calendar_id:",
+          grantId: "grantId",
+          mode: "mode",
+          side: "side",
+          timeZone: "timeZone",
+        },
+      },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(getCalendarFeed).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({
+        calendarId: undefined,
+        grantId: undefined,
+        mode: undefined,
+        side: undefined,
+      }),
+    );
+  });
+
+  it("preserves a search query literally equal to its field name", async () => {
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service: { getCalendarFeed: vi.fn(async () => feed([])) },
+      actor: message("find query"),
+      parameters: {
+        subaction: "search_events",
+        details: { query: "query" },
+      },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(result.userFacingText).toContain('"query"');
+  });
+
+  it("preserves event content literally equal to its field names", async () => {
+    const literalEvent: LifeOpsCalendarEvent = {
+      ...ELIZA_EVENT,
+      title: "title",
+      location: "location",
+    };
+    const prepareCalendarEventCreate = vi.fn(
+      async (_url: URL, request: Record<string, unknown>) => ({
+        ...request,
+        side: "owner" as const,
+        grantId: "eliza-calendar",
+        calendarId: "primary",
+      }),
+    );
+    const createCalendarEvent = vi.fn(async () => literalEvent);
+    const action = createCalendarActionRunner(
+      deps({
+        mutationGateway: {
+          schedule: vi.fn(),
+          modify: vi.fn(),
+          cancel: vi.fn(),
+        },
+      }),
+    );
+
+    const result = await execute({
+      action,
+      service: {
+        getCalendarFeed: vi.fn(async () => feed([])),
+        prepareCalendarEventCreate,
+        createCalendarEvent,
+      },
+      actor: message("add title at location"),
+      parameters: {
+        subaction: "create_event",
+        details: {
+          title: "title",
+          location: "location",
+          startAt: ELIZA_EVENT.startAt,
+          endAt: ELIZA_EVENT.endAt,
+          timeZone: "UTC",
+        },
+      },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ title: "title", location: "location" }),
+    );
+    expect(createCalendarEvent).toHaveBeenCalledOnce();
   });
 
   it("reports the swallowed service-rejection detail with the request hints", async () => {

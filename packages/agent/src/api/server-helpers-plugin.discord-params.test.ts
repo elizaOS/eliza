@@ -9,7 +9,17 @@ import { resolvePluginConfigReply } from "./server-helpers-plugin.ts";
 type FormSpec = {
   version: number;
   root: string;
-  elements: Record<string, { type: string; props?: Record<string, unknown> }>;
+  elements: Record<
+    string,
+    {
+      type: string;
+      props?: Record<string, unknown>;
+      children: string[];
+      on?: {
+        press?: { action: string; params?: Record<string, unknown> };
+      };
+    }
+  >;
   state: Record<string, string>;
 };
 
@@ -55,6 +65,51 @@ describe("resolvePluginConfigReply discord ownership fields", () => {
         "DM allowlist (comma-separated Discord user IDs)",
       ]),
     );
+
+    expect(form.elements.root?.children).toEqual([
+      "title",
+      "sep",
+      "fields",
+      "actions",
+    ]);
+    expect(form.elements.fields?.children).toEqual([
+      "f_DISCORD_API_TOKEN",
+      "f_DISCORD_APPLICATION_ID",
+      "f_ELIZA_DISCORD_OWNER_USER_IDS_JSON",
+      "f_DISCORD_DM_POLICY",
+      "f_DISCORD_ALLOW_FROM",
+    ]);
+    expect(form.elements.actions?.children).toEqual(["saveBtn"]);
+    for (const element of Object.values(form.elements)) {
+      expect(Array.isArray(element.children)).toBe(true);
+      expect(element.props).not.toHaveProperty("children");
+    }
+
+    const save = Object.values(form.elements).find(
+      (element) => element.type === "Button",
+    );
+    expect(save?.props?.label).toBe("Save configuration");
+    expect(save?.on?.press).toEqual({
+      action: "plugin:save",
+      params: {
+        pluginId: "discord",
+        "config.DISCORD_API_TOKEN": {
+          $path: "config.DISCORD_API_TOKEN",
+        },
+        "config.DISCORD_APPLICATION_ID": {
+          $path: "config.DISCORD_APPLICATION_ID",
+        },
+        "config.ELIZA_DISCORD_OWNER_USER_IDS_JSON": {
+          $path: "config.ELIZA_DISCORD_OWNER_USER_IDS_JSON",
+        },
+        "config.DISCORD_DM_POLICY": {
+          $path: "config.DISCORD_DM_POLICY",
+        },
+        "config.DISCORD_ALLOW_FROM": {
+          $path: "config.DISCORD_ALLOW_FROM",
+        },
+      },
+    });
   });
 
   it("returns null for prompts that are not plugin config intents", async () => {

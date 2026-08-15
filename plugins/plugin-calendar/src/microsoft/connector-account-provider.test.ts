@@ -306,7 +306,13 @@ describe("Microsoft connector account provider", () => {
         query: { state: flow.state },
       }),
     ).rejects.toMatchObject({
-      code: "MICROSOFT_OAUTH_SCOPE_ESCALATION",
+      // The account manager persists a terminal failed flow and rethrows the
+      // typed wrapper (error-policy J2); the provider-specific code stays on
+      // the cause chain.
+      code: "CONNECTOR_OAUTH_COMPLETION_FAILED",
+      cause: expect.objectContaining({
+        code: "MICROSOFT_OAUTH_SCOPE_ESCALATION",
+      }),
     });
     expect(await harness.storage.listAccounts("microsoft")).toEqual([]);
     expect(harness.vault.size).toBe(0);
@@ -341,7 +347,13 @@ describe("Microsoft connector account provider", () => {
           query: { state: flow.state },
         }),
       ).rejects.toMatchObject({
-        code: "MICROSOFT_OAUTH_TOKEN_RESPONSE_INVALID",
+        // The account manager persists a terminal failed flow and rethrows the
+        // typed wrapper (error-policy J2); the provider-specific code stays on
+        // the cause chain.
+        code: "CONNECTOR_OAUTH_COMPLETION_FAILED",
+        cause: expect.objectContaining({
+          code: "MICROSOFT_OAUTH_TOKEN_RESPONSE_INVALID",
+        }),
       });
       expect(await harness.storage.listAccounts("microsoft")).toEqual([]);
       expect(harness.vault.size).toBe(0);
@@ -507,7 +519,13 @@ describe("Microsoft connector account provider", () => {
         query: { state: flow.state },
       }),
     ).rejects.toMatchObject({
-      code: "MICROSOFT_OAUTH_NONCE_MISMATCH",
+      // The account manager persists a terminal failed flow and rethrows the
+      // typed wrapper (error-policy J2); the provider-specific code stays on
+      // the cause chain.
+      code: "CONNECTOR_OAUTH_COMPLETION_FAILED",
+      cause: expect.objectContaining({
+        code: "MICROSOFT_OAUTH_NONCE_MISMATCH",
+      }),
     });
     expect(await harness.storage.listAccounts("microsoft")).toEqual([]);
     expect(harness.refs).toEqual([]);
@@ -545,7 +563,13 @@ describe("Microsoft connector account provider", () => {
         query: { state: flow.state },
       }),
     ).rejects.toMatchObject({
-      code: "MICROSOFT_OAUTH_ACCOUNT_IDENTITY_MISMATCH",
+      // The account manager persists a terminal failed flow and rethrows the
+      // typed wrapper (error-policy J2); the provider-specific code stays on
+      // the cause chain.
+      code: "CONNECTOR_OAUTH_COMPLETION_FAILED",
+      cause: expect.objectContaining({
+        code: "MICROSOFT_OAUTH_ACCOUNT_IDENTITY_MISMATCH",
+      }),
     });
     expect(harness.vault.size).toBe(0);
     expect(harness.refs).toEqual([]);
@@ -565,7 +589,13 @@ describe("Microsoft connector account provider", () => {
         query: { state: flow.state },
       }),
     ).rejects.toMatchObject({
-      code: "MICROSOFT_SECRET_WRITER_UNAVAILABLE",
+      // The account manager persists a terminal failed flow and rethrows the
+      // typed wrapper (error-policy J2); the provider-specific code stays on
+      // the cause chain.
+      code: "CONNECTOR_OAUTH_COMPLETION_FAILED",
+      cause: expect.objectContaining({
+        code: "MICROSOFT_SECRET_WRITER_UNAVAILABLE",
+      }),
     });
     const accounts = await harness.storage.listAccounts("microsoft");
     expect(accounts).toHaveLength(1);

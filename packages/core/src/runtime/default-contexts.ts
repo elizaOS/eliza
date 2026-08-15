@@ -71,9 +71,9 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			// save/search/recall makes models refuse "delete that document" as
 			// unsupported instead of classifying into this context (#16942).
 			description:
-				"Read, write, edit, delete, search, and list stored long-form documents and uploads. Use whenever the user asks to save findings, summaries, files, or another persisted document, to search and recall prior documents and uploaded files, or to remove a stored document. Sticky Notes app records are view-backed device/app control and do not use this context.",
+				"Read, write, edit, delete, search, and list stored long-form documents and uploads. Use whenever the user asks to save findings, summaries, files, or another persisted document, to search and recall prior documents and uploaded files, or to remove a stored document. Sticky Notes app records use the plugin-provided notes context and do not use this context.",
 			descriptionCompressed:
-				"Long-form documents/uploads: save, search, recall, delete; sticky Notes use general + VIEWS",
+				"Long-form documents/uploads: save, search, recall, delete; sticky Notes use notes + NOTES",
 			sensitivity: "personal",
 			cacheScope: "agent",
 			subcontexts: ["knowledge", "research"],

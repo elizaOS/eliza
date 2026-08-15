@@ -34,7 +34,7 @@ export type { TokenUsageForCost } from "./pricing-types";
  * so consumers can disambiguate cost numbers computed against different
  * snapshots.
  */
-export const PRICE_TABLE_ID = "eliza-v1-2026-07-02" as const;
+export const PRICE_TABLE_ID = "eliza-v1-2026-08-14" as const;
 export type PriceTableId = typeof PRICE_TABLE_ID;
 
 /**
@@ -186,21 +186,27 @@ export const MODEL_PRICES_USD_PER_M_TOKENS: Record<
 	},
 
 	// ---- Cerebras -----------------------------------------------------------
-	// Source: https://inference-docs.cerebras.ai/introduction (captured
-	// 2026-05-11). The gpt-oss family is served at https://api.cerebras.ai/v1.
+	// Source: https://api.cerebras.ai/public/v1/models/{model_id} (captured
+	// 2026-08-14). These rates also match the forced Cerebras rows used by the
+	// cloud billing ledger in packages/cloud/shared.
 	"gpt-oss-120b": {
 		provider: "cerebras",
-		input: 0.5,
-		output: 0.8,
+		input: 0.35,
+		output: 0.75,
 		cacheRead: 0,
 		cacheWrite: 0,
 	},
-	// Source: https://inference-docs.cerebras.ai/models/gemma-4-31b
-	// (captured 2026-07-01).
 	"gemma-4-31b": {
 		provider: "cerebras",
 		input: 0.99,
 		output: 1.49,
+		cacheRead: 0,
+		cacheWrite: 0,
+	},
+	"zai-glm-4.7": {
+		provider: "cerebras",
+		input: 2.25,
+		output: 2.75,
 		cacheRead: 0,
 		cacheWrite: 0,
 	},
