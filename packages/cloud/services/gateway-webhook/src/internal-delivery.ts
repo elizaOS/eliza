@@ -23,17 +23,21 @@ interface InternalTelegramDelivery {
 const DELIVERY_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
 
 type DeliveryReceipt =
-  | { state: "dispatching" }
+  | { state: "indeterminate" }
   | { state: "complete"; providerMessageIds: string[] };
 
 function parseReceipt(value: string | null): DeliveryReceipt | undefined {
   if (value === "complete")
     return { state: "complete", providerMessageIds: [] };
-  if (value === "dispatching") return { state: "dispatching" };
+  if (value === "dispatching" || value === "indeterminate") {
+    return { state: "indeterminate" };
+  }
   if (!value?.startsWith("{")) return undefined;
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (parsed.state === "dispatching") return { state: "dispatching" };
+    if (parsed.state === "dispatching" || parsed.state === "indeterminate") {
+      return { state: "indeterminate" };
+    }
     if (
       parsed.state === "complete" &&
       Array.isArray(parsed.providerMessageIds) &&
@@ -109,12 +113,15 @@ export async function deliverInternalMessage(
       providerMessageIds: existing.providerMessageIds,
     });
   }
-  if (existing?.state === "dispatching") {
+  if (existing?.state === "indeterminate") {
     return Response.json(
       {
-        success: true,
+        success: false,
         replayed: true,
         acceptanceUnknown: true,
+        acceptance: "unknown",
+        retryable: false,
+        error: "delivery acceptance is indeterminate",
         idempotencyKey: delivery.idempotencyKey,
       },
       { status: 202 },
@@ -165,7 +172,10 @@ export async function deliverInternalMessage(
     if (!telegramAdapter.sendReplyWithReceipt) {
       throw new Error("Telegram receipt delivery is unavailable");
     }
-    await dependencies.redis.set(dedupeKey, "dispatching", {
+    // The provider has no idempotency key. Persist an indeterminate tombstone
+    // before dispatch so a process death can never turn an unproved send into
+    // either a duplicate retry or a successful scheduling receipt.
+    await dependencies.redis.set(dedupeKey, "indeterminate", {
       ex: DELIVERY_RECEIPT_TTL_SECONDS,
     });
     connectorAttempted = true;
@@ -239,9 +249,12 @@ export async function deliverInternalMessage(
     if (connectorAttempted) {
       return Response.json(
         {
-          success: true,
+          success: false,
           replayed: false,
           acceptanceUnknown: true,
+          acceptance: "unknown",
+          retryable: false,
+          error: "delivery acceptance is indeterminate",
           idempotencyKey: delivery.idempotencyKey,
         },
         { status: 202 },

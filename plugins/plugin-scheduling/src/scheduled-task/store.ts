@@ -274,7 +274,8 @@ export function createSchedulingSqlScheduledTaskStore(
           metadata_json = EXCLUDED.metadata_json,
           execution_profile = EXCLUDED.execution_profile,
           next_fire_at = EXCLUDED.next_fire_at,
-          updated_at = ${sqlQuote(now)}`,
+          updated_at = ${sqlQuote(now)}
+        WHERE ${TASK_TABLE}.transfer_status IS NULL`,
       );
     },
     async claimForFire(args: {

@@ -30,6 +30,7 @@ import {
   commitSharedReminderCutover,
   releaseSharedReminderCutover,
   reserveSharedRemindersForCutover,
+  SHARED_CUTOVER_GATEWAY_CHANNEL,
   SharedReminderCutoverConflictError,
 } from "@/lib/services/shared-runtime/shared-scheduling";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -40,6 +41,40 @@ const bodySchema = z.object({ dedicatedAgentId: z.string().uuid() });
 
 function json(body: unknown, status = 200): Response {
   return applyCorsHeaders(Response.json(body, { status }), CORS_METHODS);
+}
+
+function prepareRemindersForDedicated(
+  tasks: Awaited<ReturnType<typeof reserveSharedRemindersForCutover>>,
+) {
+  return tasks.map((task) => ({
+    ...task,
+    escalation: {
+      ...(task.escalation ?? {}),
+      steps: (
+        task.escalation?.steps ?? [
+          { delayMinutes: 0, channelKey: SHARED_CUTOVER_GATEWAY_CHANNEL },
+        ]
+      ).map((step) => ({
+        ...step,
+        channelKey: SHARED_CUTOVER_GATEWAY_CHANNEL,
+      })),
+    },
+    output: task.output
+      ? { ...task.output, target: SHARED_CUTOVER_GATEWAY_CHANNEL }
+      : task.output,
+  }));
+}
+
+function scheduledTaskSnapshotsMatch(
+  left: Awaited<ReturnType<typeof reserveSharedRemindersForCutover>>,
+  right: Awaited<ReturnType<typeof reserveSharedRemindersForCutover>>,
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (task, index) => JSON.stringify(task) === JSON.stringify(right[index]),
+    )
+  );
 }
 
 async function readJsonBody(request: Request): Promise<unknown> {
@@ -334,7 +369,7 @@ app.post("/", async (c) => {
           importUrl,
           {
             messages: importedMessages,
-            scheduledTasks,
+            scheduledTasks: prepareRemindersForDedicated(scheduledTasks),
             cutoverToken: sealToken,
           },
           authorization,
@@ -380,12 +415,7 @@ app.post("/", async (c) => {
           token: sealToken,
           holderToken: reminderReservationToken,
         });
-        if (
-          refreshedTasks.length === scheduledTasks.length &&
-          refreshedTasks.every(
-            (task, index) => task.taskId === scheduledTasks[index]?.taskId,
-          )
-        ) {
+        if (scheduledTaskSnapshotsMatch(refreshedTasks, scheduledTasks)) {
           break;
         }
         if (attempt >= 2) {
@@ -422,7 +452,7 @@ app.post("/", async (c) => {
         importUrl,
         {
           messages: importedMessages,
-          scheduledTasks,
+          scheduledTasks: prepareRemindersForDedicated(scheduledTasks),
           cutoverToken: sealToken,
           activateScheduledTasks: true,
         },

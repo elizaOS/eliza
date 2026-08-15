@@ -168,6 +168,68 @@ describe("scheduling SQL persistence", () => {
   );
 
   it(
+    "freezes a claimed source row once a cutover reservation owns it",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const executeSql = async (sql: string) =>
+        (await harness.pg.query<Record<string, unknown>>(sql)).rows;
+      const store = createSchedulingSqlScheduledTaskStore({
+        agentId: "personal:source",
+        executeSql,
+      });
+      const task = {
+        taskId: "claim-first",
+        kind: "reminder",
+        promptInstructions: "original occurrence",
+        trigger: { kind: "once", atIso: "2026-07-17T09:00:00.000Z" },
+        priority: "medium",
+        respectsGlobalPause: true,
+        state: { status: "scheduled", followupCount: 0 },
+        source: "user_chat",
+        createdBy: "owner",
+        ownerVisible: true,
+      } as ScheduledTask;
+      await store.upsert(task, {
+        nextFireAtIso: "2026-07-17T09:00:00.000Z",
+      });
+      const claim = await store.claimForFire({
+        taskId: task.taskId,
+        firedAtIso: "2026-07-17T09:00:00.000Z",
+      });
+      expect(claim.kind).toBe("fired");
+      await harness.pg.query(`
+        UPDATE app_scheduling.life_scheduled_tasks
+           SET transfer_status = 'reserved',
+               transfer_token = 'cutover-token',
+               transfer_target_agent_id = 'dedicated-target'
+         WHERE agent_id = 'personal:source' AND id = 'claim-first'
+      `);
+
+      await store.upsert({
+        ...task,
+        promptInstructions: "late dispatch mutation",
+        state: {
+          status: "fired",
+          firedAt: "2026-07-17T09:00:00.000Z",
+          followupCount: 1,
+        },
+      });
+
+      const frozen = await store.get(task.taskId);
+      expect(frozen).toMatchObject({
+        promptInstructions: "original occurrence",
+        state: {
+          status: "fired",
+          firedAt: "2026-07-17T09:00:00.000Z",
+          followupCount: 0,
+        },
+      });
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "discovers only due reminders across agents in deterministic order",
     async () => {
       const harness = await createRuntimeHarness();
