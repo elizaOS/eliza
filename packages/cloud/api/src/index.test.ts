@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import cloudApiWorker, {
+  decorateFullAppDispatchResponse,
   getFrontendAliasApiProxyTarget,
   getFrontendAliasProxyTarget,
   getGeneratedAgentId,
@@ -23,6 +24,22 @@ test("exports the shared-runtime conversation Durable Object", () => {
 
 test("exports the X OAuth refresh Durable Object", () => {
   expect(typeof TwitterOAuthRefreshCoordinator).toBe("function");
+});
+
+test("preserves Workerd WebSocket upgrade responses without rewrapping", () => {
+  const upgrade = {
+    status: 101,
+    webSocket: { accepted: true },
+  } as unknown as Response;
+
+  expect(
+    decorateFullAppDispatchResponse(
+      upgrade,
+      "11111111-1111-4111-8111-111111111111",
+      12,
+      8,
+    ),
+  ).toBe(upgrade);
 });
 
 test("dispatches provider webhooks without full-app bootstrap", async () => {
