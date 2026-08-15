@@ -41,6 +41,8 @@ const {
   readStoredMediaBytes,
   writeStoredMediaFile,
   deleteMediaFile,
+  resolveMediaStoreMaxBytes,
+  DEFAULT_MEDIA_STORE_MAX_BYTES,
 } = await import("./media-store.ts");
 
 function mediaPath(fileName: string): string {
@@ -907,4 +909,63 @@ describe("deleteMediaFile fast-fail (#12265)", () => {
       }
     },
   );
+});
+
+describe("resolveMediaStoreMaxBytes", () => {
+  it("rejects scientific notation, junk, and non-canonical integers as the 2 GiB default", () => {
+    expect(resolveMediaStoreMaxBytes(undefined)).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("")).toBe(DEFAULT_MEDIA_STORE_MAX_BYTES);
+    expect(resolveMediaStoreMaxBytes("   ")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    // Number.parseInt("1e9", 10) === 1 would evict every attachment.
+    expect(resolveMediaStoreMaxBytes("1e9")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("1e3")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("8abc")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("0x10")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("010")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("0.4")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("-5")).toBe(DEFAULT_MEDIA_STORE_MAX_BYTES);
+    expect(resolveMediaStoreMaxBytes("abc")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("0")).toBe(DEFAULT_MEDIA_STORE_MAX_BYTES);
+    expect(resolveMediaStoreMaxBytes("9007199254740992")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+  });
+
+  it("accepts complete positive decimals, including a trimmed value", () => {
+    expect(resolveMediaStoreMaxBytes("1")).toBe(1);
+    expect(resolveMediaStoreMaxBytes("4096")).toBe(4096);
+    expect(resolveMediaStoreMaxBytes("2147483648")).toBe(2147483648);
+    expect(resolveMediaStoreMaxBytes(" 1048576 ")).toBe(1048576);
+  });
+
+  it("does not select a just-persisted attachment for eviction when MAX_BYTES is 1e9", () => {
+    const bytes = Buffer.from("scientific-notation-cap-must-not-evict");
+    const saved = persistMediaBytes(bytes, "image/png");
+    expect(fs.existsSync(mediaPath(saved.fileName))).toBe(true);
+    const cap = resolveMediaStoreMaxBytes("1e9");
+    expect(
+      selectMediaToEvict(
+        [{ name: saved.fileName, size: bytes.length, mtimeMs: 1 }],
+        cap,
+      ),
+    ).toEqual([]);
+  });
 });
