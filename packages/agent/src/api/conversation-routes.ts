@@ -1001,7 +1001,37 @@ async function resolvePersistedAssistantTurn(
     return { kind: "durable", id: generatedTurn.id as UUID, text };
   }
 
-  const content = buildPersistedAssistantContent(text, result, userMessageId);
+  let content = buildPersistedAssistantContent(text, result, userMessageId);
+  // Core intentionally marks generated provider-failure prose transient so it
+  // cannot enter the model's own response-memory context. Conversation chat
+  // has a separate durable presentation contract: after reload, the matching
+  // user turn must still show the safe failure/retry surface instead of becoming
+  // an orphan. Persist only explicitly synthetic failures, while stripping the
+  // generic memory-skip controls; persistAssistantConversationMemory stamps the
+  // synthetic-failure metadata that recentMessages filters from prompt context.
+  const contentMetadata =
+    content.metadata &&
+    typeof content.metadata === "object" &&
+    !Array.isArray(content.metadata)
+      ? (content.metadata as Record<string, unknown>)
+      : null;
+  if (
+    content.elizaSyntheticFailure === true ||
+    contentMetadata?.elizaSyntheticFailure === true
+  ) {
+    const durableContent = { ...content } as Content & Record<string, unknown>;
+    delete durableContent.doNotPersist;
+    delete durableContent.skipMemory;
+    delete durableContent.transient;
+    if (contentMetadata) {
+      const durableMetadata = { ...contentMetadata };
+      delete durableMetadata.doNotPersist;
+      delete durableMetadata.skipMemory;
+      delete durableMetadata.transient;
+      durableContent.metadata = durableMetadata as Content;
+    }
+    content = durableContent;
+  }
   if (
     shouldSkipResponseMemoryPersistence({
       content,

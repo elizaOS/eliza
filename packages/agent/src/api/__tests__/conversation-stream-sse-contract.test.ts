@@ -799,6 +799,43 @@ function createEphemeralReplyMessageService(): NonNullable<
   } satisfies NonNullable<AgentRuntime["messageService"]>;
 }
 
+function createSyntheticFailureReplyMessageService(): NonNullable<
+  AgentRuntime["messageService"]
+> {
+  return {
+    async handleMessage() {
+      const content = {
+        text: "The provider rejected the configured key. Please check it and try again.",
+        transient: true,
+        doNotPersist: true,
+        elizaSyntheticFailure: true,
+        failureKind: "transient_failure" as const,
+      };
+      return {
+        didRespond: true,
+        responseContent: content,
+        responseMessages: [
+          {
+            id: stringToUuid("synthetic-failure-assistant"),
+            entityId: AGENT_ID,
+            agentId: AGENT_ID,
+            roomId: ROOM_ID,
+            content,
+          },
+        ],
+        mode: "simple" as const,
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "synthetic-failure-stream-contract-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
 function createState(
   messageServiceOverride?: NonNullable<AgentRuntime["messageService"]>,
 ): {
@@ -2944,6 +2981,37 @@ describe("conversation stream SSE contract (#10712)", () => {
     });
     expect(done).not.toHaveProperty("messageId");
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+  });
+
+  it("persists an explicitly synthetic failure for durable chat presentation", async () => {
+    const { ctx, record } = createCtx(
+      createSyntheticFailureReplyMessageService(),
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const done = parseSsePayloads(record.writes).find(
+      (payload) => payload.type === "done",
+    );
+    expect(done).toMatchObject({
+      type: "done",
+      fullText:
+        "The provider rejected the configured key. Please check it and try again.",
+      userMessageId: stringToUuid("stream-contract-user-msg-store"),
+    });
+    expect(done).toHaveProperty("messageId");
+    expect(done).not.toHaveProperty("assistantEphemeral");
+    expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+    const persistedContent = vi.mocked(persistAssistantConversationMemory).mock
+      .calls[0]?.[2] as Record<string, unknown>;
+    expect(persistedContent).toMatchObject({
+      text: "The provider rejected the configured key. Please check it and try again.",
+      elizaSyntheticFailure: true,
+      failureKind: "transient_failure",
+    });
+    expect(persistedContent).not.toHaveProperty("transient");
+    expect(persistedContent).not.toHaveProperty("doNotPersist");
+    expect(persistedContent).not.toHaveProperty("skipMemory");
   });
 
   it("delivers a post-SSE-init failure as a structured SSE error frame, not an HTTP error", async () => {

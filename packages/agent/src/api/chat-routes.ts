@@ -2506,6 +2506,22 @@ export function normalizeChatResponseText(
       ? text
       : (extractAssistantReplyText(text) ?? text);
   const trimmed = visibleText.trim();
+  // Older error-escalation builds persisted their diagnostic template as an
+  // assistant turn. Those rows can remain in durable conversation history
+  // after the producer is fixed, so sanitize them again at the chat egress
+  // boundary instead of exposing provider payloads, IDs, or endpoints on the
+  // next history load. Keep the match specific to the retired template so
+  // ordinary assistant prose is unaffected.
+  if (
+    /^Repeated runtime failure\s+"[^"\r\n]{1,128}"\s+from\s+\[[^\]\r\n]{1,256}\]:/i.test(
+      trimmed,
+    )
+  ) {
+    return (
+      "I hit the same internal problem several times in a short window. " +
+      "The details are available in diagnostics, and I have kept them out of this chat."
+    );
+  }
   if (
     (trimmed === PROVIDER_ISSUE_CHAT_REPLY ||
       trimmed === NO_RESPONSE_FALLBACK_REPLY) &&
