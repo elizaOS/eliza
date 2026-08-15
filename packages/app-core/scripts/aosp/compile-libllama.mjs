@@ -1589,6 +1589,11 @@ export function buildLibllamaForAbi({
       // throughput win.
       "-DLLAMA_BUILD_SERVER=ON",
       "-DLLAMA_CURL=OFF",
+      // Cross-builds must not discover host OpenSSL or espeak-ng archives.
+      // Android uses localhost HTTP, and the app supplies IPA when Kokoro
+      // reports its built-in ASCII fallback.
+      "-DLLAMA_OPENSSL=OFF",
+      "-DKOKORO_ENABLE_ESPEAK=OFF",
       `-DCMAKE_C_COMPILER=${ccPath}`,
       `-DCMAKE_CXX_COMPILER=${cxxPath}`,
       // Archive ELF objects with zig's llvm-ar/ranlib. The host default
@@ -2447,6 +2452,8 @@ export function describeAndroidTargetDryRun({
     "-DLLAMA_BUILD_TESTS=OFF",
     "-DLLAMA_BUILD_SERVER=ON",
     "-DLLAMA_CURL=OFF",
+    "-DLLAMA_OPENSSL=OFF",
+    "-DKOKORO_ENABLE_ESPEAK=OFF",
     `-DCMAKE_C_COMPILER=${ccPath}`,
     `-DCMAKE_CXX_COMPILER=${cxxPath}`,
     `-DCMAKE_AR=${arPath}`,
