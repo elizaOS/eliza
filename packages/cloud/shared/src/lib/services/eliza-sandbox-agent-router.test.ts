@@ -220,8 +220,7 @@ describe("ElizaSandboxService Worker agent-router fetch", () => {
         body: String(init?.body ?? ""),
       });
       return Response.json({
-        complete: true,
-        sourceMessageCount: 1,
+        conversationId: "personal:user-1",
         inserted: 1,
         skipped: 0,
       });
