@@ -963,7 +963,12 @@ async function tryExecutePost(
     return null;
   }
   if (response.status !== 202) {
-    await response.body?.cancel();
+    const body = await response.json().catch(() => null);
+    const code = isRecord(body) ? safeDiagnosticText(body.code) : "unavailable";
+    const error = isRecord(body) ? safeDiagnosticText(body.error) : "unavailable";
+    process.stderr.write(
+      `[agent-image-canary] execute HTTP ${response.status} code=${code} error=${error}\n`,
+    );
     fail("execute", "request_failed");
   }
   let body: unknown;
