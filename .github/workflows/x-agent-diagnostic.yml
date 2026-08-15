@@ -1,0 +1,36 @@
+name: X Agent Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 5
+    env:
+      AGENT_URL: http://100.64.17.121:2138
+      AGENT_TOKEN: ${{ secrets.ELIZA_X_DIAG_AGENT_TOKEN }}
+    steps:
+      - name: Inspect X runtime state
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${AGENT_TOKEN//[[:space:]]/}"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          for endpoint in health status plugins connectors logs; do
+            code="$(curl --silent --show-error --max-time 30 \
+              --header "Authorization: Bearer $AGENT_TOKEN" \
+              --output "$work/$endpoint.json" \
+              --write-out '%{http_code}' \
+              "$AGENT_URL/api/$endpoint")"
+            printf '%s http=%s\n' "$endpoint" "$code"
+          done
+          jq '{status, ready, runtime, database}' "$work/health.json"
+          jq '[.. | objects | select((.name? // .id? // "") | test("(^x$|plugin-x|twitter)"; "i"))] | .[:20]' "$work/plugins.json"
+          jq '{connectors: [.connectors[]? | select((.name? // .id? // "") | test("(^x$|twitter)"; "i"))]}' "$work/connectors.json"
+          jq -r '[.. | objects | select(((.message? // .msg? // "") | test("twitter|plugin-x|x broker|direct-message"; "i"))) | (.message? // .msg? // empty)] | .[-200:][]' "$work/logs.json" \
+            | sed -E 's/((bearer|token|secret|api[_ -]?key)[=: ]+)[^ ,}]+/\1[redacted]/Ig'
