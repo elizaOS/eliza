@@ -337,6 +337,41 @@ describe("model-invented [LINK:] pseudo-markers", () => {
 		).toBe("see https://example.com/x for details");
 	});
 
+	it("degrades marker names case-insensitively", () => {
+		expect(sanitizeOutboundText("[link:https://example.com/x](lower)")).toBe(
+			"[lower](https://example.com/x)",
+		);
+		expect(sanitizeOutboundText("[LiNk:https://example.com/y]")).toBe(
+			"https://example.com/y",
+		);
+	});
+
+	it("preserves balanced parentheses in labels and destinations", () => {
+		expect(
+			sanitizeOutboundText(
+				"[LINK:https://example.com/a_(b)](Release notes (August))",
+			),
+		).toBe("[Release notes (August)](https://example.com/a_\\(b\\))");
+	});
+
+	it("escapes label delimiters so they cannot replace the http destination", () => {
+		expect(
+			sanitizeOutboundText(
+				"[LINK:https://safe.example](x](javascript:alert(1)))",
+			),
+		).toBe("[x\\](javascript:alert(1))](https://safe.example)");
+	});
+
+	it("leaves malformed or non-http pseudo-links unchanged", () => {
+		for (const text of [
+			"[LINK:javascript:alert(1)](bad)",
+			"[LINK:https://example.com](unclosed",
+			"[LINK:not a url]",
+		]) {
+			expect(sanitizeOutboundText(text)).toBe(text);
+		}
+	});
+
 	it("degrades an empty-label pseudo-link to its URL", () => {
 		expect(sanitizeOutboundText("go [LINK:https://example.com/y]()")).toBe(
 			"go https://example.com/y",
