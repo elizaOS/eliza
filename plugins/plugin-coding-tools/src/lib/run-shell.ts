@@ -27,7 +27,6 @@ import {
   sanitizeSpawnEnv,
 } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
-import { applyHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import {
   applyHostExecutionBaseline,
   resolveHostExecutable,
