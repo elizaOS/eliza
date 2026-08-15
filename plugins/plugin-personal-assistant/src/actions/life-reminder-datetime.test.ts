@@ -1991,6 +1991,42 @@ describe("runLifeOperationHandler explicitly undated owner todos", () => {
     });
   });
 
+  it("persists a scheduled OWNER_TODOS definition as a task", async () => {
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          title: "Submit expense report",
+          cadenceKind: "once",
+          dueInDays: 1,
+        });
+      }
+      return "";
+    });
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage("add submit expense report tomorrow as a todo"),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "definition",
+          ownerSurface: "OWNER_TODOS",
+          intent: "add submit expense report tomorrow as a todo",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+    expect(serviceState.createCalls[0]).toMatchObject({
+      cadence: { kind: "once" },
+      kind: "task",
+      source: "chat",
+      title: "Submit expense report",
+    });
+  });
+
   it.each(["OWNER_REMINDERS", "OWNER_ALARMS", "OWNER_ROUTINES"])(
     "keeps %s fail-closed when extraction returns unscheduled",
     async (ownerSurface) => {

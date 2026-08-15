@@ -4454,7 +4454,6 @@ async function runLifeOperationHandlerInner(
         };
       }
       const kind =
-        cadence.kind === "unscheduled" &&
         ownerSurfaceActionName === "OWNER_TODOS"
           ? "task"
           : ((editingDeferredDefinitionDraft
