@@ -405,9 +405,13 @@ describe("runtime-internal participant census (#19999)", () => {
 	function censusHarness(entities: Map<UUID, { metadata?: unknown }>): {
 		runtime: IAgentRuntime;
 		getEntityById: ReturnType<typeof vi.fn>;
+		reportError: ReturnType<typeof vi.fn>;
+		setType: (next: ChannelType) => void;
 		setParticipants: (next: UUID[]) => void;
 	} {
+		let roomType = ChannelType.DM;
 		let participants: UUID[] = [OWNER, AGENT];
+		const reportError = vi.fn();
 		const getEntityById = vi.fn(async (id: UUID) => {
 			const entry = entities.get(id);
 			if (!entry) {
@@ -420,7 +424,7 @@ describe("runtime-internal participant census (#19999)", () => {
 			getRoom: vi.fn(async () => ({
 				id: ROOM,
 				agentId: AGENT,
-				type: ChannelType.DM,
+				type: roomType,
 				source: "test",
 			})),
 			getParticipantsForRoom: vi.fn(async () => [...participants]),
@@ -428,7 +432,7 @@ describe("runtime-internal participant census (#19999)", () => {
 			getSetting: vi.fn((key: string) =>
 				key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER : undefined,
 			),
-			reportError: vi.fn(),
+			reportError,
 			logger: {
 				debug: vi.fn(),
 				info: vi.fn(),
@@ -439,6 +443,10 @@ describe("runtime-internal participant census (#19999)", () => {
 		return {
 			runtime,
 			getEntityById,
+			reportError,
+			setType: (next) => {
+				roomType = next;
+			},
 			setParticipants: (next) => {
 				participants = next;
 			},
@@ -485,8 +493,8 @@ describe("runtime-internal participant census (#19999)", () => {
 		});
 	});
 
-	it("entity lookup failures keep the participant and the gate fails closed", async () => {
-		const { runtime, setParticipants } = censusHarness(new Map());
+	it("entity lookup failures are reported, keep the participant, and fail closed", async () => {
+		const { runtime, reportError, setParticipants } = censusHarness(new Map());
 		setParticipants([OWNER, AGENT, TRIGGER_ENTITY]);
 		const turn = message();
 		await attestAuthenticatedApiDeliveryAudience(runtime, turn, {
@@ -496,6 +504,33 @@ describe("runtime-internal participant census (#19999)", () => {
 		expect(evaluateOwnerExclusiveDisclosure(turn)).toMatchObject({
 			allowed: false,
 			reason: "participant_mismatch",
+		});
+		expect(reportError).toHaveBeenCalledTimes(1);
+		expect(reportError).toHaveBeenCalledWith(
+			"TrustedDeliveryAudience.filterRuntimeInternalParticipants",
+			expect.objectContaining({
+				code: "DELIVERY_AUDIENCE_ENTITY_LOOKUP_FAILED",
+			}),
+		);
+	});
+
+	it("a large non-owner group turn performs no participant entity reads", async () => {
+		const { runtime, getEntityById, setParticipants, setType } = censusHarness(
+			new Map(),
+		);
+		setType(ChannelType.GROUP);
+		setParticipants([
+			AGENT,
+			OWNER,
+			...Array.from({ length: 1_000 }, (_, index) =>
+				stringToUuid(`large-group-participant:${index}`),
+			),
+		]);
+		const turn = message({ entityId: GUEST });
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+		expect(getEntityById).not.toHaveBeenCalled();
+		expect(evaluateOwnerExclusiveDisclosure(turn)).toMatchObject({
+			allowed: false,
 		});
 	});
 

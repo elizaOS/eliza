@@ -196,33 +196,33 @@ function normalizeTtlMs(ttlMs: number | undefined): number {
 }
 
 /**
- * Drop the runtime's own synthetic actors from a room's participant census
- * before it becomes audience evidence. Trigger fires join their per-trigger
- * entity (`stringToUuid("trigger-entity:" + triggerId)`) to the originating
- * room as a durable participant, so the first reminder that fires in an owner
- * DM permanently inflates the census past two and kills owner-exclusive
- * disclosure there (#19999). Exclusion is self-certifying, never name-based:
- * an entity is dropped only when its stored `metadata.triggerEntity.triggerId`
- * recomputes to its own id (connector-minted entities derive their ids
- * differently and cannot write this metadata), or when it is registered as a
- * runtime-managed internal actor in this process. Entity lookups that fail
- * keep the participant — the gate fails closed. Rooms already at two
- * participants skip the lookup entirely.
+ * Drop the runtime's own synthetic actors from a disclosure candidate's
+ * participant census before it becomes audience evidence. Trigger fires join
+ * their per-trigger entity (`stringToUuid("trigger-entity:" + triggerId)`) to
+ * the originating room as a durable participant. Persisted marker reads are
+ * enabled only for an owner-private candidate; shared and external turns can
+ * never pass this gate and must not pay one entity read per room member.
+ * Exclusion is self-certifying, never name-based. An unreadable entity stays
+ * in the census and the storage failure is reported, so the gate fails closed.
  */
 async function filterRuntimeInternalParticipants(
 	runtime: IAgentRuntime,
 	participants: readonly UUID[],
+	verifyPersistedMarkers: boolean,
 ): Promise<UUID[]> {
-	if (participants.length <= 2) {
-		return [...participants];
+	const processLocalFiltered = participants.filter(
+		(participantId) =>
+			participantId === runtime.agentId ||
+			!isRuntimeManagedInternalActor(runtime, participantId),
+	);
+	if (!verifyPersistedMarkers || processLocalFiltered.length <= 2) {
+		return processLocalFiltered;
 	}
+	const lookupFailures: unknown[] = [];
 	const kept = await Promise.all(
-		participants.map(async (participantId) => {
+		processLocalFiltered.map(async (participantId) => {
 			if (participantId === runtime.agentId) {
 				return participantId;
-			}
-			if (isRuntimeManagedInternalActor(runtime, participantId)) {
-				return null;
 			}
 			try {
 				const entity = await runtime.getEntityById(participantId);
@@ -238,14 +238,27 @@ async function filterRuntimeInternalParticipants(
 				) {
 					return null;
 				}
-			} catch {
-				// error-policy:J3 an unreadable entity stays in the census; the
-				// disclosure gate then fails closed on the inflated count rather
-				// than opening on unverified membership.
+			} catch (cause) {
+				lookupFailures.push(cause);
 			}
 			return participantId;
 		}),
 	);
+	if (lookupFailures.length > 0) {
+		// error-policy:J4 an entity-storage failure keeps every unreadable
+		// participant and degrades owner-private surfaces to unavailable.
+		runtime.reportError(
+			"TrustedDeliveryAudience.filterRuntimeInternalParticipants",
+			new ElizaError(
+				"Could not verify runtime-internal delivery-audience participants.",
+				{
+					code: "DELIVERY_AUDIENCE_ENTITY_LOOKUP_FAILED",
+					cause: lookupFailures[0],
+					context: { failureCount: lookupFailures.length },
+				},
+			),
+		);
+	}
 	return kept.filter((id): id is UUID => id !== null);
 }
 
@@ -391,12 +404,18 @@ export async function attestDeliveryAudienceFromCanonicalRoom(
 		runtime.getParticipantsForRoom(message.roomId),
 		resolveCanonicalOwnerIdForMessage(runtime, message),
 	]);
+	const kind = classifyCanonicalRoom(room?.type);
+	const ownerPrivateCandidate =
+		canonicalOwnerEntityId !== null &&
+		message.entityId === canonicalOwnerEntityId &&
+		(kind === "direct" || kind === "voice_private");
 	const participants = await filterRuntimeInternalParticipants(
 		runtime,
 		rawParticipants,
+		ownerPrivateCandidate,
 	);
 	const audience = createAudience({
-		kind: classifyCanonicalRoom(room?.type),
+		kind,
 		provenance: "canonical_room",
 		actorEntityId: message.entityId,
 		canonicalOwnerEntityId,
@@ -426,12 +445,17 @@ export async function attestAuthenticatedApiDeliveryAudience(
 		resolveCanonicalOwnerIdForMessage(runtime, message),
 		runtime.getParticipantsForRoom(message.roomId),
 	]);
+	const ownerPrincipal =
+		principal.kind === "owner_session" || principal.kind === "owner_api_token";
+	const ownerPrivateCandidate =
+		ownerPrincipal &&
+		canonicalOwnerEntityId !== null &&
+		message.entityId === canonicalOwnerEntityId;
 	const participants = await filterRuntimeInternalParticipants(
 		runtime,
 		rawParticipants,
+		ownerPrivateCandidate,
 	);
-	const ownerPrincipal =
-		principal.kind === "owner_session" || principal.kind === "owner_api_token";
 	const audience = createAudience({
 		kind: ownerPrincipal ? "api_private" : "api_external",
 		provenance: ownerPrincipal ? "authenticated_owner_api" : "service_gateway",
@@ -663,6 +687,7 @@ export async function revalidateOwnerExclusiveDisclosure(
 		const participants = await filterRuntimeInternalParticipants(
 			runtime,
 			rawParticipants,
+			initial.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
 		);
 		const room =
 			initial.audience.provenance === "canonical_room"
