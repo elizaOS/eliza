@@ -665,6 +665,53 @@ const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
 ];
 
 /**
+ * Clause boundary for a possessive owner read: tokens that shift the sentence
+ * from the possessed noun into surrounding context ("my reminders ABOUT goal
+ * planning" — everything after `about` describes the reminders, it is not a
+ * second requested surface). Conjunctions and plain adjectives deliberately
+ * continue the clause so "my goals and reminders" proves BOTH domains and is
+ * surfaced as ambiguous rather than silently resolved by registry order.
+ * `to` stays a continuation so "my to dos" survives tokenization.
+ */
+const OWNER_READ_CLAUSE_STOP_TOKEN =
+	/^(?:about|regarding|concerning|re|on|for|from|at|in|with|without|during|before|after|since|into|by|around|over|under|toward|towards|via|per|vs|versus|than|when|while|if|because|so|then|that|which|who|where|why|how)$/u;
+
+const OWNER_READ_CLAUSE_MAX_TOKENS = 8;
+
+/**
+ * Collects every owner-life domain noun that appears inside a possessive
+ * clause — the `my`/`our` anchor plus the words it still governs — rather than
+ * anywhere in the utterance. This is what binds domain selection to the
+ * possessive target (#19874): contextual nouns past a clause boundary
+ * ("… about goal planning") never vote.
+ */
+function collectPossessiveOwnerReadDomains(
+	normalized: string,
+): Set<OwnerLifeReadDomain> {
+	const domains = new Set<OwnerLifeReadDomain>();
+	const anchor = /\b(?:my|our)\b/gu;
+	for (
+		let match = anchor.exec(normalized);
+		match !== null;
+		match = anchor.exec(normalized)
+	) {
+		let rest = normalized.slice(match.index + match[0].length);
+		let clause = "";
+		for (let taken = 0; taken < OWNER_READ_CLAUSE_MAX_TOKENS; taken++) {
+			const token = /^[\s,]+([a-z][\w'-]*)/u.exec(rest);
+			if (!token) break;
+			if (OWNER_READ_CLAUSE_STOP_TOKEN.test(token[1])) break;
+			clause += ` ${token[1]}`;
+			rest = rest.slice(token[0].length);
+		}
+		for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
+			if (noun.test(clause)) domains.add(domain);
+		}
+	}
+	return domains;
+}
+
+/**
  * Detects a possessive owner-data READ ("list my personal todos", "what are
  * my reminders for today") — the read-side mirror of the owner-mutation rule
  * (#17028 / fead478cfa): a data ask is owner-domain evidence, and VIEWS can
@@ -672,10 +719,25 @@ const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
  * (live: "list my personal todos" routed to VIEWS view-disambiguation, then
  * failed on an undeclared get-todos capability). Explicit UI-surface nouns
  * stay with the navigation legs, and advice/organizing questions stay chat.
+ *
+ * Domain selection is bound to the possessive clause (#19874): only nouns the
+ * `my`/`our` anchor still governs count, exactly one proven domain routes
+ * deterministically, and a mixed ask ("my goals and reminders", "my spending
+ * habits") returns `"ambiguous"` so the planner can clarify or compose readers
+ * — never a registry-order guess, and never the view catalog.
  */
-function detectOwnerLifeReadDomain(text: string): OwnerLifeReadDomain | null {
-	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+function detectOwnerLifeReadDomain(
+	text: string,
+): OwnerLifeReadDomain | "ambiguous" | null {
+	let normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
 	if (!normalized) return null;
+	// Quoted wording is mention, not use: "explain what 'show my todos' does"
+	// must not anchor a read, so quoted spans never reach the matchers. A
+	// straight single quote only counts when it opens after a boundary and
+	// closes before one — contractions ("what's", "don't") are not quotes.
+	normalized = normalized
+		.replace(/"[^"]*"|“[^”]*”|‘[^’]*’/gu, " ")
+		.replace(/(?:^|\s)'[^']*'(?=\s|$|[.,!?;:])/gu, " ");
 	// Surface-noun asks are navigation, owned by the earlier view legs.
 	if (
 		/\b(?:view|views|page|screen|tab|panel|window|ui|dashboard|app)\b/iu.test(
@@ -684,13 +746,26 @@ function detectOwnerLifeReadDomain(text: string): OwnerLifeReadDomain | null {
 	) {
 		return null;
 	}
-	// A read needs a possessive anchor; adjectives may sit between it and the
-	// domain noun ("my personal todos", "our shared reminders").
-	const possessiveDomain =
-		/\b(?:my|our)\b(?:\s+\w+){0,2}\s+(?:todos?|to[- ]dos?|todo\s+list|task\s+list|goals?|reminders?|routines?|habits?|alarms?|finances|spending|expenses)\b/iu.test(
+	// Advice, how-to, organizing, explanatory, and metalinguistic shapes are
+	// conversation about the data, not requests for it — they stay with chat
+	// even when a broad read verb ("tell me", "give me") is present.
+	if (
+		/\b(?:how\s+(?:do|to|can|could|should|would)|advice|advise|tips?|suggest\w*|recommend\w*|organi[sz]\w*|prioriti[sz]\w*|manag\w*|improve|improving|explain|definition|meaning)\b/iu.test(
 			normalized,
-		);
-	if (!possessiveDomain) return null;
+		) ||
+		/\bwhat\s+does\b[\s\S]{0,60}\bmean\b/iu.test(normalized) ||
+		/\bhelp\s+me\b/iu.test(normalized)
+	) {
+		return null;
+	}
+	// Negated reads are not reads.
+	if (
+		/\b(?:don't|do\s+not|never|stop|quit|no\s+need\s+to)\s+(?:show|list|read|tell|give|check|display|go\s+over|review)\b/iu.test(
+			normalized,
+		)
+	) {
+		return null;
+	}
 	// Mutation shapes belong to the write detectors above (or the model);
 	// "check off"/"mark ... done" are completions, not reads.
 	if (
@@ -707,9 +782,10 @@ function detectOwnerLifeReadDomain(text: string): OwnerLifeReadDomain | null {
 			normalized,
 		);
 	if (!hasReadShape) return null;
-	for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
-		if (noun.test(normalized)) return domain;
-	}
+	const domains = collectPossessiveOwnerReadDomains(normalized);
+	if (domains.size === 0) return null;
+	if (domains.size > 1) return "ambiguous";
+	for (const domain of domains) return domain;
 	return null;
 }
 
@@ -826,6 +902,13 @@ export function inferDirectCurrentRequestCandidateInference(
 	// reader the turn yields NO deterministic candidate rather than degrading
 	// into the view catalog.
 	const ownerReadDomain = detectOwnerLifeReadDomain(messageText);
+	if (ownerReadDomain === "ambiguous") {
+		// A mixed owner ask ("my goals and reminders") proves the owner intent
+		// but not a single surface. Deterministically picking one would drop the
+		// rest, so the turn yields NO candidate — the planner clarifies or
+		// composes readers, and the ask never degrades into the view catalog.
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
 	if (ownerReadDomain) {
 		const ownerReadAction = findOwnerLifeReadActionName(
 			actions,

@@ -740,6 +740,110 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		).toEqual({ names: ["VIEWS"], kind: "view-capability" });
 	});
 
+	it("binds the owner-read domain to the possessive clause, not the whole utterance (#19874)", () => {
+		const readers: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "OWNER_TODOS", similes: [], tags: [] },
+			{ name: "OWNER_GOALS", similes: [], tags: [] },
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_ROUTINES", similes: [], tags: [] },
+			{ name: "OWNER_ALARMS", similes: [], tags: [] },
+			{ name: "OWNER_FINANCES", similes: [], tags: [] },
+		];
+		const all = [viewsAction, ...readers];
+		// The #19874 headline case: the possessive target is `my reminders`;
+		// "goal planning" past the clause boundary is context, not a request.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				all,
+				"show my reminders about goal planning",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-reads" });
+		// One valid request per owner domain, including possessive adjectives.
+		for (const [message, reader] of [
+			["list my personal todos", "OWNER_TODOS"],
+			["show my own goals", "OWNER_GOALS"],
+			["what are our shared reminders", "OWNER_REMINDERS"],
+			["go over my daily routines", "OWNER_ROUTINES"],
+			["check my alarms", "OWNER_ALARMS"],
+			["show my spending this month", "OWNER_FINANCES"],
+		] as const) {
+			expect(inferDirectCurrentRequestCandidateInference(all, message)).toEqual(
+				{ names: [reader], kind: "owner-reads" },
+			);
+		}
+	});
+
+	it("treats mixed or multi-domain owner asks as non-deterministic, never registry order (#19874)", () => {
+		const readers: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "OWNER_GOALS", similes: [], tags: [] },
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_ROUTINES", similes: [], tags: [] },
+			{ name: "OWNER_FINANCES", similes: [], tags: [] },
+		];
+		// Both orders: neither Goals-first (registry order) nor Reminders-first
+		// may win — the planner clarifies or composes, and the ask must not
+		// degrade into the view catalog either.
+		for (const message of [
+			"show my goals and reminders",
+			"show my reminders and goals",
+			"what are my spending habits?",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ...readers],
+					message,
+				),
+			).toEqual({ names: [], kind: null });
+		}
+		// A single available reader must still never be silently chosen for a
+		// multi-domain ask (the VIEWS-failure recovery shape).
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, { name: "OWNER_GOALS", similes: [], tags: [] }],
+				"show my goals and reminders",
+			),
+		).toEqual({ names: [], kind: null });
+		// While the same recovery still selects the correct reader when exactly
+		// one domain is requested.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, { name: "OWNER_REMINDERS", similes: [], tags: [] }],
+				"show my reminders about goal planning",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-reads" });
+	});
+
+	it("keeps advice, how-to, quoted, negated, and metalinguistic shapes out of owner reads (#19874)", () => {
+		const readers: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "OWNER_TODOS", similes: [], tags: [] },
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_FINANCES", similes: [], tags: [] },
+		];
+		for (const message of [
+			"tell me how to organize my todos",
+			"give me advice on my finances",
+			"help me prioritize my todos",
+			'explain what "show my reminders" does',
+			"what does 'list my todos' mean",
+			"don't show my reminders yet",
+			"what does my todo list mean",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ...readers],
+					message,
+				).kind,
+			).not.toBe("owner-reads");
+		}
+		// The broad read verbs still work when the ask is a genuine data read.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"tell me my reminders",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-reads" });
+	});
+
 	it("gives owner goal mutations precedence over the views goals tag (#17028)", () => {
 		const goalsAction: Pick<Action, "name" | "similes" | "tags"> = {
 			name: "OWNER_GOALS",
