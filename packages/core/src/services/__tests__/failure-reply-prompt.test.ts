@@ -155,10 +155,9 @@ describe("classifyStructuredFailureCause", () => {
 		expect(classifyStructuredFailureCause(error)).toBe("missing_capability");
 	});
 
-	it("maps budget-style trajectory limits to planner_exhaustion", () => {
+	it("maps every non-causal trajectory limit to planner_exhaustion", () => {
 		for (const kind of [
 			"tool_calls",
-			"repeated_failures",
 			"terminal_only_continuations",
 			"trajectory_token_budget",
 		] as const) {
@@ -169,6 +168,44 @@ describe("classifyStructuredFailureCause", () => {
 			});
 			expect(classifyStructuredFailureCause(error)).toBe("planner_exhaustion");
 		}
+	});
+
+	it("uses repeated action-failure provenance instead of collapsing it", () => {
+		const handler = new TrajectoryLimitExceeded({
+			kind: "repeated_failures",
+			max: 2,
+			observed: 3,
+			failureProvenance: {
+				kind: "handler_error",
+				boundary: "handler",
+				code: "HANDLER_FAILED",
+				retryable: true,
+			},
+		});
+		const persistence = new TrajectoryLimitExceeded({
+			kind: "repeated_failures",
+			max: 2,
+			observed: 3,
+			failureProvenance: {
+				kind: "persistence_error",
+				boundary: "persistence",
+				code: "WRITE_FAILED",
+				retryable: true,
+			},
+		});
+		expect(classifyStructuredFailureCause(handler)).toBe("handler_error");
+		expect(classifyStructuredFailureCause(persistence)).toBe(
+			"persistence_error",
+		);
+		expect(
+			classifyStructuredFailureCause(
+				new TrajectoryLimitExceeded({
+					kind: "repeated_failures",
+					max: 2,
+					observed: 3,
+				}),
+			),
+		).toBe("planner_exhaustion");
 	});
 
 	it("maps arbitrary errors and non-errors to transient", () => {
@@ -198,6 +235,15 @@ describe("buildFailureReplyPrompt per-cause variants", () => {
 		expect(prompt).toContain("suggest a retry");
 	});
 
+	it("handler and persistence variants name different failed boundaries", () => {
+		const handler = buildFailureReplyPrompt(RECENT, "handler_error");
+		const persistence = buildFailureReplyPrompt(RECENT, "persistence_error");
+		expect(handler).toContain("An action failed");
+		expect(handler).toContain("was not completed");
+		expect(persistence).toContain("could not be saved");
+		expect(persistence).toContain("must not be described as completed");
+	});
+
 	it("explicit transient matches the default prompt byte-for-byte", () => {
 		expect(buildFailureReplyPrompt(RECENT, "transient")).toBe(
 			buildFailureReplyPrompt(RECENT),
@@ -207,6 +253,8 @@ describe("buildFailureReplyPrompt per-cause variants", () => {
 	it("every variant keeps the never-answer-on-the-merits rule", () => {
 		for (const cause of [
 			"missing_capability",
+			"handler_error",
+			"persistence_error",
 			"planner_exhaustion",
 			"transient",
 		] as const) {

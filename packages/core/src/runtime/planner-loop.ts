@@ -3023,6 +3023,7 @@ async function executeQueuedToolCall(params: {
 		toolName: params.toolCall.name,
 		success: result.success,
 		error: projectToolDiagnosticValue(failureError, redactDiagnosticText),
+		failureProvenance: result.failureProvenance,
 		repeatKey: isParameterValidationFailure
 			? "parameter_validation"
 			: toolFailureRepeatKey(params.toolCall),
@@ -5693,6 +5694,7 @@ export function actionResultToPlannerToolResult(
 		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		data: Object.keys(data).length > 0 ? data : undefined,
 		error: result.error,
+		failureProvenance: result.failureProvenance,
 		turnComplete: result.turnComplete,
 		continueChain: result.continueChain,
 	};

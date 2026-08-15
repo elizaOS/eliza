@@ -4,6 +4,7 @@
  * parameter and result envelopes. Consumed by planner-loop, the evaluator, and
  * the message handler that drives them.
  */
+import type { ActionFailureProvenance } from "../types/action-failure";
 import type { EvaluationResult } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
@@ -167,6 +168,8 @@ export interface PlannerToolResult {
 	summary?: string;
 	data?: Record<string, unknown>;
 	error?: unknown;
+	/** Typed boundary provenance retained through planner retry exhaustion. */
+	failureProvenance?: ActionFailureProvenance;
 	/**
 	 * Action-owned completion signal that is honored only for a single executed
 	 * tool after the plan queue drains and the successful result carries verified

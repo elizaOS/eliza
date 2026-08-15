@@ -9,6 +9,7 @@
  * merits), and stripReasoningBlocks removes <think> spans from the raw reply.
  */
 import { TrajectoryLimitExceeded } from "../../runtime/limits";
+import { readActionFailureProvenance } from "../../types/action-failure";
 import { ModelType } from "../../types/model";
 
 type ErrorWithStatus = {
@@ -319,6 +320,8 @@ export function isModelProviderFallbackError(
  */
 export type StructuredFailureCause =
 	| "missing_capability"
+	| "handler_error"
+	| "persistence_error"
 	| "planner_exhaustion"
 	| "transient";
 
@@ -334,17 +337,36 @@ export function classifyStructuredFailureCause(
 	error: unknown,
 ): StructuredFailureCause {
 	if (error instanceof TrajectoryLimitExceeded) {
-		return error.kind === "required_tool_misses" ||
-			error.kind === "unavailable_tool_calls"
-			? "missing_capability"
-			: "planner_exhaustion";
+		switch (error.kind) {
+			case "required_tool_misses":
+			case "unavailable_tool_calls":
+				return "missing_capability";
+			case "repeated_failures":
+				return error.failureProvenance?.kind ?? "planner_exhaustion";
+			case "tool_calls":
+			case "terminal_only_continuations":
+			case "trajectory_token_budget":
+				return "planner_exhaustion";
+			default: {
+				const exhaustive: never = error.kind;
+				return exhaustive;
+			}
+		}
 	}
-	return "transient";
+	return readActionFailureProvenance(error)?.kind ?? "transient";
 }
 
 const FAILURE_PROMPT_CAUSE_LINES: Record<StructuredFailureCause, string[]> = {
 	missing_capability: [
 		"The user asked for something that needs a capability which is not available in this setup, so the request could not be carried out.",
+		"Write a one or two sentence reply in plain language.",
+	],
+	handler_error: [
+		"An action failed while carrying out the user's request, so the request was not completed.",
+		"Write a one or two sentence reply in plain language.",
+	],
+	persistence_error: [
+		"The requested change reached its persistence boundary but could not be saved, so it must not be described as completed.",
 		"Write a one or two sentence reply in plain language.",
 	],
 	planner_exhaustion: [
@@ -361,6 +383,10 @@ const FAILURE_PROMPT_CAUSE_RETRY_RULE: Record<StructuredFailureCause, string> =
 	{
 		missing_capability:
 			"- Tell the user plainly that you are not able to do that here right now. Do NOT claim it was done, and do not promise to retry - retrying cannot succeed until the capability is enabled.",
+		handler_error:
+			"- Tell the user that the action failed and was not completed. Do not claim success; suggest a retry only if appropriate.",
+		persistence_error:
+			"- Tell the user that the change could not be saved and was not completed. Do not claim success; suggest a retry.",
 		planner_exhaustion:
 			"- Acknowledge that you could not finish the request and suggest a retry.",
 		transient: "- Acknowledge that something went wrong and suggest a retry.",

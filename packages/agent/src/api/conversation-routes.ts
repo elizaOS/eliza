@@ -1411,6 +1411,10 @@ function parseDurableConversationChatOutcome(
       outcome.failureKind !== "no_provider" &&
       outcome.failureKind !== "provider_issue" &&
       outcome.failureKind !== "rate_limited" &&
+      outcome.failureKind !== "missing_capability" &&
+      outcome.failureKind !== "handler_error" &&
+      outcome.failureKind !== "persistence_error" &&
+      outcome.failureKind !== "planner_exhaustion" &&
       outcome.failureKind !== "local_inference") ||
     (outcome.accountConnect !== undefined &&
       normalizeAccountConnectRequest(outcome.accountConnect) === null) ||
@@ -1513,6 +1517,10 @@ function buildRecoveredConversationChatOutcome(
     content.failureKind === "no_provider" ||
     content.failureKind === "provider_issue" ||
     content.failureKind === "rate_limited" ||
+    content.failureKind === "missing_capability" ||
+    content.failureKind === "handler_error" ||
+    content.failureKind === "persistence_error" ||
+    content.failureKind === "planner_exhaustion" ||
     content.failureKind === "local_inference"
       ? content.failureKind
       : undefined;
