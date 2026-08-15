@@ -283,6 +283,11 @@ describe("personal Shared messaging deliveries", () => {
         namespace,
         "telegram:eliza:42",
         "platform",
+        {
+          platform: "telegram",
+          project: "eliza-app",
+          chatId: "123456789",
+        },
       );
       await expect(response.json()).resolves.toMatchObject({
         data: { reply: "hello from Eliza" },
@@ -441,6 +446,7 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
       "discord:message-42",
       "platform",
+      undefined,
     );
   });
 

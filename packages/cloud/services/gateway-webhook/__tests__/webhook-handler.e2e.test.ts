@@ -542,6 +542,8 @@ describe("gateway webhook handler e2e routing", () => {
     expect(resolveVoiceNote).toHaveBeenCalledWith(expect.anything(), event);
     expect(sharedBody).toEqual({
       platform: "telegram",
+      project: "eliza-app",
+      chatId: "chat-1",
       telegramUserId: "123456789",
       displayName: "Ada",
       messageId: "telegram:eliza-app:update-voice-1",
