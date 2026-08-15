@@ -106,12 +106,9 @@ describe("convertMarkdownToTelegram", () => {
       "```shell-session\r\n$ echo ok\r\n```",
       "```shell-session\n$ echo ok\r\n```",
     ],
-  ])(
-    "preserves CRLF fenced code with language tag %s",
-    (input, expected) => {
-      expect(convertMarkdownToTelegram(input)).toBe(expected);
-    },
-  );
+  ])("preserves CRLF fenced code with language tag %s", (input, expected) => {
+    expect(convertMarkdownToTelegram(input)).toBe(expected);
+  });
 
   it("leaves an unterminated fenced block as escaped plain text", () => {
     expect(convertMarkdownToTelegram("```c++\r\nunterminated")).toBe(
@@ -135,10 +132,7 @@ describe("convertMarkdownToTelegram", () => {
       "[deep](https://x.test/a_(b_(c)))",
       "\\[deep\\]\\(https://x\\.test/a\\_\\(b\\_\\(c\\)\\)\\)",
     ],
-    [
-      "[bad](https://x.test/a_(b)",
-      "\\[bad\\]\\(https://x\\.test/a\\_\\(b\\)",
-    ],
+    ["[bad](https://x.test/a_(b)", "\\[bad\\]\\(https://x\\.test/a\\_\\(b\\)"],
     [
       "[outer [inner]](https://x.test)",
       "\\[outer \\[inner\\]\\]\\(https://x\\.test\\)",
