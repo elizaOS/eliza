@@ -6,16 +6,14 @@
  */
 
 import { runWithDbCacheAsync } from "@/db/client";
-import {
-  type AgentSandbox,
-  agentSandboxesRepository,
-} from "@/db/repositories/agent-sandboxes";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { warmInferenceAdmissionSnapshot } from "@/lib/services/inference-admission-snapshot";
 import { coordinateSharedConversationPrewarm } from "@/lib/services/shared-runtime/conversation-coordinator";
+import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import { logger } from "@/lib/utils/logger";
 import type { Bindings } from "@/types/cloud-worker-env";
 import type { InternalElizaConversationFetchClaims } from "./internal-eliza-conversation-fetch";
@@ -23,7 +21,7 @@ import type { InternalElizaConversationFetchClaims } from "./internal-eliza-conv
 export async function hydrateVoiceSharedAgentScope(
   env: Bindings,
   claims: InternalElizaConversationFetchClaims,
-  preloadedAgent?: AgentSandbox,
+  preloadedAgent?: SharedRuntimeAgent,
 ): Promise<void> {
   await runWithCloudBindingsAsync(
     env as unknown as Record<string, unknown>,

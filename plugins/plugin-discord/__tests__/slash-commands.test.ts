@@ -1,6 +1,6 @@
 /**
- * Unit tests for the `/app` embedded-app launch slash command (#9947).
- * Mocked runtime and interaction.
+ * Unit tests for built-in Discord slash commands, including privileged `/app`
+ * launch and owner-scoped live voice controls, with mocked runtime boundaries.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -251,7 +251,7 @@ describe("builtin command surface (privileged plumbing hidden from pickers)", ()
 
 	it("marks privileged builtins with requiredPermissions and leaves user commands open", () => {
 		const commands = getRegisteredCommands();
-		for (const name of ["settings", "setup", "app", "transcribe"]) {
+		for (const name of ["settings", "setup", "app", "voice", "transcribe"]) {
 			expect(
 				commands.get(name)?.requiredPermissions,
 				`${name} must carry requiredPermissions`,
@@ -266,6 +266,78 @@ describe("builtin command surface (privileged plumbing hidden from pickers)", ()
 				`${name} must stay visible to everyone`,
 			).toBeUndefined();
 		}
+	});
+
+	it("limits /voice join to the canonical owner's current guild channel", async () => {
+		const joinChannel = vi.fn(async () => undefined);
+		const channel = {
+			guild: { id: "guild-1" },
+			id: "voice-1",
+			isVoiceBased: () => true,
+			name: "Owners Room",
+		};
+		const voice = getRegisteredCommands().get("voice");
+		if (!voice) throw new Error('built-in "/voice" command not registered');
+		const runtime = makeRuntime() as IAgentRuntime & {
+			getService: ReturnType<typeof vi.fn>;
+		};
+		runtime.getService = vi.fn(() => ({
+			voiceManager: { joinChannel },
+		}));
+		const interaction = {
+			deferReply: vi.fn(async () => undefined),
+			editReply: vi.fn(async () => undefined),
+			guild: {
+				id: "guild-1",
+				members: {
+					cache: new Map([["owner-1", { voice: { channel } }]]),
+				},
+			},
+			guildId: "guild-1",
+			options: { get: () => ({ value: "join" }) },
+			reply: vi.fn(async () => undefined),
+			user: { id: "owner-1" },
+		};
+
+		await voice.execute(interaction as never, runtime);
+
+		expect(joinChannel).toHaveBeenCalledWith(channel);
+		expect(interaction.editReply).toHaveBeenCalledWith({
+			content: "Joined **Owners Room**.",
+		});
+		expect(voice.requiredRole).toBe("OWNER");
+	});
+
+	it("does not let /voice join place the bot into another member's channel", async () => {
+		const joinChannel = vi.fn(async () => undefined);
+		const voice = getRegisteredCommands().get("voice");
+		if (!voice) throw new Error('built-in "/voice" command not registered');
+		const runtime = makeRuntime() as IAgentRuntime & {
+			getService: ReturnType<typeof vi.fn>;
+		};
+		runtime.getService = vi.fn(() => ({
+			voiceManager: { joinChannel },
+		}));
+		const reply = vi.fn(async () => undefined);
+
+		await voice.execute(
+			{
+				guild: { id: "guild-1", members: { cache: new Map() } },
+				guildId: "guild-1",
+				options: { get: () => ({ value: "join" }) },
+				reply,
+				user: { id: "owner-1" },
+			} as never,
+			runtime,
+		);
+
+		expect(joinChannel).not.toHaveBeenCalled();
+		expect(reply).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.stringContaining("Join a voice channel"),
+				ephemeral: true,
+			}),
+		);
 	});
 
 	it("transforms requiredPermissions into default_member_permissions on the wire", async () => {

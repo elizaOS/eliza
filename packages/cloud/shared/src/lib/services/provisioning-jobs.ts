@@ -45,6 +45,7 @@ import {
   StaleJobExecutionError,
 } from "../../db/repositories/jobs";
 import {
+  type AgentBillingStatus,
   type AgentExecutionTier,
   type AgentSandboxPoolStatus,
   type AgentSandboxStatus,
@@ -823,6 +824,9 @@ interface LifecycleSandboxRow {
   replacement_cleanup_sandbox_id: string | null;
   deletion_attempt_id: string | null;
   deletion_started_at: Date | null;
+  billing_status: AgentBillingStatus;
+  shutdown_warning_sent_at: Date | null;
+  scheduled_shutdown_at: Date | null;
   pool_status: AgentSandboxPoolStatus | null;
 }
 
@@ -1329,6 +1333,9 @@ export class ProvisioningJobService {
         replacement_cleanup_sandbox_id: agentSandboxes.replacement_cleanup_sandbox_id,
         deletion_attempt_id: agentSandboxes.deletion_attempt_id,
         deletion_started_at: agentSandboxes.deletion_started_at,
+        billing_status: agentSandboxes.billing_status,
+        shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
+        scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
         pool_status: agentSandboxes.pool_status,
       })
       .from(agentSandboxes)
@@ -1751,6 +1758,14 @@ export class ProvisioningJobService {
             status: "deletion_pending" as const,
             deletion_attempt_id: deletionAttemptId,
             ...(continuesEarlierDeletion ? {} : { deletion_started_at: new Date() }),
+            ...(isRecoveryReEnqueue
+              ? {}
+              : {
+                  deletion_previous_status: sandbox.status,
+                  deletion_previous_billing_status: sandbox.billing_status,
+                  deletion_previous_shutdown_warning_sent_at: sandbox.shutdown_warning_sent_at,
+                  deletion_previous_scheduled_shutdown_at: sandbox.scheduled_shutdown_at,
+                }),
             // Gated on the BROADER continuation signal than the start time is.
             // `continuesEarlierDeletion` only checks `deletion_started_at`, and
             // nothing ties that column to `status`, so a row already sitting in

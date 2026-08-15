@@ -20,6 +20,7 @@ let billError: Error | null;
 let billingGate: Promise<void> | null;
 let releaseBilling = () => {};
 let streamAbortSignal: AbortSignal | undefined;
+let lastTurnRole: "system" | "user" | undefined;
 const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
@@ -155,8 +156,12 @@ mock.module("../../../db/repositories/characters", () => ({
 }));
 mock.module("./run-shared-agent-turn", () => ({
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
-  runSharedAgentTurn: async (input: { messageIds?: { user: string; assistant: string } }) => {
+  runSharedAgentTurn: async (input: {
+    messageIds?: { user: string; assistant: string };
+    messageRole?: "system" | "user";
+  }) => {
     turnCalls++;
+    lastTurnRole = input.messageRole;
     if (turnError) throw turnError;
     const history = Array.isArray(turn.history)
       ? turn.history.map((message, index) =>
@@ -355,6 +360,7 @@ beforeEach(() => {
       };
     })(),
   };
+  lastTurnRole = undefined;
 });
 
 function wrappedProviderError(statusCode: number): Error {
@@ -384,6 +390,23 @@ describe("SharedRuntimeChatService", () => {
         })
       ).error?.code,
     ).toBe(-32602);
+  });
+
+  test("ignores untrusted RPC roles and accepts only the server option", async () => {
+    const service = new SharedRuntimeChatService();
+    const untrustedRpc = {
+      ...rpc,
+      params: { ...rpc.params, messageRole: "system" },
+    };
+
+    await service.bridge(agent, untrustedRpc, harness());
+    expect(lastTurnRole).toBe("user");
+
+    await service.bridge(agent, rpc, {
+      ...harness(),
+      trustedMessageRole: "system",
+    });
+    expect(lastTurnRole).toBe("system");
   });
 
   test("returns before billing and persists ordered cache-local history", async () => {

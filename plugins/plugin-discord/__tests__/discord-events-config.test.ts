@@ -104,6 +104,21 @@ describe("setupDiscordEventListeners config", () => {
 			}),
 		);
 	});
+
+	it("forwards Discord voice-state changes to the voice manager", async () => {
+		const service = makeService(false);
+		const handleVoiceStateUpdate = vi.fn(async () => undefined);
+		service.voiceManager = { handleVoiceStateUpdate } as never;
+		setupDiscordEventListeners(service as never);
+		const oldState = { channelId: null };
+		const newState = { channelId: "voice-1" };
+
+		service.client.emit("voiceStateUpdate", oldState, newState);
+
+		await vi.waitFor(() => {
+			expect(handleVoiceStateUpdate).toHaveBeenCalledWith(oldState, newState);
+		});
+	});
 });
 
 // The cooldown-gating half of the "@bot ^^" pointer fix lives in the flush

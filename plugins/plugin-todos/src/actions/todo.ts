@@ -577,7 +577,11 @@ export const todoAction: Action = {
       description:
         "Positive safe integer maximum rows to return for action=list; omit for unlimited results.",
       required: false,
-      schema: { type: "integer" as const, minimum: 1 },
+      schema: {
+        type: "integer" as const,
+        minimum: 1,
+        maximum: Number.MAX_SAFE_INTEGER,
+      },
     },
   ],
   validate: async (runtime: IAgentRuntime) => Boolean(getTodosService(runtime)),
