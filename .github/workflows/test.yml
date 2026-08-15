@@ -61,8 +61,6 @@ jobs:
       contents: read
     env:
       ELIZACLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
-      DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
-      DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
       AGENT_IMAGE_CANARY_MODE: upgrade
       AGENT_IMAGE_CANARY_REQUEST_ID: f3db716e-3b51-4cc7-8b27-b73ab04bf320
       AGENT_IMAGE_CANARY_EXPECTED_DEPLOY_COMMIT: 918429501ec96782ca163802f7f24e5b8d8cdd27
@@ -76,31 +74,21 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: "1.3.14"
-      - name: Require protected production credentials
+      - name: Require protected production credential
         shell: bash
+        run: test -n "${ELIZACLOUD_API_KEY//[[:space:]]/}"
+      - name: Preview, execute, verify, and bind rollback
         run: |
-          test -n "${ELIZACLOUD_API_KEY//[[:space:]]/}"
-          test -n "${DEPLOY_HOST//[[:space:]]/}"
-          test -n "${DEPLOY_SSH_KEY//[[:space:]]/}"
-      - name: Inspect the stuck agent restart lifecycle
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+          mkdir -p reports
+          bun packages/cloud/scripts/admin/agent-image-canary-live.ts
+      - name: Upload privacy-safe rollout evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          host: ${{ env.DEPLOY_HOST }}
-          username: deploy
-          key: ${{ env.DEPLOY_SSH_KEY }}
-          command_timeout: 3m
-          envs: ELIZACLOUD_API_KEY
-          script: |
-            set -euo pipefail
-            curl --silent --show-error --fail --max-time 30 \
-              --header "Authorization: Bearer $ELIZACLOUD_API_KEY" \
-              'https://api.eliza.app/api/v1/admin/docker-containers?limit=500' \
-              | jq -c '.data.containers[] | select(.id == "4602b3be-2c01-4e7e-9cdc-849604e1bef7") | {status,nodeId,containerName,dockerImage,imageDigest,lastHeartbeatAt,errorMessage}'
-            systemctl list-units --type=service --all --no-legend \
-              | awk 'tolower($0) ~ /provision/ {print $1, $3, $4}'
-            journalctl --since '25 minutes ago' --no-pager \
-              | grep -F 'f1ba0b6a-3866-405b-8ec9-efd96858625a' \
-              | tail -80
+          name: eliza-x-agent-image-canary
+          path: reports/agent-image-canary.json
+          if-no-files-found: error
+          retention-days: 7
 
   changes:
     name: Classify changed paths
