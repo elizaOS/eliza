@@ -4011,11 +4011,19 @@ function terminalMessageFromToolCalls(
  * the log into the channel. The contract is structural: tools declare what is
  * safe to show, the framework never guesses by parsing wrapper text.
  */
-function latestToolResultText(
+export function latestToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	for (const step of [...trajectory.steps].reverse()) {
-		const text = step.result?.userFacingText?.trim();
+		const result = step.result;
+		// A failed step's text is planner-facing diagnostics unless the tool
+		// explicitly claimed failure authority (verifiedUserFacing) — surfacing
+		// it here delivered raw catalog errors verbatim when the evaluator
+		// finished without a messageToUser (live tj-1a1dd4704d0293).
+		if (result?.success === false && result.verifiedUserFacing !== true) {
+			continue;
+		}
+		const text = result?.userFacingText?.trim();
 		if (text) {
 			return text;
 		}

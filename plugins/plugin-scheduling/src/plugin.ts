@@ -13,8 +13,8 @@ import { schedulingDbSchema } from "./scheduled-task/db-schema.js";
 import { buildFallbackDefaultPack } from "./scheduled-task/default-pack.js";
 
 import {
-  getScheduledTaskRunner,
   getScheduledTaskRunnerDeps,
+  registerScheduledTaskRunnerBootHook,
   ScheduledTaskRunnerService,
 } from "./scheduled-task/runner-service.js";
 import {
@@ -80,49 +80,54 @@ export const schedulingPlugin: Plugin = {
   ],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     registerStandaloneTickWorker(runtime);
-    // Seed registered default-task packs once init has finished so the runner
-    // service (and any consumer's injected deps + packs) are registered before
-    // the seed runs. Failures are non-fatal to plugin load.
-    void runtime.initPromise
-      .then(async () => {
-        try {
-          await waitForScheduledTaskRunnerService(runtime);
-          // Register the built-in fallback pack only when no consumer host has
-          // injected deps (e.g. a stock mobile boot without
-          // @elizaos/plugin-personal-assistant). When a host is present it owns
-          // the domain content; `seedRegisteredTaskPacks` would also drop a
-          // fallback pack via its consumer-pack gate, but skipping registration
-          // here keeps the registry honest and avoids seeding generic defaults
-          // alongside a host's richer pack.
-          const hasConsumerHost = getScheduledTaskRunnerDeps(runtime) !== null;
-          const alreadyRegistered = getDefaultTaskPacks(runtime).length > 0;
-          if (!hasConsumerHost && !alreadyRegistered) {
-            registerDefaultTaskPack(
-              runtime,
-              buildFallbackDefaultPack({ agentId: runtime.agentId }),
-            );
-          }
-          const runner = getScheduledTaskRunner(runtime, {
-            agentId: runtime.agentId,
-          });
-          await seedRegisteredTaskPacks(runtime, runner);
-          // Fallback TaskService worker: without this, a runtime with no
-          // consumer host (plugin-personal-assistant) accepts scheduled
-          // tasks over REST but never fires them — `once`/`cron`/`interval`
-          // rows sat `scheduled` forever (sol-dev cutover QA 2026-08-11).
-          // The worker defers per-invocation when a consumer host's deps are
-          // registered. Core TaskService remains the only wall clock.
-          await ensureStandaloneTickTask(runtime);
-        } catch (error) {
-          logger.warn(
-            { src: "scheduling:boot-seed", agentId: runtime.agentId, error },
-            "[scheduling] Default-pack boot seed failed; tasks can still be scheduled at runtime.",
+    // Seed registered default-task packs through the runner boot hook: the
+    // hook fires with the live service instance the moment
+    // ScheduledTaskRunnerService.start constructs it, so seeding structurally
+    // cannot run before the runner exists (#16309). The initPromise await
+    // inside the hook lets every consumer plugin finish registering its deps
+    // and packs first. Failures are non-fatal to plugin load but observable
+    // through runtime.reportError.
+    registerScheduledTaskRunnerBootHook(runtime, async (service) => {
+      try {
+        await runtime.initPromise;
+        // Register the built-in fallback pack only when no consumer host has
+        // injected deps (e.g. a stock mobile boot without
+        // @elizaos/plugin-personal-assistant). When a host is present it owns
+        // the domain content; `seedRegisteredTaskPacks` would also drop a
+        // fallback pack via its consumer-pack gate, but skipping registration
+        // here keeps the registry honest and avoids seeding generic defaults
+        // alongside a host's richer pack.
+        const hasConsumerHost = getScheduledTaskRunnerDeps(runtime) !== null;
+        const alreadyRegistered = getDefaultTaskPacks(runtime).length > 0;
+        if (!hasConsumerHost && !alreadyRegistered) {
+          registerDefaultTaskPack(
+            runtime,
+            buildFallbackDefaultPack({ agentId: runtime.agentId }),
           );
         }
-      })
-      .catch(() => {
-        /* initPromise rejection is surfaced elsewhere */
-      });
+        const runner = service.getRunner({ agentId: runtime.agentId });
+        await seedRegisteredTaskPacks(runtime, runner);
+        // Fallback TaskService worker: without this, a runtime with no
+        // consumer host (plugin-personal-assistant) accepts scheduled
+        // tasks over REST but never fires them — `once`/`cron`/`interval`
+        // rows sat `scheduled` forever (sol-dev cutover QA 2026-08-11).
+        // The worker defers per-invocation when a consumer host's deps are
+        // registered. Core TaskService remains the only wall clock.
+        await ensureStandaloneTickTask(runtime);
+      } catch (error) {
+        // error-policy:J7 boot seeding is diagnostic work relative to the
+        // runner service: report it so boot health observers see the failure
+        // instead of a silently healthy boot, then keep the runtime alive —
+        // tasks can still be scheduled at runtime.
+        runtime.reportError("scheduling.bootSeed", error, {
+          agentId: runtime.agentId,
+        });
+        logger.warn(
+          { src: "scheduling:boot-seed", agentId: runtime.agentId, error },
+          "[scheduling] Default-pack boot seed failed; tasks can still be scheduled at runtime.",
+        );
+      }
+    });
   },
   dispose: async (runtime: IAgentRuntime) => {
     try {

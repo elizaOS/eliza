@@ -523,6 +523,162 @@ describe("BROWSER action", () => {
   });
 });
 
+describe("BROWSER restored interaction vocabulary (#18259)", () => {
+  it("dispatches scroll with direction and pixels", async () => {
+    const service = browserService({
+      value: { axis: "y", selector: null, value: 480 },
+    });
+    const { result } = await runBrowserAction({
+      service,
+      parameters: { action: "scroll", direction: "up", pixels: 480 },
+    });
+
+    expect(service.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        direction: "up",
+        pixels: 480,
+        subaction: "scroll",
+      }),
+      undefined,
+    );
+    expect(result?.success).toBe(true);
+    expect(result?.text).toContain("Scrolled up");
+  });
+
+  it("infers scroll when only direction or pixels are provided", async () => {
+    const service = browserService({ value: { axis: "y", value: 240 } });
+    await runBrowserAction({ service, parameters: { pixels: 240 } });
+    expect(service.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ pixels: 240, subaction: "scroll" }),
+      undefined,
+    );
+
+    const directional = browserService({ value: { axis: "y", value: 240 } });
+    await runBrowserAction({
+      service: directional,
+      parameters: { direction: "down" },
+    });
+    expect(directional.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ direction: "down", subaction: "scroll" }),
+      undefined,
+    );
+  });
+
+  it("normalizes scroll_into to the workspace scrollinto command", async () => {
+    const service = browserService({
+      value: { scrolled: true, selector: "#footer" },
+    });
+    const { result } = await runBrowserAction({
+      service,
+      parameters: { action: "scroll_into", selector: "#footer" },
+    });
+
+    expect(service.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ selector: "#footer", subaction: "scrollinto" }),
+      undefined,
+    );
+    expect(result?.text).toContain("Scrolled #footer into view");
+  });
+
+  it("dispatches hover against the requested selector", async () => {
+    const service = browserService({
+      value: { hovered: true, selector: "#menu" },
+    });
+    const { result } = await runBrowserAction({
+      service,
+      parameters: { action: "hover", selector: "#menu" },
+    });
+
+    expect(service.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ selector: "#menu", subaction: "hover" }),
+      undefined,
+    );
+    expect(result?.text).toContain("Hovering over #menu");
+  });
+
+  it("dispatches drag carrying the drop target in value", async () => {
+    const service = browserService({
+      value: { source: "#card", target: "#column" },
+    });
+    const { result } = await runBrowserAction({
+      service,
+      parameters: {
+        action: "drag",
+        selector: "#card",
+        targetSelector: "#column",
+      },
+    });
+
+    expect(service.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selector: "#card",
+        subaction: "drag",
+        value: "#column",
+      }),
+      undefined,
+    );
+    expect(result?.text).toContain("Dragged #card to #column");
+  });
+
+  it("dispatches plain fill as replace semantics and clear as empty fill", async () => {
+    const service = browserService({
+      value: { selector: "#query", value: "travel" },
+    });
+    await runBrowserAction({
+      service,
+      parameters: { action: "fill", selector: "#query", text: "travel" },
+    });
+    expect(service.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selector: "#query",
+        subaction: "fill",
+        value: "travel",
+      }),
+      undefined,
+    );
+
+    const clearing = browserService({
+      value: { selector: "#query", value: "" },
+    });
+    const { result } = await runBrowserAction({
+      service: clearing,
+      parameters: { action: "clear", selector: "#query" },
+    });
+    expect(clearing.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selector: "#query",
+        subaction: "fill",
+        value: "",
+      }),
+      undefined,
+    );
+    expect(result?.text).toContain("Cleared #query");
+  });
+
+  it("grounds receipt values in the tab the backend actually affected", async () => {
+    const service = browserService({
+      tab: {
+        id: "tab-9",
+        title: "Details Loaded",
+        url: "https://example.test/details",
+        visible: true,
+      },
+    });
+    const { result } = await runBrowserAction({
+      service,
+      parameters: { action: "hover", selector: "#menu" },
+    });
+
+    expect(result?.values).toMatchObject({
+      tabId: "tab-9",
+      title: "Details Loaded",
+      url: "https://example.test/details",
+    });
+    expect(result?.text).toContain("Details Loaded");
+    expect(result?.text).toContain("example.test/details");
+  });
+});
+
 describe("BROWSER routing hint (#12209)", () => {
   it("states its planner boundary versus WEB_FETCH, WEB_SEARCH, and COMPUTER_USE", () => {
     const hint = browserAction.routingHint ?? "";

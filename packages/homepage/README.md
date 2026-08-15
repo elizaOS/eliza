@@ -23,7 +23,7 @@ cp .env.example .env.local
 | `VITE_ELIZACLOUD_API_URL` | Eliza Cloud backend URL (defaults to `https://api.eliza.app`) |
 | `VITE_TELEGRAM_BOT_USERNAME` | Optional Telegram bot username override (default `ElizaIsNotABot`) |
 | `VITE_TELEGRAM_BOT_ID` | Optional numeric Telegram bot ID override (default `8931353359`) |
-| `VITE_DISCORD_CLIENT_ID` | Optional Discord Application ID override (default `1474591626759376967`) |
+| `VITE_DISCORD_CLIENT_ID` | Optional Discord Application ID override (default `1468649258654630063`) |
 | `WHATSAPP_PUBLIC_ENABLED` | Deployment switch that must be true before the public WhatsApp CTA is built |
 | `VITE_WHATSAPP_PHONE_NUMBER` | Admitted Blooio WhatsApp sender in E.164 format; set to the shared `+18087881821` number |
 
