@@ -2200,6 +2200,10 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
     return undefined;
   }
 
+  if (cadenceKind === "unscheduled") {
+    return { kind: "unscheduled" };
+  }
+
   if (cadenceKind === "once" && typeof record.dueAt === "string") {
     return {
       kind: "once",
@@ -2365,6 +2369,7 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
 export function buildCadenceFromLlmParams(
   params: ExtractedTaskParams,
   context?: {
+    allowUnscheduled?: boolean;
     intent?: string;
     now?: Date;
     timeZone?: string;
@@ -2378,7 +2383,9 @@ export function buildCadenceFromLlmParams(
   // Explicitly undated ("no due date", "just a plain todo"): a real answer,
   // not a missing one — no windows/slots machinery applies.
   if (kind === "unscheduled") {
-    return { cadence: { kind: "unscheduled" } };
+    return context?.allowUnscheduled === true
+      ? { cadence: { kind: "unscheduled" } }
+      : null;
   }
   const effectiveTimeZone = context?.timeZone;
   const timeOfDayMinute =
@@ -4322,6 +4329,7 @@ async function runLifeOperationHandlerInner(
                   windowPolicy?.timezone,
               ) ?? ownerFactTimeZone;
             const llmCadence = buildCadenceFromLlmParams(llmPlan, {
+              allowUnscheduled: ownerSurfaceActionName === "OWNER_TODOS",
               intent,
               timeZone: llmCadenceTimeZone ?? undefined,
             });
@@ -4351,6 +4359,12 @@ async function runLifeOperationHandlerInner(
             deferredDefinitionDraft?.request.timezone ??
             windowPolicy?.timezone,
         ) ?? ownerFactTimeZone;
+      if (
+        cadence?.kind === "unscheduled" &&
+        ownerSurfaceActionName !== "OWNER_TODOS"
+      ) {
+        cadence = undefined;
+      }
       const timedRequestKind = llmRequestKind;
       const nativeAppleMetadata =
         timedRequestKind && cadence?.kind === "once"
@@ -4455,7 +4469,7 @@ async function runLifeOperationHandlerInner(
         (detailString(details, "kind") as
           | CreateLifeOpsDefinitionRequest["kind"]
           | undefined) ??
-        "habit";
+        (ownerSurfaceActionName === "OWNER_TODOS" ? "task" : "habit");
       const leadShaped = applyLeadUpReminderShape({
         cadence,
         plan:
