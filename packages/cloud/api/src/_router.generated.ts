@@ -636,6 +636,7 @@ import _route_v1_twilio_voice_media_route from "../v1/twilio/voice/media/route";
 import _route_v1_twitter_callback_route from "../v1/twitter/callback/route";
 import _route_v1_twitter_connect_route from "../v1/twitter/connect/route";
 import _route_v1_twitter_disconnect_route from "../v1/twitter/disconnect/route";
+import _route_v1_twitter_personal_message_route from "../v1/twitter/personal-message/route";
 import _route_v1_twitter_status_route from "../v1/twitter/status/route";
 import _route_v1_twitter_token_route from "../v1/twitter/token/route";
 import _route_v1_user_avatar_route from "../v1/user/avatar/route";
@@ -2369,6 +2370,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/twitter/callback", _route_v1_twitter_callback_route);
   app.route("/api/v1/twitter/connect", _route_v1_twitter_connect_route);
   app.route("/api/v1/twitter/disconnect", _route_v1_twitter_disconnect_route);
+  app.route(
+    "/api/v1/twitter/personal-message",
+    _route_v1_twitter_personal_message_route,
+  );
   app.route("/api/v1/twitter/status", _route_v1_twitter_status_route);
   app.route("/api/v1/twitter/token", _route_v1_twitter_token_route);
   app.route("/api/v1/user/avatar", _route_v1_user_avatar_route);
