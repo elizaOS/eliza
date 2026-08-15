@@ -108,11 +108,13 @@ describe("desktop bottom-bar config", () => {
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: false,
+        passthrough: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: true,
+        passthrough: true,
       });
     });
 
@@ -127,6 +129,7 @@ describe("desktop bottom-bar config", () => {
         mode: "default",
         titleBarStyle: "default",
         transparent: false,
+        passthrough: false,
       });
       expect(
         resolveDesktopShellWindowPresentation(
@@ -138,6 +141,7 @@ describe("desktop bottom-bar config", () => {
         mode: "default",
         titleBarStyle: "hiddenInset",
         transparent: false,
+        passthrough: false,
       });
     });
 
@@ -155,10 +159,33 @@ describe("desktop bottom-bar config", () => {
         mode: "kiosk",
         titleBarStyle: "hidden",
         transparent: false,
+        passthrough: false,
       });
     });
   });
 
+    it("uses per-pixel passthrough only for the transparent macOS bottom bar", () => {
+      expect(
+        resolveDesktopShellWindowPresentation({}, [], "darwin").passthrough,
+      ).toBe(true);
+      expect(
+        resolveDesktopShellWindowPresentation({}, [], "win32").passthrough,
+      ).toBe(false);
+      expect(
+        resolveDesktopShellWindowPresentation(
+          { ELIZA_DESKTOP_BOTTOM_BAR: "0" },
+          [],
+          "darwin",
+        ).passthrough,
+      ).toBe(false);
+      expect(
+        resolveDesktopShellWindowPresentation(
+          { ELIZAOS_SHELL_MODE: "kiosk" },
+          [],
+          "darwin",
+        ).passthrough,
+      ).toBe(false);
+    });
   describe("shouldReanchorBottomBar", () => {
     const base = { x: 0, y: 24, width: 1920, height: 1056 };
 
