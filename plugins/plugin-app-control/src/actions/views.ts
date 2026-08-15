@@ -2400,6 +2400,7 @@ const VIEWS_ROUTING_HINT = [
 	"Close/hide means VIEWS action=close, never delete/remove.",
 	"Listing, launching, or restarting installed applications uses APP; only opening the apps/views page uses VIEWS.",
 	"Changing a settings or permission value uses SETTINGS; VIEWS only opens the Settings surface.",
+	"Reading or changing the owner's todos, goals, reminders, routines, alarms, health, or finances uses the OWNER_* actions; VIEWS only opens those surfaces and never returns that data.",
 ].join(" ");
 
 export function createViewsAction(deps: ViewsActionDeps = {}): Action {
