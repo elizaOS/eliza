@@ -8,9 +8,10 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { currentTodosProvider } from "../providers/current-todos.js";
+import { TODO_LIST_LIMIT_ERROR_CODE, TodosService } from "../service.js";
 import { TODOS_SERVICE_TYPE } from "../types.js";
 import { todoAction } from "./todo.js";
 
@@ -40,6 +41,7 @@ class FakeTodosService {
   private nextId = 0;
   rows: StoredTodo[] = [];
   failOn: string | null = null;
+  listCallCount = 0;
 
   private throwIf(operation: string): void {
     if (this.failOn === operation) {
@@ -86,9 +88,11 @@ class FakeTodosService {
     agentId?: string;
     roomId?: string | null;
     includeCompleted?: boolean;
+    limit?: number;
   }): Promise<StoredTodo[]> {
+    this.listCallCount++;
     this.throwIf("list");
-    return this.rows.filter((r) => {
+    let results = this.rows.filter((r) => {
       if (r.entityId !== filter.entityId) return false;
       if (filter.agentId && r.agentId !== filter.agentId) return false;
       if (filter.roomId && r.roomId !== filter.roomId) return false;
@@ -100,6 +104,10 @@ class FakeTodosService {
       }
       return true;
     });
+    if (filter.limit !== undefined) {
+      results = results.slice(0, filter.limit);
+    }
+    return results;
   }
 
   async update(
@@ -626,6 +634,134 @@ describe("TODO action", () => {
       expect(result.success).toBe(true);
       expect(result.data).toMatchObject({ action: "create", op: "create" });
     });
+  });
+
+  describe("action=list limit validation", () => {
+    beforeEach(async () => {
+      // Create 5 todos for limit testing
+      for (let i = 1; i <= 5; i++) {
+        await invoke(runtime, {
+          action: "create",
+          content: `task ${i}`,
+          status: "pending",
+        });
+      }
+    });
+
+    it("accepts positive integer limit and returns capped results", async () => {
+      const result = await invoke(runtime, {
+        action: "list",
+        limit: 3,
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as { todos: unknown[] };
+      expect(data.todos.length).toBe(3);
+    });
+
+    it("omitted limit returns all results (unlimited)", async () => {
+      const result = await invoke(runtime, { action: "list" });
+      expect(result.success).toBe(true);
+      const data = result.data as { todos: unknown[] };
+      expect(data.todos.length).toBe(5);
+      expect(service.listCallCount).toBe(1);
+    });
+
+    it("reads a supplied limit once before validation and use", async () => {
+      let reads = 0;
+      const parameters = {
+        action: "list",
+        get limit() {
+          reads += 1;
+          return reads === 1 ? 1 : undefined;
+        },
+      };
+
+      const result = await invoke(runtime, parameters);
+
+      expect(result.success).toBe(true);
+      expect((result.data as { todos: unknown[] }).todos).toHaveLength(1);
+      expect(reads).toBe(1);
+    });
+
+    it.each([
+      ["zero", 0],
+      ["negative", -5],
+      ["fraction", 2.5],
+      ["NaN", Number.NaN],
+      ["infinity", Number.POSITIVE_INFINITY],
+      ["unsafe integer", Number.MAX_SAFE_INTEGER + 1],
+      ["numeric string", "3"],
+      ["non-numeric string", "abc"],
+      ["null", null],
+      ["boolean", false],
+      ["explicit undefined", undefined],
+    ])(
+      "rejects a supplied %s before calling the service",
+      async (_name, limit) => {
+        const result = await invoke(runtime, {
+          action: "list",
+          limit,
+        });
+        expect(result.success).toBe(false);
+        expect(result.text).toContain("invalid_param");
+        expect(result.text).toContain("positive safe integer number");
+        expect(service.listCallCount).toBe(0);
+      },
+    );
+  });
+
+  describe("TodosService.list limit validation", () => {
+    it("uses the same single-read limit value for the database query", async () => {
+      let reads = 0;
+      const limit = vi.fn(async () => []);
+      const orderBy = vi.fn(() => ({ limit }));
+      const where = vi.fn(() => ({ orderBy }));
+      const from = vi.fn(() => ({ where }));
+      const select = vi.fn(() => ({ from }));
+      const directService = new TodosService({
+        db: { select },
+      } as unknown as IAgentRuntime);
+      const filter = {
+        entityId: ENTITY,
+        get limit() {
+          reads += 1;
+          return reads === 1 ? 1 : undefined;
+        },
+      };
+
+      await directService.list(filter);
+
+      expect(reads).toBe(1);
+      expect(limit).toHaveBeenCalledWith(1);
+    });
+
+    it.each([
+      ["zero", 0],
+      ["negative", -1],
+      ["fraction", 1.5],
+      ["NaN", Number.NaN],
+      ["numeric string", "2"],
+      ["explicit undefined", undefined],
+    ])(
+      "rejects a supplied %s before reading the database",
+      async (_name, limit) => {
+        const select = vi.fn();
+        const directService = new TodosService({
+          db: { select },
+        } as unknown as IAgentRuntime);
+
+        await expect(
+          directService.list({
+            entityId: ENTITY,
+            limit: limit as number,
+          }),
+        ).rejects.toMatchObject({
+          name: "ElizaError",
+          code: TODO_LIST_LIMIT_ERROR_CODE,
+        });
+        expect(select).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe("persistence failures", () => {
