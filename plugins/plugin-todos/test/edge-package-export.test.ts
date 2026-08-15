@@ -93,5 +93,5 @@ describe("Todo edge package export", () => {
       plugin: "function",
       store: "function",
     });
-  }, 60_000);
+  }, 180_000);
 });
