@@ -159,6 +159,26 @@ describe("splitText", () => {
 		expect(await splitter.splitText("aa bb cc")).toEqual(["aa bb", "cc"]);
 	});
 
+	it("keeps an exact-boundary split whole under an async non-additive metric", async () => {
+		const measuredLength = async (text: string): Promise<number> =>
+			text === "aa bb" ? 4 : text.length;
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 4,
+			chunkOverlap: 1,
+			separators: ["|", " ", ""],
+			keepSeparator: false,
+			lengthFunction: measuredLength,
+		});
+
+		// The complete first segment is valid at the exact boundary. Recursing
+		// into its finer separator would measure the pieces independently and
+		// fragment the observable output even though the supplied metric accepts it.
+		const chunks = await splitter.splitText("aa bb|cc");
+		expect(chunks).toEqual(["aa bb", "cc"]);
+		for (const chunk of chunks) {
+			expect(await measuredLength(chunk)).toBeLessThanOrEqual(4);
+		}
+	});
 	it("measures dropped separators with the custom length function", async () => {
 		const weightedLength = async (text: string) =>
 			Array.from(text).reduce(
