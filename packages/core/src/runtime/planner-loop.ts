@@ -117,6 +117,10 @@ import type {
 	TrajectoryRecorder,
 } from "./trajectory-recorder";
 import { captureToolStageIO } from "./trajectory-recorder";
+import {
+	containsReasoningMarkup,
+	stripReasoningArtifacts,
+} from "./reasoning-artifacts";
 import { sanitizeUserVisibleModelOutput } from "./user-visible-model-output";
 
 export {
@@ -4755,19 +4759,6 @@ function isJunkCodingReply(text: unknown): boolean {
 }
 
 /**
- * Strip reasoning-model scaffolding that leaks into a final reply: a
- * `<think>…</think>` block, or a stray closing `</think>` with the chain-of-
- * thought before it (keep only the answer after the last `</think>`). Observed
- * with glm-4.7 on Cerebras: "…Let me verify.</think>I've fixed both validators…".
- */
-function stripReasoningArtifacts(text: string): string {
-	let out = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
-	const lastClose = out.toLowerCase().lastIndexOf("</think>");
-	if (lastClose >= 0) out = out.slice(lastClose + "</think>".length);
-	return out.replace(/<\/?think>/gi, "").trim();
-}
-
-/**
  * Coding-mode user-facing reply: strip reasoning artifacts, drop a junk model
  * message, and fall back to a synthesized "what I did" summary — so the
  * eliza-code sub-agent always relays a clean result for successful work
@@ -5437,7 +5428,7 @@ export function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	// `None</think>\`\`\`json {"success": true, "decision": "FINISH"…}` to
 	// Discord when a think-prefixed envelope defeated the parser). Egress is
 	// the last line: reject both shapes regardless of how they got here.
-	if (text.includes("</think>")) return true;
+	if (containsReasoningMarkup(text)) return true;
 	if (
 		/"decision"\s*:\s*"(?:FINISH|CONTINUE|NEXT_RECOMMENDED)"/.test(text) &&
 		/"success"\s*:\s*(?:true|false)/.test(text)
