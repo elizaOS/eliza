@@ -512,6 +512,28 @@ describe("runtime-internal participant census (#19999)", () => {
 		});
 	});
 
+	it("execution-time revalidation applies the same census filter as attestation", async () => {
+		const { runtime, setParticipants } = censusHarness(
+			new Map([
+				[
+					TRIGGER_ENTITY,
+					{ metadata: { triggerEntity: { triggerId: TRIGGER_ID } } },
+				],
+			]),
+		);
+		setParticipants([OWNER, AGENT, TRIGGER_ENTITY]);
+		const turn = message();
+		await attestAuthenticatedApiDeliveryAudience(runtime, turn, {
+			kind: "owner_api_token",
+			principalId: "owner-token",
+		});
+		// Without the revalidation-side filter this fails audience_changed: the
+		// attested census is filtered while the recheck would see the raw room.
+		await expect(
+			revalidateOwnerExclusiveDisclosure(runtime, turn),
+		).resolves.toMatchObject({ allowed: true });
+	});
+
 	it("a registered runtime-managed internal actor is excluded without a marker", async () => {
 		const { runtime, setParticipants } = censusHarness(new Map());
 		setParticipants([OWNER, AGENT, GUEST]);

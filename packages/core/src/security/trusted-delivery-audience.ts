@@ -22,11 +22,11 @@
 
 import { ElizaError } from "../errors";
 import { resolveCanonicalOwnerIdForMessage } from "../roles";
-import { stringToUuid } from "../utils";
 import type { DisclosureGate } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
+import { stringToUuid } from "../utils";
 
 const trustedDeliveryAudienceBrand: unique symbol = Symbol(
 	"eliza.trusted-delivery-audience.brand",
@@ -653,10 +653,17 @@ export async function revalidateOwnerExclusiveDisclosure(
 	if (!initial.allowed) return initial;
 
 	try {
-		const [participants, canonicalOwnerEntityId] = await Promise.all([
+		const [rawParticipants, canonicalOwnerEntityId] = await Promise.all([
 			runtime.getParticipantsForRoom(message.roomId),
 			resolveCanonicalOwnerIdForMessage(runtime, message),
 		]);
+		// The attested census excluded runtime-internal synthetic actors, so the
+		// revalidation must compare like with like — otherwise a room that ever
+		// hosted a trigger fire flips every later check to audience_changed.
+		const participants = await filterRuntimeInternalParticipants(
+			runtime,
+			rawParticipants,
+		);
 		const room =
 			initial.audience.provenance === "canonical_room"
 				? await runtime.getRoom(message.roomId)
