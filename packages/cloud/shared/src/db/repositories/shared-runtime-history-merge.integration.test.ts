@@ -61,6 +61,14 @@ describe("SharedRuntimeHistoryRepository.merge", () => {
             role: "assistant",
             content: "first reply",
             createdAt: 2,
+            grounding: {
+              kind: "web_search",
+              query: "NubsCarson Tessera GitHub",
+              provider: "parallel",
+              text: "Tessera validates ARC resources through an origin guard.",
+              observedAt: 2,
+              truncated: false,
+            },
           },
         ],
         40,
@@ -88,6 +96,14 @@ describe("SharedRuntimeHistoryRepository.merge", () => {
       "user-2",
       "assistant-2",
     ]);
+    expect(stored[1]?.grounding).toEqual({
+      kind: "web_search",
+      query: "NubsCarson Tessera GitHub",
+      provider: "parallel",
+      text: "Tessera validates ARC resources through an origin guard.",
+      observedAt: 2,
+      truncated: false,
+    });
   });
 
   test("a stale direct-writer snapshot cannot erase a mirrored turn", async () => {

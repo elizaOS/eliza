@@ -223,6 +223,7 @@ export * from "./providers/setup-progress";
 export * from "./providers/skill-eligibility";
 // Provisioning (migrations, agent/entity/room, embedding dimension) - node only
 export * from "./provisioning";
+export * from "./public-web-grounding";
 export * from "./recent-messages-state";
 export * from "./roles";
 export * from "./runtime";

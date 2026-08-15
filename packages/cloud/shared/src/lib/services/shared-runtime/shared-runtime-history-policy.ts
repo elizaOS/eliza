@@ -4,6 +4,18 @@
  * mirror, retry, or direct writer converges instead of replacing newer turns.
  */
 
+import {
+  encodePublicWebGrounding,
+  parsePublicWebGrounding,
+  selectRelevantPublicWebGroundingIds,
+  stringToUuid,
+} from "@elizaos/core/edge";
+import type { ModelMessage } from "ai";
+import type {
+  SharedRuntimeHistoryMessage,
+  SharedRuntimePublicGrounding,
+} from "../../../db/schemas/shared-runtime-history";
+
 export const MAX_HISTORY_MESSAGES = 40;
 
 const RECENT_CONTEXT_MESSAGES = 24;
@@ -46,12 +58,129 @@ const STOP_WORDS = new Set([
   "you",
 ]);
 
-export interface SharedRuntimeHistoryMessageLike {
-  id?: string;
-  role: "system" | "user" | "assistant";
-  content: string;
-  createdAt?: number;
-  interrupted?: boolean;
+export type SharedRuntimeHistoryMessageLike = SharedRuntimeHistoryMessage;
+
+function publicGrounding(value: unknown): SharedRuntimePublicGrounding | undefined {
+  return parsePublicWebGrounding(value);
+}
+
+/** Extracts only a successful Worker-safe public read for durable follow-up grounding. */
+export function sharedPublicWebGrounding(
+  actionResults: readonly unknown[] | undefined,
+): SharedRuntimePublicGrounding | undefined {
+  let data: Record<string, unknown> | undefined;
+  for (let index = (actionResults?.length ?? 0) - 1; index >= 0; index -= 1) {
+    const candidate = actionResults?.[index];
+    if (!candidate || typeof candidate !== "object") continue;
+    const record = candidate as { success?: unknown; data?: unknown };
+    if (!record.data || typeof record.data !== "object") continue;
+    const candidateData = record.data as Record<string, unknown>;
+    if (record.success === true && candidateData.actionName === "WEB_SEARCH") {
+      data = candidateData;
+      break;
+    }
+  }
+  const query = data?.query;
+  const provider = data?.provider;
+  const value = data?.value;
+  if (
+    typeof query !== "string" ||
+    !query.trim() ||
+    (provider !== "parallel" && provider !== "exa") ||
+    typeof value !== "string" ||
+    !value.trim()
+  ) {
+    return undefined;
+  }
+  return parsePublicWebGrounding({
+    kind: "web_search",
+    query: query.trim(),
+    provider,
+    text: value,
+    observedAt: Date.now(),
+    truncated: data?.truncated === true,
+  });
+}
+
+/** Converts one durable turn into the exact bounded context shown to either model path. */
+export function sharedRuntimeModelHistoryContent(message: SharedRuntimeHistoryMessageLike): string {
+  const visible =
+    message.role === "assistant" && message.interrupted
+      ? `[interrupted assistant partial]\n${message.content}`
+      : message.content;
+  return visible;
+}
+
+/** Projects durable history into a prompt with at most two relevant public-read payloads. */
+export function sharedRuntimeModelHistoryContents(
+  history: SharedRuntimeHistoryMessageLike[],
+  _queryText: string,
+): string[] {
+  return history.map((message) => sharedRuntimeModelHistoryContent(message));
+}
+
+function selectedGroundingIndices(
+  history: SharedRuntimeHistoryMessageLike[],
+  queryText: string,
+): Set<number> {
+  const selected = selectRelevantPublicWebGroundingIds(
+    history.flatMap((message, index) => {
+      const grounding =
+        message.role === "assistant" ? publicGrounding(message.grounding) : undefined;
+      return grounding
+        ? [
+            {
+              id: String(index),
+              prose: message.content,
+              grounding,
+              immediate: index === history.length - 1,
+            },
+          ]
+        : [];
+    }),
+    queryText,
+  );
+  return new Set([...selected].map(Number));
+}
+
+/** Projects selected evidence as native tool results while keeping assistant prose separate. */
+export function sharedRuntimeModelHistoryMessages(
+  history: SharedRuntimeHistoryMessageLike[],
+  queryText: string,
+): ModelMessage[] {
+  const contents = sharedRuntimeModelHistoryContents(history, queryText);
+  const selected = selectedGroundingIndices(history, queryText);
+  const messages: ModelMessage[] = [];
+  for (const [index, message] of history.entries()) {
+    const grounding = selected.has(index) ? publicGrounding(message.grounding) : undefined;
+    if (grounding) {
+      const toolCallId = `persisted-web-${stringToUuid(`shared:${messageIdentity(message)}`)}`;
+      messages.push({
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId,
+            toolName: "WEB_SEARCH",
+            input: { query: grounding.query },
+          },
+        ],
+      });
+      messages.push({
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId,
+            toolName: "WEB_SEARCH",
+            output: { type: "text", value: encodePublicWebGrounding(grounding) },
+          },
+        ],
+      });
+    }
+    messages.push({ role: message.role, content: contents[index] });
+  }
+  return messages;
 }
 
 function isPersistedMessage(value: unknown): value is SharedRuntimeHistoryMessageLike {
@@ -81,7 +210,8 @@ function meaningfulWords(text: string): Set<string> {
 
 function relevanceScore(query: Set<string>, message: SharedRuntimeHistoryMessageLike): number {
   if (query.size === 0) return 0;
-  const words = meaningfulWords(message.content);
+  const grounding = publicGrounding(message.grounding);
+  const words = meaningfulWords(`${message.content}\n${grounding?.query ?? ""}`);
   let overlap = 0;
   for (const word of query) {
     if (words.has(word)) overlap += 1;
@@ -152,7 +282,20 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
   ) {
     return current;
   }
-  return incoming;
+  const chosen = incoming;
+  const currentGrounding = publicGrounding(current.grounding);
+  const incomingGrounding = publicGrounding(incoming.grounding);
+  if (current.role !== "assistant" || incoming.role !== "assistant") return chosen;
+  if (!currentGrounding && !incomingGrounding) return chosen;
+  if (!currentGrounding) return { ...chosen, grounding: incomingGrounding };
+  if (!incomingGrounding) return { ...chosen, grounding: currentGrounding };
+  const grounding =
+    incomingGrounding.observedAt > currentGrounding.observedAt ||
+    (incomingGrounding.observedAt === currentGrounding.observedAt &&
+      encodePublicWebGrounding(incomingGrounding) > encodePublicWebGrounding(currentGrounding))
+      ? incomingGrounding
+      : currentGrounding;
+  return { ...chosen, grounding };
 }
 
 export function mergeSharedRuntimeHistoryMessages<T extends SharedRuntimeHistoryMessageLike>(

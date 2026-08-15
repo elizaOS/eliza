@@ -83,6 +83,14 @@ let cutoverHistory = [
     role: "assistant" as const,
     content: "hello back",
     createdAt: 20,
+    grounding: {
+      kind: "web_search" as const,
+      query: "greeting",
+      provider: "parallel" as const,
+      text: "public result",
+      observedAt: 19,
+      truncated: false,
+    },
   },
 ];
 const cutoverCoordinatorOperations: string[] = [];
@@ -1303,6 +1311,14 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
             role: "assistant",
             text: "hello back",
             timestamp: 20,
+            grounding: {
+              kind: "web_search",
+              query: "greeting",
+              provider: "parallel",
+              text: "public result",
+              observedAt: 19,
+              truncated: false,
+            },
           },
         ],
         scheduledTasks: [
@@ -1542,6 +1558,14 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           role: "assistant",
           content: "hello back",
           createdAt: 20,
+          grounding: {
+            kind: "web_search",
+            query: "greeting",
+            provider: "parallel",
+            text: "public result",
+            observedAt: 19,
+            truncated: false,
+          },
         },
       ];
       cutoverCoordinatorOperations.length = 0;

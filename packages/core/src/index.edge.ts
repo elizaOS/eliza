@@ -53,6 +53,7 @@ export * from "./prompts";
 export * from "./providers/recent-errors";
 export * from "./providers/setup-progress";
 export * from "./providers/skill-eligibility";
+export * from "./public-web-grounding";
 export * from "./roles";
 export * from "./runtime";
 export * from "./runtime/rlm";

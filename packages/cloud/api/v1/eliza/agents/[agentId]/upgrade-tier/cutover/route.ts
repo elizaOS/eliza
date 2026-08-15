@@ -461,6 +461,9 @@ app.post("/", async (c) => {
         sourceId: message.id,
         role: message.role,
         text: message.content,
+        ...(message.role === "assistant" && message.grounding
+          ? { grounding: message.grounding }
+          : {}),
         ...(typeof message.createdAt === "number"
           ? { timestamp: message.createdAt }
           : {}),

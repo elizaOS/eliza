@@ -600,6 +600,112 @@ describe("Shared Eliza Workerd runtime", () => {
       completionTokens: 36,
       totalTokens: 156,
     });
+    expect(result.history.at(-1)?.grounding).toEqual({
+      kind: "web_search",
+      query: "latest ElizaOS news",
+      provider: "parallel",
+      text: "ElizaOS launched a new public release today. Source: https://elizaos.ai/news",
+      observedAt: expect.any(Number),
+      truncated: false,
+    });
+  });
+
+  test("hydrates the next genuine runtime turn with the persisted public result", async () => {
+    const modelRequests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      modelRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({
+        id: "chatcmpl-shared-search-follow-up",
+        object: "chat.completion",
+        created: 0,
+        model: "gemma-4-31b",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "shared-search-follow-up-response",
+                  type: "function",
+                  function: {
+                    name: "HANDLE_RESPONSE",
+                    arguments: JSON.stringify({
+                      shouldRespond: "RESPOND",
+                      thought: "The prior successful search contains the answer.",
+                      contexts: ["simple"],
+                      intents: [],
+                      candidateActionNames: [],
+                      requiresTool: false,
+                      replyText: "Tessera validates ARC resources through an origin guard.",
+                      replyEffectStatus: "none",
+                      facts: [],
+                      relationships: [],
+                      addressedTo: [],
+                    }),
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+        usage: { prompt_tokens: 41, completion_tokens: 17, total_tokens: 58 },
+      });
+    }) as typeof fetch;
+
+    const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+    const result = await runSharedAgentTurn({
+      character: {
+        name: "Shared Eliza",
+        system: "You are Eliza.",
+        model: "gemma-4-31b",
+      },
+      history: [
+        {
+          id: "6c5f17a6-d83c-4489-8742-a0309cac2f0b",
+          role: "user",
+          content: "Look up NubsCarson Tessera on GitHub",
+          createdAt: 1,
+        },
+        {
+          id: "456b9f08-2e34-48db-bd92-5410c9464895",
+          role: "assistant",
+          content: "I found the public repository.",
+          createdAt: 2,
+          grounding: {
+            kind: "web_search",
+            query: "NubsCarson Tessera GitHub",
+            provider: "parallel",
+            text: "Tessera validates ARC resources through an origin guard.",
+            observedAt: 2,
+            truncated: false,
+          },
+        },
+      ],
+      message: "How does it validate resources?",
+      messageIds: {
+        user: "c2cf8621-4373-4e58-869c-72e21075924d",
+        assistant: "0ba49b19-1d86-471f-9fbe-f4a67e6f07ec",
+      },
+      execution: {
+        engine: "eliza-runtime",
+        agentKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
+      },
+    });
+
+    expect(result.reply).toBe("Tessera validates ARC resources through an origin guard.");
+    expect(modelRequests).toHaveLength(1);
+    expect(JSON.stringify(modelRequests[0])).toContain(
+      "Tessera validates ARC resources through an origin guard.",
+    );
+    expect(JSON.stringify(modelRequests[0])).toContain("untrusted_public_web_search_result");
+    expect(JSON.stringify(modelRequests[0])).toContain('"role":"tool"');
+    const toolMessage = (
+      modelRequests[0].messages as Array<{ role: string; content: string }>
+    ).find((message) => message.role === "tool");
+    expect(toolMessage?.content).not.toContain("I found the public repository.");
   });
 
   test("plans REMINDERS through the genuine plugin and pins the current private chat", async () => {
