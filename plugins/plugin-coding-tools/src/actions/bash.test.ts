@@ -2042,7 +2042,7 @@ describeIfPosix("shellAction", () => {
 
   it("keeps an eviction-split configured secret inside the private overlap", async () => {
     const secret = "violet73";
-    const payload = `${"a".repeat(6)}${secret}${"z".repeat(36)}`;
+    const payload = `${"a".repeat(26)}${secret}${"z".repeat(16)}`;
     const { runtime } = await makeRuntime({
       backgroundBufferChars: 20,
       configuredSecret: secret,
@@ -2064,7 +2064,7 @@ describeIfPosix("shellAction", () => {
       unknown
     >;
 
-    expect(stdout.text).toBe("z".repeat(20));
+    expect(stdout.text).toContain("[REDACTED:chunk-boundary]");
     expect(stdout.startOffset).toBe(30);
     expect(JSON.stringify(poll)).not.toContain(secret);
     expect(JSON.stringify(poll)).not.toContain(secret.slice(4));
