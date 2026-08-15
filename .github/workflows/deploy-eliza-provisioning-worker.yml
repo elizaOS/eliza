@@ -629,9 +629,32 @@ jobs:
             report_public_route_failure() {
               sudo nginx -t || true
               sudo systemctl status nginx --no-pager || true
-              sudo journalctl -u nginx --since "$HEALTH_SINCE_TS" --no-pager || true
+              sudo journalctl -u nginx --since "$HEALTH_SINCE_TS" -n 200 --no-pager || true
               sudo systemctl status eliza-agent-router.service --no-pager || true
-              sudo journalctl -u eliza-agent-router.service --since "$HEALTH_SINCE_TS" --no-pager || true
+              sudo journalctl -u eliza-agent-router.service --since "$HEALTH_SINCE_TS" -n 200 --no-pager || true
+            }
+            # The router's health contract is a JSON object with boolean
+            # ok === true. A substring grep would also accept HTML error
+            # pages that merely contain the text, so parse for real.
+            validate_public_health_payload() {
+              node -e '
+                let raw = "";
+                process.stdin.on("data", (chunk) => { raw += chunk; });
+                process.stdin.on("end", () => {
+                  let parsed;
+                  try {
+                    parsed = JSON.parse(raw);
+                  } catch {
+                    process.exit(1);
+                  }
+                  const healthy =
+                    typeof parsed === "object" &&
+                    parsed !== null &&
+                    !Array.isArray(parsed) &&
+                    parsed.ok === true;
+                  process.exit(healthy ? 0 : 1);
+                });
+              '
             }
             for attempt in $(seq 1 18); do
               if sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
@@ -669,12 +692,22 @@ jobs:
                   ROUTER_PORT=$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="AGENT_ROUTER_PORT" {print $2}')
                   : "${ROUTER_PORT:=3458}"
                   if curl -sf -m 3 "http://127.0.0.1:${ROUTER_PORT}/healthz" >/dev/null 2>&1; then
-                    if ! PUBLIC_HEALTH=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz"); then
+                    PUBLIC_HEALTH=""
+                    public_route_ok=false
+                    for public_attempt in 1 2 3; do
+                      if PUBLIC_HEALTH=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz"); then
+                        public_route_ok=true
+                        break
+                      fi
+                      echo "Canonical /healthz attempt ${public_attempt}/3 failed for ${AGENT_ROUTER_PUBLIC_HOST}; retrying in 2s."
+                      sleep 2
+                    done
+                    if [ "$public_route_ok" != "true" ]; then
                       echo "::error::Canonical agent-router host failed after local readiness: ${AGENT_ROUTER_PUBLIC_HOST}"
                       report_public_route_failure
                       exit 1
                     fi
-                    if ! grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' <<<"$PUBLIC_HEALTH"; then
+                    if ! printf '%s' "$PUBLIC_HEALTH" | validate_public_health_payload; then
                       echo "::error::Canonical agent-router host returned an unexpected health payload: ${AGENT_ROUTER_PUBLIC_HOST}"
                       report_public_route_failure
                       exit 1
