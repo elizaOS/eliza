@@ -78,6 +78,17 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain("- 'packages/shared/**'");
   });
 
+  it("serializes the SSH mutation on the target host after runner cancellation", () => {
+    const lock = "exec 9>/tmp/eliza-provisioning-worker-deploy.lock";
+    expect(workflow).toContain(lock);
+    expect(workflow).toContain("flock -w 1200 9");
+    expect(workflow.indexOf(lock)).toBeLessThan(
+      workflow.indexOf("cd /opt/eliza"),
+    );
+    expect(workflow).toContain("command_timeout: 40m");
+    expect(workflow).toContain("timeout-minutes: 55");
+  });
+
   it("regenerates before deploy and self-heals both services", () => {
     expect(workflow).toContain(
       "bash packages/cloud/scripts/admin/ensure-generated-keywords.sh",

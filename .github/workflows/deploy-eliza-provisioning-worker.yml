@@ -120,10 +120,11 @@ jobs:
       cancel-in-progress: false
       queue: max
     environment: ${{ needs.determine-env.outputs.environment }}
-    # The three bounded remote phases (5m prerequisites, 20m deploy, 5m health)
-    # can each use their ceiling without the enclosing job becoming the first
-    # timeout; the remaining five minutes cover action startup and teardown.
-    timeout-minutes: 35
+    # The three bounded remote phases (5m prerequisites, 40m deploy including
+    # a possible wait for an orphaned prior SSH process, 5m health) can each
+    # use their ceiling without the enclosing job becoming the first timeout;
+    # the remaining five minutes cover action startup and teardown.
+    timeout-minutes: 55
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
@@ -306,12 +307,25 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
-          # Preserve setup/build headroom without weakening the preflight's own
-          # eight-minute fail-closed fence near the end of this remote script.
-          command_timeout: 20m
+          # Preserve setup/build headroom plus one prior deploy's bounded lock
+          # wait without weakening the preflight's own eight-minute fail-closed
+          # fence near the end of this remote script.
+          command_timeout: 40m
           envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST
           script: |
             set -euo pipefail
+
+            # GitHub job concurrency serializes normal runs, but canceling an
+            # appleboy SSH step can leave its remote shell alive after the
+            # runner releases that concurrency slot. Serialize on the target
+            # host as well so an orphaned build cannot race the next git clean
+            # or checkout in the shared /opt/eliza tree.
+            exec 9>/tmp/eliza-provisioning-worker-deploy.lock
+            flock -w 1200 9 || {
+              echo "Timed out waiting for the previous provisioning deploy"
+              exit 1
+            }
+
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH sha: $DEPLOY_SHA) ==="
 
             cd /opt/eliza
