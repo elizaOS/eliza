@@ -8,29 +8,22 @@ permissions:
 
 jobs:
   inspect:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: [self-hosted, x-canary]
+    environment: production
     timeout-minutes: 5
     env:
-      AGENT_URL: http://100.64.17.121:2138
-      AGENT_TOKEN: ${{ secrets.ELIZA_X_DIAG_AGENT_TOKEN }}
+      DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+      DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
     steps:
-      - name: Inspect X runtime state
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "${AGENT_TOKEN//[[:space:]]/}"
-          work="$(mktemp -d)"
-          trap 'rm -rf "$work"' EXIT
-          for endpoint in health status plugins connectors logs; do
-            code="$(curl --silent --show-error --max-time 30 \
-              --header "Authorization: Bearer $AGENT_TOKEN" \
-              --output "$work/$endpoint.json" \
-              --write-out '%{http_code}' \
-              "$AGENT_URL/api/$endpoint")"
-            printf '%s http=%s\n' "$endpoint" "$code"
-          done
-          jq '{status, ready, runtime, database}' "$work/health.json"
-          jq '[.. | objects | select((.name? // .id? // "") | test("(^x$|plugin-x|twitter)"; "i"))] | .[:20]' "$work/plugins.json"
-          jq '{connectors: [.connectors[]? | select((.name? // .id? // "") | test("(^x$|twitter)"; "i"))]}' "$work/connectors.json"
-          jq -r '[.. | objects | select(((.message? // .msg? // "") | test("twitter|plugin-x|x broker|direct-message"; "i"))) | (.message? // .msg? // empty)] | .[-200:][]' "$work/logs.json" \
-            | sed -E 's/((bearer|token|secret|api[_ -]?key)[=: ]+)[^ ,}]+/\1[redacted]/Ig'
+      - name: Inspect the exact provision execution
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            journalctl --since '2026-08-15 03:13:00 UTC' --no-pager \
+              | grep -E '41634d57-c296-40c2-9ad7-dbf90a6eac1e|4602b3be-2c01-4e7e-9cdc-849604e1bef7|a4d6156aef4c79fc01709a85025fd1a9f010a99279493e9545ed14f7137bd8cd' \
+              | tail -200
