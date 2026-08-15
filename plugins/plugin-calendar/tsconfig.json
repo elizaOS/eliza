@@ -79,6 +79,7 @@
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core/edge": ["../../packages/core/src/index.edge.ts"],
       "@elizaos/core/atomic-json": [
         "../../packages/core/src/utils/atomic-json.ts"
       ],

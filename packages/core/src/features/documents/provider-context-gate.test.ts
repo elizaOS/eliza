@@ -1,8 +1,12 @@
-/** Verifies the real context registry and gate select document retrieval on stored-knowledge turns. */
+/**
+ * Pins the DOCUMENTS provider's exact context selection against the runtime's
+ * real context gate and registry. Parent/child context relationships are
+ * metadata, not implicit provider expansion.
+ */
 import { describe, expect, it } from "vitest";
 import { filterByContextGate } from "../../runtime/context-gates.ts";
 import { getDefaultContextDefinitions } from "../../runtime/default-contexts.ts";
-import type { AgentContext } from "../../types";
+import type { AgentContext } from "../../types/index.ts";
 import { documentsProvider } from "./provider.ts";
 
 function selectsDocuments(activeContexts: AgentContext[]): boolean {
@@ -13,25 +17,20 @@ function selectsDocuments(activeContexts: AgentContext[]): boolean {
 }
 
 describe("DOCUMENTS provider context gating", () => {
-	it("keeps knowledge as a subcontext of documents (registry premise)", () => {
-		const contexts = getDefaultContextDefinitions();
-		const knowledge = contexts.find((context) => context.id === "knowledge");
+	it("keeps knowledge registered as a documents subcontext", () => {
+		const knowledge = getDefaultContextDefinitions().find(
+			(context) => context.id === "knowledge",
+		);
 		expect(knowledge?.parent).toBe("documents");
 	});
 
-	it("selects the provider for the documents context", () => {
+	it("selects both exact stored-document contexts", () => {
 		expect(selectsDocuments(["documents"])).toBe(true);
-	});
-
-	it("selects the provider for the knowledge context", () => {
 		expect(selectsDocuments(["knowledge"])).toBe(true);
-	});
-
-	it("selects the provider when knowledge is one of several active contexts", () => {
 		expect(selectsDocuments(["simple", "knowledge"])).toBe(true);
 	});
 
-	it("skips the provider for contexts that are not about stored knowledge", () => {
+	it("does not expand into unrelated contexts", () => {
 		expect(selectsDocuments(["simple"])).toBe(false);
 		expect(selectsDocuments(["wallet"])).toBe(false);
 	});

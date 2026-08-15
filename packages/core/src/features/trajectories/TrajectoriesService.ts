@@ -22,6 +22,15 @@ import type {
 /** Public alias for {@link CanonicalTrajectoryExportOptions} (canonical type lives in services). */
 export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;
 
+import {
+	canonicalPromptForModelCall,
+	omitUnvalidatedProviderSpans,
+} from "../../runtime/trajectory-provider-attribution";
+import {
+	composeToolDiagnosticRedactor,
+	projectModelCallDiagnosticValue,
+	projectToolDiagnosticValue,
+} from "../../security/tool-diagnostics";
 import type { TrajectoryRuntimeLlmCallParams } from "../../trajectory-utils";
 import type { IAgentRuntime } from "../../types";
 import { Service } from "../../types/service";
@@ -1944,8 +1953,39 @@ export class TrajectoriesService extends Service {
 
 	private async _persistLlmCall(
 		trajectoryId: string,
-		params: TrajectoryRuntimeLlmCallParams,
+		rawParams: TrajectoryRuntimeLlmCallParams,
 	): Promise<void> {
+		const redactDiagnosticText = composeToolDiagnosticRedactor(this.runtime);
+		const projectedParams = projectModelCallDiagnosticValue(
+			rawParams as TrajectoryRuntimeLlmCallParams & Record<string, unknown>,
+			redactDiagnosticText,
+		) as TrajectoryRuntimeLlmCallParams;
+		const attributionInputChanged =
+			canonicalPromptForModelCall({
+				messages: projectedParams.messages,
+				prompt: projectedParams.prompt ?? projectedParams.userPrompt,
+			}) !==
+			canonicalPromptForModelCall({
+				messages: rawParams.messages,
+				prompt: rawParams.prompt ?? rawParams.userPrompt,
+			});
+		const params: TrajectoryRuntimeLlmCallParams = {
+			...projectedParams,
+			// The routing identity is operational rather than diagnostic and must
+			// stay byte-exact even when a configured secret happens to overlap it.
+			stepId: rawParams.stepId,
+			runId: rawParams.runId,
+			roomId: rawParams.roomId,
+			messageId: rawParams.messageId,
+			executionTraceId: rawParams.executionTraceId,
+			...(attributionInputChanged
+				? {
+						providerAttributions: omitUnvalidatedProviderSpans(
+							projectedParams.providerAttributions,
+						),
+					}
+				: {}),
+		};
 		await this.withTrajectoryWriteLock(trajectoryId, async () => {
 			const trajectory = await this.getTrajectoryById(trajectoryId);
 			if (!trajectory) return;
@@ -2590,10 +2630,27 @@ export class TrajectoriesService extends Service {
 				if (!stepId) return;
 
 				const step = await this.ensureStepExists(trajectory, stepId, execute);
+				// Final persistence boundary for every completeStep caller (planner
+				// executor, action/provider interceptors, generic wrappers): the full
+				// settlement, including reasoning and future text fields, is projected
+				// before it reaches steps_json. Raw values never persist, regardless
+				// of which call site produced them.
+				const redactDiagnosticText = composeToolDiagnosticRedactor(
+					this.runtime,
+				);
+				const diagnosticAction = projectToolDiagnosticValue(
+					action,
+					redactDiagnosticText,
+				) as typeof action;
 				step.action = {
 					attemptId: uuidv4(),
 					timestamp: Date.now(),
-					...action,
+					...diagnosticAction,
+					actionType: action.actionType,
+					actionName: action.actionName,
+					...(typeof action.llmCallId === "string"
+						? { llmCallId: action.llmCallId }
+						: {}),
 				};
 				step.done = true;
 

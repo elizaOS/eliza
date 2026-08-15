@@ -34,7 +34,7 @@ import fs from "node:fs/promises";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import path from "node:path";
 import type { Duplex } from "node:stream";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import {
 	computeGenerationThroughput,
 	type GenerationThroughput,
@@ -46,6 +46,46 @@ const DEFAULT_CALL_TIMEOUT_MS = 60_000;
 const DEFAULT_LOAD_TIMEOUT_MS = 120_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
 const PENDING_LOG_FILENAME = "pending-requests.json";
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/**
+ * `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` is also read by the independent
+ * plugin-capacitor-bridge device bridge. Kept as a local resolver (not a
+ * cross-plugin import) since these are two separately-loadable plugins with
+ * their own lifecycles, but the accepted grammar and bounds are the same
+ * canonical decimal-integer contract, so the same input is accepted or
+ * rejected consistently on both paths.
+ */
+function resolveDeviceTimeoutMs(envKey: string, fallback: number): number {
+	const raw = process.env[envKey]?.trim();
+	if (!raw) return fallback;
+	if (!/^(?:0|[1-9]\d*)$/.test(raw)) {
+		throw new ElizaError(
+			`${envKey} must be a canonical decimal integer from 1 through ${MAX_TIMER_DELAY_MS}`,
+			{
+				code: "INVALID_DEVICE_BRIDGE_TIMEOUT",
+				context: { envKey, configured: raw },
+				severity: "fatal",
+			},
+		);
+	}
+	const parsed = Number(raw);
+	if (
+		!Number.isSafeInteger(parsed) ||
+		parsed < 1 ||
+		parsed > MAX_TIMER_DELAY_MS
+	) {
+		throw new ElizaError(
+			`${envKey} must be a canonical decimal integer from 1 through ${MAX_TIMER_DELAY_MS}`,
+			{
+				code: "INVALID_DEVICE_BRIDGE_TIMEOUT",
+				context: { envKey, configured: raw },
+				severity: "fatal",
+			},
+		);
+	}
+	return parsed;
+}
 
 interface DeviceCapabilities {
 	platform: "ios" | "android" | "web" | "electrobun" | "desktop";
@@ -945,14 +985,10 @@ export class DeviceBridge {
 	async embed(args: {
 		input: string;
 	}): Promise<{ embedding: number[]; tokens: number }> {
-		const envTimeout = Number.parseInt(
-			process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "",
-			10,
+		const timeoutMs = resolveDeviceTimeoutMs(
+			"ELIZA_DEVICE_GENERATE_TIMEOUT_MS",
+			DEFAULT_CALL_TIMEOUT_MS,
 		);
-		const timeoutMs =
-			Number.isFinite(envTimeout) && envTimeout > 0
-				? envTimeout
-				: DEFAULT_CALL_TIMEOUT_MS;
 
 		const correlationId = randomUUID();
 		const request: AgentOutbound = {
@@ -1012,14 +1048,10 @@ export class DeviceBridge {
 		temperature?: number;
 		cacheKey?: string;
 	}): Promise<string> {
-		const envTimeout = Number.parseInt(
-			process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "",
-			10,
+		const timeoutMs = resolveDeviceTimeoutMs(
+			"ELIZA_DEVICE_GENERATE_TIMEOUT_MS",
+			DEFAULT_CALL_TIMEOUT_MS,
 		);
-		const timeoutMs =
-			Number.isFinite(envTimeout) && envTimeout > 0
-				? envTimeout
-				: DEFAULT_CALL_TIMEOUT_MS;
 
 		const correlationId = randomUUID();
 		const request: AgentOutbound = {

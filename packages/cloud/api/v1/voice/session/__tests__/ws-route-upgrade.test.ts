@@ -9,6 +9,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import * as realCore from "@elizaos/core";
 import { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -37,6 +38,7 @@ let durableStoreValue: unknown = { kind: "durable" };
 let binaryTypeWritable = true;
 
 mock.module("@elizaos/core", () => ({
+  ...realCore,
   isSensitiveKeyName: () => false,
   redactLogArgs: (a: unknown) => a,
 }));

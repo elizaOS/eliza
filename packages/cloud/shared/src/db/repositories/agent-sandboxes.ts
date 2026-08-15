@@ -20,6 +20,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  lte,
   ne,
   notInArray,
   type SQL,
@@ -46,8 +47,9 @@ import {
 } from "../../lib/services/provisioning-job-types";
 import { mergeWarmClaimEnvironmentVars } from "../../lib/services/warm-claim-character-push";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
-import { getObjectText, offloadJsonField } from "../../lib/storage/object-store";
+import { deleteObject, getObjectText, offloadJsonField } from "../../lib/storage/object-store";
 import { logger } from "../../lib/utils/logger";
+import type { DbTransaction } from "../client";
 import { decryptAgentBackupStateData, encryptAgentBackupStateData } from "../crypto/agent-backups";
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { sqlRows } from "../execute-helpers";
@@ -129,6 +131,19 @@ const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
  * backup wire payload — it is what gets handed to restore (#17172).
  */
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+
+/** Successful agent deletes retain one final recovery point for 30 days. */
+export const PRE_DELETE_BACKUP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const PRE_DELETE_BACKUP_CLEANUP_BATCH_SIZE = 100;
+
+export interface PreDeleteBackupCleanupResult {
+  deletedRows: number;
+  deletedObjects: number;
+  /** Rows retained for a later retry after a transient cleanup failure. */
+  failedRows: number;
+  /** Malformed rows discarded under the terminal invalid-row policy. */
+  invalidRows: number;
+}
 
 /**
  * Correlates a sandbox row with the queue operations that legitimately own its
@@ -321,6 +336,12 @@ export async function prepareAgentBackupInsertData(
  * tell which they were looking at.
  */
 export type DeletionAllocationRelease = "released" | "not-owned" | "counter-unchanged";
+
+export interface DeletionAllocationSpendResult {
+  outcome: DeletionAllocationRelease;
+  /** Post-trigger row generation when this call consumed ownership. */
+  lifecycleRevision: number | null;
+}
 
 export class AgentSandboxesRepository {
   // Reads
@@ -1969,6 +1990,196 @@ export class AgentSandboxesRepository {
 
   // Backups
 
+  /**
+   * Revalidate an unlocked retry candidate inside the lifecycle transaction.
+   * The row must still be this agent's attached, full pre-delete capture and
+   * must have been created for the current deletion intent.
+   */
+  async validateAttachedPreDeleteBackupForDeletion(
+    tx: DbTransaction,
+    params: {
+      backupId: string;
+      sandboxRecordId: string;
+      deletionStartedAt: Date;
+    },
+  ): Promise<boolean> {
+    const [backup] = await tx
+      .select({ id: agentSandboxBackups.id })
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          eq(agentSandboxBackups.id, params.backupId),
+          eq(agentSandboxBackups.sandbox_record_id, params.sandboxRecordId),
+          eq(agentSandboxBackups.snapshot_type, "pre-delete"),
+          eq(agentSandboxBackups.backup_kind, "full"),
+          isNull(agentSandboxBackups.parent_backup_id),
+          gte(agentSandboxBackups.created_at, params.deletionStartedAt),
+          isNull(agentSandboxBackups.recovery_organization_id),
+          isNull(agentSandboxBackups.recovery_agent_id),
+          isNull(agentSandboxBackups.recovery_deletion_attempt_id),
+          isNull(agentSandboxBackups.recovery_expires_at),
+        ),
+      )
+      .limit(1);
+    return backup !== undefined;
+  }
+
+  /**
+   * Detach the exact pre-delete snapshot owned by a successful deletion while
+   * the sandbox row is locked. Every other attached backup remains subject to
+   * the existing parent FK cascade.
+   */
+  async retainPreDeleteBackupForDeletedAgent(
+    tx: DbTransaction,
+    params: {
+      backupId: string;
+      sandboxRecordId: string;
+      organizationId: string;
+      deletionAttemptId: string;
+      deletionStartedAt: Date;
+      expiresAt: Date;
+    },
+  ): Promise<boolean> {
+    const [retained] = await tx
+      .update(agentSandboxBackups)
+      .set({
+        sandbox_record_id: null,
+        recovery_organization_id: params.organizationId,
+        recovery_agent_id: params.sandboxRecordId,
+        recovery_deletion_attempt_id: params.deletionAttemptId,
+        recovery_expires_at: params.expiresAt,
+      })
+      .where(
+        and(
+          eq(agentSandboxBackups.id, params.backupId),
+          eq(agentSandboxBackups.sandbox_record_id, params.sandboxRecordId),
+          eq(agentSandboxBackups.snapshot_type, "pre-delete"),
+          eq(agentSandboxBackups.backup_kind, "full"),
+          isNull(agentSandboxBackups.parent_backup_id),
+          gte(agentSandboxBackups.created_at, params.deletionStartedAt),
+          isNull(agentSandboxBackups.recovery_organization_id),
+          isNull(agentSandboxBackups.recovery_agent_id),
+          isNull(agentSandboxBackups.recovery_deletion_attempt_id),
+          isNull(agentSandboxBackups.recovery_expires_at),
+        ),
+      )
+      .returning({ id: agentSandboxBackups.id });
+    return retained !== undefined;
+  }
+
+  /** Return the newest unexpired recovery point visible to this organization. */
+  async getPreDeleteRecoveryBackup(
+    organizationId: string,
+    deletedAgentId: string,
+    now = new Date(),
+  ): Promise<AgentSandboxBackup | undefined> {
+    const [row] = await dbRead
+      .select()
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          isNull(agentSandboxBackups.sandbox_record_id),
+          eq(agentSandboxBackups.snapshot_type, "pre-delete"),
+          eq(agentSandboxBackups.recovery_organization_id, organizationId),
+          eq(agentSandboxBackups.recovery_agent_id, deletedAgentId),
+          gt(agentSandboxBackups.recovery_expires_at, now),
+        ),
+      )
+      .orderBy(desc(agentSandboxBackups.created_at))
+      .limit(1);
+    return row ? await hydrateAgentSandboxBackup(row) : undefined;
+  }
+
+  /**
+   * Delete a bounded batch of expired detached recovery rows. Offloaded bytes
+   * are removed first; a storage failure leaves the row for a later retry.
+   */
+  async cleanupExpiredPreDeleteRecoveryBackups(
+    now = new Date(),
+    limit = PRE_DELETE_BACKUP_CLEANUP_BATCH_SIZE,
+  ): Promise<PreDeleteBackupCleanupResult> {
+    const boundedLimit = Math.max(1, Math.min(limit, PRE_DELETE_BACKUP_CLEANUP_BATCH_SIZE));
+    const candidates = await dbRead
+      .select({
+        id: agentSandboxBackups.id,
+        stateDataStorage: agentSandboxBackups.state_data_storage,
+        stateDataKey: agentSandboxBackups.state_data_key,
+      })
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          isNull(agentSandboxBackups.sandbox_record_id),
+          eq(agentSandboxBackups.snapshot_type, "pre-delete"),
+          isNotNull(agentSandboxBackups.recovery_organization_id),
+          isNotNull(agentSandboxBackups.recovery_agent_id),
+          isNotNull(agentSandboxBackups.recovery_deletion_attempt_id),
+          lte(agentSandboxBackups.recovery_expires_at, now),
+        ),
+      )
+      .orderBy(agentSandboxBackups.recovery_expires_at)
+      .limit(boundedLimit);
+
+    let deletedRows = 0;
+    let deletedObjects = 0;
+    let failedRows = 0;
+    let invalidRows = 0;
+    for (const candidate of candidates) {
+      if (candidate.stateDataStorage === "r2") {
+        if (!candidate.stateDataKey) {
+          // This row can never become retryable: no object key exists to recover.
+          // Remove the expired metadata row so it cannot poison every oldest-first
+          // batch forever, but account and alert on the invariant violation.
+          invalidRows += 1;
+          logger.error(
+            "Expired recovery backup is missing its object-storage key; discarding invalid row",
+            { backupId: logger.redact.id(candidate.id) },
+          );
+        } else {
+          try {
+            await deleteObject(candidate.stateDataKey);
+            deletedObjects += 1;
+          } catch (error) {
+            // error-policy:J1 the bounded cleanup boundary retains this row for
+            // retry, records the failure, and continues with later candidates.
+            failedRows += 1;
+            logger.error(
+              "Failed to delete expired recovery backup object; retaining row for retry",
+              {
+                backupId: logger.redact.id(candidate.id),
+                errorType: error instanceof Error ? error.name : typeof error,
+              },
+            );
+            continue;
+          }
+        }
+      }
+
+      try {
+        const removed = await dbWrite
+          .delete(agentSandboxBackups)
+          .where(
+            and(
+              eq(agentSandboxBackups.id, candidate.id),
+              isNull(agentSandboxBackups.sandbox_record_id),
+              lte(agentSandboxBackups.recovery_expires_at, now),
+            ),
+          )
+          .returning({ id: agentSandboxBackups.id });
+        deletedRows += removed.length;
+      } catch (error) {
+        // error-policy:J1 the bounded cleanup boundary reports this candidate
+        // as failed and continues without fabricating a successful deletion.
+        failedRows += 1;
+        logger.error("Failed to delete expired recovery backup row; continuing batch", {
+          backupId: logger.redact.id(candidate.id),
+          errorType: error instanceof Error ? error.name : typeof error,
+        });
+      }
+    }
+
+    return { deletedRows, deletedObjects, failedRows, invalidRows };
+  }
+
   async createBackup(data: NewAgentSandboxBackup): Promise<AgentSandboxBackup> {
     const insertData = await prepareAgentBackupInsertData(data);
     const [r] = await dbWrite.insert(agentSandboxBackups).values(insertData).returning();
@@ -2004,6 +2215,10 @@ export class AgentSandboxesRepository {
         verification_status: agentSandboxBackups.verification_status,
         verified_at: agentSandboxBackups.verified_at,
         verification_error: agentSandboxBackups.verification_error,
+        recovery_organization_id: agentSandboxBackups.recovery_organization_id,
+        recovery_agent_id: agentSandboxBackups.recovery_agent_id,
+        recovery_deletion_attempt_id: agentSandboxBackups.recovery_deletion_attempt_id,
+        recovery_expires_at: agentSandboxBackups.recovery_expires_at,
         created_at: agentSandboxBackups.created_at,
       })
       .from(agentSandboxBackups)
@@ -2194,16 +2409,16 @@ export class AgentSandboxesRepository {
    * so an unexpected underflow leaves the counter untouched and visible instead
    * of being silently absorbed.
    *
-   * @returns which of the three {@link DeletionAllocationRelease} outcomes
-   * occurred. `counter-unchanged` also warns: ownership was ours to spend, but
-   * the node counter did not move — either it was already 0 or the
-   * `docker_nodes` row is gone, and in both cases there is no slot left to give
-   * back, so committing the flip is correct.
+   * @returns the release outcome and, when ownership was consumed, the
+   * post-trigger lifecycle revision. `counter-unchanged` also warns: ownership
+   * was ours to spend, but the node counter did not move — either it was
+   * already 0 or the `docker_nodes` row is gone, and in both cases there is no
+   * slot left to give back, so committing the flip is correct.
    */
   private async spendDeletionAllocation(
     nodeId: string,
     claimWhere: SQL,
-  ): Promise<DeletionAllocationRelease> {
+  ): Promise<DeletionAllocationSpendResult> {
     // Memoized per database URL, so this is a settled-promise await after the
     // first call in an isolate rather than DDL on every teardown. It stays on
     // this path because the deletion writers can reach the column before the
@@ -2215,8 +2430,11 @@ export class AgentSandboxesRepository {
         .update(agentSandboxes)
         .set({ deletion_allocation_counted: false, updated_at: new Date() })
         .where(and(claimWhere, eq(agentSandboxes.deletion_allocation_counted, true)))
-        .returning({ id: agentSandboxes.id });
-      if (!claimed) return "not-owned";
+        .returning({
+          id: agentSandboxes.id,
+          lifecycleRevision: agentSandboxes.lifecycle_revision,
+        });
+      if (!claimed) return { outcome: "not-owned", lifecycleRevision: null };
 
       const decremented = await tx
         .update(dockerNodes)
@@ -2236,9 +2454,12 @@ export class AgentSandboxesRepository {
         logger.warn(
           `[agent-sandboxes] Deletion allocation ownership consumed for node ${nodeId} but allocated_count was not decremented — counter already at 0 or node row missing`,
         );
-        return "counter-unchanged";
+        return {
+          outcome: "counter-unchanged",
+          lifecycleRevision: claimed.lifecycleRevision,
+        };
       }
-      return "released";
+      return { outcome: "released", lifecycleRevision: claimed.lifecycleRevision };
     });
   }
 
@@ -2257,6 +2478,29 @@ export class AgentSandboxesRepository {
     deletionAttemptId: string,
     nodeId: string,
   ): Promise<DeletionAllocationRelease> {
+    const result = await this.spendDeletionAllocation(
+      nodeId,
+      and(
+        eq(agentSandboxes.id, agentId),
+        eq(agentSandboxes.organization_id, orgId),
+        eq(agentSandboxes.deletion_attempt_id, deletionAttemptId),
+        eq(agentSandboxes.node_id, nodeId),
+      ) as SQL,
+    );
+    return result.outcome;
+  }
+
+  /**
+   * Release allocation ownership for the exact prepared lifecycle generation
+   * and return the post-trigger revision needed by the row-delete CAS.
+   */
+  async tryReleaseDeletionAllocationForCommit(
+    agentId: string,
+    orgId: string,
+    deletionAttemptId: string,
+    nodeId: string,
+    expectedLifecycleRevision: number,
+  ): Promise<DeletionAllocationSpendResult> {
     return this.spendDeletionAllocation(
       nodeId,
       and(
@@ -2264,6 +2508,7 @@ export class AgentSandboxesRepository {
         eq(agentSandboxes.organization_id, orgId),
         eq(agentSandboxes.deletion_attempt_id, deletionAttemptId),
         eq(agentSandboxes.node_id, nodeId),
+        eq(agentSandboxes.lifecycle_revision, expectedLifecycleRevision),
       ) as SQL,
     );
   }
@@ -2295,10 +2540,11 @@ export class AgentSandboxesRepository {
     agentId: string,
     nodeId: string,
   ): Promise<DeletionAllocationRelease> {
-    return this.spendDeletionAllocation(
+    const result = await this.spendDeletionAllocation(
       nodeId,
       and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.node_id, nodeId)) as SQL,
     );
+    return result.outcome;
   }
 }
 

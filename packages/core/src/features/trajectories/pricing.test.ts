@@ -8,6 +8,10 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
+	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+} from "../../contracts/service-routing";
+import {
 	computeCallCostUsd,
 	isLocalProvider,
 	lookupModelContextWindow,
@@ -98,6 +102,39 @@ describe("MODEL_PRICES_USD_PER_M_TOKENS", () => {
 			output: 5.0,
 			cacheRead: 0.1,
 			cacheWrite: 1.25,
+		});
+	});
+
+	it("prices both routed Cerebras defaults from the authoritative snapshot", () => {
+		expect(DEFAULT_ELIZA_CLOUD_TEXT_MODEL).toBe("gemma-4-31b");
+		expect(DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL).toBe("zai-glm-4.7");
+		expect(
+			MODEL_PRICES_USD_PER_M_TOKENS[DEFAULT_ELIZA_CLOUD_TEXT_MODEL],
+		).toEqual({
+			provider: "cerebras",
+			input: 0.99,
+			output: 1.49,
+			cacheRead: 0,
+			cacheWrite: 0,
+		});
+		expect(
+			MODEL_PRICES_USD_PER_M_TOKENS[DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL],
+		).toEqual({
+			provider: "cerebras",
+			input: 2.25,
+			output: 2.75,
+			cacheRead: 0,
+			cacheWrite: 0,
+		});
+	});
+
+	it("keeps Cerebras gpt-oss aligned with the cloud billing ledger", () => {
+		expect(MODEL_PRICES_USD_PER_M_TOKENS["gpt-oss-120b"]).toEqual({
+			provider: "cerebras",
+			input: 0.35,
+			output: 0.75,
+			cacheRead: 0,
+			cacheWrite: 0,
 		});
 	});
 });
@@ -303,14 +340,14 @@ describe("computeCallCostUsd", () => {
 
 	it("falls back to the input rate when cacheRead is 0 (Cerebras gpt-oss)", () => {
 		// gpt-oss-120b: cacheRead == 0 → bill at input rate.
-		// 1M cacheRead * $0.50/M = $0.50
+		// 1M cacheRead * $0.35/M = $0.35
 		const cost = computeCallCostUsd("gpt-oss-120b", {
 			promptTokens: 1_000_000,
 			completionTokens: 0,
 			cacheReadInputTokens: 1_000_000,
 			totalTokens: 1_000_000,
 		});
-		expect(cost).toBeCloseTo(0.5, 6);
+		expect(cost).toBeCloseTo(0.35, 6);
 	});
 
 	it("computes a real cost for Cerebras Gemma 4 31B", () => {

@@ -761,6 +761,22 @@ describe("cloud-api worker entrypoint", () => {
     expect(productionRoutes).toContain("*.cloud.eliza.app/*");
   });
 
+  test("publishes the genuine Shared runtime in staging and production", async () => {
+    const config = Bun.TOML.parse(
+      await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
+    ) as {
+      vars?: { SHARED_ELIZA_AGENT_RUNTIME?: string };
+      env?: {
+        staging?: { vars?: { SHARED_ELIZA_AGENT_RUNTIME?: string } };
+        production?: { vars?: { SHARED_ELIZA_AGENT_RUNTIME?: string } };
+      };
+    };
+
+    expect(config.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe("false");
+    expect(config.env?.staging?.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe("true");
+    expect(config.env?.production?.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe("true");
+  });
+
   test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {
     type RateLimitBinding = {
       name?: string;

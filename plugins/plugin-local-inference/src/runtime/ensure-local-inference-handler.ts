@@ -1353,12 +1353,9 @@ async function tryRegisterAospLlamaLoader(
 ): Promise<boolean> {
 	if (!shouldAttemptAospLlamaLoader()) return false;
 	try {
-		const dynamicImport = new Function("id", "return import(id)") as (
-			id: string,
-		) => Promise<{
+		const mod = (await import("@elizaos/plugin-native-inference")) as {
 			registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
-		}>;
-		const mod = await dynamicImport("@elizaos/plugin-native-inference");
+		};
 		if (typeof mod.registerAospLlamaLoader !== "function") {
 			logger.error(
 				"[local-inference] AOSP llama adapter import resolved but missing registerAospLlamaLoader export",

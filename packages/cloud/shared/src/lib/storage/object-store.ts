@@ -1,5 +1,7 @@
-// Defines cloud shared object store behavior for backend service consumers.
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+/** Provides inline and object-backed storage for cloud service payloads. */
+
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { ElizaError } from "@elizaos/core";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import type { ObjectNamespace } from "./object-namespace";
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./r2-runtime-binding";
@@ -156,6 +158,26 @@ export async function getObjectText(key: string): Promise<string | null> {
   if (!bucket || !client) return null;
   const out = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   return (await out.Body?.transformToString()) ?? null;
+}
+
+/** Delete an object through the same Worker R2 or S3-compatible backend used to store it. */
+export async function deleteObject(key: string): Promise<void> {
+  const runtimeBucket = getRuntimeR2Bucket();
+  if (runtimeBucket) {
+    await runtimeBucket.delete(key);
+    return;
+  }
+
+  const bucket = heavyPayloadBucket();
+  const client = getObjectStorageClient();
+  if (!bucket || !client) {
+    throw new ElizaError("Object deletion requested without a configured storage backend", {
+      code: "OBJECT_DELETE_STORAGE_UNCONFIGURED",
+      context: { key },
+      severity: "fatal",
+    });
+  }
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
 export async function offloadTextField(params: {

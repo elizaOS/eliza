@@ -91,6 +91,30 @@
 			"import": "./dist/roles.js",
 			"default": "./dist/roles.js"
 		},
+		"./client-public": {
+			"types": "./dist/client-public.d.ts",
+			"eliza-source": {
+				"types": "./src/client-public.ts",
+				"import": "./src/client-public.ts",
+				"default": "./src/client-public.ts"
+			},
+			"browser": {
+				"types": "./dist/client-public.d.ts",
+				"import": "./dist/browser/client-public.js",
+				"default": "./dist/browser/client-public.js"
+			},
+			"node": {
+				"types": "./dist/client-public.d.ts",
+				"import": "./dist/node/client-public.js",
+				"default": "./dist/node/client-public.js"
+			},
+			"bun": {
+				"types": "./dist/client-public.d.ts",
+				"import": "./dist/node/client-public.js",
+				"default": "./dist/node/client-public.js"
+			},
+			"default": "./dist/node/client-public.js"
+		},
 		"./testing": {
 			"types": "./dist/testing/index.d.ts",
 			"import": "./dist/testing/index.js",

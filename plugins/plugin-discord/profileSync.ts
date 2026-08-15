@@ -159,87 +159,59 @@ function buildLocalAvatarPathCandidates(source: string): string[] {
 	return [...candidates];
 }
 
-/**
- * `errno` codes that mean the probed path genuinely is not there: nothing at
- * the path (`ENOENT`) or a parent component that is not a directory
- * (`ENOTDIR`). Any other code — `EACCES`, `EISDIR`, `EIO`, `ELOOP`, `EMFILE` —
- * describes a file the probe could not READ, not a file that does not exist,
- * and must never be summarized as absence.
- */
-const ABSENT_PATH_ERROR_CODES = new Set(["ENOENT", "ENOTDIR"]);
-
-function pathProbeErrorCode(error: unknown): string {
-	const code = (error as NodeJS.ErrnoException | null | undefined)?.code;
-	return typeof code === "string" ? code : "unknown";
-}
-
 async function readAvatarBytesFromLocalCandidates(
 	source: string,
 ): Promise<Buffer> {
 	const candidates = buildLocalAvatarPathCandidates(source);
-	const failures: Array<{ candidate: string; error: unknown }> = [];
-	for (const candidate of candidates) {
+	for (const [candidateIndex, candidate] of candidates.entries()) {
 		try {
 			return await fs.readFile(candidate);
 		} catch (error) {
-			// error-policy:J2 every probe failure is retained and rethrown below as
-			// one typed error carrying the first cause. Dropping them here would let
-			// an unreadable-but-present file be reported as nonexistent.
-			failures.push({ candidate, error });
+			const fsCode =
+				error instanceof Error &&
+				"code" in error &&
+				typeof error.code === "string"
+					? error.code
+					: undefined;
+			if (fsCode === "ENOENT" || fsCode === "ENOTDIR") {
+				// error-policy:J3 these codes mean this candidate is absent; probing
+				// the next declared root is the intended resolution algorithm.
+				continue;
+			}
+
+			// error-policy:J2 a present-but-unreadable candidate is not a miss.
+			// Preserve its machine-readable cause without copying the OS message,
+			// which can contain a user path or other sensitive local details.
+			const sanitizedCause = Object.assign(
+				new Error(
+					fsCode
+						? `Filesystem read failed (${fsCode}).`
+						: "Filesystem read failed.",
+				),
+				fsCode ? { code: fsCode } : {},
+			);
+			throw new ElizaError(
+				"A Discord profile avatar candidate could not be read.",
+				{
+					code: "DISCORD_PROFILE_AVATAR_READ_FAILED",
+					cause: sanitizedCause,
+					context: {
+						fsCode: fsCode ?? "UNKNOWN",
+						candidateIndex,
+						candidateCount: candidates.length,
+					},
+					severity: "ephemeral",
+				},
+			);
 		}
 	}
 
-	if (candidates.length === 0) {
-		throw new ElizaError(
-			`Discord profile avatar source resolved to no candidate path: ${source}`,
-			{
-				code: "DISCORD_PROFILE_AVATAR_UNRESOLVED",
-				context: { source },
-			},
-		);
-	}
-
-	// Report the SOURCE and every path tried, not one arbitrary candidate's
-	// ENOENT. Rethrowing the last miss named a single file the reader then went
-	// hunting for — the live warning read `ENOENT ... open
-	// '<repo>/public/avatars/eliza.png'`, which describes neither the real
-	// input (`/avatars/eliza.png`, a web path served from blob storage, with no
-	// local file anywhere) nor the fact that several roots were probed.
-	//
-	// Aggregating is only honest when every probe actually missed. A candidate
-	// that failed for any other reason EXISTS as far as this loop can tell, so
-	// reporting it as nonexistence would fabricate the diagnosis this function
-	// was written to stop fabricating — and would bury the EACCES/EIO that is
-	// the real fault. Split the two outcomes and keep the underlying cause.
-	const tried = candidates.join(", ");
-	const unreadable = failures.filter(
-		({ error }) => !ABSENT_PATH_ERROR_CODES.has(pathProbeErrorCode(error)),
-	);
-	const firstUnreadable = unreadable[0];
-	if (firstUnreadable) {
-		throw new ElizaError(
-			`Unable to read Discord profile avatar source "${source}" — ${unreadable.length} of ${candidates.length} candidate path(s) failed for a reason other than absence (first: ${pathProbeErrorCode(firstUnreadable.error)} at ${firstUnreadable.candidate}); tried: ${tried}`,
-			{
-				code: "DISCORD_PROFILE_AVATAR_UNREADABLE",
-				context: {
-					source,
-					candidates,
-					unreadable: unreadable.map(({ candidate, error }) => ({
-						candidate,
-						code: pathProbeErrorCode(error),
-					})),
-				},
-				cause: firstUnreadable.error,
-			},
-		);
-	}
-
 	throw new ElizaError(
-		`Unable to resolve Discord profile avatar source "${source}" — none of ${candidates.length} candidate path(s) exist: ${tried}`,
+		`Discord profile avatar was not found in ${candidates.length} local candidate path(s).`,
 		{
 			code: "DISCORD_PROFILE_AVATAR_NOT_FOUND",
-			context: { source, candidates },
-			cause: failures[0]?.error,
+			context: { candidateCount: candidates.length },
+			severity: "ephemeral",
 		},
 	);
 }

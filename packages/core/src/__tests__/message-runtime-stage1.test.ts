@@ -4369,11 +4369,28 @@ describe("runV5MessageRuntimeStage1", () => {
 				name: "TASKS_SPAWN_AGENT",
 				description: "Spawn a coding task.",
 				contexts: ["general"],
+				asyncHandoff: true,
 				validate: vi.fn(async () => true),
 				handler: vi.fn(async () => ({
 					success: true,
 					text: "",
 					continueChain: false,
+					effectReceipts: [
+						{
+							receiptId: "spawn-1",
+							operation: "tasks.spawn_agent",
+							resource: { kind: "acp.session", id: "session-1" },
+							artifacts: [],
+							idempotency: { key: null, replayed: false },
+							observedAt: "2026-08-15T00:00:00.000Z",
+							outcome: "applied" as const,
+							commit: {
+								kind: "provider_accepted" as const,
+								id: "session-1",
+								committedAt: "2026-08-15T00:00:00.000Z",
+							},
+						},
+					],
 				})),
 			},
 		] as IAgentRuntime["actions"];

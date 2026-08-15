@@ -26,6 +26,18 @@ const matrixPlugin: Plugin = {
 
   services: [MatrixService],
 
+  // Matrix is passive human ingress: the connector-source registry entry is
+  // the trust anchor that lets its inbound messages mint user notifications
+  // (core's agent-event-bridge fails closed for unregistered sources).
+  connectorSources: [
+    {
+      source: "matrix",
+      aliases: ["matrix"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
+
   actions: [],
 
   providers: [],

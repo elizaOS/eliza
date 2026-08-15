@@ -25,6 +25,39 @@ const VIEWPORTS: ViewportCase[] = [
 ];
 
 const CLOUD_AUTH_TOKEN = "ui-smoke-cloud-auth-token";
+// Personal-Eliza identity served by the mocked GET /api/v1/eliza/personal.
+// Since #19511 cloud onboarding binds the account's personal Eliza through
+// this endpoint instead of listing/creating compat agents. The dedicated
+// runtime shape lets the identity point back at the local Playwright server
+// (a loopback origin is a trusted cloud API base), so the deterministic chat
+// turn still exercises the real agent surface.
+const PERSONAL_ELIZA_ID = "personal:11111111-1111-5111-8111-111111111111";
+const PERSONAL_ACTIVE_AGENT_ID = "22222222-2222-4222-8222-222222222222";
+
+async function installPersonalElizaRoute(
+  page: Page,
+  options: { apiBase: string; onRequest?: () => void },
+): Promise<void> {
+  await page.route("**/api/v1/eliza/personal", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    options.onRequest?.();
+    await fulfillJson(route, 200, {
+      success: true,
+      data: {
+        identity: {
+          id: PERSONAL_ELIZA_ID,
+          displayName: "Eliza Cloud",
+          runtime: "dedicated",
+          activeAgentId: PERSONAL_ACTIVE_AGENT_ID,
+          apiBase: options.apiBase,
+        },
+      },
+    });
+  });
+}
 const VOICE_PREFIX_DONE_STORAGE_KEY = "eliza:voice:prefix-done";
 
 type DirectCloudSandboxRouteState = {
@@ -409,6 +442,7 @@ for (const viewport of VIEWPORTS) {
       submissions: [],
     };
     let compatCreateRequests = 0;
+    let personalElizaRequests = 0;
     let _provisionRequests = 0;
     let _jobPollRequests = 0;
     let _agentDetailRequests = 0;
@@ -441,6 +475,12 @@ for (const viewport of VIEWPORTS) {
       state: directCloudState,
     });
     await installFirstRunSubmitRoute(page, firstRunState);
+    await installPersonalElizaRoute(page, {
+      apiBase,
+      onRequest: () => {
+        personalElizaRequests += 1;
+      },
+    });
 
     await page.route("**/api/auth/status", async (route) => {
       if (route.request().method() !== "GET") {
@@ -670,11 +710,13 @@ for (const viewport of VIEWPORTS) {
       page.getByRole("button", { name: /sign in with eliza cloud/i }),
     );
 
-    // The zero-agent account auto-creates a dedicated cloud agent via the
-    // local cloud proxy (no picker since #15339), then writes the first-run
-    // profile.
-    await expect.poll(() => compatCreateRequests, { timeout: 60_000 }).toBe(1);
-    await expect.poll(() => firstRunState.submissions.length).toBe(1);
+    // Since #19511 the account's personal Eliza is bound through
+    // GET /api/v1/eliza/personal: no listing, no picker, no compat create,
+    // and no local first-run profile write (the identity is account-native,
+    // so the finish path completes without POSTing /api/first-run).
+    await expect.poll(() => personalElizaRequests, { timeout: 60_000 }).toBe(1);
+    expect(compatCreateRequests).toBe(0);
+    expect(firstRunState.submissions.length).toBe(0);
 
     await expect
       .poll(() =>
@@ -684,11 +726,13 @@ for (const viewport of VIEWPORTS) {
         }),
       )
       .toMatchObject({
-        id: "cloud:agent-1",
+        id: `cloud:${PERSONAL_ELIZA_ID}`,
         kind: "cloud",
         label: "Eliza Cloud",
         apiBase,
         accessToken: CLOUD_AUTH_TOKEN,
+        cloudRuntimeAgentId: PERSONAL_ACTIVE_AGENT_ID,
+        cloudRuntime: "dedicated",
       });
 
     await expect
@@ -724,6 +768,7 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
     submissions: [],
   };
   let compatCreateRequests = 0;
+  let personalElizaRequests = 0;
   let _jobPollRequests = 0;
   let _provisioningChatRequests = 0;
   let _launchRequests = 0;
@@ -752,6 +797,12 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
     state: directCloudState,
   });
   await installFirstRunSubmitRoute(page, firstRunState);
+  await installPersonalElizaRoute(page, {
+    apiBase,
+    onRequest: () => {
+      personalElizaRequests += 1;
+    },
+  });
 
   await page.route("**/api/auth/status", async (route) => {
     if (route.request().method() !== "GET") {
@@ -977,8 +1028,9 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
 
   // Zero-agent account: the picker is skipped and the controller auto-creates a
   // fresh dedicated cloud agent via the local cloud proxy, then writes first-run.
-  await expect.poll(() => compatCreateRequests).toBe(1);
-  await expect.poll(() => firstRunState.submissions.length).toBe(1);
+  await expect.poll(() => personalElizaRequests, { timeout: 60_000 }).toBe(1);
+  expect(compatCreateRequests).toBe(0);
+  expect(firstRunState.submissions.length).toBe(0);
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -987,11 +1039,13 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
       }),
     )
     .toMatchObject({
-      id: "cloud:agent-new",
+      id: `cloud:${PERSONAL_ELIZA_ID}`,
       kind: "cloud",
       label: "Eliza Cloud",
       apiBase,
       accessToken: CLOUD_AUTH_TOKEN,
+      cloudRuntimeAgentId: PERSONAL_ACTIVE_AGENT_ID,
+      cloudRuntime: "dedicated",
     });
 
   const composer = chatComposer(page);

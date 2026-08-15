@@ -560,15 +560,103 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		],
 	};
 
-	it("classifies the live hijack message as weak view-capability evidence", () => {
-		// "whats" bypasses the instructional-question guard ("what is" does not)
-		// and "times" singularizes to TIME, matching the "screen-time" tag.
+	it("never matches multiword capability tags on partial token overlap (#17028)", () => {
+		// "times" singularizes to TIME but the "screen-time" tag is a PHRASE:
+		// without SCREEN in the message it must not produce a candidate. This
+		// was the live hijack — arithmetic and cadence turns routed to VIEWS.
+		for (const message of [
+			"whats 17 times 23?",
+			"3 times a day",
+			"i need to get the time for the meeting",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference([viewsAction], message),
+			).toEqual({ names: [], kind: null });
+		}
+	});
+
+	it("still matches capability vocabulary with navigation intent", () => {
+		// SCREEN is a surface noun, so the full screen-time phrase resolves on
+		// the stronger view-surface leg; a plain capability tag ("calendar")
+		// still resolves on the capability leg.
 		expect(
 			inferDirectCurrentRequestCandidateInference(
 				[viewsAction],
-				"whats 17 times 23?",
+				"get my screen time",
+			),
+		).toEqual({ names: ["VIEWS"], kind: "view-surface" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction],
+				"show my settings",
 			),
 		).toEqual({ names: ["VIEWS"], kind: "view-capability" });
+	});
+
+	it("routes recurring-habit commitments to the owner routine surface, never VIEWS (#17028)", () => {
+		const routinesAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "OWNER_ROUTINES",
+			similes: ["HABIT", "ROUTINE", "TRACK_HABIT", "CREATE_ROUTINE"],
+			tags: [],
+		};
+		const pushupTurn =
+			"25 pushups, 3 times a day, doesnt matter when i just need to get them in";
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, routinesAction],
+				pushupTurn,
+			),
+		).toEqual({ names: ["OWNER_ROUTINES"], kind: "owner-routines" });
+		for (const message of [
+			"track this habit",
+			"schedule pushups every morning",
+			"remind me daily to do pushups",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, routinesAction],
+					message,
+				),
+			).toEqual({ names: ["OWNER_ROUTINES"], kind: "owner-routines" });
+		}
+		// Unregistered runtimes yield NO candidate — an owner mutation must not
+		// degrade into the view catalog; the unresolvable-capability path
+		// declines explicitly instead.
+		expect(
+			inferDirectCurrentRequestCandidateInference([viewsAction], pushupTurn),
+		).toEqual({ names: [], kind: null });
+		// Advice questions are lookups, not commitments.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, routinesAction],
+				"how many times a day should i do pushups",
+			),
+		).toEqual({ names: [], kind: null });
+	});
+
+	it("gives owner goal mutations precedence over the views goals tag (#17028)", () => {
+		const goalsAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "OWNER_GOALS",
+			similes: ["GOALS"],
+			tags: [],
+		};
+		const goalsTaggedViews: Pick<Action, "name" | "similes" | "tags"> = {
+			...viewsAction,
+			tags: [...(viewsAction.tags ?? []), "goals"],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[goalsTaggedViews, goalsAction],
+				"add a savings goal to save 500 dollars by march",
+			),
+		).toEqual({ names: ["OWNER_GOALS"], kind: "owner-goals" });
+		// Without the goal surface, the mutation still never selects VIEWS.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[goalsTaggedViews],
+				"add a savings goal to save 500 dollars by march",
+			),
+		).toEqual({ names: [], kind: null });
 	});
 
 	it("classifies explicit surface asks and bare-noun navigation as strong evidence", () => {

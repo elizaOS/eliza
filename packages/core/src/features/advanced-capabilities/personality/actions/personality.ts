@@ -9,13 +9,14 @@
  * Every trait/gate/directive op requires an explicit scope — "user" (the
  * requesting entity's slot) or "global" (the agent-wide slot) — with no
  * auto-inference: an ambiguous request returns a clarification rather than
- * guessing. Global mutations and profile load/save are admin/owner-gated via
- * hasRoleAccess. The slots written here are injected back into prompts by the
- * user-personality provider and enforced by the reply-gate and verbosity
- * helpers of the same capability.
+ * guessing. Authorization is derived from the operation's actual reach and
+ * effect: requester-only operations require USER, agent-wide inspection
+ * requires ADMIN, and agent-wide reconfiguration requires OWNER. The slots
+ * written here are injected back into prompts by the user-personality provider
+ * and enforced by the reply-gate and verbosity helpers of the same capability.
  */
 import { logger } from "../../../../logger.ts";
-import { hasRoleAccess } from "../../../../roles.ts";
+import { hasRoleAccess, type RoleName } from "../../../../roles.ts";
 import type {
 	Action,
 	ActionExample,
@@ -65,15 +66,41 @@ const PERSONALITY_OPS = [
 ] as const;
 type PersonalityOp = (typeof PERSONALITY_OPS)[number];
 
-const ADMIN_REQUIRED_GLOBAL_OPS = new Set<PersonalityOp>([
-	"set_trait",
-	"clear_trait",
-	"set_reply_gate",
-	"lift_reply_gate",
-	"clear_directives",
-]);
+type PersonalityReach = "requester" | "agent_wide";
+type PersonalityEffect = "inspect" | "reconfigure";
 
-const ADMIN_ONLY_OPS = new Set<PersonalityOp>(["load_profile", "save_profile"]);
+const PERSONALITY_OP_SHAPE: Record<
+	PersonalityOp,
+	{ effect: PersonalityEffect; reach: PersonalityReach | "scoped" }
+> = {
+	set_trait: { effect: "reconfigure", reach: "scoped" },
+	clear_trait: { effect: "reconfigure", reach: "scoped" },
+	set_reply_gate: { effect: "reconfigure", reach: "scoped" },
+	lift_reply_gate: { effect: "reconfigure", reach: "scoped" },
+	add_directive: { effect: "reconfigure", reach: "scoped" },
+	clear_directives: { effect: "reconfigure", reach: "scoped" },
+	show_state: { effect: "inspect", reach: "scoped" },
+	load_profile: { effect: "reconfigure", reach: "agent_wide" },
+	// Saving can replace shared executable personality configuration; listing
+	// exposes the process-wide registry and its directive contents.
+	save_profile: { effect: "reconfigure", reach: "agent_wide" },
+	list_profiles: { effect: "inspect", reach: "agent_wide" },
+};
+
+const PERSONALITY_ACCESS_FLOOR: Record<
+	PersonalityEffect,
+	Record<PersonalityReach, RoleName>
+> = {
+	inspect: { requester: "USER", agent_wide: "ADMIN" },
+	reconfigure: { requester: "USER", agent_wide: "OWNER" },
+};
+
+const PERSONALITY_DENY_MESSAGE: Record<PersonalityEffect, string> = {
+	inspect:
+		"The personality settings that apply to everyone are admin-only — ask an admin or the owner.",
+	reconfigure:
+		"Changing shared personality configuration is owner-only. I can change your personal settings instead.",
+};
 
 interface PersonalityParameters {
 	op?: string;
@@ -101,6 +128,15 @@ function isPersonalityOp(value: unknown): value is PersonalityOp {
 
 function isPersonalityScope(value: unknown): value is PersonalityScope {
 	return value === "user" || value === "global";
+}
+
+function resolveReach(
+	op: PersonalityOp,
+	scope: PersonalityScope | null,
+): PersonalityReach {
+	const reach = PERSONALITY_OP_SHAPE[op].reach;
+	if (reach !== "scoped") return reach;
+	return scope === "global" ? "agent_wide" : "requester";
 }
 
 function getStoreOrError(
@@ -163,12 +199,16 @@ async function recordAuditMemory(
 	}
 }
 
-function denyResult(op: PersonalityOp, message: string): ActionResult {
+function denyResult(
+	op: PersonalityOp,
+	message: string,
+	requirement: { reach: PersonalityReach; requiredRole: RoleName },
+): ActionResult {
 	return {
 		text: message,
 		success: false,
 		values: { error: "PERMISSION_DENIED" },
-		data: { action: "PERSONALITY", op },
+		data: { action: "PERSONALITY", op, ...requirement },
 	};
 }
 
@@ -225,6 +265,7 @@ function summarizeSlot(slot: PersonalitySlot): string {
 export const personalityAction: Action = {
 	name: "PERSONALITY",
 	contexts: ["settings", "agent_internal", "media", "admin", "general"],
+	roleGate: { minRole: "USER" },
 	similes: [
 		"SET_PERSONALITY",
 		"CHANGE_TONE",
@@ -239,7 +280,7 @@ export const personalityAction: Action = {
 		"BE_COLDER",
 	],
 	description:
-		"Manage personality preferences. Subactions: set_trait | clear_trait | set_reply_gate | lift_reply_gate | add_directive | clear_directives | load_profile | save_profile | list_profiles | show_state. Scope is REQUIRED for trait/gate/directive changes — 'user' affects only the requesting user, 'global' affects all users (admin only).",
+		"Manage personality preferences. Subactions: set_trait | clear_trait | set_reply_gate | lift_reply_gate | add_directive | clear_directives | load_profile | save_profile | list_profiles | show_state. Scope is REQUIRED for trait/gate/directive changes — 'user' affects only the requester; 'global' is agent-wide. Listing shared profiles or inspecting global state requires an admin; global changes and saving or loading profiles require the owner.",
 	suppressPostActionContinuation: true,
 	parameters: [
 		{
@@ -257,7 +298,7 @@ export const personalityAction: Action = {
 		{
 			name: "scope",
 			description:
-				"Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/add_directive/clear_directives/show_state. Use 'user' for the requesting user's slot, or 'global' for the agent-wide slot (admin only).",
+				"Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/add_directive/clear_directives/show_state. Use 'user' for the requester's slot. Use 'global' only when explicitly requested; agent-wide inspection requires ADMIN and reconfiguration requires OWNER.",
 			required: false,
 			schema: { type: "string", enum: [...SCOPE_VALUES] },
 		},
@@ -352,42 +393,26 @@ export const personalityAction: Action = {
 		}
 		const store = storeOrError;
 
-		const isAdmin = await hasRoleAccess(runtime, message, "ADMIN");
-
-		// Admin-only ops gate first
-		if (ADMIN_ONLY_OPS.has(op) && !isAdmin) {
-			return denyResult(
-				op,
-				"Only admins or the owner can manage saved personality profiles.",
-			);
-		}
-
 		const scope: PersonalityScope | null = isPersonalityScope(params.scope)
 			? params.scope
 			: null;
 
-		// Ops that need scope: enforce explicit scope (NO auto-inference) — an
-		// ambiguous request is clarified, never silently resolved to a default.
-		const needsScope: ReadonlySet<PersonalityOp> = new Set<PersonalityOp>([
-			"set_trait",
-			"clear_trait",
-			"set_reply_gate",
-			"lift_reply_gate",
-			"add_directive",
-			"clear_directives",
-			"show_state",
-		]);
-		if (needsScope.has(op) && !scope) {
+		// Clarify before authorization so a missing scope cannot be silently
+		// upgraded or downgraded to a different blast radius.
+		if (PERSONALITY_OP_SHAPE[op].reach === "scoped" && !scope) {
 			const result = clarifyScopeResult(op);
 			await callback?.({ text: result.text, thought: "Ambiguous scope" });
 			return result;
 		}
 
-		if (scope === "global" && ADMIN_REQUIRED_GLOBAL_OPS.has(op) && !isAdmin) {
-			return denyResult(
-				op,
-				`Permission denied: only admins or the owner may change the global personality.`,
-			);
+		const effect = PERSONALITY_OP_SHAPE[op].effect;
+		const reach = resolveReach(op, scope);
+		const requiredRole = PERSONALITY_ACCESS_FLOOR[effect][reach];
+		if (!(await hasRoleAccess(runtime, message, requiredRole))) {
+			return denyResult(op, PERSONALITY_DENY_MESSAGE[effect], {
+				reach,
+				requiredRole,
+			});
 		}
 
 		const userId = message.entityId as UUID;

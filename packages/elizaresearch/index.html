@@ -57,7 +57,6 @@
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
-    -webkit-touch-callout: none;
   }
   h1, h2, h3 { text-wrap: balance; line-height: 1.02; }
   p { text-wrap: pretty; max-width: 62ch; }
@@ -420,7 +419,7 @@
     pointer.x = -1e4; pointer.y = -1e4;
   }, { passive: true });
   for (const type of ["contextmenu", "selectstart", "dragstart"]) {
-    document.body.addEventListener(type, (event) => event.preventDefault());
+    canvas.addEventListener(type, (event) => event.preventDefault());
   }
 
   function step(now) {

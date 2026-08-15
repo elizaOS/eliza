@@ -160,7 +160,9 @@ new_sqlite_classes = ["OnboardingSessionCoordinator"]
 # Vars (non-secret build/runtime config — the rest live as wrangler secrets)
 # -----------------------------------------------------------------------------
 [vars]
+# Local/default deployments retain the direct-model control unless explicitly opted in.
 NODE_ENV = "production"
+SHARED_ELIZA_AGENT_RUNTIME = "false"
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
@@ -181,6 +183,13 @@ GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "production"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "false"
+# Warm-pool claim half (#16961): the provision route only claims a pre-booted
+# sandbox when this is "true". Committed here — never a dashboard-only secret —
+# so the intended state survives every redeploy and is auditable in source.
+# Production activation is gated on the #16961 checklist (capacity, starvation,
+# identity, and health guards with staging soak evidence); flip this committed
+# value in the same PR that attaches that evidence.
+WARM_POOL_ENABLED = "false"
 X402_NETWORK = "base"
 X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
 X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
@@ -419,7 +428,9 @@ __dirname = '"/"'
 __filename = '"/worker.js"'
 
 [env.staging.vars]
+# Protected staging proves the genuine Workerd AgentRuntime before production promotion.
 NODE_ENV = "production"
+SHARED_ELIZA_AGENT_RUNTIME = "true"
 # Apps (Product 2): wire the real deploy trigger so POST /api/v1/apps/:id/deploy
 # enqueues an APP_DEPLOY job the provisioning-worker daemon runs (instead of the
 # legacy status-only stub). Staging only — the apps data plane (tenant DB +
@@ -488,6 +499,10 @@ ENVIRONMENT = "staging"
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "true"
+# Warm-pool claim half (#16961). Staging enablement is the next step of that
+# issue's dependency chain but is sequenced behind draining the residual
+# sentinel-org pool rows; flip this committed value when that drain is done.
+WARM_POOL_ENABLED = "false"
 X402_NETWORK = "base"
 X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
 X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
@@ -661,7 +676,9 @@ __dirname = '"/"'
 __filename = '"/worker.js"'
 
 [env.production.vars]
+# Production uses the genuine Shared Workerd runtime for personal voice.
 NODE_ENV = "production"
+SHARED_ELIZA_AGENT_RUNTIME = "true"
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
@@ -710,6 +727,13 @@ GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "production"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "false"
+# Warm-pool claim half (#16961): the provision route only claims a pre-booted
+# sandbox when this is "true". Committed here — never a dashboard-only secret —
+# so the intended state survives every redeploy and is auditable in source.
+# Production activation is gated on the #16961 checklist (capacity, starvation,
+# identity, and health guards with staging soak evidence); flip this committed
+# value in the same PR that attaches that evidence.
+WARM_POOL_ENABLED = "false"
 X402_NETWORK = "base"
 X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
 X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"

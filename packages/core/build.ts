@@ -8,6 +8,7 @@
 
 import { execFile } from "node:child_process";
 import { existsSync, type FSWatcher, mkdirSync, watch } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -793,6 +794,7 @@ export async function buildNode(
 			entrypoints: [
 				`${TS_SRC}/index.node.ts`,
 				`${TS_SRC}/roles.ts`,
+				`${TS_SRC}/client-public.ts`,
 				`${TS_SRC}/security/kms/index.ts`,
 				`${TS_SRC}/security/mcp-server-config.ts`,
 				`${TS_SRC}/utils/atomic-json.ts`,
@@ -827,7 +829,11 @@ export async function buildBrowser(
 	const runBrowser = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [`${TS_SRC}/index.browser.ts`, `${TS_SRC}/roles.ts`],
+			entrypoints: [
+				`${TS_SRC}/index.browser.ts`,
+				`${TS_SRC}/roles.ts`,
+				`${TS_SRC}/client-public.ts`,
+			],
 			outdir: "dist/browser",
 			// Use the Node target so `node:*` imports bundle without broken browser polyfills.
 			// The dashboard/Vite shell still aliases `node:*` where the bundle runs in the browser.
@@ -1289,7 +1295,6 @@ export async function generateTypeScriptDeclarations() {
 		"dist/roles.js",
 		`// Roles subpath entry point (explicit)\nexport * from './node/roles.js';\n`,
 	);
-
 	// Create main index.d.ts to re-export all types from node build
 	// This ensures TypeScript resolves all exports when using moduleResolution: bundler
 	// Note: Use .js extension for NodeNext module resolution compatibility
@@ -1305,9 +1310,89 @@ export async function generateTypeScriptDeclarations() {
 	console.log(`✅ TypeScript declarations generated in ${duration}s`);
 }
 
+async function verifyPackedEdgeContract(): Promise<void> {
+	const fs = await import("node:fs/promises");
+	const contractRoot = await fs.mkdtemp(
+		join(tmpdir(), "eliza-core-edge-package-"),
+	);
+	try {
+		const { stdout } = await execFileAsync(
+			"npm",
+			["pack", "--json", "--pack-destination", contractRoot, process.cwd()],
+			{ cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 },
+		);
+		const packed = JSON.parse(stdout) as Array<{ filename?: unknown }>;
+		const filename = packed[0]?.filename;
+		if (typeof filename !== "string") {
+			throw new Error("npm pack did not report the @elizaos/core tarball");
+		}
+
+		const packageRoot = join(contractRoot, "node_modules", "@elizaos", "core");
+		await fs.mkdir(packageRoot, { recursive: true });
+		await execFileAsync(
+			"tar",
+			[
+				"-xzf",
+				join(contractRoot, filename),
+				"-C",
+				packageRoot,
+				"--strip-components=1",
+			],
+			{ cwd: process.cwd() },
+		);
+
+		await fs.writeFile(
+			join(contractRoot, "consumer.mts"),
+			[
+				'import { basicActions, basicCapabilities, createBasicCapabilitiesPlugin, isEdge, type Plugin } from "@elizaos/core/edge";',
+				"const plugin: Plugin = createBasicCapabilitiesPlugin();",
+				"void basicActions; void basicCapabilities; void isEdge; void plugin;",
+				"",
+			].join("\n"),
+		);
+		await execFileAsync(
+			resolveTscBin(),
+			[
+				"--noEmit",
+				"--module",
+				"NodeNext",
+				"--moduleResolution",
+				"NodeNext",
+				"--target",
+				"ES2022",
+				"--skipLibCheck",
+				"consumer.mts",
+			],
+			{ cwd: contractRoot },
+		);
+
+		await fs.writeFile(
+			join(contractRoot, "consumer.mjs"),
+			[
+				'import * as edge from "@elizaos/core/edge";',
+				'if (edge.isEdge !== true) throw new Error("packed edge marker is missing");',
+				'if (!Array.isArray(edge.basicActions) || typeof edge.createBasicCapabilitiesPlugin !== "function") throw new Error("packed basic capability runtime is missing");',
+				'if ("advancedCapabilities" in edge || "pluginManager" in edge) throw new Error("packed edge runtime exposes a host-only capability");',
+				"",
+			].join("\n"),
+		);
+		await execFileAsync(process.execPath, ["consumer.mjs"], {
+			cwd: contractRoot,
+		});
+		console.log(
+			"✅ Packed @elizaos/core/edge declarations and runtime import verified",
+		);
+	} finally {
+		await execFileAsync("node", [RM_RECURSIVE_SCRIPT, contractRoot], {
+			cwd: process.cwd(),
+		});
+	}
+}
+
 if (import.meta.main) {
 	const isNodeOnly = process.argv.includes("--node-only");
 	const isEdgeOnly = process.argv.includes("--edge-only");
+	const isWatch = process.argv.includes("--watch");
 	if (isNodeOnly && isEdgeOnly) {
 		throw new Error("Choose either --node-only or --edge-only, not both");
 	}
@@ -1316,6 +1401,7 @@ if (import.meta.main) {
 	withCoreBuildLock(async () => {
 		await execFileAsync("node", [CLEAN_SRC_ARTIFACTS_SCRIPT]);
 		await build();
+		if (!isNodeOnly && !isWatch) await verifyPackedEdgeContract();
 		await execFileAsync("node", [CLEAN_SRC_ARTIFACTS_SCRIPT, "--check"]);
 	}).catch((error) => {
 		console.error("Build script error:", error);

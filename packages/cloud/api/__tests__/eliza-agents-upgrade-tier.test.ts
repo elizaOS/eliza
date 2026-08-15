@@ -1077,16 +1077,57 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         "cutover-seal",
         "cutover-release",
       ]);
-      const reservedRows = (await dbWrite.execute(sql`
+      const releasedRows = (await dbWrite.execute(sql`
         SELECT id, transfer_status
           FROM app_scheduling.life_scheduled_tasks
          WHERE id IN ('cutover-inflight', 'cutover-reminder')
          ORDER BY id
-      `)) as { rows: Array<{ id: string; transfer_status: string }> };
-      expect(reservedRows.rows).toEqual([
-        { id: "cutover-inflight", transfer_status: "reserved" },
-        { id: "cutover-reminder", transfer_status: "reserved" },
+      `)) as {
+        rows: Array<{ id: string; transfer_status: string | null }>;
+      };
+      expect(releasedRows.rows).toEqual([
+        { id: "cutover-inflight", transfer_status: null },
+        { id: "cutover-reminder", transfer_status: null },
       ]);
+
+      await dbWrite.execute(sql`
+        UPDATE app_scheduling.life_scheduled_tasks
+           SET transfer_token = ${`personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`},
+               transfer_holder_token = NULL,
+               transfer_target_agent_id = ${CUTOVER_TARGET},
+               transfer_status = 'reserved',
+               updated_at = NOW()
+         WHERE id IN ('cutover-inflight', 'cutover-reminder')
+      `);
+      const competing = await cutover(PERSONAL_C, CUTOVER_TARGET);
+      const competingBody = await competing.json();
+      expect(competingBody).toMatchObject({
+        code: "personal_reminder_cutover_in_progress",
+      });
+      expect(competing.status).toBe(423);
+      const competingRows = (await dbWrite.execute(sql`
+        SELECT DISTINCT transfer_token, transfer_holder_token, transfer_target_agent_id
+          FROM app_scheduling.life_scheduled_tasks
+         WHERE id IN ('cutover-inflight', 'cutover-reminder')
+      `)) as {
+        rows: Array<{
+          transfer_token: string;
+          transfer_holder_token: string | null;
+          transfer_target_agent_id: string;
+        }>;
+      };
+      expect(competingRows.rows).toEqual([
+        {
+          transfer_token: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
+          transfer_holder_token: null,
+          transfer_target_agent_id: CUTOVER_TARGET,
+        },
+      ]);
+      await dbWrite.execute(sql`
+        UPDATE app_scheduling.life_scheduled_tasks
+           SET updated_at = '2000-01-01T00:00:00.000Z'
+         WHERE id IN ('cutover-inflight', 'cutover-reminder')
+      `);
 
       importFetch.mockImplementation(async (_input, init) => {
         const requestBody = JSON.parse(String(init?.body)) as {

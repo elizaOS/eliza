@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../character.ts";
+import { registerConnectorSourceMetadata } from "../connectors.ts";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../runtime.ts";
 import type { AgentEventPayload } from "../types/agentEvent.ts";
@@ -14,6 +15,7 @@ import type {
 	EvaluatorEventPayload,
 	MessagePayload,
 } from "../types/events.ts";
+import { ChannelType } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { ServiceType } from "../types/service.ts";
 import {
@@ -113,6 +115,7 @@ function messagePayload(
 			content: {
 				text: "Can you check this?",
 				source: "discord",
+				channelType: ChannelType.DM,
 				url: "https://discord.example/message/1",
 			},
 			metadata: {
@@ -288,6 +291,11 @@ describe("agent-event-bridge", () => {
 
 	it("bridges MESSAGE_RECEIVED to activity plus a guarded connector notification", async () => {
 		const { runtime, events, notificationService } = await createCtx();
+		registerConnectorSourceMetadata("discord", {
+			aliases: ["discord"],
+			sourceKind: "passive",
+			isPassive: true,
+		});
 		await bridgeMessageReceivedToStreams(messagePayload(runtime));
 
 		const messageEvent = events.find((e) => e.stream === "message");
@@ -295,7 +303,7 @@ describe("agent-event-bridge", () => {
 		expect(messageEvent?.sessionKey).toBe("discord:room:1");
 		expect(messageEvent?.data).toMatchObject({
 			type: "received",
-			channel: "discord",
+			channel: ChannelType.DM,
 			userId: "55555555-5555-5555-5555-555555555555",
 			roomId: ROOM_ID,
 			content: "Can you check this?",
@@ -306,7 +314,7 @@ describe("agent-event-bridge", () => {
 		const notifications = notificationService.list();
 		expect(notifications).toHaveLength(1);
 		expect(notifications[0]).toMatchObject({
-			title: "New discord message from alice",
+			title: "New DM message from alice",
 			body: "Can you check this?",
 			category: "message",
 			priority: "high",
@@ -341,10 +349,137 @@ describe("agent-event-bridge", () => {
 		expect(notificationService.list()).toHaveLength(0);
 	});
 
+	it("fails closed for unknown-connector and machine-channel message provenance", async () => {
+		const { runtime, events, notificationService } = await createCtx();
+		for (const [source, channelType] of [
+			["unknown-connector", ChannelType.DM],
+			["discord", ChannelType.API],
+			["discord", ChannelType.AUTONOMOUS],
+		] as const) {
+			await bridgeMessageReceivedToStreams(
+				messagePayload(runtime, {
+					source,
+					message: {
+						...messagePayload(runtime).message,
+						content: { text: "not user-facing", source, channelType },
+					},
+				} as Partial<MessagePayload>),
+			);
+		}
+		expect(events.filter((event) => event.stream === "message")).toHaveLength(
+			3,
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(0);
+	});
+
+	it("notifies for a real Slack payload that stamps no content.channelType", async () => {
+		const { runtime, notificationService } = await createCtx();
+		// Mirrors plugin-slack's registration and its inbound Memory: the content
+		// carries no `channelType` (the Room holds ChannelType.DM/GROUP and the
+		// Memory metadata carries Slack's own `chatType`, e.g. "im").
+		registerConnectorSourceMetadata("slack", {
+			aliases: ["slack"],
+			sourceKind: "passive",
+			isPassive: true,
+		});
+		await bridgeMessageReceivedToStreams(
+			messagePayload(runtime, {
+				source: "slack",
+				message: {
+					...messagePayload(runtime).message,
+					content: {
+						text: "standup in five?",
+						source: "slack",
+						name: "alice",
+						metadata: { accountId: "T123" },
+					},
+					metadata: {
+						type: "message",
+						source: "slack",
+						provider: "slack",
+						accountId: "T123",
+						entityName: "alice",
+						entityUserName: "alice",
+						fromBot: false,
+						chatType: "im",
+						sender: { id: "U1", name: "alice", username: "alice" },
+					},
+				},
+			} as Partial<MessagePayload>),
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(1);
+	});
+
+	it("notifies for a real Signal payload that stamps no content.channelType", async () => {
+		const { runtime, notificationService } = await createCtx();
+		// Mirrors plugin-signal: `channelType` appears nowhere on content; the
+		// conversation kind lives on the Room and on `metadata.chatType`.
+		registerConnectorSourceMetadata("signal", {
+			aliases: ["signal"],
+			sourceKind: "passive",
+			isPassive: true,
+		});
+		await bridgeMessageReceivedToStreams(
+			messagePayload(runtime, {
+				source: "signal",
+				message: {
+					...messagePayload(runtime).message,
+					content: {
+						text: "landed safely",
+						source: "signal",
+						name: "bob",
+					},
+					metadata: {
+						type: "message",
+						source: "signal",
+						provider: "signal",
+						entityName: "bob",
+						entityUserName: "+15550000000",
+						fromBot: false,
+						chatType: ChannelType.GROUP,
+						sender: { id: "+15550000000", name: "bob", username: "bob" },
+					},
+				},
+			} as Partial<MessagePayload>),
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(1);
+	});
+
+	it("rejects a registered active connector on a user-facing channel", async () => {
+		const { runtime, notificationService } = await createCtx();
+		registerConnectorSourceMetadata("custom-gateway", {
+			aliases: ["custom-gateway"],
+			sourceKind: "active",
+		});
+		await bridgeMessageReceivedToStreams(
+			messagePayload(runtime, {
+				source: "custom-gateway",
+				message: {
+					...messagePayload(runtime).message,
+					content: {
+						text: "registered extension",
+						source: "custom-gateway",
+						channelType: ChannelType.THREAD,
+					},
+				},
+			} as Partial<MessagePayload>),
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(0);
+	});
+
 	it("bridges raw connector message events that lack canonical Memory payloads", async () => {
 		expect(CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES).toContain(
 			"TWITCH_MESSAGE_RECEIVED",
 		);
+		registerConnectorSourceMetadata("twitch", {
+			aliases: ["twitch"],
+			sourceKind: "passive",
+			isPassive: true,
+		});
 
 		const { runtime, events, notificationService } = await createCtx();
 		await bridgeConnectorMessageReceivedToStreams("TWITCH_MESSAGE_RECEIVED", {
@@ -395,6 +530,72 @@ describe("agent-event-bridge", () => {
 				accountId: "main",
 			},
 		});
+	});
+
+	it("fails raw connector notifications closed without passive provenance", async () => {
+		const { runtime, events, notificationService } = await createCtx();
+		await bridgeConnectorMessageReceivedToStreams("NOSTR_MESSAGE_RECEIVED", {
+			runtime,
+			message: {
+				id: "nostr-message-1",
+				channel: "ops",
+				text: "unregistered connector",
+				userId: "nostr-user-1",
+			},
+		});
+
+		expect(events.filter((event) => event.stream === "message")).toHaveLength(
+			1,
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(0);
+	});
+
+	it("rejects raw bot, replay, self, and machine-channel notification traffic", async () => {
+		const { runtime, events, notificationService } = await createCtx();
+		registerConnectorSourceMetadata("twitch", {
+			aliases: ["twitch"],
+			sourceKind: "passive",
+			isPassive: true,
+		});
+
+		for (const [id, overrides] of [
+			["bot", { user: { userId: "bot-1", bot: true } }],
+			["replay", { user: { userId: "user-1" }, metadata: { replay: true } }],
+			["self", { user: { userId: "user-1" }, fromSelf: true }],
+			["machine", { user: { userId: "user-1" }, channelType: ChannelType.API }],
+			["agent", { user: { userId: runtime.agentId, name: "Agent" } }],
+		] as const) {
+			await bridgeConnectorMessageReceivedToStreams("TWITCH_MESSAGE_RECEIVED", {
+				runtime,
+				message: {
+					id: `twitch-${id}`,
+					channel: "ops",
+					text: "must not notify",
+					...overrides,
+				},
+			});
+		}
+
+		expect(events.filter((event) => event.stream === "message")).toHaveLength(
+			5,
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(0);
+	});
+
+	it("rejects unregistered raw connector event types even with spoofed source", async () => {
+		const { runtime, events, notificationService } = await createCtx();
+		await bridgeConnectorMessageReceivedToStreams("INTERNAL_MESSAGE_RECEIVED", {
+			runtime,
+			source: "discord",
+			message: { id: "internal-1", channel: "ops", text: "spoofed" },
+		});
+		expect(events.filter((event) => event.stream === "message")).toHaveLength(
+			0,
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(0);
 	});
 
 	it("is a no-op (never throws) when AgentEventService is absent", async () => {

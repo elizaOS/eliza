@@ -56,7 +56,7 @@ permissions:
 jobs:
   determine-env:
     name: Determine environment
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
@@ -113,17 +113,18 @@ jobs:
 
   deploy:
     name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }} @ ${{ needs.determine-env.outputs.deployment_sha }})
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs: determine-env
     concurrency:
       group: deploy-eliza-provisioning-worker-mutate-${{ needs.determine-env.outputs.environment }}
       cancel-in-progress: false
       queue: max
     environment: ${{ needs.determine-env.outputs.environment }}
-    # The three bounded remote phases (5m prerequisites, 20m deploy, 5m health)
-    # can each use their ceiling without the enclosing job becoming the first
-    # timeout; the remaining five minutes cover action startup and teardown.
-    timeout-minutes: 35
+    # The three bounded remote phases (5m prerequisites, 40m deploy including
+    # a possible wait for an orphaned prior SSH process, 5m health) can each
+    # use their ceiling without the enclosing job becoming the first timeout;
+    # the remaining five minutes cover action startup and teardown.
+    timeout-minutes: 55
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
@@ -175,6 +176,15 @@ jobs:
       # image ref is auditable config) to roll the fleet pin via deploy;
       # leave it unset to preserve whatever is hand-set on the box.
       ELIZA_AGENT_IMAGE: ${{ vars.ELIZA_AGENT_IMAGE }}
+      # Warm-pool daemon half (#16961). The replenish phase self-gates on
+      # WARM_POOL_ENABLED, so a host that loses this key silently degrades every
+      # dedicated provision to the 30-120s cold path. Reconciling it here makes
+      # the GitHub environment VARIABLE (not secret — a boolean flag is
+      # auditable config) the source of truth so a CP re-arm can never drop it;
+      # leaving the GH var unset preserves whatever is hand-set on the box.
+      # Activation policy stays with #16961's checklist: flip the environment
+      # var, do not hand-edit the box.
+      WARM_POOL_ENABLED: ${{ vars.WARM_POOL_ENABLED }}
       # The edge Worker forwards the original per-agent host to this daemon.
       # Keep the daemon's parser on the same environment-specific suffix or a
       # staging host (`<uuid>.cloud-staging.eliza.app`) is rejected as malformed.
@@ -297,12 +307,25 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
-          # Preserve setup/build headroom without weakening the preflight's own
-          # eight-minute fail-closed fence near the end of this remote script.
-          command_timeout: 20m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST
+          # Preserve setup/build headroom plus one prior deploy's bounded lock
+          # wait without weakening the preflight's own eight-minute fail-closed
+          # fence near the end of this remote script.
+          command_timeout: 40m
+          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST
           script: |
             set -euo pipefail
+
+            # GitHub job concurrency serializes normal runs, but canceling an
+            # appleboy SSH step can leave its remote shell alive after the
+            # runner releases that concurrency slot. Serialize on the target
+            # host as well so an orphaned build cannot race the next git clean
+            # or checkout in the shared /opt/eliza tree.
+            exec 9>/tmp/eliza-provisioning-worker-deploy.lock
+            flock -w 1200 9 || {
+              echo "Timed out waiting for the previous provisioning deploy"
+              exit 1
+            }
+
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH sha: $DEPLOY_SHA) ==="
 
             cd /opt/eliza
@@ -479,6 +502,7 @@ jobs:
               "DATABASE_URL=$DATABASE_URL" \
               "SECRETS_MASTER_KEY=$SECRETS_MASTER_KEY" \
               "ELIZA_AGENT_IMAGE=$ELIZA_AGENT_IMAGE" \
+              "WARM_POOL_ENABLED=$WARM_POOL_ENABLED" \
               "ELIZA_CLOUD_AGENT_BASE_DOMAIN=$ELIZA_CLOUD_AGENT_BASE_DOMAIN"; do
               key="${kv%%=*}"
               val="${kv#*=}"

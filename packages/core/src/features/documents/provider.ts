@@ -5,8 +5,8 @@
  * of available/recent documents (via `listDocuments`), rendering snippets and
  * document IDs the agent can cite or follow up to read. Returns an
  * empty/unavailable payload when no `DocumentService` is registered. Gated to the
- * `documents` and `knowledge` contexts and a minimum `USER` role, with per-turn
- * cache scope.
+ * exact `documents` and `knowledge` contexts and a minimum `USER` role, with
+ * per-turn cache scope.
  */
 import {
 	type IAgentRuntime,
@@ -52,7 +52,9 @@ export const documentsProvider: Provider = {
 		"Relevant and recent documents from the agent document store, including snippets and document IDs for follow-up reads.",
 	position: -10,
 	dynamic: true,
-	// Context gates use exact membership rather than expanding parent contexts.
+	// Context gates use exact membership rather than expanding parent/child
+	// relationships. Stage 1 can route stored-knowledge requests directly to
+	// `knowledge`, so both exact contexts must opt into the same scoped provider.
 	contexts: ["documents", "knowledge"],
 	contextGate: { anyOf: ["documents", "knowledge"] },
 	cacheStable: false,

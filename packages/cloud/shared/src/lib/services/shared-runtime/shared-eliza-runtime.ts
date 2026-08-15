@@ -14,17 +14,30 @@ import {
   InMemoryDatabaseAdapter,
   ModelType,
   type Plugin,
+  type StreamingContext,
+  setStreamingContextManager,
   stringToUuid,
+  type TextStreamResult,
   type ToolChoice,
   type ToolDefinition,
 } from "@elizaos/core/edge";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { webSearchEdgeAction, webSearchEdgePlugin } from "@elizaos/plugin-web-search/edge";
-import { generateText, type JSONSchema7, jsonSchema, type ModelMessage, type ToolSet } from "ai";
+import {
+  generateText,
+  type JSONSchema7,
+  jsonSchema,
+  type ModelMessage,
+  streamText,
+  type ToolSet,
+} from "ai";
 import { getInteractiveCerebrasLanguageModel } from "../../providers/language-model";
+import { logger } from "../../utils/logger";
 import type {
   RunSharedAgentTurnInput,
   RunSharedAgentTurnResult,
+  RunSharedAgentTurnStreamResult,
+  SharedAgentTurnStreamPart,
   SharedAgentTurnUsage,
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
@@ -37,6 +50,134 @@ type NativeTextModelResult = string & {
   usage: SharedAgentTurnUsage;
   providerMetadata: { modelName: string };
 };
+
+let edgeStreamingContextReady: Promise<void> | undefined;
+let sharedRuntimeKernelReady: Promise<AgentRuntime> | undefined;
+
+async function ensureEdgeStreamingContext(): Promise<void> {
+  edgeStreamingContextReady ??= import("node:async_hooks").then(({ AsyncLocalStorage }) => {
+    const storage = new AsyncLocalStorage<StreamingContext | undefined>();
+    setStreamingContextManager({
+      run: <T>(context: StreamingContext | undefined, fn: () => T): T => storage.run(context, fn),
+      active: () => storage.getStore(),
+    });
+  });
+  await edgeStreamingContextReady;
+}
+
+function prewarmModelHandler(): never {
+  throw new Error("Shared runtime prewarm must not dispatch inference");
+}
+
+function sharedModelPlugin(
+  handler: (
+    runtime: IAgentRuntime,
+    params: GenerateTextParams,
+  ) => Promise<string | NativeTextModelResult | TextStreamResult>,
+): Plugin {
+  return {
+    name: "shared-cerebras-model",
+    description: "Platform-funded text generation for the Shared Workerd runtime.",
+    models: {
+      [ModelType.RESPONSE_HANDLER]: handler,
+      [ModelType.ACTION_PLANNER]: handler,
+      [ModelType.TEXT_SMALL]: handler,
+      [ModelType.TEXT_LARGE]: handler,
+    },
+    modelMetadata: {
+      [ModelType.RESPONSE_HANDLER]: { streamable: true },
+      [ModelType.ACTION_PLANNER]: { streamable: true },
+      [ModelType.TEXT_SMALL]: { streamable: true },
+      [ModelType.TEXT_LARGE]: { streamable: true },
+    },
+  };
+}
+
+function createRuntime(options: {
+  agentKey: string;
+  adapter: InMemoryDatabaseAdapter;
+  character: RunSharedAgentTurnInput["character"];
+  modelPlugin: Plugin;
+  reminderPlugin?: Plugin;
+}): AgentRuntime {
+  return new AgentRuntime({
+    agentId: stringToUuid(options.agentKey),
+    character: {
+      name: options.character.name,
+      system: options.character.system,
+      bio: options.character.bio ?? [],
+      plugins: [],
+      settings: {
+        ELIZA_CANONICAL_LLM_TEXT_ENABLED: true,
+        ELIZA_CANONICAL_EMBEDDINGS_ENABLED: false,
+      },
+    },
+    adapter: options.adapter,
+    plugins: [
+      options.modelPlugin,
+      webSearchEdgePlugin,
+      ...(options.reminderPlugin ? [options.reminderPlugin] : []),
+    ],
+    logLevel: "error",
+    actionPlanning: true,
+    checkShouldRespond: false,
+    enableAutonomy: false,
+    enableDocuments: false,
+    enableRelationships: false,
+    enableTrajectories: false,
+  });
+}
+
+/** Pays one-time Workerd runtime initialization before the first live user turn. */
+export async function prewarmSharedElizaRuntime(): Promise<void> {
+  await ensureEdgeStreamingContext();
+  sharedRuntimeKernelReady ??= (async () => {
+    const runtime = createRuntime({
+      agentKey: "shared-runtime-kernel-prewarm",
+      adapter: new InMemoryDatabaseAdapter(),
+      character: {
+        name: "Shared Eliza",
+        system: "Shared runtime initialization prewarm.",
+      },
+      modelPlugin: sharedModelPlugin(async () => prewarmModelHandler()),
+    });
+    try {
+      await runtime.initialize({ skipMigrations: true });
+      if (!runtime.actions.some((action) => action.name === webSearchEdgeAction.name)) {
+        throw new Error("Eliza Shared runtime prewarm omitted its WEB_SEARCH action");
+      }
+      // Retain this state-free runtime for the isolate lifetime. Several core
+      // services finish their asynchronous start just after initialize();
+      // stopping immediately races those starts, while waiting on optional
+      // service names adds their full load timeout to every cold phone call.
+      return runtime;
+    } catch (error) {
+      try {
+        await runtime.stop();
+      } catch (teardownError) {
+        // error-policy:J6 failed prewarm owns this disposable runtime, so its
+        // teardown cannot replace the initialization failure reported upstream.
+        logger.warn("[shared-eliza-runtime] failed prewarm stop failed", {
+          error: teardownError instanceof Error ? teardownError.message : String(teardownError),
+        });
+      }
+      try {
+        await runtime.close();
+      } catch (teardownError) {
+        // error-policy:J6 failed prewarm owns this disposable runtime, so its
+        // teardown cannot replace the initialization failure reported upstream.
+        logger.warn("[shared-eliza-runtime] failed prewarm close failed", {
+          error: teardownError instanceof Error ? teardownError.message : String(teardownError),
+        });
+      }
+      throw error;
+    }
+  })().catch((error) => {
+    sharedRuntimeKernelReady = undefined;
+    throw error;
+  });
+  await sharedRuntimeKernelReady;
+}
 
 function modelToolChoice(
   choice: ToolChoice | undefined,
@@ -101,9 +242,11 @@ function runtimeMemoryId(message: SharedTurnMessage, index: number) {
   );
 }
 
-export async function runSharedElizaRuntimeTurn(
+async function executeSharedElizaRuntimeTurn(
   input: RunSharedAgentTurnInput & { agentKey: string; model: string },
+  onStreamChunk?: (chunk: string) => void | Promise<void>,
 ): Promise<RunSharedAgentTurnResult> {
+  await ensureEdgeStreamingContext();
   const adapter = new InMemoryDatabaseAdapter();
   let providerDispatched = false;
   let usage: SharedAgentTurnUsage | undefined;
@@ -112,12 +255,12 @@ export async function runSharedElizaRuntimeTurn(
   const modelHandler = async (
     _runtime: IAgentRuntime,
     params: GenerateTextParams,
-  ): Promise<string | NativeTextModelResult> => {
+  ): Promise<string | NativeTextModelResult | TextStreamResult> => {
     if (!providerDispatched) {
       providerDispatched = true;
       await input.onProviderDispatch?.();
     }
-    const result = await generateText({
+    const generation = {
       model,
       maxRetries: 0,
       allowSystemInMessages: true,
@@ -130,6 +273,49 @@ export async function runSharedElizaRuntimeTurn(
       ...(typeof params.temperature === "number" ? { temperature: params.temperature } : {}),
       ...(typeof params.topP === "number" ? { topP: params.topP } : {}),
       ...(params.signal ? { abortSignal: params.signal } : {}),
+    };
+    if (onStreamChunk && params.stream === true) {
+      const result = streamText(generation);
+      const textStream = (async function* (): AsyncIterable<string> {
+        if (params.streamStructured === true) {
+          for await (const part of result.fullStream) {
+            const record = part as {
+              type: string;
+              delta?: string;
+              inputTextDelta?: string;
+            };
+            const chunk =
+              record.type === "tool-input-delta"
+                ? (record.inputTextDelta ?? record.delta)
+                : undefined;
+            if (chunk) yield chunk;
+          }
+          return;
+        }
+        for await (const chunk of result.textStream) yield chunk;
+      })();
+      const streamUsage = Promise.resolve(result.totalUsage).then((value) => {
+        const normalized = normalizeUsage(value);
+        usage = addUsage(usage, normalized);
+        return normalized;
+      });
+      return {
+        textStream,
+        text: Promise.resolve(result.text),
+        toolCalls: Promise.resolve(result.toolCalls).then((calls) =>
+          calls.map((call) => ({
+            id: call.toolCallId,
+            name: call.toolName,
+            arguments: call.input,
+          })),
+        ),
+        finishReason: Promise.resolve(result.finishReason),
+        usage: streamUsage,
+        providerMetadata: { modelName: input.model },
+      } as TextStreamResult;
+    }
+    const result = await generateText({
+      ...generation,
     });
     usage = addUsage(usage, normalizeUsage(result.usage));
     if (result.toolCalls.length === 0) {
@@ -148,16 +334,7 @@ export async function runSharedElizaRuntimeTurn(
     } as NativeTextModelResult;
   };
 
-  const modelPlugin: Plugin = {
-    name: "shared-cerebras-model",
-    description: "Platform-funded text generation for the Shared Workerd runtime.",
-    models: {
-      [ModelType.RESPONSE_HANDLER]: modelHandler,
-      [ModelType.ACTION_PLANNER]: modelHandler,
-      [ModelType.TEXT_SMALL]: modelHandler,
-      [ModelType.TEXT_LARGE]: modelHandler,
-    },
-  };
+  const modelPlugin = sharedModelPlugin(modelHandler);
   const reminderPlugin = input.execution?.reminders
     ? createSharedRemindersEdgePlugin({
         runner: input.execution.reminders.runner,
@@ -165,27 +342,12 @@ export async function runSharedElizaRuntimeTurn(
         delivery: input.execution.reminders.delivery,
       })
     : undefined;
-  const runtime = new AgentRuntime({
-    agentId: stringToUuid(input.agentKey),
-    character: {
-      name: input.character.name,
-      system: input.character.system,
-      bio: input.character.bio ?? [],
-      plugins: [],
-      settings: {
-        ELIZA_CANONICAL_LLM_TEXT_ENABLED: true,
-        ELIZA_CANONICAL_EMBEDDINGS_ENABLED: false,
-      },
-    },
+  const runtime = createRuntime({
+    agentKey: input.agentKey,
     adapter,
-    plugins: [modelPlugin, webSearchEdgePlugin, ...(reminderPlugin ? [reminderPlugin] : [])],
-    logLevel: "error",
-    actionPlanning: true,
-    checkShouldRespond: false,
-    enableAutonomy: false,
-    enableDocuments: false,
-    enableRelationships: false,
-    enableTrajectories: false,
+    character: input.character,
+    modelPlugin,
+    reminderPlugin,
   });
 
   try {
@@ -250,7 +412,12 @@ export async function runSharedElizaRuntimeTurn(
         if (content.text?.trim()) delivered.push(content.text.trim());
         return [];
       },
-      input.abortSignal ? { abortSignal: input.abortSignal } : undefined,
+      input.abortSignal || onStreamChunk
+        ? {
+            ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+            ...(onStreamChunk ? { onStreamChunk } : {}),
+          }
+        : undefined,
     );
     const reply = result?.responseContent?.text?.trim() || delivered.at(-1)?.trim() || "";
     if (!result?.didRespond || !reply) {
@@ -273,4 +440,106 @@ export async function runSharedElizaRuntimeTurn(
     await runtime.stop();
     await runtime.close();
   }
+}
+
+export async function runSharedElizaRuntimeTurn(
+  input: RunSharedAgentTurnInput & { agentKey: string; model: string },
+): Promise<RunSharedAgentTurnResult> {
+  return await executeSharedElizaRuntimeTurn(input);
+}
+
+function isRuntimeControlChunk(chunk: string): boolean {
+  if (!chunk.startsWith("{")) return false;
+  try {
+    const value = JSON.parse(chunk) as { type?: unknown };
+    return (
+      value.type === "tool_call" ||
+      value.type === "tool_result" ||
+      value.type === "evaluation" ||
+      value.type === "context_event"
+    );
+  } catch {
+    // A partial structured reply is visible text, not a complete control event.
+    return false;
+  }
+}
+
+export async function runSharedElizaRuntimeTurnStream(
+  input: RunSharedAgentTurnInput & { agentKey: string; model: string },
+): Promise<RunSharedAgentTurnStreamResult> {
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(input.abortSignal?.reason);
+  if (input.abortSignal?.aborted) abortFromCaller();
+  else input.abortSignal?.addEventListener("abort", abortFromCaller, { once: true });
+
+  const queued: SharedAgentTurnStreamPart[] = [];
+  let wake: (() => void) | undefined;
+  let terminalError: unknown;
+  let terminal = false;
+  let emittedText = "";
+  const signalQueue = () => {
+    wake?.();
+    wake = undefined;
+  };
+  const push = (part: SharedAgentTurnStreamPart) => {
+    if (terminal) return;
+    queued.push(part);
+    signalQueue();
+  };
+
+  const completion = executeSharedElizaRuntimeTurn(
+    { ...input, abortSignal: controller.signal },
+    async (chunk) => {
+      if (!controller.signal.aborted && !isRuntimeControlChunk(chunk)) {
+        emittedText += chunk;
+        push({ type: "text-delta", text: chunk });
+      }
+    },
+  )
+    .then((result) => {
+      if (!controller.signal.aborted) {
+        if (!result.reply.startsWith(emittedText)) {
+          throw new Error("Eliza Shared runtime reply diverged from streamed text");
+        }
+        const remainingText = result.reply.slice(emittedText.length);
+        if (remainingText) push({ type: "text-delta", text: remainingText });
+      }
+      push({ type: "finish", text: result.reply, usage: result.usage });
+      terminal = true;
+      signalQueue();
+    })
+    .catch((error) => {
+      terminalError = error;
+      terminal = true;
+      signalQueue();
+    })
+    .finally(() => {
+      input.abortSignal?.removeEventListener("abort", abortFromCaller);
+    });
+
+  const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
+    for (;;) {
+      while (queued.length > 0) {
+        const next = queued.shift();
+        if (next) yield next;
+      }
+      if (terminal) {
+        if (terminalError) throw terminalError;
+        return;
+      }
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+      });
+    }
+  })();
+
+  return {
+    model: input.model,
+    degraded: false,
+    parts,
+    cancel: async (reason) => {
+      controller.abort(reason);
+      void completion;
+    },
+  };
 }

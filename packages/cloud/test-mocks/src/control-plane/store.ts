@@ -108,6 +108,19 @@ export interface ImportedMessage {
   timestamp?: number;
 }
 
+/** A scheduled task transferred with an account's canonical conversation. */
+export interface ImportedScheduledTask {
+  taskId: string;
+  [key: string]: unknown;
+}
+
+export interface StoredScheduledTask {
+  task: ImportedScheduledTask;
+  sourceAgentId: string;
+  cutoverToken: string;
+  active: boolean;
+}
+
 /**
  * Outcome of importing a transcript into a dedicated agent's conversation.
  * Byte-matches the real agent route's `POST /api/conversations/:id/import`:
@@ -119,6 +132,11 @@ export interface ConversationImportResult {
   sourceMessageCount: number;
   inserted: number;
   skipped: number;
+  sourceScheduledTaskCount: number;
+  importedScheduledTasks: number;
+  skippedScheduledTasks: number;
+  activatedScheduledTasks: number;
+  skippedActivatedScheduledTasks: number;
   alreadyPopulated?: boolean;
 }
 
@@ -134,6 +152,10 @@ export class ControlPlaneStore {
    * PGlite memories. Keyed `${sandboxId}::${conversationId}`.
    */
   private readonly conversations = new Map<string, ImportedMessage[]>();
+  private readonly scheduledTasks = new Map<
+    string,
+    Map<string, StoredScheduledTask>
+  >();
   private readonly conversationTurnReplies = new Map<string, string>();
   private hotPoolTarget = 0;
   private warmPoolState: WarmPoolState = {
@@ -338,26 +360,69 @@ export class ControlPlaneStore {
     sandboxId: string,
     conversationId: string,
     messages: ImportedMessage[],
+    scheduledTasks: ImportedScheduledTask[] = [],
+    cutoverToken = "",
+    activateScheduledTasks = false,
   ): ConversationImportResult {
     const key = this.convKey(sandboxId, conversationId);
     const existing = this.conversations.get(key);
+    let inserted = messages.length;
+    let skipped = 0;
     if (existing && existing.length > 0) {
-      return {
-        conversationId,
-        complete: true,
-        sourceMessageCount: messages.length,
-        inserted: 0,
-        skipped: messages.length,
-        alreadyPopulated: true,
-      };
+      inserted = 0;
+      skipped = messages.length;
+    } else {
+      this.conversations.set(key, [...messages]);
     }
-    this.conversations.set(key, [...messages]);
+
+    const taskStore = this.scheduledTasks.get(key) ?? new Map();
+    this.scheduledTasks.set(key, taskStore);
+    let importedScheduledTasks = 0;
+    let skippedScheduledTasks = 0;
+    let activatedScheduledTasks = 0;
+    let skippedActivatedScheduledTasks = 0;
+    for (const task of scheduledTasks) {
+      const prior = taskStore.get(task.taskId);
+      if (prior) {
+        if (
+          prior.sourceAgentId !== conversationId ||
+          prior.cutoverToken !== cutoverToken
+        ) {
+          throw new Error("scheduled task belongs to another cutover");
+        }
+        skippedScheduledTasks += 1;
+      } else {
+        taskStore.set(task.taskId, {
+          task,
+          sourceAgentId: conversationId,
+          cutoverToken,
+          active: false,
+        });
+        importedScheduledTasks += 1;
+      }
+      if (activateScheduledTasks) {
+        const stored = taskStore.get(task.taskId);
+        if (!stored) throw new Error("scheduled task import did not persist");
+        if (stored.active) skippedActivatedScheduledTasks += 1;
+        else {
+          stored.active = true;
+          activatedScheduledTasks += 1;
+        }
+      }
+    }
+
     return {
       conversationId,
       complete: true,
       sourceMessageCount: messages.length,
-      inserted: messages.length,
-      skipped: 0,
+      inserted,
+      skipped,
+      sourceScheduledTaskCount: scheduledTasks.length,
+      importedScheduledTasks,
+      skippedScheduledTasks,
+      activatedScheduledTasks,
+      skippedActivatedScheduledTasks,
+      ...(existing && existing.length > 0 ? { alreadyPopulated: true } : {}),
     };
   }
 
@@ -368,6 +433,18 @@ export class ControlPlaneStore {
   ): ImportedMessage[] {
     return (
       this.conversations.get(this.convKey(sandboxId, conversationId)) ?? []
+    );
+  }
+
+  /** Read the Dedicated task receipts that back cutover assertions. */
+  getScheduledTasks(
+    sandboxId: string,
+    conversationId: string,
+  ): StoredScheduledTask[] {
+    return Array.from(
+      this.scheduledTasks
+        .get(this.convKey(sandboxId, conversationId))
+        ?.values() ?? [],
     );
   }
 
@@ -412,6 +489,17 @@ export class ControlPlaneStore {
     );
     if (!sandbox) return [];
     return this.getConversation(sandbox.id, conversationId);
+  }
+
+  getScheduledTasksByAgent(
+    agentId: string,
+    conversationId: string,
+  ): StoredScheduledTask[] {
+    const sandbox = [...this.sandboxes.values()].find(
+      (candidate) => candidate.agentId === agentId,
+    );
+    if (!sandbox) return [];
+    return this.getScheduledTasks(sandbox.id, conversationId);
   }
 
   createJob(input: {

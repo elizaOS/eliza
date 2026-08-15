@@ -874,6 +874,23 @@ export async function processBackupVerificationCycle(): Promise<
 }
 
 /**
+ * Remove expired post-delete recovery snapshots and their offloaded payloads.
+ * The repository caps each call at 100 rows and fails before deleting a row
+ * when its object bytes cannot be removed, so the next maintenance sweep can
+ * retry without losing the cleanup handle.
+ */
+export async function processPreDeleteBackupCleanupCycle(): Promise<
+  Awaited<
+    ReturnType<
+      WorkerAgentSandboxesRepository["cleanupExpiredPreDeleteRecoveryBackups"]
+    >
+  >
+> {
+  const { agentSandboxesRepository } = await loadDeps();
+  return agentSandboxesRepository.cleanupExpiredPreDeleteRecoveryBackups();
+}
+
+/**
  * Grace period before an orphaned deletion row is re-armed. Long enough that a
  * delete whose job is mid-retry settles first (the sweep's NOT-EXISTS predicate
  * already skips rows with an active agent_delete job; the age cutoff keeps it
@@ -1798,6 +1815,31 @@ export async function runInfraMaintenanceCycle(
             oversizeSkipped: summary.oversizeSkipped,
             budgetDeferred: summary.budgetDeferred,
             escalated: summary.escalated,
+          },
+        );
+      }
+    },
+  );
+
+  await runBoundedPhase(
+    logger,
+    "pre-delete backup cleanup cycle",
+    () => processPreDeleteBackupCleanupCycle(),
+    (summary) => {
+      if (
+        summary.deletedRows > 0 ||
+        summary.deletedObjects > 0 ||
+        summary.failedRows > 0 ||
+        summary.invalidRows > 0
+      ) {
+        logger.info(
+          "[provisioning-worker] pre-delete backup cleanup cycle complete",
+          {
+            event: "pre_delete_backup_cleanup.cycle",
+            deletedRows: summary.deletedRows,
+            deletedObjects: summary.deletedObjects,
+            failedRows: summary.failedRows,
+            invalidRows: summary.invalidRows,
           },
         );
       }

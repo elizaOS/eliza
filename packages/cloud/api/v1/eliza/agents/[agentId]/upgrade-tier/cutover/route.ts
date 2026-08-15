@@ -28,6 +28,7 @@ import {
 } from "@/lib/services/shared-runtime/personal-shared-agent";
 import {
   commitSharedReminderCutover,
+  releaseSharedReminderCutover,
   reserveSharedRemindersForCutover,
   SharedReminderCutoverConflictError,
 } from "@/lib/services/shared-runtime/shared-scheduling";
@@ -149,6 +150,7 @@ app.post("/", async (c) => {
       );
     }
     const sealToken = `personal-cutover:${sourceAgentId}:${parsed.data.dedicatedAgentId}`;
+    const reminderReservationToken = `${sealToken}:reminders:${crypto.randomUUID()}`;
     const authorization = c.req.header("authorization");
     const apiKey = c.req.header("x-api-key");
     const active = await findActivePersonalDedicatedTarget(
@@ -178,6 +180,8 @@ app.post("/", async (c) => {
             sourceAgentId,
             targetAgentId: active.id,
             token: sealToken,
+            holderToken: reminderReservationToken,
+            authoritative: true,
           });
           const activation = await postDedicatedImport(
             `${activeBase}/api/conversations/${encodeURIComponent(sourceAgentId)}/import`,
@@ -209,6 +213,7 @@ app.post("/", async (c) => {
             sourceAgentId,
             targetAgentId: active.id,
             token: sealToken,
+            holderToken: reminderReservationToken,
             expectedTaskCount: marker.sharedScheduledTaskCount,
           });
           return json({
@@ -276,6 +281,7 @@ app.post("/", async (c) => {
       { namespace: conversationNamespace },
     );
     let markerCommitted = false;
+    let remindersReserved = false;
     try {
       if (history.some((message) => !message.id)) {
         return json(
@@ -296,7 +302,9 @@ app.post("/", async (c) => {
           sourceAgentId,
           targetAgentId: target.id,
           token: sealToken,
+          holderToken: reminderReservationToken,
         });
+        remindersReserved = true;
       } catch (error) {
         // error-policy:J1 the cutover boundary translates an ownership conflict for retry.
         if (error instanceof SharedReminderCutoverConflictError) {
@@ -370,6 +378,7 @@ app.post("/", async (c) => {
           sourceAgentId,
           targetAgentId: target.id,
           token: sealToken,
+          holderToken: reminderReservationToken,
         });
         if (
           refreshedTasks.length === scheduledTasks.length &&
@@ -444,6 +453,7 @@ app.post("/", async (c) => {
         sourceAgentId,
         targetAgentId: target.id,
         token: sealToken,
+        holderToken: reminderReservationToken,
         expectedTaskCount: scheduledTasks.length,
       });
       return json({
@@ -459,6 +469,14 @@ app.post("/", async (c) => {
       });
     } finally {
       if (!markerCommitted) {
+        if (remindersReserved) {
+          await releaseSharedReminderCutover({
+            sourceAgentId,
+            targetAgentId: target.id,
+            token: sealToken,
+            holderToken: reminderReservationToken,
+          });
+        }
         await coordinateSharedCutoverRelease(
           sourceAgentId,
           sourceAgentId,
