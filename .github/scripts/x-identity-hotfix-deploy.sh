@@ -1,27 +1,49 @@
 #!/usr/bin/env bash
-# Inspects the live X container's database tooling without exposing credentials.
+# Replaces the serving Eliza X image with the room-world reconciliation repair.
 set -euo pipefail
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 agent_id=4602b3be-2c01-4e7e-9cdc-849604e1bef7
-expected_image=ghcr.io/elizaos/eliza-demo@sha256:2c069963295ab5fab774b135f89b93bd0f2184c56d8afee5950448748dbb8db3
+old_image=ghcr.io/elizaos/eliza-demo@sha256:2c069963295ab5fab774b135f89b93bd0f2184c56d8afee5950448748dbb8db3
+new_digest=sha256:201b9770fdf97ad46bf0ceef88cc852fdfeea64dbf44d9ef49628eb211838f9a
+new_image="ghcr.io/elizaos/eliza-demo@$new_digest"
 database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
 database_url="${database_url/sslmode=no-verify/sslmode=require}"
 readarray -t placement < <(psql "$database_url" -v ON_ERROR_STOP=1 -Atc \
-  "SELECT node_id, container_name FROM agent_sandboxes WHERE id = '$agent_id' AND status = 'running' AND docker_image = '$expected_image'")
+  "SELECT node_id, container_name FROM agent_sandboxes WHERE id = '$agent_id' AND status = 'running' AND docker_image = '$old_image' AND replacement_cleanup_sandbox_id IS NULL AND NOT EXISTS (SELECT 1 FROM jobs WHERE agent_id = '$agent_id' AND status IN ('pending','in_progress'))")
 test "${#placement[@]}" -eq 1
 IFS='|' read -r node_id container_name <<<"${placement[0]}"
 
+psql "$database_url" -v ON_ERROR_STOP=1 -c "UPDATE agent_sandboxes SET status='provisioning', lifecycle_job_id=NULL, lifecycle_execution_generation=NULL, error_message='Operator staging X room reconciliation', updated_at=NOW() WHERE id='$agent_id' AND status='running' AND node_id='$node_id' AND container_name='$container_name' AND docker_image='$old_image' AND replacement_cleanup_sandbox_id IS NULL AND NOT EXISTS (SELECT 1 FROM jobs WHERE agent_id='$agent_id' AND status IN ('pending','in_progress'))"
 containers_key="$(sed -n 's/^CONTAINERS_SSH_KEY=//p' /opt/eliza/cloud/.env.local | tail -1)"
-printf '%s' "$containers_key" | base64 -d > "$work/key"
-chmod 600 "$work/key"
-curl -fsS --max-time 30 -H "Authorization: Bearer $ELIZACLOUD_API_KEY" \
-  -o "$work/node.json" "https://api.eliza.app/api/v1/admin/docker-nodes/$node_id"
-node_host="$(jq -er '.data.hostname' "$work/node.json")"
-node_user="$(jq -er '.data.sshUser' "$work/node.json")"
-node_port="$(jq -er '.data.sshPort' "$work/node.json")"
-ssh -i "$work/key" -p "$node_port" -o BatchMode=yes \
-  -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$work/known_hosts" \
-  "$node_user@$node_host" \
-  "set -euo pipefail; test \"\$(docker inspect --format '{{.Config.Image}}' '$container_name')\" = '$expected_image'; docker exec '$container_name' sh -lc 'cd /app && bun -e '\''import { PGlite } from \"@electric-sql/pglite\"; const db=new PGlite(process.env.PGLITE_DATA_DIR); const query=\"SELECT r.id::text AS room_id,r.world_id::text AS room_world_id,w.id::text AS world_id,w.name,w.metadata FROM rooms r LEFT JOIN worlds w ON w.id=r.world_id WHERE r.id IN (\\\$1::uuid,\\\$2::uuid) OR jsonb_extract_path_text(w.metadata,\\\$5,\\\$6) IN (\\\$3,\\\$4) ORDER BY r.created_at DESC\"; const result=await db.query(query,[\"47f5526f-c192-04ca-aa63-12283ea6f010\",\"d81c82a8-6992-0632-94bd-c23a925f1c04\",\"1519007261917650945\",\"1830340867737178112\",\"ownership\",\"ownerId\"]); console.log(JSON.stringify(result.rows)); await db.close();'\'''"
+printf '%s' "$containers_key" | base64 -d > "$work/key"; chmod 600 "$work/key"
+curl -fsS --max-time 30 -H "Authorization: Bearer $ELIZACLOUD_API_KEY" -o "$work/node.json" "https://api.eliza.app/api/v1/admin/docker-nodes/$node_id"
+node_host="$(jq -er '.data.hostname' "$work/node.json")"; node_user="$(jq -er '.data.sshUser' "$work/node.json")"; node_port="$(jq -er '.data.sshPort' "$work/node.json")"
+ssh -i "$work/key" -p "$node_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$work/known_hosts" "$node_user@$node_host" "set -euo pipefail; test \"\$(docker inspect --format '{{.Config.Image}}' '$container_name')\" = '$old_image'; docker stop --time 20 '$container_name' >/dev/null; docker rm '$container_name' >/dev/null"
+
+psql "$database_url" -v ON_ERROR_STOP=1 <<SQL
+BEGIN;
+DO \$\$
+DECLARE changed integer;
+BEGIN
+  UPDATE agent_sandboxes SET status='stopped', sandbox_id=NULL, bridge_url=NULL,
+    health_url=NULL, node_id=NULL, container_name=NULL, bridge_port=NULL,
+    web_ui_port=NULL, headscale_ip=NULL, docker_image='$new_image',
+    image_digest='$new_digest', previous_docker_image=NULL,
+    previous_image_digest=NULL, error_message=NULL, updated_at=NOW()
+  WHERE id='$agent_id' AND status='provisioning' AND node_id='$node_id'
+    AND container_name='$container_name' AND docker_image='$old_image'
+    AND NOT EXISTS (SELECT 1 FROM jobs WHERE agent_id='$agent_id' AND status IN ('pending','in_progress'));
+  GET DIAGNOSTICS changed = ROW_COUNT;
+  IF changed <> 1 THEN RAISE EXCEPTION 'staged X room placement did not match'; END IF;
+  INSERT INTO jobs (type,status,data,data_storage,agent_id,organization_id,user_id,max_attempts,estimated_completion_at)
+  SELECT 'agent_restart','pending',jsonb_build_object('agentId',id,'organizationId',organization_id::text,'userId',user_id::text),'inline',id::text,organization_id,user_id,3,NOW()+INTERVAL '90 seconds'
+  FROM agent_sandboxes WHERE id='$agent_id' AND status='stopped' AND docker_image='$new_image' AND user_id IS NOT NULL;
+  GET DIAGNOSTICS changed = ROW_COUNT;
+  IF changed <> 1 THEN RAISE EXCEPTION 'X room restart admission failed'; END IF;
+END \$\$;
+COMMIT;
+SELECT id,status,docker_image FROM agent_sandboxes WHERE id='$agent_id';
+SELECT id,type,status FROM jobs WHERE agent_id='$agent_id' ORDER BY created_at DESC LIMIT 3;
+SQL
