@@ -56,16 +56,16 @@ function nextWindowStartIso(
 ): string | null {
   const facts = context.ownerFacts;
   const timeZone = facts.timezone ?? "UTC";
-  const morningStart = facts.morningWindow?.start;
-  const eveningStart = facts.eveningWindow?.start;
-  const eveningEnd = facts.eveningWindow?.end;
+  const morningStart = facts.morningWindow?.start ?? "06:00";
+  const eveningStart = facts.eveningWindow?.start ?? "18:00";
+  const eveningEnd = facts.eveningWindow?.end ?? "22:00";
   let candidateTimes: Array<string | undefined>;
   switch (windowKey) {
     case "morning":
       candidateTimes = [morningStart];
       break;
     case "afternoon":
-      candidateTimes = [facts.morningWindow?.end];
+      candidateTimes = [facts.morningWindow?.end ?? "11:00"];
       break;
     case "evening":
       candidateTimes = [eveningStart];
