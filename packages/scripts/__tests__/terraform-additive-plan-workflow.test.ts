@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface WorkflowStep {
   name?: string;
@@ -36,8 +37,12 @@ afterEach(() => {
   }
 });
 
-function resource(address: string, actions: string[]) {
-  return { address, mode: "managed", change: { actions } };
+function resource(
+  address: string,
+  actions: string[],
+  options: { importing?: { id: string } } = {},
+) {
+  return { address, mode: "managed", change: { actions, ...options } };
 }
 
 function runValidator(resourceChanges: ReturnType<typeof resource>[]) {
@@ -45,7 +50,10 @@ function runValidator(resourceChanges: ReturnType<typeof resource>[]) {
   temporaryDirectories.push(directory);
   const fixturePath = join(directory, "plan.json");
   const terraformPath = join(directory, "terraform");
-  writeFileSync(fixturePath, JSON.stringify({ resource_changes: resourceChanges }));
+  writeFileSync(
+    fixturePath,
+    JSON.stringify({ resource_changes: resourceChanges }),
+  );
   writeFileSync(
     terraformPath,
     '#!/usr/bin/env bash\nset -euo pipefail\n[ "$1" = "show" ]\ncat "$PLAN_FIXTURE"\n',
@@ -56,6 +64,7 @@ function runValidator(resourceChanges: ReturnType<typeof resource>[]) {
     env: {
       ...process.env,
       PATH: `${directory}:${process.env.PATH ?? ""}`,
+      GITHUB_WORKSPACE: fileURLToPath(repoRoot).replace(/\/$/, ""),
       PLAN_FIXTURE: fixturePath,
       RUNNER_TEMP: directory,
       TARGET_ENVIRONMENT: "staging",
@@ -85,6 +94,16 @@ describe("canonical-edge additive Terraform plan workflow", () => {
     [
       "out-of-scope creation",
       resource('cloudflare_dns_record.pages["marketing"]', ["create"]),
+    ],
+    [
+      "in-scope import",
+      resource(siteDns, ["no-op"], { importing: { id: "existing-record" } }),
+    ],
+    [
+      "out-of-scope import",
+      resource('cloudflare_dns_record.pages["marketing"]', ["no-op"], {
+        importing: { id: "existing-record" },
+      }),
     ],
   ])("rejects %s", (_label, invalidChange) => {
     const result = runValidator([
