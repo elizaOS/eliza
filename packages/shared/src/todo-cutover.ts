@@ -7,12 +7,15 @@
 
 import { validateUuid } from "@elizaos/core/edge";
 
-export const SHARED_TODO_CUTOVER_VERSION = 1 as const;
+export const SHARED_TODO_CUTOVER_VERSION = 2 as const;
+export const SHARED_TODO_MUTATION_WIRE_VERSION = 1 as const;
 export const MAX_SHARED_TODO_CUTOVER_COUNT = 1_000;
-export const MAX_SHARED_TODO_CUTOVER_BYTES = 1_000_000;
+export const MAX_SHARED_TODO_CUTOVER_MUTATION_COUNT = 4_096;
+export const MAX_SHARED_TODO_CUTOVER_BYTES = 4 * 1024 * 1024;
 export const TODO_CUTOVER_PROVENANCE_KEY = "__elizaSharedTodoImport";
 
 const MAX_ID_LENGTH = 256;
+const MAX_IDEMPOTENCY_KEY_LENGTH = 1_024;
 const MAX_CONTENT_LENGTH = 16_384;
 const MAX_ACTIVE_FORM_LENGTH = 4_096;
 const MAX_METADATA_DEPTH = 32;
@@ -25,6 +28,17 @@ export const SHARED_TODO_STATUSES = [
 ] as const;
 
 export type SharedTodoStatus = (typeof SHARED_TODO_STATUSES)[number];
+export const SHARED_TODO_MUTATION_OPERATIONS = [
+  "create",
+  "update",
+  "complete",
+  "cancel",
+  "delete",
+  "write",
+  "clear",
+] as const;
+export type SharedTodoMutationOperation =
+  (typeof SHARED_TODO_MUTATION_OPERATIONS)[number];
 export type TodoCutoverJsonValue =
   | null
   | boolean
@@ -48,10 +62,22 @@ export interface SharedTodoCutoverRecord {
   completedAt: string | null;
 }
 
+export interface SharedTodoMutationCutoverRecord {
+  version: typeof SHARED_TODO_MUTATION_WIRE_VERSION;
+  mutationId: string;
+  idempotencyKey: string;
+  requestDigest: string;
+  operation: SharedTodoMutationOperation;
+  applied: boolean;
+  resultJson: unknown;
+  committedAt: string;
+}
+
 export interface SharedTodoCutoverSnapshot {
   version: typeof SHARED_TODO_CUTOVER_VERSION;
   sourceAgentId: string;
   todos: SharedTodoCutoverRecord[];
+  mutations: SharedTodoMutationCutoverRecord[];
   digest: string;
 }
 
@@ -236,6 +262,81 @@ function normalizeRecord(
   };
 }
 
+function normalizeMutation(
+  value: unknown,
+  index: number,
+): SharedTodoMutationCutoverRecord {
+  if (!isRecord(value)) {
+    return invalid(
+      "TODO_CUTOVER_INVALID_MUTATION_RECORD",
+      `mutations[${index}] must be an object`,
+    );
+  }
+  if (value.version !== SHARED_TODO_MUTATION_WIRE_VERSION) {
+    return invalid(
+      "TODO_CUTOVER_INVALID_MUTATION_VERSION",
+      `mutations[${index}].version is invalid`,
+    );
+  }
+  const idempotencyKey = requiredString(
+    value.idempotencyKey,
+    `mutations[${index}].idempotencyKey`,
+    MAX_IDEMPOTENCY_KEY_LENGTH,
+  );
+  if (idempotencyKey.trim().length === 0) {
+    return invalid(
+      "TODO_CUTOVER_INVALID_FIELD",
+      `mutations[${index}].idempotencyKey must not be blank`,
+    );
+  }
+  const requestDigest = requiredString(
+    value.requestDigest,
+    `mutations[${index}].requestDigest`,
+    64,
+  );
+  if (!/^[a-f0-9]{64}$/.test(requestDigest)) {
+    return invalid(
+      "TODO_CUTOVER_INVALID_REQUEST_DIGEST",
+      `mutations[${index}].requestDigest must be a lowercase SHA-256 digest`,
+    );
+  }
+  if (
+    !SHARED_TODO_MUTATION_OPERATIONS.includes(
+      value.operation as SharedTodoMutationOperation,
+    )
+  ) {
+    return invalid(
+      "TODO_CUTOVER_INVALID_MUTATION_OPERATION",
+      `mutations[${index}].operation is invalid`,
+    );
+  }
+  if (typeof value.applied !== "boolean") {
+    return invalid(
+      "TODO_CUTOVER_INVALID_FIELD",
+      `mutations[${index}].applied must be a boolean`,
+    );
+  }
+  return {
+    version: SHARED_TODO_MUTATION_WIRE_VERSION,
+    mutationId: requiredUuid(
+      value.mutationId,
+      `mutations[${index}].mutationId`,
+    ),
+    idempotencyKey,
+    requestDigest,
+    operation: value.operation as SharedTodoMutationOperation,
+    applied: value.applied,
+    resultJson: canonicalJsonValue(
+      value.resultJson,
+      `mutations[${index}].resultJson`,
+    ),
+    committedAt: canonicalTimestamp(
+      value.committedAt,
+      `mutations[${index}].committedAt`,
+    ),
+  };
+}
+
 function assertHierarchy(todos: readonly SharedTodoCutoverRecord[]): void {
   const byId = new Map(todos.map((todo) => [todo.sourceId, todo]));
   if (byId.size !== todos.length) {
@@ -264,6 +365,29 @@ function assertHierarchy(todos: readonly SharedTodoCutoverRecord[]): void {
   }
 }
 
+function assertUniqueMutations(
+  mutations: readonly SharedTodoMutationCutoverRecord[],
+): void {
+  const mutationIds = new Set<string>();
+  const idempotencyKeys = new Set<string>();
+  for (const mutation of mutations) {
+    if (mutationIds.has(mutation.mutationId)) {
+      invalid(
+        "TODO_CUTOVER_DUPLICATE_MUTATION_ID",
+        "Todo mutation ids must be unique",
+      );
+    }
+    mutationIds.add(mutation.mutationId);
+    if (idempotencyKeys.has(mutation.idempotencyKey)) {
+      invalid(
+        "TODO_CUTOVER_DUPLICATE_IDEMPOTENCY_KEY",
+        "Todo mutation idempotency keys must be unique",
+      );
+    }
+    idempotencyKeys.add(mutation.idempotencyKey);
+  }
+}
+
 function encodedBytes(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
@@ -281,11 +405,13 @@ async function sha256Hex(value: string): Promise<string> {
 function canonicalPayload(
   sourceAgentId: string,
   todos: readonly SharedTodoCutoverRecord[],
+  mutations: readonly SharedTodoMutationCutoverRecord[],
 ): string {
   return JSON.stringify({
     version: SHARED_TODO_CUTOVER_VERSION,
     sourceAgentId,
     todos,
+    mutations,
   });
 }
 
@@ -299,6 +425,7 @@ function compareCanonicalStrings(left: string, right: string): number {
 export async function createSharedTodoCutoverSnapshot(input: {
   sourceAgentId: string;
   todos: readonly unknown[];
+  mutations: readonly unknown[];
 }): Promise<SharedTodoCutoverSnapshot> {
   const sourceAgentId = requiredString(
     input.sourceAgentId,
@@ -311,13 +438,27 @@ export async function createSharedTodoCutoverSnapshot(input: {
       `Todo snapshot exceeds ${MAX_SHARED_TODO_CUTOVER_COUNT} records`,
     );
   }
+  if (input.mutations.length > MAX_SHARED_TODO_CUTOVER_MUTATION_COUNT) {
+    invalid(
+      "TODO_CUTOVER_TOO_MANY_MUTATIONS",
+      `Todo snapshot exceeds ${MAX_SHARED_TODO_CUTOVER_MUTATION_COUNT} mutations`,
+    );
+  }
   const todos = input.todos
     .map((todo, index) => normalizeRecord(todo, index))
     .sort((left, right) =>
       compareCanonicalStrings(left.sourceId, right.sourceId),
     );
   assertHierarchy(todos);
-  const payload = canonicalPayload(sourceAgentId, todos);
+  const mutations = input.mutations
+    .map((mutation, index) => normalizeMutation(mutation, index))
+    .sort(
+      (left, right) =>
+        compareCanonicalStrings(left.committedAt, right.committedAt) ||
+        compareCanonicalStrings(left.mutationId, right.mutationId),
+    );
+  assertUniqueMutations(mutations);
+  const payload = canonicalPayload(sourceAgentId, todos, mutations);
   if (encodedBytes(payload) > MAX_SHARED_TODO_CUTOVER_BYTES) {
     invalid(
       "TODO_CUTOVER_PAYLOAD_TOO_LARGE",
@@ -328,6 +469,7 @@ export async function createSharedTodoCutoverSnapshot(input: {
     version: SHARED_TODO_CUTOVER_VERSION,
     sourceAgentId,
     todos,
+    mutations,
     digest: await sha256Hex(payload),
   };
 }
@@ -348,9 +490,16 @@ export async function parseSharedTodoCutoverSnapshot(
       "Todo snapshot must include a todos array",
     );
   }
+  if (!Array.isArray(value.mutations)) {
+    return invalid(
+      "TODO_CUTOVER_INVALID_MUTATIONS",
+      "Todo snapshot must include a mutations array",
+    );
+  }
   const normalized = await createSharedTodoCutoverSnapshot({
     sourceAgentId: value.sourceAgentId as string,
     todos: value.todos,
+    mutations: value.mutations,
   });
   if (typeof value.digest !== "string" || value.digest !== normalized.digest) {
     return invalid(
