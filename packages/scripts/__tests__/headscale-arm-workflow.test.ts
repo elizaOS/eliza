@@ -1072,6 +1072,38 @@ proxy_set_header Connection $connection_upgrade;
     expect(externallyReferenced.stdout).toContain(
       "upgrade-map output is referenced outside the reviewed file",
     );
+  }, 10_000);
+
+  test("profiles rejected map headers without exposing their tokens", () => {
+    const otherOutputVariable = runLegacyVhostValidation({
+      source: expectedLegacySource.replace(
+        "$connection_upgrade",
+        "$headscale_connection_upgrade",
+      ),
+      loadedConfig: expectedLoadedConfig,
+      enforceDirectiveAllowlist: true,
+    });
+    expect(otherOutputVariable.status).not.toBe(0);
+    expect(otherOutputVariable.stdout).toContain(
+      "upgrade map header profile: candidates=1 fields=2 source-form=exact target-form=other-variable extra-fields=no brace=same-line",
+    );
+    expect(otherOutputVariable.stdout).not.toContain(
+      "$headscale_connection_upgrade",
+    );
+
+    const followingLineProfile = runLegacyVhostValidation({
+      source: expectedLegacySource.replace(
+        "map $http_upgrade $connection_upgrade {",
+        "map $http_connection $connection_upgrade\n{",
+      ),
+      loadedConfig: expectedLoadedConfig,
+      enforceDirectiveAllowlist: true,
+    });
+    expect(followingLineProfile.status).not.toBe(0);
+    expect(followingLineProfile.stdout).toContain(
+      "upgrade map header profile: candidates=1 fields=2 source-form=other-variable target-form=exact extra-fields=no brace=following-line",
+    );
+    expect(followingLineProfile.stdout).not.toContain("$http_connection");
   });
 
   test("accepts only the reviewed regular legacy-only two-listener contract", () => {
