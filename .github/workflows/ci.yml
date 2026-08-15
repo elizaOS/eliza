@@ -523,13 +523,24 @@ jobs:
           set -euo pipefail
           if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
             if [ "$EVENT_NAME" = "pull_request" ]; then
-              # Three-dot: scan merge-base(base,head)..head, i.e. only what THIS
-              # PR added. `pull_request.base.sha` is the base tip at event time,
-              # not the merge base, so a two-dot range also scans commits the
-              # branch merely inherited by merging develop and re-flags fixtures
-              # the PR never touched (#17971/#17984). Canonical CI now owns the
-              # only PR secret scan, so the three-dot range must live here.
-              range="${BASE_SHA}...${HEAD_SHA}"
+              # Scan only what THIS PR introduced: merge-base(base,head)..head.
+              # `gitleaks --log-opts` feeds `git log`, where a three-dot range
+              # A...B is the symmetric difference and also traverses commits
+              # reachable only from the base side. `pull_request.base.sha` is
+              # the base tip at event time, not the merge base, so a PR whose
+              # base branch advanced after the branch point would scan the
+              # base-only commits it never added (#17971/#17984/#19687).
+              # Resolve the real merge base and use a two-dot range so `git
+              # log` traverses exactly the PR-introduced commits. If the merge
+              # base cannot be resolved (e.g. an unexpected shallow clone),
+              # fall back to scanning only the head commit rather than the
+              # whole history.
+              MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA" || true)"
+              if [ -z "$MERGE_BASE" ]; then
+                range="-1 ${HEAD_SHA}"
+              else
+                range="${MERGE_BASE}..${HEAD_SHA}"
+              fi
             else
               range="${BASE_SHA}..${HEAD_SHA}"
             fi
