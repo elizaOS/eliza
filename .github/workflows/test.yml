@@ -242,18 +242,34 @@ jobs:
             FROM agent_sandboxes
             WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
             SQL
-      - name: Inspect the fixed-image provision execution
+      - name: Pre-pull the fixed image and retire the failed exact container
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
-          command_timeout: 2m
+          command_timeout: 15m
+          envs: ELIZACLOUD_API_KEY
           script: |
             set -euo pipefail
-            journalctl --since '2026-08-15 03:24:00 UTC' --no-pager \
-              | grep -E 'b491a56e-5aa1-4df4-b27e-aadb0abf615f|4602b3be-2c01-4e7e-9cdc-849604e1bef7|a4d6156aef4c79fc01709a85025fd1a9f010a99279493e9545ed14f7137bd8cd' \
-              | tail -200
+            work="$(mktemp -d)"
+            trap 'rm -rf "$work"' EXIT
+            containers_key="$(sed -n 's/^CONTAINERS_SSH_KEY=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            printf '%s' "$containers_key" | base64 -d > "$work/key"
+            chmod 600 "$work/key"
+            curl --silent --show-error --fail --max-time 30 \
+              --header "Authorization: Bearer $ELIZACLOUD_API_KEY" \
+              --output "$work/node.json" \
+              https://api.eliza.app/api/v1/admin/docker-nodes/eliza-core-prod-5
+            host="$(jq -er '.data.hostname' "$work/node.json")"
+            user="$(jq -er '.data.sshUser' "$work/node.json")"
+            port="$(jq -er '.data.sshPort' "$work/node.json")"
+            ssh -i "$work/key" -p "$port" \
+              -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile="$work/known_hosts" \
+              -o ServerAliveInterval=15 -o ServerAliveCountMax=40 \
+              "$user@$host" \
+              'set -euo pipefail; image=ghcr.io/elizaos/eliza-demo@sha256:a4d6156aef4c79fc01709a85025fd1a9f010a99279493e9545ed14f7137bd8cd; target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7; docker pull "$image"; docker image inspect "$image" >/dev/null; if docker inspect "$target" >/dev/null 2>&1; then test "$(docker inspect --format "{{.Config.Image}}" "$target")" = "$image"; docker stop --time 20 "$target" >/dev/null || true; docker rm "$target" >/dev/null; fi; printf "fixed image cached and failed exact container absent\n"'
 
   changes:
     name: Classify changed paths
