@@ -6,9 +6,11 @@
  */
 import { APICallError, RetryError } from "ai";
 import { describe, expect, it } from "vitest";
+import { TrajectoryLimitExceeded } from "../../runtime/limits";
 import { ModelType } from "../../types";
 import {
 	buildFailureReplyPrompt,
+	classifyStructuredFailureCause,
 	isModelProviderFallbackError,
 	isRateLimitError,
 } from "../message";
@@ -125,6 +127,95 @@ describe("buildFailureReplyPrompt", () => {
 		const prompt = buildFailureReplyPrompt(RECENT);
 		expect(prompt.endsWith("Reply:")).toBe(true);
 		expect(prompt).not.toContain("```");
+	});
+});
+
+/**
+ * #17027 AC6 — distinguishable failure causes. A missing capability, planner
+ * exhaustion, and a transient provider blip must produce distinguishable
+ * user-facing replies; the cause is classified structurally from the error
+ * that killed the runtime, never from prose.
+ */
+describe("classifyStructuredFailureCause", () => {
+	it("maps required_tool_misses to missing_capability", () => {
+		const error = new TrajectoryLimitExceeded({
+			kind: "required_tool_misses",
+			max: 3,
+			observed: 4,
+		});
+		expect(classifyStructuredFailureCause(error)).toBe("missing_capability");
+	});
+
+	it("maps unavailable_tool_calls to missing_capability", () => {
+		const error = new TrajectoryLimitExceeded({
+			kind: "unavailable_tool_calls",
+			max: 3,
+			observed: 4,
+		});
+		expect(classifyStructuredFailureCause(error)).toBe("missing_capability");
+	});
+
+	it("maps budget-style trajectory limits to planner_exhaustion", () => {
+		for (const kind of [
+			"tool_calls",
+			"repeated_failures",
+			"terminal_only_continuations",
+			"trajectory_token_budget",
+		] as const) {
+			const error = new TrajectoryLimitExceeded({
+				kind,
+				max: 16,
+				observed: 17,
+			});
+			expect(classifyStructuredFailureCause(error)).toBe("planner_exhaustion");
+		}
+	});
+
+	it("maps arbitrary errors and non-errors to transient", () => {
+		expect(classifyStructuredFailureCause(new Error("ECONNRESET"))).toBe(
+			"transient",
+		);
+		expect(classifyStructuredFailureCause("boom")).toBe("transient");
+		expect(classifyStructuredFailureCause(undefined)).toBe("transient");
+	});
+});
+
+describe("buildFailureReplyPrompt per-cause variants", () => {
+	const RECENT = "@user: track my daily pushups";
+
+	it("missing_capability names the gap and forbids a retry promise", () => {
+		const prompt = buildFailureReplyPrompt(RECENT, "missing_capability");
+		expect(prompt).toContain("capability which is not available");
+		expect(prompt).toContain("not able to do that here right now");
+		expect(prompt).toContain("Do NOT claim it was done");
+		expect(prompt).not.toContain("suggest a retry");
+	});
+
+	it("planner_exhaustion admits the request was not finished", () => {
+		const prompt = buildFailureReplyPrompt(RECENT, "planner_exhaustion");
+		expect(prompt).toContain("ran out of attempts");
+		expect(prompt).toContain("could not finish the request");
+		expect(prompt).toContain("suggest a retry");
+	});
+
+	it("explicit transient matches the default prompt byte-for-byte", () => {
+		expect(buildFailureReplyPrompt(RECENT, "transient")).toBe(
+			buildFailureReplyPrompt(RECENT),
+		);
+	});
+
+	it("every variant keeps the never-answer-on-the-merits rule", () => {
+		for (const cause of [
+			"missing_capability",
+			"planner_exhaustion",
+			"transient",
+		] as const) {
+			const prompt = buildFailureReplyPrompt(RECENT, cause);
+			expect(prompt).toContain(
+				"NEVER answer the user's question on the merits",
+			);
+			expect(prompt.endsWith("Reply:")).toBe(true);
+		}
 	});
 });
 

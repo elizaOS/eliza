@@ -8,6 +8,7 @@
  * buildFailureReplyPrompt shapes the in-character apology (never answering on the
  * merits), and stripReasoningBlocks removes <think> spans from the raw reply.
  */
+import { TrajectoryLimitExceeded } from "../../runtime/limits";
 import { ModelType } from "../../types/model";
 
 type ErrorWithStatus = {
@@ -301,17 +302,83 @@ export function isModelProviderFallbackError(
 	);
 }
 
-export function buildFailureReplyPrompt(recentMessages: string): string {
-	return [
+/**
+ * Why the turn ended on the structured-failure path, classified from the
+ * error that killed the runtime (#17027 AC6). Distinguishable causes get
+ * distinguishable user-facing replies instead of one generic
+ * "something flaked" template:
+ *
+ * - `missing_capability` — the planner required a tool it could never call
+ *   (the tool was requested but not exposed, or the requirement exhausted
+ *   without a single valid call). Retrying cannot help; the honest reply
+ *   names the gap.
+ * - `planner_exhaustion` — the planner ran out of budget (tool calls,
+ *   repeated failures, token budget) before finishing. Retrying may help.
+ * - `transient` — a model/provider/infrastructure error; the pre-existing
+ *   generic path.
+ */
+export type StructuredFailureCause =
+	| "missing_capability"
+	| "planner_exhaustion"
+	| "transient";
+
+/**
+ * Classify the error that aborted the message runtime into a
+ * `StructuredFailureCause`. Trajectory-limit aborts are the only errors
+ * that structurally identify their cause today: `required_tool_misses` and
+ * `unavailable_tool_calls` mean the turn demanded a capability that was
+ * never successfully invocable, while the remaining limit kinds mean the
+ * planner exhausted its budget mid-task. Everything else stays `transient`.
+ */
+export function classifyStructuredFailureCause(
+	error: unknown,
+): StructuredFailureCause {
+	if (error instanceof TrajectoryLimitExceeded) {
+		return error.kind === "required_tool_misses" ||
+			error.kind === "unavailable_tool_calls"
+			? "missing_capability"
+			: "planner_exhaustion";
+	}
+	return "transient";
+}
+
+const FAILURE_PROMPT_CAUSE_LINES: Record<StructuredFailureCause, string[]> = {
+	missing_capability: [
+		"The user asked for something that needs a capability which is not available in this setup, so the request could not be carried out.",
+		"Write a one or two sentence reply in plain language.",
+	],
+	planner_exhaustion: [
+		"You ran out of attempts while working on the user's request and could not finish it.",
+		"Write a one or two sentence reply in plain language.",
+	],
+	transient: [
 		"You hit a transient model error and have to send a short user-facing reply.",
 		"Write a one or two sentence reply in plain language.",
+	],
+};
+
+const FAILURE_PROMPT_CAUSE_RETRY_RULE: Record<StructuredFailureCause, string> =
+	{
+		missing_capability:
+			"- Tell the user plainly that you are not able to do that here right now. Do NOT claim it was done, and do not promise to retry - retrying cannot succeed until the capability is enabled.",
+		planner_exhaustion:
+			"- Acknowledge that you could not finish the request and suggest a retry.",
+		transient: "- Acknowledge that something went wrong and suggest a retry.",
+	};
+
+export function buildFailureReplyPrompt(
+	recentMessages: string,
+	cause: StructuredFailureCause = "transient",
+): string {
+	return [
+		...FAILURE_PROMPT_CAUSE_LINES[cause],
 		"",
 		"Hard rules:",
 		"- Stay in character. Keep your usual voice and tone.",
 		"- NEVER answer the user's question on the merits.",
 		"- The trajectory that would have GROUNDED the answer failed, so do not emit answer-shaped tokens from memory or context.",
 		"- Do not provide a SHA, a count, a price, a date, a status, a file path, or a name as if it were verified.",
-		"- Acknowledge that something went wrong and suggest a retry.",
+		FAILURE_PROMPT_CAUSE_RETRY_RULE[cause],
 		"- Do not paraphrase or echo the user's question as if you are about to answer it.",
 		"- NEVER mention internal mechanism words such as: planner, action_planner,",
 		"  XML, JSON, schema, structured output, model, retries, sonnet,",

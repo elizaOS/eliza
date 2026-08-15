@@ -359,10 +359,12 @@ import {
 } from "./message/direct-action-heuristics";
 import {
 	buildFailureReplyPrompt,
+	classifyStructuredFailureCause,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
 	isInsufficientCreditsError,
 	isRateLimitError,
+	type StructuredFailureCause,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
 import {
@@ -1587,12 +1589,14 @@ export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
 
 export {
 	buildFailureReplyPrompt,
+	classifyStructuredFailureCause,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
 	isInsufficientCreditsError,
 	isInsufficientCreditsMessage,
 	isModelProviderFallbackError,
 	isRateLimitError,
+	type StructuredFailureCause,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
 export {
@@ -12894,12 +12898,26 @@ export class DefaultMessageService implements IMessageService {
 				if (failureGate.addressed || stage1DecidedRespond) {
 					shouldRespondToMessage = true;
 					terminalDecision = null;
+					// Distinguish WHY the runtime died so the failure reply names
+					// the real condition: a capability that was never invocable is
+					// not a transient blip and must not read like one (#17027 AC6).
+					const failureCause = classifyStructuredFailureCause(error);
+					runtime.logger.info(
+						{
+							src: "service:message",
+							agentId: runtime.agentId,
+							roomId: message.roomId,
+							failureCause,
+						},
+						"MessageService: structured failure reply cause classified",
+					);
 					strategyResult = await this.buildStructuredFailureReply(
 						runtime,
 						message,
 						state,
 						responseId,
 						"running the native tool message runtime",
+						failureCause,
 					);
 					_usedV5Runtime = true;
 					state = strategyResult.state;
@@ -14381,6 +14399,7 @@ export class DefaultMessageService implements IMessageService {
 		state: State,
 		responseId: UUID,
 		stage: string,
+		cause: StructuredFailureCause = "transient",
 	): Promise<StrategyResult> {
 		// Short-circuit when no LLM provider is configured at all. The fallback
 		// model loop below would just throw `NoModelProviderConfiguredError` for
@@ -14400,7 +14419,7 @@ export class DefaultMessageService implements IMessageService {
 			state,
 			message,
 		);
-		const failurePrompt = buildFailureReplyPrompt(recentMessages);
+		const failurePrompt = buildFailureReplyPrompt(recentMessages, cause);
 
 		const attempt = await this.generateFailureReplyText(
 			runtime,
@@ -14440,6 +14459,15 @@ export class DefaultMessageService implements IMessageService {
 				replyText =
 					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
 					"My Eliza Cloud key isn't authorized for inference right now — check that your cloud key is valid and your account has credits, then try again.";
+			} else if (cause === "missing_capability") {
+				// Not transient: retrying cannot succeed until the capability is
+				// enabled, so the default names the gap instead of inviting a
+				// retry (#17027 AC6).
+				replyText =
+					"I can't do that here right now - it needs a capability that isn't available in this setup.";
+			} else if (cause === "planner_exhaustion") {
+				replyText =
+					"I ran out of attempts before I could finish that. Nothing was completed - please try again.";
 			} else {
 				const tmpl = runtime.character.templates?.transientFailureReply;
 				replyText =
