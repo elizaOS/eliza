@@ -481,6 +481,7 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 2m
+          envs: ELIZACLOUD_API_KEY
           script: |
             set -euo pipefail
             agent_id=4602b3be-2c01-4e7e-9cdc-849604e1bef7
