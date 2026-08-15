@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { ExtractedTaskParams } from "../actions/lib/extract-task-plan.ts";
 import { buildCadenceFromLlmParams } from "../actions/life.ts";
 import type { LifeOpsTaskDefinition } from "../contracts/index.js";
+import { DefinitionsDomain } from "./domains/definitions-service.ts";
 import { materializeDefinitionOccurrences } from "./engine.ts";
 import { normalizeCadence } from "./service-normalize-task.ts";
 
@@ -74,8 +75,34 @@ describe("unscheduled cadence", () => {
       dueInMinutes: null,
       multiStep: false,
     } as unknown as ExtractedTaskParams;
-    expect(buildCadenceFromLlmParams(params)).toEqual({
+    expect(
+      buildCadenceFromLlmParams(params, { allowUnscheduled: true }),
+    ).toEqual({
       cadence: { kind: "unscheduled" },
     });
+    expect(buildCadenceFromLlmParams(params)).toBeNull();
+  });
+
+  it("rejects unscheduled cadence for non-task definitions at the service boundary", async () => {
+    const context = {
+      agentId: () => "agent-1",
+      normalizeOwnership: () => ({
+        domain: "personal",
+        subjectType: "owner",
+        subjectId: "owner-1",
+        visibilityScope: "private",
+        contextPolicy: { allowAmbient: false },
+      }),
+    } as never;
+    const domain = new DefinitionsDomain(context, {} as never);
+
+    await expect(
+      domain.createDefinition({
+        kind: "habit",
+        title: "A habit that can never fire",
+        timezone: "UTC",
+        cadence: { kind: "unscheduled" },
+      }),
+    ).rejects.toThrow("unscheduled cadence is only valid for task definitions");
   });
 });
