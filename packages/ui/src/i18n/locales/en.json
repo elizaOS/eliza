@@ -5959,6 +5959,7 @@
   "automationsfeed.new": "New",
   "automationsfeed.empty": "No automations yet.",
   "automationsfeed.emptyHeadline": "Nothing scheduled yet",
+  "automationsfeed.emptyWorkflows": "No workflows",
   "automationsfeed.emptySub": "Ask in chat to set up a workflow and it will run here.",
   "automationsfeed.runError": "Failed to run automation.",
   "automationsfeed.workflow": "Workflow",
