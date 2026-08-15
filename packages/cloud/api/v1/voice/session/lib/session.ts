@@ -814,6 +814,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     transcript: string,
     traceId: string,
   ): Promise<void> {
+    const responseStartedAt = this.now();
+    let firstModelTextAt: number | null = null;
     const abort = new AbortController();
     this.llmAbort = abort;
     const phrase = new PhraseAggregator({
@@ -833,6 +835,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       const callbacks: RealtimeTtsStreamCallbacks = {
         onFirstAudio: () => {
           if (this.currentVoiceTurnId !== traceId) return;
+          const firstAudioAt = this.now();
+          logger.info("[voice-session] first-turn latency", {
+            traceId,
+            transcriptChars: transcript.length,
+            firstModelTextMs:
+              firstModelTextAt === null
+                ? null
+                : firstModelTextAt - responseStartedAt,
+            firstAudioMs: firstAudioAt - responseStartedAt,
+            ttsAfterFirstTextMs:
+              firstModelTextAt === null
+                ? null
+                : firstAudioAt - firstModelTextAt,
+          });
           this.state = "speaking";
           this.send({ t: "speaking_start", traceId });
         },
@@ -896,6 +912,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         if (this.currentVoiceTurnId !== traceId) return;
         if (!this.firstLlmTextEmitted) {
           this.firstLlmTextEmitted = true;
+          firstModelTextAt = this.now();
           this.send({ t: "llm_first_text", traceId });
         }
         // Cartesia closes a synthesis context via the FINAL non-empty phrase
@@ -942,6 +959,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           ) {
             throw error;
           }
+          logger.info("[voice-session] retrying cold response turn", {
+            traceId,
+            attempt,
+            retryDelayMs: retryDelay,
+            upstreamCode: bridgeError.upstreamCode,
+            elapsedMs: this.now() - responseStartedAt,
+          });
           await new Promise<void>((resolve) => {
             const timeout = setTimeout(resolve, retryDelay);
             abort.signal.addEventListener(

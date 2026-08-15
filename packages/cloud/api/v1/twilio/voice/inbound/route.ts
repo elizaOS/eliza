@@ -130,6 +130,7 @@ app.post("/", async (c) => {
       agent: phoneNumber.agent,
       env: c.env,
       executionCtx: c.executionCtx,
+      freshConversation: true,
       claims: {
         agentId: phoneNumber.agentId,
         conversationId,

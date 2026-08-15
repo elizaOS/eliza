@@ -358,6 +358,41 @@ test("prewarm joins cold hydration without writing a conversation turn", async (
   expect(repositoryReads).toBe(1);
 });
 
+test("fresh-room prewarm skips a legacy history query", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [{ role: "assistant", content: "must not leak" }];
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/prewarm", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "prewarm",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "new-phone-call",
+        startEmpty: true,
+      }),
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  await response.arrayBuffer();
+  expect(repositoryReads).toBe(0);
+  expect(repositoryWrites).toBe(0);
+  expect(data.get("conversation")).toMatchObject({
+    agentId: AGENT_FIXTURE.id,
+    channelId: "new-phone-call",
+    history: [],
+    dirty: false,
+  });
+});
+
 test("warm coordinated turns use local history and mirror asynchronously", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;
