@@ -2360,6 +2360,64 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
   return undefined;
 }
 
+const EXPLICIT_SCHEDULED_TODO_PATTERNS = [
+  /\b(?:today|tomorrow|tonight|next (?:day|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i,
+  /\b(?:at|by|on)\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+  /\bin\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|a|an)\s+(?:minutes?|hours?|days?|weeks?|months?|years?)\b/i,
+  /\b(?:at|by|before|after)\s+(?:the\s+)?(?:start|beginning|middle|end)\s+of\s+(?:the\s+|this\s+|next\s+)?(?:day|week|month|year)\b/i,
+  /\b(?:before|after)\s+(?:the\s+)?(?:meeting|game|work|school|lunch|dinner|appointment|trip|flight|event)\b/i,
+  /\b(?:a|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:days?|weeks?|months?|years?)\s+from\s+(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+  /\b(?:every|each|daily|weekly|monthly|yearly)\b/i,
+  /\b\d{4}-\d{2}-\d{2}\b/,
+  /(?:hoy|mañana|esta noche|próxim[oa] (?:día|semana|mes|año)|cada (?:día|semana|mes|año)|diariamente|semanalmente|mensualmente|anualmente)/i,
+  /(?:a las?|dentro de)\s+(?:\d+|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)(?:\s+(?:minutos?|horas?|días?|semanas?|meses?|años?))?/i,
+  /(?:hoje|amanhã|esta noite|próxim[oa] (?:dia|semana|m[eê]s|ano)|cada (?:dia|semana|m[eê]s|ano)|diariamente|semanalmente|mensalmente|anualmente)/i,
+  /(?:às?|dentro de)\s+(?:\d+|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez)(?:\s+(?:minutos?|horas?|dias?|semanas?|meses?|anos?))?/i,
+  /(?:今天|明天|今晚|每天|每周|每週|每月|每年)/,
+  /(?:今日|明日|今夜|毎日|毎週|毎月|毎年)/,
+  /(?:오늘|내일|오늘 밤|매일|매주|매월|매년)/,
+  /(?:hôm nay|hom nay|ngày mai|ngay mai|tối nay|toi nay|tuần tới|tuan toi|tháng tới|thang toi|năm tới|nam toi|mỗi ngày|moi ngay|hàng tuần|hang tuan|hàng tháng|hang thang|hàng năm|hang nam)/i,
+  /(?:lúc|luc)\s*\d{1,2}\s*(?:giờ|gio)|(?:trong|sau)\s+(?:\d+|một|mot|hai|ba|bốn|bon|năm|nam|sáu|sau|bảy|bay|tám|tam|chín|chin|mười|muoi)\s+(?:phút|phut|giờ|gio|ngày|ngay|tuần|tuan|tháng|thang|năm|nam)/i,
+  /(?:ngayon|bukas|mamayang gabi|sa susunod na (?:araw|linggo|buwan|taon)|araw-araw|lingguhan|buwan-buwan|taun-taon)/i,
+  /(?:alas\s+\d{1,2}|sa loob ng\s+(?:\d+|isa|dalawa|tatlo|apat|lima|anim|pito|walo|siyam|sampu)\s+(?:minuto|oras|araw|linggo|buwan|taon))/i,
+] as const;
+
+const NEGATED_UNSCHEDULED_PATTERNS = [
+  /\b(?:not|never)\s+(?:an?\s+)?(?:plain|undated|unscheduled)\s+(?:todo|task|item)\b/i,
+  /\b(?:do not|don't|dont)\s+(?:make|save|add|create)(?:\s+it)?\s+(?:as\s+)?(?:an?\s+)?(?:plain|undated|unscheduled)\s+(?:todo|task|item)\b/i,
+] as const;
+
+const EXPLICIT_UNSCHEDULED_PATTERNS = [
+  /\bno (?:due )?date\b/i,
+  /\bwithout (?:a )?(?:due )?date\b/i,
+  /\bno (?:schedule|scheduled time|time needed|required time)\b/i,
+  /\b(?:plain|undated|unscheduled) (?:todo|task|item)\b/i,
+  /\bjust (?:a )?(?:plain )?(?:todo|task)\b/i,
+  /\b(?:sin fecha|sin plazo|sin horario)\b/i,
+  /\b(?:sem data|sem prazo|sem hor[aá]rio)\b/i,
+  /(?:没有|沒有|无|無)(?:截止日期|到期日|日期|时间|時間|日程)/,
+  /(?:期限|締め切り|日付|予定)(?:は)?なし/,
+  /(?:마감일|날짜|일정) 없이/,
+  /(?:không|khong) (?:có |co )?(?:ngày đến hạn|ngay den han|lịch|lich)/i,
+  /(?:walang takdang petsa|walang iskedyul)/i,
+] as const;
+
+/** Require current user-authored text before trusting model-only no-date shape. */
+export function textStatesExplicitUnscheduled(text: string): boolean {
+  const normalized = normalizeLifeInputText(text);
+  if (
+    EXPLICIT_SCHEDULED_TODO_PATTERNS.some((pattern) =>
+      pattern.test(normalized),
+    ) ||
+    NEGATED_UNSCHEDULED_PATTERNS.some((pattern) => pattern.test(normalized))
+  ) {
+    return false;
+  }
+  return EXPLICIT_UNSCHEDULED_PATTERNS.some((pattern) =>
+    pattern.test(normalized),
+  );
+}
+
 /**
  * Convert LLM-extracted params into a typed LifeOpsCadence.
  * Returns null when the LLM output is insufficient to construct a
@@ -4385,7 +4443,8 @@ async function runLifeOperationHandlerInner(
         ) ?? ownerFactTimeZone;
       if (
         cadence?.kind === "unscheduled" &&
-        ownerSurfaceActionName !== "OWNER_TODOS"
+        (ownerSurfaceActionName !== "OWNER_TODOS" ||
+          (!reuseDeferredDraft && !textStatesExplicitUnscheduled(currentText)))
       ) {
         cadence = undefined;
       }
