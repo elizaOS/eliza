@@ -37,6 +37,7 @@ export interface ExtractedTaskParams {
   title: string | null;
   description: string | null;
   cadenceKind:
+    | "unscheduled"
     | "once"
     | "daily"
     | "weekly"
@@ -80,6 +81,7 @@ export interface ExtractedTaskCreatePlan extends ExtractedTaskParams {
 }
 
 const VALID_CADENCE_KINDS = new Set([
+  "unscheduled",
   "once",
   "daily",
   "weekly",
@@ -167,7 +169,8 @@ function buildExtractionPrompt(
     '- requestKind: "alarm" when this is explicitly an alarm/wake-up request, "reminder" when it is explicitly a reminder request, otherwise null',
     "- title: short name for the task (2-5 words)",
     "- description: brief description if the user provided context",
-    '- cadenceKind: one of "once", "daily", "weekly", "times_per_day", "interval"',
+    '- cadenceKind: one of "unscheduled", "once", "daily", "weekly", "times_per_day", "interval"',
+    '  - "unscheduled" — ONLY when the user explicitly declines a date or schedule for this item ("no due date", "no time needed", "just a plain todo", "someday"). A merely omitted date is NOT unscheduled — keep asking via mode="respond" as before.',
     '  - "once" — a specific dated and/or timed event that happens a single time (e.g. "april 17 at 8pm", "tomorrow at 9", "set an alarm for 7am")',
     '  - "daily" — happens every day, typically with one time or window (e.g. "every morning", "every night")',
     '  - "weekly" — happens on specific weekdays (e.g. "every Sunday", "Mon/Wed/Fri")',
