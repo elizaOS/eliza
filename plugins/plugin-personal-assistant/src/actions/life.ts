@@ -3171,6 +3171,12 @@ async function isForeignPageScope(
 // `runLifeOperationHandler` below.
 export const OWNER_OPERATION_TAGS: string[] = [
   "domain:reminders",
+  // "resource:tracked-work" + "capability:read" ground empty-tracked-state
+  // replies at the planned-reply egress guard: a verified owner-surface review
+  // that authored the exact reply ("nothing on the list") is real evidence,
+  // not a fabricated recap, so the guard must not replace it with a canned
+  // failure (core services/message.ts plannedReplyHasClaimGroundingReceipt).
+  "resource:tracked-work",
   "capability:read",
   "capability:write",
   "capability:update",
