@@ -11,8 +11,9 @@ import fs from "node:fs";
 import type { ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { EventEmitter } from "node:events";
 import { ElizaError } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 let stateDir: string;
 
@@ -65,13 +66,24 @@ function makeRes(): {
   const ended = new Promise<void>((resolve) => {
     resolveEnded = resolve;
   });
+  let headersSent = false;
+  let writableEnded = false;
+  const closeHandlers: Record<string, (() => void)[]> = {};
   const res = {
+    get headersSent() {
+      return headersSent;
+    },
+    get writableEnded() {
+      return writableEnded;
+    },
     writeHead(s: number, h: Record<string, unknown>) {
       status = s;
       headers = h;
+      headersSent = true;
       return this;
     },
     end(body?: unknown) {
+      writableEnded = true;
       if (typeof body === "string") chunks.push(Buffer.from(body));
       else if (Buffer.isBuffer(body)) chunks.push(body);
       resolveEnded?.();
@@ -81,16 +93,24 @@ function makeRes(): {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       return true;
     },
-    on() {
+    destroy: vi.fn(),
+    on(event: string, handler: () => void) {
+      (closeHandlers[event] ??= []).push(handler);
       return this;
     },
-    once() {
+    once(event: string, handler: () => void) {
+      (closeHandlers[event] ??= []).push(handler);
       return this;
     },
-    emit() {
+    emit(event: string, ...args: unknown[]) {
+      for (const h of closeHandlers[event] ?? []) (h as (...a: unknown[]) => void)(...args);
       return true;
     },
-  } as unknown as ServerResponse;
+    // test helper to trigger close
+    __triggerClose() {
+      for (const h of closeHandlers["close"] ?? []) h();
+    },
+  } as unknown as ServerResponse & { __triggerClose: () => void };
   return {
     res,
     whenEnded: () => ended,
@@ -100,6 +120,16 @@ function makeRes(): {
       body: Buffer.concat(chunks).toString("utf8"),
     }),
   };
+}
+
+function makeFakeStream() {
+  const ee = new EventEmitter() as EventEmitter & {
+    destroy: ReturnType<typeof vi.fn>;
+    pipe: ReturnType<typeof vi.fn>;
+  };
+  ee.destroy = vi.fn();
+  ee.pipe = vi.fn(() => ee as unknown as NodeJS.ReadableStream);
+  return ee;
 }
 
 describe("media-store", () => {
@@ -547,6 +577,108 @@ describe("serveMediaFile Range (HTTP path)", () => {
     const out = get();
     expect(out.status).toBe(416);
     expect(out.headers["Content-Range"]).toBe("bytes */0");
+  });
+});
+
+describe("serveMediaFile stream fault handling (#20164)", () => {
+  it("returns 500 when full-file stream fails before headers (pre-header error)", () => {
+    const { url } = persistMediaBytes(Buffer.from("fault-bytes"), "image/png");
+    const { res, get } = makeRes();
+    const fake = makeFakeStream();
+    const spy = vi.spyOn(fs, "createReadStream").mockReturnValue(fake as unknown as fs.ReadStream);
+    try {
+      serveMediaFile({ method: "GET", headers: {} } as never, res, url);
+      // Handlers installed before headers; error before open => 500
+      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(false);
+      fake.emit("error", new Error("open fail"));
+      const out = get();
+      expect(out.status).toBe(500);
+      expect(out.body).toBe("Internal Server Error");
+      expect(fake.pipe).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("returns 500 when Range stream fails before headers", () => {
+    const { url } = persistMediaBytes(Buffer.from("0123456789"), "audio/mpeg");
+    const { res, get } = makeRes();
+    const fake = makeFakeStream();
+    const spy = vi.spyOn(fs, "createReadStream").mockReturnValue(fake as unknown as fs.ReadStream);
+    try {
+      serveMediaFile({ method: "GET", headers: { range: "bytes=2-5" } } as never, res, url);
+      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(false);
+      fake.emit("error", new Error("range open fail"));
+      expect(get().status).toBe(500);
+      expect(fake.pipe).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("destroys response when stream errors after headers (post-header read failure)", () => {
+    const { url } = persistMediaBytes(Buffer.from("post-header"), "image/png");
+    const { res } = makeRes();
+    const fake = makeFakeStream();
+    const spy = vi.spyOn(fs, "createReadStream").mockReturnValue(fake as unknown as fs.ReadStream);
+    try {
+      serveMediaFile({ method: "GET", headers: {} } as never, res, url);
+      fake.emit("open");
+      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(true);
+      expect(fake.pipe).toHaveBeenCalledTimes(1);
+      fake.emit("error", new Error("read fail mid-stream"));
+      expect((res as unknown as { destroy: ReturnType<typeof vi.fn> }).destroy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("destroys source stream when client aborts (response close)", () => {
+    const { url } = persistMediaBytes(Buffer.from("abort-bytes"), "image/png");
+    const { res } = makeRes();
+    const fake = makeFakeStream();
+    const spy = vi.spyOn(fs, "createReadStream").mockReturnValue(fake as unknown as fs.ReadStream);
+    try {
+      serveMediaFile({ method: "GET", headers: {} } as never, res, url);
+      fake.emit("open");
+      expect(fake.pipe).toHaveBeenCalled();
+      (res as unknown as { __triggerClose: () => void }).__triggerClose();
+      expect(fake.destroy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("destroys Range source stream when client aborts", () => {
+    const { url } = persistMediaBytes(Buffer.from("0123456789"), "audio/mpeg");
+    const { res } = makeRes();
+    const fake = makeFakeStream();
+    const spy = vi.spyOn(fs, "createReadStream").mockReturnValue(fake as unknown as fs.ReadStream);
+    try {
+      serveMediaFile({ method: "GET", headers: { range: "bytes=0-3" } } as never, res, url);
+      fake.emit("open");
+      (res as unknown as { __triggerClose: () => void }).__triggerClose();
+      expect(fake.destroy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("pipes full file successfully on open", () => {
+    const { url } = persistMediaBytes(Buffer.from("ok-bytes"), "image/png");
+    const { res, get } = makeRes();
+    const fake = makeFakeStream();
+    const spy = vi.spyOn(fs, "createReadStream").mockReturnValue(fake as unknown as fs.ReadStream);
+    try {
+      serveMediaFile({ method: "GET", headers: {} } as never, res, url);
+      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(false);
+      fake.emit("open");
+      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(true);
+      expect(get().status).toBe(200);
+      expect(fake.pipe).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

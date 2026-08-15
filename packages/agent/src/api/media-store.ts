@@ -873,11 +873,6 @@ export function serveMediaFile(
     return true;
   }
   if (range) {
-    res.writeHead(206, {
-      ...baseHeaders,
-      "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
-      "Content-Length": range.end - range.start + 1,
-    });
     const stream = fs.createReadStream(filePath, {
       start: range.start,
       end: range.end,
@@ -891,13 +886,21 @@ export function serveMediaFile(
         res.destroy();
       }
     });
-    stream.pipe(res);
     res.once("close", () => stream.destroy());
+    stream.once("open", () => {
+      if (res.headersSent || res.writableEnded) return;
+      res.writeHead(206, {
+        ...baseHeaders,
+        "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
+        "Content-Length": range.end - range.start + 1,
+      });
+      stream.pipe(res);
+    });
     return true;
   }
 
-  res.writeHead(200, { ...baseHeaders, "Content-Length": size });
   if (method === "HEAD") {
+    res.writeHead(200, { ...baseHeaders, "Content-Length": size });
     res.end();
     return true;
   }
@@ -912,8 +915,12 @@ export function serveMediaFile(
         res.destroy();
       }
     });
-    stream.pipe(res);
     res.once("close", () => stream.destroy());
+    stream.once("open", () => {
+      if (res.headersSent || res.writableEnded) return;
+      res.writeHead(200, { ...baseHeaders, "Content-Length": size });
+      stream.pipe(res);
+    });
   }
   return true;
 }
