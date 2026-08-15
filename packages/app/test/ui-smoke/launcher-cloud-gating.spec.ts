@@ -7,7 +7,6 @@ import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
-  openSettingsSection,
   seedAppStorage,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
@@ -36,9 +35,9 @@ import { saveBrowserVideoArtifact } from "./helpers/video-artifacts";
  * real one, not a mock of it.
  *
  * Capture artifacts are written into Playwright's per-test output directory.
- * The walkthrough test also records a video of the agent-first cloud setup
- * flow: launcher without the tile → Settings → Cloud → Connect → connected →
- * launcher STILL without the tile (My Apps remains the one apps entry).
+ * The walkthrough test also records the local-runtime navigation boundary:
+ * the launcher keeps My Apps as its one apps entry, while Settings omits the
+ * Cloud-only management group reserved for managed Cloud runtime targets.
  */
 
 const VIEWPORTS = [
@@ -218,10 +217,10 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
     });
   }
 
-  test.describe("cloud setup walkthrough (recorded)", () => {
+  test.describe("local runtime boundary walkthrough (recorded)", () => {
     // `test.use({ video })` is not allowed inside a describe group, so the
     // walkthrough records through its own context (recordVideo) instead.
-    test("connect flow keeps My Apps as the one apps tile", async ({
+    test("local runtime hides Cloud management and keeps one apps tile", async ({
       browser,
     }, testInfo) => {
       const context = await browser.newContext({
@@ -238,43 +237,35 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(page, testInfo, "walkthrough-1-launcher-disconnected");
 
-      // Agent-first cloud setup: Settings → Cloud → Overview → Connect Cloud.
-      // (The cloud group's overview section registers with defaultLabel
-      // "Overview" and defaultTitle "Eliza Cloud" — settings-sections.ts.)
+      // Cloud management belongs only to managed Cloud targets. Local and VPS
+      // runtimes must not expose its group, Overview, or Agents destinations.
       await openAppPath(page, "/settings");
-      await openSettingsSection(page, /^Overview$/);
-      const connectButton = page.getByRole("button", {
-        name: /Connect Cloud|Connect Eliza Cloud/i,
+      await expect(page.getByTestId("settings-shell")).toBeVisible({
+        timeout: 60_000,
       });
-      await expect(connectButton.first()).toBeVisible({ timeout: 30_000 });
-      await screenshot(page, testInfo, "walkthrough-2-settings-cloud-section");
-
-      // Completing the (stubbed) login flips the backend status; the UI must
-      // observe it through its own status poll — the same signal a real
-      // device-code/Steward completion produces.
-      state.connected = true;
-      await connectButton.first().click();
       await expect(
-        page.getByRole("button", { name: /Open Eliza Cloud/i }).first(),
-      ).toBeVisible({ timeout: 60_000 });
+        page.getByTestId("desktop-settings-group-cloud"),
+      ).toHaveCount(0);
       await expect(
-        page.getByRole("button", { name: /Open Eliza Cloud/i }).first(),
-      ).toContainText("Cloud connected");
+        page.getByTestId("desktop-settings-item-cloud-overview"),
+      ).toHaveCount(0);
+      await expect(
+        page.getByTestId("desktop-settings-item-cloud-agents"),
+      ).toHaveCount(0);
       await screenshot(
         page,
         testInfo,
-        "walkthrough-3-settings-cloud-connected",
+        "walkthrough-2-local-settings-without-cloud-management",
       );
 
       await openAppPath(page, "/views");
       await expect(page.getByTestId("launcher")).toBeVisible({
         timeout: 60_000,
       });
-      // Connecting cloud must NOT grow a second apps tile: the studio lives
-      // inside My Apps, so the grid still shows only the My Apps entry.
+      // Navigating through local Settings must not change launcher curation.
       await expect(myAppsTile(page)).toBeVisible({ timeout: 30_000 });
       await expect(cloudTile(page)).toHaveCount(0);
-      await screenshot(page, testInfo, "walkthrough-4-launcher-connected");
+      await screenshot(page, testInfo, "walkthrough-3-local-launcher-return");
 
       // Persist the recording next to the screenshots.
       const video = page.video();
@@ -283,25 +274,27 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
         const artifact = await saveBrowserVideoArtifact({
           video,
           testInfo,
-          basename: "cloud-setup-walkthrough",
+          basename: "local-cloud-boundary-walkthrough",
         });
-        await testInfo.attach("cloud setup walkthrough", {
+        await testInfo.attach("local Cloud boundary walkthrough", {
           path: artifact.path,
           contentType: artifact.contentType,
         });
-        const notePath = testInfo.outputPath("cloud-setup-walkthrough.txt");
+        const notePath = testInfo.outputPath(
+          "local-cloud-boundary-walkthrough.txt",
+        );
         await writeFile(
           notePath,
           [
-            "Recorded by launcher-cloud-gating.spec.ts (cloud setup walkthrough).",
-            "Flow: launcher without cloud-apps tile → Settings → Eliza Cloud →",
-            "Connect Cloud → status flips connected → launcher still shows only",
+            "Recorded by launcher-cloud-gating.spec.ts (local Cloud boundary).",
+            "Flow: local launcher with My Apps as its single apps tile → Settings",
+            "without the managed-only Cloud group → launcher still shows only",
             "the My Apps tile (the studio lives inside My Apps).",
             "",
             "Repro: bun run --cwd packages/app test:e2e -- --project=chromium test/ui-smoke/launcher-cloud-gating.spec.ts",
           ].join("\n"),
         );
-        await testInfo.attach("cloud setup walkthrough notes", {
+        await testInfo.attach("local Cloud boundary walkthrough notes", {
           path: notePath,
           contentType: "text/plain",
         });
