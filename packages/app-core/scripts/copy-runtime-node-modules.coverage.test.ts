@@ -43,6 +43,7 @@ import {
   selectCopyTargetNodeModules,
   selectResolvedCandidate,
   shouldCopyPackageEntry,
+  shouldQueueRuntimeDependency,
   shouldCopyWorkspacePublishEntry,
   shouldKeepPackageRelativePath,
   shouldSkipPackagedAppCoreEntry,
@@ -416,6 +417,43 @@ describe("isPackageCompatibleWithCurrentPlatform", () => {
       os: [`!${process.platform}`],
     });
     expect(isPackageCompatibleWithCurrentPlatform(manifestPath)).toBe(false);
+  });
+});
+
+describe("shouldQueueRuntimeDependency", () => {
+  it("keeps required plugin edges and filters non-required plugin edges", () => {
+    const alwaysBundled = new Set<string>();
+
+    expect(
+      shouldQueueRuntimeDependency(
+        {
+          name: "@elizaos/plugin-calendar",
+          spec: "workspace:*",
+          required: true,
+        },
+        alwaysBundled,
+      ),
+    ).toBe(true);
+    expect(
+      shouldQueueRuntimeDependency(
+        {
+          name: "@elizaos/plugin-calendar",
+          spec: "workspace:*",
+          required: false,
+        },
+        alwaysBundled,
+      ),
+    ).toBe(false);
+    expect(
+      shouldQueueRuntimeDependency(
+        {
+          name: "@octokit/plugin-request-log",
+          spec: "1.0.0",
+          required: false,
+        },
+        alwaysBundled,
+      ),
+    ).toBe(true);
   });
 });
 
