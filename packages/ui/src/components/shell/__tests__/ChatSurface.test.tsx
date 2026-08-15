@@ -121,7 +121,7 @@ describe("ChatSurface", () => {
   it("enables send when input has text and calls onSend", () => {
     const onSend = vi.fn();
     render(<ChatSurface messages={[]} onSend={onSend} canSend={true} />);
-    const input = screen.getByPlaceholderText(/ask eliza/i);
+    const input = screen.getByPlaceholderText(/message eliza/i);
     fireEvent.change(input, { target: { value: "Hi" } });
     const send = screen.getByRole("button", {
       name: /send/i,
@@ -133,7 +133,9 @@ describe("ChatSurface", () => {
 
   it("clears the input after a successful send", () => {
     render(<ChatSurface messages={[]} onSend={() => {}} canSend={true} />);
-    const input = screen.getByPlaceholderText(/ask eliza/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(
+      /message eliza/i,
+    ) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Hi" } });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
     expect(input.value).toBe("");
@@ -142,7 +144,8 @@ describe("ChatSurface", () => {
   it("disables the input + send when canSend=false", () => {
     render(<ChatSurface messages={[]} onSend={() => {}} canSend={false} />);
     expect(
-      (screen.getByPlaceholderText(/ask eliza/i) as HTMLInputElement).disabled,
+      (screen.getByPlaceholderText(/message eliza/i) as HTMLInputElement)
+        .disabled,
     ).toBe(true);
     expect(
       (screen.getByRole("button", { name: /send/i }) as HTMLButtonElement)
@@ -188,7 +191,9 @@ describe("ChatSurface", () => {
   it("submits on Enter (without Shift)", () => {
     const onSend = vi.fn();
     render(<ChatSurface messages={[]} onSend={onSend} canSend={true} />);
-    const input = screen.getByPlaceholderText(/ask eliza/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(
+      /message eliza/i,
+    ) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "From keyboard" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onSend).toHaveBeenCalledWith("From keyboard");
@@ -198,7 +203,9 @@ describe("ChatSurface", () => {
   it("does not submit on Shift+Enter", () => {
     const onSend = vi.fn();
     render(<ChatSurface messages={[]} onSend={onSend} canSend={true} />);
-    const input = screen.getByPlaceholderText(/ask eliza/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(
+      /message eliza/i,
+    ) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Draft" } });
     fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
     expect(onSend).not.toHaveBeenCalled();

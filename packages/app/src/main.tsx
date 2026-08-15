@@ -3395,6 +3395,13 @@ async function main(): Promise<void> {
     }
     await initializeStorageBridge();
     initializeCapacitorBridge();
+    // The desktop main window uses the standalone chat-overlay route, but it
+    // still owns the global shortcut and tray event wiring. Without this the
+    // early standalone-shell return paints the pill while silently skipping
+    // every native desktop control.
+    if (isChatOverlayWindowShell(windowShellRoute) && isDesktopPlatform()) {
+      await initializeDesktopShell();
+    }
     mountReactApp();
     scheduleDeferredAppModuleLoadsAfterPaint();
     return;
