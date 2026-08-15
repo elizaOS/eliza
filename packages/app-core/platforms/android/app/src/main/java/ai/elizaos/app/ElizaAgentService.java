@@ -17,6 +17,7 @@ import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
 
@@ -32,6 +33,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -190,20 +192,22 @@ public class ElizaAgentService extends Service {
     private static final long AGENT_BOOT_GRACE_MS = 120_000L;
 
     private final Object processLock = new Object();
+    private final Object notificationLock = new Object();
     private Process agentProcess;
     private Thread stdoutPump;
     private Thread stderrPump;
     private WatchdogThread watchdog;
     /** In-process bionic GPU inference host; non-null only when delegating. */
     private volatile ElizaBionicInferenceServer bionicInferenceServer;
-    private Thread startWorker;
+    private volatile Thread startWorker;
+    private volatile Thread notificationWorker;
     private volatile boolean shuttingDown;
     private volatile boolean foregroundStartDenied;
     private volatile boolean detachedAgentMode;
     private volatile long detachedLaunchStartedAtMs;
     private long detachedProbeArmedForLaunchMs;
     private int restartAttempts;
-    private String currentStatus = "starting";
+    private volatile String currentStatus = "starting";
 
     // Per-boot bearer token for the WebView↔agent loopback. Generated when
     // the service first starts the agent process and cleared on stop.
@@ -488,12 +492,16 @@ public class ElizaAgentService extends Service {
             .put("stream", true)
             .put("payload", payload);
 
-        LocalSocket socket = connectLocalAgentSocket(timeoutMs);
+        long deadlineElapsedMs = SystemClock.elapsedRealtime() + timeoutMs;
+        LocalSocket socket = connectLocalAgentSocket(deadlineElapsedMs);
         try {
-            socket.setSoTimeout(timeoutMs);
             writeFrameLine(socket.getOutputStream(), frame);
             InputStream in = socket.getInputStream();
-            for (String line = readFrameLine(in); line != null; line = readFrameLine(in)) {
+            for (
+                String line = readFrameLine(socket, in, deadlineElapsedMs);
+                line != null;
+                line = readFrameLine(socket, in, deadlineElapsedMs)
+            ) {
                 if (line.isEmpty()) continue;
                 JSONObject response = new JSONObject(line);
                 String phase = response.optString("stream", "");
@@ -565,11 +573,15 @@ public class ElizaAgentService extends Service {
             .put("method", "http_request")
             .put("payload", payload);
 
-        LocalSocket socket = connectLocalAgentSocket(timeoutMs);
+        long deadlineElapsedMs = SystemClock.elapsedRealtime() + timeoutMs;
+        LocalSocket socket = connectLocalAgentSocket(deadlineElapsedMs);
         try {
-            socket.setSoTimeout(timeoutMs);
             writeFrameLine(socket.getOutputStream(), frame);
-            String line = readFrameLine(socket.getInputStream());
+            String line = readFrameLine(
+                socket,
+                socket.getInputStream(),
+                deadlineElapsedMs
+            );
             if (line == null || line.isEmpty()) {
                 throw new IOException("local agent closed the connection with no response");
             }
@@ -593,10 +605,11 @@ public class ElizaAgentService extends Service {
      * the socket yet, or its accept loop is stalled mid-decode). Returns a
      * connected {@link LocalSocket}; the caller owns closing it.
      */
-    private static LocalSocket connectLocalAgentSocket(int timeoutMs) throws IOException {
+    private static LocalSocket connectLocalAgentSocket(long deadlineElapsedMs) throws IOException {
         final int connectRetries = 15;
         IOException lastError = null;
         for (int attempt = 0; attempt <= connectRetries; attempt++) {
+            remainingSocketTimeout(deadlineElapsedMs);
             LocalSocket socket = new LocalSocket();
             try {
                 socket.connect(new LocalSocketAddress(
@@ -607,8 +620,13 @@ public class ElizaAgentService extends Service {
                 lastError = connectError;
             }
             if (attempt < connectRetries) {
+                long remainingMs = deadlineElapsedMs - SystemClock.elapsedRealtime();
+                if (remainingMs <= 0L) {
+                    throw new SocketTimeoutException("local agent socket connect deadline exceeded");
+                }
+                long retryDelayMs = Math.min(250L * (attempt + 1), remainingMs);
                 try {
-                    Thread.sleep(250L * (attempt + 1));
+                    Thread.sleep(retryDelayMs);
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                     throw lastError;
@@ -616,6 +634,14 @@ public class ElizaAgentService extends Service {
             }
         }
         throw lastError != null ? lastError : new IOException("local agent socket unreachable");
+    }
+
+    private static int remainingSocketTimeout(long deadlineElapsedMs) throws SocketTimeoutException {
+        long remainingMs = deadlineElapsedMs - SystemClock.elapsedRealtime();
+        if (remainingMs <= 0L) {
+            throw new SocketTimeoutException("local agent request deadline exceeded");
+        }
+        return (int) Math.min((long) Integer.MAX_VALUE, remainingMs);
     }
 
     /** Write one NDJSON frame line (UTF-8, newline-terminated) to the socket. */
@@ -630,10 +656,33 @@ public class ElizaAgentService extends Service {
      * without the trailing newline, or null at end-of-stream. Caps a single
      * frame at the response-byte budget so a runaway agent can't exhaust memory.
      */
-    private static String readFrameLine(InputStream in) throws IOException {
+    private static String readFrameLine(
+        LocalSocket socket,
+        InputStream in,
+        long deadlineElapsedMs
+    ) throws IOException {
+        return readFrameLine(
+            in,
+            () -> socket.setSoTimeout(remainingSocketTimeout(deadlineElapsedMs))
+        );
+    }
+
+    @FunctionalInterface
+    interface BeforeSocketRead {
+        void run() throws IOException;
+    }
+
+    /** Package-visible seam for deterministic absolute-deadline policy tests. */
+    static String readFrameLine(InputStream in, BeforeSocketRead beforeRead)
+        throws IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        int b;
-        while ((b = in.read()) != -1) {
+        while (true) {
+            // Android's SO_TIMEOUT applies to each read. Recompute it for every
+            // byte so a peer cannot extend the request indefinitely by slowly
+            // dripping bytes or frames just inside a per-read timeout.
+            beforeRead.run();
+            int b = in.read();
+            if (b == -1) break;
             if (b == '\n') {
                 return buffer.toString(StandardCharsets.UTF_8.name());
             }
@@ -704,7 +753,7 @@ public class ElizaAgentService extends Service {
         activeInstance = this;
         ensureNotificationChannel();
 
-        Notification notification = buildNotification("Eliza agent", "Starting…");
+        Notification notification = buildBootstrapNotification("Eliza agent", "Starting…");
 
         // Enter the foreground BEFORE any diagnostic IO. Android's FGS-start
         // timeout begins ticking at onCreate; spending it on the synchronous
@@ -823,7 +872,7 @@ public class ElizaAgentService extends Service {
             bionicInferenceServer = null;
         }
         if (requestedStop) {
-            stopAgentProcess();
+            stopAgentProcess(true);
         } else {
             // AMS tore this record down without an explicit stop request (an
             // ANR'd duplicate record whose startForeground never got processed
@@ -1724,6 +1773,15 @@ public class ElizaAgentService extends Service {
         // start, before the agent-already-running guards below — so it binds
         // even when the agent is adopted rather than freshly spawned.
         ensureBionicVoiceHost();
+
+        // Android may redeliver the sticky service start while a cold boot is
+        // still extracting assets. That worker holds processLock, so waiting
+        // for the lock here would block the main thread and trigger a service
+        // ANR merely to discover that a start is already in progress.
+        Thread activeStartWorker = startWorker;
+        if (activeStartWorker != null && activeStartWorker.isAlive()) {
+            return;
+        }
         synchronized (processLock) {
             if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
                 return;
@@ -1741,9 +1799,9 @@ public class ElizaAgentService extends Service {
             startWorker = new Thread(() -> {
                 try {
                     if (restartFirst) {
-                        stopAgentProcess();
+                        stopAgentProcess(false);
                     }
-                    startAgentProcess();
+                    startAgentProcess(!restartFirst);
                 } finally {
                     synchronized (processLock) {
                         startWorker = null;
@@ -1755,6 +1813,10 @@ public class ElizaAgentService extends Service {
     }
 
     private void startAgentProcess() {
+        startAgentProcess(true);
+    }
+
+    private void startAgentProcess(boolean allowAdoption) {
         synchronized (processLock) {
             if (agentProcess != null && agentProcess.isAlive()) {
                 return;
@@ -1779,8 +1841,9 @@ public class ElizaAgentService extends Service {
             // pkill a perfectly healthy surviving agent (the exact churn the
             // comment above describes). Mark the instance detached on adopt so
             // an explicit ACTION_STOP still tears the adopted agent down.
-            if (isLocalAgentSocketListening()) {
+            if (allowAdoption && isLocalAgentSocketListening()) {
                 detachedAgentMode = true;
+                restoreAdoptedRuntimeOwnership();
                 if (!"running".equals(currentStatus)) {
                     currentStatus = "running";
                     updateNotification();
@@ -1918,7 +1981,7 @@ public class ElizaAgentService extends Service {
             currentTerminalRunToken = terminalToken;
             try {
                 writeLocalAgentTokenFile(token);
-                ElizaWorkScheduler.reconcile(getApplicationContext());
+                ElizaWorkScheduler.credentialProvisioned(getApplicationContext());
             } catch (IOException error) {
                 Log.w(TAG, "Failed to persist local-agent token file: " + error.getMessage());
             }
@@ -2715,7 +2778,7 @@ public class ElizaAgentService extends Service {
         }
     }
 
-    private void stopAgentProcess() {
+    private void stopAgentProcess(boolean terminalStop) {
         Process toStop;
         Thread outPump;
         Thread errPump;
@@ -2733,8 +2796,12 @@ public class ElizaAgentService extends Service {
             currentLocalAgentToken = null;
             currentTerminalRunToken = null;
         }
+        ElizaWorkScheduler.runtimeStopped(getApplicationContext());
+        appendDiagnosticEvent(
+            terminalStop ? "runtime-ownership-stopped" : "runtime-ownership-restarting",
+            null
+        );
         deleteLocalAgentTokenFile();
-        ElizaWorkScheduler.reconcile(getApplicationContext());
         persistDetachedLaunchTimestamp(0L);
         if (wasDetached) {
             appendDiagnosticEvent("stop-detached-agent", null);
@@ -2790,12 +2857,24 @@ public class ElizaAgentService extends Service {
         }
     }
 
+    /** Reasserts scheduler ownership when a restart adopts the prior socket. */
+    private void restoreAdoptedRuntimeOwnership() {
+        Context context = getApplicationContext();
+        String token = localAgentToken(context);
+        if (token == null || token.trim().isEmpty()) {
+            Log.w(TAG, "Adopted local agent has no durable credential; periodic wake remains disabled.");
+            ElizaWorkScheduler.reconcile(context);
+            return;
+        }
+        ElizaWorkScheduler.credentialProvisioned(context);
+    }
+
     /**
      * Persist the detached-agent launch timestamp so the cold-boot guard in
      * {@link #startAgentProcess()} survives service-instance churn (AMS
      * record teardown, process restart). 0 clears the stamp; written on every
-     * launch and cleared by {@link #stopAgentProcess()} (explicit stops and
-     * restart-first restarts).
+     * launch and cleared by {@link #stopAgentProcess(boolean)} (explicit stops
+     * and restart-first restarts).
      */
     private void persistDetachedLaunchTimestamp(long timestampMs) {
         getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE)
@@ -3380,6 +3459,10 @@ public class ElizaAgentService extends Service {
     }
 
     private void scheduleRestart() {
+        scheduleRestart(false);
+    }
+
+    private void scheduleRestart(boolean requireFreshProcess) {
         if (shuttingDown) return;
         ElizaAgentWatchdogPolicy.RestartDecision decision =
             ElizaAgentWatchdogPolicy.nextRestart(restartAttempts, MAX_RESTART_ATTEMPTS);
@@ -3410,7 +3493,7 @@ public class ElizaAgentService extends Service {
                 return;
             }
             if (shuttingDown) return;
-            startAgentProcess();
+            startAgentProcess(!requireFreshProcess);
         }, "ElizaAgent-restart").start();
     }
 
@@ -3673,8 +3756,8 @@ public class ElizaAgentService extends Service {
                         + " consecutive).");
                     if (decision.restartRequired) {
                         Log.w(TAG, "Agent unresponsive — force-restarting.");
-                        stopAgentProcess();
-                        scheduleRestart();
+                        stopAgentProcess(false);
+                        scheduleRestart(true);
                     }
                 }
             }
@@ -3727,6 +3810,39 @@ public class ElizaAgentService extends Service {
     }
 
     private void updateNotification() {
+        synchronized (notificationLock) {
+            if (notificationWorker != null && notificationWorker.isAlive()) {
+                return;
+            }
+            notificationWorker = new Thread(() -> {
+                try {
+                    pushNotification();
+                } finally {
+                    synchronized (notificationLock) {
+                        notificationWorker = null;
+                    }
+                }
+            }, "ElizaAgent-notification");
+            notificationWorker.start();
+        }
+    }
+
+    /**
+     * The first foreground notification must avoid PendingIntent binder calls:
+     * a loaded system_server can stall them beyond Android's service timeout.
+     */
+    private Notification buildBootstrapNotification(String title, String text) {
+        return new NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .build();
+    }
+
+    private void pushNotification() {
         String title;
         String text;
         switch (currentStatus) {

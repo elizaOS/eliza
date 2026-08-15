@@ -1,48 +1,42 @@
 /**
- * Resolves only the exact public eliza.app Twilio line to its configured agent.
+ * Resolves the exact public eliza.app line into the caller's account-native
+ * personal Shared agent. The trusted Twilio boundary supplies the E.164 caller.
  */
 
-import {
-  type AgentSandbox,
-  agentSandboxesRepository,
-} from "@/db/repositories/agent-sandboxes";
+import { elizaAppUserService } from "@/lib/services/eliza-app/user-service";
+import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
+import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 
 export interface TwilioVoiceTarget {
-  agent: AgentSandbox;
+  agent: SharedRuntimeAgent;
   agentId: string;
   organizationId: string;
   userId: string;
 }
 
 interface PublicElizaVoiceEnv {
-  ELIZA_APP_DEFAULT_AGENT_ID?: string;
   ELIZA_APP_TWILIO_PHONE_NUMBER?: string;
 }
 
 export async function resolveTwilioVoiceTarget(
   env: PublicElizaVoiceEnv,
   calledNumber: string,
+  callerNumber: string,
 ): Promise<TwilioVoiceTarget | null> {
   const publicPhoneNumber = env.ELIZA_APP_TWILIO_PHONE_NUMBER?.trim();
-  const defaultAgentId = env.ELIZA_APP_DEFAULT_AGENT_ID?.trim();
-  if (
-    !publicPhoneNumber ||
-    publicPhoneNumber !== calledNumber ||
-    !defaultAgentId
-  ) {
+  if (!publicPhoneNumber || publicPhoneNumber !== calledNumber) {
     return null;
   }
 
-  const direct = await agentSandboxesRepository.findById(defaultAgentId);
-  const sandbox =
-    direct ??
-    (await agentSandboxesRepository.findLatestByCharacterId(defaultAgentId));
-  return sandbox
-    ? {
-        agent: sandbox,
-        agentId: sandbox.id,
-        organizationId: sandbox.organization_id,
-        userId: sandbox.user_id,
-      }
-    : null;
+  const account = await elizaAppUserService.findOrCreateByPhone(callerNumber);
+  const agent = personalSharedAgent({
+    userId: account.user.id,
+    organizationId: account.organization.id,
+  });
+  return {
+    agent,
+    agentId: agent.id,
+    organizationId: account.organization.id,
+    userId: account.user.id,
+  };
 }

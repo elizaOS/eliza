@@ -1,10 +1,20 @@
 /**
  * Proves fork pull requests create only the canonical hosted CI workflow while
  * retaining develop compatibility, actionlint, and secret-scan coverage.
+ *
+ * Also locks the gitleaks "Scan changed commits" range semantics (#19687): the
+ * pull-request path must scan `merge-base..head` (only PR-introduced commits),
+ * the push path must keep its two-dot `before..sha` range, and an unresolvable
+ * merge base must fail closed instead of silently narrowing the scan. The
+ * diverged-graph suite executes the workflow's real range-selection shell over
+ * a scratch git repository so the `git diff`/`git log` semantic mix-up cannot
+ * recur.
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,6 +40,82 @@ function workflow(name: string, source?: string): Workflow {
   return Bun.YAML.parse(
     source ?? readFileSync(join(workflowRoot, name), "utf8"),
   ) as Workflow;
+}
+
+// The literal `run:` body of the gitleaks range-selection step. The contract
+// tests exercise this exact shell so behavior is asserted against the shipped
+// workflow, not a copy.
+function scanChangedCommitsRun(ci: Workflow): string {
+  const step = ci.jobs?.secrets?.steps?.find(
+    (s) => s.name === "Scan changed commits",
+  );
+  if (!step?.run) {
+    throw new Error(
+      "gitleaks 'Scan changed commits' step is missing a run body",
+    );
+  }
+  return step.run;
+}
+
+// Runs the real range-selection shell, but stops before the `gitleaks detect`
+// invocation (gitleaks is not installed in this lane) and prints the computed
+// range so the test can feed it back to `git`.
+function runScanScript(
+  scanScript: string,
+  cwd: string,
+  env: Record<string, string>,
+): { status: number | null; stdout: string; stderr: string } {
+  const gitleaksAt = scanScript.indexOf("gitleaks detect");
+  if (gitleaksAt < 0) {
+    throw new Error("scan step no longer invokes gitleaks detect");
+  }
+  const probe = `${scanScript.slice(0, gitleaksAt)}printf 'RANGE<<<%s>>>' "$range"\n`;
+  const result = spawnSync("bash", ["-c", probe], {
+    cwd,
+    env: { ...process.env, ...env },
+    encoding: "utf8",
+  });
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
+
+function runRangeSelection(
+  scanScript: string,
+  cwd: string,
+  env: Record<string, string>,
+): string {
+  const result = runScanScript(scanScript, cwd, env);
+  if (result.status !== 0) {
+    throw new Error(
+      `range selection failed (status ${result.status}): ${result.stderr}`,
+    );
+  }
+  const match = result.stdout.match(/RANGE<<<(.*)>>>/s);
+  if (!match) {
+    throw new Error(`range not emitted; stdout=${result.stdout}`);
+  }
+  return match[1];
+}
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+}
+
+function makeTempRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), "gitleaks-range-"));
+  git(dir, ["init", "-q", "-b", "base"]);
+  git(dir, ["config", "user.email", "test@example.com"]);
+  git(dir, ["config", "user.name", "Range Test"]);
+  git(dir, ["config", "commit.gpgsign", "false"]);
+  return dir;
+}
+
+function commit(cwd: string, message: string): string {
+  git(cwd, ["commit", "-q", "--allow-empty", "-m", message]);
+  return git(cwd, ["rev-parse", "HEAD"]);
 }
 
 function assertForkPrDispatchContract(
@@ -69,13 +155,21 @@ function assertForkPrDispatchContract(
   const secretScan = ci.jobs?.secrets;
   expect(secretScan?.name).toBe("gitleaks");
   expect(secretScan?.["runs-on"]).toBe("ubuntu-24.04");
+  const scanScript = scanChangedCommitsRun(ci);
   expect(JSON.stringify(secretScan)).toContain("gitleaks detect");
-  // Canonical CI owns the only pull-request secret scan now, so it must keep
-  // the three-dot merge-base range from #17984; a two-dot range re-flags
-  // fixtures the branch merely inherited by merging develop.
-  expect(JSON.stringify(secretScan)).toContain(
-    "$" + "{BASE_SHA}..." + "$" + "{HEAD_SHA}",
-  );
+  // The pull-request path must scan exactly the PR-introduced commits, so it
+  // resolves the real merge base and passes a two-dot `merge-base..head` range
+  // to `git log`. A three-dot `BASE...HEAD` range is the symmetric difference
+  // and re-flags base-only commits the branch merely inherited (#19687).
+  expect(scanScript).toContain('range="$' + "{MERGE_BASE}..$" + '{HEAD_SHA}"');
+  expect(scanScript).toContain('git merge-base "$BASE_SHA" "$HEAD_SHA"');
+  expect(scanScript).not.toContain("$" + "{BASE_SHA}..." + "$" + "{HEAD_SHA}");
+  // The push path keeps its own two-dot `before..sha` range unchanged.
+  expect(scanScript).toContain('range="$' + "{BASE_SHA}..$" + '{HEAD_SHA}"');
+  // An unresolvable merge base must fail closed with a non-zero exit rather
+  // than fall back to scanning only the head commit.
+  expect(scanScript).not.toContain("|| true");
+  expect(scanScript).toMatch(/exit 1/);
   const required = JSON.stringify(ci.jobs?.required);
   expect(required).toContain("develop_pr");
   expect(required).toContain("needs.develop_pr.result");
@@ -97,6 +191,81 @@ describe("fork pull-request workflow dispatch (#18443)", () => {
     expect(() =>
       assertForkPrDispatchContract(ciSource, developSource, gitleaksSource),
     ).not.toThrow();
+  });
+
+  test("scans merge-base..head for a diverged pull request", () => {
+    const scanScript = scanChangedCommitsRun(workflow("ci.yml", ciSource));
+    const repo = makeTempRepo();
+    try {
+      // A shared root is the true branch point (merge base). The base branch
+      // then advances by one base-only commit while the PR adds one head-only
+      // commit, so `BASE...HEAD` (symmetric difference) contains both while
+      // `merge-base..HEAD` contains only the PR commit.
+      const root = commit(repo, "root");
+      const baseOnly = commit(repo, "base-only");
+      git(repo, ["checkout", "-q", "-b", "pr", root]);
+      const headOnly = commit(repo, "head-only");
+
+      const symmetric = git(repo, ["rev-list", `${baseOnly}...${headOnly}`])
+        .split("\n")
+        .filter(Boolean);
+      expect(symmetric).toContain(baseOnly);
+      expect(symmetric).toContain(headOnly);
+
+      const range = runRangeSelection(scanScript, repo, {
+        EVENT_NAME: "pull_request",
+        BASE_SHA: baseOnly,
+        HEAD_SHA: headOnly,
+      });
+      const scanned = git(repo, ["rev-list", range])
+        .split("\n")
+        .filter(Boolean);
+      expect(scanned).toEqual([headOnly]);
+      expect(scanned).not.toContain(baseOnly);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps the two-dot before..sha range for push events", () => {
+    const scanScript = scanChangedCommitsRun(workflow("ci.yml", ciSource));
+    const repo = makeTempRepo();
+    try {
+      const before = commit(repo, "before");
+      const pushed = commit(repo, "pushed");
+      const range = runRangeSelection(scanScript, repo, {
+        EVENT_NAME: "push",
+        BASE_SHA: before,
+        HEAD_SHA: pushed,
+      });
+      expect(range).toBe(`${before}..${pushed}`);
+      expect(
+        git(repo, ["rev-list", range]).split("\n").filter(Boolean),
+      ).toEqual([pushed]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed when the merge base cannot be resolved", () => {
+    const scanScript = scanChangedCommitsRun(workflow("ci.yml", ciSource));
+    const repo = makeTempRepo();
+    try {
+      // Two unrelated root histories share no merge base, so `git merge-base`
+      // exits non-zero and the step must fail rather than narrow the scan.
+      const base = commit(repo, "base-root");
+      git(repo, ["checkout", "-q", "--orphan", "orphan"]);
+      const head = commit(repo, "orphan-root");
+      const result = runScanScript(scanScript, repo, {
+        EVENT_NAME: "pull_request",
+        BASE_SHA: base,
+        HEAD_SHA: head,
+      });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("could not resolve the merge base");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 
   test("fails if either specialized workflow restores a PR trigger", () => {

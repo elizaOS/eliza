@@ -1903,6 +1903,85 @@ export function preservedSettledToolResult(
 	return undefined;
 }
 
+export const NO_REPORTABLE_TOOL_OUTCOME_MESSAGE =
+	"I ran that, but it finished without producing a result I can report back.";
+
+const ASYNC_HANDOFF_ACK_MESSAGE = "on it, working on that now.";
+
+function preservedVerifiedFailure(
+	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
+	deliveredVisibleTexts: ReadonlySet<string>,
+): string | undefined {
+	for (let index = settled.length - 1; index >= 0; index--) {
+		const entry = settled[index];
+		if (entry?.result.success !== false) continue;
+		if (entry.result.verifiedUserFacing !== true) continue;
+		if (isTerminalPlannerToolName(entry.name)) continue;
+		const candidate = entry.result.userFacingText?.trim();
+		if (!candidate) continue;
+		if (
+			deliveredTextsCoverReply(
+				deliveredVisibleTexts,
+				normalizeVisibleTextForDuplicateCheck(candidate),
+			)
+		) {
+			continue;
+		}
+		return candidate;
+	}
+	return undefined;
+}
+
+function hasAcceptedAsyncHandoff(result: ActionResult): boolean {
+	if (result.success !== true) return false;
+	return (
+		result.effectReceipts?.some(
+			(receipt) =>
+				receipt.outcome === "applied" &&
+				receipt.commit !== undefined &&
+				receipt.commit.id.trim().length > 0,
+		) === true
+	);
+}
+
+/**
+ * Terminal report for a tool turn whose planner produced no prose. A
+ * pre-tool acknowledgement is retained only when a successful action carries
+ * authoritative acceptance proof that work continues beyond this turn.
+ */
+export function answerlessToolTurnReport(args: {
+	settledToolResults: ReadonlyArray<{
+		name: string;
+		result: PlannerToolResult;
+	}>;
+	deliveredVisibleTexts: ReadonlySet<string>;
+	actionResults: readonly ActionResult[];
+	actions: readonly Action[] | undefined;
+	stageOneAck: string;
+}): string {
+	const successful = preservedSettledToolResult(
+		args.settledToolResults,
+		args.deliveredVisibleTexts,
+	);
+	if (successful) return successful.userFacingText;
+	const failed = preservedVerifiedFailure(
+		args.settledToolResults,
+		args.deliveredVisibleTexts,
+	);
+	if (failed) return failed;
+	if (args.deliveredVisibleTexts.size > 0) return "";
+	const acceptedActionNames = args.actionResults
+		.filter(hasAcceptedAsyncHandoff)
+		.map((result) =>
+			typeof result.data?.actionName === "string" ? result.data.actionName : "",
+		)
+		.filter((name) => name.length > 0);
+	if (candidateActionsIncludeAsyncHandoff(args.actions, acceptedActionNames)) {
+		return args.stageOneAck || ASYNC_HANDOFF_ACK_MESSAGE;
+	}
+	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
+}
+
 /** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
 const MEDIA_CONTENT_URL_RE =
 	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
@@ -4008,7 +4087,7 @@ direct/private rules:
 - Non-simple contexts/actions are only for tools, live/private state, files/web/shell, side effects, scheduling/memory/settings/secrets/finance/media/device control.
 - UI navigation is device/app control: open/show/switch/go-home requests use contexts=["general"], candidateActionNames=["VIEWS"], and a brief pending ack. Never claim the view opened before VIEWS succeeds.
 - Slash-command questions are conversation: contexts=["general"]; say /commands shows the list; never select VIEWS or ask clarification for "show commands".
-- Sticky Notes and native device controls are also device/app control: note and flashlight reads or mutations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
+- Sticky Notes use contexts=["notes"], candidateActionNames=["NOTES"]. Native device controls such as flashlight operations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
 - Calendar-event reads or mutations use contexts=["calendar"], candidateActionNames=["CALENDAR"]. A timed "add X tomorrow at 9am" request is a calendar event unless the user explicitly asks for a task or reminder.
 - Goals/todos/reminders/habits/routines are non-simple; goals -> tasks + OWNER_GOALS, never work threads.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
@@ -6216,6 +6295,21 @@ async function resolveStage1SenderRole(
 	}
 	try {
 		const result = await checkSenderRole(runtime, message);
+		// The resolved role decides the entire action surface for the turn, and
+		// a silent fall to the floor is indistinguishable from an explicit
+		// non-elevated grant without this line. `result === null` means no world
+		// resolved for the message — the most common cause of an owner probe
+		// landing on the floor.
+		runtime.logger.debug(
+			{
+				src: "service:message",
+				entityId: message.entityId,
+				roomId: message.roomId,
+				worldResolved: result !== null,
+				role: result?.role ?? null,
+			},
+			"Stage 1 sender role resolved",
+		);
 		if (result?.role) {
 			return result.role as RoleGateRole;
 		}
@@ -6414,6 +6508,7 @@ async function executeV5PlannedToolCall(
 			action,
 			actionResult,
 			toolCall.params,
+			args.runtime,
 		),
 	});
 }
@@ -7155,6 +7250,12 @@ export async function runV5MessageRuntimeStage1(args: {
 					warn?: (context: unknown, message?: string) => void;
 				},
 				reportError: args.runtime.reportError.bind(args.runtime),
+				// Final-persistence tool-diagnostic projection: the recorder always
+				// runs the shared tool-shape pattern pass; this adds the runtime's
+				// character-configured secret masking on top. Optional-bound because
+				// lightweight/test runtimes may not implement redactSecrets — the
+				// pattern pass must keep running for them.
+				redactSecrets: args.runtime.redactSecrets?.bind(args.runtime),
 			})
 		: undefined;
 	const trajectoryId = recorder
@@ -8770,12 +8871,9 @@ export async function runV5MessageRuntimeStage1(args: {
 					normalizeVisibleTextForDuplicateCheck(earlyReplyText))
 				? prePatchStageOneReply
 				: "";
-		// The ack fallback is a delivery floor for turns that DID real tool work
-		// (async handoffs and action turns whose result text got lost) — callers
-		// must not render a blank for work that genuinely happened. A turn that
-		// ran NO action must not "fix" its silence into a work-is-underway ack:
-		// no work follows this turn, so the ack would be a lie. Prefer the
-		// preserved stage-0 answer over any ack in every case.
+		// The answerless floor reports an undelivered canonical tool outcome, stays
+		// silent after a callback delivery, retains an ack only for a successfully
+		// accepted async handoff, and otherwise says no result was produced.
 		// A media deliverable delivered through an action's own callback
 		// (GENERATE_MEDIA posts an attachment-only, text:"" callback) IS the turn's
 		// answer. The answerless-final floor must not then resurrect the Stage-1
@@ -8787,7 +8885,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			!plannedText && !earlyReplySent && !suppressesPlannerReply
 				? preservedAnswerFallback ||
 					(ranNonSilentAction && !mediaDeliverableShipped
-						? stageOneAck || "on it, working on that now."
+						? answerlessToolTurnReport({
+								settledToolResults: settledPlannerToolResults,
+								deliveredVisibleTexts,
+								actionResults,
+								actions: args.runtime.actions,
+								stageOneAck,
+							})
 						: "")
 				: preservedAnswerFallback;
 		let effectiveReplyText = plannedText || ackFallback;

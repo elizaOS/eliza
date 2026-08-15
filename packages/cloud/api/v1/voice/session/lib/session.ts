@@ -155,6 +155,9 @@ export interface VoiceSessionConfig {
   prewarmElizaContext?: () => Promise<void>;
   /** Optional provider-synthesized opener that runs while agent context warms. */
   openingGreeting?: string;
+  /** Optional canonical agent turn that generates and persists the opener. */
+  openingPrompt?: string;
+  openingClientMessageId?: string;
   /** Deterministic test override; production uses bounded exponential backoff. */
   cacheWarmingRetryDelaysMs?: readonly number[];
   /** Deterministic test override for the bounded Ink reconnect schedule. */
@@ -181,6 +184,8 @@ export interface VoiceSessionConfig {
    * second paid session within the token's remaining TTL. Best-effort.
    */
   onTeardownRevoke?: (jti: string, expSeconds: number) => Promise<void>;
+  /** Persist transport lifecycle after the synchronous session is safely closed. */
+  onTeardown?: (reason: VoiceSessionSeverReason) => Promise<void>;
 }
 
 type SessionState =
@@ -229,7 +234,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
   private sttPartialTimer: ReturnType<typeof setTimeout> | null = null;
   private llmAbort: AbortController | null = null;
-  private elizaPrewarm: Promise<void> | null = null;
   private phrase: PhraseAggregator | null = null;
   private turnSttMs = 0;
   private turnTtsChars = 0;
@@ -326,10 +330,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     this.state = "listening";
     // Read immutable tenancy from cache while the user is beginning to speak.
-    // A miss schedules authoritative hydration under the Worker lifetime; the
-    // first turn joins that work so it does not burn time polling a cold cache.
+    // A miss schedules authoritative hydration under the Worker lifetime. This
+    // is a latency hint only: the response path has its own typed cache-warming
+    // retries and must never wait indefinitely for optional background fills.
     if (this.config.prewarmElizaContext) {
-      this.elizaPrewarm = this.config.prewarmElizaContext().catch((error) => {
+      void this.config.prewarmElizaContext().catch((error) => {
         // error-policy:J7 prewarm is latency-only; the response path retains
         // its typed cache-warming retry fallback and reports the failed hint.
         logger.warn("[voice-session] Eliza context prewarm failed", {
@@ -342,7 +347,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const sessionTrace = this.mintTraceId("session");
     this.currentTraceId = sessionTrace;
     this.send({ t: "ready", sessionId: this.sessionId, traceId: sessionTrace });
-    if (this.config.openingGreeting?.trim()) {
+    if (this.config.openingPrompt?.trim()) {
+      const traceId = this.mintTraceId("turn");
+      this.currentTraceId = traceId;
+      this.currentVoiceTurnId = traceId;
+      this.state = "thinking";
+      void this.runResponseTurn(this.config.openingPrompt.trim(), traceId, {
+        messageRole: "system",
+        clientMessageId: this.config.openingClientMessageId,
+      });
+    } else if (this.config.openingGreeting?.trim()) {
       this.speakOpeningGreeting(this.config.openingGreeting.trim());
     }
   }
@@ -536,17 +550,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
       case "start-of-turn": {
-        // Ink's semantic turn detector is the earliest reliable signal that
-        // the caller has begun a new utterance. Stop current audio immediately
-        // so Eliza never talks over the caller while transcription continues.
+        // Speech-start alone is not enough to cancel playback: phone echo and
+        // line noise can trigger Ink before it has recognized any caller words.
+        // Wait for a transcript update/final below, then interrupt immediately.
         this.resetSttPartialDelivery();
         this.activeSttTurn = true;
-        const responseActive = Boolean(this.currentVoiceTurnId);
-        this.interrupt("acoustic");
-        // A transport such as Twilio can still be playing audio it buffered
-        // before TTS reported completion. There is no active turn to emit an
-        // `interrupted` frame in that state, so flush the transport directly.
-        if (!responseActive) this.config.downlink.clearAudio?.();
         this.state = "transcribing";
         break;
       }
@@ -671,10 +679,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   /** Cancel an active response only after Ink has produced caller words. */
   private interruptForConfirmedSpeech(transcript: string): void {
-    if (!this.currentVoiceTurnId || !SPOKEN_TRANSCRIPT_RE.test(transcript)) {
-      return;
-    }
-    this.interrupt("acoustic");
+    if (!SPOKEN_TRANSCRIPT_RE.test(transcript)) return;
+    if (this.currentVoiceTurnId) this.interrupt("acoustic");
+    else this.config.downlink.clearAudio?.();
     this.state = "transcribing";
   }
 
@@ -820,7 +827,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private async runResponseTurn(
     transcript: string,
     traceId: string,
+    options: {
+      messageRole?: "system";
+      clientMessageId?: string;
+    } = {},
   ): Promise<void> {
+    const responseStartedAt = this.now();
+    let firstModelTextAt: number | null = null;
     const abort = new AbortController();
     this.llmAbort = abort;
     const phrase = new PhraseAggregator({
@@ -840,6 +853,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       const callbacks: RealtimeTtsStreamCallbacks = {
         onFirstAudio: () => {
           if (this.currentVoiceTurnId !== traceId) return;
+          const firstAudioAt = this.now();
+          logger.info("[voice-session] first-turn latency", {
+            traceId,
+            transcriptChars: transcript.length,
+            firstModelTextMs:
+              firstModelTextAt === null
+                ? null
+                : firstModelTextAt - responseStartedAt,
+            firstAudioMs: firstAudioAt - responseStartedAt,
+            ttsAfterFirstTextMs:
+              firstModelTextAt === null
+                ? null
+                : firstAudioAt - firstModelTextAt,
+          });
           this.state = "speaking";
           this.send({ t: "speaking_start", traceId });
         },
@@ -886,18 +913,15 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // adapter, so consume that designed rejection on fast teardown.
       void prewarmedTts.opened.catch(() => undefined);
 
-      const elizaPrewarm = this.elizaPrewarm;
-      if (elizaPrewarm) {
-        await elizaPrewarm;
-        if (this.elizaPrewarm === elizaPrewarm) this.elizaPrewarm = null;
-        if (abort.signal.aborted || this.currentVoiceTurnId !== traceId) return;
-      }
-
       const request = {
         endpoint: this.config.elizaEndpoint,
         authorization: this.config.elizaAuthorization,
         model: this.config.elizaModel,
         transcript,
+        ...(options.messageRole ? { messageRole: options.messageRole } : {}),
+        ...(options.clientMessageId
+          ? { clientMessageId: options.clientMessageId }
+          : {}),
         agentId: this.config.agentId,
         conversationId: this.config.conversationId,
         organizationId: this.config.organizationId,
@@ -910,6 +934,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         if (this.currentVoiceTurnId !== traceId) return;
         if (!this.firstLlmTextEmitted) {
           this.firstLlmTextEmitted = true;
+          firstModelTextAt = this.now();
           this.send({ t: "llm_first_text", traceId });
         }
         // Cartesia closes a synthesis context via the FINAL non-empty phrase
@@ -956,6 +981,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           ) {
             throw error;
           }
+          logger.info("[voice-session] retrying cold response turn", {
+            traceId,
+            attempt,
+            retryDelayMs: retryDelay,
+            upstreamCode: bridgeError.upstreamCode,
+            elapsedMs: this.now() - responseStartedAt,
+          });
           await new Promise<void>((resolve) => {
             const timeout = setTimeout(resolve, retryDelay);
             abort.signal.addEventListener(
@@ -1192,6 +1224,17 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           // error-policy:J6 best-effort teardown — revoke-on-end is defense in
           // depth; the token still dies at its <=120s TTL.
         });
+    }
+    if (this.config.onTeardown) {
+      void this.config.onTeardown(reason).catch((error) => {
+        // error-policy:J6 session closure is already committed; the durable
+        // lifecycle marker is idempotent and may be recovered by provider retry.
+        logger.warn("[voice-session] lifecycle teardown persistence failed", {
+          sessionId: this.sessionId,
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     }
 
     // Invalidate any live turn so racing callbacks are dropped.

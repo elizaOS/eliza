@@ -280,6 +280,7 @@ function isValidPluginExport(c: unknown): c is {
 async function loadPlugin(entryPath: string): Promise<{
 	loaded: number;
 	error?: string;
+	kind?: "no-worker-surface" | "error";
 }> {
 	try {
 		// On Windows, `import('C:\\foo\\bar.js')` fails with "Only URLs with a
@@ -309,7 +310,11 @@ async function loadPlugin(entryPath: string): Promise<{
 		const valid = candidates.filter(isValidPluginExport);
 		const plugin = valid.find((p) => p.actions?.length) ?? valid[0] ?? null;
 		if (!plugin) {
-			return { loaded: 0, error: "no plugin export found in module" };
+			return {
+				loaded: 0,
+				kind: "no-worker-surface" as const,
+				error: "no plugin export found in module",
+			};
 		}
 		const actions = plugin.actions ?? [];
 		// The worker sandbox only bridges actions via invokeAction. A
@@ -323,6 +328,7 @@ async function loadPlugin(entryPath: string): Promise<{
 		if (actions.length === 0) {
 			return {
 				loaded: 0,
+				kind: "no-worker-surface" as const,
 				error: `plugin "${plugin.name}" contributes no actions; the worker sandbox only exposes actions (invokeAction), not providers/routes/services`,
 			};
 		}
@@ -340,6 +346,7 @@ async function loadPlugin(entryPath: string): Promise<{
 	} catch (error) {
 		return {
 			loaded: 0,
+			kind: "error" as const,
 			error: error instanceof Error ? error.message : String(error),
 		};
 	}
@@ -493,11 +500,15 @@ async function bootSequence() {
 	let pluginLoaded = false;
 	let actionsLoaded = 0;
 	let error: string | undefined;
+	let kind: "no-worker-surface" | "error" | undefined;
 	if (pluginEntryPath) {
 		const result = await loadPlugin(pluginEntryPath);
 		actionsLoaded = result.loaded;
 		pluginLoaded = !result.error;
-		if (result.error) error = result.error;
+		if (result.error) {
+			error = result.error;
+			kind = result.kind ?? "error";
+		}
 	}
 	parentPort?.postMessage({
 		id: 0,
@@ -509,6 +520,7 @@ async function bootSequence() {
 			actionsLoaded,
 			...(error ? { error } : {}),
 		},
+		...(kind ? { kind } : {}),
 		...(error ? { reason: error } : {}),
 	});
 }

@@ -40,6 +40,23 @@ export interface TriageOptions {
 	nowMs?: number;
 }
 
+export interface MessageSearchReceipt {
+	requested: MessageSource[];
+	succeeded: MessageSource[];
+	unregistered: MessageSource[];
+	unavailable: MessageSource[];
+	failed: MessageSource[];
+	/** Null when the caller did not request a measurable result cap. */
+	limit: number | null;
+	/** Null when no result cap was requested, so no overflow probe was run. */
+	hasMore: boolean | null;
+}
+
+export interface MessageSearchResult {
+	refs: MessageRef[];
+	receipt: MessageSearchReceipt;
+}
+
 export class TriageService {
 	private adapters = new Map<MessageSource, MessageAdapter>();
 	private sendsInFlight = new Map<string, Promise<DraftRecord>>();
@@ -174,26 +191,57 @@ export class TriageService {
 		runtime: IAgentRuntime,
 		filters: SearchMessagesFilters,
 	): Promise<MessageRef[]> {
+		return (await this.searchWithReceipt(runtime, filters)).refs;
+	}
+
+	/**
+	 * Cross-connector search with a truthful source-coverage and cap receipt.
+	 * A requested cap is probed with limit+1 so exact-fit and overflow are not
+	 * conflated. Connector-internal retrieval limits remain connector-owned.
+	 */
+	async searchWithReceipt(
+		runtime: IAgentRuntime,
+		filters: SearchMessagesFilters,
+	): Promise<MessageSearchResult> {
 		const requested = filters.sources ?? this.listRegisteredSources();
+		const succeeded: MessageSource[] = [];
+		const unregistered: MessageSource[] = [];
+		const unavailable: MessageSource[] = [];
 		const merged: MessageRef[] = [];
 		const failures: Array<{ source: MessageSource; error: unknown }> = [];
+		const requestedLimit =
+			typeof filters.limit === "number" &&
+			Number.isFinite(filters.limit) &&
+			filters.limit > 0
+				? Math.floor(filters.limit)
+				: null;
+		const probeFilters =
+			requestedLimit === null
+				? filters
+				: { ...filters, limit: requestedLimit + 1 };
 		for (const source of requested) {
 			const adapter = this.adapters.get(source);
-			if (!adapter) continue;
-			if (!adapter.isAvailable(runtime)) continue;
+			if (!adapter) {
+				unregistered.push(source);
+				continue;
+			}
+			if (!adapter.isAvailable(runtime)) {
+				unavailable.push(source);
+				continue;
+			}
 			let hits: MessageRef[];
 			try {
 				hits =
 					adapter.searchMessages != null
-						? await adapter.searchMessages(runtime, filters)
+						? await adapter.searchMessages(runtime, probeFilters)
 						: filterInMemory(
 								await adapter.listMessages(runtime, {
-									sinceMs: filters.sinceMs,
-									limit: filters.limit,
-									worldIds: filters.worldIds,
-									channelIds: filters.channelIds,
+									sinceMs: probeFilters.sinceMs,
+									limit: probeFilters.limit,
+									worldIds: probeFilters.worldIds,
+									channelIds: probeFilters.channelIds,
 								}),
-								filters,
+								probeFilters,
 							);
 			} catch (error) {
 				// error-policy:J4 same partial-degrade contract as triage() above
@@ -205,6 +253,7 @@ export class TriageService {
 				);
 				continue;
 			}
+			succeeded.push(source);
 			for (const ref of hits) {
 				this.trackAdapterForMessage(ref.source, ref.id);
 			}
@@ -215,8 +264,20 @@ export class TriageService {
 		}
 		this.store.saveMessages(merged);
 		merged.sort((a, b) => b.receivedAtMs - a.receivedAtMs);
-		const limit = filters.limit ?? merged.length;
-		return merged.slice(0, limit);
+		const hasMore =
+			requestedLimit === null ? null : merged.length > requestedLimit;
+		return {
+			refs: requestedLimit === null ? merged : merged.slice(0, requestedLimit),
+			receipt: {
+				requested: [...requested],
+				succeeded,
+				unregistered,
+				unavailable,
+				failed: failures.map(({ source }) => source),
+				limit: requestedLimit,
+				hasMore,
+			},
+		};
 	}
 
 	async manage(

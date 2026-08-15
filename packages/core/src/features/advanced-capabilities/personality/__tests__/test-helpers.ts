@@ -59,6 +59,7 @@ export function makeFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
 	const agentId = options.agentId ?? nextUuid();
 	const owner = options.owner ?? null;
 	const admins = new Set<UUID>(options.admins ?? []);
+	const worldId = nextUuid();
 
 	const character: Character = {
 		name: "TestAgent",
@@ -147,8 +148,24 @@ export function makeFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
 				);
 			}
 		},
-		async getRoom(): Promise<null> {
-			return null;
+		async getRoom(roomId: UUID): Promise<{ id: UUID; worldId: UUID } | null> {
+			return admins.size > 0 ? { id: roomId, worldId } : null;
+		},
+		async getWorld(
+			id: UUID,
+		): Promise<{ id: UUID; metadata: Record<string, unknown> } | null> {
+			if (admins.size === 0) return null;
+			return {
+				id,
+				metadata: {
+					roles: Object.fromEntries(
+						[...admins].map((entityId) => [entityId, "ADMIN"]),
+					),
+					roleSources: Object.fromEntries(
+						[...admins].map((entityId) => [entityId, "manual"]),
+					),
+				},
+			};
 		},
 		async getParticipantUserState(): Promise<null> {
 			return null;

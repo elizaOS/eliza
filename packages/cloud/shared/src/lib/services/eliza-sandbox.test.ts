@@ -576,6 +576,10 @@ function customSandbox(): AgentSandbox {
     status: "running",
     deletion_attempt_id: null,
     deletion_started_at: null,
+    deletion_previous_status: null,
+    deletion_previous_billing_status: null,
+    deletion_previous_shutdown_warning_sent_at: null,
+    deletion_previous_scheduled_shutdown_at: null,
     execution_tier: "custom",
     bridge_url: "https://legacy-bridge.example",
     health_url: "https://legacy-bridge.example/health",
@@ -731,6 +735,70 @@ describe("buildAgentSandboxInsertValues", () => {
       },
       environment_vars: { ELIZA_API_TOKEN: "encrypted-token" },
     });
+  });
+
+  test("seeds the canonical cloud character when a managed create brings no persona", async () => {
+    const { buildAgentSandboxInsertValues } = await import("./eliza-sandbox.ts?actual");
+    const { buildDefaultAgentCharacterConfig } = await import("./default-agent-character");
+    const seed = buildDefaultAgentCharacterConfig();
+
+    for (const executionTier of ["shared", "dedicated-always"] as const) {
+      const config = buildAgentSandboxInsertValues({
+        organizationId: "22222222-2222-4222-8222-222222222222",
+        userId: "33333333-3333-4333-8333-333333333333",
+        agentName: "bnancy",
+        executionTier,
+      }).agent_config as Record<string, unknown>;
+
+      expect(config.system).toBe(seed.system);
+      expect(config.bio).toEqual(seed.bio);
+      expect(config.style).toEqual(seed.style);
+      expect(config.messageExamples).toEqual(seed.messageExamples);
+      // The agent's own name stays in the `agent_name` column so a later rename
+      // still reaches every reader; the seed must not pin it into the config.
+      expect(config.name).toBeUndefined();
+      expect(config.system).not.toBe("You are bnancy, a helpful assistant.");
+    }
+  });
+
+  test("leaves a caller-supplied or character-linked create unseeded", async () => {
+    const { agentConfigForProvision, buildAgentSandboxInsertValues } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const base = {
+      organizationId: "22222222-2222-4222-8222-222222222222",
+      userId: "33333333-3333-4333-8333-333333333333",
+      agentName: "bnancy",
+    };
+
+    expect(
+      buildAgentSandboxInsertValues({
+        ...base,
+        agentConfig: { system: "You are bnancy, the caller's own persona." },
+      }).agent_config,
+    ).toEqual({ system: "You are bnancy, the caller's own persona." });
+
+    expect(
+      buildAgentSandboxInsertValues({
+        ...base,
+        agentConfig: { character: { system: "nested caller persona" } },
+      }).agent_config,
+    ).toEqual({ character: { system: "nested caller persona" } });
+
+    expect(
+      buildAgentSandboxInsertValues({
+        ...base,
+        characterId: "44444444-4444-4444-8444-444444444444",
+      }).agent_config,
+    ).toEqual({ __agentCharacterOwnership: "reuse-existing" });
+
+    const custom = buildAgentSandboxInsertValues({
+      ...base,
+      dockerImage: "ghcr.io/dexploarer/bnancy:latest",
+      executionTier: "custom",
+    });
+    expect(custom.agent_config).toEqual({});
+    expect(agentConfigForProvision(custom)).toBeUndefined();
   });
 });
 
@@ -5128,6 +5196,30 @@ describe("buildRuntimeBootstrapAgent persona seed", () => {
     expect(agent.system).toBe("You are shared-nancy.");
     expect(agent.bio).toEqual(["a real bio"]);
     expect(agent.style).toEqual({ all: ["terse"] });
+  });
+
+  test("boots a freshly created agent on the seeded default character", async () => {
+    const { buildAgentSandboxInsertValues } = await import("./eliza-sandbox.ts?actual");
+    const { buildDefaultAgentCharacterConfig } = await import("./default-agent-character");
+    const seed = buildDefaultAgentCharacterConfig();
+
+    const agent = await buildBootstrap({
+      ...baseRec,
+      agent_config: buildAgentSandboxInsertValues({
+        organizationId: "22222222-2222-4222-8222-222222222222",
+        userId: "33333333-3333-4333-8333-333333333333",
+        agentName: "bnancy",
+        executionTier: "dedicated-always",
+      }).agent_config as Record<string, unknown>,
+    });
+
+    // The stub fallback is now unreachable for a fresh agent: the persona comes
+    // from the row, while the NAME still comes from the agent_name column.
+    expect(agent.name).toBe("bnancy");
+    expect(agent.system).toBe(seed.system);
+    expect(agent.bio).toEqual(seed.bio as string[]);
+    expect(agent.style).toEqual(seed.style as { all?: string[] });
+    expect(agent.system).not.toBe("You are bnancy, a helpful assistant.");
   });
 });
 
@@ -9785,5 +9877,197 @@ describe("ElizaSandboxService.transferStateForRelocation", () => {
       for (const s of [findSpy, backupSpy, stateSpy, updateSpy, pruneSpy, latestSpy])
         s.mockRestore();
     }
+  });
+});
+
+// Reversible deletion_pending (#18517 suggestion 3): cancelAgentDeletion turns
+// the one-way door back into a running row while the container is still alive
+// — atomically cancelling queued agent_delete jobs so the reconciler has
+// nothing to re-arm — and refuses whenever teardown may already have begun.
+// Drives the transaction body against a fake lifecycle tx (mocked-database
+// suite; the transaction wrapper itself is exercised by the PGlite lane).
+describe("ElizaSandboxService.cancelAgentDeletion (#18517 reversibility)", () => {
+  type CancelSpyTarget = {
+    lockLifecycle: (...args: unknown[]) => Promise<void>;
+    getAgentForLifecycleMutation: (...args: unknown[]) => Promise<unknown>;
+    cancelAgentDeletionTx: (
+      tx: unknown,
+      agentId: string,
+      orgId: string,
+    ) => Promise<{ success: boolean; error?: string }>;
+  };
+
+  async function makeCancelSvc() {
+    const mod = await import("./eliza-sandbox.ts?actual");
+    const svc = new mod.ElizaSandboxService();
+    return { svc, spyTarget: svc as unknown as CancelSpyTarget };
+  }
+
+  function pendingDeletionSandbox(overrides: Partial<AgentSandbox> = {}): AgentSandbox {
+    return {
+      ...customSandbox(),
+      status: "deletion_pending",
+      deletion_attempt_id: "44444444-4444-4444-8444-444444444444",
+      deletion_started_at: new Date("2026-08-14T00:00:00.000Z"),
+      deletion_previous_status: "running",
+      deletion_previous_billing_status: "active",
+      deletion_previous_shutdown_warning_sent_at: null,
+      deletion_previous_scheduled_shutdown_at: null,
+      billing_status: "suspended",
+      ...overrides,
+    };
+  }
+
+  /** Fake LifecycleTx capturing each executed statement's rendered SQL + params. */
+  function fakeCancelTx(results: Array<{ rows: Array<{ id: string }> }>) {
+    const executed: Array<{ sql: string; params: unknown[] }> = [];
+    let call = 0;
+    const tx = {
+      execute: async (query: unknown) => {
+        const rendered = new PgDialect().sqlToQuery(query as SQL);
+        executed.push({ sql: rendered.sql.toLowerCase(), params: rendered.params });
+        const result = results[call] ?? { rows: [] };
+        call += 1;
+        return result;
+      },
+    };
+    return { tx, executed };
+  }
+
+  async function runCancel(
+    rec: AgentSandbox | undefined,
+    results: Array<{ rows: Array<{ id: string }> }>,
+  ) {
+    const { spyTarget } = await makeCancelSvc();
+    const lock = spyOn(spyTarget, "lockLifecycle").mockResolvedValue(undefined as never);
+    const getRec = spyOn(spyTarget, "getAgentForLifecycleMutation").mockResolvedValue(rec);
+    const { tx, executed } = fakeCancelTx(results);
+    try {
+      const outcome = await spyTarget.cancelAgentDeletionTx(
+        tx,
+        rec?.id ?? "missing-agent",
+        rec?.organization_id ?? "org-x",
+      );
+      const lockCalls = lock.mock.calls.length;
+      return { outcome, executed, lockCalls };
+    } finally {
+      lock.mockRestore();
+      getRec.mockRestore();
+    }
+  }
+
+  test("cancel-and-restore: queued job cancelled and the row returned to running, atomically", async () => {
+    const rec = pendingDeletionSandbox();
+    const { outcome, executed, lockCalls } = await runCancel(rec, [
+      { rows: [] }, // no in_progress agent_delete job
+      { rows: [] }, // pending-job cancellation
+      { rows: [{ id: rec.id }] }, // row restore CAS
+    ]);
+
+    expect(outcome).toEqual({ success: true });
+    expect(lockCalls).toBe(1);
+    expect(executed).toHaveLength(3);
+    // 1: only an in_progress agent_delete blocks cancellation.
+    expect(executed[0]?.sql).toContain("'in_progress'");
+    expect(executed[0]?.params).toContain("agent_delete");
+    // 2: queued delete jobs are cancelled inside the same transaction.
+    expect(executed[1]?.sql).toContain("status = 'cancelled'");
+    expect(executed[1]?.sql).toContain("status = 'pending'");
+    expect(executed[1]?.params).toContain("agent_delete");
+    expect(executed[1]?.params).toContain(rec.id);
+    // 3: the restore clears every deletion-intent column and reactivates billing,
+    // CAS-guarded on the observed status + attempt id.
+    const restore = executed[2];
+    expect(restore?.params).toContain("running");
+    expect(restore?.params).toContain("active");
+    expect(restore?.sql).toContain("deletion_attempt_id = null");
+    expect(restore?.sql).toContain("deletion_started_at = null");
+    expect(restore?.sql).toContain("deletion_previous_status = null");
+    expect(restore?.sql).toContain("deletion_previous_billing_status = null");
+    expect(restore?.sql).toContain("deletion_previous_shutdown_warning_sent_at = null");
+    expect(restore?.sql).toContain("deletion_previous_scheduled_shutdown_at = null");
+    expect(restore?.sql).toContain("deletion_allocation_counted = null");
+    expect(restore?.sql).toContain("status = 'deletion_pending'");
+    expect(restore?.params).toContain(rec.deletion_attempt_id);
+  });
+
+  test("refuses while an agent_delete job is executing — teardown may already be running", async () => {
+    const rec = pendingDeletionSandbox();
+    const { outcome, executed } = await runCancel(rec, [{ rows: [{ id: "job-1" }] }]);
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("already executing");
+    // Nothing was cancelled and nothing was restored.
+    expect(executed).toHaveLength(1);
+  });
+
+  test("refuses when the bridge is gone — no live workload for `running` to describe", async () => {
+    const rec = pendingDeletionSandbox({ bridge_url: null });
+    const { outcome, executed } = await runCancel(rec, []);
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("no longer reachable");
+    expect(executed).toHaveLength(0);
+  });
+
+  test("restores the captured billing warning and shutdown schedule instead of guessing healthy defaults", async () => {
+    const warningSentAt = new Date("2026-08-13T10:00:00.000Z");
+    const shutdownAt = new Date("2026-08-16T10:00:00.000Z");
+    const rec = pendingDeletionSandbox({
+      deletion_previous_billing_status: "warning",
+      deletion_previous_shutdown_warning_sent_at: warningSentAt,
+      deletion_previous_scheduled_shutdown_at: shutdownAt,
+    });
+    const { outcome, executed } = await runCancel(rec, [
+      { rows: [] },
+      { rows: [] },
+      { rows: [{ id: rec.id }] },
+    ]);
+
+    expect(outcome).toEqual({ success: true });
+    expect(executed[2]?.params).toContain("warning");
+    expect(executed[2]?.params).toContain(warningSentAt);
+    expect(executed[2]?.params).toContain(shutdownAt);
+  });
+
+  test("refuses legacy deletion rows that have no prior-state receipt", async () => {
+    const rec = pendingDeletionSandbox({
+      deletion_previous_status: null,
+      deletion_previous_billing_status: null,
+    });
+    const { outcome, executed } = await runCancel(rec, []);
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("reversible running-state receipt");
+    expect(executed).toHaveLength(0);
+  });
+
+  test("refuses rows that are not deletion_pending (running and deletion_failed unchanged)", async () => {
+    for (const status of ["running", "deletion_failed"] as const) {
+      const rec = pendingDeletionSandbox({ status });
+      const { outcome, executed } = await runCancel(rec, []);
+      expect(outcome.success).toBe(false);
+      expect(outcome.error).toContain("not pending deletion");
+      expect(executed).toHaveLength(0);
+    }
+  });
+
+  test("missing rows refuse without touching jobs", async () => {
+    const { outcome, executed } = await runCancel(undefined, []);
+    expect(outcome).toEqual({ success: false, error: "Agent not found" });
+    expect(executed).toHaveLength(0);
+  });
+
+  test("a concurrent ownership move fails the CAS instead of overwriting", async () => {
+    const rec = pendingDeletionSandbox();
+    const { outcome, executed } = await runCancel(rec, [
+      { rows: [] },
+      { rows: [] },
+      { rows: [] }, // CAS matched nothing: attempt id / status moved underneath
+    ]);
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("ownership changed");
+    expect(executed).toHaveLength(3);
   });
 });

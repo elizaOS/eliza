@@ -633,8 +633,10 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 	});
 
 	it("rescues archived successes: mid-turn compaction must not blind the rescue to completed work", async () => {
+		const runtimeSecret = "SYNTH-RESCUE-RUNTIME-SECRET-1111";
+		const flagCanary = "SYNTH-RESCUE-FLAG-CANARY-2222";
 		const searchResultA =
-			"search results A: archived-fact-alpha — the fleet release shipped with twelve plugins. " +
+			`search results A: archived-fact-alpha --token=${flagCanary} ${runtimeSecret} — the fleet release shipped with twelve plugins. ` +
 			"padding ".repeat(400);
 		const searchResultB =
 			"search results B: archived-fact-beta — the shipwright tail closed out last week. " +
@@ -715,7 +717,11 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			});
 
 		const result = await runPlannerLoop({
-			runtime: { useModel },
+			runtime: {
+				useModel,
+				redactSecrets: (text: string) =>
+					text.split(runtimeSecret).join("[REDACTED:RESCUE]"),
+			},
 			context: { id: "ctx" },
 			tools: [
 				{ name: "WEB_SEARCH", description: "Search the web." },
@@ -762,6 +768,8 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			.join("\n");
 		expect(rescueText).toContain("archived-fact-alpha");
 		expect(rescueText).toContain("archived-fact-beta");
+		expect(rescueText).not.toContain(runtimeSecret);
+		expect(rescueText).not.toContain(flagCanary);
 	});
 
 	it("never ships the handled-step placeholder as a rescue: a canned synthesis falls through to the honest failure", async () => {

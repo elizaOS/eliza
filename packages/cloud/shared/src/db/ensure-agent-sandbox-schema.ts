@@ -17,6 +17,10 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
       ADD COLUMN IF NOT EXISTS "lifecycle_revision" bigint NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS "deletion_attempt_id" uuid,
       ADD COLUMN IF NOT EXISTS "deletion_started_at" timestamptz,
+      ADD COLUMN IF NOT EXISTS "deletion_previous_status" text,
+      ADD COLUMN IF NOT EXISTS "deletion_previous_billing_status" text,
+      ADD COLUMN IF NOT EXISTS "deletion_previous_shutdown_warning_sent_at" timestamptz,
+      ADD COLUMN IF NOT EXISTS "deletion_previous_scheduled_shutdown_at" timestamptz,
       ADD COLUMN IF NOT EXISTS "deletion_allocation_counted" boolean,
       ADD COLUMN IF NOT EXISTS "warm_claim_credential_state" text,
       ADD COLUMN IF NOT EXISTS "warm_claim_source_pool_id" uuid,
@@ -36,7 +40,9 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
       ADD COLUMN IF NOT EXISTS "replacement_cleanup_allocation_counted" boolean,
       ADD COLUMN IF NOT EXISTS "replacement_cleanup_created_at" timestamptz,
       ADD COLUMN IF NOT EXISTS "previous_image_digest" text,
-      ADD COLUMN IF NOT EXISTS "previous_docker_image" text
+      ADD COLUMN IF NOT EXISTS "previous_docker_image" text,
+      ADD COLUMN IF NOT EXISTS "last_backup_attempt_at" timestamptz,
+      ADD COLUMN IF NOT EXISTS "backup_unsupported_reason" text
   `);
 
   await dbWrite.execute(sql`

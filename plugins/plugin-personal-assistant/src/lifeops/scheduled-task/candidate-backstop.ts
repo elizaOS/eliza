@@ -37,6 +37,13 @@ const SCHEDULED_TASK_ACTION_NAMES: readonly string[] = [
   "SCHEDULED_TASKS_SKIP",
   "SCHEDULED_TASKS_SNOOZE",
   "SCHEDULED_TASKS_UPDATE",
+  // Owner recurring-commitment surfaces. Habit/routine phrasing ("25 pushups,
+  // 3 times a day") is a scheduled-item mutation, and the fabricated-claim
+  // recovery path resolves its candidates from this list — without these
+  // names a fake "I've scheduled your pushups" reply had no owner-routine
+  // recovery target (#17028).
+  "OWNER_ROUTINES",
+  "OWNER_REMINDERS",
 ];
 
 /**
@@ -49,10 +56,20 @@ export function looksLikeScheduledTaskRequest(text: string): boolean {
     return false;
   }
   return (
-    /\b(?:remind\s+me|reminder|scheduled\s+task|scheduled\s+item|lifeops|todo|to[- ]?do|snooze|recap|check[- ]?in|follow[- ]?up|watcher|approval)\b/iu.test(
+    /\b(?:remind\s+me|reminder|scheduled?\s+task|scheduled\s+item|lifeops|todo|to[- ]?do|snooze|recap|check[- ]?in|follow[- ]?up|watcher|approval)\b/iu.test(
       normalized,
     ) ||
-    /\b(?:schedule|create|make|add|set\s+up)\b[\s\S]{0,80}\b(?:task|reminder|todo|to[- ]?do|check[- ]?in|follow[- ]?up|watcher|recap|approval)\b/iu.test(
+    /\b(?:schedule|create|make|add|set\s+up|track)\b[\s\S]{0,80}\b(?:task|reminder|todo|to[- ]?do|check[- ]?in|follow[- ]?up|watcher|recap|approval|habit|routine)\b/iu.test(
+      normalized,
+    ) ||
+    // First-person past tense covers fabricated side-effect claims ("I've
+    // scheduled your pushups"), which are matched against REPLY text to pick
+    // recovery candidates. A bare "scheduled" is intentionally insufficient:
+    // status reports and coding asks commonly discuss scheduled work (#17028).
+    /\b(?:i|we)(?:['’]ve| have)\s+scheduled\b/iu.test(normalized) ||
+    // Recurring cadence phrasing is a scheduled-item commitment even without
+    // an explicit task/reminder noun ("25 pushups, 3 times a day").
+    /\b\d+\s+times?\s+(?:a|per|each|every)\s+(?:day|week|month)\b/iu.test(
       normalized,
     ) ||
     /\b(?:tomorrow|tonight|later|next\s+(?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|every\s+(?:day|week|month|morning|evening))\b/iu.test(

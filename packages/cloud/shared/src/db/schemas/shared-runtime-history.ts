@@ -5,7 +5,7 @@ import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core
 export type SharedRuntimeHistoryMessage = {
   /** Stable message id used to merge DO and Postgres writes without clobbering. */
   id?: string;
-  role: "user" | "assistant";
+  role: "system" | "user" | "assistant";
   content: string;
   /** Epoch-ms timestamp; used to order turns merged from concurrent writers. */
   createdAt?: number;

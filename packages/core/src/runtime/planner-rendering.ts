@@ -4,6 +4,13 @@
  * call, shaping everything append-only so the prompt prefix stays byte-stable
  * for provider prompt caching. Also re-exports the provider cache-plan helpers.
  */
+
+import {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticArgs,
+	projectToolDiagnosticValue,
+	type ToolDiagnosticTextRedactor,
+} from "../security/tool-diagnostics";
 import type { ChatMessage, ChatMessageContentPart } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
 import { tailWellFormed, truncateWellFormed } from "../utils/well-formed";
@@ -20,6 +27,11 @@ import {
  * Options for {@link trajectoryStepsToMessages}.
  */
 export interface TrajectoryStepsToMessagesOptions {
+	/**
+	 * Runtime-aware diagnostic redactor for model-bound tool history. When
+	 * omitted, the shared credential-shape pass still runs.
+	 */
+	redactText?: ToolDiagnosticTextRedactor;
 	/**
 	 * When set, caps each rendered tool-result string to this many characters.
 	 *
@@ -122,6 +134,7 @@ export function trajectoryStepsToMessages(
 	options: TrajectoryStepsToMessagesOptions = {},
 ): ChatMessage[] {
 	const messages: ChatMessage[] = [];
+	const redactText = options.redactText ?? composeToolDiagnosticRedactor();
 	for (const step of steps) {
 		if (!step.toolCall || !step.result) {
 			continue;
@@ -129,7 +142,7 @@ export function trajectoryStepsToMessages(
 		const toolCallId = stableToolCallId(step);
 
 		const assistantContent: ChatMessageContentPart[] = [];
-		const thought = (step.thought ?? "").trim();
+		const thought = redactText((step.thought ?? "").trim());
 		if (thought) {
 			assistantContent.push({ type: "text", text: thought });
 		}
@@ -137,14 +150,17 @@ export function trajectoryStepsToMessages(
 			type: "tool-call",
 			toolCallId,
 			toolName: step.toolCall.name,
-			input: (step.toolCall.params ?? {}) as Record<string, unknown>,
+			input:
+				projectToolDiagnosticArgs(step.toolCall.params ?? {}, redactText) ?? {},
 		});
 		messages.push({
 			role: "assistant",
 			content: assistantContent,
 		});
 
-		const rawResultText = toolMessageContent(step.result);
+		const rawResultText = toolMessageContent(
+			projectToolDiagnosticValue(step.result, redactText) as PlannerToolResult,
+		);
 		const renderedResultText = truncateToolResultText(
 			rawResultText,
 			options.maxToolResultChars,

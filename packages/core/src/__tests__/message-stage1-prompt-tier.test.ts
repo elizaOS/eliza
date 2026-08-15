@@ -47,6 +47,12 @@ const FIXTURE_CONTEXTS: readonly ContextDefinition[] = [
 		description: LONG_CONTEXT_DESCRIPTION,
 		descriptionCompressed: "Support tickets: open, escalate, check status",
 	},
+	{
+		id: "notes",
+		label: "Notes",
+		description: "Read, create, update, delete, search, and list sticky notes.",
+		descriptionCompressed: "Sticky notes: create, read, update, delete, search",
+	},
 ];
 
 function stage1Response(fields: {
@@ -286,6 +292,10 @@ describe("Stage-1 prompt tiering", () => {
 		);
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
 		expect(systemContent).not.toContain(GROUP_TRIAGE_MARKER);
+		expect(systemContent).toContain(
+			"Read, create, update, delete, search, and list sticky notes.",
+		);
+		expect(systemContent).toContain("Sticky Notes -> NOTES");
 	});
 
 	it("renders the full rule block when channel type is missing (fail-open)", async () => {
@@ -304,11 +314,11 @@ describe("Stage-1 prompt tiering", () => {
 			"Never claim the view opened before VIEWS succeeds.",
 		);
 		expect(systemContent).toContain(
-			"Sticky Notes and native device controls are also device/app control",
+			'Sticky Notes use contexts=["notes"], candidateActionNames=["NOTES"]',
 		);
 		expect(systemContent).toContain('candidateActionNames=["CALENDAR"]');
 		expect(systemContent).toContain(
-			"UI navigation and view-backed Notes/device operations -> VIEWS; calendar events -> CALENDAR.",
+			"Sticky Notes -> NOTES; UI navigation and native-device operations -> VIEWS; calendar events -> CALENDAR.",
 		);
 		expect(systemContent).not.toContain(GROUP_TRIAGE_MARKER);
 		expect(systemContent).not.toContain(FULL_TEMPLATE_MARKER);

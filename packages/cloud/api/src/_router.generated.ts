@@ -69,6 +69,7 @@ import _route_cron_auto_top_up_route from "../cron/auto-top-up/route";
 import _route_cron_cleanup_anonymous_sessions_route from "../cron/cleanup-anonymous-sessions/route";
 import _route_cron_cleanup_cli_sessions_route from "../cron/cleanup-cli-sessions/route";
 import _route_cron_cleanup_expired_crypto_payments_route from "../cron/cleanup-expired-crypto-payments/route";
+import _route_cron_cleanup_expired_payment_requests_route from "../cron/cleanup-expired-payment-requests/route";
 import _route_cron_cleanup_priorities_route from "../cron/cleanup-priorities/route";
 import _route_cron_cleanup_stuck_provisioning_route from "../cron/cleanup-stuck-provisioning/route";
 import _route_cron_cleanup_webhook_events_route from "../cron/cleanup-webhook-events/route";
@@ -804,6 +805,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route(
     "/api/cron/cleanup-expired-crypto-payments",
     _route_cron_cleanup_expired_crypto_payments_route,
+  );
+  app.route(
+    "/api/cron/cleanup-expired-payment-requests",
+    _route_cron_cleanup_expired_payment_requests_route,
   );
   app.route(
     "/api/cron/cleanup-priorities",
