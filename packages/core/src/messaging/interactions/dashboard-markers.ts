@@ -10,10 +10,10 @@
  * (live: `[CONFIG:google_calendars]` delivered raw over api/chat replies,
  * Finding B at HQ #18309).
  *
- * Connectors without a dashboard renderer strip them with
- * {@link stripDashboardOnlyMarkers} after parsing interaction blocks. The
- * pattern mirrors the dashboard's own CONFIG_RE exactly so the two surfaces
- * can never disagree about what constitutes a marker.
+ * The canonical interaction parser strips them only from its connector-facing
+ * `cleanedText`; it never mutates the original content consumed by the
+ * dashboard. The pattern mirrors the dashboard's own CONFIG_RE exactly so the
+ * two projections agree about what constitutes a marker.
  */
 
 /** Matches `[CONFIG:<pluginId>]` — keep in lockstep with the dashboard's CONFIG_RE. */
@@ -25,7 +25,7 @@ const DASHBOARD_CONFIG_MARKER_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g;
  * blank lines.
  */
 export function stripDashboardOnlyMarkers(text: string): string {
-	if (!text || !text.includes("[CONFIG:")) return text;
+	if (!text.includes("[CONFIG:")) return text;
 	return text
 		.replace(DASHBOARD_CONFIG_MARKER_RE, "")
 		.replace(/[ \t]+\n/g, "\n")
