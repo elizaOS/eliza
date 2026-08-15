@@ -61,7 +61,8 @@ jobs:
       contents: read
     env:
       ELIZACLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
-      CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
+      DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+      DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
       AGENT_IMAGE_CANARY_MODE: upgrade
       AGENT_IMAGE_CANARY_REQUEST_ID: 0eef19eb-d6ab-4c5a-958f-72c202a87ef7
       AGENT_IMAGE_CANARY_EXPECTED_DEPLOY_COMMIT: e10844d79adb3e59932ed1c8c4fff706c254a12f
@@ -79,47 +80,56 @@ jobs:
         shell: bash
         run: |
           test -n "${ELIZACLOUD_API_KEY//[[:space:]]/}"
-          test -n "${CONTAINERS_SSH_KEY//[[:space:]]/}"
+          test -n "${DEPLOY_HOST//[[:space:]]/}"
+          test -n "${DEPLOY_SSH_KEY//[[:space:]]/}"
       - name: Restore the X connector dependency closure in the existing container
-        shell: bash
-        run: |
-          set -euo pipefail
-          work="$(mktemp -d)"
-          trap 'rm -rf "$work"' EXIT
-          printf '%s' "$CONTAINERS_SSH_KEY" | openssl base64 -d -A > "$work/key"
-          chmod 600 "$work/key"
-          curl --silent --show-error --fail --max-time 30 \
-            --header "Authorization: Bearer $ELIZACLOUD_API_KEY" \
-            --output "$work/node.json" \
-            https://api.eliza.app/api/v1/admin/docker-nodes/eliza-core-prod-5
-          host="$(jq -er '.data.hostname' "$work/node.json")"
-          user="$(jq -er '.data.sshUser' "$work/node.json")"
-          port="$(jq -er '.data.sshPort' "$work/node.json")"
-          ssh -i "$work/key" -p "$port" \
-            -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-            -o UserKnownHostsFile="$work/known_hosts" \
-            "$user@$host" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7
-          docker inspect "$target" >/dev/null
-          before="$(docker inspect --format '{{.State.Status}}' "$target")"
-          work="$(mktemp -d)"
-          trap 'rm -rf "$work"' EXIT
-          docker run --rm --volume "$work:/deps" node:24-slim \
-            npm install --prefix /deps --omit=dev --ignore-scripts \
-              --no-package-lock --legacy-peer-deps \
-              headers-polyfill@5.0.1 json-stable-stringify@1.3.0 twitter-api-v2@1.29.1
-          docker cp "$work/node_modules/." "$target:/app/node_modules/"
-          if [ "$before" = running ]; then
-            docker restart "$target" >/dev/null
-          else
-            docker start "$target" >/dev/null
-          fi
-          sleep 15
-          after="$(docker inspect --format '{{.State.Status}}' "$target")"
-          test "$after" = running
-          printf 'container recovery: %s -> %s\n' "$before" "$after"
-          REMOTE
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 5m
+          envs: ELIZACLOUD_API_KEY
+          script: |
+            set -euo pipefail
+            work="$(mktemp -d)"
+            trap 'rm -rf "$work"' EXIT
+            containers_key="$(sed -n 's/^CONTAINERS_SSH_KEY=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            test -n "$containers_key"
+            printf '%s' "$containers_key" | base64 -d > "$work/key"
+            chmod 600 "$work/key"
+            curl --silent --show-error --fail --max-time 30 \
+              --header "Authorization: Bearer $ELIZACLOUD_API_KEY" \
+              --output "$work/node.json" \
+              https://api.eliza.app/api/v1/admin/docker-nodes/eliza-core-prod-5
+            host="$(jq -er '.data.hostname' "$work/node.json")"
+            user="$(jq -er '.data.sshUser' "$work/node.json")"
+            port="$(jq -er '.data.sshPort' "$work/node.json")"
+            ssh -i "$work/key" -p "$port" \
+              -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile="$work/known_hosts" \
+              "$user@$host" 'bash -s' <<'REMOTE'
+            set -euo pipefail
+            target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7
+            docker inspect "$target" >/dev/null
+            before="$(docker inspect --format '{{.State.Status}}' "$target")"
+            work="$(mktemp -d)"
+            trap 'rm -rf "$work"' EXIT
+            docker run --rm --volume "$work:/deps" node:24-slim \
+              npm install --prefix /deps --omit=dev --ignore-scripts \
+                --no-package-lock --legacy-peer-deps \
+                headers-polyfill@5.0.1 json-stable-stringify@1.3.0 twitter-api-v2@1.29.1
+            docker cp "$work/node_modules/." "$target:/app/node_modules/"
+            if [ "$before" = running ]; then
+              docker restart "$target" >/dev/null
+            else
+              docker start "$target" >/dev/null
+            fi
+            sleep 15
+            after="$(docker inspect --format '{{.State.Status}}' "$target")"
+            test "$after" = running
+            printf 'container recovery: %s -> %s\n' "$before" "$after"
+            REMOTE
 
   changes:
     name: Classify changed paths
