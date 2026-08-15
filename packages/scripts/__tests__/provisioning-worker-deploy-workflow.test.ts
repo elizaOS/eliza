@@ -20,6 +20,14 @@ const services = [
 ];
 
 describe("provisioning worker deployment contract", () => {
+  it("routes both jobs only to the healthy Hetzner fleet", () => {
+    expect(
+      workflow.match(
+        /^\s+runs-on: \$\{\{ fromJSON\(vars\.HETZNER_FLEET_ONLINE != 'true' && '\["ubuntu-24\.04"\]' \|\| '\["self-hosted","hetzner-robot"\]'\) \}\}$/gm,
+      ),
+    ).toHaveLength(2);
+  });
+
   it("resolves one immutable SHA and deploys exactly that snapshot", () => {
     expect(workflow).toContain('deployment_sha="$PUSH_SHA"');
     expect(workflow).toContain(
