@@ -20,7 +20,9 @@
  * git sha / build timestamp of THIS deploy. That makes `dist/sw.js` byte-change
  * on every deploy, so the browser's SW byte-diff detects a new worker and runs
  * install -> skipWaiting -> activate (drop-stale-caches + claim + navigate
- * windows) automatically. Before this, `public/sw.js` was copied verbatim and
+ * each ordinary window once) automatically. The worker is the only navigation
+ * owner; the page registration seam must never add a competing controllerchange
+ * reload. Before this, `public/sw.js` was copied verbatim and
  * was byte-identical across deploys, so the update machinery below was DEAD CODE
  * and users needed a manual clear-data ritual to pick up a new renderer. The
  * cache-name suffixes are derived from BUILD_REV too, so `activate`'s stale-cache

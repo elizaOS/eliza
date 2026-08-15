@@ -17,8 +17,12 @@ import { StackContextManager } from "./utils/stack-context-manager";
  * Streaming context containing callbacks for streaming lifecycle.
  */
 export interface StreamingContext extends StreamingEventHooks {
-	/** Called for each chunk of streamed content */
-	onStreamChunk: StreamChunkCallback;
+	/**
+	 * Called for each chunk of streamed content. Omitted when a scope exists
+	 * only to carry cancellation or structured hooks: a context without a chunk
+	 * consumer must not put nested `useModel` calls on the streaming path.
+	 */
+	onStreamChunk?: StreamChunkCallback;
 	/** Called when a useModel streaming call completes (allows reset between calls) */
 	onStreamEnd?: () => void;
 	reportError?: (
@@ -194,11 +198,15 @@ const discardStreamChunk: StreamChunkCallback = async () => undefined;
  * ambient context. The planner and evaluator model calls apply the same
  * override inline.
  *
- * A straight pass-through (no added scope) when no streaming context is active.
+ * A straight pass-through (no added scope) when no streaming context is active
+ * or when the active context has no chunk consumer to detach. Installing the
+ * discarding callback in that second case would make the context look like a
+ * stream consumer to `useModel` and move otherwise non-streaming internal calls
+ * onto the streaming path.
  */
 export function runWithSuppressedModelStream<T>(fn: () => T): T {
 	const active = getStreamingContext();
-	if (!active) {
+	if (!active?.onStreamChunk) {
 		return fn();
 	}
 	return runWithStreamingContext(

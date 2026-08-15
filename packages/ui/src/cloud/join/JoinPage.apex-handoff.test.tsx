@@ -1,6 +1,6 @@
 /**
  * Mounts the authenticated join page at the canonical production auth origin
- * and proves its app-host handoff preserves /join before any provisioning.
+ * and proves its app-host handoff preserves /join before identity resolution.
  */
 // @vitest-environment jsdom
 // @vitest-environment-options {"url": "https://eliza.app/join"}
@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 describe("JoinPage apex app handoff", () => {
-  it("replaces to the paired app origin before provisioning", async () => {
+  it("replaces to the paired app origin before identity resolution", async () => {
     render(<JoinPage />);
 
     await waitFor(() => {

@@ -145,9 +145,6 @@ for (const viewport of REFLOW_VIEWPORTS) {
         contactSheet.getByRole("button", { name: "Text Eliza on iMessage" }),
         contactSheet.getByRole("link", { name: "Call Eliza" }),
         contactSheet.getByRole("link", {
-          name: "Message Eliza on WhatsApp",
-        }),
-        contactSheet.getByRole("link", {
           name: "Message Eliza on Telegram",
         }),
         contactSheet.getByRole("link", {

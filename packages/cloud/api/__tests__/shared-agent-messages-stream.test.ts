@@ -477,7 +477,14 @@ describe("shared agent messages/stream", () => {
     expect(res.status).toBe(200);
     expect(findByIdAndOrg).not.toHaveBeenCalled();
     expect(bridgeStream).not.toHaveBeenCalled();
-    expect(runtime.fetch).toHaveBeenCalledTimes(1);
+    expect(runtime.fetch).toHaveBeenCalledTimes(2);
+    const operations = runtime.fetch.mock.calls.map(([, init]) =>
+      JSON.parse(String(init?.body)),
+    ) as Array<{ operation: string }>;
+    expect(operations.map(({ operation }) => operation)).toEqual([
+      "prewarm",
+      "stream",
+    ]);
   });
 
   test("cache miss returns warming while prewarm joins in-flight DB hydration", async () => {
@@ -541,7 +548,14 @@ describe("shared agent messages/stream", () => {
     expect(retry.status).toBe(200);
     await expect(retry.text()).resolves.toContain("hydrated ok");
     expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
-    expect(runtime.fetch).toHaveBeenCalledTimes(1);
+    expect(runtime.fetch).toHaveBeenCalledTimes(2);
+    const operations = runtime.fetch.mock.calls.map(([, init]) =>
+      JSON.parse(String(init?.body)),
+    ) as Array<{ operation: string }>;
+    expect(operations.map(({ operation }) => operation)).toEqual([
+      "prewarm",
+      "stream",
+    ]);
     expect(bridgeStream).not.toHaveBeenCalled();
   });
 

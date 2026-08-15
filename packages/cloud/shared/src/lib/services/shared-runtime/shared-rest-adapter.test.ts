@@ -308,6 +308,31 @@ describe("shared-rest-adapter — messages", () => {
     expect(coordinateSharedBridge.mock.calls[0][1].params.clientMessageId).toBe("client-id-1");
   });
 
+  test("personal POST selects the server-owned platform-funded operation", async () => {
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "telegram:update-1",
+      result: { text: "hello" },
+    });
+
+    await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "hello",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+      "telegram:update-1",
+      "platform",
+    );
+
+    expect(coordinateSharedBridge.mock.calls[0][2]).toEqual({
+      executionCtx: EXECUTION_CTX,
+      namespace: NAMESPACE,
+      agentKind: "personal",
+    });
+  });
+
   test("POST without a clientMessageId generates a fresh RPC id per send", async () => {
     coordinateSharedBridge.mockResolvedValue({
       jsonrpc: "2.0",

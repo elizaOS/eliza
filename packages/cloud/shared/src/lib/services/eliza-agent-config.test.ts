@@ -9,12 +9,14 @@ import {
   AGENT_MANAGED_DISCORD_GATEWAY_KEY,
   AGENT_MANAGED_DISCORD_KEY,
   AGENT_MANAGED_GITHUB_KEY,
+  AGENT_PERSONAL_CUTOVER_KEY,
   AGENT_UPGRADED_FROM_KEY,
   type ManagedAgentDiscordBinding,
   type ManagedAgentGithubBinding,
   readManagedAgentDiscordBinding,
   readManagedAgentDiscordGateway,
   readManagedAgentGithubBinding,
+  readPersonalElizaCutover,
   readUpgradedFromAgentId,
   reusesExistingElizaCharacter,
   stripReservedElizaConfigKeys,
@@ -80,6 +82,29 @@ describe("tier-upgrade reattach marker", () => {
     expect(readUpgradedFromAgentId({ [AGENT_UPGRADED_FROM_KEY]: "   " })).toBeNull();
     expect(readUpgradedFromAgentId({ [AGENT_UPGRADED_FROM_KEY]: 42 })).toBeNull();
     expect(readUpgradedFromAgentId({ [AGENT_UPGRADED_FROM_KEY]: { id: "x" } })).toBeNull();
+  });
+});
+
+describe("personal Eliza cutover marker", () => {
+  const marker = {
+    mode: "dedicated",
+    sourceAgentId: "shared-1",
+    conversationId: "shared-1",
+    cutoverToken: "personal-cutover:shared-1:dedicated-1",
+    sharedMessageCount: 12,
+    activatedAt: "2026-08-13T18:00:00.000Z",
+  };
+
+  test("requires the durable seal token that proves Shared was committed", () => {
+    expect(readPersonalElizaCutover({ [AGENT_PERSONAL_CUTOVER_KEY]: marker })).toEqual(marker);
+    expect(
+      readPersonalElizaCutover({
+        [AGENT_PERSONAL_CUTOVER_KEY]: {
+          ...marker,
+          cutoverToken: undefined,
+        },
+      }),
+    ).toBeNull();
   });
 });
 

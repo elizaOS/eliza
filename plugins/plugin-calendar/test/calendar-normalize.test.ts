@@ -100,6 +100,40 @@ describe("normalizeCalendarDateTimeInTimeZone", () => {
     ).toBe("2026-03-04T15:30:00.000Z");
   });
 
+  it.each([
+    "2026-02-30T09:00:00Z",
+    "2026-02-29T09:00:00+00:00",
+    "2026-04-31T09:00:00Z",
+    "2026-02-30Z",
+    "2026-02-30T09:00:00+0000",
+    "+010000-02-30T09:00:00Z",
+    "2026-02-30 09:00:00 GMT",
+    "2026-02-30 09:00:00 UTC",
+    "2026-02-30 09:00:00 GMT+05:00",
+    "2026-02-30 09:00:00 +5:00",
+    "2026-02-30t09:00:00.1234567890z",
+  ])("rejects an impossible explicit calendar date: %s", (value) => {
+    expect(() =>
+      normalizeCalendarDateTimeInTimeZone(value, "startAt", "UTC"),
+    ).toThrow(CalendarServiceError);
+  });
+
+  it.each([
+    "2026-03-04Z",
+    "2026-03-04T09:00:00+0000",
+    "+010000-02-28T09:00:00Z",
+    "2026-03-04t09:00:00z",
+    "2026-03-04T09:00:00.1234567890Z",
+    "2026-03-04 09:00:00 +05:00",
+    "2026-03-04 09:00:00 GMT+05:00",
+    "2026-03-04 09:00:00 GMT",
+    "2026-03-04 09:00:00 UTC",
+  ])("preserves valid explicit calendar forms: %s", (value) => {
+    expect(() =>
+      normalizeCalendarDateTimeInTimeZone(value, "startAt", "UTC"),
+    ).not.toThrow();
+  });
+
   it("interprets a bare local datetime in the supplied zone", () => {
     // 09:00 local in UTC stays 09:00Z.
     expect(

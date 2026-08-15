@@ -45,10 +45,23 @@ describe("landing Shared-agent capability contract", () => {
   });
 
   test("keeps the deterministic reduced-motion composition stable", () => {
-    expect(LANDING_DEMO_INTRO).toHaveLength(14);
+    expect(LANDING_DEMO_INTRO).toHaveLength(17);
     expect(
       LANDING_DEMO_INTRO.filter((step) => step.kind === "card"),
     ).toHaveLength(3);
+  });
+
+  test("paces distinct context cards between conversational beats", () => {
+    const cardIndexes = LANDING_DEMO_INTRO.flatMap((step, index) =>
+      step.kind === "card" ? [index] : [],
+    );
+    const cards = LANDING_DEMO_INTRO.flatMap((step) =>
+      step.kind === "card" ? [step.card] : [],
+    );
+
+    expect(cardIndexes).toEqual([6, 9, 13]);
+    expect(new Set(cards.map((card) => card.label)).size).toBe(cards.length);
+    expect(cards.every((card) => card.status === undefined)).toBe(true);
   });
 
   test.each([
