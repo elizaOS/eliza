@@ -214,13 +214,14 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	// modelCommittedToPlanning preserves the unregistered plan and forces an
 	// unavailable surface. These aliases only apply when the named parent is
 	// NOT registered (direct name resolution wins first), so PA deployments
-	// are untouched: Todo-only stacks route OWNER_TODOS→TODO, and
-	// core/TRIGGER-only stacks route the scheduled families to TRIGGER.
-	OWNER_TODOS: ["TODO", "TRIGGER"],
+	// are untouched. Only capability-equivalent fallbacks are allowed: a plain
+	// todo remains a TODO, while scheduled owner surfaces can use TRIGGER. Goals
+	// intentionally fail closed when OWNER_GOALS is unavailable because neither
+	// a checklist item nor a raw trigger preserves the goal contract.
+	OWNER_TODOS: ["TODO"],
 	OWNER_REMINDERS: ["TRIGGER"],
 	OWNER_ALARMS: ["TRIGGER"],
 	OWNER_ROUTINES: ["TRIGGER"],
-	OWNER_GOALS: ["TODO", "TRIGGER"],
 	// Alarm-shaped candidates: same dual hint as reminders/habits — the
 	// owner umbrella plus the always-registered TRIGGER scheduler.
 	ADD_ALARM: ["OWNER_ALARMS", "TRIGGER"],

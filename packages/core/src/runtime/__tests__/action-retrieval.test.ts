@@ -836,10 +836,7 @@ describe("canonical OWNER_* fallbacks for non-PA topologies", () => {
 	// plugin-personal-assistant those names must degrade to the registered
 	// capability instead of forcing an unavailable surface (#19863 review P1).
 	it("aliases canonical owner parents to their topology fallbacks", () => {
-		expect(parentAliasesForCandidateAction("OWNER_TODOS")).toEqual([
-			"TODO",
-			"TRIGGER",
-		]);
+		expect(parentAliasesForCandidateAction("OWNER_TODOS")).toEqual(["TODO"]);
 		expect(parentAliasesForCandidateAction("OWNER_REMINDERS")).toEqual([
 			"TRIGGER",
 		]);
@@ -849,26 +846,43 @@ describe("canonical OWNER_* fallbacks for non-PA topologies", () => {
 		expect(parentAliasesForCandidateAction("OWNER_ROUTINES")).toEqual([
 			"TRIGGER",
 		]);
-		expect(parentAliasesForCandidateAction("OWNER_GOALS")).toEqual([
-			"TODO",
-			"TRIGGER",
-		]);
+		expect(parentAliasesForCandidateAction("OWNER_GOALS")).toEqual([]);
 	});
 
-	it("falls back to TODO/TRIGGER when the owner parent is absent from the catalog", () => {
+	it("falls back to TODO when the owner-todo parent is absent from the catalog", () => {
 		const catalog = buildActionCatalog([
 			{ name: "TODO", description: "User-scoped persistent todos with CRUD." },
-			{ name: "TRIGGER", description: "Schedule one-shot and recurring triggers." },
+			{
+				name: "TRIGGER",
+				description: "Schedule one-shot and recurring triggers.",
+			},
 		]);
 		const response = retrieveActions({
 			catalog,
 			messageText: "add a todo: buy milk",
 			candidateActions: ["OWNER_TODOS"],
 		});
-		expect(response.query.parentActionHints).toEqual(
-			expect.arrayContaining(["TODO", "TRIGGER"]),
-		);
+		expect(response.query.parentActionHints).toEqual(["TODO"]);
 		expect(response.results[0]).toMatchObject({ name: "TODO" });
+	});
+
+	it("does not reinterpret an unavailable owner goal as a todo or raw trigger", () => {
+		const catalog = buildActionCatalog([
+			{ name: "TODO", description: "User-scoped persistent todos with CRUD." },
+			{
+				name: "TRIGGER",
+				description: "Schedule one-shot and recurring triggers.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "set a goal to save for a trip",
+			candidateActions: ["OWNER_GOALS"],
+		});
+		expect(response.query.parentActionHints).toEqual([]);
+		expect(
+			response.results.every((result) => result.matchedBy.length === 0),
+		).toBe(true);
 	});
 
 	it("keeps the direct owner parent when personal-assistant is registered", () => {
