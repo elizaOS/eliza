@@ -70,8 +70,8 @@ export async function runManagedDiscordGuildTextTurn(
     .trim()
     .slice(0, 80);
   const publicTurn = [
-    `[Public Discord guild text; speaker: ${speaker}.`,
-    "Use only this public guild channel's context. Never reveal or summarize private DM, phone, SMS, or Telegram history.]",
+    `[Public Discord guild channel; speaker: ${speaker}.`,
+    "Use only this public guild channel's context. Never reveal or summarize context from any private transport.]",
     input.message,
   ].join("\n");
   const reply = await sharedRestMessageSend(
@@ -177,7 +177,7 @@ export async function runManagedDiscordGuildVoiceTurn(
   });
   const publicTurn = [
     `[Public Discord guild voice; speaker: ${input.displayName ?? input.discordUsername}.`,
-    "Use only this guild-voice room's context. Never reveal or summarize private DM, phone, SMS, or Telegram history.]",
+    "Use only this guild-voice room's context. Never reveal or summarize context from any private transport.]",
     transcript,
   ].join("\n");
   const reply = await sharedRestMessageSend(
