@@ -1038,6 +1038,20 @@ describe("runOnboardingChat", () => {
       expect((rememberRequest.body as { text: string }).text).toContain(
         "User's preferred name: Sam",
       );
+      const copiedTranscript = (rememberRequest.body as { text: string }).text;
+      expect(copiedTranscript).toContain("Source platform: blooio");
+      expect(copiedTranscript).toContain("Platform display name: not provided");
+      expect(copiedTranscript).toContain("Verified identity link status: linked");
+      expect(copiedTranscript).toContain(
+        "Original onboarding session: platform:blooio:+14155550123",
+      );
+      expect(copiedTranscript).toContain(
+        `First message timestamp: ${result.session.history[0]?.createdAt}`,
+      );
+      expect(copiedTranscript).toContain(
+        `Last message timestamp: ${result.session.history[0]?.createdAt}`,
+      );
+      expect(copiedTranscript).not.toContain(continuationToken(result));
 
       readManagedElizaAgentConnection.mockClear();
       const continued = await runOnboardingChat({
