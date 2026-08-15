@@ -224,9 +224,9 @@ function stableUuid(raw: string): string {
 
 /**
  * Client-supplied idempotency key for a shared turn (#18045). When present it
- * becomes the bridge RPC id (so `turnMessageIds` derives the SAME user and
- * assistant message ids on a retry) AND the coordinator's durable claim key: a
- * retried submission replays the stored terminal result without a second
+ * becomes the durable message-identity seed and the coordinator's claim key,
+ * so `turnMessageIds` derives the SAME user and assistant message ids on a
+ * retry. A retried submission replays the stored terminal result without a second
  * admission, provider dispatch, or charge, and a reused key with different
  * text is rejected. Untrusted input: accept only a non-empty string of a
  * sane length; anything else means "no key" and the caller generates a fresh id
