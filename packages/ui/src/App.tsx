@@ -101,6 +101,7 @@ import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
+import { useChatOverlayWindowBounds } from "./components/shell/chat-overlay-window-bounds";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
@@ -307,86 +308,6 @@ function useShellMode(): AppShellMode {
  * window. Renders ONLY the waveform + pill + chat/voice overlay — no app
  * chrome — over a transparent background.
  */
-/**
- * Resting height of the chromeless bottom bar. Mirrors
- * `DEFAULT_BOTTOM_BAR_HEIGHT` in the Electrobun shell's
- * `desktop-bottom-bar-config.ts`, which owns the launch geometry.
- */
-const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 140;
-
-/**
- * Height the window grows to while the overlay is open. The drawer is
- * `min(640px, 80vh)` tall and vertically centered, so the window must exceed
- * 640px for `80vh` to resolve to the drawer's full height with margin around it.
- */
-const CHAT_OVERLAY_EXPANDED_WINDOW_HEIGHT = 820;
-
-/**
- * Grows the chromeless bottom-bar window while the assistant overlay is open,
- * and restores the resting bar height when it closes.
- *
- * The overlay is a `sm:`-and-up centered drawer (`top-1/2 -translate-y-1/2`,
- * `h-[min(640px,80vh)]`) sized against the *viewport*. The resting bar window is
- * only ~140px tall, so that math places the drawer at a NEGATIVE y — the entire
- * chat surface renders outside the window and is clipped away. The DOM is
- * present and interactive the whole time, which is why this reads as "the app
- * opened but nothing is there".
- *
- * The window is the only thing that can fix it: CSS cannot paint outside its
- * own frame. Desktop-only — on web the viewport already is the browser window.
- */
-function useChatOverlayWindowHeight(overlayOpen: boolean): void {
-  useEffect(() => {
-    if (!isElectrobunRuntime()) return undefined;
-
-    let cancelled = false;
-    void (async () => {
-      const bounds = await invokeDesktopBridgeRequest<{
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-      }>({
-        rpcMethod: "desktopGetWindowBounds",
-        ipcChannel: "desktop:getWindowBounds",
-      });
-      if (cancelled || !bounds) return;
-
-      // Keep the bar pinned to its bottom edge while the top edge moves.
-      const bottom = bounds.y + bounds.height;
-      const nextHeight = overlayOpen
-        ? CHAT_OVERLAY_EXPANDED_WINDOW_HEIGHT
-        : CHAT_OVERLAY_RESTING_WINDOW_HEIGHT;
-      if (bounds.height === nextHeight) return;
-
-      await invokeDesktopBridgeRequest<void>({
-        rpcMethod: "desktopSetWindowBounds",
-        ipcChannel: "desktop:setWindowBounds",
-        params: {
-          x: bounds.x,
-          y: bottom - nextHeight,
-          width: bounds.width,
-          height: nextHeight,
-        },
-      });
-      if (cancelled) return;
-
-      // The bar is created click-through so the desktop stays usable through
-      // its transparent region. While the overlay is open the window must stop
-      // passing clicks through, or the chat renders but cannot be clicked,
-      // typed into, or dragged.
-      await invokeDesktopBridgeRequest<void>({
-        rpcMethod: "desktopSetWindowPassthrough",
-        ipcChannel: "desktop:setWindowPassthrough",
-        params: { enabled: !overlayOpen },
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [overlayOpen]);
-}
 
 function ChatOverlayShell() {
   // The bar has no inline tab system, so "show a view" / "show the launcher"
@@ -394,7 +315,18 @@ function ChatOverlayShell() {
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
   const overlayOpen = controller?.isOpen ?? false;
-  useChatOverlayWindowHeight(overlayOpen);
+  const setActionNotice = useAppSelector((state) => state.setActionNotice);
+  const handleWindowBoundsFailure = useCallback((): void => {
+    if (overlayOpen) {
+      controller?.close();
+    }
+    setActionNotice(
+      "Desktop chat window resize failed. Close and reopen Eliza to retry.",
+      "error",
+      6_000,
+    );
+  }, [controller, overlayOpen, setActionNotice]);
+  useChatOverlayWindowBounds(overlayOpen, handleWindowBoundsFailure);
   // Escape collapses the overlay first — while it is open, AssistantOverlay's
   // own Escape handler closes it. Once already collapsed, Escape hides the
   // desktop window entirely (#12184) so the pill dismisses to the background

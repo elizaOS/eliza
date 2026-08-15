@@ -24,7 +24,7 @@ type Options = {
   targetDist: string;
 };
 
-type DependencyEntry = {
+export type DependencyEntry = {
   name: string;
   spec: string | null;
   /**
@@ -2050,6 +2050,14 @@ function resolvePackage(
   return null;
 }
 
+/** Whether a dependency edge must enter the packaged-runtime copy queue. */
+export function shouldQueueRuntimeDependency(
+  entry: DependencyEntry,
+  alwaysBundled: ReadonlySet<string>,
+): boolean {
+  return entry.required || shouldBundleDiscoveredPackage(entry.name, alwaysBundled);
+}
+
 export function getRuntimeDependencyEntries(
   pkgPath: string,
 ): DependencyEntry[] {
@@ -2557,6 +2565,7 @@ function main(): void {
       .map((name) => ({
         name,
         spec: rootDependencySpecs.get(name) ?? null,
+        required: true,
         requesterDir: ROOT,
         requesterDestDir: targetDist,
       }));
@@ -2656,10 +2665,7 @@ function main(): void {
         // `plugin-personal-assistant` shipped without `plugin-calendar` /
         // `plugin-blocker` and failed the post-ready app-route tail, pinning
         // health `startup.phase` at "degraded" so the desktop UI never mounted.
-        if (
-          !dep.required &&
-          !shouldBundleDiscoveredPackage(dep.name, alwaysBundled)
-        ) {
+        if (!shouldQueueRuntimeDependency(dep, alwaysBundled)) {
           filteredOptionalPlugins.add(dep.name);
           continue;
         }
@@ -2667,6 +2673,7 @@ function main(): void {
         queue.push({
           name: dep.name,
           spec: dep.spec,
+          required: dep.required,
           requesterDir: resolved.sourceDir,
           requesterDestDir: destination,
         });
