@@ -14,6 +14,7 @@ import { userCharactersRepository } from "@/db/repositories/characters";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { warmInferenceAdmissionGate } from "@/lib/services/inference-admission-gate";
 import { warmInferenceAdmissionSnapshot } from "@/lib/services/inference-admission-snapshot";
 import { coordinateSharedConversationPrewarm } from "@/lib/services/shared-runtime/conversation-coordinator";
 import { logger } from "@/lib/utils/logger";
@@ -24,6 +25,7 @@ export async function hydrateVoiceSharedAgentScope(
   env: Bindings,
   claims: InternalElizaConversationFetchClaims,
   preloadedAgent?: AgentSandbox,
+  options: { freshConversation?: boolean } = {},
 ): Promise<void> {
   await runWithCloudBindingsAsync(
     env as unknown as Record<string, unknown>,
@@ -130,13 +132,28 @@ export async function hydrateVoiceSharedAgentScope(
               });
             },
           ),
+          warmInferenceAdmissionGate(claims.organizationId).catch((error) => {
+            // error-policy:J7 a cold durable admission gate remains on the
+            // canonical fail-closed retry path if this latency prefill fails.
+            logger.warn(
+              "[voice-scope-hydration] admission gate prefill failed",
+              {
+                agentId: claims.agentId,
+                organizationId: claims.organizationId,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+          }),
         ];
         if (env.SHARED_RUNTIME_CONVERSATIONS) {
           optionalWarmups.push(
             coordinateSharedConversationPrewarm(
               claims.agentId,
               claims.conversationId,
-              { namespace: env.SHARED_RUNTIME_CONVERSATIONS },
+              {
+                namespace: env.SHARED_RUNTIME_CONVERSATIONS,
+                startEmpty: options.freshConversation === true,
+              },
             ).catch((error) => {
               // error-policy:J7 conversation hydration is a latency hint; the
               // real turn retains its typed cache-warming retry fallback.
