@@ -5,6 +5,7 @@ import { streamSSE } from "hono/streaming";
 import {
   ControlPlaneStore,
   type ImportedMessage,
+  type ImportedScheduledTask,
   type Job,
   type Sandbox,
 } from "./store";
@@ -1335,6 +1336,16 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     return out;
   };
 
+  const normalizeImportTasks = (raw: unknown): ImportedScheduledTask[] => {
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(
+      (entry): entry is ImportedScheduledTask =>
+        !!entry &&
+        typeof entry === "object" &&
+        typeof (entry as Record<string, unknown>).taskId === "string",
+    );
+  };
+
   app.post(
     "/api/compat/agents/:id/api/conversations/:convId/import",
     async (c) => {
@@ -1349,10 +1360,22 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         return c.json({ error: "Body must include a `messages` array" }, 400);
       }
       const messages = normalizeImportMessages(body.messages);
+      const scheduledTasks = normalizeImportTasks(body.scheduledTasks);
+      const cutoverToken =
+        typeof body.cutoverToken === "string" ? body.cutoverToken : "";
+      if (scheduledTasks.length > 0 && !cutoverToken) {
+        return c.json(
+          { error: "Scheduled task import requires a cutover token" },
+          400,
+        );
+      }
       const result = store.importConversation(
         sandboxId,
         conversationId,
         messages,
+        scheduledTasks,
+        cutoverToken,
+        body.activateScheduledTasks === true,
       );
       return c.json(result);
     },
