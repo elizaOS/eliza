@@ -44,7 +44,7 @@ const DEFAULT_TTL_MS = 5 * 60_000;
  * `confirmRegex` if they want stricter or extended matching.
  */
 const DEFAULT_CONFIRM_REGEX =
-	/^\s*(yes|yeah|yep|y|ok|okay|sure|confirm|confirmed|do it|go ahead|proceed|approve|approved|si|sí|oui|ja|hai|はい|确认|확인)\b/i;
+	/^\s*(?:(yes|yeah|yep|y|ok|okay|sure|confirm|confirmed|do it|go ahead|proceed|approve|approved|si|oui|ja|hai)\b|(sí|はい|确认|확인)(?=\s|$|[.,!?:;]))/i;
 
 export type ConfirmationStatus = "pending" | "confirmed" | "cancelled";
 
