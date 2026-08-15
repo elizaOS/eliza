@@ -1361,4 +1361,44 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 			).kind,
 		).not.toBe("owner-work-thread");
 	});
+	it("media-generation asks hint the generator (F35, tj-fcf8c1c21be91f)", () => {
+		const generateMedia = { name: "GENERATE_MEDIA", similes: [], tags: [] };
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, generateMedia],
+				"make me a pixel-art castle image, 64x64 retro game vibe",
+			),
+		).toEqual({ names: ["GENERATE_MEDIA"], kind: "media-generation" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, generateMedia],
+				"generate a picture of a lighthouse at dusk",
+			),
+		).toEqual({ names: ["GENERATE_MEDIA"], kind: "media-generation" });
+		// No generator registered: no candidate, honest chat answer allowed.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction],
+				"generate a picture of a lighthouse at dusk",
+			),
+		).toEqual({ names: [], kind: null });
+		// Generation verbs without a visual-artifact noun never match.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, generateMedia],
+				"create a todo: buy sandpaper",
+			).kind,
+		).not.toBe("media-generation");
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, generateMedia],
+				"draw up a plan for the garage",
+			).kind,
+		).not.toBe("media-generation");
+	});
 });
