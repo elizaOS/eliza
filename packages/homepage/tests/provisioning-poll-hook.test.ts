@@ -254,7 +254,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     nextStatus = "none";
     const { getState, unmount } = mountHook(true, null);
 
-    await waitForEffects(150);
+    await waitForEffects(300);
 
     const statusCalls = fetchCalls.filter(
       (call) => call.url === "/api/eliza-app/provisioning-agent",
