@@ -116,4 +116,51 @@ describe("#13415 — downloadAdMedia surfaces fetch failures, never fabricates a
       /exceeds maximum size/,
     );
   });
+
+  test("malformed Content-Length values fail closed before buffering", async () => {
+    const { downloadAdMedia } = await import("./media-utils");
+    for (const contentLength of ["NaN", "-1", "1.5", "9007199254740992"]) {
+      let buffered = false;
+      safeFetchImpl = async () => {
+        const response = new Response(new Uint8Array([1]), {
+          status: 200,
+          headers: {
+            "content-type": "image/png",
+            "content-length": contentLength,
+          },
+        });
+        const arrayBuffer = response.arrayBuffer.bind(response);
+        response.arrayBuffer = async () => {
+          buffered = true;
+          return arrayBuffer();
+        };
+        return response;
+      };
+      await expect(
+        downloadAdMedia(URL_UNDER_TEST, { maxBytes: 10 }),
+      ).rejects.toThrow(/invalid content-length/i);
+      expect(buffered).toBe(false);
+    }
+  });
+
+  test("a valid safe Content-Length still permits buffering", async () => {
+    let buffered = false;
+    safeFetchImpl = async () => {
+      const response = new Response(new Uint8Array([1]), {
+        status: 200,
+        headers: { "content-type": "image/png", "content-length": "1" },
+      });
+      const arrayBuffer = response.arrayBuffer.bind(response);
+      response.arrayBuffer = async () => {
+        buffered = true;
+        return arrayBuffer();
+      };
+      return response;
+    };
+    const { downloadAdMedia } = await import("./media-utils");
+    await expect(
+      downloadAdMedia(URL_UNDER_TEST, { maxBytes: 10 }),
+    ).resolves.toMatchObject({ bytes: new Uint8Array([1]) });
+    expect(buffered).toBe(true);
+  });
 });
