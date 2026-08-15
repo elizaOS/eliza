@@ -311,16 +311,23 @@ describe("accountId 'default' resolution", () => {
     expect(credentials?.access_token).toBe("test-access-token");
   });
 
-  it("stays not-found with zero connected accounts", async () => {
-    const state = newDurableState();
-    await expect(resolveDefault(state, {})).rejects.toThrow(/default was not found/);
+  it("zero connected accounts is the typed not-connected state, not a storage error", async () => {
+    const attempt = resolveDefault(newDurableState(), {});
+    await expect(attempt).rejects.toMatchObject({
+      code: "CONNECTOR_NOT_CONNECTED",
+    });
+    await expect(attempt).rejects.toThrow(/No Google account is connected/);
   });
 
-  it("stays not-found with multiple connected accounts", async () => {
+  it("several connected accounts is an ambiguity, not not-found", async () => {
     const state = newDurableState();
     state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
     state.accounts.set("second-account", connectedAccount("second-account"));
-    await expect(resolveDefault(state, {})).rejects.toThrow(/default was not found/);
+    const attempt = resolveDefault(state, {});
+    await expect(attempt).rejects.toMatchObject({
+      code: "GOOGLE_ACCOUNT_AMBIGUOUS",
+    });
+    await expect(attempt).rejects.toThrow(/2 Google accounts are connected/);
   });
 });
 
@@ -387,5 +394,25 @@ describe("manager-path durability across restart (real core manager + adapter)",
     ).credentials;
     expect(credentials?.access_token).toBe("test-access-token");
     expect(credentials?.refresh_token).toBe("test-refresh-token");
+  });
+});
+
+describe("explicit-account resolution", () => {
+  it("an explicit unknown account id keeps the not-found error", async () => {
+    const storage = createStorage(newDurableState());
+    const resolver = new DefaultGoogleCredentialResolver({
+      runtime: createRuntime(storage, {}),
+      storage,
+    });
+    const attempt = resolver.getAuthClient({
+      provider: "google",
+      accountId: "acct-that-never-existed",
+      scopes: [],
+      capabilities: [],
+      reason: "miss-shape test",
+    });
+    await expect(attempt).rejects.toThrow(
+      /was not found in connector account storage/
+    );
   });
 });

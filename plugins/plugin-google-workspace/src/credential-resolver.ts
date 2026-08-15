@@ -11,9 +11,11 @@
  */
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
+  CONNECTOR_NOT_CONNECTED,
   type ConnectorAccount,
   type ConnectorAccountManager,
   type ConnectorAccountStorage,
+  ElizaError,
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
@@ -247,14 +249,30 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
     // account" (lifeops-message-adapter DEFAULT_GOOGLE_ACCOUNT_ID). Accounts
     // connected through the OAuth flow are stored under manager-assigned ids,
     // so a literal lookup always misses. Resolve it to the sole connected
-    // account; with zero or multiple connected accounts the miss stands and
-    // the caller's not-found error names the ambiguity honestly.
+    // account, and give each of the two miss shapes its true name: zero
+    // connected accounts is the connector's steady "not connected" state
+    // (typed so sweeps classify the source unavailable, not failed), while
+    // several connected accounts is a real ambiguity the caller must resolve.
+    // "was not found in storage" described neither.
     if (accountId === "default") {
       const accounts = await this.listAccounts();
       const connected = accounts.filter((account) => account.status === "connected");
       if (connected.length === 1) {
         return connected[0];
       }
+      if (connected.length === 0) {
+        throw new ElizaError(
+          "No Google account is connected. Connect one in settings to use Gmail, Calendar, and Drive.",
+          { code: CONNECTOR_NOT_CONNECTED, context: { provider: GOOGLE_SERVICE_NAME } }
+        );
+      }
+      throw new ElizaError(
+        `${connected.length} Google accounts are connected; specify which account to use.`,
+        {
+          code: "GOOGLE_ACCOUNT_AMBIGUOUS",
+          context: { provider: GOOGLE_SERVICE_NAME, connectedCount: connected.length },
+        }
+      );
     }
     return null;
   }

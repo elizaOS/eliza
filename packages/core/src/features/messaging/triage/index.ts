@@ -48,7 +48,9 @@ export {
 export type { TriageOptions } from "./triage-service.ts";
 export {
 	__resetDefaultTriageServiceForTests,
+	CONNECTOR_NOT_CONNECTED,
 	getDefaultTriageService,
+	isConnectorNotConnectedError,
 	TriageService,
 } from "./triage-service.ts";
 export * from "./types.ts";

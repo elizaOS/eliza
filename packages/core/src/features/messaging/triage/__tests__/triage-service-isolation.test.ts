@@ -9,10 +9,15 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { ElizaError } from "../../../../errors.ts";
 import type { IAgentRuntime } from "../../../../types/index.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { MessageRefStore } from "../message-ref-store.ts";
-import { TriageService } from "../triage-service.ts";
+import {
+	CONNECTOR_NOT_CONNECTED,
+	isConnectorNotConnectedError,
+	TriageService,
+} from "../triage-service.ts";
 import {
 	type ListOptions,
 	type MessageAdapterCapabilities,
@@ -140,5 +145,82 @@ describe("TriageService per-source failure isolation", () => {
 				content: "hello",
 			}),
 		).rejects.toBeInstanceOf(NotYetImplementedError);
+	});
+});
+
+/**
+ * The connector's steady "nothing connected" state, discovered at time of use:
+ * `isAvailable` answers only "is the plugin's service registered", so an
+ * enabled-but-never-connected connector throws CONNECTOR_NOT_CONNECTED from
+ * inside the read. That source must classify as unavailable — not as a warned
+ * failure — while a sweep of only such sources still surfaces the honest cause
+ * instead of presenting "not connected" as an empty inbox.
+ */
+class NotConnectedAdapter extends BaseMessageAdapter {
+	constructor(readonly source: MessageSource) {
+		super();
+	}
+	isAvailable(): boolean {
+		return true;
+	}
+	capabilities(): MessageAdapterCapabilities {
+		return {
+			list: true,
+			search: false,
+			manage: {},
+			send: {},
+			worlds: "single",
+			channels: "none",
+		};
+	}
+	protected listMessagesImpl(): Promise<MessageRef[]> {
+		throw new ElizaError("No Google account is connected.", {
+			code: CONNECTOR_NOT_CONNECTED,
+		});
+	}
+}
+
+describe("TriageService not-connected classification", () => {
+	it("files a not-connected source under unavailable, not failed", async () => {
+		const service = new TriageService(new MessageRefStore());
+		service.register(new HealthyAdapter("discord", [ref("discord", "d1")]));
+		service.register(new NotConnectedAdapter("gmail"));
+
+		const { refs, receipt } = await service.triageWithReceipt(
+			createFakeRuntime(),
+			{ sources: ["discord", "gmail"] },
+		);
+
+		expect(refs).toHaveLength(1);
+		expect(receipt.unavailable).toEqual(["gmail"]);
+		expect(receipt.failed).toEqual([]);
+		expect(receipt.succeeded).toEqual(["discord"]);
+	});
+
+	it("surfaces the typed cause when the only requested source is not connected", async () => {
+		const service = new TriageService(new MessageRefStore());
+		service.register(new NotConnectedAdapter("gmail"));
+
+		const attempt = service.triage(createFakeRuntime(), {
+			sources: ["gmail"],
+		});
+		await expect(attempt).rejects.toSatisfy((error: unknown) =>
+			isConnectorNotConnectedError(error),
+		);
+	});
+
+	it("search() classifies a not-connected source the same way", async () => {
+		const service = new TriageService(new MessageRefStore());
+		service.register(new HealthyAdapter("discord", [ref("discord", "d2")]));
+		service.register(new NotConnectedAdapter("gmail"));
+
+		const { refs, receipt } = await service.searchWithReceipt(
+			createFakeRuntime(),
+			{ sources: ["discord", "gmail"], content: "hello" },
+		);
+
+		expect(refs).toHaveLength(1);
+		expect(receipt.unavailable).toContain("gmail");
+		expect(receipt.failed).toEqual([]);
 	});
 });

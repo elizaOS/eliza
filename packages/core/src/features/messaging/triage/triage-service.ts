@@ -61,6 +61,25 @@ export interface TriageOptions {
 	nowMs?: number;
 }
 
+/**
+ * Error code an adapter throws when its connector has no usable account —
+ * plugin enabled, service registered, nothing connected. `isAvailable` is a
+ * synchronous pre-check and account state lives behind async storage, so this
+ * is the same "unavailable" answer discovered at time of use. The sweep files
+ * such a source under the receipt's `unavailable`, not `failed`: on any
+ * deployment where a connector plugin is enabled but never connected this is
+ * the steady state, not an error, and reporting it as a failure told users
+ * their inbox sweep was broken when the true fact is "not connected".
+ */
+export const CONNECTOR_NOT_CONNECTED = "CONNECTOR_NOT_CONNECTED";
+
+export function isConnectorNotConnectedError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		(error as { code?: unknown }).code === CONNECTOR_NOT_CONNECTED
+	);
+}
+
 export class TriageService {
 	private adapters = new Map<MessageSource, MessageAdapter>();
 	private sendsInFlight = new Map<string, Promise<DraftRecord>>();
@@ -161,6 +180,7 @@ export class TriageService {
 		const requested = opts.sources ?? this.listRegisteredSources();
 		const all: MessageRef[] = [];
 		const failures: Array<{ source: MessageSource; error: unknown }> = [];
+		const notConnected: Array<{ source: MessageSource; error: unknown }> = [];
 		const succeeded: MessageSource[] = [];
 		const unregistered: MessageSource[] = [];
 		for (const source of requested) {
@@ -181,6 +201,15 @@ export class TriageService {
 					channelIds: opts.channelIds,
 				});
 			} catch (error) {
+				if (isConnectorNotConnectedError(error)) {
+					// The connector's steady "nothing connected" state, discovered at
+					// time of use — unavailable, not failed, and debug, not a warning.
+					notConnected.push({ source, error });
+					logger.debug(
+						`[TriageService] ${source} has no connected account; skipping`,
+					);
+					continue;
+				}
 				// error-policy:J4 one broken adapter degrades to a warned partial
 				// sweep across the other connectors; rethrown below when failures
 				// leave zero results so a broken sweep never reads as an empty inbox
@@ -198,8 +227,11 @@ export class TriageService {
 			succeeded.push(source);
 			all.push(...batch);
 		}
-		if (all.length === 0 && failures.length > 0) {
-			throw failures[0].error;
+		// A not-connected source joins the zero-result rethrow: for a caller that
+		// asked only for that source, an empty return would present "gmail is not
+		// connected" as an empty inbox. The typed error carries the honest cause.
+		if (all.length === 0 && (failures.length > 0 || notConnected.length > 0)) {
+			throw (failures[0] ?? notConnected[0]).error;
 		}
 
 		const scored = await scoreMessages(runtime, all, { nowMs: opts.nowMs });
@@ -210,7 +242,7 @@ export class TriageService {
 				requested,
 				succeeded,
 				unregistered,
-				unavailable: [],
+				unavailable: notConnected.map(({ source }) => source),
 				failed: failures.map(({ source, error }) => ({
 					source,
 					error: error instanceof Error ? error.message : String(error),
@@ -244,6 +276,7 @@ export class TriageService {
 		const requested = filters.sources ?? this.listRegisteredSources();
 		const merged: MessageRef[] = [];
 		const failures: Array<{ source: MessageSource; error: unknown }> = [];
+		const notConnected: Array<{ source: MessageSource; error: unknown }> = [];
 		const succeeded: MessageSource[] = [];
 		const unregistered: MessageSource[] = [];
 		const unavailable: MessageSource[] = [];
@@ -272,6 +305,14 @@ export class TriageService {
 								filters,
 							);
 			} catch (error) {
+				if (isConnectorNotConnectedError(error)) {
+					// Same classification as triage(): unavailable at time of use.
+					notConnected.push({ source, error });
+					logger.debug(
+						`[TriageService] ${source} has no connected account; skipping`,
+					);
+					continue;
+				}
 				// error-policy:J4 same partial-degrade contract as triage() above
 				failures.push({ source, error });
 				logger.warn(
@@ -287,8 +328,8 @@ export class TriageService {
 			succeeded.push(source);
 			merged.push(...hits);
 		}
-		if (merged.length === 0 && failures.length > 0) {
-			throw failures[0].error;
+		if (merged.length === 0 && (failures.length > 0 || notConnected.length > 0)) {
+			throw (failures[0] ?? notConnected[0]).error;
 		}
 		this.store.saveMessages(merged);
 		merged.sort((a, b) => b.receivedAtMs - a.receivedAtMs);
@@ -299,7 +340,10 @@ export class TriageService {
 				requested,
 				succeeded,
 				unregistered,
-				unavailable,
+				unavailable: [
+					...unavailable,
+					...notConnected.map(({ source }) => source),
+				],
 				failed: failures.map(({ source, error }) => ({
 					source,
 					error: error instanceof Error ? error.message : String(error),
