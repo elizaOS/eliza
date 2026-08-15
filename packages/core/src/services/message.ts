@@ -60,6 +60,7 @@ import {
 	checkSenderRole,
 	getUnresolvedSenderRoleFloor,
 	hasAtLeastRole,
+	resolveCanonicalOwnerIdForMessage,
 	isAdminRank,
 } from "../roles";
 import {
@@ -119,6 +120,7 @@ import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
+	type ToolArgAliasCapability,
 	projectActionResultForClipboard,
 	shouldSuppressActionResultClipboard,
 } from "../runtime/execute-planned-tool-call";
@@ -6461,6 +6463,40 @@ function actionOwnsResponseHandlerEarlyReply(
 	return resolvedCandidates.values().next().value?.suppressEarlyReply === true;
 }
 
+const OWNER_ENTITY_TOOL_ALIAS_TOKEN =
+	"[REDACTED:ELIZA_ADMIN_ENTITY_ID]" as const;
+
+/**
+ * Build the sole entity-id alias currently supported by the planner executor.
+ * It is derived from the authenticated owner context, never a model-authored
+ * setting name, and exists only when this turn's composed state emitted it.
+ */
+export async function buildOwnerEntityToolArgAliases(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	senderRole: RoleGateRole;
+}): Promise<readonly ToolArgAliasCapability[]> {
+	if (
+		args.senderRole !== "OWNER" ||
+		!args.state.text.includes(OWNER_ENTITY_TOOL_ALIAS_TOKEN)
+	) {
+		return [];
+	}
+	const ownerId = await resolveCanonicalOwnerIdForMessage(
+		args.runtime,
+		args.message,
+	);
+	return ownerId
+		? [
+				{
+					token: OWNER_ENTITY_TOOL_ALIAS_TOKEN,
+					value: ownerId,
+					kind: "entity_id" as const,
+				},
+			]
+		: [];
+}
 interface ExecuteV5PlannedToolCallParams {
 	runtime: IAgentRuntime;
 	toolCall: PlannerToolCall;
@@ -8288,7 +8324,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		const plannerState = withContextRoutingValues(
 			attachAvailableContexts(recomposedPlannerState, args.runtime),
 			selectedContextRoutingState,
-		);
+		);		const ownerEntityToolArgAliases = await buildOwnerEntityToolArgAliases({
+			runtime: args.runtime,
+			message: args.message,
+			state: plannerState,
+			senderRole,
+		});
 		// Full-surface mode (a focused coding sub-agent): skip the relevance/role
 		// narrowing entirely and hand the planner EVERY action whose execution gates
 		// pass. The narrowing is built for big chat catalogs (retrieve the relevant
