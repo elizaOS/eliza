@@ -55,7 +55,6 @@ jobs:
     name: Eliza X exact image canary
     if: github.event_name == 'workflow_dispatch' && inputs.x_agent_rollout
     runs-on: [self-hosted, Linux, X64]
-    environment: production
     timeout-minutes: 20
     permissions:
       contents: read
