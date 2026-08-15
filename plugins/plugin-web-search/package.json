@@ -18,26 +18,6 @@
                 "default": "./dist/index.js"
             }
         },
-        "./edge": {
-            "types": "./dist/edge.d.ts",
-            "eliza-source": {
-                "types": "./src/edge.ts",
-                "import": "./src/edge.ts",
-                "default": "./src/edge.ts"
-            },
-            "bun": {
-                "types": "./src/edge.ts",
-                "import": "./src/edge.ts",
-                "default": "./src/edge.ts"
-            },
-            "worker": {
-                "types": "./src/edge.ts",
-                "import": "./src/edge.ts",
-                "default": "./src/edge.ts"
-            },
-            "import": "./dist/edge.js",
-            "default": "./dist/edge.js"
-        },
         "./*.css": "./dist/*.css",
         "./*": {
             "types": "./dist/*.d.ts",

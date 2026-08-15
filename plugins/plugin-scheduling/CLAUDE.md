@@ -18,9 +18,6 @@ runtime surface that makes them work standalone:
 - The runner factory `createScheduledTaskRunner({ … })` — persistence
   (`ScheduledTaskStore`/`ScheduledTaskLogStore`) and the owner/channel/connector
   dependencies are **injected** by the host, not owned here.
-- The `./edge` export contains only the Worker-safe state machine, registries,
-  time math, validation, and SQL-executor-backed stores. Edge hosts inject a
-  small SQL executor; they never fabricate an `IAgentRuntime` database shim.
 - **The dispatch policy** (`dispatch-policy.ts`, enforced inside `fire()`):
   a typed connector `DispatchResult { ok: false }` is never recorded as a
   successful fire. `rate_limited`/`retryAfterMinutes` failures retry the SAME

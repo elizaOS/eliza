@@ -113,14 +113,10 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
 
 export function resolveSharedCapabilityWall(
   message: string | undefined,
-  capabilities: { reminders?: boolean } = {},
 ): SharedCapabilityWall | null {
   const text = (message ?? "").trim();
   if (!text || NON_EXECUTION_CONTEXT.test(text)) return null;
-  const match = RULES.find(
-    (rule) =>
-      !(rule.capability === "reminders" && capabilities.reminders) && rule.pattern.test(text),
-  );
+  const match = RULES.find((rule) => rule.pattern.test(text));
   return match ? { capability: match.capability, label: match.label, reply: match.reply } : null;
 }
 

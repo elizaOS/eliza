@@ -292,14 +292,12 @@ const showTimestamps = parseBooleanFromText(
   getEnvironmentVar("LOG_TIMESTAMPS") ?? "true",
 );
 
-// A Worker isolate cannot generate randomness during module evaluation. Node
-// processes already have a stable per-process discriminator; edge hosts should
-// inject SERVER_ID when they need one more specific than the runtime label.
+// Generate a unique server ID for this process instance
 const serverId =
   getEnvironmentVar("SERVER_ID") ||
-  (typeof process !== "undefined" && process.pid
-    ? `process-${process.pid}`
-    : "edge-runtime");
+  (typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID().slice(0, 8)
+    : Math.random().toString(36).slice(2, 10));
 
 // Configure sensitive data redaction
 // fast-redact requires bracket notation for top-level keys or wildcard paths for nested

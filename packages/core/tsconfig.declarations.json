@@ -32,7 +32,6 @@
 		"src/index.ts",
 		"src/index.node.ts",
 		"src/index.browser.ts",
-		"src/index.edge.ts",
 		"src/client-public.ts",
 		"src/security/kms/index.ts",
 		"src/security/mcp-server-config.ts",

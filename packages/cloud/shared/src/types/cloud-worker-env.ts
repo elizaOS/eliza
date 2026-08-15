@@ -403,8 +403,6 @@ export interface Bindings {
   // L3). Deliberately separate from GATEWAY_INTERNAL_SECRET (internal-event
   // path) so enabling this gate never affects direct provider webhooks.
   ELIZA_APP_WEBHOOK_GATEWAY_SECRET?: string;
-  /** Authenticates proactive Shared reminder delivery to the Railway gateway. */
-  GATEWAY_INTERNAL_SECRET?: string;
   ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL?: string;
   DISCORD_WEBHOOK_HANDLER_URL?: string;
   CONTAINER_CONTROL_PLANE_URL?: string;
@@ -461,8 +459,6 @@ export interface Bindings {
   INFERENCE_PASSTHROUGH_STREAMING?: string;
   RATE_LIMIT_DISABLED?: string;
   RATE_LIMIT_MULTIPLIER?: string;
-  /** Transition gate for the genuine AgentRuntime-backed Shared turn. */
-  SHARED_ELIZA_AGENT_RUNTIME?: string;
   PLAYWRIGHT_TEST_AUTH?: string;
   PLAYWRIGHT_TEST_AUTH_SECRET?: string;
   TWILIO_SMS_COST_PER_SEGMENT_USD?: string;

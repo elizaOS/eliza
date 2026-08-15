@@ -81,8 +81,6 @@ async function postTelegramDelivery(
       },
       body: JSON.stringify({
         platform: "telegram",
-        project: "eliza-app",
-        chatId: TELEGRAM_USER_ID,
         telegramUserId: TELEGRAM_USER_ID,
         telegramUsername: "first_five_nubs",
         displayName: "Nubs",

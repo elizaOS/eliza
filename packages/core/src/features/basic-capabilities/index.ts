@@ -101,7 +101,6 @@ import {
 } from "../autonomy/providers.ts";
 import { autonomyRoutes } from "../autonomy/routes.ts";
 import { AutonomyService } from "../autonomy/service.ts";
-import type { CapabilityConfig } from "./config.ts";
 
 // Re-export action and provider modules
 export * from "./actions/index.ts";
@@ -188,12 +187,6 @@ export {
 	pluginAction,
 	type SecurityDeps,
 } from "../plugin-manager/index.ts";
-export {
-	type CapabilityConfig,
-	type CapabilitySettingFlags,
-	type ExplicitCapabilityOptions,
-	resolveCapabilityConfig,
-} from "./config.ts";
 
 // ============================================================================
 // Structured JSON response interfaces.
@@ -1458,6 +1451,100 @@ export const basicCapabilities = {
  * @see basic-capabilities for basic capability definitions
  * @see advanced-capabilities for advanced capability definitions
  */
+export interface CapabilityConfig {
+	/** Disable basic capabilities (default: false) */
+	disableBasic?: boolean;
+	/** Enable extended/advanced capabilities (default: false) */
+	enableExtended?: boolean;
+	/** Alias for enableExtended - Enable advanced capabilities (default: false) */
+	advancedCapabilities?: boolean;
+	/** Skip the character provider (used for anonymous agents without a character file) */
+	skipCharacterProvider?: boolean;
+	/** Enable autonomy capabilities (default: false) */
+	enableAutonomy?: boolean;
+	/** Enable trust engine, security, and permissions (default: false) */
+	enableTrust?: boolean;
+	/** Enable encrypted secrets management and dynamic plugin activation (default: false) */
+	enableSecretsManager?: boolean;
+	/** Enable plugin introspection, install/eject/sync (default: false) */
+	enablePluginManager?: boolean;
+}
+
+/**
+ * Explicit (constructor-level) capability toggles a runtime already knows,
+ * before the character-settings fallback is applied. Every field is a resolved
+ * boolean or `undefined` ("not specified") — `undefined` defers to the matching
+ * character setting; a concrete boolean overrides it.
+ */
+export interface ExplicitCapabilityOptions {
+	disableBasic?: boolean;
+	enableExtended?: boolean;
+	advancedCapabilities?: boolean;
+	skipCharacterProvider?: boolean;
+	enableAutonomy?: boolean;
+	enableTrust?: boolean;
+	enableSecretsManager?: boolean;
+	enablePluginManager?: boolean;
+}
+
+/**
+ * The subset of character settings that toggle capabilities. Each is the
+ * character-file fallback for the matching explicit option; string `"true"` and
+ * boolean `true` both count as on, everything else off. Kept structural (no
+ * import of the full `CharacterSettings`) so this feature module stays free of a
+ * back-edge to the agent-type surface.
+ */
+export interface CapabilitySettingFlags {
+	DISABLE_BASIC_CAPABILITIES?: boolean | string;
+	ENABLE_EXTENDED_CAPABILITIES?: boolean | string;
+	ADVANCED_CAPABILITIES?: boolean | string;
+	ENABLE_AUTONOMY?: boolean | string;
+	ENABLE_TRUST?: boolean | string;
+	ENABLE_SECRETS_MANAGER?: boolean | string;
+	ENABLE_PLUGIN_MANAGER?: boolean | string;
+}
+
+const isSettingEnabled = (value: boolean | string | undefined): boolean =>
+	value === true || value === "true";
+
+/**
+ * Resolve the complete capability configuration a runtime should build its
+ * basic-capabilities plugin from. Explicit constructor options win; where an
+ * option is unspecified the matching character setting decides.
+ *
+ * This is the single source of truth for capability resolution: the runtime
+ * calls it once at construction and hands the resulting config to
+ * {@link createBasicCapabilitiesPlugin}. Registration then carries no knowledge
+ * of capability flags — the declaring plugin already reflects them — which is
+ * why `registerPlugin` needs no name-keyed special case.
+ */
+export function resolveCapabilityConfig(
+	options: ExplicitCapabilityOptions,
+	settings: CapabilitySettingFlags | undefined,
+): CapabilityConfig {
+	return {
+		disableBasic:
+			options.disableBasic ??
+			isSettingEnabled(settings?.DISABLE_BASIC_CAPABILITIES),
+		enableExtended:
+			options.enableExtended ??
+			options.advancedCapabilities ??
+			(isSettingEnabled(settings?.ENABLE_EXTENDED_CAPABILITIES) ||
+				isSettingEnabled(settings?.ADVANCED_CAPABILITIES)),
+		skipCharacterProvider: options.skipCharacterProvider ?? false,
+		enableAutonomy:
+			options.enableAutonomy ?? isSettingEnabled(settings?.ENABLE_AUTONOMY),
+		enableTrust:
+			options.enableTrust ?? isSettingEnabled(settings?.ENABLE_TRUST),
+		enableSecretsManager:
+			options.enableSecretsManager ??
+			isSettingEnabled(settings?.ENABLE_SECRETS_MANAGER),
+		enablePluginManager:
+			options.enablePluginManager ??
+			isSettingEnabled(settings?.ENABLE_PLUGIN_MANAGER),
+	};
+}
+
 // Autonomy capabilities - opt-in
 // Provides autonomous operation with continuous agent thinking loop
 const autonomyCapabilities = {

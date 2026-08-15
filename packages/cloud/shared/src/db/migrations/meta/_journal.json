@@ -1408,13 +1408,6 @@
       "when": 1787083200000,
       "tag": "0201_reversible_agent_deletion_receipts",
       "breakpoints": true
-    },
-    {
-      "idx": 201,
-      "version": "7",
-      "when": 1787169600000,
-      "tag": "0202_shared_scheduled_tasks",
-      "breakpoints": true
     }
   ]
 }

@@ -1,17 +1,10 @@
 # @elizaos/plugin-web-search
 
-Adds live web search through a full Tavily service on Node and a minimal
-credential-free `./edge` action on Workers.
+Adds live web search to an Eliza agent via the Tavily API.
 
 ## Purpose / role
 
-The default export registers a Tavily-backed `WebSearchService` for full Node
-runtimes. `@elizaos/plugin-web-search/edge` is a separate genuine plugin export
-containing only the public, read-only `WEB_SEARCH` action. It uses fixed keyless
-Parallel/Exa MCP endpoints through the bounded transport in `@elizaos/core`, so
-it imports no Tavily client, Node service, credential, browser control, or
-private account state. Loading an export remains a host policy decision; edge
-compatibility does not imply automatic approval for every Shared deployment.
+Registers a `WebSearchService` (implementing `IWebSearchService`) that lets any part of the elizaOS runtime call `runtime.getService(ServiceType.WEB_SEARCH)` to execute web and news queries against Tavily. The plugin also registers the `"web"` search category so the core search-dispatch layer knows how to route web searches to this service. It is opt-in: add it to the `plugins` array of your agent character config to enable it. If `TAVILY_API_KEY` is absent at boot the service starts in a degraded (inert) state and throws a descriptive error on first use rather than crashing agent initialisation.
 
 ## Plugin surface
 
@@ -19,7 +12,6 @@ compatibility does not imply automatic approval for every Shared deployment.
 |------|------|-------------|
 | Service | `WebSearchService` (`ServiceType.WEB_SEARCH`) | Tavily-backed implementation of `IWebSearchService`; fulfils `search`, `searchNews`, `searchImages`, `searchVideos`, `getSuggestions`, `getTrendingSearches`, `getPageInfo`. |
 | Search category | `"web"` (`WEB_SEARCH_CATEGORY`) | Registered with `runtime.registerSearchCategory` so core search dispatch can route to this service. Filters: `topic` (general/news), `searchDepth` (basic/advanced), `includeImages`. |
-| Edge action | `WEB_SEARCH` from `./edge` | Stateless public-network read with bounded Parallel/Exa results; safe for an explicitly allowlisted Worker runtime. |
 
 No actions, providers, evaluators, or routes are registered.
 
@@ -29,7 +21,6 @@ No actions, providers, evaluators, or routes are registered.
 src/
   index.ts                     Plugin object (webSearchPlugin), WEB_SEARCH_CATEGORY definition,
                                registerWebSearchCategory helper. Entry point.
-  edge.ts                      Worker-safe plugin/action and explicit compatibility metadata.
   types.ts                     SearchResult, SearchImage, SearchResponse, SearchOptions
                                (extends @elizaos/core types). Also re-exports
                                ImageSearchOptions, NewsSearchOptions, VideoSearchOptions.
@@ -76,7 +67,7 @@ The `agentConfig.pluginParameters` in `package.json` declares this key so elizaO
 **Add a new search category filter:**
 Edit `WEB_SEARCH_CATEGORY.filters` in `src/index.ts`. Filter names must match keys the consumer passes to `WebSearchService.search()` via `SearchOptions`.
 
-**Add a Node-only action:**
+**Add an action:**
 1. Create `src/actions/<name>.ts` that exports an `Action` object.
 2. Import and push it into `webSearchPlugin.actions` in `src/index.ts`.
 
@@ -85,9 +76,6 @@ Edit `WEB_SEARCH_CATEGORY.filters` in `src/index.ts`. Filter names must match ke
 - **Graceful degradation.** The service does not throw during `init`; it sets `this.configured = false` and logs a warning. Callers that invoke `search()` without a key get an `Error` with a clear message.
 - **Tavily client is stateless.** `stop()` returns immediately because there is nothing to tear down.
 - **Tavily is the only search provider.** `searchVideos` uses Tavily web search with a video-oriented query and image inclusion because Tavily has no dedicated video endpoint. `getSuggestions` and `getTrendingSearches` derive distinct result titles from Tavily general/news searches.
-- **Tavily is only in the default Node export.** The `./edge` export uses the
-  keyless core transport and must stay free of Node imports, secrets, private
-  account access, writes, and arbitrary provider URLs.
 - **`getPageInfo` uses a raw `fetch` + regex.** It is not Tavily-backed — it downloads the HTML directly and extracts `<title>` and `<meta name="description">`. `metadata`, `images`, and `links` fields are always empty.
 - **`@tavily/core` is the only external runtime dep** (`^0.7.0`). Keep it pinned close to avoid API contract drift.
 - For repo-wide conventions (logger-only, ESM modules, naming, architecture rules) see the root `CLAUDE.md`.

@@ -11,7 +11,7 @@
  * IDs, IPs, wallet addresses) that is not a security masking concern.
  */
 
-import { isSensitiveKeyName, redactLogArgs } from "@elizaos/core/edge";
+import { isSensitiveKeyName, redactLogArgs } from "@elizaos/core";
 
 const isDev = process.env.NODE_ENV === "development";
 // Only show debug/info logs when explicitly enabled via VERBOSE_LOGGING=true

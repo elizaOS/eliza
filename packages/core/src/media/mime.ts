@@ -2,7 +2,21 @@
  * Detects media MIME types and extensions from magic bytes, headers, and paths.
  */
 
-import { sniffMime } from "./mime-sniffer.ts";
+// Lazy-loaded file-type module for MIME sniffing
+type FileTypeResult = { ext: string; mime: string } | undefined;
+type FileTypeFromBuffer = (
+	buffer: ArrayBuffer | Uint8Array,
+) => Promise<FileTypeResult>;
+type FileTypeModule = { fileTypeFromBuffer?: FileTypeFromBuffer };
+
+let fileTypeModule: FileTypeModule | null | undefined;
+
+async function getFileTypeFromBuffer(): Promise<FileTypeFromBuffer | null> {
+	if (fileTypeModule === undefined) {
+		fileTypeModule = await import("file-type");
+	}
+	return fileTypeModule?.fileTypeFromBuffer ?? null;
+}
 
 /** Media kind categories */
 export type MediaKind = "image" | "audio" | "video" | "document" | "unknown";
@@ -71,6 +85,19 @@ function normalizeHeaderMime(mime?: string | null): string | undefined {
 	if (!mime) return undefined;
 	const cleaned = mime.split(";")[0]?.trim().toLowerCase();
 	return cleaned || undefined;
+}
+
+/**
+ * Detect MIME type from a buffer using magic bytes.
+ */
+async function sniffMime(
+	buffer?: Buffer | Uint8Array,
+): Promise<string | undefined> {
+	if (!buffer) return undefined;
+	const fileTypeFromBuffer = await getFileTypeFromBuffer();
+	if (!fileTypeFromBuffer) return undefined;
+	const type = await fileTypeFromBuffer(buffer);
+	return type?.mime ?? undefined;
 }
 
 /**

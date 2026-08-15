@@ -82,7 +82,6 @@ import {
 	type CandidateActionBackstopRule,
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
-import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -12118,11 +12117,7 @@ export class DefaultMessageService implements IMessageService {
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a warm failure only
 		// forfeits the overlap; the compose-time caller re-embeds and fails open.
 		const recallWarmText = message.content?.text;
-		if (
-			typeof recallWarmText === "string" &&
-			recallWarmText.trim() !== "" &&
-			!isCanonicalModelCapabilityDisabled(runtime, ModelType.TEXT_EMBEDDING)
-		) {
+		if (typeof recallWarmText === "string" && recallWarmText.trim() !== "") {
 			const recallWarmMessageId =
 				typeof message.id === "string" ? message.id : undefined;
 			const recallWarmTask = embedRecallQuery(runtime, recallWarmText, {

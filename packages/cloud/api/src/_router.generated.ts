@@ -84,7 +84,6 @@ import _route_cron_process_stripe_queue_route from "../cron/process-stripe-queue
 import _route_cron_reclaim_stale_domains_route from "../cron/reclaim-stale-domains/route";
 import _route_cron_reconcile_video_generations_route from "../cron/reconcile-video-generations/route";
 import _route_cron_sample_eliza_price_route from "../cron/sample-eliza-price/route";
-import _route_cron_shared_scheduled_tasks_route from "../cron/shared-scheduled-tasks/route";
 import _route_cron_social_automation_route from "../cron/social-automation/route";
 import _route_cron_sweep_credit_reservations_route from "../cron/sweep-credit-reservations/route";
 import _route_cron_sweep_inference_charges_route from "../cron/sweep-inference-charges/route";
@@ -853,10 +852,6 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route(
     "/api/cron/sample-eliza-price",
     _route_cron_sample_eliza_price_route,
-  );
-  app.route(
-    "/api/cron/shared-scheduled-tasks",
-    _route_cron_shared_scheduled_tasks_route,
   );
   app.route("/api/cron/social-automation", _route_cron_social_automation_route);
   app.route(

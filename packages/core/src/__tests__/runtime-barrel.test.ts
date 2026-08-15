@@ -11,7 +11,6 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const packageRoot = resolve(sourceRoot, "..");
 
 describe("@elizaos/core runtime barrel", () => {
 	it("keeps test helpers out of the package root", () => {
@@ -53,18 +52,5 @@ describe("@elizaos/core runtime barrel", () => {
 
 		const barrel = readFileSync(resolve(sourceRoot, "index.node.ts"), "utf8");
 		expect(barrel).not.toMatch(/plugin-loader/);
-	});
-
-	it("publishes the explicit Cloudflare Workers runtime entry", () => {
-		const manifest = JSON.parse(
-			readFileSync(resolve(packageRoot, "package.json"), "utf8"),
-		) as {
-			exports?: Record<string, { import?: string; types?: string }>;
-		};
-		const edge = manifest.exports?.["./edge"];
-
-		expect(edge?.import).toBe("./dist/edge/index.edge.js");
-		expect(edge?.types).toBe("./dist/edge/index.d.ts");
-		expect(edge).not.toHaveProperty("eliza-source");
 	});
 });

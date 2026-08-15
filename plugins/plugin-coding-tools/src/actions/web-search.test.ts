@@ -1,7 +1,7 @@
 /**
  * WEB_SEARCH coverage for the coding-tools plugin: routing metadata, Parallel
  * primary, Exa fallback, MCP JSON/SSE parsing, bounded output, and stable
- * result metadata. The shared transport fetch is stubbed for every provider.
+ * result metadata. Provider calls use the guarded HTTP test seam.
  */
 import type {
   ActionParameters,
@@ -11,6 +11,11 @@ import type {
   State,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  __resetWebHttpTestOverrides,
+  __setWebHttpLookupFnForTests,
+  __setWebHttpPinnedFetchImplForTests,
+} from "../lib/web-http.js";
 import { webSearchAction } from "./web-search.js";
 
 vi.mock("@elizaos/logger", () => {
@@ -37,6 +42,8 @@ vi.mock("@elizaos/logger", () => {
   };
 });
 
+const PUBLIC_IP = "93.184.216.34";
+
 const mcpJson = (text: string): string =>
   JSON.stringify({
     jsonrpc: "2.0",
@@ -55,8 +62,9 @@ function mockSearchProviders(byHost: {
   parallel?: string;
   exa?: string;
 }): void {
-  vi.stubGlobal("fetch", async (input: string | URL | Request) => {
-    const host = new URL(String(input)).hostname;
+  __setWebHttpLookupFnForTests(async () => [{ address: PUBLIC_IP, family: 4 }]);
+  __setWebHttpPinnedFetchImplForTests(async ({ url }) => {
+    const host = url.hostname;
     if (host.includes("parallel")) {
       return new Response(byHost.parallel ?? "", {
         status: byHost.parallel === undefined ? 500 : 200,
@@ -86,7 +94,7 @@ async function runSearch(parameters: ActionParameters): Promise<ActionResult> {
 
 describe("coding-tools WEB_SEARCH", () => {
   afterEach(() => {
-    vi.unstubAllGlobals();
+    __resetWebHttpTestOverrides();
   });
 
   it("keeps discovery in search while routing constructable live values to fetch", () => {
@@ -161,7 +169,7 @@ describe("coding-tools WEB_SEARCH", () => {
     const previous = process.env.ELIZA_WEB_SEARCH;
     process.env.ELIZA_WEB_SEARCH = "0";
     try {
-      vi.stubGlobal("fetch", async () => {
+      __setWebHttpPinnedFetchImplForTests(async () => {
         throw new Error("search providers should not be called");
       });
 

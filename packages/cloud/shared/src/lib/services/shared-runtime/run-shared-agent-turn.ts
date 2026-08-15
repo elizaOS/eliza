@@ -20,8 +20,7 @@
  *  - route only shared-eligible agents here (see `agent-tier.ts`)
  */
 
-import { replaceNameTokens } from "@elizaos/core/edge";
-import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
+import { replaceNameTokens } from "@elizaos/core";
 import { generateText, streamText } from "ai";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import {
@@ -73,19 +72,6 @@ export interface RunSharedAgentTurnInput {
   onProviderDispatch?: () => Promise<void>;
   /** Cancels provider generation when the response consumer disconnects. */
   abortSignal?: AbortSignal;
-  /**
-   * Transition-only selector for the genuine Workerd AgentRuntime path. The
-   * direct model path remains the control until the runtime path has passed
-   * live model and connector proof.
-   */
-  execution?: {
-    engine: "eliza-runtime";
-    agentKey: string;
-    reminders?: {
-      delivery: SharedReminderDelivery;
-      runner: ScheduledTaskRunner;
-    };
-  };
 }
 
 export interface RunSharedAgentTurnResult {
@@ -212,10 +198,7 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  * from `@elizaos/core`'s prompt builder; the shared turn talks to the provider
  * directly, so it is the only renderer on this side.
  */
-function buildSystemPrompt(
-  character: SharedAgentCharacter,
-  capabilities: { reminders: boolean },
-): string {
+function buildSystemPrompt(character: SharedAgentCharacter): string {
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
   if (system) parts.push(system);
@@ -229,19 +212,15 @@ function buildSystemPrompt(
   }
   parts.push(
     "Shared runtime boundaries:\n" +
-      "- You can converse, reason, draft, help the user plan, and use WEB_SEARCH for current public information.\n" +
-      "- WEB_SEARCH reads public results only; it does not operate websites, access accounts, submit forms, or make changes.\n" +
-      (capabilities.reminders
-        ? "- REMINDERS can create, list, snooze, complete, and dismiss reminders delivered to this private chat.\n"
-        : "- Reminders are unavailable on this transport.\n") +
-      "- You have no connected accounts, calendar, calling, arbitrary messaging, purchasing, notes store, shell, filesystem, browser control, or code execution in this runtime.\n" +
-      "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything outside this conversation.\n" +
+      "- You can converse, reason, draft, and help the user plan.\n" +
+      "- You have no external tools, live browser, connected accounts, calendar, reminders, calling, messaging, purchasing, notes store, shell, filesystem, or code execution in this runtime.\n" +
+      "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, searched live data, or changed anything outside this conversation.\n" +
       "- When an ambiguous follow-up asks you to execute a prior external action, state that the action needs Dedicated and offer the useful planning or drafting help you can provide here.",
   );
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
 }
 
-export function appendSharedTurn(
+function appendTurn(
   history: SharedTurnMessage[],
   userMessage: string,
   reply: string,
@@ -275,14 +254,11 @@ export async function runSharedAgentTurn(
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
 
-  const remindersEnabled = Boolean(input.execution?.reminders);
-  const capabilityWall = resolveSharedCapabilityWall(message, {
-    reminders: remindersEnabled,
-  });
+  const capabilityWall = resolveSharedCapabilityWall(message);
   if (capabilityWall) {
     return {
       reply: capabilityWall.reply,
-      history: appendSharedTurn(
+      history: appendTurn(
         input.history,
         message,
         capabilityWall.reply,
@@ -303,7 +279,7 @@ export async function runSharedAgentTurn(
   if (navIntent) {
     return {
       reply: navIntent.reply,
-      history: appendSharedTurn(
+      history: appendTurn(
         input.history,
         message,
         navIntent.reply,
@@ -322,32 +298,15 @@ export async function runSharedAgentTurn(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: "none",
       degraded: true,
     };
   }
 
-  if (input.execution?.engine === "eliza-runtime") {
-    const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
-    return await runSharedElizaRuntimeTurn({
-      ...input,
-      character: {
-        ...input.character,
-        system: buildSystemPrompt(input.character, {
-          reminders: remindersEnabled,
-        }),
-      },
-      agentKey: input.execution.agentKey,
-      model: modelId,
-    });
-  }
-
   try {
     const model = getInteractiveCerebrasLanguageModel(modelId);
-    const system = buildSystemPrompt(input.character, {
-      reminders: remindersEnabled,
-    });
+    const system = buildSystemPrompt(input.character);
     const messages = [
       ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
       { role: input.messageRole ?? ("user" as const), content: message },
@@ -366,7 +325,7 @@ export async function runSharedAgentTurn(
     const reply = text.trim() || "…";
     return {
       reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: modelId,
       degraded: false,
       usage,
@@ -396,11 +355,8 @@ export async function runSharedAgentTurnStream(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
-  const remindersEnabled = false;
 
-  const capabilityWall = resolveSharedCapabilityWall(message, {
-    reminders: remindersEnabled,
-  });
+  const capabilityWall = resolveSharedCapabilityWall(message);
   if (capabilityWall) {
     const reply = capabilityWall.reply;
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
@@ -411,7 +367,7 @@ export async function runSharedAgentTurnStream(
       model: "capability-wall",
       degraded: false,
       reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       parts,
       capabilityWall,
     };
@@ -432,7 +388,7 @@ export async function runSharedAgentTurnStream(
       model: "nav-intent",
       degraded: false,
       reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       parts,
       navIntent,
     };
@@ -444,7 +400,7 @@ export async function runSharedAgentTurnStream(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: "none",
       degraded: true,
     };
@@ -452,9 +408,7 @@ export async function runSharedAgentTurnStream(
 
   try {
     const model = getInteractiveCerebrasLanguageModel(modelId);
-    const system = buildSystemPrompt(input.character, {
-      reminders: remindersEnabled,
-    });
+    const system = buildSystemPrompt(input.character);
     const messages = [
       ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
       { role: input.messageRole ?? ("user" as const), content: message },

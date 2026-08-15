@@ -25,11 +25,25 @@ import {
   type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  searchKeylessWeb,
 } from "@elizaos/core";
+import { performGuardedHttpPost } from "../custom-actions.ts";
 
+/** Keyless MCP search endpoints (no PARALLEL_API_KEY / EXA_API_KEY required). */
+const PARALLEL_MCP_URL = "https://search.parallel.ai/mcp";
+const EXA_MCP_URL = "https://mcp.exa.ai/mcp";
+/**
+ * Body read cap. Must comfortably exceed a full MCP search payload — 6-10
+ * results with livecrawled excerpts can run tens of KB — so the JSON-RPC / SSE
+ * envelope is never truncated mid-object (a truncated body fails to parse and
+ * would look like "no results"). The model only ever sees the first
+ * WEB_SEARCH_RESULT_CHARS of the extracted text.
+ */
+const WEB_SEARCH_READ_CHARS = 262_144;
+/** Cap of result text handed back to the model. */
+const WEB_SEARCH_RESULT_CHARS = 4_000;
 const DEFAULT_NUM_RESULTS = 6;
 
 function readBooleanEnv(name: string): boolean | undefined {
@@ -90,6 +104,51 @@ function readParams(options: unknown): WebSearchParams {
  * mistaken for a search result — so the caller falls back to the other provider
  * instead of handing the model an error string as if it were results.
  */
+function parseMcpResultText(body: string): string | undefined {
+  const fromPayload = (payload: string): string | undefined => {
+    const trimmed = payload.trim();
+    if (!trimmed.startsWith("{")) return undefined;
+    try {
+      const data = JSON.parse(trimmed) as {
+        error?: { message?: string };
+        result?: { isError?: boolean; content?: Array<{ text?: string }> };
+      };
+      if (data.error || data.result?.isError) return undefined;
+      return data.result?.content?.find((item) => item.text)?.text;
+    } catch {
+      return undefined;
+    }
+  };
+  const direct = fromPayload(body);
+  if (direct) return direct;
+  for (const line of body.split("\n")) {
+    if (!line.startsWith("data: ")) continue;
+    const parsed = fromPayload(line.slice(6));
+    if (parsed) return parsed;
+  }
+  return undefined;
+}
+
+async function callSearchMcp(
+  url: string,
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<string | undefined> {
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: { name: toolName, arguments: args },
+  });
+  const result = await performGuardedHttpPost(url, {
+    body,
+    headers: { Accept: "application/json, text/event-stream" },
+    maxChars: WEB_SEARCH_READ_CHARS,
+  });
+  if (!result.ok || result.blocked) return undefined;
+  return parseMcpResultText(result.text);
+}
+
 export const webSearch: Action & Record<string, unknown> = {
   name: "WEB_SEARCH",
   similes: [
@@ -151,8 +210,23 @@ export const webSearch: Action & Record<string, unknown> = {
     const n = numResults ?? DEFAULT_NUM_RESULTS;
 
     try {
-      const result = await searchKeylessWeb(query, { resultCount: n });
-      if (!result) {
+      // Parallel.ai primary, Exa fallback — both keyless, both general.
+      let results = await callSearchMcp(PARALLEL_MCP_URL, "web_search", {
+        objective: query,
+        search_queries: [query],
+      });
+      let provider = "parallel";
+      if (!results) {
+        results = await callSearchMcp(EXA_MCP_URL, "web_search_exa", {
+          query,
+          type: "auto",
+          numResults: n,
+          livecrawl: "fallback",
+        });
+        provider = "exa";
+      }
+
+      if (!results) {
         const text = `No web search results for "${query}".`;
         callback?.({ text });
         return {
@@ -162,25 +236,20 @@ export const webSearch: Action & Record<string, unknown> = {
         };
       }
 
+      const value = results.slice(0, WEB_SEARCH_RESULT_CHARS);
       // Data-gathering action: the raw results are returned in the ActionResult
       // (below) for the RESPONSE_HANDLER to synthesize an answer from, and are
       // NOT delivered as a user-facing callback. Delivering them dumped the raw
       // search JSON/article text straight into the chat (chunked into several
       // messages) before the synthesized reply. Errors DO still call back.
       return {
-        text: result.text,
+        text: value,
         success: true,
-        data: {
-          actionName: "WEB_SEARCH",
-          query,
-          provider: result.provider,
-          value: result.text,
-          truncated: result.truncated,
-        },
+        data: { actionName: "WEB_SEARCH", query, provider, value },
       };
     } catch (err) {
-      // error-policy:J1 Action failures are returned to the planner for recovery.
       const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`[web-search] error for "${query}": ${message}`);
       const text = `Web search failed for "${query}": ${message}`;
       callback?.({ text });
       return {

@@ -15,7 +15,7 @@
  * the post-fire/post-skip persistence in `fire()`.
  */
 
-import { computeNextCronRunAtMs } from "@elizaos/core/edge";
+import { computeNextCronRunAtMs } from "@elizaos/core";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
 import { resolveLocalHHMMToIso } from "./local-time.js";

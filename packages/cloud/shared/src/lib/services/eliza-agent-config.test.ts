@@ -92,7 +92,6 @@ describe("personal Eliza cutover marker", () => {
     conversationId: "shared-1",
     cutoverToken: "personal-cutover:shared-1:dedicated-1",
     sharedMessageCount: 12,
-    sharedScheduledTaskCount: 3,
     activatedAt: "2026-08-13T18:00:00.000Z",
   };
 
@@ -106,13 +105,6 @@ describe("personal Eliza cutover marker", () => {
         },
       }),
     ).toBeNull();
-  });
-
-  test("older markers normalize a missing reminder count to zero", () => {
-    const { sharedScheduledTaskCount: _count, ...legacy } = marker;
-    expect(readPersonalElizaCutover({ [AGENT_PERSONAL_CUTOVER_KEY]: legacy })).toMatchObject({
-      sharedScheduledTaskCount: 0,
-    });
   });
 });
 

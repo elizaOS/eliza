@@ -17,7 +17,7 @@ process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as realAuth from "@/lib/auth";
 import {
@@ -1026,39 +1026,6 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       await dbWrite
         .delete(personalAccountConvergences)
         .where(eq(personalAccountConvergences.token, convergenceToken));
-      await dbWrite.execute(sql`
-        INSERT INTO app_scheduling.life_scheduled_tasks (
-          id, agent_id, kind, prompt_instructions, trigger_json, priority,
-          respects_global_pause, state_json, source, created_by, owner_visible,
-          metadata_json, next_fire_at, created_at, updated_at
-        ) VALUES (
-          'cutover-reminder', ${PERSONAL_C}, 'reminder', 'call mom',
-          '{"kind":"once","atIso":"2026-08-15T17:00:00.000Z"}',
-          'medium', TRUE, '{"status":"scheduled","followupCount":0}',
-          'user_chat', ${USER_C}, TRUE,
-          '{"delivery":{"platform":"telegram","project":"eliza-app","chatId":"919191"}}',
-          '2026-08-15T17:00:00.000Z',
-          '2026-08-14T17:00:00.000Z',
-          '2026-08-14T17:00:00.000Z'
-        )
-      `);
-      await dbWrite.execute(sql`
-        INSERT INTO app_scheduling.life_scheduled_tasks (
-          id, agent_id, kind, prompt_instructions, trigger_json, priority,
-          respects_global_pause, state_json, source, created_by, owner_visible,
-          metadata_json, next_fire_at, created_at, updated_at
-        ) VALUES (
-          'cutover-inflight', ${PERSONAL_C}, 'reminder', 'drink water',
-          '{"kind":"interval","everyMinutes":60}',
-          'medium', TRUE,
-          '{"status":"fired","firedAt":"2026-08-14T17:00:00.000Z","followupCount":0}',
-          'user_chat', ${USER_C}, TRUE,
-          '{"delivery":{"platform":"telegram","project":"eliza-app","chatId":"919191"}}',
-          NULL,
-          '2026-08-14T16:00:00.000Z',
-          '2026-08-14T17:00:00.000Z'
-        )
-      `);
 
       const refused = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(refused.status).toBe(503);
@@ -1077,37 +1044,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         "cutover-seal",
         "cutover-release",
       ]);
-      const reservedRows = (await dbWrite.execute(sql`
-        SELECT id, transfer_status
-          FROM app_scheduling.life_scheduled_tasks
-         WHERE id IN ('cutover-inflight', 'cutover-reminder')
-         ORDER BY id
-      `)) as { rows: Array<{ id: string; transfer_status: string }> };
-      expect(reservedRows.rows).toEqual([
-        { id: "cutover-inflight", transfer_status: "reserved" },
-        { id: "cutover-reminder", transfer_status: "reserved" },
-      ]);
 
-      importFetch.mockImplementation(async (_input, init) => {
-        const requestBody = JSON.parse(String(init?.body)) as {
-          activateScheduledTasks?: boolean;
-        };
-        return Response.json({
+      importFetch.mockImplementation(async (_input, _init) =>
+        Response.json({
           complete: true,
           sourceMessageCount: cutoverHistory.length,
-          inserted: requestBody.activateScheduledTasks
-            ? 0
-            : cutoverHistory.length,
-          skipped: requestBody.activateScheduledTasks
-            ? cutoverHistory.length
-            : 0,
-          sourceScheduledTaskCount: 2,
-          importedScheduledTasks: requestBody.activateScheduledTasks ? 0 : 2,
-          skippedScheduledTasks: requestBody.activateScheduledTasks ? 2 : 0,
-          activatedScheduledTasks: requestBody.activateScheduledTasks ? 2 : 0,
-          skippedActivatedScheduledTasks: 0,
-        });
-      });
+          inserted: cutoverHistory.length,
+          skipped: 0,
+        }),
+      );
       cutoverCommitFailuresRemaining = 1;
       observeMarkerAtCommit = true;
       markerObservedAtCommit = undefined;
@@ -1148,7 +1093,6 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           runtime: "dedicated",
           apiBase: `https://${CUTOVER_TARGET}.dedicated-cutover.test`,
           importedMessages: 2,
-          importedScheduledTasks: 2,
         },
       });
       expect(importFetch).toHaveBeenLastCalledWith(
@@ -1160,13 +1104,10 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           }),
         }),
       );
-      const importInit = importFetch.mock.calls.findLast((call) => {
-        const body = JSON.parse(
-          String((call[1] as RequestInit | undefined)?.body),
-        );
-        return body.activateScheduledTasks !== true && body.messages.length > 0;
-      })?.[1] as RequestInit | undefined;
-      expect(JSON.parse(String(importInit?.body))).toMatchObject({
+      const importInit = importFetch.mock.calls.at(-1)?.[1] as
+        | RequestInit
+        | undefined;
+      expect(JSON.parse(String(importInit?.body))).toEqual({
         messages: [
           { sourceId: "u1", role: "user", text: "hello", timestamp: 10 },
           {
@@ -1176,36 +1117,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
             timestamp: 20,
           },
         ],
-        scheduledTasks: [
-          {
-            taskId: "cutover-inflight",
-            kind: "reminder",
-            promptInstructions: "drink water",
-            state: { status: "fired", followupCount: 0 },
-          },
-          {
-            taskId: "cutover-reminder",
-            kind: "reminder",
-            promptInstructions: "call mom",
-            state: { status: "scheduled", followupCount: 0 },
-          },
-        ],
-        cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
-      });
-      const activationInit = importFetch.mock.calls.at(-1)?.[1] as
-        | RequestInit
-        | undefined;
-      expect(JSON.parse(String(activationInit?.body))).toMatchObject({
-        messages: [],
-        activateScheduledTasks: true,
-        cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
       });
       expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
       expect(markerObservedAtCommit).toMatchObject({
         sourceAgentId: PERSONAL_C,
         cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
         sharedMessageCount: 2,
-        sharedScheduledTaskCount: 2,
       });
       expect(new Set(cutoverCoordinatorTokens).size).toBe(1);
 
@@ -1219,7 +1136,6 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
             sourceAgentId?: string;
             cutoverToken?: string;
             sharedMessageCount?: number;
-            sharedScheduledTaskCount?: number;
             activatedAt?: string;
           }
         | undefined;
@@ -1227,7 +1143,6 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         sourceAgentId: PERSONAL_C,
         cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
         sharedMessageCount: 2,
-        sharedScheduledTaskCount: 2,
       });
       expect(marker?.activatedAt).toBeTruthy();
 
@@ -1235,7 +1150,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       const retried = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(retried.status).toBe(200);
       expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
-      expect(importFetch).toHaveBeenCalledTimes(4);
+      expect(importFetch).toHaveBeenCalledTimes(2);
       const [afterRetry] = await dbWrite
         .select()
         .from(agentSandboxes)
@@ -1255,24 +1170,14 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         .update(agentSandboxes)
         .set({ agent_config: interruptedConfig })
         .where(eq(agentSandboxes.id, CUTOVER_TARGET));
-      importFetch.mockImplementation(async (_input, init) => {
-        const requestBody = JSON.parse(String(init?.body)) as {
-          activateScheduledTasks?: boolean;
-        };
-        return Response.json({
+      importFetch.mockImplementation(async () =>
+        Response.json({
           complete: true,
           sourceMessageCount: cutoverHistory.length,
           inserted: 0,
           skipped: cutoverHistory.length,
-          sourceScheduledTaskCount: 2,
-          importedScheduledTasks: 0,
-          skippedScheduledTasks: 2,
-          activatedScheduledTasks: 0,
-          skippedActivatedScheduledTasks: requestBody.activateScheduledTasks
-            ? 2
-            : 0,
-        });
-      });
+        }),
+      );
       cutoverCoordinatorOperations.length = 0;
       const recoveredAfterCommit = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(recoveredAfterCommit.status).toBe(200);
@@ -1291,18 +1196,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         sourceAgentId: PERSONAL_C,
         cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
         sharedMessageCount: cutoverHistory.length,
-        sharedScheduledTaskCount: 2,
       });
-      const committedRows = (await dbWrite.execute(sql`
-        SELECT id, transfer_status
-          FROM app_scheduling.life_scheduled_tasks
-         WHERE id IN ('cutover-inflight', 'cutover-reminder')
-         ORDER BY id
-      `)) as { rows: Array<{ id: string; transfer_status: string }> };
-      expect(committedRows.rows).toEqual([
-        { id: "cutover-inflight", transfer_status: "committed" },
-        { id: "cutover-reminder", transfer_status: "committed" },
-      ]);
 
       await dbWrite
         .update(agentSandboxes)
