@@ -824,4 +824,20 @@ describe("interaction marker residue", () => {
 			'[ FORM ]\r\n{"fields":[{"name":"constructor","type":"text"}]}\r\n[ / FORM ]';
 		expect(parseInteractionBlocks(text).cleanedText).toBe(text);
 	});
+
+	it("ships swept text through the zero-block plain-text renderer", () => {
+		const { text, hadBlocks } = renderInteractionsAsPlainText(
+			"here you go.\n[ FOLLOWUPS ]\nreply:More=More",
+		);
+		expect(hadBlocks).toBe(false);
+		expect(text).toBe("here you go.");
+	});
+
+	it("keeps block-free prose byte-identical through the plain-text renderer", () => {
+		const text = "i read [the docs] and [section 2] carefully.";
+		expect(renderInteractionsAsPlainText(text)).toEqual({
+			text,
+			hadBlocks: false,
+		});
+	});
 });
