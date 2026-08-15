@@ -72,7 +72,12 @@ import {
 } from "../schemas/agent-sandboxes";
 import { dockerNodes } from "../schemas/docker-nodes";
 import { jobs } from "../schemas/jobs";
-import { imageRepo, imageRepoSql } from "../utils/docker-image-ref";
+import {
+  imageRepo,
+  imageRepoSql,
+  isDigestPinnedImageSql,
+  pinnedImageDigestSql,
+} from "../utils/docker-image-ref";
 
 export type {
   AgentBackupSnapshotType,
@@ -686,11 +691,26 @@ export class AgentSandboxesRepository {
           )`,
           // Only reconcile agents on the configured default image. Per-agent
           // image overrides are intentional and must not be rolled onto the
-          // global fleet tag. Match on the REPO, not the full ref: a fleet agent
-          // pinned to an older tag or a digest (`…:sha-abc`, `…@sha256:…`) is
-          // still the default image and must be selected, otherwise sha-pinned
-          // default agents never drift back to the current default (#15101).
+          // global fleet tag. Match on the REPO, not the full ref: a fleet
+          // agent pinned to an older TAG (`…:sha-abc`) is still the default
+          // image and must be selected, otherwise tag-pinned default agents
+          // never drift back to the current default (#15101). Explicit digest
+          // pins are handled separately below (#18030).
           sql`(${agentSandboxes.docker_image} IS NULL OR ${imageRepoSql(agentSandboxes.docker_image)} = ${imageRepo(targetImage)})`,
+          // An explicit canonical `@sha256:<64hex>` docker_image is an operator
+          // placement decision, not tag drift (#18030): the reconciler must
+          // never converge a digest-pinned row onto the moving default tag —
+          // that is exactly the mechanism that downgraded a live agent
+          // mid-canary. The #15101 drift-back requirement is hereby scoped to
+          // tag pins only. One exception keeps self-healing: when the pinned
+          // digest IS the configured target digest, selecting the row merely
+          // repairs a stale image_digest column. Malformed pseudo-pins (short
+          // hex, double `@`) do not earn pin status and stay drift candidates.
+          sql`(
+            ${agentSandboxes.docker_image} IS NULL
+            OR NOT ${isDigestPinnedImageSql(agentSandboxes.docker_image)}
+            OR ${pinnedImageDigestSql(agentSandboxes.docker_image)} = ${targetDigest}
+          )`,
           // Skip pool-owned rows (warm pool entries) — they get the new
           // image naturally on next claim, no need to disrupt them.
           sql`${agentSandboxes.pool_status} IS NULL`,
