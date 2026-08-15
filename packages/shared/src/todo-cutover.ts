@@ -5,6 +5,8 @@
  * verification cannot drift between the two runtimes.
  */
 
+import { validateUuid } from "@elizaos/core/edge";
+
 export const SHARED_TODO_CUTOVER_VERSION = 1 as const;
 export const MAX_SHARED_TODO_CUTOVER_COUNT = 1_000;
 export const MAX_SHARED_TODO_CUTOVER_BYTES = 1_000_000;
@@ -94,6 +96,19 @@ function requiredString(
 function nullableString(value: unknown, field: string): string | null {
   if (value === null) return null;
   return requiredString(value, field, MAX_ID_LENGTH);
+}
+
+function requiredUuid(value: unknown, field: string): string {
+  const raw = requiredString(value, field, MAX_ID_LENGTH);
+  if (!validateUuid(raw)) {
+    return invalid("TODO_CUTOVER_INVALID_UUID", `${field} must be a UUID`);
+  }
+  return raw.toLowerCase();
+}
+
+function nullableUuid(value: unknown, field: string): string | null {
+  if (value === null) return null;
+  return requiredUuid(value, field);
 }
 
 function canonicalTimestamp(value: unknown, field: string): string {
@@ -189,13 +204,9 @@ function normalizeRecord(
       ? null
       : canonicalTimestamp(value.completedAt, `todos[${index}].completedAt`);
   return {
-    sourceId: requiredString(
-      value.sourceId,
-      `todos[${index}].sourceId`,
-      MAX_ID_LENGTH,
-    ),
-    roomId: nullableString(value.roomId, `todos[${index}].roomId`),
-    worldId: nullableString(value.worldId, `todos[${index}].worldId`),
+    sourceId: requiredUuid(value.sourceId, `todos[${index}].sourceId`),
+    roomId: nullableUuid(value.roomId, `todos[${index}].roomId`),
+    worldId: nullableUuid(value.worldId, `todos[${index}].worldId`),
     content: requiredString(
       value.content,
       `todos[${index}].content`,
@@ -207,7 +218,7 @@ function normalizeRecord(
       MAX_ACTIVE_FORM_LENGTH,
     ),
     status: value.status as SharedTodoStatus,
-    parentSourceId: nullableString(
+    parentSourceId: nullableUuid(
       value.parentSourceId,
       `todos[${index}].parentSourceId`,
     ),

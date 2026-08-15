@@ -9,6 +9,9 @@ import {
   TodoCutoverContractError,
 } from "./todo-cutover.js";
 
+const uuid = (suffix: number) =>
+  `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
+
 const record = (sourceId: string, parentSourceId: string | null = null) => ({
   sourceId,
   roomId: null,
@@ -28,15 +31,18 @@ describe("Shared Todo cutover contract", () => {
   it("sorts records and produces a stable verified digest", async () => {
     const first = await createSharedTodoCutoverSnapshot({
       sourceAgentId: "personal:source",
-      todos: [record("b", "a"), record("a")],
+      todos: [record(uuid(2), uuid(1)), record(uuid(1))],
     });
     const second = await createSharedTodoCutoverSnapshot({
       sourceAgentId: "personal:source",
-      todos: [record("a"), record("b", "a")],
+      todos: [record(uuid(1)), record(uuid(2), uuid(1))],
     });
 
     expect(first).toEqual(second);
-    expect(first.todos.map((todo) => todo.sourceId)).toEqual(["a", "b"]);
+    expect(first.todos.map((todo) => todo.sourceId)).toEqual([
+      uuid(1),
+      uuid(2),
+    ]);
     await expect(parseSharedTodoCutoverSnapshot(first)).resolves.toEqual(first);
   });
 
@@ -44,12 +50,18 @@ describe("Shared Todo cutover contract", () => {
     const snapshot = await createSharedTodoCutoverSnapshot({
       sourceAgentId: "personal:source",
       todos: [
-        { ...record("a"), metadata: { z: 1, A: { y: 2, x: 1 } } },
-        { ...record("B"), metadata: { A: { x: 1, y: 2 }, z: 1 } },
+        { ...record(uuid(11)), metadata: { z: 1, A: { y: 2, x: 1 } } },
+        {
+          ...record(uuid(10)),
+          metadata: { A: { x: 1, y: 2 }, z: 1 },
+        },
       ],
     });
 
-    expect(snapshot.todos.map((todo) => todo.sourceId)).toEqual(["B", "a"]);
+    expect(snapshot.todos.map((todo) => todo.sourceId)).toEqual([
+      uuid(10),
+      uuid(11),
+    ]);
     expect(Object.keys(snapshot.todos[0].metadata)).toEqual(["A", "z"]);
     expect(Object.keys(snapshot.todos[0].metadata.A as object)).toEqual([
       "x",
@@ -60,7 +72,7 @@ describe("Shared Todo cutover contract", () => {
   it("rejects tampering and incomplete parent snapshots", async () => {
     const snapshot = await createSharedTodoCutoverSnapshot({
       sourceAgentId: "personal:source",
-      todos: [record("a")],
+      todos: [record(uuid(1))],
     });
     await expect(
       parseSharedTodoCutoverSnapshot({
@@ -71,7 +83,7 @@ describe("Shared Todo cutover contract", () => {
     await expect(
       createSharedTodoCutoverSnapshot({
         sourceAgentId: "personal:source",
-        todos: [record("child", "missing")],
+        todos: [record(uuid(2), uuid(1))],
       }),
     ).rejects.toBeInstanceOf(TodoCutoverContractError);
   });
@@ -92,14 +104,14 @@ describe("Shared Todo cutover contract", () => {
         sourceAgentId: "personal:source",
         todos: Array.from(
           { length: MAX_SHARED_TODO_CUTOVER_COUNT + 1 },
-          (_, index) => record(String(index)),
+          (_, index) => record(uuid(index + 1)),
         ),
       }),
     ).rejects.toMatchObject({ code: "TODO_CUTOVER_TOO_MANY_RECORDS" });
     await expect(
       createSharedTodoCutoverSnapshot({
         sourceAgentId: "personal:source",
-        todos: [record("a", "b"), record("b", "a")],
+        todos: [record(uuid(1), uuid(2)), record(uuid(2), uuid(1))],
       }),
     ).rejects.toMatchObject({ code: "TODO_CUTOVER_PARENT_CYCLE" });
     await expect(
@@ -107,7 +119,7 @@ describe("Shared Todo cutover contract", () => {
         sourceAgentId: "personal:source",
         todos: [
           {
-            ...record("a"),
+            ...record(uuid(1)),
             metadata: { __elizaSharedTodoImport: { forged: true } },
           },
         ],
@@ -118,11 +130,27 @@ describe("Shared Todo cutover contract", () => {
         sourceAgentId: "personal:source",
         todos: [
           {
-            ...record("oversized"),
+            ...record(uuid(1)),
             metadata: { payload: "x".repeat(MAX_SHARED_TODO_CUTOVER_BYTES) },
           },
         ],
       }),
     ).rejects.toMatchObject({ code: "TODO_CUTOVER_PAYLOAD_TOO_LARGE" });
+  });
+
+  it("normalizes UUIDs before duplicate and hierarchy checks", async () => {
+    await expect(
+      createSharedTodoCutoverSnapshot({
+        sourceAgentId: "personal:source",
+        todos: [record("not-a-uuid")],
+      }),
+    ).rejects.toMatchObject({ code: "TODO_CUTOVER_INVALID_UUID" });
+
+    await expect(
+      createSharedTodoCutoverSnapshot({
+        sourceAgentId: "personal:source",
+        todos: [record(uuid(1)), record(uuid(1).toUpperCase())],
+      }),
+    ).rejects.toMatchObject({ code: "TODO_CUTOVER_DUPLICATE_ID" });
   });
 });
