@@ -26,6 +26,10 @@ import {
 import { modelProviderErrorDetail } from "../utils/model-errors";
 import { computePrefixHashes } from "./context-hash";
 import {
+	containsReasoningMarkup,
+	stripCompletedReasoningPrefix,
+} from "./reasoning-artifacts";
+import {
 	buildStageChatMessages,
 	normalizePromptSegments,
 	renderContextObject,
@@ -777,6 +781,20 @@ function recoverEvaluatorTextOutput(
 	const text = rawText(raw).trim();
 	if (!text) return output;
 
+	// error-policy:J3 A dangling reasoning tag is invalid model protocol, never
+	// prose. Reject it before successful-tool recovery can promote it to a reply.
+	if (containsReasoningMarkup(text)) {
+		return {
+			...output,
+			success: false,
+			decision: "CONTINUE",
+			thought:
+				"Evaluator emitted unterminated reasoning markup; replanning from recorded tool results.",
+			parseError: undefined,
+			raw: { recoverySource: "reasoning_markup_text" },
+		};
+	}
+
 	if (
 		containsToolAttemptObject(text) ||
 		containsInvocationDsl(text) ||
@@ -1353,10 +1371,7 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
 	// tj-b8809c9841cdfd, matrix F18). The think contract is unambiguous:
 	// everything before the LAST </think> is reasoning, never output — strip
 	// it before any envelope handling.
-	const thinkEnd = text.lastIndexOf("</think>");
-	const visible =
-		thinkEnd >= 0 ? text.slice(thinkEnd + "</think>".length) : text;
-	return parseEvaluatorVisibleText(visible);
+	return parseEvaluatorVisibleText(stripCompletedReasoningPrefix(text));
 }
 
 function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
