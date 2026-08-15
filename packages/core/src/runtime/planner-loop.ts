@@ -5412,6 +5412,19 @@ function userSafeFailureReport(
 	if (isUnsafeUserVisibleText(candidate)) return undefined;
 	if (isToolMetaNarration(candidate)) return undefined;
 	if (isEchoOfPlannerFacingToolText(candidate, trajectory)) return undefined;
+	// The failure synthesis is the turn's LAST model call — no further tool
+	// work happens — so a diagnosis that instead promises imminent action is a
+	// false claim on the egress leg the in-flight ban did not cover (matrix
+	// F40: forced failure-aware synthesis shipped "calling web search now" as
+	// the final turn text). Progress-shaped openers are screened with the
+	// shared opener vocabulary rather than PROGRESS_ONLY_ANSWER_REJECT: its
+	// final-answer-only extensions ("Okay", "got it") open legitimate failure
+	// diagnoses, and rejecting those would regress #17948's
+	// model-diagnosis-over-generic-fallback contract.
+	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+		return undefined;
+	}
+	if (PROGRESS_ONLY_OPENER_RE.test(candidate)) return undefined;
 	return candidate;
 }
 
@@ -5588,7 +5601,15 @@ function userSafeRefusalCandidate(
 // would be a cycle. The two consumers deliberately extend it differently —
 // see PROGRESS_ONLY_ANSWER_REJECT below.
 export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN =
-	"checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|let me|i(?:'|’)ll|i will";
+	"calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|let me|i(?:'|’)ll|i will";
+
+// Bare opener screen (no final-answer-only extensions) for text where a
+// progress-shaped opener is disqualifying but "Okay, …" openings are
+// legitimate — the failure-report egress (matrix F40).
+const PROGRESS_ONLY_OPENER_RE = new RegExp(
+	`^(?:${PROGRESS_ONLY_REPLY_OPENERS_PATTERN})\\b`,
+	"i",
+);
 
 // Progress/ack-shaped openers that must never be surfaced as a final answer
 // from the required-tool exhaustion path: once the loop gives up, no further

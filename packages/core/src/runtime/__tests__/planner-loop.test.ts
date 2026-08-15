@@ -14,6 +14,7 @@ import { TrajectoryLimitExceeded } from "../limits";
 import {
 	__renderRoutingHintsBlockForTests,
 	actionResultToPlannerToolResult,
+	FAILED_TOOL_FALLBACK_MESSAGE,
 	PROGRESS_ONLY_ANSWER_REJECT,
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 	parsePlannerOutput,
@@ -2579,6 +2580,75 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toBe(
 			"The primary lookup failed on a DNS error; the backup source did return a result.",
 		);
+	});
+
+	it("never ships an in-flight action claim as the failure-synthesis reply (matrix F40)", async () => {
+		// Live shape: the forced failure-aware synthesis pass answered with an
+		// imminent-action promise instead of a diagnosis. The synthesis is the
+		// turn's last model call, so "calling web search now." is a false claim
+		// and must degrade to the generic failed-step sentence.
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-1",
+							name: "SHELL",
+							arguments: { command: "curl https://stale.example.invalid" },
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-2",
+							name: "SHELL",
+							arguments: { command: "curl https://backup.example.com" },
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "calling web search now.",
+					toolCalls: [],
+				}),
+		};
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				text: "command_failed: DNS lookup failed",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				text: "backup source returned a result",
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "FINISH" as const,
+				thought: "The first lookup failed, but I forgot to include a reply.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "The backup source returned a result.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "SHELL", description: "Run a shell command." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(result.finalMessage).not.toContain("calling web search");
 	});
 
 	it("does not finish with terminal planner text after tool work when the evaluator asks to continue", async () => {
