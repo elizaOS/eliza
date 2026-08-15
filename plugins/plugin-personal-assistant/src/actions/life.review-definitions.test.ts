@@ -339,6 +339,21 @@ describe("LifeOps definition review isolation", () => {
     expect(missing.text).not.toContain("Call dentist");
   });
 
+  it("grounds an empty tracked-work claim only from an observed empty review", async () => {
+    serviceState.definitions = [];
+
+    const result = await review({ ownerSurface: "OWNER_TODOS" });
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        actionName: "OWNER_TODOS",
+        claimGrounding: ["empty_tracked_state"],
+        definitions: [],
+      },
+    });
+  });
+
   it("persists the owning surface on newly created definitions", async () => {
     const result = await runLifeOperationHandler(
       makeRuntime(),

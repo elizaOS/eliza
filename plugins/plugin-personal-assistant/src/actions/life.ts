@@ -3171,6 +3171,12 @@ async function isForeignPageScope(
 // `runLifeOperationHandler` below.
 export const OWNER_OPERATION_TAGS: string[] = [
   "domain:reminders",
+  // "resource:tracked-work" + "capability:read" ground empty-tracked-state
+  // replies at the planned-reply egress guard: a verified owner-surface review
+  // that authored the exact reply ("nothing on the list") is real evidence,
+  // not a fabricated recap, so the guard must not replace it with a canned
+  // failure (core services/message.ts plannedReplyHasClaimGroundingReceipt).
+  "resource:tracked-work",
   "capability:read",
   "capability:write",
   "capability:update",
@@ -3179,6 +3185,18 @@ export const OWNER_OPERATION_TAGS: string[] = [
   "effect:receipt-required",
   "surface:internal",
 ];
+
+const EMPTY_TRACKED_STATE_CLAIM_GROUNDING = ["empty_tracked_state"] as const;
+
+function ownerOverviewIsEmpty(overview: {
+  owner: { goals: unknown[]; occurrences: unknown[]; reminders: unknown[] };
+}): boolean {
+  return (
+    overview.owner.goals.length === 0 &&
+    overview.owner.occurrences.length === 0 &&
+    overview.owner.reminders.length === 0
+  );
+}
 
 // "productivity" is deliberate: Stage-1 routinely tags habit/reminder-shaped
 // asks with the productivity context (a child of tasks). Retrieval uses
@@ -4104,7 +4122,13 @@ async function runLifeOperationHandlerInner(
             .map((goal) => goal.title),
         },
       }),
-      data: toActionData(overview),
+      data: toActionData({
+        ...overview,
+        actionName: ownerSurfaceActionName,
+        ...(ownerOverviewIsEmpty(overview)
+          ? { claimGrounding: EMPTY_TRACKED_STATE_CLAIM_GROUNDING }
+          : {}),
+      }),
     };
   }
   // Internal handler dispatch key (definition vs goal split lives here).
@@ -5677,6 +5701,7 @@ async function runLifeOperationHandlerInner(
           }),
           data: toActionData({
             actionName: ownerSurfaceActionName,
+            claimGrounding: EMPTY_TRACKED_STATE_CLAIM_GROUNDING,
             definitions: [],
           }),
         };
@@ -5740,7 +5765,11 @@ async function runLifeOperationHandlerInner(
                   .map((goal) => goal.title),
               },
             }),
-            data: toActionData(overview),
+            data: toActionData({
+              ...overview,
+              actionName: ownerSurfaceActionName,
+              claimGrounding: EMPTY_TRACKED_STATE_CLAIM_GROUNDING,
+            }),
           };
         }
         const fallback = formatWeeklyGoalReview(weeklyReview);
