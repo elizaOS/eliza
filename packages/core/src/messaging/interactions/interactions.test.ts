@@ -968,4 +968,43 @@ describe("stripDashboardOnlyMarkers", () => {
 		expect(parsed.cleanedText).toBe("Connect it.");
 		expect(renderInteractionsAsPlainText(source).text).not.toContain("CONFIG");
 	});
+
+	it("degrades a [CHECKLIST] block to a plain task list (tj-578adf524ebb7a)", () => {
+		const input =
+			'Working through it now.\n\n[CHECKLIST]\n{"title":"Migration","items":[{"content":"Back up the database","status":"completed"},{"content":"Run the migration","status":"in_progress"},{"content":"Verify downstream consumers"}]}\n[/CHECKLIST]';
+		expect(stripDashboardOnlyMarkers(input)).toBe(
+			"Working through it now.\n\nMigration:\n- [x] Back up the database\n- [~] Run the migration\n- [ ] Verify downstream consumers",
+		);
+	});
+
+	it("degrades a [WORKFLOW] block to numbered steps with status", () => {
+		const input =
+			'[WORKFLOW]\n{"title":"Deploy","steps":[{"label":"Build image","status":"done"},{"label":"Push to registry","status":"running"},{"label":"Roll out"}]}\n[/WORKFLOW]';
+		expect(stripDashboardOnlyMarkers(input)).toBe(
+			"Deploy:\n1. Build image — done\n2. Push to registry — running\n3. Roll out — pending",
+		);
+	});
+
+	it("keeps a malformed widget body as text with the wire markers removed", () => {
+		const input =
+			"Here's the plan.\n[CHECKLIST]\nnot json at all\n[/CHECKLIST]";
+		expect(stripDashboardOnlyMarkers(input)).toBe(
+			"Here's the plan.\nnot json at all",
+		);
+	});
+
+	it("strips the bare [BACKGROUND] picker marker", () => {
+		expect(
+			stripDashboardOnlyMarkers("Pick a wallpaper below.\n\n[BACKGROUND]"),
+		).toBe("Pick a wallpaper below.");
+	});
+
+	it("keeps widget blocks out of the connector plain-text projection", () => {
+		const source =
+			'Status update:\n[CHECKLIST]\n{"items":[{"content":"Ship it","status":"pending"}]}\n[/CHECKLIST]\n[FOLLOWUPS]\nreply:continue=Continue\n[/FOLLOWUPS]';
+		const rendered = renderInteractionsAsPlainText(source).text;
+		expect(rendered).not.toContain("[CHECKLIST]");
+		expect(rendered).not.toContain("{");
+		expect(rendered).toContain("- [ ] Ship it");
+	});
 });
