@@ -5523,6 +5523,76 @@ export class ElizaSandboxService {
     };
   }
 
+  /**
+   * Recreates an authoritative cutover conversation after a Dedicated runtime
+   * loses its local conversation index during relocation or fresh boot. Exact
+   * source ids make concurrent repairs idempotent at the runtime boundary.
+   */
+  async importCanonicalConversation(
+    agentId: string,
+    orgId: string,
+    conversationId: string,
+    messages: Array<{
+      sourceId: string;
+      role: "user" | "assistant";
+      text: string;
+      timestamp?: number;
+    }>,
+  ): Promise<{
+    complete: true;
+    sourceMessageCount: number;
+    inserted: number;
+    skipped: number;
+  } | null> {
+    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    if (!rec) return null;
+    const serverSecret = getCloudAwareEnv().AGENT_SERVER_SHARED_SECRET?.trim();
+    if (!serverSecret) return null;
+
+    const res = await this.fetchCanonicalConversationApi(
+      rec,
+      `/api/conversations/${encodeURIComponent(conversationId)}/import`,
+      {
+        method: "POST",
+        headers: { "X-Server-Token": serverSecret },
+        body: JSON.stringify({ messages }),
+        signal: AbortSignal.timeout(20_000),
+      },
+      rec.bridge_url,
+    );
+    if (!res.ok) return null;
+
+    // error-policy:J3 an unreadable import receipt is explicitly invalid and
+    // cannot authorize the connector retry.
+    const body = (await res.json().catch(() => null)) as {
+      conversationId?: unknown;
+      complete?: unknown;
+      sourceMessageCount?: unknown;
+      inserted?: unknown;
+      skipped?: unknown;
+    } | null;
+    if (!body || typeof body.inserted !== "number" || typeof body.skipped !== "number") {
+      return null;
+    }
+    const inserted = body.inserted;
+    const skipped = body.skipped;
+    const countsMatch = inserted + skipped === messages.length;
+    const modernReceipt = body?.complete === true && body.sourceMessageCount === messages.length;
+    const legacyReceipt =
+      body?.complete === undefined &&
+      body.sourceMessageCount === undefined &&
+      body.conversationId === conversationId;
+    if (!countsMatch || (!modernReceipt && !legacyReceipt)) {
+      return null;
+    }
+    return {
+      complete: true,
+      sourceMessageCount: messages.length,
+      inserted,
+      skipped,
+    };
+  }
+
   private async bridgeMessagingSessionSend(
     rec: AgentSandbox,
     rpc: BridgeRequest,

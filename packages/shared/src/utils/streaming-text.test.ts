@@ -65,6 +65,24 @@ describe("streaming text named regressions", () => {
     });
   });
 
+  it("preserves reordered combining marks and the untouched raw suffix", () => {
+    // NFC reorders dot-below before acute, so the overlapped precomposed
+    // dot-below character has no exact boundary in the raw incoming prefix.
+    const existing = "foo\u1ea1";
+    const incoming = "a\u0301\u0323 cafe\u0301";
+    const expected = "foo\u1ea1\u0301 cafe\u0301";
+
+    expect(mergeStreamingText(existing, incoming)).toBe(expected);
+    expect(computeStreamingDelta(existing, incoming)).toBe(
+      "\u0301 cafe\u0301",
+    );
+    expect(resolveStreamingUpdate(existing, incoming)).toEqual({
+      kind: "append",
+      nextText: expected,
+      emittedText: "\u0301 cafe\u0301",
+    });
+  });
+
   it("preserves repeated single-character deltas", () => {
     expect(mergeStreamingText("l", "l")).toBe("ll");
     expect(computeStreamingDelta("l", "l")).toBe("l");
@@ -78,6 +96,31 @@ describe("streaming text named regressions", () => {
   it("deduplicates overlapping suffix/prefix fragments", () => {
     expect(mergeStreamingText("Hello wor", "world")).toBe("Hello world");
     expect(computeStreamingDelta("Hello wor", "world")).toBe("ld");
+  });
+
+  it("does not duplicate combining marks when overlapping decomposed fragments", () => {
+    // Decomposed "café" (cafe + U+0301) resending decomposed "é more"
+    // (e + U+0301 + " more"). The NFC overlap is the single character "é",
+    // but slicing the raw incoming at the NFC code-unit index would split the
+    // decomposed "e" + combining-mark sequence and re-append the mark.
+    const decomposedCafe = "cafe\u0301";
+    const decomposedEMore = "e\u0301 more";
+    const merged = mergeStreamingText(decomposedCafe, decomposedEMore);
+    // Result should contain exactly one combining acute accent (U+0301).
+    expect([...merged].filter((ch) => ch === "\u0301").length).toBe(1);
+    // The NFC form must be correct "café more".
+    expect(merged.normalize("NFC")).toBe("caf\u00e9 more");
+  });
+
+  it("handles Vietnamese decomposed overlap resends", () => {
+    // "tự" decomposed = t + ư + dot-below (U+0323)
+    const existing = "t\u01b0\u0323 do";
+    // Overlapped tail: "ự do là" decomposed = ư + dot-below + " do là"
+    const incoming = "\u01b0\u0323 do l\u00e0";
+    const merged = mergeStreamingText(existing, incoming);
+    expect(merged.normalize("NFC")).toBe("t\u1ef1 do l\u00e0");
+    // Exactly one dot-below combining mark (U+0323), not duplicated.
+    expect([...merged].filter((ch) => ch === "\u0323").length).toBe(1);
   });
 
   it("accepts cumulative provider snapshots without duplicating text", () => {
