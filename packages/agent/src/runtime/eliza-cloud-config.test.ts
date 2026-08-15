@@ -5,7 +5,8 @@
  * that prevents stale vault/config keys from clobbering live cloud settings
  * (#11038). Asserts env mutations directly; no live cloud calls.
  */
-import { logger } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import { registerTextInferenceModels } from "@elizaos/plugin-elizacloud";
 import { resolveElizaCloudTopology } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
@@ -131,6 +132,50 @@ describe("applyCloudConfigToEnv cloud-container embeddings (#8769)", () => {
     expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
     expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBeUndefined();
     expect(process.env.ELIZAOS_CLOUD_ENABLED).toBeUndefined();
+  });
+});
+
+describe("unsigned Cloud inference fallback (#20045)", () => {
+  it("keeps Cloud chat handlers unregistered until a credential can serve them", () => {
+    const config: ElizaConfig = {
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    const registered: string[] = [];
+    const runtime = {
+      getSetting: (key: string) => process.env[key],
+      registerModel: (modelType: string) => registered.push(modelType),
+    } as unknown as IAgentRuntime;
+    registerTextInferenceModels(runtime);
+
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
+    expect(process.env.ELIZAOS_CLOUD_ENABLED).toBe("true");
+    expect(registered).toEqual([]);
+  });
+
+  it("enables Cloud inference when config.env provides the usable credential", () => {
+    const config: ElizaConfig = {
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+      env: { vars: { ELIZAOS_CLOUD_API_KEY: "cloud-test" } },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("cloud-test");
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
   });
 });
 

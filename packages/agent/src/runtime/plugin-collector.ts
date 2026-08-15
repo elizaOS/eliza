@@ -126,6 +126,16 @@ function resolveGitpathologistRepoRoot(): string {
   return path.resolve(cwd);
 }
 
+function isUsableCloudApiKey(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  return (
+    trimmed.length > 0 &&
+    trimmed.toUpperCase() !== "[REDACTED]" &&
+    !trimmed.startsWith("vault://")
+  );
+}
+
 function gitpathologistRequested(config: ElizaConfig): boolean {
   const agentEntry = config.agents?.list?.[0];
   const fromEntry = agentEntry?.gitpathologist;
@@ -455,17 +465,25 @@ export function collectPluginNames(
   const cloudEffectivelyEnabled =
     resolveCloudPluginRequirement(cloudTopology, cloudPluginRequestedByEnv) ||
     isCloudContainer;
-  // cloudHandlesInference gates whether the cloud plugin *replaces* direct
-  // provider plugins for model calls.  Cloud containers that go through the
-  // steward proxy (OPENAI_BASE_URL → host.docker.internal) need plugin-openai
-  // to stay loaded, so only claim inference when the topology explicitly says
-  // so OR the container has a direct cloud API key for elizacloud inference.
-  const cloudHandlesInference =
-    cloudTopology.services.inference ||
-    (isCloudContainer && Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim()));
   const _configEnv = config.env as
     | (Record<string, unknown> & { vars?: Record<string, unknown> })
     | undefined;
+  const hasUsableCloudApiKey = [
+    process.env.ELIZAOS_CLOUD_API_KEY,
+    config.cloud?.apiKey,
+    _configEnv?.ELIZAOS_CLOUD_API_KEY,
+    _configEnv?.vars?.ELIZAOS_CLOUD_API_KEY,
+  ].some(isUsableCloudApiKey);
+  // cloudHandlesInference gates whether the cloud plugin *replaces* direct
+  // provider plugins for model calls. Configured Cloud intent is insufficient:
+  // without the credential used by plugin-elizacloud, removing the fallback
+  // providers leaves only an unservable priority-50 Cloud route (#20045).
+  // Provisioned containers own their repaired Cloud runtime route even before
+  // host env projection; ordinary hosts require the usable credential itself.
+  const cloudHandlesInference =
+    (cloudTopology.services.inference &&
+      (hasUsableCloudApiKey || isCloudContainer)) ||
+    (isCloudContainer && hasUsableCloudApiKey);
   const pluginEntries = (config.plugins as Record<string, unknown> | undefined)
     ?.entries as Record<string, { enabled?: boolean }> | undefined;
 
