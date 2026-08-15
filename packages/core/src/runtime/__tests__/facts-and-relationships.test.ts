@@ -183,6 +183,67 @@ describe("parseFactsAndRelationshipsOutput", () => {
 		expect(viaParams.facts).toEqual(["y"]);
 	});
 
+	it("prefers a valid tool call over conversational preamble text", () => {
+		const result = parseFactsAndRelationshipsOutput({
+			text: "Here are the extracted facts:",
+			toolCalls: [
+				{ arguments: { facts: ["mixed"], relationships: [], thought: "ok" } },
+			],
+		});
+		expect(result.facts).toEqual(["mixed"]);
+	});
+
+	it("skips a malformed first call when a later validation call is valid", () => {
+		const result = parseFactsAndRelationshipsOutput({
+			text: "non-JSON preamble",
+			toolCalls: [
+				{ arguments: "{not-json" },
+				{
+					input: { facts: ["second"], relationships: [], thought: "valid" },
+				},
+			],
+		});
+		expect(result.facts).toEqual(["second"]);
+	});
+
+	it("uses the first valid validation call deterministically", () => {
+		const result = parseFactsAndRelationshipsOutput({
+			toolCalls: [
+				{
+					arguments: { facts: ["first"], relationships: [], thought: "one" },
+				},
+				{
+					arguments: { facts: ["second"], relationships: [], thought: "two" },
+				},
+			],
+		});
+		expect(result.facts).toEqual(["first"]);
+		expect(result.thought).toBe("one");
+	});
+
+	it("ignores unrelated named calls and falls back to valid response text", () => {
+		const result = parseFactsAndRelationshipsOutput({
+			text: JSON.stringify({
+				facts: ["text"],
+				relationships: [],
+				thought: "fallback",
+			}),
+			toolCalls: [
+				{ toolName: "UNRELATED", arguments: { facts: ["wrong"] } },
+			],
+		});
+		expect(result.facts).toEqual(["text"]);
+	});
+
+	it("reports the first structured failure when every candidate is malformed", () => {
+		expect(() =>
+			parseFactsAndRelationshipsOutput({
+				text: "also not JSON",
+				toolCalls: [{ arguments: "{not-json" }, { input: { facts: [] } }],
+			}),
+		).toThrow(expect.objectContaining({ code: "FACTS_MODEL_OUTPUT_INVALID" }));
+	});
+
 	it("rejects malformed relationship entries instead of silently dropping them", () => {
 		expect(() =>
 			parseFactsAndRelationshipsOutput(
