@@ -647,6 +647,10 @@ export class ScheduledTaskRunnerService extends Service {
 
   override async stop(): Promise<void> {
     this.runners.clear();
+    const runtime = this.runtime;
+    if (runtime && startedServiceByRuntime.get(runtime) === this) {
+      startedServiceByRuntime.delete(runtime);
+    }
   }
 
   static override async start(

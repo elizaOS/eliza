@@ -70,4 +70,22 @@ describe("ScheduledTaskRunnerService boot hooks", () => {
       { agentId: runtime.agentId },
     );
   });
+
+  it("does not run a post-stop hook against the stale service instance", async () => {
+    const runtime = buildRuntime();
+    const first = await ScheduledTaskRunnerService.start(runtime);
+    await first.stop();
+
+    const seen: ScheduledTaskRunnerService[] = [];
+    registerScheduledTaskRunnerBootHook(runtime, (service) => {
+      seen.push(service);
+    });
+    await settled();
+    expect(seen).toEqual([]);
+
+    const restarted = await ScheduledTaskRunnerService.start(runtime);
+    await settled();
+    expect(restarted).not.toBe(first);
+    expect(seen).toEqual([restarted]);
+  });
 });
