@@ -189,6 +189,7 @@ All read via `runtime.getSetting()` (or `process.env` fallback where noted).
 | `STEWARD_AGENT_TOKEN` | Steward backend | Bearer token for Steward. |
 | `STEWARD_TENANT_ID` | Steward backend | Tenant/user identifier. |
 | `SOLANA_RPC_URL` | Solana features | RPC endpoint; skips Solana init if absent. |
+| `JUPITER_API_BASE_URL` | No | Jupiter Swap API base URL. Defaults to `https://lite-api.jup.ag/swap/v1`. |
 | `SOLANA_NO_ACTIONS` | No | Set to `true` to skip Solana action registration. |
 | `PUMPFUN_TRADE_LOCAL_URL` | No | PumpPortal local transaction API. Defaults to `https://pumpportal.fun/api/trade-local`. |
 | `PUMPFUN_PRIORITY_FEE_SOL` | No | Priority fee in SOL for `pump_fun_buy`. Defaults to `0.00005`. |
