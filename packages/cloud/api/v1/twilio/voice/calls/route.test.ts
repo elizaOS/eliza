@@ -55,7 +55,7 @@ const { default: app } = await import("./route");
 const env = {
   ELIZA_APP_TWILIO_ACCOUNT_SID: "AC123",
   ELIZA_APP_TWILIO_AUTH_TOKEN: "secret",
-  ELIZA_APP_TWILIO_PHONE_NUMBER: "+18087881821",
+  ELIZA_APP_TWILIO_PHONE_NUMBER: "+14484080429",
   TWILIO_PUBLIC_URL: "https://api.eliza.app",
 };
 
@@ -108,7 +108,7 @@ describe("POST Twilio outbound voice call", () => {
     expect(endpoint).toBe("/Calls.json");
     expect(form).toBeInstanceOf(URLSearchParams);
     expect((form as URLSearchParams).get("To")).toBe("+14155550100");
-    expect((form as URLSearchParams).get("From")).toBe("+18087881821");
+    expect((form as URLSearchParams).get("From")).toBe("+14484080429");
     expect((form as URLSearchParams).get("Url")).toBe(
       "https://api.eliza.app/api/v1/twilio/voice/inbound",
     );
