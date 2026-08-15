@@ -4690,7 +4690,7 @@ async function runLifeOperationHandlerInner(
           .map((step) => ({
             label: step.label,
             minutesBeforeDue: reminderStepMinutesBeforeDue(
-              definitionDraft.request.cadence,
+              leadShaped.cadence,
               step.offsetMinutes,
             ),
           }))
@@ -4704,7 +4704,7 @@ async function runLifeOperationHandlerInner(
                 )
                 .join(", ")}.`
             : "";
-        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(definitionDraft.request.cadence)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
+        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(leadShaped.cadence)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
         const previewText = await renderLifeActionReply({
           runtime,
           message,
@@ -4786,7 +4786,7 @@ async function runLifeOperationHandlerInner(
         title: definitionDraft.request.title,
         description: definitionDraft.request.description,
         originalIntent: definitionDraft.intent || definitionDraft.request.title,
-        cadence: definitionDraft.request.cadence,
+        cadence: leadShaped.cadence,
         timezone:
           normalizeLifeTimeZoneToken(definitionDraft.request.timezone) ??
           definitionDraft.request.timezone,
