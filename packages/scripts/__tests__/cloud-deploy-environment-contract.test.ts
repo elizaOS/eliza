@@ -112,6 +112,10 @@ describe("canonical cloud deployment environment contract", () => {
 
     expect(slopHub.jobs?.cutover?.needs).toBe("validate-source");
     expect(slopHub.jobs?.cutover?.environment).toBe("production");
+    expect(slopHub.jobs?.["validate-source"]?.["runs-on"]).toEqual({
+      group: "prod-ops",
+      labels: ["self-hosted", "Linux", "X64", "prod-ops"],
+    });
     expect(slopHub.jobs?.cutover?.["runs-on"]).toEqual({
       group: "prod-ops",
       labels: ["self-hosted", "Linux", "X64", "prod-ops"],
@@ -182,6 +186,10 @@ describe("canonical cloud deployment environment contract", () => {
     }
     expect(prodOps.jobs?.doctor?.needs).toBe("validate-source");
     expect(prodOps.jobs?.doctor?.environment).toBe("production");
+    expect(prodOps.jobs?.["validate-source"]?.["runs-on"]).toEqual({
+      group: "prod-ops",
+      labels: ["self-hosted", "Linux", "X64", "prod-ops"],
+    });
     expect(prodOps.jobs?.doctor?.["runs-on"]).toEqual({
       group: "prod-ops",
       labels: ["self-hosted", "Linux", "X64", "prod-ops"],
@@ -189,6 +197,12 @@ describe("canonical cloud deployment environment contract", () => {
     expect(
       step(prodOps, "validate-source", "Require production main").run,
     ).toContain('"refs/heads/main"');
+    expect(infra.jobs?.["validate-source"]?.["runs-on"]).toContain(
+      "inputs.component != 'prod-ops'",
+    );
+    expect(infra.jobs?.terraform?.["runs-on"]).toBe(
+      infra.jobs?.["validate-source"]?.["runs-on"],
+    );
     const doctor = step(
       prodOps,
       "doctor",

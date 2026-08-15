@@ -36,7 +36,8 @@ execution to explicitly selected manual workflows.
      -F restricted_to_workflows=true \
      -F selected_repository_ids[]="$repo_id" \
      -f selected_workflows[]='elizaOS/eliza/.github/workflows/prod-ops-runner.yml@refs/heads/main' \
-     -f selected_workflows[]='elizaOS/eliza/.github/workflows/slophub-cutover.yml@refs/heads/main'
+     -f selected_workflows[]='elizaOS/eliza/.github/workflows/slophub-cutover.yml@refs/heads/main' \
+     -f selected_workflows[]='elizaOS/eliza/.github/workflows/infra.yml@refs/heads/main'
    ```
 
 4. Wait for cloud-init, create a short-lived organization registration token,
@@ -52,6 +53,11 @@ execution to explicitly selected manual workflows.
 
 5. Dispatch `Prod Ops Runner / doctor` from `main`. The proof must show one
    online `prod-ops` runner and no agent, Forgejo, Caddy, or Docker workload.
+
+After bootstrap, production Infrastructure jobs other than the `prod-ops` root
+and both SlopHub jobs run on the dedicated label. The `prod-ops` Terraform root
+stays GitHub-hosted so it can repair or replace its own runner without a
+self-dependency.
 
 The protected environment controls who may approve a production job; runner
 group workflow restrictions control which YAML may reach the host. Both gates

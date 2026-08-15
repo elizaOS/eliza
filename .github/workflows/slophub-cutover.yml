@@ -41,7 +41,9 @@ permissions:
 jobs:
   validate-source:
     name: Validate canonical source
-    runs-on: ubuntu-24.04
+    runs-on:
+      group: prod-ops
+      labels: [self-hosted, Linux, X64, prod-ops]
     timeout-minutes: 2
     steps:
       - name: Require production main

@@ -113,6 +113,7 @@ describe("Protected production-operations runner", () => {
     expect(readme).toContain("restricted_to_workflows=true");
     expect(readme).toContain("prod-ops-runner.yml@refs/heads/main");
     expect(readme).toContain("slophub-cutover.yml@refs/heads/main");
+    expect(readme).toContain("infra.yml@refs/heads/main");
     expect(readme).toContain("production");
     expect(readme).toContain("Review the server type and the recurring price");
   });
