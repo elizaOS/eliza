@@ -10,20 +10,23 @@
  */
 
 import { describe, expect, mock, test } from "bun:test";
+import type { Bindings } from "@/types/cloud-worker-env";
 
-const getBrokerCredentials = mock(
-  async (_orgId: string, _userId: string, role: "agent" | "owner") => ({
-    authMode: "oauth2" as const,
-    accessToken: `token-for-${role}`,
-    expiresAt: null,
-    scope: null,
-    twitterUserId: null,
-  }),
+const coordinatorFetch = mock(
+  async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const request = JSON.parse(String(init?.body)) as {
+      connectionRole: "agent" | "owner";
+    };
+    return Response.json({
+      auth_mode: "oauth2",
+      access_token: `token-for-${request.connectionRole}`,
+    });
+  },
 );
-
-mock.module("@/lib/services/twitter-automation", () => ({
-  twitterAutomationService: { getBrokerCredentials },
-}));
+const getByName = mock((_name: string) => ({ fetch: coordinatorFetch }));
+const env = {
+  TWITTER_OAUTH_REFRESH_COORDINATORS: { getByName },
+} as unknown as Bindings;
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg: mock(async () => ({
@@ -36,35 +39,47 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 const { default: app } = await import("../v1/twitter/token/route");
 
 async function get(path: string): Promise<Response> {
-  return await app.request(path, { method: "GET" });
+  return await app.request(path, { method: "GET" }, env);
 }
 
 describe("GET /api/v1/twitter/token — connectionRole boundary", () => {
   test("missing connectionRole defaults to the agent connection", async () => {
-    getBrokerCredentials.mockClear();
+    coordinatorFetch.mockClear();
+    getByName.mockClear();
     const res = await get("/");
     expect(res.status).toBe(200);
-    expect(getBrokerCredentials.mock.calls[0]?.[2]).toBe("agent");
+    expect(getByName).toHaveBeenCalledWith("org-1:agent");
+    expect(await res.json()).toMatchObject({ access_token: "token-for-agent" });
   });
 
   test("explicit agent and owner pass through exactly", async () => {
-    getBrokerCredentials.mockClear();
+    coordinatorFetch.mockClear();
     expect((await get("/?connectionRole=agent")).status).toBe(200);
-    expect(getBrokerCredentials.mock.calls[0]?.[2]).toBe("agent");
+    expect(
+      JSON.parse(String(coordinatorFetch.mock.calls[0]?.[1]?.body)),
+    ).toMatchObject({
+      organizationId: "org-1",
+      userId: "user-1",
+      connectionRole: "agent",
+    });
 
-    getBrokerCredentials.mockClear();
+    coordinatorFetch.mockClear();
     expect((await get("/?connectionRole=owner")).status).toBe(200);
-    expect(getBrokerCredentials.mock.calls[0]?.[2]).toBe("owner");
+    expect(
+      JSON.parse(String(coordinatorFetch.mock.calls[0]?.[1]?.body)),
+    ).toMatchObject({
+      connectionRole: "owner",
+    });
   });
 
   test("garbage roles are a 400, never a silent owner vend", async () => {
-    getBrokerCredentials.mockClear();
+    coordinatorFetch.mockClear();
     for (const bad of ["admin", "Owner", "OWNER", "agent%20", "root", ""]) {
       const res = await get(`/?connectionRole=${bad}`);
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
       expect(body.error).toBe("invalid_connection_role");
     }
-    expect(getBrokerCredentials).not.toHaveBeenCalled();
+    expect(coordinatorFetch).not.toHaveBeenCalled();
   });
 });

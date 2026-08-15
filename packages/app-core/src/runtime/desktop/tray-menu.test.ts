@@ -15,6 +15,20 @@ const trayRuntimePath = fileURLToPath(
 );
 
 describe("desktop tray menu — Notifications entry (#10706)", () => {
+  it("exposes desktop views under a native Windows submenu and keeps Quit", () => {
+    const windows = DESKTOP_TRAY_MENU_ITEMS.find(
+      (entry) => entry.id === "tray-views",
+    );
+    expect(windows?.label).toBe("Windows");
+    expect(windows?.submenu?.map((entry) => entry.id)).toContain(
+      "tray-open-view-chat",
+    );
+    expect(DESKTOP_TRAY_MENU_ITEMS.at(-1)).toMatchObject({
+      id: "quit",
+      label: "Quit",
+    });
+  });
+
   it("carries a tray-open-notifications item (tray counterpart of Desktop → Notifications)", () => {
     const item = DESKTOP_TRAY_MENU_ITEMS.find(
       (entry) => entry.id === "tray-open-notifications",

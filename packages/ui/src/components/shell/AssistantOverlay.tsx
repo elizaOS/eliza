@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import * as React from "react";
 
 import { useBranding } from "../../config/branding";
+import { useNativeGlassAnchor } from "../../glass";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { Button } from "../ui/button";
 import type { ShellPhase } from "./shell-state";
@@ -44,6 +45,7 @@ export function AssistantOverlay({
   const isOpen =
     phase === "summoned" || phase === "listening" || phase === "responding";
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
+  const glassTier = useNativeGlassAnchor(dialogRef);
   const previousFocusRef = React.useRef<HTMLElement | null>(null);
 
   // Manage Escape, focus trap, initial focus, and focus return as a single
@@ -121,13 +123,19 @@ export function AssistantOverlay({
       aria-modal="true"
       aria-label={`${appName} assistant`}
       data-testid="shell-assistant-overlay"
+      data-popup-material="light-frosted"
       data-phase={phase}
-      // Sits one tick above the pill so the drawer covers it on open.
+      data-glass-tier={glassTier}
+      // Sits one tick above the pill in stacking order. The desktop overlay
+      // shell also offsets the panel so the two surfaces never overlap.
       // Inline style because Tailwind's JIT can't track template-interpolated
       // arbitrary z-index values. See packages/ui/src/lib/floating-layers.ts.
-      style={{ zIndex: Z_SHELL_OVERLAY + 1 }}
+      // GlassSurface's shared recipe establishes `position: relative` for rim
+      // pseudo-elements. This overlay is itself the anchored surface, so keep
+      // the fixed-position contract explicit at higher precedence.
+      style={{ zIndex: Z_SHELL_OVERLAY + 1, position: "fixed" }}
       className={[
-        "shell-assistant-overlay-panel pointer-events-auto",
+        "shell-assistant-overlay-panel eliza-glass-sheet pointer-events-auto overflow-hidden",
         // Position: bottom sheet on mobile, centered drawer on >= sm
         "fixed inset-x-0 bottom-0",
         "sm:left-1/2 sm:right-auto sm:top-1/2 sm:bottom-auto",
@@ -136,9 +144,8 @@ export function AssistantOverlay({
         // Size on mobile
         "h-[80vh]",
         // Surface
-        "rounded-t-3xl sm:rounded-sm",
-        "bg-bg/95",
-        "border border-border/40",
+        "rounded-t-3xl sm:rounded-3xl",
+        "border border-white/25",
         // Enter motion (skipped under prefers-reduced-motion)
         "motion-safe:animate-[shell-overlay-in_220ms_ease-out]",
       ].join(" ")}
@@ -152,7 +159,9 @@ export function AssistantOverlay({
       >
         <X aria-hidden="true" className="h-4 w-4" />
       </Button>
-      {children}
+      <div className="box-border h-full min-h-0 px-3 pb-2 pt-10">
+        {children}
+      </div>
     </div>
   );
 }

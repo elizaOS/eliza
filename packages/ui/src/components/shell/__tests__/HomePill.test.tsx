@@ -13,11 +13,16 @@ import type { ShellPhase } from "../shell-state";
 afterEach(() => cleanup());
 
 describe("HomePill", () => {
-  it("renders a button labelled for the assistant", () => {
+  it("renders an accessible button with only a compact white visual handle", () => {
     render(<HomePill phase="idle" onOpen={() => {}} onClose={() => {}} />);
     const btn = screen.getByRole("button", { name: /open eliza/i });
     expect(btn).toBeTruthy();
-    expect(screen.getByTestId("shell-home-pill-mark")).toBeTruthy();
+    const mark = screen.getByTestId("shell-home-pill-mark");
+    expect(mark.className).toContain("bg-white/95");
+    expect(mark.className).toContain("w-12");
+    expect(btn.textContent).toBe("");
+    expect(btn.style.backgroundColor).toBe("");
+    expect(btn.className).toContain("h-8");
   });
 
   it("calls onOpen when clicked from idle", () => {
@@ -32,6 +37,7 @@ describe("HomePill", () => {
     render(<HomePill phase="summoned" onOpen={() => {}} onClose={onClose} />);
     fireEvent.click(screen.getByRole("button"));
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button").textContent).toBe("");
   });
 
   it.each<ShellPhase>([
@@ -76,16 +82,19 @@ describe("HomePill", () => {
     );
   });
 
-  it("is disabled while booting", () => {
+  it("stays available while booting", () => {
     render(<HomePill phase="booting" onOpen={() => {}} onClose={() => {}} />);
     const btn = screen.getByRole("button") as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
+    expect(btn.disabled).toBe(false);
+    expect(screen.getByTestId("shell-home-pill-mark").className).toContain(
+      "animate-pulse",
+    );
   });
 
-  it("does not call onOpen when clicked during booting", () => {
+  it("opens the popup when clicked during booting", () => {
     const onOpen = vi.fn();
     render(<HomePill phase="booting" onOpen={onOpen} onClose={() => {}} />);
     fireEvent.click(screen.getByRole("button"));
-    expect(onOpen).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });

@@ -15,6 +15,7 @@ import type {
 } from "../../types/interactions";
 import type { Content } from "../../types/primitives";
 import { encodeReplyCallback } from "./callback";
+import { stripDashboardOnlyMarkers } from "./dashboard-markers";
 import { parseInteractionBlocks } from "./parse";
 
 export interface NeutralButton {
@@ -299,9 +300,11 @@ export function renderInteractionsAsPlainText(
 		.map((block) => toPlainTextFallback(block, opts))
 		.filter((part): part is string => Boolean(part?.trim()));
 	return {
-		text: [cleanedText, ...fallbacks]
-			.filter((part) => part.trim().length > 0)
-			.join("\n\n"),
+		text: stripDashboardOnlyMarkers(
+			[cleanedText, ...fallbacks]
+				.filter((part) => part.trim().length > 0)
+				.join("\n\n"),
+		),
 		hadBlocks: true,
 	};
 }
@@ -328,9 +331,11 @@ export function renderContentInteractionsAsPlainText(
 		.map((block) => toPlainTextFallback(block, opts))
 		.filter((part): part is string => Boolean(part?.trim()));
 	return {
-		text: [cleanedText, ...fallbacks]
-			.filter((part) => part.trim().length > 0)
-			.join("\n\n"),
+		text: stripDashboardOnlyMarkers(
+			[cleanedText, ...fallbacks]
+				.filter((part) => part.trim().length > 0)
+				.join("\n\n"),
+		),
 		hadBlocks: true,
 	};
 }

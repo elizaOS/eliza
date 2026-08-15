@@ -441,6 +441,11 @@ describe("getRuntimeDependencyEntries", () => {
     expect(names).toEqual(["alpha", "beta", "gamma"]);
     // first-writer wins: beta keeps its dependencies spec, not the optional one.
     expect(entries.find((e) => e.name === "beta")?.spec).toBe("1.0.0");
+    expect(entries.map(({ name, required }) => ({ name, required }))).toEqual([
+      { name: "alpha", required: false },
+      { name: "beta", required: true },
+      { name: "gamma", required: false },
+    ]);
   });
 
   it("returns [] for a manifest with no dependency fields", () => {

@@ -9,15 +9,16 @@ Issue #10720.
 ## The experience in one paragraph
 
 On launch the desktop app opens **chat first** — a chromeless, transparent,
-always-on-top bottom bar rendering only the floating chat overlay, **not** the
-full dashboard window. On macOS the app is **dockless by default** (#12184): the
-pill + menu-bar icon are the resting surface and there is **no Dock icon** until
-a full window opens. The pill passes clicks through its transparent regions
-(`passthrough`), joins every Space (`setVisibleOnAllWorkspaces`), and re-anchors
-to the primary display's work area when displays change. Onboarding runs
+always-on-top bottom bar rendering only a short white Flow-style handle,
+**not** the full dashboard window. Clicking the handle expands a centered
+translucent glass conversation above the screen edge. On macOS the app is
+**dockless by default** (#12184): the handle + menu-bar icon are the resting
+surface and there is **no Dock icon** until a full window opens. The transparent
+window joins every Space (`setVisibleOnAllWorkspaces`) and re-anchors to the
+primary display's work area when displays change. Onboarding runs
 **conversationally inside that chat** (pick where the agent runs → optional
 Cloud login → provider → tutorial), never a separate setup window. The full app
-is always one gesture away (tray popover launcher, tray/menu-bar "Views", deep
+is always one gesture away (native tray/menu-bar "Windows", deep
 link, or dock click), each of which opens the requested surface in its own
 window — and opening one reveals the Dock icon. This matches assistants like
 Claude Desktop / Wispr Flow: a resting chat surface, the rest of the app
@@ -63,7 +64,7 @@ The bottom-bar shell has no inline tabs, so every "open X" intent opens a
 dedicated window:
 
 - **Tray menu** (`tray-menu.ts` + `DesktopTrayRuntime`): fixed surfaces plus a
-  generated "Views" section (one entry per internal tool view); `tray-app-<slug>`
+  generated "Windows" section (one entry per internal tool view); `tray-app-<slug>`
   opens the view in its own window via `openDesktopAppWindow` (#10716).
 - **Menu bar** (`application-menu.ts`): `buildViewsMenu()` lists the same catalog
   as `apps:<slug>`, routed through `handleAppEntryMenuAction` (`index.ts`);
@@ -83,10 +84,11 @@ dedicated window:
 | Tray created | `shouldCreateDesktopTray()` | ON by default; opt out `ELIZA_DESKTOP_DISABLE_TRAY=1` |
 | Dockless (tray-first): pill at boot, Dock icon hidden at rest | `shouldStartTrayFirst()` | macOS **default ON** (#12184); kill switch `ELIZA_DESKTOP_TRAY_FIRST=0`. The pill window is still created at boot — it just isn't a "full window" for the Dock. |
 | Dock icon tracking | `DesktopManager.syncTrayFirstDock()` | Dock visible iff ≥1 full/managed window (dashboard/surface/settings/app) — driven by `setMainWindowFullWindow()` + `setManagedWindowsPresent()` (wired to `SurfaceWindowManager.onRegistryChanged`). The pill never counts. |
-| Tray popover (launcher + widget surface anchored at the tray icon) | `shouldEnableTrayPopover()` | macOS opt-in `ELIZA_DESKTOP_TRAY_POPOVER=1`; anchors under the real `Tray.getBounds()`, reuses one window across toggles, dismisses on blur (200ms tray-click guard). Hosts the `TrayLauncher` rows above the widget stack. |
+| Native tray menu | `shouldAttachTrayMenu()` | ON by default on macOS, Windows, and Linux. The native menu contains a **Windows** submenu plus **Quit**, so process exit works before the renderer bridge is ready. Emergency opt-out: `ELIZA_DESKTOP_TRAY_MENU=0`. |
+| Experimental renderer tray popover | `shouldEnableTrayPopover()` | OFF by default. Opt in with `ELIZA_DESKTOP_TRAY_POPOVER=1` together with `ELIZA_DESKTOP_TRAY_MENU=0`; it anchors under `Tray.getBounds()` and reuses one renderer window. |
 | Restore / create-if-missing / focus | `restoreWindow()` (`index.ts`) | unminimize + focus, or create the main window and attach RPC |
 | Show a surface + focus | `showMainSurface()` | `restoreWindow()` then `showWindow()` + tray-menu event to renderer |
-| Tray-icon click | `DesktopManager.trayClickHandler` | toggles the popover if configured, else `show + focus` (summon parity with the hotkey) |
+| Tray-icon click | native `Tray.setMenu()` | opens the OS-native dropdown; the white handle and global shortcut summon chat directly |
 | Dock click (macOS reopen) | `setupDockReopen()` | `restoreWindow()` |
 | Single instance | Electrobun native | second launch is routed to the running instance; deep links arrive via `shareTargetReceived` |
 
@@ -94,8 +96,11 @@ dedicated window:
 
 `ELIZA_DESKTOP_BOTTOM_BAR` · `ELIZA_DESKTOP_DISABLE_TRAY` / `ELIZA_DESKTOP_TRAY`
 · `ELIZA_DESKTOP_TRAY_FIRST` (macOS dockless; **default ON**, set `=0` to keep
-the Dock icon at rest) · `ELIZA_DESKTOP_TRAY_POPOVER` · kiosk shell mode. All
-default to the chat-first, dockless-on-macOS, tray-enabled experience above.
+the Dock icon at rest) · `ELIZA_DESKTOP_TRAY_MENU` (native taskbar/menu-bar
+dropdown; **default ON**) · `ELIZA_DESKTOP_TRAY_POPOVER` (experimental macOS
+renderer launcher; **default OFF**, opt in with `=1`) · kiosk shell
+mode. All default to the chat-first, dockless-on-macOS, tray-enabled experience
+above.
 
 ## Phase 2 fork capabilities and the version-bump path (#12184)
 
@@ -146,8 +151,8 @@ predates the fork's Rust port, so this is a coordinated upgrade):
 
 `desktop-experience-contract.test.ts` pins the defaults this doc promises
 (chat-first bottom bar ON, `?shellMode=chat-overlay` appended, tray ON,
-dockless/tray-first ON for macOS with a `=0` kill switch, popover opt-in, kiosk
-overrides). `desktop-deep-link-events.test.ts`
+dockless/tray-first and launcher popover ON for macOS with `=0` kill switches,
+and kiosk overrides). `desktop-deep-link-events.test.ts`
 covers the deep-link router. Full-shell e2e that drives the real Electrobun
 window via the `/api/dev/*` loopback (`dev/stack`, `dev/cursor-screenshot`,
 `dev/console-log`) requires a built desktop app and is captured by a human per

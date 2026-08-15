@@ -377,12 +377,12 @@ function PluginListView({
       return (
         <Button
           key={tag.id}
-          variant={isActive ? "default" : "outline"}
+          variant={isActive ? "default" : "surface"}
           size="sm"
           className={`min-h-11 gap-1.5 rounded-full px-3 text-xs-tight font-bold tracking-wide transition-all ${
             isActive
-              ? "border-accent bg-accent text-accent-fg hover:bg-accent/90"
-              : "border-border/50 bg-card/50 text-muted hover:border-accent/40 hover:text-txt"
+              ? "border-transparent bg-accent text-accent-fg hover:bg-accent-muted"
+              : "bg-card/50 text-muted hover:bg-card/80 hover:text-txt"
           }`}
           aria-pressed={isActive}
           onClick={() => setSubgroupFilter(tag.id)}

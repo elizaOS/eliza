@@ -1674,15 +1674,20 @@ export function useShellController(): ShellController {
     chatFirstTokenReceived,
   ]);
 
-  const phase: ShellPhase = !ready
-    ? "booting"
-    : recording || realtimeVoiceListening
+  // Opening the popup is independent of runtime readiness. The composer can
+  // already queue/send while the server warms, so keeping an opened shell in
+  // `booting` would make AssistantOverlay discard it even though `isOpen` is
+  // true. Reserve `booting` for the closed launcher state.
+  const phase: ShellPhase =
+    recording || realtimeVoiceListening
       ? "listening"
       : responding
         ? "responding"
-        : !isOpen
-          ? "idle"
-          : "summoned";
+        : isOpen
+          ? "summoned"
+          : ready
+            ? "idle"
+            : "booting";
 
   // Boot-progress token for the slow-boot escalation (#14040 sub-defect 3). It
   // advances whenever the readiness poll observes fresh progress while still
