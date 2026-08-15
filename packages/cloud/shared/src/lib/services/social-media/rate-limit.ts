@@ -1,4 +1,6 @@
-// Coordinates cloud service rate limit behavior behind route handlers.
+/**
+ * Coordinates cloud service rate-limit retries and typed exhaustion errors behind route handlers.
+ */
 import type { SocialPlatform } from "../../types/social-media";
 import { logger } from "../../utils/logger";
 
