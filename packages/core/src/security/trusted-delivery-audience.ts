@@ -210,12 +210,15 @@ async function filterRuntimeInternalParticipants(
 	participants: readonly UUID[],
 	verifyPersistedMarkers: boolean,
 ): Promise<UUID[]> {
+	if (!verifyPersistedMarkers) {
+		return [...participants];
+	}
 	const processLocalFiltered = participants.filter(
 		(participantId) =>
 			participantId === runtime.agentId ||
 			!isRuntimeManagedInternalActor(runtime, participantId),
 	);
-	if (!verifyPersistedMarkers || processLocalFiltered.length <= 2) {
+	if (processLocalFiltered.length <= 2) {
 		return processLocalFiltered;
 	}
 	const lookupFailures: unknown[] = [];
