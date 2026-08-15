@@ -502,7 +502,16 @@ describe("trajectory_steps dedicated table", () => {
       "test",
     );
     trajectory.steps[0]?.providerAccesses.push({
-      data: { payload: "x".repeat(1_100_000) },
+      // Each string is truncated independently before the record-wide budget
+      // is applied. Twenty fields ensure optional data really exhausts that
+      // global budget; restoring data-first normalization must then starve the
+      // required provider fields and make this SQL round trip fail.
+      data: Object.fromEntries(
+        Array.from({ length: 20 }, (_, index) => [
+          `payload-${index}`,
+          "x".repeat(70_000),
+        ]),
+      ),
       providerId: "provider-budget",
       providerName: "KNOWLEDGE",
       timestamp: 1_700_000_000_000,
