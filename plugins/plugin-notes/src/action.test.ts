@@ -95,6 +95,36 @@ describe("NOTES operation parsing", () => {
     expect(result.text).toContain("wifi is on the fridge");
   });
 
+  it("keeps a topic-scoped read from exposing unrelated notes", async () => {
+    const runtime = await harness();
+    await run(runtime, {
+      action: "create",
+      content: "the plumber comes thursday morning",
+    });
+    await run(runtime, {
+      action: "create",
+      content: "spare key under the mat",
+    });
+
+    const match = await run(runtime, { action: "list", content: "PLUMBER" });
+    expect(match.text).toContain("plumber comes thursday");
+    expect(match.text).not.toContain("spare key");
+    expect(match.data).toMatchObject({
+      count: 1,
+      total: 2,
+      filterApplied: true,
+    });
+
+    const absent = await run(runtime, { action: "list", query: "dentist" });
+    expect(absent.text).toBe("you don't have any matching notes.");
+    expect(absent.text).not.toContain("spare key");
+    expect(absent.data).toMatchObject({
+      count: 0,
+      total: 2,
+      filterApplied: true,
+    });
+  });
+
   it("lets the owner create, search/list, update, and delete in one store", async () => {
     const runtime = await harness();
     const created = await run(runtime, {

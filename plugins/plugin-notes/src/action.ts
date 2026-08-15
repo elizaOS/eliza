@@ -113,11 +113,11 @@ export const notesAction: Action = {
     "UPDATE_NOTE",
   ],
   description:
-    "Durable notes the user can write and read back. action=create writes a note from one content field; action=list reads them all; action=update replaces one found by its text; action=delete removes one found by its text. These are the same notes shown in the Notes view.",
+    "Durable notes the user can write and read back. action=create writes a note from one content field; action=list reads them, narrowed by content when supplied; action=update replaces one found by its text; action=delete removes one found by its text. These are the same notes shown in the Notes view.",
   descriptionCompressed:
     "notes: create (write a note / jot down / write down), list (read/search/find any note), update, delete — same store as the Notes view",
   routingHint:
-    "writing something down for later with no time attached ('make a note', 'note to self', 'write down that …', 'jot this down', 'remember that …') -> NOTES action=create. ANY read over the user's notes -> NOTES action=list, then answer from that list. This covers searching and lookup as much as listing ('search my notes for X', 'find my note about X', 'do i have a note on X', 'what did my note say about X') — the shape is a read scoped to MY NOTES, not a fixed set of phrasings. A notes search is NEVER a document search: never route it to SEARCH_DOCUMENTS, DOCUMENT, FILES or DATABASE, which do not index notes and will answer 'nothing found' for a note that exists. REMOVING one ('delete the note about X', 'forget the note about X', 'remove my note on X') -> NOTES action=delete with content=the identifying text. CHANGING one ('change the note about X to Y', 'update my note about X') -> NOTES action=update with content=the existing text and body=the replacement. Deleting and updating are NOT reads: never answer a removal or change request with action=list. RECALLING A FACT the user once asked you to note ('who is alex again', 'what did i say about X') is answered from the SAVED_NOTES context block, which is the same store; when that block reports notes it did not show, call action=list before answering. A memory search that returns nothing is not evidence a note does not exist — MEMORY does not index notes. A note is NOT a todo and NOT a calendar event: anything with a date or time block -> CALENDAR, anything that should ping the user at a time -> TRIGGER. Never hand-write SQL through DATABASE to store or read a note.",
+    "writing something down for later with no time attached ('make a note', 'note to self', 'write down that …', 'jot this down', 'remember that …') -> NOTES action=create. ANY read over the user's notes -> NOTES action=list. For a specific topic ('search my notes for X', 'find my note about X', 'do i have a note on X', 'what did my note say about X'), pass content=X so unrelated personal notes are not exposed; omit content only when the owner asks for every note. A notes search is NEVER a document search: never route it to SEARCH_DOCUMENTS, DOCUMENT, FILES or DATABASE, which do not index notes and will answer 'nothing found' for a note that exists. REMOVING one ('delete the note about X', 'forget the note about X', 'remove my note on X') -> NOTES action=delete with content=the identifying text. CHANGING one ('change the note about X to Y', 'update my note about X') -> NOTES action=update with content=the existing text and body=the replacement. Deleting and updating are NOT reads: never answer a removal or change request with action=list. RECALLING A FACT the user once asked you to note ('who is alex again', 'what did i say about X') is answered from the SAVED_NOTES context block, which is the same store; when that block reports notes it did not show, call action=list before answering. A memory search that returns nothing is not evidence a note does not exist — MEMORY does not index notes. A note is NOT a todo and NOT a calendar event: anything with a date or time block -> CALENDAR, anything that should ping the user at a time -> TRIGGER. Never hand-write SQL through DATABASE to store or read a note.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
@@ -148,12 +148,32 @@ export const notesAction: Action = {
 
     if (op === "list") {
       const notes = service.listNotes();
-      const text =
-        notes.length === 0
+      const topic =
+        readString(params.content) ??
+        readString(params.query) ??
+        readString(params.text);
+      const normalizedTopic = topic?.toLocaleLowerCase();
+      const matches = normalizedTopic
+        ? notes.filter((note) =>
+            `${note.title}\n${note.body}`
+              .toLocaleLowerCase()
+              .includes(normalizedTopic),
+          )
+        : notes;
+      const text = topic
+        ? matches.length === 0
+          ? "you don't have any matching notes."
+          : `your matching notes:\n${matches.map((note) => `- ${describe(note)}`).join("\n")}`
+        : notes.length === 0
           ? "you don't have any notes yet."
           : `your notes:\n${notes.map((n) => `- ${describe(n)}`).join("\n")}`;
       await deliver(text);
-      return committed(text, { op, count: notes.length });
+      return committed(text, {
+        op,
+        count: matches.length,
+        total: notes.length,
+        filterApplied: topic !== undefined,
+      });
     }
 
     // ONE user-authored field, per the package contract: the label is derived
@@ -211,7 +231,7 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "The note's text as the user said it. Required for create/update/delete; on update and delete it is unique text identifying the existing note.",
+        "The note's text as the user said it. Required for create/update/delete; on update and delete it identifies the existing note. On list, pass the requested topic to return only matching notes.",
       required: false,
       schema: { type: "string", minLength: 1 },
     },
