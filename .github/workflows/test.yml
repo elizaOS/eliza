@@ -495,9 +495,7 @@ jobs:
               *) exit 1 ;;
             esac
             echo "agent-state-gate=ok"
-            sed -n 's/=.*//p' /opt/eliza/cloud/.env.local | grep -E 'SERVICE_KEY|WAIFU' | sort || true
-            sed -n 's/^WAIFU_SERVICE_KEY=//p' /opt/eliza/cloud/.env.local | tail -1 > /tmp/eliza-x-service-key
-            IFS= read -r service_key < /tmp/eliza-x-service-key
+            service_key="$ELIZACLOUD_API_KEY"
             test -n "${service_key//[[:space:]]/}"
             response_file=/tmp/eliza-x-restart-response.json
             curl --silent --show-error --max-time 30 \
