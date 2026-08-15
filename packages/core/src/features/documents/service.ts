@@ -1154,19 +1154,46 @@ export class DocumentService extends Service {
 				fragmentCount = fragmentMemories.length;
 			} else {
 				await this.runtime.createMemory(memoryWithScope, DOCUMENTS_TABLE);
-				fragmentCount = await processFragmentsSynchronously({
-					runtime: this.runtime,
-					documentId: clientDocumentId,
-					fullDocumentText: extractedText,
-					agentId,
-					contentType,
-					roomId: roomId || agentId,
-					entityId: targetEntityId,
-					worldId: worldId || agentId,
-					documentTitle: originalFilename,
-					documentMetadata:
-						(documentMemory.metadata as Record<string, unknown>) ?? undefined,
-				});
+				try {
+					fragmentCount = await processFragmentsSynchronously({
+						runtime: this.runtime,
+						documentId: clientDocumentId,
+						fullDocumentText: extractedText,
+						agentId,
+						contentType,
+						roomId: roomId || agentId,
+						entityId: targetEntityId,
+						worldId: worldId || agentId,
+						documentTitle: originalFilename,
+						documentMetadata:
+							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
+					});
+				} catch (fragmentError) {
+					// error-policy:J2 The parent DOCUMENT row was already written; an
+					// embed-time failure here would otherwise leave an orphaned
+					// zero-fragment document visible in lists but unsearchable
+					// (#16021). Compensate by removing the parent (and any partially
+					// persisted fragments) before rethrowing the original failure,
+					// which the outer catch wraps with document identity.
+					await this.compensateFailedIngestion(clientDocumentId);
+					throw fragmentError;
+				}
+				// extractedText is verified non-empty above, so the splitter always
+				// yields at least one chunk — zero saved fragments means every chunk
+				// failed (typically an embed-time provider failure that
+				// processAndSaveFragments counts rather than throws). Surface that as
+				// the failure it is instead of a healthy-looking zero-fragment
+				// document (#16021).
+				if (fragmentCount === 0) {
+					await this.compensateFailedIngestion(clientDocumentId);
+					throw new ElizaError(
+						`All fragments failed processing for ${originalFilename}`,
+						{
+							code: "DOCUMENT_EMBED_FAILED",
+							context: { originalFilename, contentType, clientDocumentId },
+						},
+					);
+				}
 			}
 
 			logger.debug(
@@ -1186,6 +1213,48 @@ export class DocumentService extends Service {
 				context: { originalFilename, contentType },
 				cause: error,
 			});
+		}
+	}
+
+	/**
+	 * Best-effort rollback for a create-path ingestion that failed after the
+	 * parent DOCUMENT row was written: delete any partially persisted fragments,
+	 * then the parent row itself, so failed adds are invisible instead of
+	 * surfacing as zero-fragment orphans (#16021). Cleanup failures are reported
+	 * but never mask the original ingestion error the caller is rethrowing.
+	 */
+	private async compensateFailedIngestion(documentId: UUID): Promise<void> {
+		try {
+			const fragments = await this.runtime.getMemories({
+				tableName: DOCUMENT_FRAGMENTS_TABLE,
+				agentId: this.runtime.agentId,
+				count: 10_000,
+			});
+			for (const fragment of fragments) {
+				if (
+					fragment.id &&
+					(fragment.metadata as DocumentFragmentMemoryMetadata | undefined)
+						?.documentId === documentId
+				) {
+					await this.runtime.deleteMemory(fragment.id);
+				}
+			}
+			await this.runtime.deleteMemory(documentId);
+			logger.warn(
+				`DocumentService: rolled back parent document ${documentId} after fragment processing failed`,
+			);
+		} catch (cleanupError) {
+			// error-policy:J7 Compensation is diagnostic cleanup — the original
+			// fragment-processing failure is the error that must propagate; a
+			// failed rollback degrades to the pre-existing self-heal on retry
+			// (checkExistingDocument deletes zero-fragment stubs).
+			this.runtime.reportError(
+				"DocumentService.compensateFailedIngestion",
+				cleanupError instanceof Error
+					? cleanupError
+					: new Error(String(cleanupError)),
+				{ documentId },
+			);
 		}
 	}
 
