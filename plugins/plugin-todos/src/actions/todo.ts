@@ -1,27 +1,19 @@
 /**
- * TODO umbrella action.
- *
- * ABSORPTION NOTE — OWNER_TODOS from plugin-lifeops is collapsed into this
- * existing action. The umbrella already covers list/create/update/complete/
- * cancel/delete/write/clear, which is a superset of what the owner-facing
- * surface needed; no new op is required.
- *
- * TODO(migrate: plugins/plugin-lifeops/src/actions/owner-surfaces.ts
- *   ownerTodosAction): port any owner-only formatting (e.g. lane-based
- *   grouping by Today/Upcoming/Someday, due-date defaults, recap rendering)
- *   into the `list` op here. After migration, the OWNER_TODOS action and
- *   its source can be deleted from plugin-lifeops.
+ * Planner-facing Todo umbrella shared by Node and Worker hosts. Every read and
+ * mutation uses the injected tenant-scoped store, while durable mutations bind
+ * their exact user-facing confirmation to an applied effect receipt.
  */
 
 import type {
   Action,
   ActionResult,
+  EffectReceipt,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 
 import {
   type CreateTodoInput,
@@ -52,6 +44,7 @@ interface TodoActionParameters {
   activeForm?: unknown;
   status?: unknown;
   parentTodoId?: unknown;
+  detachParent?: unknown;
   todos?: unknown;
   includeCompleted?: unknown;
   limit?: unknown;
@@ -211,6 +204,74 @@ async function emit(
   }
 }
 
+type TodoMutationAction = Exclude<TodoActionName, "list">;
+
+interface TodoMutationResult {
+  action: TodoMutationAction;
+  callback: HandlerCallback | undefined;
+  data: Record<string, unknown>;
+  resource: { kind: string; id: string; version?: string };
+  text: string;
+}
+
+async function appliedMutationResult({
+  action,
+  callback,
+  data,
+  resource,
+  text,
+}: TodoMutationResult): Promise<ActionResult> {
+  const observedAt = new Date().toISOString();
+  const receiptId = `todos:${action}:${resource.id}:${observedAt}`;
+  const receipt: EffectReceipt = {
+    receiptId,
+    operation: `todos.${action}`,
+    resource,
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    outcome: "applied",
+    commit: {
+      kind: "durable",
+      id: `todos:${action}:${resource.id}:${resource.version ?? observedAt}`,
+      committedAt: observedAt,
+    },
+  };
+  await callback?.({
+    text,
+    source: "todos",
+    action: "TODO",
+    agentVoiced: true,
+  });
+  return {
+    success: true,
+    text,
+    userFacingText: text,
+    verifiedUserFacing: true,
+    turnComplete: true,
+    data: { actionName: "TODO", ...data },
+    effectReceipts: [receipt],
+    userFacingEffectReceiptIds: [receiptId],
+  };
+}
+
+function sameTodoListState(before: Todo[], after: Todo[]): boolean {
+  if (before.length !== after.length) return false;
+  const beforeById = new Map(before.map((todo) => [todo.id, todo]));
+  return after.every((todo) => {
+    const previous = beforeById.get(todo.id);
+    return (
+      previous !== undefined &&
+      previous.content === todo.content &&
+      previous.activeForm === todo.activeForm &&
+      previous.status === todo.status &&
+      previous.parentTodoId === todo.parentTodoId &&
+      previous.roomId === todo.roomId &&
+      previous.worldId === todo.worldId
+    );
+  });
+}
+
 interface ActionHandlerArgs {
   service: TodoStore;
   scope: ScopeContext;
@@ -247,22 +308,31 @@ async function actionWrite({
     else pending++;
   }
   const text = renderMarkdown(result.after);
-  await emit(callback, text);
-  return {
-    success: true,
-    text,
-    data: {
-      action: "write" as const,
-      op: "write" as const,
-      entityId: scope.entityId,
-      todos: result.after,
-      oldTodos: result.before,
-      pendingCount: pending,
-      inProgressCount: inProgress,
-      completedCount: completed,
-      cancelledCount: cancelled,
-    },
+  const data = {
+    action: "write" as const,
+    op: "write" as const,
+    entityId: scope.entityId,
+    todos: result.after,
+    oldTodos: result.before,
+    pendingCount: pending,
+    inProgressCount: inProgress,
+    completedCount: completed,
+    cancelledCount: cancelled,
   };
+  if (sameTodoListState(result.before, result.after)) {
+    await emit(callback, text);
+    return { success: true, text, data: { actionName: "TODO", ...data } };
+  }
+  return appliedMutationResult({
+    action: "write",
+    callback,
+    text,
+    resource: {
+      kind: "todos.list",
+      id: `${scope.agentId}:${scope.entityId}`,
+    },
+    data,
+  });
 }
 
 async function actionCreate({
@@ -291,17 +361,22 @@ async function actionCreate({
   if (parentTodoId !== undefined) input.parentTodoId = parentTodoId;
   const todo = await service.create(input);
   const text = `Created: ${checkboxFor(todo.status)} ${todo.content}`;
-  await emit(callback, text);
-  return {
-    success: true,
+  return appliedMutationResult({
+    action: "create",
+    callback,
     text,
+    resource: {
+      kind: "todos.todo",
+      id: todo.id,
+      version: todo.updatedAt.toISOString(),
+    },
     data: {
       action: "create" as const,
       op: "create" as const,
       entityId: scope.entityId,
       todo,
     },
-  };
+  });
 }
 
 async function actionUpdate({
@@ -325,8 +400,19 @@ async function actionUpdate({
   if (activeForm !== undefined) patch.activeForm = activeForm;
   const status = readStatus(params.status);
   if (status !== undefined) patch.status = status;
-  const parentTodoId = readString(params.parentTodoId);
-  if (parentTodoId !== undefined) patch.parentTodoId = parentTodoId;
+  const detachParent = readBoolean(params.detachParent) ?? false;
+  if (detachParent && Object.hasOwn(params, "parentTodoId")) {
+    return failure(
+      "invalid_param",
+      "detachParent and parentTodoId cannot be used together",
+    );
+  }
+  if (detachParent) {
+    patch.parentTodoId = null;
+  } else if (Object.hasOwn(params, "parentTodoId")) {
+    const parentTodoId = readString(params.parentTodoId);
+    if (parentTodoId !== undefined) patch.parentTodoId = parentTodoId;
+  }
   if (Object.keys(patch).length === 0) {
     return failure(
       "missing_param",
@@ -338,28 +424,33 @@ async function actionUpdate({
     return failure("not_found", `todo ${id} not found`);
   }
   const text = `Updated: ${checkboxFor(todo.status)} ${todo.content}`;
-  await emit(callback, text);
-  return {
-    success: true,
+  return appliedMutationResult({
+    action: "update",
+    callback,
     text,
+    resource: {
+      kind: "todos.todo",
+      id: todo.id,
+      version: todo.updatedAt.toISOString(),
+    },
     data: {
       action: "update" as const,
       op: "update" as const,
       entityId: scope.entityId,
       todo,
     },
-  };
+  });
 }
 
 async function actionSetStatus(
   args: ActionHandlerArgs,
   status: TodoStatus,
-  verb: string,
+  action: "complete" | "cancel",
 ): Promise<ActionResult> {
   const { service, scope, params, callback } = args;
   const id = readString(params.id);
   if (!id) {
-    return failure("missing_param", `id is required for action=${verb}`);
+    return failure("missing_param", `id is required for action=${action}`);
   }
   const existing = await service.get(todoScope(scope), id);
   if (!existing || !isOwnedByScope(existing, scope)) {
@@ -369,13 +460,18 @@ async function actionSetStatus(
   if (!todo) {
     return failure("not_found", `todo ${id} not found`);
   }
-  const text = `${verb}: ${checkboxFor(todo.status)} ${todo.content}`;
-  await emit(callback, text);
-  return {
-    success: true,
+  const text = `${action}: ${checkboxFor(todo.status)} ${todo.content}`;
+  return appliedMutationResult({
+    action,
+    callback,
     text,
-    data: { action: verb, op: verb, entityId: scope.entityId, todo },
-  };
+    resource: {
+      kind: "todos.todo",
+      id: todo.id,
+      version: todo.updatedAt.toISOString(),
+    },
+    data: { action, op: action, entityId: scope.entityId, todo },
+  });
 }
 
 async function actionDelete({
@@ -397,17 +493,18 @@ async function actionDelete({
     return failure("not_found", `todo ${id} not found`);
   }
   const text = `Deleted: ${existing.content}`;
-  await emit(callback, text);
-  return {
-    success: true,
+  return appliedMutationResult({
+    action: "delete",
+    callback,
     text,
+    resource: { kind: "todos.todo", id },
     data: {
       action: "delete" as const,
       op: "delete" as const,
       entityId: scope.entityId,
       id,
     },
-  };
+  });
 }
 
 async function actionList({
@@ -438,6 +535,7 @@ async function actionList({
     success: true,
     text,
     data: {
+      actionName: "TODO",
       action: "list" as const,
       op: "list" as const,
       entityId: scope.entityId,
@@ -458,17 +556,26 @@ async function actionClear({
   if (scope.roomId) filter.roomId = scope.roomId;
   const count = await service.clear(filter);
   const text = `Cleared ${count} todo${count === 1 ? "" : "s"}.`;
-  await emit(callback, text);
-  return {
-    success: true,
-    text,
-    data: {
-      action: "clear" as const,
-      op: "clear" as const,
-      entityId: scope.entityId,
-      count,
-    },
+  const data = {
+    action: "clear" as const,
+    op: "clear" as const,
+    entityId: scope.entityId,
+    count,
   };
+  if (count === 0) {
+    await emit(callback, text);
+    return { success: true, text, data: { actionName: "TODO", ...data } };
+  }
+  return appliedMutationResult({
+    action: "clear",
+    callback,
+    text,
+    resource: {
+      kind: "todos.list",
+      id: `${scope.agentId}:${scope.entityId}`,
+    },
+    data,
+  });
 }
 
 export interface TodoActionOptions {
@@ -563,6 +670,12 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
         description: "Parent todo id for sub-tasks (create/update).",
         required: false,
         schema: { type: "string" as const },
+      },
+      {
+        name: "detachParent",
+        description: "Set true on update to make this todo a root item.",
+        required: false,
+        schema: { type: "boolean" as const },
       },
       {
         name: "todos",

@@ -8,7 +8,7 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 
 import { isTodoStore, type TodoStore } from "../store.js";
 import { TODOS_CONTEXTS, TODOS_SERVICE_TYPE, type Todo } from "../types.js";

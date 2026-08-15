@@ -1,9 +1,11 @@
 /** Worker-safe Todos plugin bound to host-owned durable storage. */
 
-import type { Plugin } from "@elizaos/core";
+import type { Plugin } from "@elizaos/core/edge";
 import { createTodoAction } from "./actions/todo.js";
 import { createCurrentTodosProvider } from "./providers/current-todos.js";
 import type { TodoStore } from "./store.js";
+
+export { createTodosSqlStore } from "./sql-store.js";
 
 export const TODOS_EDGE_COMPATIBILITY = {
   target: "edge",
@@ -46,3 +48,4 @@ export type {
   UpdateTodoInput,
   WriteTodoListInput,
 } from "./store.js";
+export type { Todo } from "./types.js";

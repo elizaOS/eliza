@@ -172,11 +172,13 @@ class FakeTodosService {
     }>;
   }): Promise<{ before: StoredTodo[]; after: StoredTodo[] }> {
     this.throwIf("writeList");
-    const before = await this.list({
-      entityId: args.entityId,
-      agentId: args.agentId,
-      roomId: args.roomId,
-    });
+    const before = (
+      await this.list({
+        entityId: args.entityId,
+        agentId: args.agentId,
+        roomId: args.roomId,
+      })
+    ).map((todo) => ({ ...todo }));
     const beforeById = new Map(before.map((t) => [t.id, t]));
     const keep = new Set<string>();
     const after: StoredTodo[] = [];
@@ -267,6 +269,34 @@ async function invoke(
   return result;
 }
 
+function expectAppliedMutation(
+  result: ActionResult,
+  action: string,
+  resourceId?: string,
+): void {
+  expect(result.success).toBe(true);
+  expect(result.verifiedUserFacing).toBe(true);
+  expect(result.userFacingText).toBe(result.text);
+  expect(result.turnComplete).toBe(true);
+  expect(result.data).toMatchObject({ actionName: "TODO", action, op: action });
+  expect(result.effectReceipts).toHaveLength(1);
+  const receipt = result.effectReceipts?.[0];
+  expect(receipt).toMatchObject({
+    operation: `todos.${action}`,
+    outcome: "applied",
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    ...(resourceId ? { resource: { id: resourceId } } : {}),
+  });
+  if (receipt?.outcome !== "applied") {
+    throw new Error("Expected one applied Todo mutation receipt.");
+  }
+  expect(receipt.commit.kind).toBe("durable");
+  expect(receipt.commit.committedAt).toBe(receipt.observedAt);
+  expect(Number.isNaN(Date.parse(receipt.observedAt))).toBe(false);
+  expect(result.userFacingEffectReceiptIds).toEqual([receipt.receiptId]);
+}
+
 describe("TODO action", () => {
   let service: FakeTodosService;
   let runtime: IAgentRuntime;
@@ -278,6 +308,70 @@ describe("TODO action", () => {
 
   afterEach(() => {
     delete process.env.ELIZA_PARENT_TRAJECTORY_STEP_ID;
+  });
+
+  describe("verified mutation receipts", () => {
+    it("binds every durable mutation to its exact applied receipt", async () => {
+      const write = await invoke(runtime, {
+        action: "write",
+        todos: [{ content: "written", status: "pending" }],
+      });
+      expectAppliedMutation(write, "write", `${AGENT}:${ENTITY}`);
+
+      const create = await invoke(runtime, {
+        action: "create",
+        content: "created",
+      });
+      const todoId = service.rows.at(-1)?.id;
+      if (!todoId) throw new Error("Create must return a durable todo id.");
+      expectAppliedMutation(create, "create", todoId);
+
+      expectAppliedMutation(
+        await invoke(runtime, {
+          action: "update",
+          id: todoId,
+          content: "updated",
+        }),
+        "update",
+        todoId,
+      );
+      expectAppliedMutation(
+        await invoke(runtime, { action: "complete", id: todoId }),
+        "complete",
+        todoId,
+      );
+      expectAppliedMutation(
+        await invoke(runtime, { action: "cancel", id: todoId }),
+        "cancel",
+        todoId,
+      );
+      expectAppliedMutation(
+        await invoke(runtime, { action: "delete", id: todoId }),
+        "delete",
+        todoId,
+      );
+      expectAppliedMutation(
+        await invoke(runtime, { action: "clear" }),
+        "clear",
+        `${AGENT}:${ENTITY}`,
+      );
+    });
+
+    it("keeps reads and zero-change clears receipt-free", async () => {
+      const list = await invoke(runtime, { action: "list" });
+      expect(list.data).toMatchObject({ actionName: "TODO", action: "list" });
+      expect(list.effectReceipts).toBeUndefined();
+      expect(list.userFacingEffectReceiptIds).toBeUndefined();
+
+      const clear = await invoke(runtime, { action: "clear" });
+      expect(clear.data).toMatchObject({
+        actionName: "TODO",
+        action: "clear",
+        count: 0,
+      });
+      expect(clear.effectReceipts).toBeUndefined();
+      expect(clear.verifiedUserFacing).toBeUndefined();
+    });
   });
 
   describe("action=write", () => {
@@ -529,6 +623,27 @@ describe("TODO action", () => {
       expect(result.success).toBe(true);
       expect(service.rows[0]?.status).toBe("pending");
       expect(service.rows[0]?.completedAt).toBeNull();
+    });
+
+    it("detaches a todo from its parent when detachParent is true", async () => {
+      await invoke(runtime, { action: "create", content: "parent" });
+      const parentId = service.rows[0]?.id;
+      await invoke(runtime, {
+        action: "create",
+        content: "child",
+        parentTodoId: parentId,
+      });
+      const childId = service.rows[1]?.id;
+      expect(service.rows[1]?.parentTodoId).toBe(parentId);
+
+      const result = await invoke(runtime, {
+        action: "update",
+        id: childId,
+        detachParent: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(service.rows[1]?.parentTodoId).toBeNull();
     });
   });
 

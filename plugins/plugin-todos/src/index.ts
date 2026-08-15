@@ -52,6 +52,7 @@ export { todosRuntimePlugin } from "./plugin.js";
 export { currentTodosProvider } from "./providers/current-todos.js";
 export {
   type CreateTodoInput,
+  createTodosSqlStore,
   getTodosService,
   type TodoFilter,
   TodosService,

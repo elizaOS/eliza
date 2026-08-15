@@ -390,4 +390,138 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
       (await service.get(scope(entityId), child.id))?.parentTodoId,
     ).toBeNull();
   });
+
+  it("keeps completedAt stable while an already-completed todo changes", async () => {
+    const entityId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" as UUID;
+    const created = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      content: "Complete once",
+      status: "completed",
+    });
+    const firstCompletedAt = created.completedAt;
+
+    const repeated = await service.update(scope(entityId), created.id, {
+      status: "completed",
+      content: "Still complete",
+    });
+    expect(repeated?.completedAt).toEqual(firstCompletedAt);
+    const { after } = await service.writeList({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: null,
+      worldId: null,
+      parentTrajectoryStepId: null,
+      todos: [{ id: created.id, content: "Edited again", status: "completed" }],
+    });
+    expect(after[0]?.completedAt).toEqual(firstCompletedAt);
+  });
+
+  it("detaches cross-room children when room-scoped clear removes their parent", async () => {
+    const entityId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as UUID;
+    const parent = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: "11111111-2222-4333-8444-555555555555",
+      content: "Room A parent",
+    });
+    const child = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: "66666666-7777-4888-8999-aaaaaaaaaaaa",
+      content: "Room B child",
+      parentTodoId: parent.id,
+    });
+
+    expect(
+      await service.clear({
+        agentId: runtime.agentId,
+        entityId,
+        roomId: "11111111-2222-4333-8444-555555555555",
+      }),
+    ).toBe(1);
+    expect(
+      (await service.get(scope(entityId), child.id))?.parentTodoId,
+    ).toBeNull();
+  });
+
+  it("detaches cross-room children when room-scoped writeList removes their parent", async () => {
+    const entityId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd" as UUID;
+    const parent = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: "11111111-2222-4333-8444-555555555555",
+      content: "Room A parent",
+    });
+    const child = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: "66666666-7777-4888-8999-aaaaaaaaaaaa",
+      content: "Room B child",
+      parentTodoId: parent.id,
+    });
+
+    await service.writeList({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: "11111111-2222-4333-8444-555555555555",
+      worldId: null,
+      parentTrajectoryStepId: null,
+      todos: [],
+    });
+    expect(
+      (await service.get(scope(entityId), child.id))?.parentTodoId,
+    ).toBeNull();
+  });
+
+  it("serializes a parent clear against concurrent child creation", async () => {
+    const entityId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" as UUID;
+    const parent = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: "11111111-2222-4333-8444-555555555555",
+      content: "Concurrent parent",
+    });
+
+    const [clearResult, createResult] = await Promise.allSettled([
+      service.clear({
+        agentId: runtime.agentId,
+        entityId,
+        roomId: "11111111-2222-4333-8444-555555555555",
+      }),
+      service.create({
+        entityId,
+        agentId: runtime.agentId,
+        roomId: "66666666-7777-4888-8999-aaaaaaaaaaaa",
+        content: "Concurrent child",
+        parentTodoId: parent.id,
+      }),
+    ]);
+
+    expect(clearResult.status).toBe("fulfilled");
+    if (createResult.status === "fulfilled") {
+      expect(
+        (await service.get(scope(entityId), createResult.value.id))
+          ?.parentTodoId,
+      ).toBeNull();
+    } else {
+      expect(createResult.reason).toMatchObject({
+        code: TODO_INVALID_PARENT_ERROR_CODE,
+      });
+    }
+  });
+
+  it("never treats an invalid empty room id as an unscoped clear", async () => {
+    const entityId = "ffffffff-ffff-4fff-8fff-ffffffffffff" as UUID;
+    const todo = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      content: "Keep this todo",
+    });
+
+    await expect(
+      service.clear({ agentId: runtime.agentId, entityId, roomId: "" }),
+    ).rejects.toThrow();
+    expect(await service.get(scope(entityId), todo.id)).not.toBeNull();
+  });
 });

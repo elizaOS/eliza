@@ -29,6 +29,7 @@
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core/edge": ["../../packages/core/src/index.edge.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/logger": ["../../packages/logger/src/index.ts"],
       "@elizaos/logger/*": ["../../packages/logger/src/*"],
