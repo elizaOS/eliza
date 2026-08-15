@@ -109,6 +109,21 @@ export const agentSandboxes = pgTable(
     lifecycle_execution_generation: uuid("lifecycle_execution_generation"),
     deletion_attempt_id: uuid("deletion_attempt_id"),
     deletion_started_at: timestamp("deletion_started_at", { withTimezone: true }),
+    /** Lifecycle state captured when a reversible deletion generation begins. */
+    deletion_previous_status: text("deletion_previous_status").$type<AgentSandboxStatus>(),
+    /** Billing state captured with `deletion_previous_status`; restored atomically on cancel. */
+    deletion_previous_billing_status: text(
+      "deletion_previous_billing_status",
+    ).$type<AgentBillingStatus>(),
+    /** Billing-warning receipt paired with the prior billing state. */
+    deletion_previous_shutdown_warning_sent_at: timestamp(
+      "deletion_previous_shutdown_warning_sent_at",
+      { withTimezone: true },
+    ),
+    /** Scheduled billing shutdown receipt paired with the prior billing state. */
+    deletion_previous_scheduled_shutdown_at: timestamp("deletion_previous_scheduled_shutdown_at", {
+      withTimezone: true,
+    }),
     /**
      * Whether THIS deletion generation still owns one counted slot in
      * `docker_nodes.allocated_count`, so the slot is released exactly once no
