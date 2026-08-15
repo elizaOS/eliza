@@ -536,17 +536,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
       case "start-of-turn": {
-        // Ink's semantic turn detector is the earliest reliable signal that
-        // the caller has begun a new utterance. Stop current audio immediately
-        // so Eliza never talks over the caller while transcription continues.
+        // Speech-start alone is not enough to cancel playback: phone echo and
+        // line noise can trigger Ink before it has recognized any caller words.
+        // Wait for a transcript update/final below, then interrupt immediately.
         this.resetSttPartialDelivery();
         this.activeSttTurn = true;
-        const responseActive = Boolean(this.currentVoiceTurnId);
-        this.interrupt("acoustic");
-        // A transport such as Twilio can still be playing audio it buffered
-        // before TTS reported completion. There is no active turn to emit an
-        // `interrupted` frame in that state, so flush the transport directly.
-        if (!responseActive) this.config.downlink.clearAudio?.();
         this.state = "transcribing";
         break;
       }
@@ -671,10 +665,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   /** Cancel an active response only after Ink has produced caller words. */
   private interruptForConfirmedSpeech(transcript: string): void {
-    if (!this.currentVoiceTurnId || !SPOKEN_TRANSCRIPT_RE.test(transcript)) {
-      return;
-    }
-    this.interrupt("acoustic");
+    if (!SPOKEN_TRANSCRIPT_RE.test(transcript)) return;
+    if (this.currentVoiceTurnId) this.interrupt("acoustic");
+    else this.config.downlink.clearAudio?.();
     this.state = "transcribing";
   }
 

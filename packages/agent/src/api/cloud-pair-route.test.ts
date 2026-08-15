@@ -466,7 +466,7 @@ describe("handleStandaloneCloudPairRoute", () => {
                   { once: true },
                 );
               }),
-          } as Response);
+          } as unknown as Response);
         }),
       );
 

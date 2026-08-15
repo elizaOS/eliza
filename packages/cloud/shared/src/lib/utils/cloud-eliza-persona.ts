@@ -45,11 +45,19 @@ export const CLOUD_RECALL_EXAMPLE: { user: string; content: { text: string } }[]
   { user: "{{agentName}}", content: { text: RECALL_REPLY } },
 ];
 
-/** Adapts preset speaker tokens to the runtime/character-row message shape. */
-export function toNamedMessageExamples(
-  groups: readonly (readonly { user: string; content: { text: string } }[])[],
+interface PresetTurn {
+  user: string;
+  content: { text: string };
+}
+
+/**
+ * Projects preset speaker keys into the name-keyed character contract used by
+ * Cloud persistence and the hosted runtime loader.
+ */
+export function toCloudCharacterMessageExamples(
+  groups: readonly (readonly PresetTurn[])[],
   agentName: string,
-): { name: string; content: { text: string } }[][] {
+): Array<Array<{ name: string; content: { text: string } }>> {
   return groups.map((group) =>
     group.map((turn) => ({
       name:
@@ -58,7 +66,7 @@ export function toNamedMessageExamples(
           : turn.user === "{{user1}}"
             ? "{{name1}}"
             : turn.user,
-      content: { text: turn.content.text },
+      content: { ...turn.content },
     })),
   );
 }
@@ -70,7 +78,6 @@ export function toNamedMessageExamples(
 export function buildCloudElizaPersona() {
   const preset = getDefaultStylePreset();
   return {
-    id: preset.id,
     name: preset.name,
     system: `${preset.system}${CLOUD_MEMORY_SYSTEM}`,
     bio: [CLOUD_MEMORY_BIO, ...preset.bio],

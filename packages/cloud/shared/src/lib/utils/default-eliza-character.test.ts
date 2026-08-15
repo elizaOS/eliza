@@ -89,6 +89,9 @@ describe("getDefaultElizaCharacterData", () => {
     expect(defaultAgent.character.postExamples).toEqual(character.post_examples);
 
     expect(defaultAgent.character.messageExamples).toEqual(character.message_examples);
+    expect(defaultAgent.character.messageExamples[0]?.[0]?.name).toBe("{{name1}}");
+    expect(defaultAgent.character.messageExamples[0]?.[1]?.name).toBe(character.name);
+    expect(defaultAgent.character.messageExamples[0]?.[0]).not.toHaveProperty("user");
   });
 });
 

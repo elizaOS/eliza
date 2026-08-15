@@ -7,7 +7,7 @@
  * keys, `name`-keyed message turns, and DB-only columns. Editing the persona
  * means editing the preset, so the two can no longer drift apart.
  */
-import { buildCloudElizaPersona, toNamedMessageExamples } from "./cloud-eliza-persona";
+import { buildCloudElizaPersona, toCloudCharacterMessageExamples } from "./cloud-eliza-persona";
 
 const ELIZA_AVATAR_URL =
   "https://raw.githubusercontent.com/elizaOS/eliza-avatars/refs/heads/master/Eliza/portrait.png";
@@ -23,7 +23,7 @@ export function getDefaultElizaCharacterData() {
     name: persona.name,
     bio: [...persona.bio] as string[],
     system: persona.system,
-    message_examples: toNamedMessageExamples(persona.messageExamples, persona.name),
+    message_examples: toCloudCharacterMessageExamples(persona.messageExamples, persona.name),
     post_examples: [...persona.postExamples],
     avatar_url: ELIZA_AVATAR_URL,
     // Deliberately empty. Baked-in knowledge is retrieval-gated to the

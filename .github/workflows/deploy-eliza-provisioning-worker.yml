@@ -56,7 +56,7 @@ permissions:
 jobs:
   determine-env:
     name: Determine environment
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
@@ -113,7 +113,7 @@ jobs:
 
   deploy:
     name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }} @ ${{ needs.determine-env.outputs.deployment_sha }})
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs: determine-env
     concurrency:
       group: deploy-eliza-provisioning-worker-mutate-${{ needs.determine-env.outputs.environment }}
