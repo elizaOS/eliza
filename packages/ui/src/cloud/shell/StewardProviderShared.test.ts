@@ -191,12 +191,16 @@ describe("clearStaleStewardSession", () => {
       ],
     });
     const storageFailure = new Error("legacy refresh storage unavailable");
-    const originalRemoveItem = Storage.prototype.removeItem;
+    // Spy on the localStorage instance, not Storage.prototype: the setup file
+    // may substitute an in-memory Storage (Node ≥25 ships a broken global that
+    // shadows jsdom's), and the instance spy intercepts on both paths.
+    const storage = window.localStorage;
+    const originalRemoveItem = storage.removeItem.bind(storage);
     const removeItem = vi
-      .spyOn(Storage.prototype, "removeItem")
-      .mockImplementation(function (this: Storage, key: string) {
+      .spyOn(storage, "removeItem")
+      .mockImplementation((key: string) => {
         if (key === STEWARD_REFRESH_TOKEN_KEY) throw storageFailure;
-        return Reflect.apply(originalRemoveItem, this, [key]);
+        return originalRemoveItem(key);
       });
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
