@@ -1,4 +1,4 @@
-// Defines the discord connections Drizzle table shape used by cloud repositories and services.
+/** Defines the Discord connection table and validates its persisted behavior metadata. */
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import {
   boolean,
@@ -15,42 +15,64 @@ import { z } from "zod";
 import { organizations } from "./organizations";
 import { userCharacters } from "./user-characters";
 
-/**
- * Zod schema for runtime validation of Discord connection metadata.
- * Use this when accepting metadata from external sources (APIs, user input).
- */
 /** Discord user snowflake: 15-20 decimal digits. */
 const DiscordSnowflakeSchema = z.string().regex(/^\d{15,20}$/);
 
+const discordConnectionDmMetadataFields = {
+  /** Discord user snowflake treated as the bot owner. */
+  ownerDiscordUserId: DiscordSnowflakeSchema.optional(),
+  /** All Discord user snowflakes treated as bot owners. */
+  ownerDiscordUserIds: z.array(DiscordSnowflakeSchema).optional(),
+  /** Who may direct-message the bot; unset preserves historical open behavior. */
+  dmPolicy: z.enum(["open", "allowlist", "pairing", "disabled"]).optional(),
+  /** Extra user snowflakes admitted by the allowlist policy. */
+  dmAllowFrom: z.array(DiscordSnowflakeSchema).optional(),
+};
+
+/**
+ * DM-only persisted metadata parser. Unknown guild/keyword fields are stripped
+ * so an unrelated invalid response-mode configuration cannot bypass a valid,
+ * restrictive DM policy.
+ */
+export const DiscordConnectionDmMetadataSchema = z.object(discordConnectionDmMetadataFields);
+
+export type DiscordConnectionDmMetadata = z.infer<typeof DiscordConnectionDmMetadataSchema>;
+
+/** Validation state sent to the standalone gateway assignment boundary. */
+export type DiscordConnectionDmPolicyState =
+  | { status: "valid"; metadata: DiscordConnectionDmMetadata }
+  | { status: "invalid" };
+
+/**
+ * Parse only DM-relevant fields from stored JSONB. Missing metadata is the
+ * historical open policy; malformed DM fields remain explicitly invalid so
+ * the gateway can deny rather than silently skip enforcement.
+ */
+export function parseDiscordConnectionDmPolicyState(
+  value: unknown,
+): DiscordConnectionDmPolicyState {
+  if (value == null) {
+    return { status: "valid", metadata: {} };
+  }
+  const parsed = DiscordConnectionDmMetadataSchema.safeParse(value);
+  return parsed.success ? { status: "valid", metadata: parsed.data } : { status: "invalid" };
+}
+
+/**
+ * Zod schema for the complete Discord connection metadata accepted from API
+ * input. Unlike the assignment parser above, this validates guild response
+ * behavior and its keyword-mode invariant as well as DM fields.
+ */
 export const DiscordConnectionMetadataSchema = z
   .object({
     enabledChannels: z.array(z.string()).optional(),
     disabledChannels: z.array(z.string()).optional(),
     responseMode: z.enum(["always", "mention", "keyword"]).optional(),
     keywords: z.array(z.string()).optional(),
-    /** Discord user snowflake treated as the bot owner. */
-    ownerDiscordUserId: DiscordSnowflakeSchema.optional(),
-    /**
-     * All Discord user snowflakes treated as bot owners. Mirrors the agent
-     * plugin's ELIZA_DISCORD_OWNER_USER_IDS_JSON; owners always pass DM
-     * gating (except under the "disabled" policy).
-     */
-    ownerDiscordUserIds: z.array(DiscordSnowflakeSchema).optional(),
-    /**
-     * DM gating policy, mirroring the agent plugin's DISCORD_DM_POLICY enum.
-     * Unset preserves the gateway's historical behavior ("open"). The
-     * gateway has no pairing flow, so "pairing" admits owners only.
-     */
-    dmPolicy: z.enum(["open", "allowlist", "pairing", "disabled"]).optional(),
-    /**
-     * Additional Discord user snowflakes allowed to DM the bot under the
-     * "allowlist" policy. Mirrors the agent plugin's DISCORD_ALLOW_FROM.
-     */
-    dmAllowFrom: z.array(DiscordSnowflakeSchema).optional(),
+    ...discordConnectionDmMetadataFields,
   })
   .refine(
     (data) => {
-      // If responseMode is "keyword", keywords must be provided
       if (data.responseMode === "keyword") {
         return data.keywords && data.keywords.length > 0;
       }
