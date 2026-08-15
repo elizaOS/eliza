@@ -110,6 +110,35 @@ afterEach(async () => {
 });
 
 describe("startKeyboardDictationSession", () => {
+  it("starts the Live Activity with the native-localized keyboard title kind", async () => {
+    const bridge = makeBridge();
+    const liveActivity = {
+      start: vi.fn(async () => ({ activityId: "activity-1" })),
+      end: vi.fn(async () => ({ ended: true })),
+    };
+    const { deps, factory } = makeDeps(bridge);
+    deps.getLiveActivity = () => liveActivity;
+
+    const session = startKeyboardDictationSession(
+      new URLSearchParams("session=s-localized-title"),
+      deps,
+    );
+    await flush();
+
+    expect(liveActivity.start).toHaveBeenCalledWith({
+      sessionTitleKind: "keyboard-dictation",
+      phase: "recording",
+    });
+
+    factory.captures[0].options.onTranscript({
+      text: "localized title",
+      final: true,
+      backend: "browser",
+    });
+    await expect(session.done).resolves.toBe("ready");
+    expect(liveActivity.end).toHaveBeenCalledOnce();
+  });
+
   it("writes recording, then publishes the final transcript as ready with the session id", async () => {
     const bridge = makeBridge();
     const { deps, factory } = makeDeps(bridge);
