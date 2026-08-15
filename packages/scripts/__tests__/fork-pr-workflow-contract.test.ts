@@ -50,7 +50,9 @@ function scanChangedCommitsRun(ci: Workflow): string {
     (s) => s.name === "Scan changed commits",
   );
   if (!step?.run) {
-    throw new Error("gitleaks 'Scan changed commits' step is missing a run body");
+    throw new Error(
+      "gitleaks 'Scan changed commits' step is missing a run body",
+    );
   }
   return step.run;
 }
@@ -159,13 +161,11 @@ function assertForkPrDispatchContract(
   // resolves the real merge base and passes a two-dot `merge-base..head` range
   // to `git log`. A three-dot `BASE...HEAD` range is the symmetric difference
   // and re-flags base-only commits the branch merely inherited (#19687).
-  expect(scanScript).toContain('range="${MERGE_BASE}..${HEAD_SHA}"');
+  expect(scanScript).toContain('range="$' + "{MERGE_BASE}..$" + '{HEAD_SHA}"');
   expect(scanScript).toContain('git merge-base "$BASE_SHA" "$HEAD_SHA"');
-  expect(scanScript).not.toContain(
-    "$" + "{BASE_SHA}..." + "$" + "{HEAD_SHA}",
-  );
+  expect(scanScript).not.toContain("$" + "{BASE_SHA}..." + "$" + "{HEAD_SHA}");
   // The push path keeps its own two-dot `before..sha` range unchanged.
-  expect(scanScript).toContain('range="${BASE_SHA}..${HEAD_SHA}"');
+  expect(scanScript).toContain('range="$' + "{BASE_SHA}..$" + '{HEAD_SHA}"');
   // An unresolvable merge base must fail closed with a non-zero exit rather
   // than fall back to scanning only the head commit.
   expect(scanScript).not.toContain("|| true");
@@ -239,9 +239,9 @@ describe("fork pull-request workflow dispatch (#18443)", () => {
         HEAD_SHA: pushed,
       });
       expect(range).toBe(`${before}..${pushed}`);
-      expect(git(repo, ["rev-list", range]).split("\n").filter(Boolean)).toEqual(
-        [pushed],
-      );
+      expect(
+        git(repo, ["rev-list", range]).split("\n").filter(Boolean),
+      ).toEqual([pushed]);
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
