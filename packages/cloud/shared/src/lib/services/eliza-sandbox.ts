@@ -202,7 +202,7 @@ export interface CreateAgentParams {
  * agent — handing back a stopped/sleeping row would silently turn an
  * idempotent create into an implicit resume.
  */
-const QUOTA_COUNTED_STATUSES: AgentSandboxStatus[] = [
+export const QUOTA_COUNTED_STATUSES: AgentSandboxStatus[] = [
   "pending",
   "provisioning",
   "running",

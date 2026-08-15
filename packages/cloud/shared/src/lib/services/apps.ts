@@ -60,6 +60,14 @@ function isNoneMarker(value: unknown): value is { __none: true } {
   );
 }
 
+/**
+ * Read-only view of the per-org app ceiling for the account-limits snapshot
+ * (#19777) — the same resolution `assertCanCreateForOrganization` enforces.
+ */
+export function getMaxAppsPerOrg(): number {
+  return resolveMaxAppsPerOrg();
+}
+
 function resolveMaxAppsPerOrg(): number {
   const raw = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
   if (!raw) return DEFAULT_MAX_APPS_PER_ORG;
