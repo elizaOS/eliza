@@ -18,14 +18,21 @@ describe("resolveCostBuffer", () => {
     expect(resolveCostBuffer({ CREDIT_COST_BUFFER: "1000" })).toBe(1000);
   });
 
-  test.each(["0", "-1", "NaN", "Infinity", "0.5", "0.999", "1000.1", "1001"])(
-    "rejects operator configuration outside [1, 1000] or non-canonical: %s",
-    (value) => {
-      expect(() => resolveCostBuffer({ CREDIT_COST_BUFFER: value })).toThrow(
-        /CREDIT_COST_BUFFER must be a canonical decimal number from 1 through 1000/,
-      );
-    },
-  );
+  test.each([
+    "0",
+    "-1",
+    "NaN",
+    "Infinity",
+    "0.5",
+    "0.999",
+    "1000.1",
+    "1000.0000000000000001",
+    "1001",
+  ])("rejects operator configuration outside [1, 1000] or non-canonical: %s", (value) => {
+    expect(() => resolveCostBuffer({ CREDIT_COST_BUFFER: value })).toThrow(
+      /CREDIT_COST_BUFFER must be a canonical decimal number from 1 through 1000/,
+    );
+  });
 
   test("rejects non-canonical spellings even when Number() would parse them", () => {
     // One auditable operator spelling excludes exponent notation, signs,
