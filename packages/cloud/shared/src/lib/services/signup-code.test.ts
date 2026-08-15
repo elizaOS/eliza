@@ -1,9 +1,6 @@
 /**
- * Strict parsing coverage for SIGNUP_CODES_JSON bonus values (#20132):
- * parseFloat accepted numeric prefixes ("25credits" -> 25) and returned
- * Infinity for "Infinity", which passed the isNaN-only guard. The defensive
- * string branch must accept only complete canonical positive decimals, and
- * non-finite shapes must never reach the codes map.
+ * Exercises signup-code configuration parsing and cached lookup with mocked
+ * credit persistence dependencies.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
@@ -22,7 +19,7 @@ mock.module("../utils/logger", () => ({
   logger: { warn: () => {}, error: () => {}, info: () => {}, debug: () => {} },
 }));
 
-const { getBonusForCode, resetSignupCodesCacheForTests } = await import(
+const { getBonusForCode, parseSignupCodeBonus, resetSignupCodesCacheForTests } = await import(
   "./signup-code.ts"
 );
 
@@ -35,7 +32,7 @@ beforeEach(() => {
   resetSignupCodesCacheForTests();
 });
 
-describe("SIGNUP_CODES_JSON strict bonus parsing (#20132)", () => {
+describe("SIGNUP_CODES_JSON strict bonus parsing", () => {
   test("prefix-garbage and non-canonical string values are rejected", () => {
     setEnvCodes({
       prefix: "25credits",
@@ -76,13 +73,10 @@ describe("SIGNUP_CODES_JSON strict bonus parsing (#20132)", () => {
   });
 
   test("non-finite numeric values are rejected even on the number branch", () => {
-    // JSON.parse cannot produce Infinity, but the defensive guard must not
-    // rely on that: the map never carries a non-finite grant.
-    setEnvCodes({ inf: Number.POSITIVE_INFINITY, nan: Number.NaN, neg: -5, ok: 30 });
-    expect(getBonusForCode("inf")).toBeUndefined();
-    expect(getBonusForCode("nan")).toBeUndefined();
-    expect(getBonusForCode("neg")).toBeUndefined();
-    expect(getBonusForCode("ok")).toBe(30);
+    expect(parseSignupCodeBonus(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(parseSignupCodeBonus(Number.NaN)).toBeNull();
+    expect(parseSignupCodeBonus(-5)).toBeNull();
+    expect(parseSignupCodeBonus(30)).toBe(30);
   });
 
   test("codes are matched case- and whitespace-insensitively", () => {

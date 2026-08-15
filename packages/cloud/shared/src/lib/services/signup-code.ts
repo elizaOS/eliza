@@ -19,7 +19,20 @@ export const ERRORS = {
 };
 
 interface SignupCodesConfig {
-  codes?: Record<string, number>;
+  codes?: Record<string, unknown>;
+}
+
+/** Parse one configured grant without accepting numeric prefixes or non-finite values. */
+export function parseSignupCodeBonus(amount: unknown): number | null {
+  let parsed: number;
+  if (typeof amount === "number") {
+    parsed = amount;
+  } else {
+    const raw = String(amount).trim();
+    if (!/^\d+(?:\.\d+)?$/.test(raw)) return null;
+    parsed = Number(raw);
+  }
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 /** WHY default "{}": App must run when env is unset; no codes = feature disabled. */
@@ -41,29 +54,13 @@ function loadCodes(): Map<string, number> {
   for (const [code, amount] of Object.entries(codes)) {
     const normalized = code?.trim().toLowerCase();
     if (!normalized) continue;
-    // The documented contract declares `amount` as a number; the string
-    // branch is a defensive sanity check on malformed JSON and must be
-    // strict — parseFloat accepts a numeric prefix ("25credits" -> 25) and
-    // returns Infinity for "Infinity", which then passes an isNaN-only
-    // guard and could reach addCredits as a non-finite grant (#20132).
-    // Require a complete canonical non-negative decimal string and accept
-    // only finite positive values on both branches.
-    let num: number;
-    if (typeof amount === "number") {
-      num = amount;
-    } else {
-      const raw = String(amount).trim();
-      if (!/^\d+(?:\.\d+)?$/.test(raw)) continue;
-      num = Number(raw);
-    }
-    if (Number.isFinite(num) && num > 0) {
-      map.set(normalized, num);
-    }
+    const bonus = parseSignupCodeBonus(amount);
+    if (bonus !== null) map.set(normalized, bonus);
   }
   return map;
 }
 
-/** Test hook: the codes map is cached per process; tests need to re-read env. */
+/** Clear the process cache so deterministic tests can reload environment input. */
 export function resetSignupCodesCacheForTests(): void {
   cachedCodes = null;
 }
