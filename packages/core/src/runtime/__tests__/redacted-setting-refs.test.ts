@@ -128,18 +128,13 @@ describe("typed tool argument aliases", () => {
 				embedded: `prefix ${ADMIN_ALIAS}`,
 			},
 		});
-		expect(args.filter.owners).toEqual([
-			ADMIN_ALIAS,
-			{ backup: ADMIN_ALIAS },
-		]);
+		expect(args.filter.owners).toEqual([ADMIN_ALIAS, { backup: ADMIN_ALIAS }]);
 	});
 
 	it("ignores malformed capability values", () => {
 		const args = { entityId: ADMIN_ALIAS };
 		expect(
-			resolveToolArgAliases(args, [
-				{ ...capability, value: "not-a-uuid" },
-			]),
+			resolveToolArgAliases(args, [{ ...capability, value: "not-a-uuid" }]),
 		).toBe(args);
 	});
 
@@ -179,7 +174,21 @@ describe("typed tool argument aliases", () => {
 				senderRole: "OWNER",
 			}),
 		).resolves.toEqual([]);
-		expect(getSetting).toHaveBeenCalledTimes(1);
-		expect(getSetting).toHaveBeenCalledWith("ELIZA_ADMIN_ENTITY_ID");
+		// Only the owner-emitting turn resolves settings, and only the two
+		// canonical owner-configuration keys — never a model-authored name.
+		const settingKeys = getSetting.mock.calls.map(([key]) => key);
+		// Exactly one resolution ran (the owner turn): the denied turns above
+		// must not have touched settings at all.
+		expect(settingKeys).toEqual(
+			expect.arrayContaining(["ELIZA_ADMIN_ENTITY_ID"]),
+		);
+		expect(getSetting).toHaveBeenCalledTimes(2);
+		expect(
+			settingKeys.every(
+				(key) =>
+					key === "ELIZA_ADMIN_ENTITY_ID" ||
+					key === "ELIZA_OWNER_CONTACTS_JSON",
+			),
+		).toBe(true);
 	});
 });

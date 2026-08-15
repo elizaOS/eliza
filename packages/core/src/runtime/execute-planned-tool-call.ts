@@ -362,18 +362,19 @@ export function resolveToolArgAliases(
 	args: Record<string, unknown>,
 	capabilities: readonly ToolArgAliasCapability[] = [],
 ): Record<string, unknown> {
-	const aliases = new Map(
+	const aliases = new Map<string, string>(
 		capabilities
 			.filter(
 				(capability) =>
-					capability.kind === "entity_id" &&
-					UUID_SHAPE.test(capability.value),
+					capability.kind === "entity_id" && UUID_SHAPE.test(capability.value),
 			)
 			.map((capability) => [capability.token, capability.value] as const),
 	);
 	if (aliases.size === 0) return args;
 
-	const resolveValue = (value: unknown): { value: unknown; changed: boolean } => {
+	const resolveValue = (
+		value: unknown,
+	): { value: unknown; changed: boolean } => {
 		if (typeof value === "string") {
 			const resolved = aliases.get(value);
 			return resolved === undefined
@@ -403,9 +404,7 @@ export function resolveToolArgAliases(
 	};
 
 	const resolved = resolveValue(args);
-	return resolved.changed
-		? (resolved.value as Record<string, unknown>)
-		: args;
+	return resolved.changed ? (resolved.value as Record<string, unknown>) : args;
 }
 
 export async function executePlannedToolCall(
