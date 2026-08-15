@@ -21,15 +21,13 @@
  * callers must never render them — the display-safe surface is listPresent(),
  * which only reports presence and the winning source layer.
  */
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
-  chmodSync,
   closeSync,
   existsSync,
   linkSync,
   mkdirSync,
   openSync,
-  readdirSync,
   readFileSync,
   renameSync,
   statSync,
@@ -37,7 +35,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(new URL("../..", import.meta.url).pathname);
@@ -52,9 +50,6 @@ const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const LOCK_STALE_MS = 10_000;
 const LOCK_WAIT_MS = 5_000;
 const LOCK_POLL_MS = 25;
-const WRITE_FENCE_RETRIES = 16;
-// Converged-view lag tolerance: how many superseded generations stay on disk.
-const GENERATION_KEEP = 4;
 
 // --- pure primitives ---------------------------------------------------------
 
@@ -447,7 +442,6 @@ export function writeSecret(key, value, options = {}) {
     homeEnvPath = HOME_ENV_PATH,
     processEnv = process.env,
     afterRead,
-    beforeCommit,
     lockWaitMs = LOCK_WAIT_MS,
   } = options;
   if (typeof key !== "string" || !ENV_KEY_PATTERN.test(key)) {
@@ -462,163 +456,22 @@ export function writeSecret(key, value, options = {}) {
     );
   }
   const path = scope === "home" ? homeEnvPath : join(repoRoot, ".env");
-  // The lock below is ADVISORY backoff only: correctness comes from the
-  // generation fence in commitEnvGeneration. Ownership validation and commit
-  // are indivisible there (link() is the compare-and-swap), so no ordering of
-  // lock theft, stale reclamation, or restoration can lose an update — a
-  // racer that commits between our read and our link forces a re-read retry.
-  let lock = null;
+  // The lock IS the serialization: a writer that cannot acquire it within
+  // lockWaitMs fails fast rather than proceeding unserialized. Dead owners
+  // are reclaimed atomically inside acquireTargetLock; a live owner is never
+  // stolen, so the read-upsert-write below always runs alone.
+  const lock = acquireTargetLock(path, lockWaitMs);
   try {
-    lock = acquireTargetLock(path, lockWaitMs);
-  } catch (err) {
-    // error-policy:J4 advisory-lock starvation degrades to fenced contention
-    if (!/timed out waiting for lock/.test(String(err?.message))) throw err;
-  }
-  try {
-    for (let attempt = 1; attempt <= WRITE_FENCE_RETRIES; attempt += 1) {
-      const { generation, content: existing } = readEnvGeneration(path);
-      if (typeof afterRead === "function") {
-        afterRead();
-      }
-      const next = upsertEnvContent(existing, { [key]: value });
-      if (typeof beforeCommit === "function") {
-        beforeCommit();
-      }
-      if (commitEnvGeneration(path, generation, next)) {
-        processEnv[key] = value;
-        return { key, scope, path };
-      }
+    const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
+    if (typeof afterRead === "function") {
+      afterRead();
     }
-    throw new Error(
-      `writeSecret(${key}): lost the commit fence ${WRITE_FENCE_RETRIES} times`,
-    );
+    atomicWriteEnvFile(path, upsertEnvContent(existing, { [key]: value }));
+    processEnv[key] = value;
+    return { key, scope, path };
   } finally {
-    if (lock !== null) releaseTargetLock(lock);
+    releaseTargetLock(lock);
   }
-}
-
-/**
- * Read the authoritative content and generation for an env target. The
- * generation chain `<path>.g<N>` orders concurrent fenced writers; `<path>`
- * is the converged view. When view and chain disagree, the sync marker
- * (sha of the last chain content whose view refresh completed) decides:
- * marker == chain-sha means the view was hand-edited afterwards and is
- * adopted as base; anything else means a refresh is pending and the chain
- * stays authoritative so a mid-commit writer cannot be lost.
- */
-function readEnvGeneration(path) {
-  const generation = highestGeneration(path);
-  const view = existsSync(path) ? readFileSync(path, "utf8") : "";
-  if (generation === 0) {
-    return { generation: 0, content: view };
-  }
-  let chain;
-  try {
-    chain = readFileSync(generationPath(path, generation), "utf8");
-  } catch (err) {
-    // error-policy:J3 a GC'd generation regresses to the converged view
-    if (err.code !== "ENOENT") throw err;
-    return { generation, content: view };
-  }
-  if (chain === view) {
-    return { generation, content: view };
-  }
-  const marker = readSyncMarker(path);
-  if (marker !== null && marker === contentSha(chain)) {
-    return { generation, content: view };
-  }
-  return { generation, content: chain };
-}
-
-function generationPath(path, n) {
-  return `${path}.g${n}`;
-}
-
-function syncMarkerPath(path) {
-  return `${path}.gsync`;
-}
-
-function contentSha(content) {
-  return createHash("sha256").update(content).digest("hex");
-}
-
-function readSyncMarker(path) {
-  try {
-    return readFileSync(syncMarkerPath(path), "utf8").trim();
-  } catch (err) {
-    // error-policy:J3 a missing marker reads as chain-authoritative
-    if (err.code === "ENOENT") return null;
-    throw err;
-  }
-}
-
-function highestGeneration(path) {
-  const dir = dirname(path);
-  const base = `${basename(path)}.g`;
-  let highest = 0;
-  let entries;
-  try {
-    entries = readdirSync(dir);
-  } catch (err) {
-    // error-policy:J3 missing directory means generation 0
-    if (err.code === "ENOENT") return 0;
-    throw err;
-  }
-  for (const entry of entries) {
-    if (!entry.startsWith(base)) continue;
-    const n = Number(entry.slice(base.length));
-    if (Number.isSafeInteger(n) && n > highest) highest = n;
-  }
-  return highest;
-}
-
-/**
- * Fenced commit: exactly one writer can create `<path>.g<N+1>` because
- * link() is exclusive. Winners refresh the converged `<path>` view and GC old
- * generations; losers return false and must re-read before retrying.
- */
-function commitEnvGeneration(path, generation, content) {
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
-  writeFileSync(tmp, content, { encoding: "utf8", mode: 0o600 });
-  const target = generationPath(path, generation + 1);
-  try {
-    linkSync(tmp, target);
-  } catch (err) {
-    try {
-      unlinkSync(tmp);
-    } catch (cleanupErr) {
-      // error-policy:J6 tmp cleanup after a lost fence is teardown-only
-      if (cleanupErr.code !== "ENOENT") throw cleanupErr;
-    }
-    // error-policy:J3 EEXIST means another writer won this generation
-    if (err.code === "EEXIST") return false;
-    throw err;
-  }
-  try {
-    unlinkSync(tmp);
-  } catch (err) {
-    // error-policy:J6 tmp cleanup after a won fence is teardown-only
-    if (err.code !== "ENOENT") throw err;
-  }
-  // Refresh the converged view only while this commit is still the newest
-  // generation: a stale winner must never clobber a newer view. The chain
-  // (not the view) stays authoritative; the next writer reads the chain.
-  if (highestGeneration(path) === generation + 1) {
-    atomicWriteEnvFile(path, content);
-    chmodSync(path, 0o600);
-    atomicWriteEnvFile(syncMarkerPath(path), `${contentSha(content)}\n`);
-  }
-  for (let n = generation - GENERATION_KEEP; n > 0; n -= 1) {
-    try {
-      unlinkSync(generationPath(path, n));
-    } catch (err) {
-      // error-policy:J6 generation GC is teardown-only
-      if (err.code === "ENOENT") break;
-      throw err;
-    }
-  }
-  return true;
 }
 
 export function saveEnvVar(key, value, target = "home", options = {}) {
