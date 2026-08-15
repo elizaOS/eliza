@@ -618,6 +618,28 @@ async function forwardWithRetry(
 ): Promise<string> {
   let lastError: Error | null = null;
   let woken = false;
+  let canonicalAttempted = false;
+
+  // Dedicated Docker sandboxes self-register a public host:port in Redis for
+  // compatibility, but production node firewalls intentionally do not expose
+  // those high ports to Railway. Their supported ingress is the canonical
+  // control-plane router over HTTPS. Prefer it before the Redis target so a
+  // normal Telegram/DM turn does not spend its entire non-replay timeout on a
+  // transport that cannot be reached from this service.
+  if (connectionFallback && serverName.startsWith("sandbox-")) {
+    canonicalAttempted = true;
+    const canonical = await tryCanonicalTarget(
+      connectionFallback,
+      endpointPath,
+      body,
+      policy,
+    );
+    if (canonical.ok) return canonical.response;
+    if (canonical.timedOut && !policy.retryOnTimeout) {
+      throw canonical.error;
+    }
+    lastError = canonical.error;
+  }
 
   for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
     if (attempt > 0) {
@@ -658,9 +680,11 @@ async function forwardWithRetry(
     if (
       result.isConnectionError &&
       connectionFallback &&
+      !canonicalAttempted &&
       targets[0].replace(/\/$/, "") !==
         connectionFallback.baseUrl.replace(/\/$/, "")
     ) {
+      canonicalAttempted = true;
       const canonical = await tryCanonicalTarget(
         connectionFallback,
         endpointPath,

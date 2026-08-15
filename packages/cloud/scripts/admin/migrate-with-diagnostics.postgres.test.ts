@@ -131,6 +131,16 @@ async function seedAppliedPrefix(
     CREATE TABLE users (
       id uuid PRIMARY KEY
     );
+    CREATE TABLE organizations (
+      id uuid PRIMARY KEY
+    );
+    -- This fixture records the pre-checkpoint ledger without replaying its SQL.
+    -- It must therefore materialize every pre-checkpoint relation referenced by
+    -- pending migrations. Keep this checkpoint schema in lockstep when a new
+    -- post-checkpoint migration depends on an older table.
+    CREATE TABLE docker_nodes (
+      id uuid PRIMARY KEY
+    );
     CREATE SCHEMA drizzle;
     CREATE TABLE drizzle.__drizzle_migrations (
       id serial PRIMARY KEY,
@@ -269,7 +279,7 @@ describe.skipIf(!ENABLED)(
 
       const first = await runScript(MIGRATOR, database.url);
       expect(first.exitCode, first.output).toBe(0);
-      expect(first.output).toContain("pending migrations: 13");
+      expect(first.output).toContain("pending migrations: 15");
 
       const catalog = await database.client.query<{
         data_type: string;
@@ -297,6 +307,23 @@ describe.skipIf(!ENABLED)(
         terminal_backfills: "1",
       });
 
+      const placementState = await database.client.query<{
+        data_type: string;
+        is_nullable: string;
+        column_default: string;
+      }>(`
+        SELECT data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'docker_nodes'
+          AND column_name = 'placement_state'
+      `);
+      expect(placementState.rows[0]).toEqual({
+        data_type: "text",
+        is_nullable: "NO",
+        column_default: "'open'::text",
+      });
+
       const second = await runScript(MIGRATOR, database.url);
       expect(second.exitCode, second.output).toBe(0);
       expect(second.output).toContain("pending migrations: 0");
@@ -317,7 +344,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 13");
+      expect(migrated.output).toContain("pending migrations: 15");
 
       await database.client.query(
         "UPDATE drizzle.__drizzle_migrations SET hash = 'checkpoint-drift' WHERE created_at = $1",
@@ -363,7 +390,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 13");
+      expect(migrated.output).toContain("pending migrations: 15");
       await database.client.end();
     }, 120_000);
 
@@ -373,7 +400,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 13");
+      expect(migrated.output).toContain("pending migrations: 15");
       await database.client.end();
     }, 120_000);
 
@@ -405,7 +432,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 13");
+      expect(migrated.output).toContain("pending migrations: 15");
       await database.client.end();
     }, 120_000);
 
@@ -425,7 +452,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 13");
+      expect(migrated.output).toContain("pending migrations: 15");
 
       const remaining = await database.client.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = ANY($1::bigint[])",

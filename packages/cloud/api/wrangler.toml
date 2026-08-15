@@ -181,6 +181,13 @@ GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "production"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "false"
+# Warm-pool claim half (#16961): the provision route only claims a pre-booted
+# sandbox when this is "true". Committed here — never a dashboard-only secret —
+# so the intended state survives every redeploy and is auditable in source.
+# Production activation is gated on the #16961 checklist (capacity, starvation,
+# identity, and health guards with staging soak evidence); flip this committed
+# value in the same PR that attaches that evidence.
+WARM_POOL_ENABLED = "false"
 X402_NETWORK = "base"
 X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
 X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
@@ -488,6 +495,10 @@ ENVIRONMENT = "staging"
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "true"
+# Warm-pool claim half (#16961). Staging enablement is the next step of that
+# issue's dependency chain but is sequenced behind draining the residual
+# sentinel-org pool rows; flip this committed value when that drain is done.
+WARM_POOL_ENABLED = "false"
 X402_NETWORK = "base"
 X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
 X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
@@ -710,6 +721,13 @@ GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "production"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "false"
+# Warm-pool claim half (#16961): the provision route only claims a pre-booted
+# sandbox when this is "true". Committed here — never a dashboard-only secret —
+# so the intended state survives every redeploy and is auditable in source.
+# Production activation is gated on the #16961 checklist (capacity, starvation,
+# identity, and health guards with staging soak evidence); flip this committed
+# value in the same PR that attaches that evidence.
+WARM_POOL_ENABLED = "false"
 X402_NETWORK = "base"
 X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
 X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"

@@ -180,6 +180,7 @@ app.post("/", async (c) => {
       worker.executionCtx,
       worker.namespace,
       sharedTurnClientMessageId(raw),
+      "agentKind" in r ? "platform" : "organization-credits",
     );
   } catch (error) {
     // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.

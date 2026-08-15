@@ -112,8 +112,8 @@ function parseFlag(name) {
 function parseFlagValue(prefix) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === prefix && i + 1 < argv.length) {
-      if (argv[i + 1].startsWith("--")) {
+    if (arg === prefix) {
+      if (i + 1 >= argv.length || argv[i + 1].startsWith("--")) {
         throw new Error(`${prefix} requires a value`);
       }
       const value = argv[i + 1];
@@ -122,6 +122,9 @@ function parseFlagValue(prefix) {
     }
     if (arg.startsWith(`${prefix}=`)) {
       const value = arg.slice(prefix.length + 1);
+      if (!value) {
+        throw new Error(`${prefix} requires a value`);
+      }
       argv.splice(i, 1);
       return value;
     }
@@ -171,6 +174,7 @@ let onlyFlag;
 let laneFilterFlag;
 let excludeFlags;
 let concurrencyFlag;
+let concurrency;
 let planFlag;
 let minTasksFlag;
 try {
@@ -183,6 +187,7 @@ try {
   planFlag = parseFlagValue("--plan");
   minTasksFlag = parseFlagValue("--min-tasks");
 } catch (error) {
+  // error-policy:J1 CLI parsing failures become a bounded usage error.
   failUsage(error.message);
 }
 
@@ -275,17 +280,25 @@ if (argv.length > 0) {
   failUsage(`unknown argument(s): ${argv.join(" ")}`);
 }
 
+try {
+  const concurrencyEnv = process.env.TEST_CONCURRENCY;
+  const concurrencyInput =
+    concurrencyFlag ??
+    (concurrencyEnv === undefined || concurrencyEnv.trim() === ""
+      ? undefined
+      : concurrencyEnv);
+  concurrency = normalizeConcurrency(concurrencyInput);
+} catch (error) {
+  // error-policy:J1 CLI and environment validation share the exit-2 boundary.
+  failUsage(error.message);
+}
+
 // ---------------------------------------------------------------------------
 // Environment / lane configuration
 // ---------------------------------------------------------------------------
 
 const TEST_LANE = process.env.TEST_LANE || "pr"; // "pr" | "post-merge"
 const TEST_SHARD = process.env.TEST_SHARD || ""; // "N/M"
-// Bounded worker-pool size for the parallel-safe `test` tasks. Default 1 keeps
-// the historical fully-serial behaviour; only an explicit opt-in parallelises.
-const concurrency = normalizeConcurrency(
-  concurrencyFlag ?? process.env.TEST_CONCURRENCY,
-);
 
 // Parse TEST_SHARD into { index, total } or null (parseShardSpec is pure; warn
 // here when a non-empty spec is malformed).
