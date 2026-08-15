@@ -55,26 +55,21 @@ export default function BillingSuccessPage() {
     );
   }
 
-  if (sessionId && verify.isPending) {
-    return (
-      <DashboardLoadingState
-        label={t("cloud.billingSuccess.verifyingPayment", {
-          defaultValue: "Verifying payment",
-        })}
-      />
-    );
-  }
+  const verificationFailed =
+    !sessionId ||
+    verify.isError ||
+    (verify.isSuccess && verify.data?.success !== true);
 
-  if (verify.isError) {
+  if (verificationFailed) {
     const message =
-      verify.error instanceof Error
+      sessionId && verify.isError && verify.error instanceof Error
         ? verify.error.message
         : t("cloud.billingSuccess.unableToVerify", {
             defaultValue: "Unable to verify payment",
           });
     return (
       <div className="flex items-center justify-center min-h-[80vh]">
-        <Card className="max-w-md w-full">
+        <Card className="max-w-md w-full" role="alert" aria-live="assertive">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10">
               <XCircle className="h-10 w-10 text-red-500" />
@@ -88,20 +83,22 @@ export default function BillingSuccessPage() {
           </CardHeader>
 
           <CardContent className="text-center space-y-4">
-            <p className="text-sm text-muted-foreground">
-              {t("cloud.billingSuccess.contactSupport", {
-                defaultValue:
-                  "If you believe this is an error, please contact support with your session ID.",
-              })}
-            </p>
-            {sessionId && (
-              <p className="text-xs text-muted-foreground bg-muted p-2 rounded-sm">
-                {t("cloud.billingSuccess.sessionLabel", {
-                  sessionId: `${sessionId.substring(0, 20)}...`,
-                  defaultValue: "Session: {{sessionId}}",
-                })}
-              </p>
-            )}
+            {sessionId ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  {t("cloud.billingSuccess.contactSupport", {
+                    defaultValue:
+                      "If you believe this is an error, please contact support with your session ID.",
+                  })}
+                </p>
+                <p className="text-xs text-muted-foreground bg-muted p-2 rounded-sm">
+                  {t("cloud.billingSuccess.sessionLabel", {
+                    sessionId: `${sessionId.substring(0, 20)}...`,
+                    defaultValue: "Session: {{sessionId}}",
+                  })}
+                </p>
+              </>
+            ) : null}
           </CardContent>
 
           <CardFooter className="flex flex-col gap-2">
@@ -115,6 +112,16 @@ export default function BillingSuccessPage() {
           </CardFooter>
         </Card>
       </div>
+    );
+  }
+
+  if (!verify.isSuccess) {
+    return (
+      <DashboardLoadingState
+        label={t("cloud.billingSuccess.verifyingPayment", {
+          defaultValue: "Verifying payment",
+        })}
+      />
     );
   }
 
