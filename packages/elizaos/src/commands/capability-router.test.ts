@@ -226,6 +226,42 @@ describe("runCapabilityRouterConnect", () => {
     },
   );
 
+  // #20071: digits-only values above the double-precision timer bound parse to
+  // Infinity, and JSON.stringify serializes Infinity as null over the wire —
+  // the CLI must reject them locally with a message naming the supported bound.
+  it.each([
+    "2147483648", // one above Node's maximum reliable timer delay
+    "9".repeat(400), // digits-only, parses to Infinity
+    "9007199254740993", // beyond Number.MAX_SAFE_INTEGER
+  ])("rejects request timeout %s above the reliable timer bound before calling the API", async (requestTimeoutMs) => {
+    const fetchMock = mockFetch({ success: true });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const code = await runCapabilityRouterConnect({
+      endpointUrl: "https://capability.example.test",
+      requestTimeoutMs,
+    });
+
+    expect(code).toBe(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(error.mock.calls[0]?.[0]).toContain(
+      "no greater than 2147483647 ms",
+    );
+  });
+
+  it("accepts the exact 2147483647 ms timer bound", async () => {
+    const fetchMock = mockFetch({ success: true });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const code = await runCapabilityRouterConnect({
+      endpointUrl: "https://capability.example.test",
+      requestTimeoutMs: "2147483647",
+    });
+
+    expect(code).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("surfaces API errors without leaking request tokens", async () => {
     mockFetch({ error: "Unauthorized" }, 401);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});

@@ -252,6 +252,9 @@ function normalizeBaseUrl(
   }
 }
 
+/** Node's maximum reliable timer delay; larger delays misbehave (clamp to 1ms). */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 function parsePositiveInteger(
   value: string | undefined,
   label: string,
@@ -261,7 +264,18 @@ function parsePositiveInteger(
   if (!/^[1-9]\d*$/.test(normalized)) {
     return new Error(`${label} must be a positive integer.`);
   }
-  return Number(normalized);
+  const parsed = Number(normalized);
+  // A digits-only string can still exceed the double-precision timer bound
+  // (Number("9".repeat(400)) === Infinity), and JSON.stringify serializes
+  // Infinity as null over the wire — the agent route then rejects the null
+  // payload with a message that hides the real cause (#20071). Reject above
+  // Node's reliable timer delay with a message naming the supported bound.
+  if (!Number.isSafeInteger(parsed) || parsed > MAX_TIMER_DELAY_MS) {
+    return new Error(
+      `${label} must be a positive integer no greater than ${MAX_TIMER_DELAY_MS} ms (the maximum reliable timer delay).`,
+    );
+  }
+  return parsed;
 }
 
 function normalizeStringList(values: string[] | undefined): string[] {
