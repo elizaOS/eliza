@@ -20,7 +20,15 @@ In browser environments a web fallback is provided using `document.visibilitySta
 | Battery on/off charging | Yes | Yes | Yes (Battery Status API) |
 | Sleep stage / biometrics | HealthKit | Health Connect | No |
 | Screen time / usage | DeviceActivity + FamilyControls | `PACKAGE_USAGE_STATS` | No |
-| Background refresh | Not available (foreground monitoring only) | Not available | No |
+
+## Capability Status
+
+| Capability | iOS Status | Notes |
+|---|---|---|
+| `reportAvailable` | Conditional | `true` when FamilyControls authorized + report extension bundled |
+| `coarseSummaryAvailable` | **Always `false`** | Apple's DeviceActivity privacy sandbox prevents category summaries from leaving the report extension. No lawful host-readable producer exists. |
+| `thresholdEventsAvailable` | **Always `false`** | Requires scheduling and handling a typed `DeviceActivityMonitor` threshold event. Bundling the monitor extension alone is insufficient. |
+| `rawUsageExportAvailable` | **Always `false`** | Platform constraint — Apple forbids exporting raw per-app usage. |
 
 ## Installation
 

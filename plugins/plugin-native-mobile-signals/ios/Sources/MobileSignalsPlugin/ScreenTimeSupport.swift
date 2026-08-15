@@ -34,6 +34,22 @@ enum ScreenTimeSupport {
         }
     }
 
+    // MARK: - Policy contract (source of truth for coarseSummaryAvailable / thresholdEventsAvailable)
+    // The iOS DeviceActivity privacy model forbids exfiltrating raw or category usage data
+    // out of the report extension. There is no lawful host-readable producer today.
+    // coarseSummaryAvailable MUST remain false until such a producer exists (e.g., a
+    // future Apple API that exposes coarse summaries directly to the host).
+    //
+    // thresholdEventsAvailable MUST remain false until the app actually schedules
+    // and handles a typed DeviceActivityMonitor threshold event. Bundling the
+    // monitor extension alone is insufficient — a threshold must be configured,
+    // persisted, and its callback implemented.
+    //
+    // Keep these constants as the single source of truth. Do not derive from
+    // extensionInspection / authorizationStatus.
+    private static let coarseSummaryAvailable = false
+    private static let thresholdEventsAvailable = false
+
     static func buildStatus(reasonOverride: String? = nil) -> [String: Any] {
         let entitlementInspection = inspectEntitlements()
         let extensionInspection = inspectBundledExtensions()
@@ -51,7 +67,6 @@ enum ScreenTimeSupport {
             ? NSNull()
             : (entitlementInspection.reason ?? reason)
         let reportAvailable = extensionInspection.report && authorizationStatus == "approved"
-        let thresholdEventsAvailable = extensionInspection.monitor && authorizationStatus == "approved"
 
         return [
             "supported": provisioningSatisfied || entitlementInspection.inspected == "not-inspectable",
@@ -87,7 +102,10 @@ enum ScreenTimeSupport {
                 "bundles": extensionInspection.bundles,
             ],
             "reportAvailable": reportAvailable,
-            "coarseSummaryAvailable": reportAvailable,
+            // Truthful capabilities — per Apple's DeviceActivity privacy model:
+            // - coarseSummaryAvailable: false (no lawful host-readable producer exists)
+            // - thresholdEventsAvailable: false (no threshold scheduled/handled yet)
+            "coarseSummaryAvailable": coarseSummaryAvailable,
             "thresholdEventsAvailable": thresholdEventsAvailable,
             "rawUsageExportAvailable": false,
             "reason": reason,
