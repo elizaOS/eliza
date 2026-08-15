@@ -98,10 +98,15 @@ export function useServingAxes(args: {
   isCloudSelected: boolean;
   cloudCallsDisabled: boolean;
 }): ServingAxes {
+  // Optional-chained for the same reason the client call below is guarded:
+  // the chip mounts on the chat surfaces, whose harnesses seed only the store
+  // slice they exercise. A missing coordinator means "runtime target not
+  // known yet", which the resolver already handles, not a crash that takes
+  // the whole chat view down.
   const { firstRunRuntimeTarget, startupTarget } = useAppSelectorShallow(
     (s) => ({
       firstRunRuntimeTarget: s.firstRunRuntimeTarget,
-      startupTarget: s.startupCoordinator.target,
+      startupTarget: s.startupCoordinator?.target,
     }),
   );
   const { state: runtimeModeState } = useRuntimeMode();
