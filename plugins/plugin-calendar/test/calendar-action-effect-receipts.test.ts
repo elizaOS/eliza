@@ -655,6 +655,14 @@ describe("CALENDAR effect receipt settlement", () => {
   });
 
   it("uses timezone-grounded calendar extraction instead of a contradictory outer-planner instant", async () => {
+    // The fixture's extraction says "tomorrow" is Aug 5, which is only
+    // coherent when today is Aug 4 in the event's zone. The stated-day guard
+    // now enforces exactly that coherence at the create boundary, so an
+    // unpinned clock would (correctly) snap the fixture's date to the real
+    // tomorrow and the assertion would drift with the wall clock.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-04T19:00:00.000Z"));
+    try {
     const approval = {
       requestId: "calendar-timezone-approval",
       action: "schedule_event" as const,
@@ -738,6 +746,9 @@ describe("CALENDAR effect receipt settlement", () => {
       }),
     );
     expectBoundDelivery(delivered, result);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports an authoritative queue replay as a no-op", async () => {
