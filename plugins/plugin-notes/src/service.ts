@@ -45,7 +45,12 @@ function notFound(id: string): ElizaError {
 type NoteLookupSelector = "title" | "query";
 
 function normalizedLookup(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return value
+    .normalize("NFC")
+    .trim()
+    .toLowerCase()
+    .normalize("NFC")
+    .replace(/\s+/gu, " ");
 }
 
 function titleAppearsAsNamedPhrase(text: string, title: string): boolean {
@@ -54,7 +59,7 @@ function titleAppearsAsNamedPhrase(text: string, title: string): boolean {
   if (!normalizedText || !normalizedTitle) return false;
   const escapedTitle = normalizedTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(
-    `(?:^|[^\\p{L}\\p{N}])${escapedTitle}(?=$|[^\\p{L}\\p{N}])`,
+    `(?:^|[^\\p{L}\\p{N}\\p{M}])${escapedTitle}(?=$|[^\\p{L}\\p{N}\\p{M}])`,
     "u",
   ).test(normalizedText);
 }
@@ -475,10 +480,7 @@ export class NotesService extends Service {
       if (
         typeof options?.requireTitleInText === "string" &&
         options.requireTitleInText.trim().length > 0 &&
-        !titleAppearsAsNamedPhrase(
-          options.requireTitleInText,
-          existing.title,
-        )
+        !titleAppearsAsNamedPhrase(options.requireTitleInText, existing.title)
       ) {
         throw lookupError("NOTES_DELETE_NAME_MISMATCH", selector, value, [
           existing,

@@ -47,6 +47,38 @@ describe("delete-note owner-text fence", () => {
     expect(service.snapshot().notes).toHaveLength(1);
   });
 
+  it("treats Unicode combining marks as part of the surrounding name", async () => {
+    const service = await seeded("i");
+    await expect(
+      service.deleteNoteByLookupWithCommit("title", "i", {
+        requireTitleInText: "delete the İ note",
+      }),
+    ).rejects.toMatchObject({ code: "NOTES_DELETE_NAME_MISMATCH" });
+    expect(service.snapshot().notes).toHaveLength(1);
+  });
+
+  it("accepts canonically equivalent multilingual title spelling", async () => {
+    const service = await seeded("café");
+    const removed = await service.deleteNoteByLookupWithCommit(
+      "title",
+      "café",
+      { requireTitleInText: "delete the cafe\u0301 note" },
+    );
+    expect(removed.value.title).toBe("café");
+    expect(service.snapshot().notes).toHaveLength(0);
+  });
+
+  it("accepts an exactly named punctuation-bearing title", async () => {
+    const service = await seeded("C++");
+    const removed = await service.deleteNoteByLookupWithCommit(
+      "title",
+      "C++",
+      { requireTitleInText: 'delete the "C++" note' },
+    );
+    expect(removed.value.title).toBe("C++");
+    expect(service.snapshot().notes).toHaveLength(0);
+  });
+
   it("keeps historical behavior when no owner text is supplied", async () => {
     const service = await seeded();
     const removed = await service.deleteNoteByLookupWithCommit(
