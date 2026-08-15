@@ -9097,7 +9097,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		if (finalReplyEgressDecision.verdict === "reject") {
 			effectiveReplyText = finalReplyEgressDecision.fallbackReply;
 		}
-		const effectiveReplyReceiptIds = appliedEffectReceiptIdsForReply(
+		let effectiveReplyReceiptIds = appliedEffectReceiptIdsForReply(
 			effectiveReplyText,
 			actionResults,
 		);
@@ -9232,6 +9232,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			effectiveReplyText = zeroDeliveryRecovery.text;
 			strippedPlannedReplyText = zeroDeliveryRecovery.text;
 			effectiveDeliveredReplyText = zeroDeliveryRecovery.text;
+			effectiveReplyReceiptIds = appliedEffectReceiptIdsForReply(
+				zeroDeliveryRecovery.text,
+				actionResults,
+			);
 			shouldSendPlannedText = true;
 		}
 		// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model
