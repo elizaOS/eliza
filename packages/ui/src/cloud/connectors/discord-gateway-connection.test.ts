@@ -387,4 +387,55 @@ describe("DiscordGatewayConnection editor concurrency", () => {
     fireEvent.click(blockedSave);
     expect(requests.patchAttempts).toBe(1);
   });
+
+  it("clears a stale token draft when reopening cannot load the exact row", async () => {
+    let detailReads = 0;
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/api/v1/discord/connections") {
+        return { connections: [baseConnection] };
+      }
+      if (path === "/api/v1/dashboard") {
+        return { agents: [{ id: characterId, name: "Cloud Agent" }] };
+      }
+      if (path === `/api/v1/discord/connections/${connectionId}`) {
+        detailReads += 1;
+        if (detailReads === 2) {
+          throw new Error("latest connection unavailable");
+        }
+        return {
+          connection: {
+            ...openedConnection,
+            editVersion: String(detailReads + 1),
+          },
+        };
+      }
+      throw new Error(`Unexpected API request: ${path}`);
+    });
+
+    render(createElement(DiscordGatewayConnection));
+    const trigger = await screen.findByText("App: {{appId}}");
+    fireEvent.click(trigger);
+    const tokenInput = await screen.findByPlaceholderText(
+      "Leave empty to keep current token",
+    );
+    fireEvent.change(tokenInput, { target: { value: "replacement-token" } });
+
+    fireEvent.click(trigger);
+    fireEvent.click(trigger);
+    expect(
+      await screen.findByText("Connection settings are unavailable"),
+    ).toBeTruthy();
+    expect(screen.queryByDisplayValue("replacement-token")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save Changes" })).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry loading settings" }),
+    );
+    await screen.findByDisplayValue("111111111111111");
+    expect(
+      screen.getByPlaceholderText("Leave empty to keep current token"),
+    ).toHaveProperty("value", "");
+    expect(screen.getByRole("button", { name: "Save Changes" })).toBeTruthy();
+    expect(detailReads).toBe(3);
+  });
 });

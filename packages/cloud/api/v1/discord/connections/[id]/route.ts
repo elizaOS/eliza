@@ -39,7 +39,7 @@ const UpdateConnectionSchema = z
       .string()
       .regex(/^\d+$/)
       .transform(Number)
-      .pipe(z.number().int().nonnegative().max(2_147_483_647))
+      .pipe(z.number().int().nonnegative().max(2_147_483_646))
       .optional(),
   })
   .refine(

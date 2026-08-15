@@ -232,6 +232,9 @@ export function DiscordGatewayConnection() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
+  const [failedEditLoads, setFailedEditLoads] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   // Form state for new connection
   const [applicationId, setApplicationId] = useState("");
@@ -663,11 +666,23 @@ export function DiscordGatewayConnection() {
 
   const initEditState = async (connectionId: string) => {
     setLoadingEditId(connectionId);
+    setEditState((current) => {
+      const next = { ...current };
+      delete next[connectionId];
+      return next;
+    });
+    setFailedEditLoads((current) => {
+      if (!current.has(connectionId)) return current;
+      const next = new Set(current);
+      next.delete(connectionId);
+      return next;
+    });
     try {
       await refreshConnectionForEdit(connectionId);
     } catch {
       // error-policy:J4 A failed exact-row read leaves the editor unavailable
       // rather than rendering stale list data as an editable configuration.
+      setFailedEditLoads((current) => new Set(current).add(connectionId));
       toast.error(
         t("cloud.discord.fetchConnectionFailed", {
           defaultValue: "Failed to load the latest connection settings",
@@ -791,6 +806,7 @@ export function DiscordGatewayConnection() {
               );
               const isExpanded = expandedId === conn.id;
               const edit = editState[conn.id];
+              const editLoadFailed = failedEditLoads.has(conn.id);
 
               return (
                 <Collapsible
@@ -902,7 +918,41 @@ export function DiscordGatewayConnection() {
                             })}
                           </div>
                         )}
-                        {loadingEditId !== conn.id && edit && (
+                        {loadingEditId !== conn.id && editLoadFailed && (
+                          <Alert>
+                            <AlertCircle aria-hidden />
+                            <AlertTitle>
+                              {t("cloud.discord.connectionLoadFailedTitle", {
+                                defaultValue:
+                                  "Connection settings are unavailable",
+                              })}
+                            </AlertTitle>
+                            <AlertDescription>
+                              <p>
+                                {t(
+                                  "cloud.discord.connectionLoadFailedDescription",
+                                  {
+                                    defaultValue:
+                                      "The latest settings could not be loaded. Retry before editing this connection.",
+                                  },
+                                )}
+                              </p>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void initEditState(conn.id)}
+                              >
+                                {t("cloud.discord.retryConnectionLoad", {
+                                  defaultValue: "Retry loading settings",
+                                })}
+                              </Button>
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                        {loadingEditId !== conn.id &&
+                          !editLoadFailed &&
+                          edit && (
                           <>
                             {edit.pendingConflict && (
                               <Alert>

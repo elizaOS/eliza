@@ -214,4 +214,14 @@ describe("PATCH /api/v1/discord/connections/:id metadata concurrency", () => {
     expect(response.status).toBe(400);
     expect(updateConfiguration).not.toHaveBeenCalled();
   });
+
+  test("rejects a revision that cannot be incremented in PostgreSQL", async () => {
+    const response = await patch({
+      metadata: { responseMode: "mention" },
+      expectedEditVersion: "2147483647",
+    });
+
+    expect(response.status).toBe(400);
+    expect(updateConfiguration).not.toHaveBeenCalled();
+  });
 });
