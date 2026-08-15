@@ -82,4 +82,34 @@ describe("Shared cutover reminder dispatcher", () => {
       acceptance: "unknown",
     });
   });
+
+  it("preserves an explicit Cloud failure reason instead of treating every conflict as rate limiting", async () => {
+    const runtime = { agentId: "dedicated-agent" } as IAgentRuntime;
+    globalThis.fetch = vi.fn(async () =>
+      Response.json(
+        {
+          success: false,
+          reason: "unknown_recipient",
+          acceptance: "not_accepted",
+        },
+        { status: 409 },
+      ),
+    ) as unknown as typeof fetch;
+    registerSharedCutoverReminderDispatcher(runtime, {
+      ELIZAOS_CLOUD_API_KEY: "agent-key",
+      ELIZA_CLOUD_AGENT_ID: "dedicated-agent",
+    });
+
+    await expect(
+      getScheduledTaskChannelDispatcher(
+        runtime,
+        SHARED_CUTOVER_GATEWAY_CHANNEL,
+      )?.dispatch(record()),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "unknown_recipient",
+      userActionable: true,
+      acceptance: "not_accepted",
+    });
+  });
 });

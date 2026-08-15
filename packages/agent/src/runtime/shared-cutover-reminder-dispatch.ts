@@ -6,10 +6,28 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import {
+  type DispatchFailureReason,
   registerScheduledTaskChannelDispatcher,
   SHARED_CUTOVER_GATEWAY_CHANNEL,
 } from "@elizaos/plugin-scheduling";
 import { resolveCloudApiBaseUrl } from "@elizaos/shared";
+
+const DISPATCH_FAILURE_REASONS = new Set<DispatchFailureReason>([
+  "disconnected",
+  "rate_limited",
+  "auth_expired",
+  "unknown_recipient",
+  "transport_error",
+]);
+
+function dispatchFailureReason(
+  value: unknown,
+): DispatchFailureReason | undefined {
+  return typeof value === "string" &&
+    DISPATCH_FAILURE_REASONS.has(value as DispatchFailureReason)
+    ? (value as DispatchFailureReason)
+    : undefined;
+}
 
 export function registerSharedCutoverReminderDispatcher(
   runtime: IAgentRuntime,
@@ -69,6 +87,29 @@ export function registerSharedCutoverReminderDispatcher(
           acceptance: "not_accepted",
         };
       }
+      const reportedReason = dispatchFailureReason(body?.reason);
+      const reportedAcceptance =
+        body?.acceptance === "not_accepted" ? "not_accepted" : "unknown";
+      if (body?.success === false && reportedReason) {
+        const retryAfterMinutes =
+          typeof body.retryAfterMinutes === "number" &&
+          Number.isFinite(body.retryAfterMinutes) &&
+          body.retryAfterMinutes > 0
+            ? body.retryAfterMinutes
+            : reportedReason === "rate_limited"
+              ? 1
+              : undefined;
+        return {
+          ok: false,
+          reason: reportedReason,
+          ...(retryAfterMinutes ? { retryAfterMinutes } : {}),
+          userActionable:
+            reportedReason === "auth_expired" ||
+            reportedReason === "unknown_recipient" ||
+            reportedReason === "disconnected",
+          acceptance: reportedAcceptance,
+        };
+      }
       if (response.status === 409 || response.status === 429) {
         return {
           ok: false,
@@ -85,8 +126,7 @@ export function registerSharedCutoverReminderDispatcher(
         ok: false,
         reason: "transport_error",
         userActionable: true,
-        acceptance:
-          body?.acceptance === "not_accepted" ? "not_accepted" : "unknown",
+        acceptance: reportedAcceptance,
       };
     },
   });

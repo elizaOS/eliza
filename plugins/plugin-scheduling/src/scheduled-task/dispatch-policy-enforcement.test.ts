@@ -267,6 +267,35 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     expect(at.reason).toBe("scheduled_override_due");
   });
 
+  it("never retries or advances a delivery with unknown provider acceptance", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(
+      reminderInput({
+        escalation: {
+          steps: [{ delayMinutes: 5, channelKey: "telegram" }],
+        },
+      }),
+    );
+    h.queueDispatchResults({
+      ok: false,
+      reason: "transport_error",
+      retryAfterMinutes: 1,
+      userActionable: true,
+      acceptance: "unknown",
+      message: "provider response was lost",
+    });
+
+    const result = await h.runner.fireWithResult(task.taskId);
+
+    expect(result.kind).toBe("dispatch_failed");
+    expect(h.dispatches).toHaveLength(1);
+    const persisted = await h.store.get(task.taskId);
+    expect(persisted?.state.status).toBe("failed");
+    expect(persisted?.metadata?.pendingDispatch).toBeUndefined();
+    expect(await transitions(h, task.taskId)).not.toContain("dispatch_retried");
+    expect(await transitions(h, task.taskId)).not.toContain("escalated");
+  });
+
   it("retry then success delivers and clears the continuation", async () => {
     const h = makeHarness();
     const task = await h.runner.schedule(reminderInput());
