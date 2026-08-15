@@ -80,6 +80,8 @@ bun run --cwd packages/cloud/shared generate:email-templates
 
 `db/database-url.ts` resolves the Postgres URL: explicit `DATABASE_URL`/`TEST_DATABASE_URL` (Railway in prod) wins; otherwise local (non-CI, non-production) dev falls back to a file-backed PGlite store at `pglite://<cwd>/.eliza/.pgdata` (override the path with `PGLITE_DATA_DIR`/`LOCAL_DATABASE_PATH`; set `DISABLE_LOCAL_PGLITE_FALLBACK=1` to opt out). The `pglite:server` script runs a pglite-socket sidecar so `drizzle-kit` can connect. The `lib/` services read service-specific env (Stripe, Steward session/JWT secrets, BitRouter/provider keys, Telegram/Discord/WhatsApp, Hetzner/container infra, etc.). See `.env.example` for the full set.
 
+`CREDIT_COST_BUFFER` (`credits-config.ts`, default `1.5`) sizes the safety margin on every pre-request credit reservation and affiliate-admission check (`credits.ts`'s `reserve()` and `organization-inference-admission.ts`). Must be a canonical decimal from `1` through `1000` (`1` = no buffer); unset/blank uses the default, anything else throws `ElizaError` (`INVALID_CREDIT_COST_BUFFER`) at module load. The minimum is `1`, not `0` — a buffer below `1` underflows the reservation calculation back toward `MIN_RESERVATION`, defeating the purpose of the setting.
+
 ## How to extend
 
 - **New table:** add a schema in `src/db/schemas/`, then `bun run --cwd packages/cloud/shared db:generate`, review the SQL in `src/db/migrations/`, run `db:migrate`, commit schema + migration together. Add a repository in `src/db/repositories/` (reader and writer split per CQRS).
