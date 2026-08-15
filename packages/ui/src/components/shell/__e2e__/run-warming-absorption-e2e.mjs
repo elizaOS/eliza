@@ -139,6 +139,10 @@ await runBrowserFixtureE2E(
       "insufficient_credits renders terminal (no Retry chip that re-hits the empty balance)",
     );
     assert(
+      (await page.getByTestId("chat-insufficient-credits-add").count()) === 1,
+      "insufficient_credits renders the structured out-of-credits gate with the Add credits CTA",
+    );
+    assert(
       (await userBubbles(page, MESSAGE)) === 1,
       "the user bubble survives the 402",
     );

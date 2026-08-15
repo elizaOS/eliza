@@ -916,18 +916,23 @@ export const ChatMessage = memo(function ChatMessage({
       duration: reduceMotion ? 0.05 : 0.09,
       ease: GLASS_EASE,
     };
-    // A failure the user can't recover from without wiring a provider renders a
-    // structured gate (via renderContent), NOT a normal bubble — no reveal
-    // actions, no copy-hold. The gate owns its own chrome; the row only carries
-    // the entrance motion + the data-failure hook the shell tests key off.
-    if (isAssistant && message.failureKind === "no_provider") {
+    // A failure the user can't recover from by retrying (no provider wired, or
+    // a drained credit balance) renders a structured gate (via renderContent),
+    // NOT a normal bubble — no reveal actions, no copy-hold. The gate owns its
+    // own chrome; the row only carries the entrance motion + the data-failure
+    // hook the shell tests key off.
+    if (
+      isAssistant &&
+      (message.failureKind === "no_provider" ||
+        message.failureKind === "insufficient_credits")
+    ) {
       return (
         <motion.div
           ref={articleRef as React.RefObject<HTMLDivElement>}
           id={getChatMessageAnchorId(message.id)}
           data-testid="thread-line"
           data-role={message.role}
-          data-failure="no_provider"
+          data-failure={message.failureKind}
           initial={initial}
           animate={{ opacity: 1 }}
           transition={transition}
