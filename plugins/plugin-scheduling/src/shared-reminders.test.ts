@@ -142,4 +142,24 @@ describe("Shared reminders edge plugin", () => {
     expect(result).toMatchObject({ success: false });
     expect(schedule).not.toHaveBeenCalled();
   });
+
+  it("rejects reminder text above the connector-safe limit", async () => {
+    const { options, schedule } = harness();
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+    const result = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "message-long" } as Memory,
+      undefined,
+      {
+        parameters: {
+          operation: "create",
+          reminderText: "x".repeat(2001),
+          inMinutes: 2,
+        },
+      },
+    );
+
+    expect(result).toMatchObject({ success: false });
+    expect(schedule).not.toHaveBeenCalled();
+  });
 });

@@ -514,6 +514,7 @@ jobs:
           OIDC_CLIENTS: ${{ secrets.OIDC_CLIENTS }}
           ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
           ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
+          GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
@@ -794,6 +795,7 @@ jobs:
             STEWARD_TENANT_API_KEY \
             OIDC_SIGNING_JWKS \
             OIDC_CLIENTS \
+            GATEWAY_INTERNAL_SECRET \
             ELIZA_APP_WEBHOOK_GATEWAY_SECRET
           do
             queue_secret "$name"
@@ -943,6 +945,7 @@ jobs:
               "STEWARD_REQUEST_SIGNING_SECRET",
               "STEWARD_PLATFORM_KEYS",
               "STEWARD_TENANT_API_KEY",
+              "GATEWAY_INTERNAL_SECRET",
             ];
             if (
               process.env.DEPLOY_ENVIRONMENT === "production" &&

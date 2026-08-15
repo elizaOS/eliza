@@ -92,6 +92,7 @@ const requiredAuthWorkerSecretNames = [
   "STEWARD_REQUEST_SIGNING_SECRET",
   "STEWARD_PLATFORM_KEYS",
   "STEWARD_TENANT_API_KEY",
+  "GATEWAY_INTERNAL_SECRET",
 ] as const;
 
 describe("canonical cloud deployment environment contract", () => {
