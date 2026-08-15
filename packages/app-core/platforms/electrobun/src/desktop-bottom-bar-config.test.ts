@@ -162,7 +162,7 @@ describe("desktop bottom-bar config", () => {
         passthrough: false,
       });
     });
-  });
+
 
     it("uses per-pixel passthrough only for the transparent macOS bottom bar", () => {
       expect(
@@ -186,6 +186,8 @@ describe("desktop bottom-bar config", () => {
         ).passthrough,
       ).toBe(false);
     });
+  });
+
   describe("shouldReanchorBottomBar", () => {
     const base = { x: 0, y: 24, width: 1920, height: 1056 };
 
