@@ -589,6 +589,8 @@ async function sendPersonalSharedReply(
         adapter.platform === "telegram"
           ? {
               platform: "telegram",
+              project,
+              chatId: event.chatId,
               telegramUserId: event.senderId,
               displayName: event.senderName,
               messageId: `telegram:${project}:${event.messageId}`,

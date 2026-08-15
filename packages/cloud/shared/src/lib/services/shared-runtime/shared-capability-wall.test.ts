@@ -36,4 +36,13 @@ describe("Shared capability wall", () => {
   ])("keeps discussion and research in Shared: %s", (message) => {
     expect(resolveSharedCapabilityWall(message)).toBeNull();
   });
+
+  test("allows reminders only when the current transport has trusted delivery", () => {
+    expect(
+      resolveSharedCapabilityWall("remind me in two minutes", {
+        reminders: true,
+      }),
+    ).toBeNull();
+    expect(resolveSharedCapabilityWall("remind me in two minutes")?.capability).toBe("reminders");
+  });
 });

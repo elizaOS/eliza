@@ -64,6 +64,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/domain-health",
   ],
   "* * * * *": [
+    "/api/cron/shared-scheduled-tasks",
     "/api/v1/cron/deployment-monitor",
     "/api/v1/cron/health-check",
     // Alerts ops when the provisioning-worker daemon's heartbeat goes
