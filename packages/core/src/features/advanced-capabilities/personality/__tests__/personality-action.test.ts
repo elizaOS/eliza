@@ -20,6 +20,10 @@ describe("personalityAction — routing ownership", () => {
 	test("does not claim the current-turn STOP_TALKING simile owned by IGNORE", () => {
 		expect(personalityAction.similes).not.toContain("STOP_TALKING");
 	});
+
+	test("declares USER as the coarse action floor", () => {
+		expect(personalityAction.roleGate).toEqual({ minRole: "USER" });
+	});
 });
 
 // Fixed sender entity for the `run` helper. Pass it as `owner` to makeFakeRuntime
@@ -283,6 +287,127 @@ describe("personalityAction — profiles", () => {
 		expect(result.success).toBe(true);
 		const profile = fake.store.getProfile("my-favorite");
 		expect(profile?.verbosity).toBe("terse");
+	});
+});
+
+describe("personalityAction — authorization follows reach and effect", () => {
+	test("a user can personalize their slot but cannot mutate global state", async () => {
+		const fake = makeFakeRuntime();
+		await initStore(fake);
+
+		const personal = await run(fake, "be terse with me", "set_trait", {
+			scope: "user",
+			trait: "verbosity",
+			value: "terse",
+		});
+		expect(personal.result.success).toBe(true);
+
+		const global = await run(fake, "be terse with everyone", "set_trait", {
+			scope: "global",
+			trait: "verbosity",
+			value: "terse",
+		});
+		expect(global.result.success).toBe(false);
+		expect(global.result.data).toMatchObject({
+			reach: "agent_wide",
+			requiredRole: "OWNER",
+		});
+		expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE).verbosity).toBeNull();
+	});
+
+	test("a user cannot inspect global state or the shared profile registry", async () => {
+		const fake = makeFakeRuntime();
+		await initStore(fake);
+
+		for (const request of [
+			await run(fake, "show global settings", "show_state", {
+				scope: "global",
+			}),
+			await run(fake, "list profiles", "list_profiles"),
+		]) {
+			expect(request.result.success).toBe(false);
+			expect(request.result.data).toMatchObject({
+				reach: "agent_wide",
+				requiredRole: "ADMIN",
+			});
+		}
+	});
+
+	test("an admin can inspect global state and list shared profiles", async () => {
+		const fake = makeFakeRuntime({ admins: [TEST_SENDER] });
+		await initStore(fake);
+
+		const state = await run(fake, "show global settings", "show_state", {
+			scope: "global",
+		});
+		const profiles = await run(fake, "list profiles", "list_profiles");
+		expect(state.result.success).toBe(true);
+		expect(profiles.result.success).toBe(true);
+		expect(profiles.calls[0].text).toContain("focused");
+	});
+
+	test("an admin cannot save or load shared profiles", async () => {
+		const fake = makeFakeRuntime({ admins: [TEST_SENDER] });
+		await initStore(fake);
+
+		const save = await run(fake, "save this", "save_profile", {
+			name: "admin-denied",
+		});
+		const load = await run(fake, "load focused", "load_profile", {
+			name: "focused",
+		});
+		for (const request of [save, load]) {
+			expect(request.result.success).toBe(false);
+			expect(request.result.data).toMatchObject({
+				reach: "agent_wide",
+				requiredRole: "OWNER",
+			});
+		}
+		expect(fake.store.getProfile("admin-denied")).toBeNull();
+		expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE).verbosity).toBeNull();
+	});
+
+	test("a global add_directive request clears the owner floor before its unsupported-scope response", async () => {
+		const fake = makeFakeRuntime();
+		await initStore(fake);
+		const { result } = await run(
+			fake,
+			"everyone should avoid emojis",
+			"add_directive",
+			{
+				scope: "global",
+				directive: "avoid emojis",
+			},
+		);
+		expect(result.values?.error).toBe("PERMISSION_DENIED");
+		expect(result.data).toMatchObject({
+			reach: "agent_wide",
+			requiredRole: "OWNER",
+		});
+	});
+
+	test("the owner can mutate global state and manage profiles", async () => {
+		const fake = makeFakeRuntime({ owner: TEST_SENDER });
+		await initStore(fake);
+
+		const mutate = await run(fake, "be warm with everyone", "set_trait", {
+			scope: "global",
+			trait: "tone",
+			value: "warm",
+		});
+		const save = await run(fake, "save this", "save_profile", {
+			name: "owner-profile",
+		});
+		const load = await run(fake, "load focused", "load_profile", {
+			name: "focused",
+		});
+		expect(mutate.result.success).toBe(true);
+		expect(save.result.success).toBe(true);
+		expect(load.result.success).toBe(true);
+		expect(fake.store.getProfile("owner-profile")?.tone).toBe("warm");
+		expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE).verbosity).toBe(
+			"terse",
+		);
 	});
 });
 

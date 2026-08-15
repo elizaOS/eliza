@@ -28,7 +28,9 @@ import {
   EventType,
   type IAgentRuntime,
   logger,
+  type RoleGateRole,
   type RouteRequestMeta,
+  satisfiesRoleGate,
   type ViewType,
 } from "@elizaos/core";
 import {
@@ -42,6 +44,7 @@ import {
   AGENT_SURFACE_CAPABILITY_IDS,
   STANDARD_CAPABILITIES,
 } from "@elizaos/shared/views/view-interact-protocol";
+import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type ActiveViewElement,
   clearActiveViewContext,
@@ -308,6 +311,11 @@ export interface ViewsRouteContext
   broadcastWsToClientId?: (clientId: string, payload: object) => number;
   /** Agent runtime — used by the semantic search endpoint. */
   runtime?: IAgentRuntime | null;
+  callerAuthorization?: AgentHttpRequestAuthorization;
+}
+
+function callerRoles(ctx: ViewsRouteContext): RoleGateRole[] {
+  return ctx.callerAuthorization?.ok ? [ctx.callerAuthorization.role] : [];
 }
 
 const PREFIX = "/api/views";
@@ -351,7 +359,7 @@ export async function handleViewsRoutes(
     const allViews = listViews({
       developerMode: ctx.developerMode ?? false,
       viewType,
-    });
+    }).filter((view) => satisfiesRoleGate(callerRoles(ctx), view.roleGate));
     const q = query.trim().toLowerCase();
 
     // Keyword scoring (40% weight).
@@ -418,7 +426,9 @@ export async function handleViewsRoutes(
     // apply the user's Settings toggles + build defaults itself. The server has
     // no way to know whether it is talking to a dev build or which kinds the
     // user enabled, so kind-gating is a client responsibility.
-    const allViews = listViews({ includeAllKinds: true, viewType });
+    const allViews = listViews({ includeAllKinds: true, viewType }).filter(
+      (view) => satisfiesRoleGate(callerRoles(ctx), view.roleGate),
+    );
     // On restricted platforms (iOS/Android store builds), only surface views
     // without dynamic bundle/frame URLs (already in-process).
     const filtered = dynamicAllowed
@@ -505,6 +515,10 @@ export async function handleViewsRoutes(
       error(res, `View "${id}" not found`, 404);
       return true;
     }
+    if (!satisfiesRoleGate(callerRoles(ctx), entry.roleGate)) {
+      error(res, `View "${id}" is not available to this caller`, 403);
+      return true;
+    }
     json(res, entry);
     return true;
   }
@@ -526,6 +540,10 @@ export async function handleViewsRoutes(
     const entry = getView(id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
+      return true;
+    }
+    if (!satisfiesRoleGate(callerRoles(ctx), entry.roleGate)) {
+      error(res, `View "${id}" is not available to this caller`, 403);
       return true;
     }
 
@@ -1195,6 +1213,11 @@ export async function handleViewsRoutes(
       error(res, `View "${id}" not found`, 404);
       return true;
     }
+    const boundaryRoles = callerRoles(ctx);
+    if (!satisfiesRoleGate(boundaryRoles, entry.roleGate)) {
+      error(res, `View "${id}" is not available to this caller`, 403);
+      return true;
+    }
 
     // Resolve the element from the active-view snapshot for context (the planner
     // reports it via /:id/elements). Only used when this view is the foreground
@@ -1218,6 +1241,7 @@ export async function handleViewsRoutes(
       broadcastWsToClientId: ctx.broadcastWsToClientId,
       clientId: resolveTargetViewClientId(id, req, body),
       runtime: ctx.runtime ?? undefined,
+      userRoles: boundaryRoles,
     });
 
     json(res, {
@@ -1273,6 +1297,10 @@ export async function handleViewsRoutes(
     const entry = getView(id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
+      return true;
+    }
+    if (!satisfiesRoleGate(callerRoles(ctx), entry.roleGate)) {
+      error(res, `View "${id}" is not available to this caller`, 403);
       return true;
     }
 
@@ -1443,6 +1471,7 @@ interface ViewInteractTransport {
   broadcastWsToClientId?: (clientId: string, payload: object) => number;
   clientId?: string | null;
   runtime?: IAgentRuntime;
+  userRoles?: readonly RoleGateRole[];
 }
 
 /**
@@ -1461,6 +1490,14 @@ export async function dispatchViewInteract(
   timeoutMs = 5_000,
 ): Promise<ViewInteractDispatchResult> {
   const requestId = randomUUID();
+
+  if (!satisfiesRoleGate(transport.userRoles, entry.roleGate)) {
+    return {
+      requestId,
+      success: false,
+      error: `View "${viewId}" is not available to this caller`,
+    };
+  }
 
   if (!viewManifestAllowsCapability(entry, capability)) {
     return {

@@ -52,7 +52,11 @@ export const CRON_FANOUT: Record<string, string[]> = {
     // to it — see packages/cloud/scripts/admin/daemons/provisioning-worker.ts.
   ],
   "*/2 * * * *": ["/api/v1/cron/pool-health-check"],
-  "*/10 * * * *": ["/api/cron/cleanup-expired-crypto-payments", "/api/v1/cron/pool-image-rollout"],
+  "*/10 * * * *": [
+    "/api/cron/cleanup-expired-crypto-payments",
+    "/api/cron/cleanup-expired-payment-requests",
+    "/api/v1/cron/pool-image-rollout",
+  ],
   "*/15 * * * *": [
     "/api/cron/auto-top-up",
     "/api/cron/agent-budgets",
@@ -60,6 +64,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/domain-health",
   ],
   "* * * * *": [
+    "/api/cron/shared-scheduled-tasks",
     "/api/v1/cron/deployment-monitor",
     "/api/v1/cron/health-check",
     // Alerts ops when the provisioning-worker daemon's heartbeat goes

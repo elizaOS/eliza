@@ -473,7 +473,7 @@ describe("emit + format + registry", () => {
 			coalesced: false,
 		});
 		timer.recordSpan("provider:SLOW", 120, {
-			outcome: "deadline_exceeded",
+			outcome: "error",
 			coalesced: true,
 		});
 		timer.recordSpan("provider-cache:FAST", 0, { cacheHit: true });
@@ -486,7 +486,7 @@ describe("emit + format + registry", () => {
 		expect(payload.providers[0]).toEqual(
 			expect.objectContaining({
 				providerName: "SLOW",
-				deadlineExceeded: 1,
+				errors: 1,
 				coalesced: 1,
 				execution: expect.objectContaining({ p95: 120 }),
 			}),

@@ -30,6 +30,14 @@ export interface Bindings {
    * (`lib/auth/steward-cookies.ts`) and cache key prefixes.
    */
   ENVIRONMENT?: string;
+  /** Public eliza.app agent used only when its exact Twilio line is called. */
+  ELIZA_APP_DEFAULT_AGENT_ID?: string;
+  /** Exact E.164 Twilio number allowed to route to the public default agent. */
+  ELIZA_APP_TWILIO_PHONE_NUMBER?: string;
+  /** Maximum unauthenticated Twilio media sockets awaiting a signed start frame. */
+  TWILIO_VOICE_MAX_PENDING_BOOTSTRAPS?: string;
+  /** Milliseconds allowed for a Twilio media socket to provide its signed start frame. */
+  TWILIO_VOICE_BOOTSTRAP_TIMEOUT_MS?: string;
   /** Staging-only QA session bridge kill switch; absent/anything but "true" is off. */
   STAGING_SESSION_EXCHANGE_ENABLED?: string;
   /** Exact runtime/code contract version; currently only "v1" is accepted. */
@@ -103,9 +111,10 @@ export interface Bindings {
   // ---- Cartesia ----
   /**
    * Server-side Cartesia API key. When set, un-pinned/default cloud TTS
-   * synthesizes with Cartesia Sonic. MP3 uses Cartesia's REST bytes endpoint;
-   * WAV uses the streaming adapter for codec-less clients. Unset falls back to
-   * the Kokoro/ElevenLabs selection chain.
+   * synthesizes with Cartesia Sonic (MP3 via the REST bytes endpoint, WAV via
+   * the streaming adapter for codec-less clients). Batch STT uses Cartesia
+   * only when VOICE_BATCH_STT_PROVIDER=cartesia; otherwise Whisper remains the
+   * unpinned default. Unset falls back to the Kokoro/ElevenLabs TTS chain.
    */
   CARTESIA_API_KEY?: string;
   /** Overrides the default Cartesia voice id used for un-pinned requests. */
@@ -140,7 +149,8 @@ export interface Bindings {
   /**
    * Base URL of the self-hosted Whisper STT service (OpenAI-compatible
    * `/v1/audio/transcriptions`, e.g. the Railway deploy). When set, the cloud
-   * STT endpoint serves Whisper for free; ElevenLabs STT is the fallback.
+   * STT endpoint serves Whisper for free whenever Cartesia does not claim the
+   * batch default; ElevenLabs STT is the fallback.
    */
   WHISPER_STT_URL?: string;
   /**
@@ -210,10 +220,19 @@ export interface Bindings {
 
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;
-  /** Opt-in batch STT provider. Deepgram is never selected by key presence alone. */
+  /**
+   * Batch STT provider override: `deepgram` | `cartesia` | `whisper` |
+   * `elevenlabs`. Unset uses Whisper when configured, otherwise ElevenLabs.
+   * Paid providers are never selected by key presence alone, and an override
+   * whose required binding is missing fails the route closed.
+   */
   VOICE_BATCH_STT_PROVIDER?: string;
   /** Opt-in prerecorded Deepgram STT key (server-held; never returned to clients). */
   DEEPGRAM_API_KEY?: string;
+  /** Effective USD price of one credit on the deployed Cartesia account. */
+  CARTESIA_STT_USD_PER_CREDIT?: string;
+  /** Cartesia batch STT request timeout in milliseconds (default 120000, max 300000). */
+  CARTESIA_BATCH_STT_TIMEOUT_MS?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */
   OPENROUTER_API_KEY?: string;
   OPENROUTER_BASE_URL?: string;
@@ -302,6 +321,12 @@ export interface Bindings {
    */
   OIDC_CLIENTS?: string;
   /**
+   * Public JSON object of client_id → additional exact HTTPS callbacks used
+   * during canonical-domain migrations. The client must already exist in
+   * OIDC_CLIENTS; this overlay cannot create or otherwise modify a client.
+   */
+  OIDC_REDIRECT_URI_ALIASES?: string;
+  /**
    * Domain that wallet-derived no-reply identities are minted on, for relying
    * parties registered with `wallet_email_fallback`. Defaults to
    * `users.noreply.<OIDC_ISSUER_URL hostname>` and is normally left unset.
@@ -378,6 +403,8 @@ export interface Bindings {
   // L3). Deliberately separate from GATEWAY_INTERNAL_SECRET (internal-event
   // path) so enabling this gate never affects direct provider webhooks.
   ELIZA_APP_WEBHOOK_GATEWAY_SECRET?: string;
+  /** Authenticates proactive Shared reminder delivery to the Railway gateway. */
+  GATEWAY_INTERNAL_SECRET?: string;
   ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL?: string;
   DISCORD_WEBHOOK_HANDLER_URL?: string;
   CONTAINER_CONTROL_PLANE_URL?: string;
@@ -434,6 +461,8 @@ export interface Bindings {
   INFERENCE_PASSTHROUGH_STREAMING?: string;
   RATE_LIMIT_DISABLED?: string;
   RATE_LIMIT_MULTIPLIER?: string;
+  /** Transition gate for the genuine AgentRuntime-backed Shared turn. */
+  SHARED_ELIZA_AGENT_RUNTIME?: string;
   PLAYWRIGHT_TEST_AUTH?: string;
   PLAYWRIGHT_TEST_AUTH_SECRET?: string;
   TWILIO_SMS_COST_PER_SEGMENT_USD?: string;

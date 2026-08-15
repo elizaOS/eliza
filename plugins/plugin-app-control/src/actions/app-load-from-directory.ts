@@ -21,6 +21,10 @@ import {
 	parseAppIsolation,
 	parseAppPermissions,
 } from "@elizaos/shared";
+import {
+	type AppWorkerCapability,
+	parseAppWorkerCapability,
+} from "../app-worker-manifest.js";
 import { readStringOption } from "../params.js";
 import {
 	isProtected,
@@ -41,6 +45,7 @@ interface DiscoveredApp {
 	aliases: string[];
 	permissions: AppPermissionsManifest;
 	isolation: AppIsolation;
+	worker: AppWorkerCapability | undefined;
 }
 
 async function readPackageJson(
@@ -118,6 +123,16 @@ async function discoverApps(directory: string): Promise<DiscoveryResult> {
 			});
 			continue;
 		}
+		const workerResult = parseAppWorkerCapability(appMeta.worker);
+		if (!workerResult.ok) {
+			rejectedManifests.push({
+				directory: subdir,
+				packageName,
+				reason: workerResult.reason,
+				path: workerResult.path,
+			});
+			continue;
+		}
 
 		const slug =
 			readString(appMeta.slug) ??
@@ -134,6 +149,7 @@ async function discoverApps(directory: string): Promise<DiscoveryResult> {
 			aliases,
 			permissions: permissionsResult.manifest,
 			isolation: parseAppIsolation(appMeta.isolation),
+			worker: workerResult.capability,
 		});
 	}
 
@@ -267,6 +283,7 @@ export async function runLoadFromDirectory({
 			displayName: app.displayName,
 			trust: "external",
 			isolation: app.isolation,
+			...(app.worker !== undefined ? { worker: app.worker } : {}),
 			...(app.permissions.raw !== null
 				? { requestedPermissions: app.permissions.raw }
 				: {}),
@@ -305,7 +322,7 @@ export async function runLoadFromDirectory({
 		);
 		lines.push(
 			"",
-			`Skipped ${rejectedManifests.length} app${rejectedManifests.length === 1 ? "" : "s"} with malformed elizaos.app.permissions:`,
+			`Skipped ${rejectedManifests.length} app${rejectedManifests.length === 1 ? "" : "s"} with malformed elizaos.app manifests:`,
 			...summaries.map((s) => `  - ${s}`),
 		);
 	}

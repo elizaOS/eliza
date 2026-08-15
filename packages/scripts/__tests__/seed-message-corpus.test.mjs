@@ -107,6 +107,37 @@ describe("parseArgs port wiring", () => {
   });
 });
 
+describe("parseArgs canonical integer flags", () => {
+  test("accepts canonical decimal counts and seeds", () => {
+    const options = parseArgs(
+      ["--conversations=24", "--seed=99", "--api-port=31337"],
+      {},
+    );
+    expect(options.body.conversations).toBe(24);
+    expect(options.body.seed).toBe(99);
+  });
+
+  test("rejects coercible non-canonical forms the same way --api-port already does", () => {
+    // Number("0x10") is 16 and Number("1e2") is 100, so a hex seed or a
+    // scientific count used to silently seed with a different valid value.
+    for (const argv of [
+      ["--seed=0x10"],
+      ["--seed=1e2"],
+      ["--seed= 42 "],
+      ["--seed= 7 8"],
+      ["--conversations=1e2"],
+      ["--conversations= 12 "],
+      ["--conversations=010"],
+      ["--conversations=12abc"],
+      ["--messages=3.5"],
+      ["--span-months=0x2"],
+      ["--facts=1e1"],
+    ]) {
+      expect(() => parseArgs(argv, {})).toThrow(/must be/);
+    }
+  });
+});
+
 describe("seed-message-corpus CLI boundary", () => {
   test("--help prints usage and exits 0", () => {
     const result = runCli(["--help"]);
@@ -127,7 +158,7 @@ describe("seed-message-corpus CLI boundary", () => {
       "1.5",
     ]) {
       const result = runCli([`--api-port=${value}`]);
-      expect(result.status).not.toBe(0);
+      expect(result.status).toBe(2);
       const combined = `${result.stdout}${result.stderr}`;
       expect(combined).toMatch(
         /--api-port must be a TCP port integer from 1 to 65535/,
@@ -139,7 +170,7 @@ describe("seed-message-corpus CLI boundary", () => {
   test("rejects invalid ELIZA_API_PORT before any seed request", () => {
     for (const value of ["0", "notaport", "31337junk", " 31337 ", "99999"]) {
       const result = runCli([], { ELIZA_API_PORT: value });
-      expect(result.status).not.toBe(0);
+      expect(result.status).toBe(2);
       const combined = `${result.stdout}${result.stderr}`;
       expect(combined).toMatch(
         /ELIZA_API_PORT must be a TCP port integer from 1 to 65535/,
@@ -153,7 +184,7 @@ describe("seed-message-corpus CLI boundary", () => {
       ELIZA_API_PORT: "notaport",
     });
     const combined = `${result.stdout}${result.stderr}`;
-    expect(result.status).not.toBe(0);
+    expect(result.status).toBe(2);
     expect(combined).toContain("--messages must be an integer");
     expect(combined).not.toContain("ELIZA_API_PORT must be");
     expect(combined).not.toContain("Seeding backdated message corpus");

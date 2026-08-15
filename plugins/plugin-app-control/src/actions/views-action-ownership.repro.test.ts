@@ -22,11 +22,16 @@ import type { ViewSummary } from "./views-client.js";
 const NOTES_VIEW: ViewSummary = {
 	id: "notes",
 	label: "Notes",
+	roleGate: { minRole: "OWNER" },
 	path: "/notes",
 	pluginName: "plugin-notes",
 	available: true,
 	viewType: "gui",
 	capabilities: [
+		{
+			id: "get-notes",
+			description: "Read durable notes.",
+		},
 		{
 			id: "create-note",
 			description:
@@ -104,7 +109,7 @@ function makeRuntime(
 	} as unknown as IAgentRuntime;
 }
 
-function makeAction() {
+function makeAction(owner = true) {
 	const listViews = vi.fn(async () => [NOTES_VIEW]);
 	const action = createViewsAction({
 		client: {
@@ -116,7 +121,7 @@ function makeAction() {
 				viewPath: "/notes",
 			})),
 		},
-		hasOwnerAccess: vi.fn(async () => true),
+		hasOwnerAccess: vi.fn(async () => owner),
 	});
 	return { action, listViews };
 }
@@ -156,9 +161,10 @@ describe("VIEWS action ownership after planner selection", () => {
 				};
 				const content = body.params?.content;
 				const success =
-					body.capability === "create-note" &&
-					typeof content === "string" &&
-					content.trim().length > 0;
+					body.capability === "get-notes" ||
+					(body.capability === "create-note" &&
+						typeof content === "string" &&
+						content.trim().length > 0);
 				return Response.json({
 					success,
 					result: {
@@ -176,6 +182,49 @@ describe("VIEWS action ownership after planner selection", () => {
 		vi.unstubAllEnvs();
 		vi.unstubAllGlobals();
 	});
+
+	it.each([
+		{ capability: "get-notes", params: {} },
+		{ capability: "create-note", params: { content: "private note" } },
+	])(
+		"denies a USER before loopback dispatch of $capability on the owner-private Notes view",
+		async ({ capability, params }) => {
+			const { action } = makeAction(false);
+			const runtime = makeRuntime(action);
+			const result = await executeViews(runtime, message("use my notes"), {
+				action: "interact",
+				view: "notes",
+				capability,
+				params,
+			});
+
+			expect(result).toMatchObject({
+				success: false,
+				text: "The Notes view is not available to this caller.",
+			});
+			expect(fetch).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
+		{ capability: "get-notes", params: {} },
+		{ capability: "create-note", params: { content: "private note" } },
+	])(
+		"allows the OWNER to dispatch $capability on the owner-private Notes view",
+		async ({ capability, params }) => {
+			const { action } = makeAction(true);
+			const runtime = makeRuntime(action);
+			const result = await executeViews(runtime, message("use my notes"), {
+				action: "interact",
+				view: "notes",
+				capability,
+				params,
+			});
+
+			expect(result?.success).toBe(true);
+			expect(fetch).toHaveBeenCalledTimes(1);
+		},
+	);
 
 	it.each([
 		"Pretty close. Uh, can you take me to the notes so we can see all of our notes?",

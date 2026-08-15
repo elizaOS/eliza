@@ -3,7 +3,8 @@
  *
  * Data: GET `/api/v1/affiliates` (auto-create on first load via POST), POST/PUT
  * `/api/v1/affiliates` (markup), GET `/api/v1/referrals` (via
- * {@link useDashboardReferralMe}).
+ * {@link useDashboardReferralMe}). Markup is a SettingsInputRow; the surrounding
+ * BrandCard chrome and save button stay.
  */
 
 "use client";
@@ -13,6 +14,7 @@ import {
   CheckCircle2,
   Copy,
   Link as LinkIcon,
+  Percent,
   UserCog,
   Users,
 } from "lucide-react";
@@ -22,11 +24,8 @@ import { toast } from "sonner";
 // Deep primitive/brand imports per the packages/ui extension rules — the
 // root cloud-ui barrel would drag the entire kit into this chunk graph.
 import { BrandCard } from "../../../cloud-ui/components/brand/brand-card";
-import {
-  Button,
-  Input,
-  Skeleton,
-} from "../../../cloud-ui/components/primitives";
+import { Button, Skeleton } from "../../../cloud-ui/components/primitives";
+import { SettingsInputRow } from "../../../components/settings/settings-agent-rows";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import {
@@ -71,6 +70,7 @@ export function AffiliatesPageClient() {
   const [loading, setLoading] = useState(true);
 
   const [markupPercent, setMarkupPercent] = useState<string>("20.00");
+  const [markupError, setMarkupError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const { copied, markCopied: markAffiliateCopied } = useCopyFeedback();
   const { copied: referralCopied, markCopied: markReferralCopied } =
@@ -141,13 +141,15 @@ export function AffiliatesPageClient() {
   const handleSaveMarkup = async () => {
     const numericValue = parseFloat(markupPercent);
     if (Number.isNaN(numericValue) || numericValue < 0 || numericValue > 1000) {
-      toast.error(
+      setMarkupError(
         t("cloud.affiliates.invalidMarkup", {
-          defaultValue: "Invalid markup. Must be between 0 and 1000%.",
+          defaultValue: "Enter a percentage from 0 to 1000",
         }),
       );
+      document.getElementById("cloud-affiliates-markup-percent")?.focus();
       return;
     }
+    setMarkupError(null);
 
     setIsSaving(true);
     try {
@@ -161,7 +163,7 @@ export function AffiliatesPageClient() {
       }
       toast.success(
         t("cloud.affiliates.markupUpdated", {
-          defaultValue: "Markup percentage updated!",
+          defaultValue: "Markup saved",
         }),
       );
     } catch (e) {
@@ -437,40 +439,46 @@ export function AffiliatesPageClient() {
           </div>
         </div>
 
-        <div className="flex items-end gap-4 max-w-md mt-6">
-          <div className="flex-1">
-            <label
-              htmlFor="affiliate-markup-percent"
-              className="text-sm text-muted mb-2 block"
+        <div className="mt-6 max-w-md space-y-3">
+          <SettingsInputRow
+            agentId="cloud-affiliates-markup-percent"
+            group="cloud-affiliates"
+            icon={Percent}
+            type="number"
+            inputMode="decimal"
+            label={t("cloud.affiliates.markupPercentLabel", {
+              defaultValue: "Markup percentage",
+            })}
+            description={t("cloud.affiliates.markupPercentHelp", {
+              defaultValue:
+                "0–1000. Added on top of base prices for referred users.",
+            })}
+            value={markupPercent}
+            onValueChange={(next) => {
+              setMarkupError(null);
+              setMarkupPercent(next);
+            }}
+            disabled={isSaving}
+            error={markupError ?? undefined}
+            placeholder="20.00"
+            inputClassName="text-base tabular-nums sm:text-sm"
+            testId="cloud-affiliates-markup-percent"
+          />
+          <div className="flex justify-end">
+            <Button
+              onClick={handleSaveMarkup}
+              disabled={
+                isSaving || markupPercent === affiliateData?.markup_percent
+              }
+              className="min-w-[100px]"
             >
-              {t("cloud.affiliates.markupPercentLabel", {
-                defaultValue: "Your Markup Percentage (0 - 1000%)",
-              })}
-            </label>
-            <Input
-              id="affiliate-markup-percent"
-              type="number"
-              value={markupPercent}
-              onChange={(e) => setMarkupPercent(e.target.value)}
-              className="bg-bg-hover border-border text-txt font-mono"
-              min={0}
-              max={1000}
-              step={0.1}
-            />
+              {isSaving
+                ? t("cloud.affiliates.saving", { defaultValue: "Saving" })
+                : t("cloud.affiliates.saveConfig", {
+                    defaultValue: "Save markup",
+                  })}
+            </Button>
           </div>
-          <Button
-            onClick={handleSaveMarkup}
-            disabled={
-              isSaving || markupPercent === affiliateData?.markup_percent
-            }
-            className="min-w-[100px]"
-          >
-            {isSaving
-              ? t("cloud.affiliates.saving", { defaultValue: "Saving..." })
-              : t("cloud.affiliates.saveConfig", {
-                  defaultValue: "Save Config",
-                })}
-          </Button>
         </div>
 
         <div className="mt-4 p-4 rounded-sm bg-status-warning-bg border border-status-warning/20 flex gap-3 text-sm">

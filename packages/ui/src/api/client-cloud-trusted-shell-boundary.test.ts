@@ -28,10 +28,11 @@ vi.mock("@capacitor/core", () => ({
 import { setBootConfig } from "../config/boot-config";
 import { ElizaClient } from "./client-base";
 import "./client-cloud";
+import { STAGING_DIRECT_CLOUD_API_BASE_URL } from "./direct-cloud-endpoints";
 
 const DEDICATED_STAGING_BASE =
   "https://11111111-1111-4111-8111-111111111111.staging.elizacloud.ai";
-const STAGING_CONTROL_PLANE = "https://api-staging.elizacloud.ai";
+const STAGING_CONTROL_PLANE = STAGING_DIRECT_CLOUD_API_BASE_URL;
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
   window,
   "location",
@@ -128,7 +129,7 @@ function assertStewardRequests(
 ): void {
   for (const [url, init] of calls) {
     expect(String(url)).toMatch(
-      /^https:\/\/api-staging\.elizacloud\.ai\/api\/v1\//,
+      new RegExp(`^${STAGING_DIRECT_CLOUD_API_BASE_URL}/api/v1/`),
     );
     expect(String(url)).not.toContain("/api/cloud/compat/");
     expect(new Headers(init?.headers).get("authorization")).toBe(
@@ -412,7 +413,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
     expect(platform.request).toHaveBeenCalledTimes(3);
     for (const [request] of platform.request.mock.calls) {
       expect(request.url).toMatch(
-        /^https:\/\/api-staging\.elizacloud\.ai\/api\/v1\//,
+        new RegExp(`^${STAGING_DIRECT_CLOUD_API_BASE_URL}/api/v1/`),
       );
       expect(request.url).not.toContain("/api/cloud/compat/");
       expect(request.headers.Authorization).toBe("Bearer steward-jwt");

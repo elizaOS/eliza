@@ -15,6 +15,10 @@ export type RuntimeDb = {
   execute: (query: RawSqlQuery) => Promise<unknown>;
 };
 
+export type SchedulingSqlExecutor = (
+  sqlText: string,
+) => Promise<Array<Record<string, unknown>>>;
+
 let cachedSqlRaw: ((query: string) => RawSqlQuery) | null = null;
 
 export function asObject(value: unknown): Record<string, unknown> | null {
@@ -112,6 +116,12 @@ export async function executeRawSql(
   }
   const result = await db.execute(raw(sqlText));
   return extractRows(result);
+}
+
+export function createRuntimeSchedulingSqlExecutor(
+  runtime: IAgentRuntime,
+): SchedulingSqlExecutor {
+  return (sqlText) => executeRawSql(runtime, sqlText);
 }
 
 export function sqlQuote(value: string): string {

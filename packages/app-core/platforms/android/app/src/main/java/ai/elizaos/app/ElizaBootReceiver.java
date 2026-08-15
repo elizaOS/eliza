@@ -17,9 +17,7 @@ public class ElizaBootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         String action = intent != null ? intent.getAction() : null;
-        if (!Intent.ACTION_BOOT_COMPLETED.equals(action)
-                && !Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)
-                && !"android.intent.action.MY_PACKAGE_REPLACED".equals(action)) {
+        if (!shouldHandleAction(action)) {
             return;
         }
         // PACKAGE_USAGE_STATS has both a manifest permission (granted via
@@ -45,6 +43,12 @@ public class ElizaBootReceiver extends BroadcastReceiver {
         // runtime, background preference, or native token may have changed.
         // Reconciliation is idempotent and cancels any stale unique work.
         ElizaWorkScheduler.reconcile(context);
+    }
+
+    static boolean shouldHandleAction(String action) {
+        return Intent.ACTION_BOOT_COMPLETED.equals(action)
+            || Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)
+            || "android.intent.action.MY_PACKAGE_REPLACED".equals(action);
     }
 
     private static boolean isAospBuild(Context context) {

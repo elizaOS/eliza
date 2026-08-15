@@ -341,6 +341,10 @@ export default defineConfig({
         replacement: path.join(pluginAnthropicRoot, "index.node.ts"),
       },
       {
+        find: /^@elizaos\/plugin-anthropic\/endpoint-config$/,
+        replacement: path.join(pluginAnthropicRoot, "utils/config.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-anthropic\/(.+)$/,
         replacement: path.join(pluginAnthropicRoot, "$1"),
       },
@@ -359,6 +363,13 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-task-coordinator\/(.+)$/,
         replacement: `${toVitePath(appTaskCoordinatorSrc)}/$1`,
+      },
+      {
+        // plugin-scheduling (source-aliased below) imports @elizaos/core/edge;
+        // vite's test-mode resolver misses linked-package subpath exports, so
+        // pin it to the edge source entry (mirrors plugin-calendar, #19815).
+        find: /^@elizaos\/core\/edge$/,
+        replacement: path.join(monorepoRoot, "packages/core/src/index.edge.ts"),
       },
       {
         find: /^@elizaos\/plugin-scheduling$/,
@@ -401,12 +412,20 @@ export default defineConfig({
         replacement: path.join(pluginElizaCloudSrc, "index.node.ts"),
       },
       {
+        find: /^@elizaos\/plugin-elizacloud\/endpoint-config$/,
+        replacement: path.join(pluginElizaCloudSrc, "utils/config.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
         replacement: path.join(pluginElizaCloudSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-openai$/,
         replacement: path.join(pluginOpenAiSrc, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-openai\/endpoint-config$/,
+        replacement: path.join(pluginOpenAiSrc, "utils/config.ts"),
       },
       {
         find: /^@elizaos\/plugin-openai\/(.+)$/,

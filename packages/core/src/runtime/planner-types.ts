@@ -35,6 +35,8 @@ export interface EvaluatorRuntime {
 		error: unknown,
 		context?: Record<string, unknown>,
 	): void;
+	/** Runtime-known-secret redaction composed into model-bound tool history. */
+	redactSecrets?(text: string): string;
 	useModel(
 		modelType: TextGenerationModelType,
 		params: {
@@ -76,6 +78,12 @@ export interface PlannerRuntime {
 		error: unknown,
 		context?: Record<string, unknown>,
 	): void;
+	/**
+	 * Runtime-known-secret redaction (character-configured values). Composed
+	 * with the shared tool-shape patterns for every diagnostic projection of
+	 * tool-call arguments; when absent the shape pass still applies.
+	 */
+	redactSecrets?(text: string): string;
 	useModel(
 		modelType: TextGenerationModelType,
 		params: {
@@ -213,6 +221,12 @@ export interface PlannerLoopResult {
 	 * real action whose result is already recorded.
 	 */
 	silentTerminalAction?: "IGNORE" | "STOP";
+	/** Aggregate provider-reported usage across the complete planner turn. */
+	modelUsage?: {
+		promptTokens: number;
+		completionTokens: number;
+		modelCalls: number;
+	};
 }
 
 export interface PlannerLoopParams {
@@ -244,6 +258,11 @@ export interface PlannerLoopParams {
 	modelType?: TextGenerationModelType;
 	evaluatorEffects?: EvaluatorEffects;
 	provider?: string;
+	/** @internal Shared turn-level observer, including terminal rescue calls. */
+	onModelUsage?: (usage: {
+		promptTokens: number;
+		completionTokens: number;
+	}) => void;
 	/** Native tool definitions exposed to the planner model. */
 	tools?: ToolDefinition[];
 	/** Native tool selection policy. Defaults to "auto" when tools is non-empty. */
@@ -313,4 +332,5 @@ export interface RunEvaluatorParams {
 	trajectoryId?: string;
 	parentStageId?: string;
 	iteration?: number;
+	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
 }

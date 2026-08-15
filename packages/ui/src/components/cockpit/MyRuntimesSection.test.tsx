@@ -79,6 +79,27 @@ describe("MyRuntimesSection", () => {
     expect(screen.queryByTestId("add-remote-runtime")).toBeNull();
   });
 
+  it("lays the list and add form out with SettingsGroup", () => {
+    render(
+      <MyRuntimesSection
+        runtimes={RUNTIMES}
+        activeId="local-1"
+        onSwitch={vi.fn()}
+        onAddRemote={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("My Runtimes")).toBeTruthy();
+    expect(screen.getByText("Add a VPS / remote runtime")).toBeTruthy();
+    expect(screen.getByLabelText("Label")).toBeTruthy();
+    expect(screen.getByLabelText("URL")).toBeTruthy();
+    expect(screen.getByLabelText("Access token")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("runtime-local-1")
+        .querySelector("[aria-current='true']"),
+    ).toBeTruthy();
+  });
+
   it("adding a remote requires a label + url, then emits the entry", async () => {
     const user = userEvent.setup();
     const onAddRemote = vi.fn();

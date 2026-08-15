@@ -21,6 +21,8 @@ export interface TaskResult {
   success: boolean;
   output?: string;
   artifacts?: Array<{ name: string; path: string; type: string }>;
+  /** Stable machine-readable classification for a failed task. */
+  errorCode?: string;
   error?: string;
   durationMs?: number;
 }

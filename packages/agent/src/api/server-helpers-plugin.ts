@@ -2,6 +2,7 @@
  * Plugin config/form helpers extracted from server.ts.
  */
 
+import type { UiElement, UiSpec } from "@elizaos/shared";
 import { isBlockedEnvKey } from "./plugin-discovery-helpers.ts";
 import type { ServerState } from "./server-types.ts";
 
@@ -115,20 +116,25 @@ export async function resolvePluginConfigReply(
   if (!params) return null;
 
   const displayName = pluginName.charAt(0).toUpperCase() + pluginName.slice(1);
-  const elements: Record<string, unknown> = {};
+  const elements: Record<string, UiElement> = {};
   const fieldIds: string[] = [];
   const state: Record<string, string> = { pluginId: pluginName };
+  const saveParams: Record<string, unknown> = { pluginId: pluginName };
 
   elements.title = {
     type: "Heading",
     props: { level: 3, text: `Configure ${displayName}` },
+    children: [],
   };
-  elements.sep = { type: "Separator", props: {} };
+  elements.sep = { type: "Separator", props: {}, children: [] };
 
   for (const param of params) {
     const fid = `f_${param.key}`;
     fieldIds.push(fid);
     state[`config.${param.key}`] = "";
+    saveParams[`config.${param.key}`] = {
+      $path: `config.${param.key}`,
+    };
     elements[fid] = {
       type: "Input",
       props: {
@@ -138,34 +144,46 @@ export async function resolvePluginConfigReply(
         type: param.secret ? "password" : "text",
         className: "font-mono text-xs",
       },
+      children: [],
     };
   }
 
-  elements.fields = { type: "Stack", props: { gap: "3", children: fieldIds } };
+  elements.fields = {
+    type: "Stack",
+    props: { gap: "3" },
+    children: fieldIds,
+  };
   elements.saveBtn = {
     type: "Button",
     props: {
-      text: "Save & Enable",
+      label: "Save configuration",
       variant: "default",
       className: "font-semibold",
-      on: {
-        press: { action: "plugin:save", params: { pluginId: pluginName } },
-      },
     },
+    on: {
+      press: { action: "plugin:save", params: saveParams },
+    },
+    children: [],
   };
   elements.actions = {
     type: "Stack",
-    props: { direction: "row", gap: "2", children: ["saveBtn"] },
+    props: { direction: "row", gap: "2" },
+    children: ["saveBtn"],
   };
   elements.root = {
     type: "Card",
     props: {
-      children: ["title", "sep", "fields", "actions"],
       className: "p-4 space-y-3",
     },
+    children: ["title", "sep", "fields", "actions"],
   };
 
-  const spec = JSON.stringify({ version: 1, root: "root", elements, state });
+  const spec = JSON.stringify({
+    version: 1,
+    root: "root",
+    elements,
+    state,
+  } satisfies UiSpec & { version: number });
   return `here's the config form for ${displayName} — fill in your credentials and hit save:\n\n\`\`\`json-render\n${spec}\n\`\`\``;
 }
 

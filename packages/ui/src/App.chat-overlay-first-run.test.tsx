@@ -39,6 +39,7 @@ const notificationMock = vi.hoisted(() => ({
 vi.mock("./state/notifications/notification-store", () => ({
   initNotifications: notificationMock.init,
   seedDevNotificationsIfEmpty: vi.fn(async () => undefined),
+  useNotifications: () => ({ notifications: [] }),
 }));
 
 const conductorMock = vi.hoisted(() => ({
@@ -277,6 +278,9 @@ import { App } from "./App";
 
 describe("App chat-overlay first-run composition", () => {
   beforeEach(() => {
+    appState.authPhase = "loading";
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
     conductorMock.mount.mockClear();
     notificationMock.init.mockClear();
@@ -333,6 +337,59 @@ describe("App chat-overlay first-run composition", () => {
     expect(startupGate.getByTestId("startup-screen")).toBeTruthy();
     await waitFor(() => expect(notificationMock.init).toHaveBeenCalledOnce());
     startupGate.unmount();
+  });
+
+  it("keeps the mounted shell across the completion probe, then returns to the boundary on a later probe", () => {
+    // Four-state regression (#19191 / maintainer audit on #19336): the hold
+    // must be bounded to the completion edge, not a permanent bypass.
+    window.history.replaceState(null, "", "/");
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    appState.authPhase = "loading";
+
+    // 1. Onboarding: the shell paints (no StartupScreen gate).
+    const shell = render(<App />);
+    const mountedProvider = shell.getByTestId("shell-controller-provider");
+    expect(shell.queryByTestId("startup-screen")).toBeNull();
+
+    // 2. Completion edge: the auth probe is loading, but the already-painted
+    //    onboarding shell must stay mounted (same provider instance).
+    appState.firstRunComplete = true;
+    appState.startupPhase = "ready";
+    shell.rerender(<App />);
+    expect(shell.queryByTestId("startup-screen")).toBeNull();
+    expect(shell.getByTestId("shell-controller-provider")).toBe(
+      mountedProvider,
+    );
+
+    // 3. Probe resolves: shell remains, and the completion hold is released.
+    appState.authPhase = "authenticated";
+    shell.rerender(<App />);
+    expect(shell.queryByTestId("startup-screen")).toBeNull();
+    expect(shell.getByTestId("shell-controller-provider")).toBeTruthy();
+
+    // 4. A later credential refetch must return to the startup/auth boundary
+    //    instead of keeping protected shell providers mounted.
+    appState.authPhase = "loading";
+    shell.rerender(<App />);
+    expect(shell.getByTestId("startup-screen")).toBeTruthy();
+    expect(shell.queryByTestId("shell-controller-provider")).toBeNull();
+  });
+
+  it("holds an ordinary authenticated shell when a later auth probe starts", () => {
+    window.history.replaceState(null, "", "/");
+    appState.firstRunComplete = true;
+    appState.startupPhase = "ready";
+    appState.authPhase = "authenticated";
+
+    const shell = render(<App />);
+    expect(shell.getByTestId("shell-controller-provider")).toBeTruthy();
+
+    appState.authPhase = "loading";
+    shell.rerender(<App />);
+
+    expect(shell.getByTestId("startup-screen")).toBeTruthy();
+    expect(shell.queryByTestId("shell-controller-provider")).toBeNull();
   });
 
   it("keeps the conductor mounted but UNGATED by App once first-run completes (hook self-gates)", () => {

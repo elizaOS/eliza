@@ -99,6 +99,22 @@ function generateWebhookEventId(
   return `oxapay_${trackId}_${status}_${payloadHash}`;
 }
 
+async function rollbackClaimedWebhookEvent(eventId: string): Promise<void> {
+  try {
+    await webhookEventsRepository.deleteByEventId(eventId, "oxapay");
+  } catch {
+    // error-policy:J6 marker deletion is best-effort teardown after the primary
+    // processing failure; the route still returns 5xx so the failure is visible.
+    logger.warn(
+      "[Crypto Webhook] Processing failed and dedup-marker rollback failed",
+      {
+        eventId: redact.trackId(eventId),
+        errorType: "marker_delete_failed",
+      },
+    );
+  }
+}
+
 const app = new Hono<AppEnv>();
 
 app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
@@ -163,6 +179,8 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     try {
       payload = JSON.parse(rawBody);
     } catch {
+      // error-policy:J3 malformed provider JSON is explicit invalid input and
+      // never becomes a fabricated valid webhook.
       logger.warn("[Crypto Webhook] Invalid JSON payload", {
         ip: redact.ip(ip),
         payloadHash,
@@ -218,15 +236,22 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       event_timestamp: timestampValidation.timestamp,
     });
 
-    if (!insertResult.created) {
-      logger.warn("[Crypto Webhook] Duplicate webhook detected - ignoring", {
-        ip: redact.ip(ip),
-        payloadHash,
-        trackId: redact.trackId(normalizedPayload.trackId),
-        status: normalizedPayload.status,
-        eventId,
-      });
-      return c.json({ success: true, message: "Webhook already processed" });
+    const claimedMarker = insertResult.created;
+    if (!claimedMarker) {
+      // A marker means another delivery started, not necessarily that its
+      // settlement finished. Re-enter the idempotent payment service so a
+      // concurrent delivery cannot receive 200 while the claiming request
+      // later fails. The payment row lock makes confirmed settlement a no-op.
+      logger.warn(
+        "[Crypto Webhook] Duplicate webhook detected - verifying settlement",
+        {
+          ip: redact.ip(ip),
+          payloadHash,
+          trackId: redact.trackId(normalizedPayload.trackId),
+          status: normalizedPayload.status,
+          eventId: redact.trackId(eventId),
+        },
+      );
     }
 
     logger.info("[Crypto Webhook] Valid webhook received", {
@@ -236,31 +261,58 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       amount: normalizedPayload.amount,
       payAmount: normalizedPayload.payAmount,
       payloadHash,
-      eventId,
+      eventId: redact.trackId(eventId),
     });
 
-    const result = await cryptoPaymentsService.handleWebhook({
-      track_id: normalizedPayload.trackId,
-      status: normalizedPayload.status,
-      amount: normalizedPayload.amount,
-      pay_amount: normalizedPayload.payAmount,
-      txID: normalizedPayload.txID,
-    });
+    let result: Awaited<ReturnType<typeof cryptoPaymentsService.handleWebhook>>;
+    let settlementReturned = false;
+    try {
+      result = await cryptoPaymentsService.handleWebhook({
+        track_id: normalizedPayload.trackId,
+        status: normalizedPayload.status,
+        amount: normalizedPayload.amount,
+        pay_amount: normalizedPayload.payAmount,
+        txID: normalizedPayload.txID,
+      });
+      settlementReturned = true;
+    } finally {
+      if (!settlementReturned && claimedMarker) {
+        await rollbackClaimedWebhookEvent(eventId);
+      }
+    }
+
+    if (!result.success) {
+      if (claimedMarker) {
+        await rollbackClaimedWebhookEvent(eventId);
+      }
+      logger.error(
+        "[Crypto Webhook] Settlement was not accepted; requesting provider retry",
+        {
+          ip: redact.ip(ip),
+          trackId: redact.trackId(normalizedPayload.trackId),
+          eventId: redact.trackId(eventId),
+          message: result.message,
+        },
+      );
+      return c.body("error", 500, { "Content-Type": "text/plain" });
+    }
 
     logger.info("[Crypto Webhook] Webhook processed successfully", {
       ip: redact.ip(ip),
       trackId: redact.trackId(normalizedPayload.trackId),
       success: result.success,
       message: result.message,
-      eventId,
+      eventId: redact.trackId(eventId),
     });
 
     // OxaPay requires exactly "ok" with HTTP 200 for successful delivery.
     return c.body("ok", 200, { "Content-Type": "text/plain" });
-  } catch (error) {
+  } catch {
+    // error-policy:J1 the OxaPay HTTP boundary turns every internal failure
+    // into a retryable 5xx without exposing provider or database details.
     logger.error("[Crypto Webhook] Error processing webhook", {
       ip: redact.ip(ip),
-      error: error instanceof Error ? error.message : "Unknown error",
+      errorType: "webhook_processing_failed",
     });
     // Return 500 so OxaPay will retry.
     return c.body("error", 500, { "Content-Type": "text/plain" });

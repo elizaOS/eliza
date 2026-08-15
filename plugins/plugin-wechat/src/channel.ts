@@ -26,6 +26,7 @@ export interface ChannelOptions {
     accountId: string,
     msg: WechatMessageContext,
   ) => void | Promise<void>;
+  onDeliveryError?: (error: unknown, accountId: string) => void | Promise<void>;
 }
 
 export class WechatChannel {
@@ -33,6 +34,10 @@ export class WechatChannel {
   private readonly onMessage: (
     accountId: string,
     msg: WechatMessageContext,
+  ) => void | Promise<void>;
+  private readonly onDeliveryError: (
+    error: unknown,
+    accountId: string,
   ) => void | Promise<void>;
   private readonly accounts = new Map<
     string,
@@ -53,6 +58,7 @@ export class WechatChannel {
   constructor(options: ChannelOptions) {
     this.config = options.config;
     this.onMessage = options.onMessage;
+    this.onDeliveryError = options.onDeliveryError ?? (() => undefined);
   }
 
   async start(): Promise<void> {
@@ -81,6 +87,7 @@ export class WechatChannel {
             port: webhookPort,
             accounts,
             onMessage: (accountId, msg) => this.routeIncoming(accountId, msg),
+            onDeliveryError: this.onDeliveryError,
             signal: this.abortController.signal,
           }),
         );
@@ -204,16 +211,18 @@ export class WechatChannel {
     return entry.client.getContacts();
   }
 
-  private routeIncoming(accountId: string, msg: WechatMessageContext): void {
+  private async routeIncoming(
+    accountId: string,
+    msg: WechatMessageContext,
+  ): Promise<void> {
     const entry = this.accounts.get(accountId);
     if (!entry) {
-      console.warn(
-        `[wechat] Received webhook for unknown account "${accountId}"`,
+      throw new Error(
+        `[wechat] Cannot deliver webhook for unknown account "${accountId}"`,
       );
-      return;
     }
 
-    entry.bot.handleIncoming(msg);
+    await entry.bot.handleIncoming(msg);
   }
 
   private async ensureLoggedIn(

@@ -1,97 +1,87 @@
 /**
- * Service-worker update reload wiring through deterministic registration and
- * container fakes. First installation must not replay an auth navigation;
- * replacement workers reload the stale renderer exactly once.
+ * Service-worker update activation wiring through deterministic registration
+ * and container fakes. The page may activate a replacement worker but never
+ * becomes a second navigation owner; the real worker owns the one safe refresh.
  */
 
 import { describe, expect, it, vi } from "vitest";
-import {
-  isAuthNavigationUrl,
-  wireServiceWorkerUpdateReload,
-} from "./sw-registration";
+import { wireServiceWorkerUpdateActivation } from "./sw-registration";
 
 interface ListenerStore {
   registration: Map<string, EventListener>;
-  container: Map<string, EventListener>;
+  worker: Map<string, EventListener>;
 }
 
-function makeHarness(
-  hasController: boolean,
-  currentUrl = "https://staging.eliza.app/chat",
-) {
+function makeHarness({
+  hasController,
+  waiting = false,
+}: {
+  hasController: boolean;
+  waiting?: boolean;
+}) {
   const listeners: ListenerStore = {
     registration: new Map(),
-    container: new Map(),
+    worker: new Map(),
   };
+  const messages: unknown[] = [];
+  const worker = {
+    state: "installing",
+    postMessage(message: unknown) {
+      messages.push(message);
+    },
+    addEventListener(type: string, listener: EventListener) {
+      listeners.worker.set(type, listener);
+    },
+  } as unknown as ServiceWorker;
   const registration = {
-    waiting: null,
-    installing: null,
+    waiting: waiting ? worker : null,
+    installing: worker,
     addEventListener(type: string, listener: EventListener) {
       listeners.registration.set(type, listener);
     },
   } as unknown as ServiceWorkerRegistration;
   const serviceWorkers = {
     controller: hasController ? ({} as ServiceWorker) : null,
-    addEventListener(type: string, listener: EventListener) {
-      listeners.container.set(type, listener);
-    },
+    addEventListener: vi.fn(),
   } as unknown as ServiceWorkerContainer;
-  const reload = vi.fn();
 
-  wireServiceWorkerUpdateReload(
-    registration,
-    serviceWorkers,
-    reload,
-    () => currentUrl,
-  );
+  wireServiceWorkerUpdateActivation(registration, serviceWorkers);
 
-  return { listeners, reload };
+  return { listeners, messages, registration, serviceWorkers, worker };
 }
 
-describe("service-worker controller-change reload", () => {
-  it("does not reload when the first worker claims an uncontrolled page", () => {
-    const { listeners, reload } = makeHarness(false);
+describe("service-worker update activation", () => {
+  it("does not activate an installing worker on its first installation", () => {
+    const { listeners, messages, worker } = makeHarness({
+      hasController: false,
+    });
+    listeners.registration.get("updatefound")?.(new Event("updatefound"));
+    Object.assign(worker, { state: "installed" });
+    listeners.worker.get("statechange")?.(new Event("statechange"));
 
-    listeners.container.get("controllerchange")?.(
-      new Event("controllerchange"),
-    );
-
-    expect(reload).not.toHaveBeenCalled();
+    expect(messages).toEqual([]);
   });
 
-  it("reloads exactly once when a replacement worker takes control", () => {
-    const { listeners, reload } = makeHarness(true);
-    const controllerChange = listeners.container.get("controllerchange");
+  it("activates a newly installed replacement worker", () => {
+    const { listeners, messages, worker } = makeHarness({
+      hasController: true,
+    });
+    listeners.registration.get("updatefound")?.(new Event("updatefound"));
+    Object.assign(worker, { state: "installed" });
+    listeners.worker.get("statechange")?.(new Event("statechange"));
 
-    controllerChange?.(new Event("controllerchange"));
-    controllerChange?.(new Event("controllerchange"));
-
-    expect(reload).toHaveBeenCalledTimes(1);
+    expect(messages).toEqual([{ type: "SKIP_WAITING" }]);
   });
 
-  it.each([
-    "https://staging.eliza.app/auth/bridge?state=state",
-    "https://staging.eliza.app/login?code=one-time-code",
-    "https://staging.eliza.app/oidc/continue?rid=eoq_request",
-  ])("does not replay an auth-sensitive update navigation: %s", (url) => {
-    const { listeners, reload } = makeHarness(true, url);
+  it("activates a replacement worker that was already waiting", () => {
+    const { messages } = makeHarness({ hasController: true, waiting: true });
 
-    listeners.container.get("controllerchange")?.(
-      new Event("controllerchange"),
-    );
-
-    expect(reload).not.toHaveBeenCalled();
+    expect(messages).toEqual([{ type: "SKIP_WAITING" }]);
   });
-});
 
-describe("service-worker auth navigation classification", () => {
-  it("matches exact auth route families without blocking ordinary app pages", () => {
-    expect(isAuthNavigationUrl("https://eliza.app/login")).toBe(true);
-    expect(isAuthNavigationUrl("https://eliza.app/auth/email-callback")).toBe(
-      true,
-    );
-    expect(isAuthNavigationUrl("https://eliza.app/oidc/continue")).toBe(true);
-    expect(isAuthNavigationUrl("https://eliza.app/chat")).toBe(false);
-    expect(isAuthNavigationUrl("https://eliza.app/login-history")).toBe(false);
+  it("never subscribes to controllerchange, leaving navigation to the worker", () => {
+    const { serviceWorkers } = makeHarness({ hasController: true });
+
+    expect(serviceWorkers.addEventListener).not.toHaveBeenCalled();
   });
 });

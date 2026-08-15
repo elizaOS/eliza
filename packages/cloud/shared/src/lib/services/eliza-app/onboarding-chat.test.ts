@@ -21,7 +21,7 @@ const findOrCreateByPhone = mock();
 const linkPhoneToUser = mock();
 const linkDiscordToUser = mock();
 const linkTelegramToUser = mock();
-const launchManagedElizaAgent = mock();
+const readManagedElizaAgentConnection = mock();
 const loggerWarn = mock();
 let cloudEnv: Record<string, string | undefined> = {};
 const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
@@ -63,7 +63,7 @@ mock.module("../../utils/logger", () => ({
 }));
 
 mock.module("../eliza-managed-launch", () => ({
-  launchManagedElizaAgent,
+  readManagedElizaAgentConnection,
 }));
 
 mock.module("./provisioning", () => ({
@@ -80,8 +80,12 @@ mock.module("./user-service", () => ({
   },
 }));
 
-const { inspectOnboardingContinuation, runOnboardingChat, validateTelegramOnboardingContinuation } =
-  await import(`./onboarding-chat.ts?test=onboarding-chat-${Date.now()}`);
+const {
+  inspectOnboardingContinuation,
+  inspectTelegramPersonalAccountContinuation,
+  runOnboardingChat,
+  validateTelegramOnboardingContinuation,
+} = await import(`./onboarding-chat.ts?test=onboarding-chat-${Date.now()}`);
 const { peekLocalGreetingQueue, clearLocalGreetingQueue } = await import(
   "./onboarding-proactive-greeting"
 );
@@ -98,7 +102,7 @@ describe("runOnboardingChat", () => {
     linkDiscordToUser.mockResolvedValue({ success: true });
     linkTelegramToUser.mockReset();
     linkTelegramToUser.mockResolvedValue({ success: true });
-    launchManagedElizaAgent.mockReset();
+    readManagedElizaAgentConnection.mockReset();
     loggerWarn.mockReset();
     cloudEnv = {};
     clearLocalGreetingQueue();
@@ -153,7 +157,7 @@ describe("runOnboardingChat", () => {
     );
     expect(result.loginUrl).not.toContain("platform%3A");
     expect(result.loginUrl).not.toContain("14155550123");
-    expect(result.reply).toContain("connect your account here");
+    expect(result.reply).toContain("connect this chat to your account here");
     expect(result.reply).toContain(result.loginUrl);
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     expect(findOrCreateByPhone).not.toHaveBeenCalled();
@@ -181,6 +185,53 @@ describe("runOnboardingChat", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
     expect(result.loginUrl).not.toContain("123456789");
+  });
+
+  test("mints a read-only continuation bound to the existing Telegram personal account", async () => {
+    getElizaAppProvisioningStatus.mockResolvedValue({
+      status: "none",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const claim = await runOnboardingChat({
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "Nubs",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+      authenticatedUser: {
+        userId: "telegram-user-1",
+        organizationId: "telegram-org-1",
+        telegramId: "123456789",
+      },
+      statusOnly: true,
+    });
+    const token = continuationToken(claim);
+
+    await expect(inspectTelegramPersonalAccountContinuation(token)).resolves.toEqual({
+      telegramId: "123456789",
+      userId: "telegram-user-1",
+      organizationId: "telegram-org-1",
+    });
+    expect(claim.session.history).toEqual([]);
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("rejects an unbound Telegram continuation as account-claim authority", async () => {
+    const unbound = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "987654321",
+      sessionId: "platform:telegram:987654321",
+      trustedPlatformIdentity: true,
+    });
+
+    await expect(
+      inspectTelegramPersonalAccountContinuation(continuationToken(unbound)),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
   });
 
   test("preflights a bot-issued Telegram continuation before account mutation", async () => {
@@ -229,7 +280,7 @@ describe("runOnboardingChat", () => {
       sessionId: "platform:telegram:123456789",
       trustedPlatformIdentity: true,
     });
-    ensureElizaAppProvisioning.mockResolvedValue({
+    getElizaAppProvisioningStatus.mockResolvedValue({
       status: "pending",
       agentId: null,
       bridgeUrl: null,
@@ -274,7 +325,7 @@ describe("runOnboardingChat", () => {
       sessionId: "platform:telegram:123456789",
       trustedPlatformIdentity: true,
     });
-    ensureElizaAppProvisioning.mockResolvedValue({
+    getElizaAppProvisioningStatus.mockResolvedValue({
       status: "pending",
       agentId: null,
       bridgeUrl: null,
@@ -430,8 +481,8 @@ describe("runOnboardingChat", () => {
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
 
-  test("a confirmed Steward continuation links the attested Telegram identity and provisions", async () => {
-    ensureElizaAppProvisioning.mockResolvedValue({
+  test("a confirmed Steward continuation links the attested Telegram identity without provisioning", async () => {
+    getElizaAppProvisioningStatus.mockResolvedValue({
       status: "provisioning",
       agentId: "agent-t",
       bridgeUrl: null,
@@ -460,10 +511,8 @@ describe("runOnboardingChat", () => {
       username: "SamTG",
     });
     expect(linkPhoneToUser).not.toHaveBeenCalled();
-    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
-      userId: "steward-user",
-      organizationId: "steward-org",
-    });
+    expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("steward-org");
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
 
   test("a Telegram tenant-safety decline (identity owned by another account) fails the turn", async () => {
@@ -498,7 +547,7 @@ describe("runOnboardingChat", () => {
       sessionId: "platform:telegram:123456789",
       trustedPlatformIdentity: true,
     });
-    ensureElizaAppProvisioning.mockResolvedValue({
+    getElizaAppProvisioningStatus.mockResolvedValue({
       status: "pending",
       agentId: null,
       bridgeUrl: null,
@@ -517,10 +566,8 @@ describe("runOnboardingChat", () => {
 
     expect(continued.session.userId).toBe("user-1");
     expect(continued.session.organizationId).toBe("org-1");
-    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
-      userId: "user-1",
-      organizationId: "org-1",
-    });
+    expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("org-1");
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
 
   test("strict Telegram redemption rejects an unknown continuation", async () => {
@@ -603,7 +650,7 @@ describe("runOnboardingChat", () => {
       sessionId: "platform:telegram:123456789",
       trustedPlatformIdentity: true,
     });
-    ensureElizaAppProvisioning.mockResolvedValue({
+    getElizaAppProvisioningStatus.mockResolvedValue({
       status: "pending",
       agentId: null,
       bridgeUrl: null,
@@ -626,7 +673,8 @@ describe("runOnboardingChat", () => {
 
     expect(first.session.userId).toBe("user-1");
     expect(retry).toEqual(first);
-    expect(ensureElizaAppProvisioning).toHaveBeenCalledTimes(1);
+    expect(getElizaAppProvisioningStatus).toHaveBeenCalledTimes(1);
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
 
     await expect(
       runOnboardingChat({
@@ -936,7 +984,7 @@ describe("runOnboardingChat", () => {
         organization: { id: "org-1" },
         isNew: true,
       });
-      ensureElizaAppProvisioning.mockResolvedValue({
+      getElizaAppProvisioningStatus.mockResolvedValue({
         status: "running",
         agentId: "agent-1",
         bridgeUrl: "https://agent-1.example",
@@ -946,12 +994,9 @@ describe("runOnboardingChat", () => {
           bridge_url: "https://agent-1.example",
         },
       });
-      launchManagedElizaAgent.mockResolvedValue({
-        appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
-        connection: {
-          apiBase: "https://agent-1.example/",
-          token: "agent-token",
-        },
+      readManagedElizaAgentConnection.mockResolvedValue({
+        apiBase: "https://agent-1.example/",
+        token: "agent-token",
       });
 
       const result = await runOnboardingChat({
@@ -967,17 +1012,16 @@ describe("runOnboardingChat", () => {
       });
 
       expect(result.handoffComplete).toBe(true);
-      expect(result.launchUrl).toBe("https://app.elizacloud.ai/dashboard/agents/agent-1");
+      expect(result.launchUrl).toBe("https://cloud.eliza.app/cloud/agents/agent-1");
       expect(result.session.userId).toBe("user-1");
       expect(result.session.organizationId).toBe("org-1");
       expect(result.session.agentId).toBe("agent-1");
-      expect(result.session.launchUrl).toBe("https://app.elizacloud.ai/dashboard/agents/agent-1");
+      expect(result.session.launchUrl).toBe("https://cloud.eliza.app/cloud/agents/agent-1");
       expect(result.session.handoffCopiedAt).toBeTruthy();
       expect(result.reply).toContain("already knows everything from this chat");
-      expect(launchManagedElizaAgent).toHaveBeenCalledWith({
+      expect(readManagedElizaAgentConnection).toHaveBeenCalledWith({
         agentId: "agent-1",
         organizationId: "org-1",
-        userId: "user-1",
       });
       expect(rememberRequests).toHaveLength(1);
       const rememberRequest = rememberRequests[0];
@@ -995,7 +1039,7 @@ describe("runOnboardingChat", () => {
         "User's preferred name: Sam",
       );
 
-      launchManagedElizaAgent.mockClear();
+      readManagedElizaAgentConnection.mockClear();
       const continued = await runOnboardingChat({
         platform: "blooio",
         platformUserId: "+14155550123",
@@ -1010,8 +1054,8 @@ describe("runOnboardingChat", () => {
       expect(continued.handoffComplete).toBe(true);
       expect(continued.session.agentId).toBe("agent-1");
       expect(continued.session.handoffCopiedAt).toBe(result.session.handoffCopiedAt);
-      expect(continued.launchUrl).toBe("https://app.elizacloud.ai/dashboard/agents/agent-1");
-      expect(launchManagedElizaAgent).not.toHaveBeenCalled();
+      expect(continued.launchUrl).toBe("https://cloud.eliza.app/cloud/agents/agent-1");
+      expect(readManagedElizaAgentConnection).not.toHaveBeenCalled();
       expect(rememberRequests).toHaveLength(1);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1019,7 +1063,7 @@ describe("runOnboardingChat", () => {
   });
 
   test("continues an authenticated phone onboarding session without requiring another message", async () => {
-    ensureElizaAppProvisioning.mockResolvedValue({
+    getElizaAppProvisioningStatus.mockResolvedValue({
       status: "provisioning",
       agentId: "agent-1",
       bridgeUrl: null,
@@ -1034,7 +1078,7 @@ describe("runOnboardingChat", () => {
       trustedPlatformIdentity: true,
     });
     ensureElizaAppProvisioning.mockClear();
-    ensureElizaAppProvisioning.mockResolvedValue({
+    getElizaAppProvisioningStatus.mockResolvedValue({
       status: "provisioning",
       agentId: "agent-1",
       bridgeUrl: null,
@@ -1051,10 +1095,8 @@ describe("runOnboardingChat", () => {
       confirmPlatformLink: true,
     });
 
-    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
-      userId: "phone-user",
-      organizationId: "phone-org",
-    });
+    expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("phone-org");
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     expect(linkPhoneToUser).toHaveBeenCalledWith("phone-user", "+14155550123");
     expect(result.provisioning.agentId).toBe("agent-1");
   });
@@ -1155,7 +1197,6 @@ describe("runOnboardingChat", () => {
 
     test("an authenticated caller cannot create a platform session or link a phone claimed in the body", async () => {
       getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
-      ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
 
       const withSessionId = await runOnboardingChat({
         sessionId: "platform:twilio:+15550002222",
@@ -1188,7 +1229,6 @@ describe("runOnboardingChat", () => {
     test("an authenticated caller cannot claim an existing unbound session by public platform id", async () => {
       const victim = await runTrustedPhoneTurn("My name is Sam");
       const victimSnapshot = JSON.stringify(getCachedSession(PLATFORM_SESSION));
-      ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
       getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
 
       const attacker = await runOnboardingChat({
@@ -1210,13 +1250,12 @@ describe("runOnboardingChat", () => {
     });
 
     test("a session bound to one user never carries over to a different authenticated user", async () => {
-      ensureElizaAppProvisioning.mockResolvedValue({
+      getElizaAppProvisioningStatus.mockResolvedValue({
         status: "provisioning",
         agentId: "agent-v",
         bridgeUrl: null,
         sandbox: null,
       });
-      getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
 
       const victim = await runTrustedPhoneTurn("My name is Sam");
       const victimBound = await runOnboardingChat({
@@ -1251,7 +1290,7 @@ describe("runOnboardingChat", () => {
     });
 
     test("previews and explicitly confirms a trusted iMessage continuation", async () => {
-      ensureElizaAppProvisioning.mockResolvedValue({
+      getElizaAppProvisioningStatus.mockResolvedValue({
         status: "provisioning",
         agentId: "agent-1",
         bridgeUrl: null,
@@ -1332,7 +1371,7 @@ describe("runOnboardingChat", () => {
     }
 
     test("an authenticated web continuation of a trusted Discord session links the Discord identity", async () => {
-      ensureElizaAppProvisioning.mockResolvedValue({
+      getElizaAppProvisioningStatus.mockResolvedValue({
         status: "provisioning",
         agentId: "agent-d",
         bridgeUrl: null,
@@ -1354,15 +1393,12 @@ describe("runOnboardingChat", () => {
         username: "SolTest",
       });
       expect(linkPhoneToUser).not.toHaveBeenCalled();
-      expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
-        userId: "steward-user",
-        organizationId: "steward-org",
-      });
+      expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("steward-org");
+      expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     });
 
     test("an authenticated caller cannot bind a Discord id claimed in an untrusted body", async () => {
       getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
-      ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
 
       await runOnboardingChat({
         message: "My name is Eve",
@@ -1414,7 +1450,7 @@ describe("runOnboardingChat", () => {
     });
 
     test("a signed Discord identity matching the session resumes it without a confirmation detour", async () => {
-      ensureElizaAppProvisioning.mockResolvedValue({
+      getElizaAppProvisioningStatus.mockResolvedValue({
         status: "provisioning",
         agentId: "agent-d",
         bridgeUrl: null,
@@ -1442,10 +1478,8 @@ describe("runOnboardingChat", () => {
       // Discord OAuth login already created the identity projection; the
       // signed-id match is the ownership proof, so no re-link is issued.
       expect(linkDiscordToUser).not.toHaveBeenCalled();
-      expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
-        userId: "discord-oauth-user",
-        organizationId: "discord-oauth-org",
-      });
+      expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("discord-oauth-org");
+      expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     });
 
     test("refuses confirmPlatformLink for a forged opaque session without a trusted Discord preview", async () => {
@@ -1462,7 +1496,6 @@ describe("runOnboardingChat", () => {
     });
 
     test("refuses a continuation rebound to another account after preview", async () => {
-      ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
       getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
       const gatewayTurn = await runTrustedDiscordTurn("My name is Sam");
       const token = continuationToken(gatewayTurn);
@@ -1489,7 +1522,6 @@ describe("runOnboardingChat", () => {
     });
 
     test("a tenant-safety decline (identity owned by another account) fails the turn", async () => {
-      ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
       getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
       linkDiscordToUser.mockResolvedValue({
         success: false,
@@ -1523,7 +1555,6 @@ describe("runOnboardingChat", () => {
     });
 
     test("falls back to the platform user id when the display name is blank", async () => {
-      ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
       getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
 
       const gatewayTurn = await runOnboardingChat({
@@ -1741,8 +1772,8 @@ describe("runOnboardingChat", () => {
   });
 
   describe("provisioning-state replies without an LLM", () => {
-    test("provisioning error reply promises the queued retry and never claims the agent is live", async () => {
-      ensureElizaAppProvisioning.mockResolvedValue({
+    test("provisioning error reply reports no restart and never claims the agent is live", async () => {
+      getElizaAppProvisioningStatus.mockResolvedValue({
         status: "error",
         agentId: "agent-1",
         bridgeUrl: null,
@@ -1758,10 +1789,7 @@ describe("runOnboardingChat", () => {
       });
       expect(result.provisioning.status).toBe("error");
       expect(result.handoffComplete).toBe(false);
-      // The retry is queued automatically now (#17924), so the reply must say
-      // so rather than send the user to a dashboard that has no button to fix
-      // this — that instruction was a dead end for every stranded org.
-      expect(result.reply.toLowerCase()).toContain("queued");
+      expect(result.reply.toLowerCase()).toContain("nothing was restarted");
       expect(result.reply.toLowerCase()).not.toContain("dashboard");
       // Still must not overclaim: the row is `error` at this instant and only
       // becomes `provisioning` when the daemon claims the job.
@@ -1770,7 +1798,7 @@ describe("runOnboardingChat", () => {
     });
 
     test("provisioning-in-progress reply does not claim the agent is live or copied", async () => {
-      ensureElizaAppProvisioning.mockResolvedValue({
+      getElizaAppProvisioningStatus.mockResolvedValue({
         status: "provisioning",
         agentId: "agent-1",
         bridgeUrl: null,
@@ -1784,31 +1812,8 @@ describe("runOnboardingChat", () => {
         trustedPlatformIdentity: true,
         authenticatedUser: { userId: "user-1", organizationId: "org-1" },
       });
-      expect(result.reply).toContain("spinning up now");
-      expect(result.reply).not.toContain("agent is live");
-      expect(result.reply).not.toContain("knows everything");
-    });
-
-    test("insufficient-credits reply is deterministic and points at billing", async () => {
-      cloudEnv = { CEREBRAS_API_KEY: "test-key" };
-      ensureElizaAppProvisioning.mockResolvedValue({
-        status: "insufficient_credits",
-        agentId: null,
-        bridgeUrl: null,
-        sandbox: null,
-      });
-      const result = await runOnboardingChat({
-        message: "My name is Sam",
-        platform: "blooio",
-        platformUserId: PHONE,
-        sessionId: PLATFORM_SESSION,
-        trustedPlatformIdentity: true,
-        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
-      });
-      expect(result.provisioning.status).toBe("insufficient_credits");
-      expect(result.handoffComplete).toBe(false);
-      expect(result.reply).toContain("you're out of credits, Sam");
-      expect(result.reply).toContain("/cloud/billing");
+      expect(result.reply).toContain("existing Dedicated setup");
+      expect(result.reply).toContain("did not start or restart it");
       expect(result.reply).not.toContain("agent is live");
       expect(result.reply).not.toContain("knows everything");
     });
@@ -1829,7 +1834,7 @@ describe("runOnboardingChat", () => {
       }) as typeof fetch;
 
       try {
-        ensureElizaAppProvisioning.mockResolvedValue({
+        getElizaAppProvisioningStatus.mockResolvedValue({
           status: "running",
           agentId: "agent-1",
           bridgeUrl: "https://agent-1.example",
@@ -1839,12 +1844,9 @@ describe("runOnboardingChat", () => {
             bridge_url: "https://agent-1.example",
           },
         });
-        launchManagedElizaAgent.mockResolvedValue({
-          appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
-          connection: {
-            apiBase: "https://agent-1.example",
-            token: "agent-token",
-          },
+        readManagedElizaAgentConnection.mockResolvedValue({
+          apiBase: "https://agent-1.example",
+          token: "agent-token",
         });
 
         const first = await runOnboardingChat({
@@ -1857,7 +1859,7 @@ describe("runOnboardingChat", () => {
         });
         expect(first.handoffComplete).toBe(false);
         expect(first.session.handoffCopiedAt).toBeUndefined();
-        expect(first.reply).toContain("finishing setup");
+        expect(first.reply).toContain("finishing the existing connection");
         expect(first.reply).not.toContain("knows everything");
         expect(rememberCalls).toBe(1);
         const browserContinuation = continuationToken(first);
@@ -1899,7 +1901,7 @@ describe("runOnboardingChat", () => {
       }) as typeof fetch;
 
       try {
-        ensureElizaAppProvisioning.mockResolvedValue({
+        getElizaAppProvisioningStatus.mockResolvedValue({
           status: "running",
           agentId: "agent-1",
           bridgeUrl: "https://agent-1.example",
@@ -1909,12 +1911,9 @@ describe("runOnboardingChat", () => {
             bridge_url: "https://agent-1.example",
           },
         });
-        launchManagedElizaAgent.mockResolvedValue({
-          appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
-          connection: {
-            apiBase: "https://agent-1.example",
-            token: "agent-token",
-          },
+        readManagedElizaAgentConnection.mockResolvedValue({
+          apiBase: "https://agent-1.example",
+          token: "agent-token",
         });
 
         const result = await runOnboardingChat({
@@ -1960,7 +1959,7 @@ describe("runOnboardingChat", () => {
         bridgeUrl: null,
         sandbox: null,
       });
-      ensureElizaAppProvisioning.mockResolvedValue({
+      getElizaAppProvisioningStatus.mockResolvedValue({
         status: "provisioning",
         agentId: null,
         bridgeUrl: null,
@@ -2005,7 +2004,7 @@ describe("runOnboardingChat", () => {
         bridgeUrl: null,
         sandbox: null,
       });
-      ensureElizaAppProvisioning.mockResolvedValue({
+      getElizaAppProvisioningStatus.mockResolvedValue({
         status: "provisioning",
         agentId: null,
         bridgeUrl: null,
@@ -2031,7 +2030,7 @@ describe("runOnboardingChat", () => {
         bridgeUrl: null,
         sandbox: null,
       });
-      ensureElizaAppProvisioning.mockRejectedValue(new Error("transient provisioning outage"));
+      getElizaAppProvisioningStatus.mockRejectedValue(new Error("transient provisioning outage"));
       const gatewayTurn = await runTrustedDiscordHandoff("discord-user-fail");
       expect(peekLocalGreetingQueue()).toHaveLength(0);
 
@@ -2051,7 +2050,7 @@ describe("runOnboardingChat", () => {
 
       // Once the outage clears, the retried turn commits and queues exactly
       // one greeting.
-      ensureElizaAppProvisioning.mockResolvedValue({
+      getElizaAppProvisioningStatus.mockResolvedValue({
         status: "provisioning",
         agentId: null,
         bridgeUrl: null,
@@ -2095,7 +2094,7 @@ describe("runOnboardingChat", () => {
     });
 
     test("bot-transport turns never queue a greeting (the user just got a live reply)", async () => {
-      ensureElizaAppProvisioning.mockResolvedValue({
+      getElizaAppProvisioningStatus.mockResolvedValue({
         status: "provisioning",
         agentId: null,
         bridgeUrl: null,
@@ -2116,7 +2115,7 @@ describe("runOnboardingChat", () => {
     });
 
     test("non-discord platforms never queue a greeting", async () => {
-      ensureElizaAppProvisioning.mockResolvedValue({
+      getElizaAppProvisioningStatus.mockResolvedValue({
         status: "provisioning",
         agentId: null,
         bridgeUrl: null,
@@ -2225,18 +2224,15 @@ describe("runOnboardingChat", () => {
           bridgeUrl: null,
           sandbox: null,
         });
-        ensureElizaAppProvisioning.mockResolvedValue({
+        getElizaAppProvisioningStatus.mockResolvedValue({
           status: "provisioning",
           agentId: "agent-1",
           bridgeUrl: null,
           sandbox: null,
         });
-        launchManagedElizaAgent.mockResolvedValue({
-          appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
-          connection: {
-            apiBase: "https://agent-1.example/",
-            token: "agent-token",
-          },
+        readManagedElizaAgentConnection.mockResolvedValue({
+          apiBase: "https://agent-1.example/",
+          token: "agent-token",
         });
 
         // Start with a real user message so the transcript has real content.
@@ -2276,7 +2272,7 @@ describe("runOnboardingChat", () => {
             bridge_url: "https://agent-1.example",
           },
         });
-        ensureElizaAppProvisioning.mockResolvedValue({
+        getElizaAppProvisioningStatus.mockResolvedValue({
           status: "running",
           agentId: "agent-1",
           bridgeUrl: "https://agent-1.example",

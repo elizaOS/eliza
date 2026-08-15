@@ -555,9 +555,11 @@ async function handleSearch(
 		getSearchMode(params.searchMode),
 	);
 	const limit = getLimit(params.limit, 5);
-	const visible = matches
-		.filter((item) => storedDocumentMatchesFilters(item, filters))
-		.slice(0, limit);
+	const filteredMatches = matches.filter((item) =>
+		storedDocumentMatchesFilters(item, filters),
+	);
+	const hasMoreInWindow = filteredMatches.length > limit;
+	const visible = filteredMatches.slice(0, limit);
 	const projected = visible.map((item) => {
 		const metadata = item.metadata as Record<string, unknown> | undefined;
 		return {
@@ -571,17 +573,55 @@ async function handleSearch(
 			endMs: typeof metadata?.endMs === "number" ? metadata.endMs : undefined,
 		};
 	});
-	const text =
+	const retrievalScope = `Searched a bounded ranked retrieval window of ${matches.length} fragment(s); completeness beyond that window is unknown.`;
+	const text = `${
 		projected.length === 0
-			? `I couldn't find any documents matching ${describeQuery(query)}.`
+			? `No document fragments matching ${describeQuery(query)} were returned from that window.`
 			: `Found ${projected.length} document fragment(s) for ${describeQuery(query)}:\n\n${projected
 					.map((item, index) => `${index + 1}. ${item.content.text ?? ""}`)
-					.join("\n\n")}`;
+					.join("\n\n")}`
+	} ${retrievalScope}${
+		hasMoreInWindow
+			? ` More filtered matches exist within the retrieved window beyond the ${limit} shown.`
+			: ""
+	}`;
+	const filtersApplied = [
+		filters.scope ? "scope" : undefined,
+		filters.scopedToEntityId ? "scopedToEntityId" : undefined,
+		filters.addedBy ? "addedBy" : undefined,
+		filters.timeRangeStart !== undefined ? "timeRangeStart" : undefined,
+		filters.timeRangeEnd !== undefined ? "timeRangeEnd" : undefined,
+		filters.tags ? "tags" : undefined,
+	].filter((name): name is string => name !== undefined);
 	// No visible callback: fragments are intermediate retrieval data for the
 	// planner to synthesize into the answer, not the answer itself.
 	return result(true, text, "search", {
-		values: { query: queryLogView(query), results: projected },
-		data: { query: queryLogView(query), results: projected },
+		values: {
+			query: queryLogView(query),
+			results: projected,
+			scope: {
+				retrieved: matches.length,
+				matchedInWindow: filteredMatches.length,
+				shown: projected.length,
+				limit,
+				hasMoreInWindow,
+				retrievalCompleteness: "unknown_beyond_ranked_window",
+				filtersApplied,
+			},
+		},
+		data: {
+			query: queryLogView(query),
+			results: projected,
+			scope: {
+				retrieved: matches.length,
+				matchedInWindow: filteredMatches.length,
+				shown: projected.length,
+				limit,
+				hasMoreInWindow,
+				retrievalCompleteness: "unknown_beyond_ranked_window",
+				filtersApplied,
+			},
+		},
 	});
 }
 

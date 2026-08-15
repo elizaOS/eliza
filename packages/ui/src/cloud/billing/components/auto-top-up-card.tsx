@@ -6,24 +6,23 @@
  * auto-fund path — both can be enabled together. The earnings cron runs first so
  * card charges only happen if earnings can't cover.
  *
+ * Enable is a SettingsSwitchRow. Amount and threshold are SettingsInputRow
+ * number fields. Save and BrandCard chrome stay as the multi-field editor.
  * Reads/writes /api/v1/billing/settings.
  */
 
 "use client";
 
-import {
-  BrandCard,
-  Button,
-  CornerBrackets,
-  Label,
-  Switch,
-} from "@elizaos/ui/cloud-ui";
-import { CreditCard, Info, Loader2 } from "lucide-react";
+import { BrandCard, Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
+import { CreditCard, DollarSign, Info, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import {
+  SettingsInputRow,
+  SettingsSwitchRow,
+} from "../../../components/settings/settings-agent-rows";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
-import { NumericField } from "./numeric-field";
 
 interface AutoTopUpSettings {
   enabled: boolean;
@@ -80,37 +79,46 @@ export function AutoTopUpCard() {
   const parsedAmount = parseFloat(amount);
   const parsedThreshold = parseFloat(threshold);
 
-  const validationError = useMemo(() => {
+  const amountError = useMemo(() => {
     if (!limits || !enabled) return null;
     if (!Number.isFinite(parsedAmount) || parsedAmount < limits.minAmount)
       return t("cloud.autoTopUp.amountMin", {
         min: limits.minAmount,
-        defaultValue: "Amount must be at least $" + "{{min}}",
+        defaultValue: "Enter at least {{min}} USD",
       });
     if (parsedAmount > limits.maxAmount)
       return t("cloud.autoTopUp.amountMax", {
         max: limits.maxAmount,
-        defaultValue: "Amount can't exceed $" + "{{max}}",
+        defaultValue: "Enter at most {{max}} USD",
       });
+    return null;
+  }, [enabled, limits, parsedAmount, t]);
+
+  const thresholdError = useMemo(() => {
+    if (!limits || !enabled) return null;
     if (
       !Number.isFinite(parsedThreshold) ||
       parsedThreshold < limits.minThreshold
     )
       return t("cloud.autoTopUp.thresholdMin", {
         min: limits.minThreshold,
-        defaultValue: "Threshold must be ≥ $" + "{{min}}",
+        defaultValue: "Enter at least {{min}} USD",
       });
     if (parsedThreshold > limits.maxThreshold)
       return t("cloud.autoTopUp.thresholdMax", {
         max: limits.maxThreshold,
-        defaultValue: "Threshold can't exceed $" + "{{max}}",
+        defaultValue: "Enter at most {{max}} USD",
       });
     return null;
-  }, [enabled, limits, parsedAmount, parsedThreshold, t]);
+  }, [enabled, limits, parsedThreshold, t]);
 
   const handleSave = async () => {
-    if (validationError) {
-      toast.error(validationError);
+    if (amountError) {
+      document.getElementById("cloud-billing-auto-top-up-amount")?.focus();
+      return;
+    }
+    if (thresholdError) {
+      document.getElementById("cloud-billing-auto-top-up-threshold")?.focus();
       return;
     }
     setSaving(true);
@@ -134,6 +142,7 @@ export function AutoTopUpCard() {
         }),
       );
     } catch (error) {
+      // error-policy:J1 billing settings save boundary returns a toast
       toast.error(
         error instanceof ApiError
           ? error.message
@@ -146,12 +155,28 @@ export function AutoTopUpCard() {
     }
   };
 
+  const loadingLabel = t("cloud.autoTopUp.loading", {
+    defaultValue: "Loading auto top-up settings",
+  });
+  const saveLabel = t("cloud.autoTopUp.saveAction", {
+    defaultValue: "Save auto top-up",
+  });
+
   if (loading) {
     return (
       <BrandCard className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-5 w-5 animate-spin text-muted" />
+        <div
+          className="flex items-center justify-center py-12"
+          role="status"
+          aria-busy="true"
+          aria-label={loadingLabel}
+        >
+          <Loader2
+            className="h-5 w-5 animate-spin text-muted motion-reduce:animate-none"
+            aria-hidden="true"
+          />
+          <span className="sr-only">{loadingLabel}</span>
         </div>
       </BrandCard>
     );
@@ -166,14 +191,14 @@ export function AutoTopUpCard() {
       <div className="relative z-10 space-y-6">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-muted" />
+            <div className="size-2 rounded-full bg-muted" aria-hidden="true" />
             <h3 className="text-base font-mono text-txt uppercase">
               {t("cloud.autoTopUp.title", {
-                defaultValue: "Auto Top-Up (Card)",
+                defaultValue: "Auto top-up (card)",
               })}
             </h3>
           </div>
-          <p className="text-xs font-mono text-muted tracking-tight">
+          <p className="text-pretty text-xs font-mono text-muted">
             {t("cloud.autoTopUp.description", {
               defaultValue:
                 "Automatically charge your saved card when credits dip below the threshold. Earnings auto-fund runs first, so this only fires if earnings can't cover the gap.",
@@ -181,37 +206,37 @@ export function AutoTopUpCard() {
           </p>
         </div>
 
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <Label className="text-txt-strong font-mono text-sm">
-              {t("cloud.autoTopUp.enableLabel", {
-                defaultValue: "Enable card auto top-up",
-              })}
-            </Label>
-            <p className="text-xs font-mono text-muted">
-              {settings?.enabled
-                ? t("cloud.autoTopUp.activeState", {
-                    defaultValue:
-                      "Active. Your saved card will be charged automatically.",
-                  })
-                : t("cloud.autoTopUp.offState", {
-                    defaultValue:
-                      "Currently off — card won't be charged automatically.",
-                  })}
-            </p>
-          </div>
-          <Switch
-            checked={enabled}
-            onCheckedChange={setEnabled}
-            disabled={saving || !!noPaymentMethod}
-            className="data-[state=checked]:bg-txt flex-shrink-0"
-          />
-        </div>
+        <SettingsSwitchRow
+          agentId="cloud-billing-auto-top-up"
+          group="cloud-billing"
+          icon={CreditCard}
+          label={t("cloud.autoTopUp.enableLabel", {
+            defaultValue: "Enable card auto top-up",
+          })}
+          description={t("cloud.autoTopUp.enableDescription", {
+            defaultValue:
+              "When on, your saved card is charged automatically when credits dip below the threshold. When off, the card is not charged automatically.",
+          })}
+          checked={enabled}
+          disabled={saving || !!noPaymentMethod}
+          onCheckedChange={setEnabled}
+          testId="cloud-billing-auto-top-up"
+        />
 
         {noPaymentMethod && (
-          <div className="flex items-start gap-2 border border-yellow-500/30 bg-yellow-500/5 p-3">
-            <Info className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
-            <p className="text-xs font-mono text-yellow-300">
+          <div
+            role="status"
+            aria-labelledby="cloud-billing-auto-top-up-payment-warning"
+            className="flex items-start gap-2 border border-status-warning/30 bg-status-warning-bg p-3"
+          >
+            <Info
+              className="mt-0.5 h-4 w-4 shrink-0 text-status-warning"
+              aria-hidden="true"
+            />
+            <p
+              id="cloud-billing-auto-top-up-payment-warning"
+              className="text-pretty text-xs font-mono text-status-warning"
+            >
               {t("cloud.autoTopUp.noPaymentMethod", {
                 defaultValue:
                   "No saved payment method. Add a card on the billing page first to enable auto top-up.",
@@ -220,56 +245,67 @@ export function AutoTopUpCard() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <NumericField
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <SettingsInputRow
+            agentId="cloud-billing-auto-top-up-amount"
+            group="cloud-billing"
+            icon={DollarSign}
+            type="number"
+            inputMode="decimal"
             label={t("cloud.autoTopUp.amountLabel", {
               defaultValue: "Top-up amount",
             })}
             description={t("cloud.autoTopUp.amountDescription", {
-              defaultValue: "Charged to card each cycle.",
+              defaultValue: "Charged to the saved card each cycle, in USD.",
             })}
             value={amount}
-            onChange={setAmount}
+            onValueChange={setAmount}
             disabled={saving || !enabled || !!noPaymentMethod}
-            min={limits?.minAmount}
-            max={limits?.maxAmount}
+            error={amountError ?? undefined}
+            placeholder="0.00"
+            inputClassName="text-base tabular-nums sm:text-sm"
+            testId="cloud-billing-auto-top-up-amount"
           />
-          <NumericField
+          <SettingsInputRow
+            agentId="cloud-billing-auto-top-up-threshold"
+            group="cloud-billing"
+            icon={DollarSign}
+            type="number"
+            inputMode="decimal"
             label={t("cloud.autoTopUp.thresholdLabel", {
               defaultValue: "Trigger threshold",
             })}
             description={t("cloud.autoTopUp.thresholdDescription", {
-              defaultValue: "Top-up kicks in below this credit balance.",
+              defaultValue:
+                "Top-up starts when the credit balance falls below this USD amount.",
             })}
             value={threshold}
-            onChange={setThreshold}
+            onValueChange={setThreshold}
             disabled={saving || !enabled || !!noPaymentMethod}
-            min={limits?.minThreshold}
-            max={limits?.maxThreshold}
+            error={thresholdError ?? undefined}
+            placeholder="0.00"
+            inputClassName="text-base tabular-nums sm:text-sm"
+            testId="cloud-billing-auto-top-up-threshold"
           />
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
-          {validationError ? (
-            <p className="text-xs font-mono text-red-400 mr-auto">
-              {validationError}
-            </p>
-          ) : null}
           <Button
             type="button"
             onClick={handleSave}
-            disabled={saving || !!validationError || !!noPaymentMethod}
+            disabled={saving || !!noPaymentMethod}
+            aria-busy={saving}
             className="bg-txt hover:bg-txt/90 text-bg font-mono"
           >
             {saving ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving
-              </>
+              <Loader2
+                className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
             ) : (
-              <>
-                <CreditCard className="h-4 w-4 mr-2" /> Save
-              </>
+              <CreditCard className="h-4 w-4" aria-hidden="true" />
             )}
+            {saveLabel}
           </Button>
         </div>
       </div>

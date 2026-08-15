@@ -66,7 +66,10 @@ export function switchRuntimeNonDestructive(
   }
   if (
     profile.kind === "cloud" &&
-    !isTrustedCloudApiBaseUrl(profile.apiBase, profile.cloudAgentId)
+    !isTrustedCloudApiBaseUrl(
+      profile.apiBase,
+      profile.cloudRuntimeAgentId ?? profile.cloudAgentId,
+    )
   ) {
     return { ok: false, reason: "untrusted-cloud" };
   }
@@ -77,6 +80,8 @@ export function switchRuntimeNonDestructive(
     apiBase: profile.apiBase,
     accessToken: profile.accessToken,
     label: profile.label,
+    cloudRuntimeAgentId: profile.cloudRuntimeAgentId,
+    cloudRuntime: profile.cloudRuntime,
   });
   if (!persistAgentProfileSelection(profile.id, server)) {
     return { ok: false, reason: "persistence-failed" };

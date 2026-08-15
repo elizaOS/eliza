@@ -12,7 +12,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "dev": "PORT=3001 bun run --env-file ../../../.env.local --watch src/index.ts",
     "dev:local": "PORT=3001 bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target node --external zlib-sync",
+    "build": "bun build src/index.ts --outdir dist --target node --external zlib-sync --external @discordjs/voice --external @discordjs/opus --external prism-media --external libsodium-wrappers",
     "clean": "rm -rf dist",
     "start": "PORT=3001 bun run --env-file ../../../.env.local src/index.ts",
     "start:local": "PORT=3001 bun run src/index.ts",
@@ -26,13 +26,17 @@
     "deploy:railway": "bash scripts/deploy-railway.sh"
   },
   "dependencies": {
+    "@discordjs/opus": "^0.10.0",
+    "@discordjs/voice": "^0.19.2",
     "@elizaos/cloud-services-common": "workspace:*",
     "@hono/node-server": "2.0.10",
     "@upstash/redis": "^1.37.0",
     "discord.js": "^14.26.4",
     "hashring": "^3.2.0",
     "hono": "4.13.1",
-    "ioredis": "^5.10.1"
+    "ioredis": "^5.10.1",
+    "libsodium-wrappers": "^0.8.0",
+    "prism-media": "1.3.5"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",

@@ -86,6 +86,7 @@ export const userMcpsRepository = {
       search?: string;
       limit?: number;
       offset?: number;
+      orderBy?: "name";
     } = {},
   ): Promise<UserMcp[]> {
     const { category, status = "live", search } = options;
@@ -104,13 +105,53 @@ export const userMcpsRepository = {
       );
     }
 
-    return dbRead
-      .select()
+    return (
+      dbRead
+        .select()
+        .from(userMcps)
+        .where(and(...conditions))
+        // orderBy "name" uses COLLATE "C" so windows fetched here can be merged
+        // with plain code-unit comparison by callers paginating across sources
+        // (discovery, #19076/#19083); see characters.listPublic for the contract.
+        .orderBy(
+          ...(options.orderBy === "name"
+            ? [sql`${userMcps.name} COLLATE "C" asc`, sql`${userMcps.id} asc`]
+            : [desc(userMcps.total_requests), desc(userMcps.created_at)]),
+        )
+        .limit(limit)
+        .offset(offset)
+    );
+  },
+
+  /**
+   * Counts public MCPs under the same conditions as listPublic, so paginating
+   * callers can report exact totals without scanning (#19083). Counts DISTINCT
+   * discovery identities, not raw rows: the slug is unique only per
+   * organization, so two organizations exposing the same slug+name+description
+   * collapse to one visible catalog entry downstream (discovery's
+   * getDiscoveryKey), and a raw COUNT would advertise rows the response can
+   * never show.
+   */
+  async countPublic(
+    options: { category?: string; status?: UserMcp["status"]; search?: string } = {},
+  ): Promise<number> {
+    const { category, status = "live", search } = options;
+    const conditions = [eq(userMcps.is_public, true), eq(userMcps.status, status)];
+    if (category) {
+      conditions.push(eq(userMcps.category, category));
+    }
+    if (search) {
+      conditions.push(
+        or(ilike(userMcps.name, `%${search}%`), ilike(userMcps.description, `%${search}%`))!,
+      );
+    }
+    const [result] = await dbRead
+      .select({
+        count: sql<number>`count(distinct (${userMcps.slug}, lower(trim(${userMcps.name})), lower(trim(${userMcps.description}))))`,
+      })
       .from(userMcps)
-      .where(and(...conditions))
-      .orderBy(desc(userMcps.total_requests), desc(userMcps.created_at))
-      .limit(limit)
-      .offset(offset);
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   },
 
   /**

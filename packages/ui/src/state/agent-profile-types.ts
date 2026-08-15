@@ -10,8 +10,12 @@ export interface AgentProfile {
   label: string;
   /** How this agent is hosted. */
   kind: "local" | "cloud" | "remote";
-  /** For cloud agents: the Eliza Cloud agent ID. */
+  /** For Cloud: the stable logical identity (for personal Eliza, `personal:*`). */
   cloudAgentId?: string;
+  /** Cloud runtime currently serving that identity (Shared id or Dedicated UUID). */
+  cloudRuntimeAgentId?: string;
+  /** Hosting mode of the current Cloud runtime target. */
+  cloudRuntime?: "shared" | "dedicated";
   /** For remote/cloud agents: the reachable API base URL. */
   apiBase?: string;
   /** Auth/access token, if any. */

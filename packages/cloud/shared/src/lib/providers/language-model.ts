@@ -165,6 +165,24 @@ function getOpenRouterLanguageModel(model: string) {
   return getOpenRouterClient().chat(toBitRouterModelId(model));
 }
 
+const CEREBRAS_OPENROUTER_FALLBACK_MODELS: Readonly<Record<string, string>> = {
+  "gemma-4-31b": "google/gemma-4-31b-it",
+  "gpt-oss-120b": "openai/gpt-oss-120b",
+  "zai-glm-4.7": "z-ai/glm-4.7",
+};
+
+/** Translate Cerebras-native ids into the equivalent OpenRouter catalog ids. */
+function resolveCerebrasOpenRouterFallbackModel(model: string): string {
+  const cerebrasModel = normalizeCerebrasModelId(model);
+  const fallbackModel = CEREBRAS_OPENROUTER_FALLBACK_MODELS[cerebrasModel];
+  if (!fallbackModel) {
+    throw new ProviderConfigurationError(
+      `No OpenRouter fallback is configured for Cerebras model ${cerebrasModel}`,
+    );
+  }
+  return fallbackModel;
+}
+
 function getAnthropicClient() {
   if (!anthropicClient) {
     const apiKey = getProviderKey("ANTHROPIC_API_KEY");
@@ -497,7 +515,7 @@ function withCerebrasInteractiveFailover(
   if (!getOpenRouterApiKey()) {
     return primaryModel;
   }
-  const fallbackModel = getOpenRouterLanguageModel(model);
+  const fallbackModel = getOpenRouterLanguageModel(resolveCerebrasOpenRouterFallbackModel(model));
   const middleware: LanguageModelMiddleware = {
     specificationVersion: "v3",
     wrapGenerate: async ({ doGenerate, params }) => {

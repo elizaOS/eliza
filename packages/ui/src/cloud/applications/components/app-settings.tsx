@@ -292,14 +292,20 @@ export function AppSettings({ app }: AppSettingsProps) {
             />
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-surface rounded-sm border border-border">
+          <div className="flex items-center justify-between gap-3 p-3 bg-surface rounded-sm border border-border">
             <div>
-              <p className="text-sm font-medium text-txt">
+              <Label
+                htmlFor="is_active"
+                className="text-sm font-medium text-txt"
+              >
                 {t("cloud.appSettings.activeStatus", {
                   defaultValue: "Active Status",
                 })}
-              </p>
-              <p className="text-xs text-neutral-500 mt-0.5">
+              </Label>
+              <p
+                id="is_active-hint"
+                className="text-xs text-neutral-500 mt-0.5 text-pretty"
+              >
                 {t("cloud.appSettings.activeStatusHint", {
                   defaultValue: "Inactive apps cannot make API requests",
                 })}
@@ -307,11 +313,11 @@ export function AppSettings({ app }: AppSettingsProps) {
             </div>
             <Switch
               id="is_active"
+              aria-describedby="is_active-hint"
               checked={formData.is_active}
               onCheckedChange={(checked) =>
                 setFormData({ ...formData, is_active: checked })
               }
-              className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-neutral-700"
             />
           </div>
         </div>

@@ -175,6 +175,11 @@
     },
     "./character-presets": {
       "types": "./dist/character-presets.d.ts",
+      "eliza-source": {
+        "types": "./src/character-presets.ts",
+        "import": "./src/character-presets.ts",
+        "default": "./src/character-presets.ts"
+      },
       "import": "./dist/character-presets.js",
       "default": "./dist/character-presets.js"
     },
@@ -267,6 +272,16 @@
       },
       "import": "./dist/contracts/pendant-session-sync.js",
       "default": "./dist/contracts/pendant-session-sync.js"
+    },
+    "./contracts/scheduled-task-execution": {
+      "types": "./dist/contracts/scheduled-task-execution.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/scheduled-task-execution.ts",
+        "import": "./src/contracts/scheduled-task-execution.ts",
+        "default": "./src/contracts/scheduled-task-execution.ts"
+      },
+      "import": "./dist/contracts/scheduled-task-execution.js",
+      "default": "./dist/contracts/scheduled-task-execution.js"
     },
     "./utils/asset-url": {
       "types": "./dist/utils/asset-url.d.ts",

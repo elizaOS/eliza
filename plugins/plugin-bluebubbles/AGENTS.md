@@ -17,10 +17,6 @@ flows through the elizaOS message-connector framework.
   BlueBubbles REST API on startup, caches known chats, registers a
   `bluebubbles` and `imessage` message-connector pair, and dispatches inbound
   webhook events into the agent's memory/message pipeline.
-- **`BlueBubblesWorkflowCredentialProvider`** (`src/workflow-credential-provider.ts`)
-  — supplies `httpQueryAuth` credentials (password + serverUrl) to
-  `@elizaos/plugin-workflow` when BlueBubbles is used as a workflow HTTP
-  target.
 
 ### Routes
 All routes use `rawPath: true`.
@@ -51,7 +47,6 @@ src/
   environment.ts                Config parsing from runtime settings
   accounts.ts                   Account resolution for default + named BlueBubbles servers
   connector-account-provider.ts ConnectorAccountManager provider
-  workflow-credential-provider.ts Workflow credential bridge
   setup-routes.ts               Setup-contract HTTP routes
   data-routes.ts                Data + webhook HTTP routes
   webhook-auth.ts               X-BlueBubbles-Webhook-Secret validation

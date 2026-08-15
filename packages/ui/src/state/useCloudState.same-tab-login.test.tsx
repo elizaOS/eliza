@@ -223,7 +223,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       configurable: true,
       value: {
         ...window.location,
-        href: `https://app.elizacloud.ai/chat${search}`,
+        href: `https://cloud.eliza.app/chat${search}`,
         pathname: "/chat",
         search,
         assign: assignSpy,
@@ -246,7 +246,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       expect(result.current.elizaCloudConnected).toBe(true);
     });
     expect(cloudLoginPollDirectSpy).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai",
+      "https://api.eliza.app",
       "sess-return",
     );
     expect(params.setActionNotice).not.toHaveBeenCalled();
@@ -264,8 +264,8 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
     cloudLoginDirectSpy.mockResolvedValue({
       ok: true,
-      apiBase: "https://api.elizacloud.ai/api/v1",
-      browserUrl: "https://elizacloud.ai/auth/cli-login?session=sess-1",
+      apiBase: "https://api.eliza.app/api/v1",
+      browserUrl: "https://eliza.app/auth/cli-login?session=sess-1",
       sessionId: "sess-1",
     });
 
@@ -279,14 +279,14 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
 
       expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
       expect(popup.location.href).toBe(
-        "https://elizacloud.ai/auth/cli-login?session=sess-1",
+        "https://eliza.app/auth/cli-login?session=sess-1",
       );
       expect((popup as unknown as { opener: unknown }).opener).toBe(opener);
 
       await act(async () => {
         window.dispatchEvent(
           new MessageEvent("message", {
-            origin: "https://elizacloud.ai",
+            origin: "https://eliza.app",
             data: {
               type: "eliza-cloud-auth-complete",
               sessionId: "wrong-session",
@@ -299,7 +299,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       await act(async () => {
         window.dispatchEvent(
           new MessageEvent("message", {
-            origin: "https://elizacloud.ai",
+            origin: "https://eliza.app",
             data: {
               type: "eliza-cloud-auth-complete",
               sessionId: "sess-1",

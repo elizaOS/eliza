@@ -46,6 +46,8 @@ class FakeGitHub {
   requests: RecordedRequest[] = [];
   /** When set, the next request gets this failure instead of a 2xx. */
   failNext: { status: number; message: string } | null = null;
+  issueLabels = ["bug"];
+  applyLabelWrites = true;
 
   private issueJson(overrides: Record<string, unknown> = {}) {
     return {
@@ -54,7 +56,7 @@ class FakeGitHub {
       state: "open",
       title: "Broken widget",
       body: "It broke",
-      labels: [{ name: "bug" }],
+      labels: this.issueLabels.map((name) => ({ name })),
       assignees: [{ login: "octocat" }],
       created_at: "2026-07-01T00:00:00Z",
       closed_at: null,
@@ -96,6 +98,10 @@ class FakeGitHub {
           );
           return;
         }
+        if (req.method === "GET" && /\/issues\/\d+$/.test(path)) {
+          res.end(JSON.stringify(this.issueJson()));
+          return;
+        }
         if (req.method === "POST" && /\/issues\/\d+\/comments$/.test(path)) {
           res.statusCode = 201;
           res.end(
@@ -110,6 +116,14 @@ class FakeGitHub {
           return;
         }
         if (req.method === "POST" && /\/issues\/\d+\/labels$/.test(path)) {
+          if (this.applyLabelWrites) {
+            this.issueLabels = Array.from(
+              new Set([
+                ...this.issueLabels,
+                ...((body as { labels?: string[] })?.labels ?? []),
+              ]),
+            );
+          }
           res.end(JSON.stringify([{ name: "triage" }]));
           return;
         }
@@ -521,12 +535,26 @@ describe("issue functions over a real local GitHub API server", () => {
     expect(issue.state).toBe("closed");
   });
 
-  it("addLabels POSTs the label list to the labels endpoint", async () => {
-    await addLabels(ctx, "acme/widgets", 7, ["triage", "p1"]);
-    const req = github.lastRequest();
+  it("addLabels proves the mutation with an authoritative issue readback", async () => {
+    const before = github.requests.length;
+    const issue = await addLabels(ctx, "acme/widgets", 7, ["triage", "p1"]);
+    const [req, readback] = github.requests.slice(before);
     expect(req.method).toBe("POST");
     expect(req.path).toBe("/repos/acme/widgets/issues/7/labels");
     expect(req.body).toMatchObject({ labels: ["triage", "p1"] });
+    expect(readback).toMatchObject({
+      method: "GET",
+      path: "/repos/acme/widgets/issues/7",
+    });
+    expect(issue.labels).toEqual(expect.arrayContaining(["triage", "p1"]));
+  });
+
+  it("rejects label success when provider readback does not contain the requested label", async () => {
+    github.applyLabelWrites = false;
+    await expect(
+      addLabels(ctx, "acme/widgets", 7, ["not-observed"]),
+    ).rejects.toMatchObject({ code: "GITHUB_LABEL_READBACK_MISMATCH" });
+    github.applyLabelWrites = true;
   });
 
   it("addComment POSTs the comment body", async () => {

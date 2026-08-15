@@ -6,13 +6,13 @@ Google Workspace integration for Gmail, Calendar, Drive, and Meet with account-s
 
 Adds `GoogleWorkspaceService` to an Eliza agent runtime, exposing Gmail, Google Calendar, Google Drive, and Google Meet operations through a single account-scoped OAuth grant. It also exports `GoogleGmailAdapter`, the Gmail-owned message-triage adapter used by assistant plugins such as LifeOps. The plugin is opt-in — load it as `googlePlugin` from this package. It also registers with `ConnectorAccountManager` so the generic connector HTTP routes can manage Google accounts and run OAuth flows automatically; that provider registration also mounts the Gmail send `MessageConnector` (`source: "gmail"`, aliases `email`/`mail`) so `MESSAGE op=send` can compose and send email through the connected account.
 
-Google Chat lives here too, as the `src/chat/` module: `GoogleChatService` (service type `"google-chat"`) registers a runtime `MessageConnector` for spaces, DMs, threads, reactions, and attachments, and `GoogleChatWorkflowCredentialProvider` (service type `"workflow_credential_provider"`) supplies `googleChatOAuth2Api` credentials to the workflow plugin. Chat authenticates with a service account (scope `https://www.googleapis.com/auth/chat.bot`), NOT the consolidated Workspace OAuth grant — the two auth models are intentionally separate even though they share this package. The plugin auto-enables when a `connectors.googlechat` block is present and not explicitly disabled (`auto-enable.ts`); the Workspace OAuth side stays opt-in.
+Google Chat lives here too, as the `src/chat/` module: `GoogleChatService` (service type `"google-chat"`) registers a runtime `MessageConnector` for spaces, DMs, threads, reactions, and attachments. Chat authenticates with a service account (scope `https://www.googleapis.com/auth/chat.bot`), NOT the consolidated Workspace OAuth grant — the two auth models are intentionally separate even though they share this package. The plugin auto-enables when a `connectors.googlechat` block is present and not explicitly disabled (`auto-enable.ts`); the Workspace OAuth side stays opt-in.
 
 ## Plugin surface
 
 The plugin object (`googlePlugin`, service name `"google"`) registers:
 
-- **Services:** `GoogleWorkspaceService` — wraps four sub-clients (Gmail, Calendar, Drive, Meet), retrieved via `runtime.getService("google")`; `GoogleChatService` — the Chat connector, retrieved via `runtime.getService("google-chat")`; `GoogleChatWorkflowCredentialProvider` — workflow credential supplier.
+- **Services:** `GoogleWorkspaceService` — wraps four sub-clients (Gmail, Calendar, Drive, Meet), retrieved via `runtime.getService("google")`; `GoogleChatService` — the Chat connector, retrieved via `runtime.getService("google-chat")`.
 - **Message adapters:** `GoogleGmailAdapter` — Gmail projection into the core message-triage shape for assistant plugins (thread replies and new outbound email).
 - **Message connectors:** the Gmail send connector from `gmail-message-connector.ts`, registered through the Google connector-account provider — routes `MESSAGE op=send source=gmail` / email-literal targets to `GoogleWorkspaceService.sendGmailMessage`.
 - **Actions:** none (empty array).
@@ -73,7 +73,6 @@ src/
     service.ts                 GoogleChatService — Chat REST client, webhook processing, multi-account
     accounts.ts                Multi-account config resolution, env var parsing
     connector-account-provider.ts  ConnectorAccountManager adapter for Chat accounts
-    workflow-credential-provider.ts  GoogleChatWorkflowCredentialProvider service
     config.ts                  GoogleChatConfig / account / space config types
     types.ts                   Chat interfaces, enums, error classes, message chunking
 auto-enable.ts                 shouldEnable() — auto-enable on connectors.googlechat

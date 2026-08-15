@@ -160,8 +160,10 @@ function sendHtml(
   res: http.ServerResponse,
   status: number,
   body: string,
+  extraHeaders?: Record<string, string>,
 ): void {
   res.writeHead(status, {
+    ...extraHeaders,
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store, no-cache, must-revalidate, proxy-revalidate",
     "content-security-policy":
@@ -251,9 +253,9 @@ export async function handleStandaloneCloudPairRoute(
   const exchangeUrl = `${resolveCloudAuthRoot()}/api/auth/pair`;
   let exchanged: CloudPairRelaySession | null = null;
   let status = 0;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), RELAY_TIMEOUT_MS);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), RELAY_TIMEOUT_MS);
     const response = await fetch(exchangeUrl, {
       method: "POST",
       headers: {
@@ -263,12 +265,23 @@ export async function handleStandaloneCloudPairRoute(
       body: JSON.stringify({ token, agentId }),
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
     status = response.status;
     if (response.ok) {
       // error-policy:J3 a successful dependency response is still untrusted;
       // malformed JSON or missing bearer ownership becomes an explicit 502.
-      const body: unknown = await response.json().catch(() => null);
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch (error) {
+        if (
+          controller.signal.aborted ||
+          (error instanceof Error && error.name === "AbortError")
+        ) {
+          throw error;
+        }
+        // error-policy:J3 malformed dependency JSON becomes an explicit invalid result.
+        body = null;
+      }
       exchanged = parseCloudPairRelaySession(body);
     } else if (status !== 401 && status !== 403 && status !== 410) {
       // 401/403/410 are logged separately as pairing-link rejections below;
@@ -278,8 +291,10 @@ export async function handleStandaloneCloudPairRoute(
       );
     }
   } catch (err) {
+    // error-policy:J1 transport/abort failures become a structured 503 page.
+    const timedOut = err instanceof Error && err.name === "AbortError";
     logger.error(
-      `[cloud-pair] exchange failed url=${exchangeUrl} error=${
+      `[cloud-pair] exchange ${timedOut ? "timed out" : "failed"} url=${exchangeUrl} error=${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -288,10 +303,15 @@ export async function handleStandaloneCloudPairRoute(
       503,
       renderErrorHtml(
         "Eliza Cloud is unreachable",
-        "We could not reach Eliza Cloud to verify your sign-in link. Try again in a minute.",
+        timedOut
+          ? "Eliza Cloud did not respond in time. We could not confirm whether sign-in completed. Open your agent again from Eliza Cloud to get a fresh link."
+          : "We could not reach Eliza Cloud or confirm whether sign-in completed. Open your agent again from Eliza Cloud to get a fresh link.",
       ),
+      { "retry-after": "60" },
     );
     return true;
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (status === 401 || status === 403 || status === 410) {
@@ -326,13 +346,35 @@ export async function handleStandaloneCloudPairRoute(
     return true;
   }
 
+  if (status >= 500) {
+    // A 5xx does not reveal whether Cloud consumed the one-time token before
+    // failing. Keep the copy neutral and recover through a fresh link rather
+    // than inviting a replay; Retry-After describes upstream availability.
+    sendHtml(
+      res,
+      502,
+      renderErrorHtml(
+        "Eliza Cloud hit an error",
+        "Eliza Cloud returned an internal error, so we could not confirm whether sign-in completed. Wait a moment, then open your agent again from Eliza Cloud to get a fresh link.",
+      ),
+      { "retry-after": "60" },
+    );
+    return true;
+  }
+
   if (!exchanged) {
+    // Two remaining failure shapes: a 2xx whose body failed session parsing
+    // (Cloud really did accept the link), or an unexpected non-2xx status.
+    // Neither is recoverable by re-visiting this one-time URL.
+    const accepted = status >= 200 && status < 300;
     sendHtml(
       res,
       502,
       renderErrorHtml(
         "Sign-in failed",
-        "Eliza Cloud accepted the link but did not return a valid agent session. Try again from the dashboard.",
+        accepted
+          ? "Eliza Cloud accepted the link but did not return a valid agent session. Open your agent again from Eliza Cloud to get a fresh link."
+          : `Eliza Cloud returned an unexpected response (status ${status}), so your sign-in link could not be verified. Open your agent again from Eliza Cloud to get a fresh link.`,
       ),
     );
     return true;

@@ -35,13 +35,15 @@ for (const viewport of [
     }) => {
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await waitForLandingIntro(page);
-      const landingHero = await page.locator(".landing-hero-copy").innerText();
+      const landingHero = await page
+        .locator("h1")
+        .evaluate((el) => el.textContent);
 
       await page.goto("/leaderboard", { waitUntil: "domcontentloaded" });
       await waitForLandingIntro(page);
       const leaderboardHero = await page
-        .locator(".landing-hero-copy")
-        .innerText();
+        .locator("h1")
+        .evaluate((el) => el.textContent);
 
       expect(leaderboardHero).toEqual(landingHero);
     });
@@ -59,8 +61,18 @@ test("reduced motion renders the settled intro conversation", async ({
   // screenshot determinism.
   const demo = page.locator(".landing-iphone");
   await expect(demo).toHaveAttribute("data-demo-phase", "settled");
-  await expect(demo).toHaveAttribute("data-demo-messages", "14");
+  await expect(demo).toHaveAttribute("data-demo-messages", "17");
   await expect(page.locator(".landing-demo-card")).toHaveCount(3);
+
+  const assistantMessages = await page
+    .locator(".landing-bubble--eliza")
+    .allTextContents();
+  expect(assistantMessages).toContain("Got it. Thursday dinner for four.");
+  expect(assistantMessages).toContain("Noted.");
+  expect(assistantMessages).toContain(
+    "Then San Francisco Friday morning, but not too early.",
+  );
+  expect(assistantMessages.join(" ")).not.toContain("—");
 });
 
 test("landing has no horizontal overflow at mobile width", async ({ page }) => {

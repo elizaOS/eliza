@@ -62,6 +62,16 @@ Representative examples:
   summary; it downloads by artifact id, decrypts only after every identity
   check, and never creates a replacement plan. Plaintext plan files are
   shredded on every plan/apply outcome.
+- `arm-headscale-control-plane.yml` is the protected Hetzner Headscale
+  convergence path. Its default operation converges the environment-fixed
+  canonical/legacy overlap. Staging additionally exposes a read-only inspection
+  of the exact reviewed `/etc/nginx/conf.d/headscale-staging.conf` artifact and
+  a separate explicit retirement operation. The latter validates the regular
+  root-owned legacy-only two-listener contract, requires the exact SHA-256
+  emitted by the reviewed inspection, backs up both nginx files, and
+  restores them on any ownership, SAN, nginx, reload, public-health, router,
+  environment-write, worker-restart, or final service-liveness failure.
+  Production has no legacy-file cleanup path.
 - `deploy-tunnel-proxy.yml` is the protected Railway + Headscale convergence
   path for the customer tunnel proxy. It validates canonical staging/production
   hosts, rotates the reusable `tag:eliza-proxy` enrollment key without logging
@@ -117,6 +127,13 @@ These workflows use `workflow_dispatch` and never run for pull requests.
 Path-scoped deployment workflows may run after changes land on `develop` or
 `main`. They do not create pull-request checks. GitHub environments own
 production approvals and credentials.
+
+`cloud-cf-deploy.yml` and `build-agent-image.yml` cover the runtime workspace
+dependency closure of their release artifacts, not only their owning
+directories. Keep that source admission synchronized with package manifests
+through `cloud-release-dependency-trigger-workflow.test.ts`; otherwise a
+source-form package can change an artifact without creating a release
+candidate.
 
 Cloudflare application deploys require Workers and Pages write access. The
 Terraform domain workflow additionally requires zone-scoped DNS write and

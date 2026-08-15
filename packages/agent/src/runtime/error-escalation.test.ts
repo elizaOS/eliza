@@ -6,11 +6,15 @@
  */
 
 import type { ErrorReportedPayload, IAgentRuntime } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EscalationService } from "../services/escalation.ts";
 import {
   createErrorReportedEscalationHandler,
   ErrorEscalationTracker,
+  registerErrorEscalation,
+  resolveThreshold,
+  resolveWindowMs,
 } from "./error-escalation.ts";
 
 function payload(code: string): ErrorReportedPayload {
@@ -101,6 +105,30 @@ describe("ERROR_REPORTED escalation handler", () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves fractional configured minutes in owner-facing diagnostics", async () => {
+    const spy = vi
+      .spyOn(EscalationService, "startEscalation")
+      .mockResolvedValue({} as never);
+    const registerEvent = vi.fn();
+    const runtime = {
+      getSetting: (key: string) =>
+        key === "ERROR_ESCALATION_THRESHOLD" ? "2" : "1.5",
+      registerEvent,
+    } as unknown as IAgentRuntime;
+
+    registerErrorEscalation(runtime);
+    const handler = registerEvent.mock.calls[0][1] as (
+      event: ErrorReportedPayload,
+    ) => Promise<void>;
+
+    await handler(payload("FRACTIONAL_WINDOW"));
+    await handler(payload("FRACTIONAL_WINDOW"));
+
+    const [, reason] = spy.mock.calls[0];
+    expect(reason).toContain("within 1.5m");
+    expect(reason).not.toContain("within 2m");
+  });
+
   it("never escalates internal scheduler-plumbing codes into owner chat (SHADOW-ACCOUNT-DEBUG)", async () => {
     const spy = vi
       .spyOn(EscalationService, "startEscalation")
@@ -159,6 +187,155 @@ describe("ERROR_REPORTED escalation handler", () => {
 
     await expect(handler(payload("X"))).resolves.toBeUndefined();
     expect(reportError).not.toHaveBeenCalled();
+  });
+});
+
+describe("error-escalation configuration", () => {
+  function runtimeWithSettings(
+    settings: Record<string, string | undefined>,
+  ): IAgentRuntime {
+    return {
+      getSetting: (key: string) => settings[key],
+    } as unknown as IAgentRuntime;
+  }
+
+  function expectInvalidConfiguration(
+    resolve: () => unknown,
+    setting: string,
+    configured: string,
+  ): void {
+    let thrown: unknown;
+    try {
+      resolve();
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ElizaError);
+    expect(thrown).toMatchObject({
+      code: "ERROR_ESCALATION_CONFIG_INVALID",
+      severity: "fatal",
+      context: {
+        setting,
+        configured,
+      },
+    });
+  }
+
+  it("uses defaults for unset, empty, and whitespace-only settings", () => {
+    expect(resolveThreshold(runtimeWithSettings({}))).toBe(3);
+    for (const blank of ["", "  "]) {
+      expect(
+        resolveThreshold(
+          runtimeWithSettings({ ERROR_ESCALATION_THRESHOLD: blank }),
+        ),
+      ).toBe(3);
+    }
+    expect(resolveWindowMs(runtimeWithSettings({}))).toBe(10 * 60_000);
+    for (const blank of ["", "  "]) {
+      expect(
+        resolveWindowMs(
+          runtimeWithSettings({ ERROR_ESCALATION_WINDOW_MINUTES: blank }),
+        ),
+      ).toBe(10 * 60_000);
+    }
+  });
+
+  it.each([
+    ["5", 5],
+    ["1", 1],
+  ])("resolves threshold %s", (configured, expected) => {
+    expect(
+      resolveThreshold(
+        runtimeWithSettings({ ERROR_ESCALATION_THRESHOLD: configured }),
+      ),
+    ).toBe(expected);
+  });
+
+  it.each([
+    ["30", 30 * 60_000],
+    ["1.5", 90_000],
+    ["0.5", 30_000],
+  ])("resolves window %s minutes", (configured, expected) => {
+    expect(
+      resolveWindowMs(
+        runtimeWithSettings({ ERROR_ESCALATION_WINDOW_MINUTES: configured }),
+      ),
+    ).toBe(expected);
+  });
+
+  it.each(["3oops", "1e2", "0", "-2", "2.5", "abc"])(
+    "rejects invalid threshold %s",
+    (configured) => {
+      expectInvalidConfiguration(
+        () =>
+          resolveThreshold(
+            runtimeWithSettings({ ERROR_ESCALATION_THRESHOLD: configured }),
+          ),
+        "ERROR_ESCALATION_THRESHOLD",
+        configured,
+      );
+    },
+  );
+
+  it.each(["10abc", "0", "-5", "abc", "Infinity", "NaN"])(
+    "rejects invalid window %s",
+    (configured) => {
+      expectInvalidConfiguration(
+        () =>
+          resolveWindowMs(
+            runtimeWithSettings({
+              ERROR_ESCALATION_WINDOW_MINUTES: configured,
+            }),
+          ),
+        "ERROR_ESCALATION_WINDOW_MINUTES",
+        configured,
+      );
+    },
+  );
+
+  it("rejects a finite minute value that overflows safe milliseconds", () => {
+    const configured = "9".repeat(308);
+    expectInvalidConfiguration(
+      () =>
+        resolveWindowMs(
+          runtimeWithSettings({ ERROR_ESCALATION_WINDOW_MINUTES: configured }),
+        ),
+      "ERROR_ESCALATION_WINDOW_MINUTES",
+      configured,
+    );
+  });
+
+  it("propagates an invalid threshold during registration", () => {
+    const configured = "3oops";
+    const runtime = {
+      getSetting: (key: string) =>
+        key === "ERROR_ESCALATION_THRESHOLD" ? configured : undefined,
+      registerEvent: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    expectInvalidConfiguration(
+      () => registerErrorEscalation(runtime),
+      "ERROR_ESCALATION_THRESHOLD",
+      configured,
+    );
+    expect(runtime.registerEvent).not.toHaveBeenCalled();
+  });
+
+  it("propagates an invalid window during registration", () => {
+    const configured = "invalid-window";
+    const runtime = {
+      getSetting: (key: string) =>
+        key === "ERROR_ESCALATION_THRESHOLD" ? "3" : configured,
+      registerEvent: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    expectInvalidConfiguration(
+      () => registerErrorEscalation(runtime),
+      "ERROR_ESCALATION_WINDOW_MINUTES",
+      configured,
+    );
+    expect(runtime.registerEvent).not.toHaveBeenCalled();
   });
 });
 

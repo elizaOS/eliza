@@ -1,5 +1,5 @@
 /**
- * Profile form for updating user profile information: name and email add.
+ * Profile editor for the signed-in user's name and optional first email.
  *
  * Talks directly to the canonical profile routes via the typed cloud client:
  *   PATCH /api/v1/user        (name)
@@ -7,21 +7,26 @@
  *
  * Successful mutations reload the page so every shell/profile consumer observes
  * the updated identity without depending on cross-section query invalidation.
+ * Email is add-once: a present address is shown disabled. The labelled 1:1
+ * fields compose SettingsStack / SettingsGroup / SettingsInputRow.
  */
 
-import { Loader2, Mail, User } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
-  Alert,
-  AlertDescription,
-  BrandButton,
-  BrandCard,
-  CornerBrackets,
-  Input,
-} from "../../../cloud-ui";
+  SettingsActionButton,
+  SettingsInputRow,
+} from "../../../components/settings/settings-agent-rows";
+import {
+  SettingsGroup,
+  SettingsStack,
+} from "../../../components/settings/settings-layout";
+import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { ApiError, apiFetch } from "../../lib/api-client";
 import type { UserProfile } from "../data/user";
+
+const NAME_MAX_LENGTH = 100;
 
 function mutationError(err: unknown, fallback: string): string {
   if (err instanceof ApiError) return err.message;
@@ -41,9 +46,7 @@ interface ProfileMutationBody {
   message?: string;
 }
 
-async function updateProfile(formData: FormData): Promise<ProfileActionResult> {
-  const name = String(formData.get("name") ?? "");
-
+async function updateProfile(name: string): Promise<ProfileActionResult> {
   try {
     const res = await apiFetch("/api/v1/user", {
       method: "PATCH",
@@ -74,9 +77,7 @@ async function updateProfile(formData: FormData): Promise<ProfileActionResult> {
   }
 }
 
-async function updateEmail(formData: FormData): Promise<ProfileActionResult> {
-  const email = String(formData.get("email") ?? "");
-
+async function updateEmail(email: string): Promise<ProfileActionResult> {
   try {
     const res = await apiFetch("/api/v1/user/email", {
       method: "PATCH",
@@ -113,16 +114,20 @@ export function ProfileForm({ user }: ProfileFormProps) {
   const [success, setSuccess] = useState<string | null>(null);
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [emailAdded, setEmailAdded] = useState(false);
+  const [name, setName] = useState(user.name ?? "");
+  const [email, setEmail] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const submitName = () => {
     setError(null);
     setSuccess(null);
-
-    const formData = new FormData(e.currentTarget);
+    const nextName = name.trim();
+    if (!nextName) {
+      setError("Enter your full name.");
+      return;
+    }
 
     startTransition(async () => {
-      const result = await updateProfile(formData);
+      const result = await updateProfile(nextName);
       if (result.success) {
         setSuccess(result.message || "Profile updated successfully");
         toast.success(result.message || "Profile updated successfully");
@@ -134,14 +139,17 @@ export function ProfileForm({ user }: ProfileFormProps) {
     });
   };
 
-  const handleEmailSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const submitEmail = async () => {
     setError(null);
     setSuccess(null);
-    setIsUpdatingEmail(true);
+    const nextEmail = email.trim();
+    if (!nextEmail) {
+      setError("Enter an email address.");
+      return;
+    }
 
-    const formData = new FormData(e.currentTarget);
-    const result = await updateEmail(formData);
+    setIsUpdatingEmail(true);
+    const result = await updateEmail(nextEmail);
 
     if (result.success) {
       setSuccess(result.message || "Email added successfully");
@@ -156,172 +164,163 @@ export function ProfileForm({ user }: ProfileFormProps) {
   };
 
   return (
-    <BrandCard className="relative">
-      <CornerBrackets size="sm" className="opacity-50" />
-
-      <div className="relative z-10 space-y-6">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <User className="h-5 w-5 text-accent" />
-            <h3 className="text-lg font-bold text-txt-strong">
-              Profile Information
-            </h3>
-          </div>
-          <p className="text-sm text-muted">
-            Update your profile information and manage your account settings
-          </p>
-        </div>
-
-        {!user.email && !emailAdded && (
-          <div className="space-y-2 p-4 border border-accent-muted bg-accent-subtle rounded-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <Mail className="h-4 w-4 text-accent" />
-              <label
-                htmlFor="new-email"
-                className="text-xs font-medium text-accent uppercase tracking-wide"
-              >
-                Add Email Address
-              </label>
-            </div>
-            <p className="text-xs text-muted mb-3">
-              Adding an email allows you to receive important notifications and
-              updates.
-            </p>
-            <form onSubmit={handleEmailSubmit} className="space-y-3">
-              <Input
-                id="new-email"
-                name="email"
-                type="email"
-                placeholder="your@email.com"
-                disabled={isUpdatingEmail}
-                required
-                className="min-h-touch rounded-sm border-input bg-bg-elevated text-txt placeholder:text-muted disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-              <BrandButton
+    <SettingsStack data-testid="cloud-profile-form">
+      <SettingsGroup
+        title="Profile information"
+        description="Update your profile information and manage your account settings."
+      >
+        {!user.email && !emailAdded ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitEmail();
+            }}
+          >
+            <SettingsInputRow
+              agentId="profile-email"
+              agentLabel="Email address"
+              group="profile"
+              label="Email address"
+              description="Adding an email lets you receive important notifications and updates."
+              type="email"
+              value={email}
+              onValueChange={setEmail}
+              placeholder="your@email.com"
+              autoComplete="email"
+              disabled={isUpdatingEmail}
+              testId="profile-email-input"
+            />
+            <div className="flex items-center gap-3 pt-1">
+              <SettingsActionButton
+                agentId="profile-add-email"
+                agentLabel="Add email address"
+                agentGroup="profile"
+                agentStatus={isUpdatingEmail ? "loading" : undefined}
                 type="submit"
-                variant="primary"
-                size="sm"
                 disabled={isUpdatingEmail}
-                className="w-full"
+                data-testid="profile-add-email"
               >
                 {isUpdatingEmail ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" />
-                    Adding Email...
+                    <Loader2
+                      className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                      aria-hidden
+                    />
+                    Adding email...
                   </>
                 ) : (
-                  <>
-                    <Mail className="h-4 w-4 mr-2" />
-                    Add Email Address
-                  </>
+                  "Add email address"
                 )}
-              </BrandButton>
-            </form>
-          </div>
-        )}
-
-        {user.email && (
-          <div className="space-y-2">
-            <label
-              htmlFor="email"
-              className="text-xs font-medium text-muted uppercase tracking-wide flex items-center gap-2"
-            >
-              <Mail className="h-4 w-4" />
-              Email Address
-            </label>
-            <Input
-              id="email"
-              type="email"
-              value={user.email}
-              disabled
-              className="min-h-touch rounded-sm border-border bg-bg-muted text-muted disabled:opacity-50 disabled:cursor-not-allowed"
-            />
-            <p className="text-xs text-muted">
-              Email cannot be changed. Please contact support if you need to
-              update this.
-            </p>
-          </div>
-        )}
-
-        {emailAdded && !user.email && (
-          <div className="space-y-2 p-4 border border-status-success bg-status-success-bg rounded-sm">
-            <div className="flex items-center gap-2">
-              <Mail className="h-4 w-4 text-status-success" />
-              <p className="text-sm font-medium text-status-success">
-                Email Added Successfully!
-              </p>
+              </SettingsActionButton>
             </div>
-            <p className="text-xs text-muted">
-              Your email has been added and will appear here after the page
+          </form>
+        ) : null}
+
+        {user.email ? (
+          <SettingsInputRow
+            agentId="profile-email"
+            agentLabel="Email address"
+            group="profile"
+            label="Email address"
+            description="Email cannot be changed. Contact support if you need to update this."
+            type="email"
+            value={user.email}
+            onValueChange={() => undefined}
+            autoComplete="email"
+            disabled
+            testId="profile-email-input"
+          />
+        ) : null}
+
+        {emailAdded && !user.email ? (
+          <Alert className="rounded-sm border-status-success bg-status-success-bg">
+            <AlertDescription className="text-status-success">
+              Email added successfully. It will appear here after the page
               refreshes.
-            </p>
-          </div>
-        )}
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label
-                htmlFor="name"
-                className="text-xs font-medium text-muted uppercase tracking-wide"
-              >
-                Full Name <span className="text-accent">*</span>
-              </label>
-              <Input
-                id="name"
-                name="name"
-                type="text"
-                defaultValue={user.name || ""}
-                placeholder="Enter your full name"
-                required
-                maxLength={100}
-                disabled={isPending}
-                className="min-h-touch rounded-sm border-input bg-bg-elevated text-txt placeholder:text-muted disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
-          </div>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitName();
+          }}
+        >
+          <SettingsInputRow
+            agentId="profile-name"
+            agentLabel="Full name"
+            group="profile"
+            label="Full name"
+            type="text"
+            value={name}
+            onValueChange={(value) => setName(value.slice(0, NAME_MAX_LENGTH))}
+            placeholder="Enter your full name"
+            autoComplete="name"
+            disabled={isPending}
+            testId="profile-name-input"
+          />
 
-          {error && (
+          {error ? (
             <Alert
               variant="destructive"
-              className="rounded-sm border-status-danger bg-status-danger-bg"
+              className="mt-2 rounded-sm border-status-danger bg-status-danger-bg"
+              data-testid="profile-error"
             >
               <AlertDescription className="text-status-danger">
                 {error}
               </AlertDescription>
             </Alert>
-          )}
+          ) : null}
 
-          {success && (
-            <Alert className="rounded-sm border-status-success bg-status-success-bg">
+          {success ? (
+            <Alert
+              className="mt-2 rounded-sm border-status-success bg-status-success-bg"
+              data-testid="profile-success"
+            >
               <AlertDescription className="text-status-success">
                 {success}
               </AlertDescription>
             </Alert>
-          )}
+          ) : null}
 
-          <div className="flex items-center gap-3 pt-4">
-            <BrandButton type="submit" variant="primary" disabled={isPending}>
+          <div className="flex items-center gap-3 pt-3">
+            <SettingsActionButton
+              agentId="profile-save"
+              agentLabel="Save changes"
+              agentGroup="profile"
+              agentStatus={isPending ? "loading" : undefined}
+              type="submit"
+              disabled={isPending}
+              data-testid="profile-save"
+            >
               {isPending ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" />
+                  <Loader2
+                    className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                    aria-hidden
+                  />
                   Saving...
                 </>
               ) : (
-                "Save Changes"
+                "Save changes"
               )}
-            </BrandButton>
-            <BrandButton
+            </SettingsActionButton>
+            <SettingsActionButton
+              agentId="profile-cancel"
+              agentLabel="Cancel"
+              agentGroup="profile"
               type="button"
               variant="outline"
-              onClick={() => window.location.reload()}
               disabled={isPending}
+              onClick={() => window.location.reload()}
+              data-testid="profile-cancel"
             >
               Cancel
-            </BrandButton>
+            </SettingsActionButton>
           </div>
         </form>
-      </div>
-    </BrandCard>
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

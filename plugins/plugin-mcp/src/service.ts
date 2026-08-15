@@ -175,7 +175,7 @@ export class McpService extends Service {
     const servers: Record<string, McpServerConfig> = {};
     for (const [key, value] of Object.entries(process.env)) {
       const match = key.match(/^MCP_SERVER_(.+)_URL$/);
-      if (!match || !value || !value.trim()) continue;
+      if (!match || !value?.trim()) continue;
       const name = match[1].toLowerCase();
       const typeRaw = process.env[`MCP_SERVER_${match[1]}_TYPE`]?.trim().toLowerCase();
       const type = typeRaw === "http" || typeRaw === "sse" ? typeRaw : "streamable-http";

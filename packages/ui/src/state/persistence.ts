@@ -1197,6 +1197,10 @@ export interface PersistedActiveServer {
   apiBase?: string;
   /** Optional auth/access token for the selected server. */
   accessToken?: string;
+  /** Cloud runtime currently serving the stable identity encoded by `id`. */
+  cloudRuntimeAgentId?: string;
+  /** Hosting mode of the current Cloud runtime target. */
+  cloudRuntime?: "shared" | "dedicated";
 }
 
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
@@ -1252,6 +1256,8 @@ export function createPersistedActiveServer(args: {
   apiBase?: string;
   accessToken?: string;
   label?: string;
+  cloudRuntimeAgentId?: string;
+  cloudRuntime?: "shared" | "dedicated";
 }): PersistedActiveServer {
   const normalizedApiBase = normalizeApiBase(args.apiBase);
   const apiBase = isElizaCloudControlPlaneApiBase(normalizedApiBase)
@@ -1259,6 +1265,7 @@ export function createPersistedActiveServer(args: {
     : normalizedApiBase;
   const accessToken = trimPersistedValue(args.accessToken);
   const explicitLabel = trimPersistedValue(args.label);
+  const cloudRuntimeAgentId = trimPersistedValue(args.cloudRuntimeAgentId);
 
   switch (args.kind) {
     case "local":
@@ -1274,6 +1281,8 @@ export function createPersistedActiveServer(args: {
         label: explicitLabel ?? "Eliza Cloud",
         ...(apiBase ? { apiBase } : {}),
         ...(accessToken ? { accessToken } : {}),
+        ...(cloudRuntimeAgentId ? { cloudRuntimeAgentId } : {}),
+        ...(args.cloudRuntime ? { cloudRuntime: args.cloudRuntime } : {}),
       };
     case "remote": {
       let label = explicitLabel ?? "Remote server";
@@ -1325,6 +1334,11 @@ function normalizePersistedActiveServer(
     ? undefined
     : normalizedApiBase;
   const accessToken = trimPersistedValue(record.accessToken);
+  const cloudRuntimeAgentId = trimPersistedValue(record.cloudRuntimeAgentId);
+  const cloudRuntime =
+    record.cloudRuntime === "shared" || record.cloudRuntime === "dedicated"
+      ? record.cloudRuntime
+      : undefined;
 
   return {
     id,
@@ -1332,6 +1346,8 @@ function normalizePersistedActiveServer(
     label,
     ...(apiBase ? { apiBase } : {}),
     ...(accessToken ? { accessToken } : {}),
+    ...(kind === "cloud" && cloudRuntimeAgentId ? { cloudRuntimeAgentId } : {}),
+    ...(kind === "cloud" && cloudRuntime ? { cloudRuntime } : {}),
   };
 }
 

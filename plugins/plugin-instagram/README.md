@@ -11,7 +11,6 @@ Adds Instagram integration to an Eliza agent:
 - **User lookup** — resolves Instagram usernames/handles to entity objects the runtime can reason about.
 - **Thread browsing** — lists and searches DM threads so the runtime can pick the right target.
 - **Multi-account** — configure multiple Instagram accounts; each gets its own connector pair.
-- **Workflow credentials** — supplies a `facebookGraphApi` token to workflow plugin nodes when `INSTAGRAM_PAGE_ACCESS_TOKEN` is set.
 
 > **Note:** The connector and credential plumbing is complete, but this package does not ship a
 > concrete Instagram API client backend. Runtime API methods fail explicitly until a backend such as
@@ -50,7 +49,6 @@ Set credentials via environment variables (single account) or in `character.sett
 | `INSTAGRAM_AUTO_RESPOND_DMS` | No | `"true"` to auto-respond to DMs |
 | `INSTAGRAM_AUTO_RESPOND_COMMENTS` | No | `"true"` to auto-respond to comments |
 | `INSTAGRAM_POLLING_INTERVAL` | No | Poll interval in seconds (default: `60`) |
-| `INSTAGRAM_PAGE_ACCESS_TOKEN` | No | Meta Graph API page access token for workflow nodes |
 | `INSTAGRAM_ACCOUNTS` | No | JSON array/object of additional account configs for multi-account. Invalid JSON/primitives fail closed; junk entries are skipped; IDs are trimmed and must remain unique after trimming. |
 
 ### Character-level config

@@ -12,6 +12,7 @@ import {
 	ElizaError,
 	normalizeEffectReceipts,
 	normalizeUserFacingEffectReceiptIds,
+	type RoleGate,
 	type ViewCapability,
 	type ViewCapabilityParameter,
 	type ViewType,
@@ -25,6 +26,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 export interface ViewSummary {
 	id: string;
 	label: string;
+	roleGate?: RoleGate;
 	viewType?: ViewType;
 	description?: string;
 	icon?: string;

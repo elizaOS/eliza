@@ -73,10 +73,9 @@ describe("VoiceSectionMount — wake-word toggle wiring (FIX 3)", () => {
 
   it("defaults the wake-word toggle ON (no stored pref) and reflects it", async () => {
     render(<VoiceSectionMount />);
-    const toggle = (await screen.findByTestId(
-      "voice-section-wake-toggle",
-    )) as HTMLInputElement;
-    expect(toggle.checked).toBe(true);
+    const toggle = await screen.findByTestId("voice-section-wake-toggle");
+    expect(toggle.getAttribute("role")).toBe("switch");
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
     // Let the mount-time async config/tier fetches settle to avoid act warnings.
     await waitFor(() =>
       expect(clientMock.getLocalInferenceDeviceTier).toHaveBeenCalled(),
@@ -86,28 +85,28 @@ describe("VoiceSectionMount — wake-word toggle wiring (FIX 3)", () => {
   it("persists the toggle so the shell's wake pref maps to actual enablement", async () => {
     const user = userEvent.setup();
     render(<VoiceSectionMount />);
-    const toggle = (await screen.findByTestId(
-      "voice-section-wake-toggle",
-    )) as HTMLInputElement;
+    const toggle = await screen.findByTestId("voice-section-wake-toggle");
 
     // Turning it off writes the persisted pref the shell reads for wake gating.
     await user.click(toggle);
-    await waitFor(() => expect(toggle.checked).toBe(false));
+    await waitFor(() =>
+      expect(toggle.getAttribute("aria-checked")).toBe("false"),
+    );
     expect(window.localStorage.getItem(WAKE_KEY)).toBe("false");
 
     // Turning it back on flips the pref again.
     await user.click(toggle);
-    await waitFor(() => expect(toggle.checked).toBe(true));
+    await waitFor(() =>
+      expect(toggle.getAttribute("aria-checked")).toBe("true"),
+    );
     expect(window.localStorage.getItem(WAKE_KEY)).toBe("true");
   });
 
   it("reflects a persisted wake-word-disabled pref on mount", async () => {
     window.localStorage.setItem(WAKE_KEY, "false");
     render(<VoiceSectionMount />);
-    const toggle = (await screen.findByTestId(
-      "voice-section-wake-toggle",
-    )) as HTMLInputElement;
-    expect(toggle.checked).toBe(false);
+    const toggle = await screen.findByTestId("voice-section-wake-toggle");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
   });
 });
 
@@ -180,17 +179,19 @@ describe("VoiceSectionMount — shortcut microphone consent", () => {
   it("defaults off and persists an explicit voice auto-start opt-in", async () => {
     const user = userEvent.setup();
     render(<VoiceSectionMount />);
-    const toggle = (await screen.findByTestId(
+    const toggle = await screen.findByTestId(
       "voice-section-intent-autostart-voice",
-    )) as HTMLInputElement;
-    expect(toggle.checked).toBe(false);
+    );
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
     expect(loadOsIntentAutoStartConsent()).toEqual({
       voice: false,
       transcription: false,
     });
 
     await user.click(toggle);
-    await waitFor(() => expect(toggle.checked).toBe(true));
+    await waitFor(() =>
+      expect(toggle.getAttribute("aria-checked")).toBe("true"),
+    );
     expect(loadOsIntentAutoStartConsent()).toEqual({
       voice: true,
       transcription: false,
@@ -204,10 +205,10 @@ describe("VoiceSectionMount — shortcut microphone consent", () => {
 
   it("reflects a chat-driven consent broadcast while the panel is open", async () => {
     render(<VoiceSectionMount />);
-    const toggle = (await screen.findByTestId(
+    const toggle = await screen.findByTestId(
       "voice-section-intent-autostart-transcription",
-    )) as HTMLInputElement;
-    expect(toggle.checked).toBe(false);
+    );
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
     act(() => {
       emitViewEvent(
         VOICE_SETTINGS_APPLY_EVENT,
@@ -215,7 +216,9 @@ describe("VoiceSectionMount — shortcut microphone consent", () => {
         "agent",
       );
     });
-    await waitFor(() => expect(toggle.checked).toBe(true));
+    await waitFor(() =>
+      expect(toggle.getAttribute("aria-checked")).toBe("true"),
+    );
   });
 });
 

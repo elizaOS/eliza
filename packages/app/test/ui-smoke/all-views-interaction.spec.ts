@@ -52,6 +52,7 @@ type ControlDetails = {
   role: string | null;
   type: string | null;
   href: string | null;
+  visible: boolean;
   label: string;
   text: string;
   value: string | null;
@@ -69,6 +70,7 @@ type ControlSnapshot = {
 
 const CLICK_OBSERVED_ATTRIBUTES = [
   "data-agent-id",
+  "data-chat-open",
   "aria-expanded",
   "aria-pressed",
   "aria-selected",
@@ -340,6 +342,9 @@ async function snapshotControl(
         role: attr("role"),
         type: attr("type"),
         href: "href" in anchorEl ? anchorEl.href : null,
+        visible:
+          htmlEl.getClientRects().length > 0 &&
+          getComputedStyle(htmlEl).visibility !== "hidden",
         label: label ? label.slice(0, 120) : "",
         text: text.slice(0, 120),
         value: "value" in inputEl ? String(inputEl.value) : null,
@@ -393,6 +398,9 @@ function semanticDelta(
   }
   if (after.details.label !== before.details.label) {
     return `control label changed from "${before.details.label}" to "${after.details.label}"`;
+  }
+  if (after.details.visible !== before.details.visible) {
+    return `control visibility changed ${String(before.details.visible)} -> ${String(after.details.visible)}`;
   }
   if (after.details.text !== before.details.text) {
     return `control text changed from "${truncate(before.details.text)}" to "${truncate(after.details.text)}"`;
@@ -469,6 +477,13 @@ function documentedClickNoop(
     // runtime; the DOM outcome depends on the agent round-trip, which the
     // keyless stub does not perform.
     return "spatial agent-dispatch control routes its action to the agent runtime; no local DOM outcome in the keyless stub";
+  }
+  if (details.attributes["data-chat-open"]) {
+    // chat-open dispatch controls (data-chat-open) route their action to the
+    // ChatOverlay, which the interaction harness hides in setup via
+    // hideChatOverlay so overlay chrome does not shadow the view controls;
+    // opening it therefore produces no observable local DOM outcome here.
+    return "chat-open dispatch control routes its action to the ChatOverlay, which the interaction harness hides in setup; no local DOM outcome";
   }
   return null;
 }
@@ -554,6 +569,7 @@ async function pressEscapeWithSemanticOutcome(
  * its semantic outcome instead of tripping the stub server's catch-all 501.
  */
 async function installInteractionAuditRoutes(page: Page): Promise<void> {
+  let interactionWorkflow: Record<string, unknown> | null = null;
   let character: Record<string, unknown> = {
     name: "Playwright Smoke",
     bio: ["Interaction-audit character"],
@@ -646,6 +662,120 @@ async function installInteractionAuditRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/triggers**", async (route) => {
+    if (
+      route.request().method() === "GET" &&
+      new URL(route.request().url()).pathname === "/api/triggers"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ triggers: [] }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route("**/api/workflow/workflows**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (request.method() === "GET" && pathname === "/api/workflow/workflows") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          workflows: interactionWorkflow ? [interactionWorkflow] : [],
+        }),
+      });
+      return;
+    }
+    if (request.method() === "POST" && pathname === "/api/workflow/workflows") {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      const now = new Date().toISOString();
+      interactionWorkflow = {
+        ...payload,
+        active: payload.active ?? false,
+        id: "interaction-audit-workflow",
+        versionId: "interaction-audit-v1",
+        createdAt: now,
+        updatedAt: now,
+      };
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify(interactionWorkflow),
+      });
+      return;
+    }
+
+    const segments = pathname.split("/").filter(Boolean);
+    const workflowId = decodeURIComponent(segments[3] ?? "");
+    const subresource = segments[4];
+    if (workflowId !== "interaction-audit-workflow" || !interactionWorkflow) {
+      await route.fallback();
+      return;
+    }
+    if (request.method() === "GET" && subresource === "executions") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ executions: [] }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && subresource === "revisions") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          currentVersionId: interactionWorkflow.versionId,
+          revisions: [],
+        }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && !subresource) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(interactionWorkflow),
+      });
+      return;
+    }
+    if (request.method() === "PUT" && !subresource) {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      interactionWorkflow = {
+        ...interactionWorkflow,
+        ...payload,
+        updatedAt: new Date().toISOString(),
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(interactionWorkflow),
+      });
+      return;
+    }
+    if (
+      request.method() === "POST" &&
+      (subresource === "activate" || subresource === "deactivate")
+    ) {
+      interactionWorkflow = {
+        ...interactionWorkflow,
+        active: subresource === "activate",
+        updatedAt: new Date().toISOString(),
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(interactionWorkflow),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
   await page.route("**/api/pendant/sessions/current", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -703,6 +833,30 @@ test.describe("every-view interaction coverage", () => {
         const failureText = request.failure()?.errorText ?? "";
         if (failureText === "net::ERR_ABORTED") return;
         networkFailures.push(`requestfailed: ${url} ${failureText}`);
+      });
+      // The generic ladders cannot see a rejected workflow create: a 4xx
+      // still bumps the API request count and the rendered error state is a
+      // legitimate DOM outcome, so the editor follow-ons silently vanish
+      // while the case stays green. Record the whole workflow surface so the
+      // automations case can assert the successful sequence explicitly.
+      const workflowSurfaceResponses: Array<{
+        method: string;
+        pathname: string;
+        status: number;
+      }> = [];
+      page.on("response", (response) => {
+        const pathname = new URL(response.url()).pathname;
+        if (
+          pathname !== "/api/triggers" &&
+          !pathname.startsWith("/api/workflow/")
+        ) {
+          return;
+        }
+        workflowSurfaceResponses.push({
+          method: response.request().method(),
+          pathname,
+          status: response.status(),
+        });
       });
 
       await page.setViewportSize({ width: 1440, height: 1000 });
@@ -836,6 +990,53 @@ test.describe("every-view interaction coverage", () => {
           ...networkFailures,
         ].join("\n"),
       ).toHaveLength(0);
+      // The automations crawl must complete the workflow-editor round trip,
+      // not merely generate traffic toward it: the create must succeed and
+      // the editor's follow-on reads must land, and no workflow-surface
+      // request may be rejected. Without this, an invalid or rejecting
+      // fixture prunes the editor coverage while the case stays green.
+      if (view.id === "automations") {
+        const observed = workflowSurfaceResponses
+          .map((r) => `${r.method} ${r.pathname} -> ${r.status}`)
+          .join("\n");
+        const rejected = workflowSurfaceResponses.filter(
+          (r) => r.status < 200 || r.status >= 300,
+        );
+        expect(
+          rejected.map((r) => `${r.method} ${r.pathname} -> ${r.status}`),
+          `automations: workflow-surface request was rejected\nobserved:\n${observed}`,
+        ).toHaveLength(0);
+        const succeeded = (method: string, pattern: RegExp) =>
+          workflowSurfaceResponses.some(
+            (r) =>
+              r.method === method &&
+              pattern.test(r.pathname) &&
+              r.status >= 200 &&
+              r.status < 300,
+          );
+        const missing = (
+          [
+            ["POST", /^\/api\/workflow\/workflows$/, "workflow create"],
+            ["GET", /^\/api\/triggers$/, "editor trigger-list read"],
+            [
+              "GET",
+              /^\/api\/workflow\/workflows\/[^/]+\/executions$/,
+              "editor executions read",
+            ],
+            [
+              "GET",
+              /^\/api\/workflow\/workflows\/[^/]+\/revisions$/,
+              "editor revisions read",
+            ],
+          ] as const
+        )
+          .filter(([method, pattern]) => !succeeded(method, pattern))
+          .map(([, , label]) => label);
+        expect(
+          missing,
+          `automations: workflow-editor sequence incomplete; missing: ${missing.join(", ")}\nobserved:\n${observed}`,
+        ).toHaveLength(0);
+      }
     });
   }
 });

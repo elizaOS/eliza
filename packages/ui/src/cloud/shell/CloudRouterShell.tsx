@@ -390,20 +390,6 @@ export interface CloudRouterShellProps {
   downloadsElement?: ReactNode;
 }
 
-function MarketingHomeRoute({
-  appElement,
-  marketingHomeElement,
-}: {
-  appElement: ReactNode;
-  marketingHomeElement: ReactNode;
-}): ReactNode {
-  return isApexControlPlaneHost() ? (
-    marketingHomeElement
-  ) : (
-    <AppCatchAllRoute appElement={appElement} />
-  );
-}
-
 function MarketingDownloadsRoute({
   downloadsElement,
 }: {
@@ -518,6 +504,7 @@ export function CloudRouterShell({
     getCloudRouteRegistryVersion,
   );
   const cloudRoutes = listCloudRoutes();
+  const marketingHost = isApexControlPlaneHost();
   return (
     <BrowserRouter>
       {/*
@@ -531,16 +518,15 @@ export function CloudRouterShell({
       <CloudProviders>
         <PrivateCloudRegistrationCoordinator />
         <Routes>
-          {marketingHomeElement ? (
-            <Route
-              path="/"
-              element={
-                <MarketingHomeRoute
-                  appElement={appElement}
-                  marketingHomeElement={marketingHomeElement}
-                />
-              }
-            />
+          {/* The marketing homepage owns `/` ONLY on a marketing host. Every
+              other host must leave `/` to the catch-all route below: giving it
+              a dedicated <Route> makes react-router swap route elements when
+              the app navigates `/` -> `/chat`, which REMOUNTS the whole app
+              subtree and re-reads mount-time URL state (`?shellMode=`), so
+              `?shellMode=voice-selftest|voice-workbench|kiosk|...` surfaces
+              were torn down moments after mounting. */}
+          {marketingHomeElement && marketingHost ? (
+            <Route path="/" element={marketingHomeElement} />
           ) : null}
 
           {downloadsElement ? (

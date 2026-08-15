@@ -21,21 +21,8 @@ on:
         required: false
         type: string
         default: standalone
-  pull_request:
-    branches: [develop, main]
-    paths:
-      # The fixture runners esbuild-bundle from the full packages/ui/src tree,
-      # so any source change there can reach a bundled runner.
-      - "packages/ui/src/**"
-      - "packages/ui/package.json"
-      # The proactive-suggestions e2e drives these server modules for real.
-      - "packages/agent/src/services/proactive-interaction-*.ts"
-      - "packages/agent/src/api/views-routes.ts"
-      - "packages/agent/src/api/interactions-routes.ts"
-      - "packages/agent/src/api/server-helpers-swarm.ts"
-      - ".github/workflows/ui-e2e-gate.yml"
   push:
-    branches: [main, develop]
+    branches: [develop]
     paths:
       - "packages/ui/src/**"
       - "packages/ui/package.json"
@@ -44,12 +31,11 @@ on:
       - "packages/agent/src/api/interactions-routes.ts"
       - "packages/agent/src/api/server-helpers-swarm.ts"
 
-# Standalone PR and push runs share stable keys so obsolete work is superseded.
-# Reusable callers pass a distinct scope, keeping exhaustive work outside those
-# domains; schedule and dispatch events never cancel an active run.
+# Develop pushes share a stable key so obsolete work is superseded. Reusable
+# callers pass a distinct scope for exhaustive work.
 concurrency:
-  group: ui-e2e-gate-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+  group: ui-e2e-gate-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 permissions:
   contents: read

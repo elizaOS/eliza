@@ -71,12 +71,25 @@ export const ELIZA_SERVICE_DOMAIN_CONTRACTS: Readonly<
   }),
 });
 
+/**
+ * Hosts that serve an A/B variant of the public landing from their own Pages
+ * project. They classify as marketing so the shell renders the page instead of
+ * booting the agent app, and they are exempt from canonical-host redirection —
+ * bouncing them to eliza.app would defeat the experiment.
+ */
+export const LANDING_AB_HOSTNAMES: readonly string[] = Object.freeze([
+  "b.eliza.app",
+  "eliza-app-b.pages.dev",
+]);
+
 export const LEGACY_ELIZA_DOMAIN_CONTRACTS = Object.freeze({
   production: Object.freeze({
     marketingHostnames: Object.freeze([
       "elizacloud.ai",
       "www.elizacloud.ai",
       "dev.elizacloud.ai",
+      // A/B variant of the public landing (see LANDING_AB_HOSTNAMES).
+      ...LANDING_AB_HOSTNAMES,
     ]),
     cloudAppHostnames: Object.freeze(["app.elizacloud.ai"]),
     cloudApiHostnames: Object.freeze(["api.elizacloud.ai"]),

@@ -33,7 +33,7 @@ test("get-started public method controls work without API mocks", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Open Telegram/i }),
-  ).toHaveAttribute("href", "https://t.me/Elizav2_Bot");
+  ).toHaveAttribute("href", "https://t.me/ElizaIsNotABot");
 
   await page.getByRole("button", { name: "Back" }).click();
   await expect(

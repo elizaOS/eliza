@@ -18,7 +18,13 @@ import {
 } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/shared";
 
-const CLOUD_BASE_FALLBACK = "https://api.eliza.app/api/v1";
+/**
+ * Cloud API base used when neither a runtime setting nor an env override
+ * supplies one. Exported so the contract test asserts the fallback against this
+ * value rather than restating the host, which is how it went stale across the
+ * eliza.app consolidation.
+ */
+export const CLOUD_BASE_FALLBACK = "https://api.eliza.app/api/v1";
 
 /**
  * Structural subset of `IAgentRuntime` we touch for cloud base resolution.

@@ -12,11 +12,19 @@ import { shellHistoryProvider } from "../providers/shellHistoryProvider";
 import { resetProcessRegistryForTests } from "../services/processRegistry";
 import { ShellService } from "../services/shellService";
 
-function createRuntime(service: ShellService | null): IAgentRuntime {
+function createRuntime(
+  service: ShellService | null,
+  configuredSecret?: string,
+): IAgentRuntime {
   return {
     character: {},
     getService(name: string) {
       return name === "shell" ? service : null;
+    },
+    redactSecrets(text: string) {
+      return configuredSecret
+        ? text.replaceAll(configuredSecret, "[REDACTED:TEST_SECRET]")
+        : text;
     },
   } as IAgentRuntime;
 }
@@ -81,6 +89,29 @@ describePosixShell("shell plugin real local integration", () => {
     expect(provider.values?.currentWorkingDirectory).toBe(allowedDirectory);
   });
 
+  it("stores and provides only redacted configured bare secrets", async () => {
+    const secret = "marigold9";
+    await service.stop();
+    service = await ShellService.start(createRuntime(null, secret));
+    runtime = createRuntime(service, secret);
+    const result = await service.executeCommand(
+      `printf '%s\\n' '${secret}'`,
+      "room-secret",
+    );
+    expect(result.success).toBe(true);
+    expect(JSON.stringify(result)).not.toContain(secret);
+
+    const history = service.getCommandHistory("room-secret", 10);
+    const provider = await shellHistoryProvider.get(
+      runtime,
+      { roomId: "room-secret", agentId: "agent-1" } as never,
+      {} as never,
+    );
+
+    expect(JSON.stringify(history)).not.toContain(secret);
+    expect(JSON.stringify(provider)).not.toContain(secret);
+  });
+
   it("fails closed when a command tries to escape the allowed directory", async () => {
     const result = await service.executeCommand("cd ../..", "room-1");
 
@@ -96,7 +127,8 @@ describePosixShell("shell plugin real local integration", () => {
     // ShellService whose history read throws must NOT be reported to the model
     // as empty, success-shaped context. The failure has to reach the model loop
     // (non-empty status text + values) and the developer logs (logger.error).
-    const boom = new Error("history backend exploded");
+    const secret = "orchid42";
+    const boom = new Error(`history ${secret} exploded`);
     const reported: Array<{ scope: string; error: unknown }> = [];
     const throwingService = {
       getCommandHistory() {
@@ -113,6 +145,9 @@ describePosixShell("shell plugin real local integration", () => {
       getService(name: string) {
         return name === "shell" ? throwingService : null;
       },
+      redactSecrets(text: string) {
+        return text.replaceAll(secret, "[REDACTED:TEST_SECRET]");
+      },
       reportError(scope: string, error: unknown) {
         reported.push({ scope, error });
       },
@@ -127,16 +162,27 @@ describePosixShell("shell plugin real local integration", () => {
     // Model-visible: not blank, and it names the failure.
     expect(provider.text).not.toBe("");
     expect(provider.text).toContain("unavailable");
-    expect(provider.text).toContain("history backend exploded");
-    expect(provider.values?.shellHistory).toContain("history backend exploded");
-    expect(provider.data?.error).toBe("history backend exploded");
+    expect(provider.text).toContain("history [REDACTED:TEST_SECRET] exploded");
+    expect(provider.values?.shellHistory).toContain(
+      "history [REDACTED:TEST_SECRET] exploded",
+    );
+    expect(provider.data?.error).toBe(
+      "history [REDACTED:TEST_SECRET] exploded",
+    );
 
     // Diagnostic boundary: the failure was routed through runtime.reportError
     // (which emits ERROR_REPORTED + feeds the RECENT_ERRORS provider) instead
     // of being silently swallowed.
     expect(reported).toHaveLength(1);
     expect(reported[0]?.scope).toBe("shellHistoryProvider");
-    expect(reported[0]?.error).toBe(boom);
+    expect(reported[0]?.error).toMatchObject({
+      name: "ElizaError",
+      code: "SHELL_HISTORY_PROVIDER_FAILED",
+      context: {
+        redactedMessage: "history [REDACTED:TEST_SECRET] exploded",
+      },
+    });
+    expect(JSON.stringify({ provider, reported })).not.toContain(secret);
   });
 
   it("still logs the failure when the runtime lacks reportError (older runtimes/test doubles)", async () => {

@@ -19,6 +19,13 @@ bun run test
 
 See `package.json` for `build`, `lint`, and other scripts.
 
+## Research tasks
+
+`ResearchTaskExecutor` requires a provider registered for
+`ModelType.RESEARCH`. Provider absence, rejection, or an empty report returns an
+unsuccessful `TaskResult` with a stable `errorCode`; it never falls back to
+ordinary `TEXT_LARGE` synthesis and labels that output as research.
+
 ## Approval-bound plugin installation
 
 `installPlugin` always installs the canonical npm package declared by the

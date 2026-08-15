@@ -393,6 +393,18 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     route: "cloud/apps/:id",
     auth: AUTH,
   },
+  {
+    slug: "cloud-applications-legacy",
+    path: "/cloud/applications",
+    route: "cloud/applications",
+    auth: AUTH,
+  },
+  {
+    slug: "cloud-applications-detail-legacy",
+    path: "/cloud/applications/6f9619ff-8b86-4d01-b42d-00c04fc964ff",
+    route: "cloud/applications/:id",
+    auth: AUTH,
+  },
   // approvals/
   {
     slug: "cloud-approvals",
@@ -573,14 +585,15 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
       .poll(
         async () => {
           registeredPaths = await readRegistryPaths();
-          return registeredPaths.length;
+          return registeredPaths.includes("cloud/agents");
         },
         {
-          message: "cloud-route registry populated by the running shell",
+          message:
+            "private cloud-route registry populated by the running shell",
           timeout: 30_000,
         },
       )
-      .toBeGreaterThan(0);
+      .toBe(true);
     const registered = new Set(registeredPaths);
     const audited = new Set(CLOUD_AUDIT_CASES.map((c) => c.route));
     const unaudited = [...registered].filter((p) => !audited.has(p));
@@ -652,7 +665,13 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
               await route.fulfill({
                 status: 200,
                 contentType: "application/json",
-                body: JSON.stringify({ success: true, data: {} }),
+                body: JSON.stringify({
+                  success: true,
+                  data: {
+                    sessionId: "audit-continuation-token",
+                    requiresLogin: false,
+                  },
+                }),
               });
             },
           );

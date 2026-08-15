@@ -26,6 +26,7 @@ import type {
 
 const DEFAULT_MAX_TURNS = 32;
 const DEFAULT_SMITHERS_TIMEOUT_MS = 300_000;
+const MAX_SMITHERS_TIMEOUT_MS = 2_147_483_647;
 const ABORT_DRAIN_TIMEOUT_MS = 1_000;
 const SMITHERS_WORKER_ENV_KEYS = [
   "PATH",
@@ -254,17 +255,32 @@ export function resolveSmithersDbConfig(): {
 }
 
 export function resolveSmithersTimeoutMs(explicitTimeoutMs?: number): number {
-  const configured =
-    explicitTimeoutMs ??
-    (process.env.ELIZA_SMITHERS_TIMEOUT_MS
-      ? Number(process.env.ELIZA_SMITHERS_TIMEOUT_MS)
-      : DEFAULT_SMITHERS_TIMEOUT_MS);
-  if (!Number.isFinite(configured) || configured <= 0) {
+  const rawConfigured = process.env.ELIZA_SMITHERS_TIMEOUT_MS;
+  let configured: number;
+  if (explicitTimeoutMs !== undefined) {
+    configured = explicitTimeoutMs;
+  } else if (rawConfigured === undefined || rawConfigured === "") {
+    configured = DEFAULT_SMITHERS_TIMEOUT_MS;
+  } else {
+    configured = /^[1-9]\d*$/.test(rawConfigured)
+      ? Number(rawConfigured)
+      : Number.NaN;
+  }
+  if (
+    !Number.isSafeInteger(configured) ||
+    configured <= 0 ||
+    configured > MAX_SMITHERS_TIMEOUT_MS
+  ) {
+    const received = explicitTimeoutMs ?? rawConfigured;
     throw new ElizaError(
-      "Smithers timeout must be a positive number of milliseconds",
+      `Smithers timeout must be an integer from 1 through ${MAX_SMITHERS_TIMEOUT_MS} milliseconds`,
       {
         code: "SMITHERS_TIMEOUT_INVALID",
-        context: { configured },
+        context: {
+          configured: received,
+          minimum: 1,
+          maximum: MAX_SMITHERS_TIMEOUT_MS,
+        },
       },
     );
   }
@@ -498,6 +514,7 @@ export async function runTaskWithSmithers(
       severity: "ephemeral",
     });
   }
+  const timeoutMs = resolveSmithersTimeoutMs(options.timeoutMs);
   const dbPath = resolveTaskDbPath(spec.tenantId, spec.taskId);
   await mkdir(dirname(dbPath), { recursive: true });
   const agents = Math.max(1, spec.parallelAgents ?? 1);
@@ -540,7 +557,6 @@ export async function runTaskWithSmithers(
   });
 
   const pluginRoot = await resolvePluginRoot();
-  const timeoutMs = resolveSmithersTimeoutMs(options.timeoutMs);
   const proc = spawn(resolveBunBinary(), ["-e", createTaskScript()], {
     cwd: pluginRoot,
     env: buildSmithersWorkerEnv(),

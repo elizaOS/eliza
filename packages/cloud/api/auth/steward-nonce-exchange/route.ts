@@ -22,7 +22,10 @@
  * first-party Eliza UI origins plus localhost in non-production.
  */
 
-import type { StewardSessionErrorCode } from "@elizaos/shared/steward-session-client";
+import {
+  type StewardSessionErrorCode,
+  sanitizeTelegramAccountClaimContinuation,
+} from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import {
@@ -38,7 +41,11 @@ import {
 } from "@/lib/auth/steward-client";
 import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import { signStewardMutatingRequest } from "@/lib/steward/sign";
-import { describeSyncError, syncUserFromSteward } from "@/lib/steward-sync";
+import {
+  describeSyncError,
+  StewardTelegramAccountClaimError,
+  syncUserFromSteward,
+} from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -250,6 +257,7 @@ app.post("/", async (c) => {
     tenant_id?: unknown;
     codeVerifier?: unknown;
     code_verifier?: unknown;
+    telegramContinuation?: unknown;
   };
 
   const code = typeof body.code === "string" ? body.code.trim() : "";
@@ -282,6 +290,9 @@ app.post("/", async (c) => {
       : typeof body.code_verifier === "string"
         ? body.code_verifier.trim()
         : "";
+  const telegramContinuation = sanitizeTelegramAccountClaimContinuation(
+    body.telegramContinuation,
+  );
 
   if (!code) {
     logExchange("missing-code");
@@ -290,6 +301,13 @@ app.post("/", async (c) => {
   if (!redirectUri) {
     logExchange("missing-redirect-uri");
     return c.json(errorBody("redirectUri required", "missing_code"), 400);
+  }
+  if (body.telegramContinuation !== undefined && !telegramContinuation) {
+    logExchange("telegram-claim-invalid");
+    return c.json(
+      errorBody("Invalid Telegram account claim", "telegram_claim_conflict"),
+      409,
+    );
   }
   if (!stewardSecretConfigured(c.env)) {
     logExchange("server-secret-missing");
@@ -375,8 +393,19 @@ app.post("/", async (c) => {
       email: claims.email,
       walletAddress: claims.walletAddress ?? claims.address,
       walletChainType: claims.walletChain,
+      telegramContinuation: telegramContinuation ?? undefined,
     });
   } catch (error) {
+    if (error instanceof StewardTelegramAccountClaimError) {
+      logExchange("telegram-claim-conflict");
+      return c.json(
+        errorBody(
+          "This Telegram chat cannot be linked automatically",
+          "telegram_claim_conflict",
+        ),
+        409,
+      );
+    }
     logExchange("sync-failed");
     // Workers Logs indexes only the message STRING — an Error passed in the
     // context object is dropped entirely (a week of these prod 500s was

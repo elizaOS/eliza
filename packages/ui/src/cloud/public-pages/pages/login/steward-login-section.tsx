@@ -483,21 +483,9 @@ export default function StewardLoginSection() {
     const refreshToken = fromHash?.refreshToken ?? queryRefreshToken ?? null;
     if (!token) return;
 
-    try {
-      persistStewardToken(token);
-    } catch (sessionError) {
-      setCompletingCallback(false);
-      setCallbackError(
-        getErrorMessage(
-          sessionError,
-          "Could not complete Eliza Cloud sign-in.",
-        ),
-      );
-      return;
-    }
-
     syncStewardSessionCookie(token, refreshToken)
       .then(() => {
+        persistStewardToken(token);
         setRedirectTo(
           resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
         );

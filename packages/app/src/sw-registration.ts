@@ -36,53 +36,26 @@ function isElectrobunHost(): boolean {
   );
 }
 
-const AUTH_NAVIGATION_PATH_RE =
-  /^\/(?:login(?:\/|$)|auth(?:\/|$)|oidc\/continue(?:\/|$))/;
-
-/** Auth callbacks and bridges are one-time navigations that updates must not replay. */
-export function isAuthNavigationUrl(rawUrl: string): boolean {
-  try {
-    return AUTH_NAVIGATION_PATH_RE.test(new URL(rawUrl).pathname);
-  } catch {
-    // error-policy:J3 an unparseable current URL is treated as auth-sensitive;
-    // skipping an update reload is safer than replaying an unknown navigation.
-    return true;
-  }
-}
-
 /**
  * When a NEW service worker reaches `installed` while an existing controller is
- * present, a fresh renderer was just deployed. The new SW's own `activate`
- * already skips-waiting + claims + navigates windows, but wiring the client side
- * of the update makes the transition immediate and observable: tell the waiting
- * worker to take over (SKIP_WAITING), then reload once it becomes the controller.
- * Guarded so the FIRST install (no prior controller) does NOT reload — that is a
- * normal first paint, not an update (CONVERSATIONS-500-2026-07-22 fix #1).
+ * present, a fresh renderer was just deployed. Tell the waiting worker to take
+ * over; its `activate` handler is the SINGLE navigation owner: it claims clients,
+ * skips auth routes, and navigates each ordinary window once. A second page-side
+ * `controllerchange` reload races that navigation and can refresh the same login
+ * journey twice, so this registration seam deliberately never reloads a page.
  */
-export function wireServiceWorkerUpdateReload(
+export function wireServiceWorkerUpdateActivation(
   registration: ServiceWorkerRegistration,
   serviceWorkers: ServiceWorkerContainer = navigator.serviceWorker,
-  reload: () => void = () => globalThis.location.reload(),
-  currentUrl: () => string = () => globalThis.location.href,
 ): void {
-  // Snapshot before `controllerchange`: first-install claim changes this from
-  // null to the new worker, while an update already has the previous worker.
-  // Only the latter represents a stale renderer that needs a reload.
   const isUpdate = Boolean(serviceWorkers.controller);
-  let reloading = false;
-  const reloadOnControllerChange = () => {
-    if (!isUpdate || reloading || isAuthNavigationUrl(currentUrl())) return;
-    reloading = true;
-    // The new worker is now controlling this page → load the new renderer.
-    reload();
-  };
 
   const trackInstalling = (worker: ServiceWorker | null) => {
     if (!worker) return;
     worker.addEventListener("statechange", () => {
       // A worker reaching `installed` with an existing controller = an UPDATE
       // (not the first install). Ask it to activate immediately.
-      if (worker.state === "installed" && serviceWorkers.controller) {
+      if (worker.state === "installed" && isUpdate) {
         try {
           worker.postMessage({ type: "SKIP_WAITING" });
         } catch {
@@ -104,9 +77,6 @@ export function wireServiceWorkerUpdateReload(
   registration.addEventListener("updatefound", () => {
     trackInstalling(registration.installing);
   });
-
-  // On an update, reload exactly once when control passes to the new worker.
-  serviceWorkers.addEventListener("controllerchange", reloadOnControllerChange);
 }
 
 /**
@@ -128,9 +98,9 @@ export function registerViewServiceWorker(): void {
       // `.scope` off it would throw and masquerade as a registration error.
       if (!registration) return;
       console.info("[SW] Registered, scope:", registration.scope);
-      // Auto-reload into a new renderer when a deploy ships a new worker
-      // (the per-deploy build rev makes sw.js byte-change so this actually fires).
-      wireServiceWorkerUpdateReload(registration);
+      // Activate a new worker immediately; its activation owns the one safe
+      // renderer navigation for each non-auth window.
+      wireServiceWorkerUpdateActivation(registration);
     })
     // error-policy:J4 the service worker is a PWA enhancement — the app
     // works without it; the failure is logged for triage

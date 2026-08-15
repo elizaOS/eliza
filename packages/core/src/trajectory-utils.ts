@@ -31,6 +31,10 @@ import {
 } from "./features/trajectories/types";
 import { stringifyForDiagnostics } from "./runtime/json-output";
 import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
+import {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticValue,
+} from "./security/tool-diagnostics";
 import { trackPostDeliveryTask } from "./services/post-delivery-task-tracker";
 import { sanitizeTrajectoryJsonObject } from "./services/trajectory-json";
 import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types";
@@ -1576,9 +1580,23 @@ function completeActionTrajectoryStep<T extends ActionResult>(
 	let phase: "project" | "normalize" | "complete" = "project";
 	try {
 		const projectedResult = projectResult?.(result) ?? result;
+		// Diagnostic projection ahead of any logger implementation: whatever
+		// backend `completeStep` resolves to, the settlement it receives already
+		// composes runtime-known-secret redaction with the shared tool-shape
+		// patterns over parameters and result/failure metadata.
+		const redactDiagnosticText = composeToolDiagnosticRedactor(runtime);
+		const diagnosticParameters = projectToolDiagnosticValue(
+			parameters ?? {},
+			redactDiagnosticText,
+		);
+		const diagnosticResult = projectToolDiagnosticValue(
+			projectedResult,
+			redactDiagnosticText,
+		) as ActionResult;
 		phase = "normalize";
-		const normalizedParameters = sanitizeTrajectoryJsonObject(parameters ?? {});
-		const normalizedResult = sanitizeTrajectoryJsonObject(projectedResult);
+		const normalizedParameters =
+			sanitizeTrajectoryJsonObject(diagnosticParameters);
+		const normalizedResult = sanitizeTrajectoryJsonObject(diagnosticResult);
 		if (!normalizedParameters || !normalizedResult) {
 			throw new ElizaError("Action settlement is not JSON serializable", {
 				code: "TRAJECTORY_ACTION_SETTLEMENT_INVALID",
@@ -1593,8 +1611,8 @@ function completeActionTrajectoryStep<T extends ActionResult>(
 			parameters: normalizedParameters,
 			success: projectedResult.success,
 			result: normalizedResult,
-			...(typeof projectedResult.error === "string"
-				? { error: projectedResult.error }
+			...(typeof diagnosticResult.error === "string"
+				? { error: diagnosticResult.error }
 				: {}),
 		});
 	} catch (error) {

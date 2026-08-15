@@ -77,6 +77,7 @@ export * from "./organization-config";
 export * from "./organization-encryption-keys";
 export * from "./organization-invites";
 export * from "./organizations";
+export * from "./personal-account-convergences";
 export * from "./phone-gateway-devices";
 export * from "./pii-scrub-markers";
 export * from "./platform-credentials";

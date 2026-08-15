@@ -1527,7 +1527,10 @@ function AppProviderInner({
       }
       if (
         profile.kind === "cloud" &&
-        !isTrustedCloudApiBaseUrl(profile.apiBase, profile.cloudAgentId)
+        !isTrustedCloudApiBaseUrl(
+          profile.apiBase,
+          profile.cloudRuntimeAgentId ?? profile.cloudAgentId,
+        )
       ) {
         return;
       }
@@ -1538,6 +1541,8 @@ function AppProviderInner({
         apiBase: profile.apiBase,
         accessToken: profile.accessToken,
         label: profile.label,
+        cloudRuntimeAgentId: profile.cloudRuntimeAgentId,
+        cloudRuntime: profile.cloudRuntime,
       });
       if (!persistAgentProfileSelection(profileId, server)) {
         setActionNotice(

@@ -1,7 +1,6 @@
 /**
  * Unit tests for Google Chat multi-account resolution, the connector account
- * provider, and the workflow credential provider, against an in-memory
- * `getSetting` stub — no Google API calls.
+ * provider against an in-memory `getSetting` stub — no Google API calls.
  */
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -12,7 +11,6 @@ import {
   resolveGoogleChatAccountSettings,
 } from "./accounts.js";
 import { createGoogleChatConnectorAccountProvider } from "./connector-account-provider.js";
-import { GoogleChatWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 function runtime(
   settings: Record<string, unknown> = {},
@@ -118,37 +116,5 @@ describe("Google Chat account config", () => {
         externalId: "partner@example.com",
       },
     ]);
-  });
-});
-
-describe("GoogleChatWorkflowCredentialProvider", () => {
-  it("returns trimmed inline service-account JSON for supported workflow credentials", async () => {
-    const provider = new GoogleChatWorkflowCredentialProvider(
-      runtime({
-        GOOGLE_CHAT_SERVICE_ACCOUNT: '  {"client_email":"bot@example.com"}  ',
-      })
-    );
-
-    await expect(provider.resolve("user-1", "googleChatOAuth2Api")).resolves.toEqual({
-      status: "credential_data",
-      data: {
-        serviceAccountKey: '{"client_email":"bot@example.com"}',
-      },
-    });
-    expect(provider.checkCredentialTypes(["googleChatOAuth2Api", "apiKeyAuth"])).toEqual({
-      supported: ["googleChatOAuth2Api"],
-      unsupported: ["apiKeyAuth"],
-    });
-  });
-
-  it("fails closed for malformed inline credentials and unsupported types", async () => {
-    const provider = new GoogleChatWorkflowCredentialProvider(
-      runtime({
-        GOOGLE_CHAT_SERVICE_ACCOUNT: "{not json",
-      })
-    );
-
-    await expect(provider.resolve("user-1", "apiKeyAuth")).resolves.toBeNull();
-    await expect(provider.resolve("user-1", "googleChatOAuth2Api")).resolves.toBeNull();
   });
 });

@@ -9,6 +9,7 @@
  * into the security group with non-colliding ids.
  */
 
+import { isViewVisible } from "@elizaos/core";
 import { beforeAll, describe, expect, it } from "vitest";
 import { listSettingsSections } from "../../components/settings/settings-section-registry";
 import {
@@ -83,6 +84,21 @@ describe("register-cloud-settings", () => {
       expect(section?.cloudOnly).toBe(true);
       expect(section?.Component).toBeTypeOf("function");
     }
+  });
+
+  it("registers Cloud Connectors as visible with Developer Mode off", () => {
+    const connector = listSettingsSections().find(
+      (section) => section.id === "cloud-connectors",
+    );
+
+    expect(connector).toBeDefined();
+    expect(connector?.viewKind).toBe("release");
+    expect(connector?.developerOnly).not.toBe(true);
+    expect(connector?.cloudOnly).toBe(true);
+    expect(
+      connector &&
+        isViewVisible(connector, { developer: false, preview: false }),
+    ).toBe(true);
   });
 
   it("registers the cloud Security additions into the security group with non-colliding ids", () => {

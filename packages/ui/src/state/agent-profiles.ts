@@ -66,6 +66,15 @@ function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
     id: generateId(),
     label: parsed.label,
     kind: parsed.kind,
+    ...(parsed.kind === "cloud" && parsed.id.startsWith("cloud:")
+      ? { cloudAgentId: parsed.id.slice("cloud:".length) }
+      : {}),
+    ...(parsed.kind === "cloud" && parsed.cloudRuntimeAgentId
+      ? { cloudRuntimeAgentId: parsed.cloudRuntimeAgentId }
+      : {}),
+    ...(parsed.kind === "cloud" && parsed.cloudRuntime
+      ? { cloudRuntime: parsed.cloudRuntime }
+      : {}),
     apiBase: parsed.apiBase,
     accessToken: parsed.accessToken,
     createdAt: new Date().toISOString(),
@@ -257,6 +266,10 @@ export function upsertAndActivateAgentProfile(
     ...registry.profiles[existingIdx],
     label: profile.label || registry.profiles[existingIdx].label,
     ...(profile.cloudAgentId ? { cloudAgentId: profile.cloudAgentId } : {}),
+    ...(profile.cloudRuntimeAgentId
+      ? { cloudRuntimeAgentId: profile.cloudRuntimeAgentId }
+      : {}),
+    ...(profile.cloudRuntime ? { cloudRuntime: profile.cloudRuntime } : {}),
     ...(profile.apiBase !== undefined ? { apiBase: profile.apiBase } : {}),
     // A fresh token supersedes a stale one; an absent token leaves the prior in
     // place (a re-activate that carries no new token must not blank it out).

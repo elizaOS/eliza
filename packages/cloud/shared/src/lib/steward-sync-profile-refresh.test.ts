@@ -51,6 +51,14 @@ mock.module("./services/users", () => ({
   },
 }));
 
+mock.module("../db/repositories/users", () => ({
+  usersRepository: {
+    findPendingPhoneTelegramPersonalAccountConvergence: async () => ({
+      status: "not_found" as const,
+    }),
+  },
+}));
+
 mock.module("./utils/logger", () => ({
   logger: {
     error: (message: string, context?: unknown) => {

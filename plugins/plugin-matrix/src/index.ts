@@ -16,7 +16,6 @@ export * from "./types.js";
 // Import service for plugin
 import { createMatrixConnectorAccountProvider } from "./connector-account-provider.js";
 import { MatrixService } from "./service.js";
-import { MatrixWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 /**
  * Matrix plugin definition.
@@ -25,7 +24,19 @@ const matrixPlugin: Plugin = {
   name: "matrix",
   description: "Matrix messaging integration plugin for ElizaOS with E2EE support",
 
-  services: [MatrixService, MatrixWorkflowCredentialProvider],
+  services: [MatrixService],
+
+  // Matrix is passive human ingress: the connector-source registry entry is
+  // the trust anchor that lets its inbound messages mint user notifications
+  // (core's agent-event-bridge fails closed for unregistered sources).
+  connectorSources: [
+    {
+      source: "matrix",
+      aliases: ["matrix"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
 
   actions: [],
 

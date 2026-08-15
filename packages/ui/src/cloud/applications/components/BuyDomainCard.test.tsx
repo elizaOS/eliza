@@ -52,6 +52,7 @@ vi.mock("../../shell/CloudI18nProvider", () => ({
 }));
 
 import { ApiError } from "../../lib/api-client";
+import { resolveCloudConsoleUrl } from "../lib/native-cloud-nav";
 import { BuyDomainCard } from "./BuyDomainCard";
 
 afterEach(() => {
@@ -196,7 +197,7 @@ describe("BuyDomainCard (#10246)", () => {
     });
     await user.click(addCredits);
     expect(openExternalUrlMock).toHaveBeenCalledWith(
-      expect.stringContaining("/settings#cloud-billing"),
+      resolveCloudConsoleUrl("/cloud/billing"),
     );
   });
 });

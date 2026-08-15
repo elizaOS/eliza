@@ -182,7 +182,6 @@ describe("terminal action effect proof", () => {
       verifiedUserFacing: true,
     });
   });
-
   it("summarizes multiline stdout without marking it canonical", async () => {
     vi.stubGlobal(
       "fetch",
@@ -225,7 +224,6 @@ describe("terminal action effect proof", () => {
       verifiedUserFacing: false,
     });
   });
-
   it("summarizes single-line stdout over the relay limit", async () => {
     const stdout = "x".repeat(201);
     vi.stubGlobal(
@@ -354,7 +352,7 @@ describe("terminal secret hygiene", () => {
   });
 
   it("removes configured, argument, output, and URI secrets from every returned and persisted surface", async () => {
-    const configuredSecret = "plain-character-secret-123456789";
+    const configuredSecret = "same-same-same-same";
     const bearerSecret = "sk-proj-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     const flagSecret = "flag-secret-value-123456789";
     const urlPassword = "url-password-value-123456789";

@@ -18,6 +18,7 @@
  * process-local map and referenced by an opaque `codeVerifierRef` written to
  * flow metadata, so stored rows never carry the raw secret.
  */
+import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { Action, ActionParameters } from "../types/components";
 import type {
@@ -1730,18 +1731,71 @@ export class ConnectorAccountManager extends Service {
 		}
 
 		try {
-			const result = await registered.completeOAuth(
-				{
-					provider: providerId,
-					flow,
-					code: input.code,
-					error: input.error,
-					errorDescription: input.errorDescription,
-					query: input.query ?? {},
-					body: input.body,
-				},
-				this,
-			);
+			// The catch below is scoped to provider completion only: the one-time
+			// state is already consumed, so a throw here (token exchange or a
+			// rejecting durable credential writer) must leave a terminal `failed`
+			// flow, not an unretryable `pending` one. Account/success-state writes
+			// stay outside it so their failure cannot relabel an already-connected
+			// account as failed.
+			let result: ConnectorOAuthCallbackResult;
+			try {
+				result = await registered.completeOAuth(
+					{
+						provider: providerId,
+						flow,
+						code: input.code,
+						error: input.error,
+						errorDescription: input.errorDescription,
+						query: input.query ?? {},
+						body: input.body,
+					},
+					this,
+				);
+			} catch (err) {
+				// error-policy:J2 Persist the terminal failed OAuth state, then
+				// rethrow typed with the provider failure preserved on cause. The
+				// persisted flow row is readable through public flow-status
+				// surfaces, so it carries only this generic message; the raw
+				// provider failure stays on the thrown error's cause chain.
+				const publicFailureMessage = `Connector OAuth completion failed for ${providerId} after the one-time state was consumed; start the flow again.`;
+				const completionError = new ElizaError(publicFailureMessage, {
+					code: "CONNECTOR_OAUTH_COMPLETION_FAILED",
+					cause: err,
+					context: { provider: providerId, flowId: flow.id },
+				});
+				// The write must produce a non-null failed record: `null` means the
+				// storage updated nothing, leaving the consumed flow without its
+				// promised terminal state — the same defect as a throwing write.
+				let persisted: ConnectorOAuthFlow | null = null;
+				let persistenceError: unknown;
+				try {
+					persisted = await this.storage.updateOAuthFlow(providerId, flow.id, {
+						status: "failed",
+						error: publicFailureMessage,
+					});
+				} catch (writeError) {
+					persistenceError = writeError;
+				}
+				if (!persisted) {
+					// error-policy:J2 Preserve both the provider-completion and
+					// failure-state-write failures on one typed error.
+					persistenceError ??= new Error(
+						`updateOAuthFlow returned null persisting the failed state for flow ${flow.id}`,
+					);
+					throw new ElizaError(
+						`OAuth completion and failure-state persistence both failed for ${providerId}; the consumed flow could not be marked failed. Start the flow again.`,
+						{
+							code: "CONNECTOR_OAUTH_FAILURE_STATE_PERSISTENCE_FAILED",
+							cause: new AggregateError(
+								[completionError, persistenceError],
+								`OAuth completion and failure-state persistence failed for ${providerId}`,
+							),
+							context: { provider: providerId, flowId: flow.id },
+						},
+					);
+				}
+				throw completionError;
+			}
 
 			const account = result.account
 				? await this.upsertAccount(providerId, result.account, flow.accountId)

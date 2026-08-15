@@ -10,7 +10,7 @@ import {
   TelegramIcon,
   WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
-import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, Info, Send } from "lucide-react";
 import {
   type CSSProperties,
   lazy,
@@ -42,14 +42,13 @@ const ShaderBackground = lazy(
 
 import { elizacloudAuthFetch } from "@/lib/api/client";
 import {
-  buildElizaSmsHref,
   buildElizaTelegramHref,
-  ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
   getDiscordBotApplicationId,
   getTelegramBotId,
   getTelegramBotUsername,
   getWhatsAppNumber,
+  openOrCopyElizaMessage,
 } from "@/lib/contact";
 import {
   getAuthToken,
@@ -425,6 +424,7 @@ function ProvisioningChatStep({
     containerStatus,
     isLoading,
     isReady,
+    hasObservedStatus,
     provisioningError,
   } = useElizaAppProvisioningChat(true, onboardingSessionId);
   const [input, setInput] = useState("");
@@ -438,32 +438,39 @@ function ProvisioningChatStep({
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || isLoading) return;
+    if (!text || !hasObservedStatus || isLoading) return;
     setInput("");
     await sendMessage(text);
     inputRef.current?.focus();
-  }, [input, isLoading, sendMessage]);
+  }, [hasObservedStatus, input, isLoading, sendMessage]);
 
   const provisioningFailed =
     provisioningError !== null || containerStatus === "error";
+  const isDedicatedOff = containerStatus === "none";
   const statusLabel = isReady
     ? t("homepage_eliza.getStarted.statusReady", {
         defaultValue: "Ready! Connecting...",
       })
-    : provisioningFailed
-      ? (provisioningError ??
-        t("homepage_eliza.getStarted.statusFailed", {
-          defaultValue: "Setup failed — please refresh.",
-        }))
-      : t("homepage_eliza.getStarted.statusSettingUp", {
-          defaultValue: "Setting up your AI space...",
-        });
+    : isDedicatedOff
+      ? t("homepage_eliza.getStarted.statusDedicatedOff", {
+          defaultValue: "Dedicated compute off",
+        })
+      : provisioningFailed
+        ? (provisioningError ??
+          t("homepage_eliza.getStarted.statusFailed", {
+            defaultValue: "Setup failed — please refresh.",
+          }))
+        : t("homepage_eliza.getStarted.statusSettingUp", {
+            defaultValue: "Checking your Cloud status...",
+          });
 
   const statusColor = isReady
     ? "#4ade80"
-    : provisioningFailed
-      ? "#f87171"
-      : "#229ED9";
+    : isDedicatedOff
+      ? "#a3a3a3"
+      : provisioningFailed
+        ? "#f87171"
+        : "#229ED9";
 
   return (
     <div style={{ width: "100%", maxWidth: "420px", fontFamily: SANS }}>
@@ -476,7 +483,7 @@ function ProvisioningChatStep({
             borderRadius: "50%",
             backgroundColor: statusColor,
             animation:
-              isReady || provisioningFailed
+              isReady || isDedicatedOff || provisioningFailed
                 ? "none"
                 : "gs-pulse 2s ease-in-out infinite",
             flexShrink: 0,
@@ -485,7 +492,7 @@ function ProvisioningChatStep({
         <span className="text-xs text-neutral-500 uppercase tracking-widest">
           {statusLabel}
         </span>
-        {!isReady && (
+        {hasObservedStatus && !isReady && !isDedicatedOff && (
           <button
             type="button"
             onClick={onContinue}
@@ -574,9 +581,13 @@ function ProvisioningChatStep({
               ? t("homepage_eliza.getStarted.chatPlaceholderReady", {
                   defaultValue: "Ready!",
                 })
-              : t("homepage_eliza.getStarted.chatPlaceholderAsk", {
-                  defaultValue: "Ask me anything...",
-                })
+              : isDedicatedOff
+                ? t("homepage_eliza.getStarted.chatPlaceholderDedicatedOff", {
+                    defaultValue: "Dedicated is off — continue to Eliza",
+                  })
+                : t("homepage_eliza.getStarted.chatPlaceholderAsk", {
+                    defaultValue: "Ask me anything...",
+                  })
           }
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -586,7 +597,7 @@ function ProvisioningChatStep({
               void handleSend();
             }
           }}
-          disabled={isLoading}
+          disabled={!hasObservedStatus || isLoading || isDedicatedOff}
           style={{
             flex: 1,
             height: 44,
@@ -603,19 +614,26 @@ function ProvisioningChatStep({
         <button
           type="button"
           onClick={() => void handleSend()}
-          disabled={isLoading || !input.trim()}
+          disabled={
+            !hasObservedStatus || isLoading || isDedicatedOff || !input.trim()
+          }
           style={{
             width: 44,
             height: 44,
             borderRadius: 22,
             border: "none",
             background:
-              isLoading || !input.trim() ? "rgba(0,0,0,0.15)" : "#1a1a1a",
+              !hasObservedStatus || isLoading || isDedicatedOff || !input.trim()
+                ? "rgba(0,0,0,0.15)"
+                : "#1a1a1a",
             color: "#fff",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            cursor: isLoading || !input.trim() ? "not-allowed" : "pointer",
+            cursor:
+              !hasObservedStatus || isLoading || isDedicatedOff || !input.trim()
+                ? "not-allowed"
+                : "pointer",
             transition: "background 0.15s",
           }}
         >
@@ -623,7 +641,7 @@ function ProvisioningChatStep({
         </button>
       </div>
 
-      {isReady && (
+      {(isReady || isDedicatedOff) && (
         <Button
           onClick={onContinue}
           className="w-full h-[52px] rounded-full bg-neutral-900 text-white font-medium hover:bg-neutral-800 transition-colors mt-4"
@@ -707,7 +725,10 @@ export default function GetStartedPage() {
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
 
   const [suppressRedirect, setSuppressRedirect] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [messageNotice, setMessageNotice] = useState<
+    "idle" | "handoff" | "copied" | "error"
+  >("idle");
+  const messageNoticeOperation = useRef(0);
   const [showContent, setShowContent] = useState(false);
 
   useEffect(() => {
@@ -738,6 +759,7 @@ export default function GetStartedPage() {
   });
 
   const countryOptions = useCountryOptions();
+  const whatsappNumber = getWhatsAppNumber();
 
   const hasPhoneNumber = phoneValue.trim().length > 0;
 
@@ -884,7 +906,7 @@ export default function GetStartedPage() {
       } else if (methodParam === "discord") {
         setSelectedMethod("discord");
         handleDiscordOAuthRedirect();
-      } else if (methodParam === "whatsapp") {
+      } else if (methodParam === "whatsapp" && whatsappNumber) {
         setSelectedMethod("whatsapp");
         setStep("WHATSAPP_DIRECT");
       }
@@ -901,6 +923,7 @@ export default function GetStartedPage() {
     isLinkMode,
     handleDiscordOAuthRedirect,
     t,
+    whatsappNumber,
   ]);
 
   useEffect(() => {
@@ -985,7 +1008,7 @@ export default function GetStartedPage() {
       if (!handleDiscordOAuthRedirect()) {
         setSelectedMethod(null);
       }
-    } else if (method === "whatsapp") {
+    } else if (method === "whatsapp" && whatsappNumber) {
       setStep("WHATSAPP_DIRECT");
     } else if (method === "solana") {
       void handleSolanaConnect();
@@ -1286,14 +1309,30 @@ export default function GetStartedPage() {
     await handleDiscordAuthSubmit();
   }, [handleDiscordAuthSubmit]);
 
-  const handleCopyNumber = async () => {
-    await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleOpenMessages = async () => {
+    const operation = ++messageNoticeOperation.current;
+    try {
+      const outcome = await openOrCopyElizaMessage(window);
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice(outcome);
+    } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice("error");
+    }
   };
 
-  const handleOpenMessages = () => {
-    window.location.href = buildElizaSmsHref();
+  const handleCopyMessageNumber = async () => {
+    const operation = ++messageNoticeOperation.current;
+    try {
+      await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice("copied");
+    } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice("error");
+    }
   };
 
   const handleContinueToConnected = () => {
@@ -1548,23 +1587,25 @@ export default function GetStartedPage() {
                   </div>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleMethodSelect("whatsapp")}
-                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
-                  style={cardStyle(2)}
-                >
-                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
-                    <WhatsAppIcon className="size-6 text-[#25D366]" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="font-medium text-neutral-900">
-                      {t("homepage_eliza.getStarted.btnWhatsapp", {
-                        defaultValue: "WhatsApp",
-                      })}
-                    </p>
-                  </div>
-                </button>
+                {whatsappNumber && (
+                  <button
+                    type="button"
+                    onClick={() => handleMethodSelect("whatsapp")}
+                    className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
+                    style={cardStyle(2)}
+                  >
+                    <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
+                      <WhatsAppIcon className="size-6 text-[#25D366]" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-neutral-900">
+                        {t("homepage_eliza.getStarted.btnWhatsapp", {
+                          defaultValue: "WhatsApp",
+                        })}
+                      </p>
+                    </div>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1788,35 +1829,55 @@ export default function GetStartedPage() {
                 })}
               </p>
 
-              <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl mb-6`}>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-lg font-medium tabular-nums tracking-wide text-neutral-900">
-                    {ELIZA_PHONE_FORMATTED}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCopyNumber}
-                    className="shrink-0 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200/50"
-                  >
-                    {copied ? (
-                      <Check className="size-4 text-green-500" />
-                    ) : (
-                      <Copy className="size-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
               <Button
-                onClick={handleOpenMessages}
+                onClick={() => void handleOpenMessages()}
                 className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
               >
                 <IMessageIcon className="size-5 text-[#34C759]" />
                 {t("homepage_eliza.getStarted.openImessage", {
-                  defaultValue: "Open iMessage",
+                  defaultValue: "Message Eliza",
                 })}
               </Button>
+
+              {messageNotice !== "idle" && (
+                <p
+                  role={messageNotice === "error" ? "alert" : "status"}
+                  aria-live="polite"
+                  className={`mt-3 text-center text-sm font-medium ${
+                    messageNotice === "copied"
+                      ? "text-green-700"
+                      : messageNotice === "error"
+                        ? "text-red-700"
+                        : "text-neutral-700"
+                  }`}
+                >
+                  {messageNotice === "copied"
+                    ? t("homepage_eliza.getStarted.phoneCopied", {
+                        defaultValue: "Phone number copied",
+                      })
+                    : messageNotice === "handoff"
+                      ? t("homepage_eliza.common.messageHandoff", {
+                          defaultValue:
+                            "Opening Messages. If nothing happens, copy the number.",
+                        })
+                      : t("homepage_eliza.getStarted.phoneCopyFailed", {
+                          defaultValue: "Couldn't copy the phone number",
+                        })}
+                </p>
+              )}
+
+              {messageNotice === "handoff" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleCopyMessageNumber()}
+                  className="mt-3 h-11 w-full rounded-full"
+                >
+                  {t("homepage_eliza.connected.copyPhoneAria", {
+                    defaultValue: "Copy phone number",
+                  })}
+                </Button>
+              )}
 
               <button
                 type="button"
@@ -1833,7 +1894,7 @@ export default function GetStartedPage() {
             </>
           )}
 
-          {step === "WHATSAPP_DIRECT" && (
+          {step === "WHATSAPP_DIRECT" && whatsappNumber && (
             <>
               <div
                 className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
@@ -1855,7 +1916,7 @@ export default function GetStartedPage() {
 
               <Button
                 onClick={() => {
-                  const waNumber = getWhatsAppNumber().replace(/\D/g, "");
+                  const waNumber = whatsappNumber.replace(/\D/g, "");
                   window.open(`https://wa.me/${waNumber}`, "_blank");
                 }}
                 className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
@@ -2081,7 +2142,7 @@ export default function GetStartedPage() {
                     <div className="flex-1">
                       <p className="text-sm font-medium text-neutral-900">
                         {t("homepage_eliza.getStarted.guideStep1", {
-                          defaultValue: "Add Eliza to your server",
+                          defaultValue: "Install Eliza for your account",
                         })}
                       </p>
                       <Button
@@ -2089,8 +2150,13 @@ export default function GetStartedPage() {
                         size="sm"
                         onClick={() => {
                           const clientId = getDiscordClientId();
+                          const params = new URLSearchParams({
+                            client_id: clientId,
+                            integration_type: "1",
+                            scope: "applications.commands",
+                          });
                           window.open(
-                            `https://discord.com/oauth2/authorize?client_id=${clientId}&permissions=2048&scope=bot`,
+                            `https://discord.com/oauth2/authorize?${params.toString()}`,
                             "_blank",
                           );
                         }}
@@ -2098,7 +2164,7 @@ export default function GetStartedPage() {
                       >
                         <ExternalLink className="size-3.5" />
                         {t("homepage_eliza.getStarted.guideInviteToServer", {
-                          defaultValue: "Invite to Server",
+                          defaultValue: "Install for DMs",
                         })}
                       </Button>
                     </div>

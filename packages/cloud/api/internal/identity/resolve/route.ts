@@ -82,16 +82,16 @@ app.post("/", async (c) => {
       userId: user.id,
       organizationId,
     });
-    const personalDedicated =
-      provider === "phone"
-        ? await findActivePersonalDedicatedTarget(
-            organizationId,
-            personalSourceId,
-          )
-        : null;
+    const usesPersonalRuntime = provider === "phone" || provider === "telegram";
+    const personalDedicated = usesPersonalRuntime
+      ? await findActivePersonalDedicatedTarget(
+          organizationId,
+          personalSourceId,
+        )
+      : null;
     const [legacySandbox] = personalDedicated
       ? [personalDedicated]
-      : provider === "phone"
+      : usesPersonalRuntime
         ? []
         : await dbRead
             .select()

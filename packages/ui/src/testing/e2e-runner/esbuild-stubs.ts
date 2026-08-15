@@ -15,8 +15,9 @@ import type { Plugin } from "esbuild";
 
 /**
  * Replace `@elizaos/core` with a no-op Proxy that answers the render-path symbols
- * the shell reads (`isViewVisible`, `dedupeModalities`, `findInteractionRegions`)
- * and proxies everything else, so core's Node graph is never bundled.
+ * the shell reads (`isViewVisible`, `dedupeModalities`,
+ * `findInteractionRegions`, `stripUnclaimedInteractionMarkup`) and proxies
+ * everything else, so core's Node graph is never bundled.
  */
 export function stubElizaCore(): Plugin {
   return {
@@ -54,6 +55,10 @@ export function stubElizaCore(): Plugin {
             isViewVisible: () => true,
             dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
             findInteractionRegions: () => [],
+            // The stub reports no claimed interaction regions, so preserve the
+            // fixture text. This must be a concrete own property: esbuild's ESM
+            // interop cannot expose named imports supplied only by the Proxy.
+            stripUnclaimedInteractionMarkup: (text) => text,
           },
           { get: (t, p) => (p in t ? t[p] : noop) },
         );

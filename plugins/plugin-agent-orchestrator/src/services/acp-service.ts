@@ -2270,12 +2270,35 @@ export class AcpService extends Service {
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (transportMode === "native") {
       const client = this.nativeClients.get(sessionId);
-      if (this.nativePromptSessionIds.has(sessionId)) {
-        this.nativeCancelledPromptSessionIds.add(sessionId);
+      if (!client) {
+        throw new ElizaError("ACP native session has no attached client", {
+          code: "ACP_NATIVE_CLIENT_MISSING",
+          context: { sessionId },
+        });
       }
-      await client?.cancel(
+      const hadActivePrompt = this.nativePromptSessionIds.has(sessionId);
+      if (!hadActivePrompt) {
+        throw new ElizaError("ACP session has no active prompt to cancel", {
+          code: "ACP_CANCEL_NO_ACTIVE_PROMPT",
+          context: { sessionId },
+        });
+      }
+      const terminal = await client.cancel(
         session.acpxSessionId ?? session.agentSessionId ?? session.id,
       );
+      // session/cancel is a notification, so only the terminal response to the
+      // original session/prompt request can prove cancellation. A completion
+      // racing the notification remains a completion; an idle session has no
+      // prompt result to acknowledge and must not be relabelled cancelled.
+      if (terminal?.stopReason !== "cancelled") {
+        throw new ElizaError(
+          "ACP agent did not confirm cancellation on the active prompt",
+          {
+            code: "ACP_CANCEL_NOT_CONFIRMED",
+            context: { sessionId, stopReason: terminal?.stopReason },
+          },
+        );
+      }
       await this.store.updateStatus(sessionId, "cancelled");
       // Stop the scratch dir counting against the shared cap the moment the
       // session is terminal; the actual rm still happens on close/delete via

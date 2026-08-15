@@ -35,6 +35,7 @@ import {
   provisioningWorkerFailureBody,
 } from "@/lib/services/provisioning-worker-health";
 import { findOrCreateUserByWalletAddress } from "@/lib/services/wallet-signup";
+import { SIGNUP_CREDIT_POLICY } from "@/lib/signup-credits";
 import { isUniqueConstraintError } from "@/lib/utils/db-errors";
 import { logger } from "@/lib/utils/logger";
 import { normalizeTokenAddress } from "@/lib/utils/token-address";
@@ -205,7 +206,7 @@ app.post("/", async (c) => {
     }
     const billingConfig = p.billing ?? {
       mode: "owner_credits" as const,
-      initialReserveUsd: 0,
+      initialReserveUsd: SIGNUP_CREDIT_POLICY.automaticGrantUsd,
     };
     const invalidAdminWallet = adminWallets.find(
       (wallet) => !isAddress(wallet),
@@ -304,7 +305,7 @@ app.post("/", async (c) => {
     }
 
     const initialCreditsGranted = false;
-    const initialFreeCreditsUsd = 0;
+    const initialFreeCreditsUsd = SIGNUP_CREDIT_POLICY.automaticGrantUsd;
     const welcomeBonusWithheld = false;
     const welcomeBonusWithheldReason = undefined;
     const welcomeBonusWithheldMessage = undefined;

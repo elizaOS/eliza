@@ -510,7 +510,10 @@ function SignedInActions({
 }) {
   return (
     <div className="flex w-full flex-col items-center gap-3">
-      <BrandButton onClick={onAuthorize} className="w-full">
+      <BrandButton
+        onClick={onAuthorize}
+        className="w-full hover:bg-accent-hover hover:text-accent-foreground"
+      >
         Authorize {appName}
       </BrandButton>
       <InlineCancelButton onCancel={onCancel} />

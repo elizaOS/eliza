@@ -203,4 +203,14 @@ describe("OrganizationTab — connect-link landing intent", () => {
     expect(await screen.findByText("Team Members")).toBeTruthy();
     expect(screen.queryByText("Contribute an API Key")).toBeNull();
   });
+
+  it("renders the empty organization state as a settings row", () => {
+    withClient(
+      <OrganizationTab
+        user={{ ...user, organization: null, organization_id: null }}
+      />,
+    );
+    expect(screen.getByText("No organization found")).toBeTruthy();
+    expect(screen.queryByText("Team Members")).toBeNull();
+  });
 });

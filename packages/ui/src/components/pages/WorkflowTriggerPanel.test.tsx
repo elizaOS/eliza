@@ -1,6 +1,7 @@
 /** Exercises native workflow trigger creation, deletion, and unavailable states with mocked elizaOS APIs. */
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -73,6 +74,57 @@ describe("WorkflowTriggerPanel", () => {
         enabled: true,
       }),
     );
+  });
+
+  it("refreshes a first trigger with the workflow id returned by save", async () => {
+    let finishCreate: (() => void) | undefined;
+    api.createTrigger.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishCreate = () => resolve({ trigger: { id: "trigger-first" } });
+        }),
+    );
+    api.getTriggers.mockResolvedValue({
+      triggers: [
+        {
+          id: "trigger-first",
+          kind: "workflow",
+          workflowId: "workflow-1",
+          workflowName: "Digest",
+          displayName: "Repeat: Digest",
+          instructions: "Run workflow Digest",
+          triggerType: "interval",
+          intervalMs: 1_800_000,
+          enabled: true,
+          wakeMode: "inject_now",
+          createdBy: "workflow.studio",
+        },
+      ],
+    });
+    render(
+      <WorkflowTriggerPanel
+        workflowId=""
+        workflowName="Digest"
+        onNeedsSave={vi.fn().mockResolvedValue("workflow-1")}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add workflow trigger" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Repeat" }));
+    fireEvent.change(screen.getByLabelText("Interval minutes"), {
+      target: { value: "30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save trigger" }));
+
+    await waitFor(() => expect(api.createTrigger).toHaveBeenCalledTimes(1));
+    expect(api.getTriggers).not.toHaveBeenCalled();
+    await act(async () => finishCreate?.());
+
+    expect(
+      await screen.findByRole("button", { name: "Delete Repeat trigger" }),
+    ).toBeTruthy();
+    expect(api.getTriggers).toHaveBeenCalledTimes(1);
   });
 
   it("deletes an existing trigger and refreshes the visual strip", async () => {

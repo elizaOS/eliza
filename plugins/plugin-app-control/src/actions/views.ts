@@ -11,14 +11,17 @@ import type {
 	HandlerCallback,
 	IAgentRuntime,
 	Memory,
+	RoleGateRole,
 	State,
 	ViewCapability,
 	ViewCapabilityParameter,
 	ViewType,
 } from "@elizaos/core";
 import {
+	checkSenderRole,
 	hasOwnerAccess as defaultOwnerAccessFn,
 	logger,
+	satisfiesRoleGate,
 	testSchemaPattern,
 } from "@elizaos/core";
 import {
@@ -82,6 +85,15 @@ export type ViewsMode =
 	| "window"
 	| "split"
 	| "tile";
+
+async function resolveViewCallerRoles(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<readonly RoleGateRole[]> {
+	if (message.entityId === runtime.agentId) return ["OWNER"];
+	const resolved = await checkSenderRole(runtime, message);
+	return resolved?.role ? [resolved.role] : [];
+}
 
 // Connectors that deliver the agent's turn over an EXTERNAL chat surface which
 // does NOT render Eliza desktop views to the person who sent the message. On
@@ -2359,6 +2371,9 @@ async function runViewsLayout({
 }
 
 function withViewsUserFacingText(result: ActionResult): ActionResult {
+	if (result.success !== true && result.userFacingText === undefined) {
+		return result;
+	}
 	if (
 		result.transcriptVisibility === "internal" &&
 		result.userFacingText === undefined
@@ -2388,6 +2403,7 @@ const VIEWS_ROUTING_HINT = [
 	"Close/hide means VIEWS action=close, never delete/remove.",
 	"Listing, launching, or restarting installed applications uses APP; only opening the apps/views page uses VIEWS.",
 	"Changing a settings or permission value uses SETTINGS; VIEWS only opens the Settings surface.",
+	"Reading or changing the owner's todos, goals, reminders, routines, alarms, health, or finances uses the OWNER_* actions; VIEWS only opens those surfaces and never returns that data.",
 ].join(" ");
 
 export function createViewsAction(deps: ViewsActionDeps = {}): Action {
@@ -3149,10 +3165,15 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							}
 						}
 						if (!viewId || !capability) {
-							const reply =
-								"Specify view and capability, e.g. action=interact view=wallet capability=get-state, or ask for the current view after navigating.";
-							await callback?.({ text: reply });
-							return { success: false, text: reply };
+							// Planner-facing tool syntax, not a chat reply — return it to
+							// the planner without a user callback and mark it internal so
+							// core's transcript-visibility resolver can spot an evaluator
+							// echo of it.
+							return {
+								success: false,
+								text: "Specify view and capability, e.g. action=interact view=wallet capability=get-state, or ask for the current view after navigating.",
+								transcriptVisibility: "internal",
+							};
 						}
 						const resolvedView =
 							resolvedCapability?.view ?? resolveViewTarget(viewId, views);
@@ -3242,9 +3263,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 									}
 								);
 							}
-							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`;
-							await callback?.({ text: reply });
-							return { success: false, text: reply };
+							// Catalog diagnostics return to the planner via the result,
+							// never straight to the user (same policy as the HTTP
+							// interaction failure below).
+							return {
+								success: false,
+								text: `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`,
+								transcriptVisibility: "internal",
+							};
 						}
 						if (!resolvedCapability && standardCapability)
 							capability = standardCapability;
@@ -3255,9 +3281,11 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								text,
 							);
 							if (correction.kind === "reject") {
-								const reply = `Refusing destructive capability on view "${viewId}": ${correction.reason}. Please rephrase with explicit, unambiguous intent.`;
-								await callback?.({ text: reply });
-								return { success: false, text: reply };
+								return {
+									success: false,
+									text: `Refusing destructive capability on view "${viewId}": ${correction.reason}. Please rephrase with explicit, unambiguous intent.`,
+									transcriptVisibility: "internal",
+								};
 							}
 							if (
 								correction.capability.id !== resolvedCapability.capability.id
@@ -3269,15 +3297,38 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								capability = correction.capability.id;
 							}
 						}
+						const authorizedView = resolvedCapability?.view ?? resolvedView;
+						const viewGate = authorizedView?.roleGate;
+						const ownerExclusive =
+							viewGate !== undefined &&
+							satisfiesRoleGate(["OWNER"], viewGate) &&
+							!satisfiesRoleGate(["ADMIN"], viewGate);
+						const viewAllowed = !viewGate
+							? true
+							: ownerExclusive
+								? await ownerCheck(runtime, message)
+								: satisfiesRoleGate(
+										await resolveViewCallerRoles(runtime, message),
+										viewGate,
+									);
+						if (!viewAllowed && authorizedView) {
+							return {
+								success: false,
+								text: `The ${authorizedView.label} view is not available to this caller.`,
+								transcriptVisibility: "internal",
+							};
+						}
 						const paramsResolution = readCapabilityParams(
 							actionOptions,
 							resolvedCapability?.capability,
 							text,
 						);
 						if (!paramsResolution.ok) {
-							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": ${paramsResolution.error}.`;
-							await callback?.({ text: reply });
-							return { success: false, text: reply };
+							return {
+								success: false,
+								text: `Cannot invoke capability "${capability}" on view "${viewId}": ${paramsResolution.error}.`,
+								transcriptVisibility: "internal",
+							};
 						}
 						const params = paramsResolution.params;
 						const timeoutMs =
@@ -3300,7 +3351,12 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const effectContract = interaction.success
 							? readViewInteractionEffectContract(interaction.result)
 							: undefined;
-						await callback?.({ text: resultText });
+						// Failure text is a catalog-internal diagnostic ("Cannot invoke
+						// capability X on view Y") — it goes back to the planner via the
+						// result, never straight to the user.
+						if (interaction.success) {
+							await callback?.({ text: resultText });
+						}
 						return {
 							success: interaction.success,
 							text: resultText,

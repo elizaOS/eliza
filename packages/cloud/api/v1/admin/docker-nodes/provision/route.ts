@@ -105,6 +105,7 @@ async function __hono_POST(request: Request) {
         hostname: result.hostname,
         hcloudServerId: result.hcloudServerId,
         rootPassword: result.rootPassword,
+        idempotent: result.idempotent,
         message:
           "Node provisioned. Cloud-init is now installing Docker — first health-check tick will flip status from `unknown` to `healthy`.",
       },

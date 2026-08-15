@@ -39,6 +39,26 @@
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
+    "./edge": {
+      "types": "./dist/edge.d.ts",
+      "eliza-source": {
+        "types": "./src/edge.ts",
+        "import": "./src/edge.ts",
+        "default": "./src/edge.ts"
+      },
+      "bun": {
+        "types": "./src/edge.ts",
+        "import": "./src/edge.ts",
+        "default": "./src/edge.ts"
+      },
+      "worker": {
+        "types": "./src/edge.ts",
+        "import": "./src/edge.ts",
+        "default": "./src/edge.ts"
+      },
+      "import": "./dist/edge.js",
+      "default": "./dist/edge.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "eliza-source": {
@@ -53,12 +73,12 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.2",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

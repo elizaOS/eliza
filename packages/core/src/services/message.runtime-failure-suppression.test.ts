@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { TurnControllerRegistry } from "../runtime/turn-controller";
+import { getStreamingContext } from "../streaming-context";
 import { createMockRuntime } from "../testing/mock-runtime";
 import type { Room } from "../types/environment";
 import type { Memory } from "../types/memory";
@@ -234,6 +235,107 @@ describe("v5 runtime failure before a respond decision", () => {
 			modelCallTypes.filter((modelType) => modelType !== "TEXT_EMBEDDING"),
 		).toEqual(["RESPONSE_HANDLER"]);
 		expect(deliveries).toEqual([]);
+	});
+
+	it("keeps a cancellation-only route turn off streaming while propagating abort", async () => {
+		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+		const controller = new AbortController();
+		const abortReason = new DOMException("route disconnected", "AbortError");
+		const deliveries: Content[] = [];
+		let releaseEntered: (() => void) | undefined;
+		const entered = new Promise<void>((resolve) => {
+			releaseEntered = resolve;
+		});
+		const observed: { stream: boolean; hasSignal: boolean }[] = [];
+		const service = new DefaultMessageService();
+		const serviceProbe = service as unknown as {
+			processMessage: (...args: unknown[]) => Promise<never>;
+		};
+
+		serviceProbe.processMessage = vi.fn(async () => {
+			const context = getStreamingContext();
+			observed.push({
+				stream: context?.onStreamChunk !== undefined,
+				hasSignal: context?.abortSignal !== undefined,
+			});
+			releaseEntered?.();
+			if (!context?.abortSignal) {
+				throw new Error("expected the route-owned abort signal");
+			}
+			await new Promise<never>((_resolve, reject) => {
+				context.abortSignal?.addEventListener(
+					"abort",
+					() => reject(context.abortSignal?.reason),
+					{ once: true },
+				);
+			});
+			throw new Error("unreachable");
+		});
+
+		const turn = service.handleMessage(
+			runtime,
+			makeMessage({ channelType: ChannelType.DM }),
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+			{ abortSignal: controller.signal },
+		);
+		await entered;
+		controller.abort(abortReason);
+
+		await expect(turn).rejects.toBe(abortReason);
+		expect(observed).toEqual([{ stream: false, hasSignal: true }]);
+		expect(deliveries).toEqual([]);
+	});
+
+	it("keeps a turn-owned cancellation scope off streaming and abortable", async () => {
+		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+		const observed: { stream: boolean; hasSignal: boolean }[] = [];
+		let releaseEntered: (() => void) | undefined;
+		const entered = new Promise<void>((resolve) => {
+			releaseEntered = resolve;
+		});
+		const service = new DefaultMessageService();
+		const serviceProbe = service as unknown as {
+			processMessage: (...args: unknown[]) => Promise<never>;
+		};
+
+		serviceProbe.processMessage = vi.fn(async () => {
+			const context = getStreamingContext();
+			observed.push({
+				stream: context?.onStreamChunk !== undefined,
+				hasSignal: context?.abortSignal !== undefined,
+			});
+			releaseEntered?.();
+			if (!context?.abortSignal) {
+				throw new Error("expected the turn-owned abort signal");
+			}
+			await new Promise<never>((_resolve, reject) => {
+				context.abortSignal?.addEventListener(
+					"abort",
+					() => reject(context.abortSignal?.reason),
+					{ once: true },
+				);
+			});
+			throw new Error("unreachable");
+		});
+
+		const turn = service.handleMessage(
+			runtime,
+			makeMessage({ channelType: ChannelType.DM }),
+			async () => [],
+		);
+		await entered;
+		expect(runtime.turnControllers.abortTurn(ROOM, "turn cancelled")).toBe(
+			true,
+		);
+
+		await expect(turn).rejects.toMatchObject({
+			code: "TURN_ABORTED",
+			reason: "turn cancelled",
+		});
+		expect(observed).toEqual([{ stream: false, hasSignal: true }]);
 	});
 });
 

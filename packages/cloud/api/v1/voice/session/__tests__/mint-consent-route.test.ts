@@ -4,7 +4,7 @@
  * (jwt sign, nonce consume) is real.
  */
 
-import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeAll, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
 const fakeLogger = {
@@ -21,15 +21,6 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
     id: "user-1",
     organization_id: "org-1",
   }),
-}));
-let balanceUsd = 10;
-mock.module("@/lib/services/credits", () => ({
-  creditsService: {
-    getOrganizationBalanceSnapshot: async () => ({
-      balanceUsd,
-      revision: "test",
-    }),
-  },
 }));
 // Tenancy repos: the caller owns agent-1; conversation is new (not found).
 mock.module("@/db/repositories/characters", () => ({
@@ -76,9 +67,30 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
         : undefined,
   },
 }));
+const conversationLookups: string[] = [];
 mock.module("@/db/repositories/conversations", () => ({
   conversationsRepository: {
-    findById: async () => undefined,
+    findById: async (id: string) => {
+      conversationLookups.push(id);
+      return undefined;
+    },
+  },
+}));
+const activePersonalTargetLookups: Array<{
+  organizationId: string;
+  sourceAgentId: string;
+}> = [];
+mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
+  findActivePersonalDedicatedTarget: async (
+    organizationId: string,
+    sourceAgentId: string,
+  ) => {
+    activePersonalTargetLookups.push({ organizationId, sourceAgentId });
+    return {
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      organization_id: "org-1",
+      user_id: "user-1",
+    };
   },
 }));
 // Consent store + jwt directory: in-memory fake so the real mint runs.
@@ -108,10 +120,6 @@ const { default: consentRoute } = await import("../consent/route");
 
 beforeAll(async () => {
   await installVoiceSessionTestSigningKey();
-});
-
-beforeEach(() => {
-  balanceUsd = 10;
 });
 
 function appWithFlag(flag: string | undefined) {
@@ -174,6 +182,24 @@ describe("voice-session mint route", () => {
     expect(body.code).toBe("consent_required");
   });
 
+  test("refuses arbitrary non-UUID conversation strings", async () => {
+    const app = appWithFlag("true");
+    const res = await app.request("/api/v1/voice/session", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        conversationId: "some-client-chosen-thread",
+        consentNonce: "unused",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()) as { error: string }).toEqual({
+      error: "invalid mint request body",
+    });
+  });
+
   test("issues a nonce then mints a pcm16-only session", async () => {
     const app = appWithFlag("true");
     // 1. Get a consent nonce.
@@ -230,70 +256,6 @@ describe("voice-session mint route", () => {
     expect(replay.status).toBe(403);
   });
 
-  test("requires purchased credits for voice without consuming consent or disabling Shared text", async () => {
-    const app = appWithFlag("true");
-    const consentRes = await app.request("/api/v1/voice/session/consent", {
-      method: "POST",
-    });
-    const { consentNonce } = (await consentRes.json()) as {
-      consentNonce: string;
-    };
-    const agentId = personalSharedAgentId({
-      userId: "user-1",
-      organizationId: "org-1",
-    });
-    balanceUsd = 0;
-
-    const denied = await app.request("/api/v1/voice/session", {
-      method: "POST",
-      body: JSON.stringify({
-        agentId,
-        conversationId: "22222222-2222-4222-8222-222222222222",
-        consentNonce,
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-    expect(denied.status).toBe(402);
-    expect(await denied.json()).toMatchObject({
-      code: "voice_credits_required",
-      error: expect.stringContaining("Shared text chat remains available"),
-    });
-
-    balanceUsd = 2;
-    const allowed = await app.request("/api/v1/voice/session", {
-      method: "POST",
-      body: JSON.stringify({
-        agentId,
-        conversationId: "22222222-2222-4222-8222-222222222222",
-        consentNonce,
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-    expect(allowed.status).toBe(200);
-    const minted = (await allowed.json()) as { token: string };
-    expect((await verifyVoiceSessionToken(minted.token)).claims.agentId).toBe(
-      agentId,
-    );
-  });
-
-  test("hides another account's rowless personal Shared identity", async () => {
-    const app = appWithFlag("true");
-    const res = await app.request("/api/v1/voice/session", {
-      method: "POST",
-      body: JSON.stringify({
-        agentId: personalSharedAgentId({
-          userId: "user-2",
-          organizationId: "org-1",
-        }),
-        conversationId: "22222222-2222-4222-8222-222222222222",
-        consentNonce: "unused",
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-    expect(res.status).toBe(404);
-    expect(await res.json()).toMatchObject({ code: "agent_not_found" });
-  });
-
   test("accepts the sandbox UUID persisted by the managed-cloud UI", async () => {
     const app = appWithFlag("true");
     const consentRes = await app.request("/api/v1/voice/session/consent", {
@@ -342,6 +304,121 @@ describe("voice-session mint route", () => {
     expect(verified.claims.agentId).toBe(
       "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     );
+  });
+
+  test("mints the canonical personal conversation on its active Dedicated target", async () => {
+    const app = appWithFlag("true");
+    const canonicalPersonalId = personalSharedAgentId({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+    const consentRes = await app.request("/api/v1/voice/session/consent", {
+      method: "POST",
+    });
+    const { consentNonce } = (await consentRes.json()) as {
+      consentNonce: string;
+    };
+    conversationLookups.length = 0;
+    activePersonalTargetLookups.length = 0;
+
+    const res = await app.request("/api/v1/voice/session", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        conversationId: canonicalPersonalId,
+        consentNonce,
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { token: string };
+    const verified = await verifyVoiceSessionToken(body.token);
+    expect(verified.claims.conversationId).toBe(canonicalPersonalId);
+    expect(conversationLookups).toEqual([]);
+    expect(activePersonalTargetLookups).toEqual([
+      { organizationId: "org-1", sourceAgentId: canonicalPersonalId },
+    ]);
+  });
+
+  test("refuses another account's personal conversation id", async () => {
+    const app = appWithFlag("true");
+    const otherPersonalId = personalSharedAgentId({
+      userId: "user-2",
+      organizationId: "org-2",
+    });
+    const consentRes = await app.request("/api/v1/voice/session/consent", {
+      method: "POST",
+    });
+    const { consentNonce } = (await consentRes.json()) as {
+      consentNonce: string;
+    };
+    activePersonalTargetLookups.length = 0;
+
+    const res = await app.request("/api/v1/voice/session", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        conversationId: otherPersonalId,
+        consentNonce,
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as {
+      error: string;
+      code: string;
+    };
+    expect(body).toEqual({
+      error: "conversation not found",
+      code: "conversation_not_found",
+    });
+    expect(activePersonalTargetLookups).toEqual([]);
+
+    // The rejected identity did not consume consent. The authenticated
+    // account can still mint its canonical thread with the same nonce.
+    const canonicalPersonalId = personalSharedAgentId({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+    const retry = await app.request("/api/v1/voice/session", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        conversationId: canonicalPersonalId,
+        consentNonce,
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(retry.status).toBe(200);
+  });
+
+  test("refuses to fork a personal conversation onto another owned sandbox", async () => {
+    const app = appWithFlag("true");
+    const canonicalPersonalId = personalSharedAgentId({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+    const res = await app.request("/api/v1/voice/session", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        conversationId: canonicalPersonalId,
+        consentNonce: "unused",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as {
+      error: string;
+      code: string;
+    };
+    expect(body).toEqual({
+      error: "conversation not found",
+      code: "conversation_not_found",
+    });
   });
 
   test("hides a directly addressed sandbox owned by another tenant", async () => {

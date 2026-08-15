@@ -290,7 +290,10 @@ export function renderInteractionsAsPlainText(
 	const source = text ?? "";
 	const { blocks, cleanedText } = parseInteractionBlocks(source);
 	if (blocks.length === 0) {
-		return { text: source, hadBlocks: false };
+		// Return the cleaned text so a terminal marker fragment that could not be
+		// claimed as a block is not restored on this zero-block delivery path.
+		// `hadBlocks` still reports the parse result rather than the cleanup.
+		return { text: cleanedText, hadBlocks: false };
 	}
 	const fallbacks = blocks
 		.map((block) => toPlainTextFallback(block, opts))

@@ -6,13 +6,19 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
+import { ElizaError } from "../errors";
 import type { TargetInfo } from "../types";
 import type {
 	IAgentRuntime,
 	MessageConnectorRegistration,
 	PostConnectorRegistration,
 } from "../types/runtime";
-import { getConnectorAccountManager } from "./account-manager";
+import {
+	type ConnectorAccountStorage,
+	type ConnectorOAuthFlow,
+	getConnectorAccountManager,
+	InMemoryConnectorAccountStorage,
+} from "./account-manager";
 
 class TestRuntime {
 	private messageConnectors: MessageConnectorRegistration[] = [];
@@ -601,5 +607,122 @@ describe("fallback-to-durable state handoff", () => {
 		// The completed flow is queryable afterward from the durable backend.
 		const stored = await manager.getOAuthFlow("oauth-complete-split", flow.id);
 		expect(stored?.status).toBe("completed");
+	});
+});
+
+describe("failure-state persistence after consumed OAuth state (#19225)", () => {
+	const PROVIDER_ERROR = "token endpoint returned 500";
+
+	/**
+	 * Real manager + real in-memory storage; only the terminal failed-state
+	 * write is intercepted (`patch.status === "failed"`), so the flow create /
+	 * consume path under test stays the production one.
+	 */
+	function makeManagerWithFailedWrite(
+		providerId: string,
+		failedWrite: () => Promise<ConnectorOAuthFlow | null>,
+	) {
+		const real = new InMemoryConnectorAccountStorage();
+		const storage: ConnectorAccountStorage = {
+			listAccounts: (provider) => real.listAccounts(provider),
+			getAccount: (provider, accountId) => real.getAccount(provider, accountId),
+			upsertAccount: (account) => real.upsertAccount(account),
+			deleteAccount: (provider, accountId) =>
+				real.deleteAccount(provider, accountId),
+			createOAuthFlow: (flow) => real.createOAuthFlow(flow),
+			getOAuthFlow: (provider, flowIdOrState) =>
+				real.getOAuthFlow(provider, flowIdOrState),
+			consumeOAuthFlow: (provider, state, consumedBy) =>
+				real.consumeOAuthFlow(provider, state, consumedBy),
+			updateOAuthFlow: (provider, flowIdOrState, patch) =>
+				patch.status === "failed"
+					? failedWrite()
+					: real.updateOAuthFlow(provider, flowIdOrState, patch),
+			deleteOAuthFlow: (provider, flowIdOrState) =>
+				real.deleteOAuthFlow(provider, flowIdOrState),
+		};
+		const manager = getConnectorAccountManager(makeRuntime());
+		manager.setStorage(storage);
+		manager.registerProvider({
+			provider: providerId,
+			startOAuth: () => ({ authUrl: "https://auth.example/start" }),
+			completeOAuth: () => {
+				throw new Error(PROVIDER_ERROR);
+			},
+		});
+		return manager;
+	}
+
+	async function completeAndCatch(
+		manager: ReturnType<typeof getConnectorAccountManager>,
+		providerId: string,
+		state: string,
+	): Promise<unknown> {
+		try {
+			await manager.completeOAuth(providerId, { state, code: "code-1" });
+			return undefined;
+		} catch (err) {
+			return err;
+		}
+	}
+
+	function expectPersistenceFailureContract(
+		thrown: unknown,
+		providerId: string,
+	): asserts thrown is ElizaError {
+		// The thrown type is ElizaError with a stable code — a bare
+		// AggregateError may only appear as its cause.
+		expect(thrown).toBeInstanceOf(ElizaError);
+		const typed = thrown as ElizaError;
+		expect(typed.code).toBe("CONNECTOR_OAUTH_FAILURE_STATE_PERSISTENCE_FAILED");
+		expect(typed.context).toMatchObject({ provider: providerId });
+		expect(typed.cause).toBeInstanceOf(AggregateError);
+		const aggregated = (typed.cause as AggregateError).errors;
+		expect(aggregated).toHaveLength(2);
+		expect(aggregated[0]).toBeInstanceOf(ElizaError);
+		expect((aggregated[0] as ElizaError).code).toBe(
+			"CONNECTOR_OAUTH_COMPLETION_FAILED",
+		);
+		expect(((aggregated[0] as ElizaError).cause as Error).message).toContain(
+			PROVIDER_ERROR,
+		);
+		// The public messages stay generic; the raw provider text rides the cause.
+		expect(typed.message).not.toContain(PROVIDER_ERROR);
+		expect((aggregated[0] as ElizaError).message).not.toContain(PROVIDER_ERROR);
+	}
+
+	it("wraps a throwing failed-state write in a typed persistence-failure error", async () => {
+		const providerId = "oauth-failstate-throw";
+		const manager = makeManagerWithFailedWrite(providerId, async () => {
+			throw new Error("failure-state write rejected: disk full");
+		});
+		const flow = await manager.startOAuth(providerId);
+
+		const thrown = await completeAndCatch(manager, providerId, flow.state);
+		expectPersistenceFailureContract(thrown, providerId);
+		expect(
+			((thrown.cause as AggregateError).errors[1] as Error).message,
+		).toContain("disk full");
+
+		// The one-time state stays consumed even though persistence failed.
+		await expect(
+			manager.completeOAuth(providerId, { state: flow.state, code: "code-2" }),
+		).rejects.toThrow(/already used|unknown|expired/i);
+	});
+
+	it("treats a null failed-state write as a persistence failure, not success", async () => {
+		const providerId = "oauth-failstate-null";
+		const manager = makeManagerWithFailedWrite(providerId, async () => null);
+		const flow = await manager.startOAuth(providerId);
+
+		const thrown = await completeAndCatch(manager, providerId, flow.state);
+		expectPersistenceFailureContract(thrown, providerId);
+		expect(
+			((thrown.cause as AggregateError).errors[1] as Error).message,
+		).toMatch(/returned null/i);
+
+		await expect(
+			manager.completeOAuth(providerId, { state: flow.state, code: "code-2" }),
+		).rejects.toThrow(/already used|unknown|expired/i);
 	});
 });

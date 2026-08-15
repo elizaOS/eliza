@@ -7,9 +7,19 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { client } from "../../api";
 import type { WorkflowDefinition } from "../../api/client-types-chat";
+import { CHAT_PREFILL_EVENT, type ChatPrefillEventDetail } from "../../events";
 import { WorkflowEditor } from "./WorkflowEditor";
 
 vi.mock("../../api", () => ({
@@ -34,6 +44,19 @@ vi.mock("../../api", () => ({
 
 const api = client as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const now = "2026-08-12T12:00:00.000Z";
+
+beforeAll(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+});
+
+afterAll(() => vi.unstubAllGlobals());
 
 function workflow(): WorkflowDefinition {
   return {
@@ -123,6 +146,32 @@ describe("WorkflowEditor", () => {
     await waitFor(() => expect(api.getWorkflowRevisions).toHaveBeenCalled());
   });
 
+  it("routes visual add and edit gestures through Eliza chat", async () => {
+    const prefills: ChatPrefillEventDetail[] = [];
+    const onPrefill = (event: Event) => {
+      prefills.push((event as CustomEvent<ChatPrefillEventDetail>).detail);
+    };
+    window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
+    try {
+      render(<WorkflowEditor initial={workflow()} />);
+      await waitFor(() => expect(api.getWorkflowExecutions).toHaveBeenCalled());
+      await waitFor(() => expect(api.getTriggers).toHaveBeenCalled());
+      await waitFor(() => expect(api.getWorkflowRevisions).toHaveBeenCalled());
+      fireEvent.click(
+        screen.getByRole("button", { name: "Add step with Eliza" }),
+      );
+      expect(prefills.at(-1)?.text).toBe("Add a step to workflow workflow-1: ");
+
+      fireEvent.click(screen.getByLabelText("Build digest, task"));
+      fireEvent.click(screen.getByRole("button", { name: "Build digest" }));
+      expect(prefills.at(-1)?.text).toBe(
+        "Edit step digest in workflow workflow-1: ",
+      );
+    } finally {
+      window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
+    }
+  });
+
   it("persists a new workflow before starting its first run", async () => {
     render(<WorkflowEditor />);
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
@@ -155,6 +204,28 @@ describe("WorkflowEditor", () => {
       expect(api.runWorkflowDefinition).toHaveBeenCalledWith("workflow-1", {
         topic: "release",
         limit: 5,
+      }),
+    );
+  });
+
+  it("materializes an untouched required boolean in the run payload", async () => {
+    const configured = workflow();
+    configured.inputSchema = {
+      type: "object",
+      required: ["notify"],
+      properties: {
+        notify: { type: "boolean", title: "Notify" },
+      },
+    };
+    render(<WorkflowEditor initial={configured} />);
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    expect(
+      ((await screen.findByRole("checkbox")) as HTMLInputElement).checked,
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
+    await waitFor(() =>
+      expect(api.runWorkflowDefinition).toHaveBeenCalledWith("workflow-1", {
+        notify: false,
       }),
     );
   });

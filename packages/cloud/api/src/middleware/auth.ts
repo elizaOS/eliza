@@ -146,6 +146,11 @@ const publicPathPrefixes = [
   // (POST /session/:id/revoke) siblings still require the Eliza bearer. The
   // `=== p || startsWith(p+"/")` match keeps this scoped to the ws path.
   "/api/v1/voice/session/ws",
+  // Twilio cannot present an Eliza session. Both telephony entrypoints instead
+  // fail closed on the provider's HMAC signature before accepting call data or
+  // opening paid Cartesia streams.
+  "/api/v1/twilio/voice/inbound",
+  "/api/v1/twilio/voice/media",
   "/api/v1/oauth/providers",
   "/api/v1/oauth/callback",
   // Short-lived HMAC proof check for the browser OAuth success landing page

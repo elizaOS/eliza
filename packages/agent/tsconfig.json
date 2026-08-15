@@ -101,7 +101,16 @@
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
+      "@elizaos/plugin-elizacloud/endpoint-config": [
+        "../../plugins/plugin-elizacloud/src/utils/config.ts"
+      ],
       "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
+      "@elizaos/plugin-anthropic/endpoint-config": [
+        "../../plugins/plugin-anthropic/utils/config.ts"
+      ],
+      "@elizaos/plugin-openai/endpoint-config": [
+        "../../plugins/plugin-openai/utils/config.ts"
+      ],
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-meetings": [

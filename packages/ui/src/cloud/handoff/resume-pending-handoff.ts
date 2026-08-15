@@ -14,6 +14,7 @@ import {
   dispatchCloudHandoffPhase,
 } from "../../events";
 import { loadPersistedActiveServer } from "../../state/persistence";
+import { isPersonalSharedElizaId } from "../../utils/cloud-agent-base";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import {
   clearPendingCloudHandoff,
@@ -181,6 +182,9 @@ export function resumePendingCloudHandoff(): boolean {
               containerBase,
               dedicatedAgentId: pending.dedicatedAgentId,
               authToken,
+              ...(isPersonalSharedElizaId(pending.sharedAgentId)
+                ? { personalElizaId: pending.sharedAgentId }
+                : {}),
             });
           },
         }),
@@ -291,6 +295,9 @@ async function runFreshDedicatedHandoff(
               containerBase,
               dedicatedAgentId,
               authToken,
+              ...(isPersonalSharedElizaId(pending.sharedAgentId)
+                ? { personalElizaId: pending.sharedAgentId }
+                : {}),
             });
           },
         }),

@@ -25,6 +25,7 @@ import { getRouteTimeoutMs } from "../utils/request-timeout";
 import type { AffiliateBillingAttribution } from "./affiliate-billing-attribution";
 import { enqueueCollectedAffiliatePayout } from "./affiliate-payout-outbox";
 import type { PricingBillingSource } from "./ai-pricing-definitions";
+import { resolveCostBuffer } from "./credits-config";
 import { emailService } from "./email";
 import { organizationsService } from "./organizations";
 import { userSessionsService } from "./user-sessions";
@@ -39,7 +40,7 @@ import {
 // ============================================================================
 
 /** Buffer multiplier for cost estimation (default 50%). Configurable via env. */
-export const COST_BUFFER = Number(process.env.CREDIT_COST_BUFFER) || 1.5;
+export const COST_BUFFER = resolveCostBuffer();
 /** Minimum reservation amount in USD */
 export const MIN_RESERVATION = 0.000001;
 /** Epsilon for reconcile float comparisons — 10% of MIN_RESERVATION */

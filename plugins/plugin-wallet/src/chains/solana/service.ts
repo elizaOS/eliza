@@ -17,7 +17,13 @@
  * instance looked up by `chain_solana`; new code should depend on
  * `SolanaService` directly.
  */
-import { type IAgentRuntime, logger, Service, type ServiceTypeName } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  Service,
+  type ServiceTypeName,
+} from "@elizaos/core";
 
 export interface WalletAsset {
   address: string;
@@ -70,6 +76,7 @@ import type {
   WalletRouterParams,
 } from "../../types/wallet-router.js";
 import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from "./constants";
+import { fetchJupiterJson, resolveJupiterApiBaseUrl } from "./jupiter-api";
 import { getWalletKey } from "./keypairUtils";
 import type {
   BirdeyePriceResponse,
@@ -112,7 +119,22 @@ export type MintBalance = {
 
 export type SolanaWalletSubaction = "transfer" | "swap";
 
-export type SolanaWalletActionMode = "prepare" | "execute";
+// Mirrors WalletRouterMode structurally (executeWalletRouterAction below
+// forwards WalletRouterParams.mode as-is) so this stays type-consistent with
+// the router's widened enum. This path implements no simulate semantics —
+// the live implementation is the router's chain handler in
+// chains/registry.ts — so every entry point here fails closed on
+// mode="simulate" rather than falling through to a signing/broadcast path
+// (a mode named simulate must never be able to submit; #19243 review, P1).
+export type SolanaWalletActionMode = "prepare" | "execute" | "simulate";
+
+function assertNotSimulateMode(mode: SolanaWalletActionMode | undefined, entryPoint: string): void {
+  if (mode === "simulate") {
+    throw new Error(
+      `SolanaService.${entryPoint} does not support mode="simulate"; route simulation through WalletBackendService.routeWalletAction, which dispatches to the chain handler's non-broadcasting simulate() implementation.`
+    );
+  }
+}
 
 export type SolanaTransferParams = {
   tokenAddress?: string | null;
@@ -423,6 +445,7 @@ export class SolanaService extends Service {
   public async executeWalletRouterAction(
     params: WalletRouterParams
   ): Promise<WalletRouterExecution> {
+    assertNotSimulateMode(params.mode, "executeWalletRouterAction");
     const mode = params.mode;
     const dryRun = params.dryRun || mode === "prepare";
 
@@ -566,6 +589,7 @@ export class SolanaService extends Service {
   }
 
   public async transfer(params: SolanaTransferParams): Promise<SolanaTransferResult> {
+    assertNotSimulateMode(params.mode, "transfer");
     const tokenAddress = this.normalizeSolanaTokenAddress(params.tokenAddress ?? params.fromToken);
     const amount = this.normalizePositiveAmount(params.amount);
     const recipientPubkey = new PublicKey(params.recipient);
@@ -642,6 +666,7 @@ export class SolanaService extends Service {
   }
 
   public async swap(params: SolanaSwapParams): Promise<SolanaSwapResult> {
+    assertNotSimulateMode(params.mode, "swap");
     const inputTokenCA = this.normalizeRequiredTokenAddress(
       params.inputTokenCA ?? params.fromToken,
       "input token"
@@ -816,22 +841,23 @@ export class SolanaService extends Service {
       params.slippageBps !== undefined
         ? `slippageBps=${encodeURIComponent(String(params.slippageBps))}`
         : "dynamicSlippage=true";
-    const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${encodeURIComponent(
+    const jupiterApiBaseUrl = resolveJupiterApiBaseUrl(this.runtime);
+    const quoteUrl = `${jupiterApiBaseUrl}/quote?inputMint=${encodeURIComponent(
       params.inputTokenCA
     )}&outputMint=${encodeURIComponent(params.outputTokenCA)}&amount=${encodeURIComponent(
       adjustedAmount.toFixed(0)
     )}&${slippageQuery}&maxAccounts=64`;
 
     const fetchFn = this.runtime.fetch || globalThis.fetch;
-    const quoteResponse = await fetchFn(quoteUrl);
-    const quoteData = (await quoteResponse.json()) as {
-      error?: string;
-      swapTransaction?: string;
-    };
+    const quoteData = await fetchJupiterJson(fetchFn, quoteUrl, "quote");
 
-    if (!quoteData || quoteData.error) {
+    if (typeof quoteData.error === "string") {
       this.runtime.logger.error({ quoteData }, "Quote error");
-      throw new Error(`Failed to get quote: ${quoteData.error || "Unknown error"}`);
+      throw new ElizaError(`Jupiter rejected the quote: ${quoteData.error}`, {
+        code: "JUPITER_QUOTE_REJECTED",
+        context: { error: quoteData.error },
+        severity: "fatal",
+      });
     }
 
     const swapRequestBody = {
@@ -845,28 +871,26 @@ export class SolanaService extends Service {
       },
     };
 
-    const swapResponse = await fetchFn("https://quote-api.jup.ag/v6/swap", {
+    const swapData = await fetchJupiterJson(fetchFn, `${jupiterApiBaseUrl}/swap`, "swap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(swapRequestBody),
     });
 
-    const swapData = (await swapResponse.json()) as {
-      error?: string;
-      swapTransaction?: string;
-      [key: string]: string | number | boolean | undefined;
-    };
-
-    if (!swapData.swapTransaction) {
+    if (typeof swapData.swapTransaction !== "string") {
       this.runtime.logger.error({ swapData }, "Swap error");
-      throw new Error(
-        `Failed to get swap transaction: ${swapData.error || "No swap transaction returned"}`
-      );
+      throw new ElizaError("Jupiter did not return a swap transaction", {
+        code: "JUPITER_SWAP_INVALID_RESPONSE",
+        context: {
+          error: typeof swapData.error === "string" ? swapData.error : undefined,
+        },
+        severity: "fatal",
+      });
     }
 
     return {
       swapTransaction: swapData.swapTransaction,
-      error: swapData.error,
+      error: typeof swapData.error === "string" ? swapData.error : undefined,
     };
   }
 

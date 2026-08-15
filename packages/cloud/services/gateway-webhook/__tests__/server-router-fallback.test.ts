@@ -1,6 +1,7 @@
 /** Exercises the real forwarding boundary with deterministic network responses. */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
+  __serverRouterTestHooks,
   forwardToServer,
   getCanonicalAgentFallbackBase,
   getCanonicalAgentFallbackTarget,
@@ -13,9 +14,36 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  __serverRouterTestHooks.resetMessageForwardTimeoutMs();
 });
 
 describe("canonical agent forwarding fallback", () => {
+  test("does not replay a non-idempotent message after its response times out", async () => {
+    __serverRouterTestHooks.setMessageForwardTimeoutMs(10);
+    let requests = 0;
+    globalThis.fetch = mock(
+      async (_input: string | URL | Request, init?: RequestInit) => {
+        requests += 1;
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(init.signal?.reason);
+          });
+        });
+      },
+    ) as typeof fetch;
+
+    await expect(
+      forwardToServer(
+        "http://slow-agent.example/api",
+        "slow-agent",
+        AGENT_ID,
+        "user-1",
+        "hello once",
+      ),
+    ).rejects.toThrow("Agent forward timed out after 10ms");
+    expect(requests).toBe(1);
+  });
+
   test("derives a configured canonical fallback only for UUID agent ids", () => {
     const env = {
       AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.eliza.app",
@@ -72,7 +100,7 @@ describe("canonical agent forwarding fallback", () => {
     ).toBeNull();
   });
 
-  test("sends the canonical agent hostname to the router origin", async () => {
+  test("sends dedicated sandboxes to the canonical router before their blocked public port", async () => {
     const requests: Array<{ url: string; forwardedHost: string | null }> = [];
     const previousOrigin = process.env.AGENT_ROUTER_ORIGIN_HOST;
     const previousDomain = process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN;
@@ -85,9 +113,6 @@ describe("canonical agent forwarding fallback", () => {
           url,
           forwardedHost: new Headers(init?.headers).get("x-forwarded-host"),
         });
-        if (url.startsWith("http://stale-sandbox.example")) {
-          throw new TypeError("connection timed out");
-        }
         return new Response(JSON.stringify({ response: "agent is live" }), {
           status: 200,
         });
@@ -118,10 +143,6 @@ describe("canonical agent forwarding fallback", () => {
     }
 
     expect(requests).toEqual([
-      {
-        url: `http://stale-sandbox.example/api/agents/${AGENT_ID}/message`,
-        forwardedHost: null,
-      },
       {
         url: `https://eliza-production-1.eliza.app/api/agents/${AGENT_ID}/message`,
         forwardedHost: `${AGENT_ID}.cloud.eliza.app`,
@@ -182,9 +203,6 @@ describe("canonical agent forwarding fallback", () => {
     globalThis.fetch = mock(async (input: string | URL | Request) => {
       const url = input instanceof Request ? input.url : String(input);
       requests.push(url);
-      if (url.startsWith("http://stale-sandbox.example")) {
-        throw new TypeError("connection timed out");
-      }
       if (url.endsWith(`/agents/${AGENT_ID}/message`)) {
         return new Response(JSON.stringify({ error: "Agent not found" }), {
           status: 404,
@@ -229,7 +247,6 @@ describe("canonical agent forwarding fallback", () => {
     }
 
     expect(requests).toEqual([
-      `http://stale-sandbox.example/api/agents/${AGENT_ID}/message`,
       `https://eliza-production-1.eliza.app/api/agents/${AGENT_ID}/message`,
       "https://eliza-production-1.eliza.app/api/agents",
       `https://eliza-production-1.eliza.app/api/agents/${RUNTIME_AGENT_ID}/message`,

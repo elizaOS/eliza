@@ -1,6 +1,5 @@
 /** Presents native elizaOS workflow triggers as a compact visual start surface. */
 import {
-  Bell,
   CalendarClock,
   Clock3,
   Plus,
@@ -72,16 +71,19 @@ export function WorkflowTriggerPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    const id = workflowId;
-    if (!id) return;
-    const result = await client.getTriggers();
-    setTriggers(
-      result.triggers.filter(
-        (trigger) => trigger.kind === "workflow" && trigger.workflowId === id,
-      ),
-    );
-  }, [workflowId]);
+  const refresh = useCallback(
+    async (targetWorkflowId?: string) => {
+      const id = targetWorkflowId ?? workflowId;
+      if (!id) return;
+      const result = await client.getTriggers();
+      setTriggers(
+        result.triggers.filter(
+          (trigger) => trigger.kind === "workflow" && trigger.workflowId === id,
+        ),
+      );
+    },
+    [workflowId],
+  );
 
   useEffect(() => {
     void refresh().catch((cause) => {
@@ -164,7 +166,7 @@ export function WorkflowTriggerPanel({
       await client.createTrigger(request);
       setType(null);
       setValue("");
-      await refresh();
+      await refresh(id);
     } catch (cause) {
       // error-policy:J4 create failures remain visible beside the attempted trigger.
       setError(
@@ -193,22 +195,14 @@ export function WorkflowTriggerPanel({
   const canCreate = type === "event" ? eventReady : Boolean(value);
 
   return (
-    <section
-      aria-label="Workflow triggers"
-      className="border-b border-border/50 bg-card/40 px-3 py-2"
-    >
+    <section aria-label="Workflow triggers" className="bg-card/40 px-3 py-2">
       <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
-        <span
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"
-          title="Start"
-        >
-          <Bell className="h-3.5 w-3.5" />
-          <span className="sr-only">Start</span>
-        </span>
         <span
           className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
           title="Manual"
-        />
+        >
+          <span className="sr-only">Manual</span>
+        </span>
         {triggers.map((trigger) => {
           const meta = TYPE_META[trigger.triggerType];
           const Icon = meta.icon;
@@ -227,7 +221,7 @@ export function WorkflowTriggerPanel({
                 onClick={() =>
                   void client
                     .deleteTrigger(trigger.id)
-                    .then(refresh)
+                    .then(() => refresh())
                     .catch((cause) => {
                       // error-policy:J4 deletion failures preserve the trigger and surface the error.
                       setError(

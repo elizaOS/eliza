@@ -58,7 +58,11 @@ import {
 	searchPluginsByContent,
 } from "./pluginRegistryService.ts";
 
-const execAsync = promisify(exec);
+// Guarded for edge isolates: the child_process builtin is absent there, and
+// promisify(undefined) at module scope would kill the whole import. Node hosts
+// get the real promisified binding; edge paths fail at use instead.
+const execAsync =
+	typeof exec === "function" ? promisify(exec) : (undefined as never);
 
 // ---------------------------------------------------------------------------
 // Input validation — prevent shell injection

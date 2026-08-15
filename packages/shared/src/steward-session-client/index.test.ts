@@ -10,9 +10,25 @@ import {
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
   type StewardSessionChangeDetail,
+  sanitizeTelegramAccountClaimContinuation,
   stewardAuthedCookieName,
   writeStoredStewardToken,
 } from "./index";
+
+describe("Telegram account-claim credential", () => {
+  it("accepts opaque tokens and rejects guessable platform ids", () => {
+    expect(
+      sanitizeTelegramAccountClaimContinuation(
+        "  opaque-telegram-claim-token  ",
+      ),
+    ).toBe("opaque-telegram-claim-token");
+    expect(
+      sanitizeTelegramAccountClaimContinuation("platform:telegram:123456789"),
+    ).toBeNull();
+    expect(sanitizeTelegramAccountClaimContinuation("short")).toBeNull();
+    expect(sanitizeTelegramAccountClaimContinuation(null)).toBeNull();
+  });
+});
 
 function stubDocumentCookie(cookie: string): void {
   vi.stubGlobal("document", { cookie });
@@ -71,6 +87,25 @@ describe("Steward session storage transitions", () => {
     expect(transitions[1]?.sessionEpoch).toBeGreaterThan(
       transitions[0]?.sessionEpoch ?? 0,
     );
+  });
+
+  it("does not advance authority when the same token is persisted again", () => {
+    const transitions: StewardSessionChangeDetail[] = [];
+    const listener = (event: Event) => {
+      transitions.push(
+        (event as CustomEvent<StewardSessionChangeDetail>).detail,
+      );
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+
+    try {
+      writeStoredStewardToken("same-token");
+      writeStoredStewardToken("same-token");
+    } finally {
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    }
+
+    expect(transitions.map(({ state }) => state)).toEqual(["present"]);
   });
 
   it("publishes canonical invalidation before stale refresh-key cleanup can fail", () => {

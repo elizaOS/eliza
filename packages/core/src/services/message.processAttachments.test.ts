@@ -248,9 +248,14 @@ describe("DefaultMessageService.processAttachments", () => {
 		expect(out[0].text).toBeUndefined();
 		expect(out[0].url).toBe("/api/media/abc.mp3");
 		expect(out[0].notProcessed).toMatch(/audio transcription unavailable/i);
-		expect(out[0].notProcessed).toContain(
+		expect(out[0].notProcessed).not.toContain(
 			"no transcription provider configured",
 		);
+		expect(out[0].enrichmentFailure).toEqual({
+			phase: "transcribe",
+			code: "unavailable",
+			retryable: true,
+		});
 	});
 
 	it("marks notProcessed when audio transcription returns empty text", async () => {
@@ -299,8 +304,14 @@ describe("DefaultMessageService.processAttachments", () => {
 
 			expect(out[0].text).toBeUndefined();
 			expect(out[0].notProcessed).toBe(
-				`${kind} attachment could not be fetched: ${err.message}`,
+				`${kind} attachment could not be fetched for enrichment`,
 			);
+			expect(out[0].notProcessed).not.toContain(err.message);
+			expect(out[0].enrichmentFailure).toEqual({
+				phase: "fetch",
+				code: "unavailable",
+				retryable: true,
+			});
 			// Never the marker prefix the read action keys on.
 			expect(out[0].notProcessed).not.toMatch(
 				/^(?:(?:audio|video)\s+)?transcription unavailable/i,
@@ -338,7 +349,7 @@ describe("DefaultMessageService.processAttachments", () => {
 
 			expect(out[0].text).toBeUndefined();
 			expect(out[0].notProcessed).toMatch(/could not be fetched/i);
-			expect(out[0].notProcessed).toContain(`HTTP ${status}`);
+			expect(out[0].notProcessed).not.toContain(`HTTP ${status}`);
 			expect(out[0].notProcessed).not.toContain(statusText);
 			expect(out[0].notProcessed).not.toMatch(
 				/^(?:(?:audio|video)\s+)?transcription unavailable/i,
@@ -447,6 +458,69 @@ describe("DefaultMessageService.processAttachments", () => {
 		expect(out[0].text).toBe("spoken words in the clip");
 		expect(out[0].description).toBe("Transcript: spoken words in the clip");
 		expect(out[0].notProcessed).toBeUndefined();
+	});
+
+	it("serializes transcription model calls in attachment order", async () => {
+		const bytes = Buffer.from("media");
+		const localFetch = localDocFetch(bytes, "audio/mpeg");
+		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+		let active = 0;
+		let maxActive = 0;
+		(runtime.useModel as ReturnType<typeof vi.fn>).mockImplementation(
+			async () => {
+				active += 1;
+				maxActive = Math.max(maxActive, active);
+				await Promise.resolve();
+				active -= 1;
+				return "transcript";
+			},
+		);
+		const svc = new DefaultMessageService();
+
+		await svc.processAttachments(runtime, [
+			{ id: "one", url: "/api/media/one.mp3", contentType: ContentType.AUDIO },
+			{ id: "two", url: "/api/media/two.mp3", contentType: ContentType.AUDIO },
+		]);
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(maxActive).toBe(1);
+	});
+
+	it("enforces the cumulative declared-byte budget before a third enrichment", async () => {
+		const bytes = Buffer.from("small test body");
+		const localFetch = localDocFetch(bytes, "audio/mpeg");
+		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+		(runtime.useModel as ReturnType<typeof vi.fn>).mockResolvedValue("ok");
+		const svc = new DefaultMessageService();
+		const declaredSize = 40 * 1024 * 1024;
+
+		const out = await svc.processAttachments(runtime, [
+			{
+				id: "one",
+				url: "/api/media/one.mp3",
+				size: declaredSize,
+				contentType: ContentType.AUDIO,
+			},
+			{
+				id: "two",
+				url: "/api/media/two.mp3",
+				size: declaredSize,
+				contentType: ContentType.AUDIO,
+			},
+			{
+				id: "three",
+				url: "/api/media/three.mp3",
+				size: declaredSize,
+				contentType: ContentType.AUDIO,
+			},
+		]);
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(out[2].enrichmentFailure).toEqual({
+			phase: "budget",
+			code: "byte_limit",
+			retryable: true,
+		});
 	});
 
 	it("extracts real text from an application/pdf document (previously skipped)", async () => {

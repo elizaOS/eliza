@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
     }),
   ),
   savePersistedActiveServer: vi.fn(),
-  addAgentProfile: vi.fn((p: Record<string, unknown>) => ({
+  upsertAndActivateAgentProfile: vi.fn((p: Record<string, unknown>) => ({
     ...p,
     id: "profile-dedicated-1",
   })),
@@ -44,7 +44,7 @@ vi.mock("../../api", () => ({
 vi.mock("../../state", () => ({
   createPersistedActiveServer: mocks.createPersistedActiveServer,
   savePersistedActiveServer: mocks.savePersistedActiveServer,
-  addAgentProfile: mocks.addAgentProfile,
+  upsertAndActivateAgentProfile: mocks.upsertAndActivateAgentProfile,
 }));
 
 import { silentlyRepointToDedicated } from "./silent-repoint";
@@ -79,25 +79,23 @@ describe("silentlyRepointToDedicated", () => {
   it("persists the dedicated as the restorable active server + active profile", () => {
     silentlyRepointToDedicated(ARGS);
 
-    // Keyed by the dedicated id so a reboot restores the dedicated, not the
-    // now-stale shared bridge.
     expect(mocks.createPersistedActiveServer).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "cloud",
         id: `cloud:${DEDICATED_AGENT_ID}`,
         apiBase: `https://${DEDICATED_AGENT_ID}.elizacloud.ai`,
         accessToken: "cloud-token",
+        cloudRuntimeAgentId: DEDICATED_AGENT_ID,
+        cloudRuntime: "dedicated",
       }),
     );
     expect(mocks.savePersistedActiveServer).toHaveBeenCalledTimes(1);
-    // addAgentProfile registers AND activates the dedicated profile (it sets
-    // registry.activeProfileId + persists before returning) — done WITHOUT
-    // switchAgentProfile, so no SWITCH_AGENT dispatch / coordinator re-entry /
-    // StartupScreen flash.
-    expect(mocks.addAgentProfile).toHaveBeenCalledWith(
+    expect(mocks.upsertAndActivateAgentProfile).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "cloud",
         cloudAgentId: DEDICATED_AGENT_ID,
+        cloudRuntimeAgentId: DEDICATED_AGENT_ID,
+        cloudRuntime: "dedicated",
         apiBase: `https://${DEDICATED_AGENT_ID}.elizacloud.ai`,
         accessToken: "cloud-token",
       }),
@@ -110,11 +108,32 @@ describe("silentlyRepointToDedicated", () => {
     for (const fn of [
       mocks.repointBaseUrl,
       mocks.createPersistedActiveServer,
-      mocks.addAgentProfile,
+      mocks.upsertAndActivateAgentProfile,
     ]) {
       expect(JSON.stringify(fn.mock.calls)).not.toContain(
         "/api/v1/eliza/agents/",
       );
     }
+  });
+
+  it("retains a rowless personal identity while changing only its runtime", () => {
+    const personalElizaId = "personal:00000000-0000-5000-8000-000000000001";
+
+    silentlyRepointToDedicated({ ...ARGS, personalElizaId });
+
+    expect(mocks.createPersistedActiveServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: `cloud:${personalElizaId}`,
+        cloudRuntimeAgentId: DEDICATED_AGENT_ID,
+        cloudRuntime: "dedicated",
+      }),
+    );
+    expect(mocks.upsertAndActivateAgentProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cloudAgentId: personalElizaId,
+        cloudRuntimeAgentId: DEDICATED_AGENT_ID,
+        cloudRuntime: "dedicated",
+      }),
+    );
   });
 });

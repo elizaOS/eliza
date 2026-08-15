@@ -105,6 +105,38 @@ describe("MessageContent non-bytes interaction rendering", () => {
     expect(container.textContent ?? "").toContain("Run again");
   });
 
+  it("renders spaced CRLF followups without exposing wire markup", () => {
+    const { container } = withApp(
+      <MessageContent
+        message={assistant({
+          text: "Done.\r\n[ FOLLOWUPS ]\r\nreply:Again=Again\r\n[ / FOLLOWUPS ]",
+        })}
+      />,
+    );
+    expect(container.textContent ?? "").toContain("Again");
+    expect(container.textContent ?? "").not.toContain("FOLLOWUPS");
+    expect(container.textContent ?? "").not.toContain("reply:");
+  });
+
+  it("strips terminal unclaimed markers only from assistant messages", () => {
+    const assistantView = withApp(
+      <MessageContent
+        message={assistant({
+          text: "Done.\n[ FOLLOWUPS ]\nreply:Again=Again",
+        })}
+      />,
+    );
+    expect(assistantView.container.textContent ?? "").toBe("Done.");
+    assistantView.unmount();
+
+    const userMessage = assistant({
+      role: "user",
+      text: "Example:\n[ FOLLOWUPS ]\nreply:Again=Again",
+    });
+    const userView = withApp(<MessageContent message={userMessage} />);
+    expect(userView.container.textContent ?? "").toContain("FOLLOWUPS");
+  });
+
   it("renders a choice picker from a [CHOICE] block", () => {
     const { container } = withApp(
       <MessageContent

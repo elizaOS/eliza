@@ -107,14 +107,12 @@ describe("onboarding-chat phone-link error policy", () => {
 
     expect(linkPhoneToUser).toHaveBeenCalledWith("user-1", PHONE);
     // A business decline is NOT an internal failure — the turn resolves with a
-    // real reply and proceeds through provisioning.
+    // real reply and reads the existing lifecycle state without provisioning.
     expect(typeof result.reply).toBe("string");
     expect(result.reply.length).toBeGreaterThan(0);
     expect(result.requiresLogin).toBe(false);
-    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
-      userId: "user-1",
-      organizationId: "org-1",
-    });
+    expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("org-1");
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     expect(result.provisioning.status).toBe("provisioning");
   });
 

@@ -36,6 +36,21 @@ type BootHookModule = Record<string, unknown>;
 type BootHook = (runtime: AgentRuntime) => void | Promise<void>;
 
 /**
+ * Literal importers for host-owned hooks that must survive mobile bundling.
+ * Registry hooks remain extensible through the dynamic-import fallback below,
+ * but a computed specifier is invisible to Bun and cannot be the only import
+ * path for code embedded in an APK without a node_modules tree.
+ */
+const BUNDLED_BOOT_HOOK_IMPORTERS: Readonly<
+  Record<string, () => Promise<BootHookModule>>
+> = {
+  "@elizaos/plugin-local-inference/runtime": () =>
+    import(
+      "@elizaos/plugin-local-inference/runtime"
+    ) as Promise<BootHookModule>,
+};
+
+/**
  * Host-owned declarations appended when the registry does not supply one for the
  * same id. These are not a duplicate source of truth: a registry declaration
  * always wins, and this only covers the packaged-build case where the registry
@@ -70,9 +85,12 @@ async function loadAndInvokeBootHook(
 ): Promise<void> {
   let module: BootHookModule;
   try {
-    module = (await import(
-      /* webpackIgnore: true */ declaration.specifier
-    )) as BootHookModule;
+    const bundledImporter = BUNDLED_BOOT_HOOK_IMPORTERS[declaration.specifier];
+    module = bundledImporter
+      ? await bundledImporter()
+      : ((await import(
+          /* webpackIgnore: true */ declaration.specifier
+        )) as BootHookModule);
   } catch (error) {
     // error-policy:J4 a host that ships without an optional hook module is a
     // supported deployment, so its absence degrades to "no hook". Anything else,

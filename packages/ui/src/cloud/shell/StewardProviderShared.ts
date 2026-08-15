@@ -160,7 +160,15 @@ export function tokenSecsRemaining(token: string): number | null {
 
 export function clearStaleStewardSession(): void {
   if (typeof window === "undefined") return;
-  clearStoredStewardToken();
+  let storedTokenClearError: unknown;
+  try {
+    clearStoredStewardToken();
+  } catch (error) {
+    // error-policy:J2 canonical invalidation may already have succeeded before
+    // obsolete refresh-key cleanup failed. Finish every credential teardown,
+    // then rethrow the original storage error with its stack intact.
+    storedTokenClearError = error;
+  }
   // Every shared-agent profile belongs to the ending Steward account, even
   // when a dedicated or self-hosted target happens to be active at sign-out.
   removeManagedSharedCloudAgentProfiles();
@@ -186,4 +194,5 @@ export function clearStaleStewardSession(): void {
   } catch {
     // error-policy:J6 best-effort sync notification after credentials are scrubbed.
   }
+  if (storedTokenClearError !== undefined) throw storedTokenClearError;
 }

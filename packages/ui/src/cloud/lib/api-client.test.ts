@@ -24,7 +24,11 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  STEWARD_SESSION_CHANGE_EVENT,
+  STEWARD_TOKEN_KEY,
+  type StewardSessionChangeDetail,
+} from "@elizaos/shared/steward-session-client";
 import { setBootConfig } from "../../config/boot-config";
 import { ApiError, api, apiWithStatus } from "./api-client";
 
@@ -348,8 +352,19 @@ describe("cloud api-client transport bridge", () => {
         apiToken: CLOUD_API_KEY,
       });
       nativeOk();
+      const transitions: StewardSessionChangeDetail[] = [];
+      const listener = (event: Event) => {
+        transitions.push(
+          (event as CustomEvent<StewardSessionChangeDetail>).detail,
+        );
+      };
+      window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
 
-      await api("/api/v1/apps");
+      try {
+        await api("/api/v1/apps");
+      } finally {
+        window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+      }
 
       expect(capacitorMocks.request).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -359,6 +374,7 @@ describe("cloud api-client transport bridge", () => {
         }),
       );
       expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(transitions.map(({ state }) => state)).toEqual(["cleared"]);
     });
 
     it("web: stays byte-identical — NO Authorization header from the REST token without a Steward JWT", async () => {

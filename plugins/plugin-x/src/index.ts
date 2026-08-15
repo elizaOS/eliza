@@ -1,6 +1,6 @@
 /**
  * Plugin entry-point for the X (Twitter) connector: exports `XPlugin`, which
- * registers the `XService` and `XWorkflowCredentialProvider` services and the
+ * registers the `XService` and the
  * `TWITTER_IDENTITY` provider. `init` validates auth-mode credentials and
  * registers the X account provider with the runtime's ConnectorAccountManager;
  * env account materialization and the autonomous loops run later in
@@ -20,7 +20,6 @@ export { XDmAdapter } from "./lifeops-message-adapter.js";
 import { xIdentityProvider } from "./identity-provider.js";
 import { XService } from "./services/x.service.js";
 import { getSetting } from "./utils/settings";
-import { XWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 export { xIdentityProvider } from "./identity-provider.js";
 
@@ -38,7 +37,7 @@ export const XPlugin: Plugin = {
   ],
   actions: [],
   providers: [xIdentityProvider],
-  services: [XService, XWorkflowCredentialProvider],
+  services: [XService],
   // Self-declared auto-enable: activate when the "x" connector (or the legacy
   // "twitter" alias) is configured under config.connectors. The hardcoded
   // CONNECTOR_PLUGINS map in plugin-auto-enable-engine.ts still serves as a
@@ -88,8 +87,21 @@ export const XPlugin: Plugin = {
       } else {
         logger.log("✅ X OAuth configuration found");
       }
+    } else if (mode === "broker") {
+      const token =
+        getSetting(runtime, "TWITTER_BROKER_TOKEN") ||
+        getSetting(runtime, "ELIZAOS_CLOUD_API_KEY");
+      if (!token) {
+        logger.warn(
+          "X broker auth needs TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY",
+        );
+      } else {
+        logger.log("✅ X broker configuration found");
+      }
     } else {
-      logger.warn(`Invalid TWITTER_AUTH_MODE=${mode}. Expected env|oauth.`);
+      logger.warn(
+        `Invalid TWITTER_AUTH_MODE=${mode}. Expected env|oauth|broker.`,
+      );
     }
 
     // Register with the ConnectorAccountManager so the generic HTTP CRUD/OAuth

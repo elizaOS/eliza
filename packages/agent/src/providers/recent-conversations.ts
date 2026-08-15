@@ -47,8 +47,6 @@ export const recentConversationsProvider: Provider = {
   contextGate: { anyOf: ["memory", "messaging"] },
   cacheStable: false,
   cacheScope: "turn",
-  timeoutMs: 8_000,
-  timeoutMode: "degrade",
   // roleGate ADMIN is enforced by applyPluginRoleGating (#12087 Item 14); the
   // declared gate is authoritative, not the handler body.
   roleGate: { minRole: "ADMIN" },

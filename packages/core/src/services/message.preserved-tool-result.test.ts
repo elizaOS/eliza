@@ -15,11 +15,20 @@ import { createCharacter } from "../character";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import type { PlannerToolResult } from "../runtime/planner-loop";
-import type { Action, Content, HandlerCallback, Memory, UUID } from "../types";
+import type {
+	Action,
+	ActionResult,
+	Content,
+	HandlerCallback,
+	Memory,
+	UUID,
+} from "../types";
 import { ModelType } from "../types";
 import { ChannelType } from "../types/primitives";
 import {
+	answerlessToolTurnReport,
 	DefaultMessageService,
+	NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
 	preservedSettledToolResult,
 	subAgentCompletionRelayBody,
 } from "./message";
@@ -394,5 +403,95 @@ describe("preservedSettledToolResult candidate selection", () => {
 				new Set([deliveredNormalized]),
 			),
 		).toBeUndefined();
+	});
+});
+
+describe("answerlessToolTurnReport", () => {
+	const asyncAction: Action = {
+		name: "TASKS",
+		similes: ["TASKS_SPAWN_AGENT"],
+		description: "Spawn a task.",
+		asyncHandoff: true,
+		validate: async () => true,
+		handler: async () => ({ success: true }),
+	};
+	const settled = (
+		result: Partial<PlannerToolResult>,
+	): Array<{ name: string; result: PlannerToolResult }> => [
+		{
+			name: "TASKS_SPAWN_AGENT",
+			result: { success: true, ...result } as PlannerToolResult,
+		},
+	];
+	const report = (
+		result: Partial<PlannerToolResult>,
+		actionResult: ActionResult,
+	): string =>
+		answerlessToolTurnReport({
+			settledToolResults: settled(result),
+			deliveredVisibleTexts: new Set(),
+			actionResults: [actionResult],
+			actions: [asyncAction],
+			stageOneAck: "On it.",
+		});
+
+	it("never retains an ack for a failed async handoff", () => {
+		expect(
+			report(
+				{ success: false, text: "spawn failed" },
+				{ success: false, data: { actionName: "TASKS_SPAWN_AGENT" } },
+			),
+		).toBe(NO_REPORTABLE_TOOL_OUTCOME_MESSAGE);
+	});
+
+	it("retains an ack only after applied acceptance proof", () => {
+		expect(
+			report(
+				{ success: true },
+				{
+					success: true,
+					data: { actionName: "TASKS_SPAWN_AGENT" },
+					effectReceipts: [
+						{
+							receiptId: "spawn-1",
+							operation: "tasks.spawn_agent",
+							outcome: "applied",
+							resource: { kind: "acp.session", id: "session-1" },
+							artifacts: [],
+							idempotency: { key: null, replayed: false },
+							observedAt: "2026-08-15T00:00:00.000Z",
+							commit: {
+								kind: "provider_accepted",
+								id: "session-1",
+								committedAt: "2026-08-15T00:00:00.000Z",
+							},
+						},
+					],
+				},
+			),
+		).toBe("On it.");
+	});
+
+	it("preserves a verified failed outcome instead of a generic line", () => {
+		const failure = "The coding task could not authenticate.";
+		expect(
+			report(
+				{
+					success: false,
+					userFacingText: failure,
+					verifiedUserFacing: true,
+				},
+				{ success: false, data: { actionName: "TASKS_SPAWN_AGENT" } },
+			),
+		).toBe(failure);
+	});
+
+	it("does not trust an unverified failure projection", () => {
+		expect(
+			report(
+				{ success: false, userFacingText: "raw provider failure" },
+				{ success: false, data: { actionName: "TASKS_SPAWN_AGENT" } },
+			),
+		).toBe(NO_REPORTABLE_TOOL_OUTCOME_MESSAGE);
 	});
 });

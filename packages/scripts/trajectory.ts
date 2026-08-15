@@ -1254,14 +1254,32 @@ function flagString(
   return typeof v === "string" ? v : undefined;
 }
 
+class UsageError extends Error {}
+
 function flagInt(
   flags: Map<string, string | true>,
   key: string,
 ): number | undefined {
-  const v = flagString(flags, key);
-  if (v === undefined) return undefined;
-  const n = Number.parseInt(v, 10);
-  return Number.isFinite(n) ? n : undefined;
+  if (!flags.has(key)) return undefined;
+  const v = flags.get(key);
+  if (typeof v !== "string" || v.length === 0) {
+    throw new UsageError(`--${key} requires a value`);
+  }
+  // Fail closed on non-canonical input: parseInt("1e3") is 1 and NaN used to
+  // mean "flag omitted", so typos silently listed the wrong number of rows.
+  const raw = v;
+  const n = Number.parseInt(raw, 10);
+  if (
+    !/^\d+$/.test(raw) ||
+    !Number.isSafeInteger(n) ||
+    String(n) !== raw ||
+    n < 1
+  ) {
+    throw new UsageError(
+      `--${key} must be a positive whole decimal integer (received ${JSON.stringify(v)})`,
+    );
+  }
+  return n;
 }
 
 function flagDate(
@@ -1433,5 +1451,7 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error(c.red(`error: ${(err as Error).message}`));
-  process.exitCode = 1;
+  // Usage errors (malformed or missing flag values) exit 2 per the #19601
+  // contract; genuine execution failures keep exit 1.
+  process.exitCode = err instanceof UsageError ? 2 : 1;
 });

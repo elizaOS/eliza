@@ -65,6 +65,7 @@ export {
   sanitizeLinkHref,
 } from "./components/config-ui/ui-renderer.helpers.ts";
 export {
+  type UiActionDispatchMetadata,
   UiRenderer,
   type UiRendererProps,
 } from "./components/config-ui/ui-renderer.tsx";

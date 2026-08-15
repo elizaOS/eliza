@@ -17,7 +17,7 @@ import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   redirectToSsoBridge,
   sanitizeBridgeReturnTo,
-  shouldAttemptSsoBridge,
+  shouldAutoBridgeToSso,
 } from "../../../sso-bridge/sso-bridge";
 import { usePageTitle } from "../../lib/use-page-title";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";
@@ -95,17 +95,15 @@ function sessionIdFromLoginReturnTo(returnTo: string | null): string | null {
 
 function ManagedCloudLoginHandoff(): React.JSX.Element {
   const [searchParams] = useSearchParams();
+  const [handoffRequired] = useState(() => shouldAutoBridgeToSso());
   const [failed, setFailed] = useState(false);
   const attemptRef = useRef<Promise<boolean> | null>(null);
   const returnTo = sanitizeBridgeReturnTo(searchParams.get("returnTo"));
 
   useEffect(() => {
+    if (!handoffRequired) return;
     let attempt = attemptRef.current;
     if (!attempt) {
-      if (!shouldAttemptSsoBridge()) {
-        setFailed(true);
-        return;
-      }
       attempt = redirectToSsoBridge(returnTo);
       attemptRef.current = attempt;
     }
@@ -131,9 +129,9 @@ function ManagedCloudLoginHandoff(): React.JSX.Element {
       active = false;
       window.clearTimeout(timeout);
     };
-  }, [returnTo]);
+  }, [handoffRequired, returnTo]);
 
-  if (failed) return <PublicLoginPage />;
+  if (!handoffRequired || failed) return <PublicLoginPage />;
   return (
     <LoginBackground>
       <p className="text-center font-mono text-[11px] uppercase tracking-[0.32em] text-muted">

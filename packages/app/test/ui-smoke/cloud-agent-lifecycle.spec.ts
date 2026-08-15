@@ -27,6 +27,7 @@ import { seedStewardSession } from "./helpers/test-auth";
 const AGENT_AUTH_TOKEN = "ui-smoke-cloud-lifecycle-agent-token";
 const STEWARD_AUTH_TOKEN = "ui-smoke-cloud-lifecycle-steward-token";
 const HANDOFF_AUTH_TOKEN = "ui-smoke-cloud-handoff-token";
+const CLOUD_API_BASE = "https://api.eliza.app";
 const KEEP_AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const DROP_AGENT_ID = "22222222-2222-4222-8222-222222222222";
 const NEW_AGENT_ID = "33333333-3333-4333-8333-333333333333";
@@ -56,7 +57,7 @@ type AgentStore = {
 };
 
 function dedicatedAgentApiBase(agentId: string): string {
-  return `https://${agentId}.elizacloud.ai`;
+  return `https://${agentId}.cloud.eliza.app`;
 }
 
 async function fulfillJson(
@@ -92,7 +93,7 @@ async function installCloudOriginFallbacks(
     dedicatedAgentApiBase(KEEP_AGENT_ID),
     dedicatedAgentApiBase(DROP_AGENT_ID),
     dedicatedAgentApiBase(NEW_AGENT_ID),
-    "https://api.elizacloud.ai",
+    CLOUD_API_BASE,
   ]) {
     await page.route(`${origin}/**`, async (route) => {
       const requestUrl = new URL(route.request().url());
@@ -112,7 +113,7 @@ async function installCloudOriginFallbacks(
  * these after the origin adapter so the exact account contracts win.
  */
 async function installConnectedCloudAccount(page: Page): Promise<void> {
-  await page.route("https://api.elizacloud.ai/api/v1/user", async (route) => {
+  await page.route(`${CLOUD_API_BASE}/api/v1/user`, async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -124,7 +125,7 @@ async function installConnectedCloudAccount(page: Page): Promise<void> {
     });
   });
   await page.route(
-    "https://api.elizacloud.ai/api/v1/credits/balance",
+    `${CLOUD_API_BASE}/api/v1/credits/balance`,
     async (route) => {
       if (route.request().method() !== "GET") {
         await route.fallback();
@@ -176,101 +177,95 @@ async function installAgentStoreRoutes(
 ): Promise<void> {
   // Collection: GET = list, POST = create. Match the exact collection paths
   // (no trailing segment) so the per-agent routes below own `/<id>`.
-  await page.route(
-    "https://api.elizacloud.ai/api/v1/eliza/agents",
-    async (route) => {
-      expectStewardAuthorization(route);
-      const method = route.request().method();
-      if (method === "GET") {
-        await fulfillJson(route, 200, {
-          success: true,
-          data: store.agents.map(serializeAgent),
-        });
-        return;
-      }
-      if (method === "POST") {
-        const body =
-          (route.request().postDataJSON() as CreateAgentRequest | null) ?? {};
-        store.createRequests.push(body);
-        const id = store.createdAgentId;
-        const agent: StoreAgent = {
+  await page.route(`${CLOUD_API_BASE}/api/v1/eliza/agents`, async (route) => {
+    expectStewardAuthorization(route);
+    const method = route.request().method();
+    if (method === "GET") {
+      await fulfillJson(route, 200, {
+        success: true,
+        data: store.agents.map(serializeAgent),
+      });
+      return;
+    }
+    if (method === "POST") {
+      const body =
+        (route.request().postDataJSON() as CreateAgentRequest | null) ?? {};
+      store.createRequests.push(body);
+      const id = store.createdAgentId;
+      const agent: StoreAgent = {
+        id,
+        agentName: body.agentName || id,
+        status: "running",
+      };
+      store.agents.push(agent);
+      await fulfillJson(route, 200, {
+        success: true,
+        // The UI's forced-create path requires the server's explicit
+        // fresh-creation confirmation (client-cloud.ts
+        // requireConfirmedFreshCloudAgentCreate rejects
+        // `forceCreate && created !== true`); omit it and createAgent
+        // treats the response as idempotent reuse and never binds.
+        created: true,
+        data: {
           id,
-          agentName: body.agentName || id,
+          agentId: id,
+          agentName: agent.agentName,
+          jobId: "",
           status: "running",
-        };
-        store.agents.push(agent);
-        await fulfillJson(route, 200, {
-          success: true,
-          // The UI's forced-create path requires the server's explicit
-          // fresh-creation confirmation (client-cloud.ts
-          // requireConfirmedFreshCloudAgentCreate rejects
-          // `forceCreate && created !== true`); omit it and createAgent
-          // treats the response as idempotent reuse and never binds.
-          created: true,
-          data: {
-            id,
-            agentId: id,
-            agentName: agent.agentName,
-            jobId: "",
-            status: "running",
-            nodeId: null,
-            message: "Agent created",
-          },
-        });
-        return;
-      }
-      await route.fallback();
-    },
-  );
+          nodeId: null,
+          message: "Agent created",
+        },
+      });
+      return;
+    }
+    await route.fallback();
+  });
 
   // Per-agent: GET = detail, DELETE = remove, POST(.../provision) = ack.
-  await page.route(
-    "https://api.elizacloud.ai/api/v1/eliza/agents/*",
-    async (route) => {
-      expectStewardAuthorization(route);
-      const url = route.request().url();
-      const method = route.request().method();
-      // Sub-resources (…/provision, …/launch, …/pairing-token) just ack.
-      if (!/\/agents\/[^/]+$/.test(new URL(url).pathname)) {
-        await fulfillJson(route, 200, {
-          success: true,
-          data: { jobId: "job-x", status: "completed" },
-        });
+  await page.route(`${CLOUD_API_BASE}/api/v1/eliza/agents/*`, async (route) => {
+    expectStewardAuthorization(route);
+    const url = route.request().url();
+    const method = route.request().method();
+    // Sub-resources (…/provision, …/launch, …/pairing-token) just ack.
+    if (!/\/agents\/[^/]+$/.test(new URL(url).pathname)) {
+      await fulfillJson(route, 200, {
+        success: true,
+        data: { jobId: "job-x", status: "completed" },
+      });
+      return;
+    }
+    const id = lastPathSegment(url);
+    const agent = store.agents.find((a) => a.id === id);
+    if (method === "GET") {
+      if (!agent) {
+        await fulfillJson(route, 404, { success: false, error: "Not found" });
         return;
       }
-      const id = lastPathSegment(url);
-      const agent = store.agents.find((a) => a.id === id);
-      if (method === "GET") {
-        if (!agent) {
-          await fulfillJson(route, 404, { success: false, error: "Not found" });
-          return;
-        }
-        await fulfillJson(route, 200, {
-          success: true,
-          data: serializeAgent(agent),
-        });
-        return;
-      }
-      if (method === "DELETE") {
-        store.agents = store.agents.filter((a) => a.id !== id);
-        // An empty jobId makes this direct CRUD response synchronous, so no
-        // separate job transport can conceal whether the row was removed.
-        await fulfillJson(route, 200, {
-          success: true,
-          data: { jobId: "", status: "deleted", message: "Agent deleted" },
-        });
-        return;
-      }
-      if (method === "POST") {
-        await fulfillJson(route, 200, {
-          success: true,
-          data: { jobId: "job-x", status: "completed", agentId: id },
-        });
-        return;
-      }
-      await route.fallback();
-    },
-  );
+      await fulfillJson(route, 200, {
+        success: true,
+        data: serializeAgent(agent),
+      });
+      return;
+    }
+    if (method === "DELETE") {
+      store.agents = store.agents.filter((a) => a.id !== id);
+      // An empty jobId makes this direct CRUD response synchronous, so no
+      // separate job transport can conceal whether the row was removed.
+      await fulfillJson(route, 200, {
+        success: true,
+        data: { jobId: "", status: "deleted", message: "Agent deleted" },
+      });
+      return;
+    }
+    if (method === "POST") {
+      await fulfillJson(route, 200, {
+        success: true,
+        data: { jobId: "job-x", status: "completed", agentId: id },
+      });
+      return;
+    }
+    await route.fallback();
+  });
 }
 
 async function seedCloudActiveAgent(

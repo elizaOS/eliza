@@ -2,7 +2,7 @@
  * /api/v1/eliza/agents/:agentId
  *
  * GET    — agent detail (with admin slice when caller is org admin).
- * PATCH  — { action: "shutdown" | "suspend" } lifecycle action, OR
+ * PATCH  — { action: "shutdown" | "suspend" | "cancel_deletion" } lifecycle action, OR
  *          { agentName?, agentConfig? } to edit the agent in place (rename /
  *          system-prompt edit). A body without `action` is treated as an edit.
  * DELETE — delete sandbox + cleanup linked character.
@@ -34,7 +34,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 
 const patchAgentSchema = z.object({
-  action: z.enum(["shutdown", "suspend"]),
+  action: z.enum(["shutdown", "suspend", "cancel_deletion"]),
 });
 
 const editAgentSchema = z
@@ -294,6 +294,31 @@ app.patch("/", async (c) => {
     );
     if (!agent) {
       return c.json({ success: false, error: "Agent not found" }, 404);
+    }
+
+    if (parsed.data.action === "cancel_deletion") {
+      const cancelled = await elizaSandboxService.cancelAgentDeletion(
+        agentId,
+        user.organization_id,
+      );
+      if (!cancelled.success) {
+        return c.json(
+          {
+            success: false,
+            error: cancelled.error ?? "Deletion cancellation failed",
+          },
+          cancelled.error === "Agent not found" ? 404 : 409,
+        );
+      }
+      return c.json({
+        success: true,
+        data: {
+          agentId,
+          action: parsed.data.action,
+          status: "running",
+          message: "Queued agent deletion cancelled",
+        },
+      });
     }
 
     if (agent.execution_tier === "shared") {

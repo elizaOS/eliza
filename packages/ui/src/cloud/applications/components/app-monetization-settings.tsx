@@ -376,8 +376,11 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               />
             </div>
             <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-txt">
+              <div className="flex items-center justify-between gap-3">
+                <label
+                  htmlFor="monetization-enabled"
+                  className="text-sm font-medium text-txt text-pretty"
+                >
                   {settings.monetizationEnabled
                     ? t("cloud.monetization.active", {
                         defaultValue: "Monetization Active",
@@ -385,12 +388,14 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                     : t("cloud.monetization.enableTitle", {
                         defaultValue: "Enable Monetization",
                       })}
-                </p>
+                </label>
                 <Switch
                   // The server always allows DISABLING; only ENABLING is
                   // review-gated. So the switch must stay interactive for a
                   // legacy enabled-but-unapproved row — otherwise it's trapped
                   // ON with no way to turn it off.
+                  id="monetization-enabled"
+                  aria-describedby="monetization-enabled-hint"
                   checked={settings.monetizationEnabled}
                   disabled={!reviewApproved && !settings.monetizationEnabled}
                   onCheckedChange={(checked) => {
@@ -400,10 +405,12 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                       toggleMonetization(checked);
                     }
                   }}
-                  className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-neutral-700"
                 />
               </div>
-              <p className="text-xs text-neutral-500 mt-1">
+              <p
+                id="monetization-enabled-hint"
+                className="text-xs text-neutral-500 mt-1 text-pretty"
+              >
                 {settings.monetizationEnabled
                   ? t("cloud.monetization.activeDesc", {
                       defaultValue:

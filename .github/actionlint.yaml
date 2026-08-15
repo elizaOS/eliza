@@ -1,6 +1,12 @@
 # actionlint configuration
 # https://github.com/rhysd/actionlint/blob/main/docs/config.md
 
+self-hosted-runner:
+  labels:
+    - prod-ops
+    - prod-ops-1
+    - prod-ops-2
+
 paths:
   .github/workflows/*.yml:
     ignore:

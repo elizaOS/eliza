@@ -64,6 +64,10 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-app-control")).toBe(true);
     expect(names.has("@elizaos/plugin-notes")).toBe(true);
     expect(names.has("@elizaos/plugin-documents")).toBe(true);
+    // Todos is not part of the lean image dependency closure and its reminder
+    // examples do not create canonical ScheduledTask records. Keep it out of
+    // the default set until both contracts are satisfied.
+    expect(names.has("@elizaos/plugin-todos")).toBe(false);
     expect(names.has("@elizaos/plugin-commands")).toBe(true);
     expect(names.has("@elizaos/plugin-agent-skills")).toBe(true);
     // Calendar tile (viewEveryPlatform) needs scheduling; Google Workspace is

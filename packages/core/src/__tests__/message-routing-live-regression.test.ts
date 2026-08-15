@@ -1109,13 +1109,32 @@ describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
 		expect(routed.plan.candidateActions).toContain("VIEWS");
 	});
 
-	it("suppression is keyed on the answered shape — an unanswered turn still escalates", () => {
+	it("the hijack message no longer produces a candidate on ANY stage-1 shape (#17028)", () => {
+		// The phrase-coverage fix removed the "times"→screen-time overlap at the
+		// source, so even an unanswered turn has nothing to escalate with.
 		const routed = messageHandlerFromFieldResult(
 			stageOneAnswered(""),
 			undefined,
 			{
 				actions: [replyAction, viewsAction],
 				messageText: "whats 17 times 23?",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(false);
+		expect(routed.plan.candidateActions ?? []).toEqual([]);
+	});
+
+	it("suppression is keyed on the answered shape — an unanswered turn still escalates", () => {
+		// A genuine weak capability overlap (settings tag with only directional
+		// operation evidence) keeps the original valve behavior: unanswered
+		// turns escalate, answered simple turns are suppressed elsewhere.
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered(""),
+			undefined,
+			{
+				actions: [replyAction, viewsAction],
+				messageText: "move my settings to the right",
 			},
 		);
 

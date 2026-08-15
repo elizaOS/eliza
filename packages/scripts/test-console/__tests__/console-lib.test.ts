@@ -9,11 +9,13 @@ import { beforeAll, describe, expect, mock, test } from "bun:test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs";
+import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
+import { spawnSync } from "../../lib/spawn-sync-captured.mjs";
 import {
   classifyResult,
   countStatuses,
@@ -21,6 +23,23 @@ import {
 } from "../lib/runner.mjs";
 
 const LABEL = "@elizaos/logger (packages/logger)#test";
+
+async function allocateLoopbackPort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((resolve, reject) => {
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", resolve);
+  });
+  const address = probe.address();
+  if (!address || typeof address === "string") {
+    probe.close();
+    throw new Error("failed to allocate a loopback TCP port");
+  }
+  await new Promise<void>((resolve, reject) => {
+    probe.close((error) => (error ? reject(error) : resolve()));
+  });
+  return address.port;
+}
 
 describe("classifyResult", () => {
   test("FAIL line wins even with exit 0", () => {
@@ -228,12 +247,13 @@ describe("server entrypoint", () => {
       fileURLToPath(new URL("../server.mjs", import.meta.url)),
       linkedServer,
     );
+    const port = await allocateLoopbackPort();
 
     const child = spawn("node", [linkedServer], {
       env: {
         ...process.env,
         ELIZA_TEST_CONSOLE_DIR: path.join(tempDir, "state"),
-        ELIZA_TEST_CONSOLE_PORT: "0",
+        ELIZA_TEST_CONSOLE_PORT: String(port),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -279,6 +299,7 @@ describe("server entrypoint", () => {
         }),
       ]);
       expect(child.exitCode).toBeNull();
+      expect(stdout).toContain(`http://127.0.0.1:${port}`);
     } finally {
       if (startupTimer) clearTimeout(startupTimer);
       if (child.exitCode === null) {
@@ -288,6 +309,29 @@ describe("server entrypoint", () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   }, 10_000);
+
+  test("rejects an invalid configured port through the startup boundary", () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    // " 65431 " is here because a pre-parse trim used to normalize it and the
+    // server started listening on 65431 instead of failing usage.
+    for (const value of ["1e4", " 65431 ", "\t31338"]) {
+      const result = spawnSync("node", [serverPath], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ELIZA_TEST_CONSOLE_PORT: value,
+        },
+      });
+
+      expect(result.status).toBe(2);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(
+        "[TestConsole] ELIZA_TEST_CONSOLE_PORT must be a whole decimal integer from 1 to 65535",
+      );
+      expect(result.stderr).not.toContain("at parseCanonicalInt");
+      expect(result.stderr).not.toContain("Node.js v");
+    }
+  });
 });
 
 describe("route: POST /api/run rejects invalid concurrency before live-lane side effects", () => {

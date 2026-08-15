@@ -1,11 +1,13 @@
 /**
- * Wiring coverage for `PtyService` (the `PTY_SERVICE` registration):
- * start/stop/list/hasSession lifecycle and cwd confinement, driven with an
- * injected fake spawn — no real PTY.
+ * Unit coverage for `PtyService` registration, lifecycle, cwd confinement, and
+ * startup configuration validation. Session behavior uses an injected fake
+ * spawn; configuration cases exercise the real service-start boundary.
  */
 import os from "node:os";
-import { describe, expect, it } from "vitest";
-import { PtyService } from "../services/pty-service";
+import type { ElizaError } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { PtyService, resolveIdleTimeoutMs } from "../services/pty-service";
 import type { PtySpawnSpec } from "../services/pty-types";
 import { makeFakeSpawn } from "./fake-pty";
 
@@ -23,6 +25,16 @@ const spec = (cwd: string): PtySpawnSpec => ({
   cwd,
   kind: "eliza-code",
   label: "eliza-code · fast",
+});
+
+function runtimeWithIdleTimeout(value: string | number | boolean | null) {
+  return createMockRuntime({
+    getSetting: (key) => (key === "PTY_IDLE_TIMEOUT_MS" ? value : null),
+  });
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("PtyService", () => {
@@ -77,5 +89,77 @@ describe("PtyService", () => {
     await svc.stop();
     expect(svc.listSessions()).toHaveLength(0);
     expect(fake.ptys.every((p) => p.killed)).toBe(true);
+  });
+});
+
+describe("PtyService idle-timeout configuration", () => {
+  it("leaves the store on its documented default when neither source is configured", async () => {
+    vi.stubEnv("PTY_IDLE_TIMEOUT_MS", "");
+    expect(resolveIdleTimeoutMs(runtimeWithIdleTimeout(null))).toBeUndefined();
+    const service = await PtyService.start(runtimeWithIdleTimeout(null));
+    await service.stop();
+  });
+
+  it.each([
+    ["0", 0],
+    [0, 0],
+    ["900000", 900_000],
+    [900_000, 900_000],
+    [" 900000 ", 900_000],
+    [2_147_483_647, 2_147_483_647],
+  ] as const)(
+    "resolves supported timeout %j to %i",
+    async (value, expected) => {
+      expect(resolveIdleTimeoutMs(runtimeWithIdleTimeout(value))).toBe(
+        expected,
+      );
+      const service = await PtyService.start(runtimeWithIdleTimeout(value));
+      await service.stop();
+    },
+  );
+
+  it.each([
+    "1.5",
+    1.5,
+    "-1",
+    -1,
+    "2147483648",
+    2_147_483_648,
+    "900000oops",
+    "1e3",
+    true,
+  ])("rejects invalid timeout value %j at service startup", async (value) => {
+    await expect(
+      PtyService.start(runtimeWithIdleTimeout(value)),
+    ).rejects.toMatchObject({
+      code: "PTY_IDLE_TIMEOUT_INVALID",
+      context: {
+        configured: value,
+        maximum: 2_147_483_647,
+        minimum: 0,
+        setting: "PTY_IDLE_TIMEOUT_MS",
+        source: "runtime",
+      },
+      severity: "fatal",
+    } satisfies Partial<ElizaError>);
+  });
+
+  it("validates the environment fallback when the runtime setting is blank", async () => {
+    vi.stubEnv("PTY_IDLE_TIMEOUT_MS", "-1");
+    await expect(
+      PtyService.start(runtimeWithIdleTimeout("")),
+    ).rejects.toMatchObject({
+      code: "PTY_IDLE_TIMEOUT_INVALID",
+      context: { configured: "-1", source: "environment" },
+    } satisfies Partial<ElizaError>);
+  });
+
+  it("prefers a runtime setting over the environment fallback", async () => {
+    vi.stubEnv("PTY_IDLE_TIMEOUT_MS", "-1");
+    expect(resolveIdleTimeoutMs(runtimeWithIdleTimeout(" 900000 "))).toBe(
+      900_000,
+    );
+    const service = await PtyService.start(runtimeWithIdleTimeout(" 900000 "));
+    await service.stop();
   });
 });

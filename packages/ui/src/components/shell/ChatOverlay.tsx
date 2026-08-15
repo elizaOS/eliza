@@ -1170,6 +1170,8 @@ export function ChatOverlay({
   agentName = "Eliza",
   slash: slashProp,
   firstRunOpen = false,
+  releaseFirstRunToHalf = false,
+  onFirstRunReleaseHandled,
 }: {
   controller: ShellController;
   /** Name shown in the composer placeholder ("Ask {agentName}"). Defaults to Eliza. */
@@ -1187,6 +1189,13 @@ export function ChatOverlay({
    * completed — the sheet settles to half, the scrim fades, and home is shown.
    */
   firstRunOpen?: boolean;
+  /**
+   * One-shot completion intent retained by the parent shell when onboarding
+   * completion and a runtime-target remount happen in the same transition.
+   */
+  releaseFirstRunToHalf?: boolean;
+  /** Acknowledges that the retained completion intent reached this overlay. */
+  onFirstRunReleaseHandled?: () => void;
 }): React.JSX.Element {
   const {
     messages,
@@ -3721,8 +3730,16 @@ export function ChatOverlay({
       setMaximized(true);
       return;
     }
-    if (was) goToDetent("half");
-  }, [firstRunOpen, goToDetent]);
+    if (was || releaseFirstRunToHalf) {
+      goToDetent("half");
+      onFirstRunReleaseHandled?.();
+    }
+  }, [
+    firstRunOpen,
+    goToDetent,
+    onFirstRunReleaseHandled,
+    releaseFirstRunToHalf,
+  ]);
 
   // First-run backdrop. While onboarding pins the sheet FULL, a neutral scrim
   // preserves the shell's configured wallpaper while keeping the sign-in copy

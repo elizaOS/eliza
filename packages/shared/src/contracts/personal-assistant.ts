@@ -641,6 +641,15 @@ export interface LifeOpsWebsiteAccessPolicy {
 }
 
 export type LifeOpsCadence =
+  // An explicitly undated item ("no due date", "just a plain todo"): the
+  // definition exists and is reviewable but materializes no occurrences and
+  // never fires. Visibility fields are accepted for union-uniformity and
+  // ignored by the occurrence engine.
+  | {
+      kind: "unscheduled";
+      visibilityLeadMinutes?: number;
+      visibilityLagMinutes?: number;
+    }
   | {
       kind: "once";
       dueAt: string;

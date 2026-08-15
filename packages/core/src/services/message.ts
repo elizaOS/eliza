@@ -82,6 +82,7 @@ import {
 	type CandidateActionBackstopRule,
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
+import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -179,8 +180,15 @@ import type {
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
 import type { RoomHandlerLease } from "../runtime/room-handler-queue";
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
-import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
-import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
+import {
+	actionHasSubActions,
+	runSubPlanner,
+	subPlannerCallDigest,
+} from "../runtime/sub-planner";
+import {
+	buildCanonicalSystemPrompt,
+	buildCharacterStyleDirections,
+} from "../runtime/system-prompt";
 import { resolveTraceCorrelationFromEnv } from "../runtime/trace-correlation";
 import {
 	buildProviderAttributionsFromState,
@@ -872,8 +880,9 @@ function alwaysOnResponseStateProviderNames(runtime: IAgentRuntime): string[] {
  *   - ACTIONS / PROVIDERS / ACTION_STATE: meta-listings — the planner sees
  *     actions as native function tools, so a parallel text block is
  *     duplicative and confusing.
- *   - CHARACTER: already rendered via `staticPrefix.systemPrompt` (which
- *     includes system + bio + role) so the text-block CHARACTER provider
+ *   - CHARACTER: identity is already rendered via `staticPrefix.systemPrompt`
+ *     (system + bio + role) and chat style directions via
+ *     `staticPrefix.characterPrompt`, so the text-block CHARACTER provider
  *     would duplicate the same content.
  * RECENT_MESSAGES stays included because Stage 1 needs full prior dialogue
  * text when no structured `recentMessages` array is available from the
@@ -1387,6 +1396,38 @@ type MediaWithInlineData = Media & {
  */
 const ATTACHMENT_FETCH_MAX_BYTES = 50 * 1024 * 1024;
 
+/** Aggregate bytes admitted to enrichment for one message turn. */
+const ATTACHMENT_TURN_MAX_BYTES = 100 * 1024 * 1024;
+
+type AttachmentByteBudget = { remaining: number };
+
+function attachmentFailure(
+	phase: NonNullable<Media["enrichmentFailure"]>["phase"],
+	code: NonNullable<Media["enrichmentFailure"]>["code"],
+	retryable: boolean,
+	message: string,
+): Pick<Media, "notProcessed" | "enrichmentFailure"> {
+	return {
+		notProcessed: message,
+		enrichmentFailure: { phase, code, retryable },
+	};
+}
+
+function sanitizedAttachmentDiagnostic(
+	code: string,
+	message: string,
+	attachment: Media,
+): ElizaError {
+	return new ElizaError(message, {
+		code,
+		severity: "ephemeral",
+		context: {
+			attachmentId: attachment.id,
+			contentType: attachment.contentType,
+		},
+	});
+}
+
 function sanitizeAttachmentsForStorage(
 	attachments: Media[] | undefined,
 ): Media[] | undefined {
@@ -1848,7 +1889,7 @@ export function preservedSettledToolResult(
 ): (PlannerToolResult & { userFacingText: string }) | undefined {
 	for (let index = settled.length - 1; index >= 0; index--) {
 		const entry = settled[index];
-		if (!entry || entry.result.success !== true) continue;
+		if (entry?.result.success !== true) continue;
 		if (isTerminalPlannerToolName(entry.name)) continue;
 		const candidate = entry.result.userFacingText?.trim();
 		if (!candidate) continue;
@@ -1865,6 +1906,85 @@ export function preservedSettledToolResult(
 		return { ...entry.result, userFacingText: candidate };
 	}
 	return undefined;
+}
+
+export const NO_REPORTABLE_TOOL_OUTCOME_MESSAGE =
+	"I ran that, but it finished without producing a result I can report back.";
+
+const ASYNC_HANDOFF_ACK_MESSAGE = "on it, working on that now.";
+
+function preservedVerifiedFailure(
+	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
+	deliveredVisibleTexts: ReadonlySet<string>,
+): string | undefined {
+	for (let index = settled.length - 1; index >= 0; index--) {
+		const entry = settled[index];
+		if (entry?.result.success !== false) continue;
+		if (entry.result.verifiedUserFacing !== true) continue;
+		if (isTerminalPlannerToolName(entry.name)) continue;
+		const candidate = entry.result.userFacingText?.trim();
+		if (!candidate) continue;
+		if (
+			deliveredTextsCoverReply(
+				deliveredVisibleTexts,
+				normalizeVisibleTextForDuplicateCheck(candidate),
+			)
+		) {
+			continue;
+		}
+		return candidate;
+	}
+	return undefined;
+}
+
+function hasAcceptedAsyncHandoff(result: ActionResult): boolean {
+	if (result.success !== true) return false;
+	return (
+		result.effectReceipts?.some(
+			(receipt) =>
+				receipt.outcome === "applied" &&
+				receipt.commit !== undefined &&
+				receipt.commit.id.trim().length > 0,
+		) === true
+	);
+}
+
+/**
+ * Terminal report for a tool turn whose planner produced no prose. A
+ * pre-tool acknowledgement is retained only when a successful action carries
+ * authoritative acceptance proof that work continues beyond this turn.
+ */
+export function answerlessToolTurnReport(args: {
+	settledToolResults: ReadonlyArray<{
+		name: string;
+		result: PlannerToolResult;
+	}>;
+	deliveredVisibleTexts: ReadonlySet<string>;
+	actionResults: readonly ActionResult[];
+	actions: readonly Action[] | undefined;
+	stageOneAck: string;
+}): string {
+	const successful = preservedSettledToolResult(
+		args.settledToolResults,
+		args.deliveredVisibleTexts,
+	);
+	if (successful) return successful.userFacingText;
+	const failed = preservedVerifiedFailure(
+		args.settledToolResults,
+		args.deliveredVisibleTexts,
+	);
+	if (failed) return failed;
+	if (args.deliveredVisibleTexts.size > 0) return "";
+	const acceptedActionNames = args.actionResults
+		.filter(hasAcceptedAsyncHandoff)
+		.map((result) =>
+			typeof result.data?.actionName === "string" ? result.data.actionName : "",
+		)
+		.filter((name) => name.length > 0);
+	if (candidateActionsIncludeAsyncHandoff(args.actions, acceptedActionNames)) {
+		return args.stageOneAck || ASYNC_HANDOFF_ACK_MESSAGE;
+	}
+	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
 }
 
 /** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
@@ -3309,6 +3429,13 @@ async function createV5MessageContextObject(args: {
 		character: args.runtime.character,
 		userRole: args.userRoles?.[0],
 	});
+	// Chat style directions (style.all + style.chat) render exactly once here,
+	// in the stable prefix. Computed statically from the character — not via the
+	// per-room CHARACTER provider — so the KV-cacheable prefix stays
+	// byte-identical across turns (#17026).
+	const characterStyleDirections = buildCharacterStyleDirections({
+		character: args.runtime.character,
+	});
 	// Stage 2 exposes each Action as its own native tool. Per-action specs live
 	// in `events[type=tool]`; the LLM calls each action directly by name. We
 	// also expose the universal terminal-sentinel tools (REPLY / IGNORE / STOP)
@@ -3342,6 +3469,14 @@ async function createV5MessageContextObject(args: {
 						id: "system",
 						label: "system",
 						content: systemPrompt,
+						stable: true,
+					}
+				: undefined,
+			characterPrompt: characterStyleDirections
+				? {
+						id: "character-style",
+						label: "system",
+						content: characterStyleDirections,
 						stable: true,
 					}
 				: undefined,
@@ -3972,7 +4107,7 @@ direct/private rules:
 - Non-simple contexts/actions are only for tools, live/private state, files/web/shell, side effects, scheduling/memory/settings/secrets/finance/media/device control.
 - UI navigation is device/app control: open/show/switch/go-home requests use contexts=["general"], candidateActionNames=["VIEWS"], and a brief pending ack. Never claim the view opened before VIEWS succeeds.
 - Slash-command questions are conversation: contexts=["general"]; say /commands shows the list; never select VIEWS or ask clarification for "show commands".
-- Sticky Notes and native device controls are also device/app control: note and flashlight reads or mutations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
+- Sticky Notes use contexts=["notes"], candidateActionNames=["NOTES"]. Native device controls such as flashlight operations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
 - Calendar-event reads or mutations use contexts=["calendar"], candidateActionNames=["CALENDAR"]. A timed "add X tomorrow at 9am" request is a calendar event unless the user explicitly asks for a task or reminder.
 - Goals/todos/reminders/habits/routines are non-simple; goals -> tasks + OWNER_GOALS, never work threads.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
@@ -6180,6 +6315,21 @@ async function resolveStage1SenderRole(
 	}
 	try {
 		const result = await checkSenderRole(runtime, message);
+		// The resolved role decides the entire action surface for the turn, and
+		// a silent fall to the floor is indistinguishable from an explicit
+		// non-elevated grant without this line. `result === null` means no world
+		// resolved for the message — the most common cause of an owner probe
+		// landing on the floor.
+		runtime.logger.debug(
+			{
+				src: "service:message",
+				entityId: message.entityId,
+				roomId: message.roomId,
+				worldResolved: result !== null,
+				role: result?.role ?? null,
+			},
+			"Stage 1 sender role resolved",
+		);
 		if (result?.role) {
 			return result.role as RoleGateRole;
 		}
@@ -6378,6 +6528,7 @@ async function executeV5PlannedToolCall(
 			action,
 			actionResult,
 			toolCall.params,
+			args.runtime,
 		),
 	});
 }
@@ -6411,6 +6562,8 @@ function plannerToolCallHasActionParameter(toolCall: PlannerToolCall): boolean {
 interface SubPlannerSubStep {
 	action: string;
 	success: boolean;
+	callDigest: string;
+	retryable: boolean;
 	summary?: string;
 	internalTranscriptText?: string;
 	error?: string;
@@ -6446,6 +6599,8 @@ function collectSubPlannerSubSteps(
 		subSteps.push({
 			action: step.toolCall.name,
 			success: result.success,
+			callDigest: subPlannerCallDigest(step.toolCall),
+			retryable: result.data?.retryable !== false,
 			...(summarySource ? { summary: truncateSubStepText(summarySource) } : {}),
 			...(result.transcriptVisibility === "internal" &&
 			typeof result.text === "string"
@@ -7115,6 +7270,12 @@ export async function runV5MessageRuntimeStage1(args: {
 					warn?: (context: unknown, message?: string) => void;
 				},
 				reportError: args.runtime.reportError.bind(args.runtime),
+				// Final-persistence tool-diagnostic projection: the recorder always
+				// runs the shared tool-shape pattern pass; this adds the runtime's
+				// character-configured secret masking on top. Optional-bound because
+				// lightweight/test runtimes may not implement redactSecrets — the
+				// pattern pass must keep running for them.
+				redactSecrets: args.runtime.redactSecrets?.bind(args.runtime),
 			})
 		: undefined;
 	const trajectoryId = recorder
@@ -8730,12 +8891,9 @@ export async function runV5MessageRuntimeStage1(args: {
 					normalizeVisibleTextForDuplicateCheck(earlyReplyText))
 				? prePatchStageOneReply
 				: "";
-		// The ack fallback is a delivery floor for turns that DID real tool work
-		// (async handoffs and action turns whose result text got lost) — callers
-		// must not render a blank for work that genuinely happened. A turn that
-		// ran NO action must not "fix" its silence into a work-is-underway ack:
-		// no work follows this turn, so the ack would be a lie. Prefer the
-		// preserved stage-0 answer over any ack in every case.
+		// The answerless floor reports an undelivered canonical tool outcome, stays
+		// silent after a callback delivery, retains an ack only for a successfully
+		// accepted async handoff, and otherwise says no result was produced.
 		// A media deliverable delivered through an action's own callback
 		// (GENERATE_MEDIA posts an attachment-only, text:"" callback) IS the turn's
 		// answer. The answerless-final floor must not then resurrect the Stage-1
@@ -8747,7 +8905,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			!plannedText && !earlyReplySent && !suppressesPlannerReply
 				? preservedAnswerFallback ||
 					(ranNonSilentAction && !mediaDeliverableShipped
-						? stageOneAck || "on it, working on that now."
+						? answerlessToolTurnReport({
+								settledToolResults: settledPlannerToolResults,
+								deliveredVisibleTexts,
+								actionResults,
+								actions: args.runtime.actions,
+								stageOneAck,
+							})
 						: "")
 				: preservedAnswerFallback;
 		let effectiveReplyText = plannedText || ackFallback;
@@ -11559,14 +11723,12 @@ export class DefaultMessageService implements IMessageService {
 								}
 							: opts.abortSignal
 								? {
-										// No stream callback but caller provided an abort
-										// signal — install a no-op chunk handler so the
-										// streaming-context plumbing carries the signal
-										// down into `runtime.useModel`. The runtime never
-										// invokes onStreamChunk when no streaming is happening.
-										onStreamChunk: async () => undefined,
+										// Cancellation-only contexts deliberately omit a chunk
+										// consumer. `useModel` treats a present consumer as the
+										// request to use its streaming transport and parser.
 										messageId: responseId,
 										abortSignal: opts.abortSignal,
+										reportError: runtime.reportError.bind(runtime),
 									}
 								: undefined;
 					const processingPromise = runtime.turnControllers.runWith(
@@ -11584,7 +11746,6 @@ export class DefaultMessageService implements IMessageService {
 										}
 									: abortSignal
 										? {
-												onStreamChunk: async () => undefined,
 												messageId: responseId,
 												abortSignal,
 												reportError: runtime.reportError.bind(runtime),
@@ -11983,7 +12144,11 @@ export class DefaultMessageService implements IMessageService {
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a warm failure only
 		// forfeits the overlap; the compose-time caller re-embeds and fails open.
 		const recallWarmText = message.content?.text;
-		if (typeof recallWarmText === "string" && recallWarmText.trim() !== "") {
+		if (
+			typeof recallWarmText === "string" &&
+			recallWarmText.trim() !== "" &&
+			!isCanonicalModelCapabilityDisabled(runtime, ModelType.TEXT_EMBEDDING)
+		) {
 			const recallWarmMessageId =
 				typeof message.id === "string" ? message.id : undefined;
 			const recallWarmTask = embedRecallQuery(runtime, recallWarmText, {
@@ -13274,8 +13439,15 @@ export class DefaultMessageService implements IMessageService {
 			"Processing attachments",
 		);
 
-		const processedAttachments = await Promise.all(
-			attachments.map(async (attachment) => {
+		const processedAttachments: Media[] = [];
+		const byteBudget: AttachmentByteBudget = {
+			remaining: ATTACHMENT_TURN_MAX_BYTES,
+		};
+		// Enrichment is deliberately ordered. In particular, transcription models
+		// are often backed by one local GPU/process; launching an attacker-sized
+		// attachment array concurrently caused memory spikes and provider storms.
+		for (const attachment of attachments) {
+			const processed = await (async () => {
 				const processedAttachment: Media = { ...attachment };
 
 				const isRemote = /^(http|https):\/\//.test(attachment.url);
@@ -13323,6 +13495,8 @@ export class DefaultMessageService implements IMessageService {
 								attachment.url,
 								url,
 								isRemote,
+								byteBudget,
+								attachment.size,
 							);
 							imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 						}
@@ -13369,6 +13543,8 @@ export class DefaultMessageService implements IMessageService {
 							attachment.url,
 							url,
 							isRemote,
+							byteBudget,
+							attachment.size,
 						);
 						// Any text/* document (plain, csv, markdown) and application/json —
 						// all on the chat upload allow-list — is readable as UTF-8 text;
@@ -13419,7 +13595,15 @@ export class DefaultMessageService implements IMessageService {
 								"Extracted PDF text content",
 							);
 						} else {
-							processedAttachment.notProcessed = `Unsupported document type (${contentType}); stored but text not extracted`;
+							Object.assign(
+								processedAttachment,
+								attachmentFailure(
+									"extract",
+									"unsupported_type",
+									false,
+									`Unsupported document type (${contentType}); stored but text not extracted`,
+								),
+							);
 							runtime.logger.warn(
 								{ src: "service:message", contentType },
 								"Skipping unsupported document type",
@@ -13443,6 +13627,8 @@ export class DefaultMessageService implements IMessageService {
 								attachment.url,
 								url,
 								isRemote,
+								byteBudget,
+								attachment.size,
 							);
 
 							const transcript = await runtime.useModel(
@@ -13467,8 +13653,15 @@ export class DefaultMessageService implements IMessageService {
 									"Transcribed audio attachment",
 								);
 							} else {
-								processedAttachment.notProcessed =
-									"Audio transcription returned no text (empty or no speech detected)";
+								Object.assign(
+									processedAttachment,
+									attachmentFailure(
+										"transcribe",
+										"empty_result",
+										false,
+										"Audio transcription returned no text (empty or no speech detected)",
+									),
+								);
 							}
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
@@ -13478,17 +13671,41 @@ export class DefaultMessageService implements IMessageService {
 							// the "transcription unavailable" marker is reserved for genuine
 							// provider failures because the read action treats it as
 							// STT-is-disabled evidence.
-							processedAttachment.notProcessed =
+							Object.assign(
+								processedAttachment,
 								err instanceof Error && err.name === "MediaFetchError"
-									? `Audio attachment could not be fetched: ${err.message}`
-									: `Audio transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
+									? attachmentFailure(
+											err.message.includes("turn byte budget")
+												? "budget"
+												: "fetch",
+											err.message.includes("turn byte budget")
+												? "byte_limit"
+												: "unavailable",
+											true,
+											"Audio attachment could not be fetched for enrichment",
+										)
+									: attachmentFailure(
+											"transcribe",
+											"unavailable",
+											true,
+											"Audio transcription unavailable",
+										),
+							);
 							runtime.logger.warn(
-								{ src: "service:message", err },
+								{
+									src: "service:message",
+									errorName: err instanceof Error ? err.name : "UnknownError",
+								},
 								"Audio transcription failed, continuing without transcript",
 							);
-							runtime.reportError("MessageService.audioTranscription", err, {
-								url: attachment.url,
-							});
+							runtime.reportError(
+								"MessageService.audioTranscription",
+								sanitizedAttachmentDiagnostic(
+									"ATTACHMENT_AUDIO_TRANSCRIPTION_FAILED",
+									"Audio attachment enrichment failed",
+									attachment,
+								),
+							);
 						}
 					} else if (
 						attachment.contentType === ContentType.VIDEO &&
@@ -13508,6 +13725,8 @@ export class DefaultMessageService implements IMessageService {
 								attachment.url,
 								url,
 								isRemote,
+								byteBudget,
+								attachment.size,
 							);
 
 							const transcript = await runtime.useModel(
@@ -13532,8 +13751,15 @@ export class DefaultMessageService implements IMessageService {
 									"Transcribed video attachment",
 								);
 							} else {
-								processedAttachment.notProcessed =
-									"Video transcription returned no text (empty or no speech detected)";
+								Object.assign(
+									processedAttachment,
+									attachmentFailure(
+										"transcribe",
+										"empty_result",
+										false,
+										"Video transcription returned no text (empty or no speech detected)",
+									),
+								);
 							}
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
@@ -13543,17 +13769,41 @@ export class DefaultMessageService implements IMessageService {
 							// the "transcription unavailable" marker is reserved for genuine
 							// provider failures because the read action treats it as
 							// STT-is-disabled evidence.
-							processedAttachment.notProcessed =
+							Object.assign(
+								processedAttachment,
 								err instanceof Error && err.name === "MediaFetchError"
-									? `Video attachment could not be fetched: ${err.message}`
-									: `Video transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
+									? attachmentFailure(
+											err.message.includes("turn byte budget")
+												? "budget"
+												: "fetch",
+											err.message.includes("turn byte budget")
+												? "byte_limit"
+												: "unavailable",
+											true,
+											"Video attachment could not be fetched for enrichment",
+										)
+									: attachmentFailure(
+											"transcribe",
+											"unavailable",
+											true,
+											"Video transcription unavailable",
+										),
+							);
 							runtime.logger.warn(
-								{ src: "service:message", err },
+								{
+									src: "service:message",
+									errorName: err instanceof Error ? err.name : "UnknownError",
+								},
 								"Video transcription failed, continuing without transcript",
 							);
-							runtime.reportError("MessageService.videoTranscription", err, {
-								url: attachment.url,
-							});
+							runtime.reportError(
+								"MessageService.videoTranscription",
+								sanitizedAttachmentDiagnostic(
+									"ATTACHMENT_VIDEO_TRANSCRIPTION_FAILED",
+									"Video attachment enrichment failed",
+									attachment,
+								),
+							);
 						}
 					}
 
@@ -13565,19 +13815,35 @@ export class DefaultMessageService implements IMessageService {
 					// Degrade to the un-enriched attachment (marking remote ones
 					// ephemeral so the UI can offer a retry) and keep processing.
 					runtime.logger.warn(
-						{ src: "service:message", url: attachment.url, err },
+						{
+							src: "service:message",
+							attachmentId: attachment.id,
+							errorName: err instanceof Error ? err.name : "UnknownError",
+						},
 						"Attachment processing failed; keeping un-enriched attachment",
 					);
-					runtime.reportError("MessageService.attachmentEnrichment", err, {
-						url: attachment.url,
-					});
+					runtime.reportError(
+						"MessageService.attachmentEnrichment",
+						sanitizedAttachmentDiagnostic(
+							"ATTACHMENT_ENRICHMENT_FAILED",
+							"Attachment enrichment failed",
+							attachment,
+						),
+					);
 					return {
 						...attachment,
+						...attachmentFailure(
+							"extract",
+							"unavailable",
+							true,
+							"Attachment enrichment unavailable",
+						),
 						ephemeral: isRemote ? true : attachment.ephemeral,
 					};
 				}
-			}),
-		);
+			})();
+			processedAttachments.push(processed);
+		}
 
 		return processedAttachments;
 	}
@@ -13601,12 +13867,34 @@ export class DefaultMessageService implements IMessageService {
 		rawUrl: string,
 		resolvedLocalUrl: string,
 		isRemote: boolean,
+		budget: AttachmentByteBudget,
+		expectedBytes?: number,
 	): Promise<{ buffer: Buffer; contentType: string }> {
+		if (budget.remaining <= 0) {
+			throw new MediaFetchError(
+				"max_bytes",
+				"Attachment turn byte budget exhausted",
+			);
+		}
+		const maxBytes = Math.min(ATTACHMENT_FETCH_MAX_BYTES, budget.remaining);
+		if (
+			typeof expectedBytes === "number" &&
+			Number.isFinite(expectedBytes) &&
+			expectedBytes > maxBytes
+		) {
+			throw new MediaFetchError(
+				"max_bytes",
+				expectedBytes > budget.remaining
+					? "Attachment exceeds turn byte budget"
+					: `Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
+			);
+		}
 		if (isRemote) {
 			const { buffer, contentType } = await fetchRemoteMedia({
 				url: rawUrl,
-				maxBytes: ATTACHMENT_FETCH_MAX_BYTES,
+				maxBytes,
 			});
+			budget.remaining -= Math.max(buffer.byteLength, expectedBytes ?? 0);
 			return {
 				buffer,
 				contentType: contentType ?? "application/octet-stream",
@@ -13627,21 +13915,18 @@ export class DefaultMessageService implements IMessageService {
 			// Reject on the declared size before reading; the streamed read below
 			// cancels at the cap when the header is absent or lying.
 			const declaredLength = Number(res.headers.get("content-length"));
-			if (
-				Number.isFinite(declaredLength) &&
-				declaredLength > ATTACHMENT_FETCH_MAX_BYTES
-			) {
+			if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
 				throw new MediaFetchError(
 					"max_bytes",
-					`Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
+					declaredLength > budget.remaining
+						? "Attachment exceeds turn byte budget"
+						: `Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
 				);
 			}
 			const contentType =
 				res.headers.get("content-type") || "application/octet-stream";
-			const buffer = await readResponseWithLimit(
-				res,
-				ATTACHMENT_FETCH_MAX_BYTES,
-			);
+			const buffer = await readResponseWithLimit(res, maxBytes);
+			budget.remaining -= Math.max(buffer.byteLength, expectedBytes ?? 0);
 			return { buffer, contentType };
 		} catch (err) {
 			// error-policy:J2 typed transient-class rethrow covering the whole

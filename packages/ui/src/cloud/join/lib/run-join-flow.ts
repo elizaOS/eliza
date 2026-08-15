@@ -1,18 +1,9 @@
 /**
- * The join flow's core controller — pure(ish) async logic, decoupled from React
- * so it is unit-testable.
+ * Opens the account-native personal Eliza after Steward authentication.
  *
- * Flow: after Steward login the backend has already created the account. The
- * join flow:
- *
- *   1. resolve the account-native personal Eliza identity from the Cloud API;
- *      this is a rowless service and never creates an agent sandbox.
- *   2. point the live client at its REST adapter and persist the
- *      `cloud:<agentId>` active server so the next boot reconnects to it;
- *   3. mark first-run complete so the app lands in chat, not setup.
- *
- * The caller (JoinPage) then navigates to `/` — the tab/view app, where chat is
- * home. No signup, sign-in, or join action starts paid compute.
+ * The identity is a rowless Shared service, so this controller only resolves
+ * and persists its connection. It never provisions an agent or starts paid
+ * compute. The caller owns cancellation and the final navigation into chat.
  */
 
 /** The slice of `ElizaClient` the join flow drives. */
@@ -20,8 +11,11 @@ export interface JoinFlowClient {
   getPersonalSharedEliza(options: {
     cloudApiBase: string;
     authToken: string;
+    signal?: AbortSignal;
   }): Promise<{
+    personalElizaId: string;
     agentId: string;
+    activeAgentId: string;
     agentName: string;
     apiBase: string;
     runtime: "shared" | "dedicated";
@@ -38,6 +32,8 @@ export interface JoinFlowEffects {
     label: string;
     apiBase?: string;
     accessToken?: string;
+    cloudRuntimeAgentId?: string;
+    cloudRuntime?: "shared" | "dedicated";
   }): void;
   savePersistedFirstRunComplete(complete: boolean): void;
 }
@@ -48,55 +44,61 @@ export interface RunJoinFlowArgs {
   cloudApiBase: string;
   authToken: string;
   onProgress?: (status: string, detail?: string) => void;
+  signal?: AbortSignal;
 }
 
 export interface JoinFlowResult {
+  personalElizaId: string;
   agentId: string;
+  activeAgentId: string;
   agentName: string;
-  /** The base the live client + persisted active server were pointed at. */
   apiBase: string;
   runtime: "shared" | "dedicated";
 }
 
-/**
- * Run the full join flow. Returns the resolved connection so the caller can land
- * the user in chat. Throws when identity resolution fails; the caller surfaces
- * the error and offers retry without creating compute as a fallback.
- */
+/** Resolve and persist the signed-in account's rowless personal Eliza. */
 export async function runJoinFlow(
   args: RunJoinFlowArgs,
 ): Promise<JoinFlowResult> {
-  const { client, effects, cloudApiBase, authToken, onProgress } = args;
+  const { client, effects, cloudApiBase, authToken, onProgress, signal } = args;
+  signal?.throwIfAborted();
   onProgress?.("connecting", "Opening your personal Eliza…");
+
   const selected = await client.getPersonalSharedEliza({
     cloudApiBase,
     authToken,
+    ...(signal ? { signal } : {}),
   });
+  signal?.throwIfAborted();
 
-  if (!selected.agentId) {
-    throw new Error("Cloud did not return an agent to connect to.");
+  if (
+    !selected.personalElizaId ||
+    selected.agentId !== selected.personalElizaId ||
+    !selected.activeAgentId
+  ) {
+    throw new Error("Cloud did not return a personal Eliza to connect to.");
   }
 
-  const connectionBase = selected.apiBase;
-
-  client.setBaseUrl(connectionBase);
+  client.setBaseUrl(selected.apiBase);
   client.setToken(authToken);
 
   effects.savePersistedActiveServer({
     id: `cloud:${selected.agentId}`,
     kind: "cloud",
     label: selected.agentName || "Eliza",
-    apiBase: connectionBase,
+    apiBase: selected.apiBase,
     accessToken: authToken,
+    cloudRuntimeAgentId: selected.activeAgentId,
+    cloudRuntime: selected.runtime,
   });
-  // The account and personal Shared identity already exist; completing first
-  // run only changes navigation and never starts a container.
   effects.savePersistedFirstRunComplete(true);
 
   return {
+    personalElizaId: selected.personalElizaId,
     agentId: selected.agentId,
+    activeAgentId: selected.activeAgentId,
     agentName: selected.agentName || "Eliza",
-    apiBase: connectionBase,
+    apiBase: selected.apiBase,
     runtime: selected.runtime,
   };
 }

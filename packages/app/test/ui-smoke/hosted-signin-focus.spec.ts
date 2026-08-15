@@ -78,7 +78,7 @@ for (const viewport of VIEWPORTS) {
 
     await page.goto("/login");
     await expect(
-      page.getByRole("heading", { name: "Sign in to Eliza Cloud" }),
+      page.getByRole("heading", { name: "Sign in to Eliza" }),
     ).toBeVisible();
 
     const targets = [

@@ -7,7 +7,13 @@
 // relationships surface isn't hosted on this runtime) IS the designed empty
 // state, so it stays on the empty copy.
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client-types-core";
 import { __resetResourceCache } from "../../hooks/resource-cache";
@@ -104,7 +110,10 @@ describe("MemoryViewerView people sidebar three-state rendering", () => {
       expect(screen.getByTestId("memory-people-error")).not.toBeNull(),
     );
     expect(screen.getByTestId("memory-people-error").textContent).toContain(
-      "Could not load people.",
+      "Unable to load people.",
+    );
+    expect(screen.getByRole("button", { name: "Retry" }).textContent).toContain(
+      "Retry",
     );
     expect(screen.queryByText("No people yet.")).toBeNull();
   });
@@ -165,6 +174,7 @@ describe("MemoryViewerView people sidebar three-state rendering", () => {
 
     render(<MemoryViewerView />);
 
+    fireEvent.click(await screen.findByTestId("memory-person-picker-trigger"));
     await waitFor(() =>
       expect(screen.getByText("Ada Lovelace")).not.toBeNull(),
     );

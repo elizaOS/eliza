@@ -69,6 +69,7 @@ import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
 import { writeAgentBackupJsonResponse } from "./backup-json-response.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
+import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` load lazily: X402 only
@@ -1258,8 +1259,18 @@ const resolvePluginConfigMutationRejections =
 // Route handler
 // ---------------------------------------------------------------------------
 
+export interface RuntimeRestartOptions {
+  /**
+   * The active adapter has already been closed to replace its on-disk data.
+   * The host must fully dispose that runtime before opening the replacement.
+   */
+  disposeCurrentBeforeBuild?: boolean;
+}
+
 interface RequestContext {
-  onRestart: (() => Promise<AgentRuntime | null>) | null;
+  onRestart:
+    | ((options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>)
+    | null;
   onRuntimeSwapped?: () => void;
   onRuntimeActivated?: (
     previousRuntime: AgentRuntime | null,
@@ -1593,7 +1604,10 @@ async function handleRequest(
     });
   };
 
-  const restartRuntime = async (reason: string): Promise<boolean> => {
+  const restartRuntime = async (
+    reason: string,
+    options?: RuntimeRestartOptions,
+  ): Promise<boolean> => {
     if (!ctx?.onRestart) {
       return false;
     }
@@ -1609,9 +1623,20 @@ async function handleRequest(
 
     try {
       const previousRuntime = state.runtime;
-      const newRuntime = await ctx.onRestart();
+      const newRuntime = await ctx.onRestart(options);
       if (!newRuntime) {
-        state.agentState = previousState;
+        state.agentState = options?.disposeCurrentBeforeBuild
+          ? "error"
+          : previousState;
+        if (options?.disposeCurrentBeforeBuild) {
+          state.startup = {
+            ...state.startup,
+            phase: "error",
+            lastError:
+              "Runtime replacement failed after the current runtime was disposed",
+            lastErrorAt: Date.now(),
+          };
+        }
         state.broadcastStatus?.();
         return false;
       }
@@ -1643,7 +1668,18 @@ async function handleRequest(
       logger.warn(
         `[eliza-api] Runtime reload failed: ${err instanceof Error ? err.message : String(err)}`,
       );
-      state.agentState = previousState;
+      state.agentState = options?.disposeCurrentBeforeBuild
+        ? "error"
+        : previousState;
+      if (options?.disposeCurrentBeforeBuild) {
+        state.startup = {
+          ...state.startup,
+          phase: "error",
+          lastError:
+            "Runtime replacement failed after the current runtime was disposed",
+          lastErrorAt: Date.now(),
+        };
+      }
       state.broadcastStatus?.();
       return false;
     }
@@ -1883,7 +1919,15 @@ async function handleRequest(
     }
     try {
       const result = await restoreAgentSnapshot(state.runtime, body);
-      json(res, result);
+      const restarted = await restartRuntime("agent backup restored", {
+        disposeCurrentBeforeBuild: true,
+      });
+      if (!restarted) {
+        throw new Error(
+          "Backup restored, but the runtime could not restart on the restored database",
+        );
+      }
+      json(res, { ...result, requiresRestart: false });
     } catch (err) {
       logger.error(
         {
@@ -2752,10 +2796,6 @@ async function handleRequest(
       redactConfigSecrets,
       isBlockedObjectKey,
       cloneWithoutBlockedObjectKeys,
-      // Disconnect cascade is event-driven: connector-routes
-      // emits `connector_disconnected` and WorkflowCredentialStore subscribes
-      // to invalidate its own cache. No direct service lookup needed here.
-      onConnectorDisconnect: async () => {},
     })
   ) {
     return;
@@ -3151,6 +3191,12 @@ async function handleRequest(
   }
 
   // ── View routes (/api/views/*) ────────────────────────────────────────────
+  const viewsCallerAuthorization = resolveInboxRequestAuthorization(
+    req,
+    method,
+    pathname,
+    await resolveHostSessionAuthorization(),
+  );
   if (
     await handleViewsRoutes({
       req,
@@ -3163,6 +3209,7 @@ async function handleRequest(
       broadcastWs: state.broadcastWs ?? undefined,
       broadcastWsToClientId: state.broadcastWsToClientId ?? undefined,
       runtime: state.runtime,
+      callerAuthorization: viewsCallerAuthorization,
     })
   ) {
     return;
@@ -3452,7 +3499,7 @@ export async function startApiServer(opts?: {
    * Should stop the current runtime, create a new one, and return it.
    * If omitted the endpoint returns 501 (not supported in this mode).
    */
-  onRestart?: () => Promise<AgentRuntime | null>;
+  onRestart?: (options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>;
   /** Runs after the server atomically publishes the replacement runtime. */
   onRuntimeActivated?: (
     previousRuntime: AgentRuntime | null,
@@ -3504,6 +3551,12 @@ export async function startApiServer(opts?: {
       : resolveServerOnlyPort(process.env));
   const host = resolveApiBindHost(process.env);
   ensureApiTokenForBindHost(host);
+  // Resolve owner configuration before any HTTP server is created or bound.
+  // The monitor itself starts later, but its deferred catch must never turn a
+  // malformed interval into a healthy-looking default.
+  const connectorHealthIntervalMs = resolveConnectorHealthIntervalMs(
+    process.env.CONNECTOR_HEALTH_INTERVAL_MS,
+  );
   logger.debug(`[eliza-api] Token check done (${Date.now() - apiStartTime}ms)`);
 
   let config: ElizaConfig;
@@ -3901,6 +3954,7 @@ export async function startApiServer(opts?: {
           runtime: state.runtime,
           config: state.config,
           broadcastWs,
+          intervalMs: connectorHealthIntervalMs,
         });
         state.connectorHealthMonitor.start();
       } catch (err) {

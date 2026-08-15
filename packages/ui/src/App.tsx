@@ -26,6 +26,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -161,6 +162,10 @@ import {
   titleForTab,
 } from "./navigation";
 import { applyLaunchConnection } from "./platform";
+import {
+  type AppShellMode,
+  resolveAppShellMode,
+} from "./platform/app-shell-mode";
 import { isIOS, isNative } from "./platform/init";
 import { RetainedLazyComponent } from "./retained-lazy";
 import {
@@ -228,10 +233,7 @@ import {
   resolveBuiltinRoutedViewManifest,
   resolveBuiltinTabId,
 } from "./builtin-tab-registry";
-import {
-  isManagedCloudRuntime,
-  managedCloudPageOwnsStartupFailure,
-} from "./cloud/managed-cloud-runtime";
+import { isManagedCloudRuntime } from "./cloud/managed-cloud-runtime";
 // DesktopTabBar stays static: it is already pulled
 // eagerly elsewhere in the app graph (plugin-loader / boot-config), so a
 // lazy() boundary here would only fold back into main. The remaining page
@@ -280,41 +282,22 @@ function useIsPopout(): boolean {
  * read from the URL (`?shellMode=` / `?shell-mode=`) or the
  * `ELIZAOS_SHELL_MODE` global the native shell may inject. Unset = full app.
  */
-type ShellMode =
-  | "chat-overlay"
-  | "tray-popover"
-  | "voice-selftest"
-  | "voice-workbench"
-  | "launcher"
-  | "kiosk"
-  | "full";
-
 declare global {
   interface Window {
     ELIZAOS_SHELL_MODE?: string;
   }
 }
 
-function readShellMode(): ShellMode {
+function readShellMode(): AppShellMode {
   if (typeof window === "undefined") return "full";
-  const params = new URLSearchParams(
-    window.location.search || window.location.hash.split("?")[1] || "",
+  return resolveAppShellMode(
+    window.location.search,
+    window.location.hash,
+    window.ELIZAOS_SHELL_MODE,
   );
-  const raw =
-    params.get("shellMode") ??
-    params.get("shell-mode") ??
-    window.ELIZAOS_SHELL_MODE ??
-    "";
-  if (raw === "chat-overlay") return "chat-overlay";
-  if (raw === "tray-popover") return "tray-popover";
-  if (raw === "voice-selftest") return "voice-selftest";
-  if (raw === "voice-workbench") return "voice-workbench";
-  if (raw === "launcher") return "launcher";
-  if (raw === "kiosk") return "kiosk";
-  return "full";
 }
 
-function useShellMode(): ShellMode {
+function useShellMode(): AppShellMode {
   const [mode] = useState(readShellMode);
   return mode;
 }
@@ -1844,7 +1827,13 @@ function ShellFoundationMount() {
  * including the /chat route's ambient home. Returns null until a controller
  * provider is present.
  */
-function ChatOverlayMount(): ReactNode {
+function ChatOverlayMount({
+  releaseFirstRunToHalf,
+  onFirstRunReleaseHandled,
+}: {
+  releaseFirstRunToHalf: boolean;
+  onFirstRunReleaseHandled: () => void;
+}): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
     useAppSelectorShallow((s) => ({
@@ -1873,6 +1862,8 @@ function ChatOverlayMount(): ReactNode {
       agentName={agentName}
       slash={slash}
       firstRunOpen={firstRunComplete === false}
+      releaseFirstRunToHalf={releaseFirstRunToHalf}
+      onFirstRunReleaseHandled={onFirstRunReleaseHandled}
     />
   );
 }
@@ -2013,6 +2004,20 @@ function AppContent() {
     startupCoordinator.phase,
     firstRunCloudProvisionedContainer,
   );
+  // Runtime-target adoption can remount the shell on the exact render where
+  // first-run completes. Retain that completion edge above the remount and let
+  // the next ChatOverlay acknowledge it after applying the HALF detent.
+  const firstRunWasIncompleteRef = useRef(firstRunComplete === false);
+  const firstRunReleasePendingRef = useRef(false);
+  if (firstRunComplete === false) {
+    firstRunWasIncompleteRef.current = true;
+  } else if (firstRunComplete === true && firstRunWasIncompleteRef.current) {
+    firstRunWasIncompleteRef.current = false;
+    firstRunReleasePendingRef.current = true;
+  }
+  const handleFirstRunReleaseHandled = useCallback(() => {
+    firstRunReleasePendingRef.current = false;
+  }, []);
 
   useEffect(() => {
     if (!isShellPaintableNow) return;
@@ -2099,6 +2104,40 @@ function AppContent() {
       (isAgentlessCloudOrigin &&
         firstRunOwnsLoginSurface(startupCoordinator.phase, firstRunComplete)),
   });
+  // The first-run chat must survive its completion edge. Completion starts an
+  // auth probe, but replacing the already-painted shell with StartupScreen
+  // remounts ChatOverlay and loses its FULL -> HALF transition state. Remember
+  // only a shell painted while first-run owned the login surface, and forget
+  // it as soon as that probe resolves so a later credential refetch still
+  // returns to the startup/auth boundary instead of exposing the shell.
+  const onboardingShellMountedRef = useRef(false);
+  const firstRunOwnsAuthSurface = firstRunOwnsLoginSurface(
+    startupCoordinator.phase,
+    firstRunComplete,
+  );
+  // Record during render as well as in the settle effect below: stored-session
+  // adoption can complete onboarding in the same commit that first paints the
+  // shell, and the completion-edge probe must already see the shell as mounted
+  // on that render — the effect alone would run one commit too late.
+  if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
+    onboardingShellMountedRef.current = true;
+  }
+  useEffect(() => {
+    if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
+      onboardingShellMountedRef.current = true;
+    } else if (authState.phase !== "loading") {
+      onboardingShellMountedRef.current = false;
+    }
+  }, [
+    authState.phase,
+    bootstrapGateHolds,
+    firstRunOwnsAuthSurface,
+    isShellPaintableNow,
+  ]);
+  const preserveMountedOnboardingShell =
+    onboardingShellMountedRef.current &&
+    firstRunComplete === true &&
+    authState.phase === "loading";
   // #15132: after a dedicated cloud agent's container upgrade the persisted
   // agent credential is stale (every agent-subdomain call 401s) while the cloud
   // session is still valid. Rather than dead-end at the agent's internal
@@ -2272,10 +2311,6 @@ function AppContent() {
   const { views: availableViewsForDesktopTabs } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
   const navigationPath = useCurrentNavigationPath();
-  const cloudManagementOwnsStartupFailure = managedCloudPageOwnsStartupFailure(
-    navigationPath,
-    startupCoordinator.target,
-  );
   const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
     tab,
     navigationPath,
@@ -2668,10 +2703,7 @@ function AppContent() {
     );
   }
 
-  if (
-    (!isShellPaintableNow || bootstrapGateHolds) &&
-    !cloudManagementOwnsStartupFailure
-  ) {
+  if (!isShellPaintableNow || bootstrapGateHolds) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupScreen />
@@ -2702,6 +2734,7 @@ function AppContent() {
         startupCoordinator.phase,
         firstRunComplete,
         authState.phase,
+        preserveMountedOnboardingShell,
       )
     ) {
       return (
@@ -2964,7 +2997,10 @@ function AppContent() {
           is pointer-events-none except its own composer/messages, so the view
           behind stays live.
         */}
-        <ChatOverlayMount />
+        <ChatOverlayMount
+          releaseFirstRunToHalf={firstRunReleasePendingRef.current}
+          onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
+        />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
             transcript the overlay renders and routes first-run picks to the

@@ -667,6 +667,7 @@ app.post("/", async (c) => {
                   id: claimed.id,
                   agentName: claimed.agent_name,
                   status: "provisioning",
+                  createdAt: claimed.created_at,
                   executionTier: claimed.execution_tier,
                 },
               },
@@ -683,6 +684,7 @@ app.post("/", async (c) => {
                 status: "running",
                 bridgeUrl: claimed.bridge_url,
                 healthUrl: claimed.health_url,
+                createdAt: claimed.created_at,
                 executionTier: claimed.execution_tier,
               },
             },
@@ -827,6 +829,7 @@ app.post("/", async (c) => {
           status: job.status,
           jobId: job.id,
           estimatedCompletionAt: job.estimated_completion_at,
+          createdAt: agent.created_at,
           executionTier: agent.execution_tier,
         },
         polling: {

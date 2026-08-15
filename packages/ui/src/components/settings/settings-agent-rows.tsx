@@ -16,7 +16,14 @@ import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { Button, type ButtonProps } from "../ui/button";
-import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectValue,
+} from "../ui/select";
 import {
   SettingsInput,
   type SettingsInputVariant,
@@ -48,6 +55,8 @@ export interface SettingsSwitchRowProps {
   /** Override the agent-surface status token (defaults to on/off). */
   agentStatus?: string;
   className?: string;
+  /** Stable test hook on the switch control. */
+  testId?: string;
 }
 
 export function SettingsSwitchRow({
@@ -63,6 +72,7 @@ export function SettingsSwitchRow({
   group = "settings",
   agentStatus,
   className,
+  testId,
 }: SettingsSwitchRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
@@ -75,6 +85,8 @@ export function SettingsSwitchRow({
     getValue: () => checked,
     onActivate: disabled ? undefined : () => onCheckedChange(!checked),
   });
+  const { "aria-label": _ignoredSwitchAccessibleName, ...switchAgentProps } =
+    agentProps;
 
   return (
     <SettingsRow
@@ -91,9 +103,8 @@ export function SettingsSwitchRow({
           checked={checked}
           onCheckedChange={onCheckedChange}
           disabled={disabled}
-          {...agentProps}
-          aria-label={resolvedLabel}
-          aria-checked={checked}
+          data-testid={testId}
+          {...switchAgentProps}
         />
       }
     />
@@ -103,6 +114,14 @@ export function SettingsSwitchRow({
 export interface SettingsSelectRowOption {
   value: string;
   label: React.ReactNode;
+  hint?: string;
+  /** Plain-text typeahead value. Defaults to a string label; omitted for JSX. */
+  textValue?: string;
+}
+
+export interface SettingsSelectRowGroup {
+  label: string;
+  items: SettingsSelectRowOption[];
 }
 
 export interface SettingsSelectRowProps {
@@ -114,11 +133,46 @@ export interface SettingsSelectRowProps {
   iconClassName?: string;
   value: string;
   onValueChange: (value: string) => void;
-  options: SettingsSelectRowOption[];
+  options?: SettingsSelectRowOption[];
+  groups?: SettingsSelectRowGroup[];
   placeholder?: string;
   disabled?: boolean;
   group?: string;
   triggerClassName?: string;
+  contentClassName?: string;
+  /** Trailing control kept with the select (preview, merge, etc.). */
+  trailing?: React.ReactNode;
+  /** Stack the trailing control under the select until `sm`. */
+  trailingStackUntilSm?: boolean;
+  testId?: string;
+}
+
+function flattenSelectOptions(
+  options: SettingsSelectRowOption[] | undefined,
+  groups: SettingsSelectRowGroup[] | undefined,
+): SettingsSelectRowOption[] {
+  if (groups && groups.length > 0) {
+    return groups.flatMap((group) => group.items);
+  }
+  return options ?? [];
+}
+
+function renderSelectOption(option: SettingsSelectRowOption) {
+  const textValue =
+    option.textValue ??
+    (typeof option.label === "string" ? option.label : undefined);
+  return (
+    <SelectItem key={option.value} value={option.value} textValue={textValue}>
+      {option.hint ? (
+        <div className="flex w-full items-center justify-between gap-2">
+          <span className="font-semibold">{option.label}</span>
+          <span className="text-muted text-xs">{option.hint}</span>
+        </div>
+      ) : (
+        option.label
+      )}
+    </SelectItem>
+  );
 }
 
 export function SettingsSelectRow({
@@ -131,12 +185,18 @@ export function SettingsSelectRow({
   value,
   onValueChange,
   options,
+  groups,
   placeholder,
   disabled = false,
   group = "settings",
   triggerClassName,
+  contentClassName,
+  trailing,
+  trailingStackUntilSm = false,
+  testId,
 }: SettingsSelectRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
+  const flattened = flattenSelectOptions(options, groups);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: agentId,
     role: "select",
@@ -144,10 +204,39 @@ export function SettingsSelectRow({
     group,
     description: typeof description === "string" ? description : undefined,
     status: value || undefined,
-    options: options.map((option) => option.value),
+    options: flattened.map((option) => option.value),
     getValue: () => value,
     onFill: disabled ? undefined : (next: string) => onValueChange(next),
   });
+  const { "aria-label": _ignoredSelectAccessibleName, ...selectAgentProps } =
+    agentProps;
+
+  const select = (
+    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+      <SettingsSelectTrigger
+        ref={ref}
+        id={agentId}
+        variant="touch"
+        className={cn(trailing && "min-w-0 flex-1", triggerClassName)}
+        data-testid={testId}
+        {...selectAgentProps}
+      >
+        <SelectValue placeholder={placeholder} />
+      </SettingsSelectTrigger>
+      <SelectContent className={contentClassName}>
+        {groups && groups.length > 0
+          ? groups.map((optionGroup) => (
+              <SelectGroup key={optionGroup.label}>
+                <SelectLabel className="px-2.5 py-1 text-2xs font-semibold text-muted">
+                  {optionGroup.label}
+                </SelectLabel>
+                {optionGroup.items.map(renderSelectOption)}
+              </SelectGroup>
+            ))
+          : flattened.map(renderSelectOption)}
+      </SelectContent>
+    </Select>
+  );
 
   return (
     <SettingsRow
@@ -155,26 +244,23 @@ export function SettingsSelectRow({
       iconClassName={iconClassName}
       label={label}
       description={description}
+      htmlFor={agentId}
       stacked
     >
-      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
-        <SettingsSelectTrigger
-          ref={ref}
-          variant="touch"
-          className={triggerClassName}
-          aria-label={resolvedLabel}
-          {...agentProps}
+      {trailing ? (
+        <div
+          className={
+            trailingStackUntilSm
+              ? "grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
+              : "flex items-center gap-2"
+          }
         >
-          <SelectValue placeholder={placeholder} />
-        </SettingsSelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+          {select}
+          {trailing}
+        </div>
+      ) : (
+        select
+      )}
     </SettingsRow>
   );
 }
@@ -280,6 +366,7 @@ export interface SettingsInputRowProps {
   agentId: string;
   label: React.ReactNode;
   agentLabel?: string;
+  /** Field help rendered under the input, not under the label. */
   description?: React.ReactNode;
   icon?: LucideIcon;
   iconClassName?: string;
@@ -292,6 +379,12 @@ export interface SettingsInputRowProps {
   variant?: SettingsInputVariant;
   disabled?: boolean;
   group?: string;
+  /** Marks the field invalid for assistive tech and danger styling. */
+  invalid?: boolean;
+  /** Validation error announced below the field. Implies invalid. */
+  error?: React.ReactNode;
+  /** Optional stable test id applied to the input. */
+  testId?: string;
   className?: string;
   inputClassName?: string;
 }
@@ -313,31 +406,48 @@ export function SettingsInputRow({
   variant = "touch",
   disabled = false,
   group = "settings",
+  invalid = false,
+  error,
+  testId,
   className,
   inputClassName,
 }: SettingsInputRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
+  const showError = Boolean(error);
+  const isInvalid = invalid || showError;
+  const errorId = `${agentId}-error`;
+  const helpId = description ? `${agentId}-help` : undefined;
+  const describedBy = [helpId, showError ? errorId : undefined]
+    .filter(Boolean)
+    .join(" ");
   const { ref, agentProps } = useAgentElement<HTMLInputElement>({
     id: agentId,
     role: type === "number" ? "number-input" : "text-input",
     label: resolvedLabel,
     group,
-    description: typeof description === "string" ? description : undefined,
+    description:
+      typeof error === "string"
+        ? error
+        : typeof description === "string"
+          ? description
+          : undefined,
     getValue: () => value,
     onFill: disabled ? undefined : (next: string) => onValueChange(next),
   });
+  const { "aria-label": _ignoredAccessibleName, ...rowAgentProps } = agentProps;
 
   return (
     <SettingsRow
       icon={icon}
       iconClassName={iconClassName}
       label={label}
-      description={description}
       className={className}
+      htmlFor={agentId}
       stacked
     >
       <SettingsInput
         ref={ref}
+        id={agentId}
         variant={variant}
         type={type}
         value={value}
@@ -346,10 +456,22 @@ export function SettingsInputRow({
         inputMode={inputMode}
         autoComplete={autoComplete}
         disabled={disabled}
-        aria-label={resolvedLabel}
-        className={inputClassName}
-        {...agentProps}
+        aria-invalid={isInvalid || undefined}
+        aria-describedby={describedBy || undefined}
+        data-testid={testId}
+        className={cn(isInvalid && "border-danger", inputClassName)}
+        {...rowAgentProps}
       />
+      {description ? (
+        <p id={helpId} className="mt-1 text-xs leading-relaxed text-muted">
+          {description}
+        </p>
+      ) : null}
+      {showError ? (
+        <p id={errorId} role="alert" className="mt-1 text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
     </SettingsRow>
   );
 }
@@ -358,6 +480,7 @@ export interface SettingsTextareaRowProps {
   agentId: string;
   label: React.ReactNode;
   agentLabel?: string;
+  /** Field help rendered under the textarea, not under the label. */
   description?: React.ReactNode;
   icon?: LucideIcon;
   iconClassName?: string;
@@ -389,6 +512,7 @@ export function SettingsTextareaRow({
   textareaClassName,
 }: SettingsTextareaRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
+  const helpId = description ? `${agentId}-help` : undefined;
   const { ref, agentProps } = useAgentElement<HTMLTextAreaElement>({
     id: agentId,
     role: "textarea",
@@ -399,26 +523,37 @@ export function SettingsTextareaRow({
     onFill: disabled ? undefined : (next: string) => onValueChange(next),
   });
 
+  const {
+    "aria-label": _ignoredTextareaAccessibleName,
+    ...textareaAgentProps
+  } = agentProps;
+
   return (
     <SettingsRow
       icon={icon}
       iconClassName={iconClassName}
       label={label}
-      description={description}
       className={className}
+      htmlFor={agentId}
       stacked
     >
       <SettingsTextarea
         ref={ref}
+        id={agentId}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
         placeholder={placeholder}
         rows={rows}
         disabled={disabled}
-        aria-label={resolvedLabel}
+        aria-describedby={helpId}
         className={textareaClassName}
-        {...agentProps}
+        {...textareaAgentProps}
       />
+      {description ? (
+        <p id={helpId} className="mt-1 text-xs leading-relaxed text-muted">
+          {description}
+        </p>
+      ) : null}
     </SettingsRow>
   );
 }

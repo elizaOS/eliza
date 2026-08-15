@@ -24,6 +24,11 @@ import {
   BrandTabsTrigger,
   CornerBrackets,
 } from "../../cloud-ui";
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "../../components/settings/settings-layout";
 import { CredentialsTab } from "./credentials-tab";
 import type { UserWithOrganizationDto } from "./data/cloud-org-types";
 import { MembersTab } from "./members-tab";
@@ -55,12 +60,11 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
 
   if (!user.organization) {
     return (
-      <BrandCard className="relative">
-        <CornerBrackets size="sm" className="opacity-50" />
-        <div className="relative z-10 text-center py-12">
-          <p className="text-muted">No organization found</p>
-        </div>
-      </BrandCard>
+      <SettingsStack data-testid="cloud-organization-empty">
+        <SettingsGroup>
+          <SettingsRow label="No organization found" />
+        </SettingsGroup>
+      </SettingsStack>
     );
   }
 

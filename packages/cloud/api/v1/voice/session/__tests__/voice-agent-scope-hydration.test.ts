@@ -61,14 +61,28 @@ const warmInferenceAdmissionSnapshot = mock(async () => undefined);
 mock.module("@/lib/services/inference-admission-snapshot", () => ({
   warmInferenceAdmissionSnapshot,
 }));
+const warmInferenceAdmissionGate = mock(async () => undefined);
+mock.module("@/lib/services/inference-admission-gate", () => ({
+  warmInferenceAdmissionGate,
+}));
+const calculateCost = mock(async () => ({
+  inputCost: 0,
+  outputCost: 0,
+  totalCost: 0,
+}));
+mock.module("@/lib/pricing", () => ({
+  calculateCost,
+  getProviderFromModel: () => "cerebras",
+  normalizeModelName: (model: string) => model.replace(/^cerebras\//, ""),
+}));
+mock.module("@/lib/voice-session/config", () => ({
+  resolveElizaModel: () => "cerebras/gemma-4-31b",
+}));
 
 const { cache } = await import("@/lib/cache/client");
 const { CacheKeys } = await import("@/lib/cache/keys");
 const { runWithCloudBindingsAsync } = await import(
   "@/lib/runtime/cloud-bindings"
-);
-const { personalSharedAgentId } = await import(
-  "@/lib/services/shared-runtime/personal-shared-agent"
 );
 const { hydrateVoiceSharedAgentScope } = await import(
   "../lib/voice-agent-scope-hydration"
@@ -80,15 +94,6 @@ const SCOPE_KEY = CacheKeys.sharedAgentScope.voice(
   AGENT_ID,
 );
 const CHARACTER_KEY = `character:data:${CHARACTER_ID}`;
-const PERSONAL_AGENT_ID = personalSharedAgentId({
-  userId: USER_ID,
-  organizationId: ORGANIZATION_ID,
-});
-const PERSONAL_SCOPE_KEY = CacheKeys.sharedAgentScope.voice(
-  ORGANIZATION_ID,
-  USER_ID,
-  PERSONAL_AGENT_ID,
-);
 const env = {
   CACHE_ENABLED: "true",
   DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
@@ -98,11 +103,12 @@ afterEach(async () => {
   await runWithCloudBindingsAsync(env, async () => {
     await cache.del(SCOPE_KEY);
     await cache.del(CHARACTER_KEY);
-    await cache.del(PERSONAL_SCOPE_KEY);
   });
   findByIdAndOrg.mockClear();
   findByIdInOrganization.mockClear();
   warmInferenceAdmissionSnapshot.mockClear();
+  warmInferenceAdmissionGate.mockClear();
+  calculateCost.mockClear();
   findByIdInOrganization.mockImplementation(async () => linkedCharacter);
 });
 
@@ -127,26 +133,13 @@ test("one cold hydration warms BOTH the scope gate and the linked character", as
     expect(warmInferenceAdmissionSnapshot).toHaveBeenCalledWith(
       ORGANIZATION_ID,
     );
-  });
-});
-
-test("hydrates the rowless personal Shared identity without reading an agent row", async () => {
-  await runWithCloudBindingsAsync(env, async () => {
-    await hydrateVoiceSharedAgentScope(
-      env as unknown as Parameters<typeof hydrateVoiceSharedAgentScope>[0],
-      { ...claims, agentId: PERSONAL_AGENT_ID },
-    );
-
-    expect(await cache.get(PERSONAL_SCOPE_KEY)).toMatchObject({
-      id: PERSONAL_AGENT_ID,
-      organization_id: ORGANIZATION_ID,
-      user_id: USER_ID,
-      execution_tier: "shared",
-    });
-    expect(findByIdAndOrg).not.toHaveBeenCalled();
-    expect(findByIdInOrganization).not.toHaveBeenCalled();
-    expect(warmInferenceAdmissionSnapshot).toHaveBeenCalledWith(
-      ORGANIZATION_ID,
+    expect(warmInferenceAdmissionGate).toHaveBeenCalledWith(ORGANIZATION_ID);
+    expect(calculateCost).toHaveBeenCalledWith(
+      "gemma-4-31b",
+      "cerebras",
+      1,
+      1,
+      "bitrouter",
     );
   });
 });
@@ -166,6 +159,106 @@ test("publishes the authorization scope even when the character prefill fails", 
     // must not hold it back, or cold start regresses into a hard failure.
     expect(await cache.get(SCOPE_KEY)).toMatchObject({ id: AGENT_ID });
     expect(await cache.get(CHARACTER_KEY)).toBeFalsy();
+  });
+});
+
+test("publishes the authorization scope before optional admission prefill completes", async () => {
+  let resolveAdmission: () => void = () => {};
+  warmInferenceAdmissionSnapshot.mockImplementationOnce(
+    () =>
+      new Promise<undefined>((resolve) => {
+        resolveAdmission = () => resolve(undefined);
+      }),
+  );
+
+  await runWithCloudBindingsAsync(env, async () => {
+    const hydration = hydrateVoiceSharedAgentScope(
+      env as unknown as Parameters<typeof hydrateVoiceSharedAgentScope>[0],
+      claims,
+    );
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (await cache.get(SCOPE_KEY)) break;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(await cache.get(SCOPE_KEY)).toMatchObject({ id: AGENT_ID });
+
+    resolveAdmission();
+    await hydration;
+  });
+});
+
+test("prewarms the call conversation while the fixed greeting is playing", async () => {
+  const requests: Request[] = [];
+  const voiceEnv = {
+    ...env,
+    SHARED_RUNTIME_CONVERSATIONS: {
+      getByName(name: string) {
+        expect(name).toBe(`${AGENT_ID}:${CONVERSATION_ID}`);
+        return {
+          async fetch(input: RequestInfo | URL, init?: RequestInit) {
+            requests.push(new Request(input, init));
+            return Response.json({ success: true });
+          },
+        };
+      },
+    },
+  };
+
+  await runWithCloudBindingsAsync(voiceEnv, async () => {
+    await hydrateVoiceSharedAgentScope(
+      voiceEnv as unknown as Parameters<typeof hydrateVoiceSharedAgentScope>[0],
+      claims,
+      sharedAgent as never,
+    );
+  });
+
+  expect(requests).toHaveLength(1);
+  const request = requests[0];
+  if (!request) throw new Error("expected conversation prewarm request");
+  expect(request.url).toBe("https://shared-runtime.internal/prewarm");
+  const body = (await request.json()) as unknown;
+  expect(body).toEqual({
+    operation: "prewarm",
+    agentId: AGENT_ID,
+    roomId: CONVERSATION_ID,
+    startEmpty: false,
+  });
+});
+
+test("marks a newly minted phone-call conversation as empty", async () => {
+  const requests: Request[] = [];
+  const voiceEnv = {
+    ...env,
+    SHARED_RUNTIME_CONVERSATIONS: {
+      getByName() {
+        return {
+          async fetch(input: RequestInfo | URL, init?: RequestInit) {
+            requests.push(new Request(input, init));
+            return Response.json({ success: true });
+          },
+        };
+      },
+    },
+  };
+
+  await runWithCloudBindingsAsync(voiceEnv, async () => {
+    await hydrateVoiceSharedAgentScope(
+      voiceEnv as unknown as Parameters<typeof hydrateVoiceSharedAgentScope>[0],
+      claims,
+      sharedAgent as never,
+      { freshConversation: true },
+    );
+  });
+
+  const request = requests[0];
+  if (!request) throw new Error("expected fresh conversation prewarm request");
+  const body = (await request.json()) as unknown;
+  expect(body).toEqual({
+    operation: "prewarm",
+    agentId: AGENT_ID,
+    roomId: CONVERSATION_ID,
+    startEmpty: true,
   });
 });
 

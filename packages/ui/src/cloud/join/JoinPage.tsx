@@ -50,6 +50,7 @@ export default function JoinPage(): React.JSX.Element {
   const [phase, setPhase] = useState<JoinPhase>("connecting");
   const [detail, setDetail] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const appHandoff =
     typeof window === "undefined"
       ? null
@@ -58,6 +59,10 @@ export default function JoinPage(): React.JSX.Element {
   const [ssoBridging, setSsoBridging] = useState<boolean | null>(null);
   // Guard so React StrictMode's double-mount does not duplicate identity reads.
   const startedRef = useRef(false);
+  const activeAttemptRef = useRef<{
+    controller: AbortController;
+    promise: Promise<void>;
+  } | null>(null);
 
   const start = useCallback(async () => {
     const authToken = resolveJoinAuthToken();
@@ -67,32 +72,53 @@ export default function JoinPage(): React.JSX.Element {
     }
     setPhase("connecting");
     setError(null);
-    try {
-      const result = await runJoinFlow({
-        client,
-        effects: {
-          savePersistedActiveServer,
-          savePersistedFirstRunComplete,
-        },
-        cloudApiBase: resolveJoinCloudApiBase(),
-        authToken,
-        onProgress: (_status, progressDetail) => {
-          if (progressDetail) setDetail(progressDetail);
-        },
-      });
-      setPhase("ready");
-      // Hard navigation to chat home so the startup coordinator restores the
-      // just-persisted cloud connection from a clean boot. `void result` keeps
-      // the resolved agent in scope for future telemetry without unused-var noise.
-      void result;
-      if (typeof window !== "undefined") {
-        appModeNavigation.assign("/");
+    activeAttemptRef.current?.controller.abort(
+      new DOMException("Join attempt superseded", "AbortError"),
+    );
+    const controller = new AbortController();
+    const attempt = (async () => {
+      try {
+        const result = await runJoinFlow({
+          client,
+          effects: {
+            savePersistedActiveServer,
+            savePersistedFirstRunComplete,
+          },
+          cloudApiBase: resolveJoinCloudApiBase(),
+          authToken,
+          signal: controller.signal,
+          onProgress: (_status, progressDetail) => {
+            if (progressDetail) setDetail(progressDetail);
+          },
+        });
+        controller.signal.throwIfAborted();
+        setPhase("ready");
+        // Hard navigation to chat home so the startup coordinator restores the
+        // just-persisted cloud connection from a clean boot. `void result` keeps
+        // the resolved agent in scope for future telemetry without unused-var noise.
+        void result;
+        if (typeof window !== "undefined") appModeNavigation.assign("/");
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setError(describeJoinError(err));
+        setPhase("error");
       }
-    } catch (err) {
-      setError(describeJoinError(err));
-      setPhase("error");
+    })();
+    activeAttemptRef.current = { controller, promise: attempt };
+    await attempt;
+    if (activeAttemptRef.current?.controller === controller) {
+      activeAttemptRef.current = null;
     }
   }, []);
+
+  useEffect(
+    () => () => {
+      activeAttemptRef.current?.controller.abort(
+        new DOMException("Join page unmounted", "AbortError"),
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!session.ready) return;
@@ -125,6 +151,35 @@ export default function JoinPage(): React.JSX.Element {
     startedRef.current = true;
     void start();
   }, [start]);
+
+  const handleSignOut = useCallback(async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    const active = activeAttemptRef.current;
+    active?.controller.abort(
+      new DOMException("User signed out during join", "AbortError"),
+    );
+    await active?.promise;
+    const { signOutFromSsoBridgedHost } = await import(
+      "../sso-bridge/sso-bridge"
+    );
+    await signOutFromSsoBridgedHost();
+    appModeNavigation.replace("/login");
+  }, [signingOut]);
+
+  const signOutButton = (
+    <Button
+      variant="ghost"
+      type="button"
+      disabled={signingOut}
+      onClick={() => void handleSignOut()}
+      className="px-6 py-2 text-sm text-white/70 transition-colors hover:text-white"
+    >
+      {signingOut
+        ? t("cloud.join.signingOut", { defaultValue: "Signing out..." })
+        : t("cloud.join.signOut", { defaultValue: "Sign out" })}
+    </Button>
+  );
 
   // Signed out → send to login, returning here once authenticated.
   if (session.ready && !session.authenticated && ssoBridging === false) {
@@ -161,10 +216,11 @@ export default function JoinPage(): React.JSX.Element {
               variant="ghost"
               type="button"
               onClick={handleRetry}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
+              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
             >
               {t("cloud.join.retry", { defaultValue: "Try again" })}
             </Button>
+            {signOutButton}
           </div>
         ) : (
           <div
@@ -179,6 +235,7 @@ export default function JoinPage(): React.JSX.Element {
                   defaultValue: "Opening your personal Eliza...",
                 })}
             </p>
+            {signOutButton}
           </div>
         )}
       </div>

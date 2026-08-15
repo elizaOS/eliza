@@ -29,6 +29,10 @@ vi.mock("@capacitor/core", () => ({
 import { setBootConfig } from "../config/boot-config";
 import { ElizaClient } from "./client-base";
 import "./client-cloud";
+import {
+  STAGING_DIRECT_CLOUD_API_BASE_URL,
+  STAGING_DIRECT_CLOUD_BASE_URL,
+} from "./direct-cloud-endpoints";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -99,10 +103,12 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
-        apiBase: "https://api-staging.elizacloud.ai",
+        apiBase: STAGING_DIRECT_CLOUD_API_BASE_URL,
         sessionId: expect.any(String),
         browserUrl: expect.stringMatching(
-          /^https:\/\/staging\.elizacloud\.ai\/auth\/cli-login\?session=/,
+          new RegExp(
+            `^${STAGING_DIRECT_CLOUD_BASE_URL}/auth/cli-login\\?session=`,
+          ),
         ),
       }),
     );
@@ -194,7 +200,7 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
     // The bug: a same-origin "/api/auth/cli-session" gets proxied to the local
     // agent API, whose default-deny gate 401s the unlisted /api/auth/* path.
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api-staging.elizacloud.ai/api/auth/cli-session",
+      `${STAGING_DIRECT_CLOUD_API_BASE_URL}/api/auth/cli-session`,
       expect.objectContaining({ method: "POST" }),
     );
     expect(fetchSpy).not.toHaveBeenCalledWith(
@@ -204,11 +210,11 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
-        apiBase: "https://api-staging.elizacloud.ai",
+        apiBase: STAGING_DIRECT_CLOUD_API_BASE_URL,
       }),
     );
     const browserUrl = new URL(result.browserUrl ?? "");
-    expect(browserUrl.origin).toBe("https://staging.elizacloud.ai");
+    expect(browserUrl.origin).toBe(STAGING_DIRECT_CLOUD_BASE_URL);
     expect(browserUrl.pathname).toBe("/auth/cli-login");
     const sessionId = browserUrl.searchParams.get("session");
     expect(sessionId).toEqual(expect.any(String));
@@ -237,7 +243,7 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
     );
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api-staging.elizacloud.ai/api/auth/cli-session/session-1",
+      `${STAGING_DIRECT_CLOUD_API_BASE_URL}/api/auth/cli-session/session-1`,
     );
     expect(result).toEqual({
       status: "authenticated",

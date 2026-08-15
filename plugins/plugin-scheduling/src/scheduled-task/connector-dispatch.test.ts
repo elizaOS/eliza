@@ -466,6 +466,14 @@ describe("default dispatcher routing — connector path before notification fall
     const runtime = makeRuntime({
       connectors: ["discord", "telegram"],
       notification: true,
+      // The initial Telegram attempt must be definitively rejected before the
+      // runner may advance to the Discord mismatch. An undefined transport
+      // result has unknown provider acceptance and is terminal by contract.
+      sendResult: {
+        kind: "not_delivered",
+        code: "client_not_ready",
+        message: "Telegram client is not ready.",
+      },
     });
     const service = await ScheduledTaskRunnerService.start(runtime);
     const runner = service.getRunner({ agentId: runtime.agentId });

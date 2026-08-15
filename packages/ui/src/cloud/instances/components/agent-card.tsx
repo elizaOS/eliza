@@ -501,13 +501,13 @@ function AgentCardInner({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleToggleShare}
-                      className="cursor-pointer flex items-center justify-between"
+                      className="cursor-pointer flex items-center justify-between gap-3"
                     >
                       <span className="flex items-center">
                         {isPublic ? (
-                          <Globe className="h-4 w-4 mr-4 text-green-500" />
+                          <Globe className="h-4 w-4 mr-4" aria-hidden="true" />
                         ) : (
-                          <Lock className="h-4 w-4 mr-4" />
+                          <Lock className="h-4 w-4 mr-4" aria-hidden="true" />
                         )}
                         {isPublic
                           ? t("cloud.agentCard.public", {
@@ -517,9 +517,12 @@ function AgentCardInner({
                               defaultValue: "Private",
                             })}
                       </span>
+                      {/* Decorative: the menu item is the control. Public/Private + icon carry state. */}
                       <Switch
                         checked={isPublic}
-                        className="pointer-events-none data-[state=checked]:bg-green-500/20 [&_[data-slot=switch-thumb]]:data-[state=checked]:bg-green-500 [&_[data-slot=switch-thumb]]:data-[state=unchecked]:bg-white/40"
+                        tabIndex={-1}
+                        aria-hidden="true"
+                        className="pointer-events-none"
                       />
                     </DropdownMenuItem>
                     {isPublic && (
@@ -727,13 +730,13 @@ function AgentCardInner({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleToggleShare}
-                  className="cursor-pointer flex items-center justify-between"
+                  className="cursor-pointer flex items-center justify-between gap-3"
                 >
                   <span className="flex items-center">
                     {isPublic ? (
-                      <Globe className="h-4 w-4 mr-4 text-green-500" />
+                      <Globe className="h-4 w-4 mr-4" aria-hidden="true" />
                     ) : (
-                      <Lock className="h-4 w-4 mr-4" />
+                      <Lock className="h-4 w-4 mr-4" aria-hidden="true" />
                     )}
                     {isPublic
                       ? t("cloud.agentCard.public", { defaultValue: "Public" })
@@ -741,9 +744,12 @@ function AgentCardInner({
                           defaultValue: "Private",
                         })}
                   </span>
+                  {/* Decorative: the menu item is the control. Public/Private + icon carry state. */}
                   <Switch
                     checked={isPublic}
-                    className="pointer-events-none data-[state=checked]:bg-green-500/20 [&_[data-slot=switch-thumb]]:data-[state=checked]:bg-green-500 [&_[data-slot=switch-thumb]]:data-[state=unchecked]:bg-white/40"
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    className="pointer-events-none"
                   />
                 </DropdownMenuItem>
                 {isPublic && (

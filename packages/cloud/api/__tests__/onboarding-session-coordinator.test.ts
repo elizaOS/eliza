@@ -258,7 +258,71 @@ function telegramTurn(
   );
 }
 
+function telegramStatusOnlyTurn(
+  coordinator: OnboardingSessionCoordinator,
+  sessionId: string,
+): Promise<Response> {
+  return coordinator.fetch(
+    new Request("https://onboarding.test/turn", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        input: {
+          sessionId,
+          platform: "telegram",
+          platformUserId: "123456789",
+          platformDisplayName: "Nubs",
+          trustedPlatformIdentity: true,
+          statusOnly: true,
+          idempotencyKey: "telegram-account-claim:delivery-1",
+          authenticatedUser: {
+            userId: "user-a",
+            organizationId: "org-a",
+            telegramId: "123456789",
+          },
+        },
+      }),
+    }),
+  );
+}
+
 describe("OnboardingSessionCoordinator", () => {
+  test("keeps a fresh idempotent status poll read-only without a replay marker", async () => {
+    const harness = createCoordinatorHarness();
+    const sessionId = `platform:telegram-claim:${"a".repeat(64)}`;
+    const coordinator = harness.objectByName(sessionId);
+
+    const firstResponse = await telegramStatusOnlyTurn(coordinator, sessionId);
+    expect(firstResponse.status).toBe(200);
+    const first = await readResult(firstResponse);
+    expect(first.session).toMatchObject({
+      id: sessionId,
+      userId: "user-a",
+      organizationId: "org-a",
+      history: [],
+    });
+    expect(first.session.continuationToken).toEqual(expect.any(String));
+    expect(
+      (await harness.storageFor(sessionId).list({ prefix: "replay:" })).size,
+    ).toBe(0);
+
+    const repeatedResponse = await telegramStatusOnlyTurn(
+      coordinator,
+      sessionId,
+    );
+    expect(repeatedResponse.status).toBe(200);
+    const repeated = await readResult(repeatedResponse);
+    expect(repeated.session.id).toBe(first.session.id);
+    expect(repeated.session.continuationToken).toBe(
+      first.session.continuationToken,
+    );
+    expect(repeated.session.history).toEqual([]);
+    expect(
+      (await harness.storageFor(sessionId).list({ prefix: "replay:" })).size,
+    ).toBe(0);
+  });
+
   test("keeps a trusted platform session after a rejected account adoption", async () => {
     const harness = createCoordinatorHarness();
     await turn(

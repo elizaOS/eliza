@@ -10,14 +10,13 @@ import { getConnectorAccountManager, logger, type Plugin } from "@elizaos/core";
 import { createInstagramConnectorAccountProvider } from "./connector-account-provider";
 import { INSTAGRAM_SERVICE_NAME } from "./constants";
 import { InstagramService } from "./service";
-import { InstagramWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const instagramPlugin: Plugin = {
   name: INSTAGRAM_SERVICE_NAME,
   description: "Instagram client plugin for elizaOS",
   actions: [],
   providers: [],
-  services: [InstagramService, InstagramWorkflowCredentialProvider],
+  services: [InstagramService],
   async init(_config, runtime) {
     try {
       const manager = getConnectorAccountManager(runtime);

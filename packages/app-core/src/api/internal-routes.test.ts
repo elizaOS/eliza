@@ -2,8 +2,8 @@
  * Unit tests for the `POST /api/internal/wake` handler and `getDeviceSecret`,
  * driving fake req/res objects. Covers device-secret bearer auth (401s), wake
  * body validation, the happy path (runDueTasks fired, telemetry mirrored),
- * runtime / task-service unavailability, error capture, deadline→maxWallTimeMs
- * clamping, routing pass-through, and on-disk device-secret persistence + mode.
+ * runtime / task-service unavailability, error capture, expired-deadline
+ * rejection, routing pass-through, and on-disk device-secret persistence + mode.
  */
 import fs from "node:fs";
 import * as http from "node:http";
@@ -82,6 +82,18 @@ function stateWithTaskService(service: unknown): CompatRuntimeState {
     pendingAgentName: null,
     pendingRestartReasons: [],
   };
+}
+
+async function waitForInvocation(callCount: () => number): Promise<void> {
+  for (let attempt = 0; attempt < 20 && callCount() === 0; attempt += 1) {
+    await Promise.resolve();
+  }
+}
+
+async function flushMicrotasks(): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await Promise.resolve();
+  }
 }
 
 const SECRET = "test-secret-0123456789abcdef0123456789abcdef";
@@ -266,13 +278,8 @@ describe("POST /api/internal/wake — happy path", () => {
     expect(getWakeTelemetry().lastWakeKind).toBe("processing");
   });
 
-  it("passes maxWallTimeMs derived from deadlineMs to runDueTasks", async () => {
-    const calls: Array<{ maxWallTimeMs?: number }> = [];
-    const runDueTasks = vi.fn(
-      async (options: { maxWallTimeMs?: number } = {}) => {
-        calls.push(options);
-      },
-    );
+  it("runs the canonical no-options TaskService contract before the deadline", async () => {
+    const runDueTasks = vi.fn(async () => {});
     const res = fakeRes();
     const deadlineMs = Date.now() + 10_000;
     await handleInternalWakeRoute(
@@ -283,22 +290,87 @@ describe("POST /api/internal/wake — happy path", () => {
       res.res,
       stateWithTaskService({ runDueTasks }),
     );
-    expect(calls.length).toBe(1);
-    const passed = calls[0].maxWallTimeMs;
-    expect(typeof passed).toBe("number");
-    if (typeof passed !== "number") return;
-    expect(passed).toBeGreaterThan(0);
-    // Should be at most the original window.
-    expect(passed).toBeLessThanOrEqual(10_000);
+    expect(runDueTasks).toHaveBeenCalledOnce();
+    expect(runDueTasks).toHaveBeenCalledWith();
   });
 
-  it("clamps an already-expired deadline to a 1s floor", async () => {
-    const calls: Array<{ maxWallTimeMs?: number }> = [];
-    const runDueTasks = vi.fn(
-      async (options: { maxWallTimeMs?: number } = {}) => {
-        calls.push(options);
-      },
+  it("coalesces concurrent wakes for the same TaskService", async () => {
+    let settleWake: (() => void) | undefined;
+    const wake = new Promise<void>((resolve) => {
+      settleWake = resolve;
+    });
+    const runDueTasks = vi.fn(() => wake);
+    const service = { runDueTasks };
+    const firstRes = fakeRes();
+    const secondRes = fakeRes();
+    const request = () =>
+      fakeReq("/api/internal/wake", {
+        auth: `Bearer ${SECRET}`,
+        body: { kind: "refresh", deadlineMs: Date.now() + 5000 },
+      });
+
+    const first = handleInternalWakeRoute(
+      request(),
+      firstRes.res,
+      stateWithTaskService(service),
     );
+    await waitForInvocation(() => runDueTasks.mock.calls.length);
+    expect(runDueTasks).toHaveBeenCalledOnce();
+    const second = handleInternalWakeRoute(
+      request(),
+      secondRes.res,
+      stateWithTaskService(service),
+    );
+    await flushMicrotasks();
+    expect(runDueTasks).toHaveBeenCalledOnce();
+
+    settleWake?.();
+    await Promise.all([first, second]);
+    expect(firstRes.body()).toMatchObject({ ok: true, coalesced: false });
+    expect(secondRes.body()).toMatchObject({ ok: true, coalesced: true });
+  });
+
+  it("runs a replacement runtime while the previous TaskService is in flight", async () => {
+    let settlePrevious: (() => void) | undefined;
+    const previousWake = new Promise<void>((resolve) => {
+      settlePrevious = resolve;
+    });
+    const previousRun = vi.fn(() => previousWake);
+    const replacementRun = vi.fn(async () => {});
+    const request = () =>
+      fakeReq("/api/internal/wake", {
+        auth: `Bearer ${SECRET}`,
+        body: { kind: "processing", deadlineMs: Date.now() + 5000 },
+      });
+    const previousRes = fakeRes();
+    const replacementRes = fakeRes();
+
+    const previous = handleInternalWakeRoute(
+      request(),
+      previousRes.res,
+      stateWithTaskService({ runDueTasks: previousRun }),
+    );
+    await waitForInvocation(() => previousRun.mock.calls.length);
+    expect(previousRun).toHaveBeenCalledOnce();
+    const replacement = handleInternalWakeRoute(
+      request(),
+      replacementRes.res,
+      stateWithTaskService({ runDueTasks: replacementRun }),
+    );
+    await waitForInvocation(() => replacementRun.mock.calls.length);
+    expect(replacementRun).toHaveBeenCalledOnce();
+
+    settlePrevious?.();
+    await Promise.all([previous, replacement]);
+    expect(previousRes.body()).toMatchObject({ ok: true, coalesced: false });
+    expect(replacementRes.body()).toMatchObject({
+      ok: true,
+      coalesced: false,
+    });
+  });
+
+  it("rejects an already-expired deadline without running tasks", async () => {
+    const runDueTasks = vi.fn(async () => {});
     const res = fakeRes();
     await handleInternalWakeRoute(
       fakeReq("/api/internal/wake", {
@@ -308,7 +380,9 @@ describe("POST /api/internal/wake — happy path", () => {
       res.res,
       stateWithTaskService({ runDueTasks }),
     );
-    expect(calls[0].maxWallTimeMs).toBe(1000);
+    expect(res.status()).toBe(408);
+    expect(res.body()).toEqual({ ok: false, error: "wake_deadline_expired" });
+    expect(runDueTasks).not.toHaveBeenCalled();
   });
 });
 

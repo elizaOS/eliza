@@ -15,6 +15,7 @@ import {
   useState,
 } from "react";
 import { pathForTab, shouldUseHashNavigation, type Tab } from "../navigation";
+import { parseFocusedAppShellMode } from "../platform/app-shell-mode";
 import { shellHistory } from "../surface-realm-channel";
 import {
   loadLastNativeTab,
@@ -28,14 +29,10 @@ import { getTabForShellView } from "./shell-routing";
 
 function pathWithCurrentShellMode(path: string): string {
   if (typeof window === "undefined") return path;
-  const html = window.document?.documentElement;
-  const body = window.document?.body;
-  const isDetachedShell =
-    html?.classList.contains("eliza-chat-overlay-shell") === true ||
-    body?.classList.contains("eliza-chat-overlay-shell") === true;
-  if (!isDetachedShell) return path;
   const params = new URLSearchParams(window.location.search);
-  const shellMode = params.get("shellMode") ?? params.get("shell-mode");
+  const shellMode = parseFocusedAppShellMode(
+    params.get("shellMode") ?? params.get("shell-mode"),
+  );
   if (!shellMode) return path;
   const nextParams = new URLSearchParams();
   nextParams.set("shellMode", shellMode);

@@ -21,6 +21,7 @@ import { participantTable } from "../../db/schemas/eliza";
 import { organizationConfig } from "../../db/schemas/organization-config";
 import { userIdentities } from "../../db/schemas/user-identities";
 import { anonymousSessionsService } from "../services/anonymous-sessions";
+import { SIGNUP_CREDIT_POLICY } from "../signup-credits";
 import type { UserWithOrganization } from "../types";
 import { logger } from "../utils/logger";
 
@@ -194,7 +195,7 @@ export async function migrateAnonymousSession(
         .values({
           name: `${anonUser.name || "User"}'s Organization`,
           slug: orgSlug,
-          credit_balance: "0.00",
+          credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
         })
         .returning();
 

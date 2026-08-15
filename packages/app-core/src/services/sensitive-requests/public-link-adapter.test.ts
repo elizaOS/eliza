@@ -10,7 +10,10 @@ import type {
 } from "@elizaos/core";
 import { getBootConfig, setBootConfig } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { publicLinkSensitiveRequestAdapter } from "./public-link-adapter";
+import {
+  CLOUD_BASE_FALLBACK,
+  publicLinkSensitiveRequestAdapter,
+} from "./public-link-adapter";
 
 const SAVED_ENV_KEYS = [
   "ELIZAOS_CLOUD_BASE_URL",
@@ -125,7 +128,7 @@ describe("publicLinkSensitiveRequestAdapter", () => {
     expect(result.delivered).toBe(true);
     if (!result.delivered) throw new Error("expected success");
     expect(result.url).toBe(
-      "https://elizacloud.ai/api/v1/payment/app-charge/app_demo/req_pay_1/public",
+      `${CLOUD_BASE_FALLBACK}/payment/app-charge/app_demo/req_pay_1/public`,
     );
   });
 

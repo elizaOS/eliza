@@ -238,7 +238,10 @@ test("a completed Telegram handoff offers a direct return to the bot", async ({
   await expect(page.getByRole("heading", { name: "Connected." })).toBeVisible();
   const returnLink = page.getByRole("link", { name: "Return to Telegram" });
   await expect(returnLink).toBeVisible();
-  await expect(returnLink).toHaveAttribute("href", "https://t.me/Elizav2_Bot");
+  await expect(returnLink).toHaveAttribute(
+    "href",
+    "https://t.me/ElizaIsNotABot",
+  );
   await returnLink.focus();
   await expect(returnLink).toBeFocused();
   expect(

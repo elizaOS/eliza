@@ -1,9 +1,13 @@
 /**
  * Guards the MVP settings declutter: the tabs hidden for MVP (Capabilities,
- * Apps, Cloud Connectors, Runtime, My Runtimes, Wallet & RPC, and the
+ * Apps, App Permissions, Runtime, My Runtimes, Wallet & RPC, and the
  * consolidated-away standalone Background) drop out of the nav when Developer
  * Mode is off, but stay REGISTERED (kept, not deleted) so their routes/
  * deep-links still resolve and they reappear when Developer Mode is on.
+ *
+ * Cloud Connectors is deliberately NOT in that set: the eliza.app
+ * consolidation promoted the cloud sections to `viewKind: "release"`, so it is
+ * public. Its gating is pinned by `register-cloud-settings.test.ts`.
  */
 import { isViewVisible } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
@@ -13,7 +17,6 @@ const MVP_HIDDEN = [
   "capabilities",
   "apps",
   "app-permissions",
-  "cloud-connectors",
   "runtime",
   "my-runtimes",
   "wallet-rpc",

@@ -30,7 +30,10 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { WebSocket, WebSocketServer } from "ws";
 import { buildFirstRunRuntimeConfig } from "../src/first-run/first-run-config.ts";
-import { createLiveRuntimeChildEnv } from "../test/helpers/live-child-env.ts";
+import {
+  createLiveRuntimeChildEnv,
+  shouldSkipLiveStackAutoFirstRun,
+} from "../test/helpers/live-child-env.ts";
 import {
   getFirstRunProviderForLiveProvider,
   selectLiveProviderAsync,
@@ -1325,7 +1328,7 @@ async function startRealStack(): Promise<StartedStack> {
     // the spec can drive the real cloud onboarding (login -> provision) through the
     // UI against real Eliza Cloud. The default lane auto-completes a local first-run
     // so chat/view specs land on a ready agent.
-    const skipAutoFirstRun = process.env.ELIZA_UI_SMOKE_CLOUD_LIVE === "1";
+    const skipAutoFirstRun = shouldSkipLiveStackAutoFirstRun();
     if (!skipAutoFirstRun) {
       const onboardingStatus = await fetchJson<{ complete: boolean }>(
         `${apiBase}/api/first-run/status`,

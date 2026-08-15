@@ -78,10 +78,17 @@ function resolveBunExecutable(): string | null {
 
 /** Run the boot harness under Bun and parse its single JSON result line. */
 async function runBootHarness(
-  mode: "skip" | "bind",
+  mode: "skip" | "bind" | "invalid",
   port: number,
 ): Promise<
-  | { ok: true; mode: string; port: number; bound: boolean }
+  | {
+      ok: true;
+      mode: string;
+      port: number;
+      bound: boolean;
+      rejected?: boolean;
+      error?: string;
+    }
   | { ok: false; error: string }
 > {
   const bun = resolveBunExecutable();
@@ -91,7 +98,7 @@ async function runBootHarness(
   try {
     const { stdout } = await execFileAsync(
       bun,
-      [HARNESS_PATH, mode, String(port)],
+      ["--conditions=eliza-source", HARNESS_PATH, mode, String(port)],
       { timeout: 120_000, env: { ...process.env } },
     );
     const lastLine = stdout.trim().split("\n").filter(Boolean).at(-1) ?? "{}";
@@ -227,4 +234,14 @@ describe("startApiServer skipListen — real boot in a Bun subprocess (#12180)",
       expect(bindResult.bound).toBe(true);
     }
   }, 240_000);
+
+  it("rejects malformed connector-health configuration before binding", async () => {
+    const result = await runBootHarness("invalid", 39325);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.bound).toBe(false);
+      expect(result).toMatchObject({ mode: "invalid", rejected: true });
+      expect(result.error).toContain("CONNECTOR_HEALTH_INTERVAL_MS");
+    }
+  }, 120_000);
 });

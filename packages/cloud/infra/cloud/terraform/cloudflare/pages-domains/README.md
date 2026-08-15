@@ -142,8 +142,12 @@ Staging additionally requires the immutable live inventory in
 `STAGING_AGENT_WILDCARD_ORIGINS_JSON`, `STAGING_AGENT_CERTIFICATE_PACK_ID`, and
 `STAGING_AGENT_CERTIFICATE_HOSTS_JSON`.
 
-The shared credentials remain `CLOUDFLARE_API_TOKEN` (Pages, DNS, and SSL
-Certificates read/write), `CLOUDFLARE_ACCOUNT_ID`,
+For this root, the workflow prefers the environment-scoped
+`CLOUDFLARE_PAGES_API_TOKEN` and falls back to the shared
+`CLOUDFLARE_API_TOKEN` while environments transition. The selected token needs
+Pages, DNS, and SSL Certificates read/write access across both managed zones.
+Other Terraform roots continue to use only the shared token. The remaining
+shared credentials are `CLOUDFLARE_ACCOUNT_ID`,
 `ELIZA_APP_CLOUDFLARE_ZONE_ID`, `APPS_CLOUDFLARE_ZONE_ID`, and the two R2 state
 credentials. Keep record ids, origin addresses, and certificate pack ids in
 protected GitHub Environment variables rather than committing live values.

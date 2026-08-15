@@ -100,7 +100,12 @@ describe("live-provider alias-aware config resolution (#13422)", () => {
 
 		expect(provider?.name).toBe("openai");
 		expect(provider?.apiKey).toBe("milady-ns-key");
-		expect(provider?.baseUrl).toContain("elizacloud.ai");
+		// The host is incidental to what this case proves (that MILADY_NAMESPACE
+		// was read); it only confirms the resolved provider points at Eliza Cloud
+		// rather than a bare upstream. Literal for the same reason as
+		// cloud-routing.test.ts: @elizaos/core does not depend on
+		// @elizaos/shared, so ELIZA_DOMAIN_CONTRACTS is not importable here.
+		expect(provider?.baseUrl).toContain("api.eliza.app");
 		// Additive read only — no ELIZA_* mirror written.
 		expect(process.env.ELIZA_NAMESPACE).toBeUndefined();
 	});

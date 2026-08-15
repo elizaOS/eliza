@@ -2265,7 +2265,7 @@ describe("AcpService", () => {
     expect(client.prompt).toHaveBeenCalledTimes(1);
   });
 
-  it("native cancel preserves cancelled status when the prompt later resolves", async () => {
+  it("native cancel settles from the original prompt's cancelled terminal result", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
     await service.start();
     const { sessionId } = await service.spawnSession({
@@ -2276,23 +2276,53 @@ describe("AcpService", () => {
     const client = firstNativeClient();
     let resolvePrompt: (value: { stopReason: string }) => void = () =>
       undefined;
-    client.prompt.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolvePrompt = resolve;
-        }),
-    );
+    const terminal = new Promise<{ stopReason: string }>((resolve) => {
+      resolvePrompt = resolve;
+    });
+    client.prompt.mockImplementationOnce(() => terminal);
+    client.cancel.mockImplementationOnce(() => terminal);
 
     const sent = service.sendPrompt(sessionId, "long running");
     await new Promise((resolve) => setImmediate(resolve));
-    await service.cancelSession(sessionId);
-    resolvePrompt({ stopReason: "end_turn" });
+    const cancelled = service.cancelSession(sessionId);
+    resolvePrompt({ stopReason: "cancelled" });
+    await cancelled;
     const result = await sent;
 
     expect(client.cancel).toHaveBeenCalledWith("protocol-session");
     expect(result.stopReason).toBe("cancelled");
     expect(result.error).toBeUndefined();
     expect((await service.getSession(sessionId))?.status).toBe("cancelled");
+  });
+
+  it("does not overwrite a prompt completion that races native cancellation", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-cancel-race",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    let resolvePrompt: (value: { stopReason: string }) => void = () =>
+      undefined;
+    const terminal = new Promise<{ stopReason: string }>((resolve) => {
+      resolvePrompt = resolve;
+    });
+    client.prompt.mockImplementationOnce(() => terminal);
+    client.cancel.mockImplementationOnce(() => terminal);
+
+    const sent = service.sendPrompt(sessionId, "nearly finished");
+    await new Promise((resolve) => setImmediate(resolve));
+    const cancelled = service.cancelSession(sessionId);
+    resolvePrompt({ stopReason: "end_turn" });
+    await expect(cancelled).rejects.toMatchObject({
+      code: "ACP_CANCEL_NOT_CONFIRMED",
+    });
+    const result = await sent;
+
+    expect(result.stopReason).toBe("end_turn");
+    expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
 
   it("native permission requests emit blocked and login_required events", async () => {
@@ -2519,7 +2549,7 @@ describe("AcpService", () => {
     expect(result.response).toBe("done");
   });
 
-  it("accepts direct assistant text updates when adapters provide a role", async () => {
+  it("correlates a terminal response without a synthetic sessionId to its CLI invocation", async () => {
     const create = nextProc();
     const service = new AcpService(runtime());
     await service.start();
@@ -2544,7 +2574,7 @@ describe("AcpService", () => {
     prompt.proc.stdout.emit(
       "data",
       Buffer.from(
-        `{"jsonrpc":"2.0","id":"req-direct","result":{"stopReason":"end_turn"},"sessionId":"${sessionId}"}\n`,
+        '{"jsonrpc":"2.0","id":"req-direct","result":{"stopReason":"end_turn"}}\n',
       ),
     );
     closeOk(prompt);

@@ -40,7 +40,12 @@ import type {
   MessageSource,
   ProviderDataRecord,
 } from "@elizaos/core";
-import { getDefaultTriageService, hasRoleAccess, logger } from "@elizaos/core";
+import {
+  describeUserReference,
+  getDefaultTriageService,
+  hasRoleAccess,
+  logger,
+} from "@elizaos/core";
 import { InboxRepository } from "../inbox/repository.ts";
 import { InboxService } from "../inbox/service.ts";
 import type {
@@ -148,6 +153,8 @@ export interface InboxResult {
   readonly query?: string;
   readonly since?: string;
   readonly totalBeforeDedupe: number;
+  /** Platforms whose fetch returned more than the requested per-platform cap. */
+  readonly capped: readonly InboxPlatform[];
   /**
    * Platforms that could not be checked. Required: empty means every
    * requested platform answered; non-empty means the result may be
@@ -210,6 +217,15 @@ function parseSinceMs(since: string | undefined): number | undefined {
   if (!since) return undefined;
   const parsed = Date.parse(since);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function canonicalSince(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  const parsed = Date.parse(value.trim());
+  if (!Number.isFinite(parsed)) {
+    throw new Error("valid since timestamp is required");
+  }
+  return new Date(parsed).toISOString();
 }
 
 function createDefaultPlatformFetcher(platform: InboxPlatform): InboxFetcher {
@@ -365,25 +381,32 @@ async function fetchInboxItems(args: {
   merged: readonly InboxItem[];
   totalBeforeDedupe: number;
   degraded: readonly InboxDegradedPlatform[];
+  capped: readonly InboxPlatform[];
 }> {
+  const probeLimit = args.limit + 1;
   const settled = await Promise.allSettled(
     args.platforms.map(async (platform) => {
       const fetcher = activeFetchers[platform];
       return fetcher({
         runtime: args.runtime,
         ...(args.since ? { since: args.since } : {}),
-        limit: args.limit,
+        limit: probeLimit,
         ...(args.query ? { query: args.query } : {}),
       });
     }),
   );
   const flat: InboxItem[] = [];
   const degraded: InboxDegradedPlatform[] = [];
+  const capped: InboxPlatform[] = [];
   settled.forEach((result, index) => {
     const platform = args.platforms[index];
     if (!platform) return;
     if (result.status === "fulfilled") {
-      flat.push(...result.value);
+      const hasMore = result.value.length > args.limit;
+      flat.push(
+        ...(hasMore ? result.value.slice(0, args.limit) : result.value),
+      );
+      if (hasMore) capped.push(platform);
       return;
     }
     degraded.push({
@@ -398,6 +421,7 @@ async function fetchInboxItems(args: {
     merged: dedupeAndOrder(flat),
     totalBeforeDedupe: flat.length,
     degraded,
+    capped,
   };
 }
 
@@ -406,6 +430,24 @@ function degradedSuffix(degraded: readonly InboxDegradedPlatform[]): string {
   if (degraded.length === 0) return "";
   const parts = degraded.map((entry) => `${entry.platform} (${entry.error})`);
   return ` Warning: could not check ${parts.join(", ")} — results may be incomplete.`;
+}
+
+function fetchScopeSuffix(args: {
+  platforms: readonly InboxPlatform[];
+  limit: number;
+  since?: string;
+  queryApplied: boolean;
+  capped: readonly InboxPlatform[];
+}): string {
+  const parts = [`platforms=${args.platforms.join(",")}`];
+  if (args.since) parts.push(`since ${args.since}`);
+  if (args.queryApplied) parts.push("content query applied");
+  parts.push(`up to ${args.limit} per platform`);
+  const cap =
+    args.capped.length > 0
+      ? ` ${args.capped.join(",")} returned more than that cap, so this is a sample, not a total.`
+      : "";
+  return ` Scope: ${parts.join("; ")}.${cap}`;
 }
 
 /**
@@ -712,12 +754,8 @@ export async function executeInboxQueueOperation(args: {
       //    uses, then classify only the ones without a persisted entry yet.
       //    `classification` narrows the queue returned below; it must not skip
       //    the LLM classifier for a fresh triage request.
-      const since =
-        typeof args.params.since === "string" &&
-        args.params.since.trim().length > 0
-          ? args.params.since.trim()
-          : undefined;
-      const { merged, degraded } = await fetchInboxItems({
+      const since = canonicalSince(args.params.since);
+      const { merged, degraded, capped } = await fetchInboxItems({
         runtime: args.runtime,
         platforms: resolvePlatforms(args.params.platforms),
         ...(since ? { since } : {}),
@@ -736,21 +774,45 @@ export async function executeInboxQueueOperation(args: {
       }
       // 2. Return the pending queue, which now includes the rows the
       //    classifier just persisted, optionally narrowed by classification.
-      const entries = classification
+      const includeSnoozed = args.params.includeSnoozed === true;
+      const entryPage = classification
         ? await repo.getByClassification(classification, {
-            limit,
-            includeSnoozed: args.params.includeSnoozed === true,
+            limit: limit + 1,
+            includeSnoozed,
           })
         : await repo.getUnresolved({
-            limit,
-            includeSnoozed: args.params.includeSnoozed === true,
+            limit: limit + 1,
+            includeSnoozed,
           });
+      const entriesCapped = entryPage.length > limit;
+      const entries = entriesCapped ? entryPage.slice(0, limit) : entryPage;
+      const narrowed = Boolean(classification) || !includeSnoozed;
+      const outsideScopePage =
+        narrowed && entries.length === 0
+          ? await repo.getUnresolved({
+              limit: limit + 1,
+              includeSnoozed: true,
+            })
+          : [];
+      const outsideScopeCapped = outsideScopePage.length > limit;
+      const outsideScopeCount = Math.min(outsideScopePage.length, limit);
+      const scopeParts: string[] = [];
+      if (classification) scopeParts.push(`classification=${classification}`);
+      if (!includeSnoozed) scopeParts.push("snoozed excluded");
+      const scope = scopeParts.length > 0 ? ` (${scopeParts.join(", ")})` : "";
+      const cap = entriesCapped
+        ? `, capped at ${limit}; more entries exist`
+        : "";
       const baseText =
         classifiedCount > 0
-          ? `Triaged ${classifiedCount} new message${classifiedCount === 1 ? "" : "s"}; ${entries.length} pending inbox item${entries.length === 1 ? "" : "s"}.`
+          ? `Triaged ${classifiedCount} new message${classifiedCount === 1 ? "" : "s"}; loaded ${entries.length}${entriesCapped ? "+" : ""} pending inbox item${entries.length === 1 && !entriesCapped ? "" : "s"}${scope}${cap}.`
           : entries.length === 0
-            ? "No inbox triage items are pending."
-            : `Loaded ${entries.length} pending inbox triage items.`;
+            ? narrowed
+              ? outsideScopeCount === 0
+                ? `No pending inbox items matched${scope}; the unfiltered queue is also empty.`
+                : `No pending inbox items matched${scope}. The unfiltered queue has ${outsideScopeCapped ? "at least " : ""}${outsideScopeCount} other pending item${outsideScopeCount === 1 && !outsideScopeCapped ? "" : "s"}.`
+              : "No inbox triage items are pending."
+            : `Loaded ${entries.length}${entriesCapped ? "+" : ""} pending inbox item${entries.length === 1 && !entriesCapped ? "" : "s"}${scope}${cap}.`;
       return {
         success: true,
         text: appendInboxTriageChoiceMarkers(
@@ -762,6 +824,8 @@ export async function executeInboxQueueOperation(args: {
           classified: classifiedCount,
           entries,
           degraded,
+          capped,
+          hasMore: entriesCapped,
         },
       };
     }
@@ -1051,18 +1115,26 @@ export const inboxAction: Action & {
       query = trimmed;
     }
 
-    const since =
-      typeof params.since === "string" && params.since.trim().length > 0
-        ? params.since.trim()
-        : undefined;
+    let since: string | undefined;
+    try {
+      since = canonicalSince(params.since);
+    } catch (error) {
+      return {
+        success: false,
+        text:
+          error instanceof Error ? error.message : "Invalid since timestamp.",
+        data: { subaction, error: "INVALID_SINCE" },
+      };
+    }
 
-    const { merged, totalBeforeDedupe, degraded } = await fetchInboxItems({
-      runtime,
-      platforms,
-      ...(since ? { since } : {}),
-      limit,
-      ...(query ? { query } : {}),
-    });
+    const { merged, totalBeforeDedupe, degraded, capped } =
+      await fetchInboxItems({
+        runtime,
+        platforms,
+        ...(since ? { since } : {}),
+        limit,
+        ...(query ? { query } : {}),
+      });
     const items: readonly InboxItem[] = subaction === "summarize" ? [] : merged;
     const summary: readonly InboxSummaryEntry[] | undefined =
       subaction === "summarize" ? buildSummary(merged, platforms) : undefined;
@@ -1084,17 +1156,19 @@ export const inboxAction: Action & {
               : "No messages from reachable platforms for this window."
             : `Pulled ${merged.length} messages across ${platforms.length} platforms.`;
         break;
-      case "search":
+      case "search": {
+        const queryLabel = describeUserReference(query ?? "", "that query");
         text =
           merged.length === 0
-            ? `No matches for "${query}".`
-            : `Found ${merged.length} matches for "${query}".`;
+            ? `No matches for ${queryLabel}.`
+            : `Found ${merged.length} matches for ${queryLabel}.`;
         break;
+      }
       case "summarize":
         text = `Summarized ${platforms.length} platforms (${merged.length} unique messages).`;
         break;
     }
-    text = `${text}${degradedSuffix(degraded)}`;
+    text = `${text}${fetchScopeSuffix({ platforms, limit, ...(since ? { since } : {}), queryApplied: Boolean(query), capped })}${degradedSuffix(degraded)}`;
 
     await callback?.({
       text,
@@ -1114,6 +1188,7 @@ export const inboxAction: Action & {
         ...(since ? { since } : {}),
         totalBeforeDedupe,
         degraded,
+        capped,
       },
     };
   },

@@ -62,7 +62,6 @@ compete with the chat brain and must survive an external text provider:
 | `CLOUD_CONTAINER` | `CloudContainerService` | `src/services/cloud-container.ts` | ECS container lifecycle: create, list, poll status, delete |
 | `CLOUD_BRIDGE` | `CloudBridgeService` | `src/services/cloud-bridge.ts` | JSON-RPC 2.0 WebSocket bridge to cloud-hosted agents with exponential-backoff reconnect |
 | `CLOUD_BACKUP` | `CloudBackupService` | `src/services/cloud-backup.ts` | Agent state snapshots/restore; periodic auto-backup and pre-eviction snapshots |
-| `workflow_credential_provider` | `CloudCredentialProvider` | `src/services/cloud-credential-provider.ts` | Bridges plugin-workflow's credential slot to Cloud OAuth connector surface |
 
 ### Events
 
@@ -110,7 +109,6 @@ plugins/plugin-elizacloud/
       cloud-container.ts            CloudContainerService (CLOUD_CONTAINER)
       cloud-bridge.ts               CloudBridgeService (CLOUD_BRIDGE)
       cloud-backup.ts               CloudBackupService (CLOUD_BACKUP)
-      cloud-credential-provider.ts  CloudCredentialProvider (workflow_credential_provider)
     cloud-providers/
       cloud-status.ts               elizacloud_status provider
       credit-balance.ts             elizacloud_credits provider
@@ -155,7 +153,6 @@ plugins/plugin-elizacloud/
       cloud-secrets.ts              getCloudSecret, clearCloudSecrets, scrubCloudSecretsFromEnv
       config-env.ts                 Env-to-config mapping
       config-like.ts                ElizaConfig type
-      credential-type-map.ts        credTypeToConnector mapping
       feature-flags.ts              Feature flag helpers
       http.ts                       sendJson HTTP helper
       server-cloud-tts.ts           TTS compat layer, resolveCloudTtsBaseUrl

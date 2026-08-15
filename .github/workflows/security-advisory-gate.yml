@@ -1,11 +1,7 @@
-# Base-trusted conditional merge gate. It only reads PR metadata and check
-# results, and never checks out or executes pull-request code.
+# Manual security-advisory diagnostic gate.
 name: Security Advisory Gate
 
 on:
-  pull_request_target:
-    branches: [develop]
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   workflow_dispatch:
     inputs:
       canary:
@@ -15,8 +11,8 @@ on:
         options: [bypass, protected, waiting, success, failure]
 
 concurrency:
-  group: security-advisory-gate-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+  group: security-advisory-gate-${{ github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

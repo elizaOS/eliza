@@ -8,6 +8,9 @@
  *
  * Decision matrix:
  * - `ok: true`                           → `complete`
+ * - `acceptance: "unknown"` failure      → `fail` (never retry or advance a
+ *                                          non-idempotent send that may have
+ *                                          reached the provider)
  * - `userActionable: true` failure       → `surface_degraded` (advance ladder)
  *                                          and surface via the
  *                                          connector-degradation provider.
@@ -106,6 +109,14 @@ export function decideDispatchPolicy(
   const reason = failure.reason;
   const message = failure.message;
   const isLastStep = context.currentStepIndex >= context.totalSteps - 1;
+
+  // Provider acceptance is the safety boundary. Once a non-idempotent send
+  // may have reached the provider, retrying the same step or advancing the
+  // ladder can duplicate the user-visible delivery. Keep the task unfired and
+  // terminal so recovery requires an explicit reconciliation decision.
+  if (failure.acceptance === "unknown") {
+    return { kind: "fail", reason, message };
+  }
 
   // Retry-with-backoff dominates: rate-limited or any failure that explicitly
   // sets retryAfterMinutes is treated as a transient failure on the same step.

@@ -1,16 +1,11 @@
-# This workflow is the canonical required pull-request and branch-health
-# validation entry point. Specialized branch-scoped and path-scoped workflows
-# run alongside it for specific surfaces, but none replaces the stable
-# `CI / Required` status it publishes.
+# This workflow is the canonical develop branch-health validation entry point.
+# Pull requests intentionally do not run repository workflows; develop validates
+# the integrated tree after merge.
 name: CI
 
 on:
-  pull_request:
-    branches: [develop, main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   push:
-    branches: [develop, main]
-  merge_group:
+    branches: [develop]
   workflow_call:
   workflow_dispatch:
 
@@ -19,8 +14,8 @@ on:
 # branch health can never be read on demand. Give workflow_dispatch its own
 # run-scoped identity — the same shape test.yml already uses.
 concurrency:
-  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event.pull_request.number || github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 permissions:
   contents: read
@@ -33,13 +28,6 @@ env:
   NODE_OPTIONS: "--max-old-space-size=8192"
 
 jobs:
-  develop_pr:
-    name: Develop PR compatibility gate
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
-    uses: ./.github/workflows/develop-pr.yml
-    permissions:
-      contents: read
-
   changes:
     name: Classify changes
     uses: ./.github/workflows/classify-paths.yml
@@ -523,13 +511,25 @@ jobs:
           set -euo pipefail
           if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
             if [ "$EVENT_NAME" = "pull_request" ]; then
-              # Three-dot: scan merge-base(base,head)..head, i.e. only what THIS
-              # PR added. `pull_request.base.sha` is the base tip at event time,
-              # not the merge base, so a two-dot range also scans commits the
-              # branch merely inherited by merging develop and re-flags fixtures
-              # the PR never touched (#17971/#17984). Canonical CI now owns the
-              # only PR secret scan, so the three-dot range must live here.
-              range="${BASE_SHA}...${HEAD_SHA}"
+              # Scan only what THIS PR introduced: merge-base(base,head)..head.
+              # `gitleaks --log-opts` feeds `git log`, where a three-dot range
+              # A...B is the symmetric difference and also traverses commits
+              # reachable only from the base side. `pull_request.base.sha` is
+              # the base tip at event time, not the merge base, so a PR whose
+              # base branch advanced after the branch point would scan the
+              # base-only commits it never added (#17971/#17984/#19687).
+              # Resolve the real merge base and use a two-dot range so `git
+              # log` traverses exactly the PR-introduced commits. Fail closed
+              # with an actionable error if the merge base cannot be resolved
+              # (empty result or non-zero exit, e.g. an unexpected shallow or
+              # incomplete graph): scanning only the head commit would silently
+              # leave earlier PR commits unscanned while this required security
+              # job still passed.
+              if ! MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA")" || [ -z "$MERGE_BASE" ]; then
+                echo "::error::gitleaks: could not resolve the merge base of base ${BASE_SHA} and head ${HEAD_SHA}; refusing to scan an incomplete commit range. Ensure the checkout has full history (fetch-depth: 0)." >&2
+                exit 1
+              fi
+              range="${MERGE_BASE}..${HEAD_SHA}"
             else
               range="${BASE_SHA}..${HEAD_SHA}"
             fi
@@ -548,7 +548,6 @@ jobs:
     if: always()
     needs:
       [
-        develop_pr,
         changes,
         quality,
         tests,
@@ -564,10 +563,7 @@ jobs:
     steps:
       - name: Require every CI job to succeed
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
           RESULTS: >-
-            develop-pr=${{ needs.develop_pr.result }}
             changes=${{ needs.changes.result }}
             quality=${{ needs.quality.result }}
             tests-scripts=${{ needs.tests.result }}
@@ -583,14 +579,6 @@ jobs:
           for pair in $RESULTS; do
             name="${pair%%=*}"
             result="${pair#*=}"
-            if [ "$name" = "develop-pr" ] &&
-               { [ "$EVENT_NAME" != "pull_request" ] || [ "$BASE_REF" != "develop" ]; }; then
-              if [ "$result" != "skipped" ]; then
-                echo "::error::$pair (expected skipped outside a develop pull request)"
-                exit 1
-              fi
-              continue
-            fi
             if [ "$result" != "success" ]; then
               echo "::error::$pair"
               exit 1

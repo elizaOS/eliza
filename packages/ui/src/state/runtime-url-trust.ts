@@ -14,7 +14,10 @@ import {
 } from "@elizaos/shared/contracts";
 import { classifyElizaHostname } from "@elizaos/shared/elizacloud";
 import { isMobileLocalAgentIpcBase } from "../first-run/mobile-runtime-mode";
-import { ELIZA_CLOUD_CONTROL_PLANE_HOSTS } from "../utils/cloud-agent-base";
+import {
+  ELIZA_CLOUD_CONTROL_PLANE_HOSTS,
+  isPersonalSharedElizaId,
+} from "../utils/cloud-agent-base";
 
 function isLoopbackHostname(hostname: string): boolean {
   const h = hostname.toLowerCase();
@@ -77,7 +80,9 @@ export function isTrustedRestoreApiBaseUrl(
 function decodedPathAgentId(value: string): string | null {
   try {
     const decoded = decodeURIComponent(value).trim().toLowerCase();
-    return isCloudPairAgentId(decoded) ? decoded : null;
+    return isCloudPairAgentId(decoded) || isPersonalSharedElizaId(decoded)
+      ? decoded
+      : null;
   } catch {
     // error-policy:J3 malformed URL encoding is an untrusted Cloud target.
     return null;
@@ -106,7 +111,11 @@ export function isTrustedCloudApiBaseUrl(
   const hasExpectedAgentId =
     expectedAgentId !== undefined && expectedAgentId !== null;
   const normalizedExpectedAgentId = expectedAgentId?.trim().toLowerCase() ?? "";
-  if (hasExpectedAgentId && !isCloudPairAgentId(normalizedExpectedAgentId)) {
+  if (
+    hasExpectedAgentId &&
+    !isCloudPairAgentId(normalizedExpectedAgentId) &&
+    !isPersonalSharedElizaId(normalizedExpectedAgentId)
+  ) {
     return false;
   }
   const expected = hasExpectedAgentId ? normalizedExpectedAgentId : null;

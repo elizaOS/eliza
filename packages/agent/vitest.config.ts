@@ -130,8 +130,33 @@ export default defineConfig({
         replacement: path.join(monorepoRoot, "packages/core/src/index.node.ts"),
       },
       {
+        find: /^@elizaos\/core\/edge$/,
+        replacement: path.join(monorepoRoot, "packages/core/src/index.edge.ts"),
+      },
+      {
         find: /^@elizaos\/core\/security\/(.+)$/,
         replacement: path.join(monorepoRoot, "packages/core/src/security/$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-anthropic\/endpoint-config$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-anthropic/utils/config.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-elizacloud\/endpoint-config$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-elizacloud/src/utils/config.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-openai\/endpoint-config$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-openai/utils/config.ts",
+        ),
       },
       ...baseAliases,
       {

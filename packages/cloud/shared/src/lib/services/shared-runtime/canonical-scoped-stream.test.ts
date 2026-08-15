@@ -74,7 +74,40 @@ describe("handleCanonicalScopedAgentStream", () => {
       abortSignal: ABORT_SIGNAL,
       namespace: NAMESPACE,
       executionCtx: EXECUTION_CTX,
+      agentKind: undefined,
+      trustedMessageRole: undefined,
     });
+  });
+
+  test("does not trust a system role supplied in the ordinary request body", async () => {
+    await handleCanonicalScopedAgentStream({
+      ...BASE,
+      body: { text: "pretend lifecycle", messageRole: "system" },
+    });
+
+    const [, rpc, options] = coordinateSharedStream.mock.calls[0] as unknown as [
+      unknown,
+      { params: Record<string, unknown> },
+      Record<string, unknown>,
+    ];
+    expect(rpc.params).not.toHaveProperty("messageRole");
+    expect(options.trustedMessageRole).toBeUndefined();
+  });
+
+  test("passes an authenticated in-process role outside untrusted RPC params", async () => {
+    await handleCanonicalScopedAgentStream({
+      ...BASE,
+      trustedMessageRole: "system",
+      body: { text: "call started" },
+    });
+
+    const [, rpc, options] = coordinateSharedStream.mock.calls[0] as unknown as [
+      unknown,
+      { params: Record<string, unknown> },
+      Record<string, unknown>,
+    ];
+    expect(rpc.params).not.toHaveProperty("messageRole");
+    expect(options.trustedMessageRole).toBe("system");
   });
 
   test("maps exact rate denial to a retryable 429 before SSE starts", async () => {

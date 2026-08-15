@@ -22,6 +22,7 @@ async function makeHostRuntime(): Promise<IAgentRuntime> {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
     getSetting: vi.fn(() => undefined),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),
+    redactSecrets: vi.fn((text: string) => text),
     reportError: vi.fn(),
   } as unknown as IAgentRuntime;
   services.set(SANDBOX_SERVICE, await SandboxService.start(runtime));

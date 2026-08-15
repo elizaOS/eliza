@@ -202,6 +202,31 @@ export function scrubIncomingMessageTextForStorage(text: string): string {
 }
 
 /**
+ * Shared resolution: the retained `metadata.userPayloadText` stamp when
+ * present (the trusted copy taken before wrapping); otherwise, ONLY when the
+ * `externalContentWrapped` stamp attests the envelope came from this module, a
+ * marker parse of `content.text` (legacy messages persisted before the
+ * retained field existed); otherwise the raw text. Unstamped marker-shaped
+ * text is never parsed — the stamp is the authenticity proof, and extracting a
+ * "payload" from an unauthenticated envelope would let injected marker text
+ * place attacker-chosen words (e.g. a "yes" for a destructive confirm) where
+ * consumers read the user's words.
+ */
+function resolveRetainedCandidate(message: Memory): string {
+	const text =
+		typeof message.content?.text === "string" ? message.content.text : "";
+	const metadata = readMessageMetadata(message);
+	const retained = metadata.userPayloadText;
+	if (typeof retained === "string" && retained.trim().length > 0) {
+		return retained.trim();
+	}
+	if (metadata.externalContentWrapped === true) {
+		return (extractWrappedExternalContent(text) ?? text).trim();
+	}
+	return text.trim();
+}
+
+/**
  * Canonical accessor for the user's actual words from a message that
  * `hardenIncomingUserMessage` may have wrapped in the external-content
  * security envelope. The envelope exists for PROMPTS — the model must see the
@@ -212,36 +237,37 @@ export function scrubIncomingMessageTextForStorage(text: string): string {
  * tj-2dc95f75456876), and a resolver that matched on it selected apps by
  * warning words.
  *
- * Resolution order: the retained `metadata.userPayloadText` stamp when present
- * (the trusted copy taken before wrapping); otherwise, ONLY when the
- * `externalContentWrapped` stamp attests the envelope came from this module, a
- * marker parse of `content.text` (legacy messages persisted before the
- * retained field existed); otherwise the raw text. Unstamped marker-shaped
- * text is never parsed — the stamp is the authenticity proof, and extracting a
- * "payload" from an unauthenticated envelope would let injected marker text
- * place attacker-chosen words (e.g. a "yes" for a destructive confirm) where
- * consumers read the user's words. Whatever wins is validated last: a result
- * that still reads as envelope material (partial markers, the warning
- * sentence, a stamped message whose markers were mangled, unstamped armor)
- * returns "" — an empty reference sends resolvers down their ask-the-user path
+ * The resolved candidate (see {@link resolveRetainedCandidate}) is validated
+ * last: a result that still reads as envelope material (partial markers, the
+ * warning sentence, a stamped message whose markers were mangled, unstamped
+ * armor — including a sender who typed marker-shaped text themselves) returns
+ * "" — an empty reference sends resolvers down their ask-the-user path
  * instead of matching warning words, which is the only safe interpretation of
- * armor debris.
+ * armor debris **for something that echoes or acts on the text**.
+ *
+ * Do NOT use this for detection/scoring boundaries (injection risk gates,
+ * classifiers) — an attacker can pair a genuine injection with marker-shaped
+ * text specifically to make this return "", which a scorer reading "" as "no
+ * signal" would treat as safe instead of maximally suspicious. Use
+ * {@link unwrapUserMessageTextForDetection} there instead.
  */
 export function unwrapUserMessageText(message: Memory): string {
-	const text =
-		typeof message.content?.text === "string" ? message.content.text : "";
-	const metadata = readMessageMetadata(message);
-	const retained = metadata.userPayloadText;
-	let candidate: string;
-	if (typeof retained === "string" && retained.trim().length > 0) {
-		candidate = retained;
-	} else if (metadata.externalContentWrapped === true) {
-		candidate = extractWrappedExternalContent(text) ?? text;
-	} else {
-		candidate = text;
-	}
-	const trimmed = candidate.trim();
+	const trimmed = resolveRetainedCandidate(message);
 	return containsExternalEnvelopeMaterial(trimmed) ? "" : trimmed;
+}
+
+/**
+ * Detection-only counterpart to {@link unwrapUserMessageText}: same retained-
+ * payload resolution, but returns the raw candidate even when it still reads
+ * as envelope material, instead of collapsing to "". Only safe for boundaries
+ * that score/classify/block text and never echo or act on it directly — a
+ * scanner seeing an attacker's real injection attempt (even one deliberately
+ * salted with marker-shaped text to defeat {@link unwrapUserMessageText}) is
+ * exactly the detection this exists for. Never use this for resolvers, name/
+ * target extraction, or anything later shown to a user or another system.
+ */
+export function unwrapUserMessageTextForDetection(message: Memory): string {
+	return resolveRetainedCandidate(message);
 }
 
 export function messageHasPromptInjectionFlag(message: Memory): boolean {

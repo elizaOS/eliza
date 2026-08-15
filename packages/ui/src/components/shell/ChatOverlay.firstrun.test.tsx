@@ -505,4 +505,21 @@ describe("ChatOverlay first-run gating", () => {
     rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
+
+  it("settles a remounted overlay when the parent retained the completion edge", () => {
+    const onHandled = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        firstRunOpen={false}
+        releaseFirstRunToHalf
+        onFirstRunReleaseHandled={onHandled}
+      />,
+    );
+
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(onHandled).toHaveBeenCalledTimes(1);
+  });
 });

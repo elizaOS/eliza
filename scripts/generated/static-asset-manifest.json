@@ -1,5 +1,7 @@
 {
   "app": [
+    "packages/app/public/_headers",
+    "packages/app/public/_redirects",
     "packages/app/public/app-heroes/database-viewer.png",
     "packages/app/public/app-heroes/log-viewer.png",
     "packages/app/public/app-heroes/memory-viewer.png",
@@ -8,6 +10,8 @@
     "packages/app/public/app-heroes/runtime-debugger.png",
     "packages/app/public/app-heroes/skills-viewer.png",
     "packages/app/public/app-heroes/trajectory-viewer.png",
+    "packages/app/public/bg-sunset.webp",
+    "packages/app/public/brand/app-icon.png",
     "packages/app/public/brand/background/Clouds_Loop_HQ_1080p.mp4",
     "packages/app/public/brand/background/Clouds_Loop_Mobile_480p.mp4",
     "packages/app/public/brand/background/clouds_background.jpg",
@@ -26,6 +30,8 @@
     "packages/app/public/brand/concepts/concept_usbdrive_900.jpg",
     "packages/app/public/brand/favicons/android-chrome-192x192.png",
     "packages/app/public/brand/favicons/android-chrome-512x512.png",
+    "packages/app/public/brand/favicons/app-icon-192.png",
+    "packages/app/public/brand/favicons/app-icon-512.png",
     "packages/app/public/brand/favicons/apple-touch-icon.png",
     "packages/app/public/brand/favicons/favicon-16x16.png",
     "packages/app/public/brand/favicons/favicon-32x32.png",
@@ -37,6 +43,8 @@
     "packages/app/public/brand/logos/eliza_logotext_black.svg",
     "packages/app/public/brand/logos/eliza_text_black.svg",
     "packages/app/public/brand/logos/eliza_text_white.svg",
+    "packages/app/public/brand/logos/eliza_wordmark_black.svg",
+    "packages/app/public/brand/logos/eliza_wordmark_white.svg",
     "packages/app/public/brand/logos/elizacloud_logotext.svg",
     "packages/app/public/brand/logos/elizacloud_logotext_black.svg",
     "packages/app/public/brand/logos/elizacloud_text_black.svg",
@@ -75,7 +83,13 @@
     "packages/app/public/og-image.png",
     "packages/app/public/runners/eliza-tasks.js",
     "packages/app/public/site.webmanifest",
-    "packages/app/public/sw.js"
+    "packages/app/public/sw-push.js",
+    "packages/app/public/sw.js",
+    "packages/app/public/wallpapers/canopy.webp",
+    "packages/app/public/wallpapers/dusk-dunes.webp",
+    "packages/app/public/wallpapers/ember-dunes.webp",
+    "packages/app/public/wallpapers/reef.webp",
+    "packages/app/public/wallpapers/slate.webp"
   ],
   "homepage": [
     "packages/homepage/public/_headers",
@@ -96,6 +110,8 @@
     "packages/homepage/public/brand/logos/eliza_logotext_black.svg",
     "packages/homepage/public/brand/logos/eliza_text_black.svg",
     "packages/homepage/public/brand/logos/eliza_text_white.svg",
+    "packages/homepage/public/brand/logos/eliza_wordmark_black.svg",
+    "packages/homepage/public/brand/logos/eliza_wordmark_white.svg",
     "packages/homepage/public/brand/logos/elizacloud_logotext.svg",
     "packages/homepage/public/brand/logos/elizacloud_logotext_black.svg",
     "packages/homepage/public/brand/logos/elizacloud_text_black.svg",
@@ -118,13 +134,19 @@
     "packages/homepage/public/brand/ogembeds/elizaos_ogembed.png",
     "packages/homepage/public/brand/ogembeds/elizaos_ogembed.svg",
     "packages/homepage/public/eliza-app-profile-image.png",
+    "packages/homepage/public/eliza-app-profile-image.webp",
+    "packages/homepage/public/eliza-logo.webp",
     "packages/homepage/public/elizapfp.png",
-    "packages/homepage/public/elizawallpaper.jpeg",
+    "packages/homepage/public/elizapfp.webp",
+    "packages/homepage/public/elizawallpaper.webp",
+    "packages/homepage/public/geist-sans-latin-ext.woff2",
+    "packages/homepage/public/geist-sans-latin.woff2",
+    "packages/homepage/public/grain.webp",
     "packages/homepage/public/install.ps1",
     "packages/homepage/public/install.sh",
-    "packages/homepage/public/models/iphone.glb",
+    "packages/homepage/public/models/iphone-meshopt.glb",
     "packages/homepage/public/product/elizaos-usb-key-concept.png",
     "packages/homepage/public/site.webmanifest",
-    "packages/homepage/public/tbg.jpg"
+    "packages/homepage/public/tbg.webp"
   ]
 }

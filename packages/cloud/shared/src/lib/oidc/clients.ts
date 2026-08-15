@@ -32,6 +32,13 @@
  * resource server behind the audience a token its client already holds. It is
  * refused across the whole registry, not per entry.
  *
+ * Canonical-domain migrations use the separate public
+ * `OIDC_REDIRECT_URI_ALIASES` variable. It can add exact HTTPS callbacks to an
+ * existing registered client, but cannot create a client or change its secret,
+ * scopes, claims, or primary callbacks. Keeping that overlay outside the
+ * monolithic secret lets an operator migrate one relying party without reading
+ * or reconstructing every protected registration.
+ *
  * `wallet_email_fallback` defaults FALSE and is the only knob that changes what
  * the `email` claim can hold. It widens the `require_verified_email` gate rather
  * than replacing it, so the two must be set together: with the requirement OFF
@@ -124,6 +131,10 @@ const DEFAULT_SCOPES = ["openid", "email", "profile", "groups"];
 const DEFAULT_TTL_SECONDS = 300;
 const MIN_TTL_SECONDS = 60;
 const MAX_TTL_SECONDS = 3600;
+const MAX_REDIRECT_ALIAS_SOURCE_BYTES = 16_384;
+const MAX_REDIRECT_ALIAS_CLIENTS = 32;
+const MAX_REDIRECT_ALIASES_PER_CLIENT = 8;
+const MAX_REDIRECT_URI_BYTES = 2_048;
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 const CLAIM_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$/;
 
@@ -170,9 +181,15 @@ const NATIVE_ROLE_VALUES = new Set<string>(OIDC_ROLE_VALUES);
 
 let cachedClients: Map<string, OidcClient> | null = null;
 let cachedClientsSource: string | null = null;
+let cachedRedirectAliasesSource: string | null = null;
 
 function readSource(): string | undefined {
   const raw = getCloudAwareEnv().OIDC_CLIENTS;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+}
+
+function readRedirectAliasesSource(): string | undefined {
+  const raw = getCloudAwareEnv().OIDC_REDIRECT_URI_ALIASES;
   return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
 }
 
@@ -247,6 +264,97 @@ function parseRedirectUris(raw: Record<string, unknown>, clientId: string): stri
     }
   }
   return uris;
+}
+
+function parseRedirectAliases(source: string | undefined, clients: Map<string, OidcClient>): void {
+  if (!source) return;
+  if (Buffer.byteLength(source, "utf8") > MAX_REDIRECT_ALIAS_SOURCE_BYTES) {
+    throw new Error("OIDC_REDIRECT_URI_ALIASES exceeds its byte limit");
+  }
+
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(source) as unknown;
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — the public overlay is named but
+    // its raw contents are never copied into logs or error messages.
+    throw new Error("OIDC_REDIRECT_URI_ALIASES is not valid JSON", { cause: error });
+  }
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
+    throw new Error("OIDC_REDIRECT_URI_ALIASES must be an object keyed by client_id");
+  }
+
+  const entries = Object.entries(decoded as Record<string, unknown>);
+  if (entries.length === 0 || entries.length > MAX_REDIRECT_ALIAS_CLIENTS) {
+    throw new Error(
+      `OIDC_REDIRECT_URI_ALIASES must contain between 1 and ${MAX_REDIRECT_ALIAS_CLIENTS} clients`,
+    );
+  }
+
+  const redirectOwners = new Map<string, string | null>();
+  for (const client of clients.values()) {
+    for (const redirectUri of client.redirect_uris) {
+      const owner = redirectOwners.get(redirectUri);
+      redirectOwners.set(
+        redirectUri,
+        owner !== undefined && owner !== client.client_id ? null : client.client_id,
+      );
+    }
+  }
+
+  for (const [rawClientId, rawAliases] of entries) {
+    const clientId = rawClientId.trim();
+    if (!clientId || clientId !== rawClientId) {
+      throw new Error("OIDC_REDIRECT_URI_ALIASES contains an invalid client_id key");
+    }
+    const client = clients.get(clientId);
+    if (!client) {
+      throw new Error(`OIDC_REDIRECT_URI_ALIASES references unregistered client_id "${clientId}"`);
+    }
+    const aliases = stringList(rawAliases, "redirect_uri_aliases", clientId);
+    if (aliases.length === 0 || aliases.length > MAX_REDIRECT_ALIASES_PER_CLIENT) {
+      throw new Error(
+        `OIDC_REDIRECT_URI_ALIASES[${clientId}] must contain between 1 and ${MAX_REDIRECT_ALIASES_PER_CLIENT} callbacks`,
+      );
+    }
+
+    for (const alias of aliases) {
+      if (Buffer.byteLength(alias, "utf8") > MAX_REDIRECT_URI_BYTES) {
+        throw new Error(`OIDC_REDIRECT_URI_ALIASES[${clientId}] callback exceeds its byte limit`);
+      }
+      let parsed: URL;
+      try {
+        parsed = new URL(alias);
+      } catch (error) {
+        // error-policy:J2 context-adding rethrow — aliases must pass the same
+        // parse boundary as primary redirects before exact matching.
+        throw new Error(`OIDC_REDIRECT_URI_ALIASES[${clientId}] has an invalid callback`, {
+          cause: error,
+        });
+      }
+      if (
+        parsed.protocol !== "https:" ||
+        parsed.href !== alias ||
+        parsed.username ||
+        parsed.password ||
+        parsed.hash ||
+        !parsed.hostname
+      ) {
+        throw new Error(
+          `OIDC_REDIRECT_URI_ALIASES[${clientId}] callbacks must be credential-free HTTPS URLs without fragments`,
+        );
+      }
+
+      const owner = redirectOwners.get(alias);
+      if (owner !== undefined) {
+        throw new Error(
+          `OIDC_REDIRECT_URI_ALIASES[${clientId}] callback is already registered${owner ? ` to "${owner}"` : " to multiple clients"}`,
+        );
+      }
+      redirectOwners.set(alias, clientId);
+      client.redirect_uris.push(alias);
+    }
+  }
 }
 
 function parseClaimsPolicy(value: unknown): OidcClaimsPolicy {
@@ -498,7 +606,14 @@ function loadClients(): Map<string, OidcClient> {
   if (!source) {
     throw new Error("OIDC_CLIENTS is not configured");
   }
-  if (cachedClients && cachedClientsSource === source) return cachedClients;
+  const redirectAliasesSource = readRedirectAliasesSource();
+  if (
+    cachedClients &&
+    cachedClientsSource === source &&
+    cachedRedirectAliasesSource === (redirectAliasesSource ?? null)
+  ) {
+    return cachedClients;
+  }
 
   let decoded: unknown;
   try {
@@ -522,9 +637,11 @@ function loadClients(): Map<string, OidcClient> {
     throw new Error("OIDC_CLIENTS must register at least one client");
   }
   assertNoAudienceCollisions(map);
+  parseRedirectAliases(redirectAliasesSource, map);
 
   cachedClients = map;
   cachedClientsSource = source;
+  cachedRedirectAliasesSource = redirectAliasesSource ?? null;
   return map;
 }
 
@@ -574,4 +691,5 @@ export function intersectScopes(client: OidcClient, requested: string[]): string
 export function _resetOidcClientCacheForTests(): void {
   cachedClients = null;
   cachedClientsSource = null;
+  cachedRedirectAliasesSource = null;
 }

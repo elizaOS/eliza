@@ -1,6 +1,6 @@
 /**
  * Plugin entry point for @elizaos/plugin-signal: assembles the `Plugin` object,
- * wires the `SignalService` and `SignalWorkflowCredentialProvider` services, the
+ * wires the `SignalService`, the
  * `/api/setup/signal/*` routes, and the connector-account provider, and registers
  * the cross-connector triage adapter. Also re-exports the plugin's public surface
  * (types, service, helpers) for programmatic consumers.
@@ -19,7 +19,6 @@ import { registerSignalTriageAdapter } from "./triage-adapter";
 
 // Types
 import { normalizeE164 } from "./types";
-import { SignalWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const signalPlugin: Plugin = {
   name: "signal",
@@ -32,7 +31,7 @@ const signalPlugin: Plugin = {
       isPassive: true,
     },
   ],
-  services: [SignalService, SignalWorkflowCredentialProvider],
+  services: [SignalService],
   actions: [],
   providers: [],
   routes: signalSetupRoutes,

@@ -16,6 +16,15 @@ import {
   runWithCloudBindingsAsync,
 } from "@/lib/runtime/cloud-bindings";
 import { handleCanonicalScopedAgentStream } from "@/lib/services/shared-runtime/canonical-scoped-stream";
+import {
+  coordinateSharedConversationPrewarm,
+  coordinateSharedLifecycleEvent,
+  type SharedConversationLifecycleEvent,
+} from "@/lib/services/shared-runtime/conversation-coordinator";
+import {
+  isPersonalSharedAgentId,
+  personalSharedAgent,
+} from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { logger } from "@/lib/utils/logger";
@@ -34,6 +43,10 @@ export interface InternalElizaConversationFetchClaims {
 export type InternalElizaConversationFetch = typeof fetch & {
   /** Read the immutable tenancy cache and schedule cold hydration before first turn. */
   prewarm: () => Promise<void>;
+  /** Persist an idempotent call lifecycle marker in the canonical room. */
+  recordLifecycleEvent: (
+    event: SharedConversationLifecycleEvent,
+  ) => Promise<void>;
 };
 
 export type InternalElizaConversationFetchFactory = (
@@ -98,12 +111,20 @@ export function createInternalElizaConversationFetchFactory(
     );
     let hydrationPromise: Promise<void> | null = null;
 
+    const personalAgent = isPersonalSharedAgentId(claims.agentId)
+      ? personalSharedAgent({
+          userId: claims.userId,
+          organizationId: claims.organizationId,
+        })
+      : null;
     const readCachedAgent = async (): Promise<SharedRuntimeAgent | null> => {
+      if (personalAgent?.id === claims.agentId) return personalAgent;
       const cached = await cache.get<SharedRuntimeAgent>(cacheKey);
       return isCachedVoiceAgent(cached, claims) ? cached : null;
     };
 
     const scheduleHydration = (): boolean => {
+      if (personalAgent) return true;
       if (!executionCtx) return false;
       if (hydrationPromise) return true;
 
@@ -129,11 +150,27 @@ export function createInternalElizaConversationFetchFactory(
     };
 
     const prewarm = async (): Promise<void> => {
-      if (!env.SHARED_RUNTIME_CONVERSATIONS || !executionCtx) return;
+      const namespace = env.SHARED_RUNTIME_CONVERSATIONS;
+      if (!namespace || !executionCtx) return;
       await runWithCloudBindingsAsync(
         env as unknown as Record<string, unknown>,
         async () => {
-          if (!(await readCachedAgent())) scheduleHydration();
+          let agent = await readCachedAgent();
+          if (!agent) {
+            scheduleHydration();
+            // Capture before awaiting: the hydration's finally block clears the
+            // shared slot. Joining this exact promise lets the first voice turn
+            // use the freshly cached scope without cache-miss polling/backoff.
+            const pendingHydration = hydrationPromise;
+            if (pendingHydration) await pendingHydration;
+            agent = await readCachedAgent();
+          }
+          if (!agent) return;
+          await coordinateSharedConversationPrewarm(
+            agent.id,
+            claims.conversationId,
+            { namespace },
+          );
         },
       );
     };
@@ -178,6 +215,24 @@ export function createInternalElizaConversationFetchFactory(
       );
     }) as InternalElizaConversationFetch;
     fetchImpl.prewarm = prewarm;
+    fetchImpl.recordLifecycleEvent = async (event) => {
+      const namespace = env.SHARED_RUNTIME_CONVERSATIONS;
+      if (!namespace) {
+        throw new Error(
+          "Shared runtime conversation coordinator is unavailable.",
+        );
+      }
+      await runWithCloudBindingsAsync(
+        env as unknown as Record<string, unknown>,
+        () =>
+          coordinateSharedLifecycleEvent(
+            claims.agentId,
+            claims.conversationId,
+            event,
+            { namespace },
+          ),
+      );
+    };
     return fetchImpl;
   };
 }
@@ -266,6 +321,13 @@ async function dispatchInternalElizaConversationFetch(
     orgId: claims.organizationId,
     conversationId: claims.conversationId,
     userId: claims.userId,
+    agentKind: isPersonalSharedAgentId(claims.agentId) ? "personal" : "sandbox",
+    trustedMessageRole:
+      body &&
+      typeof body === "object" &&
+      (body as { messageRole?: unknown }).messageRole === "system"
+        ? "system"
+        : undefined,
     body,
     origin: headers.get("origin"),
     namespace: runtime.namespace,

@@ -44,7 +44,7 @@ describe("getWebPushVapidConfig", () => {
     expect(cfg).toEqual({
       publicKey: "PUB",
       privateKey: "PRIV",
-      subject: "mailto:push@elizacloud.ai",
+      subject: "mailto:push@eliza.app",
     });
   });
 

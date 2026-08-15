@@ -17,8 +17,7 @@ import { client } from "../../api/client";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
-import { Label } from "../ui/label";
-import { SettingsInput } from "../ui/settings-controls";
+import { SettingsInputRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { isVaultEntryMeta, type VaultEntryMeta } from "./vault-tabs/types";
 
@@ -135,25 +134,6 @@ function WalletKeysSectionBody() {
       label: "Add wallet key",
       group: "wallet-keys",
       description: "Show the form to add a wallet private key",
-    });
-  const { ref: addKeyRef, agentProps: addKeyAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "wallet-keys-key-name",
-      role: "text-input",
-      label: "Wallet key name",
-      group: "wallet-keys-add",
-      description: "Env-var name like EVM_PRIVATE_KEY",
-      getValue: () => addKey,
-      onFill: (v) => setAddKey(v),
-    });
-  const { ref: addValueRef, agentProps: addValueAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "wallet-keys-private-key",
-      role: "text-input",
-      label: "Wallet private key value",
-      group: "wallet-keys-add",
-      getValue: () => addValue,
-      onFill: (v) => setAddValue(v),
     });
   const { ref: addCancelRef, agentProps: addCancelAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -351,36 +331,29 @@ function WalletKeysSectionBody() {
           className="space-y-2 pt-1"
           data-testid="wallet-keys-add-form"
         >
-          <div>
-            <Label className="text-xs text-muted">
-              {t("walletkeys.keyName", { defaultValue: "Key name" })}
-            </Label>
-            <SettingsInput
-              ref={addKeyRef}
-              {...addKeyAgentProps}
-              variant="touch"
-              value={addKey}
-              onChange={(e) => setAddKey(e.target.value)}
-              placeholder="EVM_PRIVATE_KEY"
-              autoComplete="off"
-              required
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-muted">
-              {t("walletkeys.privateKey", { defaultValue: "Private key" })}
-            </Label>
-            <SettingsInput
-              ref={addValueRef}
-              {...addValueAgentProps}
-              variant="touch"
-              type="password"
-              value={addValue}
-              onChange={(e) => setAddValue(e.target.value)}
-              autoComplete="new-password"
-              required
-            />
-          </div>
+          <SettingsInputRow
+            agentId="wallet-keys-key-name"
+            agentLabel="Wallet key name"
+            group="wallet-keys-add"
+            label={t("walletkeys.keyName", { defaultValue: "Key name" })}
+            description={t("walletkeys.keyNameHint", {
+              defaultValue: "Env-var name like EVM_PRIVATE_KEY",
+            })}
+            value={addKey}
+            onValueChange={setAddKey}
+            placeholder="EVM_PRIVATE_KEY"
+            autoComplete="off"
+          />
+          <SettingsInputRow
+            agentId="wallet-keys-private-key"
+            agentLabel="Wallet private key value"
+            group="wallet-keys-add"
+            label={t("walletkeys.privateKey", { defaultValue: "Private key" })}
+            type="password"
+            value={addValue}
+            onValueChange={setAddValue}
+            autoComplete="new-password"
+          />
           <div className="flex justify-end gap-2 pt-1">
             <Button
               ref={addCancelRef}

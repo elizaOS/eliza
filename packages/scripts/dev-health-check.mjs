@@ -35,6 +35,12 @@ import { pathToFileURL } from "node:url";
 const DEFAULT_SECONDS = 90;
 export const DEFAULT_UI_PORT = 2138;
 export const DEFAULT_API_PORT = 31337;
+/**
+ * Node clamps `setTimeout` delays above this 32-bit ceiling to 1 ms. Every
+ * millisecond window derived from a timing flag must fall within it so the
+ * observation loop can honor the requested duration literally.
+ */
+export const MAX_TIMER_MS = 2_147_483_647;
 const DEFAULT_INITIAL_PROBE_DELAY_MS = 8000;
 const POLL_INTERVAL_MS = 1000;
 const FETCH_TIMEOUT_MS = 10000;
@@ -78,15 +84,15 @@ export function parseArgs(argv, env = process.env) {
 
   for (const { key, value } of parsedArgs) {
     if (key === "--seconds") {
-      options.seconds = parsePositiveNumber(value, "--seconds");
+      options.seconds = parsePositiveIntSeconds(value, "--seconds");
     } else if (key === "--duration-ms") {
-      options.seconds = parsePositiveNumber(value, "--duration-ms") / 1000;
+      options.seconds = parsePositiveIntMs(value, "--duration-ms") / 1000;
     } else if (key === "--ui-port") {
       options.uiPort = parseTcpPort(value, "--ui-port");
     } else if (key === "--api-port") {
       options.apiPort = parseTcpPort(value, "--api-port");
     } else if (key === "--initial-probe-delay-ms") {
-      options.initialProbeDelayMs = parsePositiveNumber(
+      options.initialProbeDelayMs = parsePositiveIntMs(
         value,
         "--initial-probe-delay-ms",
       );
@@ -230,12 +236,52 @@ Environment:
   ELIZA_API_PORT              API probe port when --api-port is omitted`);
 }
 
-function parsePositiveNumber(value, label) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(`${label} must be a positive number`);
+/**
+ * Parse a positive integer count of milliseconds bounded by Node's 32-bit
+ * timer ceiling. Rejects fractions, scientific notation, hex, trailing
+ * garbage, empty, negatives, and zero so a timing flag can never pass
+ * validation and then clamp to 1 ms or collapse to a 0 ms window.
+ * @param {string} value
+ * @param {string} label
+ */
+export function parsePositiveIntMs(value, label) {
+  const raw = String(value ?? "");
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(
+      `${label} must be a positive integer number of milliseconds from 1 to ${MAX_TIMER_MS}`,
+    );
   }
-  return parsed;
+  const ms = Number(raw);
+  if (!Number.isSafeInteger(ms) || ms < 1 || ms > MAX_TIMER_MS) {
+    throw new Error(
+      `${label} must be a positive integer number of milliseconds from 1 to ${MAX_TIMER_MS}`,
+    );
+  }
+  return ms;
+}
+
+/**
+ * Parse a positive integer count of seconds whose millisecond window stays
+ * within Node's timer ceiling. Mirrors {@link parsePositiveIntMs} so the
+ * observation window can never round to 0 ms or overflow to a 1 ms timer.
+ * @param {string} value
+ * @param {string} label
+ */
+export function parsePositiveIntSeconds(value, label) {
+  const raw = String(value ?? "");
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(`${label} must be a positive integer number of seconds`);
+  }
+  const seconds = Number(raw);
+  if (!Number.isSafeInteger(seconds) || seconds < 1) {
+    throw new Error(`${label} must be a positive integer number of seconds`);
+  }
+  if (seconds * 1000 > MAX_TIMER_MS) {
+    throw new Error(
+      `${label} of ${seconds} seconds exceeds the maximum observation window of ${MAX_TIMER_MS} milliseconds`,
+    );
+  }
+  return seconds;
 }
 
 function stripAnsi(value) {

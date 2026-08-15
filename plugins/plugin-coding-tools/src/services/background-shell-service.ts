@@ -2,8 +2,9 @@
  * Per-conversation background shell sessions for long-running coding commands.
  *
  * The service owns child process groups, stable handles, stdin writes, and
- * bounded stdout/stderr buffers. Polling uses absolute character offsets per stream:
- * when a caller asks for an offset older than the retained ring window, the
+ * bounded stdout/stderr buffers. Polling uses absolute character offsets per
+ * stream and projects configured-secret taint across the ordered stream graph.
+ * When a caller asks for an offset older than the retained ring window, the
  * returned chunk starts at the retained floor and reports `truncatedBefore` so
  * the caller can distinguish lost output from an empty incremental read.
  */
@@ -18,6 +19,7 @@ import {
   signalHostProcessGroup,
   startBackgroundShellOnHost,
 } from "../lib/run-shell.js";
+import { redactShellText } from "../shell/redaction.js";
 import { BACKGROUND_SHELL_SERVICE, CODING_TOOLS_LOG_PREFIX } from "../types.js";
 
 const DEFAULT_BUFFER_CHARS = 64_000;
@@ -25,6 +27,14 @@ const DEFAULT_KILL_GRACE_MS = 1_500;
 const MAX_WRITE_CHARS = 1_000_000;
 const MAX_SESSIONS_PER_CONVERSATION = 16;
 const MAX_SESSIONS_GLOBAL = 128;
+
+type SecretFragment = Parameters<
+  IAgentRuntime["locateConfiguredSecretFragmentTaint"]
+>[0][number];
+type SecretTaintRange = Extract<
+  ReturnType<IAgentRuntime["locateConfiguredSecretFragmentTaint"]>,
+  { status: "complete" }
+>["ranges"][number];
 
 export interface BackgroundShellChunk {
   text: string;
@@ -78,8 +88,17 @@ interface BackgroundShellSession {
   sandbox: ShellSandboxBackend;
   stdout: StreamRing;
   stderr: StreamRing;
+  redaction: FragmentRedactionState;
   stdinError?: Error;
   killTimer?: NodeJS.Timeout;
+}
+
+interface FragmentRedactionState {
+  fragments: SecretFragment[];
+  ranges: SecretTaintRange[];
+  incomplete: boolean;
+  quarantineCharacters: Record<"stdout" | "stderr", number>;
+  profileRevision?: number;
 }
 
 export class BackgroundShellService extends Service {
@@ -139,21 +158,36 @@ export class BackgroundShellService extends Service {
       sandbox: started.sandbox,
       stdout: emptyRing(),
       stderr: emptyRing(),
+      redaction: emptyFragmentRedactionState(),
     };
     if (!started.process.stdout || !started.process.stderr) {
       signalHostProcessGroup(started.process, "SIGKILL");
       throw new Error("background shell process did not expose output streams");
     }
     started.process.stdout.on("data", (chunk: Buffer) => {
-      appendRing(session.stdout, chunk.toString("utf8"), this.bufferChars);
+      appendSessionOutput(
+        this.runtime,
+        session,
+        "stdout",
+        chunk.toString("utf8"),
+        this.bufferChars,
+      );
     });
     started.process.stderr.on("data", (chunk: Buffer) => {
-      appendRing(session.stderr, chunk.toString("utf8"), this.bufferChars);
+      appendSessionOutput(
+        this.runtime,
+        session,
+        "stderr",
+        chunk.toString("utf8"),
+        this.bufferChars,
+      );
     });
     started.process.stdin?.on?.("error", (error: Error) => {
       session.stdinError = error;
-      appendRing(
-        session.stderr,
+      appendSessionOutput(
+        this.runtime,
+        session,
+        "stderr",
         `[stdin unavailable: ${error.message}]`,
         this.bufferChars,
       );
@@ -172,10 +206,16 @@ export class BackgroundShellService extends Service {
       session.exitCode = -1;
       session.signal = null;
       session.endedAt = Date.now();
-      appendRing(session.stderr, error.message, this.bufferChars);
+      appendSessionOutput(
+        this.runtime,
+        session,
+        "stderr",
+        error.message,
+        this.bufferChars,
+      );
     });
     this.sessions.set(handle, session);
-    return snapshot(session);
+    return snapshot(this.runtime, session);
   }
 
   poll(args: {
@@ -185,17 +225,30 @@ export class BackgroundShellService extends Service {
     stderrOffset?: number;
   }): BackgroundShellPollResult {
     const session = this.requireSession(args.conversationId, args.handle);
+    refreshSessionRedaction(this.runtime, session);
     return {
-      ...snapshot(session),
-      stdout: readRing(session.stdout, args.stdoutOffset),
-      stderr: readRing(session.stderr, args.stderrOffset),
+      ...snapshot(this.runtime, session),
+      stdout: readRing(
+        this.runtime,
+        session,
+        "stdout",
+        session.stdout,
+        args.stdoutOffset,
+      ),
+      stderr: readRing(
+        this.runtime,
+        session,
+        "stderr",
+        session.stderr,
+        args.stderrOffset,
+      ),
     };
   }
 
   list(conversationId: string): BackgroundShellSessionSnapshot[] {
     return [...this.sessions.values()]
       .filter((session) => session.conversationId === conversationId)
-      .map((session) => snapshot(session));
+      .map((session) => snapshot(this.runtime, session));
   }
 
   write(args: {
@@ -223,7 +276,7 @@ export class BackgroundShellService extends Service {
       );
     }
     session.process.stdin.write(args.stdin);
-    return snapshot(session);
+    return snapshot(this.runtime, session);
   }
 
   async kill(args: {
@@ -232,13 +285,13 @@ export class BackgroundShellService extends Service {
   }): Promise<BackgroundShellSessionSnapshot> {
     const session = this.requireSession(args.conversationId, args.handle);
     await this.killSession(session);
-    return snapshot(session);
+    return snapshot(this.runtime, session);
   }
 
   private async killSession(
     session: BackgroundShellSession,
   ): Promise<BackgroundShellSessionSnapshot> {
-    if (session.status !== "running") return snapshot(session);
+    if (session.status !== "running") return snapshot(this.runtime, session);
     session.status = "killed";
     signalHostProcessGroup(session.process, "SIGTERM");
     try {
@@ -271,7 +324,7 @@ export class BackgroundShellService extends Service {
     coreLogger.debug(
       `${CODING_TOOLS_LOG_PREFIX} background SHELL reaped handle=${session.handle} pid=${session.pid ?? "unknown"}`,
     );
-    return snapshot(session);
+    return snapshot(this.runtime, session);
   }
 
   private ensureCapacity(conversationId: string): void {
@@ -328,44 +381,300 @@ function emptyRing(): StreamRing {
   return { text: "", startOffset: 0, endOffset: 0, truncatedBefore: 0 };
 }
 
-function appendRing(ring: StreamRing, text: string, cap: number): void {
+function emptyFragmentRedactionState(): FragmentRedactionState {
+  return {
+    fragments: [],
+    ranges: [],
+    incomplete: false,
+    quarantineCharacters: { stdout: 0, stderr: 0 },
+  };
+}
+
+function appendSessionOutput(
+  runtime: IAgentRuntime,
+  session: BackgroundShellSession,
+  source: "stdout" | "stderr",
+  text: string,
+  cap: number,
+): void {
+  if (!text) return;
+  const ring = session[source];
+  const startOffset = ring.endOffset;
+  const profile = runtime.locateConfiguredSecretFragmentTaint([
+    { source, startOffset, text: "x" },
+  ]);
+  const maxSecretLength = profile.maxSecretLength;
+  appendRing(ring, text, cap, maxSecretLength);
+  const quarantinedCharacters = Math.min(
+    session.redaction.quarantineCharacters[source],
+    text.length,
+  );
+  if (quarantinedCharacters > 0) {
+    session.redaction.ranges = mergeTaintRanges([
+      ...session.redaction.ranges,
+      {
+        source,
+        startOffset,
+        endOffset: startOffset + quarantinedCharacters,
+      },
+    ]);
+    session.redaction.quarantineCharacters[source] -= quarantinedCharacters;
+  }
+  const detectionText = text.slice(quarantinedCharacters);
+  if (detectionText) {
+    session.redaction.fragments.push({
+      source,
+      startOffset: startOffset + quarantinedCharacters,
+      text: detectionText,
+    });
+  }
+  refreshSessionRedaction(runtime, session);
+  pruneDetectionFragments(session);
+}
+
+function refreshSessionRedaction(
+  runtime: IAgentRuntime,
+  session: BackgroundShellSession,
+): void {
+  if (session.redaction.incomplete) return;
+  const analyses = observableFragmentOrders(session.redaction.fragments).map(
+    (fragments) => runtime.locateConfiguredSecretFragmentTaint(fragments),
+  );
+  const revisions = new Set(
+    analyses.map((analysis) => analysis.profileRevision),
+  );
+  if (revisions.size !== 1) {
+    session.redaction.incomplete = true;
+    return;
+  }
+  const revision = analyses[0]?.profileRevision ?? 0;
+  if (
+    session.redaction.profileRevision !== undefined &&
+    revision !== session.redaction.profileRevision
+  ) {
+    session.redaction.incomplete = true;
+    session.redaction.ranges = mergeTaintRanges([
+      ...session.redaction.ranges,
+      ...retainedRingRanges(session),
+    ]);
+    session.redaction.fragments = [];
+    return;
+  }
+  session.redaction.profileRevision = revision;
+  const incomplete = analyses.find(
+    (analysis) => analysis.status === "incomplete",
+  );
+  if (incomplete) {
+    session.redaction.incomplete = incomplete.maxSecretLength === 0;
+    if (incomplete.maxSecretLength > 0) {
+      session.redaction.ranges = mergeTaintRanges([
+        ...session.redaction.ranges,
+        ...retainedRingRanges(session),
+      ]);
+      session.redaction.fragments = [];
+      for (const source of ["stdout", "stderr"] as const) {
+        session.redaction.quarantineCharacters[source] = Math.max(
+          session.redaction.quarantineCharacters[source],
+          incomplete.maxSecretLength,
+        );
+      }
+    }
+    return;
+  }
+  session.redaction.incomplete = false;
+  session.redaction.ranges = mergeTaintRanges([
+    ...session.redaction.ranges,
+    ...analyses.flatMap((analysis) => analysis.ranges),
+  ]);
+}
+
+function observableFragmentOrders(
+  fragments: readonly SecretFragment[],
+): SecretFragment[][] {
+  const stdout = fragments.filter((fragment) => fragment.source === "stdout");
+  const stderr = fragments.filter((fragment) => fragment.source === "stderr");
+  return [[...fragments], [...stdout, ...stderr], [...stderr, ...stdout]];
+}
+
+function retainedRingRanges(
+  session: BackgroundShellSession,
+): SecretTaintRange[] {
+  return (["stdout", "stderr"] as const).flatMap((source) => {
+    const ring = session[source];
+    return ring.endOffset > ring.startOffset
+      ? [{ source, startOffset: ring.startOffset, endOffset: ring.endOffset }]
+      : [];
+  });
+}
+
+function pruneDetectionFragments(session: BackgroundShellSession): void {
+  const floors = {
+    stdout: session.stdout.startOffset,
+    stderr: session.stderr.startOffset,
+  };
+  session.redaction.fragments = session.redaction.fragments.flatMap(
+    (fragment) => {
+      const floor = floors[fragment.source as keyof typeof floors];
+      if (floor === undefined) return [];
+      const endOffset = fragment.startOffset + fragment.text.length;
+      if (endOffset <= floor) return [];
+      if (fragment.startOffset >= floor) return [fragment];
+      return [
+        {
+          ...fragment,
+          startOffset: floor,
+          text: fragment.text.slice(floor - fragment.startOffset),
+        },
+      ];
+    },
+  );
+  session.redaction.ranges = session.redaction.ranges.filter((range) => {
+    const floor = floors[range.source as keyof typeof floors];
+    return floor !== undefined && range.endOffset > floor;
+  });
+}
+
+function mergeTaintRanges(
+  ranges: readonly SecretTaintRange[],
+): SecretTaintRange[] {
+  const sorted = [...ranges].sort(
+    (left, right) =>
+      left.source.localeCompare(right.source) ||
+      left.startOffset - right.startOffset ||
+      left.endOffset - right.endOffset,
+  );
+  const merged: SecretTaintRange[] = [];
+  for (const range of sorted) {
+    const previous = merged.at(-1);
+    if (
+      previous?.source === range.source &&
+      range.startOffset <= previous.endOffset
+    ) {
+      previous.endOffset = Math.max(previous.endOffset, range.endOffset);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  return merged;
+}
+
+function appendRing(
+  ring: StreamRing,
+  text: string,
+  cap: number,
+  redactionOverlapChars: number,
+): void {
   if (!text) return;
   ring.text += text;
   ring.endOffset += text.length;
-  if (ring.text.length > cap) {
-    const drop = ring.text.length - cap;
+  ring.truncatedBefore = Math.max(ring.truncatedBefore, ring.endOffset - cap);
+  const storageCap = cap + redactionOverlapChars;
+  if (ring.text.length > storageCap) {
+    const drop = ring.text.length - storageCap;
     ring.text = ring.text.slice(drop);
     ring.startOffset += drop;
-    ring.truncatedBefore = ring.startOffset;
   }
 }
 
 function readRing(
+  runtime: IAgentRuntime,
+  session: BackgroundShellSession,
+  source: "stdout" | "stderr",
   ring: StreamRing,
   requestedOffset?: number,
 ): BackgroundShellChunk {
   const offset =
     requestedOffset === undefined || !Number.isFinite(requestedOffset)
-      ? ring.startOffset
+      ? ring.truncatedBefore
       : Math.max(0, Math.floor(requestedOffset));
-  const start = Math.max(offset, ring.startOffset);
+  const start = Math.min(
+    ring.endOffset,
+    Math.max(offset, ring.truncatedBefore),
+  );
   const index = start - ring.startOffset;
+  const raw = ring.text.slice(index);
+  const text = projectRingText(
+    runtime,
+    session,
+    source,
+    ring,
+    index,
+    start,
+    raw,
+  );
   return {
-    text: ring.text.slice(index),
+    text,
     startOffset: start,
     endOffset: ring.endOffset,
     truncatedBefore: ring.truncatedBefore,
   };
 }
 
+function projectRingText(
+  runtime: IAgentRuntime,
+  session: BackgroundShellSession,
+  source: "stdout" | "stderr",
+  ring: StreamRing,
+  index: number,
+  startOffset: number,
+  raw: string,
+): string {
+  if (!raw) return "";
+  if (session.redaction.incomplete) return "";
+  const endOffset = startOffset + raw.length;
+  const ranges = session.redaction.ranges.filter(
+    (range) =>
+      range.source === source &&
+      range.endOffset > startOffset &&
+      range.startOffset < endOffset,
+  );
+  if (ranges.length === 0) {
+    const redactedFull = redactShellText(runtime, ring.text);
+    const redactedPrefix = redactShellText(runtime, ring.text.slice(0, index));
+    return verifyProjectedText(
+      runtime,
+      redactedFull.startsWith(redactedPrefix)
+        ? redactedFull.slice(redactedPrefix.length)
+        : "",
+    );
+  }
+
+  const pieces: string[] = [];
+  let cursor = startOffset;
+  for (const range of ranges) {
+    const taintStart = Math.max(startOffset, range.startOffset);
+    const taintEnd = Math.min(endOffset, range.endOffset);
+    if (taintStart > cursor) {
+      pieces.push(raw.slice(cursor - startOffset, taintStart - startOffset));
+    }
+    cursor = Math.max(cursor, taintEnd);
+  }
+  if (cursor < endOffset) pieces.push(raw.slice(cursor - startOffset));
+  return verifyProjectedText(
+    runtime,
+    redactShellText(runtime, pieces.join("")),
+  );
+}
+
+function verifyProjectedText(runtime: IAgentRuntime, text: string): string {
+  if (!text) return "";
+  const verification = runtime.locateConfiguredSecretFragmentTaint([
+    { source: "projected", startOffset: 0, text },
+  ]);
+  return verification.status === "complete" && verification.ranges.length === 0
+    ? text
+    : "";
+}
+
 function snapshot(
+  runtime: IAgentRuntime,
   session: BackgroundShellSession,
 ): BackgroundShellSessionSnapshot {
   return {
     handle: session.handle,
     conversationId: session.conversationId,
-    command: session.command,
-    cwd: session.cwd,
+    command: redactShellText(runtime, session.command),
+    cwd: redactShellText(runtime, session.cwd),
     pid: session.pid,
     status: session.status,
     exitCode: session.exitCode,

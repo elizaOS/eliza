@@ -159,7 +159,7 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `ELIZA_IMAGEGEN_ACCELERATOR` | No | Accelerator for image-gen backend (`coreml`, `tensorrt`, `mflux`, `sd-cpp`) |
 | `ELIZA_DEVICE_BRIDGE_ENABLED` | No | Enable iOS/AOSP device-bridge mode |
 | `ELIZA_DEVICE_PAIRING_TOKEN` | No | Pairing token for device bridge |
-| `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | No | Timeout in ms for device-bridge inference calls |
+| `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | No | Timeout in ms for `DeviceBridge.generate()`/`.embed()` calls (default 60000). Must be a canonical decimal integer from 1 through 2147483647 — malformed or out-of-range throws `ElizaError` (`code: "INVALID_DEVICE_BRIDGE_TIMEOUT"`) before any device lookup. Also read independently by `@elizaos/plugin-capacitor-bridge`'s device bridge (separate class, same accepted grammar). |
 | `ELIZA_KOKORO_DEFAULT_VOICE_ID` | No | Default Kokoro TTS voice id |
 | `ELIZA_LOCAL_IDLE_UNLOAD_MS` | No | Idle timeout (ms) before an inactive model is unloaded to free memory |
 | `ELIZA_LOCAL_SESSION_POOL_SIZE` | No | Number of parallel inference sessions to maintain in the session pool |

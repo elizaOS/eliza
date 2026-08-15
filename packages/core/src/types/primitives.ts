@@ -315,6 +315,17 @@ export interface Media {
 	notProcessed?: string;
 
 	/**
+	 * Machine-readable attachment enrichment failure. The public message may be
+	 * persisted, so this shape deliberately carries only bounded enums and never
+	 * provider error text, response bodies, signed URLs, or local paths.
+	 */
+	enrichmentFailure?: {
+		phase: "fetch" | "describe" | "extract" | "transcribe" | "budget";
+		code: "unavailable" | "empty_result" | "unsupported_type" | "byte_limit";
+		retryable: boolean;
+	};
+
+	/**
 	 * Served URL of this attachment's PII-scrubbed variant — a SEPARATE
 	 * content-addressed media object under its own sha256 (#14781; per #8876
 	 * redacted variants are new bytes, never an edit of the original). When a

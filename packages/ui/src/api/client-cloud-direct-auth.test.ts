@@ -433,6 +433,8 @@ describe("ElizaClient direct Cloud auth on native", () => {
           agentName: "My Agent",
           status: "provisioning",
           jobId: "job-async-1",
+          createdAt: "2026-08-14T12:00:00.000Z",
+          executionTier: "dedicated-always",
         },
       },
     });
@@ -448,6 +450,8 @@ describe("ElizaClient direct Cloud auth on native", () => {
         data: expect.objectContaining({
           agentId: "agent-async-1",
           status: "provisioning",
+          createdAt: "2026-08-14T12:00:00.000Z",
+          executionTier: "dedicated-always",
         }),
       }),
     );

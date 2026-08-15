@@ -6,7 +6,7 @@ import { logger } from "./logger";
 
 const requireCJS = createRequire(import.meta.url);
 
-type RedisMockConstructor<T> = new (options?: { port?: number }) => T;
+type RedisMockConstructor<T> = new () => T;
 type RedisMockModule<T> =
   | RedisMockConstructor<T>
   | { default?: RedisMockConstructor<T> };
@@ -28,7 +28,6 @@ export interface GatewayRedis {
   get<T = unknown>(key: string): Promise<T | null>;
   set(key: string, value: string, options?: SetOptions): Promise<unknown>;
   del(key: string): Promise<unknown>;
-  eval<T = unknown>(script: string, keys: string[], args: string[]): Promise<T>;
   lpush(key: string, value: string): Promise<unknown>;
   ltrim(key: string, start: number, stop: number): Promise<unknown>;
   expire(key: string, seconds: number): Promise<unknown>;
@@ -70,19 +69,6 @@ class NativeRedisAdapter implements GatewayRedis {
     return this.client.del(key);
   }
 
-  async eval<T = unknown>(
-    script: string,
-    keys: string[],
-    args: string[],
-  ): Promise<T> {
-    return this.client.eval(
-      script,
-      keys.length,
-      ...keys,
-      ...args,
-    ) as Promise<T>;
-  }
-
   async lpush(key: string, value: string): Promise<unknown> {
     return this.client.lpush(key, value);
   }
@@ -100,9 +86,7 @@ class NativeRedisAdapter implements GatewayRedis {
   }
 }
 
-let memoryRedisPort = 20_000;
-
-export class MemoryRedisAdapter implements GatewayRedis {
+class MemoryRedisAdapter implements GatewayRedis {
   private readonly client: IORedis;
 
   constructor() {
@@ -110,7 +94,7 @@ export class MemoryRedisAdapter implements GatewayRedis {
     // backend. We type it as IORedis to reuse the native adapter shape.
     const mod = requireCJS("ioredis-mock") as RedisMockModule<IORedis>;
     const RedisMockCtor = resolveRedisMockConstructor(mod);
-    this.client = new RedisMockCtor({ port: memoryRedisPort++ });
+    this.client = new RedisMockCtor();
   }
 
   async get<T = unknown>(key: string): Promise<T | null> {
@@ -142,19 +126,6 @@ export class MemoryRedisAdapter implements GatewayRedis {
 
   async del(key: string): Promise<unknown> {
     return this.client.del(key);
-  }
-
-  async eval<T = unknown>(
-    script: string,
-    keys: string[],
-    args: string[],
-  ): Promise<T> {
-    return this.client.eval(
-      script,
-      keys.length,
-      ...keys,
-      ...args,
-    ) as Promise<T>;
   }
 
   async lpush(key: string, value: string): Promise<unknown> {

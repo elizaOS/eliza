@@ -8,10 +8,15 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import {
+  canonicalPromptForModelCall,
+  composeToolDiagnosticRedactor,
   logger as coreLogger,
   ElizaError,
   type IAgentRuntime,
   type JsonValue,
+  omitUnvalidatedProviderSpans,
+  projectModelCallDiagnosticValue,
+  projectToolDiagnosticValue,
   Service,
   sanitizeTrajectoryJsonObject,
 } from "@elizaos/core";
@@ -516,6 +521,105 @@ function startChildTrajectoryStep(
   return stepId;
 }
 
+/**
+ * Final persistence boundary for the agent DB bridge: every patched
+ * `completeStep` caller funnels through here, so the complete settlement,
+ * including interceptor reasoning and future text fields, is projected through
+ * composed runtime-known + tool-shape redaction before the row is written.
+ * Identity, numeric, and boolean fields survive untouched for correlation.
+ */
+export function projectSettledActionDiagnostics(
+  runtime: IAgentRuntime,
+  action: TrajectoryActionAttempt,
+): TrajectoryActionAttempt {
+  const redactDiagnosticText = composeToolDiagnosticRedactor(runtime);
+  const projected = projectToolDiagnosticValue(
+    action,
+    redactDiagnosticText,
+  ) as TrajectoryActionAttempt;
+  return {
+    ...projected,
+    attemptId: action.attemptId,
+    timestamp: action.timestamp,
+    actionType: action.actionType,
+    actionName: action.actionName,
+    ...(typeof action.llmCallId === "string"
+      ? { llmCallId: action.llmCallId }
+      : {}),
+  };
+}
+
+/**
+ * Final-persistence projection for an agent-bridge LLM capture. Correlation
+ * identity remains exact; diagnostic payloads are scrubbed structurally, and
+ * message-indexed provider spans are dropped whenever message text changes.
+ */
+export function projectLlmCallDiagnostics(
+  runtime: IAgentRuntime,
+  rawParams: Record<string, unknown>,
+): Record<string, unknown> {
+  const redactDiagnosticText = composeToolDiagnosticRedactor(runtime);
+  const projectedParams = projectModelCallDiagnosticValue(
+    rawParams,
+    redactDiagnosticText,
+  );
+  const projectedPrompt =
+    typeof (
+      projectedParams.prompt ??
+      projectedParams.userPrompt ??
+      projectedParams.input
+    ) === "string"
+      ? ((projectedParams.prompt ??
+          projectedParams.userPrompt ??
+          projectedParams.input) as string)
+      : undefined;
+  const rawPrompt =
+    typeof (rawParams.prompt ?? rawParams.userPrompt ?? rawParams.input) ===
+    "string"
+      ? ((rawParams.prompt ??
+          rawParams.userPrompt ??
+          rawParams.input) as string)
+      : undefined;
+  const attributionInputChanged =
+    canonicalPromptForModelCall({
+      messages: Array.isArray(projectedParams.messages)
+        ? projectedParams.messages
+        : undefined,
+      prompt: projectedPrompt,
+    }) !==
+    canonicalPromptForModelCall({
+      messages: Array.isArray(rawParams.messages)
+        ? rawParams.messages
+        : undefined,
+      prompt: rawPrompt,
+    });
+  return {
+    ...projectedParams,
+    ...(typeof rawParams.callId === "string"
+      ? { callId: rawParams.callId }
+      : {}),
+    ...(typeof rawParams.runId === "string" ? { runId: rawParams.runId } : {}),
+    ...(typeof rawParams.roomId === "string"
+      ? { roomId: rawParams.roomId }
+      : {}),
+    ...(typeof rawParams.messageId === "string"
+      ? { messageId: rawParams.messageId }
+      : {}),
+    ...(typeof rawParams.executionTraceId === "string"
+      ? { executionTraceId: rawParams.executionTraceId }
+      : {}),
+    ...(attributionInputChanged
+      ? {
+          providerAttributions: omitUnvalidatedProviderSpans(
+            projectedParams.providerAttributions as Parameters<
+              typeof omitUnvalidatedProviderSpans
+            >[0],
+          ),
+        }
+      : {}),
+  };
+}
+
 function completeTrajectoryAction(
   runtime: IAgentRuntime,
   trajectoryId: string,
@@ -537,7 +641,10 @@ function completeTrajectoryAction(
     );
   }
   rememberTrajectoryStep(runtime, normalizedTrajectoryId, normalizedStepId);
-  const action = normalizeSettledAction(actionValue, rewardInfo);
+  const action = projectSettledActionDiagnostics(
+    runtime,
+    normalizeSettledAction(actionValue, rewardInfo),
+  );
   const rewardComponentsValue = asRecord(rewardInfo)?.components;
   const rewardComponents =
     rewardComponentsValue === undefined
@@ -689,10 +796,12 @@ async function appendLlmCall(
   runtime: IAgentRuntime,
   trajectoryId: string,
   stepId: string,
-  params: Record<string, unknown>,
+  rawParams: Record<string, unknown>,
   retryState?: ActiveCaptureRetryState,
 ): Promise<void> {
-  if (shouldSuppressNoInputEmbeddingCall(params)) return;
+  if (shouldSuppressNoInputEmbeddingCall(rawParams)) return;
+
+  const params = projectLlmCallDiagnostics(runtime, rawParams);
 
   const now =
     retryState?.timestamp ??

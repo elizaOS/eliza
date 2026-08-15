@@ -36,12 +36,15 @@ function jsonResponse(status: number, body: unknown) {
 }
 
 function routeFetch(
-  routes: Record<string, (input: string) => Response | Promise<Response>>,
+  routes: Record<
+    string,
+    (input: string, init?: RequestInit) => Response | Promise<Response>
+  >,
 ) {
-  return vi.fn(async (input: RequestInfo | URL) => {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     for (const [suffix, handler] of Object.entries(routes)) {
-      if (url.endsWith(suffix)) return handler(url);
+      if (url.endsWith(suffix)) return handler(url, init);
     }
     throw new Error(`unexpected fetch ${url}`);
   });
@@ -201,19 +204,36 @@ describe("direct-cloud prototype methods (Steward session bound)", () => {
   });
 
   it("deleteCloudCompatAgent: normalizes an async (jobId) delete response", async () => {
+    const request = vi.fn((_url: string, _init?: RequestInit) =>
+      jsonResponse(202, { success: true, data: { jobId: "job-1" } }),
+    );
     vi.stubGlobal(
       "fetch",
       routeFetch({
-        "/api/v1/eliza/agents/agent-1": () =>
-          jsonResponse(202, { success: true, data: { jobId: "job-1" } }),
+        "/api/v1/eliza/agents/agent-1": request,
       }),
     );
-    const result = await client.deleteCloudCompatAgent("agent-1");
+    const result = await client.deleteCloudCompatAgent("agent-1", {
+      expectedAgentName: "Eliza",
+      expectedCreatedAt: "2026-08-14T12:00:00.000Z",
+      expectedExecutionTier: "dedicated-always",
+    });
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({
       jobId: "job-1",
       status: "deleted",
     });
+    expect(request).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        method: "DELETE",
+        body: JSON.stringify({
+          expectedAgentName: "Eliza",
+          expectedCreatedAt: "2026-08-14T12:00:00.000Z",
+          expectedExecutionTier: "dedicated-always",
+        }),
+      }),
+    );
   });
 
   it("provisionCloudCompatAgent: normalizes a direct provision response", async () => {

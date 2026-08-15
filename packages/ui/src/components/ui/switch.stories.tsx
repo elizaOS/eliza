@@ -24,6 +24,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
+export const Off: Story = { args: { checked: false } };
 export const On: Story = { args: { defaultChecked: true } };
 export const Disabled: Story = { args: { disabled: true } };
 export const DisabledOn: Story = { args: { disabled: true, checked: true } };

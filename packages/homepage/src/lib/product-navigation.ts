@@ -21,7 +21,7 @@ export function resolveHomepageProductNavigation(
   const cloudAppOrigin = ELIZA_DOMAIN_CONTRACTS[environment].cloudAppOrigin;
 
   return {
-    signInUrl: `${cloudAppOrigin}/login?returnTo=%2Fcloud`,
-    dashboardUrl: `${cloudAppOrigin}/cloud`,
+    signInUrl: `${cloudAppOrigin}/login?intent=launch`,
+    dashboardUrl: `${cloudAppOrigin}/cloud-apps`,
   };
 }

@@ -14,6 +14,7 @@ import {
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_ELIZA_CLOUD_API_BASE_URL,
   E2BRemoteCapabilityRouterService,
   type E2BRemoteRunnerConfig,
   type E2BSandboxClient,
@@ -437,7 +438,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
     expect(config.enabled).toBe(true);
     expect(config.provider).toBe("eliza-cloud");
     expect(config.remoteHttpBaseUrl).toBeUndefined();
-    expect(config.cloudApiBaseUrl).toBe("https://api.elizacloud.ai/api/v1");
+    expect(config.cloudApiBaseUrl).toBe(DEFAULT_ELIZA_CLOUD_API_BASE_URL);
     expect(config.cloudApiToken).toBe("cloud-key");
     expect(config.cloudContainerImage).toBe(
       "ghcr.io/elizaos/coding-remote-runner:test",

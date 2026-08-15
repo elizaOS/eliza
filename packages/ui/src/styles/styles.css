@@ -494,7 +494,8 @@ kbd {
 /* Hosted sign-in controls use a filled accent state instead of a ring, which
    keeps the product-wide no-ring policy while making keyboard position
    unmistakable on the public authentication surface. */
-.hosted-signin-focus-emphasis:focus-visible {
+.hosted-signin-focus-emphasis:focus-visible,
+.keyboard-focus-surface:focus-visible {
   border-color: var(--accent);
   background-color: var(--accent-subtle);
   color: var(--text-strong);

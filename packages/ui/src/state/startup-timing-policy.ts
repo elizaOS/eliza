@@ -10,5 +10,6 @@ export const STARTUP_TIMING_POLICY = Object.freeze({
   stewardRestoreRefreshTimeoutMs: 4_000,
   cloudAgentTierProbeTimeoutMs: 12_000,
   nativeConsecutiveFailureBudgetMs: 90_000,
+  agentUnreachableFailureBudgetMs: 45_000,
   probeRequestTimeoutMs: 12_000,
 });

@@ -75,21 +75,23 @@ variable "railway_tunnel_dns_records" {
   default = {}
 
   validation {
-    condition = alltrue([
-      for required_role in [
-        "apex-routing",
-        "apex-verification",
-        "wildcard-routing",
-        "wildcard-certificate",
-        "wildcard-verification",
-        ] : length([
-          for record in values(var.railway_tunnel_dns_records) : record
-          if contains(record.roles, required_role)
-      ]) == 1
-      ]) && alltrue([
-      for key in keys(var.railway_tunnel_dns_records) :
-      can(regex("^[a-z0-9][a-z0-9-]*$", key))
-    ])
+    condition = length(var.railway_tunnel_dns_records) == 0 || (
+      alltrue([
+        for required_role in [
+          "apex-routing",
+          "apex-verification",
+          "wildcard-routing",
+          "wildcard-certificate",
+          "wildcard-verification",
+          ] : length([
+            for record in values(var.railway_tunnel_dns_records) : record
+            if contains(record.roles, required_role)
+        ]) == 1
+        ]) && alltrue([
+        for key in keys(var.railway_tunnel_dns_records) :
+        can(regex("^[a-z0-9][a-z0-9-]*$", key))
+      ])
+    )
     error_message = "railway_tunnel_dns_records must cover each documented apex/wildcard routing, verification, and certificate role exactly once; record keys must be stable lowercase kebab-case names"
   }
 

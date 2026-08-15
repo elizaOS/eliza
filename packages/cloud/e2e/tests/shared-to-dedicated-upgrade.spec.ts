@@ -27,6 +27,8 @@
  *     order with the conversation id preserved,
  *   - the rowless Shared archive remains intact after the switch, while every
  *     new phone/app turn resolves to the Dedicated runtime instead of splitting.
+ *   - one canonical Shared reminder is imported, activated on Dedicated, and
+ *     retained on Shared only as a committed audit receipt.
  */
 
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
@@ -102,7 +104,9 @@ test.describe("shared→dedicated tier upgrade", () => {
       // Shared-tier routes resolve scope/billing `cacheOnly`, so a brand-new
       // agent answers the retryable warming 503 until each cache is hydrated
       // under waitUntil. Poll that documented signal (and only it).
-      const convoUrl = "/api/v1/eliza/shared/messages";
+      const convoUrl = `/api/v1/eliza/agents/${encodeURIComponent(
+        sharedAgentId,
+      )}/api/conversations/${encodeURIComponent(sharedAgentId)}/messages`;
       const FIRST = "save this as a note";
       const SECOND = "set a reminder for Friday";
       const sendTurn = (text: string, clientMessageId: string) =>
@@ -120,21 +124,55 @@ test.describe("shared→dedicated tier upgrade", () => {
         `second shared turn: ${JSON.stringify(secondTurn.json)}`,
       ).toBe(200);
       const sharedHistory = await retrySharedRuntimeWarming(() =>
-        c<{
-          data?: {
-            identity?: { id?: string; runtime?: string };
-            messages?: Array<{ role: string; text: string }>;
-          };
-        }>("GET", convoUrl),
+        c<{ messages?: Array<{ role: string; text: string }> }>(
+          "GET",
+          convoUrl,
+        ),
       );
       expect(
-        sharedHistory.json.data?.messages?.length,
+        sharedHistory.json.messages?.length,
         "shared transcript has both turns (user+assistant ×2)",
       ).toBe(4);
-      expect(sharedHistory.json.data?.identity).toMatchObject({
+      const sharedIdentity = await c<{
+        data?: { identity?: { id?: string; runtime?: string } };
+      }>("GET", "/api/v1/eliza/personal");
+      expect(
+        sharedIdentity.status,
+        `personal identity: ${JSON.stringify(sharedIdentity.json)}`,
+      ).toBe(200);
+      expect(sharedIdentity.json.data?.identity).toMatchObject({
         id: sharedAgentId,
         runtime: "shared",
       });
+
+      const { createSharedScheduledTaskRunner, executeSharedSchedulingSql } =
+        await import(
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-scheduling"
+        );
+      const sharedTaskRunner = createSharedScheduledTaskRunner(sharedAgentId, {
+        dispatch: async () => undefined,
+      });
+      const scheduledReminder = await sharedTaskRunner.schedule({
+        kind: "reminder",
+        promptInstructions: "call mom",
+        trigger: { kind: "once", atIso: "2026-08-16T17:00:00.000Z" },
+        priority: "medium",
+        respectsGlobalPause: true,
+        source: "user_chat",
+        createdBy: seededUser.userId,
+        ownerVisible: true,
+        executionProfile: "notify-only",
+        metadata: {
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            chatId: "919191",
+          },
+        },
+      });
+      expect(await sharedTaskRunner.list()).toMatchObject([
+        { taskId: scheduledReminder.taskId, promptInstructions: "call mom" },
+      ]);
 
       // ── 3. Runway credit gate: refused BELOW 3 days of hosting. ────────
       // $0.50 clears the $0.10 create minimum — the gate the create/provision
@@ -277,6 +315,7 @@ test.describe("shared→dedicated tier upgrade", () => {
                 activeAgentId?: string;
                 runtime?: "dedicated";
                 apiBase?: string;
+                importedMessages?: number;
               };
             }>(
               "POST",
@@ -293,13 +332,15 @@ test.describe("shared→dedicated tier upgrade", () => {
               data?.runtime !== "dedicated" ||
               data.personalElizaId !== options.personalElizaId ||
               data.activeAgentId !== options.dedicatedAgentId ||
-              !data.apiBase
+              !data.apiBase ||
+              typeof data.importedMessages !== "number"
             ) {
               throw new Error("cutover returned an invalid Dedicated identity");
             }
             return {
               runtime: data.runtime,
               apiBase: data.apiBase,
+              importedMessages: data.importedMessages,
             };
           },
         },
@@ -335,6 +376,29 @@ test.describe("shared→dedicated tier upgrade", () => {
       ).toEqual(["user", "assistant", "user", "assistant"]);
       expect(dedicatedTranscript[0]?.text).toBe(FIRST);
       expect(dedicatedTranscript[2]?.text).toBe(SECOND);
+      expect(
+        await executeSharedSchedulingSql(
+          `SELECT transfer_status FROM app_scheduling.life_scheduled_tasks WHERE id = '${scheduledReminder.taskId}'`,
+        ),
+        "Shared retains a committed audit receipt after Dedicated activation",
+      ).toMatchObject([{ transfer_status: "committed" }]);
+      expect(
+        stack.mocks.controlPlane.store.getScheduledTasksByAgent(
+          dedicatedAgentId,
+          sharedAgentId,
+        ),
+        "the exact Shared reminder is imported and activated only after cutover",
+      ).toMatchObject([
+        {
+          task: {
+            taskId: scheduledReminder.taskId,
+            promptInstructions: "call mom",
+          },
+          sourceAgentId: sharedAgentId,
+          cutoverToken: `personal-cutover:${sharedAgentId}:${dedicatedAgentId}`,
+          active: true,
+        },
+      ]);
 
       // ── 9. Shared stays archived; every new turn resolves Dedicated. ────
       expect(
@@ -358,7 +422,7 @@ test.describe("shared→dedicated tier upgrade", () => {
             activeAgentId?: string;
           };
         };
-      }>("GET", convoUrl);
+      }>("GET", "/api/v1/eliza/personal");
       expect(active.status).toBe(200);
       expect(active.json.data?.identity).toMatchObject({
         id: sharedAgentId,
@@ -366,12 +430,110 @@ test.describe("shared→dedicated tier upgrade", () => {
         activeAgentId: dedicatedAgentId,
       });
 
+      const { usersRepository } = await import(
+        "@elizaos/cloud-shared/db/repositories/users"
+      );
+      const connectorPhone = "+14155550987";
+      const linked = await usersRepository.linkVerifiedPhone(
+        seededUser.userId,
+        connectorPhone,
+      );
+      expect(linked?.id, "phone transport resolves the existing account").toBe(
+        seededUser.userId,
+      );
+      const connectorResponse = await fetch(
+        `${cloudApiBase}/api/internal/eliza-app/personal-shared/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer test-internal-secret",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            platform: "blooio",
+            phoneNumber: connectorPhone,
+            messageId: "blooio:after-cutover",
+            message: "Continue this exact conversation from my phone.",
+          }),
+        },
+      );
+      expect(
+        connectorResponse.status,
+        `connector turn: ${await connectorResponse.clone().text()}`,
+      ).toBe(200);
+      const connectorPayload = (await connectorResponse.json()) as {
+        data?: {
+          identity?: {
+            id?: string;
+            runtime?: string;
+            activeAgentId?: string;
+          };
+        };
+      };
+      expect(connectorPayload.data?.identity).toMatchObject({
+        id: sharedAgentId,
+        runtime: "dedicated",
+        activeAgentId: dedicatedAgentId,
+      });
+      const connectorTranscript =
+        stack.mocks.controlPlane.store.getConversationByAgent(
+          dedicatedAgentId,
+          sharedAgentId,
+        );
+      expect(
+        connectorTranscript.map((message) => message.role),
+        "the connector appends to the imported canonical room",
+      ).toEqual([
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+      ]);
+      expect(connectorTranscript[4]?.text).toBe(
+        "Continue this exact conversation from my phone.",
+      );
+      const connectorRetry = await fetch(
+        `${cloudApiBase}/api/internal/eliza-app/personal-shared/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer test-internal-secret",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            platform: "blooio",
+            phoneNumber: connectorPhone,
+            messageId: "blooio:after-cutover",
+            message: "Continue this exact conversation from my phone.",
+          }),
+        },
+      );
+      expect(connectorRetry.status, "connector retry is replay-safe").toBe(200);
+      expect(
+        stack.mocks.controlPlane.store.getConversationByAgent(
+          dedicatedAgentId,
+          sharedAgentId,
+        ),
+        "the stable provider message id prevents duplicate turns",
+      ).toHaveLength(6);
+
       const splitTurn = await c<{ code?: string }>("POST", convoUrl, {
         text: "This must not create a new Shared turn.",
         clientMessageId: "personal-after-cutover",
       });
-      expect(splitTurn.status).toBe(409);
-      expect(splitTurn.json.code).toBe("personal_eliza_dedicated");
+      expect(
+        splitTurn.status,
+        `stale Shared turn must fail: ${JSON.stringify(splitTurn.json)}`,
+      ).not.toBe(200);
+      const archivedHistory = await c<{
+        messages?: Array<{ role: string; text: string }>;
+      }>("GET", convoUrl);
+      expect(
+        archivedHistory.json.messages?.length,
+        "a stale client cannot append to the sealed Shared transcript",
+      ).toBe(4);
     } finally {
       setBootConfig(prevBoot);
       if (prevToken === null) {

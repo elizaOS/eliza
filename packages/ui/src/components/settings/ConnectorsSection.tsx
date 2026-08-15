@@ -19,7 +19,6 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo } from "../../api";
 import {
   clearPendingFocusConnector,
@@ -63,7 +62,8 @@ import {
   resolveIcon,
 } from "../pages/plugin-list-utils";
 import { Button } from "../ui/button";
-import { Switch } from "../ui/switch";
+import { SettingsSwitchRow } from "./settings-agent-rows";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import {
   backFromConnectorDetail,
   normalizeConnectorRouteId,
@@ -172,60 +172,6 @@ function statusToneClass(tone: "ok" | "warn" | "muted" | "danger"): string {
   }
 }
 
-function SettingsCard({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-lg border border-border/60 bg-card/40",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
-function SettingsCardRow({
-  title,
-  description,
-  action,
-  className,
-}: {
-  title: React.ReactNode;
-  description?: React.ReactNode;
-  action?: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-4 py-3",
-        className,
-      )}
-    >
-      <div className="min-w-0 flex-1 space-y-0.5">
-        <div className="text-sm font-medium text-txt-strong">{title}</div>
-        {description ? (
-          <div className="text-xs leading-relaxed text-muted">
-            {description}
-          </div>
-        ) : null}
-      </div>
-      {action ? (
-        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
-          {action}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function ConnectorListRow({
   plugin,
   onOpen,
@@ -241,27 +187,28 @@ function ConnectorListRow({
   });
 
   return (
-    <button
-      type="button"
-      data-connector={plugin.id}
-      data-testid={`connector-row-${plugin.id}`}
-      onClick={onOpen}
-      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg-hover/60"
-    >
-      <Icon className="h-[18px] w-[18px] shrink-0 text-muted" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-txt-strong">
-          {plugin.name}
-        </span>
-        <span className={cn("block text-xs", statusToneClass(status.tone))}>
+    <SettingsRow
+      icon={Icon}
+      label={<span className="block truncate">{plugin.name}</span>}
+      description={
+        <span className={cn("block truncate", statusToneClass(status.tone))}>
           {status.label}
         </span>
-      </span>
-      <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted">
-        {label}
-        <ChevronRight className="h-4 w-4" aria-hidden />
-      </span>
-    </button>
+      }
+      className="h-auto"
+      onClick={onOpen}
+      trailing={
+        <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted">
+          {label}
+          <ChevronRight className="h-4 w-4" aria-hidden />
+        </span>
+      }
+      chevron={false}
+      buttonProps={{
+        "data-connector": plugin.id,
+        "data-testid": `connector-row-${plugin.id}`,
+      }}
+    />
   );
 }
 
@@ -445,46 +392,6 @@ function ConnectorConfigurationSurface({ plugin }: { plugin: PluginInfo }) {
   );
 }
 
-function ConnectorEnableSwitch({
-  plugin,
-  busy,
-  onToggle,
-}: {
-  plugin: PluginInfo;
-  busy: boolean;
-  onToggle: (enabled: boolean) => void;
-}) {
-  const t = useAppSelector((s) => s.t);
-  const label = plugin.enabled
-    ? t("settings.sections.connectors.disable", {
-        defaultValue: "Disable {{name}}",
-        name: plugin.name,
-      })
-    : t("settings.sections.connectors.enable", {
-        defaultValue: "Enable {{name}}",
-        name: plugin.name,
-      });
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `connector-${plugin.id}-enable`,
-    role: "toggle",
-    label,
-    group: "connectors",
-    status: plugin.enabled ? "on" : "off",
-    getValue: () => plugin.enabled,
-    onActivate: busy ? undefined : () => onToggle(!plugin.enabled),
-  });
-  return (
-    <Switch
-      ref={ref}
-      checked={plugin.enabled}
-      disabled={busy}
-      onCheckedChange={(checked) => onToggle(checked)}
-      aria-label={label}
-      {...agentProps}
-    />
-  );
-}
-
 function ConnectorDetailPage({
   plugin,
   onBack,
@@ -518,7 +425,7 @@ function ConnectorDetailPage({
   );
 
   return (
-    <div className="flex flex-col gap-6" data-testid="connector-detail">
+    <SettingsStack data-testid="connector-detail">
       <div className="flex flex-col gap-3">
         {/* Mobile already has ViewHeader "Back to Connectors"; keep this control
             desktop-only so we do not double-render an undersized touch target. */}
@@ -551,10 +458,11 @@ function ConnectorDetailPage({
         </div>
       </div>
 
-      {/* Load/enable is the global gate — always first when present. */}
-      <SettingsCard>
-        <SettingsCardRow
-          title={t("settings.sections.connectors.enablePlugin", {
+      <SettingsGroup>
+        <SettingsSwitchRow
+          agentId={`connector-${plugin.id}-enable`}
+          group="connectors"
+          label={t("settings.sections.connectors.enablePlugin", {
             defaultValue: "Enable {{name}} connector",
             name: plugin.name,
           })}
@@ -562,71 +470,61 @@ function ConnectorDetailPage({
             defaultValue:
               "Load the plugin so the agent can use this channel when configured.",
           })}
-          action={
-            <ConnectorEnableSwitch
-              plugin={plugin}
-              busy={busy}
-              onToggle={(checked) => {
-                void onToggle(checked);
-              }}
-            />
-          }
+          checked={plugin.enabled}
+          disabled={busy}
+          onCheckedChange={(checked) => {
+            void onToggle(checked);
+          }}
         />
-      </SettingsCard>
+      </SettingsGroup>
 
-      <section className="space-y-2">
-        <h3 className="text-xs font-medium text-muted">
-          {t("connectors.detail.connection", { defaultValue: "Connection" })}
-        </h3>
-        {/* No outer SettingsCard here — row layout / setup panels bring their
-            own chrome. Nesting cards left a hollow gap above the old save bar. */}
+      <SettingsGroup
+        bare
+        title={t("connectors.detail.connection", {
+          defaultValue: "Connection",
+        })}
+      >
+        {/* Setup panels bring their own chrome; nesting a card left a hollow
+            gap above the old save bar. */}
         <ConnectorConfigurationSurface plugin={plugin} />
-      </section>
+      </SettingsGroup>
 
       {links.length > 0 ? (
-        <section className="space-y-2">
-          <h3 className="text-xs font-medium text-muted">
-            {t("connectors.detail.support", { defaultValue: "Support" })}
-          </h3>
-          <SettingsCard>
-            {links.map((link, index) => (
-              <SettingsCardRow
-                key={link.key}
-                className={index > 0 ? "border-t border-border/50" : undefined}
-                title={pluginResourceLinkLabel(t, link.key)}
-                description={
-                  link.key === "guide"
-                    ? t("connectors.detail.docsHelp", {
-                        defaultValue: "Learn how {{name}} works with Eliza.",
-                        name: plugin.name,
-                      })
-                    : undefined
-                }
-                action={
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
-                    asChild
-                  >
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {t("connectors.detail.openLink", {
-                        defaultValue: "Open",
-                      })}{" "}
-                      ↗
-                    </a>
-                  </Button>
-                }
-              />
-            ))}
-          </SettingsCard>
-        </section>
+        <SettingsGroup
+          title={t("connectors.detail.support", { defaultValue: "Support" })}
+        >
+          {links.map((link) => (
+            <SettingsRow
+              key={link.key}
+              label={pluginResourceLinkLabel(t, link.key)}
+              description={
+                link.key === "guide"
+                  ? t("connectors.detail.docsHelp", {
+                      defaultValue: "Learn how {{name}} works with Eliza.",
+                      name: plugin.name,
+                    })
+                  : undefined
+              }
+              control={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
+                  asChild
+                >
+                  <a href={link.url} target="_blank" rel="noopener noreferrer">
+                    {t("connectors.detail.openLink", {
+                      defaultValue: "Open",
+                    })}{" "}
+                    ↗
+                  </a>
+                </Button>
+              }
+            />
+          ))}
+        </SettingsGroup>
       ) : null}
-    </div>
+    </SettingsStack>
   );
 }
 
@@ -663,7 +561,7 @@ function ConnectorsIndex({
   }, [connectors]);
 
   return (
-    <div className="flex flex-col gap-5" data-testid="connectors-index">
+    <SettingsStack data-testid="connectors-index">
       <div className="flex flex-col items-start gap-1">
         <ConnectorChannelModeSwitch />
         <p className="text-xs-tight text-muted">
@@ -672,33 +570,23 @@ function ConnectorsIndex({
       </div>
 
       {grouped.map(({ meta, items }) => (
-        <section key={meta.id} className="space-y-2">
-          <div>
-            <h3 className="text-sm font-medium text-txt-strong">
-              {t(`connectors.groups.${meta.id}.label`, {
-                defaultValue: meta.label,
-              })}
-            </h3>
-            <p className="text-xs text-muted">
-              {t(`connectors.groups.${meta.id}.description`, {
-                defaultValue: meta.description,
-              })}
-            </p>
-          </div>
-          <SettingsCard>
-            {items.map((plugin, index) => (
-              <div
-                key={plugin.id}
-                className={index > 0 ? "border-t border-border/50" : undefined}
-              >
-                <ConnectorListRow
-                  plugin={plugin}
-                  onOpen={() => onOpen(plugin.id)}
-                />
-              </div>
-            ))}
-          </SettingsCard>
-        </section>
+        <SettingsGroup
+          key={meta.id}
+          title={t(`connectors.groups.${meta.id}.label`, {
+            defaultValue: meta.label,
+          })}
+          description={t(`connectors.groups.${meta.id}.description`, {
+            defaultValue: meta.description,
+          })}
+        >
+          {items.map((plugin) => (
+            <ConnectorListRow
+              key={plugin.id}
+              plugin={plugin}
+              onOpen={() => onOpen(plugin.id)}
+            />
+          ))}
+        </SettingsGroup>
       ))}
 
       {hiddenConnectors.length > 0 ? (
@@ -720,7 +608,7 @@ function ConnectorsIndex({
           </button>
         </p>
       ) : null}
-    </div>
+    </SettingsStack>
   );
 }
 
@@ -812,11 +700,13 @@ export function ConnectorsSection() {
 
   if (allConnectorPlugins.length === 0) {
     return (
-      <p className="text-sm text-muted">
-        {t("pluginsview.NoConnectorsAvailable", {
-          defaultValue: "No connectors available.",
-        })}
-      </p>
+      <SettingsStack data-testid="connectors-index">
+        <p className="text-sm text-muted">
+          {t("pluginsview.NoConnectorsAvailable", {
+            defaultValue: "No connectors available.",
+          })}
+        </p>
+      </SettingsStack>
     );
   }
 

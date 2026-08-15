@@ -8,6 +8,7 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { tasksAction } from "../actions/tasks.ts";
+import { CodingWorkspaceService } from "../services/workspace-service.ts";
 
 const SESSION_ID = "session-without-provider-receipt";
 
@@ -131,5 +132,65 @@ describe("TASKS effect receipts", () => {
       expect.objectContaining({ outcome: "noop" }),
     ]);
     expect(result?.userFacingEffectReceiptIds).toBeUndefined();
+  });
+
+  it("settles add_labels as applied only from the authoritative issue readback", async () => {
+    const runtime = {
+      agentId: "00000000-0000-4000-8000-000000000001",
+      character: { name: "Receipt test" },
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      getSetting: vi.fn(() => undefined),
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const workspace = new CodingWorkspaceService(runtime, {
+      baseDir: "/tmp/orchestrator-receipt-test",
+    });
+    workspace.addLabels = vi.fn(async () => ({
+      number: 7,
+      url: "https://github.com/acme/widgets/issues/7",
+      state: "open" as const,
+      title: "Widget",
+      body: "",
+      labels: ["triage", "p1"],
+      assignees: [],
+      createdAt: new Date(0),
+    }));
+    runtime.getService = ((type: string) =>
+      type === CodingWorkspaceService.serviceType
+        ? workspace
+        : undefined) as IAgentRuntime["getService"];
+    const result = await tasksAction.handler(
+      runtime,
+      { ...message(), entityId: runtime.agentId } as Memory,
+      undefined as unknown as State,
+      {
+        parameters: {
+          action: "manage_issues",
+          issueAction: "add_labels",
+          repo: "acme/widgets",
+          issueNumber: 7,
+          labels: ["triage", "p1"],
+        },
+      },
+      async () => [],
+    );
+
+    expect(workspace.addLabels).toHaveBeenCalledWith("acme/widgets", 7, [
+      "triage",
+      "p1",
+    ]);
+    expect(result?.effectReceipts).toEqual([
+      expect.objectContaining({
+        outcome: "applied",
+        resource: {
+          kind: "github.issue",
+          id: "https://github.com/acme/widgets/issues/7",
+        },
+        commit: expect.objectContaining({
+          kind: "provider_accepted",
+          id: "https://github.com/acme/widgets/issues/7",
+        }),
+      }),
+    ]);
   });
 });

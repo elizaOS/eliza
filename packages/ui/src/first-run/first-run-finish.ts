@@ -50,6 +50,7 @@ import {
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import type { CloudLoginOptions } from "../state/types";
 import { isCloudStatusAuthenticated } from "../utils";
+import { isPersonalSharedElizaId } from "../utils/cloud-agent-base";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";
@@ -104,6 +105,22 @@ export interface FirstRunFinishPorts {
    * reuse narration; text-only consumers ignore it.
    */
   onStatus?: (text: string | null, code?: string) => void;
+  /**
+   * Cooperative cancellation for an abandoned attempt (#19255): checked
+   * before every mutation and after every await boundary on the cloud path,
+   * so a deadline-abandoned attempt cannot provision, persist, or complete
+   * first-run concurrently with a newer attempt. Aborting settles the flow
+   * with an AbortError rejection the caller treats as an expected stale
+   * outcome, preserving the one-finish/provision-at-a-time invariant.
+   */
+  signal?: AbortSignal;
+  /**
+   * Fires when the flow reaches interactive Cloud login (#19255): lets the
+   * conductor seed the waiting turn and arm the bounded recovery deadline
+   * for entries that started silent (stored Steward token) and only later
+   * degraded into OAuth.
+   */
+  onInteractiveLogin?: () => void;
 }
 
 type FirstRunRuntimeStateKey =
@@ -478,42 +495,6 @@ async function finishLocal(
 // ── Cloud runtime finish ─────────────────────────────────────────────────────
 
 /**
- * Bind every first-run Cloud surface to the account-native personal Eliza.
- * `/join`, browser onboarding, and native companions share this controller so
- * completing first run can never create or wake paid compute implicitly.
- */
-async function bindPersonalEliza(
-  authToken: string,
-  ports: FirstRunFinishPorts,
-): Promise<FirstRunFinishOutcome> {
-  const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
-  const selected = await runJoinFlow({
-    client,
-    effects: {
-      savePersistedActiveServer,
-      savePersistedFirstRunComplete,
-    },
-    cloudApiBase,
-    authToken,
-    onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
-  });
-
-  addAgentProfile({
-    kind: "cloud",
-    label: selected.agentName,
-    cloudAgentId: selected.agentId,
-    apiBase: selected.apiBase,
-    accessToken: authToken,
-  });
-  persistMobileRuntimeModeForServerTarget("elizacloud");
-  clearForceFreshFirstRun();
-  clearPersistedFirstRunState();
-  ports.onStatus?.(null);
-  ports.completeFirstRun("chat");
-  return { kind: "done" };
-}
-
-/**
  * The provisioning tail of the cloud flow — both the silent auto-create path (0
  * agents) and the picker's pick / create-new feed their choice
  * (preferAgentId / forceCreate) into the SAME provisioning call.
@@ -528,6 +509,7 @@ export async function bindCloudAgent(
   },
   ports: FirstRunFinishPorts,
 ): Promise<FirstRunFinishOutcome> {
+  ports.signal?.throwIfAborted();
   ports.onStatus?.("Setting up your cloud agent", "setup");
   const plan = buildFirstRunSubmitPlan({
     draft: { ...sourceDraft, runtime: "cloud" },
@@ -555,6 +537,9 @@ export async function bindCloudAgent(
       : {}),
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
   });
+  // The remote agent now exists/was selected; every step after this point
+  // mutates local durable state, so an abandoned attempt stops HERE (#19255).
+  ports.signal?.throwIfAborted();
   const cloudAgentApiBase = selectedAgent.apiBase;
   if (selectedAgent.requiresAgentPairing) {
     ports.onStatus?.("Signing in to your cloud agent", "pairing");
@@ -565,6 +550,7 @@ export async function bindCloudAgent(
         cloudToken: authToken,
         containerBase: cloudAgentApiBase,
       });
+      ports.signal?.throwIfAborted();
       if (pairMode === "in-process") {
         persistMobileRuntimeModeForServerTarget("elizacloud");
         clearForceFreshFirstRun();
@@ -609,6 +595,7 @@ export async function bindCloudAgent(
   void Promise.resolve()
     .then(() => client.listConversations?.())
     .catch(() => undefined);
+  ports.signal?.throwIfAborted();
   const activeServer = createPersistedActiveServer({
     kind: "cloud",
     id: `cloud:${selectedAgent.agentId}`,
@@ -653,6 +640,7 @@ export async function bindCloudAgent(
   // agents…" reuse — must leave `eliza:first-run-complete` set, or the next
   // launch re-enters first-run for a user whose agent is healthy (#15903).
   // Idempotent with the callback's own setFirstRunComplete(true) persist.
+  ports.signal?.throwIfAborted();
   savePersistedFirstRunComplete(true);
   ports.onStatus?.(null);
   ports.completeFirstRun("chat");
@@ -753,6 +741,9 @@ export async function bindCloudAgent(
               containerBase,
               dedicatedAgentId,
               authToken,
+              ...(isPersonalSharedElizaId(sharedAgentId)
+                ? { personalElizaId: sharedAgentId }
+                : {}),
             });
           },
         });
@@ -800,21 +791,53 @@ export async function listOrAutoProvisionCloudAgent(
   sourceDraft: FirstRunProfileDraft,
   ports: FirstRunFinishPorts,
 ): Promise<FirstRunFinishOutcome> {
+  ports.signal?.throwIfAborted();
   syncIdentity(sourceDraft, ports);
   ports.setRuntimeState(
     "firstRunRuntimeTarget",
     firstRunRuntimeTarget("cloud"),
   );
   ports.setRuntimeState("firstRunProvider", "elizacloud");
-  let authToken = getCloudAuthToken(client);
-  if (!authToken) {
+  if (!getCloudAuthToken(client)) {
+    // Interactive OAuth is the unbounded wait (#19255): tell the conductor so
+    // it can seed the waiting turn and arm the bounded recovery deadline.
+    ports.onInteractiveLogin?.();
     await ports.handleInteractiveCloudLogin({ requireClientAuth: true });
-    authToken = getCloudAuthToken(client);
+    ports.signal?.throwIfAborted();
   }
+  const authToken = getCloudAuthToken(client) ?? "";
   if (!authToken) {
     return { kind: "needs-cloud-login" };
   }
-  return bindPersonalEliza(authToken, ports);
+  // The join flow persists durable local state; a deadline-abandoned attempt
+  // stops HERE (#19255) so it cannot race a newer attempt's join.
+  ports.signal?.throwIfAborted();
+  const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
+  const selected = await runJoinFlow({
+    client,
+    effects: {
+      savePersistedActiveServer,
+      savePersistedFirstRunComplete,
+    },
+    cloudApiBase,
+    authToken,
+    onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
+  });
+  addAgentProfile({
+    kind: "cloud",
+    label: selected.agentName,
+    cloudAgentId: selected.agentId,
+    cloudRuntimeAgentId: selected.activeAgentId,
+    cloudRuntime: selected.runtime,
+    apiBase: selected.apiBase,
+    accessToken: authToken,
+  });
+  persistMobileRuntimeModeForServerTarget("elizacloud");
+  clearForceFreshFirstRun();
+  clearPersistedFirstRunState();
+  ports.onStatus?.(null);
+  ports.completeFirstRun("chat");
+  return { kind: "done" };
 }
 
 // ── Router entry — validate + route by runtime ───────────────────────────────

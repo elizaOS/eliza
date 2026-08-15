@@ -1,9 +1,13 @@
 /**
- * Unit coverage for connector health probing. Telegram exposes poller liveness,
- * so a registered service object is not enough to report the connector healthy.
+ * Unit coverage for strict startup interval validation and connector health
+ * probing. Telegram exposes poller liveness, so a registered service object is
+ * not enough to report the connector healthy.
  */
 import { describe, expect, it, vi } from "vitest";
-import { ConnectorHealthMonitor } from "./connector-health";
+import {
+  ConnectorHealthMonitor,
+  resolveConnectorHealthIntervalMs,
+} from "./connector-health";
 
 function createMonitor(service: unknown): ConnectorHealthMonitor {
   return new ConnectorHealthMonitor({
@@ -21,6 +25,50 @@ function createMonitor(service: unknown): ConnectorHealthMonitor {
 }
 
 describe("ConnectorHealthMonitor", () => {
+  it("uses the configured canonical connector-health interval", () => {
+    expect(resolveConnectorHealthIntervalMs("10000")).toBe(10_000);
+    expect(resolveConnectorHealthIntervalMs("2147483647")).toBe(2_147_483_647);
+  });
+
+  it("passes the validated interval to the connector-health timer", () => {
+    const setIntervalSpy = vi
+      .spyOn(globalThis, "setInterval")
+      .mockReturnValue({} as ReturnType<typeof setInterval>);
+    const monitor = new ConnectorHealthMonitor({
+      runtime: { getService: vi.fn() } as never,
+      config: { connectors: {} },
+      broadcastWs: vi.fn(),
+      intervalMs: resolveConnectorHealthIntervalMs("10000"),
+    });
+
+    monitor.start();
+
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 10_000);
+    setIntervalSpy.mockRestore();
+  });
+
+  it.each([
+    "10000junk",
+    "10000.5",
+    "010000",
+    " 10000",
+    "10000 ",
+    "1e4",
+    "Infinity",
+    "0",
+    "9999",
+    "2147483648",
+    "9007199254740992",
+  ])("fails fast on invalid CONNECTOR_HEALTH_INTERVAL_MS=%s", (value) => {
+    expect(() => resolveConnectorHealthIntervalMs(value)).toThrowError(
+      expect.objectContaining({ code: "CONNECTOR_HEALTH_INTERVAL_INVALID" }),
+    );
+  });
+
+  it("keeps the default when the connector-health interval is unset", () => {
+    expect(resolveConnectorHealthIntervalMs(undefined)).toBe(60_000);
+  });
+
   it("reports Telegram missing when the service exists but the poller is not live", async () => {
     const monitor = createMonitor({
       getPollerHealth: () => ({
