@@ -1,11 +1,12 @@
 /**
  * Provider-specific bodies for local inference, cloud routing, coding
  * subscriptions, and API keys. The parent owns selection state while each
- * panel exposes an agent-addressable activation control.
+ * panel exposes an agent-addressable activation control. An unsigned-in
+ * Cloud panel signs the user in rather than pretending the route is live.
  */
 
 import type { ModelOption } from "@elizaos/shared";
-import { Cloud, Cpu, KeyRound, ShieldCheck } from "lucide-react";
+import { Cloud, Cpu, KeyRound, LogIn, ShieldCheck } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import type {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
@@ -52,10 +53,13 @@ export function LocalProviderPanel({
   cloudCallsDisabled,
   routingModeSaving,
   onSelectLocalOnly,
+  servingFallback = false,
 }: {
   cloudCallsDisabled: boolean;
   routingModeSaving: boolean;
   onSelectLocalOnly: () => void;
+  /** Cloud is configured but unsigned-in, so Local is answering chat. */
+  servingFallback?: boolean;
 }) {
   const t = useAppSelector((s) => s.t);
   return (
@@ -89,6 +93,14 @@ export function LocalProviderPanel({
         </SettingsActionButton>
       </ProviderPanelHeader>
       <div className="px-3 py-3 sm:px-4">
+        {servingFallback ? (
+          <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
+            {t("providerpanels.localFallbackBecauseCloudUnsigned", {
+              defaultValue:
+                "Answering chat because Eliza Cloud isn't signed in.",
+            })}
+          </div>
+        ) : null}
         <LocalInferencePanel />
       </div>
     </div>
@@ -100,6 +112,8 @@ export interface CloudPanelProps {
   isCloudSelected: boolean;
   routingModeSaving: boolean;
   onSelectCloud: () => void;
+  /** Opens the interactive Cloud login when the account is unsigned-in. */
+  onSignIn: () => void;
   elizaCloudConnected: boolean;
   largeModelOptions: ModelOption[];
   cloudModelSchema: CloudModelSchema | null;
@@ -115,6 +129,7 @@ export function CloudPanel({
   isCloudSelected,
   routingModeSaving,
   onSelectCloud,
+  onSignIn,
   elizaCloudConnected,
   largeModelOptions,
   cloudModelSchema,
@@ -125,43 +140,79 @@ export function CloudPanel({
   onModelFieldChange,
 }: CloudPanelProps) {
   const t = useAppSelector((s) => s.t);
-  const cloudActive = !cloudCallsDisabled && isCloudSelected;
+  const cloudActive =
+    !cloudCallsDisabled && isCloudSelected && elizaCloudConnected;
+  const needsSignIn = !elizaCloudConnected;
   return (
     <div className="min-w-0">
       <ProviderPanelHeader icon={Cloud} title="Eliza Cloud">
         <SettingsActionButton
-          agentId="cloud-use-cloud"
+          agentId={needsSignIn ? "cloud-sign-in" : "cloud-use-cloud"}
           agentStatus={cloudActive ? "active" : undefined}
+          agentLabel={
+            needsSignIn
+              ? t("providerpanels.signInToCloud", {
+                  defaultValue: "Sign in to Eliza Cloud",
+                })
+              : cloudActive
+                ? t("providerpanels.cloudActive", {
+                    defaultValue: "Cloud active",
+                  })
+                : t("providerpanels.useCloud", {
+                    defaultValue: "Use Eliza Cloud",
+                  })
+          }
           type="button"
-          variant={cloudActive ? "default" : "outline"}
+          variant={cloudActive || needsSignIn ? "default" : "outline"}
           className="h-9 rounded-md px-3 text-xs font-medium"
           disabled={routingModeSaving}
           aria-label={
-            cloudActive
-              ? t("providerpanels.cloudActive", {
-                  defaultValue: "Cloud active",
+            needsSignIn
+              ? t("providerpanels.signInToCloud", {
+                  defaultValue: "Sign in to Eliza Cloud",
                 })
-              : t("providerpanels.useCloud", {
-                  defaultValue: "Use Eliza Cloud",
-                })
+              : cloudActive
+                ? t("providerpanels.cloudActive", {
+                    defaultValue: "Cloud active",
+                  })
+                : t("providerpanels.useCloud", {
+                    defaultValue: "Use Eliza Cloud",
+                  })
           }
-          onClick={onSelectCloud}
+          onClick={needsSignIn ? onSignIn : onSelectCloud}
         >
-          <Cloud className="h-4 w-4" aria-hidden />
-          {t("providerpanels.cloud", { defaultValue: "Cloud" })}
+          {needsSignIn ? (
+            <LogIn className="h-4 w-4" aria-hidden />
+          ) : (
+            <Cloud className="h-4 w-4" aria-hidden />
+          )}
+          {needsSignIn
+            ? t("providerpanels.signIn", { defaultValue: "Sign in" })
+            : t("providerpanels.cloud", { defaultValue: "Cloud" })}
         </SettingsActionButton>
       </ProviderPanelHeader>
-      <ProviderRoutingPanel
-        largeModelOptions={largeModelOptions}
-        cloudModelSchema={cloudModelSchema}
-        modelValues={modelValues}
-        currentLargeModel={currentLargeModel}
-        modelSaving={modelSaving}
-        modelSaveSuccess={modelSaveSuccess}
-        onModelFieldChange={onModelFieldChange}
-        showCloudControls={cloudActive}
-        elizaCloudConnected={elizaCloudConnected}
-      />
+      {needsSignIn ? (
+        <div className="px-3 py-3 sm:px-4">
+          <div className="rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
+            {t("providerpanels.cloudUnsignedUsingLocal", {
+              defaultValue:
+                "Eliza Cloud isn't signed in. Chat replies are using Local.",
+            })}
+          </div>
+        </div>
+      ) : (
+        <ProviderRoutingPanel
+          largeModelOptions={largeModelOptions}
+          cloudModelSchema={cloudModelSchema}
+          modelValues={modelValues}
+          currentLargeModel={currentLargeModel}
+          modelSaving={modelSaving}
+          modelSaveSuccess={modelSaveSuccess}
+          onModelFieldChange={onModelFieldChange}
+          showCloudControls={cloudActive}
+          elizaCloudConnected={elizaCloudConnected}
+        />
+      )}
     </div>
   );
 }
