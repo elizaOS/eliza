@@ -2657,7 +2657,10 @@ type V5PlannerActionSurface = {
 	summary: V5PlannerActionSurfaceSummary;
 };
 
-async function collectV5PlannerCandidateActions(args: {
+// Exported for unit coverage of the candidate-rejection log contract
+// (#20001): the warn IS the deliverable, so tests pin that a rejected or
+// unresolvable explicit candidate produces the structured reason.
+export async function collectV5PlannerCandidateActions(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
@@ -2811,6 +2814,21 @@ async function collectV5PlannerCandidateActions(args: {
 			: parentAliasesForCandidateAction(candidateName)
 					.map((alias) => resolveRuntimeAction(actionLookup, alias))
 					.filter((action): action is Action => action !== undefined);
+		if (resolved.length === 0) {
+			// The plumbing-class observable: stage-1 named a candidate that binds
+			// to NO runtime action even after the alias fallback. Without this
+			// line that gap is indistinguishable from a gate rejection when
+			// reading trajectories (#19999 triage had to rule it out by hand).
+			logger.warn(
+				{
+					src: "service:message",
+					candidate: candidateName,
+					gate: "resolved-to-no-runtime-action",
+				},
+				"Explicit stage-1 candidate resolved to no runtime action",
+			);
+			continue;
+		}
 		for (const action of resolved) {
 			await appendIfAllowed(
 				action,
