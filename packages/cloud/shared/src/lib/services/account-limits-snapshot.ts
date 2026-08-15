@@ -21,6 +21,8 @@
  *    and leaves the decision to the enforcing route.
  */
 
+import { ElizaError } from "@elizaos/core";
+
 export type LimitItemState = "available" | "at-limit" | "over-limit" | "unavailable";
 
 export interface CountedLimitItem {
@@ -126,11 +128,20 @@ function classify(used: number, limit: number): LimitItemState {
 }
 
 function isUsableCount(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function unavailableReason(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return error instanceof ElizaError && error.code === "INVALID_ACCOUNT_LIMIT_SOURCE"
+    ? error.message
+    : "source read failed";
+}
+
+function invalidSourceData(message: string): ElizaError {
+  return new ElizaError(message, {
+    code: "INVALID_ACCOUNT_LIMIT_SOURCE",
+    severity: "fatal",
+  });
 }
 
 /**
@@ -161,7 +172,7 @@ export async function buildAccountLimitsSnapshot(
     try {
       const used = await sources.cloudCharacterCount();
       if (!isUsableCount(used)) {
-        throw new Error("cloud character count is not a usable number");
+        throw invalidSourceData("cloud character count is not a usable non-negative integer");
       }
       if ("error" in billing) {
         return {
@@ -171,6 +182,9 @@ export async function buildAccountLimitsSnapshot(
         };
       }
       const limit = sources.maxCloudCharacters(billing.creditBalance, billing.settings);
+      if (!isUsableCount(limit)) {
+        throw invalidSourceData("cloud character limit is not a usable non-negative integer");
+      }
       return { source, state: classify(used, limit), used, limit };
     } catch (error) {
       // error-policy:J4 — unreadable usage is reported, not zeroed.
@@ -187,7 +201,7 @@ export async function buildAccountLimitsSnapshot(
     try {
       const used = await sources.sandboxQuotaCount();
       if (!isUsableCount(used)) {
-        throw new Error("sandbox quota count is not a usable number");
+        throw invalidSourceData("sandbox quota count is not a usable non-negative integer");
       }
       if ("error" in billing) {
         return {
@@ -197,6 +211,9 @@ export async function buildAccountLimitsSnapshot(
         };
       }
       const ceiling = sources.maxNonTerminalAgents(billing.creditBalance);
+      if (!isUsableCount(ceiling)) {
+        throw invalidSourceData("sandbox limit is not a usable non-negative integer");
+      }
       return {
         source,
         state: classify(used, ceiling),
@@ -219,7 +236,7 @@ export async function buildAccountLimitsSnapshot(
     try {
       const quota = await sources.containerQuota();
       if (!isUsableCount(quota.current) || !isUsableCount(quota.max)) {
-        throw new Error("container quota returned non-numeric values");
+        throw invalidSourceData("container quota returned invalid counts");
       }
       return {
         source,
@@ -242,7 +259,7 @@ export async function buildAccountLimitsSnapshot(
     try {
       const [used, limit] = await Promise.all([sources.appCount(), sources.appLimit()]);
       if (!isUsableCount(used) || !isUsableCount(limit)) {
-        throw new Error("app count or limit is not a usable number");
+        throw invalidSourceData("app count or limit is not a usable non-negative integer");
       }
       return { source, state: classify(used, limit), used, limit };
     } catch (error) {
@@ -263,6 +280,9 @@ export async function buildAccountLimitsSnapshot(
         // No row yet: the schema's explicit default ceiling with zero usage —
         // the only case where an absent source maps to a value, because the
         // write path creates the row lazily with exactly these semantics.
+        if (sources.defaultStorageBytesLimit < 0n) {
+          throw invalidSourceData("default storage limit is negative");
+        }
         return {
           source,
           state: "available" as const,
@@ -271,7 +291,10 @@ export async function buildAccountLimitsSnapshot(
         };
       }
       if (typeof row.bytesUsed !== "bigint" || typeof row.bytesLimit !== "bigint") {
-        throw new Error("storage quota row returned non-bigint bytes");
+        throw invalidSourceData("storage quota row returned non-bigint bytes");
+      }
+      if (row.bytesUsed < 0n || row.bytesLimit < 0n) {
+        throw invalidSourceData("storage quota row returned negative bytes");
       }
       const state: LimitItemState =
         row.bytesUsed > row.bytesLimit
@@ -300,7 +323,7 @@ export async function buildAccountLimitsSnapshot(
     try {
       const tier = await sources.inferenceRateTier();
       if (!isUsableCount(tier.completionsRpm) || !isUsableCount(tier.embeddingsRpm)) {
-        throw new Error("org rate tier returned non-numeric caps");
+        throw invalidSourceData("org rate tier returned invalid caps");
       }
       // Configured caps only: no current usage, remaining requests, or
       // route-protection presets — this snapshot does not claim enforcement

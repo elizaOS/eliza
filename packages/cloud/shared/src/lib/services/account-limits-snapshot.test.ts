@@ -138,7 +138,7 @@ describe("buildAccountLimitsSnapshot", () => {
     expect(snapshot.containers).toEqual({
       source: "container-quota",
       state: "unavailable",
-      reason: "containers repository unreachable",
+      reason: "source read failed",
     });
     expect(snapshot.cloudCharacters.state).toBe("available");
     expect(snapshot.apps.state).toBe("available");
@@ -192,6 +192,29 @@ describe("buildAccountLimitsSnapshot", () => {
       expect(item.used ?? undefined).toBeUndefined();
       expect((item as { reason?: string }).reason).toBeTruthy();
     }
+  });
+
+  test("corrupt derived ceilings and negative storage bytes fail visibly", async () => {
+    const snapshot = await buildAccountLimitsSnapshot(
+      healthySources({
+        maxCloudCharacters: () => Number.NaN,
+        maxNonTerminalAgents: () => 1.5,
+        storageQuota: async () => ({ bytesUsed: -1n, bytesLimit: GIB_5 }),
+      }),
+    );
+
+    expect(snapshot.cloudCharacters).toMatchObject({
+      state: "unavailable",
+      reason: "cloud character limit is not a usable non-negative integer",
+    });
+    expect(snapshot.agentSandboxes).toMatchObject({
+      state: "unavailable",
+      reason: "sandbox limit is not a usable non-negative integer",
+    });
+    expect(snapshot.storage).toMatchObject({
+      state: "unavailable",
+      reason: "storage quota row returned negative bytes",
+    });
   });
 
   test("rate limits expose configured completions/embeddings caps only", async () => {
