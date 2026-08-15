@@ -58,7 +58,9 @@ jobs:
   cutover:
     name: ${{ inputs.operation }} SlopHub production cutover
     needs: validate-source
-    runs-on: ubuntu-24.04
+    runs-on:
+      group: prod-ops
+      labels: [self-hosted, Linux, X64, prod-ops]
     environment: production
     timeout-minutes: 15
     steps:

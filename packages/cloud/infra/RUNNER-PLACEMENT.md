@@ -38,9 +38,18 @@ Emergency fallback if self-hosted capacity drains: set the repository variable
 `HETZNER_FLEET_ONLINE=false` — every workflow lane falls back to GitHub-hosted
 runners by design.
 
+Protected production operations use a separate `prod-ops` runner group and VM.
+That host is reserved for allowlisted manual workflows on `refs/heads/main`,
+requires the protected `production` environment, and may never accept public PR
+jobs or share a machine with the general runner farm, SlopHub/Forgejo, an agent
+docker-node, or an Eliza control-plane service. Its reproducible host definition
+lives in `cloud/terraform/hetzner/prod-ops/`.
+
 ## If you provision new nodes or new runners
 
 - New agent docker-node → never install an Actions runner on it.
 - New runner host → keep it out of `docker_nodes`.
+- New production-operations runner → place it in the `prod-ops` group, restrict
+  that group to exact protected workflow paths, and keep at least one idle.
 - If a host must change roles, remove it from one plane before adding it to the
   other, and update this document.

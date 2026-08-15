@@ -1,0 +1,106 @@
+#cloud-config
+# This host prepares immutable runner bytes but deliberately receives no GitHub
+# credential. A core admin supplies one short-lived registration token over SSH
+# after Terraform apply, keeping tokens out of state and provider metadata.
+hostname: ${hostname}
+manage_etc_hosts: true
+package_update: true
+package_upgrade: true
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - jq
+  - libicu74
+  - unzip
+  - zstd
+
+users:
+  - default
+  - name: runner-admin
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+%{ for key in operator_ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+  - name: actions-runner
+    system: true
+    shell: /bin/bash
+    homedir: /opt/actions-runner
+
+ssh_pwauth: false
+disable_root: true
+
+write_files:
+  - path: /etc/eliza/prod-ops-runner
+    owner: root:root
+    permissions: "0444"
+    content: |
+      role=github-actions-prod-ops
+      runner_group=prod-ops
+      public_pr_jobs=forbidden
+  - path: /usr/local/sbin/prod-ops-work-clean
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      work=/opt/actions-runner/_work
+      [ -d "$work" ] || exit 0
+      find "$work" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  - path: /usr/local/sbin/configure-prod-ops-runner
+    owner: root:root
+    permissions: "0750"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
+      [ ! -e /opt/actions-runner/.runner ] || { echo "runner is already configured" >&2; exit 1; }
+      IFS= read -r registration_token
+      [ -n "$registration_token" ] || { echo "read one short-lived registration token on stdin" >&2; exit 1; }
+      cd /opt/actions-runner
+      runuser -u actions-runner -- ./config.sh \
+        --unattended \
+        --url https://github.com/elizaOS \
+        --token "$registration_token" \
+        --name ${hostname} \
+        --runnergroup prod-ops \
+        --labels prod-ops,hetzner-cloud \
+        --work _work
+      registration_token=
+      ./svc.sh install actions-runner
+      unit=$(find /etc/systemd/system -maxdepth 1 -type f -name 'actions.runner.elizaOS.*.service' -printf '%f\n')
+      [ "$(printf '%s\n' "$unit" | sed '/^$/d' | wc -l)" -eq 1 ] || { echo "expected exactly one runner service" >&2; exit 1; }
+      install -d -m 0755 "/etc/systemd/system/$unit.d"
+      cat > "/etc/systemd/system/$unit.d/hardening.conf" <<'EOF'
+      [Service]
+      Environment=ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/sbin/prod-ops-work-clean
+      Environment=ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/sbin/prod-ops-work-clean
+      UMask=0077
+      NoNewPrivileges=true
+      PrivateTmp=true
+      ProtectHome=true
+      ProtectSystem=full
+      ReadWritePaths=/opt/actions-runner
+      ProtectControlGroups=true
+      ProtectKernelModules=true
+      ProtectKernelTunables=true
+      RestrictSUIDSGID=true
+      LockPersonality=true
+      CapabilityBoundingSet=
+      EOF
+      systemctl daemon-reload
+      ./svc.sh start
+      ./svc.sh status
+
+runcmd:
+  - install -d -o actions-runner -g actions-runner -m 0750 /opt/actions-runner
+  - curl --fail --silent --show-error --location --output /tmp/actions-runner.tar.gz https://github.com/actions/runner/releases/download/v2.336.0/actions-runner-linux-x64-2.336.0.tar.gz
+  - echo '04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d  /tmp/actions-runner.tar.gz' | sha256sum --check --strict
+  - tar --extract --gzip --file /tmp/actions-runner.tar.gz --directory /opt/actions-runner
+  - chown -R actions-runner:actions-runner /opt/actions-runner
+  - rm -f /tmp/actions-runner.tar.gz
+  - systemctl enable --now unattended-upgrades.service
+  - touch /var/lib/cloud/instance/prod-ops-ready

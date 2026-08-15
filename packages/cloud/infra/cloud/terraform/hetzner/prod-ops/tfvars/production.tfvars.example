@@ -1,0 +1,14 @@
+environment = "production"
+
+# Keep the runner in the existing production Hetzner project. The protected
+# Infrastructure workflow supplies HCLOUD_TOKEN for that project.
+hcloud_location    = "ash"
+hcloud_server_type = "cpx22"
+
+ssh_public_keys = [
+  "ssh-ed25519 REPLACE_WITH_CORE_ADMIN_PUBLIC_KEY prod-ops",
+]
+
+operator_ingress_cidrs = [
+  "203.0.113.10/32",
+]
