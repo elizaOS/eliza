@@ -156,6 +156,105 @@ export interface ConversationImportResult {
   alreadyPopulated?: boolean;
 }
 
+type TodoImportReceipt = Pick<
+  ConversationImportResult,
+  | "sourceTodoCount"
+  | "importedTodos"
+  | "repairedTodos"
+  | "skippedTodos"
+  | "removedStaleTodos"
+  | "sourceTodoMutationCount"
+  | "importedTodoMutations"
+  | "skippedTodoMutations"
+  | "sourceTodoDigest"
+  | "targetTodoDigest"
+>;
+
+interface StoredTodoCutoverState {
+  todos: SharedTodoCutoverRecord[];
+  mutations: SharedTodoMutationCutoverRecord[];
+}
+
+function stageTodoCutoverImport(
+  previousState: StoredTodoCutoverState | undefined,
+  snapshot: SharedTodoCutoverSnapshot,
+): { receipt: TodoImportReceipt; state: StoredTodoCutoverState } {
+  const previousTodos = previousState?.todos ?? [];
+  const previousById = new Map(
+    previousTodos.map((todo) => [todo.sourceId, todo]),
+  );
+  const nextIds = new Set(snapshot.todos.map((todo) => todo.sourceId));
+  let importedTodos = 0;
+  let repairedTodos = 0;
+  let skippedTodos = 0;
+  for (const todo of snapshot.todos) {
+    const previous = previousById.get(todo.sourceId);
+    if (!previous) importedTodos += 1;
+    else if (JSON.stringify(previous) === JSON.stringify(todo)) {
+      skippedTodos += 1;
+    } else {
+      repairedTodos += 1;
+    }
+  }
+  const removedStaleTodos = previousTodos.filter(
+    (todo) => !nextIds.has(todo.sourceId),
+  ).length;
+
+  // Dedicated keeps old replay receipts even when a later source snapshot is
+  // smaller; deleting one would make an already-committed provider retry run
+  // the mutation again after cutover.
+  const mutations = structuredClone(previousState?.mutations ?? []);
+  const mutationsByKey = new Map(
+    mutations.map((mutation) => [mutation.idempotencyKey, mutation]),
+  );
+  const mutationsById = new Map(
+    mutations.map((mutation) => [mutation.mutationId, mutation]),
+  );
+  let importedTodoMutations = 0;
+  let skippedTodoMutations = 0;
+  for (const mutation of snapshot.mutations) {
+    const previous = mutationsByKey.get(mutation.idempotencyKey);
+    if (previous) {
+      if (JSON.stringify(previous) !== JSON.stringify(mutation)) {
+        throw new Error(
+          "Todo mutation idempotency key belongs to a different record",
+        );
+      }
+      skippedTodoMutations += 1;
+      continue;
+    }
+    if (mutationsById.has(mutation.mutationId)) {
+      throw new Error(
+        "Todo mutation id belongs to a different idempotency key",
+      );
+    }
+    const stored = structuredClone(mutation);
+    mutations.push(stored);
+    mutationsByKey.set(stored.idempotencyKey, stored);
+    mutationsById.set(stored.mutationId, stored);
+    importedTodoMutations += 1;
+  }
+
+  return {
+    receipt: {
+      sourceTodoCount: snapshot.todos.length,
+      importedTodos,
+      repairedTodos,
+      skippedTodos,
+      removedStaleTodos,
+      sourceTodoMutationCount: snapshot.mutations.length,
+      importedTodoMutations,
+      skippedTodoMutations,
+      sourceTodoDigest: snapshot.digest,
+      targetTodoDigest: snapshot.digest,
+    },
+    state: {
+      todos: structuredClone(snapshot.todos),
+      mutations,
+    },
+  };
+}
+
 export class ControlPlaneStore {
   private readonly jobs = new Map<string, Job>();
   private readonly sandboxes = new Map<string, Sandbox>();
@@ -172,7 +271,7 @@ export class ControlPlaneStore {
     string,
     Map<string, StoredScheduledTask>
   >();
-  private readonly todoSnapshots = new Map<string, SharedTodoCutoverSnapshot>();
+  private readonly todoSnapshots = new Map<string, StoredTodoCutoverState>();
   private readonly conversationTurnReplies = new Map<string, string>();
   private hotPoolTarget = 0;
   private warmPoolState: WarmPoolState = {
@@ -383,6 +482,12 @@ export class ControlPlaneStore {
     todoSnapshot?: SharedTodoCutoverSnapshot,
   ): ConversationImportResult {
     const key = this.convKey(sandboxId, conversationId);
+    // The real Dedicated route rejects a Todo conflict before it writes any
+    // transcript or task state. Stage the complete Todo result first so this
+    // mock preserves that all-or-nothing boundary for cloud E2E.
+    const stagedTodoImport = todoSnapshot
+      ? stageTodoCutoverImport(this.todoSnapshots.get(key), todoSnapshot)
+      : null;
     const existing = this.conversations.get(key);
     let inserted = messages.length;
     let skipped = 0;
@@ -429,86 +534,8 @@ export class ControlPlaneStore {
       }
     }
 
-    let todoReceipt: Pick<
-      ConversationImportResult,
-      | "sourceTodoCount"
-      | "importedTodos"
-      | "repairedTodos"
-      | "skippedTodos"
-      | "removedStaleTodos"
-      | "sourceTodoMutationCount"
-      | "importedTodoMutations"
-      | "skippedTodoMutations"
-      | "sourceTodoDigest"
-      | "targetTodoDigest"
-    > = {};
-    if (todoSnapshot) {
-      const previousSnapshot = this.todoSnapshots.get(key);
-      const previousTodos = previousSnapshot?.todos ?? [];
-      const previousById = new Map(
-        previousTodos.map((todo) => [todo.sourceId, todo]),
-      );
-      const nextIds = new Set(todoSnapshot.todos.map((todo) => todo.sourceId));
-      let importedTodos = 0;
-      let repairedTodos = 0;
-      let skippedTodos = 0;
-      for (const todo of todoSnapshot.todos) {
-        const previous = previousById.get(todo.sourceId);
-        if (!previous) importedTodos += 1;
-        else if (JSON.stringify(previous) === JSON.stringify(todo)) {
-          skippedTodos += 1;
-        } else {
-          repairedTodos += 1;
-        }
-      }
-      const removedStaleTodos = previousTodos.filter(
-        (todo) => !nextIds.has(todo.sourceId),
-      ).length;
-      const previousMutationsByKey = new Map(
-        previousSnapshot?.mutations.map((mutation) => [
-          mutation.idempotencyKey,
-          mutation,
-        ]) ?? [],
-      );
-      const previousMutationsById = new Map(
-        previousSnapshot?.mutations.map((mutation) => [
-          mutation.mutationId,
-          mutation,
-        ]) ?? [],
-      );
-      let importedTodoMutations = 0;
-      let skippedTodoMutations = 0;
-      for (const mutation of todoSnapshot.mutations) {
-        const previous = previousMutationsByKey.get(mutation.idempotencyKey);
-        if (previous) {
-          if (JSON.stringify(previous) !== JSON.stringify(mutation)) {
-            throw new Error(
-              "Todo mutation idempotency key belongs to a different record",
-            );
-          }
-          skippedTodoMutations += 1;
-          continue;
-        }
-        if (previousMutationsById.has(mutation.mutationId)) {
-          throw new Error(
-            "Todo mutation id belongs to a different idempotency key",
-          );
-        }
-        importedTodoMutations += 1;
-      }
-      this.todoSnapshots.set(key, structuredClone(todoSnapshot));
-      todoReceipt = {
-        sourceTodoCount: todoSnapshot.todos.length,
-        importedTodos,
-        repairedTodos,
-        skippedTodos,
-        removedStaleTodos,
-        sourceTodoMutationCount: todoSnapshot.mutations.length,
-        importedTodoMutations,
-        skippedTodoMutations,
-        sourceTodoDigest: todoSnapshot.digest,
-        targetTodoDigest: todoSnapshot.digest,
-      };
+    if (stagedTodoImport) {
+      this.todoSnapshots.set(key, stagedTodoImport.state);
     }
 
     return {
@@ -522,7 +549,7 @@ export class ControlPlaneStore {
       skippedScheduledTasks,
       activatedScheduledTasks,
       skippedActivatedScheduledTasks,
-      ...todoReceipt,
+      ...(stagedTodoImport?.receipt ?? {}),
       ...(existing && existing.length > 0 ? { alreadyPopulated: true } : {}),
     };
   }

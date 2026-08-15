@@ -132,6 +132,7 @@ describe("control-plane Todo cutover import", () => {
 
     const first = await postImport({
       messages: [],
+      scheduledTasks: [{ taskId: "baseline-reminder", active: false }],
       cutoverToken: "personal-cutover-token",
       todoSnapshot: snapshot,
     });
@@ -160,6 +161,20 @@ describe("control-plane Todo cutover import", () => {
         CONVERSATION_ID,
       ),
     ).toEqual(snapshot.mutations);
+    const baselineMessages = structuredClone(
+      controlPlane.store.getConversation(sandboxId, CONVERSATION_ID),
+    );
+    const baselineTasks = structuredClone(
+      controlPlane.store.getScheduledTasks(sandboxId, CONVERSATION_ID),
+    );
+    const baselineTodos = controlPlane.store.getTodos(
+      sandboxId,
+      CONVERSATION_ID,
+    );
+    const baselineMutations = controlPlane.store.getTodoMutations(
+      sandboxId,
+      CONVERSATION_ID,
+    );
 
     const replay = await postImport({
       messages: [],
@@ -184,16 +199,46 @@ describe("control-plane Todo cutover import", () => {
       mutations: [{ ...mutation, requestDigest: "b".repeat(64) }],
     });
     const conflictingReplay = await postImport({
-      messages: [],
+      messages: [{ role: "user", text: "must not partially import" }],
+      scheduledTasks: [{ taskId: "must-not-partially-import" }],
       cutoverToken: "personal-cutover-token",
       todoSnapshot: conflictingSnapshot,
     });
     expect(conflictingReplay.status).toBe(500);
+    expect(
+      controlPlane.store.getConversation(sandboxId, CONVERSATION_ID),
+    ).toEqual(baselineMessages);
+    expect(
+      controlPlane.store.getScheduledTasks(sandboxId, CONVERSATION_ID),
+    ).toEqual(baselineTasks);
     expect(controlPlane.store.getTodos(sandboxId, CONVERSATION_ID)).toEqual(
-      snapshot.todos,
+      baselineTodos,
     );
     expect(
       controlPlane.store.getTodoMutations(sandboxId, CONVERSATION_ID),
-    ).toEqual(snapshot.mutations);
+    ).toEqual(baselineMutations);
+
+    const smallerSnapshot = await createSharedTodoCutoverSnapshot({
+      sourceAgentId: CONVERSATION_ID,
+      todos: snapshot.todos,
+      mutations: [],
+    });
+    const smallerImport = await postImport({
+      messages: [],
+      cutoverToken: "personal-cutover-token",
+      todoSnapshot: smallerSnapshot,
+    });
+    expect(smallerImport.status).toBe(200);
+    expect(await smallerImport.json()).toMatchObject({
+      sourceTodoMutationCount: 0,
+      importedTodoMutations: 0,
+      skippedTodoMutations: 0,
+      sourceTodoDigest: smallerSnapshot.digest,
+      targetTodoDigest: smallerSnapshot.digest,
+    });
+    expect(
+      controlPlane.store.getTodoMutations(sandboxId, CONVERSATION_ID),
+      "a smaller retry cannot erase Dedicated replay authority",
+    ).toEqual(baselineMutations);
   });
 });
