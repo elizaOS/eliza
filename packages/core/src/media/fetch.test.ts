@@ -67,3 +67,41 @@ describe("fetchRemoteMedia", () => {
 		expect(result.fileName).toBe("report.txt");
 	});
 });
+
+	describe("maxBytes: 0 hard zero-byte cap", () => {
+		function fetchWithMaxBytes(maxBytes: number, body: string) {
+			return fetchRemoteMedia({
+				url: "https://example.com/image.png",
+				maxBytes,
+				lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+				pinnedFetchImpl: async () => new Response(Buffer.from(body)),
+			});
+		}
+
+		it("rejects a non-empty body under maxBytes: 0 instead of reading unbounded", async () => {
+			// A truthiness check on maxBytes used to fold 0 into "no cap",
+			// giving callers relying on the documented hard-cap contract an
+			// unbounded read under a zero-byte policy (#19854).
+			await expect(fetchWithMaxBytes(0, "x")).rejects.toMatchObject({
+				code: "max_bytes",
+			});
+		});
+
+		it("admits an empty body under maxBytes: 0", async () => {
+			// 0 is a cap, not a blanket rejection: zero delivered bytes comply.
+			const result = await fetchWithMaxBytes(0, "");
+			expect(result.buffer.length).toBe(0);
+		});
+
+		it("still reads unbounded when maxBytes is omitted", async () => {
+			const result = await fetchRemoteMedia({
+				url: "https://example.com/image.png",
+				lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+				pinnedFetchImpl: async () =>
+					new Response(Buffer.from("png"), {
+						headers: { "content-type": "image/png" },
+					}),
+			});
+			expect(result.buffer.toString()).toBe("png");
+		});
+	});

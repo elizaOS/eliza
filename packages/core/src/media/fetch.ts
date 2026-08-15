@@ -172,7 +172,10 @@ function enforceContentLengthLimit(
 	maxBytes?: number,
 ): void {
 	const contentLength = res.headers.get("content-length");
-	if (!maxBytes || !contentLength) {
+	// A zero cap is a valid hard limit, not an omitted one — compare against
+	// undefined explicitly so maxBytes: 0 cannot fall through to the unbounded
+	// read path (#19854).
+	if (maxBytes === undefined || !contentLength) {
 		return;
 	}
 
@@ -250,9 +253,13 @@ export async function fetchRemoteMedia(
 		await throwIfHttpError(res, options.url, finalUrl);
 		enforceContentLengthLimit(res, options.url, options.maxBytes);
 
-		const buffer = options.maxBytes
-			? await readResponseWithLimit(res, options.maxBytes)
-			: Buffer.from(await res.arrayBuffer());
+		// Distinguish an omitted cap (undefined → unbounded read) from an
+		// explicit zero cap (→ readResponseWithLimit enforces the hard
+		// zero-byte policy) — a truthiness check folded both into "no cap".
+		const buffer =
+			options.maxBytes === undefined
+				? Buffer.from(await res.arrayBuffer())
+				: await readResponseWithLimit(res, options.maxBytes);
 		const metadata = await resolveMediaMetadata({
 			res,
 			buffer,
