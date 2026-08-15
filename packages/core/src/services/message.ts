@@ -9114,14 +9114,62 @@ export async function runV5MessageRuntimeStage1(args: {
 				strippedPlannedReplyText = source.slice(rawVerified.length).trim();
 			}
 		}
-		const effectiveDeliveredReplyText =
+		let effectiveDeliveredReplyText =
 			strippedPlannedReplyText || effectiveReplyText;
-		const shouldSendPlannedText =
+		let shouldSendPlannedText =
 			Boolean(effectiveReplyText) &&
 			!plannedTextRepeatsEarlyReply &&
 			!plannedTextRepeatsActionReply &&
 			!plannedTextIsRedundantFailureFallback &&
 			!plannedTextRepeatsVerifiedActionDelivery;
+		// NEVER-SILENT INVARIANT (matrix F24/F12, tj-bfe764bf544bed /
+		// tj-fda9d65e8d04b9): a RESPOND turn that executed tools must not end
+		// with zero deliveries. Every suppression above presupposes the user
+		// already received the content through some earlier delivery — when
+		// NOTHING was delivered this turn (no early ack, empty delivered-set)
+		// that premise is false by construction, and an empty
+		// `effectiveReplyText` (a FINISH whose message evaporated in the
+		// safety chain) otherwise ships `responseContent: null`: the runtime
+		// produced a correct answer and the user got silence. Recover with the
+		// best grounded text available and name the failure in the log so the
+		// upstream emptying path is diagnosable instead of invisible.
+		if (
+			!shouldSendPlannedText &&
+			!earlyReplySent &&
+			deliveredVisibleTexts.size === 0 &&
+			actionResults.length > 0
+		) {
+			const recoveredText =
+				effectiveDeliveredReplyText ||
+				stageOneAck ||
+				actionResults
+					.map((result) =>
+						typeof result.userFacingText === "string"
+							? result.userFacingText.trim()
+							: "",
+					)
+					.filter((ownedText) => ownedText.length > 0)
+					.at(-1) ||
+				"I finished working on that but could not compose a clean reply — ask again and I will retry.";
+			args.runtime.logger.warn(
+				{
+					src: "service:message",
+					emptyFinal: !effectiveReplyText,
+					suppressedByEarlyReply: plannedTextRepeatsEarlyReply,
+					suppressedByActionReply: plannedTextRepeatsActionReply,
+					recoveredFrom: effectiveDeliveredReplyText
+						? "plannedText"
+						: stageOneAck
+							? "stageOneAck"
+							: "actionUserFacingText",
+				},
+				"RESPOND turn reached the reply gate with zero deliveries; recovering instead of ending silent",
+			);
+			effectiveReplyText = recoveredText;
+			strippedPlannedReplyText = recoveredText;
+			effectiveDeliveredReplyText = recoveredText;
+			shouldSendPlannedText = true;
+		}
 		// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model
 		// provenance. A byte-exact canonical action result also needs preservation:
 		// `verifiedUserFacing` promises do-not-paraphrase semantics, so routing that
