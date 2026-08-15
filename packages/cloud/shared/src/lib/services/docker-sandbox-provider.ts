@@ -23,6 +23,7 @@ import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
 import {
+  buildAgentContainerCpuFlags,
   buildAgentContainerMemoryFlags,
   buildAgentContainerSecurityFlags,
 } from "./agent-container-security";
@@ -1498,6 +1499,14 @@ export class DockerSandboxProvider implements SandboxProvider {
         // env-tunable fleet default applies so a boot-looping agent can never
         // OOM-starve its co-tenants again (staging fleet incident 2026-08-05).
         ...buildAgentContainerMemoryFlags(containerMemoryMb),
+        // Per-container CPU quota (see buildAgentContainerCpuFlags, #18485):
+        // an explicit per-agent `container.cpu` wins; otherwise the
+        // env-tunable fleet default applies so robot-density placement stays
+        // safe — a busy-looping agent is throttled inside its own cgroup
+        // instead of starving every co-tenant on a shared robot box.
+        ...buildAgentContainerCpuFlags(
+          config.container?.cpu ?? containersEnv.agentContainerCpuLimit(),
+        ),
         // Escape-hardening (#12230/#12302): drop ALL kernel capabilities, forbid
         // privilege escalation, and bound the process count — then, under
         // headscale only, re-add exactly NET_ADMIN + /dev/net/tun for the VPN.
