@@ -69,11 +69,7 @@ export function computeChatOverlayWindowBounds(
     : CHAT_OVERLAY_RESTING_WINDOW_HEIGHT;
   const height = Math.min(requestedHeight, workArea.height);
   const width = Math.min(current.width, workArea.width);
-  const x = clamp(
-    current.x,
-    workArea.x,
-    workArea.x + workArea.width - width,
-  );
+  const x = clamp(current.x, workArea.x, workArea.x + workArea.width - width);
   const bottom = clamp(
     current.y + current.height,
     workArea.y + height,
