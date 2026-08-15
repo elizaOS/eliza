@@ -25,6 +25,7 @@ import {
   resolveElizaTraceId,
   setHttpTelemetryHeaders,
 } from "@/lib/observability/http-telemetry";
+import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-telemetry-hono";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { serveBlobHostRequest } from "./blob-host";
@@ -181,6 +182,29 @@ async function getApp(): Promise<Hono<AppEnv>> {
   return appPromise;
 }
 
+/** Preserve Workerd upgrade responses; rebuilding one drops its `webSocket` extension. */
+export function decorateFullAppDispatchResponse(
+  response: Response,
+  traceId: string,
+  dispatchMs: number,
+  moduleInitMs: number | null,
+): Response {
+  if (!shouldDecorateHttpTelemetryStatus(response.status)) return response;
+
+  const responseHeaders = new Headers(response.headers);
+  setHttpTelemetryHeaders(responseHeaders, traceId, [
+    { name: "full_app_dispatch", durationMs: dispatchMs },
+    ...(moduleInitMs === null
+      ? []
+      : [{ name: "full_app_module_init", durationMs: moduleInitMs }]),
+  ]);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: responseHeaders,
+  });
+}
+
 async function dispatchFullApp(
   request: Request,
   env: AppEnv["Bindings"],
@@ -201,18 +225,12 @@ async function dispatchFullApp(
     const response = await app.fetch(tracedRequest, env, ctx);
     status = response.status;
     const dispatchMs = Math.round((performance.now() - startedAt) * 100) / 100;
-    const responseHeaders = new Headers(response.headers);
-    setHttpTelemetryHeaders(responseHeaders, traceId, [
-      { name: "full_app_dispatch", durationMs: dispatchMs },
-      ...(!moduleWasInitialized
-        ? [{ name: "full_app_module_init", durationMs: moduleInitMs }]
-        : []),
-    ]);
-    return new Response(response.body, {
-      status,
-      statusText: response.statusText,
-      headers: responseHeaders,
-    });
+    return decorateFullAppDispatchResponse(
+      response,
+      traceId,
+      dispatchMs,
+      moduleWasInitialized ? null : moduleInitMs,
+    );
   } finally {
     const durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
     const logContext = {
