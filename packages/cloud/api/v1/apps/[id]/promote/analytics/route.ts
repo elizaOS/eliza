@@ -1,4 +1,6 @@
-// Handles v1 cloud API v1 apps id promote analytics route traffic with route-local auth expectations.
+/**
+ * Serves authenticated app-promotion analytics with a bounded reporting window.
+ */
 import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
 import { Hono } from "hono";
 import { nextJsonFromCaughtError } from "@/lib/api/errors";
@@ -105,6 +107,7 @@ async function __hono_GET(
       },
     });
   } catch (error) {
+    // error-policy:J1 Translate route failures through the shared HTTP boundary.
     return nextJsonFromCaughtError(error);
   }
 }
