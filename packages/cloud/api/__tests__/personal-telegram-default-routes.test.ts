@@ -14,12 +14,14 @@ import {
   getClientIp,
   getRequestIdempotencyKey,
 } from "@/lib/runtime/request-context";
+import { personalDeliveryProjectionObjectName } from "@/lib/services/eliza-app/personal-delivery-projection-contract";
 import {
   getRuntimeR2Bucket,
   setRuntimeR2Bucket,
 } from "@/lib/storage/r2-runtime-binding";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { PersonalDeliveryProjection } from "../src/personal-delivery-projection";
+import { PersonalTelegramDelivery } from "../src/personal-telegram-delivery";
 
 const usersRepositoryModule = await import("@/db/repositories/users");
 const identityLinkModule = await import(
@@ -46,12 +48,9 @@ const BLOB = {
   async delete() {},
 };
 
-interface StoredValue {
-  value: unknown;
-}
-
 class MemoryStorage {
   readonly values = new Map<string, unknown>();
+  alarmAt: number | null = null;
 
   async get<T>(key: string): Promise<T | undefined> {
     return this.values.get(key) as T | undefined;
@@ -69,49 +68,33 @@ class MemoryStorage {
     }
     return this.values.delete(key);
   }
+
+  async list<T>(): Promise<Map<string, T>> {
+    return new Map(this.values as Map<string, T>);
+  }
+
+  async getAlarm(): Promise<number | null> {
+    return this.alarmAt;
+  }
+
+  async setAlarm(timestamp: number): Promise<void> {
+    this.alarmAt = timestamp;
+  }
 }
 
 function deliveryNamespace(): AppEnv["Bindings"]["PERSONAL_TELEGRAM_DELIVERIES"] {
-  const values = new Map<string, StoredValue>();
+  const objects = new Map<string, PersonalTelegramDelivery>();
   return {
     getByName(name: string) {
-      return {
-        async fetch(_input: RequestInfo | URL, init?: RequestInit) {
-          const body = JSON.parse(String(init?.body)) as {
-            messageId: string;
-            operation: string;
-          };
-          const key = `${name}:${body.messageId}`;
-          const stored = values.get(key) ?? { value: {} };
-          const value = stored.value as {
-            delivery?: "egress_started" | "delivered";
-            processing?: boolean;
-          };
-          if (body.operation === "read") {
-            return Response.json({ state: value.delivery ?? null });
-          }
-          if (body.operation === "claim_processing") {
-            if (value.processing) return Response.json({ claimed: false });
-            value.processing = true;
-            values.set(key, { value });
-            return Response.json({ claimed: true });
-          }
-          if (body.operation === "release_processing") {
-            value.processing = false;
-            values.set(key, { value });
-            return Response.json({ released: true });
-          }
-          if (body.operation === "claim_egress") {
-            if (value.delivery) return Response.json({ claimed: false });
-            value.delivery = "egress_started";
-            values.set(key, { value });
-            return Response.json({ claimed: true });
-          }
-          value.delivery = "delivered";
-          values.set(key, { value });
-          return Response.json({ delivered: true });
-        },
-      };
+      let object = objects.get(name);
+      if (!object) {
+        object = new PersonalTelegramDelivery(
+          { storage: new MemoryStorage() } as unknown as DurableObjectState,
+          {} as AppEnv["Bindings"],
+        );
+        objects.set(name, object);
+      }
+      return { fetch: (input, init) => object.fetch(new Request(input, init)) };
     },
   };
 }
@@ -147,32 +130,48 @@ describe("Personal Telegram default local routes", () => {
   test("keeps bindings and DB scope through LINK invalidation and the next turn", async () => {
     let currentUser = "provisional-user";
     const projectionStorage = new MemoryStorage();
-    const projection = new PersonalDeliveryProjection(
-      { storage: projectionStorage } as unknown as DurableObjectState,
-      {
-        BLOB,
-        DATABASE_URL: "postgres://origin.invalid/db",
-        HYPERDRIVE,
-      } as unknown as AppEnv["Bindings"],
-      {
-        async resolvePersonalDelivery() {
-          return {
-            userId: currentUser,
-            organizationId: `${currentUser}-org`,
-            dedicatedTarget: null,
-            isNew: false,
-            resolution: "single-query-repeat" as const,
-          };
-        },
-      },
-    );
+    let projection: PersonalDeliveryProjection | null = null;
     const projectionNames: string[] = [];
     const projectionNamespace = {
       getByName(name: string) {
         projectionNames.push(name);
+        if (!projection) {
+          projection = new PersonalDeliveryProjection(
+            {
+              storage: projectionStorage,
+              id: { name },
+            } as unknown as DurableObjectState,
+            {
+              BLOB,
+              DATABASE_URL: "postgres://origin.invalid/db",
+              HYPERDRIVE,
+            } as unknown as AppEnv["Bindings"],
+            {
+              async resolvePersonalDelivery() {
+                return {
+                  userId: currentUser,
+                  organizationId: `${currentUser}-org`,
+                  dedicatedTarget: null,
+                  isNew: false,
+                  resolution: "single-query-repeat" as const,
+                };
+              },
+              async revalidatePersonalDeliveryProjection() {
+                return {
+                  userId: currentUser,
+                  organizationId: `${currentUser}-org`,
+                  dedicatedTarget: null,
+                  isNew: false,
+                  resolution: "single-query-repeat" as const,
+                };
+              },
+            },
+          );
+        }
+        const object = projection;
         return {
           fetch(input: RequestInfo | URL, init?: RequestInit) {
-            return projection.fetch(new Request(input, init));
+            return object.fetch(new Request(input, init));
           },
         };
       },
@@ -258,7 +257,7 @@ describe("Personal Telegram default local routes", () => {
     const env = {
       BLOB,
       DATABASE_URL: "postgres://origin.invalid/db",
-      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123456789:AAAAAAAAAAAAAAAAAAAA",
       ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
       ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
       HYPERDRIVE,
@@ -328,11 +327,11 @@ describe("Personal Telegram default local routes", () => {
         bucket: BLOB,
       }),
     ]);
-    expect(projectionNames).toEqual([
-      "telegram:123456",
-      "telegram:123456",
-      "telegram:123456",
-    ]);
+    expect(projectionNames).toEqual(
+      Array.from({ length: 3 }, () =>
+        personalDeliveryProjectionObjectName("telegram", "123456"),
+      ),
+    );
     expect(providerReplies).toEqual([
       "reply:personal:provisional-user",
       expect.stringContaining("You're linked!"),

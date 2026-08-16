@@ -4,7 +4,10 @@ import { describe, expect, test } from "bun:test";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import app, { createPersonalTelegramDeliveryRoute } from "./route";
 
-function request(authorization?: string): Request {
+function request(
+  authorization?: string,
+  bodyOverrides: Record<string, unknown> = {},
+): Request {
   return new Request("https://api.eliza.app/", {
     method: "POST",
     headers: {
@@ -17,6 +20,7 @@ function request(authorization?: string): Request {
       senderId: "123456",
       messageId: "81001",
       operation: "read",
+      ...bodyOverrides,
     }),
   });
 }
@@ -37,11 +41,17 @@ describe("Personal Telegram delivery route authentication", () => {
   test("allows only the gateway service to reach the named durable ledger", async () => {
     let objectName = "";
     const traceIds: string[] = [];
+    let forwardedBody: unknown;
     const gatewayApp = createPersonalTelegramDeliveryRoute(async () => ({
       podName: "gateway-1",
       service: "webhook-gateway",
     }));
-    const authorized = request("Bearer gateway-jwt");
+    const authorized = request("Bearer gateway-jwt", {
+      operation: "prepare_plan",
+      ownerToken: "11111111-1111-4111-8111-111111111111",
+      contentDigest: "b".repeat(64),
+      totalChunks: 2,
+    });
     authorized.headers.set(
       "X-Eliza-Trace-Id",
       "11111111-1111-4111-8111-111111111111",
@@ -52,11 +62,12 @@ describe("Personal Telegram delivery route authentication", () => {
           objectName = name;
           return {
             async fetch(_input: RequestInfo | URL, init?: RequestInit) {
+              forwardedBody = JSON.parse(String(init?.body));
               const traceId = new Headers(init?.headers).get(
                 "X-Eliza-Trace-Id",
               );
               if (traceId) traceIds.push(traceId);
-              return Response.json({ state: null });
+              return Response.json({ progress: null });
             },
           };
         },
@@ -68,5 +79,12 @@ describe("Personal Telegram delivery route authentication", () => {
       /^telegram:eliza-app:[a-f0-9]{64}:[a-f0-9]{64}$/,
     );
     expect(traceIds).toEqual(["11111111-1111-4111-8111-111111111111"]);
+    expect(forwardedBody).toEqual({
+      messageId: "81001",
+      operation: "prepare_plan",
+      ownerToken: "11111111-1111-4111-8111-111111111111",
+      contentDigest: "b".repeat(64),
+      totalChunks: 2,
+    });
   });
 });
