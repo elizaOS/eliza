@@ -337,21 +337,57 @@ function providersSessionCacheKey(): string {
   return `${PROVIDERS_SESSION_CACHE_PREFIX}:${STEWARD_TENANT_ID}`;
 }
 
+function normalizeSessionCachedProviders(
+  value: unknown,
+): StewardProviders | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const passkey = record.passkey;
+  const email = record.email;
+  const siwe = record.siwe;
+  const siws = record.siws;
+  const google = record.google;
+  const discord = record.discord;
+  const github = record.github;
+  const twitter = record.twitter;
+  const oauth = record.oauth;
+  if (
+    typeof passkey !== "boolean" ||
+    typeof email !== "boolean" ||
+    typeof siwe !== "boolean" ||
+    typeof siws !== "boolean" ||
+    typeof google !== "boolean" ||
+    typeof discord !== "boolean" ||
+    typeof github !== "boolean" ||
+    typeof twitter !== "boolean" ||
+    !Array.isArray(oauth) ||
+    !oauth.every((provider) => typeof provider === "string") ||
+    (record.sms !== undefined && typeof record.sms !== "boolean")
+  ) {
+    return null;
+  }
+  return {
+    passkey,
+    email,
+    siwe,
+    siws,
+    google,
+    discord,
+    github,
+    twitter,
+    oauth,
+    ...(typeof record.sms === "boolean" ? { sms: record.sms } : {}),
+  };
+}
+
 function readSessionCachedProviders(): StewardProviders | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.sessionStorage.getItem(providersSessionCacheKey());
     if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      typeof (parsed as StewardProviders).email !== "boolean" ||
-      typeof (parsed as StewardProviders).passkey !== "boolean"
-    ) {
-      return null;
-    }
-    return parsed as StewardProviders;
+    return normalizeSessionCachedProviders(JSON.parse(raw) as unknown);
   } catch (error) {
     // error-policy:J3 a corrupt or inaccessible snapshot is explicitly "no
     // cache" — the section falls back to the discovery skeleton, never to a

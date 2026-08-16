@@ -60,8 +60,7 @@ vi.mock("@stwd/sdk", () => ({
 }));
 
 vi.mock("./passkey-capability", () => ({
-  resolveWebPasskeyCapability: () =>
-    Promise.resolve({ usable: false, reason: "native-without-bridge" }),
+  resolveWebPasskeyCapability: () => new Promise(() => {}),
 }));
 
 vi.mock("../../../shell/steward-url", () => ({
@@ -135,6 +134,25 @@ describe("StewardLoginSection — session-cached provider fast path (#18256)", (
 
   it("falls back to the discovery skeleton on a corrupt snapshot", () => {
     window.sessionStorage.setItem(CACHE_KEY, "{not json");
+
+    renderSection("/login");
+
+    expect(
+      screen.getByRole("status", { name: "Loading sign-in options" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("rejects a structurally incomplete or mistyped provider snapshot", () => {
+    window.sessionStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({
+        passkey: false,
+        email: true,
+        google: "true",
+        oauth: [],
+      }),
+    );
 
     renderSection("/login");
 
