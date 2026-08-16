@@ -4054,6 +4054,10 @@ export class SlackService extends Service implements ISlackService {
         }
       }
 
+      // lastIndexOf is inclusive, so a break character exactly at
+      // MAX_SLACK_MESSAGE_LENGTH would make splitIndex one past the cap.
+      splitIndex = Math.min(splitIndex, MAX_SLACK_MESSAGE_LENGTH);
+
       messages.push(remaining.slice(0, splitIndex));
       remaining = remaining.slice(splitIndex);
     }

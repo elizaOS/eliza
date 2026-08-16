@@ -236,6 +236,11 @@ export function chunkSlackText(
       }
     }
 
+    // lastIndexOf is inclusive of its fromIndex, so a newline or space sitting
+    // exactly on hardLimit yields breakPoint = hardLimit + 1 and the reserved
+    // fence budget is spent, pushing the emitted chunk to maxChars + 1.
+    breakPoint = Math.min(breakPoint, hardLimit);
+
     let chunk = remaining.slice(0, breakPoint);
 
     // Check if this chunk ends inside a code block — count fences in the
