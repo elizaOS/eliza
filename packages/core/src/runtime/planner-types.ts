@@ -11,6 +11,8 @@ import type { EffectReceipt } from "../types/effects";
 import type {
 	ChatMessage,
 	GenerateTextResult,
+	ModelAttemptContext,
+	ModelRegistrationInfo,
 	PromptSegment,
 	TextGenerationModelType,
 	ToolChoice,
@@ -31,6 +33,12 @@ export interface PlannerToolCall {
 export type EvaluatorRoute = EvaluationResult["decision"];
 
 export interface EvaluatorRuntime {
+	/** True when useModel invokes prepareModelAttempt before every provider handler. */
+	supportsModelAttemptPreparation?: boolean;
+	/** Optional model registry access used to resolve evaluator context ceilings. */
+	getModelRegistrations?(): ModelRegistrationInfo[];
+	/** Optional setting access used by model registration metadata resolvers. */
+	getSetting?(key: string): string | boolean | number | null;
 	reportError?(
 		scope: string,
 		error: unknown,
@@ -46,6 +54,14 @@ export interface EvaluatorRuntime {
 			responseSchema?: unknown;
 			promptSegments?: PromptSegment[];
 			providerOptions?: Record<string, unknown>;
+			prepareModelAttempt?: (
+				attempt: ModelAttemptContext,
+				params: {
+					messages: ChatMessage[];
+					promptSegments?: PromptSegment[];
+					providerOptions?: Record<string, unknown>;
+				},
+			) => Promise<void> | void;
 		},
 		provider?: string,
 	): Promise<
