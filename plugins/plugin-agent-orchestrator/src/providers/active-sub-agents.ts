@@ -139,12 +139,21 @@ export const activeSubAgentsProvider: Provider = {
     "task agent",
     "coding agent",
     "acpx",
+    // Status-shaped asks about delegated work ("is my build/site/task done?")
+    // must pull the in-flight task rows, or the turn answers from chat vibes.
+    "task",
+    "build",
+    "built",
+    "website",
+    "finished",
+    "done yet",
   ],
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const waves = readWaveStatuses(runtime);
+    const inFlightTaskLines = await readInFlightTaskLines(runtime);
     const service = getAcpService(runtime);
     if (!service || typeof service.listSessions !== "function") {
-      return emptyResult(null, null, waves);
+      return emptyResult(null, null, waves, inFlightTaskLines);
     }
     let all: SessionInfo[] | undefined;
     try {
@@ -174,7 +183,8 @@ export const activeSubAgentsProvider: Provider = {
     const routed = (Array.isArray(all) ? all : [])
       .filter(hasOrigin)
       .filter((s) => !TERMINAL_SESSION_STATUSES.has(s.status));
-    if (routed.length === 0) return emptyResult(capacity, admission, waves);
+    if (routed.length === 0)
+      return emptyResult(capacity, admission, waves, inFlightTaskLines);
 
     routed.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -224,6 +234,7 @@ export const activeSubAgentsProvider: Provider = {
         ),
       );
     }
+    lines.push(...inFlightTaskLines);
     const text = lines.join("\n");
 
     return {
@@ -273,6 +284,69 @@ function capacityData(
 interface AdmissionSnapshot {
   queueDepth: number;
   queuedTaskIds: string[];
+}
+
+/** Structural task rows the provider needs from the orchestrator task service
+ * for the in-flight section. Read by serviceType like the admission snapshot. */
+interface InFlightTaskService {
+  listTasks?(filter: Record<string, unknown>): Promise<
+    Array<{
+      id: string;
+      title: string;
+      status: string;
+      activeSessionCount: number;
+    }>
+  >;
+}
+
+/** Task statuses that are CURRENT state even with no live session attached:
+ * the work exists and has not reached a terminal verdict. Excluding these made
+ * "is my build done?" turns answer from chat vibes (observed live: a task
+ * parked `validating` was described as "stopped before shipping" while its
+ * deliverable was live), because nothing in stage-1's context carried the
+ * store's ground truth. */
+const IN_FLIGHT_TASK_STATUSES: ReadonlySet<string> = new Set([
+  "open",
+  "active",
+  "validating",
+  "waiting_on_user",
+  "blocked",
+]);
+
+/** Non-terminal tasks as compact structural lines (title — status — id).
+ * No timestamps, so the provider segment stays cache-stable turn over turn. */
+async function readInFlightTaskLines(
+  runtime: IAgentRuntime,
+): Promise<string[]> {
+  const orchestrator = runtime.getService<Service & InFlightTaskService>(
+    ORCHESTRATOR_TASK_SERVICE_TYPE,
+  );
+  if (!orchestrator || typeof orchestrator.listTasks !== "function") {
+    return [];
+  }
+  try {
+    const tasks = await orchestrator.listTasks({});
+    const inFlight = tasks
+      .filter((task) => IN_FLIGHT_TASK_STATUSES.has(task.status))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    if (inFlight.length === 0) return [];
+    return [
+      "## In-flight tasks (durable store — ground truth for task status)",
+      "A `validating` task finished its work and awaits completion verification; it is NOT failed and NOT still running. Answer task-status questions from these rows, or call TASKS_HISTORY for detail — never from chat impressions.",
+      ...inFlight.map(
+        (task) =>
+          `- "${task.title}" — status=${task.status} taskId=${task.id}${
+            task.activeSessionCount > 0
+              ? ` (sessions running: ${task.activeSessionCount})`
+              : ""
+          }`,
+      ),
+    ];
+  } catch {
+    // error-policy:J4 the in-flight section is supplementary grounding; an
+    // unavailable store degrades to no section, never a fabricated one.
+    return [];
+  }
 }
 
 async function readCapacity(service: {
@@ -347,13 +421,17 @@ function emptyResult(
   capacity: AcpCapacity | null = null,
   admission: AdmissionSnapshot | null = null,
   waves: WaveStatusSnapshot[] = [],
+  inFlightTaskLines: string[] = [],
 ) {
   const lines = [
     formatCapacityLine(capacity, admission),
     ...formatWaveLines(waves),
   ].filter(Boolean);
-  const text =
-    lines.length > 0 ? `## Active sub-agent sessions\n${lines.join("\n")}` : "";
+  const sections = [
+    lines.length > 0 ? `## Active sub-agent sessions\n${lines.join("\n")}` : "",
+    inFlightTaskLines.join("\n"),
+  ].filter(Boolean);
+  const text = sections.join("\n");
   return {
     text,
     values: { activeSubAgents: text },
