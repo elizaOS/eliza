@@ -1,128 +1,82 @@
-/** Exercises Telegram provider outcomes at the per-chunk delivery boundary. */
+/** Verifies Telegram provider responses are classified at the real fetch boundary. */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
-  sendTelegramReply,
-  TelegramApiResponseError,
-  TelegramApiTransportError,
+  prepareTelegramReply,
+  sendTelegramReplyChunk,
   type TelegramConnectorEvent,
-  type TelegramReplyDeliveryHooks,
 } from "../src/telegram-connector";
 
 const originalFetch = globalThis.fetch;
 const event: TelegramConnectorEvent = {
   platform: "telegram",
-  messageId: "123",
-  platformRecordId: "456",
-  chatId: "789",
+  messageId: "1",
+  platformRecordId: "2",
+  chatId: "3",
   chatType: "private",
-  senderId: "789",
+  senderId: "4",
   text: "hello",
   isCommand: false,
   rawPayload: {},
 };
 
-function hooks(events: string[]): TelegramReplyDeliveryHooks {
-  return {
-    async prepare(chunks) {
-      events.push(`prepare:${chunks.length}`);
-    },
-    async shouldSend(index) {
-      events.push(`claim:${index}`);
-      return true;
-    },
-    async accepted(index, _chunk, providerMessageId) {
-      events.push(`accepted:${index}:${providerMessageId}`);
-    },
-    async rejected(index) {
-      events.push(`rejected:${index}`);
-    },
-  };
-}
-
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-  mock.restore();
-});
-
-describe("sendTelegramReply delivery state", () => {
-  test("retries only a rate-limited second chunk", async () => {
-    const sentTexts: string[] = [];
-    let call = 0;
-    globalThis.fetch = mock(async (_input, init) => {
-      const body = JSON.parse(String(init?.body)) as { text: string };
-      sentTexts.push(body.text);
-      call += 1;
-      if (call === 2) {
-        return Response.json({
-          ok: false,
-          error_code: 429,
-          description: "Too Many Requests",
-          parameters: { retry_after: 1 },
-        });
-      }
-      return Response.json({ ok: true, result: { message_id: call } });
-    }) as unknown as typeof fetch;
-    const events: string[] = [];
-
-    const receipt = await sendTelegramReply(
-      { botToken: "test-token" },
-      event,
-      `${"a".repeat(4096)}\nb`,
-      undefined,
-      hooks(events),
-    );
-
-    expect(sentTexts).toEqual(["a".repeat(4096), "b", "b"]);
-    expect(receipt.providerMessageIds).toEqual(["1", "3"]);
-    expect(events).toEqual([
-      "prepare:2",
-      "claim:0",
-      "accepted:0:1",
-      "claim:1",
-      "rejected:1",
-      "claim:1",
-      "accepted:1:3",
-    ]);
+describe("Telegram reply delivery classification", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    mock.restore();
   });
 
-  test("releases an explicit 403 instead of classifying it as ambiguous", async () => {
+  test("returns accepted only after a valid provider receipt", async () => {
     globalThis.fetch = mock(async () =>
       Response.json({
-        ok: false,
-        error_code: 403,
-        description: "Forbidden: bot was blocked by the user",
+        ok: true,
+        result: { message_id: 42, chat: { id: 3, type: "private" } },
       }),
-    ) as unknown as typeof fetch;
-    const events: string[] = [];
-
-    await expect(
-      sendTelegramReply(
-        { botToken: "test-token" },
-        event,
-        "reply",
-        undefined,
-        hooks(events),
-      ),
-    ).rejects.toBeInstanceOf(TelegramApiResponseError);
-    expect(events).toEqual(["prepare:1", "claim:0", "rejected:0"]);
+    ) as typeof fetch;
+    expect(
+      await sendTelegramReplyChunk({ botToken: "secret" }, event, "hello"),
+    ).toEqual({ acceptance: "accepted", providerMessageId: "42" });
   });
 
-  test("keeps transport failure uncertain", async () => {
-    globalThis.fetch = mock(async () => {
-      throw new Error("socket reset after write");
-    }) as unknown as typeof fetch;
-    const events: string[] = [];
-
-    await expect(
-      sendTelegramReply(
-        { botToken: "test-token" },
-        event,
-        "reply",
-        undefined,
-        hooks(events),
+  test("distinguishes explicit rejection from unknown transport acceptance", async () => {
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        {
+          ok: false,
+          error_code: 429,
+          description: "rate limited",
+          parameters: { retry_after: 8 },
+        },
+        { status: 429 },
       ),
-    ).rejects.toBeInstanceOf(TelegramApiTransportError);
-    expect(events).toEqual(["prepare:1", "claim:0"]);
+    ) as typeof fetch;
+    expect(
+      await sendTelegramReplyChunk({ botToken: "secret" }, event, "hello"),
+    ).toEqual({
+      acceptance: "not_accepted",
+      errorCode: 429,
+      retryAfterSeconds: 8,
+    });
+    globalThis.fetch = mock(async () => {
+      throw new Error("connection reset");
+    }) as typeof fetch;
+    expect(
+      await sendTelegramReplyChunk({ botToken: "secret" }, event, "hello"),
+    ).toEqual({ acceptance: "unknown" });
+    globalThis.fetch = mock(async () =>
+      Response.json({ ok: true, result: null }),
+    ) as typeof fetch;
+    expect(
+      await sendTelegramReplyChunk({ botToken: "secret" }, event, "hello"),
+    ).toEqual({ acceptance: "unknown" });
+  });
+
+  test("creates a deterministic multipart plan without persisting reply text", async () => {
+    const text = `${"x".repeat(4096)}\nsecond`;
+    const first = await prepareTelegramReply(text);
+    const second = await prepareTelegramReply(text);
+    expect(first.chunks).toHaveLength(2);
+    expect(first.contentDigest).toBe(second.contentDigest);
+    expect(first.contentDigest).toMatch(/^[0-9a-f]{64}$/);
   });
 });

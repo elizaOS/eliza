@@ -1,134 +1,202 @@
 /**
- * Exact-once Telegram reply boundary shared by edge and gateway runtimes.
- * The ledger stores only deterministic chunk digests and delivery state, never
- * reply text or credentials. Provider rejections reopen only the rejected
- * chunk; transport ambiguity remains irreversible so retries cannot duplicate
- * a reply Telegram may already have accepted.
+ * Durable Telegram reply delivery state shared by edge and gateway runtimes.
+ * Ledgers fence every mutation with a renewable owner token and persist the
+ * multipart plan, cursor, and provider receipts before reporting completion.
  */
 
-export type TelegramDeliveryState = "uncertain" | "delivered";
-
-export interface TelegramDeliveryLedger {
-  read(): Promise<TelegramDeliveryState | null>;
-  claimProcessing(): Promise<boolean>;
-  releaseProcessing(): Promise<void>;
-  preparePlan(
-    chunkDigests: readonly string[],
-  ): Promise<"prepared" | "conflict">;
-  readChunk(
-    chunkIndex: number,
-    chunkDigest: string,
-  ): Promise<TelegramDeliveryState | null>;
-  claimChunk(chunkIndex: number, chunkDigest: string): Promise<boolean>;
-  releaseChunk(chunkIndex: number, chunkDigest: string): Promise<void>;
-  markChunkDelivered(chunkIndex: number, chunkDigest: string): Promise<void>;
-  markDelivered(): Promise<void>;
+export interface TelegramDeliveryPlan {
+  contentDigest: string;
+  chunks: readonly string[];
 }
 
-export interface TelegramDeliveryHooks {
-  prepare(chunks: readonly string[]): Promise<void>;
-  shouldSend(chunkIndex: number, chunk: string): Promise<boolean>;
-  accepted(
+export interface TelegramDeliveryProgress {
+  state: "pending" | "egress_started" | "delivered";
+  contentDigest: string;
+  totalChunks: number;
+  nextChunkIndex: number;
+  providerMessageIds: readonly string[];
+  activeChunkIndex?: number;
+}
+
+export type TelegramProviderSendOutcome =
+  | { acceptance: "accepted"; providerMessageId: string }
+  | {
+      acceptance: "not_accepted";
+      errorCode: number;
+      retryAfterSeconds?: number;
+    }
+  | { acceptance: "unknown" };
+
+export interface TelegramDeliveryLedger {
+  read(): Promise<TelegramDeliveryProgress | null>;
+  claimProcessing(ownerToken: string, leaseMs: number): Promise<boolean>;
+  renewProcessing(ownerToken: string, leaseMs: number): Promise<boolean>;
+  releaseProcessing(ownerToken: string): Promise<void>;
+  preparePlan(
+    ownerToken: string,
+    plan: Pick<TelegramDeliveryProgress, "contentDigest" | "totalChunks">,
+  ): Promise<TelegramDeliveryProgress>;
+  claimChunk(ownerToken: string, chunkIndex: number): Promise<boolean>;
+  recordAccepted(
+    ownerToken: string,
     chunkIndex: number,
-    chunk: string,
     providerMessageId: string,
   ): Promise<void>;
-  rejected(chunkIndex: number, chunk: string): Promise<void>;
+  recordExplicitRejection(
+    ownerToken: string,
+    chunkIndex: number,
+  ): Promise<void>;
+  markDelivered(ownerToken: string): Promise<void>;
 }
 
 export type TelegramDeliveryOutcome =
-  | "delivered"
-  | "duplicate"
-  | "in_progress"
-  | "uncertain";
+  | { status: "delivered"; providerMessageIds: readonly string[] }
+  | { status: "duplicate"; providerMessageIds: readonly string[] }
+  | { status: "in_progress" }
+  | { status: "uncertain"; chunkIndex: number }
+  | {
+      status: "explicitly_rejected";
+      chunkIndex: number;
+      errorCode: number;
+      retryAfterSeconds?: number;
+    };
 
-export class TelegramEgressAlreadyClaimedError extends Error {
-  override readonly name = "TelegramEgressAlreadyClaimedError";
+export type TelegramDeliveryDispatch = (
+  plan: TelegramDeliveryPlan,
+  sendChunk: (
+    chunk: string,
+    chunkIndex: number,
+  ) => Promise<TelegramProviderSendOutcome>,
+) => Promise<void>;
+
+const DEFAULT_LEASE_MS = 120_000;
+const MIN_RENEW_INTERVAL_MS = 1_000;
+
+function ownerToken(): string {
+  return crypto.randomUUID();
 }
 
-export class TelegramDeliveryPlanConflictError extends Error {
-  override readonly name = "TelegramDeliveryPlanConflictError";
-}
-
-async function chunkDigest(chunk: string): Promise<string> {
-  const bytes = new TextEncoder().encode(chunk);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+function terminalOutcome(
+  progress: TelegramDeliveryProgress,
+): TelegramDeliveryOutcome | null {
+  if (progress.state === "delivered") {
+    return {
+      status: "duplicate",
+      providerMessageIds: progress.providerMessageIds,
+    };
+  }
+  if (progress.state === "egress_started") {
+    return {
+      status: "uncertain",
+      chunkIndex: progress.activeChunkIndex ?? progress.nextChunkIndex,
+    };
+  }
+  return null;
 }
 
 export async function executeTelegramDelivery(
   ledger: TelegramDeliveryLedger,
-  deliver: (hooks: TelegramDeliveryHooks) => Promise<void>,
+  deliver: (dispatch: TelegramDeliveryDispatch) => Promise<void>,
+  options: { leaseMs?: number } = {},
 ): Promise<TelegramDeliveryOutcome> {
   const prior = await ledger.read();
-  if (prior === "uncertain") return "uncertain";
-  if (prior === "delivered") return "duplicate";
-  if (!(await ledger.claimProcessing())) return "in_progress";
+  if (prior) {
+    const terminal = terminalOutcome(prior);
+    if (terminal) return terminal;
+  }
 
-  let digests: string[] | null = null;
-  let activeChunk: { index: number; digest: string } | null = null;
-  const requireChunk = (index: number): string => {
-    const digest = digests?.[index];
-    if (!digest) {
-      throw new Error("Telegram delivery chunk was not in the prepared plan");
-    }
-    return digest;
-  };
+  const owner = ownerToken();
+  const leaseMs = options.leaseMs ?? DEFAULT_LEASE_MS;
+  if (!(await ledger.claimProcessing(owner, leaseMs))) {
+    return { status: "in_progress" };
+  }
 
-  const hooks: TelegramDeliveryHooks = {
-    async prepare(chunks) {
-      const nextDigests = await Promise.all(chunks.map(chunkDigest));
-      if ((await ledger.preparePlan(nextDigests)) === "conflict") {
-        throw new TelegramDeliveryPlanConflictError(
-          "Telegram reply changed after delivery began",
-        );
-      }
-      digests = nextDigests;
+  let leaseLost = false;
+  const renewTimer = setInterval(
+    () => {
+      void ledger
+        .renewProcessing(owner, leaseMs)
+        .then((renewed) => {
+          if (!renewed) leaseLost = true;
+        })
+        .catch(() => {
+          // error-policy:J5 the delivery path observes this as a lost lease.
+          leaseLost = true;
+        });
     },
-    async shouldSend(index) {
-      const digest = requireChunk(index);
-      const state = await ledger.readChunk(index, digest);
-      if (state === "delivered") return false;
-      if (state === "uncertain") {
-        throw new TelegramEgressAlreadyClaimedError(
-          "Telegram chunk egress outcome is uncertain",
-        );
-      }
-      if (!(await ledger.claimChunk(index, digest))) {
-        const claimedState = await ledger.readChunk(index, digest);
-        if (claimedState === "delivered") return false;
-        throw new TelegramEgressAlreadyClaimedError(
-          "Telegram chunk egress was already claimed",
-        );
-      }
-      activeChunk = { index, digest };
-      return true;
-    },
-    async accepted(index) {
-      const digest = requireChunk(index);
-      if (activeChunk?.index !== index || activeChunk.digest !== digest) {
-        throw new Error("Telegram accepted an unclaimed delivery chunk");
-      }
-      await ledger.markChunkDelivered(index, digest);
-      activeChunk = null;
-    },
-    async rejected(index) {
-      const digest = requireChunk(index);
-      if (activeChunk?.index !== index || activeChunk.digest !== digest) {
-        throw new Error("Telegram rejected an unclaimed delivery chunk");
-      }
-      await ledger.releaseChunk(index, digest);
-      activeChunk = null;
-    },
-  };
+    Math.max(MIN_RENEW_INTERVAL_MS, Math.floor(leaseMs / 3)),
+  );
 
+  let dispatchOutcome: TelegramDeliveryOutcome | null = null;
+  let dispatched = false;
   try {
-    await deliver(hooks);
-    await ledger.markDelivered();
-    return "delivered";
+    await deliver(async (plan, sendChunk) => {
+      if (dispatched) throw new Error("Telegram reply was dispatched twice");
+      dispatched = true;
+      if (leaseLost) throw new Error("Telegram processing claim was lost");
+
+      let progress = await ledger.preparePlan(owner, {
+        contentDigest: plan.contentDigest,
+        totalChunks: plan.chunks.length,
+      });
+      if (
+        progress.contentDigest !== plan.contentDigest ||
+        progress.totalChunks !== plan.chunks.length
+      ) {
+        throw new Error("Telegram delivery plan conflicts with persisted plan");
+      }
+
+      for (
+        let chunkIndex = progress.nextChunkIndex;
+        chunkIndex < plan.chunks.length;
+        chunkIndex += 1
+      ) {
+        if (leaseLost) throw new Error("Telegram processing claim was lost");
+        if (!(await ledger.claimChunk(owner, chunkIndex))) {
+          progress = (await ledger.read()) ?? progress;
+          dispatchOutcome =
+            terminalOutcome(progress) ?? ({ status: "in_progress" } as const);
+          return;
+        }
+
+        const result = await sendChunk(plan.chunks[chunkIndex], chunkIndex);
+        if (result.acceptance === "unknown") {
+          dispatchOutcome = { status: "uncertain", chunkIndex };
+          return;
+        }
+        if (result.acceptance === "not_accepted") {
+          await ledger.recordExplicitRejection(owner, chunkIndex);
+          dispatchOutcome = {
+            status: "explicitly_rejected",
+            chunkIndex,
+            errorCode: result.errorCode,
+            ...(result.retryAfterSeconds === undefined
+              ? {}
+              : { retryAfterSeconds: result.retryAfterSeconds }),
+          };
+          return;
+        }
+        await ledger.recordAccepted(
+          owner,
+          chunkIndex,
+          result.providerMessageId,
+        );
+        progress = (await ledger.read()) ?? progress;
+      }
+    });
+
+    if (dispatchOutcome) return dispatchOutcome;
+    if (!dispatched) {
+      await ledger.preparePlan(owner, { contentDigest: "", totalChunks: 0 });
+    }
+    await ledger.markDelivered(owner);
+    const completed = await ledger.read();
+    return {
+      status: "delivered",
+      providerMessageIds: completed?.providerMessageIds ?? [],
+    };
   } finally {
-    if (!activeChunk) await ledger.releaseProcessing();
+    clearInterval(renewTimer);
+    await ledger.releaseProcessing(owner);
   }
 }

@@ -67,6 +67,28 @@ export function createPersonalTelegramDeliveryRoute(
       };
       const stub = await personalTelegramDeliveryStub(c.env, scope);
       const traceId = c.req.header("X-Eliza-Trace-Id");
+      const deliveryRequest = {
+        messageId: candidate.messageId,
+        operation: candidate.operation,
+        ...(typeof candidate.ownerToken === "string"
+          ? { ownerToken: candidate.ownerToken }
+          : {}),
+        ...(typeof candidate.leaseMs === "number"
+          ? { leaseMs: candidate.leaseMs }
+          : {}),
+        ...(typeof candidate.contentDigest === "string"
+          ? { contentDigest: candidate.contentDigest }
+          : {}),
+        ...(typeof candidate.totalChunks === "number"
+          ? { totalChunks: candidate.totalChunks }
+          : {}),
+        ...(typeof candidate.chunkIndex === "number"
+          ? { chunkIndex: candidate.chunkIndex }
+          : {}),
+        ...(typeof candidate.providerMessageId === "string"
+          ? { providerMessageId: candidate.providerMessageId }
+          : {}),
+      };
       const response = await stub.fetch(
         `https://personal-telegram-delivery${PERSONAL_TELEGRAM_DELIVERY_PATH}`,
         {
@@ -75,10 +97,7 @@ export function createPersonalTelegramDeliveryRoute(
             "Content-Type": "application/json",
             ...(traceId ? { "X-Eliza-Trace-Id": traceId } : {}),
           },
-          body: JSON.stringify({
-            messageId: candidate.messageId,
-            operation: candidate.operation,
-          }),
+          body: JSON.stringify(deliveryRequest),
         },
       );
       return new Response(response.body, response);
