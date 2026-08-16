@@ -1,5 +1,6 @@
 /** Exercises gateway webhook routing with deterministic cloud-service fixtures. */
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import type { TelegramDeliveryState } from "@elizaos/cloud-services-common/telegram-delivery";
 import type {
   ChatEvent,
   PlatformAdapter,
@@ -7,9 +8,14 @@ import type {
 } from "../src/adapters/types";
 import { logger } from "../src/logger";
 import type { GatewayRedis } from "../src/redis";
-import { handleWebhook } from "../src/webhook-handler";
+import {
+  handleWebhook,
+  redisTelegramDeliveryLedger,
+} from "../src/webhook-handler";
 
 type RedisSetOptions = { ex?: number; nx?: boolean };
+const PERSONAL_TELEGRAM_LEDGER_PATH_FOR_TEST =
+  "/api/internal/eliza-app/personal-shared/telegram-delivery";
 
 class MemoryRedis implements GatewayRedis {
   readonly store = new Map<string, string>();
@@ -131,6 +137,13 @@ function requestFor(event: ChatEvent): Request {
       Body: event.text,
     }).toString(),
   });
+}
+
+function testTelegramLedger(redis: GatewayRedis, messageId: string) {
+  return redisTelegramDeliveryLedger(
+    redis,
+    `webhook:telegram:scope:message:${messageId}`,
+  );
 }
 
 describe("gateway webhook handler e2e routing", () => {
@@ -326,7 +339,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("refuses Telegram egress when another worker atomically claimed delivery", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "123456789:AAAAAAAAAAAAAAAAAAAA";
     const event: ChatEvent = {
       platform: "telegram",
       messageId: "update-1",
@@ -381,6 +394,7 @@ describe("gateway webhook handler e2e routing", () => {
         redis,
         cloudBaseUrl: "https://api.elizacloud.ai",
         getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+        personalTelegramLedger: testTelegramLedger(redis, event.messageId),
       },
       "eliza-app",
     );
@@ -392,8 +406,167 @@ describe("gateway webhook handler e2e routing", () => {
     ).toBe(false);
   });
 
+  test("uses the canonical Cloud ledger across token rotation and rollback", async () => {
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "81001",
+      chatId: "123456",
+      chatType: "private",
+      senderId: "123456",
+      senderName: "Ada",
+      text: "hello",
+      rawPayload: {},
+    };
+    const replies: string[] = [];
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      getDedupeScope: () => "scope",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendReply: mock(async (_config, _event, reply) => {
+        replies.push(reply);
+      }),
+    };
+    let state: TelegramDeliveryState | null = null;
+    let processing = false;
+    const ledgerFingerprints: string[] = [];
+    const ledgerTraces: Array<string | null> = [];
+    let sharedTurns = 0;
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith(PERSONAL_TELEGRAM_LEDGER_PATH_FOR_TEST)) {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer internal-secret",
+        );
+        ledgerTraces.push(request.headers.get("x-eliza-trace-id"));
+        const body = (await request.json()) as {
+          accountFingerprint: string;
+          operation: string;
+        };
+        ledgerFingerprints.push(body.accountFingerprint);
+        switch (body.operation) {
+          case "read":
+            return Response.json({ state });
+          case "claim_processing":
+            if (processing) return Response.json({ claimed: false });
+            processing = true;
+            return Response.json({ claimed: true });
+          case "release_processing":
+            processing = false;
+            return Response.json({ released: true });
+          case "claim_egress":
+            if (state) return Response.json({ claimed: false });
+            state = "egress_started";
+            return Response.json({ claimed: true });
+          case "mark_delivered":
+            state = "delivered";
+            processing = false;
+            return Response.json({ delivered: true });
+        }
+      }
+      if (
+        request.url.endsWith("/api/internal/eliza-app/personal-shared/messages")
+      ) {
+        sharedTurns += 1;
+        return Response.json({ data: { reply: "one reply" } });
+      }
+      throw new Error(`unexpected request: ${request.url}`);
+    }) as typeof fetch;
+
+    const invoke = async (token: string, traceId: string) => {
+      process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = token;
+      return handleWebhook(
+        new Request("https://gateway.example/webhook/eliza-app/telegram", {
+          method: "POST",
+          headers: { "X-Eliza-Trace-Id": traceId },
+          body: "{}",
+        }),
+        adapter,
+        {
+          redis: new MemoryRedis(),
+          cloudBaseUrl: "https://api.elizacloud.ai",
+          getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+        },
+        "eliza-app",
+      );
+    };
+    const oldTrace = "11111111-1111-4111-8111-111111111111";
+    const newTrace = "22222222-2222-4222-8222-222222222222";
+    const rollbackTrace = "33333333-3333-4333-8333-333333333333";
+    expect(
+      (await invoke("123456789:AAAAAAAAAAAAAAAAAAAA", oldTrace)).status,
+    ).toBe(200);
+    expect(
+      (await invoke("123456789:BBBBBBBBBBBBBBBBBBBB", newTrace)).status,
+    ).toBe(200);
+    expect(
+      (await invoke("123456789:AAAAAAAAAAAAAAAAAAAA", rollbackTrace)).status,
+    ).toBe(200);
+
+    expect(new Set(ledgerFingerprints).size).toBe(1);
+    expect(ledgerTraces).toContain(oldTrace);
+    expect(ledgerTraces).toContain(newTrace);
+    expect(ledgerTraces).toContain(rollbackTrace);
+    expect(sharedTurns).toBe(1);
+    expect(replies).toEqual(["one reply"]);
+  });
+
+  test("keeps suffixed Telegram delivery on Redis instead of the Shared ledger", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "123456789:AAAAAAAAAAAAAAAAAAAA";
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "81002",
+      chatId: "123456",
+      senderId: "123456",
+      senderName: "Ada",
+      text: "dedicated",
+      rawPayload: {},
+    };
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      getDedupeScope: () => "scope",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendReply: mock(async () => undefined),
+    };
+    const redis = new MemoryRedis();
+    redis.store.set("webhook:telegram:scope:message:81002", "delivered");
+    const fetchSpy = mock(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/internal/webhook/config?")) {
+        return Response.json({
+          botToken: "123456789:AAAAAAAAAAAAAAAAAAAA",
+          webhookSecret: "webhook-secret",
+        });
+      }
+      throw new Error(`suffixed Telegram route contacted Cloud ledger: ${url}`);
+    });
+    globalThis.fetch = fetchSpy as typeof fetch;
+
+    const response = await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/telegram/agent", {
+        method: "POST",
+        body: "{}",
+      }),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+      "agent-id",
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(
+      "/api/internal/webhook/config?",
+    );
+  });
+
   test("releases Telegram processing ownership after a pre-egress failure so the update can retry immediately", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "123456789:AAAAAAAAAAAAAAAAAAAA";
     const event: ChatEvent = {
       platform: "telegram",
       messageId: "update-retry-before-egress",
@@ -438,6 +611,7 @@ describe("gateway webhook handler e2e routing", () => {
       redis,
       cloudBaseUrl: "https://api.elizacloud.ai",
       getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      personalTelegramLedger: testTelegramLedger(redis, event.messageId),
     };
     const processingKey =
       "webhook:telegram:scope:message:update-retry-before-egress:processing";
@@ -454,7 +628,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("routes an unlinked Telegram DM to rowless personal Shared", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "123456789:AAAAAAAAAAAAAAAAAAAA";
     const event: ChatEvent = {
       platform: "telegram",
       messageId: "update-personal-1",
@@ -521,6 +695,7 @@ describe("gateway webhook handler e2e routing", () => {
         redis,
         cloudBaseUrl: "https://api.elizacloud.ai",
         getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+        personalTelegramLedger: testTelegramLedger(redis, event.messageId),
       },
       "eliza-app",
     );
@@ -572,7 +747,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("correlates every retry and preserves prior Cloud timing", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "123456789:AAAAAAAAAAAAAAAAAAAA";
     const traceId = "22222222-2222-4222-8222-222222222222";
     const event: ChatEvent = {
       platform: "telegram",
@@ -637,6 +812,7 @@ describe("gateway webhook handler e2e routing", () => {
         redis,
         cloudBaseUrl: "https://api.elizacloud.ai",
         getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+        personalTelegramLedger: testTelegramLedger(redis, event.messageId),
       },
       "eliza-app",
     );
@@ -680,7 +856,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("resolves captionless Telegram voice bytes before the trusted Shared boundary", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "123456789:AAAAAAAAAAAAAAAAAAAA";
     const event: ChatEvent = {
       platform: "telegram",
       messageId: "update-voice-1",
@@ -735,6 +911,7 @@ describe("gateway webhook handler e2e routing", () => {
         redis,
         cloudBaseUrl: "https://api.elizacloud.ai",
         getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+        personalTelegramLedger: testTelegramLedger(redis, event.messageId),
       },
       "eliza-app",
     );

@@ -25,9 +25,10 @@ system) from trusted in-cluster callers and forwards those to agents.
   `PlatformAdapter`, `WebhookConfig` contracts). An adapter implements
   `verifyWebhook` / `extractEvent` / `sendReply` / `sendTypingIndicator`.
 - `src/webhook-handler.ts` — the core flow: sync phase (resolve config → verify
-  signature → extract event → dedup), then a fire-and-forget async phase
-  (resolve identity → forward to agent-server → send reply). Unlinked Telegram
-  senders enter personal Shared; SMS transports retain the onboarding flow.
+  signature → extract event → dedup), then message processing and reply. The
+  official Personal Shared Telegram root claims the Cloud API's canonical
+  Durable Object ledger synchronously; Dedicated and suffixed Telegram routes
+  retain Redis delivery state. SMS transports retain the onboarding flow.
 - `src/server-router.ts` — `resolveIdentity`, `resolveAgentServer`,
   `forwardToServer` / `forwardEventToServer` (retry + fallback + KEDA
   wake-on-zero), and `refreshKedaActivity`.
@@ -182,7 +183,10 @@ Other:
   the JWT from `auth.ts` (`getAuthHeader()`); inbound `/internal/event` is
   gated by `internal-auth.ts` (`X-Internal-Secret`, constant-time compare).
 - **Dedup** is keyed on `webhook:<platform>:<messageId>` with a 5-minute TTL;
-  adapters must produce a stable `messageId` in `extractEvent`.
+  adapters must produce a stable `messageId` in `extractEvent`. The official
+  Personal Shared Telegram root instead uses the authenticated Cloud delivery
+  endpoint so gateway, edge, rollback, and token rotation share one durable
+  egress tombstone.
 - **Routing hash key is `userId`, not `agentId`** — same user's messages and
   events stick to the same agent-server pod for hot session affinity.
 - **Twilio acks differ:** `ackResponse` returns empty TwiML for `twilio` and

@@ -1,9 +1,14 @@
 /** Provides stable, non-secret connector-account identities for dedupe and provenance. */
 import { createHash } from "node:crypto";
+import { parseTelegramBotId } from "@elizaos/cloud-services-common/telegram-account";
 import type { Platform, WebhookConfig } from "./adapters/types";
 
 export function credentialFingerprint(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+export function resolveTelegramBotAccountFingerprint(botToken: string): string {
+  return credentialFingerprint(parseTelegramBotId(botToken));
 }
 
 /**
@@ -18,7 +23,7 @@ export function resolveConnectorAccountId(
   switch (platform) {
     case "telegram":
       return config.botToken
-        ? `bot:${credentialFingerprint(config.botToken)}`
+        ? `bot:${resolveTelegramBotAccountFingerprint(config.botToken)}`
         : undefined;
     case "whatsapp":
       return config.phoneNumberId ?? config.businessPhone;

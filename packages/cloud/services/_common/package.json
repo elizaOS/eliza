@@ -13,6 +13,7 @@
     "./identity-link-code": "./src/identity-link-code.ts",
     "./gateway-auth": "./src/gateway-auth.ts",
     "./response-attempts": "./src/response-attempts.ts",
+    "./telegram-account": "./src/telegram-account.ts",
     "./telegram-connector": "./src/telegram-connector.ts",
     "./telegram-delivery": "./src/telegram-delivery.ts"
   },
