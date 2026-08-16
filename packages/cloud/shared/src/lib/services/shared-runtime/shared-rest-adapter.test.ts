@@ -156,14 +156,9 @@ describe("shared-rest-adapter — startup shell surface", () => {
       status: {
         state: "running",
         agentName: "Nova",
-        model: undefined,
-        uptime: 0,
-        startedAt: expect.any(Number),
+        canRespond: true,
       },
     });
-    // startedAt should be recent
-    expect(result.status.startedAt).toBeLessThanOrEqual(Date.now());
-    expect(result.status.startedAt).toBeGreaterThan(Date.now() - 1000);
   });
 
   test("agent/start falls back to Eliza when name is empty", () => {
