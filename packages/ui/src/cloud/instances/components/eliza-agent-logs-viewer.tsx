@@ -128,6 +128,7 @@ export function ElizaAgentLogsViewer({
         fetchedAt: new Date().toISOString(),
       });
     } catch (error) {
+      // error-policy:J4 render a retryable error state without treating failed log loading as empty.
       if (
         isAbortError(error) ||
         generationRef.current !== generation ||

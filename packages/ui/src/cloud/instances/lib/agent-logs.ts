@@ -322,6 +322,7 @@ export async function loadAgentLogs({
 
     throw timeoutError;
   } catch (error) {
+    // error-policy:J1 transport boundary translates the request deadline into a typed timeout.
     if (requestController.signal.aborted && !signal.aborted) {
       throw timeoutError;
     }
