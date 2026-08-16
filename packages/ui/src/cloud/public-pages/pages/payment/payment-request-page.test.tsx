@@ -403,4 +403,147 @@ describe("PaymentRequestPage public DTO contract", () => {
     expect(assign).not.toHaveBeenCalled();
     expect((button as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("fails closed and disables Pay when expiresAt is null", async () => {
+    apiMock.mockResolvedValue({
+      success: true,
+      paymentRequest: publicPaymentRequest({ expiresAt: null }),
+    });
+
+    render(<PaymentRequestPage />);
+
+    expect(await screen.findByText("Invalid expiry date")).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /pay with wallet/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it("blocks checkout navigation when revalidation returns a null deadline", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign, href: "https://eliza.example/pay" });
+
+    apiMock
+      .mockResolvedValueOnce({
+        success: true,
+        paymentRequest: publicPaymentRequest(),
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        paymentRequest: publicPaymentRequest({ expiresAt: null }),
+      });
+
+    render(<PaymentRequestPage />);
+
+    const button = await screen.findByRole("button", {
+      name: /pay with wallet/i,
+    });
+    fireEvent.click(button);
+
+    expect(await screen.findByText("Invalid expiry date")).toBeTruthy();
+    expect(assign).not.toHaveBeenCalled();
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("does not navigate after Pay is clicked and the page unmounts", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign, href: "https://eliza.example/pay" });
+    const checkout = deferred<{
+      success: boolean;
+      paymentRequest: ReturnType<typeof publicPaymentRequest>;
+    }>();
+
+    apiMock
+      .mockResolvedValueOnce({
+        success: true,
+        paymentRequest: publicPaymentRequest(),
+      })
+      .mockImplementationOnce(() => checkout.promise);
+
+    const { unmount } = render(<PaymentRequestPage />);
+    const button = await screen.findByRole("button", {
+      name: /pay with wallet/i,
+    });
+    fireEvent.click(button);
+    unmount();
+
+    await act(async () => {
+      checkout.resolve({
+        success: true,
+        paymentRequest: publicPaymentRequest({
+          hostedUrl: "https://example.com/checkout/late",
+        }),
+      });
+      await Promise.resolve();
+    });
+
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("does not navigate when checkout completes after a route change", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign, href: "https://eliza.example/pay" });
+    const checkoutA = deferred<{
+      success: boolean;
+      paymentRequest: ReturnType<typeof publicPaymentRequest>;
+    }>();
+    const loadB = deferred<{
+      success: boolean;
+      paymentRequest: ReturnType<typeof publicPaymentRequest>;
+    }>();
+
+    apiMock.mockImplementation((path: string) => {
+      if (path.includes("payreq-a") && apiMock.mock.calls.length > 1) {
+        return checkoutA.promise;
+      }
+      if (path.includes("payreq-b")) return loadB.promise;
+      return Promise.resolve({
+        success: true,
+        paymentRequest: publicPaymentRequest({
+          id: "payreq-a",
+          hostedUrl: "https://example.com/checkout/stale-a",
+        }),
+      });
+    });
+
+    paramsRef.current = { paymentRequestId: "payreq-a" };
+    const { rerender } = render(<PaymentRequestPage />);
+    const button = await screen.findByRole("button", {
+      name: /pay with wallet/i,
+    });
+    fireEvent.click(button);
+
+    paramsRef.current = { paymentRequestId: "payreq-b" };
+    rerender(<PaymentRequestPage />);
+
+    await act(async () => {
+      loadB.resolve({
+        success: true,
+        paymentRequest: publicPaymentRequest({
+          id: "payreq-b",
+          provider: "stripe",
+          amountCents: 2500,
+          hostedUrl: "https://example.com/checkout/b",
+        }),
+      });
+    });
+    await screen.findByText("$25.00");
+
+    await act(async () => {
+      checkoutA.resolve({
+        success: true,
+        paymentRequest: publicPaymentRequest({
+          id: "payreq-a",
+          hostedUrl: "https://example.com/checkout/late",
+        }),
+      });
+      await Promise.resolve();
+    });
+
+    expect(assign).not.toHaveBeenCalled();
+    expect(screen.getByText("$25.00")).toBeTruthy();
+  });
 });

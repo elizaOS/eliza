@@ -91,9 +91,9 @@ type Deadline =
 
 const MAX_TIMER_DELAY_MS = 2 ** 31 - 1;
 
-/** Parses the server deadline without turning malformed input into a payable request. */
+/** Parses the server deadline without turning missing or malformed input into a payable request. */
 function parseDeadline(value: string | null): Deadline {
-  if (value === null) return { kind: "none" };
+  if (value === null) return { kind: "invalid" };
   const valueMs = Date.parse(value);
   return Number.isFinite(valueMs)
     ? { kind: "valid", valueMs }
@@ -112,6 +112,10 @@ function formatDeadline(deadline: Deadline): string | null {
 
 function isDeadlinePassed(deadline: Deadline, nowMs: number): boolean {
   return deadline.kind === "valid" && deadline.valueMs <= nowMs;
+}
+
+function hasPaymentAuthority(deadline: Deadline, nowMs: number): boolean {
+  return deadline.kind === "valid" && deadline.valueMs > nowMs;
 }
 
 function isPayableStatus(status: PaymentRequestStatus): boolean {
@@ -159,6 +163,7 @@ export default function PaymentRequestPage() {
   // Monotonic key: only the latest load (or a checkout revalidation started
   // under it) may commit state, so stale responses cannot cross routes.
   const loadGenerationRef = useRef(0);
+  const checkoutControllerRef = useRef<AbortController | null>(null);
 
   usePageTitle(
     t("cloud.paymentRequest.metaTitle", {
@@ -177,12 +182,19 @@ export default function PaymentRequestPage() {
 
   useEffect(() => {
     const generation = ++loadGenerationRef.current;
+    const controller = new AbortController();
+    const invalidate = () => {
+      controller.abort();
+      checkoutControllerRef.current?.abort();
+      if (loadGenerationRef.current === generation) {
+        loadGenerationRef.current += 1;
+      }
+    };
     if (!paymentRequestId) {
       setPaymentRequest(null);
       setIsLoading(false);
-      return;
+      return invalidate;
     }
-    const controller = new AbortController();
     setPaymentRequest(null);
     setIsLoading(true);
     setError(null);
@@ -215,7 +227,7 @@ export default function PaymentRequestPage() {
         }
       }
     })();
-    return () => controller.abort();
+    return invalidate;
   }, [paymentRequestId, fetchPublicRequest]);
 
   // Re-evaluate eligibility exactly when the deadline passes so an open tab
@@ -250,12 +262,21 @@ export default function PaymentRequestPage() {
     if (!paymentRequest || !paymentRequestId || isPaying) return;
     setIsPaying(true);
     setError(null);
+    checkoutControllerRef.current?.abort();
+    const checkoutController = new AbortController();
+    checkoutControllerRef.current = checkoutController;
     const generation = loadGenerationRef.current;
+    const checkoutStillLive = () =>
+      !checkoutController.signal.aborted &&
+      loadGenerationRef.current === generation;
     try {
       // Revalidate against the server immediately before navigation: the
       // request may have settled, been canceled, or expired since page load.
-      const response = await fetchPublicRequest(paymentRequestId);
-      if (loadGenerationRef.current !== generation) return;
+      const response = await fetchPublicRequest(
+        paymentRequestId,
+        checkoutController.signal,
+      );
+      if (!checkoutStillLive()) return;
       const fresh = response.paymentRequest;
       const freshNow = Date.now();
       setPaymentRequest(fresh);
@@ -263,8 +284,7 @@ export default function PaymentRequestPage() {
       const freshDeadline = parseDeadline(fresh.expiresAt);
       const payable =
         isPayableStatus(fresh.status) &&
-        freshDeadline.kind !== "invalid" &&
-        !isDeadlinePassed(freshDeadline, freshNow);
+        hasPaymentAuthority(freshDeadline, freshNow);
       if (!payable) {
         setIsPaying(false);
         return;
@@ -274,11 +294,12 @@ export default function PaymentRequestPage() {
         setError({ kind: "no-checkout-url" });
         return;
       }
+      if (!checkoutStillLive()) return;
       window.location.assign(fresh.hostedUrl);
     } catch (checkoutError) {
       // error-policy:J4 — a failed pre-checkout revalidation blocks navigation
       // and is rendered as a visible page error, never a silent redirect.
-      if (loadGenerationRef.current !== generation) return;
+      if (!checkoutStillLive()) return;
       setIsPaying(false);
       setError({ kind: "request-failed", cause: checkoutError });
     }
@@ -342,8 +363,7 @@ export default function PaymentRequestPage() {
     (isPayableStatus(paymentRequest.status) && deadlinePassed);
   const canPay =
     isPayableStatus(paymentRequest.status) &&
-    !hasInvalidPayableDeadline &&
-    !deadlinePassed &&
+    hasPaymentAuthority(deadline, nowMs) &&
     Boolean(paymentRequest.hostedUrl);
   const expiresLabel = formatDeadline(deadline);
   const shortId = paymentRequest.id.slice(0, 8);
