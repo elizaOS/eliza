@@ -14,12 +14,51 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-function parseTimeoutMs(raw: string | undefined): number {
-  const parsed = raw ? Number.parseInt(raw, 10) : 25_000;
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 25_000;
+const DEFAULT_TIMEOUT_MS = 25_000;
+const MIN_TIMEOUT_MS = 1;
+const MAX_TIMEOUT_MS = 25_000;
+
+export type TimeoutMsParseResult =
+  | { ok: true; value: number }
+  | { ok: false; error: string };
+
+/**
+ * Canonical long-poll wait at the HTTP boundary.
+ * Missing or empty defaults to the 25s platform cap. Any other token must be
+ * a complete ASCII decimal integer in [1, 25000] — no sign, zero, fraction,
+ * hex, scientific notation, leading zeros, whitespace, junk, or values above
+ * the cap. Prefix-legal garbage must not coerce (parseInt("1e4", 10) is 1
+ * and would return empty immediately instead of waiting 10s).
+ */
+export function parseTimeoutMs(raw: string | undefined): TimeoutMsParseResult {
+  if (raw === undefined || raw === "") {
+    return { ok: true, value: DEFAULT_TIMEOUT_MS };
   }
-  return Math.min(parsed, 25_000);
+
+  if (!/^(?:0|[1-9]\d*)$/.test(raw)) {
+    return {
+      ok: false,
+      error: `Invalid timeoutMs ${JSON.stringify(
+        raw,
+      )}: expected a canonical decimal integer`,
+    };
+  }
+
+  const parsed = Number(raw);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < MIN_TIMEOUT_MS ||
+    parsed > MAX_TIMEOUT_MS
+  ) {
+    return {
+      ok: false,
+      error: `Invalid timeoutMs ${JSON.stringify(
+        raw,
+      )}: expected an integer between 1 and 25000`,
+    };
+  }
+
+  return { ok: true, value: parsed };
 }
 
 app.get("/", async (c) => {
@@ -39,9 +78,14 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Forbidden" }, 403);
     }
 
+    const timeout = parseTimeoutMs(c.req.query("timeoutMs"));
+    if (!timeout.ok) {
+      return c.json({ success: false, error: timeout.error }, 400);
+    }
+
     const requestEnvelope = await agentGatewayRelayService.pollNextRequest(
       sessionId,
-      parseTimeoutMs(c.req.query("timeoutMs")),
+      timeout.value,
     );
 
     return c.json({
