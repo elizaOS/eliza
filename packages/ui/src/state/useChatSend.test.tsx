@@ -684,6 +684,81 @@ describe("useChatSend 404 recovery", () => {
   });
 });
 
+describe("useChatSend thrown 402 insufficient_credits mapping (#18045)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+  });
+
+  it("renders the out-of-credits turn instead of a generic provider_issue Retry chip", async () => {
+    // The canonical Cloud 402 gate arrives as a THROWN ApiError (the send was
+    // refused before any stream frame), so the stream-frame failureKind path
+    // never runs. It must map to the designed out-of-credits state — retrying
+    // just re-hits the same empty balance.
+    const gateMessage = "You're out of credits. Add funds to continue.";
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      Object.assign(new Error(gateMessage), {
+        status: 402,
+        code: "insufficient_credits",
+        data: { error: gateMessage, code: "insufficient_credits" },
+      }),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello there", {
+        conversationId: "conv-1",
+      });
+    });
+
+    const remaining = deps.conversationMessagesRef.current;
+    // The user bubble survives, and the assistant turn is the structured gate
+    // (banner + CTA render off failureKind), not a retryable failure.
+    expect(
+      remaining.some((m) => m.role === "user" && m.text === "hello there"),
+    ).toBe(true);
+    const gateTurn = remaining.find(
+      (m) => m.role === "assistant" && m.failureKind === "insufficient_credits",
+    );
+    expect(gateTurn?.text).toBe(gateMessage);
+    expect(remaining.some((m) => m.failureKind === "provider_issue")).toBe(
+      false,
+    );
+    // No generic transport error notice competes with the designed gate.
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("leaves a codeless 402 on the generic failure path (fail-closed classifier)", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      Object.assign(new Error("Payment Required"), { status: 402 }),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello there", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (m) => m.failureKind === "insufficient_credits",
+      ),
+    ).toBe(false);
+    expect(deps.setActionNotice).toHaveBeenCalled();
+  });
+});
+
 describe("useChatSend always streams (#9174)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
