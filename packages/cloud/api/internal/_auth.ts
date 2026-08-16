@@ -3,7 +3,7 @@ import type { Context } from "hono";
 import { jsonError } from "@/lib/api/cloud-worker-errors";
 import {
   extractBearerToken,
-  verifyInternalToken,
+  verifyInternalRequestToken,
 } from "@/lib/auth/jwt-internal";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -41,7 +41,7 @@ export async function requireInternalAuth(
   }
 
   try {
-    const verified = await verifyInternalToken(token);
+    const verified = await verifyInternalRequestToken(token);
     return {
       podName: verified.payload.sub,
       service: verified.payload.service,
