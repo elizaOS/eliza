@@ -85,12 +85,18 @@ export interface SharedRuntimeHistoryStore {
 }
 
 function turnActionResults(
-  turn: Pick<RunSharedAgentTurnResult, "actionResults" | "navIntent" | "capabilityWall">,
+  turn: Pick<
+    RunSharedAgentTurnResult,
+    "actionResults" | "navIntent" | "capabilityWall" | "blockedSecondaryCapabilities"
+  >,
 ): unknown[] | undefined {
-  if (turn.actionResults?.length) return turn.actionResults;
-  if (turn.capabilityWall) return [capabilityWallActionResult(turn.capabilityWall)];
-  if (turn.navIntent) return [navIntentActionResult(turn.navIntent)];
-  return undefined;
+  const results: unknown[] = [...(turn.actionResults ?? [])];
+  if (turn.capabilityWall) results.push(capabilityWallActionResult(turn.capabilityWall));
+  if (turn.navIntent) results.push(navIntentActionResult(turn.navIntent));
+  for (const wall of turn.blockedSecondaryCapabilities ?? []) {
+    results.push(capabilityWallActionResult(wall));
+  }
+  return results.length ? results : undefined;
 }
 
 function isDeterministicFreeTurn(
@@ -147,6 +153,8 @@ export interface SharedRuntimeChatOptions {
   funding?: "organization-credits" | "platform";
   /** Server-authenticated lifecycle prompt; never derived from bridge params. */
   trustedMessageRole?: "system";
+  /** Server-authenticated raw utterance when the model message includes connector context. */
+  trustedUserUtterance?: string;
   /** Local/transition gate for proving the genuine Workerd AgentRuntime path. */
   executionEngine?: "direct-model" | "eliza-runtime";
 }
@@ -823,6 +831,7 @@ export class SharedRuntimeChatService {
         character,
         history,
         message: text,
+        ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
         messageRole,
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
@@ -993,6 +1002,7 @@ export class SharedRuntimeChatService {
         character,
         history,
         message: text,
+        ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
         messageRole,
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
@@ -1148,9 +1158,10 @@ export class SharedRuntimeChatService {
               );
               continue;
             }
-            const actionResults = part.actionResults?.length
-              ? part.actionResults
-              : turnActionResults(turn);
+            const actionResults = turnActionResults({
+              ...turn,
+              ...(part.actionResults?.length ? { actionResults: part.actionResults } : {}),
+            });
             await finalizeMessages(finalReply, false, async () => {
               // Durable claim completion before the done frame: a lost/dropped
               // terminal frame replays this result on retry instead of

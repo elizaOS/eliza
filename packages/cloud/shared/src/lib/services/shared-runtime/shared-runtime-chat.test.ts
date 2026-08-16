@@ -563,6 +563,36 @@ describe("SharedRuntimeChatService", () => {
     });
   });
 
+  test("streams successful primary effects together with blocked secondary capability results", async () => {
+    const blockedCommunication = {
+      capability: "communications",
+      label: "Calls and messages",
+      reply: "I can't initiate a separate email.",
+    };
+    streamTurn = {
+      degraded: false,
+      blockedSecondaryCapabilities: [blockedCommunication],
+      parts: (async function* () {
+        yield { type: "text-delta", text: "Created: [ ] Buy milk" };
+        yield {
+          type: "finish",
+          text: "Created: [ ] Buy milk\n\nI can't initiate a separate email.",
+          actionResults: [expectedTodoActionResult],
+        };
+      })(),
+    };
+    const response = await new SharedRuntimeChatService().stream(agent, rpc, {
+      ...harness(),
+      funding: "platform",
+      executionEngine: "eliza-runtime",
+    });
+
+    const body = await response.text();
+    expect(body).toContain(JSON.stringify(expectedTodoActionResult));
+    expect(body).toContain('"actionName":"DEDICATED_CAPABILITY_REQUIRED"');
+    expect(body).toContain('"capability":"communications"');
+  });
+
   test("enables reminders only for platform-funded turns with trusted private delivery", async () => {
     const service = new SharedRuntimeChatService();
     const trustedRpc = {
