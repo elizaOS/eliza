@@ -230,4 +230,82 @@ describe("iOS local agent transport (ui copy)", () => {
     await expect(response.json()).resolves.toEqual({ ready: true });
     expect(originalFetch).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["remote-mac", "cloud"])(
+    "keeps port 31337 on the real network transport in %s mode",
+    async (mode) => {
+      vi.stubEnv("VITE_ELIZA_IOS_ALLOW_SIMULATOR_LOOPBACK", "1");
+      const originalFetch = vi.fn(async () =>
+        Response.json({ source: "mac-runtime" }),
+      );
+      vi.stubGlobal("fetch", originalFetch);
+      vi.stubGlobal("localStorage", {
+        getItem: (key: string) =>
+          key === "eliza:mobile-runtime-mode" ? mode : null,
+      });
+
+      const { installIosLocalAgentFetchBridge, isIosInProcessLocalAgentUrl } =
+        await import("./ios-local-agent-transport");
+      const macRuntimeUrl = "http://127.0.0.1:31337/api/health";
+
+      expect(isIosInProcessLocalAgentUrl(macRuntimeUrl)).toBe(false);
+      installIosLocalAgentFetchBridge();
+      const response = await fetch(macRuntimeUrl);
+
+      await expect(response.json()).resolves.toEqual({
+        source: "mac-runtime",
+      });
+      expect(originalFetch).toHaveBeenCalledOnce();
+      expect(originalFetch).toHaveBeenCalledWith(macRuntimeUrl, undefined);
+    },
+  );
+
+  it("retains port 31337 as the on-device agent in local mode", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "local" : null,
+    });
+
+    const { isIosInProcessLocalAgentUrl } = await import(
+      "./ios-local-agent-transport"
+    );
+
+    expect(
+      isIosInProcessLocalAgentUrl("http://127.0.0.1:31337/api/health"),
+    ).toBe(true);
+  });
+
+  it.each(["local", "cloud-hybrid"])(
+    "retains native IPC as the on-device agent in %s mode",
+    async (mode) => {
+      vi.stubGlobal("localStorage", {
+        getItem: (key: string) =>
+          key === "eliza:mobile-runtime-mode" ? mode : null,
+      });
+
+      const { isIosInProcessLocalAgentUrl } = await import(
+        "./ios-local-agent-transport"
+      );
+
+      expect(
+        isIosInProcessLocalAgentUrl("eliza-local-agent://ipc/api/health"),
+      ).toBe(true);
+    },
+  );
+
+  it("retains port 31337 as the phone-side agent in tunnel-to-mobile mode", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn((key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "tunnel-to-mobile" : null,
+      ),
+    });
+
+    const transportModule = await import("./ios-local-agent-transport");
+
+    expect(
+      transportModule.isIosInProcessLocalAgentUrl(
+        "http://127.0.0.1:31337/api/health",
+      ),
+    ).toBe(true);
+  });
 });

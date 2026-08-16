@@ -7,10 +7,14 @@
  * never repackaged as success-shaped output.
  */
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { describe, expect, it, vi } from "vitest";
 import { SandboxService, SessionCwdService } from "../services/index.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
 import { shellAction } from "./bash.js";
+
+// Mirror the production entrypoint before exercising real host processes.
+captureHostExecutionBaseline();
 
 // The assertions pin bash exit-code framing (127 = command not found), so the
 // suite targets POSIX hosts; the Windows path routes to powershell separately.

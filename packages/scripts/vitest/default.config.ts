@@ -397,6 +397,16 @@ const vitestResolveAlias: ModuleAlias[] = [
   ...(elizaCoreEntry
     ? [
         {
+          // Vite string aliases prefix-match package subpaths. Keep the edge
+          // entry ahead of the bare core alias so imports do not become the
+          // invalid path `index.node.ts/edge`.
+          find: /^@elizaos\/core\/edge$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts") ? "index.edge.ts" : "index.edge.js",
+          ),
+        },
+        {
           // Resolve the testing subpath to source before the broad
           // `@elizaos/core` alias, which would otherwise treat the source
           // entry file as a directory (`index.node.ts/testing` → ENOTDIR).

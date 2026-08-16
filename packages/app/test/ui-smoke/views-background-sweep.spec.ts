@@ -28,6 +28,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { installReadyDesktopShellBridge } from "./helpers/desktop-shell-bridge";
 import {
   assertNoOpaqueBackgroundAncestor,
   seedBackgroundStorage,
@@ -99,6 +100,7 @@ async function installReadyDesktopStatusBridge(
       offMessage: existing?.offMessage ?? (() => {}),
     };
   });
+  await installReadyDesktopShellBridge(page);
 }
 
 test.beforeEach(async ({ page }) => {

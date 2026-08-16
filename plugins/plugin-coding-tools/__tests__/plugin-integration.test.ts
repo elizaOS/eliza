@@ -13,6 +13,7 @@ import {
   type Service,
   type UUID,
 } from "@elizaos/core";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as pluginModule from "../src/index.ts";
 import codingToolsPlugin, {
@@ -30,6 +31,9 @@ import codingToolsPlugin, {
   SessionCwdService,
   ShellService,
 } from "../src/index.ts";
+
+// Integration tests invoke host executors without the agent process entrypoint.
+captureHostExecutionBaseline();
 
 const EXPECTED_ACTIONS = [
   "FILE",

@@ -225,6 +225,12 @@ export interface PlannerLoopResult {
 	evaluator?: EvaluatorOutput;
 	finalMessage?: string;
 	/**
+	 * Typed terminal failure preserved for the message boundary. A planner
+	 * result carrying this field is user-visible but must not be persisted or
+	 * represented as a healthy completed turn.
+	 */
+	failureKind?: "missing_capability";
+	/**
 	 * Marks a turn whose empty `finalMessage` is a designed outcome — the
 	 * planner ended on STOP/IGNORE or a `suppressPlannerReply` terminal action —
 	 * so the tool-turn reply guarantee (`runPlannerLoop`'s post-pass) never

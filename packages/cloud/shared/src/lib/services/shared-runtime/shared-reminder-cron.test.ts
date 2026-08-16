@@ -166,7 +166,7 @@ describe("Shared reminder cron", () => {
         dispatchIdempotencyKey: "discord-reminder:2026-08-15T20:00:00.000Z",
         delivery: {
           platform: "discord",
-          discordUserId: "123456789012345678",
+          discordUserId: "1234567890123456",
         },
       },
     });
@@ -190,7 +190,7 @@ describe("Shared reminder cron", () => {
     ]);
     await expect(requests[0]?.json()).resolves.toEqual({
       platform: "discord",
-      discordUserId: "123456789012345678",
+      discordUserId: "1234567890123456",
       text: "check Discord",
       idempotencyKey: "discord-reminder:2026-08-15T20:00:00.000Z",
     });

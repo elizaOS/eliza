@@ -48,6 +48,17 @@ export interface ActionGateContext {
 	skipPrivateGate?: boolean;
 }
 
+export type ActionGateRejectionKind =
+	| "private"
+	| "disclosure"
+	| "role"
+	| "context";
+
+export interface ActionGateRejection {
+	kind: ActionGateRejectionKind;
+	reason: string;
+}
+
 /**
  * The single role/context/policy gate deciding whether `action` may run for
  * `ctx` (#12087 Item 9). Composes, in order:
@@ -60,20 +71,24 @@ export interface ActionGateContext {
  *   4. the contextGate (derived from `contextGate ?? {contexts, roleGate}`),
  *   5. the top-level roleGate.
  *
- * Returns a human-readable failure reason, or `undefined` when the action is
- * allowed. Every exposure and execution path — planner selection, sub-planner
- * child filtering, the tool-call executor, and the shortcut gate — routes
- * through this one function so their outcomes cannot drift apart.
+ * Returns a categorized rejection with its human-readable reason, or
+ * `undefined` when the action is allowed. Every exposure and execution path —
+ * planner selection, sub-planner child filtering, the tool-call executor, and
+ * the shortcut gate — routes through this one decision so their outcomes
+ * cannot drift apart.
  */
-export function actionGateFailure(
+export function actionGateRejection(
 	action: GateableAction,
 	ctx: ActionGateContext,
-): string | undefined {
+): ActionGateRejection | undefined {
 	if (
 		!ctx.skipPrivateGate &&
 		!privateActionAllowedOnTurn(action, ctx.message)
 	) {
-		return `Action ${action.name} is private and can only run in the agent's autonomous loop`;
+		return {
+			kind: "private",
+			reason: `Action ${action.name} is private and can only run in the agent's autonomous loop`,
+		};
 	}
 
 	const disclosureFailure = disclosureGateFailure(
@@ -81,31 +96,56 @@ export function actionGateFailure(
 		ctx.message,
 	);
 	if (disclosureFailure) {
-		return `Action ${action.name} is not allowed: ${disclosureFailure}`;
+		return {
+			kind: "disclosure",
+			reason: `Action ${action.name} is not allowed: ${disclosureFailure}`,
+		};
 	}
 
 	const policyRole = resolveActionRolePolicyRole(action);
 	if (policyRole) {
 		return satisfiesRoleGate(ctx.userRoles, { minRole: policyRole })
 			? undefined
-			: `Action ${action.name} is not allowed for the current role`;
+			: {
+					kind: "role",
+					reason: `Action ${action.name} is not allowed for the current role`,
+				};
 	}
 
-	const contextGate = action.contextGate ?? {
-		contexts: action.contexts,
-		roleGate: action.roleGate,
-	};
+	const contextRoleGate = action.contextGate?.roleGate ?? action.roleGate;
+	if (!satisfiesRoleGate(ctx.userRoles, contextRoleGate)) {
+		return {
+			kind: "role",
+			reason: `Action ${action.name} is not allowed for the current role`,
+		};
+	}
+
+	const contextGate = action.contextGate ?? { contexts: action.contexts };
 	if (!satisfiesContextGate(ctx.activeContexts, contextGate, ctx.userRoles)) {
-		return `Action ${action.name} is not allowed in the current context`;
+		return {
+			kind: "context",
+			reason: `Action ${action.name} is not allowed in the current context`,
+		};
 	}
 
 	if (
 		!satisfiesRoleGate(ctx.userRoles, action.roleGate as RoleGate | undefined)
 	) {
-		return `Action ${action.name} is not allowed for the current role`;
+		return {
+			kind: "role",
+			reason: `Action ${action.name} is not allowed for the current role`,
+		};
 	}
 
 	return undefined;
+}
+
+/** Human-readable compatibility form of {@link actionGateRejection}. */
+export function actionGateFailure(
+	action: GateableAction,
+	ctx: ActionGateContext,
+): string | undefined {
+	return actionGateRejection(action, ctx)?.reason;
 }
 
 /** Boolean form of {@link actionGateFailure}. */

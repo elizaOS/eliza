@@ -15,6 +15,7 @@ import {
   openSettingsSection,
   seedAppStorage,
 } from "./helpers";
+import { installReadyDesktopShellBridge } from "./helpers/desktop-shell-bridge";
 import {
   assertSharedViewHeaderContract,
   clickViewHeaderBack,
@@ -516,6 +517,7 @@ async function installDesktopPermissionsBridge(page: Page): Promise<void> {
       offMessage: existing?.offMessage ?? (() => {}),
     };
   }, EMPTY_PERMISSIONS);
+  await installReadyDesktopShellBridge(page);
 }
 
 async function installSupplementalSafeRoutes(page: Page): Promise<void> {

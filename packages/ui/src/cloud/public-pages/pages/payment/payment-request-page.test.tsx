@@ -114,6 +114,35 @@ describe("PaymentRequestPage public DTO contract", () => {
     paramsRef.current = { paymentRequestId: "payreq-test-1" };
   });
 
+  it("keeps the deterministic initial clock behind the loading boundary", async () => {
+    const load = deferred<{
+      success: boolean;
+      paymentRequest: ReturnType<typeof publicPaymentRequest>;
+    }>();
+    apiMock.mockReturnValue(load.promise);
+
+    const { container } = render(<PaymentRequestPage />);
+
+    expect(container.querySelector(".animate-spin")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+
+    await act(async () => {
+      load.resolve({
+        success: true,
+        paymentRequest: publicPaymentRequest(),
+      });
+      await load.promise;
+    });
+
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /pay with wallet/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
   it("renders wallet_native through the user-facing label and allows checkout for delivered requests", async () => {
     apiMock.mockResolvedValue({
       success: true,

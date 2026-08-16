@@ -45,6 +45,11 @@ import type {
 } from "./run-shared-agent-turn";
 import { appendSharedTurn } from "./run-shared-agent-turn";
 import {
+  sharedPublicWebGrounding,
+  sharedRuntimeModelHistoryContents,
+  sharedRuntimeModelHistoryMessages,
+} from "./shared-runtime-history-policy";
+import {
   sharedRuntimeConversationRoomId,
   sharedRuntimeWorldId,
 } from "./shared-runtime-storage-identity";
@@ -260,6 +265,10 @@ async function executeSharedElizaRuntimeTurn(
   let providerDispatched = false;
   let usage: SharedAgentTurnUsage | undefined;
   const model = getInteractiveCerebrasLanguageModel(input.model);
+  const persistedGroundingMessages = sharedRuntimeModelHistoryMessages(
+    input.history,
+    input.message,
+  ).filter((message) => typeof message.content !== "string");
 
   const modelHandler = async (
     _runtime: IAgentRuntime,
@@ -274,7 +283,13 @@ async function executeSharedElizaRuntimeTurn(
       maxRetries: 0,
       allowSystemInMessages: true,
       ...(params.messages
-        ? { messages: params.messages as ModelMessage[] }
+        ? {
+            messages: [
+              ...(params.messages as ModelMessage[]).slice(0, -1),
+              ...persistedGroundingMessages,
+              ...(params.messages as ModelMessage[]).slice(-1),
+            ],
+          }
         : { prompt: params.prompt ?? "" }),
       ...(params.tools ? { tools: modelTools(params.tools) } : {}),
       ...(params.toolChoice ? { toolChoice: modelToolChoice(params.toolChoice) } : {}),
@@ -391,6 +406,7 @@ async function executeSharedElizaRuntimeTurn(
       type: ChannelType.DM,
     });
     if (input.history.length > 0) {
+      const historyContents = sharedRuntimeModelHistoryContents(input.history, input.message);
       await adapter.createMemories(
         input.history.map((message, index) => ({
           tableName: "messages",
@@ -400,7 +416,7 @@ async function executeSharedElizaRuntimeTurn(
             agentId: runtime.agentId,
             roomId,
             content: {
-              text: message.content,
+              text: historyContents[index],
               source: "shared-runtime",
               channelType: ChannelType.DM,
             },
@@ -461,6 +477,7 @@ async function executeSharedElizaRuntimeTurn(
         reply,
         input.messageIds,
         input.messageRole,
+        sharedPublicWebGrounding(result.actionResults),
       ),
       model: input.model,
       degraded: false,

@@ -910,6 +910,80 @@ describe("runLifeOperationHandler clarification contract", () => {
   });
 
   it.each([
+    "Agrega comprar leche sin fecha. No lo guardes; muéstramelo primero.",
+    "Adicione comprar leite sem prazo. Não salve; mostre primeiro.",
+    "添加一个没有截止日期的买牛奶任务。不要保存，先显示。",
+    "期限なしで牛乳を買うタスクを追加。保存しないで、先に見せて。",
+    "마감일 없이 우유 사기 할 일을 추가해. 저장하지 마, 먼저 보여 줘.",
+    "Thêm việc mua sữa không có ngày đến hạn. Đừng lưu, hiển thị trước.",
+    "Idagdag ang bumili ng gatas na walang takdang petsa. Huwag i-save; ipakita muna.",
+  ])(
+    "honors a localized explicit preview boundary for %p",
+    async (ownerText) => {
+      const runtime = makeRuntime((prompt) => {
+        if (prompt.includes("create_definition request")) {
+          return taskPlanJson({
+            requestKind: "todo",
+            title: "Buy milk",
+            cadenceKind: "unscheduled",
+          });
+        }
+        return "";
+      });
+
+      const result = await runLifeOperationHandler(
+        runtime,
+        makeMessage(ownerText),
+        undefined,
+        {
+          parameters: {
+            action: "create",
+            confirmed: true,
+            intent: ownerText,
+            ownerSurface: "OWNER_TODOS",
+          },
+        } as HandlerOptions,
+      );
+
+      expect(result).toMatchObject({
+        success: false,
+        data: { deferred: true, saved: false, requiresConfirmation: true },
+      });
+      expect(serviceState.createCalls).toHaveLength(0);
+    },
+  );
+
+  it("does not confuse Preview in a todo title with a preview request", async () => {
+    const ownerText = "Add Preview Q3 as a todo with no due date.";
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "todo",
+          title: "Preview Q3",
+          cadenceKind: "unscheduled",
+        });
+      }
+      return "";
+    });
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(ownerText),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          intent: ownerText,
+          ownerSurface: "OWNER_TODOS",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+  });
+
+  it.each([
     "Add tomorrow's agenda with no due date.",
     "Add Tomorrow, and Tomorrow, and Tomorrow to my reading list with no due date.",
   ])(
@@ -981,6 +1055,7 @@ describe("runLifeOperationHandler clarification contract", () => {
           requestKind: "todo",
           title: "Buy oat milk",
           cadenceKind: "unscheduled",
+          multiStep: true,
         });
       }
       return "";
@@ -1074,6 +1149,7 @@ describe("runLifeOperationHandler clarification contract", () => {
           requestKind: "todo",
           title: "Buy oat milk",
           cadenceKind: "unscheduled",
+          multiStep: !prompt.includes("Rename it Buy oat milk"),
         });
       }
       return "";

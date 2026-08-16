@@ -325,6 +325,14 @@ type TestMessage = {
   content: string;
   createdAt?: number;
   interrupted?: boolean;
+  grounding?: {
+    kind: "web_search";
+    query: string;
+    provider: "parallel" | "exa";
+    text: string;
+    observedAt: number;
+    truncated: boolean;
+  };
 };
 
 function harness() {
@@ -615,7 +623,7 @@ describe("SharedRuntimeChatService", () => {
       },
       {
         platform: "discord",
-        discordUserId: "123456789012345678",
+        discordUserId: "1234567890123456",
       },
     ] as const) {
       await service.bridge(
@@ -764,11 +772,42 @@ describe("SharedRuntimeChatService", () => {
   test("streams chunks, persists the completed turn, and bills off path", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "hello " };
+        yield {
+          type: "finish",
+          text: "hello back",
+          usage: { inputTokens: 12, outputTokens: 4 },
+          actionResults: [
+            {
+              success: true,
+              text: "Tessera validates ARC resources through an origin guard.",
+              data: {
+                actionName: "WEB_SEARCH",
+                query: "NubsCarson Tessera GitHub",
+                provider: "parallel",
+                value: "Tessera validates ARC resources through an origin guard.",
+              },
+            },
+          ],
+        };
+      })(),
+    };
     const response = await service.stream(agent, rpc, h);
     const body = await response.text();
     expect(body).toContain("event: chunk");
     expect(body).toContain("event: done");
     expect(h.history()).toHaveLength(3);
+    expect(h.history().at(-1)?.grounding).toEqual({
+      kind: "web_search",
+      query: "NubsCarson Tessera GitHub",
+      provider: "parallel",
+      text: "Tessera validates ARC resources through an origin guard.",
+      observedAt: expect.any(Number),
+      truncated: false,
+    });
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
   });

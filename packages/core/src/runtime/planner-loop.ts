@@ -395,38 +395,22 @@ async function runPlannerLoopIterations(
 	const requireNonTerminalToolCall =
 		(params.requireNonTerminalToolCall === true || codingMode) &&
 		hasExposedNonTerminalTool(params.tools);
-	// A PRESENT but terminal-only surface (REPLY/IGNORE/STOP and nothing else)
-	// means every stage-1 candidate failed to resolve to a runnable action —
-	// the turn has zero capability. Running a planner round anyway hands a
-	// fresh model call the chance to improvise around the missing capability:
-	// observed live ("send a text to my mom"), stage-1 drafted an honest
-	// "no phone/sms access configured" decline and the terminal-only round
-	// replaced it with "need your mom's phone number or iMessage handle" — an
-	// ask implying a surface this runtime does not have. When stage-1 already
-	// produced an answer-shaped reply, ship it and skip the round entirely
-	// (grounded decline + one model call saved). An undefined/empty tools
-	// param stays on the normal path — that is the deliberate no-actions-gated
-	// planning mode, not a failed resolution — and an ack-shaped stage-1 draft
-	// falls through so the loop can still produce a real answer.
+	// A present terminal-only surface proves that this planner turn has no
+	// executable capability, but it does not prove that arbitrary Stage-1 prose
+	// is grounded. Preserve only a strict, user-safe inability statement. Normal
+	// answers and clarifications still run against the selected provider context.
 	if (
 		params.tools !== undefined &&
 		params.tools.length > 0 &&
 		!hasExposedNonTerminalTool(params.tools)
 	) {
-		const stageOneDecline = userSafeCapturedAnswerCandidate(
-			params.stageOneReplyText,
-		);
-		if (stageOneDecline !== undefined) {
+		const safeRefusal = userSafeRefusalCandidate(params.stageOneReplyText);
+		if (safeRefusal !== undefined) {
 			return {
 				status: "finished",
-				trajectory: {
-					context: plannerContext,
-					steps: [],
-					archivedSteps: [],
-					plannedQueue: [],
-					evaluatorOutputs: [],
-				},
-				finalMessage: stageOneDecline,
+				trajectory,
+				finalMessage: safeRefusal,
+				failureKind: "missing_capability",
 			};
 		}
 	}
@@ -5423,15 +5407,13 @@ function userSafeFailureReport(
 	// work happens — so a diagnosis that instead promises imminent action is a
 	// false claim on the egress leg the in-flight ban did not cover (matrix
 	// F40: forced failure-aware synthesis shipped "calling web search now" as
-	// the final turn text). Progress-shaped openers are screened with the
-	// shared opener vocabulary rather than PROGRESS_ONLY_ANSWER_REJECT: its
-	// final-answer-only extensions ("Okay", "got it") open legitimate failure
-	// diagnoses, and rejecting those would regress #17948's
-	// model-diagnosis-over-generic-fallback contract.
+	// the final turn text). Keep this guard local to the failure egress and
+	// require temporal language: words such as "calling" also legitimately open
+	// substantive diagnoses and must not become global progress-only vocabulary.
 	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
 		return undefined;
 	}
-	if (PROGRESS_ONLY_OPENER_RE.test(candidate)) return undefined;
+	if (FAILURE_REPORT_TEMPORAL_ACTION_CLAIM.test(candidate)) return undefined;
 	return candidate;
 }
 
@@ -5608,15 +5590,14 @@ function userSafeRefusalCandidate(
 // would be a cycle. The two consumers deliberately extend it differently —
 // see PROGRESS_ONLY_ANSWER_REJECT below.
 export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN =
-	"calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|let me|i(?:'|’)ll|i will";
+	"checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|let me|i(?:'|’)ll|i will";
 
-// Bare opener screen (no final-answer-only extensions) for text where a
-// progress-shaped opener is disqualifying but "Okay, …" openings are
-// legitimate — the failure-report egress (matrix F40).
-const PROGRESS_ONLY_OPENER_RE = new RegExp(
-	`^(?:${PROGRESS_ONLY_REPLY_OPENERS_PATTERN})\\b`,
-	"i",
-);
+// The failure-synthesis call is terminal, so an opener that promises action at
+// an imminent time is false. This deliberately does not share the broad reply
+// routing vocabulary: "Calling the endpoint failed with 401" is a substantive
+// failure report, while "calling web search now" is an unfulfilled promise.
+const FAILURE_REPORT_TEMPORAL_ACTION_CLAIM =
+	/^(?:(?:I(?:'m| am)\s+)?(?:calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on))\b[\s\S]{0,160}\b(?:now|next|shortly|in (?:a )?(?:moment|minute|second))\b/i;
 
 // Progress/ack-shaped openers that must never be surfaced as a final answer
 // from the required-tool exhaustion path: once the loop gives up, no further

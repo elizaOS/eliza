@@ -85,6 +85,10 @@ jobs:
       - name: Install root dependencies
         run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
 
+      - name: Build shared runtime contract
+        working-directory: packages/shared
+        run: bun run build
+
       - name: Run service tests
         working-directory: packages/cloud/services/gateway-discord
         run: bun test tests/ --timeout 60000

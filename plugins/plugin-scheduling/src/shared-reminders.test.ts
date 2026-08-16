@@ -79,11 +79,11 @@ describe("Shared reminders edge plugin", () => {
     expect(
       parseSharedReminderDelivery({
         platform: "discord",
-        discordUserId: "123456789012345678",
+        discordUserId: "1234567890123456",
       }),
     ).toEqual({
       platform: "discord",
-      discordUserId: "123456789012345678",
+      discordUserId: "1234567890123456",
     });
     expect(
       parseSharedReminderDelivery({

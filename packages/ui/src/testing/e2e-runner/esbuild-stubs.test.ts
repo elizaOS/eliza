@@ -8,9 +8,14 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 import { stubElizaCore, stubNodeBuiltins } from "./esbuild-stubs";
+
+const sharedContractsEntry = fileURLToPath(
+  new URL("../../../../shared/src/contracts/index.ts", import.meta.url),
+);
 
 async function bundleWithCoreStub(source: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "eliza-core-stub-"));
@@ -116,6 +121,20 @@ describe("stubElizaCore", () => {
     )() as string;
 
     expect(evaluated).toBe("fixture reply");
+  });
+});
+
+describe("browser-facing shared contracts", () => {
+  it("bundle without Node builtin shims", async () => {
+    await expect(
+      build({
+        entryPoints: [sharedContractsEntry],
+        bundle: true,
+        write: false,
+        format: "esm",
+        platform: "browser",
+      }),
+    ).resolves.toMatchObject({ errors: [] });
   });
 });
 

@@ -20,6 +20,7 @@ process.env.MOCK_REDIS = "1";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import * as realAuth from "@/lib/auth";
+import { personalDeliveryProjectionObjectName } from "@/lib/services/eliza-app/personal-delivery-projection-contract";
 import {
   personalSharedAgent,
   personalSharedAgentId,
@@ -85,6 +86,14 @@ let cutoverHistory = [
     role: "assistant" as const,
     content: "hello back",
     createdAt: 20,
+    grounding: {
+      kind: "web_search" as const,
+      query: "greeting",
+      provider: "parallel" as const,
+      text: "public result",
+      observedAt: 19,
+      truncated: false,
+    },
   },
 ];
 const cutoverCoordinatorOperations: string[] = [];
@@ -1318,6 +1327,14 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
             role: "assistant",
             text: "hello back",
             timestamp: 20,
+            grounding: {
+              kind: "web_search",
+              query: "greeting",
+              provider: "parallel",
+              text: "public result",
+              observedAt: 19,
+              truncated: false,
+            },
           },
         ],
         scheduledTasks: [
@@ -1385,7 +1402,9 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         },
       });
       expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
-      expect(invalidatedDeliveryProjections).toContain("telegram:919191");
+      expect(invalidatedDeliveryProjections).toContain(
+        personalDeliveryProjectionObjectName("telegram", "919191"),
+      );
       expect(markerObservedAtCommit).toMatchObject({
         sourceAgentId: PERSONAL_C,
         cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
@@ -1559,6 +1578,14 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           role: "assistant",
           content: "hello back",
           createdAt: 20,
+          grounding: {
+            kind: "web_search",
+            query: "greeting",
+            provider: "parallel",
+            text: "public result",
+            observedAt: 19,
+            truncated: false,
+          },
         },
       ];
       cutoverCoordinatorOperations.length = 0;

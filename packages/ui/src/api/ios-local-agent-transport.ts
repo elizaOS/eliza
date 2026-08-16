@@ -11,9 +11,11 @@ import {
 import { isStoreBuild } from "../build-variant";
 import { getBootConfig } from "../config/boot-config";
 import {
+  isCommittedOnDeviceMobileRuntimeMode,
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
   isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,
+  normalizeMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import {
@@ -606,14 +608,27 @@ function isMobileLocalAgentUrl(value: string): boolean {
 }
 
 /**
+ * Classify the legacy loopback HTTP identity only when the selected runtime
+ * actually owns an on-device agent. In `remote-mac`, loopback port 31337 is
+ * the developer's Mac and must stay on the real network transport.
+ */
+function isIosOnDeviceAgentHttpUrl(value: string): boolean {
+  if (!isMobileLocalAgentUrl(value)) return false;
+  const mode = readRuntimeMode();
+  return mode === null
+    ? canUseIosLocalAgentIpc()
+    : iosRuntimeHasOnDeviceAgent();
+}
+
+/**
  * Whether the selected runtime runs an on-device agent that serves local-agent
- * IPC. `local`, `cloud-hybrid`, and `tunnel-to-mobile` all run the bundled
- * phone-side agent; only pure `cloud` talks exclusively to a remote agent.
+ * IPC. Delegates to the first-run runtime-mode authority so transports cannot
+ * drift from restore and active-server policy.
  */
 function iosRuntimeHasOnDeviceAgent(): boolean {
-  const mode = readRuntimeMode();
+  const mode = normalizeMobileRuntimeMode(readRuntimeMode());
   return (
-    mode === "local" || mode === "cloud-hybrid" || mode === "tunnel-to-mobile"
+    mode === "tunnel-to-mobile" || isCommittedOnDeviceMobileRuntimeMode(mode)
   );
 }
 
@@ -695,7 +710,7 @@ export function isIosInProcessLocalAgentUrl(url: string): boolean {
     // network policy rather than treating it as an in-process agent URL.
     return false;
   }
-  return isNativeIos() && isMobileLocalAgentUrl(url);
+  return isNativeIos() && isIosOnDeviceAgentHttpUrl(url);
 }
 
 export function isIosInProcessLocalAgentBase(
@@ -1126,7 +1141,7 @@ function shouldBridgeFetchUrl(url: URL): boolean {
       "iOS store/cloud builds block cleartext loopback or private-network requests",
     );
   }
-  if (isMobileLocalAgentUrl(url.toString())) return true;
+  if (isIosOnDeviceAgentHttpUrl(url.toString())) return true;
   if (isNativeIosCloudRuntime()) return false;
   if ((url.pathname || "").startsWith("/api/")) {
     return (

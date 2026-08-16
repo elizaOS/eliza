@@ -7,6 +7,7 @@
 
 import { expect, type Page, test } from "@playwright/test";
 import { installDefaultAppRoutes, seedAppStorage } from "./helpers";
+import { installReadyDesktopShellBridge } from "./helpers/desktop-shell-bridge";
 
 declare global {
   interface Window {
@@ -43,6 +44,7 @@ async function installKioskBridge(page: Page): Promise<void> {
       return set.size;
     };
   });
+  await installReadyDesktopShellBridge(page);
 }
 
 function floatingMountEvent(windowId: string, title: string) {

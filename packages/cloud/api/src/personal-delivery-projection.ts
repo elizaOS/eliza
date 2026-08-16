@@ -1,11 +1,10 @@
 /**
  * Per-sender account projection for Personal Shared connector turns.
  *
- * The Durable Object absorbs repeat Postgres/Hyperdrive bootstrap while the
- * account still routes to Shared. Dedicated targets are deliberately never
- * cached: their lifecycle and bridge fields remain authoritative in Postgres.
- * Identity writers and tier cutover explicitly delete the sender projection;
- * a one-hour hard expiry is the final safety bound, not the coherence model.
+ * The Durable Object retains only a candidate user lookup hint. Every hit is
+ * revalidated against one authoritative database snapshot before any private
+ * agent, tenant, room, or Dedicated route is derived. Invalidation remains a
+ * performance optimization and is never an authorization boundary.
  */
 
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
@@ -16,18 +15,23 @@ import {
 } from "@/lib/services/eliza-app/personal-delivery-projection-contract";
 import type {
   PersonalDeliveryInput,
+  PersonalDeliveryProjectionHint,
   PersonalDeliveryResult,
 } from "@/lib/services/eliza-app/user-service";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const CACHE_KEY = "shared-account";
+const CACHE_KEY = "verified-user-hint:v1";
+const LEGACY_CACHE_KEY = "shared-account";
 const CACHE_TTL_MS = 60 * 60_000;
+const PROJECTION_VERSION = 1;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface SharedAccountProjection {
+  version: typeof PROJECTION_VERSION;
   profileKey: string;
-  userId: string;
-  organizationId: string;
+  candidateUserId: string;
   expiresAt: number;
 }
 
@@ -37,6 +41,13 @@ interface PersonalDeliveryResolver {
   ): Promise<PersonalDeliveryResult>;
 }
 
+interface PersonalDeliveryProjectionResolver extends PersonalDeliveryResolver {
+  revalidatePersonalDeliveryProjection(
+    params: PersonalDeliveryInput,
+    expected: PersonalDeliveryProjectionHint,
+  ): Promise<PersonalDeliveryResult | null>;
+}
+
 function boundedText(value: unknown, max = 512): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= max;
 }
@@ -44,6 +55,28 @@ function boundedText(value: unknown, max = 512): value is string {
 function optionalText(value: unknown, max = 512): boolean {
   return (
     value === undefined || (typeof value === "string" && value.length <= max)
+  );
+}
+
+function isSharedAccountProjection(
+  value: unknown,
+): value is SharedAccountProjection {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate).sort();
+  return (
+    keys.length === 4 &&
+    keys[0] === "candidateUserId" &&
+    keys[1] === "expiresAt" &&
+    keys[2] === "profileKey" &&
+    keys[3] === "version" &&
+    candidate.version === PROJECTION_VERSION &&
+    boundedText(candidate.profileKey, 4_096) &&
+    typeof candidate.candidateUserId === "string" &&
+    UUID_PATTERN.test(candidate.candidateUserId) &&
+    typeof candidate.expiresAt === "number" &&
+    Number.isSafeInteger(candidate.expiresAt) &&
+    candidate.expiresAt > 0
   );
 }
 
@@ -161,7 +194,7 @@ export async function resolvePersonalDeliveryProjection(
 export class PersonalDeliveryProjection {
   private readonly state: DurableObjectState;
   private readonly env: AppEnv["Bindings"];
-  private readonly resolver: PersonalDeliveryResolver | undefined;
+  private readonly resolver: PersonalDeliveryProjectionResolver | undefined;
   private entry: SharedAccountProjection | undefined;
   private entryLoaded = false;
   private operationQueue: Promise<void> = Promise.resolve();
@@ -169,7 +202,7 @@ export class PersonalDeliveryProjection {
   constructor(
     state: DurableObjectState,
     env: AppEnv["Bindings"],
-    resolver?: PersonalDeliveryResolver,
+    resolver?: PersonalDeliveryProjectionResolver,
   ) {
     this.state = state;
     this.env = env;
@@ -192,15 +225,25 @@ export class PersonalDeliveryProjection {
 
   private async loadEntry(): Promise<SharedAccountProjection | undefined> {
     if (!this.entryLoaded) {
-      this.entry =
-        await this.state.storage.get<SharedAccountProjection>(CACHE_KEY);
+      const stored = await this.state.storage.get<unknown>(CACHE_KEY);
       this.entryLoaded = true;
+      if (stored === undefined)
+        await this.state.storage.delete(LEGACY_CACHE_KEY);
+      if (stored !== undefined && !isSharedAccountProjection(stored)) {
+        await this.state.storage.delete(CACHE_KEY);
+        this.entry = undefined;
+      } else {
+        this.entry = stored;
+      }
     }
     return this.entry;
   }
 
   private async invalidate(): Promise<void> {
-    await this.state.storage.delete(CACHE_KEY);
+    await Promise.all([
+      this.state.storage.delete(CACHE_KEY),
+      this.state.storage.delete(LEGACY_CACHE_KEY),
+    ]);
     this.entry = undefined;
     this.entryLoaded = true;
   }
@@ -216,15 +259,22 @@ export class PersonalDeliveryProjection {
       cached.expiresAt > now &&
       cached.profileKey === expectedProfile
     ) {
-      return {
-        userId: cached.userId,
-        organizationId: cached.organizationId,
-        dedicatedTarget: null,
-        isNew: false,
-        resolution: "sender-projection-hit",
-      };
+      const verified = await runWithCloudBindingsAsync(this.env, async () => {
+        const resolver =
+          this.resolver ??
+          (await import("@/lib/services/eliza-app/user-service"))
+            .elizaAppUserService;
+        return resolver.revalidatePersonalDeliveryProjection(input, {
+          userId: cached.candidateUserId,
+        });
+      });
+      if (verified && verified.userId === cached.candidateUserId) {
+        if (verified.dedicatedTarget) await this.invalidate();
+        return verified;
+      }
+      await this.invalidate();
     }
-    if (cached) await this.invalidate();
+    if (this.entry) await this.invalidate();
 
     const resolved = await runWithCloudBindingsAsync(this.env, async () => {
       const resolver =
@@ -235,9 +285,9 @@ export class PersonalDeliveryProjection {
     });
     if (resolved.dedicatedTarget === null) {
       const projection: SharedAccountProjection = {
+        version: PROJECTION_VERSION,
         profileKey: expectedProfile,
-        userId: resolved.userId,
-        organizationId: resolved.organizationId,
+        candidateUserId: resolved.userId,
         expiresAt: now + CACHE_TTL_MS,
       };
       await this.state.storage.put(CACHE_KEY, projection);
@@ -268,6 +318,16 @@ export class PersonalDeliveryProjection {
           return Response.json(
             { error: "Invalid personal delivery input" },
             { status: 400 },
+          );
+        }
+        const objectName = this.state.id.name;
+        if (
+          objectName !==
+          personalDeliveryProjectionObjectName(body.platform, senderId(body))
+        ) {
+          return Response.json(
+            { error: "Personal delivery sender does not match object" },
+            { status: 409 },
           );
         }
         return Response.json(await this.resolve(body));
