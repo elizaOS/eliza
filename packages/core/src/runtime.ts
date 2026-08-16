@@ -340,6 +340,7 @@ import {
 } from "./utils/model-errors";
 import { captureModelLookupCaller } from "./utils/model-lookup-caller";
 import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
+import { resolvePromptBatcherSettings } from "./utils/prompt-batcher/config";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import {
 	ResponseSkeletonStreamExtractor,
@@ -1568,36 +1569,11 @@ export class AgentRuntime implements IAgentRuntime {
 
 		this.plugins = []; // Initialize plugins as an empty array
 		this.characterPlugins = opts.plugins ?? []; // Store the original character plugins
+		const promptBatcherSettings = resolvePromptBatcherSettings();
 		this.promptBatcher = new PromptBatcher(
 			this,
-			new PromptDispatcher({
-				packingDensity:
-					getNumberEnv("PROMPT_BATCHER_PACKING_DENSITY", 0.85) ?? 0.85,
-				maxTokensPerCall:
-					getNumberEnv("PROMPT_BATCHER_MAX_TOKENS_PER_CALL", 24_000) ?? 24_000,
-				maxParallelCalls:
-					getNumberEnv("PROMPT_BATCHER_MAX_PARALLEL_CALLS", 2) ?? 2,
-				modelSeparation:
-					getNumberEnv("PROMPT_BATCHER_MODEL_SEPARATION", 1) ?? 1,
-				maxSectionsPerCall:
-					getNumberEnv("PROMPT_BATCHER_MAX_SECTIONS_PER_CALL", 8) ?? 8,
-			}),
-			{
-				batchSize: getNumberEnv("PROMPT_BATCHER_BATCH_SIZE", 8) ?? 8,
-				maxDrainIntervalMs:
-					getNumberEnv("PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS", 30_000) ??
-					30_000,
-				maxSectionsPerCall:
-					getNumberEnv("PROMPT_BATCHER_MAX_SECTIONS_PER_CALL", 8) ?? 8,
-				packingDensity:
-					getNumberEnv("PROMPT_BATCHER_PACKING_DENSITY", 0.85) ?? 0.85,
-				maxTokensPerCall:
-					getNumberEnv("PROMPT_BATCHER_MAX_TOKENS_PER_CALL", 24_000) ?? 24_000,
-				maxParallelCalls:
-					getNumberEnv("PROMPT_BATCHER_MAX_PARALLEL_CALLS", 2) ?? 2,
-				modelSeparation:
-					getNumberEnv("PROMPT_BATCHER_MODEL_SEPARATION", 1) ?? 1,
-			},
+			new PromptDispatcher(promptBatcherSettings.dispatcher),
+			promptBatcherSettings.batcher,
 		);
 
 		// Store action planning option (undefined means check settings at runtime)
