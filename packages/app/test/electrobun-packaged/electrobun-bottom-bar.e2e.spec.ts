@@ -270,6 +270,7 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
       panelRight: number;
       pillTop: number;
       viewportWidth: number;
+      viewportHeight: number;
     }> =>
       harness.eval(`(() => {
       const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
@@ -285,6 +286,7 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         panelRight: Math.round(rect.right),
         pillTop: Math.round(pill.getBoundingClientRect().top),
         viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
       };
     })()`);
 
@@ -322,6 +324,20 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     );
     // Intended top breathing room: ≥ 24px of window above the panel.
     expect(expandedGeometry.panelTop).toBeGreaterThanOrEqual(24);
+    // Bottom containment checked directly against the viewport, not inferred
+    // through pillTop alone (#20063 review finding 2): the panel must stop
+    // short of the resting bar zone.
+    expect(expandedGeometry.viewportHeight - expandedGeometry.panelBottom)
+      .toBeGreaterThanOrEqual(8);
+    // Horizontal centering (#20063 review finding 1): the panel's midpoint
+    // must match the viewport's midpoint — the entry animation previously
+    // replaced the centering transform for its full 220ms duration, flying
+    // the panel in off-center before snapping back.
+    const panelMidpoint =
+      (expandedGeometry.panelLeft + expandedGeometry.panelRight) / 2;
+    expect(Math.abs(panelMidpoint - expandedGeometry.viewportWidth / 2)).toBeLessThanOrEqual(
+      4,
+    );
 
     await harness.eval(
       `document.querySelector('[aria-label="Close assistant"]')?.click()`,

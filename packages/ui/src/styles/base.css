@@ -735,6 +735,28 @@ body.pwa-standalone * {
   }
 }
 
+/*
+ * Chat-overlay-shell variant of the panel entry animation (#20063): the
+ * shell's bottom-anchored geometry centers the panel via
+ * `transform: translateX(-50%)`, and CSS animations REPLACE the transform
+ * wholesale — so animating `translateY(...)` alone (the base keyframes
+ * above) un-centers the panel horizontally for the animation's duration
+ * before snapping back. These shell keyframes carry the centering term
+ * through every frame instead. Selected by the
+ * `html.eliza-chat-overlay-shell` rule in styles.css, which overrides the
+ * utility-picked animation-name.
+ */
+@keyframes shell-overlay-in-anchored {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 /* A freshly-arrived chat turn fades + lifts in. Subtler than shell-overlay-in
    (a single bubble, not the whole panel). Applied via
    `motion-safe:animate-[chat-turn-in_...]` on the message <article>, scoped to

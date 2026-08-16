@@ -181,8 +181,13 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
      `translate: -50% -50%` composed with this transform and pushed the
      panel ~50% of its own height above the bottom anchor (measured
      y ≈ -276px, transcripts invisible outside the native window; #20063,
-     #19996) is now structurally impossible rather than cascade-managed. */
+     #19996) is now structurally impossible rather than cascade-managed.
+     The animation-name override swaps the entry keyframes for the
+     `-anchored` variant so the centering transform survives the 220ms
+     entry animation (the base keyframes animate `translateY(...)` alone,
+     which would replace — not compose with — the centering term). */
   transform: translateX(-50%);
+  animation-name: shell-overlay-in-anchored;
   border-radius: 1.5rem;
   border-color: rgb(255 255 255 / 72%);
   background-color: rgb(244 244 246 / 72%);
