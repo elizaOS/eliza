@@ -6,4 +6,4 @@
 export type {
   RoutingPolicy,
   RoutingPreferences,
-} from "@elizaos/shared/local-inference/routing-preferences";
+} from "@elizaos/shared/local-inference";
