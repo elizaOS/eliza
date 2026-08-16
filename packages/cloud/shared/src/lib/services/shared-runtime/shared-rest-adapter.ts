@@ -334,23 +334,11 @@ export function sharedRestAgentEvents(): { events: [] } {
  */
 export function sharedRestAgentStart(agentName: string): {
   ok: true;
-  status: {
-    state: "running";
-    agentName: string;
-    model: string | undefined;
-    uptime: 0;
-    startedAt: number;
-  };
+  status: ReturnType<typeof sharedRestStatus>;
 } {
   return {
     ok: true,
-    status: {
-      state: "running",
-      agentName: agentName || "Eliza",
-      model: undefined,
-      uptime: 0,
-      startedAt: Date.now(),
-    },
+    status: sharedRestStatus(agentName),
   };
 }
 
