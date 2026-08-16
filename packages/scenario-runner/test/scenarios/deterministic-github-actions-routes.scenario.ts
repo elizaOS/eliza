@@ -6,6 +6,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -15,10 +19,6 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import githubPlugin, {
   GitHubService,
 } from "../../../../plugins/plugin-github/src/index.ts";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";
@@ -791,6 +791,9 @@ async function finalGithubCheck(): Promise<string | undefined> {
       method: "activity.listNotificationsForAuthenticatedUser",
       args: {
         all: false,
+        // The unread helper paginates explicitly; this fake returns fewer than
+        // per_page rows, so the loop stops after the first request.
+        page: 1,
         per_page: 50,
       },
     },

@@ -8,9 +8,13 @@
 #   bash scripts/verify-e2e-container-db.sh
 set -uo pipefail
 
-NET_DB="apps-dbnet"
-PG="apps-tenant-pg"
-PGPORT=55444
+# Per-run unique resource names: fixed container/network names collide when
+# concurrent verify runs share one docker host (#18359). The host port is
+# docker-assigned at container start (see PGPORT below).
+RUN_ID="$$-$RANDOM"
+NET_DB="apps-dbnet-$RUN_ID"
+PG="apps-tenant-pg-$RUN_ID"
+APP_ID=$(bun -e "process.stdout.write(crypto.randomUUID())")
 PGPASS=adminpw
 IMG=postgres:16-alpine
 PASS=0; FAIL=0
@@ -26,11 +30,12 @@ cleanup() {
 trap cleanup EXIT
 
 echo "=== setup: throwaway tenant-PG on a real docker network ==="
-sudo docker rm -f "$PG" >/dev/null 2>&1 || true
-sudo docker network rm "$NET_DB" >/dev/null 2>&1 || true
 sudo docker network create --driver bridge "$NET_DB" >/dev/null
-sudo docker run -d --name "$PG" --network "$NET_DB" -p "$PGPORT:5432" \
+sudo docker run -d --name "$PG" --network "$NET_DB" -p 5432 \
   -e POSTGRES_PASSWORD="$PGPASS" "$IMG" >/dev/null
+# Docker bound the host side at container start (kernel-assigned): no fixed
+# port to collide on and no probe-then-release window (#18359).
+PGPORT=$(sudo docker port "$PG" 5432/tcp | head -n1 | sed 's/.*://')
 # wait for readiness
 for i in $(seq 1 30); do
   if sudo docker exec "$PG" pg_isready -U postgres >/dev/null 2>&1; then break; fi
@@ -73,8 +78,8 @@ echo "$OUT" | grep -qiE "permission denied for database" \
 echo
 echo "=== NETWORK PLANE: our REAL buildEnsureAppNetworkCmd (--internal) blocks egress ==="
 # Drive the actual builder: it prints the network name + the exact create command.
-APPNET=$(bun -e "import {appNetworkName} from './src/lib/services/app-network-utils'; process.stdout.write(appNetworkName('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'))")
-BUILDER_CMD=$(bun -e "import {buildEnsureAppNetworkCmd,appNetworkName} from './src/lib/services/app-network-utils'; process.stdout.write(buildEnsureAppNetworkCmd(appNetworkName('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')))")
+APPNET=$(bun -e "import {appNetworkName} from './src/lib/services/app-network-utils'; process.stdout.write(appNetworkName('$APP_ID'))")
+BUILDER_CMD=$(bun -e "import {buildEnsureAppNetworkCmd,appNetworkName} from './src/lib/services/app-network-utils'; process.stdout.write(buildEnsureAppNetworkCmd(appNetworkName('$APP_ID')))")
 echo "builder: $BUILDER_CMD"
 sudo sh -c "$BUILDER_CMD"   # execute our real builder output as root
 sudo docker network inspect "$APPNET" --format '{{.Internal}}' | grep -q true \

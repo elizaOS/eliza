@@ -38,7 +38,9 @@ describe("0206-0207 Shared Todos", () => {
     };
 
     expect(journal.entries.some((entry) => entry.tag === "0206_shared_todos")).toBe(true);
-    expect(journal.entries.at(-1)).toEqual({
+    // Later migrations append behind these entries, so pin the ledger entry by
+    // tag rather than by journal position.
+    expect(journal.entries.find((entry) => entry.tag === "0207_todo_mutation_ledger")).toEqual({
       idx: 206,
       version: "7",
       when: 1787601600000,

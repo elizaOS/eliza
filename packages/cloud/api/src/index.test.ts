@@ -1005,7 +1005,7 @@ describe("cloud-api worker entrypoint", () => {
     );
   });
 
-  test("keeps the Personal Shared edge fail-closed pending a post-migration canary", async () => {
+  test("keeps the Personal Shared edge fail-closed without reserving its secret binding", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
@@ -1044,7 +1044,7 @@ describe("cloud-api worker entrypoint", () => {
     expect(config.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED).toBe("false");
     expect(
       config.env?.staging?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
-    ).toBe("false");
+    ).toBeUndefined();
     expect(
       config.env?.production?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
     ).toBe("false");

@@ -4,6 +4,8 @@
  * date-times use Temporal-compatible disambiguation so repeated and skipped
  * wall times remain deterministic across DST and date-line transitions.
  */
+import { normalizeTimeZone } from "@elizaos/shared";
+
 export interface ZonedDateParts {
   year: number;
   month: number;
@@ -19,7 +21,12 @@ const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const OFFSET_SAMPLE_HOURS = [-48, -36, -24, -12, 0, 12, 24, 36, 48];
 
-function getZonedFormatter(timeZone: string): Intl.DateTimeFormat {
+function getZonedFormatter(rawTimeZone: string): Intl.DateTimeFormat {
+  // The canonical normalizer maps model-authored UTC spellings ("Z", "+00:00")
+  // to UTC and falls back to the deployment default for unknown names —
+  // pre-normalization, a planner-stamped `timeZone: "Z"` threw at this Intl
+  // boundary and failed an entire calendar create (observed live).
+  const timeZone = normalizeTimeZone(rawTimeZone);
   const cacheKey = `parts:${timeZone}`;
   const cached = zonedFormatterCache.get(cacheKey);
   if (cached) return cached;
@@ -37,7 +44,8 @@ function getZonedFormatter(timeZone: string): Intl.DateTimeFormat {
   return formatter;
 }
 
-function getOffsetFormatter(timeZone: string): Intl.DateTimeFormat {
+function getOffsetFormatter(rawTimeZone: string): Intl.DateTimeFormat {
+  const timeZone = normalizeTimeZone(rawTimeZone);
   const cacheKey = `offset:${timeZone}`;
   const cached = offsetFormatterCache.get(cacheKey);
   if (cached) return cached;
