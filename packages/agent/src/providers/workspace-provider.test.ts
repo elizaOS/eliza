@@ -38,5 +38,6 @@ describe("workspace provider truncation", () => {
   it("honors bounds shorter than the suffix", () => {
     expect(truncate("longer", 4)).toBe("\n\n[.");
     expect(truncate("longer", 0)).toBe("");
+    expect(truncate("longer", -1)).toBe("");
   });
 });
