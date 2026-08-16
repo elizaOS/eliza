@@ -80,6 +80,24 @@ const COMMITMENT_RE =
   /\b(i(?:'ll| will| can| need to| owe| promised to)|we(?:'ll| will| need to)|let me|i am going to)\b/i;
 const SPECULATIVE_RE =
   /\b(maybe|sometime|eventually|if we get around to it|might|could)\b/i;
+
+/**
+ * Event kind emitted when a deadline-bearing obligation artifact is observed.
+ * Standing class guarantees subscribe to it with an `obligationKind` filter.
+ * Lives here (a leaf module) so both the event-kind registry and the
+ * standing-guarantee consumer can import it without a module cycle.
+ */
+export const COMMITMENT_OBLIGATION_EVENT_KIND = "document.obligation.observed";
+
+/** Cheap deterministic prefilter: does the text contain a first-person commitment cue? */
+export function textHasCommitmentCue(text: string): boolean {
+  return COMMITMENT_RE.test(text);
+}
+
+/** True when the text hedges ("maybe sometime") and must never become a ledger row. */
+export function isSpeculativeCommitmentText(text: string): boolean {
+  return SPECULATIVE_RE.test(text);
+}
 const WEEKDAYS = [
   "sunday",
   "monday",
@@ -142,7 +160,8 @@ function resolveDueAt(text: string, observedAt: string): string | null {
   return weekday ? nextWeekdayIso(observedAt, weekday) : null;
 }
 
-function classifyKind(text: string): LifeOpsCommitmentKind {
+/** Classify a commitment sentence into the ledger's typed obligation kind. */
+export function classifyCommitmentKind(text: string): LifeOpsCommitmentKind {
   if (/\b(renew|renewal|cancellation deadline|trial ends)\b/i.test(text)) {
     return "renewal";
   }
@@ -214,7 +233,7 @@ export function extractCommitmentLedgerRecords(
 ): LifeOpsCommitmentLedgerRecord[] {
   const sentence = firstCommitmentSentence(input.text);
   if (!sentence) return [];
-  const kind = classifyKind(sentence);
+  const kind = classifyCommitmentKind(sentence);
   return [
     createLifeOpsCommitmentLedgerRecord({
       agentId: input.agentId,
