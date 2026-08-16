@@ -31,7 +31,13 @@ function truncatePrompt(prompt: string): string {
   if (prompt.length <= MAX_PROMPT_LENGTH) {
     return prompt;
   }
-  return `${prompt.slice(0, MAX_PROMPT_LENGTH)}…`;
+  const suffix = "…";
+  let truncated = prompt.slice(0, MAX_PROMPT_LENGTH - suffix.length);
+  // Avoid splitting a surrogate pair at the truncation boundary
+  if (/[\uD800-\uDBFF]$/.test(truncated)) {
+    truncated = truncated.slice(0, -1);
+  }
+  return `${truncated}${suffix}`;
 }
 
 export function emitModelUsageEvent(
