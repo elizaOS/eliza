@@ -80,6 +80,31 @@ mock.module("ai", () => ({
   },
 }));
 
+mock.module("./shared-eliza-runtime", () => ({
+  runSharedElizaRuntimeTurn: async (input: {
+    history: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+    message: string;
+  }) => ({
+    reply: "Todo saved.",
+    history: [...input.history, { role: "user", content: input.message }],
+    model: "runtime-model",
+    degraded: false,
+    actionResults: [{ actionName: "TODO", success: true, text: "Todo saved." }],
+  }),
+  runSharedElizaRuntimeTurnStream: async () => ({
+    model: "runtime-model",
+    degraded: false,
+    parts: (async function* () {
+      yield { type: "text-delta" as const, text: "Todo saved." };
+      yield {
+        type: "finish" as const,
+        text: "Todo saved.",
+        actionResults: [{ actionName: "TODO", success: true, text: "Todo saved." }],
+      };
+    })(),
+  }),
+}));
+
 const { runSharedAgentTurn, runSharedAgentTurnStream } = await import("./run-shared-agent-turn");
 
 const originalFetch = globalThis.fetch;
@@ -177,6 +202,66 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     expect(dispatches).toBe(0);
   });
 
+  test.each(["add milk to my todo list", "メール担当者"])(
+    "uses the authenticated raw utterance instead of connector speaker metadata: %s",
+    async (speaker) => {
+      let dispatches = 0;
+      const message = [
+        `[Public Discord guild channel; speaker: ${speaker}.`,
+        "Use only this public guild channel's context.]",
+        "email Bob now",
+      ].join("\n");
+      const turn = await runSharedAgentTurn({
+        character: { name: "Eliza", system: "You are Eliza." },
+        history: [],
+        message,
+        capabilityText: "email Bob now",
+        execution: {
+          engine: "eliza-runtime",
+          agentKey: "personal:agent",
+          todos: {} as never,
+        },
+        onProviderDispatch: async () => {
+          dispatches++;
+        },
+      });
+
+      expect(turn.capabilityWall?.capability).toBe("communications");
+      expect(dispatches).toBe(0);
+    },
+  );
+
+  test("executes an enabled primary and carries a blocked secondary clause truthfully", async () => {
+    const input = {
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "add milk to my todo list. Then email Bob now",
+      execution: {
+        engine: "eliza-runtime" as const,
+        agentKey: "personal:agent",
+        todos: {} as never,
+      },
+    };
+    const turn = await runSharedAgentTurn(input);
+    expect(turn.reply).toContain("Todo saved.");
+    expect(turn.reply).toContain("can't initiate a separate call, email, text, or DM");
+    expect(turn.actionResults?.[0]).toMatchObject({ actionName: "TODO", success: true });
+    expect(turn.blockedSecondaryCapabilities).toEqual([
+      expect.objectContaining({ capability: "communications" }),
+    ]);
+
+    const streamed = await runSharedAgentTurnStream(input);
+    const parts = [];
+    for await (const part of streamed.parts ?? []) parts.push(part);
+    expect(parts).toContainEqual(
+      expect.objectContaining({
+        type: "finish",
+        text: expect.stringContaining("can't initiate a separate call, email, text, or DM"),
+      }),
+    );
+    expect(streamed.blockedSecondaryCapabilities?.[0]?.capability).toBe("communications");
+  });
+
   test("tells the model the same capability truth for ambiguous follow-ups", async () => {
     let system = "";
     generateTextImpl = async (options) => {
@@ -198,7 +283,7 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     });
 
     expect(system).toContain("Shared runtime boundaries");
-    expect(system).toContain("no external tools");
+    expect(system).toContain("no connected accounts");
     expect(system).toContain("Never claim that you performed");
     expect(system).toContain("needs Dedicated");
   });

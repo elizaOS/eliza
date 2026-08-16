@@ -20,6 +20,14 @@ export interface SharedCapabilityWall {
   reply: string;
 }
 
+export type SharedCapabilityResolution =
+  | { kind: "blocked-primary"; blocked: SharedCapabilityWall }
+  | {
+      kind: "enabled-primary";
+      primary: SharedCapabilityWall;
+      blockedSecondary: SharedCapabilityWall[];
+    };
+
 const NON_EXECUTION_CONTEXT =
   /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:do\s+not|don't|dont|never|explain|describe|define|translate|teach\s+me|tell\s+me\s+how|show\s+me\s+how|how\s+(?:do|would|can|to)|what\s+(?:is|are|would|happens?)|why\s+(?:do|would|can|is|are)|if\s+(?:i|we|you)|before\s+you)\b/i;
 
@@ -123,15 +131,75 @@ export function resolveSharedCapabilityWall(
   message: string | undefined,
   capabilities: { reminders?: boolean; todos?: boolean } = {},
 ): SharedCapabilityWall | null {
+  const resolution = resolveSharedCapabilityIntent(message, capabilities);
+  if (!resolution) return null;
+  return resolution.kind === "blocked-primary"
+    ? resolution.blocked
+    : (resolution.blockedSecondary[0] ?? null);
+}
+
+type CapabilityMatch = {
+  rule: (typeof RULES)[number];
+  priority: number;
+  index: number;
+  end: number;
+};
+
+function isEnabled(
+  match: CapabilityMatch,
+  capabilities: { reminders?: boolean; todos?: boolean },
+): boolean {
+  return (
+    (match.rule.capability === "reminders" && capabilities.reminders === true) ||
+    (match.rule.capability === "todos" && capabilities.todos === true)
+  );
+}
+
+function wallFor(match: CapabilityMatch): SharedCapabilityWall {
+  const { capability, label, reply } = match.rule;
+  return { capability, label, reply };
+}
+
+function beginsSeparateClause(text: string, primary: CapabilityMatch, candidate: CapabilityMatch) {
+  if (candidate.index < primary.end) return false;
+  const between = text.slice(primary.end, candidate.index);
+  return /(?:[.!?;]\s*|,\s*|\b(?:and\s+)?then\b[\s\S]*)$/i.test(between);
+}
+
+/**
+ * Resolve the first executable intent without losing explicit later clauses.
+ * Enabled reminder/Todo payloads may contain capability words, while a later
+ * sentence or sequenced clause remains a typed blocked request.
+ */
+export function resolveSharedCapabilityIntent(
+  message: string | undefined,
+  capabilities: { reminders?: boolean; todos?: boolean } = {},
+): SharedCapabilityResolution | null {
   const text = (message ?? "").trim();
   if (!text || NON_EXECUTION_CONTEXT.test(text)) return null;
-  const match = RULES.find(
-    (rule) =>
-      !(rule.capability === "reminders" && capabilities.reminders) &&
-      !(rule.capability === "todos" && capabilities.todos) &&
-      rule.pattern.test(text),
-  );
-  return match ? { capability: match.capability, label: match.label, reply: match.reply } : null;
+  const matches = RULES.flatMap((rule, priority) => {
+    const match = rule.pattern.exec(text);
+    return match
+      ? [{ rule, priority, index: match.index, end: match.index + match[0].length }]
+      : [];
+  }).sort((left, right) => left.index - right.index || left.priority - right.priority);
+  const primary = matches[0];
+  if (!primary) return null;
+  if (!isEnabled(primary, capabilities)) {
+    return { kind: "blocked-primary", blocked: wallFor(primary) };
+  }
+  const blockedSecondary = matches
+    .slice(1)
+    .filter(
+      (candidate) =>
+        !isEnabled(candidate, capabilities) && beginsSeparateClause(text, primary, candidate),
+    )
+    .map(wallFor);
+  return {
+    kind: "enabled-primary",
+    primary: wallFor(primary),
+    blockedSecondary,
+  };
 }
 
 export function capabilityWallActionResult(wall: SharedCapabilityWall) {
