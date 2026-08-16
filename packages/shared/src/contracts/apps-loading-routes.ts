@@ -6,9 +6,11 @@
  * Second migration in the typed-routes initiative — the App Permissions
  * routes were the pilot in `./app-permissions-routes.ts`. The pattern
  * (schema in shared, safeParse on server, infer types on client) is
- * the same here; the only new wrinkle is `.refine()` for the
- * absolute-path check that previously lived as a hand-rolled `if
- * (!path.isAbsolute(directory))` guard in the route handler.
+ * the same here. This barrel is browser-safe, so it carries only the
+ * required/strict shape checks; the absolute-path check is enforced at
+ * the server route boundary using the host's native path module
+ * (`path.isAbsolute`), which preserves host-native POSIX/Windows
+ * semantics without dragging a Node-only import into shared code.
  *
  * Routes covered:
  *   POST /api/apps/load-from-directory
@@ -22,23 +24,17 @@
  *     500:     filesystem failure during scan
  */
 
-import nodePath from "node:path";
 import z from "zod";
 
 /**
- * `path.isAbsolute` is platform-aware (POSIX vs Windows). Using it
- * inside `.refine()` keeps the schema honest on whichever runtime
- * the agent is on; declaring "must start with /" would silently miss
- * on Windows.
+ * Absoluteness is deliberately not validated here: `path.isAbsolute`
+ * is a Node-only, platform-aware primitive, and this barrel must stay
+ * browser-safe. The server route enforces the absolute-path contract
+ * with the host's native path implementation (`path.isAbsolute`).
  */
 export const PostLoadFromDirectoryRequestSchema = z
   .object({
-    directory: z
-      .string()
-      .min(1, "directory is required")
-      .refine((value) => nodePath.isAbsolute(value), {
-        message: "directory must be an absolute path",
-      }),
+    directory: z.string().min(1, "directory is required"),
   })
   .strict();
 

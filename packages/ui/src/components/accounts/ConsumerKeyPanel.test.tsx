@@ -32,7 +32,17 @@ vi.mock("../../state/app-store", () => ({
     selector: (state: {
       t: (key: string, vars?: Record<string, unknown>) => string;
     }) => unknown,
-  ) => selector({ t: (key, vars) => String(vars?.defaultValue ?? key) }),
+  ) =>
+    selector({
+      t: (key, vars) => {
+        const template = String(vars?.defaultValue ?? key);
+        return template.replace(/\{\{(\w+)\}\}/g, (_match, name: string) =>
+          name in (vars ?? {})
+            ? String((vars as Record<string, unknown>)[name])
+            : _match,
+        );
+      },
+    }),
 }));
 
 let mockRole = "OWNER";
@@ -135,6 +145,19 @@ describe("list states", () => {
     expect(screen.getByText("Enabled")).toBeTruthy();
     expect(screen.getByText("Disabled")).toBeTruthy();
     expect(screen.getByText("No quota")).toBeTruthy();
+  });
+
+  it("formats the daily token quota with deterministic en-US separators", async () => {
+    // Regression guard: the quota must render with a fixed locale so CI
+    // runners with a non-en locale cannot flip the thousands separator.
+    const api = makeApi({
+      listConsumerKeys: vi
+        .fn()
+        .mockResolvedValue([key({ dailyTokenQuota: 1_000_000 })]),
+    });
+    render(<ConsumerKeyPanelBody api={api} />);
+    await waitFor(() => expect(screen.getByText("proxy-a")).toBeTruthy());
+    expect(screen.getByText("1,000,000 tokens/day")).toBeTruthy();
   });
 });
 

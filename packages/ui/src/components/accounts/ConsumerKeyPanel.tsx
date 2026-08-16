@@ -384,7 +384,7 @@ export function ConsumerKeyPanelBody({
                         })
                       : t("consumerKeys.quotaPerDay", {
                           defaultValue: "{{quota}} tokens/day",
-                          quota: entry.dailyTokenQuota.toLocaleString(),
+                          quota: entry.dailyTokenQuota.toLocaleString("en-US"),
                         })}
                   </span>
                 </div>

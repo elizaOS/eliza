@@ -17,10 +17,13 @@ describe("PostLoadFromDirectoryRequestSchema", () => {
     expect(parsed.directory).toBe("/tmp/apps");
   });
 
-  it("rejects a relative path", () => {
-    expect(() =>
-      PostLoadFromDirectoryRequestSchema.parse({ directory: "apps" }),
-    ).toThrow(/absolute path/);
+  it("accepts a relative path (absolute-path enforcement moved to the server route)", () => {
+    // The browser-safe schema no longer checks absoluteness; the
+    // app-manager route enforces it with the host's native node:path.
+    const parsed = PostLoadFromDirectoryRequestSchema.parse({
+      directory: "apps",
+    });
+    expect(parsed.directory).toBe("apps");
   });
 
   it("rejects an empty string", () => {

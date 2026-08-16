@@ -278,6 +278,38 @@ describe("handleAppsRoutes", () => {
     },
   );
 
+  it("rejects a relative directory on load-from-directory before touching the registry", async () => {
+    const result = await callRoute({
+      method: "POST",
+      pathname: "/api/apps/load-from-directory",
+      body: { directory: "apps/relative" },
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.res.status).toBe(400);
+    expect(result.res.body).toEqual({
+      error: "directory must be an absolute path",
+    });
+  });
+
+  it("accepts an absolute directory and advances past the absolute-path guard", async () => {
+    // With runtime null there is no AppRegistryService, so an absolute
+    // path clears the native path.isAbsolute guard and reaches the
+    // registry lookup, which fails closed with 503 (not the 400 guard).
+    const absolute = path.join(os.tmpdir(), "app-manager-load-abs");
+    const result = await callRoute({
+      method: "POST",
+      pathname: "/api/apps/load-from-directory",
+      body: { directory: absolute },
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.res.status).toBe(503);
+    expect(result.res.body).toEqual({
+      error: "AppRegistryService is not registered on the runtime",
+    });
+  });
+
   it("reuses the app hero registry lookup across adjacent image requests", async () => {
     const packageDir = await mkdtemp(
       path.join(os.tmpdir(), "app-manager-hero-"),
