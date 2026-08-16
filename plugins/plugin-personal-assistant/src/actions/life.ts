@@ -1038,10 +1038,17 @@ function resolveDuplicateByTimeHint(
     const clockTokens =
       summary.toLowerCase().match(/\d{1,2}(?::\d{2})?\s*(?:am|pm)/g) ?? [];
     return clockTokens.some((token) => {
-      const flexible = token
-        .replace(/\s+/g, "\\s*")
-        .replace(/:/g, "[:. ]?");
-      return new RegExp(`\\b${flexible}\\b`).test(normalizedOwner);
+      const variants = [token];
+      // "10:00 am" and the owner's "10am" are the same clock time — an
+      // on-the-hour summary also matches its bare-hour form.
+      const onTheHour = token.match(/^(\d{1,2}):00\s*(am|pm)$/);
+      if (onTheHour) variants.push(`${onTheHour[1]} ${onTheHour[2]}`);
+      return variants.some((variant) => {
+        const flexible = variant
+          .replace(/\s+/g, "\\s*")
+          .replace(/:/g, "[:. ]?");
+        return new RegExp(`\\b${flexible}\\b`).test(normalizedOwner);
+      });
     });
   });
   return hits.length === 1 ? (hits.at(0) ?? null) : null;
