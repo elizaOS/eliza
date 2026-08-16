@@ -125,6 +125,9 @@ class ViewSearchIndex {
   > {
     if (this.entries.size === 0) return [];
 
+    // Validate topK: must be positive and finite
+    if (!Number.isFinite(topK) || topK <= 0) return [];
+
     let queryEmbedding: number[];
     try {
       const result = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
