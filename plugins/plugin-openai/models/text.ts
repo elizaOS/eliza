@@ -1832,6 +1832,12 @@ function providerErrorSearchText(error: unknown): string {
 const SPURIOUS_TOOL_PAIRING_400_RE =
   /role '?"?tool"?'? must be a response to a prece+ding message with '?"?tool_calls"?'?/;
 
+// OpenRouter can intermittently fail provider routing with this exact 400 even
+// when the serialized request contains a valid model. The identical request
+// succeeds on retry, so keep the exception signature-specific rather than
+// broadening retry behavior for missing/invalid model validation errors.
+const TRANSIENT_OPENROUTER_NO_MODELS_400_RE = /\bno models provided\b/;
+
 function isSpuriousToolPairingRejection(error: unknown): boolean {
   return SPURIOUS_TOOL_PAIRING_400_RE.test(providerErrorSearchText(error));
 }
@@ -1868,7 +1874,7 @@ function isTransientProviderError(error: unknown): boolean {
   // normalization makes structurally impossible, so it can only be a spurious
   // provider-side rejection worth retrying.
   if (status === 400) {
-    if (SPURIOUS_TOOL_PAIRING_400_RE.test(msg)) {
+    if (SPURIOUS_TOOL_PAIRING_400_RE.test(msg) || TRANSIENT_OPENROUTER_NO_MODELS_400_RE.test(msg)) {
       return true;
     }
     if (/invalid|unsupported|must be|required|malformed|not allowed|schema/.test(msg)) {
