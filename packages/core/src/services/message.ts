@@ -9316,8 +9316,13 @@ export async function runV5MessageRuntimeStage1(args: {
 						?.suppressPlannerReply === true,
 			) ||
 			(ambientTurn && plannerResult.endedWithDeliberateSilence === true);
+		// A non-empty actionResults array is not evidence of real work: failed
+		// actions populate the array but produced nothing the user can see.
+		// Gate on the authoritative success field instead, matching the media
+		// delivery check below. (#20086)
 		const ranNonSilentAction =
-			actionResults.length > 0 && !suppressesPlannerReply;
+			actionResults.some((result) => result.success === true) &&
+			!suppressesPlannerReply;
 		const rawStageOneAck =
 			typeof messageHandler.plan.reply === "string"
 				? messageHandler.plan.reply.trim()
