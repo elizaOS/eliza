@@ -968,7 +968,7 @@ describe("cloud-api worker entrypoint", () => {
     );
   });
 
-  test("activates Personal Shared latency canaries only in staging", async () => {
+  test("keeps the Personal Shared edge fail-closed pending a post-migration canary", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
@@ -1007,7 +1007,7 @@ describe("cloud-api worker entrypoint", () => {
     expect(config.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED).toBe("false");
     expect(
       config.env?.staging?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
-    ).toBe("true");
+    ).toBe("false");
     expect(
       config.env?.production?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
     ).toBe("false");
