@@ -67,7 +67,7 @@ export async function listSecretsHandler(
 	const context: SecretContext = {
 		level,
 		agentId: runtime.agentId,
-		worldId: level === "world" ? message.roomId : undefined,
+		worldId: level === "world" ? message.worldId : undefined,
 		userId: level === "user" ? message.entityId : undefined,
 		requesterId: message.entityId,
 	};
