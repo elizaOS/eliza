@@ -154,7 +154,8 @@ describe("Worker secret/var collision lint (CF error 10053 class)", () => {
       ).toBe(false);
     }
     expect(releaseWorkflowSource).toContain(
-      "LOCAL_EMBEDDINGS_API_KEY: $" + "{{ secrets.LOCAL_EMBEDDINGS_API_KEY }}",
+      "LOCAL_EMBEDDINGS_API_KEY: $" +
+        "{{ steps.env.outputs.deploy_environment == 'staging' && secrets.LOCAL_EMBEDDINGS_API_KEY || '' }}",
     );
     expect(releaseWorkflowSource).toContain(
       'LOCAL_EMBEDDINGS_API_KEY)\n                if [ "$DEPLOY_ENVIRONMENT" != "staging" ]; then',
