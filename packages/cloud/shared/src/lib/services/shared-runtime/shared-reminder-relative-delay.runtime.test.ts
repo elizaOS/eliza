@@ -79,6 +79,11 @@ describe("Shared reminder relative-delay runtime authority", () => {
       message: "I do not want you to remind me in 1 minute.",
       atIso: undefined,
     },
+    {
+      label: "rejects a later cancellation before scheduler persistence",
+      message: "Remind me in 1 minute, actually do not remind me.",
+      atIso: undefined,
+    },
   ])("$label", async ({ message, atIso }) => {
     let modelCall = 0;
     globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {

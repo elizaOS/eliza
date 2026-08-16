@@ -25,9 +25,9 @@ const TRAILING_DELAY_PATTERN = new RegExp(
 const DECIMAL_TOKEN = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/;
 const META_PREFIX =
   /(?:for\s+example|e\.g\.|example|say|write|quote|phrase|wording|text)\s*[:;,-]?\s*$/i;
-const NEGATION_TOKEN = /\b(?:do\s+not|don['’]?t|dont|never)\b/i;
+const NEGATION_TOKEN_PATTERN = /\b(?:do\s+not|don['’]?t|dont|never)\b/gi;
 const POSITIVE_NEGATION_IDIOM =
-  /\b(?:do\s+not|don['’]?t|dont)\s+(?:mind|forget)\b/i;
+  /^(?:do\s+not|don['’]?t|dont)\s+(?:mind|forget)\b/i;
 const CLAUSE_RESET_PATTERN = /[.!?\n;]|\b(?:but|however|though|yet)\b/gi;
 const BARE_REMINDER_DELAY_PATTERN = new RegExp(
   String.raw`\breminder\b[^.!?\n]{0,100}?\bin\s+${NUMBER_TOKEN}\s*${UNIT_TOKEN}\b`,
@@ -96,7 +96,12 @@ function currentClausePrefix(text: string, index: number): string {
 }
 
 function prefixNegatesCommand(prefix: string): boolean {
-  return NEGATION_TOKEN.test(prefix) && !POSITIVE_NEGATION_IDIOM.test(prefix);
+  NEGATION_TOKEN_PATTERN.lastIndex = 0;
+  let negated = false;
+  for (const token of prefix.matchAll(NEGATION_TOKEN_PATTERN)) {
+    negated = !POSITIVE_NEGATION_IDIOM.test(prefix.slice(token.index ?? 0));
+  }
+  return negated;
 }
 
 function candidateIsNegated(text: string, index: number): boolean {
@@ -122,10 +127,13 @@ const DURATION_CONTINUATION_PATTERN = new RegExp(
 );
 const HALF_CONTINUATION_PATTERN = /^\s*(?:and|plus)\s+(?:a\s+)?half\b/i;
 
-const REVISION_PATTERN = new RegExp(
-  String.raw`\b(?:actually|instead)\s+(?:make|set|change)(?:\s+(?:it|that))?\s+(?:(?:for|to|in)\s+)?(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\b`,
-  "gi",
+const IMMEDIATE_REVISION_PATTERN = new RegExp(
+  String.raw`^\s*[,;:\-]?\s*(?:actually|instead)\s+(?:make|set|change)(?:\s+(?:it|that))?\s+(?:(?:for|to|in)\s+)?(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\b`,
+  "i",
 );
+
+const LATER_CANCELLATION_PATTERN =
+  /\b(?:actually\s+)?(?:do\s+not|don['’]?t|dont|never)(?:\s+ever)?\s+(?:please\s+)?(?:remind\s+me|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder)\b/i;
 
 function extendDuration(text: string, candidate: DelayCandidate): void {
   let cursor = candidate.end;
@@ -169,30 +177,36 @@ function extendDuration(text: string, candidate: DelayCandidate): void {
   }
 }
 
-function applyLastRevision(text: string, candidate: DelayCandidate): void {
-  const tail = text.slice(candidate.end, candidate.end + 240);
-  REVISION_PATTERN.lastIndex = 0;
-  let revision: RegExpExecArray | undefined;
-  for (const match of tail.matchAll(REVISION_PATTERN)) revision = match;
-  const rawNumber = revision?.[1];
-  const rawUnit = revision?.[2]?.toLowerCase();
-  if (
-    !revision ||
-    revision.index === undefined ||
-    !rawNumber ||
-    !(rawUnit && rawUnit in UNIT_MILLISECONDS)
-  ) {
-    return;
+function applyImmediateRevisions(
+  text: string,
+  candidate: DelayCandidate,
+): void {
+  while (true) {
+    const revision = text
+      .slice(candidate.end)
+      .match(IMMEDIATE_REVISION_PATTERN);
+    const rawNumber = revision?.[1];
+    const rawUnit = revision?.[2]?.toLowerCase();
+    if (!revision || !rawNumber || !(rawUnit && rawUnit in UNIT_MILLISECONDS)) {
+      return;
+    }
+    candidate.terms = [
+      {
+        rawNumber,
+        unit: rawUnit as keyof typeof UNIT_MILLISECONDS,
+      },
+    ];
+    candidate.invalidComposition = false;
+    candidate.end += revision[0].length;
+    extendDuration(text, candidate);
   }
-  candidate.terms = [
-    {
-      rawNumber,
-      unit: rawUnit as keyof typeof UNIT_MILLISECONDS,
-    },
-  ];
-  candidate.invalidComposition = false;
-  candidate.end += revision.index + revision[0].length;
-  extendDuration(text, candidate);
+}
+
+function hasLaterCancellation(
+  text: string,
+  candidate: DelayCandidate,
+): boolean {
+  return LATER_CANCELLATION_PATTERN.test(text.slice(candidate.end));
 }
 
 function collectCandidates(text: string): DelayCandidate[] {
@@ -230,7 +244,7 @@ function collectCandidates(text: string): DelayCandidate[] {
   }
   const ordered = candidates.sort((left, right) => left.index - right.index);
   for (const candidate of ordered) extendDuration(text, candidate);
-  if (ordered.length === 1) applyLastRevision(text, ordered[0]);
+  if (ordered.length === 1) applyImmediateRevisions(text, ordered[0]);
   return ordered;
 }
 
@@ -281,7 +295,10 @@ export function resolveExplicitSharedReminderDelay(
       reason: "Use exactly one relative delay for a reminder.",
     };
   }
-  if (candidates[0].negated) {
+  if (
+    candidates[0].negated ||
+    hasLaterCancellation(commandText, candidates[0])
+  ) {
     return {
       kind: "invalid",
       reason: "A negated reminder command cannot create a reminder.",

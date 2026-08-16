@@ -30,6 +30,7 @@ describe("explicit Shared reminder relative delay", () => {
     ["Remind me to stretch in 1 minute and 30 seconds.", 90_000],
     ["Remind me in 1 minute 30 seconds to stretch.", 90_000],
     ["Remind me in 1 minute, actually make that 2 minutes.", 120_000],
+    ["Remind me in 1 minute to say: actually make that 2 minutes.", 60_000],
   ])("resolves %s", (text, milliseconds) => {
     expect(resolveExplicitSharedReminderDelay(text)).toEqual({
       kind: "resolved",
@@ -75,6 +76,11 @@ describe("explicit Shared reminder relative delay", () => {
     "I do not need a reminder in 1 minute.",
     "I never asked you to remind me in 1 minute.",
     "Do not, under any circumstances, remind me in 1 minute.",
+    "I don’t mind if you never remind me in 1 minute.",
+    "Don’t forget: never remind me in 1 minute.",
+    "I don’t mind reminders and never remind me in 1 minute.",
+    "Remind me in 1 minute, actually don’t remind me.",
+    "Remind me in 1 minute, actually do not remind me.",
   ])("fails closed for a negated reminder command: %s", (text) => {
     expect(resolveExplicitSharedReminderDelay(text)).toEqual({
       kind: "invalid",
@@ -203,6 +209,10 @@ describe("explicit Shared reminder relative delay", () => {
       "I don’t want you to remind me in 1 minute.",
     ],
     ["an ambiguous compound", "Remind me in 1 minute and in 2 hours."],
+    [
+      "a post-directive cancellation",
+      "Remind me in 1 minute, actually do not remind me.",
+    ],
   ])("rejects %s before persistence", async (_label, text) => {
     const scheduleWithResult = vi.fn(async (_input: ScheduledTaskInput) => {
       throw new Error("Ambiguous reminder must not be scheduled");
