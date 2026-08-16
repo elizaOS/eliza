@@ -661,8 +661,9 @@ export class PromptBatcher {
 			})),
 		);
 
+		let secondPassMessages: Memory[] = [];
 		if (secondPass.length > 0) {
-			const secondPassMessages = this._getMessagesForAffinity(affinityKey);
+			secondPassMessages = this._getMessagesForAffinity(affinityKey);
 			allCalls.push(
 				...(await this._runDrainPass({
 					drainId,
@@ -683,8 +684,27 @@ export class PromptBatcher {
 			Date.now() - drainStartedAt,
 		);
 
-		if (messages.length > 0) {
-			this.messageBuffers.set(affinityKey, []);
+		const drainedMessages =
+			secondPassMessages.length > 0 ? secondPassMessages : messages;
+		if (drainedMessages.length > 0) {
+			const current = this.messageBuffers.get(affinityKey) ?? [];
+			if (current.length > drainedMessages.length) {
+				const prefixMatches = drainedMessages.every((m, i) => current[i] === m);
+				if (prefixMatches) {
+					this.messageBuffers.set(
+						affinityKey,
+						current.slice(drainedMessages.length),
+					);
+				} else {
+					const drainedSet = new Set(drainedMessages);
+					this.messageBuffers.set(
+						affinityKey,
+						current.filter((m) => !drainedSet.has(m)),
+					);
+				}
+			} else {
+				this.messageBuffers.set(affinityKey, []);
+			}
 		}
 
 		this._emitDrainLog({
