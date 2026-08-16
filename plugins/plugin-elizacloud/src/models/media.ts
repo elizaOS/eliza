@@ -34,6 +34,10 @@ export function setCloudMediaClientFactoryForTesting(
     ((runtime) => createElizaCloudClient(runtime) as CloudMediaClient);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -113,9 +117,42 @@ async function retryMediaWarming<T>(
         await new Promise((r) => setTimeout(r, 1500));
         continue;
       }
-      throw err;
+      throw withCloudFailureDetails(err);
     }
   }
+}
+
+/**
+ * Recompose a terminal cloud media failure so its message carries the
+ * server-attached diagnosis. The cloud's media routes put the actionable
+ * context (provider, model, upstream status/code, redacted upstream message)
+ * in the error body's `details` while the thrown message stays generic — live
+ * matrix sweep 2026-08-16: four video turns failed as bare "Video provider
+ * request failed" with the failing provider unknowable from any trajectory.
+ * The details are server-side redacted and bounded, so surfacing them is
+ * safe; a non-CloudApiError shape passes through untouched.
+ */
+function withCloudFailureDetails(err: unknown): unknown {
+  if (!(err instanceof Error)) return err;
+  const body = (err as { errorBody?: unknown }).errorBody;
+  if (!isRecord(body)) return err;
+  const details = body.details;
+  if (!isRecord(details)) return err;
+  const parts: string[] = [];
+  const provider = stringValue(details.provider);
+  const model = stringValue(details.model);
+  if (provider) parts.push(`provider=${provider}`);
+  if (model) parts.push(`model=${model}`);
+  const status = numberValue(details.upstreamStatus);
+  const code = stringValue(details.upstreamCode);
+  if (status !== undefined || code) {
+    parts.push(`upstream=${status ?? "?"}${code ? `/${code}` : ""}`);
+  }
+  const upstreamMessage = stringValue(details.upstreamMessage);
+  if (upstreamMessage) parts.push(upstreamMessage);
+  if (parts.length === 0) return err;
+  err.message = `${err.message} (${parts.join(" ")})`;
+  return err;
 }
 
 export async function handleVideoGeneration(
