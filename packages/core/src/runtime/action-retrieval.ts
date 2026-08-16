@@ -296,6 +296,17 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	TRIP_SAVINGS_PLAN: ["OWNER_GOALS"],
 	SEARCH_CHATS: ["MESSAGE"],
 	SEARCH_CHAT: ["MESSAGE"],
+	// Bare "SEARCH" is a routine Stage-1 invention for open-web asks ("latest
+	// merged PR on develop, search for it" emitted candidate SEARCH, live
+	// trajectory tj-df4f61ac001a27). It resolved to nothing, the candidate
+	// narrow kept only the arbitrary rank-1 parent of a saturated tie, and the
+	// planner ran CALENDAR_BULK_RESCHEDULE for a web query. Genuinely ambiguous
+	// with message search, so hint both owners and let the planner arbitrate
+	// from the selected contexts (#9950 pattern).
+	SEARCH: ["WEB_SEARCH", "MESSAGE"],
+	SEARCH_ONLINE: ["WEB_SEARCH"],
+	INTERNET_SEARCH: ["WEB_SEARCH"],
+	GOOGLE_SEARCH: ["WEB_SEARCH"],
 	FIND_MESSAGES: ["MESSAGE"],
 	FIND_MESSAGE: ["MESSAGE"],
 	ARRANGE_VIEWS: ["VIEWS"],

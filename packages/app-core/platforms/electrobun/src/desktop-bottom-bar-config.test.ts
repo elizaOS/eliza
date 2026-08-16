@@ -123,11 +123,13 @@ describe("desktop bottom-bar config", () => {
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: false,
+        nativeShadow: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: true,
+        nativeShadow: false,
       });
     });
 
@@ -142,6 +144,7 @@ describe("desktop bottom-bar config", () => {
         mode: "default",
         titleBarStyle: "default",
         transparent: false,
+        nativeShadow: true,
       });
       expect(
         resolveDesktopShellWindowPresentation(
@@ -153,6 +156,7 @@ describe("desktop bottom-bar config", () => {
         mode: "default",
         titleBarStyle: "hiddenInset",
         transparent: false,
+        nativeShadow: true,
       });
     });
 
@@ -170,6 +174,7 @@ describe("desktop bottom-bar config", () => {
         mode: "kiosk",
         titleBarStyle: "hidden",
         transparent: false,
+        nativeShadow: false,
       });
     });
   });

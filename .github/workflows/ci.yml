@@ -477,6 +477,15 @@ jobs:
           retention-days: 3
           if-no-files-found: warn
 
+  # Exact-head device-bundle proof (#19640, #14336). Opt-in only: a PR carries
+  # the heavy Android-emulator and iOS-simulator bundle producers exactly when
+  # it wears the `ci:device` label at event time. Intentionally absent from
+  # `required` — an unlabeled PR skips this and the merge gate is unaffected.
+  device:
+    name: Device bundles
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:device')
+    uses: ./.github/workflows/device-e2e.yml
+
   secrets:
     # Preserve the stable check context consumed by branch protection and the
     # security advisory gate while canonical CI owns PR dispatch.

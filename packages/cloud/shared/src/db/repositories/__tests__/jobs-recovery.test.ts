@@ -70,6 +70,7 @@ async function seedJob(params: {
   id: string;
   maxAttempts: number;
   attempts?: number;
+  executionInterruptions?: number;
   type?: string;
   data?: Record<string, unknown>;
   dataStorage?: string;
@@ -93,6 +94,7 @@ async function seedJob(params: {
     result_storage: params.resultStorage ?? "inline",
     attempts: params.attempts ?? 0,
     max_attempts: params.maxAttempts,
+    execution_interruptions: params.executionInterruptions ?? 0,
     organization_id: params.organizationId ?? ORG_ID,
     user_id: params.userId ?? ACTOR_ID,
     agent_id: params.agentId ?? AGENT_ID,
@@ -196,6 +198,7 @@ beforeAll(async () => {
 				error_key text,
 				attempts integer NOT NULL DEFAULT 0,
 				max_attempts integer NOT NULL DEFAULT 3,
+				execution_interruptions integer NOT NULL DEFAULT 0,
 				organization_id uuid NOT NULL,
 				user_id uuid,
 				api_key_id uuid,
@@ -500,6 +503,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
         id: jobs.id,
         status: jobs.status,
         attempts: jobs.attempts,
+        execution_interruptions: jobs.execution_interruptions,
         error: jobs.error,
       })
       .from(jobs)
@@ -509,13 +513,91 @@ describe("jobsRepository.recoverStaleJobs", () => {
     const current = rows.find((row) => row.id === currentJobId);
     expect(interrupted).toMatchObject({
       status: "pending",
-      attempts: 1,
-      error: "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
+      attempts: 0,
+      execution_interruptions: 1,
+      error: "Job interrupted by worker restart - recovered for retry (interruption 1/5)",
     });
     expect(current).toMatchObject({
       status: "in_progress",
       attempts: 0,
+      execution_interruptions: 0,
       error: null,
+    });
+  });
+
+  test("interruption bound is enforced from the database column for inline and R2-offloaded payloads", async () => {
+    expect(pgliteReady).toBe(true);
+    const inlineJobId = "00000000-0000-4000-8000-000000190855";
+    const offloadedJobId = "00000000-0000-4000-8000-000000190856";
+    const dataKey = "jobs/data/offloaded-interruption.json";
+    setRuntimeR2Bucket(
+      memoryBucket(new Map([[dataKey, JSON.stringify({ payload: "x".repeat(64) })]])),
+    );
+    try {
+      await seedJob({ id: inlineJobId, maxAttempts: 3, executionInterruptions: 5 });
+      await seedJob({
+        id: offloadedJobId,
+        maxAttempts: 3,
+        executionInterruptions: 5,
+        data: {},
+        dataStorage: "r2",
+        dataKey,
+      });
+
+      const recovered = await repo.recoverInProgressJobsStartedBefore({
+        type: "agent_message",
+        startedBefore: new Date(),
+      });
+
+      expect(recovered).toMatchObject({ retried: 0, permanentlyFailed: 2, failures: [] });
+      const rows = await dbWrite.select().from(jobs).orderBy(jobs.id);
+      expect(rows).toHaveLength(2);
+      for (const row of rows) {
+        expect(row).toMatchObject({
+          status: "failed",
+          attempts: 0,
+          execution_interruptions: 6,
+          error: "Job interrupted by worker restart 6 times - interruption bound reached",
+        });
+      }
+      expect(rows.find((row) => row.id === offloadedJobId)).toMatchObject({
+        data_storage: "r2",
+        data_key: dataKey,
+      });
+    } finally {
+      setRuntimeR2Bucket(null);
+    }
+  });
+
+  test("concurrent recoveries of one interruption snapshot increment the counter exactly once", async () => {
+    expect(pgliteReady).toBe(true);
+    const jobId = "00000000-0000-4000-8000-000000190857";
+    await seedJob({ id: jobId, maxAttempts: 3 });
+
+    // Both sweeps read the same in_progress snapshot before either CAS runs;
+    // the interruption-count equality in the recovery CAS must make exactly
+    // one writer win, because the restart arm no longer moves `attempts`.
+    const [first, second] = await Promise.all([
+      repo.recoverInProgressJobsStartedBefore({
+        type: "agent_message",
+        startedBefore: new Date(),
+      }),
+      repo.recoverInProgressJobsStartedBefore({
+        type: "agent_message",
+        startedBefore: new Date(),
+      }),
+    ]);
+
+    expect(first.failures).toHaveLength(0);
+    expect(second.failures).toHaveLength(0);
+    expect(first.retried + second.retried).toBe(1);
+    expect(first.unchanged + second.unchanged).toBe(1);
+    const [row] = await dbWrite.select().from(jobs).where(eq(jobs.id, jobId));
+    expect(row).toMatchObject({
+      status: "pending",
+      attempts: 0,
+      execution_interruptions: 1,
+      error: "Job interrupted by worker restart - recovered for retry (interruption 1/5)",
     });
   });
 
@@ -535,6 +617,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
       id: preCutoverJobId,
       type: "agent_admin_canary_image",
       maxAttempts: 1,
+      executionInterruptions: 5,
     });
 
     const recovered = await repo.recoverInProgressJobsStartedBefore({
@@ -547,14 +630,16 @@ describe("jobsRepository.recoverStaleJobs", () => {
     expect(rows.find((row) => row.id === committedJobId)).toMatchObject({
       status: "pending",
       attempts: 0,
+      execution_interruptions: 0,
       result: audit,
       error: expect.stringContaining("without consuming a terminal attempt"),
     });
     expect(rows.find((row) => row.id === preCutoverJobId)).toMatchObject({
       status: "failed",
-      attempts: 1,
+      attempts: 0,
+      execution_interruptions: 6,
       result: null,
-      error: expect.stringContaining("max attempts reached"),
+      error: expect.stringContaining("interruption bound reached"),
     });
   });
 
@@ -823,7 +908,6 @@ describe("jobsRepository.recoverStaleJobs", () => {
     const startupRecovered = await repo.recoverInProgressJobsStartedBefore({
       type: "agent_admin_canary_image",
       startedBefore: new Date(Date.now() + 60_000),
-      maxAttempts: 1,
     });
 
     expect(incremented).toBeUndefined();
@@ -1097,7 +1181,12 @@ describe("jobsRepository.recoverStaleJobs", () => {
       expect(pgliteReady).toBe(true);
       const failing = "00000000-0000-4000-8000-000000180906";
       const retrying = "00000000-0000-4000-8000-000000180907";
-      await seedJob({ id: failing, maxAttempts: 1, type: "agent_delete" });
+      await seedJob({
+        id: failing,
+        maxAttempts: 1,
+        type: "agent_delete",
+        executionInterruptions: 5,
+      });
       await seedJob({ id: retrying, maxAttempts: 3, type: "agent_delete" });
 
       const recovered = await repo.recoverInProgressJobsStartedBefore({
@@ -1118,8 +1207,19 @@ describe("jobsRepository.recoverStaleJobs", () => {
     async () => {
       const poisoned = "00000000-0000-4000-8000-000000180910";
       const later = "00000000-0000-4000-8000-000000180911";
-      await seedJob({ id: poisoned, maxAttempts: 1, type: jobTypes.AGENT_DELETE, data: {} });
-      await seedJob({ id: later, maxAttempts: 1, type: jobTypes.AGENT_LOGS });
+      await seedJob({
+        id: poisoned,
+        maxAttempts: 1,
+        type: jobTypes.AGENT_DELETE,
+        data: {},
+        executionInterruptions: 5,
+      });
+      await seedJob({
+        id: later,
+        maxAttempts: 1,
+        type: jobTypes.AGENT_LOGS,
+        executionInterruptions: 5,
+      });
       const service = new ProvisioningJobServiceCtor();
 
       let thrown: unknown;
@@ -1142,8 +1242,13 @@ describe("jobsRepository.recoverStaleJobs", () => {
       expect(await repo.findByIdForWrite(poisoned)).toMatchObject({
         status: "in_progress",
         attempts: 0,
+        execution_interruptions: 5,
       });
-      expect(await repo.findByIdForWrite(later)).toMatchObject({ status: "failed", attempts: 1 });
+      expect(await repo.findByIdForWrite(later)).toMatchObject({
+        status: "failed",
+        attempts: 0,
+        execution_interruptions: 6,
+      });
     },
     PGLITE_TIMEOUT,
   );
@@ -1198,6 +1303,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
         maxAttempts: 1,
         type: jobTypes.APP_DEPLOY,
         data: { appId },
+        executionInterruptions: 5,
       });
       const service = new ProvisioningJobServiceCtor();
 
@@ -1289,6 +1395,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
         maxAttempts: 1,
         type: jobTypes.APP_DEPLOY,
         data: { appId },
+        executionInterruptions: 5,
       });
 
       const staleApp = { id: appId, slug, api_key_id: apiKeyId, deployment_status: "building" };

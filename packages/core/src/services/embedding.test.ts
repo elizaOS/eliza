@@ -92,6 +92,43 @@ describe("EmbeddingGenerationService drain config", () => {
 		await service.stop();
 	});
 
+	test("initializes successfully when only TEXT_EMBEDDING_BATCH is registered", async () => {
+		const models: Record<string, unknown> = {
+			[ModelType.TEXT_EMBEDDING_BATCH]: async () => [[0.1]],
+		};
+		const runtime = {
+			...makeRuntime({ batch: false }),
+			getModel: (type: string) => models[type],
+		} as unknown as IAgentRuntime;
+
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+
+		// biome-ignore lint/suspicious/noExplicitAny: inspect private isDisabled state
+		expect((service as any).isDisabled).toBe(false);
+		// biome-ignore lint/suspicious/noExplicitAny: inspect private queue state
+		expect((service as any).batchQueue).toBeTruthy();
+
+		await service.stop();
+	});
+
+	test("disables itself when neither TEXT_EMBEDDING nor TEXT_EMBEDDING_BATCH is registered", async () => {
+		const runtime = {
+			...makeRuntime({ batch: false }),
+			getModel: () => undefined,
+		} as unknown as IAgentRuntime;
+
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+
+		// biome-ignore lint/suspicious/noExplicitAny: inspect private isDisabled state
+		expect((service as any).isDisabled).toBe(true);
+		// biome-ignore lint/suspicious/noExplicitAny: inspect private queue state
+		expect((service as any).batchQueue).toBeNull();
+	});
+
 	test("without a batch handler: tight 100ms per-item drain, no processBatch", async () => {
 		const runtime = makeRuntime({ batch: false });
 		const service = (await EmbeddingGenerationService.start(

@@ -176,6 +176,19 @@ describe("GET /api/channel-topics/search (#8927)", () => {
 		expect(searchTopics).toHaveBeenCalledWith("stripe", 20);
 	});
 
+	it("clamps an oversized limit before calling the service", async () => {
+		const searchTopics = vi.fn(() => HITS);
+		const res = makeRes();
+		await CHANNEL_TOPICS_SEARCH_ROUTE.handler?.(
+			{ query: { q: "stripe", limit: "999999" } } as never,
+			res as never,
+			runtimeWith({ searchTopics }),
+		);
+
+		expect(res.code).toBe(200);
+		expect(searchTopics).toHaveBeenCalledWith("stripe", 100);
+	});
+
 	it("returns 400 when q is missing", async () => {
 		const res = makeRes();
 		await CHANNEL_TOPICS_SEARCH_ROUTE.handler?.(

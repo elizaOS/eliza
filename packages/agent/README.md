@@ -5,7 +5,7 @@ Standalone elizaOS agent and HTTP backend. Plugin routes can be registered on `A
 ## Documentation
 
 - **Paid HTTP routes (webhooks, plugins):** see the docs site section on [webhooks and routes](https://docs.elizaos.ai/plugins/webhooks-and-routes).
-- **x402 micropayments on plugin routes:** see [x402 paid plugin routes](https://docs.elizaos.ai/plugins/x402-paid-routes) for protocol alignment and env vars.
+- **x402 micropayments on plugin routes:** configured through the runtime's `x402` config block and the `X402_API_KEY` environment variable (see `packages/agent/src/runtime/eliza.ts`).
 
 ## Local development
 

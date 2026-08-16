@@ -20,11 +20,13 @@ import {
   buildIosXcuitestShardPlan,
   buildOnlyTestingIdentifier,
   buildPlistXml,
+  buildRunnerCodesignPlan,
   buildSimctlListappsArgs,
   CONSOLE_SIGTRAP_SIGNATURE,
   classifyCodesignPreflight,
   classifyConsoleExit,
   classifyIsolatedReruns,
+  classifyRunnerSigningMode,
   classifyXcresultSummaryForGate,
   DEFAULT_IOS_XCUITEST_SHARDS,
   deriveSigningEntitlements,
@@ -405,6 +407,86 @@ describe("buildCodesignPlan", () => {
     expect(
       plan.slice(0, 3).every((step) => step.entitlementsPath === null),
     ).toBe(true);
+  });
+});
+
+describe("buildRunnerCodesignPlan (#13567)", () => {
+  it("orders frameworks → dylibs → xctest bundles → runner, entitlements only on the runner", () => {
+    const plan = buildRunnerCodesignPlan({
+      runnerPath: "/dd/AppUITests-Runner.app",
+      frameworks: [
+        "/dd/AppUITests-Runner.app/Frameworks/XCTAutomationSupport.framework",
+        "/dd/AppUITests-Runner.app/Frameworks/XCTest.framework",
+      ],
+      dylibs: ["/dd/AppUITests-Runner.app/libXCTestSwiftSupport.dylib"],
+      xctestBundles: ["/dd/AppUITests-Runner.app/PlugIns/AppUITests.xctest"],
+      entitlementsPath: "/out/ent-xctrunner.plist",
+    });
+    expect(plan.map((step) => step.path)).toEqual([
+      "/dd/AppUITests-Runner.app/Frameworks/XCTAutomationSupport.framework",
+      "/dd/AppUITests-Runner.app/Frameworks/XCTest.framework",
+      "/dd/AppUITests-Runner.app/libXCTestSwiftSupport.dylib",
+      "/dd/AppUITests-Runner.app/PlugIns/AppUITests.xctest",
+      "/dd/AppUITests-Runner.app",
+    ]);
+    expect(plan.at(-1).entitlementsPath).toBe("/out/ent-xctrunner.plist");
+    expect(
+      plan.slice(0, -1).every((step) => step.entitlementsPath === null),
+    ).toBe(true);
+  });
+
+  it("degenerates to runner-only when the bundle has no nested code", () => {
+    const plan = buildRunnerCodesignPlan({
+      runnerPath: "/dd/AppUITests-Runner.app",
+      frameworks: [],
+      dylibs: [],
+      xctestBundles: [],
+      entitlementsPath: "/out/ent.plist",
+    });
+    expect(plan).toEqual([
+      { path: "/dd/AppUITests-Runner.app", entitlementsPath: "/out/ent.plist" },
+    ]);
+  });
+});
+
+describe("classifyRunnerSigningMode (#13567)", () => {
+  it("grafts by default on the device lane when the runner is unsigned", () => {
+    const mode = classifyRunnerSigningMode({
+      platform: "device",
+      xcodeSigning: false,
+      runnerSigned: false,
+    });
+    expect(mode.graft).toBe(true);
+  });
+
+  it("does not graft on the simulator lane", () => {
+    const mode = classifyRunnerSigningMode({
+      platform: "sim",
+      xcodeSigning: false,
+      runnerSigned: false,
+    });
+    expect(mode.graft).toBe(false);
+    expect(mode.reason).toMatch(/simulator/i);
+  });
+
+  it("--xcode-signing keeps the -allowProvisioningUpdates fallback", () => {
+    const mode = classifyRunnerSigningMode({
+      platform: "device",
+      xcodeSigning: true,
+      runnerSigned: false,
+    });
+    expect(mode.graft).toBe(false);
+    expect(mode.reason).toMatch(/-allowProvisioningUpdates/);
+  });
+
+  it("skips the graft when a --skip-build runner is already signed", () => {
+    const mode = classifyRunnerSigningMode({
+      platform: "device",
+      xcodeSigning: false,
+      runnerSigned: true,
+    });
+    expect(mode.graft).toBe(false);
+    expect(mode.reason).toMatch(/already/i);
   });
 });
 

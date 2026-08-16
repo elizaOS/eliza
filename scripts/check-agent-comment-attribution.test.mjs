@@ -33,6 +33,40 @@ Attribution status: self-reported
 <!-- eliza-computer-attribution:v1 ${JSON.stringify(marker)} -->`;
 }
 
+function receiptFooter(overrides = {}, markerOverrides = {}) {
+  const values = {
+    provider: "Anthropic",
+    providerSlug: "anthropic",
+    model: "claude-opus-5",
+    client: "Claude Code",
+    lane: "qa-agent",
+    skillRevision:
+      "elizaOS/army@9259107132edeab02d9e47dbb7ce383721bada77:skills/contribute-to-eliza",
+    ...overrides,
+  };
+  const marker = {
+    provider: values.providerSlug,
+    model: values.model,
+    client: values.client,
+    skill_revision: values.skillRevision,
+    run: {
+      schema_version: "1",
+      run_id: "0f2c",
+      usage: { total_tokens: 1234 },
+      signature_algorithm: "ed25519",
+      device_signature: "abc123",
+    },
+    ...markerOverrides,
+  };
+  return `AI provider/model: ${values.provider} / ${values.model}
+Client / agent tooling: ${values.client}
+Contribution skill revision: ${values.skillRevision}
+Compute receipt: 1234 project-attributed tokens (exact; device-signed, locally reported)
+Attribution status: self-reported
+— [${values.lane}]
+<!-- elizaos-contribution-attribution:v2 ${JSON.stringify(marker)} -->`;
+}
+
 function workflowMachineFooter(path) {
   const workflow = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
   const matches = [
@@ -354,6 +388,77 @@ ${machineFooter()}`;
     );
   });
 
+  it("accepts the skill's v2 run-receipt footer (#18457)", () => {
+    const result = evaluateCommentAttribution(
+      `CLAIMING: verified work\n\n${receiptFooter()}`,
+    );
+    assert.equal(
+      result.ok,
+      true,
+      result.findings.map((finding) => finding.message).join("; "),
+    );
+    assert.equal(result.attribution.kind, "machine");
+    assert.equal(result.attribution.model, "claude-opus-5");
+  });
+
+  it("rejects malformed v2 markers, extra fields, and duplicate markers", () => {
+    const missingRun = evaluateCommentAttribution(
+      receiptFooter({}, { run: undefined }),
+      { required: true },
+    );
+    assert.equal(missingRun.ok, false);
+    assert.ok(
+      missingRun.findings.some((finding) => finding.id === "marker-fields"),
+    );
+
+    const scalarRun = evaluateCommentAttribution(
+      receiptFooter({}, { run: "signed" }),
+      { required: true },
+    );
+    assert.equal(scalarRun.ok, false);
+    assert.ok(
+      scalarRun.findings.some((finding) => finding.id === "marker-run"),
+    );
+
+    const extraField = evaluateCommentAttribution(
+      receiptFooter({}, { session_id: "private" }),
+      { required: true },
+    );
+    assert.equal(extraField.ok, false);
+    assert.ok(
+      extraField.findings.some((finding) => finding.id === "marker-fields"),
+    );
+
+    const mismatchedProvider = evaluateCommentAttribution(
+      receiptFooter({ providerSlug: "openai" }),
+      { required: true },
+    );
+    assert.equal(mismatchedProvider.ok, false);
+    assert.ok(
+      mismatchedProvider.findings.some(
+        (finding) => finding.id === "marker-provider",
+      ),
+    );
+
+    const bothMarkers = evaluateCommentAttribution(
+      `${machineFooter()}\n${receiptFooter()}`,
+      { required: true },
+    );
+    assert.equal(bothMarkers.ok, false);
+    assert.ok(bothMarkers.findings.some((finding) => finding.id === "marker"));
+  });
+
+  it("ignores quoted and fenced v2 markers", () => {
+    const quoted = evaluateCommentAttribution(
+      '> <!-- elizaos-contribution-attribution:v2 {"provider":"fake"} -->',
+    );
+    assert.equal(quoted.skipped, true);
+    const fenced = evaluateCommentAttribution(
+      '```text\n<!-- elizaos-contribution-attribution:v2 {"provider":"fake"} -->\n```',
+    );
+    assert.equal(fenced.skipped, true);
+  });
+
   it("rejects incomplete or conflicting human-only declarations", () => {
     assert.equal(
       evaluateCommentAttribution("CLAIMING: work\n\nhuman-only").ok,
@@ -442,5 +547,4 @@ ${machineFooter()}`;
       );
     }
   });
-
 });

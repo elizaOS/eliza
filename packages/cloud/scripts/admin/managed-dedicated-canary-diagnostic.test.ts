@@ -89,6 +89,7 @@ function failedDeleteInput(): Record<string, unknown> {
         },
         attempts: 3,
         maxAttempts: 3,
+        executionInterruptions: 0,
         resultStorage: "inline",
         errorStorage: "inline",
         scheduledFor: "2026-07-26T23:10:30.000Z",
@@ -157,7 +158,7 @@ describe("managed dedicated canary diagnostic", () => {
     );
 
     expect(evidence).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       targetCount: 1,
       sandbox: {
         status: "deletion_failed",
@@ -171,6 +172,7 @@ describe("managed dedicated canary diagnostic", () => {
           status: "failed",
           attempts: 3,
           maxAttempts: 3,
+          executionInterruptions: 0,
           containerStopped: false,
           rowDeleted: false,
           errorCode: "sandbox_stop_failed",
@@ -304,7 +306,7 @@ describe("managed dedicated canary diagnostic", () => {
       );
 
       expect(evidence).toMatchObject({
-        schemaVersion: 3,
+        schemaVersion: 4,
         sandbox: {
           errorCode: "none",
         },
@@ -759,7 +761,7 @@ describe("managed dedicated canary diagnostic", () => {
     const evidence = JSON.parse(canonical);
 
     expect(evidence).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       sandbox: {
         status: "deletion_failed",
         errorCode: "unclassified",
@@ -852,10 +854,13 @@ describe("managed dedicated canary diagnostic", () => {
   test("correlates a retained failure behind a strict terminal recovery without an active job", () => {
     const cause = "opaque retained source failure";
     const input = boundedHistoryInput([
-      "Job interrupted by worker restart 3 times - max attempts reached",
+      "Job interrupted by worker restart 3 times - interruption bound reached",
       cause,
     ]);
     const agent = input.agent as Record<string, unknown>;
+    (
+      (input.jobs as Record<string, unknown>[])[0] as Record<string, unknown>
+    ).executionInterruptions = 3;
     agent.errorMessage = `Deletion permanently failed after 3 attempts: ${cause}`;
     agent.errorCount = 2;
 
@@ -885,16 +890,22 @@ describe("managed dedicated canary diagnostic", () => {
   test.each([
     ["Job timed out 3 times - max attempts reached", "timeout"],
     [
-      "Job interrupted by worker restart 3 times - max attempts reached",
+      "Job interrupted by worker restart 3 times - interruption bound reached",
       "worker_restart_interrupted",
     ],
   ])(
     "accepts a recovery-generated terminal job as wrapper source",
     (cause, code) => {
-      const evidence = sanitizeManagedDedicatedCanaryDiagnostic(
-        correlatedPermanentDeleteInput(cause),
-        SUFFIX,
-      );
+      const input = correlatedPermanentDeleteInput(cause);
+      if (code === "worker_restart_interrupted") {
+        (
+          (input.jobs as Record<string, unknown>[])[0] as Record<
+            string,
+            unknown
+          >
+        ).executionInterruptions = 3;
+      }
+      const evidence = sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX);
       expect(evidence.sandbox.errorCode).toBe(code as never);
       expect(evidence.jobs[0]).toMatchObject({
         status: "failed",
@@ -908,7 +919,7 @@ describe("managed dedicated canary diagnostic", () => {
   // stay a plain raw-equality check.
   test.each([
     "Job timed out 2 times - max attempts reached",
-    "Job interrupted by worker restart 4 times - max attempts reached",
+    "Job interrupted by worker restart 4 times - interruption bound reached",
   ])(
     "rejects a terminal wrapper source whose attempt count disagrees",
     (cause) => {
@@ -1330,13 +1341,14 @@ describe("managed dedicated canary diagnostic", () => {
     const agent = input.agent as Record<string, unknown>;
     const [job] = input.jobs as Record<string, unknown>[];
     const error =
-      "Job interrupted by worker restart 3 times - max attempts reached";
+      "Job interrupted by worker restart 6 times - interruption bound reached";
     agent.status = "deletion_pending";
     agent.errorMessage = null;
     agent.errorCount = 0;
     job.error = error;
     job.result = null;
     job.completedAt = null;
+    job.executionInterruptions = 6;
 
     const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
       JSON.stringify(input),
@@ -1352,13 +1364,14 @@ describe("managed dedicated canary diagnostic", () => {
       status: "failed",
       attempts: 3,
       maxAttempts: 3,
+      executionInterruptions: 6,
       errorCode: "worker_restart_interrupted",
       resultErrorCode: "none",
       containerStopped: null,
       rowDeleted: null,
     });
     expect(canonical).not.toContain("worker restart");
-    expect(canonical).not.toContain("max attempts");
+    expect(canonical).not.toContain("interruption bound");
   });
 
   test("classifies a terminal timeout without publishing raw text", () => {
@@ -1396,9 +1409,12 @@ describe("managed dedicated canary diagnostic", () => {
   });
 
   test.each([
-    "Job interrupted by worker restart 0 times - max attempts reached",
-    "Job interrupted by worker restart 1000 times - max attempts reached",
-    "Job interrupted by worker restart 3 times - max attempts reached trailing",
+    "Job interrupted by worker restart 0 times - interruption bound reached",
+    "Job interrupted by worker restart 1000 times - interruption bound reached",
+    "Job interrupted by worker restart 3 times - interruption bound reached trailing",
+    // Diagnosis is forward-only (#17473): the retired attempts-based spelling
+    // fails closed instead of classifying.
+    "Job interrupted by worker restart 3 times - max attempts reached",
   ])("rejects a noncanonical worker-restart message", (error) => {
     const input = failedDeleteInput();
     const agent = input.agent as Record<string, unknown>;
@@ -1413,7 +1429,9 @@ describe("managed dedicated canary diagnostic", () => {
 
   test.each([
     [
-      "Job interrupted by worker restart 1 times - max attempts reached",
+      // Restart terminals pin to executionInterruptions (0 in this fixture),
+      // never to the attempt budget.
+      "Job interrupted by worker restart 1 times - interruption bound reached",
       3,
       3,
       "failed",
@@ -1487,7 +1505,8 @@ describe("managed dedicated canary diagnostic", () => {
     agent.errorMessage = null;
     agent.errorCount = 0;
     job.error =
-      "Job interrupted by worker restart 3 times - max attempts reached";
+      "Job interrupted by worker restart 3 times - interruption bound reached";
+    job.executionInterruptions = 3;
     job.result = result;
     job.completedAt = null;
 
@@ -1499,7 +1518,7 @@ describe("managed dedicated canary diagnostic", () => {
   test.each([
     [
       "worker_restart_recovered",
-      "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
+      "Job interrupted by worker restart - recovered for retry (interruption 1/5)",
     ],
     ["timeout_recovered", "Job timed out - recovered for retry (attempt 1/3)"],
   ])(
@@ -1516,6 +1535,7 @@ describe("managed dedicated canary diagnostic", () => {
         job.error = message;
         job.attempts = 1;
         job.maxAttempts = 3;
+        job.executionInterruptions = 1;
         job.startedAt = "2026-07-26T23:10:31.000Z";
         job.completedAt = null;
         job.result = null;
@@ -1547,8 +1567,9 @@ describe("managed dedicated canary diagnostic", () => {
     agent.errorCount = 0;
     job.status = "pending";
     job.error =
-      "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
+      "Job interrupted by worker restart - recovered for retry (interruption 1/5)";
     job.attempts = 1;
+    job.executionInterruptions = 1;
     job.completedAt = null;
 
     expect(
@@ -1565,29 +1586,22 @@ describe("managed dedicated canary diagnostic", () => {
 
   test.each([
     [
-      "mismatched attempt",
-      "Job interrupted by worker restart - recovered for retry (attempt 2/3)",
+      "mismatched interruption",
+      "Job interrupted by worker restart - recovered for retry (interruption 2/5)",
       1,
       3,
       "recovery counters disagree",
     ],
     [
-      "mismatched maximum",
-      "Job interrupted by worker restart - recovered for retry (attempt 1/4)",
-      1,
-      3,
-      "recovery counters disagree",
-    ],
-    [
-      "maxed retry",
-      "Job interrupted by worker restart - recovered for retry (attempt 3/3)",
+      "interruption above its bound",
+      "Job interrupted by worker restart - recovered for retry (interruption 3/2)",
       3,
       3,
       "recovery counters disagree",
     ],
     [
       "failed status",
-      "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
+      "Job interrupted by worker restart - recovered for retry (interruption 1/5)",
       1,
       3,
       "recovery status is invalid",
@@ -1626,6 +1640,7 @@ describe("managed dedicated canary diagnostic", () => {
       job.result = null;
       job.attempts = attempts;
       job.maxAttempts = maxAttempts;
+      job.executionInterruptions = attempts;
       if (_name !== "failed status" && _name !== "timeout failed status") {
         job.status = "pending";
       }
@@ -1635,6 +1650,33 @@ describe("managed dedicated canary diagnostic", () => {
       ).toThrow(expectedError);
     },
   );
+
+  test("accepts a restart recovery breadcrumb at the interruption bound", () => {
+    // Unlike the attempt budget, recovery at N === bound is legal: the sweep
+    // only terminates the job once the counter would exceed the bound.
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
+    job.status = "pending";
+    job.error =
+      "Job interrupted by worker restart - recovered for retry (interruption 5/5)";
+    job.result = null;
+    job.attempts = 1;
+    job.executionInterruptions = 5;
+    job.completedAt = null;
+
+    expect(
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX).jobs[0],
+    ).toMatchObject({
+      status: "pending",
+      executionInterruptions: 5,
+      recoveryCode: "worker_restart_recovered",
+      errorCode: "none",
+    });
+  });
 
   test.each([
     [
@@ -1674,7 +1716,8 @@ describe("managed dedicated canary diagnostic", () => {
     agent.errorCount = 0;
     job.status = status;
     job.error =
-      "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
+      "Job interrupted by worker restart - recovered for retry (interruption 1/5)";
+    job.executionInterruptions = 1;
     job.result =
       status === "completed"
         ? {
@@ -1693,9 +1736,12 @@ describe("managed dedicated canary diagnostic", () => {
   });
 
   test.each([
-    "Job interrupted by worker restart - recovered for retry (attempt 0/3)",
-    "Job interrupted by worker restart - recovered for retry (attempt 1/1000)",
-    "Job interrupted by worker restart - recovered for retry (attempt 1/3) trailing",
+    "Job interrupted by worker restart - recovered for retry (interruption 0/5)",
+    "Job interrupted by worker restart - recovered for retry (interruption 1/1000)",
+    "Job interrupted by worker restart - recovered for retry (interruption 1/5) trailing",
+    // Forward-only diagnosis (#17473): the retired attempts-based restart
+    // recovery spelling fails closed.
+    "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
     "Job timed out - recovered for retry (attempt 0/3)",
     "Job timed out - recovered for retry (attempt 1/1000)",
     "Job timed out - recovered for retry (attempt 1/3) trailing",
@@ -1839,7 +1885,8 @@ describe("managed dedicated canary diagnostic", () => {
     agent.errorCount = 0;
     job.status = "pending";
     job.error =
-      "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
+      "Job interrupted by worker restart - recovered for retry (interruption 1/5)";
+    job.executionInterruptions = 1;
     job.result = result;
     job.attempts = 1;
     job.completedAt = null;
@@ -1868,7 +1915,8 @@ describe("managed dedicated canary diagnostic", () => {
       agent.errorCount = 0;
       job.status = "pending";
       job.error =
-        "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
+        "Job interrupted by worker restart - recovered for retry (interruption 1/5)";
+      job.executionInterruptions = 1;
       job.result = {
         containerStopped: false,
         rowDeleted: false,
@@ -2016,5 +2064,4 @@ describe("managed dedicated canary diagnostic", () => {
       sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
     ).toThrow("newest-first");
   });
-
 });

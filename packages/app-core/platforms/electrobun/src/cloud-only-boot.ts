@@ -1,0 +1,45 @@
+/**
+ * Promotes a packaged cloud-only brand flag into the runtime env contract.
+ *
+ * Cloud-only consumer bundles are produced with `ELIZA_DESKTOP_CLOUD_ONLY=1`,
+ * which bakes `cloudOnly: true` into the shipped `brand-config.json` and drops
+ * the embedded runtime tree from the package. The packaged app launches with a
+ * clean env, so at boot the flag must be re-raised as the env vars every
+ * existing decision point already reads: `ELIZA_DESKTOP_CLOUD_ONLY` (the
+ * cloud-only renderer branding signal in `resolveDesktopRuntimeModeSignal`)
+ * and `ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT` (the runtime-mode resolver's
+ * `disabled` state — there is no runtime dist in the bundle to spawn). Env
+ * values an operator set explicitly always win; this only fills gaps.
+ */
+
+export interface CloudOnlyEnvHydration {
+  /** Env keys this call actually set (empty when nothing changed). */
+  applied: string[];
+}
+
+/**
+ * Raise the cloud-only env flags from the packaged brand config. Idempotent
+ * and non-destructive: keys already present in the env (even set to an
+ * explicit falsy opt-out) are left untouched.
+ */
+export function hydrateCloudOnlyEnv(
+  brandCloudOnly: boolean,
+  env: Record<string, string | undefined> = process.env as Record<
+    string,
+    string | undefined
+  >,
+): CloudOnlyEnvHydration {
+  if (!brandCloudOnly) {
+    return { applied: [] };
+  }
+  const applied: string[] = [];
+  if (env.ELIZA_DESKTOP_CLOUD_ONLY === undefined) {
+    env.ELIZA_DESKTOP_CLOUD_ONLY = "1";
+    applied.push("ELIZA_DESKTOP_CLOUD_ONLY");
+  }
+  if (env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT === undefined) {
+    env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT = "1";
+    applied.push("ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT");
+  }
+  return { applied };
+}

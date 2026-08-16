@@ -46,10 +46,12 @@ import {
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
 import { PagePanel } from "../composites/page-panel";
+import { ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useConfirm } from "../ui/confirm-dialog.hooks";
 import { Input } from "../ui/input";
+import { TooltipHint } from "../ui/tooltip";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
   type BrowserSwitcherTab,
@@ -2587,7 +2589,19 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   });
 
   const navNode = (
-    <div className="grid grid-cols-[minmax(0,1fr)_repeat(3,2.75rem)] items-center gap-1 px-1.5 py-1 sm:grid-cols-[minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] sm:gap-1.5 sm:px-2 sm:py-1.5 lg:gap-2 lg:px-3 lg:py-2">
+    <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_repeat(3,2.75rem)] items-center gap-1 px-1.5 py-1 md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-1.5 md:px-2 md:py-1.5 lg:gap-2 lg:px-3 lg:py-2">
+      <TooltipHint
+        content={t("common.backToLauncher", {
+          defaultValue: "Back to launcher",
+        })}
+      >
+        <ViewBackButton
+          label={t("common.backToLauncher", {
+            defaultValue: "Back to launcher",
+          })}
+          className="shrink-0"
+        />
+      </TooltipHint>
       {/* Folded tabs (#13596): one compact count control opens the switcher —
           no permanent tab strip. It names the active tab so the user always
           knows which page is live even with the rest folded away. */}
@@ -2713,7 +2727,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })}
         data-testid="browser-workspace-address-input"
         disabled={busyAction !== null || selectedTabIsInternal}
-        className="col-span-2 h-11 min-w-[10rem] flex-1 rounded-full border-transparent bg-card/70 px-4 text-sm text-txt shadow-inset sm:col-span-1"
+        className="col-span-2 h-11 min-w-[10rem] flex-1 rounded-full border-transparent bg-card/70 px-4 text-sm text-txt shadow-inset md:col-span-1"
       />
       <BrowserNavButton
         agentId="go"

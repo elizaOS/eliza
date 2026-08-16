@@ -1109,7 +1109,16 @@ async function resolveDefinitionForMutation(
   const normalizedOwnerText = normalizeTitle(ownerText);
   const explicitlyNamed = defs.filter((entry) => {
     const title = normalizeTitle(entry.definition.title);
-    return title.length > 0 && normalizedOwnerText.includes(title);
+    if (title.length === 0) return false;
+    const index = normalizedOwnerText.indexOf(title);
+    if (index < 0) return false;
+    // A title named inside a keep-style clause ("keep buy sandpaper",
+    // "don't delete X") is an exclusion, not a target — without this, the
+    // keep clause itself made the kept item an "explicitly named" candidate
+    // and forced a bogus disambiguation ask (or worse, on non-destructive
+    // ops, a wrong-target resolution).
+    const prefix = normalizedOwnerText.slice(Math.max(0, index - 32), index);
+    return !ENUMERATED_DELETE_KEEP_CUE_RE.test(prefix);
   });
   if (explicitlyNamed.length === 1) {
     return {
@@ -1618,6 +1627,13 @@ async function renderLifeActionReply(args: {
       "Never surface raw ISO timestamps unless the user used raw ISO timestamps.",
       "If this is a preview, make clear it is not saved yet and the user can confirm or change it naturally.",
       "If this is reply-only, do not pretend you saved or changed anything.",
+      // Live receipts behind the two rules below: a review turn reported
+      // "1/12 books done" for a goal that was never saved (the number came
+      // from chat history, not records), and a compound ask got a false
+      // "don't know your favorite color" from this renderer even though the
+      // assistant's own context knew it (the fact lives outside lifeops).
+      "Ground every factual claim — counts, progress numbers, item names, schedules, states — in the structured context provided for THIS reply. Never carry numbers or outcomes in from the conversation that the records here do not show; if the records show nothing, say the records show nothing.",
+      "Answer only about the user's tracked items (todos, reminders, goals, routines, habits, alarms). If the user's message also asked about something outside these records — a personal fact, general knowledge, another tool — leave that part unaddressed rather than answering or denying it; the assistant covers it separately.",
     ],
   });
   return rendered.trim().length > 0 ? rendered : naturalFallback;
