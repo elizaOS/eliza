@@ -30,5 +30,5 @@ export function mobileRendererRequiresFreshBuild({ platform } = {}) {
   if (typeof platform !== "string" || platform.length === 0) {
     throw new Error("mobileRendererRequiresFreshBuild: platform is required");
   }
-  return platform === ANDROID_CLOUD_DEBUG;
+  return platform === ANDROID_CLOUD_DEBUG || platform === "ios-local";
 }
