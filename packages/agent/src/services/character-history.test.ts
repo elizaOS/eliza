@@ -1,12 +1,10 @@
 /**
- * Pins the character-history limit guard against the valid range 1..100 with
- * fallback 20. Guards the NaN/Infinity leak where isNaN alone let Infinity
- * through as 100, and the truncation-old bundle where 0 leaked to 20 via
- * Math.trunc(limit)||20. Sibling: audit-log.ts toBoundedLimit uses
- * Number.isFinite + Math.max(1, trunc).
+ * Exercises character-history limit normalization through a deterministic
+ * runtime memory stub, including defaults, non-finite values, and range caps.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import { MemoryType } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   listCharacterHistory,
   MAX_CHARACTER_HISTORY_LIMIT,
@@ -58,7 +56,11 @@ describe("listCharacterHistory limit guard", () => {
   });
 
   it("falls back to 20 for NaN and non-finite (Infinity/-Infinity)", async () => {
-    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    for (const bad of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ]) {
       const { result, getMemories } = await probe(bad);
       expect(result, `limit=${String(bad)}`).toHaveLength(20);
       expect(getMemories).toHaveBeenCalledWith(
@@ -67,7 +69,7 @@ describe("listCharacterHistory limit guard", () => {
     }
   });
 
-  it("maps 0 to 1 (not the old bundle fallback 20) and clamps negatives to 1", async () => {
+  it("maps zero and negative values to the minimum of 1", async () => {
     for (const v of [0, -5, -1]) {
       const { result, getMemories } = await probe(v);
       expect(result, `limit=${v}`).toHaveLength(1);
@@ -96,7 +98,7 @@ describe("listCharacterHistory limit guard", () => {
     }
   });
 
-  it("sabotage: Infinity must not leak to 100 and 0 must not leak to 20", async () => {
+  it("keeps non-finite fallback distinct from maximum and minimum limits", async () => {
     const { result: inf } = await probe(Number.POSITIVE_INFINITY);
     expect(inf).toHaveLength(20);
     expect(inf).not.toHaveLength(100);
