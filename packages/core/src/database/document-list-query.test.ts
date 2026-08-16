@@ -6,9 +6,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { DocumentListQueryParams, Memory, UUID } from "../types";
 import { MemoryType } from "../types";
 import {
+	documentMutationSnapshotMatches,
+	isDocumentVisibleToRequester,
 	portableDocumentSearchTokens,
 	queryDocumentsInMemory,
 	queryDocumentsWithCapability,
+	readDocumentMutationSnapshot,
 } from "./document-list-query";
 import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 
@@ -237,5 +240,87 @@ describe("document-list capability contract", () => {
 			new Set(original.map((memory) => memory.id)),
 		);
 		expect(seen.map((memory) => memory.id)).not.toContain(inserted.id);
+	});
+
+	it("fences mutation snapshots on ingestion attempt and lifecycle state", () => {
+		const ingestionAttemptId = "00000000-0000-4000-8000-00000000feed" as UUID;
+		const pending = {
+			...document(10),
+			metadata: {
+				...document(10).metadata,
+				ingestionAttemptId,
+				ingestionState: "pending",
+			},
+		} as Memory;
+		const snapshot = readDocumentMutationSnapshot(pending);
+		expect(snapshot).toMatchObject({
+			ingestionAttemptId,
+			ingestionState: "pending",
+		});
+		if (!snapshot) throw new Error("expected a valid ingestion snapshot");
+		expect(documentMutationSnapshotMatches(pending, snapshot)).toBe(true);
+		expect(
+			documentMutationSnapshotMatches(
+				{
+					...pending,
+					metadata: {
+						...pending.metadata,
+						ingestionState: "failed",
+					} as unknown as Memory["metadata"],
+				},
+				snapshot,
+			),
+		).toBe(false);
+		expect(
+			readDocumentMutationSnapshot({
+				...pending,
+				metadata: {
+					...pending.metadata,
+					ingestionAttemptId: undefined,
+				} as unknown as Memory["metadata"],
+			}),
+		).toBeNull();
+	});
+
+	it("hides pending and failed ingestions from list visibility", () => {
+		const ingestionAttemptId = "00000000-0000-4000-8000-00000000feed" as UUID;
+		const ready = {
+			...document(11),
+			metadata: {
+				...document(11).metadata,
+				ingestionAttemptId,
+				ingestionState: "ready",
+			},
+		} as Memory;
+		const pending = {
+			...document(12),
+			metadata: {
+				...document(12).metadata,
+				ingestionAttemptId,
+				ingestionState: "pending",
+			},
+		} as Memory;
+		const failed = {
+			...document(13),
+			metadata: {
+				...document(13).metadata,
+				ingestionAttemptId,
+				ingestionState: "failed",
+			},
+		} as Memory;
+		const ownerParams = {
+			...params,
+			requesterRole: "OWNER" as const,
+			requesterRoomIds: [ROOM_ID],
+		};
+		expect(isDocumentVisibleToRequester(ready, ownerParams)).toBe(true);
+		expect(isDocumentVisibleToRequester(pending, ownerParams)).toBe(false);
+		expect(isDocumentVisibleToRequester(failed, ownerParams)).toBe(false);
+		expect(
+			queryDocumentsInMemory(
+				[ready, pending, failed],
+				ownerParams,
+			).documents.map((memory) => memory.id),
+		).toEqual([ready.id]);
 	});
 });

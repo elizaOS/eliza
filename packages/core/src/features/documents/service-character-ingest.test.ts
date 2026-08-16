@@ -1,5 +1,5 @@
 /**
- * Exercises character-document boot races and atomic pre-chunked ingestion.
+ * Exercises character-document boot races and attempt-fenced pre-chunked ingestion.
  * Timing seams use a mock runtime; persistence and embedding failures use a real
  * AgentRuntime, model registry, and in-memory adapter.
  */
@@ -108,51 +108,16 @@ describe("DocumentService character document ingestion boot races", () => {
 	});
 
 	test("reprocesses an existing content-id document stub when it has zero fragments", async () => {
-		const created: Array<{ memory: Memory; table: string }> = [];
-		const deleted: UUID[] = [];
-		let existingDocumentId: UUID | null = null;
-
-		const runtime = createMockRuntime({
-			getSetting: () => undefined,
-			redactSecrets: (text: string) => text,
-			getModel: (type: string) =>
-				type === ModelType.TEXT_EMBEDDING
-					? async () => embeddingFor("registered")
-					: undefined,
-			getMemoryById: async (id: UUID) => {
-				if (existingDocumentId === null) {
-					existingDocumentId = id;
-				}
-				if (id !== existingDocumentId || deleted.includes(id)) {
-					return null;
-				}
-				return {
-					id,
-					agentId: MOCK_AGENT_ID,
-					content: { text: "stale stub" },
-					metadata: { type: MemoryType.DOCUMENT, documentId: id },
-				} as Memory;
-			},
-			getMemories: async ({ tableName }) =>
-				tableName === DOCUMENT_FRAGMENTS_TABLE ? [] : [],
-			deleteMemory: async (id: UUID) => {
-				deleted.push(id);
-			},
-			createMemory: async (memory: Memory, table: string): Promise<UUID> => {
-				created.push({ memory, table });
-				return memory.id as UUID;
-			},
-			updateMemory: async () => true,
-			useModel: async (type: string, params: { text?: string }) => {
-				if (type !== ModelType.TEXT_EMBEDDING) {
-					throw new Error(`unexpected model ${type}`);
-				}
-				return embeddingFor(params.text ?? "");
-			},
-		});
+		const runtime = await createRealRuntime();
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async (_runtime, params: { text?: string }) =>
+				embeddingFor(params.text ?? ""),
+			"document-character-ingest-test",
+			1_000,
+		);
 		const service = new DocumentService(runtime);
-
-		const result = await service.addDocument({
+		const options = {
 			agentId: MOCK_AGENT_ID,
 			worldId: MOCK_AGENT_ID,
 			roomId: MOCK_AGENT_ID,
@@ -160,18 +125,41 @@ describe("DocumentService character document ingestion boot races", () => {
 			content: "A document that previously booted into a zero-fragment stub.",
 			contentType: "text/plain",
 			originalFilename: "boot-race.txt",
-		});
+		};
+		const existingDocumentId = generateContentBasedId(
+			options.content,
+			MOCK_AGENT_ID,
+			{
+				includeFilename: options.originalFilename,
+				contentType: options.contentType,
+				maxChars: 2_000,
+			},
+		) as UUID;
+		await runtime.createMemory(
+			{
+				id: existingDocumentId,
+				agentId: MOCK_AGENT_ID,
+				roomId: MOCK_AGENT_ID,
+				entityId: MOCK_AGENT_ID,
+				content: { text: "stale stub" },
+				metadata: { type: MemoryType.DOCUMENT, documentId: existingDocumentId },
+			},
+			DOCUMENTS_TABLE,
+		);
+
+		const result = await service.addDocument(options);
 
 		expect(existingDocumentId).toBe(result.clientDocumentId);
-		expect(deleted).toEqual([result.clientDocumentId]);
 		expect(result.fragmentCount).toBeGreaterThan(0);
-		expect(created.some((entry) => entry.table === DOCUMENTS_TABLE)).toBe(true);
 		expect(
-			created.some((entry) => entry.table === DOCUMENT_FRAGMENTS_TABLE),
-		).toBe(true);
+			(await runtime.getMemoryById(existingDocumentId))?.metadata,
+		).toMatchObject({ ingestionState: "ready" });
+		expect(
+			await getStoredMemories(runtime, DOCUMENT_FRAGMENTS_TABLE),
+		).not.toHaveLength(0);
 	});
 
-	test("persists a pre-chunked parent and all anchored fragments in one batch", async () => {
+	test("claims a pre-chunked parent before batching all anchored fragments", async () => {
 		const runtime = await createRealRuntime();
 		const createMemories = vi.spyOn(runtime, "createMemories");
 		const service = new DocumentService(runtime);
@@ -199,7 +187,7 @@ describe("DocumentService character document ingestion boot races", () => {
 
 		expect(result.fragmentCount).toBe(2);
 		expect(createMemories).toHaveBeenCalledTimes(1);
-		expect(createMemories.mock.calls[0]?.[0]).toHaveLength(3);
+		expect(createMemories.mock.calls[0]?.[0]).toHaveLength(2);
 		const documents = await getStoredMemories(runtime, DOCUMENTS_TABLE);
 		const fragments = await getStoredMemories(
 			runtime,

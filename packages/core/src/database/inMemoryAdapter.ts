@@ -878,9 +878,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (!documentMutationSnapshotMatches(existing, params.expected)) {
 			return { status: "conflict" };
 		}
-		if (!isDocumentVisibleToRequester(existing, params)) {
-			return { status: "not_found" };
-		}
 		if (!canRequesterMutateDocument(existing, params)) {
 			return { status: "forbidden" };
 		}
@@ -902,9 +899,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}
 		if (!documentMutationSnapshotMatches(existing, params.expected)) {
 			return { status: "conflict" };
-		}
-		if (!isDocumentVisibleToRequester(existing, params)) {
-			return { status: "not_found" };
 		}
 		if (!canRequesterMutateDocument(existing, params)) {
 			return { status: "forbidden" };
