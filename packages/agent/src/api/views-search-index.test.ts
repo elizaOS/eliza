@@ -16,7 +16,7 @@ describe("ViewSearchIndex search limits", () => {
     viewSearchIndex.clear();
   });
 
-  it("returns no results for non-positive or non-finite topK values", async () => {
+  it("returns no results for invalid topK values", async () => {
     for (let index = 0; index < 3; index += 1) {
       await viewSearchIndex.indexView(
         {
@@ -35,11 +35,51 @@ describe("ViewSearchIndex search limits", () => {
       );
     }
 
-    await expect(viewSearchIndex.search("query", runtime, -1)).resolves.toEqual(
-      [],
-    );
-    await expect(
-      viewSearchIndex.search("query", runtime, Number.POSITIVE_INFINITY),
-    ).resolves.toEqual([]);
+    for (const topK of [
+      0,
+      -1,
+      0.5,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+    ]) {
+      await expect(
+        viewSearchIndex.search("query", runtime, topK),
+        `topK=${String(topK)}`,
+      ).resolves.toEqual([]);
+    }
+  });
+
+  it("returns ranked results for a valid topK, bounded to the requested count", async () => {
+    for (let index = 0; index < 3; index += 1) {
+      await viewSearchIndex.indexView(
+        {
+          id: `view-${index}`,
+          viewType: "gui",
+          pluginName: "@test/views-search",
+          label: `View ${index}`,
+          description: "Searchable view",
+          tags: [],
+          hasHeroImage: false,
+          available: true,
+          loadedAt: 0,
+          platform: "web",
+        },
+        runtime,
+      );
+    }
+
+    const all = await viewSearchIndex.search("query", runtime, 10);
+    expect(all).toHaveLength(3);
+    expect(all.map((r) => r.viewId).sort()).toEqual([
+      "view-0",
+      "view-1",
+      "view-2",
+    ]);
+
+    const limited = await viewSearchIndex.search("query", runtime, 2);
+    expect(limited).toHaveLength(2);
   });
 });
