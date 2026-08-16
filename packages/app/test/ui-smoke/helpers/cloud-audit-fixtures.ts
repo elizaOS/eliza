@@ -331,6 +331,52 @@ const STUB_RULES: StubRule[] = [
   { match: path_("/api/v1/credits/balance"), body: { balance: 42 } },
   { match: path_("/api/credits/balance"), body: { balance: 42 } },
   {
+    match: path_("/api/v1/billing/limits"),
+    body: {
+      success: true,
+      data: {
+        observedAt: NOW_ISO,
+        cloudCharacters: {
+          source: "cloud-character-quota",
+          state: "available",
+          used: 2,
+          limit: 5,
+        },
+        agentSandboxes: {
+          source: "agent-sandbox-quota",
+          used: 3,
+          nonEagerCreate: { state: "available", limit: 5 },
+          eagerManagedCreate: { state: "available", limit: 100 },
+          state: "available",
+        },
+        containers: {
+          source: "container-quota",
+          state: "available",
+          used: 1,
+          limit: 5,
+        },
+        apps: {
+          source: "apps-service",
+          state: "available",
+          used: 4,
+          limit: 25,
+        },
+        storage: {
+          source: "org-storage-quota",
+          state: "available",
+          bytesUsed: "1073741824",
+          bytesLimit: "5368709120",
+        },
+        inferenceRateLimits: {
+          source: "org-rate-limits",
+          state: "available",
+          completionsRpm: 120,
+          embeddingsRpm: 200,
+        },
+      },
+    },
+  },
+  {
     // auto-top-up-card.tsx reads settings.autoTopUp.* + settings.limits.*;
     // pay-as-you-go-card.tsx reads settings.payAsYouGoFromEarnings.
     match: path_("/api/v1/billing/settings"),
