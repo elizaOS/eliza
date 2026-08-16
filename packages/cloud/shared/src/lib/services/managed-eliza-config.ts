@@ -206,13 +206,17 @@ export function mergeManagedPublicBaseUrl(
  * provisioned BEFORE these pins landed heals on upgrade (#8434). An explicit
  * per-agent value always wins.
  *
- * Local-primary restore: when a managed lean-chat agent opts in with
- * ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1, keep cloud text generation defaults but
- * stop pinning the cloud embedding handler as primary. The local gte-small
- * handler emits 384-d vectors, so the managed defaults also move the embedding
- * dimension hints to 384 for that agent. This is deliberately per-agent and
- * flag-gated: existing 1536-d stores must be re-embedded/backfilled before the
- * flag is enabled or recall can degrade (#9911 class).
+ * Local-primary embeddings: FRESH provisions default to the local gte-small
+ * handler (384-d) instead of the paid cloud text-embedding-3-small path —
+ * nubs/shaw directive 2026-08-16: self-hosted embeddings are the platform
+ * default. Freshness is detected by the absence of ELIZAOS_CLOUD_API_KEY in
+ * existingEnv: a previously provisioned agent always carries its key (and its
+ * pinned dimension hints) in stored env, so upgrades/backfills keep their
+ * original width and a pre-pin legacy 1536-d store is never healed onto 384-d
+ * hints (#9911 recall-degradation class). Explicit controls still win both
+ * ways: ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1 opts an existing agent in (only
+ * after re-embedding its store), =0 keeps a fresh agent on the cloud path, and
+ * ELIZAOS_CLOUD_USE_EMBEDDINGS=true always restores cloud embeddings.
  *
  * NOTE on dimensions: EMBEDDING_DIMENSION / ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS
  * set the width of the vectors the plugin-elizacloud TEXT_EMBEDDING handler
@@ -228,8 +232,10 @@ export function mergeManagedPublicBaseUrl(
 export function applyManagedAgentInferenceEnvDefaults(
   existingEnv: Record<string, string>,
 ): Record<string, string> {
+  const explicitLean = existingEnv.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS;
+  const isFreshProvision = !existingEnv.ELIZAOS_CLOUD_API_KEY?.trim();
   const localPrimaryEmbeddings =
-    existingEnv.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS === "1" &&
+    (explicitLean === "1" || (isFreshProvision && explicitLean !== "0")) &&
     existingEnv.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !== "true";
   const embeddingDimension = localPrimaryEmbeddings ? "384" : "1536";
   return {
