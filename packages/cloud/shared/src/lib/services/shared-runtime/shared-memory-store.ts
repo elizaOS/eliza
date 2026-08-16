@@ -93,8 +93,7 @@ export class SharedMemoryStore {
     });
     const assistantReply = pair.assistantReply.trim();
     if (!assistantReply) return;
-    await this.writer.insertMemory({
-      ...(pair.messageIds ? { id: memoryRowId(pair.messageIds.assistant) } : {}),
+    const assistant = {
       scope,
       // The assistant speaks as the agent itself, mirroring the runtime's
       // projection where assistant memories carry the agent's entity id.
@@ -106,9 +105,23 @@ export class SharedMemoryStore {
         text: assistantReply,
         source: "shared-runtime",
         channelType: "DM",
-        ...(pair.interrupted ? { interrupted: true } : {}),
       },
       createdAt: new Date(landedAt + 1),
+    };
+    if (pair.messageIds) {
+      await this.writer.mergeMessageMemory({
+        ...assistant,
+        id: memoryRowId(pair.messageIds.assistant),
+        interrupted: pair.interrupted === true,
+      });
+      return;
+    }
+    await this.writer.insertMemory({
+      ...assistant,
+      content: {
+        ...assistant.content,
+        ...(pair.interrupted ? { interrupted: true } : {}),
+      },
     });
   }
 }

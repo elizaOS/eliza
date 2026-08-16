@@ -1,7 +1,7 @@
 /**
  * Drives the shared_agent_memories repository against real in-process PGlite
  * (schema pushed from the Drizzle definition, pgvector extension loaded) so
- * tenant isolation, replay idempotency, recency ordering, and genuine cosine
+ * tenant isolation, replay convergence, recency ordering, and genuine cosine
  * ranking are proven on real rows rather than mocked chains.
  */
 
@@ -149,6 +149,70 @@ describe("SharedAgentMemoriesWriter.insertMemory (real PGlite)", () => {
         content: { text: "orphan" },
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe("SharedAgentMemoriesWriter.mergeMessageMemory (real PGlite)", () => {
+  const id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const message = (text: string, interrupted: boolean) => ({
+    id,
+    scope: scopeA,
+    entityId: AGENT_A,
+    roomId: ROOM_A,
+    type: "messages",
+    content: { text, source: "shared-runtime", channelType: "DM" },
+    interrupted,
+  });
+
+  test("upgrades an interrupted prefix to the complete retry atomically", async () => {
+    const first = await sharedAgentMemoriesWriter.mergeMessageMemory(message("partial", true));
+    expect(first).toEqual({ id, inserted: true });
+
+    const retry = await sharedAgentMemoriesWriter.mergeMessageMemory(
+      message("complete response", false),
+    );
+    expect(retry).toEqual({ id, inserted: false });
+
+    const [row] = await sharedAgentMemoriesReader.listRecentByRoom(scopeA, ROOM_A, 10);
+    expect(row?.content).toEqual({
+      text: "complete response",
+      source: "shared-runtime",
+      channelType: "DM",
+    });
+  });
+
+  test("keeps the longest interrupted prefix and never downgrades complete", async () => {
+    await sharedAgentMemoriesWriter.mergeMessageMemory(message("part", true));
+    await sharedAgentMemoriesWriter.mergeMessageMemory(message("partial response", true));
+    await sharedAgentMemoriesWriter.mergeMessageMemory(message("tiny", true));
+
+    let [row] = await sharedAgentMemoriesReader.listRecentByRoom(scopeA, ROOM_A, 10);
+    expect(row?.content).toEqual({
+      text: "partial response",
+      source: "shared-runtime",
+      channelType: "DM",
+      interrupted: true,
+    });
+
+    await sharedAgentMemoriesWriter.mergeMessageMemory(message("complete response", false));
+    await sharedAgentMemoriesWriter.mergeMessageMemory(message("late interrupted text", true));
+    [row] = await sharedAgentMemoriesReader.listRecentByRoom(scopeA, ROOM_A, 10);
+    expect(row?.content).toEqual({
+      text: "complete response",
+      source: "shared-runtime",
+      channelType: "DM",
+    });
+  });
+
+  test("rejects a colliding id outside the tenant on the merge path", async () => {
+    await sharedAgentMemoriesWriter.mergeMessageMemory(message("tenant A", true));
+    await expect(
+      sharedAgentMemoriesWriter.mergeMessageMemory({
+        ...message("tenant B", false),
+        scope: scopeB,
+        roomId: ROOM_B,
+      }),
+    ).rejects.toThrow("conflicts outside its tenant");
   });
 });
 

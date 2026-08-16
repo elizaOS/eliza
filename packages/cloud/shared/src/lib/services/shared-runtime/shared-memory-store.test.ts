@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { stringToUuid } from "@elizaos/core/edge";
 import type {
   InsertSharedAgentMemoryInput,
+  MergeSharedAgentMessageMemoryInput,
   SharedAgentMemoriesWriter,
 } from "../../../db/repositories/shared-agent-memories";
 import {
@@ -31,13 +32,24 @@ function scriptedWriter(behavior?: { failOn?: number }): {
   inserts: InsertSharedAgentMemoryInput[];
 } {
   const inserts: InsertSharedAgentMemoryInput[] = [];
+  const write = async (input: InsertSharedAgentMemoryInput) => {
+    inserts.push(input);
+    if (behavior?.failOn === inserts.length) {
+      throw new Error("scripted storage failure");
+    }
+    return { id: input.id ?? "generated-id", inserted: true };
+  };
   const writer = {
-    async insertMemory(input: InsertSharedAgentMemoryInput) {
-      inserts.push(input);
-      if (behavior?.failOn === inserts.length) {
-        throw new Error("scripted storage failure");
-      }
-      return { id: input.id ?? "generated-id", inserted: true };
+    insertMemory: write,
+    async mergeMessageMemory(input: MergeSharedAgentMessageMemoryInput) {
+      const { interrupted, ...memory } = input;
+      return await write({
+        ...memory,
+        content: {
+          ...memory.content,
+          ...(interrupted ? { interrupted: true } : {}),
+        },
+      });
     },
   } as SharedAgentMemoriesWriter;
   return { writer, inserts };

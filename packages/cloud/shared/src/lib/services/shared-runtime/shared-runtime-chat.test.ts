@@ -901,10 +901,16 @@ describe("SharedRuntimeChatService", () => {
     expect(settleUnknownCalls).toBe(1);
   });
 
-  test("stream cancellation persists interrupted history without waiting for provider teardown", async () => {
+  test("a keyed cancellation and retry converge history and memory on one stable assistant id", async () => {
     process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     const service = new SharedRuntimeChatService();
     const h = harness();
+    const { store: turnClaims } = memoryTurnClaims();
+    const keyedCancellationRpc = {
+      ...rpc,
+      id: "cancel-retry-key",
+      params: { ...rpc.params, clientMessageId: "cancel-retry-key" },
+    };
     let releaseProviderStream = () => {};
     const providerStreamGate = new Promise<void>((resolve) => {
       releaseProviderStream = resolve;
@@ -932,7 +938,7 @@ describe("SharedRuntimeChatService", () => {
       })(),
     };
 
-    const response = await service.stream(agent, rpc, h);
+    const response = await service.stream(agent, keyedCancellationRpc, { ...h, turnClaims });
     const reader = response.body!.getReader();
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toContain("partial");
@@ -963,11 +969,16 @@ describe("SharedRuntimeChatService", () => {
     expect(streamAbortSignal?.reason).toBe("barge-in");
     expect(providerCancelReason).toBe("barge-in");
     expect(settleUnknownCalls).toBe(1);
+    const interruptedIds = memoryPairs[0]?.messageIds;
     expect(memoryPairs).toEqual([
       expect.objectContaining({
         userMessage: "hello",
         assistantReply: "partial ",
         interrupted: true,
+        messageIds: expect.objectContaining({
+          user: expect.any(String),
+          assistant: expect.any(String),
+        }),
       }),
     ]);
 
@@ -992,6 +1003,35 @@ describe("SharedRuntimeChatService", () => {
       }),
     ]);
     expect(settleUnknownCalls).toBe(1);
+
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "complete " };
+        yield {
+          type: "finish",
+          text: "complete response",
+          usage: { inputTokens: 1, outputTokens: 2 },
+        };
+      })(),
+    };
+    const retry = await service.stream(agent, keyedCancellationRpc, { ...h, turnClaims });
+    expect(await retry.text()).toContain("complete response");
+    await Promise.all(h.background);
+
+    expect(memoryPairs).toHaveLength(2);
+    expect(memoryPairs[1]).toMatchObject({
+      userMessage: "hello",
+      assistantReply: "complete response",
+      messageIds: interruptedIds,
+    });
+    expect(memoryPairs[1]).not.toHaveProperty("interrupted", true);
+    expect(h.history().at(-1)).toMatchObject({
+      id: interruptedIds?.assistant,
+      role: "assistant",
+      content: "complete response",
+    });
+    expect(h.history().at(-1)).not.toHaveProperty("interrupted", true);
   });
 
   test("stream cancellation observes provider teardown failures off the room-lock path", async () => {
