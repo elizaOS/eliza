@@ -2,6 +2,10 @@
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import {
+  getRuntimeR2Bucket,
+  setRuntimeR2Bucket,
+} from "@/lib/storage/r2-runtime-binding";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import {
   handlePersonalTelegramEdge,
@@ -13,10 +17,15 @@ const TRACE_ID = "11111111-1111-4111-8111-111111111111";
 const originalFetch = globalThis.fetch;
 
 interface LedgerValue {
-  delivery?: "uncertain" | "delivered";
-  processing?: boolean;
-  plan?: string[];
-  chunks?: Map<number, "uncertain" | "delivered">;
+  progress?: {
+    state: "pending" | "egress_started" | "delivered";
+    contentDigest: string;
+    totalChunks: number;
+    nextChunkIndex: number;
+    providerMessageIds: string[];
+    activeChunkIndex?: number;
+  };
+  ownerToken?: string;
 }
 
 type RunTurn = NonNullable<
@@ -26,81 +35,85 @@ type RunTurn = NonNullable<
 function namespace(): {
   binding: AppEnv["Bindings"]["PERSONAL_TELEGRAM_DELIVERIES"];
   values: Map<string, LedgerValue>;
-  names: string[];
 } {
   const values = new Map<string, LedgerValue>();
-  const names: string[] = [];
   return {
     values,
-    names,
     binding: {
       getByName(name: string) {
-        names.push(name);
         return {
           async fetch(_input: RequestInfo | URL, init?: RequestInit) {
             const body = JSON.parse(String(init?.body)) as {
               messageId: string;
               operation: string;
-              chunkDigests?: string[];
+              ownerToken?: string;
+              contentDigest?: string;
+              totalChunks?: number;
               chunkIndex?: number;
-              chunkDigest?: string;
+              providerMessageId?: string;
             };
             const key = `${name}:${body.messageId}`;
             const value = values.get(key) ?? {};
             if (body.operation === "read") {
-              return Response.json({ state: value.delivery ?? null });
+              return Response.json({ progress: value.progress ?? null });
             }
             if (body.operation === "claim_processing") {
-              if (value.processing) return Response.json({ claimed: false });
-              value.processing = true;
+              if (value.ownerToken) return Response.json({ claimed: false });
+              value.ownerToken = body.ownerToken;
               values.set(key, value);
               return Response.json({ claimed: true });
             }
+            if (body.operation === "renew_processing") {
+              return Response.json({
+                renewed: value.ownerToken === body.ownerToken,
+              });
+            }
             if (body.operation === "release_processing") {
-              value.processing = false;
+              if (value.ownerToken === body.ownerToken) delete value.ownerToken;
               values.set(key, value);
               return Response.json({ released: true });
             }
             if (body.operation === "prepare_plan") {
-              if (
-                value.plan &&
-                value.plan.join(":") !== body.chunkDigests?.join(":")
-              ) {
-                return Response.json({ plan: "conflict" });
-              }
-              value.plan = body.chunkDigests ?? [];
+              value.progress ??= {
+                state: "pending",
+                contentDigest: body.contentDigest ?? "",
+                totalChunks: body.totalChunks ?? 0,
+                nextChunkIndex: 0,
+                providerMessageIds: [],
+              };
               values.set(key, value);
-              return Response.json({ plan: "prepared" });
-            }
-            const chunkIndex = body.chunkIndex ?? -1;
-            value.chunks ??= new Map();
-            if (body.operation === "read_chunk") {
-              return Response.json({
-                state: value.chunks.get(chunkIndex) ?? null,
-              });
+              return Response.json({ progress: value.progress });
             }
             if (body.operation === "claim_chunk") {
-              if (value.chunks.has(chunkIndex)) {
+              if (
+                value.progress?.state !== "pending" ||
+                value.progress.nextChunkIndex !== body.chunkIndex
+              )
                 return Response.json({ claimed: false });
-              }
-              value.chunks.set(chunkIndex, "uncertain");
-              values.set(key, value);
-              return Response.json({ claimed: true });
+              value.progress.state = "egress_started";
+              value.progress.activeChunkIndex = body.chunkIndex;
+              return Response.json({ claimed: true, progress: value.progress });
             }
-            if (body.operation === "release_chunk") {
-              value.chunks.delete(chunkIndex);
-              values.set(key, value);
-              return Response.json({ released: true });
+            if (body.operation === "record_accepted" && value.progress) {
+              value.progress.state = "pending";
+              value.progress.nextChunkIndex += 1;
+              value.progress.providerMessageIds.push(
+                body.providerMessageId ?? "",
+              );
+              delete value.progress.activeChunkIndex;
+              return Response.json({ progress: value.progress });
             }
-            if (body.operation === "mark_chunk_delivered") {
-              value.chunks.set(chunkIndex, "delivered");
-              values.set(key, value);
-              return Response.json({ delivered: true });
+            if (
+              body.operation === "record_explicit_rejection" &&
+              value.progress
+            ) {
+              value.progress.state = "pending";
+              delete value.progress.activeChunkIndex;
+              return Response.json({ progress: value.progress });
             }
-            value.delivery =
-              body.operation === "mark_uncertain" ? "uncertain" : "delivered";
+            if (value.progress) value.progress.state = "delivered";
             values.set(key, value);
-            return Response.json({ delivered: true });
+            return Response.json({ progress: value.progress });
           },
         };
       },
@@ -167,6 +180,7 @@ async function run(
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  setRuntimeR2Bucket(null);
   mock.restore();
 });
 
@@ -242,8 +256,8 @@ describe("Personal Shared Telegram edge", () => {
       return Response.json({ ok: true, result: true });
     }) as unknown as typeof fetch;
 
-    expect((await run(ledger, turn, telegramRequest(81603))).status).toBe(500);
-    expect((await run(ledger, turn, telegramRequest(81603))).status).toBe(503);
+    expect((await run(ledger, turn, telegramRequest(81603))).status).toBe(200);
+    expect((await run(ledger, turn, telegramRequest(81603))).status).toBe(200);
     expect(turn).toHaveBeenCalledTimes(1);
   });
 
@@ -252,10 +266,19 @@ describe("Personal Shared Telegram edge", () => {
     const turn = mock(async () => Response.json({ data: { reply: "no" } }));
     const request = telegramRequest(81604);
     request.headers.set("X-Telegram-Bot-Api-Secret-Token", "wrong");
+    const sentinelBucket = {
+      async get() {
+        return null;
+      },
+      async put() {},
+      async delete() {},
+    };
+    setRuntimeR2Bucket(sentinelBucket);
 
     expect((await run(ledger, turn, request)).status).toBe(401);
     expect(turn).not.toHaveBeenCalled();
     expect(ledger.values.size).toBe(0);
+    expect(getRuntimeR2Bucket()).toBe(sentinelBucket);
   });
 
   test("confirms LINK codes through the canonical account route instead of model chat", async () => {
@@ -329,73 +352,5 @@ describe("Personal Shared Telegram edge", () => {
     expect(forwardedUrl).toBe(
       "https://gateway.example.test/webhook/eliza-app/telegram/agent-123",
     );
-  });
-
-  test("serves the authenticated Railway ledger from a token-independent Durable Object", async () => {
-    const ledger = namespace();
-    const app = new Hono<AppEnv>();
-    app.route("/api/eliza-app/webhook/telegram", telegramRoute);
-    const request = () =>
-      new Request(
-        "https://api-staging.eliza.app/api/eliza-app/webhook/telegram/delivery",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Eliza-Webhook-Forwarder-Secret": "gateway-secret",
-          },
-          body: JSON.stringify({
-            project: "eliza-app",
-            senderId: "123456",
-            messageId: "81607",
-            operation: "prepare_plan",
-            chunkDigests: ["a".repeat(64)],
-          }),
-        },
-      );
-    const env = {
-      ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
-      PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
-    } as AppEnv["Bindings"];
-
-    expect((await app.fetch(request(), env, executionContext())).status).toBe(
-      200,
-    );
-    expect((await app.fetch(request(), env, executionContext())).status).toBe(
-      200,
-    );
-    expect(new Set(ledger.names)).toEqual(
-      new Set(["telegram:eliza-app:personal-shared:123456"]),
-    );
-    const unauthorized = request();
-    unauthorized.headers.set("X-Eliza-Webhook-Forwarder-Secret", "wrong");
-    expect(
-      (await app.fetch(unauthorized, env, executionContext())).status,
-    ).toBe(401);
-  });
-
-  test("accepts the gateway edge handoff while public cutover is false and rechecks provider auth", async () => {
-    const app = new Hono<AppEnv>();
-    app.route("/api/eliza-app/webhook/telegram", telegramRoute);
-    const inbound = telegramRequest(81608);
-    const request = new Request(
-      "https://api-staging.eliza.app/api/eliza-app/webhook/telegram/edge",
-      inbound,
-    );
-    request.headers.set("X-Eliza-Webhook-Forwarder-Secret", "gateway-secret");
-    request.headers.set("X-Telegram-Bot-Api-Secret-Token", "wrong-provider");
-
-    const response = await app.fetch(
-      request,
-      {
-        PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED: "false",
-        ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
-        ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-        ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
-      } as AppEnv["Bindings"],
-      executionContext(),
-    );
-
-    expect(response.status).toBe(401);
   });
 });

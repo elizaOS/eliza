@@ -13,8 +13,9 @@ import { executeResponseAttempts } from "@elizaos/cloud-services-common/response
 import { parseTelegramBotId } from "@elizaos/cloud-services-common/telegram-account";
 import {
   parseTelegramWebhook,
+  prepareTelegramReply,
   resolveTelegramVoiceNote,
-  sendTelegramReply,
+  sendTelegramReplyChunk,
   sendTelegramTyping,
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
@@ -23,21 +24,15 @@ import {
 import {
   executeTelegramDelivery,
   type TelegramDeliveryLedger,
-  type TelegramDeliveryState,
-  TelegramEgressAlreadyClaimedError,
+  type TelegramDeliveryProgress,
 } from "@elizaos/cloud-services-common/telegram-delivery";
 import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
 import {
   PERSONAL_TELEGRAM_DELIVERY_PATH,
   personalTelegramDeliveryStub,
 } from "@/api-app/personal-telegram-delivery";
-import { runWithDbCacheAsync } from "@/db/client";
-import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { appendServerTiming } from "@/lib/observability/http-telemetry";
 import { sha256Hex } from "@/lib/oidc/crypto";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import { runWithRequestContext } from "@/lib/runtime/request-context";
-import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -45,8 +40,11 @@ const MAX_ATTEMPTS = 3;
 const VOICE_MAX_ATTEMPTS = 2;
 const RETRY_DELAY_CAP_MS = 5_000;
 const TYPING_REFRESH_MS = 4_000;
-const DELIVERY_PROJECT_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
-const DELIVERY_SENDER_RE = /^\d{1,32}$/;
+
+type ConfiguredTelegramConnector = TelegramConnectorConfig & {
+  botToken: string;
+  webhookSecret: string;
+};
 
 export interface TelegramEdgeDeps {
   runTurn(
@@ -64,50 +62,14 @@ export interface TelegramEdgeDeps {
 }
 
 interface LedgerResponse {
-  state?: TelegramDeliveryState | null;
+  progress?: TelegramDeliveryProgress | null;
   claimed?: boolean;
-  plan?: "prepared" | "conflict";
+  renewed?: boolean;
 }
 
 function readEnvString(env: AppEnv["Bindings"], key: string): string | null {
   const value = env[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-async function runInternalRoute(
-  app: Hono<AppEnv>,
-  body: Record<string, unknown>,
-  traceId: string,
-  idempotencyKey: string,
-  env: AppEnv["Bindings"],
-  executionCtx: HonoExecutionContext,
-): Promise<Response> {
-  const localSecret = crypto.randomUUID();
-  const localEnv = { ...env, INTERNAL_SECRET: localSecret };
-  setRuntimeR2Bucket(env.BLOB);
-  return runWithCloudBindingsAsync(localEnv as Record<string, unknown>, () =>
-    runWithRequestContext({ idempotencyKey }, () =>
-      runWithDbCacheAsync(() =>
-        Promise.resolve(
-          app.request(
-            "/",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${localSecret}`,
-                "Content-Type": "application/json",
-                "Idempotency-Key": idempotencyKey,
-                "X-Eliza-Trace-Id": traceId,
-              },
-              body: JSON.stringify(body),
-            },
-            localEnv,
-            executionCtx,
-          ),
-        ),
-      ),
-    ),
-  );
 }
 
 async function defaultRunTurn(
@@ -119,38 +81,44 @@ async function defaultRunTurn(
   const [{ default: app }] = await Promise.all([
     import("../../internal/eliza-app/personal-shared/messages/route"),
   ]);
-  const messageId = body.messageId;
-  return runInternalRoute(
-    app as Hono<AppEnv>,
-    body,
-    traceId,
-    typeof messageId === "string" && messageId
-      ? messageId
-      : `telegram-turn:${traceId}`,
-    env,
+  const localSecret = crypto.randomUUID();
+  const localEnv = { ...env, INTERNAL_SECRET: localSecret };
+  return (app as Hono<AppEnv>).request(
+    "/",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${localSecret}`,
+        "Content-Type": "application/json",
+        "X-Eliza-Trace-Id": traceId,
+      },
+      body: JSON.stringify(body),
+    },
+    localEnv,
     executionCtx,
   );
 }
 
-export async function defaultConfirmIdentityLink(
+async function defaultConfirmIdentityLink(
   body: Record<string, unknown>,
   traceId: string,
   env: AppEnv["Bindings"],
   executionCtx: HonoExecutionContext,
 ): Promise<Response> {
   const { default: app } = await import("../identity-link/confirm/route");
-  const platform = String(body.platform ?? "telegram");
-  const platformId = String(body.platformId ?? "unknown");
-  const code = String(body.code ?? "unknown");
-  const confirmationId = await sha256Hex(
-    `identity-link:${platform}:${platformId}:${code}`,
-  );
-  return runInternalRoute(
-    app as Hono<AppEnv>,
-    body,
-    traceId,
-    `identity-link:${confirmationId}`,
-    env,
+  const localSecret = crypto.randomUUID();
+  return (app as Hono<AppEnv>).request(
+    "/",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${localSecret}`,
+        "Content-Type": "application/json",
+        "X-Eliza-Trace-Id": traceId,
+      },
+      body: JSON.stringify(body),
+    },
+    { ...env, INTERNAL_SECRET: localSecret },
     executionCtx,
   );
 }
@@ -182,72 +150,6 @@ async function callLedger(
   return body as LedgerResponse;
 }
 
-export function verifyPersonalTelegramGatewayRequest(c: AppContext): boolean {
-  const configuredSecret = readEnvString(
-    c.env,
-    "ELIZA_APP_WEBHOOK_GATEWAY_SECRET",
-  );
-  const presentedSecret =
-    c.req.header("X-Eliza-Webhook-Forwarder-Secret")?.trim() ?? "";
-  return Boolean(
-    configuredSecret &&
-      timingSafeEqualSecret(presentedSecret, configuredSecret),
-  );
-}
-
-export async function handlePersonalTelegramDeliveryLedger(
-  c: AppContext,
-): Promise<Response> {
-  if (!verifyPersonalTelegramGatewayRequest(c)) {
-    return c.json({ success: false, error: "Unauthorized" }, 401);
-  }
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    // error-policy:J3 the authenticated gateway payload is still untrusted JSON.
-    return c.json({ success: false, error: "Invalid JSON" }, 400);
-  }
-  if (!body || typeof body !== "object") {
-    return c.json({ success: false, error: "Invalid request" }, 400);
-  }
-  const input = body as Record<string, unknown>;
-  const project = input.project;
-  const senderId = input.senderId;
-  if (
-    typeof project !== "string" ||
-    !DELIVERY_PROJECT_RE.test(project) ||
-    typeof senderId !== "string" ||
-    !DELIVERY_SENDER_RE.test(senderId)
-  ) {
-    return c.json({ success: false, error: "Invalid delivery scope" }, 400);
-  }
-  const namespace = c.env.PERSONAL_TELEGRAM_DELIVERIES;
-  if (!namespace) {
-    return c.json({ success: false, error: "Delivery binding missing" }, 503);
-  }
-  const stub = namespace.getByName(
-    `telegram:${project}:personal-shared:${senderId}`,
-  );
-  const response = await stub.fetch(
-    `https://personal-telegram-delivery${PERSONAL_TELEGRAM_DELIVERY_PATH}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...input,
-        project: undefined,
-        senderId: undefined,
-      }),
-    },
-  );
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  });
-}
-
 async function edgeLedger(
   env: AppEnv["Bindings"],
   project: string,
@@ -263,58 +165,66 @@ async function edgeLedger(
   return {
     async read() {
       const body = await callLedger(stub, event.messageId, "read");
-      return body.state === "uncertain" || body.state === "delivered"
-        ? body.state
-        : null;
+      return body.progress ?? null;
     },
-    async claimProcessing() {
-      return (
-        (await callLedger(stub, event.messageId, "claim_processing"))
-          .claimed === true
-      );
-    },
-    async releaseProcessing() {
-      await callLedger(stub, event.messageId, "release_processing");
-    },
-    async preparePlan(chunkDigests) {
-      const body = await callLedger(stub, event.messageId, "prepare_plan", {
-        chunkDigests,
-      });
-      return body.plan === "prepared" ? "prepared" : "conflict";
-    },
-    async readChunk(chunkIndex, chunkDigest) {
-      const body = await callLedger(stub, event.messageId, "read_chunk", {
-        chunkIndex,
-        chunkDigest,
-      });
-      return body.state === "uncertain" || body.state === "delivered"
-        ? body.state
-        : null;
-    },
-    async claimChunk(chunkIndex, chunkDigest) {
+    async claimProcessing(ownerToken, leaseMs) {
       return (
         (
-          await callLedger(stub, event.messageId, "claim_chunk", {
-            chunkIndex,
-            chunkDigest,
+          await callLedger(stub, event.messageId, "claim_processing", {
+            ownerToken,
+            leaseMs,
           })
         ).claimed === true
       );
     },
-    async releaseChunk(chunkIndex, chunkDigest) {
-      await callLedger(stub, event.messageId, "release_chunk", {
-        chunkIndex,
-        chunkDigest,
+    async renewProcessing(ownerToken, leaseMs) {
+      return (
+        (
+          await callLedger(stub, event.messageId, "renew_processing", {
+            ownerToken,
+            leaseMs,
+          })
+        ).renewed === true
+      );
+    },
+    async releaseProcessing(ownerToken) {
+      await callLedger(stub, event.messageId, "release_processing", {
+        ownerToken,
       });
     },
-    async markChunkDelivered(chunkIndex, chunkDigest) {
-      await callLedger(stub, event.messageId, "mark_chunk_delivered", {
+    async preparePlan(ownerToken, plan) {
+      return (
+        await callLedger(stub, event.messageId, "prepare_plan", {
+          ownerToken,
+          ...plan,
+        })
+      ).progress as TelegramDeliveryProgress;
+    },
+    async claimChunk(ownerToken, chunkIndex) {
+      return (
+        (
+          await callLedger(stub, event.messageId, "claim_chunk", {
+            ownerToken,
+            chunkIndex,
+          })
+        ).claimed === true
+      );
+    },
+    async recordAccepted(ownerToken, chunkIndex, providerMessageId) {
+      await callLedger(stub, event.messageId, "record_accepted", {
+        ownerToken,
         chunkIndex,
-        chunkDigest,
+        providerMessageId,
       });
     },
-    async markDelivered() {
-      await callLedger(stub, event.messageId, "mark_delivered");
+    async recordExplicitRejection(ownerToken, chunkIndex) {
+      await callLedger(stub, event.messageId, "record_explicit_rejection", {
+        ownerToken,
+        chunkIndex,
+      });
+    },
+    async markDelivered(ownerToken) {
+      await callLedger(stub, event.messageId, "mark_delivered", { ownerToken });
     },
   };
 }
@@ -331,7 +241,6 @@ function startTyping(
     try {
       await sendTelegramTyping(config, event);
     } catch (error) {
-      // error-policy:J4 typing is a non-critical user-facing enhancement.
       logger.debug("[PersonalTelegramEdge] typing indicator failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -452,132 +361,176 @@ export async function handlePersonalTelegramEdge(
   const project =
     readEnvString(c.env, "ELIZA_APP_WEBHOOK_PROJECT") ?? "eliza-app";
   const config = { botToken, webhookSecret };
+  const { runPersonalTelegramRequestScope } = await import(
+    "@/api-app/personal-telegram-request-scope"
+  );
+  return runPersonalTelegramRequestScope(
+    c,
+    `telegram:${project}:${event.messageId}`,
+    async () =>
+      executePersonalTelegramEdge(
+        c,
+        deps,
+        config,
+        project,
+        event,
+        traceId,
+        startedAt,
+        providerToWorkerMs,
+      ),
+  );
+}
+
+async function executePersonalTelegramEdge(
+  c: AppContext,
+  deps: TelegramEdgeDeps,
+  config: ConfiguredTelegramConnector,
+  project: string,
+  event: TelegramConnectorEvent,
+  traceId: string,
+  startedAt: number,
+  providerToWorkerMs: number | null,
+): Promise<Response> {
   const ledger = await edgeLedger(c.env, project, config.botToken, event);
 
-  try {
-    let turnMs = 0;
-    let egressMs = 0;
-    let attempts = 0;
-    const outcome = await executeTelegramDelivery(
-      ledger,
-      async (deliveryHooks) => {
-        const stopTyping = startTyping(config, event);
-        try {
-          const linkCode = extractIdentityLinkCode(event.text);
-          if (linkCode) {
-            const confirmationStartedAt = performance.now();
-            const confirmation = await (
-              deps.confirmIdentityLink ?? defaultConfirmIdentityLink
-            )(
-              {
-                code: linkCode,
-                platform: "telegram",
-                platformId: event.senderId,
-                platformName: event.senderName,
-              },
-              traceId,
-              c.env,
-              c.executionCtx,
+  let turnMs = 0;
+  let egressMs = 0;
+  let attempts = 0;
+  const outcome = await executeTelegramDelivery(ledger, async (dispatch) => {
+    const stopTyping = startTyping(config, event);
+    try {
+      const linkCode = extractIdentityLinkCode(event.text);
+      if (linkCode) {
+        const confirmationStartedAt = performance.now();
+        const confirmation = await (
+          deps.confirmIdentityLink ?? defaultConfirmIdentityLink
+        )(
+          {
+            code: linkCode,
+            platform: "telegram",
+            platformId: event.senderId,
+            platformName: event.senderName,
+          },
+          traceId,
+          c.env,
+          c.executionCtx,
+        );
+        turnMs = Math.round(performance.now() - confirmationStartedAt);
+        attempts = 1;
+        let status = "linked";
+        if (!confirmation.ok) {
+          if (confirmation.status !== 409) {
+            await confirmation.body?.cancel();
+            throw new Error(
+              `Identity-link confirmation failed (${confirmation.status})`,
             );
-            turnMs = Math.round(performance.now() - confirmationStartedAt);
-            attempts = 1;
-            let status = "linked";
-            if (!confirmation.ok) {
-              if (confirmation.status !== 409) {
-                await confirmation.body?.cancel();
-                throw new Error(
-                  `Identity-link confirmation failed (${confirmation.status})`,
-                );
-              }
-              const payload: unknown = await confirmation.json();
-              status =
-                payload && typeof payload === "object" && "data" in payload
-                  ? String(
-                      (payload.data as { status?: unknown } | null)?.status ??
-                        "unknown",
-                    )
-                  : "unknown";
-            } else {
-              await confirmation.body?.cancel();
-            }
-            const egressStartedAt = performance.now();
-            await sendTelegramReply(
-              config,
-              event,
-              identityLinkReply(status),
-              logger,
-              deliveryHooks,
-            );
-            egressMs = Math.round(performance.now() - egressStartedAt);
-            return;
           }
-          const voiceNote = event.voiceNote
-            ? await resolveTelegramVoiceNote(config, event)
-            : undefined;
-          const turn = await runTurnWithRetry(
-            c,
-            deps,
-            deliveryBody(project, event, voiceNote),
-            event,
-            traceId,
-          );
-          turnMs = turn.turnMs;
-          attempts = turn.attempts;
-          if (!turn.response.ok) {
-            const status = turn.response.status;
-            await turn.response.body?.cancel();
-            throw new Error(`Personal Shared edge turn failed (${status})`);
-          }
-          const payload: unknown = await turn.response.json();
-          const reply =
+          const payload: unknown = await confirmation.json();
+          status =
             payload && typeof payload === "object" && "data" in payload
-              ? (payload.data as { reply?: unknown } | null)?.reply
-              : undefined;
-          if (typeof reply !== "string") {
-            throw new Error("Personal Shared edge turn returned no reply");
-          }
-          if (!reply) return;
-          const egressStartedAt = performance.now();
-          await sendTelegramReply(config, event, reply, logger, deliveryHooks);
-          egressMs = Math.round(performance.now() - egressStartedAt);
-        } finally {
-          stopTyping();
+              ? String(
+                  (payload.data as { status?: unknown } | null)?.status ??
+                    "unknown",
+                )
+              : "unknown";
+        } else {
+          await confirmation.body?.cancel();
         }
+        const egressStartedAt = performance.now();
+        await dispatch(
+          await prepareTelegramReply(identityLinkReply(status)),
+          (chunk) => sendTelegramReplyChunk(config, event, chunk, logger),
+        );
+        egressMs = Math.round(performance.now() - egressStartedAt);
+        return;
+      }
+      const voiceNote = event.voiceNote
+        ? await resolveTelegramVoiceNote(config, event)
+        : undefined;
+      const turn = await runTurnWithRetry(
+        c,
+        deps,
+        deliveryBody(project, event, voiceNote),
+        event,
+        traceId,
+      );
+      turnMs = turn.turnMs;
+      attempts = turn.attempts;
+      if (!turn.response.ok) {
+        const status = turn.response.status;
+        await turn.response.body?.cancel();
+        throw new Error(`Personal Shared edge turn failed (${status})`);
+      }
+      const payload: unknown = await turn.response.json();
+      const reply =
+        payload && typeof payload === "object" && "data" in payload
+          ? (payload.data as { reply?: unknown } | null)?.reply
+          : undefined;
+      if (typeof reply !== "string") {
+        throw new Error("Personal Shared edge turn returned no reply");
+      }
+      if (!reply) return;
+      const egressStartedAt = performance.now();
+      await dispatch(await prepareTelegramReply(reply), (chunk) =>
+        sendTelegramReplyChunk(config, event, chunk, logger),
+      );
+      egressMs = Math.round(performance.now() - egressStartedAt);
+    } finally {
+      stopTyping();
+    }
+  });
+
+  if (outcome.status === "uncertain") {
+    logger.error(
+      "[PersonalTelegramEdge] provider acceptance is unknown; acknowledging without replay",
+      {
+        traceId,
+        messageId: event.messageId,
+        chunkIndex: outcome.chunkIndex,
       },
     );
-
-    if (outcome === "uncertain") {
-      return c.json(
-        { success: false, error: "Delivery outcome uncertain" },
-        503,
-      );
-    }
-    if (outcome === "in_progress") {
-      return c.json({ success: false, error: "Update in progress" }, 503);
-    }
-    const totalMs = Math.round(performance.now() - startedAt);
-    logger.info("[PersonalTelegramEdge] connector message completed", {
-      traceId,
-      project,
-      messageId: event.messageId,
-      outcome,
-      providerToWorkerMs,
-      turnMs,
-      attempts,
-      egressMs,
-      totalMs,
-    });
-    const response = c.json({ ok: true });
-    appendServerTiming(response.headers, [
-      { name: "personal_edge_turn", durationMs: turnMs },
-      { name: "telegram_egress", durationMs: egressMs },
-    ]);
-    return response;
-  } catch (error) {
-    // error-policy:J1 translate an exact delivery-claim conflict at the route boundary.
-    if (error instanceof TelegramEgressAlreadyClaimedError) {
-      return c.json({ success: false, error: "Egress already claimed" }, 503);
-    }
-    throw error;
+    return c.json({ ok: true });
   }
+  if (outcome.status === "in_progress") {
+    return c.json({ success: false, error: "Update in progress" }, 503);
+  }
+  if (outcome.status === "explicitly_rejected") {
+    if (outcome.errorCode !== 429 && outcome.errorCode < 500) {
+      logger.warn(
+        "[PersonalTelegramEdge] provider permanently rejected delivery",
+        {
+          traceId,
+          messageId: event.messageId,
+          chunkIndex: outcome.chunkIndex,
+          errorCode: outcome.errorCode,
+        },
+      );
+      return c.json({ ok: true });
+    }
+    const response = c.json(
+      { success: false, error: "Provider rejected delivery" },
+      503,
+    );
+    if (outcome.retryAfterSeconds)
+      response.headers.set("Retry-After", String(outcome.retryAfterSeconds));
+    return response;
+  }
+  const totalMs = Math.round(performance.now() - startedAt);
+  logger.info("[PersonalTelegramEdge] connector message completed", {
+    traceId,
+    project,
+    messageId: event.messageId,
+    outcome: outcome.status,
+    providerToWorkerMs,
+    turnMs,
+    attempts,
+    egressMs,
+    totalMs,
+  });
+  const response = c.json({ ok: true });
+  appendServerTiming(response.headers, [
+    { name: "personal_edge_turn", durationMs: turnMs },
+    { name: "telegram_egress", durationMs: egressMs },
+  ]);
+  return response;
 }

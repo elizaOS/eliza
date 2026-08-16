@@ -31,6 +31,7 @@ export interface GatewayRedis {
   lpush(key: string, value: string): Promise<unknown>;
   ltrim(key: string, start: number, stop: number): Promise<unknown>;
   expire(key: string, seconds: number): Promise<unknown>;
+  eval?(script: string, keys: string[], args: string[]): Promise<unknown>;
   quit?(): Promise<unknown>;
 }
 
@@ -79,6 +80,10 @@ class NativeRedisAdapter implements GatewayRedis {
 
   async expire(key: string, seconds: number): Promise<unknown> {
     return this.client.expire(key, seconds);
+  }
+
+  async eval(script: string, keys: string[], args: string[]): Promise<unknown> {
+    return this.client.eval(script, keys.length, ...keys, ...args);
   }
 
   async quit(): Promise<unknown> {
@@ -140,6 +145,10 @@ class MemoryRedisAdapter implements GatewayRedis {
     return this.client.expire(key, seconds);
   }
 
+  async eval(script: string, keys: string[], args: string[]): Promise<unknown> {
+    return this.client.eval(script, keys.length, ...keys, ...args);
+  }
+
   async quit(): Promise<unknown> {
     return this.client.quit();
   }
@@ -156,10 +165,25 @@ export function createRedis(): GatewayRedis {
 
   if (kvRestApiUrl && kvRestApiToken) {
     logger.info("Using Upstash Redis REST client");
-    return new UpstashRedis({
+    const client = new UpstashRedis({
       url: kvRestApiUrl,
       token: kvRestApiToken,
-    }) as GatewayRedis;
+    });
+    return {
+      get: (key) => client.get(key),
+      set: (key, value, options = {}) => {
+        if (options.ex && options.nx)
+          return client.set(key, value, { ex: options.ex, nx: true });
+        if (options.ex) return client.set(key, value, { ex: options.ex });
+        if (options.nx) return client.set(key, value, { nx: true });
+        return client.set(key, value);
+      },
+      del: (key) => client.del(key),
+      lpush: (key, value) => client.lpush(key, value),
+      ltrim: (key, start, stop) => client.ltrim(key, start, stop),
+      expire: (key, seconds) => client.expire(key, seconds),
+      eval: (script, keys, args) => client.eval(script, keys, args),
+    };
   }
 
   if (process.env.REDIS_URL) {

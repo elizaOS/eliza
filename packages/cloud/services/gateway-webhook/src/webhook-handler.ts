@@ -5,9 +5,8 @@ import {
 } from "@elizaos/cloud-services-common/response-attempts";
 import {
   executeTelegramDelivery,
-  type TelegramDeliveryHooks,
   type TelegramDeliveryLedger,
-  TelegramEgressAlreadyClaimedError,
+  type TelegramDeliveryProgress,
 } from "@elizaos/cloud-services-common/telegram-delivery";
 import type {
   ChatEvent,
@@ -37,10 +36,7 @@ const DEDUP_TTL_SECONDS = 300;
 // worker is still generating and execute the same user turn twice.
 const PERSONAL_SHARED_ATTEMPTS = 3;
 const PERSONAL_SHARED_RETRY_DELAY_CAP_MS = 5_000;
-const PROCESSING_TTL_SECONDS = 120;
 const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
-const TELEGRAM_EGRESS_STARTED = "egress_started";
-const TELEGRAM_DELIVERED = "delivered";
 const TELEGRAM_TYPING_REFRESH_MS = 4_000;
 const PERSONAL_SHARED_VOICE_TIMEOUT_MS = 90_000;
 const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
@@ -55,7 +51,6 @@ class PersonalSharedPreEgressError extends Error {
 interface HandlerDeps {
   redis: GatewayRedis;
   cloudBaseUrl: string;
-  deliveryAuthoritySecret?: string;
   getAuthHeader: () => { Authorization: string };
   reacquireAuthHeader?: () => Promise<Record<string, string>>;
   /** Test seam; production always resolves the canonical Cloud ledger. */
@@ -74,72 +69,154 @@ interface MessageTraceContext {
   gatewayReceivedAtMs: number;
 }
 
+type ReplyDelivery = (text: string) => Promise<void>;
+
 export function redisTelegramDeliveryLedger(
   redis: GatewayRedis,
   dedupKey: string,
 ): TelegramDeliveryLedger {
   const processingKey = `${dedupKey}:processing`;
-  const planKey = `${dedupKey}:plan`;
-  const chunkKey = (chunkIndex: number, chunkDigest: string) =>
-    `${dedupKey}:chunk:${chunkIndex}:${chunkDigest}`;
+  const evalRedis = async (
+    script: string,
+    keys: string[],
+    args: string[],
+  ): Promise<unknown> => {
+    if (!redis.eval) throw new Error("Redis atomic scripting is unavailable");
+    return redis.eval(script, keys, args);
+  };
+  const readProgress = async (): Promise<TelegramDeliveryProgress | null> => {
+    const value = await redis.get<TelegramDeliveryProgress | string>(dedupKey);
+    if (value === "delivered") {
+      return {
+        state: "delivered",
+        contentDigest: "",
+        totalChunks: 0,
+        nextChunkIndex: 0,
+        providerMessageIds: [],
+      };
+    }
+    if (value === "egress_started") {
+      return {
+        state: "egress_started",
+        contentDigest: "",
+        totalChunks: 1,
+        nextChunkIndex: 0,
+        activeChunkIndex: 0,
+        providerMessageIds: [],
+      };
+    }
+    return value && typeof value === "object" ? value : null;
+  };
+  const writeOwned = async (
+    ownerToken: string,
+    progress: TelegramDeliveryProgress,
+  ): Promise<void> => {
+    const result = await evalRedis(
+      "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3]); return 1 else return 0 end",
+      [processingKey, dedupKey],
+      [
+        ownerToken,
+        JSON.stringify(progress),
+        String(TELEGRAM_DELIVERY_TTL_SECONDS),
+      ],
+    );
+    if (Number(result) !== 1)
+      throw new Error("Telegram processing claim was lost");
+  };
   return {
-    async read() {
-      const state = await redis.get<string>(dedupKey);
-      if (state === TELEGRAM_EGRESS_STARTED || state === "uncertain") {
-        return "uncertain";
-      }
-      return state === TELEGRAM_DELIVERED ? "delivered" : null;
-    },
-    async claimProcessing() {
+    read: readProgress,
+    async claimProcessing(ownerToken, leaseMs): Promise<boolean> {
       return Boolean(
-        await redis.set(processingKey, "1", {
+        await redis.set(processingKey, ownerToken, {
           nx: true,
-          ex: PROCESSING_TTL_SECONDS,
+          ex: Math.ceil(leaseMs / 1_000),
         }),
       );
     },
-    async releaseProcessing() {
-      await redis.del(processingKey);
-    },
-    async preparePlan(chunkDigests) {
-      const encoded = JSON.stringify(chunkDigests);
-      const existing = await redis.get<string>(planKey);
-      if (existing !== null) {
-        return existing === encoded ? "prepared" : "conflict";
-      }
-      const claimed = await redis.set(planKey, encoded, {
-        nx: true,
-        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
-      });
-      if (claimed) return "prepared";
-      return (await redis.get<string>(planKey)) === encoded
-        ? "prepared"
-        : "conflict";
-    },
-    async readChunk(chunkIndex, chunkDigest) {
-      const state = await redis.get<string>(chunkKey(chunkIndex, chunkDigest));
-      return state === "uncertain" || state === "delivered" ? state : null;
-    },
-    async claimChunk(chunkIndex, chunkDigest) {
-      return Boolean(
-        await redis.set(chunkKey(chunkIndex, chunkDigest), "uncertain", {
-          nx: true,
-          ex: TELEGRAM_DELIVERY_TTL_SECONDS,
-        }),
+    async renewProcessing(ownerToken, leaseMs): Promise<boolean> {
+      return (
+        Number(
+          await evalRedis(
+            "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('EXPIRE', KEYS[1], ARGV[2]) else return 0 end",
+            [processingKey],
+            [ownerToken, String(Math.ceil(leaseMs / 1_000))],
+          ),
+        ) === 1
       );
     },
-    async releaseChunk(chunkIndex, chunkDigest) {
-      await redis.del(chunkKey(chunkIndex, chunkDigest));
+    async releaseProcessing(ownerToken): Promise<void> {
+      await evalRedis(
+        "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end",
+        [processingKey],
+        [ownerToken],
+      );
     },
-    async markChunkDelivered(chunkIndex, chunkDigest) {
-      await redis.set(chunkKey(chunkIndex, chunkDigest), "delivered", {
-        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
-      });
+    async preparePlan(ownerToken, plan) {
+      const existing = await readProgress();
+      const progress = existing ?? {
+        state: "pending" as const,
+        ...plan,
+        nextChunkIndex: 0,
+        providerMessageIds: [],
+      };
+      if (
+        progress.contentDigest !== plan.contentDigest ||
+        progress.totalChunks !== plan.totalChunks
+      )
+        throw new Error("Telegram delivery plan conflicts with persisted plan");
+      if (!existing) await writeOwned(ownerToken, progress);
+      return progress;
     },
-    async markDelivered() {
-      await redis.set(dedupKey, TELEGRAM_DELIVERED, {
-        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+    async claimChunk(ownerToken, chunkIndex) {
+      const progress = await readProgress();
+      if (
+        progress?.state !== "pending" ||
+        progress.nextChunkIndex !== chunkIndex ||
+        chunkIndex >= progress.totalChunks
+      )
+        return false;
+      await writeOwned(ownerToken, {
+        ...progress,
+        state: "egress_started",
+        activeChunkIndex: chunkIndex,
       });
+      return true;
+    },
+    async recordAccepted(ownerToken, chunkIndex, providerMessageId) {
+      const progress = await readProgress();
+      if (
+        progress?.state !== "egress_started" ||
+        progress.activeChunkIndex !== chunkIndex
+      )
+        throw new Error("Invalid Telegram acceptance transition");
+      const next = {
+        ...progress,
+        state: "pending" as const,
+        nextChunkIndex: chunkIndex + 1,
+        providerMessageIds: [...progress.providerMessageIds, providerMessageId],
+      };
+      delete next.activeChunkIndex;
+      await writeOwned(ownerToken, next);
+    },
+    async recordExplicitRejection(ownerToken, chunkIndex) {
+      const progress = await readProgress();
+      if (
+        progress?.state !== "egress_started" ||
+        progress.activeChunkIndex !== chunkIndex
+      )
+        throw new Error("Invalid Telegram rejection transition");
+      const next = { ...progress, state: "pending" as const };
+      delete next.activeChunkIndex;
+      await writeOwned(ownerToken, next);
+    },
+    async markDelivered(ownerToken): Promise<void> {
+      const progress = await readProgress();
+      if (
+        progress?.state !== "pending" ||
+        progress.nextChunkIndex !== progress.totalChunks
+      )
+        throw new Error("Telegram delivery is incomplete");
+      await writeOwned(ownerToken, { ...progress, state: "delivered" });
     },
   };
 }
@@ -160,7 +237,10 @@ function canonicalTelegramDeliveryLedger(
   const accountFingerprint = resolveTelegramBotAccountFingerprint(
     config.botToken,
   );
-  const call = async (operation: string): Promise<Record<string, unknown>> => {
+  const call = async (
+    operation: string,
+    input: Record<string, unknown> = {},
+  ): Promise<Record<string, unknown>> => {
     const request = async (authHeader: Record<string, string>) =>
       fetch(`${deps.cloudBaseUrl}${PERSONAL_TELEGRAM_LEDGER_PATH}`, {
         method: "POST",
@@ -175,6 +255,7 @@ function canonicalTelegramDeliveryLedger(
           senderId: event.senderId,
           messageId: event.messageId,
           operation,
+          ...input,
         }),
       });
     let response = await request(deps.getAuthHeader());
@@ -201,19 +282,11 @@ function canonicalTelegramDeliveryLedger(
   return {
     async read() {
       const body = await call("read");
-      if (body.state === null) return null;
-      if (
-        body.state === TELEGRAM_EGRESS_STARTED ||
-        body.state === TELEGRAM_DELIVERED
-      ) {
-        return body.state;
-      }
-      throw new Error(
-        "Canonical Telegram delivery ledger returned invalid state",
-      );
+      return (body.progress as TelegramDeliveryProgress | null) ?? null;
     },
-    async claimProcessing() {
-      const claimed = (await call("claim_processing")).claimed;
+    async claimProcessing(ownerToken, leaseMs) {
+      const claimed = (await call("claim_processing", { ownerToken, leaseMs }))
+        .claimed;
       if (typeof claimed !== "boolean") {
         throw new Error(
           "Canonical Telegram delivery ledger returned invalid claim",
@@ -221,15 +294,32 @@ function canonicalTelegramDeliveryLedger(
       }
       return claimed;
     },
-    async releaseProcessing() {
-      if ((await call("release_processing")).released !== true) {
+    async renewProcessing(ownerToken, leaseMs) {
+      const renewed = (await call("renew_processing", { ownerToken, leaseMs }))
+        .renewed;
+      if (typeof renewed !== "boolean") {
         throw new Error(
-          "Canonical Telegram delivery ledger did not release claim",
+          "Canonical Telegram delivery ledger returned invalid renewal",
         );
       }
+      return renewed;
     },
-    async claimEgress() {
-      const claimed = (await call("claim_egress")).claimed;
+    async releaseProcessing(ownerToken) {
+      await call("release_processing", { ownerToken });
+    },
+    async preparePlan(ownerToken, plan) {
+      const progress = (await call("prepare_plan", { ownerToken, ...plan }))
+        .progress;
+      if (!progress || typeof progress !== "object") {
+        throw new Error(
+          "Canonical Telegram delivery ledger returned invalid progress",
+        );
+      }
+      return progress as TelegramDeliveryProgress;
+    },
+    async claimChunk(ownerToken, chunkIndex) {
+      const claimed = (await call("claim_chunk", { ownerToken, chunkIndex }))
+        .claimed;
       if (typeof claimed !== "boolean") {
         throw new Error(
           "Canonical Telegram delivery ledger returned invalid claim",
@@ -237,12 +327,18 @@ function canonicalTelegramDeliveryLedger(
       }
       return claimed;
     },
-    async markDelivered() {
-      if ((await call("mark_delivered")).delivered !== true) {
-        throw new Error(
-          "Canonical Telegram delivery ledger did not mark delivery",
-        );
-      }
+    async recordAccepted(ownerToken, chunkIndex, providerMessageId) {
+      await call("record_accepted", {
+        ownerToken,
+        chunkIndex,
+        providerMessageId,
+      });
+    },
+    async recordExplicitRejection(ownerToken, chunkIndex) {
+      await call("record_explicit_rejection", { ownerToken, chunkIndex });
+    },
+    async markDelivered(ownerToken) {
+      await call("mark_delivered", { ownerToken });
     },
   };
 }
@@ -323,68 +419,78 @@ export async function handleWebhook(
     agentId,
   );
   if (adapter.platform === "telegram") {
-    try {
-      const ledger =
-        deps.personalTelegramLedger ??
-        (!agentId && project === "eliza-app"
-          ? canonicalTelegramDeliveryLedger(
-              config,
-              event,
-              deps,
-              project,
-              trace.traceId,
-            )
-          : redisTelegramDeliveryLedger(redis, dedupKey));
-      const outcome = await executeTelegramDelivery(ledger, (beforeEgress) =>
-        processMessage(
-          adapter,
-          config,
-          event,
-          deps,
-          project,
-          trace,
-          agentId,
-          beforeEgress,
-        ),
+    const ledger =
+      deps.personalTelegramLedger ??
+      (!agentId && project === "eliza-app"
+        ? canonicalTelegramDeliveryLedger(
+            config,
+            event,
+            deps,
+            project,
+            trace.traceId,
+          )
+        : redisTelegramDeliveryLedger(redis, dedupKey));
+    const outcome = await executeTelegramDelivery(ledger, (dispatch) => {
+      if (!adapter.prepareReply || !adapter.sendReplyChunk) {
+        throw new Error("Telegram adapter lacks durable chunk delivery");
+      }
+      const prepareReply = adapter.prepareReply;
+      const sendReplyChunk = adapter.sendReplyChunk;
+      return processMessage(
+        adapter,
+        config,
+        event,
+        deps,
+        project,
+        trace,
+        agentId,
+        async (text) =>
+          dispatch(await prepareReply(text), (chunk) =>
+            sendReplyChunk(config, event, chunk),
+          ),
       );
-      if (outcome === "uncertain") {
-        logger.error(
-          "Telegram webhook delivery outcome is uncertain; refusing replay",
-          { platform: adapter.platform, messageId: event.messageId, dedupKey },
-        );
-        return new Response(
-          JSON.stringify({ error: "delivery outcome uncertain" }),
-          { status: 503, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      if (outcome === "in_progress") {
-        return new Response(JSON.stringify({ error: "update in progress" }), {
-          status: 503,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (outcome === "duplicate") {
-        logger.debug("Duplicate webhook skipped", {
+    });
+    if (outcome.status === "uncertain") {
+      logger.error(
+        "Telegram webhook delivery outcome is uncertain; acknowledging without replay",
+        { platform: adapter.platform, messageId: event.messageId, dedupKey },
+      );
+      return ackResponse(adapter.platform);
+    }
+    if (outcome.status === "in_progress") {
+      return new Response(JSON.stringify({ error: "update in progress" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (outcome.status === "explicitly_rejected") {
+      if (outcome.errorCode !== 429 && outcome.errorCode < 500) {
+        logger.warn("Telegram provider permanently rejected delivery", {
           platform: adapter.platform,
           messageId: event.messageId,
-          dedupKey,
+          chunkIndex: outcome.chunkIndex,
+          errorCode: outcome.errorCode,
         });
+        return ackResponse(adapter.platform);
       }
-      return ackResponse(adapter.platform);
-    } catch (error) {
-      if (error instanceof TelegramEgressAlreadyClaimedError) {
-        // error-policy:J1 A competing worker owns the delivery boundary; return
-        // an explicit retryable response without attempting a second send.
-        return new Response(
-          JSON.stringify({ error: "egress already claimed" }),
-          {
-            status: 503,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      }
-      throw error;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (outcome.retryAfterSeconds)
+        headers["Retry-After"] = String(outcome.retryAfterSeconds);
+      return new Response(
+        JSON.stringify({ error: "provider rejected delivery" }),
+        { status: 503, headers },
+      );
     }
+    if (outcome.status === "duplicate") {
+      logger.debug("Duplicate webhook skipped", {
+        platform: adapter.platform,
+        messageId: event.messageId,
+        dedupKey,
+      });
+    }
+    return ackResponse(adapter.platform);
   }
 
   const priorDeliveryState = await redis.get<string>(dedupKey);
@@ -467,7 +573,7 @@ async function processMessage(
   project: string,
   trace: MessageTraceContext,
   explicitAgentId?: string,
-  deliveryHooks?: TelegramDeliveryHooks,
+  deliverReply?: ReplyDelivery,
 ): Promise<void> {
   const startedAt = Date.now();
   let stageStartedAt = startedAt;
@@ -487,7 +593,9 @@ async function processMessage(
     event.text,
   );
   if (linkAttempt.handled && linkAttempt.reply) {
-    await adapter.sendReply(config, event, linkAttempt.reply, deliveryHooks);
+    await (deliverReply
+      ? deliverReply(linkAttempt.reply)
+      : adapter.sendReply(config, event, linkAttempt.reply));
     return;
   }
 
@@ -506,7 +614,7 @@ async function processMessage(
         deps,
         project,
         trace.traceId,
-        deliveryHooks,
+        deliverReply,
       );
       logger.info("Personal Eliza connector message completed", {
         project,
@@ -557,7 +665,7 @@ async function processMessage(
       deps,
       project,
       trace.traceId,
-      deliveryHooks,
+      deliverReply,
     );
     return;
   }
@@ -614,7 +722,7 @@ async function processMessage(
       deps,
       project,
       trace.traceId,
-      deliveryHooks,
+      deliverReply,
     );
     return;
   }
@@ -674,7 +782,9 @@ async function processMessage(
 
   try {
     stageStartedAt = Date.now();
-    await adapter.sendReply(config, event, responseText, deliveryHooks);
+    await (deliverReply
+      ? deliverReply(responseText)
+      : adapter.sendReply(config, event, responseText));
     logger.info("Connector message completed", {
       project,
       platform: adapter.platform,
@@ -766,7 +876,7 @@ async function sendUnlinkedReply(
   deps: HandlerDeps,
   project: string,
   traceId: string,
-  deliveryHooks?: TelegramDeliveryHooks,
+  deliverReply?: ReplyDelivery,
 ): Promise<void> {
   if (
     adapter.platform === "telegram" ||
@@ -780,11 +890,11 @@ async function sendUnlinkedReply(
       deps,
       project,
       traceId,
-      deliveryHooks,
+      deliverReply,
     );
     return;
   }
-  await sendOnboardingReply(adapter, config, event, deps, deliveryHooks);
+  await sendOnboardingReply(adapter, config, event, deps, deliverReply);
 }
 
 async function sendPersonalSharedReply(
@@ -794,7 +904,7 @@ async function sendPersonalSharedReply(
   deps: HandlerDeps,
   project: string,
   traceId: string,
-  deliveryHooks?: TelegramDeliveryHooks,
+  deliverReply?: ReplyDelivery,
 ): Promise<PersonalSharedDeliveryTiming> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
@@ -946,7 +1056,9 @@ async function sendPersonalSharedReply(
     };
   }
   const egressStartedAt = Date.now();
-  await adapter.sendReply(config, event, reply, deliveryHooks);
+  await (deliverReply
+    ? deliverReply(reply)
+    : adapter.sendReply(config, event, reply));
   return {
     cloudMs,
     cloudAttempts: attemptResult.attempts,
@@ -960,7 +1072,7 @@ async function sendOnboardingReply(
   config: WebhookConfig,
   event: ChatEvent,
   deps: HandlerDeps,
-  deliveryHooks?: TelegramDeliveryHooks,
+  deliverReply?: ReplyDelivery,
 ): Promise<void> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
@@ -1024,7 +1136,9 @@ async function sendOnboardingReply(
   if (typeof reply !== "string" || reply.trim().length === 0) {
     throw new Error("onboarding chat returned no reply");
   }
-  await adapter.sendReply(config, event, reply, deliveryHooks);
+  await (deliverReply
+    ? deliverReply(reply)
+    : adapter.sendReply(config, event, reply));
 }
 
 function ackResponse(platform: Platform): Response {

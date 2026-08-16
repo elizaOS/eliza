@@ -1,6 +1,6 @@
 /** Exercises gateway webhook routing with deterministic cloud-service fixtures. */
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import type { TelegramDeliveryState } from "@elizaos/cloud-services-common/telegram-delivery";
+import type { TelegramDeliveryProgress } from "@elizaos/cloud-services-common/telegram-delivery";
 import type {
   ChatEvent,
   PlatformAdapter,
@@ -55,6 +55,44 @@ class MemoryRedis implements GatewayRedis {
   async expire(): Promise<unknown> {
     return 1;
   }
+
+  async eval(script: string, keys: string[], args: string[]): Promise<unknown> {
+    if (script.includes("EXPIRE"))
+      return this.store.get(keys[0]) === args[0] ? 1 : 0;
+    if (script.includes("DEL")) {
+      if (this.store.get(keys[0]) !== args[0]) return 0;
+      this.store.delete(keys[0]);
+      return 1;
+    }
+    if (this.store.get(keys[0]) !== args[0]) return 0;
+    this.store.set(keys[1], args[1]);
+    return 1;
+  }
+}
+
+function telegramDeliveryMethods(
+  sendReply: (
+    config: WebhookConfig,
+    event: ChatEvent,
+    text: string,
+  ) => Promise<void>,
+) {
+  return {
+    async prepareReply(text: string) {
+      return { contentDigest: "a".repeat(64), chunks: [text] };
+    },
+    async sendReplyChunk(
+      config: WebhookConfig,
+      event: ChatEvent,
+      chunk: string,
+    ) {
+      await sendReply(config, event, chunk);
+      return {
+        acceptance: "accepted" as const,
+        providerMessageId: "provider-1",
+      };
+    },
+  };
 }
 
 function createTwilioEvent(overrides: Partial<ChatEvent> = {}): ChatEvent {
@@ -351,12 +389,7 @@ describe("gateway webhook handler e2e routing", () => {
       text: "hello",
       rawPayload: {},
     };
-    const sendReply = mock(async (_config, _event, text, deliveryHooks) => {
-      await deliveryHooks?.prepare([text]);
-      if (await deliveryHooks?.shouldSend(0, text)) {
-        await deliveryHooks.accepted(0, text, "provider-1");
-      }
-    });
+    const sendReply = mock(async () => undefined);
     const adapter: PlatformAdapter = {
       platform: "telegram",
       getDedupeScope: () => "scope",
@@ -364,18 +397,20 @@ describe("gateway webhook handler e2e routing", () => {
       extractEvent: mock(async () => event),
       sendTypingIndicator: mock(async () => undefined),
       sendReply,
+      ...telegramDeliveryMethods(sendReply),
     };
-    class EgressContendedRedis extends MemoryRedis {
-      override async set(
-        key: string,
-        value: string,
-        options: RedisSetOptions = {},
-      ): Promise<unknown> {
-        if (value === "uncertain" && key.includes(":chunk:")) return null;
-        return super.set(key, value, options);
-      }
-    }
-    const redis = new EgressContendedRedis();
+    const redis = new MemoryRedis();
+    redis.store.set(
+      "webhook:telegram:scope:message:update-1",
+      JSON.stringify({
+        state: "egress_started",
+        contentDigest: "a".repeat(64),
+        totalChunks: 1,
+        nextChunkIndex: 0,
+        activeChunkIndex: 0,
+        providerMessageIds: [],
+      }),
+    );
     globalThis.fetch = mock(
       async () =>
         new Response(JSON.stringify({ data: { reply: "agent reply" } }), {
@@ -399,8 +434,8 @@ describe("gateway webhook handler e2e routing", () => {
       "eliza-app",
     );
 
-    expect(response.status).toBe(503);
-    expect(sendReply).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
+    expect(sendReply).not.toHaveBeenCalled();
     expect(
       redis.store.has("webhook:telegram:scope:message:update-1:processing"),
     ).toBe(false);
@@ -418,17 +453,19 @@ describe("gateway webhook handler e2e routing", () => {
       rawPayload: {},
     };
     const replies: string[] = [];
+    const sendReply = mock(async (_config, _event, reply: string) => {
+      replies.push(reply);
+    });
     const adapter: PlatformAdapter = {
       platform: "telegram",
       getDedupeScope: () => "scope",
       verifyWebhook: mock(async () => true),
       extractEvent: mock(async () => event),
-      sendReply: mock(async (_config, _event, reply) => {
-        replies.push(reply);
-      }),
+      sendReply,
+      ...telegramDeliveryMethods(sendReply),
     };
-    let state: TelegramDeliveryState | null = null;
-    let processing = false;
+    let progress: TelegramDeliveryProgress | null = null;
+    let processingOwner: string | null = null;
     const ledgerFingerprints: string[] = [];
     const ledgerTraces: Array<string | null> = [];
     let sharedTurns = 0;
@@ -442,26 +479,71 @@ describe("gateway webhook handler e2e routing", () => {
         const body = (await request.json()) as {
           accountFingerprint: string;
           operation: string;
+          ownerToken?: string;
+          contentDigest?: string;
+          totalChunks?: number;
+          chunkIndex?: number;
+          providerMessageId?: string;
         };
         ledgerFingerprints.push(body.accountFingerprint);
         switch (body.operation) {
           case "read":
-            return Response.json({ state });
+            return Response.json({ progress });
           case "claim_processing":
-            if (processing) return Response.json({ claimed: false });
-            processing = true;
+            if (processingOwner) return Response.json({ claimed: false });
+            processingOwner = body.ownerToken ?? null;
             return Response.json({ claimed: true });
+          case "renew_processing":
+            return Response.json({
+              renewed: processingOwner === body.ownerToken,
+            });
           case "release_processing":
-            processing = false;
+            if (processingOwner === body.ownerToken) processingOwner = null;
             return Response.json({ released: true });
-          case "claim_egress":
-            if (state) return Response.json({ claimed: false });
-            state = "egress_started";
-            return Response.json({ claimed: true });
+          case "prepare_plan":
+            progress ??= {
+              state: "pending",
+              contentDigest: body.contentDigest ?? "",
+              totalChunks: body.totalChunks ?? 0,
+              nextChunkIndex: 0,
+              providerMessageIds: [],
+            };
+            return Response.json({ progress });
+          case "claim_chunk":
+            if (
+              processingOwner !== body.ownerToken ||
+              progress?.state !== "pending"
+            )
+              return Response.json({ claimed: false });
+            progress = {
+              ...progress,
+              state: "egress_started",
+              activeChunkIndex: body.chunkIndex,
+            };
+            return Response.json({ claimed: true, progress });
+          case "record_accepted":
+            if (progress) {
+              progress = {
+                ...progress,
+                state: "pending",
+                nextChunkIndex: (body.chunkIndex ?? 0) + 1,
+                providerMessageIds: [
+                  ...progress.providerMessageIds,
+                  body.providerMessageId ?? "missing",
+                ],
+              };
+              delete progress.activeChunkIndex;
+            }
+            return Response.json({ progress });
+          case "record_explicit_rejection":
+            if (progress) {
+              progress = { ...progress, state: "pending" };
+              delete progress.activeChunkIndex;
+            }
+            return Response.json({ progress });
           case "mark_delivered":
-            state = "delivered";
-            processing = false;
-            return Response.json({ delivered: true });
+            if (progress) progress = { ...progress, state: "delivered" };
+            return Response.json({ progress });
         }
       }
       if (
@@ -585,6 +667,7 @@ describe("gateway webhook handler e2e routing", () => {
       verifyWebhook: mock(async () => true),
       extractEvent: mock(async () => event),
       sendReply,
+      ...telegramDeliveryMethods(sendReply),
     };
     const redis = new MemoryRedis();
     redis.store.set(
@@ -648,6 +731,7 @@ describe("gateway webhook handler e2e routing", () => {
       extractEvent: mock(async () => event),
       sendTypingIndicator: mock(async () => undefined),
       sendReply,
+      ...telegramDeliveryMethods(sendReply),
     };
     const redis = new MemoryRedis();
     const completionLog = spyOn(logger, "info").mockImplementation(
@@ -715,7 +799,6 @@ describe("gateway webhook handler e2e routing", () => {
       expect.anything(),
       event,
       "start with the launch checklist",
-      expect.anything(),
     );
     expect(completionLog).toHaveBeenCalledWith(
       "Personal Shared Cloud attempt completed",
@@ -760,13 +843,15 @@ describe("gateway webhook handler e2e routing", () => {
       providerSentAtMs: Date.now() - 1_000,
       rawPayload: {},
     };
+    const sendReply = mock(async () => undefined);
     const adapter: PlatformAdapter = {
       platform: "telegram",
       getDedupeScope: () => "scope",
       verifyWebhook: mock(async () => true),
       extractEvent: mock(async () => event),
       sendTypingIndicator: mock(async () => undefined),
-      sendReply: mock(async () => undefined),
+      sendReply,
+      ...telegramDeliveryMethods(sendReply),
     };
     const redis = new MemoryRedis();
     const infoLog = spyOn(logger, "info").mockImplementation(() => undefined);
@@ -889,6 +974,7 @@ describe("gateway webhook handler e2e routing", () => {
       resolveVoiceNote,
       sendTypingIndicator: mock(async () => undefined),
       sendReply,
+      ...telegramDeliveryMethods(sendReply),
     };
     const redis = new MemoryRedis();
     let sharedBody: Record<string, unknown> | null = null;
@@ -937,7 +1023,6 @@ describe("gateway webhook handler e2e routing", () => {
       expect.anything(),
       event,
       "I heard you",
-      expect.anything(),
     );
   });
 

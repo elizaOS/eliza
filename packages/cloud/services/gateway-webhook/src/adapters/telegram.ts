@@ -2,8 +2,10 @@
 
 import {
   parseTelegramWebhook,
+  prepareTelegramReply,
   resolveTelegramVoiceNote,
   sendTelegramReply,
+  sendTelegramReplyChunk,
   sendTelegramTyping,
   TELEGRAM_HOSTED_FILE_MAX_BYTES,
   TELEGRAM_VOICE_MAX_BYTES,
@@ -92,6 +94,17 @@ export const telegramAdapter: PlatformAdapter = {
       text,
       logger,
       deliveryHooks,
+    );
+  },
+
+  prepareReply: prepareTelegramReply,
+
+  async sendReplyChunk(config, event, chunk) {
+    return sendTelegramReplyChunk(
+      config,
+      asTelegramEvent(event),
+      chunk,
+      logger,
     );
   },
 
