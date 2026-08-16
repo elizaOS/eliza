@@ -133,6 +133,14 @@ describe("shouldAckReaction", () => {
 			shouldAckReaction({
 				...base,
 				scope: "group-mentions",
+				requireMention: false,
+				effectiveWasMentioned: true,
+			}),
+		).toBe(true);
+		expect(
+			shouldAckReaction({
+				...base,
+				scope: "group-mentions",
 				effectiveWasMentioned: false,
 			}),
 		).toBe(false);
