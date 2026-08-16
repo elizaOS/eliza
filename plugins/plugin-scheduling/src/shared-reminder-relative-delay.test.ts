@@ -73,6 +73,8 @@ describe("explicit Shared reminder relative delay", () => {
     "Do not ever remind me in 1 minute.",
     "I don’t want a reminder in 1 minute.",
     "I do not need a reminder in 1 minute.",
+    "I never asked you to remind me in 1 minute.",
+    "Do not, under any circumstances, remind me in 1 minute.",
   ])("fails closed for a negated reminder command: %s", (text) => {
     expect(resolveExplicitSharedReminderDelay(text)).toEqual({
       kind: "invalid",
@@ -81,11 +83,16 @@ describe("explicit Shared reminder relative delay", () => {
   });
 
   it("does not confuse unrelated negative context with command negation", () => {
-    expect(
-      resolveExplicitSharedReminderDelay(
-        "I do not know why, but remind me in 1 minute.",
-      ),
-    ).toEqual({ kind: "resolved", milliseconds: 60_000 });
+    for (const text of [
+      "I do not know why, but remind me in 1 minute.",
+      "I don’t mind if you remind me in 1 minute.",
+      "Don’t forget to remind me in 1 minute.",
+    ]) {
+      expect(resolveExplicitSharedReminderDelay(text)).toEqual({
+        kind: "resolved",
+        milliseconds: 60_000,
+      });
+    }
   });
 
   it("rejects multiple relative reminder directives", () => {

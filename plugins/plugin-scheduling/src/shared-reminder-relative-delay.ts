@@ -25,11 +25,13 @@ const TRAILING_DELAY_PATTERN = new RegExp(
 const DECIMAL_TOKEN = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/;
 const META_PREFIX =
   /(?:for\s+example|e\.g\.|example|say|write|quote|phrase|wording|text)\s*[:;,-]?\s*$/i;
-const NEGATED_COMMAND_PREFIX =
-  /\b(?:please\s+)?(?:i\s+)?(?:do\s+not|don['’]?t|dont|never)(?:\s+(?:ever|please|want(?:\s+you)?\s+to))*\s*$/i;
-const NEGATED_REMINDER_DELAY_PATTERN = new RegExp(
-  String.raw`\b(?:do\s+not|don['’]?t|dont|never)\s+(?:(?:ever|please)\s+)*(?:(?:want|need)(?:\s+you\s+to|\s+(?:a|the))?\s+)?(?:remind\s+me|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder|(?:a\s+)?reminder)\b[^.!?\n]{0,100}?\bin\s+${NUMBER_TOKEN}\s*${UNIT_TOKEN}\b`,
-  "i",
+const NEGATION_TOKEN = /\b(?:do\s+not|don['’]?t|dont|never)\b/i;
+const POSITIVE_NEGATION_IDIOM =
+  /\b(?:do\s+not|don['’]?t|dont)\s+(?:mind|forget)\b/i;
+const CLAUSE_RESET_PATTERN = /[.!?\n;]|\b(?:but|however|though|yet)\b/gi;
+const BARE_REMINDER_DELAY_PATTERN = new RegExp(
+  String.raw`\breminder\b[^.!?\n]{0,100}?\bin\s+${NUMBER_TOKEN}\s*${UNIT_TOKEN}\b`,
+  "gi",
 );
 
 const UNIT_MILLISECONDS = {
@@ -83,10 +85,35 @@ function candidateIsExample(text: string, index: number): boolean {
   return META_PREFIX.test(text.slice(Math.max(0, index - 80), index));
 }
 
+function currentClausePrefix(text: string, index: number): string {
+  const prefix = text.slice(Math.max(0, index - 160), index);
+  CLAUSE_RESET_PATTERN.lastIndex = 0;
+  let start = 0;
+  for (const boundary of prefix.matchAll(CLAUSE_RESET_PATTERN)) {
+    start = (boundary.index ?? 0) + boundary[0].length;
+  }
+  return prefix.slice(start);
+}
+
+function prefixNegatesCommand(prefix: string): boolean {
+  return NEGATION_TOKEN.test(prefix) && !POSITIVE_NEGATION_IDIOM.test(prefix);
+}
+
 function candidateIsNegated(text: string, index: number): boolean {
-  return NEGATED_COMMAND_PREFIX.test(
-    text.slice(Math.max(0, index - 100), index),
-  );
+  return prefixNegatesCommand(currentClausePrefix(text, index));
+}
+
+function hasNegatedBareReminderDelay(text: string): boolean {
+  BARE_REMINDER_DELAY_PATTERN.lastIndex = 0;
+  for (const match of text.matchAll(BARE_REMINDER_DELAY_PATTERN)) {
+    if (
+      match.index !== undefined &&
+      prefixNegatesCommand(currentClausePrefix(text, match.index))
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const DURATION_CONTINUATION_PATTERN = new RegExp(
@@ -240,7 +267,7 @@ export function resolveExplicitSharedReminderDelay(
 ): ExplicitSharedReminderDelay {
   if (typeof text !== "string" || !text.trim()) return { kind: "absent" };
   const commandText = maskQuotedText(text);
-  if (NEGATED_REMINDER_DELAY_PATTERN.test(commandText)) {
+  if (hasNegatedBareReminderDelay(commandText)) {
     return {
       kind: "invalid",
       reason: "A negated reminder command cannot create a reminder.",
