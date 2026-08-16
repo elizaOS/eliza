@@ -170,6 +170,8 @@ describe("inventory — meta read/write", () => {
           { id: "default", label: "Default" },
           { label: "no id" }, // missing id — drop
           { id: "" }, // empty id — drop
+          { id: "with.dot" }, // invalid storage-key segment — drop
+          { id: "with space" }, // invalid storage-key segment — drop
           "not-an-object", // wrong type — drop
           { id: "work" }, // missing label — keep, label defaults to id
         ],
@@ -278,6 +280,30 @@ describe("inventory — listVaultInventory", () => {
     expect(matching[0]?.hasProfiles).toBe(true);
     expect(matching[0]?.profiles).toHaveLength(2);
     expect(matching[0]?.activeProfile).toBe("default");
+  });
+
+  it("keeps ordinary keys containing the profile segment visible", async () => {
+    await vault.set("service.profile.token", "secret", { sensitive: true });
+
+    const inv = await listVaultInventory(vault);
+
+    expect(inv.map((entry) => entry.key)).toContain("service.profile.token");
+  });
+
+  it("ignores malformed persisted profile ids without failing inventory", async () => {
+    await vault.set("SERVICE_API_KEY", "secret", { sensitive: true });
+    await vault.set(
+      "_meta.SERVICE_API_KEY",
+      JSON.stringify({
+        profiles: [{ id: "with.dot", label: "Malformed legacy profile" }],
+      }),
+    );
+
+    const inv = await listVaultInventory(vault);
+
+    expect(inv.find((entry) => entry.key === "SERVICE_API_KEY")).toMatchObject({
+      hasProfiles: false,
+    });
   });
 
   it("uses meta.category override when present (not heuristic)", async () => {
