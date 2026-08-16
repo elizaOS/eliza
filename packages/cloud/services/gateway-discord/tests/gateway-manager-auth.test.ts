@@ -4,6 +4,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { GatewayManager } from "../src/gateway-manager";
 
 interface AuthHarness {
+  accessToken: string | null;
   refreshToken(): Promise<void>;
   scheduleTokenRefresh(expiresInSeconds: number): void;
   tokenRefreshTimeout: NodeJS.Timeout | null;
@@ -96,6 +97,49 @@ describe("GatewayManager token renewal", () => {
     }
 
     expect(bootstraps).toBe(2);
+  });
+
+  test("does not install a token or timer when bootstrap outlives shutdown", async () => {
+    let resolveBootstrap: ((response: Response) => void) | undefined;
+    globalThis.fetch = mock(async (input: unknown) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("/auth/token")) {
+        return await new Promise<Response>((resolve) => {
+          resolveBootstrap = resolve;
+        });
+      }
+      if (path.endsWith("/discord/gateway/shutdown")) {
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    }) as typeof fetch;
+
+    const manager = new GatewayManager({
+      podName: "test-pod",
+      elizaCloudUrl: "https://api.test",
+      gatewayBootstrapSecret: "bootstrap-secret",
+      project: "test",
+    });
+    const harness = manager as unknown as AuthHarness;
+    harness.accessToken = "existing-token";
+
+    const renewal = harness.refreshToken();
+    await waitFor(() => resolveBootstrap !== undefined);
+    await manager.shutdown();
+    resolveBootstrap?.(
+      new Response(
+        JSON.stringify({
+          access_token: "late-token",
+          token_type: "Bearer",
+          expires_in: 60,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await expect(renewal).rejects.toThrow("Auth lifecycle changed");
+    expect(harness.accessToken).toBe("existing-token");
+    expect(harness.tokenRefreshTimeout).toBeNull();
   });
 });
 

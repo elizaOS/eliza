@@ -271,6 +271,42 @@ describe("reacquireAuthHeader is single-flight", () => {
 
     expect(bootstraps).toBe(3);
   });
+
+  test("shutdown fences an in-flight bootstrap from restoring auth state", async () => {
+    let resolveBootstrap: ((response: Response) => void) | undefined;
+    globalThis.fetch = mock(
+      async () =>
+        await new Promise<Response>((resolve) => {
+          resolveBootstrap = resolve;
+        }),
+    ) as typeof fetch;
+
+    const { getAuthHeader, initAuth, shutdownAuth } = await import(
+      "../src/auth"
+    );
+    const initialization = initAuth({
+      cloudUrl: "https://api.test",
+      bootstrapSecret: "bootstrap",
+      podName: "test-pod",
+    });
+    await waitFor(() => resolveBootstrap !== undefined);
+    shutdownAuth();
+    resolveBootstrap?.(
+      new Response(
+        JSON.stringify({
+          access_token: "late-token",
+          token_type: "Bearer",
+          expires_in: 60,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await expect(initialization).rejects.toThrow("Auth lifecycle changed");
+    expect(() => getAuthHeader()).toThrow("No access token available");
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    expect(() => getAuthHeader()).toThrow("No access token available");
+  });
 });
 
 async function waitFor(predicate: () => boolean): Promise<void> {
