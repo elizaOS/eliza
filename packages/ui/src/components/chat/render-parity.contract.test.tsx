@@ -198,9 +198,9 @@ const CORPUS: Array<{ name: string; message: ConversationMessage }> = [
     ),
   },
   {
-    name: "choice widget",
+    name: "ordinary approval choice widget",
     message: assistant(
-      "Pick a plan:\n[CHOICE:plan]\nfree=Free\npro=Pro\n[/CHOICE]",
+      "Approve this?\n[CHOICE:approval]\napprove=Approve\nreject=Reject\n[/CHOICE]",
     ),
   },
   {
@@ -277,6 +277,25 @@ describe("chat render parity (ThreadLine vs MessageContent) — #9954", () => {
     expect([...seen].sort()).toEqual(
       ["choice", "code", "no-provider", "secret"].sort(),
     );
+  });
+
+  it("keeps reminder controls actionable on both chat surfaces", () => {
+    const { viewPrint, overlayPrint } = renderBoth(
+      assistant(
+        "Time to stretch.\n\n[CHOICE:lifeops-reminder id=reminder-123]\ndone=Done\n10 minutes=Snooze 10m\nskip=Skip\n[/CHOICE]",
+      ),
+    );
+
+    for (const fingerprint of [viewPrint, overlayPrint]) {
+      expect(fingerprint.hasChoiceWidget).toBe(true);
+      expect(fingerprint.choiceOptionValues).toEqual(
+        expect.arrayContaining([
+          "choice-done",
+          "choice-10 minutes",
+          "choice-skip",
+        ]),
+      );
+    }
   });
 });
 

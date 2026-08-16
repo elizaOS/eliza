@@ -16,15 +16,31 @@ vi.mock("../../chat/InlineWidgetText", async () => {
   const React = await import("react");
   return {
     InlineWidgetText({ content }: { content: string }) {
-      const match = content.match(/(__first_run__:runtime:cloud)=([^\n]+)/);
+      const match = content.match(
+        /\[CHOICE:[^\]]+\]\n([\s\S]*?)\n\[\/CHOICE\]/,
+      );
       if (!match) return content;
+      const prose = content.replace(match[0], "").trim();
+      const options = match[1]
+        .split("\n")
+        .map((line) => line.split("="))
+        .filter((parts): parts is [string, string] => parts.length === 2);
       return React.createElement(
-        "button",
-        {
-          type: "button",
-          onClick: () => void inlineWidgetMock.sendActionMessage(match[1]),
-        },
-        match[2],
+        React.Fragment,
+        null,
+        prose || null,
+        ...options.map(([value, label]) =>
+          React.createElement(
+            "button",
+            {
+              key: value,
+              type: "button",
+              "data-testid": `choice-${value}`,
+              onClick: () => void inlineWidgetMock.sendActionMessage(value),
+            },
+            label,
+          ),
+        ),
       );
     },
   };
@@ -105,6 +121,34 @@ describe("ChatSurface", () => {
     expect(inlineWidgetMock.sendActionMessage).toHaveBeenCalledWith(
       "__first_run__:runtime:cloud",
     );
+  });
+
+  it("keeps ordinary reminder actions available in the ambient packaged chat", () => {
+    const messages: ShellMessage[] = [
+      {
+        id: "reminder",
+        role: "assistant",
+        content: [
+          "Time to stretch.",
+          "",
+          "[CHOICE:lifeops-reminder id=reminder-123]",
+          "done=Done",
+          "10 minutes=Snooze 10m",
+          "skip=Skip",
+          "[/CHOICE]",
+        ].join("\n"),
+        createdAt: 0,
+      },
+    ];
+
+    render(
+      <ChatSurface messages={messages} onSend={() => {}} canSend={true} />,
+    );
+
+    expect(screen.getByText("Time to stretch.")).toBeTruthy();
+    expect(screen.getByTestId("choice-done")).toBeTruthy();
+    expect(screen.getByText("Snooze 10m")).toBeTruthy();
+    expect(screen.getByText("Skip")).toBeTruthy();
   });
 
   it("disables send when input is empty", () => {

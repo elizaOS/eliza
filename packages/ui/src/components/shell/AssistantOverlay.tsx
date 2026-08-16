@@ -52,7 +52,10 @@ export function AssistantOverlay({
     open ??
     (phase === "summoned" || phase === "listening" || phase === "responding");
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
-  const glassTier = useNativeGlassAnchor(dialogRef);
+  const glassTier = useNativeGlassAnchor(dialogRef, {
+    colorScheme: "dark",
+    tintColor: "#16090DD9",
+  });
   const previousFocusRef = React.useRef<HTMLElement | null>(null);
 
   // Manage Escape, focus trap, initial focus, and focus return as a single
@@ -130,7 +133,7 @@ export function AssistantOverlay({
       aria-modal="true"
       aria-label={`${appName} assistant`}
       data-testid="shell-assistant-overlay"
-      data-popup-material="light-frosted"
+      data-popup-material="dark-frosted"
       data-phase={phase}
       data-glass-tier={glassTier}
       // Sits one tick above the pill in stacking order. The desktop overlay

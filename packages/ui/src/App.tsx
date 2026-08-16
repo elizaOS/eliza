@@ -92,6 +92,7 @@ import {
   resolveCloudHostedAgentUrl,
 } from "./components/auth/CloudPairRelay";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
+import { ServingProviderChip } from "./components/composites/chat/ServingProviderChip";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
@@ -350,12 +351,15 @@ function ChatOverlayShell() {
     return () => document.removeEventListener("keydown", onKey);
   }, [overlayOpen]);
   return (
-    <div
-      data-testid="chat-overlay-shell"
-      className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
-    >
-      <ShellFoundationMount />
-    </div>
+    <>
+      <GlassStyles />
+      <div
+        data-testid="chat-overlay-shell"
+        className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
+      >
+        <ShellFoundationMount />
+      </div>
+    </>
   );
 }
 
@@ -1917,18 +1921,25 @@ function ShellFoundationMount() {
         onClose={controller.close}
         open={controller.isOpen}
       >
-        <ChatSurface
-          messages={controller.messages}
-          onSend={controller.send}
-          canSend={controller.canSend}
-          greeting={greetingForTimeOfDay()}
-          recording={controller.recording}
-          onToggleRecording={controller.toggleRecording}
-          onDictateStart={() => controller.startRecording("dictate")}
-          onDictateEnd={controller.stopRecording}
-          onVision={controller.captureVision}
-          visionActive={controller.visionCapturing}
-        />
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex min-h-6 shrink-0 items-center justify-end pr-8">
+            <ServingProviderChip className="pointer-events-none text-muted-strong" />
+          </div>
+          <div className="min-h-0 flex-1">
+            <ChatSurface
+              messages={controller.messages}
+              onSend={controller.send}
+              canSend={controller.canSend}
+              greeting={greetingForTimeOfDay()}
+              recording={controller.recording}
+              onToggleRecording={controller.toggleRecording}
+              onDictateStart={() => controller.startRecording("dictate")}
+              onDictateEnd={controller.stopRecording}
+              onVision={controller.captureVision}
+              visionActive={controller.visionCapturing}
+            />
+          </div>
+        </div>
       </AssistantOverlay>
     </>
   );
