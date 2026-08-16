@@ -24,7 +24,12 @@ import {
   formatRateLimitMessage,
   inspectRateLimit,
 } from "../rate-limit.js";
-import { type GitHubActionResult, GitHubActions } from "../types.js";
+import {
+  type GitHubActionResult,
+  GitHubActions,
+  type GitHubNotificationSummary,
+  type GitHubOctokitClient,
+} from "../types.js";
 
 const REASON_SCORES: Record<string, number> = {
   security_advisory: 100,
@@ -60,6 +65,22 @@ export interface TriagedNotification {
   url: string | null;
   updatedAt: string;
   score: number;
+}
+
+/** Fetch every unread notification page so ranking and totals are complete. */
+export async function fetchAllUnreadNotifications(
+  activity: GitHubOctokitClient["activity"],
+): Promise<GitHubNotificationSummary[]> {
+  const notifications: GitHubNotificationSummary[] = [];
+  for (let page = 1; ; page += 1) {
+    const response = await activity.listNotificationsForAuthenticatedUser({
+      all: false,
+      per_page: 100,
+      page,
+    });
+    notifications.push(...response.data);
+    if (response.data.length < 100) return notifications;
+  }
 }
 
 function scoreNotification(params: {
@@ -138,22 +159,9 @@ export const notificationTriageAction: Action = {
     }
 
     try {
-      const resp =
-        await resolved.client.activity.listNotificationsForAuthenticatedUser({
-          all: false,
-          per_page: 50,
-        });
-      const notifications = resp.data as Array<{
-        id: string;
-        reason?: string | null;
-        repository?: { full_name?: string | null; pushed_at?: string | null };
-        subject?: {
-          title?: string | null;
-          type?: string | null;
-          url?: string | null;
-        };
-        updated_at: string;
-      }>;
+      const notifications = await fetchAllUnreadNotifications(
+        resolved.client.activity,
+      );
       const nowMs = Date.now();
       const triaged: TriagedNotification[] = notifications.map((n) => {
         const repoPushedAt = n.repository?.pushed_at ?? null;
