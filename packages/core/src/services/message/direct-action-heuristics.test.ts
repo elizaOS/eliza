@@ -1451,22 +1451,27 @@ describe("classifyExplicitContinuationTurn", () => {
 
 describe("resolveExplicitContinuationRequestText", () => {
 	const AGENT_ID = "00000000-0000-0000-0000-0000000000aa";
+	const USER_ID = "00000000-0000-0000-0000-0000000000bb";
+	const OTHER_USER_ID = "00000000-0000-0000-0000-0000000000cc";
 	const room = (
 		entries: Array<{
 			id: string;
 			agent?: boolean;
+			entity?: string;
 			text: string;
 			createdAt: number;
 			callbacks?: string[];
+			actions?: string[];
 		}>,
 	) =>
 		entries.map((entry) => ({
 			id: entry.id,
-			entityId: entry.agent ? AGENT_ID : "00000000-0000-0000-0000-0000000000bb",
+			entityId: entry.agent ? AGENT_ID : (entry.entity ?? USER_ID),
 			createdAt: entry.createdAt,
 			content: {
 				text: entry.text,
 				...(entry.callbacks ? { actionCallbackHistory: entry.callbacks } : {}),
+				...(entry.actions ? { actions: entry.actions } : {}),
 			},
 		}));
 
@@ -1484,6 +1489,7 @@ describe("resolveExplicitContinuationRequestText", () => {
 				{ id: "m3", text: "finish my request", createdAt: 3 },
 			]),
 			AGENT_ID,
+			USER_ID,
 			"m3",
 		);
 		expect(resolved).toBe("track a 30 minute run for me");
@@ -1497,6 +1503,7 @@ describe("resolveExplicitContinuationRequestText", () => {
 				{ id: "m2", agent: true, text: "On it.", createdAt: 2 },
 			]),
 			AGENT_ID,
+			USER_ID,
 		);
 		expect(pending).toBe("run ls in my home directory");
 
@@ -1513,6 +1520,7 @@ describe("resolveExplicitContinuationRequestText", () => {
 				},
 			]),
 			AGENT_ID,
+			USER_ID,
 		);
 		expect(delivered).toBe(null);
 	});
@@ -1523,10 +1531,16 @@ describe("resolveExplicitContinuationRequestText", () => {
 				"what's the weather in tokyo?",
 				room([{ id: "m1", text: "track a run", createdAt: 1 }]),
 				AGENT_ID,
+				USER_ID,
 			),
 		).toBe(null);
 		expect(
-			resolveExplicitContinuationRequestText("finish it", [], AGENT_ID),
+			resolveExplicitContinuationRequestText(
+				"finish it",
+				[],
+				AGENT_ID,
+				USER_ID,
+			),
 		).toBe(null);
 	});
 
@@ -1541,8 +1555,111 @@ describe("resolveExplicitContinuationRequestText", () => {
 				{ id: "m5", text: "finish it", createdAt: 5 },
 			]),
 			AGENT_ID,
+			USER_ID,
 			"m5",
 		);
 		expect(resolved).toBe("run df -h on the server");
+	});
+
+	it("never resolves a continuation to another participant's request (#20227 review)", () => {
+		// User A's destructive request is the nearest prior request in the
+		// shared room; User B's contentless "go ahead" must not select it.
+		const sharedRoom = room([
+			{
+				id: "m1",
+				entity: OTHER_USER_ID,
+				text: "delete my deployment",
+				createdAt: 1,
+			},
+			{
+				id: "m2",
+				agent: true,
+				text: "Should I delete the production deployment?",
+				createdAt: 2,
+			},
+			{ id: "m3", text: "go ahead", createdAt: 3 },
+		]);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"go ahead",
+				sharedRoom,
+				AGENT_ID,
+				USER_ID,
+				"m3",
+			),
+		).toBe(null);
+		// The same room resolves for the participant who actually asked.
+		expect(
+			resolveExplicitContinuationRequestText(
+				"go ahead",
+				sharedRoom,
+				AGENT_ID,
+				OTHER_USER_ID,
+				"m3",
+			),
+		).toBe("delete my deployment");
+	});
+
+	it("binds resolution to the requester's own request when both participants have asked", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"finish my request",
+			room([
+				{ id: "m1", text: "track a 30 minute run for me", createdAt: 1 },
+				{
+					id: "m2",
+					entity: OTHER_USER_ID,
+					text: "delete my deployment",
+					createdAt: 2,
+				},
+				{ id: "m3", agent: true, text: "Working on it.", createdAt: 3 },
+				{ id: "m4", text: "finish my request", createdAt: 4 },
+			]),
+			AGENT_ID,
+			USER_ID,
+			"m4",
+		);
+		// The other participant's request is nearer, but resolution stays on
+		// the requester's own prior ask.
+		expect(resolved).toBe("track a 30 minute run for me");
+	});
+
+	it("treats a completed action recorded only in content.actions as delivered (#20227 review)", () => {
+		const completed = room([
+			{ id: "m1", text: "delete the stale deployment", createdAt: 1 },
+			{
+				id: "m2",
+				agent: true,
+				text: "Done.",
+				createdAt: 2,
+				actions: ["DELETE_DEPLOYMENT"],
+			},
+		]);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"that is good",
+				completed,
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe(null);
+		// The reply/none envelope is not a tool marker: a short pending ack
+		// recorded with actions: ["REPLY"] still resolves.
+		expect(
+			resolveExplicitContinuationRequestText(
+				"that is good",
+				room([
+					{ id: "m1", text: "run ls in my home directory", createdAt: 1 },
+					{
+						id: "m2",
+						agent: true,
+						text: "On it.",
+						createdAt: 2,
+						actions: ["REPLY"],
+					},
+				]),
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe("run ls in my home directory");
 	});
 });

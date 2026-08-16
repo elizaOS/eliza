@@ -6824,7 +6824,10 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 		const state = recentState([
 			{
 				id: "00000000-0000-0000-0000-00000000ee01" as UUID,
-				entityId: "00000000-0000-0000-0000-00000000ee11" as UUID,
+				// The requester: matches the makeMessage sender so continuation
+				// resolution, which is bound to the current requester's entity,
+				// treats this as the speaker's own prior request.
+				entityId: "00000000-0000-0000-0000-000000000002" as UUID,
 				agentId,
 				roomId,
 				createdAt: 1,
@@ -6889,7 +6892,10 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 		const state = recentState([
 			{
 				id: "00000000-0000-0000-0000-00000000ee01" as UUID,
-				entityId: "00000000-0000-0000-0000-00000000ee11" as UUID,
+				// The requester: matches the makeMessage sender so continuation
+				// resolution, which is bound to the current requester's entity,
+				// treats this as the speaker's own prior request.
+				entityId: "00000000-0000-0000-0000-000000000002" as UUID,
 				agentId,
 				roomId,
 				createdAt: 1,
@@ -6917,6 +6923,125 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 		});
 
 		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
+	it("does not resolve a continuation to another participant's request (#20227 review)", async () => {
+		const shellHandler = vi.fn(async () => ({ success: true, text: "" }));
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Sure — what would you like me to do?",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "SHELL",
+				similes: [],
+				description: "Run a local shell command.",
+				parameters: [],
+				examples: [],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		const agentId = runtime.agentId;
+		// A different participant owns the pending shell request; the current
+		// "go ahead" turn comes from the makeMessage sender (…0002), who has
+		// asked for nothing.
+		const state = recentState([
+			{
+				id: "00000000-0000-0000-0000-00000000ff01" as UUID,
+				entityId: "00000000-0000-0000-0000-00000000ff11" as UUID,
+				agentId,
+				roomId,
+				createdAt: 1,
+				content: {
+					text: "show me disk usage on this server",
+					source: "test",
+				},
+			},
+			{
+				id: "00000000-0000-0000-0000-00000000ff02" as UUID,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 2,
+				content: { text: "On it.", source: "test" },
+			},
+		]);
+		runtime.composeState = vi.fn(async () => state);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "go ahead" }),
+			state,
+			responseId: "00000000-0000-0000-0000-0000000000c4" as UUID,
+		});
+
+		// The other participant's request must not be promoted on this
+		// speaker's behalf: no planner turn, no shell run.
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
+	it("does not replay a completed action recorded only in content.actions (#20227 review)", async () => {
+		const shellHandler = vi.fn(async () => ({ success: true, text: "" }));
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Glad to hear it!",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "SHELL",
+				similes: [],
+				description: "Run a local shell command.",
+				parameters: [],
+				examples: [],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		const agentId = runtime.agentId;
+		// The agent already ran the tool; the short result carries the tool
+		// marker only in content.actions (no actionCallbackHistory).
+		const state = recentState([
+			{
+				id: "00000000-0000-0000-0000-00000000fa01" as UUID,
+				entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+				agentId,
+				roomId,
+				createdAt: 1,
+				content: {
+					text: "show me disk usage on this server",
+					source: "test",
+				},
+			},
+			{
+				id: "00000000-0000-0000-0000-00000000fa02" as UUID,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 2,
+				content: { text: "Done.", source: "test", actions: ["SHELL"] },
+			},
+		]);
+		runtime.composeState = vi.fn(async () => state);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "that is good" }),
+			state,
+			responseId: "00000000-0000-0000-0000-0000000000c5" as UUID,
+		});
+
+		// Praise after a delivered result stays a simple reply — the finished
+		// request is not re-promoted and the tool does not run again.
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
 		expect(useModelCalls(runtime)).toHaveLength(1);
 	});
 });

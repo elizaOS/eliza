@@ -1686,10 +1686,41 @@ export type ContinuationDialogueEntry = {
 		text?: unknown;
 		type?: unknown;
 		source?: unknown;
+		actions?: unknown;
 		actionCallbackHistory?: unknown;
 		metadata?: unknown;
 	};
 };
+
+/**
+ * Structural marker for message content whose text is a tool-derived answer
+ * rather than plain dialogue: it carries merged action-callback history, or
+ * its recorded actions include a real tool (anything beyond the
+ * reply/none/ignore envelope). Continuation resolution and the planner
+ * context share this predicate so a completed tool result is never mistaken
+ * for a still-pending turn regardless of which field recorded the tool run.
+ */
+export function isToolDerivedAssistantContent(
+	content: ContinuationDialogueEntry["content"],
+): boolean {
+	if (!content || typeof content !== "object") return false;
+	const callbackHistory = content.actionCallbackHistory;
+	if (Array.isArray(callbackHistory) && callbackHistory.length > 0) {
+		return true;
+	}
+	const actions = content.actions;
+	if (!Array.isArray(actions)) return false;
+	return actions.some((action) => {
+		if (typeof action !== "string") return false;
+		const normalized = normalizeActionIdentifier(action);
+		return (
+			normalized.length > 0 &&
+			normalized !== "REPLY" &&
+			normalized !== "NONE" &&
+			normalized !== "IGNORE"
+		);
+	});
+}
 
 const CONTINUATION_LEAD_IN =
 	"(?:ok(?:ay)?|yes|yep|yeah|sure|alright|great|perfect)?[,.!]?\\s*(?:please\\s+)?";
@@ -1754,6 +1785,7 @@ function isContinuationDialogueArtifact(
 	const content = entry.content;
 	if (!content || typeof content !== "object") return true;
 	if (content.type === "action_result") return true;
+	if (isToolDerivedAssistantContent(content)) return true;
 	if (
 		typeof content.source === "string" &&
 		content.source.includes("sub-agent")
@@ -1780,16 +1812,21 @@ const PENDING_ASSISTANT_TURN_MAX_CHARS = 160;
  * on the request the user is actually referring to. Deterministic and
  * conservative: non-continuation turns resolve to nothing (topic switches are
  * untouched), approval turns additionally require the agent's latest visible
- * reply to still look pending (a question or a short ack without tool-result
- * callbacks), and the resolved text is the single nearest prior user request
- * — prior requests are never concatenated together or onto the current turn.
+ * reply to still look pending (a question or a short ack without structural
+ * tool-derived markers), the resolved text is the single nearest prior user
+ * request — prior requests are never concatenated together or onto the
+ * current turn — and candidates are bound to the requester: RECENT_MESSAGES
+ * is room-scoped, so a continuation only ever resolves to a prior request
+ * from the same entity that is speaking now, never another participant's.
  */
 export function resolveExplicitContinuationRequestText(
 	currentText: string,
 	recentMessages: ReadonlyArray<ContinuationDialogueEntry>,
 	agentId: string,
+	requesterEntityId: string,
 	currentMessageId?: string,
 ): string | null {
+	if (!requesterEntityId || requesterEntityId === agentId) return null;
 	const kind = classifyExplicitContinuationTurn(currentText);
 	if (!kind) return null;
 	const ordered = [...recentMessages]
@@ -1808,8 +1845,6 @@ export function resolveExplicitContinuationRequestText(
 		if (!lastAssistant || isContinuationDialogueArtifact(lastAssistant)) {
 			return null;
 		}
-		const callbacks = lastAssistant.content?.actionCallbackHistory;
-		if (Array.isArray(callbacks) && callbacks.length > 0) return null;
 		const lastText = continuationEntryText(lastAssistant);
 		const looksPending =
 			lastText.endsWith("?") ||
@@ -1819,7 +1854,7 @@ export function resolveExplicitContinuationRequestText(
 
 	for (let index = ordered.length - 1; index >= 0; index--) {
 		const entry = ordered[index];
-		if (!entry || entry.entityId === agentId) continue;
+		if (!entry || entry.entityId !== requesterEntityId) continue;
 		if (isContinuationDialogueArtifact(entry)) continue;
 		const text = continuationEntryText(entry);
 		if (text.length === 0) continue;
