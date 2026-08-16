@@ -19,6 +19,10 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
+import {
+  MAX_CHAT_MEDIA_BASE64_BYTES,
+  MAX_CHAT_MEDIA_RAW_BYTES,
+} from "@elizaos/shared/chat-upload-limits";
 import { resolveStateDir } from "../config/paths.ts";
 import { generateThumbnailBytes } from "./media-thumbnail.ts";
 
@@ -423,6 +427,10 @@ export function persistDataUrl(dataUrl: string): PersistedMedia | null {
   if (!match) return null;
   const header = match[1] ?? "";
   const payload = match[2] ?? "";
+  // Bound the encoded payload before decode. Buffer.from / decodeURIComponent
+  // of an unbounded data: URL is the heap DoS; a post-decode byte check still
+  // materializes the Buffer. Share the chat attachment encoded cap.
+  if (payload.length > MAX_CHAT_MEDIA_BASE64_BYTES) return null;
   const tokens = header.split(";");
   const mimeType = (tokens.shift() ?? "").trim() || "application/octet-stream";
   const isBase64 = tokens.some((token) => token.trim() === "base64");
@@ -438,6 +446,7 @@ export function persistDataUrl(dataUrl: string): PersistedMedia | null {
     return null;
   }
   if (buffer.length === 0) return null;
+  if (buffer.length > MAX_CHAT_MEDIA_RAW_BYTES) return null;
   return persistMediaBytes(buffer, mimeType);
 }
 
@@ -830,6 +839,24 @@ export function handleMediaRouteRequest(
   }
   if (range) {
     const length = range.end - range.start + 1;
+    // Avoid loading the full file for a tiny Range (e.g., bytes=0-0 on a 2 GB video) — read only the requested slice.
+    let body: Buffer;
+    try {
+      const fd = fs.openSync(resolved.filePath, "r");
+      try {
+        body = Buffer.alloc(length);
+        fs.readSync(fd, body, 0, length, range.start);
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch (err) {
+      // error-policy:J2 — unreadable slice is a real I/O failure, not a 404.
+      throw new ElizaError(`media range read failed for ${resolved.name}`, {
+        code: "MEDIA_STORE_READ_FAILED",
+        cause: err,
+        context: { name: resolved.name, range },
+      });
+    }
     return {
       status: 206,
       headers: {
@@ -837,9 +864,7 @@ export function handleMediaRouteRequest(
         "Content-Range": `bytes ${range.start}-${range.end}/${resolved.size}`,
         "Content-Length": String(length),
       },
-      body: fs
-        .readFileSync(resolved.filePath)
-        .subarray(range.start, range.end + 1),
+      body,
     };
   }
 

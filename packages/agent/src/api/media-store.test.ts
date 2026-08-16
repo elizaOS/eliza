@@ -13,6 +13,7 @@ import type { ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
+import { MAX_CHAT_MEDIA_BASE64_BYTES } from "@elizaos/shared/chat-upload-limits";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 let stateDir: string;
@@ -226,6 +227,17 @@ describe("media-store", () => {
 
   it("returns null for a non-data URL", () => {
     expect(persistDataUrl("https://example.com/x.png")).toBeNull();
+  });
+
+  it("rejects an oversized encoded payload before decoding", () => {
+    // Encoded length is over the chat cap, but these extra padding chars do
+    // not grow the decoded size — a post-decode-only check still accepts it.
+    const payload = "A".repeat(MAX_CHAT_MEDIA_BASE64_BYTES + 1);
+    const mediaDir = path.join(stateDir, "media");
+    fs.mkdirSync(mediaDir, { recursive: true });
+    const before = fs.readdirSync(mediaDir);
+    expect(persistDataUrl(`data:image/png;base64,${payload}`)).toBeNull();
+    expect(fs.readdirSync(mediaDir)).toEqual(before);
   });
 
   it("persists a base64 data URL with media-type parameters (RFC 2397)", () => {
@@ -474,6 +486,20 @@ describe("handleMediaRouteRequest (in-process / iOS path)", () => {
     expect(res.headers["Content-Range"]).toBe("bytes 2-5/10");
     expect(res.headers["Content-Length"]).toBe("4");
     expect((res.body as Buffer).equals(Buffer.from("2345"))).toBe(true);
+  });
+
+  it("does not read the whole file to serve a tiny Range", () => {
+    const bytes = Buffer.from("0123456789");
+    const { url } = persistMediaBytes(bytes, "video/mp4");
+    const spy = vi.spyOn(fs, "readFileSync");
+    try {
+      const res = handleMediaRouteRequest(url, "GET", "bytes=0-0");
+      expect(res.status).toBe(206);
+      expect((res.body as Buffer).equals(Buffer.from("0"))).toBe(true);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("clamps an open-ended Range (bytes=N-) to the end of the file", () => {
