@@ -60,6 +60,7 @@ import {
 	resolveNativeRuntimeFeatureFromPluginName,
 	resolveNativeRuntimeFeatureFromServiceType,
 } from "./plugins/native-features";
+import { resolveActionEventWorldId } from "./runtime/action-event-world";
 import { settleActionHandler } from "./runtime/action-handler-settlement";
 import {
 	executeChainWithFallback,
@@ -4323,7 +4324,11 @@ export class AgentRuntime implements IAgentRuntime {
 
 		const messageId = message.id;
 		const roomId = message.roomId;
-		const worldId = message.worldId ?? roomId;
+		const worldId = await resolveActionEventWorldId(
+			this,
+			message,
+			"AgentRuntime.resolveActionEventWorldId",
+		);
 
 		const runOne = async (action: Action) => {
 			await this.emitEvent(EventType.ACTION_STARTED, {

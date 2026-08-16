@@ -17,6 +17,7 @@ import {
 	ActionMode,
 	ChannelType,
 	type Character,
+	EventType,
 	HOOK_MODES,
 	type Memory,
 	type Room,
@@ -70,6 +71,7 @@ function makeMessage(): Memory {
 		id: "00000000-0000-0000-0000-00000000000a" as Memory["id"],
 		entityId: "00000000-0000-0000-0000-00000000000b" as Memory["entityId"],
 		roomId: "00000000-0000-0000-0000-00000000000c" as Memory["roomId"],
+		worldId: "00000000-0000-0000-0000-00000000000d" as Memory["worldId"],
 		content: { text: "hello", source: "test" },
 	} as Memory;
 }
@@ -128,6 +130,49 @@ describe("runActionsByMode", () => {
 
 		await runtime.runActionsByMode("ALWAYS_AFTER", makeMessage());
 		expect(ledger).toEqual(["ok"]);
+	});
+
+	it("resolves lifecycle event world through the room when the message omits it", async () => {
+		const turn = makeMessage();
+		delete turn.worldId;
+		const resolvedWorldId =
+			"00000000-0000-0000-0000-00000000000e" as Memory["worldId"];
+		const getRoom = vi.spyOn(runtime, "getRoom").mockResolvedValue({
+			id: turn.roomId,
+			agentId: runtime.agentId,
+			source: "test",
+			type: ChannelType.DM,
+			worldId: resolvedWorldId,
+		});
+		const emitEvent = vi
+			.spyOn(runtime, "emitEvent")
+			.mockResolvedValue(undefined);
+		runtime.actions.length = 0;
+		runtime.actions.push(makeProbe("world-probe", "ALWAYS_AFTER", []));
+
+		try {
+			await runtime.runActionsByMode("ALWAYS_AFTER", turn);
+			expect(getRoom).toHaveBeenCalledWith(turn.roomId);
+			expect(emitEvent).toHaveBeenNthCalledWith(
+				1,
+				EventType.ACTION_STARTED,
+				expect.objectContaining({
+					roomId: turn.roomId,
+					world: resolvedWorldId,
+				}),
+			);
+			expect(emitEvent).toHaveBeenNthCalledWith(
+				2,
+				EventType.ACTION_COMPLETED,
+				expect.objectContaining({
+					roomId: turn.roomId,
+					world: resolvedWorldId,
+				}),
+			);
+		} finally {
+			getRoom.mockRestore();
+			emitEvent.mockRestore();
+		}
 	});
 
 	it("revalidates owner-private audience after validation and before a DURING handler", async () => {
