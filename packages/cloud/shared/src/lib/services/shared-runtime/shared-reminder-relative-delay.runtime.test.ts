@@ -86,7 +86,7 @@ describe("Shared reminder relative-delay runtime authority", () => {
     },
     {
       label: "rejects a cancellation synonym before scheduler persistence",
-      message: "Remind me in 1 minute. Actually, please cancel that.",
+      message: "Remind me in 1 minute. Please, actually cancel that.",
       atIso: undefined,
     },
   ])("$label", async ({ message, atIso }) => {

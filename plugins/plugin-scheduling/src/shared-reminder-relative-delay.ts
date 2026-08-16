@@ -134,7 +134,7 @@ const IMMEDIATE_REVISION_PATTERN = new RegExp(
 );
 
 const LATER_CANCELLATION_PATTERN = new RegExp(
-  String.raw`^\s*${COMMAND_SEPARATOR}?\s*(?:(?:but|however)\s*${COMMAND_SEPARATOR}?\s*)?(?:actually\s*${COMMAND_SEPARATOR}?\s*)?(?:please\s*${COMMAND_SEPARATOR}?\s*)?(?:(?:do\s+not|don['’]?t|dont|never)(?:\s+ever)?\s+(?:please\s+)?(?:remind\s+me|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder)\b|(?:never\s+mind\b|cancel(?:\s+(?:that(?:\s+reminder)?|it|the\s+reminder))?\b)(?:\s*,?\s+please\b)?(?=\s*(?:[.!?…]+|$)))`,
+  String.raw`^\s*${COMMAND_SEPARATOR}?\s*(?:(?:but|however)\s*${COMMAND_SEPARATOR}?\s*)?(?:(?:actually\s*${COMMAND_SEPARATOR}?\s*please|please\s*${COMMAND_SEPARATOR}?\s*actually|actually|please)\s*${COMMAND_SEPARATOR}?\s*)?(?:(?:do\s+not|don['’]?t|dont|never)(?:\s+ever)?\s+(?:please\s+)?(?:remind\s+me|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder)\b|(?:never\s+mind\b|cancel(?:\s+(?:that(?:\s+reminder)?|it|the\s+reminder))?\b)(?:\s*,?\s+please\b)?(?=\s*(?:[.!?…]+|$)))`,
   "i",
 );
 
