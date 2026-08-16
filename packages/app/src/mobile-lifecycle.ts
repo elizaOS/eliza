@@ -100,7 +100,9 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       if (ctx.isIOS) {
         await Keyboard.setResizeMode({ mode: KeyboardResize.None });
         await Keyboard.setScroll({ isDisabled: true });
-        await Keyboard.setAccessoryBarVisible({ isVisible: true });
+        // The chat sheet owns keyboard dismissal. Hiding WebKit's accessory
+        // prevents a second previous/next/Done toolbar below the composer.
+        await Keyboard.setAccessoryBarVisible({ isVisible: false });
       }
 
       keyboardListenersRegistered = true;

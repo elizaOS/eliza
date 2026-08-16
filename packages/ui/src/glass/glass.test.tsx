@@ -121,9 +121,15 @@ describe("glass tokens", () => {
   });
 });
 
-function AnchorHarness({ enabled }: { enabled: boolean }) {
+function AnchorHarness({
+  enabled,
+  colorScheme,
+}: {
+  enabled: boolean;
+  colorScheme?: "light" | "dark" | "system";
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  const tier = useNativeGlassAnchor(ref, { enabled });
+  const tier = useNativeGlassAnchor(ref, { enabled, colorScheme });
   return <div ref={ref} data-testid="anchor" data-glass-tier={tier} />;
 }
 
@@ -166,6 +172,25 @@ describe("GlassSurface", () => {
     // The lease was the last holder, so the wallpaper clears (a couple of
     // frames later — the native copy covers the DOM swap-back).
     await waitFor(() => expect(bridge.clearBackdrop).toHaveBeenCalledTimes(1));
+  });
+
+  it("forwards a surface-owned dark appearance to native material", async () => {
+    const bridge = fakeBridge();
+    installCapacitor(bridge);
+    seedWallpaper();
+
+    const { getByTestId, unmount } = render(
+      <AnchorHarness enabled colorScheme="dark" />,
+    );
+
+    await waitFor(() =>
+      expect(getByTestId("anchor").dataset.glassTier).toBe("native"),
+    );
+    expect(bridge.attachGlass).toHaveBeenCalledWith(
+      expect.objectContaining({ colorScheme: "dark" }),
+    );
+    unmount();
+    await waitFor(() => expect(bridge.detachGlass).toHaveBeenCalledOnce());
   });
 
   it("holds the CSS tier while either native acknowledgement is pending", async () => {
