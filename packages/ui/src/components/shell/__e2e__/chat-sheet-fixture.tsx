@@ -479,6 +479,7 @@ function Harness(): React.JSX.Element {
       console.log(`[fixture] setComposerHasDraft -> ${hasDraft}`),
     startRecording,
     stopRecording,
+    cancelRecording: () => console.log("[fixture] cancelRecording"),
     speak: (text: string) =>
       console.log(`[fixture] speak length=${text.length}`),
     stopSpeaking: () => console.log("[fixture] stopSpeaking"),

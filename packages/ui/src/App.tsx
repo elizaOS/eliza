@@ -1836,8 +1836,15 @@ function ShellFoundationMount() {
         phase={controller.phase}
         onOpen={controller.open}
         onClose={controller.close}
+        onHoldStart={() => controller.startRecording("ptt")}
+        onHoldEnd={controller.stopRecording}
+        onHoldCancel={controller.cancelRecording}
       />
-      <AssistantOverlay phase={controller.phase} onClose={controller.close}>
+      <AssistantOverlay
+        phase={controller.phase}
+        onClose={controller.close}
+        open={controller.isOpen}
+      >
         <ChatSurface
           messages={controller.messages}
           onSend={controller.send}
