@@ -5,8 +5,20 @@
 // lets the app complete the real Eliza Cloud login/provisioning path. No API
 // route is mocked; the test records `/api/first-run` attempts to enforce the
 // Cloud architecture boundary while proving durable completion state.
+//
+// Liveness contract (#14359 / #16936): every SIWE cloud-onboarding lane ends
+// with a real chat turn that must pass the shared non-stub assertion. This is
+// intrinsic to the lane, not opt-in — the cloud agent is SIWE-provisioned and
+// live, so a stub or empty reply means the lane fails.
+
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
+import {
+  assertOnboardingLiveness,
+  buildLivenessChallenge,
+  extractLivenessChallengeToken,
+} from "../liveness-contract";
 import { expect, ORIGIN, test } from "./android-harness";
 
 const ARTIFACT_DIR = path.join(
@@ -174,7 +186,9 @@ async function runCloudOnboardingMode({
   mode: CloudOnboardingMode;
   testInfo: import("@playwright/test").TestInfo;
 }) {
-  test.setTimeout(240_000);
+  // First-run cold start (SIWE provision + cloud agent first turn) can exceed
+  // 240s end-to-end on a live run; the per-step waits below stay unchanged.
+  test.setTimeout(420_000);
 
   await installCloudOnboardingHarness(page, mode);
   const recording = await startAndroidScreenRecord({
@@ -245,6 +259,41 @@ async function runCloudOnboardingMode({
     expect(state.stewardSessionPresent).toBe(true);
     expect(state.activeServer).toMatchObject({ kind: "cloud" });
     expect(state.bodyText).not.toMatch(/First, where should your agent run/i);
+
+    // Liveness contract (#14359 / #16936): every SIWE cloud-onboarding lane
+    // ends with a real chat turn. Strict non-stub liveness is intrinsic to the
+    // lane — the cloud agent is SIWE-provisioned and live, so a stub or empty
+    // reply means the lane fails. The run-unique challenge token binds the
+    // accepted reply to this exact run: a pending status row, the first-run
+    // greeting, a cached reply, or a wrong-code answer all fail the wait.
+    const challenge = buildLivenessChallenge(randomBytes(4).toString("hex"));
+    const reply = await assertOnboardingLiveness(page, {
+      label: `android-cloud-onboarding-${mode}`,
+      prompt: challenge,
+      challengeToken: extractLivenessChallengeToken(challenge),
+      // A freshly provisioned cloud agent's FIRST turn pays model + tool
+      // registration cold start and can exceed the 120s default (observed on
+      // a live run: the token-bearing reply rendered after the poll gave up).
+      // This widens only how long we wait — the token gate and row-phase
+      // classification are unchanged.
+      replyTimeoutMs: 300_000,
+    });
+    await testInfo.attach(`liveness reply (${mode})`, {
+      body: reply,
+      contentType: "text/plain",
+    });
+    // Issue #16936 requires a reply JPG artifact alongside the existing
+    // greeting and home screenshots.
+    const replyScreenshotPath = path.join(
+      ARTIFACT_DIR,
+      mode,
+      "reply-liveness.jpg",
+    );
+    await page.screenshot({ path: replyScreenshotPath, fullPage: true });
+    await testInfo.attach("reply liveness screenshot", {
+      path: replyScreenshotPath,
+      contentType: "image/jpeg",
+    });
   } finally {
     const videoPath = await recording.stop();
     if (videoPath) {
