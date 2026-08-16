@@ -5,7 +5,7 @@
  * task scheduler, embedding each memory's text and writing the vector back via
  * `updateMemory`. When a TEXT_EMBEDDING_BATCH model is registered it collapses a
  * per-turn embed burst into one round-trip, falling back per-item on any batch
- * failure; when no TEXT_EMBEDDING model exists it starts disabled so text-only
+ * failure; when neither TEXT_EMBEDDING nor TEXT_EMBEDDING_BATCH exists it starts disabled so text-only
  * deployments still run.
  */
 import type { EmbeddingGenerationPayload } from "../types/events";
@@ -48,14 +48,17 @@ export class EmbeddingGenerationService extends Service {
 			"Starting embedding generation service",
 		);
 
-		const embeddingModel = runtime.getModel(ModelType.TEXT_EMBEDDING);
-		if (!embeddingModel) {
+		const hasEmbeddingModel = Boolean(
+			runtime.getModel(ModelType.TEXT_EMBEDDING) ||
+				runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH),
+		);
+		if (!hasEmbeddingModel) {
 			runtime.logger.warn(
 				{
 					src: "plugin:basic-capabilities:service:embedding",
 					agentId: runtime.agentId,
 				},
-				"No TEXT_EMBEDDING model registered - service will not be initialized",
+				"No TEXT_EMBEDDING or TEXT_EMBEDDING_BATCH model registered - service will not be initialized",
 			);
 			const noOpService = new EmbeddingGenerationService(runtime);
 			noOpService.isDisabled = true;
