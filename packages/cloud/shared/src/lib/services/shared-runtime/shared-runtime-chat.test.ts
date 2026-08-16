@@ -1213,9 +1213,13 @@ describe("SharedRuntimeChatService", () => {
     const options = { ...h, turnClaims: store };
 
     const first = await service.stream(agent, keyedRpc, options);
+    expect(first.headers.get("Server-Timing")).toMatch(
+      /turn_claim;dur=\d+(?:\.\d+)?, turn_hydrate;dur=\d+(?:\.\d+)?, turn_admission;dur=\d+(?:\.\d+)?, turn_provider_setup;dur=\d+(?:\.\d+)?/,
+    );
     const firstBody = await first.text();
     await Promise.all(h.background);
     const second = await service.stream(agent, keyedRpc, options);
+    expect(second.headers.get("Server-Timing")).toMatch(/^turn_claim;dur=\d+(?:\.\d+)?$/);
     const secondBody = await second.text();
 
     expect(streamTurnCalls).toBe(1);
