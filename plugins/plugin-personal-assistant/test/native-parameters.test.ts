@@ -215,13 +215,15 @@ describe("LifeOps native options.parameters migration", () => {
   });
 
   it("CALENDAR exposes concrete contexts and is a flat action-valued umbrella (no nested subActions/subPlanner)", () => {
+    // "web" is deliberately absent: claiming it tied every CALENDAR_* subaction
+    // with WEB_SEARCH on live-web turns and starved the planner surface of the
+    // actual web tool (see the contexts comment in actions/calendar.ts).
     expect(calendarAction.contexts).toEqual([
       "general",
       "calendar",
       "contacts",
       "tasks",
       "connectors",
-      "web",
     ]);
     // The legacy 2-layer `subActions` + `subPlanner` dispatch was removed in
     // favor of a flat action enum + `promoteSubactionsToActions` virtuals
