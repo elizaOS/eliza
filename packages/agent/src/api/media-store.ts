@@ -931,12 +931,16 @@ export function serveMediaFile(
     });
     res.once("close", () => stream.destroy());
     stream.once("open", () => {
-      if (res.headersSent || res.writableEnded) return;
-      res.writeHead(206, {
-        ...baseHeaders,
-        "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
-        "Content-Length": range.end - range.start + 1,
-      });
+      if (res.destroyed || res.headersSent || res.writableEnded) return;
+      try {
+        res.writeHead(206, {
+          ...baseHeaders,
+          "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
+          "Content-Length": range.end - range.start + 1,
+        });
+      } catch {
+        return;
+      }
       stream.pipe(res);
     });
     return true;
@@ -960,8 +964,12 @@ export function serveMediaFile(
     });
     res.once("close", () => stream.destroy());
     stream.once("open", () => {
-      if (res.headersSent || res.writableEnded) return;
-      res.writeHead(200, { ...baseHeaders, "Content-Length": size });
+      if (res.destroyed || res.headersSent || res.writableEnded) return;
+      try {
+        res.writeHead(200, { ...baseHeaders, "Content-Length": size });
+      } catch {
+        return;
+      }
       stream.pipe(res);
     });
   }
