@@ -33,8 +33,9 @@ afterAll(() => sweepSpy.mockRestore());
 const { CRON_FANOUT, makeCronHandler } = await import(
   "@/lib/cron/cloudflare-cron"
 );
-const gcRoute = (await import("../cron/gc-stranded-sandbox-keys/route"))
-  .default;
+const { default: gcRoute, resolveStrandedSandboxKeyGraceMs } = await import(
+  "../cron/gc-stranded-sandbox-keys/route"
+);
 
 const GC_PATH = "/api/cron/gc-stranded-sandbox-keys";
 const SCHEDULE = "0 */6 * * *";
@@ -105,6 +106,42 @@ describe("gc-stranded-sandbox-keys cron wiring (#16071)", () => {
     expect(cutoffMs).toBeGreaterThanOrEqual(before - twelveHoursMs);
     expect(cutoffMs).toBeLessThanOrEqual(after - twelveHoursMs);
   });
+
+  test.each([
+    undefined,
+    null,
+    "",
+    "not-a-number",
+    "0x10",
+    "0X10",
+    "1e3",
+    "1e9",
+    "+21600001",
+    "43200000.0",
+    "016",
+    "6h",
+    "21600000ms",
+    "0",
+    "-5",
+    "Infinity",
+    "1e309",
+  ])("non-canonical grace value %p falls back to the default", (raw) => {
+    expect(resolveStrandedSandboxKeyGraceMs(raw)).toBe(DEFAULT_GRACE_MS);
+  });
+
+  test.each(["0x10", "1e3"])(
+    "scheduled() rejects dangerous grace spelling %s",
+    async (raw) => {
+      const before = Date.now();
+      await fireScheduled(makeEnv({ STRANDED_SANDBOX_KEY_GRACE_MS: raw }));
+      const after = Date.now();
+
+      expect(sweepStrandedAgentKeys).toHaveBeenCalledTimes(1);
+      const cutoffMs = lastCutoff().getTime();
+      expect(cutoffMs).toBeGreaterThanOrEqual(before - DEFAULT_GRACE_MS);
+      expect(cutoffMs).toBeLessThanOrEqual(after - DEFAULT_GRACE_MS);
+    },
+  );
 
   test("an invalid grace override falls back to the 6h default", async () => {
     const before = Date.now();

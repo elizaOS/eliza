@@ -25,10 +25,17 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 export const DEFAULT_STRANDED_SANDBOX_KEY_GRACE_MS = 6 * 60 * 60 * 1000;
 
-/** Positive finite STRANDED_SANDBOX_KEY_GRACE_MS wins; anything else -> 6h default. */
+/** A canonical positive decimal millisecond value wins; anything else -> 6h default. */
 export function resolveStrandedSandboxKeyGraceMs(raw: unknown): number {
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0
+  if (raw === undefined || raw === null) {
+    return DEFAULT_STRANDED_SANDBOX_KEY_GRACE_MS;
+  }
+  const text = String(raw).trim();
+  if (!/^[1-9]\d*$/.test(text)) {
+    return DEFAULT_STRANDED_SANDBOX_KEY_GRACE_MS;
+  }
+  const parsed = Number(text);
+  return Number.isSafeInteger(parsed)
     ? parsed
     : DEFAULT_STRANDED_SANDBOX_KEY_GRACE_MS;
 }
