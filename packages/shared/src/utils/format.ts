@@ -162,10 +162,14 @@ type UsdFormatOptions = {
   fallback?: string;
 };
 
+const DECIMAL_NUMBER_PATTERN =
+  /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
 /**
  * Format a numeric amount as a USD currency string (`$1,234.56`).
  *
- * Accepts numbers or numeric strings; non-numeric input yields `fallback`.
+ * Accepts numbers or complete decimal strings (optionally using exponent
+ * notation); non-numeric input yields `fallback`.
  * Uses the en-US `Intl.NumberFormat` currency style (grouped, 2 fraction
  * digits) — the canonical money display for dashboard views.
  */
@@ -174,7 +178,15 @@ export function formatUsd(
   options: UsdFormatOptions = {},
 ): string {
   const { fallback = "—" } = options;
-  const amount = typeof value === "string" ? Number.parseFloat(value) : value;
+  let amount: number | null | undefined;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    amount = DECIMAL_NUMBER_PATTERN.test(trimmed)
+      ? Number(trimmed)
+      : Number.NaN;
+  } else {
+    amount = value;
+  }
   if (amount == null || !Number.isFinite(amount)) return fallback;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
