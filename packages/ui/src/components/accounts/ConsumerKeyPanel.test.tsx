@@ -118,17 +118,15 @@ describe("list states", () => {
 
   it("renders label, prefix, quota, status, and timestamps for each key", async () => {
     const api = makeApi({
-      listConsumerKeys: vi
-        .fn()
-        .mockResolvedValue([
-          key(),
-          key({
-            id: "ck_2",
-            label: "proxy-b",
-            enabled: false,
-            dailyTokenQuota: null,
-          }),
-        ]),
+      listConsumerKeys: vi.fn().mockResolvedValue([
+        key(),
+        key({
+          id: "ck_2",
+          label: "proxy-b",
+          enabled: false,
+          dailyTokenQuota: null,
+        }),
+      ]),
     });
     render(<ConsumerKeyPanelBody api={api} />);
     await waitFor(() => expect(screen.getByText("proxy-a")).toBeTruthy());
