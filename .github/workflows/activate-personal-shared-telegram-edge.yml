@@ -137,7 +137,7 @@ jobs:
 
           disable_edge() {
             node "$GITHUB_WORKSPACE/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
-              PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED --env staging >/dev/null
+              PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED --env staging >/dev/null
           }
 
           # A secret mutation can reach Cloudflare even when the CLI response is
@@ -158,7 +158,7 @@ jobs:
             activation_cli_confirmed=false
             for attempt in 1 2 3; do
               if printf '%s' 'true' | bunx wrangler@4.100.0 secret put \
-                PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED --env staging; then
+                PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED --env staging; then
                 activation_cli_confirmed=true
                 break
               fi

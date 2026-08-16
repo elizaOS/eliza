@@ -846,7 +846,8 @@ describe("cloud-api worker entrypoint", () => {
       }),
       {
         ENVIRONMENT: "staging",
-        PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED: "true",
+        PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED: "false",
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED: "true",
         ELIZA_APP_TELEGRAM_BOT_TOKEN: "never-return-this-bot-token",
         ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "never-return-this-webhook-secret",
       } as never,
@@ -1005,13 +1006,14 @@ describe("cloud-api worker entrypoint", () => {
     );
   });
 
-  test("keeps the Personal Shared edge fail-closed without reserving its secret binding", async () => {
+  test("keeps the legacy edge guard false and reserves the replacement name for the cutover secret", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
       vars?: {
         PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
         PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
         ELIZA_INFERENCE_TIMING?: string;
       };
       env?: {
@@ -1019,6 +1021,7 @@ describe("cloud-api worker entrypoint", () => {
           vars?: {
             PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
             PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
+            PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
             ELIZA_INFERENCE_TIMING?: string;
           };
         };
@@ -1026,6 +1029,7 @@ describe("cloud-api worker entrypoint", () => {
           vars?: {
             PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
             PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
+            PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
             ELIZA_INFERENCE_TIMING?: string;
           };
         };
@@ -1048,6 +1052,16 @@ describe("cloud-api worker entrypoint", () => {
     expect(
       config.env?.production?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
     ).toBe("false");
+    expect(
+      config.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED,
+    ).toBeUndefined();
+    expect(
+      config.env?.staging?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED,
+    ).toBeUndefined();
+    expect(
+      config.env?.production?.vars
+        ?.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED,
+    ).toBeUndefined();
     expect(config.vars?.ELIZA_INFERENCE_TIMING).toBeUndefined();
     expect(config.env?.staging?.vars?.ELIZA_INFERENCE_TIMING).toBe("info");
     expect(

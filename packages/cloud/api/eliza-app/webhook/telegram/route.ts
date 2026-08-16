@@ -1,5 +1,6 @@
 // Handles webhook cloud API eliza app webhook telegram route traffic with signature or internal auth checks.
 import { Hono } from "hono";
+import { isPersonalSharedTelegramEdgeEnabled } from "@/api-app/personal-shared-telegram-edge";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { forwardToWebhookGateway, safeWebhookSuffix } from "../_forward";
 import {
@@ -20,7 +21,7 @@ const handle = async (c: Parameters<typeof handlePersonalTelegramEdge>[0]) => {
       : c.json({ success: false, error: "Unauthorized" }, 401);
   }
   return c.req.method === "POST" &&
-    c.env.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED === "true" &&
+    isPersonalSharedTelegramEdgeEnabled(c.env) &&
     suffix === ""
     ? handlePersonalTelegramEdge(c)
     : forwardToWebhookGateway(c, "telegram");

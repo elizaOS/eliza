@@ -98,7 +98,7 @@ describe("Personal Shared Telegram edge deploy", () => {
     const apply = step("Apply and verify served edge state");
     expect(apply.run).toContain("wrangler@4.100.0 secret put");
     expect(apply.run).toContain(
-      "PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED --env staging",
+      "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED --env staging",
     );
     expect(apply.run).toContain("ensure-worker-secret-absent.mjs");
     expect(apply.run).toContain("trap rollback_on_unproven_exit EXIT");
@@ -110,7 +110,7 @@ describe("Personal Shared Telegram edge deploy", () => {
     expect(apply.run).not.toContain('grep -qi "not found"');
   });
 
-  test("keeps every tracked Worker environment fail-closed without colliding with the activation secret", () => {
+  test("keeps the legacy guard false and reserves the replacement name for the activation secret", () => {
     const config = Bun.TOML.parse(
       readFileSync(
         new URL("packages/cloud/api/wrangler.toml", repoRoot),
@@ -127,5 +127,15 @@ describe("Personal Shared Telegram edge deploy", () => {
     expect(
       config.env?.production?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
     ).toBe("false");
+    expect(
+      config.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED,
+    ).toBeUndefined();
+    expect(
+      config.env?.staging?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED,
+    ).toBeUndefined();
+    expect(
+      config.env?.production?.vars
+        ?.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED,
+    ).toBeUndefined();
   });
 });
