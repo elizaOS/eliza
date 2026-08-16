@@ -294,34 +294,46 @@ export async function validateCorpusTarget(targetPath: string): Promise<{
     const entries = await fs.readdir(targetPath);
     if (entries.includes("manifest.json")) {
       const manifestPath = path.join(targetPath, "manifest.json");
-      const expected = corpusManifestSchema.safeParse(
-        JSON.parse(await fs.readFile(manifestPath, "utf8")),
-      );
-      if (!expected.success) {
+      const rawManifest = await fs.readFile(manifestPath, "utf8");
+      let manifestInput: unknown;
+      try {
+        manifestInput = JSON.parse(rawManifest);
+      } catch (error) {
+        // error-policy:J3 manifest bytes are untrusted corpus input; report invalid JSON.
         issues.push({
           path: manifestPath,
           code: "manifest-invalid",
-          message: expected.error.issues
-            .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-            .join("; "),
+          message: error instanceof Error ? error.message : String(error),
         });
-      } else if (
-        JSON.stringify({
-          cutoffIso: expected.data.cutoffIso,
-          shards: expected.data.shards,
-          totals: expected.data.totals,
-        }) !==
-        JSON.stringify({
-          cutoffIso: manifest.cutoffIso,
-          shards: manifest.shards,
-          totals: manifest.totals,
-        })
-      ) {
-        issues.push({
-          path: manifestPath,
-          code: "manifest-mismatch",
-          message: "manifest.json does not match shard contents",
-        });
+      }
+      if (manifestInput !== undefined) {
+        const expected = corpusManifestSchema.safeParse(manifestInput);
+        if (!expected.success) {
+          issues.push({
+            path: manifestPath,
+            code: "manifest-invalid",
+            message: expected.error.issues
+              .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+              .join("; "),
+          });
+        } else if (
+          JSON.stringify({
+            cutoffIso: expected.data.cutoffIso,
+            shards: expected.data.shards,
+            totals: expected.data.totals,
+          }) !==
+          JSON.stringify({
+            cutoffIso: manifest.cutoffIso,
+            shards: manifest.shards,
+            totals: manifest.totals,
+          })
+        ) {
+          issues.push({
+            path: manifestPath,
+            code: "manifest-mismatch",
+            message: "manifest.json does not match shard contents",
+          });
+        }
       }
     }
   }
