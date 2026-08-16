@@ -77,24 +77,12 @@ export const telegramAdapter: PlatformAdapter = {
     return resolveTelegramVoiceNote(config, asTelegramEvent(event));
   },
 
-  async sendReply(config, event, text, deliveryHooks): Promise<void> {
-    await sendTelegramReply(
-      config,
-      asTelegramEvent(event),
-      text,
-      logger,
-      deliveryHooks,
-    );
+  async sendReply(config, event, text): Promise<void> {
+    await sendTelegramReply(config, asTelegramEvent(event), text, logger);
   },
 
-  async sendReplyWithReceipt(config, event, text, deliveryHooks) {
-    return sendTelegramReply(
-      config,
-      asTelegramEvent(event),
-      text,
-      logger,
-      deliveryHooks,
-    );
+  async sendReplyWithReceipt(config, event, text) {
+    return sendTelegramReply(config, asTelegramEvent(event), text, logger);
   },
 
   prepareReply: prepareTelegramReply,

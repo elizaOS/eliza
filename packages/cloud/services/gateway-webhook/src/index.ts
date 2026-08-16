@@ -147,8 +147,6 @@ app.post("/webhook/:project/:platform", async (c) => {
     {
       redis,
       cloudBaseUrl: ELIZA_CLOUD_URL,
-      deliveryAuthoritySecret:
-        process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET ?? "",
       getAuthHeader,
     },
     c.req.param("project"),
@@ -173,8 +171,6 @@ app.post("/webhook/:project/:platform/:agentId", async (c) => {
     {
       redis,
       cloudBaseUrl: ELIZA_CLOUD_URL,
-      deliveryAuthoritySecret:
-        process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET ?? "",
       getAuthHeader,
     },
     c.req.param("project"),
