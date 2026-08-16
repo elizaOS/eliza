@@ -36,6 +36,7 @@ import {
   ANDROID_LOCAL_AGENT_SERVER_ID,
   IOS_LOCAL_AGENT_IPC_BASE,
   isCommittedOnDeviceMobileRuntimeMode,
+  isMobileLocalAgentIpcUrl,
   isMobileLocalAgentUrl,
   MOBILE_LOCAL_AGENT_LABEL,
   MOBILE_LOCAL_AGENT_SERVER_ID,
@@ -266,8 +267,21 @@ function isMobileLocalAgentApiBase(value: string | undefined): boolean {
   return isMobileLocalAgentUrl(value);
 }
 
-function isMobileLocalActiveServer(server: PersistedActiveServer): boolean {
-  return server.kind === "local" || isMobileLocalAgentApiBase(server.apiBase);
+function isMobileLocalActiveServer(
+  server: PersistedActiveServer,
+  mobileRuntimeMode = readPersistedMobileRuntimeMode(),
+): boolean {
+  if (server.kind === "local" || isMobileLocalAgentIpcUrl(server.apiBase)) {
+    return true;
+  }
+
+  // The remote-Mac developer target deliberately reuses the desktop agent's
+  // loopback identity inside Simulator. Runtime mode is therefore the owner of
+  // that ambiguous URL: treating it as bundled IPC clears the saved server and
+  // boots the iOS Bun runtime on every cold launch.
+  if (mobileRuntimeMode === "remote-mac") return false;
+
+  return isMobileLocalAgentApiBase(server.apiBase);
 }
 
 function isLoopbackHostname(hostname: string): boolean {
@@ -317,7 +331,7 @@ export function reconcileMobileRestoredActiveServer(args: {
   platform: MobileNativePlatform;
 }): PersistedActiveServer | null | undefined {
   const { server, mobileRuntimeMode, platform } = args;
-  const mobileLocal = isMobileLocalActiveServer(server);
+  const mobileLocal = isMobileLocalActiveServer(server, mobileRuntimeMode);
   // The on-device agent is the chat target for BOTH committed on-device modes
   // — `local` (on-device inference) and `cloud-hybrid` (cloud inference, but
   // the on-device agent still owns chat, plugins, the voice bridge, and device
