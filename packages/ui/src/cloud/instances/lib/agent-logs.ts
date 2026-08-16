@@ -41,6 +41,9 @@ export class AgentLogsTimeoutError extends Error {
   readonly name = "AgentLogsTimeoutError";
 }
 
+const LOG_COLLECTION_FAILED_MESSAGE =
+  "Log collection failed on the server. Try again in a moment.";
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -65,18 +68,31 @@ function clampInterval(value: unknown, fallback: number): number {
   );
 }
 
-function readFailureMessage(
-  value: Record<string, unknown>,
-  fallback: string,
+function readHttpFailureMessage(
+  context: "request" | "job",
+  status: number,
 ): string {
-  return readBoundedText(value.error) ?? fallback;
+  if (status === 401 || status === 403) {
+    return "You do not have permission to read this agent's logs.";
+  }
+  if (status === 404) {
+    return context === "request"
+      ? "This agent is no longer available."
+      : "This log collection job is no longer available.";
+  }
+  if (status === 429) {
+    return "Log requests are temporarily limited. Try again in a moment.";
+  }
+  return context === "request"
+    ? `Log request failed (HTTP ${status}).`
+    : `Log job failed (HTTP ${status}).`;
 }
 
 export function parseAgentLogsStart(value: unknown): AgentLogsStart {
   if (!isRecord(value) || value.success !== true) {
     throw new AgentLogsProtocolError(
       isRecord(value)
-        ? readFailureMessage(value, "The log request failed.")
+        ? "The log request failed."
         : "The log service returned an unreadable response.",
     );
   }
@@ -113,7 +129,7 @@ export function parseAgentLogsJob(value: unknown): AgentLogsJobState {
   if (!isRecord(value) || value.success !== true) {
     throw new AgentLogsProtocolError(
       isRecord(value)
-        ? readFailureMessage(value, "Log collection failed.")
+        ? LOG_COLLECTION_FAILED_MESSAGE
         : "The log job returned an unreadable response.",
     );
   }
@@ -141,12 +157,10 @@ export function parseAgentLogsJob(value: unknown): AgentLogsJobState {
   }
 
   const result = isRecord(value.data.result) ? value.data.result : null;
-  const jobError = readBoundedText(value.data.error);
   if (status === "failed") {
     return {
       kind: "failed",
-      message:
-        jobError ?? readBoundedText(result?.error) ?? "Log collection failed.",
+      message: LOG_COLLECTION_FAILED_MESSAGE,
     };
   }
   if (status !== "completed") {
@@ -157,9 +171,13 @@ export function parseAgentLogsJob(value: unknown): AgentLogsJobState {
       "The completed log job did not include a result.",
     );
   }
-  if (jobError) return { kind: "failed", message: jobError };
+  if (readBoundedText(value.data.error)) {
+    return { kind: "failed", message: LOG_COLLECTION_FAILED_MESSAGE };
+  }
   const resultError = readBoundedText(result.error);
-  if (resultError) return { kind: "failed", message: resultError };
+  if (resultError) {
+    return { kind: "failed", message: LOG_COLLECTION_FAILED_MESSAGE };
+  }
   if (result.logs !== undefined && typeof result.logs !== "string") {
     throw new AgentLogsProtocolError(
       "The completed log job returned invalid log data.",
@@ -229,12 +247,7 @@ export async function loadAgentLogs({
   const startBody = await readJson(startResponse, "The log request");
   if (!startResponse.ok) {
     throw new AgentLogsProtocolError(
-      isRecord(startBody)
-        ? readFailureMessage(
-            startBody,
-            `Log request failed (HTTP ${startResponse.status}).`,
-          )
-        : `Log request failed (HTTP ${startResponse.status}).`,
+      readHttpFailureMessage("request", startResponse.status),
     );
   }
 
@@ -251,12 +264,7 @@ export async function loadAgentLogs({
     const body = await readJson(response, "The log job");
     if (!response.ok) {
       throw new AgentLogsProtocolError(
-        isRecord(body)
-          ? readFailureMessage(
-              body,
-              `Log job failed (HTTP ${response.status}).`,
-            )
-          : `Log job failed (HTTP ${response.status}).`,
+        readHttpFailureMessage("job", response.status),
       );
     }
 
