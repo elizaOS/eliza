@@ -65,6 +65,7 @@ const invalidLimitQueries = [
   ["over the ceiling", "limit=501", "501"],
   ["huge", "limit=999999999999999999999999", "999999999999999999999999"],
   ["trailing junk", "limit=12px", "12px"],
+  ["surrounding whitespace", "limit=%2037%20", " 37 "],
   ["leading zero", "limit=007", "007"],
 ] as const;
 
@@ -80,7 +81,6 @@ describe("parsePaginationParam", () => {
     [undefined, "limit", 50, 50],
     ["", "limit", 50, 50],
     ["   ", "offset", 0, 0],
-    [" 37 ", "limit", 50, 37],
     ["0", "offset", 0, 0],
     ["500", "limit", 50, 500],
     ["9007199254740991", "offset", 0, 9007199254740991],
@@ -94,16 +94,23 @@ describe("parsePaginationParam", () => {
     },
   );
 
-  it.each(["0", "-1", "+1", "1.5", "1e2", "007", "501", "12px"] as const)(
-    "rejects invalid limit %s",
-    (value) => {
-      const result = parsePaginationParam(value, "limit", 50);
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.error).toContain("limit");
-      expect(result.error).toContain(value);
-    },
-  );
+  it.each([
+    "0",
+    "-1",
+    "+1",
+    "1.5",
+    "1e2",
+    "007",
+    "501",
+    "12px",
+    " 37 ",
+  ] as const)("rejects invalid limit %s", (value) => {
+    const result = parsePaginationParam(value, "limit", 50);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("limit");
+    expect(result.error).toContain(value);
+  });
 
   it.each([
     "-1",

@@ -17,10 +17,11 @@ export function parsePaginationParam(
   parameter: PaginationParameter,
   defaultValue: number,
 ): PaginationParseResult {
-  const value = rawValue?.trim();
-  if (!value) return { ok: true, value: defaultValue };
+  if (rawValue === undefined || rawValue.trim() === "") {
+    return { ok: true, value: defaultValue };
+  }
 
-  if (!/^(?:0|[1-9]\d*)$/.test(value)) {
+  if (!/^(?:0|[1-9]\d*)$/.test(rawValue)) {
     return {
       ok: false,
       error: `Invalid ${parameter} ${JSON.stringify(
@@ -29,7 +30,7 @@ export function parsePaginationParam(
     };
   }
 
-  const parsed = Number(value);
+  const parsed = Number(rawValue);
   const maximum = parameter === "limit" ? 500 : Number.MAX_SAFE_INTEGER;
   if (
     !Number.isSafeInteger(parsed) ||
