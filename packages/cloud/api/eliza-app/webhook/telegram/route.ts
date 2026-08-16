@@ -20,7 +20,7 @@ const handle = async (c: Parameters<typeof handlePersonalTelegramEdge>[0]) => {
       : c.json({ success: false, error: "Unauthorized" }, 401);
   }
   return c.req.method === "POST" &&
-    c.env.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED === "true" &&
+    c.env.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED === "true" &&
     suffix === ""
     ? handlePersonalTelegramEdge(c)
     : forwardToWebhookGateway(c, "telegram");
