@@ -15,6 +15,7 @@ import {
   type AgentRunSummaryResult,
   type AppendConnectorAccountAuditEventParams,
   ChannelType,
+  type Character,
   type Component,
   type ConnectorAccountAuditEventRecord,
   type ConnectorAccountCredentialRefRecord,
@@ -35,11 +36,13 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  decryptedCharacter,
   documentMutationSnapshotMatches,
   documentRoleHasGlobalVisibility,
   ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
+  encryptedCharacter,
   type GetConnectorAccountCredentialRefParams,
   type GetConnectorAccountParams,
   type IDatabaseAdapter,
@@ -451,7 +454,10 @@ function mapAgentRow(row: AgentRow): Agent {
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   };
-  return agent;
+  // Decrypt secret containers at the single storage read boundary so callers
+  // (runtime merge, APIs) always observe plaintext while values stay encrypted
+  // at rest. Plaintext-at-rest rows pass through untouched (migration-on-write).
+  return decryptedCharacter(agent) as Agent;
 }
 
 import {
@@ -993,9 +999,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           }
         }
 
+        // Encrypt secret containers at the persistence boundary using the
+        // canonical helper. encryptedCharacter returns a copy, so the caller's
+        // agent object is never mutated and already-encrypted values are
+        // idempotently left untouched.
+        const agentToStore = encryptedCharacter(agent) as Agent;
+
         await this.db.transaction(async (tx) => {
           const agentData = {
-            ...agent,
+            ...agentToStore,
             createdAt: new Date(
               typeof agent.createdAt === "bigint"
                 ? Number(agent.createdAt)
@@ -1050,14 +1062,34 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         }
 
         await this.db.transaction(async (tx) => {
-          // Handle settings update if present
+          // Convert numeric timestamps to Date objects for database storage
+          // The Agent interface uses numbers, but the database schema expects Date objects.
+          // Build updateData from a shallow copy so the caller's agent object is
+          // not mutated by the settings merge or the encryption boundary.
+          const updateData: Record<string, unknown> = { ...agent };
+
+          // Handle settings update if present. The merge reads the (encrypted)
+          // row and overlays the incoming values before persistence.
           if (agent.settings) {
-            agent.settings = await this.mergeAgentSettings(tx, agentId, agent.settings);
+            updateData.settings = await this.mergeAgentSettings(tx, agentId, agent.settings);
           }
 
-          // Convert numeric timestamps to Date objects for database storage
-          // The Agent interface uses numbers, but the database schema expects Date objects
-          const updateData: Record<string, unknown> = { ...agent };
+          // Encrypt secret containers at the persistence boundary using the
+          // canonical helper. encryptedCharacter copies before transforming, so
+          // no plaintext secret is written at rest and already-encrypted values
+          // (e.g. keys merged from the existing row) are not double-encrypted.
+          if (updateData.settings !== undefined || updateData.secrets !== undefined) {
+            const encryptedForWrite = encryptedCharacter({
+              name: "",
+              ...(updateData as Partial<Character>),
+            } as Character);
+            if (updateData.settings !== undefined) {
+              updateData.settings = encryptedForWrite.settings;
+            }
+            if (updateData.secrets !== undefined) {
+              updateData.secrets = encryptedForWrite.secrets;
+            }
+          }
 
           if (updateData.createdAt) {
             if (typeof updateData.createdAt === "number") {

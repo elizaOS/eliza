@@ -6,7 +6,13 @@
  * shape the config/DB payloads; `persistCharacter` applies all three and returns
  * a success/error result rather than throwing.
  */
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  type Character,
+  encryptedCharacter,
+  type IAgentRuntime,
+  logger,
+  Service,
+} from "@elizaos/core";
 import {
   type ElizaConfig,
   loadElizaConfig,
@@ -193,7 +199,13 @@ export class ElizaCharacterPersistenceService extends Service {
       const nextAgent = syncCharacterIntoConfig(config, runtimeCharacter);
       saveElizaConfig(config);
 
-      const persistedCharacter = buildPersistedCharacterData(runtimeCharacter);
+      // Encrypt secret containers before embedding the character snapshot in the
+      // agent row's metadata. runtime.updateAgent only encrypts top-level
+      // agent.settings/secrets, so this nested snapshot must pass through the
+      // canonical helper itself to avoid persisting plaintext secrets at rest.
+      const persistedCharacter = encryptedCharacter(
+        buildPersistedCharacterData(runtimeCharacter) as Character,
+      ) as unknown as Record<string, unknown>;
       const runtimeMetadata =
         runtimeCharacter.metadata &&
         typeof runtimeCharacter.metadata === "object" &&
