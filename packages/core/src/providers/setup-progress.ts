@@ -241,7 +241,7 @@ export const setupProgressProvider: Provider = {
 
 			let progressText = generateProgressText(context, agentName);
 			if (progressText.length > MAX_SETUP_OUTPUT_LENGTH) {
-				progressText = `${progressText.slice(0, MAX_SETUP_OUTPUT_LENGTH)}...`;
+				progressText = `${progressText.slice(0, MAX_SETUP_OUTPUT_LENGTH - 3)}...`;
 			}
 
 			logger.debug(
