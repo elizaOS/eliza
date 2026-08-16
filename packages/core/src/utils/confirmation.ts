@@ -40,11 +40,13 @@ import type { IAgentRuntime } from "../types/runtime";
 const DEFAULT_TTL_MS = 5 * 60_000;
 
 /**
- * Default broad multilingual yes detector. Consumers can pass a custom
- * `confirmRegex` if they want stricter or extended matching.
+ * Default broad multilingual yes detector. A single opening quote/bracket may
+ * precede the token. Non-ASCII tokens terminate at Unicode punctuation,
+ * symbols, whitespace, or end-of-input instead of relying on ASCII `\b`.
+ * Consumers can pass a custom `confirmRegex` for a stricter contract.
  */
 const DEFAULT_CONFIRM_REGEX =
-	/^\s*(?:(yes|yeah|yep|y|ok|okay|sure|confirm|confirmed|do it|go ahead|proceed|approve|approved|si|oui|ja|hai)\b|(sí|はい|确认|확인)(?=\s|$|[.,!?:;]))/i;
+	/^\s*[\p{Pi}\p{Ps}]?(?:(yes|yeah|yep|y|ok|okay|sure|confirm|confirmed|do it|go ahead|proceed|approve|approved|si|oui|ja|hai)\b|(sí|はい|确认|確認|확인)(?=[\s\p{P}\p{S}]|$))/iu;
 
 export type ConfirmationStatus = "pending" | "confirmed" | "cancelled";
 
