@@ -37,6 +37,7 @@ describe("explicit Shared reminder relative delay", () => {
     ["Remind me in 1 minute: cancel the subscription.", 60_000],
     ["Remind me in 1 minute: never mind the meeting title.", 60_000],
     ["Remind me in 1 minute: cancel that meeting, please.", 60_000],
+    ["Remind me in 1 minute: please cancel that meeting.", 60_000],
   ])("resolves %s", (text, milliseconds) => {
     expect(resolveExplicitSharedReminderDelay(text)).toEqual({
       kind: "resolved",
@@ -98,6 +99,10 @@ describe("explicit Shared reminder relative delay", () => {
     "Remind me in 1 minute; never mind please.",
     "Remind me in 1 minute. However, cancel that.",
     "Remind me in 1 minute, actually, cancel that.",
+    "Remind me in 1 minute, please cancel that.",
+    "Remind me in 1 minute. Please, cancel that.",
+    "Remind me in 1 minute; actually please cancel that.",
+    "Remind me in 1 minute — please never mind.",
   ])("fails closed for a negated reminder command: %s", (text) => {
     expect(resolveExplicitSharedReminderDelay(text)).toEqual({
       kind: "invalid",
@@ -238,6 +243,10 @@ describe("explicit Shared reminder relative delay", () => {
     [
       "a punctuated discourse cancellation",
       "Remind me in 1 minute. However, cancel that.",
+    ],
+    [
+      "a leading-polite cancellation",
+      "Remind me in 1 minute. Please, cancel that.",
     ],
   ])("rejects %s before persistence", async (_label, text) => {
     const scheduleWithResult = vi.fn(async (_input: ScheduledTaskInput) => {
