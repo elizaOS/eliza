@@ -35,13 +35,11 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
-  decryptedCharacter,
   documentMutationSnapshotMatches,
   documentRoleHasGlobalVisibility,
   ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
-  encryptedCharacter,
   type GetConnectorAccountCredentialRefParams,
   type GetConnectorAccountParams,
   type IDatabaseAdapter,
@@ -440,19 +438,6 @@ function normalizeAgentKnowledge(knowledge: AgentRow["knowledge"]): AgentKnowled
   });
 }
 
-function transformAgentSettings(
-  agent: Partial<Agent>,
-  transform: typeof encryptedCharacter
-): Partial<Agent> {
-  if (!Object.hasOwn(agent, "settings")) return { ...agent };
-  const transformed = transform({ settings: agent.settings });
-
-  return {
-    ...agent,
-    settings: transformed.settings,
-  };
-}
-
 function mapAgentRow(row: AgentRow): Agent {
   const agent: Agent = {
     ...row,
@@ -466,11 +451,7 @@ function mapAgentRow(row: AgentRow): Agent {
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   };
-  const decrypted = transformAgentSettings(agent, decryptedCharacter);
-  return {
-    ...agent,
-    settings: decrypted.settings,
-  };
+  return agent;
 }
 
 import {
@@ -1013,9 +994,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         }
 
         await this.db.transaction(async (tx) => {
-          const persistedAgent = transformAgentSettings(agent, encryptedCharacter);
           const agentData = {
-            ...persistedAgent,
+            ...agent,
             createdAt: new Date(
               typeof agent.createdAt === "bigint"
                 ? Number(agent.createdAt)
@@ -1070,29 +1050,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         }
 
         await this.db.transaction(async (tx) => {
-          const settings = agent.settings
-            ? this.mergeAgentSettings(
-                (
-                  await tx
-                    .select({ settings: agentTable.settings })
-                    .from(agentTable)
-                    .where(eq(agentTable.id, agentId))
-                    .limit(1)
-                )[0]?.settings,
-                agent.settings
-              )
-            : agent.settings;
-          const persistedAgent = transformAgentSettings(
-            {
-              ...agent,
-              ...(settings !== undefined ? { settings } : {}),
-            },
-            encryptedCharacter
-          );
+          // Handle settings update if present
+          if (agent.settings) {
+            agent.settings = await this.mergeAgentSettings(tx, agentId, agent.settings);
+          }
 
           // Convert numeric timestamps to Date objects for database storage
           // The Agent interface uses numbers, but the database schema expects Date objects
-          const updateData: Record<string, unknown> = { ...persistedAgent };
+          const updateData: Record<string, unknown> = { ...agent };
 
           if (updateData.createdAt) {
             if (typeof updateData.createdAt === "number") {
@@ -1128,17 +1093,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   /**
-   * Merges updated agent settings with existing persisted settings,
+   * Merges updated agent settings with existing settings in the database,
    * with special handling for nested objects like secrets.
-   * @param currentSettings - The settings currently stored for the agent
+   * @param tx - The database transaction
+   * @param agentId - The ID of the agent
    * @param updatedSettings - The settings object with updates
    * @returns The merged settings object
    * @private
    */
-  private mergeAgentSettings<T extends Record<string, unknown>>(
-    currentSettings: unknown,
+  private async mergeAgentSettings<T extends Record<string, unknown>>(
+    tx: DrizzleDatabase,
+    agentId: UUID,
     updatedSettings: T
-  ): T {
+  ): Promise<T> {
+    // First get the current agent data
+    const currentAgent = await tx
+      .select({ settings: agentTable.settings })
+      .from(agentTable)
+      .where(eq(agentTable.id, agentId))
+      .limit(1);
+
+    const currentSettings =
+      currentAgent.length > 0 && currentAgent[0].settings ? currentAgent[0].settings : {};
+
     const deepMerge = (
       target: Record<string, unknown> | unknown,
       source: Record<string, unknown>
