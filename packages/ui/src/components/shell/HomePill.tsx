@@ -57,8 +57,8 @@ export function HomePill({
         aria-hidden="true"
         data-testid="shell-home-pill-mark"
         className={cn(
-          "block h-2.5 w-12 rounded-full border border-white/90 bg-white/95",
-          "shadow-[0_1px_7px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.95)]",
+          "block h-2.5 w-12 rounded-full bg-white/95",
+          "shadow-[0_0_0_1px_rgba(0,0,0,0.12)]",
           "transition-[width,opacity,transform] duration-200 group-hover:w-14",
           phase === "booting" && "animate-pulse opacity-65",
           phase === "listening" && "animate-pulse",

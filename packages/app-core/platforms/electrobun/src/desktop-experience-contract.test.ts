@@ -51,6 +51,7 @@ describe("desktop experience contract — chat-first launch", () => {
     expect(presentation.mode).toBe("bottom-bar");
     expect(presentation.titleBarStyle).toBe("hidden");
     expect(presentation.transparent).toBe(true);
+    expect(presentation.nativeShadow).toBe(false);
   });
 
   it("keeps the full dashboard window opaque on macOS — transparency is the pill only (#12184)", () => {
@@ -63,6 +64,7 @@ describe("desktop experience contract — chat-first launch", () => {
     );
     expect(presentation.mode).toBe("default");
     expect(presentation.transparent).toBe(false);
+    expect(presentation.nativeShadow).toBe(true);
   });
 
   it("resolves kiosk presentation when requested", () => {
