@@ -3,9 +3,11 @@
 
 /**
  * Coverage for `src/mobile-lifecycle.ts` — the idempotent Capacitor lifecycle
- * wiring (`createMobileLifecycle`). Exercises the two device-free seams a
+ * wiring (`createMobileLifecycle`). Exercises the three device-free seams a
  * jsdom test can drive deterministically:
  *
+ *   - `initializeKeyboard()` — iOS WebView resize/scroll configuration keeps
+ *     the native previous/next/Done accessory out of app-owned chat chrome.
  *   - `initializeDeepLinks()` + `initializeAppLifecycle()` — early
  *     `appUrlOpen`/cold-launch capture plus `appStateChange` / `backButton`
  *     wiring. Asserts the events the module dispatches
@@ -92,17 +94,19 @@ const { appListeners, networkListeners, capacitorAppMock, networkMock } =
     };
   });
 
+const keyboardMock = vi.hoisted(() => ({
+  setResizeMode: vi.fn(async () => undefined),
+  setScroll: vi.fn(async () => undefined),
+  setAccessoryBarVisible: vi.fn(async () => undefined),
+  addListener: vi.fn(async () => ({ remove: async () => undefined })),
+}));
+
 vi.mock("@capacitor/app", () => ({ App: capacitorAppMock }));
 vi.mock("@capacitor/network", () => ({ Network: networkMock }));
 // `mobile-lifecycle.ts` imports these statically; only the app lifecycle and
 // network paths are exercised here, so the keyboard module just needs to load.
 vi.mock("@capacitor/keyboard", () => ({
-  Keyboard: {
-    setResizeMode: vi.fn(async () => undefined),
-    setScroll: vi.fn(async () => undefined),
-    setAccessoryBarVisible: vi.fn(async () => undefined),
-    addListener: vi.fn(async () => ({ remove: async () => undefined })),
-  },
+  Keyboard: keyboardMock,
   KeyboardResize: { None: "none" },
 }));
 
@@ -192,6 +196,21 @@ afterEach(() => {
   historyBackSpy.mockRestore();
   delete (window as { matchMedia?: unknown }).matchMedia;
   delete (navigator as { standalone?: unknown }).standalone;
+});
+
+describe("createMobileLifecycle — keyboard", () => {
+  it("hides the iOS WebView accessory bar below the app-owned composer", async () => {
+    const lifecycle = createMobileLifecycle(
+      makeContext({ isIOS: true, isAndroid: false }),
+    );
+
+    await lifecycle.initializeKeyboard();
+
+    expect(keyboardMock.setAccessoryBarVisible).toHaveBeenCalledOnce();
+    expect(keyboardMock.setAccessoryBarVisible).toHaveBeenCalledWith({
+      isVisible: false,
+    });
+  });
 });
 
 describe("createMobileLifecycle — app lifecycle", () => {
