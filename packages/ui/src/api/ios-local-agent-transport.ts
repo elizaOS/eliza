@@ -49,6 +49,8 @@ const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
  */
 const IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE =
   "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active";
+const IOS_REMOTE_MODE_LOCAL_IPC_POLICY_MESSAGE =
+  "iOS remote-agent modes cannot use local-agent IPC";
 
 /**
  * Message fragments of TERMINAL (non-retryable) native agent/transport boot
@@ -59,6 +61,7 @@ const IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE =
  */
 const TERMINAL_IOS_NATIVE_AGENT_BOOT_ERROR_FRAGMENTS: readonly string[] = [
   IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE,
+  IOS_REMOTE_MODE_LOCAL_IPC_POLICY_MESSAGE,
   "iOS store builds must use eliza-local-agent://ipc for local-agent requests",
   "iOS store/cloud builds block cleartext loopback or private-network requests",
   // fullBunStartupError(): the build REQUIRES the embedded Bun engine and it
@@ -447,6 +450,7 @@ function readRuntimeMode(): string | null {
 function shouldRequireFullBunRuntime(): boolean {
   const env = viteEnv();
   const runtimeMode = readRuntimeMode();
+  if (isRemoteMacRuntimeMode(runtimeMode)) return false;
   if (runtimeMode === "cloud" || runtimeMode === "cloud-hybrid") return false;
   const fullBunBuiltIn = isFullBunRuntimeBuiltIn();
   return (
@@ -458,6 +462,10 @@ function shouldRequireFullBunRuntime(): boolean {
         (isTruthyBuildFlag(env.PROD) && runtimeMode === "local") ||
         (isNativeIos() && !isDevBuild() && runtimeMode === "local")))
   );
+}
+
+function isRemoteMacRuntimeMode(mode: string | null): boolean {
+  return mode === "remote-mac";
 }
 
 function hasIosFullBunSmokeRequest(): boolean {
@@ -633,6 +641,7 @@ function iosRuntimeHasOnDeviceAgent(): boolean {
 
 function canUseIosLocalAgentIpc(): boolean {
   if (!isNativeIos()) return false;
+  if (isRemoteMacRuntimeMode(readRuntimeMode())) return false;
   if (iosRuntimeHasOnDeviceAgent() || shouldRequireFullBunRuntime()) {
     return true;
   }
@@ -1057,6 +1066,9 @@ export async function handleIosLocalAgentNativeRequest(
   const method = (options.method ?? "GET").trim().toUpperCase();
   if (!/^[A-Z]{1,16}$/.test(method)) {
     throw new Error("Unsupported HTTP method");
+  }
+  if (isRemoteMacRuntimeMode(readRuntimeMode())) {
+    throw new TypeError(IOS_REMOTE_MODE_LOCAL_IPC_POLICY_MESSAGE);
   }
   if (
     isNativeIosCloudRuntime() &&
