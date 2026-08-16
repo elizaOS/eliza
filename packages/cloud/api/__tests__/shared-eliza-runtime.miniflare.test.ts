@@ -626,6 +626,16 @@ describe("Shared Eliza runtime in Workerd", () => {
       degraded: false,
     });
     expect(payload.result.actionResults).toHaveLength(1);
+    expect(payload.result.actionResults?.[0]).toMatchObject({
+      verifiedUserFacing: true,
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "shared.reminder.create",
+          idempotency: { replayed: false },
+        },
+      ],
+    });
     expect(payload.scheduledTasks).toHaveLength(1);
     expect(payload.scheduledTasks[0]).toMatchObject({
       kind: "reminder",
@@ -638,7 +648,7 @@ describe("Shared Eliza runtime in Workerd", () => {
         },
       },
     });
-    expect(modelRequests.length - requestsBefore).toBe(4);
+    expect(modelRequests.length - requestsBefore).toBe(3);
   }, 120_000);
 
   test.skipIf(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH !== "1")(

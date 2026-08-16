@@ -52,6 +52,7 @@ import {
   type ScheduledTaskFilter,
   type ScheduledTaskRef,
   type ScheduledTaskRunner,
+  type ScheduledTaskScheduleResult,
   type ScheduledTaskState,
   type ScheduledTaskVerb,
   type SubjectStoreView,
@@ -796,11 +797,31 @@ export function createScheduledTaskRunner(
   async function schedule(
     input: Omit<ScheduledTask, "taskId" | "state">,
   ): Promise<ScheduledTask> {
+    return (await scheduleWithResult(input)).task;
+  }
+
+  async function scheduleWithResult(
+    input: Omit<ScheduledTask, "taskId" | "state">,
+  ): Promise<ScheduledTaskScheduleResult> {
     if (input.idempotencyKey) {
       const existing = await deps.store.findByIdempotencyKey(
         input.idempotencyKey,
       );
-      if (existing) return existing;
+      if (existing) {
+        const commit = (
+          await deps.logStore.list({
+            agentId: deps.agentId,
+            taskId: existing.taskId,
+            excludeRollups: true,
+          })
+        ).find((entry) => entry.transition === "scheduled");
+        if (!commit) {
+          throw new Error(
+            `Scheduled task ${existing.taskId} has no durable creation receipt`,
+          );
+        }
+        return { task: existing, commit, replayed: true };
+      }
     }
 
     const validationIssues = validateScheduledTaskInput(input, deps);
@@ -836,7 +857,7 @@ export function createScheduledTaskRunner(
       state: initialState,
     };
     await persist(task);
-    await logger.log(task.taskId, "scheduled", {
+    const commit = await logger.log(task.taskId, "scheduled", {
       detail: {
         kind: task.kind,
         priority: task.priority,
@@ -853,7 +874,7 @@ export function createScheduledTaskRunner(
           "validation: pipeline.onSkip overrides completionCheck.followupAfterMinutes",
       });
     }
-    return task;
+    return { task, commit, replayed: false };
   }
 
   async function importTask(
@@ -1988,6 +2009,7 @@ export function createScheduledTaskRunner(
   }
 
   return {
+    scheduleWithResult,
     schedule,
     importTask,
     activateImportedTask,

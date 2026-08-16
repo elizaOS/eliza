@@ -123,6 +123,7 @@ export type {
   ScheduledTaskRef,
   ScheduledTaskResolvedContext,
   ScheduledTaskRunner,
+  ScheduledTaskScheduleResult,
   ScheduledTaskShouldFire,
   ScheduledTaskSource,
   ScheduledTaskState,

@@ -157,15 +157,30 @@ function createTodoProbeStore(records: Todo[]): TodoStore {
 function createReminderProbeRunner(
   records: ScheduledTask[],
 ): ScheduledTaskRunner {
+  const scheduleWithResult = async (input: ScheduledTaskInput) => {
+    const task: ScheduledTask = {
+      taskId: `92000000-0000-4000-8000-${String(records.length + 1).padStart(12, "0")}`,
+      ...input,
+      state: { status: "scheduled", followupCount: 0 },
+    };
+    records.push(task);
+    return {
+      task,
+      commit: {
+        logId: `93000000-0000-4000-8000-${String(records.length).padStart(12, "0")}`,
+        taskId: task.taskId,
+        agentId: "workerd-reminder-probe",
+        occurredAtIso: "2026-08-15T00:00:00.000Z",
+        transition: "scheduled" as const,
+        rolledUp: false,
+      },
+      replayed: false,
+    };
+  };
   return {
+    scheduleWithResult,
     async schedule(input: ScheduledTaskInput) {
-      const task: ScheduledTask = {
-        taskId: `92000000-0000-4000-8000-${String(records.length + 1).padStart(12, "0")}`,
-        ...input,
-        state: { status: "scheduled", followupCount: 0 },
-      };
-      records.push(task);
-      return task;
+      return (await scheduleWithResult(input)).task;
     },
     async list() {
       return records;
