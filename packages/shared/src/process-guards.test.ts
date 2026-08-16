@@ -132,4 +132,28 @@ describe("shouldIgnoreUnhandledRejection", () => {
       shouldIgnoreUnhandledRejection(new Error("TypeError: x is undefined")),
     ).toBe(false);
   });
+
+  it("finds provider credit exhaustion inside a generic AggregateError", () => {
+    const credit = Object.assign(new Error("AI_APICallError: request failed"), {
+      statusCode: 402,
+    });
+
+    expect(
+      shouldIgnoreUnhandledRejection(
+        new AggregateError([credit], "All provider attempts failed"),
+      ),
+    ).toBe(true);
+    expect(
+      shouldIgnoreUnhandledRejection(
+        new AggregateError(
+          [
+            Object.assign(new Error("ordinary request failed"), {
+              statusCode: 402,
+            }),
+          ],
+          "All requests failed",
+        ),
+      ),
+    ).toBe(false);
+  });
 });
