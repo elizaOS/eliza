@@ -125,13 +125,20 @@ export function resolveSharedCapabilityWall(
 ): SharedCapabilityWall | null {
   const text = (message ?? "").trim();
   if (!text || NON_EXECUTION_CONTEXT.test(text)) return null;
-  const match = RULES.find(
-    (rule) =>
-      !(rule.capability === "reminders" && capabilities.reminders) &&
-      !(rule.capability === "todos" && capabilities.todos) &&
-      rule.pattern.test(text),
-  );
-  return match ? { capability: match.capability, label: match.label, reply: match.reply } : null;
+  const primaryMatch = RULES.map((rule, priority) => ({
+    rule,
+    priority,
+    index: rule.pattern.exec(text)?.index,
+  }))
+    .filter((match): match is typeof match & { index: number } => match.index !== undefined)
+    .sort((left, right) => left.index - right.index || left.priority - right.priority)[0];
+
+  if (!primaryMatch) return null;
+  if (primaryMatch.rule.capability === "reminders" && capabilities.reminders) return null;
+  if (primaryMatch.rule.capability === "todos" && capabilities.todos) return null;
+
+  const { capability, label, reply } = primaryMatch.rule;
+  return { capability, label, reply };
 }
 
 export function capabilityWallActionResult(wall: SharedCapabilityWall) {

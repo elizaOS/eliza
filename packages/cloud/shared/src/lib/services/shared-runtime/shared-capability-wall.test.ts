@@ -50,6 +50,23 @@ describe("Shared capability wall", () => {
     expect(resolveSharedCapabilityWall("remind me in two minutes")?.capability).toBe("reminders");
   });
 
+  test.each([
+    "remind me in 1 minute: QA20315-DISCORD-DM-R3 verified",
+    "remind me in two minutes to text Alice",
+    "remind me tomorrow to email Bob the itinerary",
+  ])("keeps nested communication words inside an enabled reminder: %s", (message) => {
+    expect(resolveSharedCapabilityWall(message, { reminders: true })).toBeNull();
+    expect(resolveSharedCapabilityWall(message)?.capability).toBe("reminders");
+  });
+
+  test("still blocks a communication command that precedes a reminder", () => {
+    expect(
+      resolveSharedCapabilityWall("email Bob now and remind me tomorrow", {
+        reminders: true,
+      })?.capability,
+    ).toBe("communications");
+  });
+
   test("does not falsely claim voice and messaging require Dedicated", () => {
     const wall = resolveSharedCapabilityWall("call Mom");
     expect(wall?.reply).toContain("connected voice and messaging channels");
@@ -75,5 +92,11 @@ describe("Shared capability wall", () => {
       }),
     ).toBeNull();
     expect(resolveSharedCapabilityWall("add milk to my todo list")?.capability).toBe("todos");
+  });
+
+  test("keeps nested communication words inside an enabled Todo", () => {
+    const message = "add call Mom to my todo list";
+    expect(resolveSharedCapabilityWall(message, { todos: true })).toBeNull();
+    expect(resolveSharedCapabilityWall(message)?.capability).toBe("todos");
   });
 });
