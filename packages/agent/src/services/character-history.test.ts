@@ -1,0 +1,107 @@
+/**
+ * Pins the character-history limit guard against the valid range 1..100 with
+ * fallback 20. Guards the NaN/Infinity leak where isNaN alone let Infinity
+ * through as 100, and the truncation-old bundle where 0 leaked to 20 via
+ * Math.trunc(limit)||20. Sibling: audit-log.ts toBoundedLimit uses
+ * Number.isFinite + Math.max(1, trunc).
+ */
+import { describe, expect, it, vi } from "vitest";
+import { MemoryType } from "@elizaos/core";
+import {
+  listCharacterHistory,
+  MAX_CHARACTER_HISTORY_LIMIT,
+} from "./character-history.ts";
+
+function makeMemory(timestamp: number) {
+  return {
+    id: `m-${timestamp}`,
+    entityId: "agent-123",
+    roomId: "agent-123",
+    content: { text: `change ${timestamp}` },
+    createdAt: timestamp,
+    metadata: {
+      type: MemoryType.CUSTOM,
+      service: "character_history",
+      action: "character_updated",
+      timestamp,
+      historySource: "manual",
+      fieldsChanged: ["name"],
+      changes: [{ field: "name", before: "a", after: `b-${timestamp}` }],
+      before: { name: "a" },
+      after: { name: `b-${timestamp}` },
+    },
+  };
+}
+
+const ALL = Array.from({ length: 150 }, (_, i) => makeMemory(1000 + i));
+
+async function probe(limit: unknown) {
+  const getMemories = vi.fn(async () => ALL);
+  const runtime = {
+    agentId: "agent-123",
+    getMemories,
+  } as never;
+  const result =
+    limit === undefined
+      ? await listCharacterHistory(runtime as never)
+      : await listCharacterHistory(runtime as never, limit as number);
+  return { result, getMemories };
+}
+
+describe("listCharacterHistory limit guard", () => {
+  it("defaults to 20 when limit is undefined (no arg)", async () => {
+    const { result, getMemories } = await probe(undefined);
+    expect(result).toHaveLength(20);
+    expect(getMemories).toHaveBeenCalledWith(
+      expect.objectContaining({ count: 80 }),
+    );
+  });
+
+  it("falls back to 20 for NaN and non-finite (Infinity/-Infinity)", async () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const { result, getMemories } = await probe(bad);
+      expect(result, `limit=${String(bad)}`).toHaveLength(20);
+      expect(getMemories).toHaveBeenCalledWith(
+        expect.objectContaining({ count: 80 }),
+      );
+    }
+  });
+
+  it("maps 0 to 1 (not the old bundle fallback 20) and clamps negatives to 1", async () => {
+    for (const v of [0, -5, -1]) {
+      const { result, getMemories } = await probe(v);
+      expect(result, `limit=${v}`).toHaveLength(1);
+      expect(getMemories).toHaveBeenCalledWith(
+        expect.objectContaining({ count: 4 }),
+      );
+    }
+  });
+
+  it("respects valid mid-range limits and truncates decimals", async () => {
+    const { result: r5 } = await probe(5);
+    expect(r5).toHaveLength(5);
+    const { result: rTrunc } = await probe(5.9);
+    expect(rTrunc).toHaveLength(5);
+    const { result: r7 } = await probe(7.1);
+    expect(r7).toHaveLength(7);
+  });
+
+  it("caps at MAX 100 for large limits", async () => {
+    for (const big of [200, 999, Number.MAX_SAFE_INTEGER]) {
+      const { result, getMemories } = await probe(big);
+      expect(result, `limit=${big}`).toHaveLength(MAX_CHARACTER_HISTORY_LIMIT);
+      expect(getMemories).toHaveBeenCalledWith(
+        expect.objectContaining({ count: MAX_CHARACTER_HISTORY_LIMIT * 4 }),
+      );
+    }
+  });
+
+  it("sabotage: Infinity must not leak to 100 and 0 must not leak to 20", async () => {
+    const { result: inf } = await probe(Number.POSITIVE_INFINITY);
+    expect(inf).toHaveLength(20);
+    expect(inf).not.toHaveLength(100);
+    const { result: zero } = await probe(0);
+    expect(zero).toHaveLength(1);
+    expect(zero).not.toHaveLength(20);
+  });
+});
