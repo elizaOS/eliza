@@ -1,5 +1,10 @@
-// Handles webhook cloud API eliza app webhook forward route traffic with signature or internal auth checks.
+/** Authenticates provider webhooks and proxies them to the matching connector gateway. */
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
+import {
+  appendServerTiming,
+  ELIZA_TRACE_ID_HEADER,
+  resolveElizaTraceId,
+} from "@/lib/observability/http-telemetry";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext } from "@/types/cloud-worker-env";
 
@@ -338,15 +343,17 @@ interface ProxyOptions extends ForwardOptions {
   // — even on the Discord path, which never stamps.
   stampGatewaySecret?: boolean;
   headerOverrides?: Readonly<Record<string, string>>;
+  telemetryMetric: "webhook_gateway_proxy" | "discord_webhook_proxy";
 }
 
 async function proxyRequest(
   c: AppContext,
   target: URL,
   serviceName: string,
-  options: ProxyOptions = {},
+  options: ProxyOptions,
 ): Promise<Response> {
   const headers = new Headers(c.req.raw.headers);
+  const traceId = c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers);
   headers.delete("host");
   headers.set("x-forwarded-host", new URL(c.req.url).host);
   headers.set(
@@ -358,6 +365,10 @@ async function proxyRequest(
   // it unconditionally on EVERY proxied request (gateway AND Discord), so a
   // client can never forge the "came from the BFF" proof.
   headers.delete(GATEWAY_SECRET_HEADER);
+  // The BFF owns this hop's correlation identity. Re-stamping its resolved id
+  // prevents an untrusted provider header from splitting the Cloud and gateway
+  // spans while keeping the value opaque and bounded.
+  headers.set(ELIZA_TRACE_ID_HEADER, traceId);
   // Stamp our own value ONLY on gateway forwards, and only when the dedicated
   // secret is configured. The Discord handler (a potentially separate/public
   // service) must never receive this credential.
@@ -371,6 +382,7 @@ async function proxyRequest(
     headers.set(name, value);
   }
 
+  const startedAt = performance.now();
   try {
     const upstream = await fetch(target, {
       body:
@@ -381,18 +393,42 @@ async function proxyRequest(
       method: c.req.method,
       redirect: "manual",
     });
+    const durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
+    const responseHeaders = new Headers(upstream.headers);
+    responseHeaders.set(ELIZA_TRACE_ID_HEADER, traceId);
+    appendServerTiming(responseHeaders, [
+      { name: options.telemetryMetric, durationMs },
+    ]);
+    const logContext = {
+      traceId,
+      serviceName,
+      status: upstream.status,
+      durationMs,
+    };
+    if (upstream.status >= 500 || durationMs >= 1_000) {
+      logger.warn(
+        "[ElizaAppWebhook] upstream request slow or failed",
+        logContext,
+      );
+    } else {
+      logger.info("[ElizaAppWebhook] upstream request completed", logContext);
+    }
     return new Response(upstream.body, {
-      headers: upstream.headers,
+      headers: responseHeaders,
       status: upstream.status,
       statusText: upstream.statusText,
     });
   } catch (error) {
+    // error-policy:J1 Translate an upstream transport failure at the HTTP boundary.
+    const durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
     logger.error("[ElizaAppWebhook] Upstream request failed", {
+      traceId,
       serviceName,
       target: target.origin,
+      durationMs,
       error: error instanceof Error ? error.message : String(error),
     });
-    return c.json(
+    const response = c.json(
       {
         success: false,
         code: "WEBHOOK_UPSTREAM_UNREACHABLE",
@@ -400,6 +436,11 @@ async function proxyRequest(
       },
       502,
     );
+    response.headers.set(ELIZA_TRACE_ID_HEADER, traceId);
+    appendServerTiming(response.headers, [
+      { name: options.telemetryMetric, durationMs },
+    ]);
+    return response;
   }
 }
 
@@ -480,6 +521,7 @@ export async function forwardToWebhookGateway(
     body: options.body ?? signedBody,
     stampGatewaySecret: true,
     headerOverrides,
+    telemetryMetric: "webhook_gateway_proxy",
   });
 }
 
@@ -503,5 +545,7 @@ export async function forwardToDiscordWebhookHandler(
 
   const target = new URL(configuredUrl);
   target.search = new URL(c.req.url).search;
-  return proxyRequest(c, target, "Discord webhook handler");
+  return proxyRequest(c, target, "Discord webhook handler", {
+    telemetryMetric: "discord_webhook_proxy",
+  });
 }

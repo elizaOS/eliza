@@ -4,8 +4,25 @@ import { Client } from "./client";
 
 function createClient(v2: Record<string, unknown>) {
   const client = new Client();
+  const session = {
+    client: { v2 },
+    profile: {
+      id: "bot-user",
+      username: "bot",
+      screenName: "Bot",
+      bio: "",
+      nicknames: [],
+    },
+    revision: 1,
+  };
   client.updateAuth({
     getV2Client: async () => ({ v2 }),
+    getAuthenticatedSession: async () => session,
+    withAuthenticatedSession: async (operation: (value: unknown) => unknown) =>
+      operation(session),
+    isAuthenticatedSessionCurrent: () => true,
+    deferUntil: () => undefined,
+    logout: async () => undefined,
   } as never);
 
   return client;
@@ -73,5 +90,18 @@ describe("Client direct messages", () => {
         dm_event_id: "event-1",
       },
     });
+  });
+
+  it("never exposes whitespace as a direct-message receipt id", async () => {
+    const sendDmInConversation = vi.fn().mockResolvedValue({
+      dm_conversation_id: "conversation-1",
+      dm_event_id: "   ",
+    });
+    const client = createClient({ sendDmInConversation });
+
+    const result = await client.sendDirectMessage("conversation-1", "hello");
+
+    expect(result.id).toBeUndefined();
+    expect(sendDmInConversation).toHaveBeenCalledOnce();
   });
 });

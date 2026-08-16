@@ -802,6 +802,33 @@ describe("Notes capabilities", () => {
     expect(service.listNotes()).toHaveLength(2);
   });
 
+  it("returns the destructive name-mismatch fence as a structured failure", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "wifi password\nhunter2-not-really", color: "yellow" },
+      service,
+    );
+
+    await expect(
+      interact(
+        "delete-note",
+        {
+          title: "wifi password",
+          ownerText: "delete the wifi credentials note",
+        },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      text: expect.stringContaining("nothing was deleted"),
+      error: { code: "NOTES_DELETE_NAME_MISMATCH" },
+    });
+    expect(service.listNotes().map((note) => note.title)).toEqual([
+      "wifi password",
+    ]);
+  });
+
   it("delete-note rejects content parameter (fail-closed for payload contract)", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(

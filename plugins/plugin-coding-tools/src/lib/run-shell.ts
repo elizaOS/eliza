@@ -24,8 +24,13 @@ import {
   CapabilityError,
   getCapabilityRouter,
   type IAgentRuntime,
+  sanitizeSpawnEnv,
 } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
+import {
+  applyHostExecutionBaseline,
+  resolveHostExecutable,
+} from "@elizaos/shared/host-execution-env";
 import {
   detectTerminalSupport,
   missingToolForCommand,
@@ -137,6 +142,10 @@ function toSandboxWorkdir(cwd: string): string | undefined {
 }
 
 const STREAM_CAP_CHARS = 30_000;
+
+function hostSpawnEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return applyHostExecutionBaseline(sanitizeSpawnEnv(env));
+}
 
 function shellArgsForCommand(shell: {
   command: string;
@@ -491,7 +500,7 @@ export function startBackgroundShellOnHost(
     command: shell.command,
     args: [...shellArgsForCommand(shell), opts.command],
     cwd: opts.cwd,
-    env: opts.env ?? process.env,
+    env: hostSpawnEnv(opts.env ?? process.env),
     stdin: "pipe",
     detached: useProcessGroup,
   });
@@ -514,15 +523,7 @@ function resolveExecutableForHost(
   name: string,
   fallback: string,
 ): string | undefined {
-  const pathEntries = (process.env.PATH ?? "")
-    .split(importPath.delimiter)
-    .filter(Boolean);
-  for (const entry of pathEntries) {
-    const candidate = importPath.join(entry, name);
-    if (existsSync(candidate)) return candidate;
-  }
-  if (existsSync(fallback)) return fallback;
-  return undefined;
+  return resolveHostExecutable(name) ?? resolveHostExecutable(fallback);
 }
 
 function runOnHostWithShell(
@@ -716,6 +717,6 @@ export async function runShell(
     command: opts.command,
     cwd: opts.cwd,
     timeoutMs: opts.timeoutMs,
-    env: process.env,
+    env: hostSpawnEnv(process.env),
   });
 }

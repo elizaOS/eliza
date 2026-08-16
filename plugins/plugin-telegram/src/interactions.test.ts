@@ -132,4 +132,14 @@ describe("dashboard-only marker stripping (Finding B)", () => {
     expect(rendered.text).toBe("Set up here:");
     expect(rendered.keyboardRows).toHaveLength(0);
   });
+
+  it("strips [CONFIG:…] from fallback prose contributed by a parsed block", () => {
+    const id = "abc12345-def6-7890-abcd-ef1234567890";
+    const rendered = renderTelegramInteractions({
+      text: `[TASK:${id}]Ship it [CONFIG:@elizaos/plugin-gmail][/TASK]`,
+    } as Content);
+    expect(rendered.text).toBe("Ship it");
+    expect(rendered.text).not.toContain("[CONFIG:");
+    expect(rendered.keyboardRows).toHaveLength(0);
+  });
 });

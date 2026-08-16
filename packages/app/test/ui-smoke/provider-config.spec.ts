@@ -1,14 +1,8 @@
-// Provider-switch round-trip against the REAL live stack.
-//
-// Settings → Models & Providers (the `ai-model` section) exposes connected
-// direct-provider accounts with a primary "Use for chat" action. That action
-// calls client.switchProvider() → POST /api/provider/switch, which the real
-// app-core runtime services. Classified LIVE_ONLY. It NEVER stubs the route
-// under test — POST /api/provider/switch hits the real backend.
-//
-// Flow: open Models & Providers → click the first enabled "Use for chat"
-// account action → assert the real POST /api/provider/switch fired with a
-// concrete provider id.
+/**
+ * Exercises provider switching through the real live-stack account and runtime
+ * routes. The test creates its own linked account because process-level API-key
+ * credentials intentionally do not appear as user-managed account rows.
+ */
 
 import { expect, type Page, test } from "@playwright/test";
 import { openAppPath, openSettingsSection, seedAppStorage } from "./helpers";
@@ -16,6 +10,43 @@ import { openAppPath, openSettingsSection, seedAppStorage } from "./helpers";
 const LIVE_STACK = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 
 type SwitchRequest = { provider: unknown; primaryModel?: unknown };
+
+const TEST_PROVIDER_ID = "cerebras-api";
+
+async function mutateAccount(
+  page: Page,
+  path: string,
+  method: "POST" | "DELETE",
+  body?: Record<string, unknown>,
+): Promise<unknown> {
+  return page.evaluate(
+    async ({ path: requestPath, method: requestMethod, body: requestBody }) => {
+      const csrfCookie = document.cookie
+        .split(";")
+        .map((part) => part.trim())
+        .find((part) => part.startsWith("eliza_csrf="));
+      const csrfToken = csrfCookie
+        ? decodeURIComponent(csrfCookie.slice("eliza_csrf=".length))
+        : null;
+      const response = await fetch(requestPath, {
+        method: requestMethod,
+        credentials: "include",
+        headers: {
+          "content-type": "application/json",
+          ...(csrfToken ? { "x-eliza-csrf": csrfToken } : {}),
+        },
+        ...(requestBody ? { body: JSON.stringify(requestBody) } : {}),
+      });
+      if (!response.ok) {
+        throw new Error(
+          `${requestMethod} ${requestPath} failed with ${response.status}: ${await response.text()}`,
+        );
+      }
+      return response.status === 204 ? null : response.json();
+    },
+    { path, method, body },
+  );
+}
 
 function captureProviderSwitches(page: Page): SwitchRequest[] {
   const requests: SwitchRequest[] = [];
@@ -52,6 +83,20 @@ test.describe("provider config deep round-trip", () => {
     const switches = captureProviderSwitches(page);
 
     await openAppPath(page, "/settings");
+    const created = (await mutateAccount(
+      page,
+      `/api/accounts/${TEST_PROVIDER_ID}`,
+      "POST",
+      {
+        source: "api-key",
+        label: "Live E2E switch target",
+        apiKey: "csk-live-e2e-switch-target",
+      },
+    )) as { id?: unknown };
+    expect(typeof created.id).toBe("string");
+
+    // Reload the inventory after creating the fixture through the real route.
+    await openAppPath(page, "/settings");
     await openSettingsSection(page, /Models & Providers/);
     await expect(page.locator("#ai-model")).toBeVisible({ timeout: 30_000 });
 
@@ -79,5 +124,11 @@ test.describe("provider config deep round-trip", () => {
 
     // The clicked account action becomes the active, disabled "Chat" state.
     await expect(useForChat).toHaveCount(0, { timeout: 10_000 });
+
+    await mutateAccount(
+      page,
+      `/api/accounts/${TEST_PROVIDER_ID}/${String(created.id)}`,
+      "DELETE",
+    );
   });
 });

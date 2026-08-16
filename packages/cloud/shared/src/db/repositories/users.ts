@@ -7,6 +7,7 @@ import {
   sharedRuntimeWorldId,
   sharedTodoStorageScope,
 } from "../../lib/services/shared-runtime/shared-runtime-storage-identity";
+import type { DbTransaction } from "../client";
 import { type SqlExecutor, sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type Organization, organizations } from "../schemas/organizations";
@@ -20,6 +21,12 @@ import { type NewUser, type User, users } from "../schemas/users";
 export type { NewUser, User, UserIdentity };
 
 export type IdentityProvider = "steward" | "telegram" | "discord" | "whatsapp" | "phone";
+export type MessagingIdentityProvider = Exclude<IdentityProvider, "steward">;
+
+export type LinkMessagingIdentityResult =
+  | { status: "linked"; user: User }
+  | { status: "user_not_found" }
+  | { status: "handle_conflict" };
 
 /**
  * Maps a messaging-platform name as it appears on the wire to the identity
@@ -57,11 +64,32 @@ export interface ResolvedIdentity {
   identity?: UserIdentity;
 }
 
-export interface FindOrCreateTelegramPersonalAccountResult {
+export interface FindOrCreateMessagingPersonalAccountResult {
   user: User;
   organization: Organization;
   isNew: boolean;
 }
+
+export type MessagingPersonalAccountParams =
+  | {
+      platform: "telegram";
+      telegramId: string;
+      telegramUsername?: string;
+      telegramFirstName?: string;
+      displayName: string;
+      organizationName: string;
+      organizationSlug: string;
+    }
+  | {
+      platform: "discord";
+      discordId: string;
+      discordUsername: string;
+      discordGlobalName?: string | null;
+      discordAvatarUrl?: string | null;
+      displayName: string;
+      organizationName: string;
+      organizationSlug: string;
+    };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 const EVM_ADDRESS_RE = /^0x[0-9a-f]{40}$/i;
@@ -93,6 +121,11 @@ export interface TelegramIdentityLink {
   telegram_username?: string | null;
   telegram_first_name?: string | null;
   telegram_photo_url?: string | null;
+}
+
+export interface WhatsAppIdentityLink {
+  whatsapp_id: string;
+  whatsapp_name?: string | null;
 }
 
 export interface FindOrCreatePhonePersonalAccountResult {
@@ -2009,37 +2042,53 @@ export class UsersRepository {
   }
 
   /**
-   * Creates or reuses the $0 personal account proven by Telegram's signed
-   * webhook boundary. A sender-scoped transaction lock makes concurrent first
-   * updates converge without an agent row or orphan organization.
+   * Creates or reuses the $0 personal account proven by a trusted messaging
+   * boundary. A provider-sender transaction lock makes concurrent first turns
+   * converge without an API key, agent row, or orphan organization.
    */
-  async findOrCreateTelegramPersonalAccount(params: {
-    telegramId: string;
-    telegramUsername?: string;
-    telegramFirstName?: string;
-    displayName: string;
-    organizationName: string;
-    organizationSlug: string;
-  }): Promise<FindOrCreateTelegramPersonalAccountResult> {
+  async findOrCreateMessagingPersonalAccount(
+    params: MessagingPersonalAccountParams,
+  ): Promise<FindOrCreateMessagingPersonalAccountResult> {
+    const senderId = params.platform === "telegram" ? params.telegramId : params.discordId;
+    const identityWhere =
+      params.platform === "telegram"
+        ? eq(userIdentities.telegram_id, senderId)
+        : eq(userIdentities.discord_id, senderId);
+    const canonicalWhere =
+      params.platform === "telegram"
+        ? eq(users.telegram_id, senderId)
+        : eq(users.discord_id, senderId);
+    const identityFields =
+      params.platform === "telegram"
+        ? {
+            telegram_id: senderId,
+            telegram_username: params.telegramUsername,
+            telegram_first_name: params.telegramFirstName,
+          }
+        : {
+            discord_id: senderId,
+            discord_username: params.discordUsername,
+            discord_global_name: params.discordGlobalName,
+            discord_avatar_url: params.discordAvatarUrl,
+          };
+    const label = params.platform === "telegram" ? "Telegram" : "Discord";
+    const errorPrefix = params.platform.toUpperCase();
+
     return dbWrite.transaction(async (tx) => {
       await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${`telegram_personal_account:${params.telegramId}`}))`,
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`${params.platform}_personal_account:${senderId}`}))`,
       );
 
       const [projection] = await tx
         .select({ userId: userIdentities.user_id })
         .from(userIdentities)
-        .where(eq(userIdentities.telegram_id, params.telegramId))
+        .where(identityWhere)
         .limit(1);
-      const [canonical] = await tx
-        .select()
-        .from(users)
-        .where(eq(users.telegram_id, params.telegramId))
-        .limit(1);
+      const [canonical] = await tx.select().from(users).where(canonicalWhere).limit(1);
 
       if (projection && canonical && projection.userId !== canonical.id) {
-        throw new ElizaError("Telegram identity owners disagree", {
-          code: "TELEGRAM_PERSONAL_ACCOUNT_IDENTITY_CONFLICT",
+        throw new ElizaError(`${label} identity owners disagree`, {
+          code: `${errorPrefix}_PERSONAL_ACCOUNT_IDENTITY_CONFLICT`,
           context: { canonicalUserId: canonical.id, projectedUserId: projection.userId },
           severity: "fatal",
         });
@@ -2051,17 +2100,26 @@ export class UsersRepository {
           ? [canonical]
           : [];
       if (projection && !existing) {
-        throw new ElizaError("Telegram identity projection has no canonical owner", {
-          code: "TELEGRAM_PERSONAL_ACCOUNT_IDENTITY_CONFLICT",
+        throw new ElizaError(`${label} identity projection has no canonical owner`, {
+          code: `${errorPrefix}_PERSONAL_ACCOUNT_IDENTITY_CONFLICT`,
           context: { projectedUserId: projection.userId },
           severity: "fatal",
         });
       }
 
       if (existing) {
+        const existingSenderId =
+          params.platform === "telegram" ? existing.telegram_id : existing.discord_id;
+        if (projection && existingSenderId && existingSenderId !== senderId) {
+          throw new ElizaError(`${label} identity projection belongs to another sender`, {
+            code: `${errorPrefix}_PERSONAL_ACCOUNT_IDENTITY_CONFLICT`,
+            context: { projectedUserId: projection.userId },
+            severity: "fatal",
+          });
+        }
         if (existing.deleted_at || !existing.is_active || !existing.organization_id) {
-          throw new ElizaError("Telegram personal account is unavailable", {
-            code: "TELEGRAM_PERSONAL_ACCOUNT_UNAVAILABLE",
+          throw new ElizaError(`${label} personal account is unavailable`, {
+            code: `${errorPrefix}_PERSONAL_ACCOUNT_UNAVAILABLE`,
             context: { userId: existing.id },
             severity: "fatal",
           });
@@ -2072,8 +2130,8 @@ export class UsersRepository {
           .where(eq(organizations.id, existing.organization_id))
           .limit(1);
         if (!organization?.is_active) {
-          throw new ElizaError("Telegram personal account organization is unavailable", {
-            code: "TELEGRAM_PERSONAL_ACCOUNT_UNAVAILABLE",
+          throw new ElizaError(`${label} personal account organization is unavailable`, {
+            code: `${errorPrefix}_PERSONAL_ACCOUNT_UNAVAILABLE`,
             context: { userId: existing.id, organizationId: existing.organization_id },
             severity: "fatal",
           });
@@ -2083,32 +2141,26 @@ export class UsersRepository {
         const [updated] = await tx
           .update(users)
           .set({
-            telegram_id: params.telegramId,
-            telegram_username: params.telegramUsername,
-            telegram_first_name: params.telegramFirstName,
+            ...identityFields,
             name: existing.name ?? params.displayName,
             updated_at: now,
           })
           .where(eq(users.id, existing.id))
           .returning();
-        if (!updated) throw new Error(`Telegram account ${existing.id} disappeared`);
+        if (!updated) throw new Error(`${label} account ${existing.id} disappeared`);
         await tx
           .insert(userIdentities)
           .values({
             user_id: updated.id,
             steward_user_id: updated.steward_user_id,
             is_anonymous: updated.is_anonymous,
-            telegram_id: params.telegramId,
-            telegram_username: params.telegramUsername,
-            telegram_first_name: params.telegramFirstName,
+            ...identityFields,
             updated_at: now,
           })
           .onConflictDoUpdate({
             target: userIdentities.user_id,
             set: {
-              telegram_id: params.telegramId,
-              telegram_username: params.telegramUsername,
-              telegram_first_name: params.telegramFirstName,
+              ...identityFields,
               updated_at: now,
             },
           });
@@ -2123,15 +2175,13 @@ export class UsersRepository {
           credit_balance: "0.00",
         })
         .returning();
-      if (!organization) throw new Error("Failed to create Telegram personal organization");
+      if (!organization) throw new Error(`Failed to create ${label} personal organization`);
 
       const [user] = await tx
         .insert(users)
         .values({
-          steward_user_id: `telegram:${params.telegramId}`,
-          telegram_id: params.telegramId,
-          telegram_username: params.telegramUsername,
-          telegram_first_name: params.telegramFirstName,
+          steward_user_id: `${params.platform}:${senderId}`,
+          ...identityFields,
           name: params.displayName,
           is_anonymous: false,
           organization_id: organization.id,
@@ -2139,14 +2189,12 @@ export class UsersRepository {
           is_active: true,
         })
         .returning();
-      if (!user) throw new Error("Failed to create Telegram personal user");
+      if (!user) throw new Error(`Failed to create ${label} personal user`);
       await tx.insert(userIdentities).values({
         user_id: user.id,
         steward_user_id: user.steward_user_id,
         is_anonymous: false,
-        telegram_id: params.telegramId,
-        telegram_username: params.telegramUsername,
-        telegram_first_name: params.telegramFirstName,
+        ...identityFields,
       });
       return { user, organization, isNew: true };
     });
@@ -2214,10 +2262,128 @@ export class UsersRepository {
     });
   }
 
+  /**
+   * Resolves and binds a channel handle using the caller's transaction. This
+   * lets identity-link code consumption commit atomically with both identity
+   * rows; a failed projection write therefore leaves the code pending.
+   */
+  async linkMessagingIdentityInTransaction(
+    tx: DbTransaction,
+    userId: string,
+    provider: MessagingIdentityProvider,
+    platformId: string,
+    platformName?: string,
+  ): Promise<LinkMessagingIdentityResult> {
+    const ownerPredicates =
+      provider === "telegram"
+        ? [eq(users.telegram_id, platformId), eq(userIdentities.telegram_id, platformId)]
+        : provider === "discord"
+          ? [eq(users.discord_id, platformId), eq(userIdentities.discord_id, platformId)]
+          : provider === "whatsapp"
+            ? [eq(users.whatsapp_id, platformId), eq(userIdentities.whatsapp_id, platformId)]
+            : [eq(users.phone_number, platformId), eq(userIdentities.phone_number, platformId)];
+    const [canonicalOwner] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(ownerPredicates[0])
+      .limit(1);
+    const [projectionOwner] = await tx
+      .select({ userId: userIdentities.user_id })
+      .from(userIdentities)
+      .where(ownerPredicates[1])
+      .limit(1);
+    if (
+      (canonicalOwner && canonicalOwner.id !== userId) ||
+      (projectionOwner && projectionOwner.userId !== userId)
+    ) {
+      return { status: "handle_conflict" };
+    }
+
+    const now = new Date();
+    const identity =
+      provider === "telegram"
+        ? { telegram_id: platformId, telegram_username: platformName ?? null }
+        : provider === "discord"
+          ? { discord_id: platformId, discord_username: platformName ?? platformId }
+          : provider === "whatsapp"
+            ? { whatsapp_id: platformId, whatsapp_name: platformName ?? null }
+            : { phone_number: platformId, phone_verified: true };
+    const targetPredicate =
+      provider === "phone"
+        ? and(
+            eq(users.id, userId),
+            or(
+              isNull(users.phone_number),
+              eq(users.phone_number, platformId),
+              sql`${users.phone_verified} IS NOT TRUE`,
+            ),
+          )
+        : eq(users.id, userId);
+    const [updated] = await tx
+      .update(users)
+      .set({ ...identity, updated_at: now })
+      .where(targetPredicate)
+      .returning();
+    if (!updated) {
+      const [existing] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
+      return existing ? { status: "handle_conflict" } : { status: "user_not_found" };
+    }
+
+    await tx
+      .insert(userIdentities)
+      .values({
+        user_id: userId,
+        steward_user_id: updated.steward_user_id,
+        is_anonymous: updated.is_anonymous,
+        anonymous_session_id: updated.anonymous_session_id,
+        expires_at: updated.expires_at,
+        ...identity,
+        updated_at: now,
+      })
+      .onConflictDoUpdate({
+        target: userIdentities.user_id,
+        set: { ...identity, updated_at: now },
+      });
+    return { status: "linked", user: updated };
+  }
+
   /** Links Discord on the canonical user and routing projection atomically. */
   async linkDiscordIdentity(
     userId: string,
     identity: DiscordIdentityLink,
+  ): Promise<User | undefined> {
+    return dbWrite.transaction(async (tx) => {
+      const updatedAt = new Date();
+      const [updated] = await tx
+        .update(users)
+        .set({ ...identity, updated_at: updatedAt })
+        .where(eq(users.id, userId))
+        .returning();
+      if (!updated) return undefined;
+
+      await tx
+        .insert(userIdentities)
+        .values({
+          user_id: userId,
+          steward_user_id: updated.steward_user_id,
+          is_anonymous: updated.is_anonymous,
+          anonymous_session_id: updated.anonymous_session_id,
+          expires_at: updated.expires_at,
+          ...identity,
+          updated_at: updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: userIdentities.user_id,
+          set: { ...identity, updated_at: updatedAt },
+        });
+      return updated;
+    });
+  }
+
+  /** Links WhatsApp on the canonical user and routing projection atomically. */
+  async linkWhatsAppIdentity(
+    userId: string,
+    identity: WhatsAppIdentityLink,
   ): Promise<User | undefined> {
     return dbWrite.transaction(async (tx) => {
       const updatedAt = new Date();

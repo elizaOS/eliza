@@ -332,11 +332,40 @@ describe("readBackupVerifierConfig", () => {
     expect(garbage.batchSize).toBe(10);
     expect(garbage.reVerifyIntervalMs).toBe(24 * 3_600_000);
     expect(garbage.maxDecryptBytesPerCycle).toBe(256 * 1024 * 1024);
-    expect(
-      readBackupVerifierConfig({
-        BACKUP_VERIFICATION_BATCH_SIZE: "7junk",
-      } as NodeJS.ProcessEnv).batchSize,
-    ).toBe(10);
+  });
+
+  // #20013: parseInt stops at the first non-digit, so numeric-prefixed garbage
+  // like "7junk" parsed to 7 and passed the range check. The whole trimmed
+  // string must be digits, and only safe integers may round-trip.
+  test.each(["7junk", "12.5", "1e3", "0x10", "+7", "9007199254740992"])(
+    "malformed tunable %p falls back to the default on every gated knob",
+    (raw) => {
+      const config = readBackupVerifierConfig({
+        BACKUP_VERIFICATION_BATCH_SIZE: raw,
+        BACKUP_VERIFICATION_REVERIFY_HOURS: raw,
+        BACKUP_VERIFICATION_ESCALATION_PCT: raw,
+        BACKUP_VERIFICATION_MIN_SYSTEMIC_SAMPLE: raw,
+        BACKUP_VERIFICATION_MAX_DECRYPT_BYTES: raw,
+        BACKUP_VERIFICATION_ERRORED_ALERT_STREAK: raw,
+      } as NodeJS.ProcessEnv);
+      expect(config.batchSize).toBe(10);
+      expect(config.reVerifyIntervalMs).toBe(24 * 3_600_000);
+      expect(config.escalationThresholdPct).toBe(50);
+      expect(config.minSystemicSample).toBe(5);
+      expect(config.maxDecryptBytesPerCycle).toBe(256 * 1024 * 1024);
+      expect(config.erroredAlertStreak).toBe(3);
+    },
+  );
+
+  test("edge-padded digits and canonical values stay accepted", () => {
+    const padded = readBackupVerifierConfig({
+      BACKUP_VERIFICATION_BATCH_SIZE: " 4 ",
+    } as NodeJS.ProcessEnv);
+    expect(padded.batchSize).toBe(4);
+    const boundary = readBackupVerifierConfig({
+      BACKUP_VERIFICATION_BATCH_SIZE: "9007199254740991",
+    } as NodeJS.ProcessEnv);
+    expect(boundary.batchSize).toBe(Number.MAX_SAFE_INTEGER);
   });
 });
 

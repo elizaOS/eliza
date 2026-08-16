@@ -1,8 +1,8 @@
 /**
  * Mounts only the Cloud public/auth/marketing route shell for a cold hosted
- * public URL. The full application entry remains behind a document reload when
- * client-side navigation leaves that route table, so none of its native,
- * bridge, plugin, or agent-dashboard imports enter anonymous `/login`.
+ * public URL. The full application graph stays out of anonymous `/login`, then
+ * loads into the same document when client-side navigation leaves that route
+ * table so successful authentication does not reboot the browser page.
  */
 
 import "@elizaos/ui/styles";
@@ -13,7 +13,7 @@ import { CloudRouterShell } from "@elizaos/ui/cloud/shell/CloudRouterShell";
 import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
 import * as React from "react";
 import { lazy, Suspense, useEffect } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { renderBootFailure } from "./boot-failure";
 import { seedPublicWebBootConfig } from "./public-web-boot-config";
 import { registerViewServiceWorker } from "./sw-registration";
@@ -23,14 +23,32 @@ const MarketingDownloadsPage = lazy(
   () => import("@homepage/embedded-downloads"),
 );
 
+let publicRoot: Root | null = null;
+let fullAppHandoffStarted = false;
+
+async function handoffToFullApp(): Promise<void> {
+  if (fullAppHandoffStarted) return;
+  fullAppHandoffStarted = true;
+
+  // React must finish the current effect before its root is removed. The full
+  // renderer's side-effect entry then mounts into the now-empty #root without
+  // replacing the document, history, or service-worker-controlled client.
+  await Promise.resolve();
+  publicRoot?.unmount();
+  publicRoot = null;
+  await import("./main");
+}
+
 /**
  * A public-route link can navigate into the application without reloading the
- * document. Reload once at that catch-all so `entry.ts` selects the full boot
- * for the new, non-public pathname.
+ * document. Swap renderer roots at that catch-all while preserving the same
+ * browser document and navigation history.
  */
 function FullAppHandoff(): React.JSX.Element {
   useEffect(() => {
-    window.location.reload();
+    // error-policy:J1 renderer handoff boundary — a failed full-app import
+    // renders the established actionable recovery card.
+    void handoffToFullApp().catch(renderBootFailure);
   }, []);
   return (
     <main
@@ -50,7 +68,8 @@ function mountPublicWebEntry(): void {
   seedPublicWebBootConfig();
   registerViewServiceWorker();
   registerPublicCloudSurfaces();
-  createRoot(rootElement).render(
+  publicRoot = createRoot(rootElement);
+  publicRoot.render(
     <ErrorBoundary>
       <React.StrictMode>
         <Suspense fallback={null}>

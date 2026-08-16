@@ -32,12 +32,16 @@ import {
   runOnboardingChat,
   type TelegramOnboardingContinuationClaim,
 } from "@/lib/services/eliza-app/onboarding-chat";
+import { invalidatePersonalDeliveryProjection } from "@/lib/services/eliza-app/personal-delivery-projection-contract";
 import { logger } from "@/lib/utils/logger";
 import {
   isValidE164,
   normalizePhoneNumber,
 } from "@/lib/utils/phone-normalization";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type {
+  AppEnv,
+  RuntimeDurableObjectNamespace,
+} from "@/types/cloud-worker-env";
 
 /**
  * E.164 phone number validation (after normalization)
@@ -191,6 +195,7 @@ function isTelegramContinuationClaim(
 export async function handleTelegramAuth(
   request: Request,
   dependencies: TelegramAuthDependencies = defaultDependencies,
+  personalDeliveryProjections?: RuntimeDurableObjectNamespace,
 ): Promise<Response> {
   // Parse and validate request body
   let body: unknown;
@@ -521,6 +526,12 @@ export async function handleTelegramAuth(
     );
   }
 
+  await invalidatePersonalDeliveryProjection(
+    personalDeliveryProjections,
+    "telegram",
+    String(authData.id),
+  );
+
   logger.info("[ElizaApp TelegramAuth] Authentication successful", {
     userId: user.id,
     telegramId: authData.id,
@@ -619,7 +630,11 @@ const honoRouter = new Hono<AppEnv>();
 honoRouter.get("/", async () => __next_GET());
 honoRouter.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
-    return await handleTelegramAuth(c.req.raw);
+    return await handleTelegramAuth(
+      c.req.raw,
+      defaultDependencies,
+      c.env.PERSONAL_DELIVERY_PROJECTIONS,
+    );
   } catch (error) {
     return failureResponse(c, error);
   }

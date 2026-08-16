@@ -24,6 +24,35 @@ function createMonitor(service: unknown): ConnectorHealthMonitor {
   });
 }
 
+// Builds a monitor whose discord probe throws (or rejects) while telegram is
+// listed after it and stays healthy, mirroring the #20185 reproduction where a
+// throwing getPollerHealth blanked every connector status after it.
+function createIsolationMonitor(discordProbe: () => unknown): {
+  monitor: ConnectorHealthMonitor;
+  reportError: ReturnType<typeof vi.fn>;
+} {
+  const reportError = vi.fn();
+  const services: Record<string, unknown> = {
+    discord: { getPollerHealth: discordProbe },
+    telegram: { getPollerHealth: () => ({ ok: true, connected: true }) },
+  };
+  const monitor = new ConnectorHealthMonitor({
+    runtime: {
+      getService: vi.fn((name: string) => services[name]),
+      reportError,
+    } as never,
+    config: {
+      connectors: {
+        discord: { enabled: true },
+        telegram: { enabled: true },
+      },
+    },
+    broadcastWs: vi.fn(),
+    intervalMs: 60_000,
+  });
+  return { monitor, reportError };
+}
+
 describe("ConnectorHealthMonitor", () => {
   it("uses the configured canonical connector-health interval", () => {
     expect(resolveConnectorHealthIntervalMs("10000")).toBe(10_000);
@@ -94,5 +123,84 @@ describe("ConnectorHealthMonitor", () => {
     await monitor.check();
 
     expect(monitor.getConnectorStatuses()).toEqual({ telegram: "ok" });
+  });
+
+  it("isolates a synchronously throwing poller probe so later connectors still report", async () => {
+    const { monitor, reportError } = createIsolationMonitor(() => {
+      throw new Error("boom");
+    });
+
+    await expect(monitor.check()).resolves.toBeUndefined();
+
+    // discord throwing must not abort the loop or fabricate an "ok" DTO;
+    // telegram is listed after discord and must still be probed and reported.
+    expect(monitor.getConnectorStatuses()).toEqual({
+      discord: "missing",
+      telegram: "ok",
+    });
+    expect(reportError).toHaveBeenCalledWith(
+      "ConnectorHealthMonitor.probeConnector",
+      expect.any(Error),
+      expect.objectContaining({ connector: "discord" }),
+    );
+  });
+
+  it("isolates a rejected poller-health promise with the same guarantees", async () => {
+    const { monitor } = createIsolationMonitor(() =>
+      Promise.reject(new Error("network down")),
+    );
+
+    await expect(monitor.check()).resolves.toBeUndefined();
+
+    expect(monitor.getConnectorStatuses()).toEqual({
+      discord: "missing",
+      telegram: "ok",
+    });
+  });
+
+  it("never fabricates a healthy status: statuses map is non-empty so health-routes cannot relabel connectors 'configured'", async () => {
+    const { monitor } = createIsolationMonitor(() => {
+      throw new Error("boom");
+    });
+
+    await monitor.check();
+
+    const statuses = monitor.getConnectorStatuses();
+    // health-routes.ts falls back to a blanket fabricated-healthy "configured"
+    // only when this map is empty; a real per-connector state must survive.
+    expect(Object.keys(statuses).length).toBeGreaterThan(0);
+    expect(Object.values(statuses)).not.toContain("configured");
+    expect(statuses.discord).toBe("missing");
+  });
+
+  it("start() does not leak an unhandledRejection when a probe throws", async () => {
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => {
+      rejections.push(reason);
+    };
+    process.on("unhandledRejection", onRejection);
+    const setIntervalSpy = vi
+      .spyOn(globalThis, "setInterval")
+      .mockReturnValue({} as ReturnType<typeof setInterval>);
+    try {
+      const { monitor } = createIsolationMonitor(() => {
+        throw new Error("boom");
+      });
+
+      monitor.start();
+
+      // Give the fire-and-forget check() microtasks a chance to settle so any
+      // unhandled rejection would surface before we assert.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(rejections).toEqual([]);
+      expect(monitor.getConnectorStatuses()).toEqual({
+        discord: "missing",
+        telegram: "ok",
+      });
+    } finally {
+      setIntervalSpy.mockRestore();
+      process.off("unhandledRejection", onRejection);
+    }
   });
 });

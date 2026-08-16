@@ -57,6 +57,12 @@ different list. Add a new key, apply it, wait for `active`, verify TLS, and only
 then retire an older generation in a separate reviewed operation. Every pack is
 protected by `prevent_destroy`.
 
+Leave `cloudflare_branding` unset on these immutable resources. Cloudflare's
+order API treats omission as unbranded, while its read API may omit the
+resulting false value. Provider v5 marks an explicit false value as a
+replacement after import, so configuring it would create destructive drift
+without changing the live certificate.
+
 The live staging `*.staging.elizacloud.ai` pack remains at its original resource
 address and is imported separately. Deep legacy `sites` and `tunnel` wildcards
 use additive redirect certificate generations. Their DNS input is explicit so
@@ -180,6 +186,17 @@ protected GitHub Environment variables rather than committing live values.
    DNS-only Railway tunnel records, new canonical Pages bindings, and only
    additive certificate creation. Stop on any DNS or certificate destroy,
    replace, duplicate-create, or unexpected content change.
+   When unrelated adopted resources are not ready to converge, select
+   `plan_scope=canonical-edge-additive`. That scope targets only new
+   `cloudflare_certificate_pack.canonical_edge` generations without an import
+   id and the current environment's hosted-site wildcard DNS instances. The
+   scope is authenticated in the artifact metadata and must match the apply
+   dispatch. Before packaging and again before apply, the workflow rejects
+   every actionable resource outside those families and every update, delete,
+   or replacement inside them. Its activation polling refreshes only the exact
+   addresses from that reviewed plan, so unrelated observations are not
+   written into state. Use `full` for ordinary convergence. Never use a scoped
+   plan to conceal destructive drift in either targeted resource family.
 5. Deploy the staging Worker routes before converting legacy site/tunnel DNS to
    proxied redirect ingress. Dispatch `operation=apply` with the exact successful
    plan run id, run attempt, artifact id, and service digest copied from that

@@ -619,8 +619,11 @@ describe("ChatOverlay", () => {
         />,
       );
 
+      // #20024 renamed the compact-landing placeholder "Ask" → "Message" in
+      // ChatOverlay.tsx without updating this assertion, leaving the suite red
+      // on develop. The source is the intent; this follows it.
       expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
-        "Ask",
+        "Message",
       );
 
       expect(
@@ -637,7 +640,7 @@ describe("ChatOverlay", () => {
       fireEvent.focus(screen.getByLabelText("message"));
 
       expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
-        "Ask Playwright Smoke",
+        "Message Playwright Smoke",
       );
 
       expect(
@@ -2798,6 +2801,46 @@ describe("ChatOverlay", () => {
     const normal = screen.getByText("here is a normal answer");
     expect(normal).toBeTruthy();
     expect(normal.closest('[data-failure="no_provider"]')).toBeNull();
+  });
+
+  it("renders the insufficient_credits failure as the out-of-credits gate with an Add credits jump and no Retry chip", () => {
+    const openSettings = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController({
+          openSettings,
+          messages: [
+            { id: "u1", role: "user", content: "hi", createdAt: 1 },
+            {
+              id: "credits",
+              role: "assistant",
+              content: "Your organization is out of credits.",
+              createdAt: 2,
+              failureKind: "insufficient_credits",
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    // The 402 turn renders the STRUCTURED out-of-credits gate (banner + Add
+    // credits CTA), not a plain-text bubble — retrying re-hits the same empty
+    // balance, so the CTA is the only actionable affordance.
+    expect(screen.getByText("Out of credits")).toBeTruthy();
+    const gate = screen
+      .getByTestId("chat-insufficient-credits-add")
+      .closest('[data-failure="insufficient_credits"]') as HTMLElement;
+    expect(gate).toBeTruthy();
+    // The server's own message rides inside the gate body (not dropped).
+    expect(gate.textContent).toContain("Your organization is out of credits.");
+
+    // No Retry chip — a retry cannot fix a drained balance.
+    expect(screen.queryByTestId("thread-line-retry")).toBeNull();
+
+    // The CTA jumps to Settings where the top-up/redeem flow lives.
+    fireEvent.click(screen.getByTestId("chat-insufficient-credits-add"));
+    expect(openSettings).toHaveBeenCalledTimes(1);
   });
 
   it("press-and-hold copies without mounting a floating confirmation", () => {
@@ -5022,7 +5065,7 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
     expect(toggleHandsFree).not.toHaveBeenCalled();
   });
 
-  it("shows Retry on a recoverable failed assistant turn and re-sends the preceding user turn", () => {
+  it("shows Retry on planner exhaustion and re-sends the preceding user turn", () => {
     const controller = makeController({
       messages: [
         {
@@ -5036,7 +5079,7 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
           role: "assistant",
           content: "",
           createdAt: 2,
-          failureKind: "rate_limited",
+          failureKind: "planner_exhaustion",
         },
       ],
     } as unknown as Partial<ShellController>);

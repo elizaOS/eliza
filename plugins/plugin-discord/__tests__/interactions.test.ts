@@ -108,6 +108,16 @@ describe("renderDiscordInteractions", () => {
 		expect(button?.custom_id).toBe("");
 	});
 
+	it("strips dashboard-only markers from parsed fallback prose", () => {
+		const id = "abc12345-def6-7890-abcd-ef1234567890";
+		const out = renderDiscordInteractions({
+			text: `[TASK:${id}]Ship it [CONFIG:@elizaos/plugin-gmail][/TASK]`,
+		} as Content);
+		expect(out.text).toBe("Ship it");
+		expect(out.text).not.toContain("[CONFIG:");
+		expect(out.components).toHaveLength(0);
+	});
+
 	it("caps action rows at the Discord limit of 5", () => {
 		const options = Array.from(
 			{ length: 30 },

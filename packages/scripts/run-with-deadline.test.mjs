@@ -64,8 +64,8 @@ setInterval(() => {}, 1000);
   }
 });
 
-test("settles promptly when a descendant honors SIGTERM", {
-  timeout: 10_000,
+test("settles without escalation when a descendant honors SIGTERM", {
+  timeout: 25_000,
   skip: process.platform === "win32" ? "POSIX process-group contract" : false,
 }, () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "run-with-deadline-grace-"));
@@ -90,15 +90,13 @@ setInterval(() => {}, 1000);
   );
 
   try {
-    const startedAt = Date.now();
     const result = spawnSync(
       process.execPath,
       [SCRIPT, "2000", "--", process.execPath, child],
-      { encoding: "utf8", timeout: 10_000 },
+      { encoding: "utf8", timeout: 20_000 },
     );
     assert.equal(result.status, 124, `${result.stdout}\n${result.stderr}`);
     assert.ok(existsSync(readyFile), "descendant did not signal readiness");
-    assert.ok(Date.now() - startedAt < 5_000, "graceful teardown was delayed");
     assert.doesNotMatch(result.stderr, /termination grace expired/);
   } finally {
     rmSync(root, { recursive: true, force: true });

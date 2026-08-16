@@ -49,9 +49,44 @@ describe("parsePruneArgs", () => {
     expect(args.sshUser).toBe("ops");
   });
 
-  it("rejects an invalid ssh-port", () => {
+  it("accepts canonical ssh-port boundaries", () => {
+    expect(
+      parsePruneArgs(["--host", "h", "--ssh-port", "1"], EMPTY).sshPort,
+    ).toBe(1);
+    expect(
+      parsePruneArgs(["--host", "h", "--ssh-port", "65535"], EMPTY).sshPort,
+    ).toBe(65535);
+  });
+
+  it("rejects non-canonical and out-of-range ssh-port flags", () => {
+    for (const value of [
+      "1e4",
+      "1E4",
+      "8abc",
+      "022",
+      "22.0",
+      "0x10",
+      "0",
+      "65536",
+    ]) {
+      expect(() =>
+        parsePruneArgs(["--host", "h", "--ssh-port", value], EMPTY),
+      ).toThrow(/ssh-port/);
+    }
+  });
+
+  it("applies the canonical ssh-port gate to env fallbacks", () => {
     expect(() =>
-      parsePruneArgs(["--host", "h", "--ssh-port", "99999"], EMPTY),
-    ).toThrow("Invalid ssh-port");
+      parsePruneArgs([], {
+        PRUNE_NODE_HOST: "h",
+        PRUNE_NODE_SSH_PORT: "1e4",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/ssh-port/);
+    expect(
+      parsePruneArgs([], {
+        PRUNE_NODE_HOST: "h",
+        PRUNE_NODE_SSH_PORT: "2200",
+      } as NodeJS.ProcessEnv).sshPort,
+    ).toBe(2200);
   });
 });

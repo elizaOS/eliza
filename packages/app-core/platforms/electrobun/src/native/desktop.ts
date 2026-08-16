@@ -46,6 +46,8 @@ import { getBrandConfig } from "../brand-config";
 import type { DatabaseSnapshot } from "../database";
 import {
   computeBottomBarFrame,
+  EXPANDED_BOTTOM_BAR_HEIGHT,
+  EXPANDED_BOTTOM_BAR_WIDTH,
   type ScreenWorkArea,
   shouldReanchorBottomBar,
 } from "../desktop-bottom-bar-config";
@@ -154,7 +156,12 @@ interface ShowItemInFolderOptions {
 }
 
 const FALLBACK_TRAY_MENU_ITEMS: TrayMenuItem[] = [
-  { id: "tray-show-window", label: "Show Window" },
+  {
+    id: "tray-windows",
+    label: "Windows",
+    submenu: [{ id: "tray-show-window", label: "Open Eliza" }],
+  },
+  { id: "tray-fallback-separator", type: "separator" },
   { id: "quit", label: "Quit" },
 ];
 
@@ -713,9 +720,9 @@ export class DesktopManager {
     this.trayMenuItems.clear();
     this.indexMenuItems(menu);
 
-    // macOS click-to-chat (see shouldAttachTrayMenu): a set NSStatusItem.menu
-    // swallows icon clicks entirely, so the menu is indexed (popover/launcher
-    // catalogs still read it) but never attached to the status item.
+    // macOS AppKit owns status-item interaction once a native menu is attached.
+    // The bottom pill + hotkey are the direct chat affordances; the tray stays
+    // a predictable native Windows/Quit menu on every supported desktop.
     if (!shouldAttachTrayMenu()) {
       return;
     }
@@ -1441,6 +1448,20 @@ X-GNOME-Autostart-enabled=true
       if (this._windowHidden) return;
       this.reanchorBottomBarIfNeeded();
     }, 5_000);
+  }
+
+  /** Expand/collapse the managed chat window without losing its bottom anchor. */
+  async setBottomBarExpanded(options: { expanded: boolean }): Promise<void> {
+    if (!this.bottomBarReanchorEnabled) return;
+    const win = this.mainWindow;
+    const workArea = this.readPrimaryWorkArea();
+    if (!win || !workArea) return;
+    const frame = computeBottomBarFrame(workArea, {
+      width: options.expanded ? EXPANDED_BOTTOM_BAR_WIDTH : undefined,
+      height: options.expanded ? EXPANDED_BOTTOM_BAR_HEIGHT : undefined,
+    });
+    win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    this.bottomBarWorkArea = workArea;
   }
 
   private readPrimaryWorkArea(): ScreenWorkArea | null {

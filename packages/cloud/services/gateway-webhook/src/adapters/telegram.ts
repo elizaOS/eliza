@@ -132,6 +132,7 @@ function splitMessage(text: string, maxLength = MAX_MESSAGE_LENGTH): string[] {
 
 interface TelegramMessage {
   message_id: number;
+  date?: number;
   from?: {
     id: number;
     first_name: string;
@@ -280,6 +281,11 @@ export const telegramAdapter: PlatformAdapter = {
       senderName: message.from?.first_name,
       text,
       isCommand: text.startsWith("/"),
+      ...(typeof message.date === "number" &&
+      Number.isInteger(message.date) &&
+      message.date > 0
+        ? { providerSentAtMs: message.date * 1_000 }
+        : {}),
       rawPayload: update,
       ...(voice
         ? {

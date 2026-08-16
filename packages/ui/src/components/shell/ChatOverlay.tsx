@@ -116,6 +116,7 @@ import type {
   ChatMessageData,
   ChatMessageRenderContext,
 } from "../composites/chat/chat-types";
+import { ServingProviderChip } from "../composites/chat/ServingProviderChip";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -1174,7 +1175,7 @@ export function ChatOverlay({
   onFirstRunReleaseHandled,
 }: {
   controller: ShellController;
-  /** Name shown in the composer placeholder ("Ask {agentName}"). Defaults to Eliza. */
+  /** Name shown in the composer placeholder ("Message {agentName}"). Defaults to Eliza. */
   agentName?: string;
   /** Universal slash-command catalog + app-level nav effects. */
   slash?: SlashCommandController;
@@ -6365,6 +6366,12 @@ export function ChatOverlay({
                   onPick={pickSlashItem}
                 />
               ) : null}
+              {/* Who is answering this chat. The overlay is the primary chat
+                  surface, so without it the serving source was only visible in
+                  Settings (#20045 U6). */}
+              {!transcriptionComposerActive ? (
+                <ServingProviderChip className="pointer-events-none order-last shrink-0 self-center pr-1" />
+              ) : null}
               {/* The "+" opens shell navigation plus surface-local Search and
                   Upload actions for this in-app conversation, never connector actions on a
                   Discord/Telegram room. Search is agent-driveable; Upload is a
@@ -6510,7 +6517,7 @@ export function ChatOverlay({
                   // the imageError note above.)
                   placeholder={
                     compactLanding
-                      ? "Ask"
+                      ? "Message"
                       : firstRunOpen
                         ? "Sign in to start chatting"
                         : noProviderConfigured
@@ -6520,9 +6527,9 @@ export function ChatOverlay({
                               ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
                               : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
                             : booting
-                              ? `Ask ${agentName} — waking up…`
+                              ? `Message ${agentName} — waking up…`
                               : (viewChatBinding?.placeholder ??
-                                `Ask ${agentName}`)
+                                `Message ${agentName}`)
                   }
                   aria-label="message"
                   data-testid="chat-composer-textarea"

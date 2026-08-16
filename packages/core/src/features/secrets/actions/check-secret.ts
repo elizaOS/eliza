@@ -14,11 +14,12 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
+import { secretContextFromMessage } from "../secret-context.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
 } from "../services/secrets.ts";
-import type { SecretContext, SecretLevel } from "../types.ts";
+import type { SecretLevel } from "../types.ts";
 
 interface CheckSecretParams {
 	keys: string[];
@@ -76,13 +77,7 @@ export async function checkSecretHandler(
 	}
 
 	const level: SecretLevel = rawLevel ?? "global";
-	const context: SecretContext = {
-		level,
-		agentId: runtime.agentId,
-		worldId: level === "world" ? message.roomId : undefined,
-		userId: level === "user" ? message.entityId : undefined,
-		requesterId: message.entityId,
-	};
+	const context = secretContextFromMessage(runtime, message, level);
 
 	const normalizedKeys = rawKeys.map(normalizeKey);
 	const present: boolean[] = [];

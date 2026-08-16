@@ -47,6 +47,12 @@ async function run(text: string, opts = {}) {
 }
 
 describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", () => {
+	it("declares VIEWS as its only deterministic action", () => {
+		expect(viewCommandShortcutEvaluator.deterministicActions).toEqual([
+			"VIEWS",
+		]);
+	});
+
 	const commands: Array<[text: string, view: string]> = [
 		["settings", "settings"],
 		["open settings", "settings"],

@@ -26,5 +26,12 @@
     "BRIDGE_CONTRACT.md",
     "Sources/",
     "scripts/"
-  ]
+  ],
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
 }

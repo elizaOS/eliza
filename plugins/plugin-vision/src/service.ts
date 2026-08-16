@@ -81,6 +81,13 @@ const SCENE_DESCRIPTION_OCR_LINE_LIMIT = 40;
 const SCENE_DESCRIPTION_OCR_TEXT_LIMIT = 2000;
 const SCENE_DESCRIPTION_OBJECT_LIMIT = 20;
 const SCENE_DESCRIPTION_FACE_LIMIT = 10;
+const CAMERA_PERMISSION_DENIED_PATTERN =
+  /camera access (?:denied|not granted)|permission denied|not authorized|not permitted|device access denied/i;
+
+function isCameraPermissionDeniedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return CAMERA_PERMISSION_DENIED_PATTERN.test(message);
+}
 
 export interface VisionContextSnapshot {
   openApps: string[];
@@ -297,7 +304,7 @@ export class VisionService extends Service {
     vlmUpdateInterval: 10000, // VLM update every 10 seconds
     tfChangeThreshold: 10, // 10% change triggers TF update
     vlmChangeThreshold: 50, // 50% change triggers VLM update
-    visionMode: VisionMode.CAMERA, // Default to camera only
+    visionMode: VisionMode.OFF, // Capture requires explicit activation
     screenCaptureInterval: 2000, // Screen capture every 2 seconds
     tileSize: 256,
     tileProcessingOrder: "priority",
@@ -893,8 +900,28 @@ export class VisionService extends Service {
 
       this.lastFrame = frame;
     } catch (error) {
+      if (isCameraPermissionDeniedError(error)) {
+        // error-policy:J4 an expected OS denial disables only camera capture.
+        this.disableCameraAfterPermissionDenial();
+        return;
+      }
       logger.error({ error }, "[VisionService] Error capturing frame:");
     }
+  }
+
+  private disableCameraAfterPermissionDenial(): void {
+    if (this.frameProcessingInterval) {
+      clearInterval(this.frameProcessingInterval);
+      this.frameProcessingInterval = null;
+    }
+    this.camera = null;
+    this.visionConfig.visionMode =
+      this.visionConfig.visionMode === VisionMode.BOTH
+        ? VisionMode.SCREEN
+        : VisionMode.OFF;
+    logger.warn(
+      "[VisionService] Camera permission denied; camera capture is disabled until explicitly re-enabled",
+    );
   }
 
   private async processFrameData(data: Buffer): Promise<VisionFrame> {
@@ -1965,7 +1992,7 @@ export class VisionService extends Service {
   }
 
   public getVisionMode(): VisionMode {
-    return this.visionConfig.visionMode || VisionMode.CAMERA;
+    return this.visionConfig.visionMode || VisionMode.OFF;
   }
 
   /**
@@ -2487,6 +2514,11 @@ export class VisionService extends Service {
     try {
       return await this.camera.capture();
     } catch (error) {
+      if (isCameraPermissionDeniedError(error)) {
+        // error-policy:J4 an expected OS denial disables only camera capture.
+        this.disableCameraAfterPermissionDenial();
+        return null;
+      }
       logger.error({ error }, "[VisionService] Failed to capture image:");
       return null;
     }

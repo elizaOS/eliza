@@ -8,21 +8,8 @@
  * keeps the gateway's historical open-DM behavior; "disabled" admits nobody;
  * "allowlist" admits owners plus dmAllowFrom; "pairing" admits owners only,
  * because the gateway has no pairing flow.
+ *
+ * The standalone gateway validates its assignment envelope independently,
+ * then delegates to the same shared authorization function exported here.
  */
-import type { DiscordConnectionMetadata } from "../../../db/schemas/discord-connections";
-
-/** Decide whether a direct-message sender passes the connection's DM policy. */
-export function isDmSenderAllowed(
-  metadata: NonNullable<DiscordConnectionMetadata>,
-  authorId: string,
-): boolean {
-  const dmPolicy = metadata.dmPolicy ?? "open";
-  if (dmPolicy === "open") return true;
-  if (dmPolicy === "disabled") return false;
-  const allowed = new Set<string>(metadata.ownerDiscordUserIds ?? []);
-  if (metadata.ownerDiscordUserId) allowed.add(metadata.ownerDiscordUserId);
-  if (dmPolicy === "allowlist") {
-    for (const id of metadata.dmAllowFrom ?? []) allowed.add(id);
-  }
-  return allowed.has(authorId);
-}
+export { isDiscordDmSenderAllowed as isDmSenderAllowed } from "@elizaos/shared/discord-dm-policy";

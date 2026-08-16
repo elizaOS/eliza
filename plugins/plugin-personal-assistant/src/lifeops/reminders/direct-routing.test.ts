@@ -6,16 +6,28 @@
 import { describe, expect, it } from "vitest";
 import {
   createOwnerReminderDirectRoutingRule,
+  isOwnerReminderNonCommandContext,
   looksLikeOwnerReminderCreateRequest,
 } from "./direct-routing";
 
 describe("owner reminder direct routing", () => {
   it.each([
     "Remind me in 2 minutes to check the mail.",
+    "Remind myself tomorrow to call Pat.",
+    "Don't forget to remind me tomorrow to call Pat.",
     "Please remind me at 9pm to check the oven.",
     "Can you remind me tomorrow morning?",
     "Set a reminder for Friday at noon.",
     "Create me a reminder to call Pat.",
+    "Could you add my reminder for next Tuesday?",
+    "Schedule a reminder about the invoice every Monday.",
+    "Okay, remind me tomorrow to call Pat.",
+    "I want to set a reminder for next Tuesday.",
+    "I'd like to create a reminder for next Tuesday.",
+    "Help me set a reminder for next Tuesday.",
+    "Remind me to call Pat when he appears online.",
+    "Remind me to call Pat after he appears online.",
+    "Remind me to call Pat tomorrow, and include the number in the reminder.",
   ])("routes explicit reminder creation: %s", (text) => {
     expect(looksLikeOwnerReminderCreateRequest(text)).toBe(true);
   });
@@ -26,6 +38,49 @@ describe("owner reminder direct routing", () => {
     "How do calendar reminders work?",
     "Alice reminded me about the meeting.",
     "Write a story about setting reminders.",
+    "What does ‘remind me to call Pat’ mean?",
+    "Don't remind me to call Pat.",
+    "Don't forget to cancel my reminder for Friday.",
+    "Remind me not to call Pat.",
+    "Remind Alex to call Pat.",
+    "Remind my partner to call Pat.",
+    "I don't want to set a reminder for Friday.",
+    "How do reminders work?",
+    "Tell me how to set a reminder.",
+    "Give me an example: remind me to call Pat.",
+    "Remind me what I said about Pat.",
+    "Could you explain how remind me to call Pat works?",
+    "I'm writing documentation. Please explain how the phrase remind me to call Pat tomorrow works.",
+    "I want to know how the phrase remind me to call Pat tomorrow works.",
+    "Side question: can you tell me how remind me to call Pat tomorrow works?",
+    "Translate remind me to call Pat tomorrow into French.",
+    "Analyze the sentence remind me to call Pat tomorrow.",
+    "Repeat after me: remind me to call Pat tomorrow.",
+    "Please proofread: remind me to call Pat tomorrow.",
+    "The user wrote remind me to call Pat tomorrow.",
+    "I said remind me to call Pat tomorrow yesterday.",
+    "In this example, remind me to call Pat tomorrow.",
+    "Remind me to call Pat tomorrow is the command under test.",
+    "Remind me and Alex to call Pat tomorrow.",
+    "Remind me plus Alex to call Pat tomorrow.",
+    "Remind me, Alex, and Sam to call Pat tomorrow.",
+    "Remind me and @Alex to call Pat tomorrow.",
+    "Remind me and <@123456> to call Pat tomorrow.",
+    "Remind me, and Alex to call Pat tomorrow.",
+    "Remind me as well as Alex to call Pat tomorrow.",
+    "Remind me and 3 teammates to call Pat tomorrow.",
+    "Remind me to call Pat tomorrow, said Alice.",
+    "Remind me to call Pat tomorrow was written on the whiteboard.",
+    "Remind me to call Pat tomorrow; disregard that request.",
+    "Remind me along with Alex to call Pat tomorrow.",
+    "Remind me together with Alex to call Pat tomorrow.",
+    "Remind me to call Pat tomorrow — those were Alice’s exact words.",
+    "Remind me to call Pat tomorrow appears on the whiteboard.",
+    "Remind me to call Pat tomorrow, actually ignore that request.",
+    "Remind me to call Pat tomorrow, forget it.",
+    "Remind me to call Pat tomorrow is sample syntax.",
+    "REMIND ME TO CALL PAT TOMORROW — THOSE WERE ALICE'S EXACT WORDS.",
+    "Remind me to call Pat tomorrow - actually withdraw this request.",
   ])("does not claim adjacent or read-only intent: %s", (text) => {
     expect(looksLikeOwnerReminderCreateRequest(text)).toBe(false);
   });
@@ -34,6 +89,7 @@ describe("owner reminder direct routing", () => {
     expect(createOwnerReminderDirectRoutingRule()).toMatchObject({
       id: "lifeops.owner-reminder-create",
       actionNames: ["OWNER_REMINDERS"],
+      replacesActionNames: ["TRIGGER_CREATE"],
       requiredActionTags: expect.arrayContaining([
         "domain:reminders",
         "capability:write",
@@ -42,5 +98,26 @@ describe("owner reminder direct routing", () => {
       ]),
       contexts: ["tasks", "productivity"],
     });
+  });
+
+  it.each([
+    "Remind me along with Alex to call Pat tomorrow.",
+    "Remind me to call Pat tomorrow — those were Alice’s exact words.",
+    "Remind me to call Pat tomorrow appears on the whiteboard.",
+    "Remind me to call Pat tomorrow, actually ignore that request.",
+    "Remind me to call Pat tomorrow is sample syntax.",
+  ])(
+    "marks non-command contexts for handler-level mutation defense: %s",
+    (text) => {
+      expect(isOwnerReminderNonCommandContext(text)).toBe(true);
+    },
+  );
+
+  it("keeps an unambiguous reminder command available to the handler", () => {
+    expect(
+      isOwnerReminderNonCommandContext(
+        "Remind me in 20 minutes to inspect the evidence.",
+      ),
+    ).toBe(false);
   });
 });

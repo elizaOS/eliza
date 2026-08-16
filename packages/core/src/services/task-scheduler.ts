@@ -27,6 +27,7 @@ const registry = new Map<
 const dirtyAgents = new Set<string>();
 let timer: ReturnType<typeof setInterval> | null = null;
 let adapter: IDatabaseAdapter | null = null;
+let activeTick: Promise<void> | null = null;
 
 const TICK_INTERVAL_MS = 1000;
 
@@ -124,9 +125,15 @@ export function startTaskScheduler(adapterInstance: IDatabaseAdapter): void {
 	adapter = adapterInstance;
 	if (timer) return;
 	timer = setInterval(() => {
+		if (activeTick) return;
 		// error-policy:J1 The process timer is the outer scheduler boundary; per-agent
 		// failures are reported inside tick, while adapter-level failure is logged here.
-		tick().catch((err) => logger.error({ err }, "[TaskScheduler] tick failed"));
+		const tickPromise = tick()
+			.catch((err) => logger.error({ err }, "[TaskScheduler] tick failed"))
+			.finally(() => {
+				if (activeTick === tickPromise) activeTick = null;
+			});
+		activeTick = tickPromise;
 	}, TICK_INTERVAL_MS) as ReturnType<typeof setInterval>;
 }
 

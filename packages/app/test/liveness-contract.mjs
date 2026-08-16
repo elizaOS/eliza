@@ -82,3 +82,82 @@ export function isLiveReply(reply) {
     return false;
   }
 }
+
+/**
+ * The challenge suffix shared by every liveness lane that binds the reply to
+ * the exact run. The token after the colon is what the harness generates fresh
+ * per run and what the reply must echo back. Kept as the one literal so the
+ * iOS prompt writer, the Android prompt writer, and the verification all agree.
+ */
+export const LIVENESS_CHALLENGE_PREFIX =
+  "Reply with exactly this code to confirm you are live:";
+
+/**
+ * Extract the run-unique challenge token from a challenge prompt produced by
+ * {@link buildLivenessChallenge}. The harness — never the client — owns token
+ * generation, so verification re-derives the expected token from the exact
+ * prompt it wrote; anything else would make the binding theater.
+ *
+ * @param {string} prompt the challenge prompt this harness generated and sent
+ * @returns {string} the lowercase hex token ("" when the prompt carries none)
+ */
+export function extractLivenessChallengeToken(prompt) {
+  if (typeof prompt !== "string") return "";
+  const marker = `${LIVENESS_CHALLENGE_PREFIX} `;
+  const at = prompt.lastIndexOf(marker);
+  if (at === -1) return "";
+  return prompt
+    .slice(at + marker.length)
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Build the run-unique liveness challenge prompt around a caller-supplied
+ * token. Both SIWE device lanes call this with a fresh random hex token so the
+ * reply can only pass by echoing this run's token.
+ *
+ * @param {string} token run-unique token (fresh random hex from the harness)
+ * @returns {string} the full prompt to send through the composer
+ */
+export function buildLivenessChallenge(token) {
+  return `${LIVENESS_CHALLENGE_PREFIX} ${token}`;
+}
+
+/**
+ * Assert a rendered assistant reply is live AND answers this exact run: the
+ * shared {@link assertLiveReply} rules first (non-empty, no stub marker), then
+ * the reply must contain the run's challenge token (case-insensitive). This is
+ * the assertion the SIWE cloud-onboarding lanes enforce — a pending status row
+ * ("Thinking", "Thinking · 1s", "Replying"), a cached greeting, or a wrong-code
+ * reply all fail here.
+ *
+ * Containment is a plain case-insensitive substring, immune to markdown
+ * wrapping ("The code is `abc123`") and spacing; only text produced by
+ * something that saw this run's prompt can contain a fresh random token.
+ *
+ * @param {unknown} reply the assistant reply text as rendered in the UI
+ * @param {{ challengeToken: string, label?: string }} options the token this
+ *   run's harness generated (lowercased internally; "" always fails)
+ * @returns {string} the trimmed, validated reply
+ */
+export function assertLiveChallengeReply(
+  reply,
+  { challengeToken, label } = {},
+) {
+  const text = assertLiveReply(reply, { label });
+  const expected = String(challengeToken ?? "")
+    .trim()
+    .toLowerCase();
+  if (!expected) {
+    throw new LivenessAssertionError(
+      `${label ? `${label}: ` : ""}liveness challenge token is missing — cannot bind the reply to this run`,
+    );
+  }
+  if (!text.toLowerCase().includes(expected)) {
+    throw new LivenessAssertionError(
+      `${label ? `${label}: ` : ""}liveness reply did not echo this run's challenge token "${expected}" — the reply did not provably come from this exact turn`,
+    );
+  }
+  return text;
+}

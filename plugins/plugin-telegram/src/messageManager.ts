@@ -1003,6 +1003,7 @@ export class MessageManager {
             attachment.url,
             mediaType,
             attachment.description,
+            messageThreadId,
           );
         }),
       );
@@ -1191,6 +1192,7 @@ export class MessageManager {
    * @param {string} mediaPath - The path to the media to be sent, either a URL or a local file path.
    * @param {MediaType} type - The type of media being sent (PHOTO, VIDEO, DOCUMENT, AUDIO, or ANIMATION).
    * @param {string} [caption] - Optional caption for the media being sent.
+   * @param {number} [messageThreadId] - Forum topic identifier for the media send.
    *
    * @returns {Promise<void>} A Promise that resolves when the media is successfully sent.
    */
@@ -1199,6 +1201,7 @@ export class MessageManager {
     mediaPath: string,
     type: MediaType,
     caption?: string,
+    messageThreadId?: number,
   ): Promise<void> {
     try {
       const isUrl = /^(http|https):\/\//.test(mediaPath);
@@ -1223,10 +1226,16 @@ export class MessageManager {
       if (!ctx.chat) {
         throw new Error("sendMedia: ctx.chat is undefined");
       }
+      const sendOptions = {
+        caption,
+        ...(messageThreadId !== undefined
+          ? { message_thread_id: messageThreadId }
+          : {}),
+      };
 
       if (isUrl) {
         // Handle HTTP URLs
-        await sendFunction(ctx.chat.id, mediaPath, { caption });
+        await sendFunction(ctx.chat.id, mediaPath, sendOptions);
       } else {
         // Handle local file paths
         if (!fs.existsSync(mediaPath)) {
@@ -1239,7 +1248,7 @@ export class MessageManager {
           if (!ctx.chat) {
             throw new Error("sendMedia (file): ctx.chat is undefined");
           }
-          await sendFunction(ctx.chat.id, { source: fileStream }, { caption });
+          await sendFunction(ctx.chat.id, { source: fileStream }, sendOptions);
         } finally {
           fileStream.destroy();
         }

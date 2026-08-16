@@ -55,6 +55,7 @@ import {
   AGENT_PERSONAL_CUTOVER_KEY,
   AGENT_UPGRADED_FROM_KEY,
   readPersonalElizaCutover,
+  readUpgradedFromAgentId,
 } from "./eliza-agent-config";
 import {
   configureElizaLifecycleTransaction,
@@ -163,8 +164,19 @@ export async function findActivePersonalDedicatedTarget(
     .orderBy(desc(agentSandboxes.created_at))
     .limit(1);
   if (!target) return null;
-  const cutover = readPersonalElizaCutover(target.agent_config as Record<string, unknown> | null);
-  return cutover?.sourceAgentId === sourceAgentId ? target : null;
+  return isAuthoritativePersonalDedicatedTarget(target, sourceAgentId) ? target : null;
+}
+
+/** One source of truth for the two server-owned markers that activate cutover. */
+export function isAuthoritativePersonalDedicatedTarget(
+  target: Pick<AgentSandbox, "agent_config">,
+  sourceAgentId: string,
+): boolean {
+  const agentConfig = target.agent_config as Record<string, unknown> | null;
+  return (
+    readUpgradedFromAgentId(agentConfig) === sourceAgentId &&
+    readPersonalElizaCutover(agentConfig)?.sourceAgentId === sourceAgentId
+  );
 }
 
 /**

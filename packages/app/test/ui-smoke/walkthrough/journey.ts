@@ -381,9 +381,21 @@ async function installMutableFirstRun(page: Page): Promise<FirstRunControl> {
 
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
-      window.location.origin;
-    (window as unknown as Record<string, number>).__electrobunWindowId = 1;
+    const win = window as unknown as Record<string, unknown>;
+    win.__ELIZA_APP_API_BASE__ = window.location.origin;
+    win.__electrobunWindowId = 1;
+    // The journey advertises desktop capability so local onboarding remains
+    // selectable. Mirror the minimum native host contract as well: production
+    // now validates the bridge before registering shortcuts and tray handlers.
+    win.__ELIZA_ELECTROBUN_RPC__ = {
+      request: {
+        desktopGetVersion: async () => ({ runtime: "walkthrough-test" }),
+        desktopRegisterShortcut: async () => ({ success: true }),
+        desktopSetTrayMenu: async () => undefined,
+      },
+      onMessage: () => undefined,
+      offMessage: () => undefined,
+    };
   });
 }
 
@@ -562,6 +574,17 @@ export async function installJourneyRoutes(
   await page.route("**/api/voice/playback-frames", async (route) => {
     if (route.request().method() === "POST") {
       await fulfillJson(route, 200, { ok: true, accepted: 0 });
+      return;
+    }
+    await route.fallback();
+  });
+  // Voice readiness is outside this journey's contract. The compatibility
+  // plugin authenticates with an API token rather than the live harness's
+  // browser session, so probing it would emit an expected 401 on every reload
+  // and drown the diagnostics gate without exercising any walkthrough step.
+  await page.route("**/api/tts/local-inference/status", async (route) => {
+    if (route.request().method() === "GET") {
+      await fulfillJson(route, 200, { ready: false, provider: null });
       return;
     }
     await route.fallback();
@@ -1274,13 +1297,45 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
         .getByRole("button", { name: /New chat|New conversation/i })
         .first();
       if (await newChat.isVisible().catch(() => false)) {
-        await newChat.click().catch(() => undefined);
+        await newChat.click();
       } else {
-        await page.evaluate(async () => {
-          await fetch("/api/conversations", { method: "POST" }).catch(
-            () => undefined,
-          );
+        const createdId = await page.evaluate(async () => {
+          const response = await fetch("/api/conversations", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          });
+          if (!response.ok) {
+            throw new Error(
+              `POST /api/conversations failed with ${response.status}: ${await response.text()}`,
+            );
+          }
+          const body = (await response.json()) as {
+            conversation?: { id?: unknown };
+          };
+          if (typeof body.conversation?.id !== "string") {
+            throw new Error(
+              "POST /api/conversations returned no conversation id",
+            );
+          }
+          return body.conversation.id;
         });
+        await expect
+          .poll(() =>
+            page.evaluate(async (expectedId) => {
+              const response = await fetch("/api/conversations");
+              if (!response.ok) return false;
+              const body = (await response.json()) as {
+                conversations?: Array<{ id?: unknown }>;
+              };
+              return Boolean(
+                body.conversations?.some(
+                  (conversation) => conversation.id === expectedId,
+                ),
+              );
+            }, createdId),
+          )
+          .toBe(true);
       }
       await expect(composer(page)).toBeVisible({ timeout: 20_000 });
       const value = await composer(page)

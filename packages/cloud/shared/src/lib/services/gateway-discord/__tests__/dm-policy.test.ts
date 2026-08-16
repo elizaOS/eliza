@@ -5,7 +5,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { DiscordConnectionMetadataSchema } from "../../../../db/schemas/discord-connections";
+import {
+  DiscordConnectionMetadataSchema,
+  parseDiscordConnectionDmPolicyState,
+} from "../../../../db/schemas/discord-connections";
 import { isDmSenderAllowed } from "../dm-policy";
 
 const OWNER = "123456789012345678";
@@ -102,5 +105,45 @@ describe("DiscordConnectionMetadataSchema DM fields", () => {
       ownerDiscordUserIds: ["abc"],
     });
     expect(result.success).toBe(false);
+  });
+});
+describe("parseDiscordConnectionDmPolicyState", () => {
+  test("enforces restrictive DM fields independently of invalid keyword metadata", () => {
+    expect(
+      parseDiscordConnectionDmPolicyState({
+        responseMode: "keyword",
+        dmPolicy: "disabled",
+      }),
+    ).toEqual({
+      status: "valid",
+      metadata: { dmPolicy: "disabled" },
+    });
+    expect(
+      parseDiscordConnectionDmPolicyState({
+        responseMode: "keyword",
+        dmPolicy: "allowlist",
+        dmAllowFrom: [FRIEND],
+      }),
+    ).toEqual({
+      status: "valid",
+      metadata: { dmPolicy: "allowlist", dmAllowFrom: [FRIEND] },
+    });
+  });
+
+  test("treats absent metadata as open and malformed DM fields as invalid", () => {
+    expect(parseDiscordConnectionDmPolicyState(null)).toEqual({
+      status: "valid",
+      metadata: {},
+    });
+    for (const value of [
+      { dmPolicy: "unknown" },
+      { dmPolicy: "disabled", ownerDiscordUserId: "bad" },
+      { dmPolicy: "allowlist", dmAllowFrom: ["bad"] },
+      "not-an-object",
+    ]) {
+      expect(parseDiscordConnectionDmPolicyState(value)).toEqual({
+        status: "invalid",
+      });
+    }
   });
 });

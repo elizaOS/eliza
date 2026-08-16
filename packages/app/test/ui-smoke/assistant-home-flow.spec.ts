@@ -556,6 +556,9 @@ async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
     const withReadyStatus = (bridge?: Bridge): Bridge => ({
       request: {
         ...(bridge?.request ?? {}),
+        desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
+        desktopRegisterShortcut: async () => ({ success: true }),
+        desktopSetTrayMenu: async () => undefined,
         getAgentStatus: async () => readyStatus,
         launchProgress: async () => readyLaunch,
         bootProgress: async () => readyBoot,

@@ -2,7 +2,8 @@
  * Builds the ordered provider list ProviderSwitcher renders — merging enabled
  * AI-provider plugins, account-managed direct providers, and subscription
  * selections into a deduped, sorted set of entries with icons and categories.
- * Also exports the plugin-id normalizer, sorter, and available-id computation.
+ * Cloud is current only when connected; a configured-but-unsigned-in
+ * cloud-proxy session marks Local current instead (#20045).
  */
 
 import type { SubscriptionProviderStatus } from "@elizaos/shared";
@@ -95,7 +96,10 @@ interface UseProviderEntriesArgs {
   allAiProviders: PluginInfo[];
   elizaCloudConnected: boolean;
   cloudCallsDisabled: boolean;
+  /** Cloud is selected AND able to serve. */
   isCloudSelected: boolean;
+  /** Cloud is named by the routing config, regardless of sign-in state. */
+  isCloudConfigured: boolean;
   resolvedSelectedId: string | null;
   subscriptionStatus: SubscriptionProviderStatus[];
   anthropicCliDetected: boolean;
@@ -105,6 +109,8 @@ interface UseProviderEntriesArgs {
 export interface UseProviderEntriesResult {
   apiProviderChoices: ApiProviderChoice[];
   providerEntries: ProviderListEntry[];
+  /** Cloud is the configured route but Local is answering because unsigned-in. */
+  servingLocalFallback: boolean;
 }
 
 export function useProviderEntries({
@@ -112,6 +118,7 @@ export function useProviderEntries({
   elizaCloudConnected,
   cloudCallsDisabled,
   isCloudSelected,
+  isCloudConfigured,
   resolvedSelectedId,
   subscriptionStatus,
   anthropicCliDetected,
@@ -160,15 +167,31 @@ export function useProviderEntries({
    * Replaces three diverging functions (Cloud/Local hardcoded rows,
    * getSubscriptionPanelStatus, inline apiProviderChoices status).
    */
+  // Configured for Cloud, but Cloud cannot serve — local answers instead.
+  // Reads the *configured* flag: `isCloudSelected` is already reconciled
+  // against sign-in, so it is false in exactly the state being detected here.
+  const servingLocalFallback =
+    isCloudConfigured && !elizaCloudConnected && !cloudCallsDisabled;
+
   const getProviderStatus = useCallback(
     (entryId: ProviderPanelId): ProviderStatus => {
       if (entryId === "__cloud__") {
-        return elizaCloudConnected
-          ? { tone: "ok", label: "Connected" }
-          : { tone: "muted", label: "Available" };
+        if (elizaCloudConnected) {
+          return { tone: "ok", label: "Connected" };
+        }
+        // Configured (cloud-proxy) but not signed in — surface a clear
+        // warning instead of the ambiguous "Available" so the user can see
+        // why Cloud is not actually serving requests (#20045).
+        if (isCloudConfigured) {
+          return { tone: "warn", label: "Not signed in" };
+        }
+        return { tone: "muted", label: "Available" };
       }
       if (entryId === "__local__") {
-        return cloudCallsDisabled
+        // Cloud-proxy without a signed-in account falls through to local
+        // inference. Mark Local Active in that state, not just when the
+        // user has explicitly chosen local-only (#20045).
+        return cloudCallsDisabled || servingLocalFallback
           ? { tone: "ok", label: "Active" }
           : { tone: "muted", label: "Available" };
       }
@@ -222,6 +245,8 @@ export function useProviderEntries({
       apiProviderChoices,
       cloudCallsDisabled,
       elizaCloudConnected,
+      isCloudConfigured,
+      servingLocalFallback,
       subscriptionStatus,
     ],
   );
@@ -234,7 +259,7 @@ export function useProviderEntries({
       label: "Local provider",
       category: "local",
       status: getProviderStatus("__local__"),
-      current: cloudCallsDisabled,
+      current: cloudCallsDisabled || servingLocalFallback,
     };
     // On phones the headline choice is Cloud vs on-device, so surface the local
     // provider right after Cloud. On desktop/web the subscription + API-key
@@ -247,6 +272,10 @@ export function useProviderEntries({
       label: "Eliza Cloud",
       category: "cloud",
       status: getProviderStatus("__cloud__"),
+      // Only mark Cloud as current when it is actually connected. When
+      // cloud-proxy is configured but the user is not signed in, the runtime
+      // silently falls back to local inference; marking Cloud "current" in
+      // that state is dishonest (#20045).
       current: !cloudCallsDisabled && isCloudSelected,
     });
     if (localProviderFirst) {
@@ -282,11 +311,13 @@ export function useProviderEntries({
     getProviderStatus,
     isCloudSelected,
     resolvedSelectedId,
+    servingLocalFallback,
     t,
   ]);
 
   return {
     apiProviderChoices,
     providerEntries,
+    servingLocalFallback,
   };
 }

@@ -17,6 +17,11 @@ import { homedir as _earlyHomedir } from "node:os";
 // `./cli/index.ts`, so this adds no new module to the boot graph; before the
 // alias table is seeded these fall back to the raw ELIZA_ value.
 import { isAndroidMobile, readAliasedEnv } from "@elizaos/shared";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+
+// Establish the host executable-search authority before the CLI dynamically
+// imports runtime configuration or any plugin code.
+captureHostExecutionBaseline();
 
 // Enable Node 22.8+'s persistent V8 compile cache before any heavy import so
 // the 2nd+ cold boot skips recompiling the ~70k LOC of transpiled plugin
@@ -58,7 +63,6 @@ import { isAndroidMobile, readAliasedEnv } from "@elizaos/shared";
   }
 })();
 
-import { runAutonomousCli } from "./cli/index.ts";
 import { configureMobileDnsIfNeeded } from "./runtime/mobile-dns.ts";
 
 // Early diagnostic logger for Android: captures errors before the fs shim runs.
@@ -144,6 +148,7 @@ async function bootstrapMobileEntrypoint(): Promise<void> {
   }
 
   _binDebugLog("[bin.ts] pre-runAutonomousCli");
+  const { runAutonomousCli } = await import("./cli/index.ts");
   await runAutonomousCli();
 }
 

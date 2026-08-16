@@ -12,7 +12,10 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { Cloud, KeyRound } from "lucide-react";
 import { afterEach, describe, expect, it } from "vitest";
-import { ActiveProviderSummary } from "./ProviderSwitcher";
+import {
+  ActiveProviderSummary,
+  resolveActiveChatCatalogProvider,
+} from "./ProviderSwitcher";
 import type { ProviderListEntry } from "./useProviderEntries";
 
 const t = (key: string, vars?: Record<string, unknown>) =>
@@ -82,5 +85,25 @@ describe("ActiveProviderSummary — honest active-state copy", () => {
     expect(
       screen.queryByText(/chat replies keep using your selected Intelligence/),
     ).toBeNull();
+  });
+});
+
+describe("resolveActiveChatCatalogProvider — honest cloud pin", () => {
+  it("pins Eliza Cloud only when the account is connected", () => {
+    expect(resolveActiveChatCatalogProvider("__cloud__", true)).toBe(
+      "elizacloud",
+    );
+    expect(
+      resolveActiveChatCatalogProvider("__cloud__", false),
+    ).toBeUndefined();
+  });
+
+  it("still maps direct catalog providers regardless of cloud sign-in", () => {
+    expect(resolveActiveChatCatalogProvider("cerebras", false)).toBe(
+      "cerebras",
+    );
+    expect(resolveActiveChatCatalogProvider("anthropic", false)).toBe(
+      "claude-chat",
+    );
   });
 });

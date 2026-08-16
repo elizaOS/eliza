@@ -343,7 +343,7 @@ describe("image attachments without stored text inline bytes before describing (
 		const records = await readAttachmentRecords(
 			runtime,
 			imageMessage(
-				getLocalServerUrl(`/api/media/${CANONICAL_NAME}`) + "?token=x",
+				`${getLocalServerUrl(`/api/media/${CANONICAL_NAME}`)}?token=x`,
 			),
 			"img-1",
 		);

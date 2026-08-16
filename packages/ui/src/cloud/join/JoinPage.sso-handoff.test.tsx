@@ -96,7 +96,8 @@ describe("JoinPage managed-app SSO handoff", () => {
     render(<JoinPage />);
 
     await waitFor(() => expect(runJoinFlowMock).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(assignedUrls).toEqual(["/"]));
+    expect((await screen.findByTestId("navigate")).textContent).toBe("/");
+    expect(assignedUrls).toEqual([]);
     expect(replacedUrls).toEqual([]);
   });
 });

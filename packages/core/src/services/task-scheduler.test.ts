@@ -1,7 +1,7 @@
 /**
  * Unit coverage for the shared task-scheduler tick loop under fake timers:
- * error resilience when getTasks rejects, dirty-agent re-arm/quiet semantics,
- * and not re-arming an agent that unregisters mid-tick.
+ * non-overlapping slow ticks, error resilience when getTasks rejects,
+ * dirty-agent re-arm/quiet semantics, and unregister-during-tick behavior.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "../logger";
@@ -75,6 +75,36 @@ describe("task-scheduler", () => {
 		await runOneTick();
 		expect(getTasksCalls).toBe(2);
 		expect(errorSpy).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not start another shared tick while a slow tick is active", async () => {
+		let releaseFirstQuery: ((tasks: Task[]) => void) | undefined;
+		const firstQuery = new Promise<Task[]>((resolve) => {
+			releaseFirstQuery = resolve;
+		});
+		const getTasks = vi
+			.fn<() => Promise<Task[]>>()
+			.mockReturnValueOnce(firstQuery)
+			.mockResolvedValue([]);
+
+		startTaskScheduler({ getTasks } as unknown as IDatabaseAdapter);
+		registerTaskSchedulerRuntime(makeRuntime(), {
+			runTick: vi.fn(async () => undefined),
+		});
+
+		await runOneTick();
+		expect(getTasks).toHaveBeenCalledTimes(1);
+
+		// A second interval fires before the first query settles. It must not
+		// snapshot or dispatch the same dirty-agent batch concurrently.
+		await runOneTick();
+		expect(getTasks).toHaveBeenCalledTimes(1);
+
+		releaseFirstQuery?.([]);
+		await vi.advanceTimersByTimeAsync(0);
+		markTaskSchedulerDirty(AGENT_ID);
+		await runOneTick();
+		expect(getTasks).toHaveBeenCalledTimes(2);
 	});
 
 	it("re-arms a still-registered agent after a transient getTasks rejection (no re-register)", async () => {

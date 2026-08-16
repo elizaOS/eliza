@@ -307,18 +307,6 @@ function normalizeShellSubaction(
   }
 }
 
-function inferShellSubactionFromText(
-  text: string,
-): ShellActionSubaction | null {
-  const lower = text.toLowerCase();
-  if (!/\b(history|terminal|shell|command)\b/.test(lower)) return null;
-  if (/\b(show|view|list|display|print)\b/.test(lower)) return "view_history";
-  if (/\b(clear|reset|delete|remove|clean|wipe)\b/.test(lower)) {
-    return "clear_history";
-  }
-  return null;
-}
-
 function getShellHistoryService(
   runtime: IAgentRuntime,
 ): ShellHistoryServiceLike | null {
@@ -1273,12 +1261,12 @@ export const shellAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const explicitSubaction = readStringParam(options, "action");
-    const inferredSubaction = inferShellSubactionFromText(
-      message.content?.text ?? "",
-    );
+    // History operations mutate or disclose session state, so only the
+    // validated structured action may select them. Message prose and path
+    // names cannot override an explicit command.
     const subaction = explicitSubaction
       ? normalizeShellSubaction(explicitSubaction)
-      : (inferredSubaction ?? "run");
+      : "run";
 
     if (subaction === "clear_history" || subaction === "view_history") {
       const shellHistoryService = getShellHistoryService(runtime);

@@ -639,6 +639,13 @@ export function AutomationsFeed({
     );
   }
 
+  const workflowOnlyEmpty = filter === "workflows";
+  const emptyStateLabel = workflowOnlyEmpty
+    ? t("automationsfeed.emptyWorkflows", { defaultValue: "No workflows" })
+    : t("automationsfeed.emptyHeadline", {
+        defaultValue: "Nothing scheduled yet",
+      });
+
   const feedContent = (
     <ShellViewAgentSurface viewId="automations">
       <div
@@ -788,13 +795,19 @@ export function AutomationsFeed({
                 // to re-create a workflow from chat instead.
                 <div
                   data-testid="automations-empty-state"
+                  role="status"
+                  aria-label={workflowOnlyEmpty ? emptyStateLabel : undefined}
                   className="flex flex-col items-center gap-5 px-6 py-14 text-center [@media(orientation:landscape)_and_(max-height:520px)]:gap-2 [@media(orientation:landscape)_and_(max-height:520px)]:px-4 [@media(orientation:landscape)_and_(max-height:520px)]:py-3"
                 >
                   <AutomationEmptyIllustration />
-                  <p className="text-sm font-medium text-txt">
-                    {t("automationsfeed.emptyHeadline", {
-                      defaultValue: "Nothing scheduled yet",
-                    })}
+                  <p
+                    className={
+                      workflowOnlyEmpty
+                        ? "sr-only"
+                        : "text-sm font-medium text-txt"
+                    }
+                  >
+                    {emptyStateLabel}
                   </p>
                 </div>
               ) : (

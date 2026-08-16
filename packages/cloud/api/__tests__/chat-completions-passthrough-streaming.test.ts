@@ -19,6 +19,7 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 // stranded by the process-wide registry replacement; restore in afterAll.
 const aiActual = require("ai") as Record<string, unknown>;
 
+import { getCloudTelemetrySnapshot } from "@/lib/observability/cloud-backend-observability";
 import { estimateTokens } from "@/lib/pricing";
 import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
@@ -1121,5 +1122,234 @@ describe("passthrough streaming — settlement runs OFF the response path via wa
     expect(ledger.actualCosts[0]).toBeCloseTo(EXPECTED_COST, 10);
     expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
     expect(aiBillingRecord).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("passthrough streaming — #16079 milestone telemetry", () => {
+  test("emits Server-Timing upstream_headers, provider request id echo, and a correlated ring-buffer event", async () => {
+    fetchImpl = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(UPSTREAM_SSE));
+            controller.close();
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "text/event-stream",
+            "x-request-id": "req-abc_123-xyz",
+          },
+        },
+      );
+
+    const res = await callStreaming(async () => null, {});
+    await res.text();
+
+    // Response carries the provider-leg boundaries and the bounded echo.
+    const serverTiming = res.headers.get("Server-Timing") ?? "";
+    expect(serverTiming).toMatch(/^upstream_headers;dur=[0-9.]+$/);
+    expect(res.headers.get("X-Eliza-Provider-Request-Id")).toBe(
+      "req-abc_123-xyz",
+    );
+
+    // The always-on ring buffer holds one correlated event keyed by the
+    // fallback trace id (the test harness's requestId) with the milestones
+    // the teed meter observed from the upstream SSE bytes.
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find(
+      (e) => e.path === "passthrough",
+    );
+    if (!event) throw new Error("no passthrough milestone event recorded");
+    expect(event.requestId).toBe("req-1");
+    expect(event.traceId).toBe("req-1");
+    expect(event.model).toBe(MODEL);
+    expect(event.providerRequestId).toBe("req-abc_123-xyz");
+    expect(event.upstreamHeadersMs).not.toBeUndefined();
+    expect(event.upstreamHeadersMs).toBeGreaterThanOrEqual(0);
+    // UPSTREAM_SSE's first frame carries content + reasoning in one delta.
+    expect(event.firstEventMs).not.toBeNull();
+    expect(event.firstReasoningMs).not.toBeNull();
+    expect(event.firstContentMs).not.toBeNull();
+    expect(event.completionMs).not.toBeNull();
+    expect(event.aborted).toBe(false);
+  });
+
+  test("sanitizes an unsafe provider request id and omits the echo when absent", async () => {
+    fetchImpl = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(UPSTREAM_SSE));
+            controller.close();
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "text/event-stream",
+            "x-request-id": 'bad"id with spaces and <script>',
+          },
+        },
+      );
+    const res = await callStreaming(async () => null, {});
+    await res.text();
+    // Only safe token characters survive; quotes/angles/spaces are replaced.
+    expect(res.headers.get("X-Eliza-Provider-Request-Id")).toBe(
+      "bad_id_with_spaces_and__script_",
+    );
+
+    // Absent upstream x-request-id → the echo header is OMITTED entirely, not
+    // emitted empty, and the ring event carries no providerRequestId field.
+    fetchImpl = async () => sseResponse(UPSTREAM_SSE);
+    const bareRes = await callStreaming(async () => null, {});
+    await bareRes.text();
+    expect(bareRes.headers.get("X-Eliza-Provider-Request-Id")).toBeNull();
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find(
+      (e) => e.path === "passthrough",
+    );
+    if (!event) throw new Error("no passthrough milestone event recorded");
+    expect(event.providerRequestId).toBeUndefined();
+    // The rest of the event is still healthy without the provider id.
+    expect(event.upstreamHeadersMs).not.toBeUndefined();
+    expect(event.completionMs).not.toBeNull();
+  });
+
+  test("clean SSE error frame then close records aborted=true and no completion", async () => {
+    // RP round-1 finding: a provider that reports failure mid-stream and then
+    // closes cleanly must NOT be recorded as a healthy completed run.
+    fetchImpl = async () =>
+      sseResponse(
+        `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}],"usage":null}\n\n` +
+          `data: {"error":{"message":"model overloaded","type":"overloaded_error"}}\n\n`,
+      );
+
+    const res = await callStreaming(async () => null, {});
+    await res.text();
+
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find(
+      (e) => e.path === "passthrough",
+    );
+    if (!event) throw new Error("no passthrough milestone event recorded");
+    // Observed partial milestones survive…
+    expect(event.firstContentMs).not.toBeNull();
+    // …but the run is recorded as failed: aborted=true, completionMs null.
+    expect(event.aborted).toBe(true);
+    expect(event.completionMs).toBeNull();
+  });
+
+  test("milestone origin excludes the dispatch-marker latency", async () => {
+    // RP round-2 finding 2: the provider-leg clock must start AFTER the
+    // (potentially slow) Durable-Object dispatch acknowledgement, immediately
+    // before fetch(). A marker delayed by 60ms must not inflate
+    // upstreamHeadersMs — with the origin correctly placed, the instant mock
+    // fetch keeps it far below the marker delay.
+    const MARKER_DELAY_MS = 60;
+    fetchImpl = async () => sseResponse(UPSTREAM_SSE);
+    const res = await callStreaming(async () => null, {
+      markProviderDispatched: () =>
+        new Promise<void>((resolve) => setTimeout(resolve, MARKER_DELAY_MS)),
+    });
+    await res.text();
+
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find(
+      (e) => e.path === "passthrough",
+    );
+    if (!event) throw new Error("no passthrough milestone event recorded");
+    expect(event.upstreamHeadersMs).not.toBeUndefined();
+    // If the origin were captured before the marker await (the round-1 bug),
+    // upstreamHeadersMs would be >= 60. Half the delay is a safe bound that
+    // still separates the two placements by an order of magnitude.
+    expect(event.upstreamHeadersMs).toBeLessThan(MARKER_DELAY_MS / 2);
+    expect(event.completionMs).not.toBeNull();
+  });
+
+  test("client-branch cancel records aborted=true with partial milestones", async () => {
+    // RP round-1 finding: the existing abort test simulated an upstream read
+    // error; this one cancels the CLIENT branch mid-stream, exercising the
+    // cancel() → meterAbortController.abort() path a real disconnect takes.
+    const deliveredText = "partial before disconnect";
+    const waitUntilPromises: Array<Promise<unknown>> = [];
+
+    fetchImpl = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `data: {"id":"c1","choices":[{"index":0,"delta":{"content":${JSON.stringify(deliveredText)}},"finish_reason":null}],"usage":null}\n\n`,
+              ),
+            );
+            // No close: the provider is still streaming when the client drops.
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      );
+
+    const res = await callStreaming(async () => null, {
+      executionCtx: {
+        waitUntil(promise: Promise<unknown>) {
+          waitUntilPromises.push(promise);
+        },
+      },
+    });
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("expected passthrough response body");
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain(deliveredText);
+    await reader.cancel(new DOMException("client disconnected", "AbortError"));
+    await Promise.all(waitUntilPromises);
+
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find(
+      (e) => e.path === "passthrough",
+    );
+    if (!event) throw new Error("no passthrough milestone event recorded");
+    // The client disconnect reached the meter branch: the run is aborted with
+    // the partial content milestone observed, never a completion.
+    expect(event.aborted).toBe(true);
+    expect(event.firstContentMs).not.toBeNull();
+    expect(event.completionMs).toBeNull();
+  });
+
+  test("aborted stream records aborted=true and keeps observed partial milestones", async () => {
+    // Upstream that errors mid-stream after delivering one content frame.
+    fetchImpl = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          async start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n`,
+              ),
+            );
+            controller.error(new Error("upstream dropped mid-stream"));
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      );
+
+    const res = await callStreaming(async () => null, {});
+    // Drain what the client branch will deliver; the read failure propagates.
+    await res.text().catch(() => undefined);
+    // The settle chain runs inline (no executionCtx); give the microtasks a
+    // beat to complete the meter drain.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find(
+      (e) => e.path === "passthrough",
+    );
+    if (!event) throw new Error("no passthrough milestone event recorded");
+    // The errored tee discards buffered chunks, so mid-stream milestones may
+    // legitimately be null here — what MUST hold: the event exists, is marked
+    // aborted, and never claims a completion it did not observe.
+    expect(event.aborted).toBe(true);
+    expect(event.completionMs).toBeNull();
   });
 });

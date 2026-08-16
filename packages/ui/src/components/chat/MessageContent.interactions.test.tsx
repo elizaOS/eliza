@@ -195,4 +195,29 @@ describe("MessageContent non-bytes interaction rendering", () => {
     fireEvent.click(cta);
     expect(setTab).toHaveBeenCalledWith("settings");
   });
+
+  it("renders Retry for planner exhaustion and invokes the canonical retry handler", () => {
+    const handleChatRetry = vi.fn();
+    const appValue = {
+      t: (key: string, vars?: Record<string, unknown>) =>
+        String(vars?.defaultValue ?? key),
+      sendActionMessage: vi.fn(),
+      handleChatRetry,
+    } as never;
+    __setAppValueForTests(appValue);
+    render(
+      <AppContext.Provider value={appValue}>
+        <MessageContent
+          message={assistant({
+            id: "planner-failure",
+            failureKind: "planner_exhaustion",
+            text: "I ran out of attempts. Please try again.",
+          })}
+        />
+      </AppContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(handleChatRetry).toHaveBeenCalledWith("planner-failure");
+  });
 });

@@ -195,6 +195,12 @@ import { isEmbedPath, runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
 import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
+import {
+  extractIosLivenessChallengeToken,
+  type IosCloudOnboardingSmokeRequest,
+  isIosLivenessReplyRow as isIosLivenessReplyRowFromContract,
+  parseIosCloudOnboardingSmokeRequest as parseIosCloudOnboardingSmokeRequestFromContract,
+} from "./ios-cloud-onboarding-smoke";
 import { runIosFullBunEntrypoint } from "./ios-full-bun-entrypoint";
 import {
   apiBaseToDeviceBridgeUrl,
@@ -1192,8 +1198,20 @@ function setReactTextareaValue(el: HTMLTextAreaElement, value: string): void {
 /**
  * Drive one real chat turn in-app and return the rendered assistant reply, so
  * the harness can enforce the shared liveness contract (#14359) against a
- * live-provider host. Only invoked when the smoke request opts in
- * (`liveness: true`); against the deterministic stub host it is skipped.
+ * live-provider host. The SIWE cloud lane always drives it (#16936); the
+ * remote-connect lane still opts in with `liveness: true`, because that lane
+ * also runs against the deterministic stub host.
+ *
+ * Fail-closed reply selection (#16936 review): only assistant rows that did
+ * not exist before the send are considered, and — when the prompt carries a
+ * run-unique challenge token — a row counts only once its text contains that
+ * token. The pending overlay row renders a status label ("Thinking") as its
+ * text content before any model token arrives; reading any non-empty new row
+ * would accept that placeholder, so the token requirement is what proves a
+ * real model answered this exact turn. A tokenless prompt (the remote-connect
+ * default hello) falls back to requiring a reply-phase body on the new row,
+ * which the pending row can never satisfy because the renderer marks it
+ * `data-phase="status"` until real content exists.
  */
 async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
   const composer = await waitForIosOnboardingElement<HTMLTextAreaElement>(
@@ -1203,6 +1221,7 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
   const priorReplies = document.querySelectorAll(
     IOS_LIVENESS_ASSISTANT_SELECTOR,
   ).length;
+  const expectedToken = extractIosLivenessChallengeToken(prompt);
 
   composer.focus();
   setReactTextareaValue(composer, prompt);
@@ -1218,13 +1237,27 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
   }
 
   const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  // Invariant: the overlay transcript only appends rows during a turn, so
+  // indices at or beyond the pre-send snapshot are exactly this run's rows.
   while (Date.now() < deadline) {
     const replies = document.querySelectorAll<HTMLElement>(
       IOS_LIVENESS_ASSISTANT_SELECTOR,
     );
-    if (replies.length > priorReplies) {
-      const text = replies[replies.length - 1]?.textContent?.trim() ?? "";
-      if (text.length > 0) return text;
+    for (let index = priorReplies; index < replies.length; index += 1) {
+      const row = replies[index];
+      // A pending row (status phase) can never be the reply — its text is the
+      // "Thinking"/"Running …" placeholder. This also blocks status chrome
+      // that echoes the prompt text from satisfying the token gate.
+      if (!isIosLivenessReplyRow(row)) continue;
+      const text = row?.textContent?.trim() ?? "";
+      if (!text) continue;
+      if (expectedToken) {
+        // The run-unique token can only appear in text produced by something
+        // that saw this run's prompt — never in a status label or cached row.
+        if (text.toLowerCase().includes(expectedToken)) return text;
+      } else {
+        return text;
+      }
     }
     await new Promise((resolve) => window.setTimeout(resolve, 250));
   }
@@ -1233,21 +1266,20 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
   );
 }
 
-function parseIosCloudOnboardingSmokeRequest(raw: string | null): {
-  mode: "tap" | "autologin";
-} {
-  if (!raw || raw === "1") return { mode: "tap" };
-  try {
-    const parsed = JSON.parse(raw) as { mode?: unknown };
-    return parsed.mode === "autologin"
-      ? { mode: "autologin" }
-      : { mode: "tap" };
-  } catch (error) {
-    // error-policy:J2 corrupt smoke-request blob cannot drive a valid path
-    throw new Error("Invalid iOS cloud-onboarding smoke request", {
-      cause: error,
-    });
-  }
+/**
+ * Thin re-exports of the pure, unit-tested smoke contract in
+ * `ios-cloud-onboarding-smoke.ts`: fail-closed reply-row classification (the
+ * overlay's `data-phase` marker is authoritative) and the smoke-request parser
+ * whose behavior #16936's coverage bar names explicitly.
+ */
+function isIosLivenessReplyRow(row: Element | undefined): boolean {
+  return isIosLivenessReplyRowFromContract(row);
+}
+
+function parseIosCloudOnboardingSmokeRequest(
+  raw: string | null,
+): IosCloudOnboardingSmokeRequest {
+  return parseIosCloudOnboardingSmokeRequestFromContract(raw);
 }
 
 function installFirstRunPostCounter(): {
@@ -1365,6 +1397,13 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
       '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
     );
 
+    // Liveness contract (#14359 / #16936): the cloud agent is
+    // SIWE-provisioned and live, so every lane ends with one real chat turn.
+    // The result carries the reply for the harness's shared non-stub assertion.
+    const livenessReply = await driveIosLivenessChatTurn(
+      request.livenessPrompt,
+    );
+
     await writeIosCloudOnboardingSmokeResult({
       ok:
         Boolean(home) &&
@@ -1382,6 +1421,8 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
       firstRunPostCount,
       cloudActiveServer,
       storage,
+      livenessRequested: true,
+      livenessReply,
     });
   } catch (error) {
     // error-policy:J1 smoke boundary — the failure is written to the
@@ -3395,6 +3436,13 @@ async function main(): Promise<void> {
     }
     await initializeStorageBridge();
     initializeCapacitorBridge();
+    // The desktop main window uses the standalone chat-overlay route, but it
+    // still owns the global shortcut and tray event wiring. Without this the
+    // early standalone-shell return paints the pill while silently skipping
+    // every native desktop control.
+    if (isChatOverlayWindowShell(windowShellRoute) && isDesktopPlatform()) {
+      await initializeDesktopShell();
+    }
     mountReactApp();
     scheduleDeferredAppModuleLoadsAfterPaint();
     return;

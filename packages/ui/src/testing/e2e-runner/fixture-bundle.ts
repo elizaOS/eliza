@@ -86,7 +86,27 @@ export interface FixtureHtmlOptions {
   background?: string;
 }
 
-const PROCESS_SHIM = `<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>`;
+/**
+ * Bootstrap static `file://` fixtures with the browser globals their render
+ * graph expects. Runtime-mode discovery is advisory in production, but an
+ * attempted relative fetch on a file origin emits a browser console error
+ * before its fallback can run, so answer that owned endpoint explicitly.
+ */
+export const FILE_FIXTURE_BOOTSTRAP = `window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};
+(function(){
+  const realFetch=window.fetch.bind(window);
+  window.fetch=function(input,init){
+    const raw=typeof input==="string"?input:input instanceof URL?input.href:input.url;
+    let pathname=raw;
+    try{pathname=new URL(raw,window.location.href).pathname;}catch{}
+    if(pathname==="/api/runtime/mode"){
+      return Promise.resolve(new Response(JSON.stringify({mode:"local",deploymentRuntime:"local",isRemoteController:false,remoteApiBaseConfigured:false}),{status:200,headers:{"content-type":"application/json"}}));
+    }
+    return realFetch(input,init);
+  };
+})();`;
+
+const PROCESS_SHIM = `<script>${FILE_FIXTURE_BOOTSTRAP}</script>`;
 
 /** Wrap bundled fixture JS in the shared static HTML skeleton. */
 export function buildFixtureHtml({

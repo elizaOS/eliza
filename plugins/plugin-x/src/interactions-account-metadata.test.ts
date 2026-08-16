@@ -37,12 +37,60 @@ function createRuntime(settings: Record<string, string> = {}) {
 }
 
 function createClient(accountId = "secondary"): ClientBase {
-  return {
+  let lastCheckedTweetId: bigint | null = null;
+  const identityCache = new Map<string, unknown>();
+  const authenticatedProfile = {
+    id: "bot-user",
+    username: "bot",
+    screenName: "Bot",
+    bio: "",
+    nicknames: [],
+  };
+  const client = {
     accountId,
-    lastCheckedTweetId: null,
+    get lastCheckedTweetId() {
+      return lastCheckedTweetId;
+    },
+    set lastCheckedTweetId(value: bigint | null) {
+      lastCheckedTweetId = value;
+    },
     profile: { id: "bot-user", username: "bot" },
+    getAuthenticatedProfile: vi.fn(async () => authenticatedProfile),
     twitterClient: { getTweetsV2: vi.fn(async () => []) },
-  } as unknown as ClientBase;
+    withAuthenticatedSession: vi.fn(
+      async (
+        operation: (session: {
+          client: unknown;
+          profile: typeof authenticatedProfile;
+          revision: number;
+        }) => Promise<unknown>,
+      ) =>
+        operation({
+          client: client.twitterClient,
+          profile: await client.getAuthenticatedProfile(),
+          revision: 1,
+        }),
+    ),
+    isAuthenticatedSessionCurrent: vi.fn(() => true),
+    identityCacheKey: (profile: { id: string }, suffix: string) =>
+      `twitter/${accountId}/${profile.id}/${suffix}`,
+    getIdentityCache: vi.fn(async (profile: { id: string }, suffix: string) =>
+      identityCache.get(`twitter/${accountId}/${profile.id}/${suffix}`),
+    ),
+    setIdentityCache: vi.fn(
+      async (profile: { id: string }, suffix: string, value: unknown) => {
+        identityCache.set(
+          `twitter/${accountId}/${profile.id}/${suffix}`,
+          value,
+        );
+      },
+    ),
+    getLatestCheckedTweetId: vi.fn(() => lastCheckedTweetId),
+    recordLatestCheckedTweetId: vi.fn((_profileId: string, id: bigint) => {
+      lastCheckedTweetId = id;
+    }),
+  };
+  return client as unknown as ClientBase;
 }
 
 function tweet(overrides: Partial<Tweet> = {}): Tweet {
@@ -126,5 +174,48 @@ describe("Twitter interaction processing", () => {
     expect(world?.metadata?.ownership?.ownerId).toBe(connection?.entityId);
     expect(world?.metadata?.ownership?.ownerId).not.toBe("user-1");
     expect(clientBase.lastCheckedTweetId).toBe(300n);
+  });
+
+  it("filters self mentions and advances the cursor using refreshed identity", async () => {
+    const runtime = createRuntime();
+    const clientBase = createClient();
+    clientBase.profile = {
+      id: "account-a",
+      username: "stale-a",
+      screenName: "Stale A",
+      bio: "",
+      nicknames: [],
+    };
+    vi.mocked(clientBase.getAuthenticatedProfile).mockResolvedValue({
+      id: "account-b",
+      username: "current-b",
+      screenName: "Current B",
+      bio: "",
+      nicknames: [],
+    });
+    const client = new TwitterInteractionClient(
+      clientBase,
+      runtime,
+      {} as TwitterClientState,
+    );
+    const handleTweet = vi
+      .spyOn(client, "handleTweet")
+      .mockResolvedValue({ text: "reply", actions: ["REPLY"] });
+
+    await client.processMentionTweets([
+      tweet({ id: "400", userId: "account-b", username: "current-b" }),
+      tweet({ id: "401", userId: "person-1", username: "alice" }),
+    ]);
+
+    expect(handleTweet).toHaveBeenCalledOnce();
+    expect(handleTweet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tweet: expect.objectContaining({ id: "401" }),
+      }),
+    );
+    expect(clientBase.recordLatestCheckedTweetId).toHaveBeenCalledWith(
+      "account-b",
+      401n,
+    );
   });
 });

@@ -377,6 +377,7 @@ export function createRemoteCapabilityPlugin(
       name: evaluator.name,
       description: evaluator.description,
       priority: evaluator.priority,
+      deterministicActions: (module.actions ?? []).map((action) => action.name),
       shouldRun: async (context) =>
         (
           await requireCapabilityRouter(

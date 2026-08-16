@@ -5,7 +5,7 @@
  * mid-abbreviation.
  */
 import { describe, expect, it } from "vitest";
-import { extractFirstSentence } from "./text-splitting.ts";
+import { extractFirstSentence, hasFirstSentence } from "./text-splitting.ts";
 
 describe("extractFirstSentence", () => {
 	it("does not split inside dotted abbreviations (e.g. / i.e.)", () => {
@@ -64,5 +64,30 @@ describe("extractFirstSentence", () => {
 		const r = extractFirstSentence("No boundary here");
 		expect(r.first).toBe("No boundary here");
 		expect(r.rest).toBe("");
+	});
+});
+
+describe("hasFirstSentence", () => {
+	it("reports true when the whole text is one complete sentence", () => {
+		// A boundary at end-of-string leaves `rest` empty, so keying off `rest`
+		// reported false and the streaming voice path never fired.
+		expect(hasFirstSentence("Sure, I added milk to your shopping list.")).toBe(
+			true,
+		);
+		expect(hasFirstSentence("Did that work?")).toBe(true);
+		expect(hasFirstSentence("Done!")).toBe(true);
+	});
+
+	it("still reports true when more text follows the first sentence", () => {
+		expect(hasFirstSentence("One. Two.")).toBe(true);
+	});
+
+	it("reports false for an incomplete fragment", () => {
+		expect(hasFirstSentence("Sure, I added")).toBe(false);
+		expect(hasFirstSentence("")).toBe(false);
+	});
+
+	it("is not fooled by an abbreviation mid-fragment", () => {
+		expect(hasFirstSentence("See e.g. the")).toBe(false);
 	});
 });
