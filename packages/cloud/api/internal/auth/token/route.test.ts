@@ -1,4 +1,4 @@
-/** Proves gateway token exchange and refresh preserve the bounded lifetime. */
+/** Proves short-lived gateway tokens cannot extend their own replay window. */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
@@ -65,11 +65,30 @@ describe("bounded gateway JWT lifetime", () => {
     });
   });
 
-  test("refreshes discord gateway tokens without widening their lifetime", async () => {
+  test.each(["webhook-gateway", "discord-gateway"])(
+    "rejects self-refresh for %s tokens",
+    async (service) => {
+      const original = await signInternalToken({
+        subject: `${service}-test`,
+        service,
+        expiresIn: GATEWAY_TOKEN_LIFETIME_SECONDS,
+      });
+      const response = await refreshApp.request("/", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${original.access_token}` },
+      });
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toEqual({
+        error: "gateway_token_rebootstrap_required",
+      });
+    },
+  );
+
+  test("ordinary internal tokens retain authenticated rotation", async () => {
     const original = await signInternalToken({
-      subject: "gateway-discord-test",
-      service: "discord-gateway",
-      expiresIn: GATEWAY_TOKEN_LIFETIME_SECONDS,
+      subject: "ordinary-service-test",
+      service: "ordinary-service",
     });
     const response = await refreshApp.request("/", {
       method: "POST",
@@ -77,9 +96,5 @@ describe("bounded gateway JWT lifetime", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      token_type: "Bearer",
-      expires_in: GATEWAY_TOKEN_LIFETIME_SECONDS,
-    });
   });
 });
