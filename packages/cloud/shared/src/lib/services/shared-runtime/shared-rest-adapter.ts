@@ -316,8 +316,7 @@ export function sharedRestCustomActions(): { actions: [] } {
   return { actions: [] };
 }
 
-/**
- * GET .../api/agent/events — the agent event log the shell's activity surfaces
+/** GET .../api/agent/events — the agent event log the shell's activity surfaces
  * poll (ui/src/api/client-agent.ts). A Tier-0 agent runs stateless per-request
  * in a Worker and keeps no event ring buffer, so there is nothing to report.
  * Mirrors the iOS local-agent kernel's synthesis of this same probe
@@ -325,6 +324,22 @@ export function sharedRestCustomActions(): { actions: [] } {
  */
 export function sharedRestAgentEvents(): { events: [] } {
   return { events: [] };
+}
+
+/**
+ * POST .../api/agent/start — the client's startup handshake.
+ * A shared agent runs in-Worker with no agent server to boot, so the "start"
+ * is a no-op that returns the running status the client expects. This unblocks
+ * the desktop cloud-only consumer lane which otherwise hot-loops on 404.
+ */
+export function sharedRestAgentStart(agentName: string): {
+  ok: true;
+  status: ReturnType<typeof sharedRestStatus>;
+} {
+  return {
+    ok: true,
+    status: sharedRestStatus(agentName),
+  };
 }
 
 /**
