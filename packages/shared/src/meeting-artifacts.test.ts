@@ -18,6 +18,37 @@ function at<T>(rows: T[], index: number, label: string): T {
   return value;
 }
 
+const durableRecordKeys = [
+  "notes",
+  "actionItems",
+  "decisions",
+  "evidenceArtifacts",
+] as const;
+
+type DurableRecordKey = (typeof durableRecordKeys)[number];
+
+function setDurableRecordIds(
+  artifact: MeetingArtifact,
+  key: DurableRecordKey,
+  ids: string[],
+  transcriptSpanId: string,
+): void {
+  if (key === "evidenceArtifacts") {
+    artifact.evidenceArtifacts = ids.map((id) => ({
+      id,
+      kind: "log",
+      transcriptSpanIds: [transcriptSpanId],
+    }));
+    return;
+  }
+
+  artifact[key] = ids.map((id) => ({
+    id,
+    text: "Follow up",
+    transcriptSpanIds: [transcriptSpanId],
+  }));
+}
+
 describe("meeting artifact fixtures", () => {
   it("ships valid sample artifacts for platform, room, and corpus capture modes", () => {
     const fixtures = buildMeetingArtifactFixtures();
@@ -214,6 +245,34 @@ describe("validateMeetingArtifact", () => {
     );
     expect(errors).toContain(
       "decisions[0].transcriptSpanIds[0] references missing id: span-missing",
+    );
+  });
+
+  it.each(durableRecordKeys)(
+    "rejects %s records without durable ids",
+    (key) => {
+      const artifact = clone(buildMeetingArtifactFixtures().googleMeetRoom);
+      const transcriptSpan = at(artifact.transcriptSpans, 0, "transcriptSpans");
+      setDurableRecordIds(artifact, key, [""], transcriptSpan.id);
+
+      expect(validateMeetingArtifact(artifact).errors).toContain(
+        `${key}[0].id is required`,
+      );
+    },
+  );
+
+  it.each(durableRecordKeys)("rejects duplicate %s record ids", (key) => {
+    const artifact = clone(buildMeetingArtifactFixtures().googleMeetRoom);
+    const transcriptSpan = at(artifact.transcriptSpans, 0, "transcriptSpans");
+    setDurableRecordIds(
+      artifact,
+      key,
+      ["duplicate-id", "duplicate-id"],
+      transcriptSpan.id,
+    );
+
+    expect(validateMeetingArtifact(artifact).errors).toContain(
+      `duplicate ${key} id: duplicate-id`,
     );
   });
 });

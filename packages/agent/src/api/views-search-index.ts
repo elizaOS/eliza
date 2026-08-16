@@ -110,7 +110,8 @@ class ViewSearchIndex {
    * @param topK    - Maximum number of results to return (default 10).
    * @returns       Array of `{ viewId, score }` sorted descending by score,
    *                where score is cosine similarity in [0, 1].
-   *                Returns an empty array when the runtime has no embedding model.
+   *                Returns an empty array when the runtime has no embedding
+   *                model, or when `topK` is not a positive safe integer.
    */
   async search(
     query: string,
@@ -124,6 +125,7 @@ class ViewSearchIndex {
     }>
   > {
     if (this.entries.size === 0) return [];
+    if (!Number.isSafeInteger(topK) || topK <= 0) return [];
 
     let queryEmbedding: number[];
     try {

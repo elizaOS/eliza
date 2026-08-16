@@ -195,6 +195,20 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   sessionPrefix("voice.v1-local-inference", "/v1/voice/"),
   sessionPrefix("automations", "/api/automations"),
   sessionExact("tts.cloud", "POST", "/api/tts/cloud"),
+  // On-device Kokoro TTS routes are owned by plugin-local-inference
+  // (local-inference-tts-route.ts), which runs its own trusted-local/token
+  // gate after this one. The "/api/tts/" managed prefix fails closed, so
+  // without these declarations every renderer readiness probe
+  // (GET /api/tts/local-inference/status via isLocalInferenceTtsReady) and
+  // synthesis request 401'd before any credential was examined — surfacing as
+  // per-step console errors that failed the live walkthrough's page
+  // diagnostics gate (#16214).
+  sessionExact(
+    "tts.local-inference.status",
+    "GET",
+    "/api/tts/local-inference/status",
+  ),
+  sessionExact("tts.local-inference", "POST", "/api/tts/local-inference"),
   sessionPrefix("workbench", "/api/workbench"),
   sessionPrefix("plugins.management", "/api/plugins"),
   sessionPrefix("catalog", "/api/catalog"),

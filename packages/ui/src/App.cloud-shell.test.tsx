@@ -65,6 +65,23 @@ describe("App standalone chat-overlay wiring", () => {
     );
   });
 
+  it("installs the glass recipe and provider truth in the packaged overlay tree", () => {
+    const overlayShell = APP_TSX.slice(
+      APP_TSX.indexOf("function ChatOverlayShell()"),
+      APP_TSX.indexOf("function TrayPopoverShell()"),
+    );
+    const foundation = APP_TSX.slice(
+      APP_TSX.indexOf("function ShellFoundationMount()"),
+      APP_TSX.indexOf("function ChatOverlayMount("),
+    );
+
+    expect(overlayShell).toContain("<GlassStyles />");
+    expect(foundation).toContain("<ServingProviderChip");
+    expect(foundation.indexOf("<ServingProviderChip")).toBeLessThan(
+      foundation.indexOf("<ChatSurface"),
+    );
+  });
+
   it("seeds in-chat onboarding in the chat-overlay branch (the default desktop bottom-bar surface)", () => {
     // shouldStartBottomBar defaults ON, so createMainWindow boots the MAIN
     // window with ?shellMode=chat-overlay — that branch must mount the

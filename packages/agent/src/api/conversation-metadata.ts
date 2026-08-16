@@ -157,8 +157,7 @@ export function extractConversationMetadataFromRoom(
   }
   const storedConversationId = normalizeOptionalString(stored.conversationId);
   if (
-    expectedConversationId &&
-    storedConversationId &&
+    expectedConversationId !== undefined &&
     storedConversationId !== expectedConversationId
   ) {
     return undefined;

@@ -15,6 +15,11 @@ export interface AssistantOverlayProps {
   phase: ShellPhase;
   onClose: () => void;
   children: React.ReactNode;
+  /** Explicit overlay visibility from the shell's open state. When provided it
+   *  overrides the phase-derived fallback — required for the hold-to-talk
+   *  quasimode (#20483), where `listening`/`responding` can be active while
+   *  the overlay stays closed (pill-only capture). */
+  open?: boolean;
 }
 
 const FOCUSABLE_SELECTOR =
@@ -40,12 +45,17 @@ export function AssistantOverlay({
   phase,
   onClose,
   children,
+  open,
 }: AssistantOverlayProps): React.JSX.Element | null {
   const { appName } = useBranding();
   const isOpen =
-    phase === "summoned" || phase === "listening" || phase === "responding";
+    open ??
+    (phase === "summoned" || phase === "listening" || phase === "responding");
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
-  const glassTier = useNativeGlassAnchor(dialogRef);
+  const glassTier = useNativeGlassAnchor(dialogRef, {
+    colorScheme: "dark",
+    tintColor: "#16090DD9",
+  });
   const previousFocusRef = React.useRef<HTMLElement | null>(null);
 
   // Manage Escape, focus trap, initial focus, and focus return as a single
@@ -123,7 +133,7 @@ export function AssistantOverlay({
       aria-modal="true"
       aria-label={`${appName} assistant`}
       data-testid="shell-assistant-overlay"
-      data-popup-material="light-frosted"
+      data-popup-material="dark-frosted"
       data-phase={phase}
       data-glass-tier={glassTier}
       // Sits one tick above the pill in stacking order. The desktop overlay

@@ -606,7 +606,7 @@ describe("cloud-api worker entrypoint", () => {
     }
   });
 
-  test("keeps legacy UUID agents proxied while redirecting public service hosts", () => {
+  test("redirects legacy UUID agents and public service hosts", () => {
     const response = redirectFrontendHost(
       new URL(
         "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/chat?room=1",
@@ -614,7 +614,20 @@ describe("cloud-api worker entrypoint", () => {
       { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app" },
     );
 
-    expect(response).toBeNull();
+    expect(response?.status).toBe(308);
+    expect(response?.headers.get("location")).toBe(
+      "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.cloud.eliza.app/chat?room=1",
+    );
+    const stagingResponse = redirectFrontendHost(
+      new URL(
+        "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.staging.elizacloud.ai/api/health?probe=1",
+      ),
+      { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud-staging.eliza.app" },
+    );
+    expect(stagingResponse?.status).toBe(308);
+    expect(stagingResponse?.headers.get("location")).toBe(
+      "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.cloud-staging.eliza.app/api/health?probe=1",
+    );
     const serviceCases = [
       [
         "https://blob.elizacloud.ai/object.bin",
@@ -698,7 +711,7 @@ describe("cloud-api worker entrypoint", () => {
     }
   });
 
-  test("extracts canonical and legacy UUID hosts for the dedicated-agent proxy", () => {
+  test("extracts only canonical UUID hosts for the dedicated-agent proxy", () => {
     const env = { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app" };
     const agentId = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
 
@@ -713,7 +726,7 @@ describe("cloud-api worker entrypoint", () => {
         new URL(`https://${agentId}.elizacloud.ai/api/health`),
         env,
       ),
-    ).toBe(agentId);
+    ).toBeNull();
     expect(
       getGeneratedAgentId(new URL("https://blob.elizacloud.ai/object"), env),
     ).toBeNull();
@@ -822,7 +835,32 @@ describe("cloud-api worker entrypoint", () => {
       status: "ok",
       region: "local-test",
       commit: "feedfacefeedfacefeedfacefeedfacefeedface",
+      personalSharedTelegramEdge: { enabled: false },
     });
+  });
+
+  test("reports only the served Personal Shared Telegram edge gate state", async () => {
+    const response = await cloudApiWorker.fetch(
+      new Request("https://api-staging.eliza.app/api/health", {
+        headers: { host: "api-staging.eliza.app" },
+      }),
+      {
+        ENVIRONMENT: "staging",
+        PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED: "false",
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED: "true",
+        ELIZA_APP_TELEGRAM_BOT_TOKEN: "never-return-this-bot-token",
+        ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "never-return-this-webhook-secret",
+      } as never,
+      {} as never,
+    );
+
+    const text = await response.text();
+    expect(JSON.parse(text)).toMatchObject({
+      environment: "staging",
+      personalSharedTelegramEdge: { enabled: true },
+    });
+    expect(text).not.toContain("never-return-this-bot-token");
+    expect(text).not.toContain("never-return-this-webhook-secret");
   });
 
   test("reports only value-free staging session cutover readiness", async () => {
@@ -968,24 +1006,30 @@ describe("cloud-api worker entrypoint", () => {
     );
   });
 
-  test("activates sender projection and inference timing only in staging", async () => {
+  test("keeps the legacy edge guard false and reserves the replacement name for the cutover secret", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
       vars?: {
         PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+        PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
         ELIZA_INFERENCE_TIMING?: string;
       };
       env?: {
         staging?: {
           vars?: {
             PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+            PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
+            PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
             ELIZA_INFERENCE_TIMING?: string;
           };
         };
         production?: {
           vars?: {
             PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+            PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
+            PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
             ELIZA_INFERENCE_TIMING?: string;
           };
         };
@@ -1001,11 +1045,63 @@ describe("cloud-api worker entrypoint", () => {
     expect(
       config.env?.production?.vars?.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED,
     ).toBe("false");
+    expect(config.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED).toBe("false");
+    expect(
+      config.env?.staging?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
+    ).toBeUndefined();
+    expect(
+      config.env?.production?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
+    ).toBe("false");
+    expect(
+      config.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED,
+    ).toBeUndefined();
+    expect(
+      config.env?.staging?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED,
+    ).toBeUndefined();
+    expect(
+      config.env?.production?.vars
+        ?.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED,
+    ).toBeUndefined();
     expect(config.vars?.ELIZA_INFERENCE_TIMING).toBeUndefined();
     expect(config.env?.staging?.vars?.ELIZA_INFERENCE_TIMING).toBe("info");
     expect(
       config.env?.production?.vars?.ELIZA_INFERENCE_TIMING,
     ).toBeUndefined();
+  });
+
+  test("binds the Personal Telegram delivery ledger in every Worker environment", async () => {
+    type DurableBinding = { name?: string; class_name?: string };
+    type DurableConfig = {
+      bindings?: DurableBinding[];
+    };
+    const config = Bun.TOML.parse(
+      await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
+    ) as {
+      durable_objects?: DurableConfig;
+      env?: {
+        staging?: { durable_objects?: DurableConfig };
+        production?: { durable_objects?: DurableConfig };
+      };
+      migrations?: Array<{
+        tag?: string;
+        new_sqlite_classes?: string[];
+      }>;
+    };
+
+    for (const durableObjects of [
+      config.durable_objects,
+      config.env?.staging?.durable_objects,
+      config.env?.production?.durable_objects,
+    ]) {
+      expect(durableObjects?.bindings).toContainEqual({
+        name: "PERSONAL_TELEGRAM_DELIVERIES",
+        class_name: "PersonalTelegramDelivery",
+      });
+    }
+    expect(config.migrations).toContainEqual({
+      tag: "personal-telegram-delivery-v1",
+      new_sqlite_classes: ["PersonalTelegramDelivery"],
+    });
   });
 
   test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {

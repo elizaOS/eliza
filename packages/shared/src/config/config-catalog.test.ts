@@ -1,13 +1,15 @@
 /**
- * Unit tests for the config-catalog JSON Pointer path helpers (getByPath /
- * setByPath): RFC 6901 escape handling (~0 / ~1), array-index coercion rules,
- * and prototype-pollution guarding on write.
+ * Unit tests for config-catalog path safety, field visibility, and built-in
+ * validation. The deterministic harness exercises the exported helpers and
+ * validation runner directly without UI or network dependencies.
  */
 import { describe, expect, it } from "vitest";
 import {
+  builtInValidators,
   evaluateFieldVisibility,
   getByPath,
   isConfigKeySatisfied,
+  runValidation,
   setByPath,
 } from "./config-catalog.js";
 
@@ -110,5 +112,34 @@ describe("config-catalog field visibility gates", () => {
         setKeys: new Set(["DISCORD_API_TOKEN"]),
       }),
     ).toBe(true);
+  });
+});
+
+describe("config-catalog built-in validators", () => {
+  it.each([
+    ["finite number", 12.5, true],
+    ["complete decimal string", " -12.5e2 ", true],
+    ["trailing unit", "12.5ms", false],
+    ["empty string", "", false],
+    ["whitespace string", "   ", false],
+    ["NaN", Number.NaN, false],
+    ["positive infinity", Number.POSITIVE_INFINITY, false],
+    ["negative infinity", Number.NEGATIVE_INFINITY, false],
+    ["infinity string", "Infinity", false],
+    ["non-numeric type", null, false],
+  ])("classifies %s", (_case, value, expected) => {
+    expect(builtInValidators.numeric(value)).toBe(expected);
+  });
+
+  it("rejects malformed values through the declarative validation runner", () => {
+    expect(
+      runValidation(
+        {
+          checks: [{ fn: "numeric", message: "Must be a finite number" }],
+        },
+        "12.5ms",
+        {},
+      ),
+    ).toEqual({ valid: false, errors: ["Must be a finite number"] });
   });
 });

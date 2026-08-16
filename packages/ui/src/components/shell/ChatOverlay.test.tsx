@@ -503,6 +503,12 @@ describe("ChatOverlay", () => {
     const attachOrder = bridge.attachGlass.mock.invocationCallOrder[0] ?? 0;
     expect(backdropOrder).toBeGreaterThan(0);
     expect(backdropOrder).toBeLessThan(attachOrder);
+    expect(bridge.attachGlass).toHaveBeenCalledWith(
+      expect.objectContaining({
+        colorScheme: "dark",
+        tintColor: "#16090DD9",
+      }),
+    );
     // Native material: fill + blur drop (the OS paints them); border, bevel,
     // and sheen stay — the branded edge survives on every tier.
     expect(surface.style.backgroundColor).toBe("transparent");
@@ -2801,6 +2807,46 @@ describe("ChatOverlay", () => {
     const normal = screen.getByText("here is a normal answer");
     expect(normal).toBeTruthy();
     expect(normal.closest('[data-failure="no_provider"]')).toBeNull();
+  });
+
+  it("renders the insufficient_credits failure as the out-of-credits gate with an Add credits jump and no Retry chip", () => {
+    const openSettings = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController({
+          openSettings,
+          messages: [
+            { id: "u1", role: "user", content: "hi", createdAt: 1 },
+            {
+              id: "credits",
+              role: "assistant",
+              content: "Your organization is out of credits.",
+              createdAt: 2,
+              failureKind: "insufficient_credits",
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    // The 402 turn renders the STRUCTURED out-of-credits gate (banner + Add
+    // credits CTA), not a plain-text bubble — retrying re-hits the same empty
+    // balance, so the CTA is the only actionable affordance.
+    expect(screen.getByText("Out of credits")).toBeTruthy();
+    const gate = screen
+      .getByTestId("chat-insufficient-credits-add")
+      .closest('[data-failure="insufficient_credits"]') as HTMLElement;
+    expect(gate).toBeTruthy();
+    // The server's own message rides inside the gate body (not dropped).
+    expect(gate.textContent).toContain("Your organization is out of credits.");
+
+    // No Retry chip — a retry cannot fix a drained balance.
+    expect(screen.queryByTestId("thread-line-retry")).toBeNull();
+
+    // The CTA jumps to Settings where the top-up/redeem flow lives.
+    fireEvent.click(screen.getByTestId("chat-insufficient-credits-add"));
+    expect(openSettings).toHaveBeenCalledTimes(1);
   });
 
   it("press-and-hold copies without mounting a floating confirmation", () => {

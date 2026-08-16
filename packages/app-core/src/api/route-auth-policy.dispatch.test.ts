@@ -27,6 +27,7 @@ const STATE: CompatRuntimeState = {
 const ENV_KEYS = [
   "ELIZA_API_BIND",
   "ELIZA_API_TOKEN",
+  "ELIZA_CLOUD_PROVISIONED",
   "ELIZA_CONFIG_PATH",
   "ELIZA_REQUIRE_LOCAL_AUTH",
   "ELIZA_RUNTIME_MODE",
@@ -47,6 +48,7 @@ beforeEach(async () => {
   saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   // Force a non-loopback peer + no token so the request is unauthenticated.
   delete process.env.ELIZA_API_TOKEN;
+  delete process.env.ELIZA_CLOUD_PROVISIONED;
   delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
   delete process.env.ELIZA_CONFIG_PATH;
   targetHits.length = 0;
@@ -128,6 +130,20 @@ function unauthReq(method: string, pathname: string): http.IncomingMessage {
   return req;
 }
 
+function trustedLoopbackReq(
+  method: string,
+  pathname: string,
+  headers: http.IncomingHttpHeaders = {},
+): http.IncomingMessage {
+  const req = unauthReq(method, pathname);
+  req.headers = { host: "127.0.0.1:2138", ...headers };
+  Object.defineProperty(req.socket, "remoteAddress", {
+    value: "127.0.0.1",
+    configurable: true,
+  });
+  return req;
+}
+
 function bearerReq(
   method: string,
   pathname: string,
@@ -158,6 +174,42 @@ function captureRes() {
 }
 
 describe("compat dispatcher default-deny (H5)", () => {
+  it("dispatches local-inference TTS only for a trusted local caller", async () => {
+    const trusted = captureRes();
+    const trustedHandled = await handleElizaCompatRoute(
+      trustedLoopbackReq("GET", "/api/tts/local-inference/status"),
+      trusted.res,
+      STATE,
+    );
+
+    expect(trustedHandled).toBe(true);
+    expect(trusted.status()).toBe(200);
+    expect(trusted.json()).toEqual({ ready: false, provider: null });
+
+    const remote = captureRes();
+    const remoteHandled = await handleElizaCompatRoute(
+      unauthReq("GET", "/api/tts/local-inference/status"),
+      remote.res,
+      STATE,
+    );
+
+    expect(remoteHandled).toBe(true);
+    expect(remote.status()).toBe(401);
+    expect(remote.json()).toEqual({ error: "Unauthorized" });
+
+    const forwarded = captureRes();
+    const forwardedHandled = await handleElizaCompatRoute(
+      trustedLoopbackReq("GET", "/api/tts/local-inference/status", {
+        "x-forwarded-for": "203.0.113.9",
+      }),
+      forwarded.res,
+      STATE,
+    );
+
+    expect(forwardedHandled).toBe(true);
+    expect(forwarded.status()).toBe(401);
+    expect(forwarded.json()).toEqual({ error: "Unauthorized" });
+  });
   it("401s an un-gated, undeclared compat-managed route before any handler runs", async () => {
     // `/api/dev/*` is a compat-managed prefix but this specific path has NO
     // policy entry — the stand-in for a freshly-added handler that forgot to

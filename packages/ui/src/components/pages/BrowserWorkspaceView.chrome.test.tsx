@@ -84,6 +84,7 @@ vi.mock("../../api", async (importOriginal) => {
 });
 
 import { client } from "../../api";
+import { shellHistory } from "../../surface-realm-channel";
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
 import {
   BROWSER_WALLET_READY_TYPE,
@@ -193,6 +194,27 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(
       toolbar.contains(screen.getByTestId("browser-workspace-address-input")),
     ).toBe(true);
+    const back = screen.getByRole("button", { name: "Back to launcher" });
+    expect(toolbar.contains(back)).toBe(true);
+    expect(back.className).toMatch(/(?:^|\s)h-11(?:\s|$)/);
+  });
+
+  it("invokes launcher navigation once from the toolbar back button", async () => {
+    const pushState = vi
+      .spyOn(shellHistory, "pushState")
+      .mockImplementation(() => {});
+    try {
+      render(<BrowserWorkspaceView />);
+      expect(await screen.findByText("No page open")).not.toBeNull();
+      const toolbar = screen.getByTestId("browser-workspace-toolbar");
+      const back = screen.getByRole("button", { name: "Back to launcher" });
+      expect(toolbar.contains(back)).toBe(true);
+      fireEvent.click(back);
+      expect(pushState).toHaveBeenCalledTimes(1);
+      expect(pushState).toHaveBeenCalledWith(null, "", "/views");
+    } finally {
+      pushState.mockRestore();
+    }
   });
 
   it("reserves the measured resting chat footprint and safe-area stack from the page viewport", async () => {
@@ -217,13 +239,20 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     const nav = toolbar.firstElementChild as HTMLElement | null;
     expect(nav).not.toBeNull();
     expect(nav?.className).toContain("grid-cols-");
-    expect(nav?.className).toContain("sm:grid-cols-");
+    expect(nav?.className).toContain("md:grid-cols-");
+    expect(nav?.className).not.toContain("sm:grid-cols-");
     expect(nav?.className).toContain("gap-1");
     expect(nav?.className).toContain("py-1");
 
     expect(
       screen.getByTestId("browser-workspace-address-input").className,
     ).toContain("col-span-2");
+    expect(
+      screen.getByTestId("browser-workspace-address-input").className,
+    ).toContain("md:col-span-1");
+    expect(
+      screen.getByTestId("browser-workspace-address-input").className,
+    ).not.toContain("sm:col-span-1");
     for (const control of toolbar.querySelectorAll("button, input")) {
       expect(control.className).toMatch(/(?:h-11|min-h-11)/);
     }

@@ -389,4 +389,24 @@ describe("model-invented [LINK:] pseudo-markers", () => {
 		);
 		expect(sanitizeOutboundText(once)).toBe(once);
 	});
+
+	it("restores a fenced block that an inline span swallowed", () => {
+		// Phase 2 protects inline spans over text that already holds phase-1
+		// fence sentinels, and the inline content class matches a sentinel — so
+		// unbalanced backticks around a fence nest one sentinel inside another.
+		// Restoring forward no-ops on the buried sentinel and ships it raw.
+		const out = sanitizeOutboundText(
+			"<thinking>plan</thinking>Try `x ```code``` y` now",
+		);
+		expect(out).not.toContain("\u0000");
+		expect(out).toBe("Try `x ```code``` y` now");
+	});
+
+	it("never delivers a NUL byte for unbalanced backticks around a fence", () => {
+		const out = sanitizeOutboundText(
+			"<tool_call>x</tool_call>Set `PATH like ```export PATH=/x``` then run `foo`",
+		);
+		expect(out).not.toContain("\u0000");
+		expect(out).toContain("```export PATH=/x```");
+	});
 });

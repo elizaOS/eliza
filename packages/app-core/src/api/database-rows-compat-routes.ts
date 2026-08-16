@@ -180,17 +180,19 @@ export async function handleDatabaseRowsCompatRoute(
     );
   }
 
+  const parsedLimit = Number.parseInt(
+    requestUrl.searchParams.get("limit") ?? "",
+    10,
+  );
+  const parsedOffset = Number.parseInt(
+    requestUrl.searchParams.get("offset") ?? "",
+    10,
+  );
   const limit = Math.max(
     1,
-    Math.min(
-      500,
-      Number.parseInt(requestUrl.searchParams.get("limit") ?? "", 10) || 50,
-    ),
+    Math.min(500, Number.isNaN(parsedLimit) ? 50 : parsedLimit),
   );
-  const offset = Math.max(
-    0,
-    Number.parseInt(requestUrl.searchParams.get("offset") ?? "", 10) || 0,
-  );
+  const offset = Math.max(0, Number.isNaN(parsedOffset) ? 0 : parsedOffset);
   const sortColumn = sanitizeIdentifier(requestUrl.searchParams.get("sort"));
   const order =
     requestUrl.searchParams.get("order") === "desc" ? "DESC" : "ASC";

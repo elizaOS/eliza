@@ -1,10 +1,6 @@
 /**
- * @module notification-triage
- * @description Fetches unread GitHub notifications and returns them sorted
- * by a composite priority score derived from `reason`, subject type, and
- * the notifying repo's `pushed_at` freshness.
- *
- * Read-only — no confirmation gate.
+ * Fetches unread GitHub notifications and ranks them by reason, subject type,
+ * and repository freshness. The action is read-only and needs no confirmation.
  */
 
 import type {
@@ -24,7 +20,12 @@ import {
   formatRateLimitMessage,
   inspectRateLimit,
 } from "../rate-limit.js";
-import { type GitHubActionResult, GitHubActions } from "../types.js";
+import {
+  type GitHubActionResult,
+  GitHubActions,
+  type GitHubNotificationSummary,
+  type GitHubOctokitClient,
+} from "../types.js";
 
 const REASON_SCORES: Record<string, number> = {
   security_advisory: 100,
@@ -50,6 +51,11 @@ const SUBJECT_TYPE_SCORES: Record<string, number> = {
 };
 
 const NOTIFICATION_TRIAGE_LIMIT = 25;
+const NOTIFICATION_PAGE_SIZE = 50;
+// Bounds the unread-notification traversal against an inbox that never
+// returns a short page (misbehaving server, or a genuinely huge backlog):
+// 20 pages * 50/page is 1000 notifications, generous for a triage pass.
+const NOTIFICATION_MAX_PAGES = 20;
 
 export interface TriagedNotification {
   id: string;
@@ -60,6 +66,34 @@ export interface TriagedNotification {
   url: string | null;
   updatedAt: string;
   score: number;
+}
+
+/** Fetch every unread notification page so ranking and totals are complete. */
+export async function fetchAllUnreadNotifications(
+  activity: GitHubOctokitClient["activity"],
+): Promise<GitHubNotificationSummary[]> {
+  const notifications: GitHubNotificationSummary[] = [];
+  const seenIds = new Set<string>();
+  for (let page = 1; page <= NOTIFICATION_MAX_PAGES; page += 1) {
+    const response = await activity.listNotificationsForAuthenticatedUser({
+      all: false,
+      per_page: NOTIFICATION_PAGE_SIZE,
+      page,
+    });
+    // Offset pagination over a mutating inbox can re-serve a row a shifted
+    // page already returned; dedup so totals and rankings aren't inflated.
+    for (const notification of response.data) {
+      if (seenIds.has(notification.id)) continue;
+      seenIds.add(notification.id);
+      notifications.push(notification);
+    }
+    if (response.data.length < NOTIFICATION_PAGE_SIZE) return notifications;
+  }
+  logger.warn(
+    { pages: NOTIFICATION_MAX_PAGES, collected: notifications.length },
+    "[GitHub:GITHUB_NOTIFICATION_TRIAGE] unread notifications truncated at page cap",
+  );
+  return notifications;
 }
 
 function scoreNotification(params: {
@@ -138,22 +172,9 @@ export const notificationTriageAction: Action = {
     }
 
     try {
-      const resp =
-        await resolved.client.activity.listNotificationsForAuthenticatedUser({
-          all: false,
-          per_page: 50,
-        });
-      const notifications = resp.data as Array<{
-        id: string;
-        reason?: string | null;
-        repository?: { full_name?: string | null; pushed_at?: string | null };
-        subject?: {
-          title?: string | null;
-          type?: string | null;
-          url?: string | null;
-        };
-        updated_at: string;
-      }>;
+      const notifications = await fetchAllUnreadNotifications(
+        resolved.client.activity,
+      );
       const nowMs = Date.now();
       const triaged: TriagedNotification[] = notifications.map((n) => {
         const repoPushedAt = n.repository?.pushed_at ?? null;

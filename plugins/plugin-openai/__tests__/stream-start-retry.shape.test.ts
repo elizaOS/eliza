@@ -287,6 +287,36 @@ describe("live-stream start retry", () => {
     expect(aiMocks.generateText).toHaveBeenCalledTimes(2);
   }, 20_000);
 
+  it("non-streaming: OpenRouter's intermittent no-models 400 retries unchanged", async () => {
+    let call = 0;
+    aiMocks.generateText.mockImplementation(() => {
+      call++;
+      if (call === 1) {
+        return Promise.reject({
+          statusCode: 400,
+          message: "Bad Request",
+          responseBody: '{"error":{"message":"No models provided","code":400}}',
+        });
+      }
+      return Promise.resolve({
+        text: "recovered",
+        toolCalls: [],
+        finishReason: "stop",
+        usage: { inputTokens: 4, outputTokens: 2 },
+        providerMetadata: undefined,
+      });
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    const result = await handleTextSmall(createRuntime(), { prompt: "hi" } as never);
+
+    expect(result).toBe("recovered");
+    expect(aiMocks.generateText).toHaveBeenCalledTimes(2);
+    expect(aiMocks.generateText.mock.calls[1]?.[0]).toEqual(
+      aiMocks.generateText.mock.calls[0]?.[0]
+    );
+  }, 20_000);
+
   it("non-streaming: a genuine validation 400 does not retry", async () => {
     aiMocks.generateText.mockRejectedValue({
       statusCode: 400,

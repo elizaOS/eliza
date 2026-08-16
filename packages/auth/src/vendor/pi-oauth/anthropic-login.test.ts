@@ -55,6 +55,24 @@ describe("refreshAnthropicToken", () => {
       /Anthropic token refresh failed/,
     );
   });
+
+  it("sets expires to Date.now() + expires_in*1000 without premature buffer (single source is credentials.ts)", async () => {
+    const now = 1_700_000_000_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    mockTokenResponse({
+      refresh_token: "rt-new",
+      access_token: "at-new",
+      expires_in: 3600,
+    });
+    const creds = await refreshAnthropicToken("rt-old");
+    // Must be exact wall-clock + TTL. The 5-minute refresh window lives only
+    // in credentials.ts effectiveBufferMs; anthropic-login must not subtract
+    // its own 5 min or the combined 10-min early refresh burns single-use
+    // refresh tokens twice as fast.
+    expect(creds.expires).toBe(now + 3600 * 1000);
+    expect(creds.expires).not.toBe(now + 3600 * 1000 - 5 * 60 * 1000);
+    vi.restoreAllMocks();
+  });
 });
 
 describe("Anthropic authorization exchange", () => {
@@ -105,5 +123,19 @@ describe("Anthropic authorization exchange", () => {
         "https://attacker.example/callback?code=auth-code&state=state",
       ),
     ).rejects.toThrow("code#state");
+  });
+
+  it("exchange sets expires to Date.now() + expires_in*1000 without double buffer", async () => {
+    const now = 1_700_000_000_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    mockTokenResponse({
+      refresh_token: "rt-ex",
+      access_token: "at-ex",
+      expires_in: 3600,
+    });
+    const creds = await exchangeAnthropicAuthorizationCode("code#state-value");
+    expect(creds.expires).toBe(now + 3600 * 1000);
+    expect(creds.expires).not.toBe(now + 3600 * 1000 - 5 * 60 * 1000);
+    vi.restoreAllMocks();
   });
 });

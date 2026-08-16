@@ -1,9 +1,12 @@
 /**
- * Exercises PromptBatcher's recurring drain loop, minCycleMs throttling, and
- * once-section cache reuse / stale-while-revalidate against an in-memory runtime
- * and a fake dispatcher (no real model calls).
+ * Exercises PromptBatcher's recurring drain loop, concurrent message-buffer
+ * accounting, minCycleMs throttling, and once-section cache reuse /
+ * stale-while-revalidate against an in-memory runtime and a fake dispatcher
+ * (no real model calls).
  */
 import { describe, expect, test } from "vitest";
+import type { Memory } from "../../types/memory";
+import type { UUID } from "../../types/primitives";
 import type {
 	BatcherResult,
 	ResolvedSection,
@@ -120,7 +123,109 @@ function wait(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function makeMessage(index: number): Memory {
+	return {
+		id: `00000000-0000-0000-0001-${String(index).padStart(12, "0")}` as UUID,
+		entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+		roomId: "00000000-0000-0000-0000-000000000003" as UUID,
+		content: { text: `message-${index}` },
+	};
+}
+
 describe("PromptBatcher recurring loop and cache behavior", () => {
+	test("preserves a message appended while a drain is in flight", async () => {
+		const { runtime } = makeRuntime();
+		const dispatcher = makeDispatcher();
+		const batcher = new PromptBatcher(runtime, dispatcher as never, SETTINGS);
+		await ready();
+
+		let releaseFirstContext!: () => void;
+		const firstContextGate = new Promise<void>((resolve) => {
+			releaseFirstContext = resolve;
+		});
+		let signalFirstContext!: () => void;
+		const firstContextEntered = new Promise<void>((resolve) => {
+			signalFirstContext = resolve;
+		});
+		const observedMessageIds: string[][] = [];
+
+		batcher.think("autonomy", {
+			minCycleMs: 0,
+			contextBuilder: async (_runtime, messages) => {
+				observedMessageIds.push(messages.map((message) => String(message.id)));
+				if (observedMessageIds.length === 1) {
+					signalFirstContext();
+					await firstContextGate;
+				}
+				return "drain context";
+			},
+			preamble: "Drain buffered messages.",
+			schema: [{ field: "value", type: "string", required: true }],
+		});
+		await ready();
+
+		const initial = makeMessage(1);
+		const appended = makeMessage(2);
+		batcher.tick(initial);
+		const firstDrain = batcher.drainAffinityGroup("autonomy");
+		await firstContextEntered;
+		batcher.tick(appended);
+		releaseFirstContext();
+		await firstDrain;
+		await batcher.drainAffinityGroup("autonomy");
+
+		expect(observedMessageIds).toEqual([
+			[String(initial.id)],
+			[String(appended.id)],
+		]);
+	});
+
+	test("preserves rollover arrivals when an in-flight buffer remains at its cap", async () => {
+		const { runtime } = makeRuntime();
+		const dispatcher = makeDispatcher();
+		const batcher = new PromptBatcher(runtime, dispatcher as never, SETTINGS);
+		await ready();
+
+		let releaseFirstContext!: () => void;
+		const firstContextGate = new Promise<void>((resolve) => {
+			releaseFirstContext = resolve;
+		});
+		let signalFirstContext!: () => void;
+		const firstContextEntered = new Promise<void>((resolve) => {
+			signalFirstContext = resolve;
+		});
+		const observedMessages: Memory[][] = [];
+
+		batcher.think("autonomy", {
+			minCycleMs: 0,
+			contextBuilder: async (_runtime, messages) => {
+				observedMessages.push(messages);
+				if (observedMessages.length === 1) {
+					signalFirstContext();
+					await firstContextGate;
+				}
+				return "drain context";
+			},
+			preamble: "Drain buffered messages.",
+			schema: [{ field: "value", type: "string", required: true }],
+		});
+		await ready();
+
+		for (let index = 1; index <= 50; index += 1) {
+			batcher.tick(makeMessage(index));
+		}
+		const rolloverArrival = makeMessage(51);
+		const firstDrain = batcher.drainAffinityGroup("autonomy");
+		await firstContextEntered;
+		batcher.tick(rolloverArrival);
+		releaseFirstContext();
+		await firstDrain;
+		await batcher.drainAffinityGroup("autonomy");
+
+		expect(observedMessages[0]).toHaveLength(50);
+		expect(observedMessages[1]).toEqual([rolloverArrival]);
+	});
+
 	test("recurring autonomy-affinity sections run on repeated drain tasks and keep context stateful", async () => {
 		const { runtime, tasks } = makeRuntime();
 		const dispatcher = makeDispatcher();

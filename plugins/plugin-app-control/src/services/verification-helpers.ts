@@ -217,9 +217,32 @@ export function parseEslintOutput(output: string): Diagnostic[] {
 	return diagnostics;
 }
 
-export type VitestSummary = {
+export type VitestCounts = {
 	passed: number;
 	failed: number;
+};
+
+/**
+ * Parse the aggregate `Tests` line emitted by Vitest. Counts are located
+ * independently because reporters may place passed and failed totals in
+ * either order. A missing or unrecognized summary remains distinct from a
+ * valid zero count so callers never manufacture proof from unrelated output.
+ */
+export function parseVitestCounts(output: string): VitestCounts | null {
+	const testsLine = /^\s*Tests\s+(.+)$/m.exec(output)?.[1];
+	if (!testsLine) return null;
+
+	const failedMatch = /\b(\d+)\s+failed\b/.exec(testsLine);
+	const passedMatch = /\b(\d+)\s+passed\b/.exec(testsLine);
+	if (!failedMatch && !passedMatch) return null;
+
+	return {
+		passed: passedMatch ? Number.parseInt(passedMatch[1] ?? "0", 10) : 0,
+		failed: failedMatch ? Number.parseInt(failedMatch[1] ?? "0", 10) : 0,
+	};
+}
+
+export type VitestSummary = VitestCounts & {
 	failures: string[];
 };
 
@@ -235,12 +258,10 @@ export function parseVitestOutput(output: string): VitestSummary {
 	const summary: VitestSummary = { passed: 0, failed: 0, failures: [] };
 	if (!output) return summary;
 
-	const testsLine =
-		/^\s*Tests\s+(?:(\d+)\s+failed)?[\s|]*?(?:(\d+)\s+passed)?/m;
-	const match = testsLine.exec(output);
-	if (match) {
-		summary.failed = match[1] ? Number.parseInt(match[1], 10) : 0;
-		summary.passed = match[2] ? Number.parseInt(match[2], 10) : 0;
+	const counts = parseVitestCounts(output);
+	if (counts) {
+		summary.failed = counts.failed;
+		summary.passed = counts.passed;
 	}
 
 	// Vitest prints `× <test name>` lines for failing tests in default reporter.

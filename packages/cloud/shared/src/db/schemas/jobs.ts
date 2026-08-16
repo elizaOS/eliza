@@ -31,6 +31,10 @@ export const jobs = pgTable(
     error_key: text("error_key"),
     attempts: integer("attempts").notNull().default(0),
     max_attempts: integer("max_attempts").notNull().default(3),
+    // Worker-restart interruptions recovered without spending an attempt.
+    // Column shipped ahead of this entry in 0185/0194 (#17476) so readers only
+    // deploy against databases that already have it.
+    execution_interruptions: integer("execution_interruptions").notNull().default(0),
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),

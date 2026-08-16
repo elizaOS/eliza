@@ -411,6 +411,22 @@ export function validateMeetingArtifact(
   const speakerIds = collectIds(speakers, "diarizedSpeakers", errors);
   const bindingIds = collectIds(bindings, "entityBindings", errors);
   const spanIds = collectIds(spans, "transcriptSpans", errors);
+  collectIds(Array.isArray(value.notes) ? value.notes : [], "notes", errors);
+  collectIds(
+    Array.isArray(value.actionItems) ? value.actionItems : [],
+    "actionItems",
+    errors,
+  );
+  collectIds(
+    Array.isArray(value.decisions) ? value.decisions : [],
+    "decisions",
+    errors,
+  );
+  collectIds(
+    Array.isArray(value.evidenceArtifacts) ? value.evidenceArtifacts : [],
+    "evidenceArtifacts",
+    errors,
+  );
 
   media.forEach((row, index) => {
     if (!isRecord(row)) return;

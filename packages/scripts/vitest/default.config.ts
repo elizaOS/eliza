@@ -172,6 +172,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-agent-skills",
   "plugin-anthropic",
   "plugin-app-control",
+  "plugin-app-manager",
   "plugin-browser",
   "plugin-capacitor-bridge",
   "plugin-coding-tools",
@@ -354,6 +355,10 @@ const vitestResolveAlias: ModuleAlias[] = [
     replacement: path.join(cloudSdkSourceRoot, "index.ts"),
   },
   {
+    find: /^@elizaos\/vault$/,
+    replacement: path.join(elizaWorkspaceRoot, "packages/vault/src/index.ts"),
+  },
+  {
     // App-core tests mock this plugin, but Vitest still has to resolve the specifier.
     find: "@elizaos/capacitor-agent",
     replacement: appCoreModuleFallbackPath,
@@ -404,6 +409,18 @@ const vitestResolveAlias: ModuleAlias[] = [
           replacement: path.join(
             path.dirname(elizaCoreEntry),
             "testing/index.ts",
+          ),
+        },
+        {
+          // Scheduling's source runner imports the edge-safe serializer. Keep
+          // this exports-map subpath ahead of the prefix-matching bare alias so
+          // clean package tests never resolve `index.node.ts/edge` (ENOTDIR).
+          find: /^@elizaos\/core\/edge$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts")
+              ? "index.edge.ts"
+              : "edge/index.edge.js",
           ),
         },
         {

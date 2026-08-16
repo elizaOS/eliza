@@ -69,6 +69,12 @@ app.get("/", async (c) => {
       ? new Date(startDateRaw)
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const endDate = endDateRaw ? new Date(endDateRaw) : new Date();
+    if (startDateRaw && !Number.isFinite(startDate.getTime())) {
+      return c.json({ error: "Invalid startDate" }, 400);
+    }
+    if (endDateRaw && !Number.isFinite(endDate.getTime())) {
+      return c.json({ error: "Invalid endDate" }, 400);
+    }
 
     const timeRangeDays =
       (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);

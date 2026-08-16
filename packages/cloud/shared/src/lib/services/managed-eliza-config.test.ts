@@ -250,13 +250,11 @@ describe("managed Eliza environment", () => {
     expect(result.environmentVars.ELIZA_AGENT_LOCAL_STATE).toBe("1");
   });
 
-  test("pins both embedding dimensions to 1536 so the storage column and the cloud probe agree (#8769)", async () => {
-    // Pinning EMBEDDING_DIMENSION + ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS=1536 makes
-    // the cloud TEXT_EMBEDDING handler EMIT 1536-wide vectors. plugin-sql does NOT
-    // read these vars; the storage column is sized at boot by the model-length
-    // probe (runtime.ensureEmbeddingDimension). Both must agree on 1536 or the boot
-    // probe snaps the column to a width the handler's output won't match -
-    // re-introducing "Skipping embedding insert: dimension mismatch" (#8769).
+  test("fresh provisions default to local 384-d embeddings and agree on the width (#8769 discipline)", async () => {
+    // 2026-08-16 platform default: fresh agents run local gte-small (384-d)
+    // instead of paid cloud text-embedding-3-small. Both dimension hints must
+    // still agree with the handler's real output or the boot probe snaps the
+    // storage column to a width the handler won't match (#8769).
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
@@ -265,8 +263,9 @@ describe("managed Eliza environment", () => {
       agentSandboxId: "cloud-agent-1",
     });
 
-    expect(result.environmentVars.EMBEDDING_DIMENSION).toBe("1536");
-    expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
+    expect(result.environmentVars.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
+    expect(result.environmentVars.EMBEDDING_DIMENSION).toBe("384");
+    expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
   });
 
   test("honors explicit per-agent embedding-dimension overrides", async () => {
@@ -296,7 +295,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     delete process.env.NEXT_PUBLIC_API_URL;
   });
 
-  test("returns all 5 inference keys with 1536-d embedding defaults on an empty env", async () => {
+  test("empty env (fresh provision) defaults to local-primary 384-d embeddings", async () => {
     const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
 
     const result = applyManagedAgentInferenceEnvDefaults({});
@@ -306,13 +305,39 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
       "ELIZAOS_CLOUD_EMBEDDING_URL",
       "ELIZAOS_CLOUD_LARGE_MODEL",
       "ELIZAOS_CLOUD_SMALL_MODEL",
+      "ELIZAOS_CLOUD_USE_EMBEDDINGS",
       "EMBEDDING_DIMENSION",
     ]);
-    expect(result.EMBEDDING_DIMENSION).toBe("1536");
-    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
+    expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
+    expect(result.EMBEDDING_DIMENSION).toBe("384");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_URL).toBeTruthy();
     expect(result.ELIZAOS_CLOUD_SMALL_MODEL).toBeTruthy();
     expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBeTruthy();
+  });
+
+  test("a previously provisioned agent (cloud key present) keeps the 1536-d cloud default — no #9911 heal", async () => {
+    const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
+
+    const result = applyManagedAgentInferenceEnvDefaults({
+      ELIZAOS_CLOUD_API_KEY: "eliza_existing_agent_key",
+    });
+
+    expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
+    expect(result.EMBEDDING_DIMENSION).toBe("1536");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
+  });
+
+  test("a fresh provision can explicitly opt back into cloud embeddings", async () => {
+    const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
+
+    const result = applyManagedAgentInferenceEnvDefaults({
+      ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS: "0",
+    });
+
+    expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
+    expect(result.EMBEDDING_DIMENSION).toBe("1536");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
   });
 
   test("local-primary embedding opt-in yields cloud embeddings and uses 384-dim hints", async () => {

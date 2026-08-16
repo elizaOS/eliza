@@ -883,7 +883,26 @@ function ownerLifeReadDomainsInPossessiveScopes(
 			"finances",
 		);
 		for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
-			if (noun.test(domainScope)) domains.add(domain);
+			if (!noun.test(domainScope)) continue;
+			// A noun-modified "budget" ("my keyboard budget", "my trip budget")
+			// names a conversational figure the user told the agent, not the
+			// owner finance ledger. Treating it as a finance read injected
+			// OWNER_FINANCES on a group turn, its privacy rejection made the
+			// whole turn a "private surface" denial, and a plain memory
+			// question died (observed live: "whats my keyboard budget" →
+			// denial while the $150 fact sat in room facts). Only an
+			// unmodified budget mention — bare or with a finance-ish adjective
+			// ("monthly", "overall") — counts as the finances domain.
+			if (
+				domain === "finances" &&
+				/\b(?!(?:monthly|weekly|annual|yearly|overall|total|current|entire|whole|full|remaining)\b)[a-z][a-z-]*\s+budget\b/iu.test(
+					domainScope,
+				) &&
+				!/\b(?:finances|spending|expenses)\b/iu.test(domainScope)
+			) {
+				continue;
+			}
+			domains.add(domain);
 		}
 	}
 	return domains;
@@ -910,6 +929,50 @@ function detectOwnerLifeReadDomain(
 		)
 	) {
 		return null;
+	}
+	// Quoted examples and metalinguistic discussion are not requests to open the
+	// owner's finance ledger. This guard must run before the non-possessive money
+	// detector because those examples intentionally contain its whole phrase.
+	if (
+		/\b(?:when|if)\s+(?:i|we)\s+say\b/iu.test(normalized) ||
+		/\b(?:the\s+)?(?:phrase|sentence|wording|utterance|quote|quoted)\b/iu.test(
+			normalized,
+		) ||
+		/["“][^"”]*\b(?:how much|what)\b[^"”]*["”]/u.test(normalized) ||
+		/‘[^’]*\b(?:how much|what)\b[^’]*’/u.test(normalized)
+	) {
+		return BLOCKED_OWNER_LIFE_READ;
+	}
+	// Money-spend questions are finance reads even without a possessive scope:
+	// "how much did i spend this month" / "what did i spend on groceries" /
+	// "how much have i spent" / "how much do i owe" all route to the finances
+	// reader (observed live: "how much did i spend this month" mis-routed to
+	// OWNER_GOALS and returned a life summary). Anchored to money-spend phrasing
+	// to first-person amount/expense questions; common time, attention, and
+	// obligation idioms remain conversational instead of opening private data.
+	const moneyQuestion =
+		/\b(?:how much(?: money)?|what) (?:did|have|do) i (spend|spent|pay|paid|owe)\b/iu.exec(
+			normalized,
+		);
+	if (moneyQuestion) {
+		const verb = moneyQuestion[1]?.toLowerCase();
+		const tail = normalized.slice(
+			(moneyQuestion.index ?? 0) + moneyQuestion[0].length,
+		);
+		const nonFinancialSpend =
+			(verb === "spend" || verb === "spent") &&
+			/^\s+(?:time|effort|energy)\b/iu.test(tail);
+		const nonFinancialPay =
+			(verb === "pay" || verb === "paid") &&
+			/^\s+(?:attention|tribute|homage|respects?|heed)\b/iu.test(tail);
+		const nonFinancialOwe =
+			verb === "owe" &&
+			/^\s+(?:(?:you|him|her|them|someone)\s+)?(?:an?\s+)?(?:apology|explanation|favor)\b/iu.test(
+				tail,
+			);
+		if (!nonFinancialSpend && !nonFinancialPay && !nonFinancialOwe) {
+			return "finances";
+		}
 	}
 	const domains = ownerLifeReadDomainsInPossessiveScopes(normalized);
 	if (domains.size === 0) return null;

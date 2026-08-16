@@ -36,6 +36,7 @@ import { chromium } from "playwright";
 import postcss from "postcss";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
+import { waitForAdvertisedPort } from "../../../../scripts/e2e-ports.mjs";
 import { optionalWalletPeerStubPlugin } from "./optional-wallet-peer-stub.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -45,9 +46,11 @@ const outDir = join(here, "output-slop-removal");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
-const API_PORT = 36423;
-const PAGE_PORT = 36424;
-const API_BASE = `http://127.0.0.1:${API_PORT}`;
+// Kernel-assigned per run: the fixed 364xx legs died EADDRINUSE when the
+// main-pipeline fan-out put concurrent harness jobs on one runner (#18359).
+// Each consumer binds port 0 itself (the in-process page server directly, the
+// spawned cloud-api via API_DEV_PORT=0 + a port-file handshake), so no port
+// is ever probed and released before its owner binds it.
 
 let failures = 0;
 function assert(cond, msg) {
@@ -66,12 +69,14 @@ const bunSourceCondition = "--conditions=eliza-source";
 const bunOptions = process.env.BUN_OPTIONS?.includes(bunSourceCondition)
   ? process.env.BUN_OPTIONS
   : `${process.env.BUN_OPTIONS ?? ""} ${bunSourceCondition}`.trim();
+const apiPortFile = join(outDir, "cloud-api.port");
 const stackEnv = {
   ...process.env,
   BUN_OPTIONS: bunOptions,
   MOCK_REDIS: "1",
   DATABASE_URL: `pglite://${pgdata}`,
-  API_DEV_PORT: String(API_PORT),
+  API_DEV_PORT: "0",
+  API_DEV_PORT_FILE: apiPortFile,
   CRON_SECRET: "local-cron-secret",
   ELIZA_KMS_BACKEND: "local",
   ELIZA_LOCAL_ROOT_KEY: Buffer.alloc(32, 7).toString("base64"),
@@ -102,6 +107,10 @@ process.on("exit", () => {
     apiServer.kill("SIGTERM");
   } catch {}
 });
+const API_PORT = await waitForAdvertisedPort(apiPortFile, {
+  child: apiServer,
+});
+const API_BASE = `http://127.0.0.1:${API_PORT}`;
 {
   let healthy = false;
   for (let i = 0; i < 240 && !healthy; i += 1) {
@@ -322,7 +331,7 @@ const pageHtml = `<!doctype html><html><head><meta charset="utf-8">
 
 const pageServer = Bun.serve({
   hostname: "127.0.0.1",
-  port: PAGE_PORT,
+  port: 0,
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) {
@@ -372,7 +381,7 @@ async function snap(name, target = page) {
   console.log(`  📸 ${file}`);
 }
 
-const ORIGIN = `http://127.0.0.1:${PAGE_PORT}`;
+const ORIGIN = `http://127.0.0.1:${pageServer.port}`;
 
 // --- leg 1: the managed Cloud app routing contract ---------------------------
 //
@@ -532,9 +541,9 @@ await page.getByTestId("surface-account").waitFor({ timeout: 60_000 });
 await page.waitForTimeout(3000);
 await snap("surface-account-desktop");
 
-// --- mobile pass over the two most-changed surfaces --------------------------
+// --- 320px pass over the two most-changed surfaces ---------------------------
 const mobile = await context.browser().newContext({
-  viewport: { width: 390, height: 844 },
+  viewport: { width: 320, height: 844 },
 });
 const mpage = await mobile.newPage();
 await mpage.goto(`${ORIGIN}/?surface=billing&canceled=true`);
@@ -549,10 +558,17 @@ await mpage.screenshot({
 });
 await mpage.goto(`${ORIGIN}/?surface=monetization`);
 await mpage.getByRole("tab", { name: /Earnings/i }).waitFor({ timeout: 60_000 });
+await mpage.getByRole("tab", { name: /Affiliates/i }).click();
+await mpage
+  .getByTestId("cloud-affiliates-copy-affiliate")
+  .waitFor({ timeout: 60_000 });
 await mpage.waitForTimeout(2500);
 shot += 1;
 await mpage.screenshot({
-  path: join(outDir, `${String(shot).padStart(2, "0")}-surface-monetization-mobile.png`),
+  path: join(
+    outDir,
+    `${String(shot).padStart(2, "0")}-surface-monetization-affiliates-mobile-320.png`,
+  ),
   fullPage: true,
 });
 await mobile.close();

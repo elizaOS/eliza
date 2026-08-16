@@ -381,7 +381,21 @@ function matchesFilter(
   if (projectId && task.projectId !== projectId) return false;
   if (filter.search) {
     const needle = filter.search.trim().toLowerCase();
-    if (needle && !searchText.includes(needle)) return false;
+    if (needle && !searchText.includes(needle)) {
+      // Token-AND fallback, mirroring the action-layer taskMatchesSearch: a
+      // planner-composed search is a noun phrase in the planner's word order
+      // ("nubs website") while the stored text carries the user's ("personal
+      // website for nubs"). A whole-phrase miss here silently pre-filters the
+      // task out before ANY downstream matcher runs, so history answers "no
+      // task exists" against a store that holds it (observed live).
+      const tokens = needle.split(/\s+/).filter((token) => token.length > 0);
+      if (
+        tokens.length < 2 ||
+        !tokens.every((token) => searchText.includes(token))
+      ) {
+        return false;
+      }
+    }
   }
   return true;
 }
@@ -1082,8 +1096,19 @@ export class RuntimeDbTaskStore {
       params.push(projectId);
     }
     if (filter.search?.trim()) {
-      clauses.push("search_text LIKE ?");
-      params.push(`%${filter.search.trim().toLowerCase()}%`);
+      // Token-AND, matching the in-memory backend: a whole-phrase `%needle%`
+      // misses planner-composed word orders ("nubs website" vs "website for
+      // nubs") and silently answers "no task exists" against a store that
+      // holds it. Each whitespace token gets its own LIKE clause, ANDed.
+      const tokens = filter.search
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((token) => token.length > 0);
+      for (const token of tokens) {
+        clauses.push("search_text LIKE ?");
+        params.push(`%${token}%`);
+      }
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const limit =

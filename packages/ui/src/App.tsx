@@ -92,6 +92,7 @@ import {
   resolveCloudHostedAgentUrl,
 } from "./components/auth/CloudPairRelay";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
+import { ServingProviderChip } from "./components/composites/chat/ServingProviderChip";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
@@ -135,6 +136,9 @@ import {
   type FocusConnectorEventDetail,
   listenForConnectRequests,
   NAVIGATE_VIEW_EVENT,
+  PUSH_TO_TALK_HOLD_EVENT,
+  PUSH_TO_TALK_TOGGLE_EVENT,
+  type PushToTalkHoldDetail,
 } from "./events";
 import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
 import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
@@ -199,6 +203,7 @@ import { TutorialConductorMount } from "./tutorial/TutorialConductor";
 import { isElizaCloudControlPlaneAgentlessBase } from "./utils/cloud-agent-base";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { openExternalUrl } from "./utils/openExternalUrl";
+import { playCaptureSendCue, playCaptureStartCue } from "./voice/capture-cues";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
@@ -346,12 +351,15 @@ function ChatOverlayShell() {
     return () => document.removeEventListener("keydown", onKey);
   }, [overlayOpen]);
   return (
-    <div
-      data-testid="chat-overlay-shell"
-      className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
-    >
-      <ShellFoundationMount />
-    </div>
+    <>
+      <GlassStyles />
+      <div
+        data-testid="chat-overlay-shell"
+        className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
+      >
+        <ShellFoundationMount />
+      </div>
+    </>
   );
 }
 
@@ -1810,6 +1818,65 @@ function ShellFoundationMount() {
     return () => controller.setDictationSink(null);
   }, [controller, setChatInput, chatInputRef]);
 
+  // Global push-to-talk hotkey (#20483): the OS shortcut is trigger-only (no
+  // key-up event reaches the renderer), so the hotkey drives the SAME ptt
+  // capture as the pill's hold, in toggle form — first press opens the mic
+  // (ping + listening chip on the pill), second press stops and sends (tick). No
+  // window is summoned and no focus is taken; the pill alone shows the state.
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const onToggle = () => {
+      const shell = controllerRef.current;
+      if (!shell) return;
+      if (shell.recording) {
+        playCaptureSendCue();
+        shell.stopRecording();
+        return;
+      }
+      playCaptureStartCue();
+      shell.startRecording("ptt");
+    };
+    document.addEventListener(PUSH_TO_TALK_TOGGLE_EVENT, onToggle);
+    return () =>
+      document.removeEventListener(PUSH_TO_TALK_TOGGLE_EVENT, onToggle);
+  }, []);
+
+  // Fn-hold quasimode (#20483): the native fn monitor delivers true down/up,
+  // so this is the same contract as the pill's own press-and-hold — down
+  // opens the mic, up sends, a cancelled release (fn-chord, monitor loss)
+  // aborts silently. Tracks its own held flag so an unpaired release (e.g.
+  // fn was already down at subscribe time) cannot stop a capture the toggle
+  // hotkey or pill started.
+  const fnHoldActiveRef = useRef(false);
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const onHold = (event: Event) => {
+      const shell = controllerRef.current;
+      if (!shell) return;
+      const detail = (event as CustomEvent<PushToTalkHoldDetail>).detail;
+      if (!detail || typeof detail.held !== "boolean") return;
+      if (detail.held) {
+        if (fnHoldActiveRef.current || shell.recording) return;
+        fnHoldActiveRef.current = true;
+        playCaptureStartCue();
+        shell.startRecording("ptt");
+        return;
+      }
+      if (!fnHoldActiveRef.current) return;
+      fnHoldActiveRef.current = false;
+      if (detail.cancelled) {
+        shell.cancelRecording();
+        return;
+      }
+      playCaptureSendCue();
+      shell.stopRecording();
+    };
+    document.addEventListener(PUSH_TO_TALK_HOLD_EVENT, onHold);
+    return () => document.removeEventListener(PUSH_TO_TALK_HOLD_EVENT, onHold);
+  }, []);
+
   useEffect(() => {
     if (!hasController) return undefined;
     let cancelled = false;
@@ -1834,22 +1901,45 @@ function ShellFoundationMount() {
     <>
       <HomePill
         phase={controller.phase}
+        speaking={controller.speaking}
         onOpen={controller.open}
         onClose={controller.close}
+        onHoldStart={() => {
+          // Audible mic-open ping BEFORE capture spins up: the cue is the
+          // "start talking" signal, so it must not wait on getUserMedia.
+          playCaptureStartCue();
+          controller.startRecording("ptt");
+        }}
+        onHoldEnd={() => {
+          playCaptureSendCue();
+          controller.stopRecording();
+        }}
+        onHoldCancel={controller.cancelRecording}
       />
-      <AssistantOverlay phase={controller.phase} onClose={controller.close}>
-        <ChatSurface
-          messages={controller.messages}
-          onSend={controller.send}
-          canSend={controller.canSend}
-          greeting={greetingForTimeOfDay()}
-          recording={controller.recording}
-          onToggleRecording={controller.toggleRecording}
-          onDictateStart={() => controller.startRecording("dictate")}
-          onDictateEnd={controller.stopRecording}
-          onVision={controller.captureVision}
-          visionActive={controller.visionCapturing}
-        />
+      <AssistantOverlay
+        phase={controller.phase}
+        onClose={controller.close}
+        open={controller.isOpen}
+      >
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex min-h-6 shrink-0 items-center justify-end pr-8">
+            <ServingProviderChip className="pointer-events-none text-muted-strong" />
+          </div>
+          <div className="min-h-0 flex-1">
+            <ChatSurface
+              messages={controller.messages}
+              onSend={controller.send}
+              canSend={controller.canSend}
+              greeting={greetingForTimeOfDay()}
+              recording={controller.recording}
+              onToggleRecording={controller.toggleRecording}
+              onDictateStart={() => controller.startRecording("dictate")}
+              onDictateEnd={controller.stopRecording}
+              onVision={controller.captureVision}
+              visionActive={controller.visionCapturing}
+            />
+          </div>
+        </div>
       </AssistantOverlay>
     </>
   );

@@ -504,3 +504,82 @@ describe("v5 message handler routing", () => {
 		expect(parsed?.extract).toBeUndefined();
 	});
 });
+
+describe("explicit media-ask promotion", () => {
+	it("promotes a poisoned capability denial on the simple path to media planning", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText:
+					"can't do that here. no video generation tools in this setup.",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+		expect(parsed).not.toBeNull();
+		if (!parsed) return;
+		const route = routeMessageHandlerOutput(parsed, {
+			messageText: "generate a 3 second video of falling leaves",
+		});
+		expect(route.type).toBe("planning_needed");
+		if (route.type === "planning_needed") {
+			expect(route.contexts).toEqual(["media"]);
+			expect(route.output.plan.candidateActions).toContain("GENERATE_MEDIA");
+		}
+	});
+
+	it("seeds GENERATE_MEDIA as a candidate on planned media asks", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "on it",
+				contexts: ["general"],
+				candidateActionNames: ["WORKFLOW"],
+			}),
+		);
+		expect(parsed).not.toBeNull();
+		if (!parsed) return;
+		const route = routeMessageHandlerOutput(parsed, {
+			messageText: "make a short video of ocean waves",
+		});
+		expect(route.type).toBe("planning_needed");
+		expect(route.output.plan.candidateActions).toContain("GENERATE_MEDIA");
+	});
+
+	it("leaves non-media asks and clarifying replies untouched", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "sure — a picture of what exactly?",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+		expect(parsed).not.toBeNull();
+		if (!parsed) return;
+		const route = routeMessageHandlerOutput(parsed, {
+			messageText: "generate an image of a fox",
+		});
+		expect(route.type).toBe("final_reply");
+	});
+
+	it("does not seed media candidates for incidental media mentions", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "here you go",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+		expect(parsed).not.toBeNull();
+		if (!parsed) return;
+		const route = routeMessageHandlerOutput(parsed, {
+			messageText: "send me the image you saved yesterday",
+		});
+		expect(route.type).toBe("final_reply");
+		expect(route.output.plan.candidateActions ?? []).not.toContain(
+			"GENERATE_MEDIA",
+		);
+	});
+});

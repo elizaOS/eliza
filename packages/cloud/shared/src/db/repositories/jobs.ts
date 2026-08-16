@@ -254,6 +254,7 @@ function retryPayloadFence(job: Job) {
     AND ${jobs.character_id} IS NOT DISTINCT FROM ${job.character_id}
     AND ${jobs.attempts} = ${job.attempts}
     AND ${jobs.max_attempts} = ${job.max_attempts}
+    AND ${jobs.execution_interruptions} = ${job.execution_interruptions}
     AND ${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}
     AND ${msWindowTimestampMatch(jobs.execution_quiesced_at, job.execution_quiesced_at)}
     AND ${msWindowTimestampMatch(jobs.started_at, job.started_at)}
@@ -295,6 +296,7 @@ function sameRetrySnapshot(left: Job, right: Job): boolean {
     left.character_id === right.character_id &&
     left.attempts === right.attempts &&
     left.max_attempts === right.max_attempts &&
+    left.execution_interruptions === right.execution_interruptions &&
     left.execution_generation === right.execution_generation &&
     sameTimestamp(left.execution_quiesced_at, right.execution_quiesced_at) &&
     sameTimestamp(left.started_at, right.started_at) &&
@@ -310,6 +312,25 @@ function sameRetrySnapshot(left: Job, right: Job): boolean {
     left.error_key === right.error_key &&
     sameError
   );
+}
+
+/**
+ * Worker-restart recoveries a job may absorb before the sweep fails it as a
+ * poison pill. Interruptions are counted in `jobs.execution_interruptions`,
+ * never in the job's attempt budget: a restart is infrastructure churn, not a
+ * failed execution. The bound exists so a job that never survives a deploy
+ * cycle (agent_snapshot was the motivating lane) cannot recover forever.
+ */
+export const MAX_JOB_INTERRUPTIONS = 5;
+
+/** Terminal error written when a job exceeds {@link MAX_JOB_INTERRUPTIONS}. */
+export function jobInterruptionBoundError(interruptions: number): string {
+  return `Job interrupted by worker restart ${interruptions} times - interruption bound reached`;
+}
+
+/** Recovery provenance written when a restart-interrupted job is re-queued. */
+export function jobInterruptionRecoveredError(interruptions: number): string {
+  return `Job interrupted by worker restart - recovered for retry (interruption ${interruptions}/${MAX_JOB_INTERRUPTIONS})`;
 }
 
 export class StaleJobExecutionError extends Error {
@@ -1055,12 +1076,16 @@ export class JobsRepository {
    * Recovers pre-start claims only after their renewable owner lease and
    * takeover grace have expired. Process start time scopes the scan but is not
    * ownership evidence: overlapping workers may both be live during rollout.
+   *
+   * Restart interruptions never spend the job's attempt budget: each recovery
+   * increments `execution_interruptions` atomically with the status flip, and
+   * a job that exceeds {@link MAX_JOB_INTERRUPTIONS} is failed terminally. A
+   * committed canary cutover keeps its dedicated resume path unchanged.
    */
   async recoverInProgressJobsStartedBefore(filters: {
     type: string;
     organizationId?: string;
     startedBefore: Date;
-    maxAttempts?: number;
     /** Settles dependent rows for jobs this sweep flips to `failed`. */
     buildFailureWriteback?: RecoveryFailureWritebackBuilder;
   }): Promise<JobRecoverySweepResult> {
@@ -1095,17 +1120,19 @@ export class JobsRepository {
 
     for (const job of interruptedJobs) {
       const resumeCommittedCanary = hasRecoverableAdminCanaryCutover(job);
-      const preservesAttempt = resumeCommittedCanary || isDurableRetryJob(job.type);
-      const newAttempts = preservesAttempt ? job.attempts : (job.attempts || 0) + 1;
-      const maxAttempts = job.max_attempts ?? filters.maxAttempts ?? 3;
-      const isFailed = !preservesAttempt && newAttempts >= maxAttempts;
+      // A worker restart is not a failed execution: every non-canary job keeps
+      // its attempt budget and spends the database-owned interruption budget
+      // instead, so restart churn cannot exhaust retries but a job that never
+      // survives a deploy cycle still terminates.
+      const newInterruptions = resumeCommittedCanary
+        ? job.execution_interruptions
+        : job.execution_interruptions + 1;
+      const isFailed = !resumeCommittedCanary && newInterruptions > MAX_JOB_INTERRUPTIONS;
       const error = resumeCommittedCanary
         ? "Admin canary cutover cleanup interrupted by worker restart - recovered without consuming a terminal attempt"
-        : isDurableRetryJob(job.type)
-          ? "Durable job interrupted by worker restart - recovered without consuming an attempt"
-          : isFailed
-            ? `Job interrupted by worker restart ${newAttempts} times - max attempts reached`
-            : `Job interrupted by worker restart - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
+        : isFailed
+          ? jobInterruptionBoundError(newInterruptions)
+          : jobInterruptionRecoveredError(newInterruptions);
       const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
       const [attempt] = await Promise.allSettled([
         (async () => {
@@ -1116,7 +1143,8 @@ export class JobsRepository {
             job,
             startedBefore: filters.startedBefore,
             isFailed,
-            newAttempts,
+            newAttempts: job.attempts,
+            newInterruptions,
             error,
             recoveryFence,
             onFailedInTx,
@@ -1165,6 +1193,13 @@ export class JobsRepository {
     startedBefore: Date;
     isFailed: boolean;
     newAttempts: number;
+    /**
+     * New interruption count for the restart sweep; omitted by the timeout
+     * sweep, which leaves the counter untouched. When the restart arm freezes
+     * `attempts`, the interruption equality below is the CAS token that makes
+     * a concurrent recovery of the same snapshot lose.
+     */
+    newInterruptions?: number;
     error: string;
     recoveryFence: SQL;
     /**
@@ -1196,6 +1231,7 @@ export class JobsRepository {
             eq(jobs.id, params.job.id),
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, params.job.attempts),
+            eq(jobs.execution_interruptions, params.job.execution_interruptions),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
             msWindowTimestampMatch(jobs.execution_quiesced_at, params.job.execution_quiesced_at),
             lt(jobs.started_at, params.startedBefore),
@@ -1226,6 +1262,7 @@ export class JobsRepository {
           status: params.isFailed ? "failed" : "pending",
           ...payload,
           attempts: params.newAttempts,
+          execution_interruptions: params.newInterruptions ?? params.job.execution_interruptions,
           completed_at: params.isFailed ? new Date() : null,
           execution_quiesced_at: new Date(),
           updated_at: new Date(),
@@ -1235,6 +1272,7 @@ export class JobsRepository {
             eq(jobs.id, params.job.id),
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, params.job.attempts),
+            eq(jobs.execution_interruptions, params.job.execution_interruptions),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
             msWindowTimestampMatch(jobs.execution_quiesced_at, params.job.execution_quiesced_at),
             lt(jobs.started_at, params.startedBefore),

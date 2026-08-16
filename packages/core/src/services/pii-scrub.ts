@@ -15,7 +15,13 @@
  *      (idempotency: a re-scrub of unchanged content is a no-op - zero model
  *      calls, zero duplicate writes). This is what makes crash-and-rerun safe
  *      with zero cursor state.
- *   2. Escalates through the merged seam
+ *   2. When the request did not pre-assemble context, runs the
+ *      context-retrieval / pseudonym-consistency stage (#15973): loads the
+ *      encrypted corpus pseudonym map, assembles the context pack + per-chunk
+ *      assignment slice (`../security/pii-context-pack.ts`), and — after a
+ *      successful scrub — persists the grown map BEFORE the done-marker so
+ *      pseudonyms stay consistent across restarts.
+ *   3. Escalates through the merged seam
  *      (`scrubWithEscalation`, #14980/#14809): tier-0 deterministic detectors
  *      run first (free, no model call); only residue candidates hit the
  *      `PII_SCRUB` model with `priority: "background"` so the scrub never
@@ -23,7 +29,7 @@
  *      residue throws, which routes the item through `onExhausted` / retry and
  *      the done-marker is NOT written (the item stays quarantined, never
  *      silently passed as clean).
- *   3. Writes the done-marker ONLY after a successful scrub, then emits
+ *   4. Writes the done-marker ONLY after a successful scrub, then emits
  *      `PII_SCRUB_COMPLETED` for progress/observability. Failures emit
  *      `PII_SCRUB_FAILED` and are surfaced via `runtime.reportError`
  *      (RECENT_ERRORS provider + owner escalation).
@@ -38,6 +44,19 @@
  * the model seam itself (already merged).
  */
 
+import {
+	assembleContextPack,
+	entityResolverFromStore,
+	type PiiContextPack,
+	type PiiContextSources,
+	type PiiEntityResolverStore,
+	sourcesFromRuntime,
+} from "../security/pii-context-pack.js";
+import { CorpusPseudonymMap } from "../security/pii-pseudonym-map.js";
+import {
+	EncryptedCachePseudonymMapStore,
+	type PseudonymMapStore,
+} from "../security/pii-pseudonym-map-store.js";
 import {
 	getScrubMarker,
 	isScrubDone,
@@ -224,13 +243,39 @@ export class PiiScrubService extends Service {
 
 		let escalated: boolean;
 		let modelId: string;
+		let stage: { store: PseudonymMapStore; map: CorpusPseudonymMap } | null =
+			null;
 		try {
+			// Context-retrieval / pseudonym-consistency stage (#15973): when the
+			// requester did not pre-assemble a context pack, assemble one here
+			// from the persisted (encrypted) corpus pseudonym map and the
+			// runtime's retrieval surfaces, so the model verdicts are
+			// context-aware and one person keeps ONE pseudonym corpus-wide. A
+			// corrupt/tampered map artifact throws (fail-closed) and routes the
+			// item through retry/quarantine.
+			let contextPack = item.contextPack;
+			let pseudonymAssignments = item.pseudonymAssignments;
+			let candidateSpans = item.candidateSpans;
+			if (
+				contextPack === undefined &&
+				pseudonymAssignments === undefined &&
+				candidateSpans.length > 0
+			) {
+				const assembled = await this.assembleContextStage(item);
+				stage = { store: assembled.store, map: assembled.map };
+				contextPack = assembled.pack.contextPack;
+				pseudonymAssignments = assembled.pack.assignments;
+				if (assembled.pack.candidateSpans.length > 0) {
+					candidateSpans = assembled.pack.candidateSpans;
+				}
+			}
+
 			const result = await scrubWithEscalation(this.runtime, {
 				text: item.content,
-				candidateSpans: item.candidateSpans,
+				candidateSpans,
 				rulesetVersion: item.rulesetVersion,
-				contextPack: item.contextPack,
-				pseudonymAssignments: item.pseudonymAssignments,
+				contextPack,
+				pseudonymAssignments,
 				priority: item.inferencePriority,
 			});
 			escalated = result.escalated;
@@ -255,6 +300,14 @@ export class PiiScrubService extends Service {
 			throw error;
 		}
 
+		// Persist the (possibly grown) pseudonym map BEFORE the done-marker: a
+		// save failure throws and the item retries, so a marked-done item always
+		// has its cluster assignments durably in the encrypted artifact. Nothing
+		// is persisted on the failure path, so a retry re-mints consistently.
+		if (stage && stage.map.size > 0) {
+			await stage.store.save(stage.map.toSnapshot());
+		}
+
 		// Success: write the content-addressed done-marker so a re-scrub of this
 		// exact content under this ruleset no-ops, and a crash-restart resumes
 		// past it with zero duplicate work.
@@ -274,6 +327,69 @@ export class PiiScrubService extends Service {
 			modelId,
 			source: "piiScrubService",
 		});
+	}
+
+	/**
+	 * Assemble the context pack + pseudonym-assignment slice for one item from
+	 * the persisted encrypted corpus map and the runtime's retrieval surfaces
+	 * (documents / memories / entity resolution when a knowledge-graph service
+	 * is registered). Failures propagate — a tampered or wrong-key map artifact
+	 * must quarantine the item, never degrade to a context-free scrub that
+	 * would mint inconsistent pseudonyms.
+	 */
+	private async assembleContextStage(item: PiiScrubQueueItem): Promise<{
+		store: PseudonymMapStore;
+		map: CorpusPseudonymMap;
+		pack: PiiContextPack;
+	}> {
+		const store = new EncryptedCachePseudonymMapStore(this.runtime);
+		const snapshot = await store.load();
+		const map = snapshot
+			? CorpusPseudonymMap.fromSnapshot(snapshot)
+			: new CorpusPseudonymMap();
+		const resolveEntity = this.entityResolverFromRuntime();
+		// A runtime without service lookup (minimal harnesses) has no retrieval
+		// surfaces; the pack is then assembled from the map alone — sources are
+		// structurally absent, recorded in `sourcesQueried`, never fabricated.
+		const sources: PiiContextSources =
+			typeof (this.runtime as { getService?: unknown }).getService ===
+			"function"
+				? sourcesFromRuntime(
+						this.runtime,
+						resolveEntity ? { resolveEntity } : {},
+					)
+				: {};
+		const pack = await assembleContextPack(sources, {
+			chunk: item.content,
+			candidates: item.candidateSpans.map((surfaceForm) => ({
+				surfaceForm,
+				kind: "unknown",
+			})),
+			map,
+			rulesetVersion: item.rulesetVersion,
+		});
+		return { store, map, pack };
+	}
+
+	/**
+	 * Structural probe for the agent-side knowledge-graph service (core cannot
+	 * import `@elizaos/agent`). An absent service means entity resolution is
+	 * structurally unavailable, which `assembleContextPack` records in
+	 * `sourcesQueried` — a configuration fact, not a silent degrade.
+	 */
+	private entityResolverFromRuntime(): PiiContextSources["resolveEntity"] {
+		const withServices = this.runtime as {
+			getService?: (name: string) => unknown;
+		};
+		if (typeof withServices.getService !== "function") return undefined;
+		const kg = withServices.getService("eliza_knowledge_graph") as
+			| (Service & {
+					getEntityStore?: () => PiiEntityResolverStore;
+			  })
+			| null;
+		const getStore = kg?.getEntityStore;
+		if (!kg || typeof getStore !== "function") return undefined;
+		return entityResolverFromStore(getStore.call(kg));
 	}
 
 	/** Emit FAILED + report the error after retries are exhausted. */

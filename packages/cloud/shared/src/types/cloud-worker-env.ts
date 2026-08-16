@@ -102,6 +102,8 @@ export interface Bindings {
   PERSONAL_DELIVERY_PROJECTIONS?: RuntimeDurableObjectNamespace;
   /** Two-phase rollout gate; readers activate only after invalidation writers are the rollback baseline. */
   PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+  /** Exact-once Telegram egress ledger for Personal Shared edge delivery. */
+  PERSONAL_TELEGRAM_DELIVERIES?: RuntimeDurableObjectNamespace;
 
   // ---- Cloudflare machine-local protective rate limits ----
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
@@ -248,6 +250,16 @@ export interface Bindings {
   ATLASCLOUD_BASE_URL?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
+  /**
+   * Base URL of the self-hosted TEI embeddings sidecar
+   * (packages/cloud/services/embeddings). Setting it routes the local
+   * `bge-small-en-v1.5` embedding id there; `/v1` suffix optional.
+   */
+  LOCAL_EMBEDDINGS_BASE_URL?: string;
+  /** Bearer token for the sidecar, only when its TEI `API_KEY` gate is set. */
+  LOCAL_EMBEDDINGS_API_KEY?: string;
+  /** "true" routes EVERY embedding id to the sidecar (aliases onto the local model). */
+  ELIZA_EMBEDDINGS_FORCE_LOCAL?: string;
   ANTHROPIC_API_KEY?: string;
   /**
    * Cloud-side HuggingFace token attached by the `/api/v1/hf-proxy/*` route so
@@ -406,6 +418,12 @@ export interface Bindings {
   WEBHOOK_GATEWAY_URL?: string;
   GATEWAY_WEBHOOK_URL?: string;
   ELIZA_APP_WEBHOOK_PROJECT?: string;
+  /** Moves only the official Personal Shared Telegram transport to the Worker edge. */
+  PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
+  /** Collision-free secret used by the protected staging edge cutover. */
+  PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
+  ELIZA_APP_TELEGRAM_BOT_TOKEN?: string;
+  ELIZA_APP_TELEGRAM_WEBHOOK_SECRET?: string;
   // Dedicated shared secret stamped onto forwarded webhook calls so the internal
   // gateway can reject traffic that didn't transit the BFF forwarder (finding
   // L3). Deliberately separate from GATEWAY_INTERNAL_SECRET (internal-event

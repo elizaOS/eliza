@@ -1,6 +1,9 @@
 /**
- * Verifies that agent DELETE requests preserve synchronous shared cleanup while
- * routing dedicated and failed shared teardown through the delete-wins queue.
+ * Verifies that agent DELETE requests preserve synchronous cleanup for
+ * container-free shared agents while routing sandbox-backed shared agents,
+ * dedicated agents, and failed sync teardown through the delete-wins queue.
+ * Mocked-service Hono boundary suite; the real-database branch coverage lives
+ * in eliza-agents-delete-sandbox-branch.pglite.test.ts.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
@@ -12,10 +15,16 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
 
 const getAgent = mock(async () => sharedAgent());
 const getAgentForWrite = mock(async () => sharedAgent());
-const deleteAgent = mock(async () => ({
-  success: false,
-  error: "Failed to delete sandbox",
-}));
+type DeleteAgentResultShape =
+  | { success: true; deletedSandbox: Record<string, unknown> }
+  | { success: false; error: string };
+
+const deleteAgent = mock(
+  async (): Promise<DeleteAgentResultShape> => ({
+    success: false,
+    error: "Failed to delete sandbox",
+  }),
+);
 type CancelAgentDeletionResult =
   | { success: true }
   | { success: false; error: string };
@@ -224,7 +233,58 @@ describe("agent deletion lifecycle", () => {
     });
   });
 
-  test("queues an async delete instead of returning 500 when shared sync teardown fails", async () => {
+  test("routes a sandbox-backed shared delete straight to the async job without a sync attempt", async () => {
+    const response = await deleteRequest();
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      created: true,
+      data: {
+        jobId: "delete-job-1",
+        agentId: "agent-1",
+        status: "pending",
+      },
+    });
+    expect(deleteAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentDeleteOnce).toHaveBeenCalledWith({
+      agentId: "agent-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      authorization: "user_request",
+    });
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps the synchronous fast path for a sandbox-less shared delete", async () => {
+    getAgent.mockResolvedValueOnce(sharedAgent({ sandbox_id: null }));
+    deleteAgent.mockResolvedValueOnce({
+      success: true,
+      deletedSandbox: sharedAgent({ sandbox_id: null }),
+    });
+
+    const response = await deleteRequest();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      deleted: true,
+      source: "shared_runtime",
+      data: {
+        agentId: "agent-1",
+        status: "deleted",
+        executionTier: "shared",
+      },
+    });
+    expect(deleteAgent).toHaveBeenCalledWith("agent-1", "org-1", {
+      authorization: "user_request",
+    });
+    expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();
+  });
+
+  test("queues an async delete instead of returning 500 when sandbox-less shared sync teardown fails", async () => {
+    getAgent.mockResolvedValueOnce(sharedAgent({ sandbox_id: null }));
+
     const response = await deleteRequest();
 
     expect(response.status).toBe(202);
@@ -340,6 +400,7 @@ describe("agent deletion lifecycle", () => {
   });
 
   test("still returns terminal sync errors without queueing a doomed delete", async () => {
+    getAgent.mockResolvedValueOnce(sharedAgent({ sandbox_id: null }));
     deleteAgent.mockResolvedValueOnce({
       success: false,
       error: "Agent provisioning is in progress",

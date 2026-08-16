@@ -38,6 +38,10 @@ import "./client-agent-accounts";
 
 export * from "./client-agent-accounts";
 
+import "./client-agent-consumer-keys";
+
+export * from "./client-agent-consumer-keys";
+
 import {
   type ConnectorAccountActionResult,
   type ConnectorAccountAuditEventsQuery,

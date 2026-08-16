@@ -1735,3 +1735,74 @@ describe("resolveExplicitContinuationRequestText", () => {
 		).toBe(null);
 	});
 });
+
+describe("noun-modified budget stays a conversational fact, not a finance read", () => {
+	const finances = { name: "OWNER_FINANCES", similes: [], tags: [] };
+
+	it("'whats my keyboard budget' produces no owner-finance candidate (live group denial)", () => {
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[finances],
+				"whats my keyboard budget",
+			),
+		).toEqual({ names: [], kind: null });
+	});
+
+	it("bare and finance-adjective budgets still route to the finances reader", () => {
+		for (const text of [
+			"what is my budget?",
+			"whats my monthly budget",
+			"show me my spending budget",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference([finances], text),
+			).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+		}
+	});
+});
+
+describe("money-spend questions route to the finances reader (non-possessive)", () => {
+	const finances = { name: "OWNER_FINANCES", similes: [], tags: [] };
+
+	it("'how much did i spend this month' → OWNER_FINANCES (live goals-misroute fix)", () => {
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[finances],
+				"how much did i spend this month",
+			),
+		).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+	});
+
+	it("spend/pay/owe phrasings all route to finances", () => {
+		for (const text of [
+			"how much have i spent",
+			"how much money did i spend this month",
+			"how much do i owe",
+			"what did i spend on groceries",
+			"what did i pay for the car",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference([finances], text),
+			).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+		}
+	});
+
+	it("non-money 'spend' phrasings do not route to finances", () => {
+		for (const text of [
+			"i want to spend time with the kids",
+			"how should i budget my spending please give advice",
+			"how much time did i spend coding",
+			"how much did i spend time coding",
+			"what did i spend effort on",
+			"what did i pay attention to",
+			"how much do i owe you an apology",
+			"how much did we spend on the team lunch",
+			"when I say how much did I spend, what does that mean?",
+			"the phrase how much did I spend is a finance question",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference([finances], text).names,
+			).not.toContain("OWNER_FINANCES");
+		}
+	});
+});

@@ -10,6 +10,7 @@ import {
   evaluateStrictGate,
   readReadableCharsWithNavigationRetry,
 } from "./aesthetic-audit-rules";
+import { openAppPath } from "./helpers";
 import {
   collectBlueColors,
   collectHoverViolations,
@@ -694,7 +695,20 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
             });
           });
         }
-        await page.goto(auditCase.path, { waitUntil: "domcontentloaded" });
+        // The static preboot and StartupScreen copy are not route readiness.
+        // Reuse the shared bounded startup contract so a cold "Booting up..."
+        // splash cannot satisfy the readable-character gate and pass green.
+        await openAppPath(page, auditCase.path);
+
+        if (auditCase.slug === "cloud-agents") {
+          // The loading skeleton has readable column labels, so the generic
+          // paint gate cannot prove the canonical list DTO was accepted.
+          await expect(
+            page.getByRole("link", { name: "Smoke Agent" }).filter({
+              visible: true,
+            }),
+          ).toBeVisible({ timeout: 10_000 });
+        }
 
         if (auditCase.slug === "get-started-success") {
           await page

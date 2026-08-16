@@ -127,7 +127,7 @@ const SHELL_CAPTURE_PAUSE_GRACE_MS = 1500;
  *  session (not per-utterance chat bubbles) and the agent stays quiet until an
  *  exit phrase, at which point the session becomes a Transcript record + a chat
  *  link-widget. */
-export type CaptureIntent = "converse" | "dictate" | "transcription";
+export type CaptureIntent = "converse" | "dictate" | "transcription" | "ptt";
 
 export interface ShellController {
   phase: ShellPhase;
@@ -175,10 +175,16 @@ export interface ShellController {
   toggleRecording: () => void;
   /** Begin voice input unconditionally. `"converse"` (default) starts the
    *  configured realtime session; `"dictate"` routes the final transcript to
-   *  the composer draft without sending. */
+   *  the composer draft without sending; `"ptt"` (the pill's hold-to-talk
+   *  quasimode, #20483) sends the final transcript as a voice turn directly,
+   *  overlay open or not. */
   startRecording: (intent?: CaptureIntent) => void;
   /** End capture unconditionally. Used by push-to-talk release. */
   stopRecording: () => void;
+  /** Abandon an in-flight capture WITHOUT transcribing or sending — the
+   *  hold-to-talk cancel gestures (Esc mid-hold, slide-off release). Releases
+   *  the mic immediately; a no-op when nothing is capturing. */
+  cancelRecording: () => void;
   /** Live interim transcription of the current utterance ("" when none). */
   transcript: string;
   /** True while an assistant reply is being spoken aloud (voice output). */
@@ -353,6 +359,17 @@ function describeCaptureFailure(err: unknown): string {
     haystack.includes("no microphone")
   ) {
     return "No microphone was found. Connect a microphone to use voice.";
+  }
+  // Post-capture transcription failure (cloud/local STT): the mic worked and
+  // the utterance was recorded, but the words could not be transcribed — the
+  // honest message is "didn't catch that", not a microphone accusation.
+  if (
+    haystack.includes("cloudstterror") ||
+    haystack.includes("cloud asr") ||
+    haystack.includes("transcri") ||
+    haystack.includes("no microphone audio was captured")
+  ) {
+    return "Didn't catch that — voice transcription failed. Try again.";
   }
   return "Could not start the microphone. Check your microphone permissions and try again.";
 }
@@ -756,6 +773,10 @@ export function useShellController(): ShellController {
   const modelStatus = useHomeModelStatus();
   const [isOpen, setIsOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
+  // Post-release STT drain (#20483): the mic is closed but the utterance is
+  // still transcribing. Drives the pill's "processing" phase so the gap
+  // between hold-release and the send/turn never reads as a silent idle.
+  const [sttPending, setSttPending] = React.useState(false);
   const [transcript, setTranscript] = React.useState("");
   const [analyser, setAnalyser] = React.useState<AnalyserNode | null>(null);
   // True when the most recent user turn was voice-originated (VOICE_DM). Gates
@@ -1022,32 +1043,79 @@ export function useShellController(): ShellController {
     [sendChatText],
   );
 
-  const stopCaptureAndDrain = React.useCallback(async () => {
+  const stopCaptureAndDrain = React.useCallback(
+    async (options?: { immediateUiReset?: boolean }) => {
+      const handle = captureRef.current;
+      captureRef.current = null;
+      // Mark this as a user-initiated stop so the clean-auto-stop carryover does
+      // NOT fire — a toggle-off / barge-in / typing-pause must discard a
+      // half-finished utterance rather than carry or commit it.
+      explicitStopRef.current = true;
+      turnCarryoverRef.current = "";
+      turnAggregatorRef.current?.reset();
+      // Push-to-talk release (#20483): drop the listening UI state IMMEDIATELY.
+      // For the cloud backend `handle.stop()` includes the whole STT round trip
+      // (seconds), and the pill's hold release must visibly end the hot-mic
+      // state the instant the finger lifts — the mic hardware is already done
+      // capturing; only transcription remains. That remainder is surfaced as
+      // the `processing` phase via sttPending so the drain never reads as a
+      // silent idle. Opt-in only: the mode-handoff drains (hands-free →
+      // transcription) key their replacement-capture effects off `recording`,
+      // so flipping it early there would open the next recorder mid-drain.
+      if (options?.immediateUiReset) {
+        setAnalyser(null);
+        setRecording(false);
+        setTranscript("");
+        if (handle) setSttPending(true);
+      }
+      if (handle) {
+        try {
+          await handle.stop();
+        } catch {
+          /* stop is best-effort from UI controls; transcribe failures surface
+             through onStateChange("error") */
+        } finally {
+          handle.dispose();
+          if (options?.immediateUiReset) setSttPending(false);
+        }
+      }
+      setAnalyser(null);
+      setRecording(false);
+      setTranscript("");
+    },
+    [],
+  );
+
+  const stopCapture = React.useCallback(
+    (options?: { immediateUiReset?: boolean }) => {
+      void stopCaptureAndDrain(options);
+    },
+    [stopCaptureAndDrain],
+  );
+
+  // Hold-to-talk cancel (#20483): drop the capture WITHOUT the stop() drain, so
+  // no STT round-trip runs and nothing is transcribed or sent. dispose() runs
+  // the recorder's cancel() — it releases the MediaStream tracks and closes the
+  // AudioContext. This is the Esc-mid-hold / slide-off-release path; a
+  // cancelled hold must cost the user nothing.
+  const cancelCapture = React.useCallback(() => {
     const handle = captureRef.current;
     captureRef.current = null;
-    // Mark this as a user-initiated stop so the clean-auto-stop carryover does
-    // NOT fire — a toggle-off / barge-in / typing-pause must discard a
-    // half-finished utterance rather than carry or commit it.
     explicitStopRef.current = true;
     turnCarryoverRef.current = "";
     turnAggregatorRef.current?.reset();
     if (handle) {
       try {
-        await handle.stop();
-      } catch {
-        /* stop is best-effort from UI controls */
-      } finally {
         handle.dispose();
+      } catch {
+        /* dispose is best-effort — the recorder's cancel() is idempotent */
       }
     }
     setAnalyser(null);
     setRecording(false);
+    setSttPending(false);
     setTranscript("");
   }, []);
-
-  const stopCapture = React.useCallback(() => {
-    void stopCaptureAndDrain();
-  }, [stopCaptureAndDrain]);
 
   // Discard an in-flight capture on app suspend WITHOUT transcribing (#voice-V1).
   // When iOS backgrounds the PWA mid-capture the `ScriptProcessorNode` stalls,
@@ -1126,7 +1194,7 @@ export function useShellController(): ShellController {
       // dictation) it bypasses the echo/disfluency end-of-turn aggregator —
       // every final is sent as-is (after exit-phrase detection).
       const aggregator =
-        intent === "dictate" || intent === "transcription"
+        intent === "dictate" || intent === "transcription" || intent === "ptt"
           ? null
           : new TurnAggregator({
               onCommit: (turn) => {
@@ -1183,11 +1251,11 @@ export function useShellController(): ShellController {
         ...(asrProviderRef.current
           ? { asrProvider: asrProviderRef.current }
           : {}),
-        // Push-to-talk dictation ends on release, so the native recognizer must
-        // commit its running interim as the final turn even if its silence
-        // window hasn't fired. Converse stops only on toggle-off, where a
-        // partial must NOT be submitted.
-        finalizeOnStop: intent === "dictate",
+        // Push-to-talk (dictation AND the pill's hold-to-talk quasimode) ends
+        // on release, so the native recognizer must commit its running interim
+        // as the final turn even if its silence window hasn't fired. Converse
+        // stops only on toggle-off, where a partial must NOT be submitted.
+        finalizeOnStop: intent === "dictate" || intent === "ptt",
         // Pre-POST silence guard fired: a near-silent tap was dropped without a
         // cloud round-trip (correct), but the user got nothing. Surface a subtle
         // "didn't catch that" hint so the dead-air is legible instead of
@@ -1292,6 +1360,18 @@ export function useShellController(): ShellController {
             // don't send, and leave lastTurnVoice false so no reply is spoken.
             setTranscript("");
             onDictatedTextRef.current?.(text);
+          } else if (intent === "ptt") {
+            // Hold-to-talk quasimode (#20483): the press-release IS the turn
+            // boundary and the utterance IS the send. No aggregator, no
+            // composer detour — the transcript goes straight out as a voice
+            // turn, so the pill can serve a full exchange with the overlay
+            // closed. An empty final never reaches here (guarded above), so a
+            // ghost hold costs nothing.
+            setTranscript("");
+            send(text, {
+              channelType: "VOICE_DM",
+              metadata: { voiceSource: segment.backend },
+            });
           } else if (aggregator) {
             // A spoken "start transcription" flips INTO long-form record-only
             // mode instead of being sent as a normal turn. (Exit is handled
@@ -1311,7 +1391,15 @@ export function useShellController(): ShellController {
             setTranscript(committed ? "" : aggregator.pending);
           }
         },
-        onStateChange: (state: VoiceCaptureState) => {
+        onStateChange: (state: VoiceCaptureState, error?: Error) => {
+          // A transcribe failure after a real utterance must be VISIBLE: the
+          // hold-to-talk contract is that a ghost hold costs nothing but a
+          // spoken turn never silently vanishes (#20483). Cloud STT throwing
+          // at stop() lands here as the error state; surface one actionable
+          // notice instead of letting the words evaporate.
+          if (state === "error" && error) {
+            setActionNotice(describeCaptureFailure(error), "error", 6000);
+          }
           if (state === "error" || state === "stopped" || state === "idle") {
             // Capture ended (clean stop, dispose, or error). Drop the handle and
             // analyser so the shell phase returns to idle/summoned and a later
@@ -1681,13 +1769,15 @@ export function useShellController(): ShellController {
   const phase: ShellPhase =
     recording || realtimeVoiceListening
       ? "listening"
-      : responding
-        ? "responding"
-        : isOpen
-          ? "summoned"
-          : ready
-            ? "idle"
-            : "booting";
+      : sttPending
+        ? "processing"
+        : responding
+          ? "responding"
+          : isOpen
+            ? "summoned"
+            : ready
+              ? "idle"
+              : "booting";
 
   // Boot-progress token for the slow-boot escalation (#14040 sub-defect 3). It
   // advances whenever the readiness poll observes fresh progress while still
@@ -1863,7 +1953,9 @@ export function useShellController(): ShellController {
       stopRealtimeVoice();
       return;
     }
-    stopCapture();
+    // Push-to-talk release: end the visible hot-mic state the instant the
+    // finger lifts — the STT drain continues in the background (#20483).
+    stopCapture({ immediateUiReset: true });
   }, [stopCapture, stopRealtimeVoice]);
 
   // A LIVE Talk session that dies past the client's reconnect budget (network
@@ -2429,6 +2521,7 @@ export function useShellController(): ShellController {
     toggleRecording,
     startRecording: startCapture,
     stopRecording,
+    cancelRecording: cancelCapture,
     handsFree,
     realtimeVoice: {
       enabled: realtimeVoiceEnabled,

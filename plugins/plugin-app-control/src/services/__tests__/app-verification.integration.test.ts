@@ -378,6 +378,37 @@ describeIntegration("AppVerificationService.verifyApp (integration)", () => {
 	);
 
 	itIf(pkgManagerAvailable)(
+		"reports mixed-order Vitest failure counts from the spawned test command",
+		async () => {
+			const workdir = mkdtempSync(path.join(tmpdir(), "verify-mixed-tests-"));
+			writeMinimalTsProject(workdir, PASS_TS);
+			writeFileSync(
+				path.join(workdir, "test-shim.mjs"),
+				`process.stdout.write(" Tests  1 passed | 2 failed (3)\\n"); process.exit(1);\n`,
+				"utf8",
+			);
+
+			const result = await service.verifyApp({
+				workdir,
+				checks: [{ kind: "test" }],
+				requireStructuredProof: false,
+				runId: "int-mixed-test-summary",
+				packageManager: "npm",
+			});
+
+			expect(result.verdict).toBe("fail");
+			expect(result.checks).toContainEqual(
+				expect.objectContaining({
+					kind: "test",
+					passed: false,
+					testSummary: { passed: 1, failed: 2 },
+				}),
+			);
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
 		"returns verdict=fail with non-empty diagnostics when TS has a type error",
 		async () => {
 			const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-fail-"));

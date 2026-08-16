@@ -6488,10 +6488,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select()
         .from(roomTable)
         .where(and(...conditions));
-      if (offset) {
+      if (offset != null) {
         query = query.offset(offset) as typeof query;
       }
-      if (limit) {
+      if (limit != null) {
         query = query.limit(limit) as typeof query;
       }
       const result = await query;

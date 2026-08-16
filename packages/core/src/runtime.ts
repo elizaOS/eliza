@@ -60,6 +60,7 @@ import {
 	resolveNativeRuntimeFeatureFromPluginName,
 	resolveNativeRuntimeFeatureFromServiceType,
 } from "./plugins/native-features";
+import { resolveActionEventWorldId } from "./runtime/action-event-world";
 import { settleActionHandler } from "./runtime/action-handler-settlement";
 import {
 	executeChainWithFallback,
@@ -340,6 +341,7 @@ import {
 } from "./utils/model-errors";
 import { captureModelLookupCaller } from "./utils/model-lookup-caller";
 import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
+import { resolvePromptBatcherSettings } from "./utils/prompt-batcher/config";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import {
 	ResponseSkeletonStreamExtractor,
@@ -1549,8 +1551,13 @@ export class AgentRuntime implements IAgentRuntime {
 		if (opts.conversationLength !== undefined) {
 			this.#conversationLength = opts.conversationLength;
 		} else if (opts.settings?.CONVERSATION_LENGTH) {
-			this.#conversationLength =
-				parseInt(String(opts.settings.CONVERSATION_LENGTH), 10) || 100;
+			const parsedConversationLength = parseInt(
+				String(opts.settings.CONVERSATION_LENGTH),
+				10,
+			);
+			this.#conversationLength = Number.isNaN(parsedConversationLength)
+				? 100
+				: parsedConversationLength;
 		} else {
 			this.#conversationLength =
 				getNumberEnv("CONVERSATION_LENGTH", 100) ?? 100;
@@ -1568,36 +1575,11 @@ export class AgentRuntime implements IAgentRuntime {
 
 		this.plugins = []; // Initialize plugins as an empty array
 		this.characterPlugins = opts.plugins ?? []; // Store the original character plugins
+		const promptBatcherSettings = resolvePromptBatcherSettings();
 		this.promptBatcher = new PromptBatcher(
 			this,
-			new PromptDispatcher({
-				packingDensity:
-					getNumberEnv("PROMPT_BATCHER_PACKING_DENSITY", 0.85) ?? 0.85,
-				maxTokensPerCall:
-					getNumberEnv("PROMPT_BATCHER_MAX_TOKENS_PER_CALL", 24_000) ?? 24_000,
-				maxParallelCalls:
-					getNumberEnv("PROMPT_BATCHER_MAX_PARALLEL_CALLS", 2) ?? 2,
-				modelSeparation:
-					getNumberEnv("PROMPT_BATCHER_MODEL_SEPARATION", 1) ?? 1,
-				maxSectionsPerCall:
-					getNumberEnv("PROMPT_BATCHER_MAX_SECTIONS_PER_CALL", 8) ?? 8,
-			}),
-			{
-				batchSize: getNumberEnv("PROMPT_BATCHER_BATCH_SIZE", 8) ?? 8,
-				maxDrainIntervalMs:
-					getNumberEnv("PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS", 30_000) ??
-					30_000,
-				maxSectionsPerCall:
-					getNumberEnv("PROMPT_BATCHER_MAX_SECTIONS_PER_CALL", 8) ?? 8,
-				packingDensity:
-					getNumberEnv("PROMPT_BATCHER_PACKING_DENSITY", 0.85) ?? 0.85,
-				maxTokensPerCall:
-					getNumberEnv("PROMPT_BATCHER_MAX_TOKENS_PER_CALL", 24_000) ?? 24_000,
-				maxParallelCalls:
-					getNumberEnv("PROMPT_BATCHER_MAX_PARALLEL_CALLS", 2) ?? 2,
-				modelSeparation:
-					getNumberEnv("PROMPT_BATCHER_MODEL_SEPARATION", 1) ?? 1,
-			},
+			new PromptDispatcher(promptBatcherSettings.dispatcher),
+			promptBatcherSettings.batcher,
 		);
 
 		// Store action planning option (undefined means check settings at runtime)
@@ -4342,7 +4324,11 @@ export class AgentRuntime implements IAgentRuntime {
 
 		const messageId = message.id;
 		const roomId = message.roomId;
-		const worldId = message.worldId ?? roomId;
+		const worldId = await resolveActionEventWorldId(
+			this,
+			message,
+			"AgentRuntime.resolveActionEventWorldId",
+		);
 
 		const runOne = async (action: Action) => {
 			await this.emitEvent(EventType.ACTION_STARTED, {
@@ -4899,8 +4885,10 @@ export class AgentRuntime implements IAgentRuntime {
 				: (this.stateCache.get(message.id) ?? cachedPublicState ?? emptyObj);
 		const cachedState =
 			cachedCandidate === emptyObj ||
-			cachedCandidate.data.__trustedDeliveryAudienceCacheKey ===
-				audienceCacheKey
+			(cachedCandidate.data.__trustedDeliveryAudienceCacheKey ===
+				audienceCacheKey &&
+				(cachedCandidate.data as Record<string, unknown>).__roomId ===
+					message.roomId)
 				? cachedCandidate
 				: emptyObj;
 		const activeContexts = getActiveRoutingContextsForTurn(
@@ -5065,7 +5053,7 @@ export class AgentRuntime implements IAgentRuntime {
 				const providerRuntime: IAgentRuntime = this;
 				const inFlightKey =
 					message.id && !refreshSet?.has(provider.name)
-						? `${message.id}\u0000${provider.name}\u0000${
+						? `${message.id}\u0000${message.roomId}\u0000${provider.name}\u0000${
 								provider.disclosureGate?.require === "owner_exclusive"
 									? trustedDeliveryAudienceCacheKey(message)
 									: "public"
@@ -5527,6 +5515,7 @@ export class AgentRuntime implements IAgentRuntime {
 			},
 			data: {
 				...cachedState.data,
+				__roomId: message.roomId,
 				__conversationSeed: conversationSeed,
 				__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 				providerOrder: providerOrderNames,
@@ -5583,6 +5572,7 @@ export class AgentRuntime implements IAgentRuntime {
 				state: {
 					values: { ...publicValues, providers: publicText },
 					data: {
+						__roomId: message.roomId,
 						__conversationSeed: conversationSeed,
 						__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 						providerOrder: publicProviders.map((provider) => provider.name),

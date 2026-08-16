@@ -35,6 +35,14 @@ vi.mock("../lifeops/service.js", () => {
   }
 
   class LifeOpsService {
+    agentId() {
+      return "00000000-0000-0000-0000-000000000003";
+    }
+
+    ownerEntityId() {
+      return "00000000-0000-0000-0000-000000000002";
+    }
+
     async listDefinitions() {
       return serviceState.definitions;
     }
@@ -337,6 +345,19 @@ describe("LifeOps definition review isolation", () => {
       },
     });
     expect(missing.text).not.toContain("Call dentist");
+  });
+
+  it("drops a list-verbiage target instead of empty-matching (live: planner stamped title 'list all')", async () => {
+    const result = await review({
+      ownerSurface: "OWNER_TODOS",
+      target: "list all",
+    });
+    expect(result.success).toBe(true);
+    expect(definitionTitles(result)).toEqual([
+      "File taxes",
+      "Project Alpha plan",
+      "Project Alpha review",
+    ]);
   });
 
   it("grounds an empty tracked-work claim only from an observed empty review", async () => {

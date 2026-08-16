@@ -77,8 +77,19 @@ vi.mock("../lifeops/service.js", () => {
     }
   }
   class LifeOpsService {
+    private readonly ownerEntityIdValue: string;
+
     constructor(_runtime: IAgentRuntime, options?: { ownerEntityId?: string }) {
       serviceState.ownerEntityIds.push(options?.ownerEntityId);
+      this.ownerEntityIdValue = options?.ownerEntityId ?? "owner-test";
+    }
+
+    agentId() {
+      return "agent-test";
+    }
+
+    ownerEntityId() {
+      return this.ownerEntityIdValue;
     }
 
     repository = {
@@ -189,15 +200,27 @@ vi.mock("../lifeops/service.js", () => {
       };
     }
     async listDefinitions() {
+      // The caller-subject filter in life.ts requires each definition to be
+      // bound to the resolving owner; stamp the default subject unless a test
+      // deliberately supplies a foreign one.
       return [
         {
           definition: {
             id: "def-1",
             title: "workout",
             domain: "user_lifeops",
+            subjectType: "owner",
+            subjectId: this.ownerEntityIdValue,
           },
         },
-        ...serviceState.extraDefinitions,
+        ...serviceState.extraDefinitions.map((entry) => ({
+          ...entry,
+          definition: {
+            subjectType: "owner",
+            subjectId: this.ownerEntityIdValue,
+            ...(entry.definition as Record<string, unknown>),
+          },
+        })),
       ];
     }
     async listGoals() {
@@ -1557,12 +1580,16 @@ describe("runLifeConnectedQuery capability boundaries", () => {
 describe("resolveDefinitionFromIntent", () => {
   it("resolves a uniquely named definition from natural-language intent", async () => {
     const service = {
+      agentId: () => "agent-test",
+      ownerEntityId: () => "owner-test",
       listDefinitions: vi.fn(async () => [
         {
           definition: {
             id: "def-1",
             title: "workout",
             domain: "user_lifeops",
+            subjectType: "owner",
+            subjectId: "owner-test",
           },
         },
       ]),

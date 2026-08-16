@@ -219,6 +219,7 @@ function parseContainerCommand(command: string): string[] {
     if (escaping) {
       current += char;
       escaping = false;
+      tokenStarted = true;
       continue;
     }
 

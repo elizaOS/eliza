@@ -16,7 +16,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 vi.mock("./mac-window-effects", () => ({
   createSecurityScopedBookmark: vi.fn(() => null),
   enableVibrancy: vi.fn(() => false),
-  ensureShadow: vi.fn(() => false),
+  setWindowShadow: vi.fn(() => false),
   isAppActive: vi.fn(() => false),
   isKeyWindow: vi.fn(() => false),
   makeKeyAndOrderFront: vi.fn(),
@@ -25,6 +25,12 @@ vi.mock("./mac-window-effects", () => ({
   setTrafficLightsPosition: vi.fn(),
   startAccessingSecurityScopedBookmark: vi.fn(() => false),
   stopAccessingSecurityScopedBookmarks: vi.fn(),
+  startFnMonitor: vi.fn(() => "unavailable" as const),
+  stopFnMonitor: vi.fn(),
+  pollFnMonitor: vi.fn(() => null),
+  isFnMonitorHealthy: vi.fn(() => false),
+  isFnKeyDown: vi.fn(() => false),
+  getFnSystemUsageType: vi.fn(() => 0),
 }));
 
 const electrobunMock = vi.hoisted(() => {

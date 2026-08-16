@@ -421,7 +421,7 @@ export async function listCharacterHistory(
   limit = 20,
 ): Promise<CharacterHistoryEntry[]> {
   const safeLimit = Math.min(
-    Math.max(Math.trunc(limit) || 20, 1),
+    Math.max(1, Number.isFinite(limit) ? Math.trunc(limit) : 20),
     MAX_CHARACTER_HISTORY_LIMIT,
   );
 

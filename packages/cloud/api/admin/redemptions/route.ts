@@ -17,6 +17,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { secureTokenRedemptionService } from "@/lib/services/token-redemption-secure";
+import { parseClampedLimit } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -37,7 +38,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     const networkFilter = c.req.query("network") || "all";
     const searchQuery = c.req.query("search")?.trim().toLowerCase() || "";
     const limitParam = c.req.query("limit");
-    const limit = limitParam ? Math.min(parseInt(limitParam, 10), 100) : 50;
+    const limit = parseClampedLimit(limitParam, 50);
 
     const allowedStatuses: TokenRedemptionStatus[] = [
       "pending",

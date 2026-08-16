@@ -37,6 +37,12 @@ Representative examples:
   `main`-targeted PRs carrying the `ci:full` label.
 - `ui-e2e-gate.yml` and `ui-fixture-e2e.yml` run the packages/ui Chromium and
   WebKit fixture gates when `packages/ui/src/**` changes.
+- `device-e2e.yml` is the exact-head Android-emulator and iOS-simulator
+  device-bundle producer (#19640). Canonical `ci.yml` calls it only for PRs
+  carrying the `ci:device` label; `workflow_dispatch` is the on-demand route.
+  Both jobs run the bundle-owning runners with `--output` and upload the full
+  bundle (`inline/`, `logs/`, `summary.json`, `junit.xml`) on success and
+  failure, without reading any repository secret.
 
 ## Manual operations
 
@@ -134,6 +140,17 @@ directories. Keep that source admission synchronized with package manifests
 through `cloud-release-dependency-trigger-workflow.test.ts`; otherwise a
 source-form package can change an artifact without creating a release
 candidate.
+
+Production Cloud admission is also tree-bound to staging. After every
+successful automatic `develop` Cloud release, `cloud-cf-deploy.yml` uploads a
+14-day immutable certification whose JSON names the repository, workflow,
+source SHA, root Git tree, run/attempt, environment, and deterministic artifact
+name. A production dispatch checks out the exact requested `main` SHA and must
+resolve that tree's non-expired artifact from a completed successful
+`push`/`develop` run before the protected `production` approval job is even
+reachable. The artifact id, GitHub digest, owning run, payload, current workflow
+bytes, and expiry are all checked. Different merge commits are accepted only
+when their root trees are byte-identical; `force` never bypasses this gate.
 
 Cloudflare application deploys require Workers and Pages write access. The
 Terraform domain workflow additionally requires zone-scoped DNS write and

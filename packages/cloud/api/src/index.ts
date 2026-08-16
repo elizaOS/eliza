@@ -29,6 +29,7 @@ import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-tele
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { serveBlobHostRequest } from "./blob-host";
+import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import { serveRegistryHostRequest } from "./registry-host";
 import { isThinStewardPublicPath } from "./steward/public-paths";
 
@@ -36,6 +37,7 @@ export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { PersonalDeliveryProjection } from "./personal-delivery-projection";
+export { PersonalTelegramDelivery } from "./personal-telegram-delivery";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
 export { isThinStewardPublicPath } from "./steward/public-paths";
 export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordinator";
@@ -427,6 +429,8 @@ async function dispatchInference(
 }
 
 function healthResponse(env: AppEnv["Bindings"]): Response {
+  const personalSharedTelegramEdgeEnabled =
+    isPersonalSharedTelegramEdgeEnabled(env);
   const stagingSessionVersion =
     env.STAGING_SESSION_EXCHANGE_VERSION?.trim() || null;
   const stagingSessionSigningSecret =
@@ -471,6 +475,13 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       // the beacon the cross-environment routing verifier probes
       // (packages/cloud/scripts/verify-environment-routing.mjs).
       environment: env.ENVIRONMENT ?? null,
+      // The protected Telegram cutover uses a secret binding to override the
+      // tracked false default without changing code. This value-free beacon
+      // lets the release workflow prove the served state and fail closed when
+      // a provider-side mutation has an ambiguous result.
+      personalSharedTelegramEdge: {
+        enabled: personalSharedTelegramEdgeEnabled,
+      },
       // Value-free cutover receipt for the default-off staging QA bridge. The
       // deploy workflow proves exact code first, flips the secret last, then
       // requires this beacon to report the expected version/readiness. No key,
@@ -509,17 +520,7 @@ export function getGeneratedAgentId(
     const subdomain = hostname.slice(0, -suffix.length);
     if (AGENT_ID_RE.test(subdomain)) return subdomain;
   }
-
-  // Keep legacy UUID agent hosts on the authenticated dedicated-agent proxy
-  // until the canonical nested-wildcard DNS and certificate cutover is live.
-  // Redirecting these bridge requests first strips them from the only working
-  // host and makes fail-closed snapshots/restarts time out (#19047).
-  const classified = hostname ? classifyElizaHostname(hostname) : null;
-  return classified?.role === "legacy-dedicated-agent" &&
-    classified.agentId &&
-    AGENT_ID_RE.test(classified.agentId)
-    ? classified.agentId
-    : null;
+  return null;
 }
 
 export function redirectFrontendHost(
@@ -568,10 +569,7 @@ export function redirectFrontendHost(
     classified.agentId &&
     AGENT_ID_RE.test(classified.agentId)
   ) {
-    // UUID agent hosts remain on the legacy hostname until the canonical
-    // nested-wildcard DNS/certificate cutover is complete. The worker proxies
-    // them below through the same authenticated dedicated-agent path.
-    return null;
+    canonicalHostname = classified.canonicalHostname;
   } else {
     canonicalHostname = canonicalElizaServiceHostname(hostname);
     if (!canonicalHostname && hostname === "os.elizacloud.ai") {

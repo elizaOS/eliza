@@ -83,6 +83,11 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
           // killing the whole lazy graph (e.g. the cockpit terminal's xterm
           // import).
           codeSplitting: false,
+          // Vite 7 still builds these bundles with Rollup, where
+          // `codeSplitting` is not an output option. Keep the Rolldown flag
+          // above for the Vite 8 path and use Rollup's equivalent here so the
+          // invariant holds under either bundler.
+          inlineDynamicImports: true,
         },
       },
     },

@@ -85,6 +85,65 @@ describe("convertMarkdownToTelegram", () => {
     );
   });
 
+  it("drops empty headings without consuming the following line", () => {
+    expect(convertMarkdownToTelegram("# ")).toBe("");
+    expect(convertMarkdownToTelegram("######\t")).toBe("");
+    expect(convertMarkdownToTelegram("before\n### \nafter")).toBe(
+      "before\n\nafter",
+    );
+  });
+
+  it.each([
+    [
+      "```c++\r\nstd::vector<int> xs;\r\n```",
+      "```c++\nstd::vector<int> xs;\r\n```",
+    ],
+    [
+      "```c#\r\nConsole.WriteLine();\r\n```",
+      "```c#\nConsole.WriteLine();\r\n```",
+    ],
+    [
+      "```shell-session\r\n$ echo ok\r\n```",
+      "```shell-session\n$ echo ok\r\n```",
+    ],
+  ])("preserves CRLF fenced code with language tag %s", (input, expected) => {
+    expect(convertMarkdownToTelegram(input)).toBe(expected);
+  });
+
+  it("leaves an unterminated fenced block as escaped plain text", () => {
+    expect(convertMarkdownToTelegram("```c++\r\nunterminated")).toBe(
+      "\\`\\`\\`c\\+\\+\r\nunterminated",
+    );
+  });
+
+  it("keeps balanced URL parentheses inside the Telegram link target", () => {
+    expect(
+      convertMarkdownToTelegram(
+        "[Test](https://en.wikipedia.org/wiki/Test_(assessment))",
+      ),
+    ).toBe("[Test](https://en.wikipedia.org/wiki/Test_(assessment\\))");
+    expect(convertMarkdownToTelegram("[x](https://x.test/a_(b)_(c))")).toBe(
+      "[x](https://x.test/a_(b\\)_(c\\))",
+    );
+  });
+
+  it.each([
+    [
+      "[deep](https://x.test/a_(b_(c)))",
+      "\\[deep\\]\\(https://x\\.test/a\\_\\(b\\_\\(c\\)\\)\\)",
+    ],
+    ["[bad](https://x.test/a_(b)", "\\[bad\\]\\(https://x\\.test/a\\_\\(b\\)"],
+    [
+      "[outer [inner]](https://x.test)",
+      "\\[outer \\[inner\\]\\]\\(https://x\\.test\\)",
+    ],
+  ])(
+    "keeps malformed or nested link boundary %s as plain text",
+    (input, expected) => {
+      expect(convertMarkdownToTelegram(input)).toBe(expected);
+    },
+  );
+
   it("resolves nested tokens (inline code inside bold/header) without leaking NUL sentinels", () => {
     const bold = convertMarkdownToTelegram("**bold `code`**");
     expect(bold).toBe("*bold `code`*");

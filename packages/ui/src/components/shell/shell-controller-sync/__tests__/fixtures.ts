@@ -84,6 +84,7 @@ export function makeFakeShellController(): ShellController {
     toggleRecording: vi.fn(),
     startRecording: vi.fn(),
     stopRecording: vi.fn(),
+    cancelRecording: vi.fn(),
     toggleHandsFree: vi.fn(),
     recheckMicPermission: vi.fn(async () => "granted" as const),
     toggleTranscriptionMode: vi.fn(),

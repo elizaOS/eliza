@@ -92,6 +92,52 @@
       "registryKind": "plugin",
       "directory": "eliza-plugin-agentradar"
     },
+    "@aomi-labs/eliza-plugin-aomi": {
+      "git": {
+        "repo": "aomi-labs/eliza-plugin-aomi",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@aomi-labs/eliza-plugin-aomi",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Delegates open-ended on-chain workflows to Aomi while elizaOS retains wallet custody, subject-bound confirmation, signing, and submission.",
+      "homepage": "https://github.com/aomi-labs/eliza-plugin-aomi",
+      "topics": [
+        "aomi",
+        "blockchain",
+        "wallet",
+        "evm",
+        "solana",
+        "defi"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@davyjones0x/plugin-peer-cash": {
       "git": {
         "repo": "ADWilkinson/plugin-peer-cash",
@@ -2117,6 +2163,53 @@
         "crypto",
         "data",
         "kyb"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-x402-finance": {
+      "git": {
+        "repo": "lokixc84/x402-finance-api",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-x402-finance",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Base Mainnet token safety + market data via x402 micropayments (USDC). CHECK_TOKEN_SAFETY returns agent_action (block|warn|allow|skip). No API keys.",
+      "homepage": "https://x402-paid-api.x402-finance.workers.dev/llms.txt",
+      "topics": [
+        "x402",
+        "base",
+        "defi",
+        "security",
+        "token-safety",
+        "micropayments",
+        "usdc"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",

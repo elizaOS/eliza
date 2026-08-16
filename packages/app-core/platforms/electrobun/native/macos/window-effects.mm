@@ -2305,7 +2305,7 @@ extern "C" bool enableWindowVibrancy(void *windowPtr) {
 	return success;
 }
 
-extern "C" bool ensureWindowShadow(void *windowPtr) {
+extern "C" bool setWindowShadowEnabled(void *windowPtr, bool enabled) {
 	if (windowPtr == nullptr) {
 		return false;
 	}
@@ -2317,7 +2317,7 @@ extern "C" bool ensureWindowShadow(void *windowPtr) {
 			return;
 		}
 
-		[window setHasShadow:YES];
+		[window setHasShadow:enabled ? YES : NO];
 		[window invalidateShadow];
 		success = YES;
 	});
@@ -2642,4 +2642,230 @@ extern "C" bool disableWindowBackForwardNavigationGestures(void *windowPtr) {
 	});
 
 	return success;
+}
+
+// ============================================================================
+// Fn-key hold monitor (push-to-talk quasimode, #20483)
+// ============================================================================
+
+/*
+ * Listen-only CGEventTap on flagsChanged that reports fn (Globe) key DOWN and
+ * UP transitions, giving the renderer the held quasimode that trigger-only
+ * GlobalShortcut cannot express. The tap runs on a dedicated thread with its
+ * own CFRunLoop; transitions land in a small lock-free ring buffer drained by
+ * the Bun host over FFI (elizaFnMonitorPoll), matching the poll-based
+ * delivery the dylib already uses for notification choices.
+ *
+ * macOS silently disables a tap whose callback stalls
+ * (kCGEventTapDisabledByTimeout) and secure-input can starve it; the callback
+ * re-enables in place and elizaFnMonitorIsHealthy exposes tap liveness so the
+ * host can watchdog-restart. Requires Accessibility trust (listen-only taps
+ * accept either Accessibility or Input Monitoring; the app already requests
+ * the former). fn+key chords are ignored by design: a chord means the user
+ * wanted the other key, so only a bare fn press/release drives the mic.
+ */
+
+static const int kElizaFnEventQueueCapacity = 64;
+
+// Ring buffer: single producer (tap thread) / single consumer (FFI poll).
+// Values: 1 = fn down, 2 = fn up.
+static std::atomic<int> elizaFnEventQueue[kElizaFnEventQueueCapacity];
+static std::atomic<unsigned> elizaFnEventHead{0};
+static std::atomic<unsigned> elizaFnEventTail{0};
+
+static std::atomic<bool> elizaFnMonitorRunning{false};
+static std::atomic<bool> elizaFnKeyIsDown{false};
+static std::atomic<bool> elizaFnSawOtherKeyDuringHold{false};
+static CFMachPortRef elizaFnEventTap = nullptr;
+static CFRunLoopRef elizaFnTapRunLoop = nullptr;
+static NSThread *elizaFnTapThread = nil;
+
+static void elizaFnEventPush(int value) {
+	unsigned head = elizaFnEventHead.load(std::memory_order_relaxed);
+	unsigned tail = elizaFnEventTail.load(std::memory_order_acquire);
+	if (head - tail >= (unsigned)kElizaFnEventQueueCapacity) {
+		return; // Drop on overflow — consumer resyncs from key state.
+	}
+	elizaFnEventQueue[head % kElizaFnEventQueueCapacity].store(
+		value, std::memory_order_relaxed);
+	elizaFnEventHead.store(head + 1, std::memory_order_release);
+}
+
+static CGEventRef elizaFnTapCallback(CGEventTapProxy proxy, CGEventType type,
+									 CGEventRef event, void *refcon) {
+	(void)proxy;
+	(void)refcon;
+
+	if (type == kCGEventTapDisabledByTimeout ||
+		type == kCGEventTapDisabledByUserInput) {
+		if (elizaFnEventTap != nullptr) {
+			CGEventTapEnable(elizaFnEventTap, true);
+		}
+		return event;
+	}
+
+	if (type == kCGEventFlagsChanged) {
+		int64_t keycode =
+			CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+		// kVK_Function == 63. Other modifiers also arrive as flagsChanged;
+		// they must not disturb an in-flight fn hold.
+		if (keycode == 63) {
+			bool down =
+				(CGEventGetFlags(event) & kCGEventFlagMaskSecondaryFn) != 0;
+			bool wasDown = elizaFnKeyIsDown.exchange(down);
+			if (down && !wasDown) {
+				elizaFnSawOtherKeyDuringHold.store(false);
+				elizaFnEventPush(1);
+			} else if (!down && wasDown) {
+				elizaFnEventPush(2);
+			}
+		}
+		return event;
+	}
+
+	// A real key pressed while fn is held: the user typed an fn-chord
+	// (fn+arrow, fn+F5...). Flag it so the host can treat the hold as a
+	// chord, not dictation.
+	if (type == kCGEventKeyDown && elizaFnKeyIsDown.load()) {
+		elizaFnSawOtherKeyDuringHold.store(true);
+	}
+
+	return event;
+}
+
+/**
+ * Start the fn monitor. Returns:
+ *   0 = started (or already running)
+ *   1 = permission missing (tap creation refused)
+ *   2 = unexpected failure
+ * Safe to call repeatedly; the tap thread is created once per start/stop
+ * cycle.
+ */
+extern "C" int elizaFnMonitorStart(void) {
+	if (elizaFnMonitorRunning.load()) {
+		return 0;
+	}
+
+	__block int result = 2;
+	dispatch_semaphore_t ready = dispatch_semaphore_create(0);
+
+	NSThread *thread = [[NSThread alloc] initWithBlock:^{
+		CGEventMask mask = CGEventMaskBit(kCGEventFlagsChanged) |
+						   CGEventMaskBit(kCGEventKeyDown);
+		CFMachPortRef tap = CGEventTapCreate(
+			kCGSessionEventTap, kCGHeadInsertEventTap,
+			kCGEventTapOptionListenOnly, mask, elizaFnTapCallback, nullptr);
+		if (tap == nullptr) {
+			// Refused tap == missing Accessibility/Input Monitoring trust.
+			result = 1;
+			dispatch_semaphore_signal(ready);
+			return;
+		}
+
+		CFRunLoopSourceRef source =
+			CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0);
+		if (source == nullptr) {
+			CFRelease(tap);
+			result = 2;
+			dispatch_semaphore_signal(ready);
+			return;
+		}
+
+		elizaFnEventTap = tap;
+		elizaFnTapRunLoop = CFRunLoopGetCurrent();
+		CFRunLoopAddSource(elizaFnTapRunLoop, source, kCFRunLoopCommonModes);
+		CGEventTapEnable(tap, true);
+		elizaFnMonitorRunning.store(true);
+		result = 0;
+		dispatch_semaphore_signal(ready);
+
+		CFRunLoopRun();
+
+		// Stop path: elizaFnMonitorStop() calls CFRunLoopStop.
+		CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source,
+							  kCFRunLoopCommonModes);
+		CFRelease(source);
+		CGEventTapEnable(tap, false);
+		CFRelease(tap);
+		elizaFnEventTap = nullptr;
+		elizaFnTapRunLoop = nullptr;
+		elizaFnMonitorRunning.store(false);
+	}];
+	[thread setName:@"eliza-fn-monitor"];
+	elizaFnTapThread = thread;
+	[thread start];
+
+	dispatch_semaphore_wait(
+		ready, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
+	return result;
+}
+
+/** Stop the fn monitor and release the tap. Idempotent. */
+extern "C" void elizaFnMonitorStop(void) {
+	if (!elizaFnMonitorRunning.load()) {
+		return;
+	}
+	CFRunLoopRef runLoop = elizaFnTapRunLoop;
+	if (runLoop != nullptr) {
+		CFRunLoopStop(runLoop);
+	}
+	elizaFnTapThread = nil;
+	elizaFnKeyIsDown.store(false);
+	// Drain the queue so a later start begins clean.
+	elizaFnEventTail.store(elizaFnEventHead.load());
+}
+
+/**
+ * Drain one queued fn transition.
+ * Returns 0 = none pending, 1 = fn down, 2 = fn up,
+ * 3 = fn up after a chord (another key was pressed during the hold — the
+ * host should cancel rather than send).
+ */
+extern "C" int elizaFnMonitorPoll(void) {
+	unsigned tail = elizaFnEventTail.load(std::memory_order_relaxed);
+	unsigned head = elizaFnEventHead.load(std::memory_order_acquire);
+	if (tail == head) {
+		return 0;
+	}
+	int value = elizaFnEventQueue[tail % kElizaFnEventQueueCapacity].load(
+		std::memory_order_relaxed);
+	elizaFnEventTail.store(tail + 1, std::memory_order_release);
+	if (value == 2 && elizaFnSawOtherKeyDuringHold.load()) {
+		elizaFnSawOtherKeyDuringHold.store(false);
+		return 3;
+	}
+	return value;
+}
+
+/** True while the monitor is running AND macOS reports the tap enabled. A
+ *  false return with the monitor started means the tap was disabled (secure
+ *  input, timeout storm) and a stop/start cycle is needed. */
+extern "C" bool elizaFnMonitorIsHealthy(void) {
+	if (!elizaFnMonitorRunning.load()) {
+		return false;
+	}
+	CFMachPortRef tap = elizaFnEventTap;
+	return tap != nullptr && CGEventTapIsEnabled(tap);
+}
+
+/** Current physical fn state — lets the host resync after queue overflow. */
+extern "C" bool elizaFnMonitorIsFnDown(void) {
+	return elizaFnKeyIsDown.load();
+}
+
+/**
+ * The macOS "Press 🌐 key to..." system action fires on a bare fn TAP and a
+ * listen-only tap cannot swallow it; if it is set to dictation/emoji the two
+ * behaviors collide. Returns com.apple.HIToolbox AppleFnUsageType:
+ * 0 = do nothing, 1 = change input source, 2 = emoji, 3 = dictation,
+ * -1 = unreadable (treated by callers as the OS default, 2).
+ */
+extern "C" int elizaFnSystemUsageType(void) {
+	NSUserDefaults *defaults = [[NSUserDefaults alloc]
+		initWithSuiteName:@"com.apple.HIToolbox"];
+	id value = [defaults objectForKey:@"AppleFnUsageType"];
+	if (value == nil || ![value respondsToSelector:@selector(intValue)]) {
+		return -1;
+	}
+	return [value intValue];
 }

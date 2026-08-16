@@ -10,13 +10,18 @@
  * once, idempotently, and WITHOUT ever touching the source.
  *
  * Guards (per table, independently):
- *   1. Skip if the source table does not exist (fresh install / already dropped).
- *   2. Skip if the target table is non-empty (migration already ran, or the
- *      plugin owns live data).
- *   3. Otherwise copy every source row that is not already present in the target
+ *   1. Skip if a durable completion marker for the table exists (the copy ran
+ *      once on this database — live 2026-08-16 phantom-rows incident: without
+ *      the marker, "skip if target non-empty" re-imported every stale
+ *      app_lifeops row on the first restart after an owner cleared their
+ *      routines, resurrecting long-deleted reminders).
+ *   2. Skip if the source table does not exist (fresh install / already dropped).
+ *   3. Skip if the target table is non-empty (plugin already owns live data).
+ *   4. Otherwise copy every source row that is not already present in the target
  *      (a doubly-safe NOT EXISTS guard on the primary key).
  *
- * The source table is NEVER dropped or altered.
+ * Every terminal outcome writes the marker, so the copy happens at most once
+ * per database. The source table is NEVER dropped or altered.
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
@@ -41,7 +46,11 @@ export type SqlExecutor = (
 
 export interface TableMigrationResult {
   table: MigratedReminderTable;
-  outcome: "copied" | "source-missing" | "target-non-empty";
+  outcome:
+    | "copied"
+    | "source-missing"
+    | "target-non-empty"
+    | "already-migrated";
 }
 
 function quoteIdent(name: string): string {
@@ -68,14 +77,54 @@ async function targetTableIsEmpty(
   return rows[0]?.empty === true || rows[0]?.empty === "true";
 }
 
+const MIGRATION_MARKER_TABLE = "reminders_migration_state";
+
+async function ensureMigrationMarkerTable(exec: SqlExecutor): Promise<void> {
+  await exec(
+    `CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.${quoteIdent(MIGRATION_MARKER_TABLE)} (
+       table_name TEXT PRIMARY KEY,
+       migrated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+     )`,
+  );
+}
+
+async function migrationMarkerExists(
+  exec: SqlExecutor,
+  table: MigratedReminderTable,
+): Promise<boolean> {
+  const rows = await exec(
+    `SELECT EXISTS (
+       SELECT 1 FROM ${TARGET_SCHEMA}.${quoteIdent(MIGRATION_MARKER_TABLE)}
+       WHERE table_name = '${table}'
+     ) AS done`,
+  );
+  return rows[0]?.done === true || rows[0]?.done === "true";
+}
+
+async function writeMigrationMarker(
+  exec: SqlExecutor,
+  table: MigratedReminderTable,
+): Promise<void> {
+  await exec(
+    `INSERT INTO ${TARGET_SCHEMA}.${quoteIdent(MIGRATION_MARKER_TABLE)} (table_name)
+     VALUES ('${table}')
+     ON CONFLICT (table_name) DO NOTHING`,
+  );
+}
+
 export async function migrateReminderTable(
   exec: SqlExecutor,
   table: MigratedReminderTable,
 ): Promise<TableMigrationResult> {
+  if (await migrationMarkerExists(exec, table)) {
+    return { table, outcome: "already-migrated" };
+  }
   if (!(await sourceTableExists(exec, table))) {
+    await writeMigrationMarker(exec, table);
     return { table, outcome: "source-missing" };
   }
   if (!(await targetTableIsEmpty(exec, table))) {
+    await writeMigrationMarker(exec, table);
     return { table, outcome: "target-non-empty" };
   }
 
@@ -86,8 +135,10 @@ export async function migrateReminderTable(
        SELECT s.* FROM ${source} AS s
        WHERE NOT EXISTS (
          SELECT 1 FROM ${target} AS t WHERE t.id = s.id
-       )`,
+       )
+       ON CONFLICT (${quoteIdent("id")}) DO NOTHING`,
   );
+  await writeMigrationMarker(exec, table);
   return { table, outcome: "copied" };
 }
 
@@ -95,6 +146,7 @@ export async function migrateReminderTables(
   exec: SqlExecutor,
 ): Promise<TableMigrationResult[]> {
   await exec(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
+  await ensureMigrationMarkerTable(exec);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_REMINDER_TABLES) {
     results.push(await migrateReminderTable(exec, table));

@@ -25,6 +25,13 @@ export interface DesktopBrandConfig {
   releaseUrl: string;
   /** Distribution build variant. Store builds must not self-update. */
   buildVariant: "direct" | "store";
+  /**
+   * Cloud-only consumer distribution: the bundle ships without the embedded
+   * agent runtime and the shell runs against Eliza Cloud. Baked in at package
+   * time (`ELIZA_DESKTOP_CLOUD_ONLY=1`); the main process hydrates the
+   * corresponding runtime env flags from this at boot.
+   */
+  cloudOnly: boolean;
   /** Config export file name. */
   configExportFileName: string;
   /** User-facing description. */
@@ -67,6 +74,16 @@ function env(key: string): string {
   return (process.env[key] ?? "").trim();
 }
 
+function isTruthyFlag(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
+}
+
 function envFallback(...keys: string[]): string {
   for (const key of keys) {
     const val = env(key);
@@ -106,6 +123,7 @@ const DEFAULT_CONFIG: DesktopBrandConfig = {
   urlScheme: "elizaos",
   releaseUrl: "",
   buildVariant: "direct",
+  cloudOnly: false,
   configExportFileName: "eliza-config.json",
   appDescription: "AI agents for the desktop",
   namespace: "eliza",
@@ -171,6 +189,9 @@ function resolveBrandConfig(): DesktopBrandConfig {
       fileConfig.buildVariant === "store"
         ? "store"
         : "direct",
+    cloudOnly:
+      isTruthyFlag(envFallback("ELIZA_DESKTOP_CLOUD_ONLY")) ||
+      fileConfig.cloudOnly === true,
     configExportFileName:
       fileConfig.configExportFileName ??
       `${appName.toLowerCase().replace(/\s+/g, "-")}-config.json`,

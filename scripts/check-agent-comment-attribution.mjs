@@ -12,8 +12,12 @@ import { pathToFileURL } from "node:url";
 const CLAIM_LINE_RE = /^CLAIMING(?:\s+(?:REVIEW|LEVER))?\s*:/i;
 const ATTRIBUTION_DECLARATION_RE =
   /^(?:AI provider\/model\s*:|AI assistance\s*:\s*yes\b|Models?(?:\s+used)?\s*:|Model\(s\)\s+used\s*:|Client\s*\/\s*agent tooling\s*:|Contribution skill revision\s*:)/i;
+// Two marker generations are accepted: the legacy repository footer
+// (eliza-computer-attribution:v1) and the signed run receipt emitted by the
+// published contribute-to-eliza skill (elizaos-contribution-attribution:v2),
+// whose payload is a superset carrying an additional `run` object.
 const ATTRIBUTION_MARKER_LINE_RE =
-  /^<!--\s*eliza-computer-attribution:v1\b[^\r\n]*-->\s*$/i;
+  /^<!--\s*(?:eliza-computer-attribution:v1|elizaos-contribution-attribution:v2)\b[^\r\n]*-->\s*$/i;
 const HUMAN_ONLY_FOOTER_RE =
   /(?:^|\n)AI assistance:\s*no\s*[-\u2013\u2014]\s*human-only (?:claim|comment|review)\s*\nAttribution status:\s*self-reported\s*$/i;
 const NO_AI_VALUE_RE = /^(?:no|none|n\/?a)\s*[-:\u2013\u2014]\s*(\S[\s\S]*?)$/i;
@@ -120,11 +124,12 @@ function markerRecords(source) {
     .map((record) => {
       const raw = record.raw.trim();
       const any = raw.match(
-        /^<!--\s*eliza-computer-attribution:v1\b([\s\S]*?)-->\s*$/i,
+        /^<!--\s*(eliza-computer-attribution:v1|elizaos-contribution-attribution:v2)\b([\s\S]*?)-->\s*$/i,
       );
       if (!any) return null;
+      const version = any[1].toLowerCase().endsWith(":v2") ? 2 : 1;
       const wellFormed = raw.match(
-        /^<!--\s*eliza-computer-attribution:v1\s+(\{[^\r\n]*\})\s*-->\s*$/i,
+        /^<!--\s*(?:eliza-computer-attribution:v1|elizaos-contribution-attribution:v2)\s+(\{[^\r\n]*\})\s*-->\s*$/i,
       );
       const leadingWhitespace =
         record.raw.length - record.raw.trimStart().length;
@@ -132,6 +137,7 @@ function markerRecords(source) {
         end: record.start + leadingWhitespace + raw.length,
         json: wellFormed?.[1] ?? null,
         start: record.start + leadingWhitespace,
+        version,
       };
     })
     .filter((record) => record !== null);
@@ -388,7 +394,7 @@ export function evaluateCommentAttribution(body, options = {}) {
     findings.push({
       id: "marker",
       message:
-        "Exactly one well-formed eliza-computer-attribution:v1 JSON marker must appear.",
+        "Exactly one well-formed eliza-computer-attribution:v1 or elizaos-contribution-attribution:v2 JSON marker must appear.",
     });
   }
 
@@ -476,14 +482,32 @@ export function evaluateCommentAttribution(body, options = {}) {
   }
 
   if (marker && typeof marker === "object" && !Array.isArray(marker)) {
-    const expectedKeys = ["client", "model", "provider", "skill_revision"];
+    // The v2 run receipt adds a signed `run` object; every other key set is
+    // identical across versions so mismatched extras stay rejected.
+    const expectedKeys =
+      markerMatch.version === 2
+        ? ["client", "model", "provider", "run", "skill_revision"]
+        : ["client", "model", "provider", "skill_revision"];
     if (
       Object.keys(marker).sort().join(",") !== expectedKeys.sort().join(",")
     ) {
       findings.push({
         id: "marker-fields",
         message:
-          "The attribution marker must contain only provider, model, client, and skill_revision.",
+          markerMatch.version === 2
+            ? "The v2 attribution marker must contain only provider, model, client, skill_revision, and run."
+            : "The attribution marker must contain only provider, model, client, and skill_revision.",
+      });
+    }
+    if (
+      markerMatch.version === 2 &&
+      (typeof marker.run !== "object" ||
+        marker.run === null ||
+        Array.isArray(marker.run))
+    ) {
+      findings.push({
+        id: "marker-run",
+        message: "The v2 attribution marker run receipt must be an object.",
       });
     }
     if (marker.provider !== providerSlug(provider)) {

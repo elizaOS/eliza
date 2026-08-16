@@ -15,6 +15,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { COMMITMENT_OBLIGATION_EVENT_KIND } from "../commitments/ledger.js";
 
 export interface EventKindContribution {
   /** Stable event-kind identifier — `"calendar.meeting.ended"`, `"health.wake.confirmed"`, etc. */
@@ -108,6 +109,22 @@ export const APP_LIFEOPS_EVENT_KINDS: readonly EventKindContribution[] = [
     describe: {
       label: "Owner evening / wind-down window opened",
       provider: "app-lifeops:time-window",
+    },
+  },
+  {
+    eventKind: COMMITMENT_OBLIGATION_EVENT_KIND,
+    filterSchema: {
+      type: "object",
+      properties: {
+        obligationKind: {
+          type: "string",
+          enum: ["commitment", "renewal", "filing", "warranty"],
+        },
+      },
+    },
+    describe: {
+      label: "Deadline-bearing obligation artifact observed",
+      provider: "app-lifeops:commitments",
     },
   },
 ];

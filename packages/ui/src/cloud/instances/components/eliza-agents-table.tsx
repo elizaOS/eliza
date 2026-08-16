@@ -6,6 +6,10 @@
 
 import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
 import { formatHourlyRate } from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
+import type {
+  AgentListItemDto,
+  AgentSandboxStatus,
+} from "@elizaos/cloud-shared/lib/types/cloud-api";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -62,6 +66,7 @@ import { Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { currentElizaAppOrigin } from "../../../utils/cloud-agent-base";
 import { api, apiWithStatus } from "../../lib/api-client";
+import { parseAgentsResponse } from "../lib/data/eliza-agents";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import {
@@ -70,10 +75,7 @@ import {
   statusDotColor,
 } from "../lib/sandbox-status";
 import { type TrackedJob, useJobPoller } from "../lib/use-job-poller";
-import {
-  type SandboxListAgent,
-  useSandboxListPoll,
-} from "../lib/use-sandbox-status-poll";
+import { useSandboxListPoll } from "../lib/use-sandbox-status-poll";
 import { AgentCostBadge } from "./agent-cost-badge";
 
 /**
@@ -86,67 +88,6 @@ interface AgentJobEnvelope {
   error?: string;
 }
 
-export interface ElizaAgentRow {
-  id: string;
-  agent_name: string | null;
-  status: string;
-  canonical_web_ui_url?: string | null;
-  node_id: string | null;
-  container_name: string | null;
-  bridge_port: number | null;
-  web_ui_port: number | null;
-  headscale_ip: string | null;
-  docker_image: string | null;
-  execution_tier?: "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
-  sandbox_id: string | null;
-  bridge_url: string | null;
-  error_message: string | null;
-  last_heartbeat_at: Date | string | null;
-  created_at: Date | string;
-  updated_at: Date | string;
-}
-
-/**
- * Fold one API list-agent onto its existing row (or a fresh row when there is
- * none), preserving the local-only fields the list endpoint doesn't return
- * (ports, node/container, bridge). The single row-shape used by every
- * poll/refresh merge — see `mergeApiData`.
- */
-function mergeSandboxRow(
-  existing: ElizaAgentRow | undefined,
-  agent: SandboxListAgent,
-): ElizaAgentRow {
-  return {
-    ...(existing ?? {}),
-    id: agent.id,
-    agent_name: agent.agentName ?? existing?.agent_name ?? null,
-    status: agent.status ?? existing?.status ?? "pending",
-    error_message: agent.errorMessage ?? existing?.error_message ?? null,
-    last_heartbeat_at:
-      agent.lastHeartbeatAt ?? existing?.last_heartbeat_at ?? null,
-    created_at:
-      agent.createdAt ?? existing?.created_at ?? new Date().toISOString(),
-    updated_at:
-      agent.updatedAt ?? existing?.updated_at ?? new Date().toISOString(),
-    node_id: existing?.node_id ?? null,
-    container_name: existing?.container_name ?? null,
-    bridge_port: existing?.bridge_port ?? null,
-    web_ui_port: existing?.web_ui_port ?? null,
-    headscale_ip: existing?.headscale_ip ?? null,
-    docker_image: agent.dockerImage ?? existing?.docker_image ?? null,
-    execution_tier:
-      agent.executionTier === undefined
-        ? existing?.execution_tier
-        : agent.executionTier,
-    sandbox_id: existing?.sandbox_id ?? null,
-    bridge_url: existing?.bridge_url ?? null,
-    canonical_web_ui_url:
-      agent.webUiUrl === undefined
-        ? (existing?.canonical_web_ui_url ?? null)
-        : agent.webUiUrl,
-  } as ElizaAgentRow;
-}
-
 /**
  * Merge a fresh API agent list onto the current rows for a background refresh.
  *
@@ -156,7 +97,7 @@ function mergeSandboxRow(
  * transient, a paging blip) must not blank the table while the authoritative
  * count still reads >0. Membership removal is owned elsewhere — the
  * `useAgents()` refetch (which replaces the list wholesale via the
- * `initialSandboxes` resync) and explicit-delete tombstones (`tombstoned`).
+ * `agents` prop resync) and explicit-delete tombstones (`tombstoned`).
  * Exported for direct unit coverage of that invariant.
  */
 
@@ -205,21 +146,21 @@ export function retireExpiredTombstones(
 }
 
 export function mergeAgentList(
-  prev: ElizaAgentRow[],
-  apiAgents: SandboxListAgent[],
+  prev: AgentListItemDto[],
+  apiAgents: AgentListItemDto[],
   tombstoned: ReadonlySet<string>,
-): ElizaAgentRow[] {
+): AgentListItemDto[] {
   const apiById = new Map(apiAgents.map((a) => [a.id, a]));
   const updated = prev
     .filter((sb) => !tombstoned.has(sb.id))
     .map((sb) => {
       const agent = apiById.get(sb.id);
-      return agent ? mergeSandboxRow(sb, agent) : sb;
+      return agent ?? sb;
     });
   const known = new Set(prev.map((sb) => sb.id));
-  const added = apiAgents
-    .filter((a) => !known.has(a.id) && !tombstoned.has(a.id))
-    .map((a) => mergeSandboxRow(undefined, a));
+  const added = apiAgents.filter(
+    (agent) => !known.has(agent.id) && !tombstoned.has(agent.id),
+  );
   return [...updated, ...added];
 }
 
@@ -230,23 +171,27 @@ export function mergeAgentList(
  * that should remove the local row, not resurrect it by clearing the tombstone
  * too early.
  */
-function isDockerBacked(sb: ElizaAgentRow): boolean {
-  return !!sb.node_id || sb.execution_tier === "custom" || !!sb.docker_image;
+function isDockerBacked(agent: AgentListItemDto): boolean {
+  return agent.executionTier === "custom" || Boolean(agent.dockerImage);
 }
 
 function getRuntimeKind(
-  sb: ElizaAgentRow,
+  agent: AgentListItemDto,
 ): "managed" | "shared" | "sandbox" | "notProvisioned" {
-  if (isDockerBacked(sb)) return "managed";
-  if (sb.execution_tier === "shared") return "shared";
+  if (isDockerBacked(agent)) return "managed";
+  if (agent.executionTier === "shared") return "shared";
   if (
-    sb.sandbox_id ||
-    sb.status === "running" ||
-    sb.status === "provisioning" ||
+    agent.status === "running" ||
+    agent.status === "provisioning" ||
+    // Both states are post-provision lifecycle outcomes: stopped agents were
+    // deliberately suspended, while disconnected agents lost contact after
+    // provisioning. Neither should read as an agent that was never set up.
+    agent.status === "stopped" ||
+    agent.status === "disconnected" ||
     // A deactivated (sleeping) agent released its container but is still an
     // established sandbox with a restorable backup — "Not provisioned" would
     // misread as never-set-up.
-    sb.status === "sleeping"
+    agent.status === "sleeping"
   ) {
     return "sandbox";
   }
@@ -261,7 +206,7 @@ function getRuntimeKind(
  * them from drifting and computes `runtimeKind` a single time.
  */
 interface AgentRowViewModel {
-  sb: ElizaAgentRow;
+  agent: AgentListItemDto;
   isDocker: boolean;
   trackedJob: TrackedJob | undefined;
   isProvisioningActive: boolean;
@@ -279,17 +224,17 @@ interface AgentRowViewModel {
 }
 
 export function deriveAgentRow(
-  sb: ElizaAgentRow,
+  agent: AgentListItemDto,
   poller: Pick<ReturnType<typeof useJobPoller>, "getStatus" | "isActive">,
   actionInProgress: string | null,
 ): AgentRowViewModel {
-  const isProvisioningActive = poller.isActive(sb.id);
-  const displayStatus = isProvisioningActive ? "provisioning" : sb.status;
-  const busy = actionInProgress === sb.id || isProvisioningActive;
+  const isProvisioningActive = poller.isActive(agent.id);
+  const displayStatus = isProvisioningActive ? "provisioning" : agent.status;
+  const busy = actionInProgress === agent.id || isProvisioningActive;
   return {
-    sb,
-    isDocker: isDockerBacked(sb),
-    trackedJob: poller.getStatus(sb.id),
+    agent,
+    isDocker: isDockerBacked(agent),
+    trackedJob: poller.getStatus(agent.id),
     isProvisioningActive,
     displayStatus,
     busy,
@@ -298,13 +243,13 @@ export function deriveAgentRow(
       !busy,
     canStop: displayStatus === "running" && !busy,
     canSleep:
-      displayStatus === "running" && sb.execution_tier !== "shared" && !busy,
+      displayStatus === "running" && agent.executionTier !== "shared" && !busy,
     canWake: displayStatus === "sleeping" && !busy,
     hasStandaloneWebUi:
       displayStatus === "running" &&
-      sb.execution_tier !== "shared" &&
-      Boolean(sb.canonical_web_ui_url),
-    runtimeKind: getRuntimeKind(sb),
+      agent.executionTier !== "shared" &&
+      Boolean(agent.webUiUrl),
+    runtimeKind: getRuntimeKind(agent),
   };
 }
 
@@ -340,7 +285,7 @@ function RuntimeLabel({
  * row and the mobile card. */
 function RowBackingMeta({ vm }: { vm: AgentRowViewModel }) {
   const t = useT();
-  const { sb, isDocker } = vm;
+  const { agent, isDocker } = vm;
   return (
     <div className="flex items-center gap-2">
       <span className="inline-flex items-center gap-1 text-2xs text-muted">
@@ -351,12 +296,12 @@ function RowBackingMeta({ vm }: { vm: AgentRowViewModel }) {
         )}
         {isDocker
           ? t("cloud.elizaAgentsTable.docker", { defaultValue: "Docker" })
-          : sb.execution_tier === "shared"
+          : agent.executionTier === "shared"
             ? t("cloud.elizaAgentsTable.shared", { defaultValue: "Shared" })
             : t("cloud.elizaAgentsTable.sandbox", { defaultValue: "Sandbox" })}
       </span>
       <span className="text-2xs text-muted font-mono tabular-nums">
-        {sb.id.slice(0, 8)}
+        {agent.id.slice(0, 8)}
       </span>
     </div>
   );
@@ -444,11 +389,7 @@ function StatusCell({
   );
 }
 
-export function ElizaAgentsTable({
-  sandboxes: initialSandboxes,
-}: {
-  sandboxes: ElizaAgentRow[];
-}) {
+export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
   const t = useT();
   const queryClient = useQueryClient();
   const [deleteIds, setDeleteIds] = useState<string[] | null>(null);
@@ -461,11 +402,11 @@ export function ElizaAgentsTable({
     new Set(),
   );
 
-  const [localSandboxes, setLocalSandboxes] =
-    useState<ElizaAgentRow[]>(initialSandboxes);
-  const initialSandboxIdsRef = useRef(
-    [...initialSandboxes.map((sb) => sb.id)].sort().join(","),
+  const [localAgents, setLocalAgents] = useState<AgentListItemDto[]>(agents);
+  const initialAgentIdsRef = useRef(
+    [...agents.map((agent) => agent.id)].sort().join(","),
   );
+  const lastAuthoritativeAgentsRef = useRef(agents);
 
   // Delete tombstones: the backend list is eventually consistent, so a refetch
   // right after a successful DELETE can still contain the deleted agent and
@@ -476,8 +417,8 @@ export function ElizaAgentsTable({
   // TOMBSTONE_GRACE_MS) instead of hiding a still-billed agent forever.
   const deletedIdsRef = useRef(new Map<string, number>());
   const withoutDeleted = useCallback(
-    (rows: ElizaAgentRow[]) =>
-      rows.filter((sb) => !deletedIdsRef.current.has(sb.id)),
+    (rows: AgentListItemDto[]) =>
+      rows.filter((agent) => !deletedIdsRef.current.has(agent.id)),
     [],
   );
 
@@ -512,15 +453,24 @@ export function ElizaAgentsTable({
       TOMBSTONE_GRACE_MS,
     );
 
-    const newIds = [...initialSandboxes.map((sb) => sb.id)].sort().join(",");
-    const wanted = withoutDeleted(initialSandboxes);
+    const newIds = [...agents.map((agent) => agent.id)].sort().join(",");
+    const wanted = withoutDeleted(agents);
+    const authoritativePayloadChanged =
+      lastAuthoritativeAgentsRef.current !== agents;
+    lastAuthoritativeAgentsRef.current = agents;
 
-    if (newIds !== initialSandboxIdsRef.current) {
-      // The API id-set changed → it is authoritative for membership: replace
-      // wholesale (this also removes agents the API dropped). Optimistic
-      // status/provision state is short-lived and re-applied by the poll.
-      initialSandboxIdsRef.current = newIds;
-      setLocalSandboxes(wanted);
+    if (newIds !== initialAgentIdsRef.current || authoritativePayloadChanged) {
+      // The parent query is authoritative for both membership and every DTO
+      // field. Replace when its payload changes even if the id-set did not, so
+      // stopped/non-active rows receive name, status, URL, and error updates
+      // rather than remaining stale until an unrelated active-status poll.
+      initialAgentIdsRef.current = newIds;
+      setLocalAgents((prev) =>
+        prev.length === wanted.length &&
+        prev.every((agent, index) => agent === wanted[index])
+          ? prev
+          : wanted,
+      );
       return;
     }
 
@@ -529,18 +479,18 @@ export function ElizaAgentsTable({
     // WITHOUT wiping optimistic rows. The old "only when the local list is empty"
     // guard left this billed agent hidden for every case where OTHER agents
     // remained visible (banner "N running", table shows N-1).
-    const localIds = new Set(localSandboxes.map((sb) => sb.id));
-    const missing = wanted.filter((sb) => !localIds.has(sb.id));
+    const localIds = new Set(localAgents.map((agent) => agent.id));
+    const missing = wanted.filter((agent) => !localIds.has(agent.id));
     if (missing.length > 0) {
-      setLocalSandboxes((prev) => {
-        const have = new Set(prev.map((sb) => sb.id));
-        const toAdd = missing.filter((sb) => !have.has(sb.id));
+      setLocalAgents((prev) => {
+        const have = new Set(prev.map((agent) => agent.id));
+        const toAdd = missing.filter((agent) => !have.has(agent.id));
         return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
       });
     }
-  }, [initialSandboxes, localSandboxes, reconcileTick, withoutDeleted]);
+  }, [agents, localAgents, reconcileTick, withoutDeleted]);
 
-  const mergeApiData = useCallback((apiAgents: SandboxListAgent[]) => {
+  const mergeApiData = useCallback((apiAgents: AgentListItemDto[]) => {
     // Retire tombstones by TIME ONLY — one clock for every retirement path.
     // Retiring by *absence* here (drop the tombstone the moment this poll stops
     // returning the agent) races the reconcile effect: on a real delete the fast
@@ -559,17 +509,15 @@ export function ElizaAgentsTable({
     const tombstoned: ReadonlySet<string> = new Set(
       deletedIdsRef.current.keys(),
     );
-    setLocalSandboxes((prev) => mergeAgentList(prev, apiAgents, tombstoned));
+    setLocalAgents((prev) => mergeAgentList(prev, apiAgents, tombstoned));
   }, []);
 
   const refreshData = useCallback(async () => {
     try {
       // The typed cloud client (Bearer → api.eliza.app). A same-origin
       // fetch here 404s on the console hosts, which serve no /api/*.
-      const json = await api<{ data?: SandboxListAgent[] }>(
-        "/api/v1/eliza/agents",
-      );
-      mergeApiData(json?.data ?? []);
+      const response = await api<unknown>("/api/v1/eliza/agents");
+      mergeApiData(parseAgentsResponse(response));
       // Keep the parent useAgents() cache honest too, so navigating away and
       // back doesn't rehydrate pre-action rows.
       await queryClient.invalidateQueries({ queryKey: ["agent", "agents"] });
@@ -617,9 +565,9 @@ export function ElizaAgentsTable({
   });
 
   useSandboxListPoll(
-    localSandboxes.map((sb) => ({
-      id: sb.id,
-      status: poller.isActive(sb.id) ? "provisioning" : sb.status,
+    localAgents.map((agent) => ({
+      id: agent.id,
+      status: poller.isActive(agent.id) ? "provisioning" : agent.status,
     })),
     {
       intervalMs: 10_000,
@@ -652,15 +600,15 @@ export function ElizaAgentsTable({
   };
 
   const filtered = useMemo(() => {
-    const list = localSandboxes.filter((sb) => {
+    const list = localAgents.filter((agent) => {
       const q = searchQuery.toLowerCase();
-      const displayStatus = poller.isActive(sb.id) ? "provisioning" : sb.status;
+      const displayStatus = poller.isActive(agent.id)
+        ? "provisioning"
+        : agent.status;
       const matchSearch =
         !q ||
-        (sb.agent_name ?? "").toLowerCase().includes(q) ||
-        (sb.container_name ?? "").toLowerCase().includes(q) ||
-        (sb.node_id ?? "").toLowerCase().includes(q) ||
-        (sb.headscale_ip ?? "").toLowerCase().includes(q);
+        (agent.agentName ?? "").toLowerCase().includes(q) ||
+        agent.id.toLowerCase().includes(q);
       const matchStatus =
         statusFilter === "all" || displayStatus === statusFilter;
       return matchSearch && matchStatus;
@@ -671,18 +619,17 @@ export function ElizaAgentsTable({
       const aStatus = poller.isActive(a.id) ? "provisioning" : a.status;
       const bStatus = poller.isActive(b.id) ? "provisioning" : b.status;
       if (sortField === "name") {
-        cmp = (a.agent_name ?? "").localeCompare(b.agent_name ?? "");
+        cmp = (a.agentName ?? "").localeCompare(b.agentName ?? "");
       } else if (sortField === "status") {
         cmp = aStatus.localeCompare(bStatus);
       } else {
-        cmp =
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
   }, [
-    localSandboxes,
+    localAgents,
     searchQuery,
     statusFilter,
     sortField,
@@ -701,7 +648,7 @@ export function ElizaAgentsTable({
     id: string,
     opts: {
       request: () => Promise<{ status: number; data?: AgentJobEnvelope }>;
-      optimisticStatus: ElizaAgentRow["status"];
+      optimisticStatus: AgentSandboxStatus;
       labels: {
         jobAction: string;
         inProgress: string;
@@ -716,9 +663,9 @@ export function ElizaAgentsTable({
   ) {
     const { request, optimisticStatus, labels, onError } = opts;
     setActionInProgress(id);
-    setLocalSandboxes((prev) =>
-      prev.map((sb) =>
-        sb.id === id ? { ...sb, status: optimisticStatus } : sb,
+    setLocalAgents((prev) =>
+      prev.map((agent) =>
+        agent.id === id ? { ...agent, status: optimisticStatus } : agent,
       ),
     );
     try {
@@ -930,10 +877,10 @@ export function ElizaAgentsTable({
    */
   async function handleDelete(ids: string[]) {
     setIsDeleting(true);
-    const rowById = new Map(localSandboxes.map((sb) => [sb.id, sb]));
+    const rowById = new Map(localAgents.map((agent) => [agent.id, agent]));
     const now = Date.now();
     for (const id of ids) deletedIdsRef.current.set(id, now);
-    setLocalSandboxes((prev) => prev.filter((sb) => !ids.includes(sb.id)));
+    setLocalAgents((prev) => prev.filter((agent) => !ids.includes(agent.id)));
     // Force a reconcile just past the grace window: react-query may return a
     // byte-identical payload (no re-render → the reconcile effect never re-fires
     // on its own), so without this a delete that never took server-side would
@@ -953,13 +900,13 @@ export function ElizaAgentsTable({
         // Restore failed rows, but skip any the poll/refetch already re-added
         // while the DELETE was in flight — re-appending them would duplicate
         // React keys.
-        setLocalSandboxes((prev) => {
-          const present = new Set(prev.map((sb) => sb.id));
+        setLocalAgents((prev) => {
+          const present = new Set(prev.map((agent) => agent.id));
           const restored = failed
             .map((id) => rowById.get(id))
             .filter(
-              (sb): sb is ElizaAgentRow =>
-                sb !== undefined && !present.has(sb.id),
+              (agent): agent is AgentListItemDto =>
+                agent !== undefined && !present.has(agent.id),
             );
           return [...prev, ...restored];
         });
@@ -998,7 +945,7 @@ export function ElizaAgentsTable({
 
   const deleteTargetBusy = (deleteIds ?? []).some((id) => poller.isActive(id));
 
-  if (localSandboxes.length === 0) {
+  if (localAgents.length === 0) {
     // Agent creation lives in the Eliza app, not the console; this surface only
     // lists and manages existing agents.
     return (
@@ -1052,7 +999,7 @@ export function ElizaAgentsTable({
           onDelete={() =>
             setDeleteIds(
               [...selectedIds].filter((id) =>
-                localSandboxes.some((sb) => sb.id === id),
+                localAgents.some((agent) => agent.id === id),
               ),
             )
           }
@@ -1149,7 +1096,7 @@ export function ElizaAgentsTable({
         {(searchQuery || statusFilter !== "all") && (
           <DashboardDataListFilteredCount
             filtered={filtered.length}
-            total={localSandboxes.length}
+            total={localAgents.length}
             label={t("cloud.elizaAgentsTable.agentsLabel", {
               defaultValue: "agents",
             })}
@@ -1281,7 +1228,7 @@ export function ElizaAgentsTable({
                               href={`/cloud/agents/${sb.id}`}
                               className="font-medium text-txt-strong hover:opacity-75 transition-opacity"
                             >
-                              {sb.agent_name ??
+                              {sb.agentName ??
                                 t("cloud.elizaAgentsTable.unnamedAgent", {
                                   defaultValue: "Unnamed Agent",
                                 })}
@@ -1297,7 +1244,7 @@ export function ElizaAgentsTable({
                           displayStatus={displayStatus}
                           isProvisioning={isProvisioningActive}
                           trackedJob={trackedJob}
-                          errorMessage={sb.error_message}
+                          errorMessage={sb.errorMessage}
                         />
                       </TableCell>
 
@@ -1321,7 +1268,7 @@ export function ElizaAgentsTable({
                         ) : (
                           <span className="text-xs text-muted">
                             {displayStatus === "running" &&
-                            sb.execution_tier !== "shared"
+                            sb.executionTier !== "shared"
                               ? t("cloud.elizaAgentsTable.unavailable", {
                                   defaultValue: "Unavailable",
                                 })
@@ -1333,12 +1280,12 @@ export function ElizaAgentsTable({
                       <TableCell>
                         <div className="space-y-0.5">
                           <p className="text-sm text-txt tabular-nums">
-                            {formatRelative(sb.created_at)}
+                            {formatRelative(sb.createdAt)}
                           </p>
-                          {sb.last_heartbeat_at && (
+                          {sb.lastHeartbeatAt && (
                             <p className="text-2xs text-muted tabular-nums">
                               {t("cloud.elizaAgentsTable.heartbeat", {
-                                time: formatRelative(sb.last_heartbeat_at),
+                                time: formatRelative(sb.lastHeartbeatAt),
                                 defaultValue: "Heartbeat {{time}}",
                               })}
                             </p>
@@ -1541,7 +1488,7 @@ export function ElizaAgentsTable({
                         href={`/cloud/agents/${sb.id}`}
                         className="font-medium text-txt-strong hover:opacity-75 transition-opacity block truncate"
                       >
-                        {sb.agent_name ??
+                        {sb.agentName ??
                           t("cloud.elizaAgentsTable.unnamedAgent", {
                             defaultValue: "Unnamed Agent",
                           })}
@@ -1553,18 +1500,18 @@ export function ElizaAgentsTable({
                       displayStatus={displayStatus}
                       isProvisioning={isProvisioningActive}
                       trackedJob={trackedJob}
-                      errorMessage={sb.error_message}
+                      errorMessage={sb.errorMessage}
                     />
                   </div>
 
                   <div className="flex items-center justify-between text-xs text-muted border-t border-border pt-3">
                     <span className="tabular-nums">
-                      {formatRelative(sb.created_at)}
+                      {formatRelative(sb.createdAt)}
                     </span>
-                    {sb.last_heartbeat_at && (
+                    {sb.lastHeartbeatAt && (
                       <span className="tabular-nums">
                         {t("cloud.elizaAgentsTable.heartbeat", {
-                          time: formatRelative(sb.last_heartbeat_at),
+                          time: formatRelative(sb.lastHeartbeatAt),
                           defaultValue: "Heartbeat {{time}}",
                         })}
                       </span>

@@ -19,6 +19,7 @@ import {
 } from "../types";
 
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
+const OTHER_ROOM_ID = "33333333-3333-3333-3333-333333333333" as UUID;
 const ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;
 
 function makeMessage(id: string): Memory {
@@ -138,6 +139,65 @@ describe("composeState provider execution", () => {
 		expect(calls).toBe(1);
 		expect(firstState.text).toBe("coalesced");
 		expect(secondState.text).toBe("coalesced");
+	});
+
+	it("does not reuse cached provider state for the same message id in another room", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-room-cache-isolation" } as Character,
+		});
+		let calls = 0;
+		runtime.registerProvider({
+			name: "ROOM_SCOPED",
+			get: async (_runtime, message) => {
+				calls += 1;
+				return { text: message.roomId };
+			},
+		});
+		const firstMessage = makeMessage("abababab-abab-abab-abab-abababababab");
+		const secondMessage = { ...firstMessage, roomId: OTHER_ROOM_ID };
+
+		const first = await runtime.composeState(
+			firstMessage,
+			["ROOM_SCOPED"],
+			true,
+		);
+		const second = await runtime.composeState(
+			secondMessage,
+			["ROOM_SCOPED"],
+			true,
+		);
+
+		expect(calls).toBe(2);
+		expect(first.text).toBe(ROOM_ID);
+		expect(second.text).toBe(OTHER_ROOM_ID);
+	});
+
+	it("does not coalesce concurrent provider work across rooms with the same message id", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-room-inflight-isolation" } as Character,
+		});
+		const release = deferred();
+		let calls = 0;
+		runtime.registerProvider({
+			name: "ROOM_SCOPED",
+			get: async (_runtime, message) => {
+				calls += 1;
+				await release.promise;
+				return { text: message.roomId };
+			},
+		});
+		const firstMessage = makeMessage("cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd");
+		const secondMessage = { ...firstMessage, roomId: OTHER_ROOM_ID };
+
+		const first = runtime.composeState(firstMessage, ["ROOM_SCOPED"], true);
+		const second = runtime.composeState(secondMessage, ["ROOM_SCOPED"], true);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		release.resolve();
+
+		expect(calls).toBe(2);
+		const [firstState, secondState] = await Promise.all([first, second]);
+		expect(firstState.text).toBe(ROOM_ID);
+		expect(secondState.text).toBe(OTHER_ROOM_ID);
 	});
 
 	it("throws and reports provider failures instead of caching empty context", async () => {

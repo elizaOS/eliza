@@ -57,6 +57,7 @@ import {
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
+import { createSharedMemoryStore } from "./shared-memory-store";
 import { navIntentActionResult } from "./shared-nav-intent";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
@@ -70,6 +71,24 @@ const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
 const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
+
+function elapsedTurnMs(startedAt: number): number {
+  return Math.round((performance.now() - startedAt) * 10) / 10;
+}
+
+function withTurnTimingHeaders(response: Response, timings: Record<string, number>): Response {
+  const entries = Object.entries(timings).filter(([, duration]) => Number.isFinite(duration));
+  if (entries.length === 0) return response;
+  const headers = new Headers(response.headers);
+  const existing = headers.get("Server-Timing");
+  const current = entries.map(([phase, duration]) => `${phase};dur=${duration}`).join(", ");
+  headers.set("Server-Timing", existing ? `${existing}, ${current}` : current);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 export type BridgeExecutionContext = {
   waitUntil(promise: Promise<unknown>): void;
@@ -199,6 +218,25 @@ function sharedElizaRuntimeExecution(
         }
       : {}),
   };
+}
+
+/**
+ * Flag-gated durable memory mirror for one turn (P2 edge memory store). Null
+ * while `SHARED_MEMORY_TABLES_ENABLED !== "true"`. Tenant scope comes from the
+ * server-resolved agent row, so a client can never choose the tenant; storage
+ * uuids reuse the Todo scope so memory rows line up with the runtime's
+ * projected identities.
+ */
+function sharedTurnMemoryStore(agent: SharedRuntimeAgent) {
+  return createSharedMemoryStore({
+    organizationId: agent.organization_id,
+    userId: agent.user_id,
+    agentKey: agent.id,
+    storage: sharedTodoStorageScope({
+      sourceAgentId: agent.id,
+      ownerId: agent.user_id,
+    }),
+  });
 }
 
 function stableUuid(raw: string): string {
@@ -817,6 +855,7 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
+    const memoryStore = sharedTurnMemoryStore(agent);
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
@@ -827,6 +866,7 @@ export class SharedRuntimeChatService {
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
+        ...(memoryStore ? { memory: memoryStore } : {}),
         ...(options.executionEngine === "eliza-runtime"
           ? {
               execution: sharedElizaRuntimeExecution(agent, params, options.funding),
@@ -915,6 +955,7 @@ export class SharedRuntimeChatService {
     rpc: BridgeRequest,
     options: SharedRuntimeChatOptions = {},
   ): Promise<Response> {
+    const timings: Record<string, number> = {};
     const params = record(rpc.params) ?? {};
     const text = stringValue(params.text);
     if (!text) return sseError("message.send requires params.text");
@@ -922,28 +963,34 @@ export class SharedRuntimeChatService {
     const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
+      const claimStartedAt = performance.now();
       const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
+      timings.turn_claim = elapsedTurnMs(claimStartedAt);
       if (replay) {
-        return new Response(
-          chatSseFrame("chunk", {
-            messageId: replay.messageId,
-            userMessageId: replay.userMessageId,
-            chunk: replay.text,
-            text: replay.text,
-            fullText: replay.text,
-            timestamp: Date.now(),
-          }) +
-            chatSseFrame("done", {
+        return withTurnTimingHeaders(
+          new Response(
+            chatSseFrame("chunk", {
               messageId: replay.messageId,
               userMessageId: replay.userMessageId,
+              chunk: replay.text,
               text: replay.text,
               fullText: replay.text,
-              ...(replay.actionResults ? { actionResults: replay.actionResults } : {}),
-            }),
-          { headers: { "Content-Type": "text/event-stream; charset=utf-8" } },
+              timestamp: Date.now(),
+            }) +
+              chatSseFrame("done", {
+                messageId: replay.messageId,
+                userMessageId: replay.userMessageId,
+                text: replay.text,
+                fullText: replay.text,
+                ...(replay.actionResults ? { actionResults: replay.actionResults } : {}),
+              }),
+            { headers: { "Content-Type": "text/event-stream; charset=utf-8" } },
+          ),
+          timings,
         );
       }
     }
+    const hydrateStartedAt = performance.now();
     const [character, history] = await Promise.all([
       characterFor(agent, {
         cacheOnly: Boolean(options.historyStore),
@@ -951,7 +998,9 @@ export class SharedRuntimeChatService {
       }),
       loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
+    timings.turn_hydrate = elapsedTurnMs(hydrateStartedAt);
     let billing: BillingTurn | null;
+    const admissionStartedAt = performance.now();
     try {
       billing = await admitTurn(
         agent,
@@ -972,6 +1021,7 @@ export class SharedRuntimeChatService {
       }
       throw error;
     }
+    timings.turn_admission = elapsedTurnMs(admissionStartedAt);
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     const generationAbort = new AbortController();
     const abortFromRequest = () => {
@@ -987,6 +1037,8 @@ export class SharedRuntimeChatService {
     const detachRequestAbort = () =>
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
+    const streamMemoryStore = sharedTurnMemoryStore(agent);
+    const providerSetupStartedAt = performance.now();
     try {
       turn = await runSharedAgentTurnStream({
         abortSignal: generationAbort.signal,
@@ -1014,29 +1066,33 @@ export class SharedRuntimeChatService {
       );
       throw error;
     }
+    timings.turn_provider_setup = elapsedTurnMs(providerSetupStartedAt);
     if (turn.degraded) {
       detachRequestAbort();
       await billing?.settle(0);
       const reply = turn.reply?.trim() ?? "";
       if (!reply) return sseError("Shared runtime is unavailable");
-      return new Response(
-        chatSseFrame("chunk", {
-          messageId: messageIds.assistant,
-          userMessageId: messageIds.user,
-          chunk: reply,
-          text: reply,
-          fullText: reply,
-          timestamp: Date.now(),
-        }) +
-          chatSseFrame("done", {
+      return withTurnTimingHeaders(
+        new Response(
+          chatSseFrame("chunk", {
             messageId: messageIds.assistant,
             userMessageId: messageIds.user,
+            chunk: reply,
             text: reply,
             fullText: reply,
-          }),
-        {
-          headers: { "Content-Type": "text/event-stream; charset=utf-8" },
-        },
+            timestamp: Date.now(),
+          }) +
+            chatSseFrame("done", {
+              messageId: messageIds.assistant,
+              userMessageId: messageIds.user,
+              text: reply,
+              fullText: reply,
+            }),
+          {
+            headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+          },
+        ),
+        timings,
       );
     }
     if (!turn.parts) {
@@ -1047,7 +1103,7 @@ export class SharedRuntimeChatService {
         options.executionCtx,
         "stream returned without a provider body",
       );
-      return sseError("Shared runtime stream did not start");
+      return withTurnTimingHeaders(sseError("Shared runtime stream did not start"), timings);
     }
 
     const encoder = new TextEncoder();
@@ -1096,6 +1152,15 @@ export class SharedRuntimeChatService {
           makeTurnMessages(reply, interrupted),
           options.historyStore,
         );
+        if (streamMemoryStore && !isDeterministicFreeTurn(turn)) {
+          await streamMemoryStore.recordTurnPair({
+            userMessage: text.trim(),
+            assistantReply: reply,
+            messageIds,
+            messageRole,
+            interrupted,
+          });
+        }
         await afterWrite?.();
         finalized = true;
       })().catch((error) => {
@@ -1266,12 +1331,15 @@ export class SharedRuntimeChatService {
         );
       },
     });
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-      },
-    });
+    return withTurnTimingHeaders(
+      new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+        },
+      }),
+      timings,
+    );
   }
 }
 

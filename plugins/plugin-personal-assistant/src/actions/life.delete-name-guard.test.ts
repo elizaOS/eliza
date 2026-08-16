@@ -35,6 +35,14 @@ vi.mock("../lifeops/service.js", () => {
     }
   }
   class LifeOpsService {
+    agentId() {
+      return "00000000-0000-0000-0000-000000000003";
+    }
+
+    ownerEntityId() {
+      return "00000000-0000-0000-0000-000000000002";
+    }
+
     repository = {
       listAuditEvents: async (
         _agentId: string,

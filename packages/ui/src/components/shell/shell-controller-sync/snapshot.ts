@@ -72,6 +72,7 @@ export function parseShellControllerSnapshot(
       phase === "idle" ||
       phase === "summoned" ||
       phase === "listening" ||
+      phase === "processing" ||
       phase === "responding"
     ) ||
     typeof value.responding !== "boolean" ||

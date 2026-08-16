@@ -253,9 +253,53 @@ function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
 	return result;
 }
 
+/** Explicit media-generation request shape: a generation verb paired with a
+ * media-artifact noun within one clause. Self-contained mirror of
+ * GENERATE_MEDIA's own explicit-request detector — validate() and routing
+ * deliberately own their layers separately (#20174), but they must agree on
+ * what an explicit ask looks like. */
+const EXPLICIT_MEDIA_GENERATION_REQUEST_RE =
+	/\b(?:generate|make|draw|create|render|paint|produce|design)\b[^.!?]{0,64}\b(?:image|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif|video|animation|clip|music|song|audio|sound(?:\s?effect)?|sfx|voice(?:over)?|speech)s?\b/i;
+
+/** Capability-denial reply shape ("can't do that here — no video tools in
+ * this setup", "I don't have an image generator", "that's a private
+ * surface / private info / limited to the owner"). The privacy arm exists
+ * because the denial text this runtime itself ships in group channels becomes
+ * room history that stage-1 then parrots VERBATIM for asks an ungated sibling
+ * could serve (observed live: "remind me in 3 minutes" denied in one stage
+ * with empty contexts). Kept in sync with `privacyDenialReplyForReasons`
+ * (services/message.ts) — every owner-private decline it can ship must match
+ * one arm here. */
+const CAPABILITY_DENIAL_REPLY_RE =
+	/\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|capabilit|action|model|service|setup|environment)|private surface|owner'?s private info|(?:limited|only available) to (?:the owner|them)|don'?t have access to that/i;
+
+/** Explicit reminder/alarm request shape — as unambiguous as an ask gets. */
+const EXPLICIT_REMINDER_REQUEST_RE =
+	/\bremind me\b|\bset (?:a |an )?(?:reminder|alarm)\b/i;
+
+/** Explicit delegated-task status ask ("is the build task done?", "status of
+ * the website task", "did the build finish?") — answerable only from the
+ * durable task store, never from chat impressions. */
+const EXPLICIT_TASK_STATUS_REQUEST_RE =
+	/\b(?:status|progress)\s+(?:of|on)\b[^.!?]{0,60}\b(?:task|build|job|agent)\b|\b(?:task|build|job)\b[^.!?]{0,40}\b(?:done|finished|complete[d]?|status|still (?:running|going))\b|\b(?:is|did)\b[^.!?]{0,40}\b(?:task|build)\b[^.!?]{0,30}\b(?:finish(?:ed)?|done|complete[d]?)\b/i;
+
+/** Task-state claim/denial reply shape ("no task exists", "got stopped before
+ * shipping", "nothing running now"). Stage-1 asserting store state it never
+ * read is the history-poisoning shape again: the runtime's own denials become
+ * room history the next turn parrots verbatim (observed live ×3 on one room —
+ * "no task exists for …" repeated while the store held the task `validating`). */
+const TASK_STATE_CLAIM_REPLY_RE =
+	/\bno (?:such )?task\b|\btask (?:doesn'?t|does not) exist\b|\b(?:got|was|been) (?:stopped|aborted|cancelled)\b|\bnothing (?:is )?running\b|\bstill (?:running|working)\b|\bnot (?:finished|done|complete)\b/i;
+
 export function routeMessageHandlerOutput(
 	output: V5MessageHandlerOutput,
-	options?: { addressedToOtherParticipant?: boolean },
+	options?: {
+		addressedToOtherParticipant?: boolean;
+		/** The user's own message text; enables request-shape promotions the
+		 * stage-1 output alone cannot justify. Optional for compatibility —
+		 * absent, the request-shape promotions simply do not run. */
+		messageText?: string;
+	},
 ): MessageHandlerRoute {
 	const processMessage = output.processMessage;
 	if (processMessage === "IGNORE") {
@@ -282,6 +326,57 @@ export function routeMessageHandlerOutput(
 
 	const allContexts = [...output.plan.contexts];
 	const requiresTool = output.plan.requiresTool === true;
+	// An explicit "generate a <media>" ask is answerable ONLY by the media
+	// action, yet two live failure shapes bypass it: (a) stage-1 parrots a
+	// stale capability denial from room history and ships it on the simple
+	// path ("no video generation tools in this setup" — false, the model is
+	// registered), and (b) planning routes to an adjacent surface (a workflow
+	// builder) because no candidate anchored the media action. Seeding
+	// GENERATE_MEDIA as a candidate fixes both: the candidate-append pass
+	// forces it onto the planner surface, and stage-1-named-tool enforcement
+	// makes the planner actually CALL it instead of acking. If the action is
+	// genuinely gated for this surface, the gate-rejection short-circuit
+	// still answers honestly — the layers compose.
+	const messageTextForRouting = options?.messageText ?? "";
+	const isExplicitMediaAsk = EXPLICIT_MEDIA_GENERATION_REQUEST_RE.test(
+		messageTextForRouting,
+	);
+	// Seeding is applied ONLY on routes that enter the planner: a simple-path
+	// clarify ("a picture of what exactly?") must stay a final reply, so the
+	// seed never by itself converts a simple turn into planning.
+	const isExplicitReminderAsk = EXPLICIT_REMINDER_REQUEST_RE.test(
+		messageTextForRouting,
+	);
+	const isExplicitTaskStatusAsk = EXPLICIT_TASK_STATUS_REQUEST_RE.test(
+		messageTextForRouting,
+	);
+	const seedCandidate = (name: string): void => {
+		if (
+			(output.plan.candidateActions ?? []).some(
+				(existing) => String(existing).trim().toUpperCase() === name,
+			)
+		) {
+			return;
+		}
+		output.plan.candidateActions = [
+			...(output.plan.candidateActions ?? []),
+			name,
+		];
+	};
+	const seedMediaCandidate = (): void => {
+		if (isExplicitMediaAsk) seedCandidate("GENERATE_MEDIA");
+		// Both reminder siblings ride together: the owner surface serves
+		// DM/api rooms, the ungated TRIGGER serves group channels — the
+		// gate-rejection stand-down downstream picks whichever this surface
+		// allows.
+		if (isExplicitReminderAsk) {
+			seedCandidate("OWNER_REMINDERS");
+			seedCandidate("TRIGGER");
+		}
+		// Task-status asks anchor the durable-store read so the planner answers
+		// from TASKS_HISTORY rows, not from room history.
+		if (isExplicitTaskStatusAsk) seedCandidate("TASKS");
+	};
 	const candidateActions = output.plan.candidateActions ?? [];
 	const hasCandidateActions = candidateActions.length > 0;
 
@@ -319,15 +414,53 @@ export function routeMessageHandlerOutput(
 		(requiresTool || candidateActionsRequestPlanning) &&
 		nonSimpleContexts.length === 0;
 	if (promotionRequested) {
+		seedMediaCandidate();
 		return {
 			type: "planning_needed",
 			output,
-			contexts: ["general"],
+			contexts: isExplicitMediaAsk
+				? ["media"]
+				: isExplicitReminderAsk
+					? ["tasks"]
+					: ["general"],
 		};
 	}
 
 	if (nonSimpleContexts.length === 0) {
 		const reply = getMessageHandlerReply(output);
+		// A capability denial on the simple path for an explicit media ask is
+		// the history-poisoning shape: stage-1 repeats a stale "no video/image
+		// tools" precedent from room history without consulting the runtime
+		// (observed live: the same room that generated two images denied that
+		// GENERATE_MEDIA exists). Route to planning against the media context —
+		// if the capability is real the planner exercises it; if it is
+		// genuinely absent the planner surface proves it and the honest denial
+		// ships from ground truth instead of from memory.
+		if (
+			(isExplicitMediaAsk || isExplicitReminderAsk) &&
+			CAPABILITY_DENIAL_REPLY_RE.test(reply)
+		) {
+			seedMediaCandidate();
+			return {
+				type: "planning_needed",
+				output,
+				contexts: isExplicitMediaAsk ? ["media"] : ["tasks"],
+			};
+		}
+		// A task-state claim on the simple path for an explicit task-status ask
+		// is the same poisoning shape with the task store as the ground truth:
+		// stage-1 asserts "no task exists"/"got stopped" from its own prior
+		// denials in room history without ever reading the store. Promote so
+		// the planner consults TASKS — a real absence then ships from the
+		// store's answer instead of from memory.
+		if (isExplicitTaskStatusAsk && TASK_STATE_CLAIM_REPLY_RE.test(reply)) {
+			seedMediaCandidate();
+			return {
+				type: "planning_needed",
+				output,
+				contexts: ["tasks"],
+			};
+		}
 		// A progress-shaped reply on the pure-simple path is a self-contradiction:
 		// "checking paris weather now" promises tool work, and the simple path
 		// runs no tools — shipping it as the WHOLE turn is the bare-ack class
@@ -358,6 +491,7 @@ export function routeMessageHandlerOutput(
 	}
 
 	// Mixed selection: drop the `simple` marker and plan against the rest.
+	seedMediaCandidate();
 	return {
 		type: "planning_needed",
 		output,

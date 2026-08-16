@@ -24,8 +24,12 @@ const TIMEOUT_ERROR_PATTERN = /(?:timed out|timeout)/i;
 const PERMANENT_DELETE_PREFIX = "Deletion permanently failed";
 const PERMANENT_DELETE_PATTERN =
   /^Deletion permanently failed after ([1-9][0-9]{0,2}) attempts: ([\s\S]+)$/;
+// Worker restarts spend a database-owned interruption budget, never the job's
+// attempts (#17473), so the restart family carries the interruption count.
+// Diagnosis is forward-only: rows written under the retired attempts-based
+// spelling fail closed as malformed recovery provenance.
 const WORKER_RESTART_TERMINAL_PATTERN =
-  /^Job interrupted by worker restart ([1-9][0-9]{0,2}) times - max attempts reached$/;
+  /^Job interrupted by worker restart ([1-9][0-9]{0,2}) times - interruption bound reached$/;
 const TIMEOUT_TERMINAL_PATTERN =
   /^Job timed out ([1-9][0-9]{0,2}) times - max attempts reached$/;
 
@@ -66,12 +70,15 @@ type RecoveryCode = "none" | "worker_restart_recovered" | "timeout_recovered";
 
 interface RecoveryClassification {
   code: Exclude<RecoveryCode, "none">;
+  /** Attempts for the timeout family; interruptions for the restart family. */
   attempt: number;
+  /** Attempt budget for the timeout family; interruption bound for restarts. */
   maxAttempts: number;
 }
 
 interface TerminalFailureClassification {
   code: Extract<ErrorCode, "timeout" | "worker_restart_interrupted">;
+  /** Attempts for the timeout family; interruptions for the restart family. */
   attempts: number;
 }
 
@@ -111,7 +118,7 @@ const RECOVERY_PARTIAL_RESULT_ERRORS = new Map<string, ErrorCode>([
 ]);
 
 export interface ManagedDedicatedCanaryDiagnostic {
-  schemaVersion: 3;
+  schemaVersion: 4;
   targetCount: 1;
   sandbox: {
     status: string;
@@ -124,6 +131,7 @@ export interface ManagedDedicatedCanaryDiagnostic {
     status: string;
     attempts: number;
     maxAttempts: number;
+    executionInterruptions: number;
     containerStopped: boolean | null;
     rowDeleted: boolean | null;
     errorCode: ErrorCode;
@@ -438,14 +446,30 @@ function classifySandboxError(
   // validation already pins a terminal message's own attempt count to the
   // job's attempts and maxAttempts, which the equalities below pin to the
   // envelope's.
-  const sourceIndex = jobs.findIndex(
-    ({ diagnostic, rawError }) =>
-      typeof rawError === "string" &&
-      rawError === envelope.cause &&
-      diagnostic.status === "failed" &&
+  // An interruption-terminal cause pins the wrapped count to the job's
+  // interruption counter instead of attempts, because the restart family
+  // never spends the attempt budget (#17473); the envelope's own count is
+  // still the writer's attempt budget.
+  const causeTerminal = classifyTerminalFailure(envelope.cause);
+  const sourceIndex = jobs.findIndex(({ diagnostic, rawError }) => {
+    if (
+      typeof rawError !== "string" ||
+      rawError !== envelope.cause ||
+      diagnostic.status !== "failed"
+    ) {
+      return false;
+    }
+    if (causeTerminal?.code === "worker_restart_interrupted") {
+      return (
+        envelope.attempts === diagnostic.maxAttempts &&
+        causeTerminal.attempts === diagnostic.executionInterruptions
+      );
+    }
+    return (
       diagnostic.attempts === envelope.attempts &&
-      diagnostic.maxAttempts === envelope.attempts,
-  );
+      diagnostic.maxAttempts === envelope.attempts
+    );
+  });
   if (sourceIndex === -1) {
     throw new Error(
       `${label} does not correlate with bounded failed-job history`,
@@ -529,7 +553,7 @@ function classifyRecovery(
     {
       code: "worker_restart_recovered",
       pattern:
-        /^Job interrupted by worker restart - recovered for retry \(attempt ([1-9][0-9]{0,2})\/([1-9][0-9]{0,2})\)$/,
+        /^Job interrupted by worker restart - recovered for retry \(interruption ([1-9][0-9]{0,2})\/([1-9][0-9]{0,2})\)$/,
     },
     {
       code: "timeout_recovered",
@@ -634,6 +658,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
         "result",
         "attempts",
         "maxAttempts",
+        "executionInterruptions",
         "resultStorage",
         "errorStorage",
         "scheduledFor",
@@ -718,22 +743,36 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
       1,
       100,
     );
+    const executionInterruptions = integer(
+      job.executionInterruptions,
+      `jobs[${index}].executionInterruptions`,
+      0,
+      100,
+    );
     if (attempts > maxAttempts) {
       throw new Error(`jobs[${index}] attempts exceed maxAttempts`);
     }
+    // The timeout family pins to the attempt budget; the restart family pins
+    // to the interruption counter, whose recovery deliberately freezes
+    // attempts (#17473).
     if (
       terminalFailure &&
       (job.status !== "failed" ||
-        terminalFailure.attempts !== attempts ||
-        terminalFailure.attempts !== maxAttempts)
+        (terminalFailure.code === "timeout"
+          ? terminalFailure.attempts !== attempts ||
+            terminalFailure.attempts !== maxAttempts
+          : terminalFailure.attempts !== executionInterruptions))
     ) {
       throw new Error(`jobs[${index}] terminal counters disagree`);
     }
     if (
       recovery &&
-      (recovery.attempt !== attempts ||
-        recovery.maxAttempts !== maxAttempts ||
-        attempts >= maxAttempts)
+      (recovery.code === "timeout_recovered"
+        ? recovery.attempt !== attempts ||
+          recovery.maxAttempts !== maxAttempts ||
+          attempts >= maxAttempts
+        : recovery.attempt !== executionInterruptions ||
+          recovery.attempt > recovery.maxAttempts)
     ) {
       throw new Error(`jobs[${index}] recovery counters disagree`);
     }
@@ -799,9 +838,13 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     ) {
       throw new Error(`jobs[${index}] has an invalid completed result`);
     }
+    // An interruption-terminal job may legitimately have spent zero attempts:
+    // restarts kill it before an execution ever fails.
     if (
       job.status === "failed" &&
-      (attempts === 0 || jobErrorCode === "none")
+      ((attempts === 0 &&
+        terminalFailure?.code !== "worker_restart_interrupted") ||
+        jobErrorCode === "none")
     ) {
       throw new Error(`jobs[${index}] has an invalid failed result`);
     }
@@ -819,6 +862,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
       status: job.status,
       attempts,
       maxAttempts,
+      executionInterruptions,
       containerStopped,
       rowDeleted,
       errorCode: jobErrorCode,
@@ -857,7 +901,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
   }
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     targetCount: 1,
     sandbox: {
       status: agent.status,

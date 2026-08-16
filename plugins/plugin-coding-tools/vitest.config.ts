@@ -10,6 +10,14 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@elizaos\/core\/edge$/,
+        replacement: path.join(repoRoot, "packages/core/src/index.edge.ts"),
+      },
+      {
+        find: /^@elizaos\/cloud-routing$/,
+        replacement: path.join(repoRoot, "packages/cloud/routing/src/index.ts"),
+      },
+      {
         find: /^@elizaos\/core$/,
         replacement: path.join(repoRoot, "packages/core/src/index.node.ts"),
       },
@@ -43,6 +51,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    setupFiles: ["./vitest.setup.ts"],
+    // Capability tests intentionally replace process-wide PATH values. Keep
+    // files serial so those fixtures cannot race shell-action execution in a
+    // sibling file inside the same Vitest worker process.
+    fileParallelism: false,
     include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
     // *.real.test.ts files run only in the dedicated real/live lane
     // (packages/scripts/vitest/real.config.ts), never in the default suite.

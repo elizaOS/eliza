@@ -1,9 +1,10 @@
 # @elizaos/cloud-services-common
 
-Shared, dependency-free TypeScript utilities for the `packages/cloud/services/*`
-packages: a structured JSON logger factory and Kubernetes ServiceAccount
-credential helpers. Private (unpublished), ESM, sources consumed directly from
-`src/` (no build step — `main`/`types` point at `src/index.ts`).
+Shared, dependency-free TypeScript utilities for Cloudflare Workers and the
+`packages/cloud/services/*` sidecars: connector protocol, retry, delivery,
+structured logging, and Kubernetes ServiceAccount helpers. Private
+(unpublished), ESM, sources consumed directly from `src/` (no build step —
+`main`/`types` point at `src/index.ts`).
 
 ## Layout / exports
 
@@ -22,6 +23,16 @@ credential helpers. Private (unpublished), ESM, sources consumed directly from
   files are absent (e.g. a developer laptop outside a cluster) and cache the
   first result. `__resetServiceAccountCacheForTests()` clears that cache for
   tests only.
+- `src/identity-link-code.ts` (`./identity-link-code`) — canonical connector
+  LINK-code recognition and user-facing confirmation results.
+- `src/gateway-auth.ts` (`./gateway-auth`) — strict short-lived gateway token
+  response validation plus shared refresh and jittered retry timing.
+- `src/response-attempts.ts` (`./response-attempts`) — bounded observable HTTP
+  retry behavior shared across transport runtimes.
+- `src/telegram-connector.ts` (`./telegram-connector`) — Web-standard Telegram
+  webhook verification, parsing, typing, voice download, and reply delivery.
+- `src/telegram-delivery.ts` (`./telegram-delivery`) — exact-once Telegram
+  reply state machine over a runtime-provided atomic ledger.
 
 ## Key scripts
 
@@ -31,7 +42,7 @@ Scope to this package with `--cwd packages/cloud/services/_common`:
 bun run --cwd packages/cloud/services/_common typecheck   # tsc --noEmit
 bun run --cwd packages/cloud/services/_common lint         # biome check .
 bun run --cwd packages/cloud/services/_common lint:fix     # biome check --write .
-bun run --cwd packages/cloud/services/_common test         # placeholder: prints "no tests"
+bun run --cwd packages/cloud/services/_common test         # delivery state-machine tests
 ```
 
 ## Conventions / gotchas
@@ -47,6 +58,8 @@ bun run --cwd packages/cloud/services/_common test         # placeholder: prints
   `createServiceLogger`, not `console`.
 - No runtime dependencies; keep it that way so every service can import it
   cheaply.
+- Keep provider protocol and delivery semantics runtime-neutral: Workers and
+  Railway must delegate to the same source rather than maintaining forks.
 
 Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [CLAUDE.md](../../../../CLAUDE.md).
 

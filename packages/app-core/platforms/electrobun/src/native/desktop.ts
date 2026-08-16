@@ -94,12 +94,19 @@ import {
 } from "./agent";
 import {
   createSecurityScopedBookmark,
+  type FnMonitorStartResult,
+  getFnSystemUsageType,
   isAppActive,
+  isFnKeyDown,
+  isFnMonitorHealthy,
   isKeyWindow,
   makeKeyAndOrderFront,
   orderOut,
+  pollFnMonitor,
   startAccessingSecurityScopedBookmark,
+  startFnMonitor,
   stopAccessingSecurityScopedBookmarks,
+  stopFnMonitor,
 } from "./mac-window-effects";
 import {
   linuxSysfsOnBattery,
@@ -350,6 +357,12 @@ export class DesktopManager {
   // toggles closed instead, so a click on the icon never double-fires.
   private trayPopoverBlurHideTimer: ReturnType<typeof setTimeout> | null = null;
   private shortcuts: Map<string, ShortcutOptions> = new Map();
+  // Fn-hold push-to-talk (#20483): drain poller for the native CGEventTap fn
+  // monitor plus a slow watchdog — macOS silently disables a tap on callback
+  // timeout or secure-input, so health is re-checked and the tap restarted.
+  private fnHoldPoller: ReturnType<typeof setInterval> | null = null;
+  private fnHoldWatchdog: ReturnType<typeof setInterval> | null = null;
+  private fnHoldDownReported = false;
   private notificationCounter = 0;
   private notificationDiagnostics: NotificationDiagnosticsEntry[] = [];
   private sendToWebview: SendToWebview | null = null;
@@ -977,6 +990,80 @@ export class DesktopManager {
       accelerator: shortcut.accelerator,
     });
     return true;
+  }
+
+  // MARK: - Fn-hold push-to-talk (#20483)
+
+  /**
+   * Start the native fn (Globe) key monitor and forward hold transitions to
+   * the renderer as `desktopFnHoldChanged` pushes. macOS-only; the listen-only
+   * CGEventTap needs Accessibility (or Input Monitoring) trust, so the result
+   * distinguishes `permission-missing` from hard failure and reports the
+   * system "Press 🌐 key to..." action so the renderer can warn when a bare
+   * fn tap will also trigger emoji/dictation.
+   */
+  async startFnHoldMonitor(): Promise<{
+    status: FnMonitorStartResult;
+    fnSystemUsageType: number;
+  }> {
+    if (process.platform !== "darwin") {
+      return { status: "unavailable", fnSystemUsageType: 0 };
+    }
+    const status = startFnMonitor();
+    if (status === "started" && !this.fnHoldPoller) {
+      // 16ms drain keeps down→chip latency within one frame; the FFI call is
+      // a lock-free ring-buffer read, so the idle cost is negligible.
+      this.fnHoldPoller = setInterval(() => this.drainFnHoldEvents(), 16);
+      this.fnHoldWatchdog = setInterval(() => {
+        if (!isFnMonitorHealthy()) {
+          stopFnMonitor();
+          startFnMonitor();
+        }
+      }, 5_000);
+    }
+    return { status, fnSystemUsageType: getFnSystemUsageType() };
+  }
+
+  async stopFnHoldMonitor(): Promise<void> {
+    if (this.fnHoldPoller) {
+      clearInterval(this.fnHoldPoller);
+      this.fnHoldPoller = null;
+    }
+    if (this.fnHoldWatchdog) {
+      clearInterval(this.fnHoldWatchdog);
+      this.fnHoldWatchdog = null;
+    }
+    if (this.fnHoldDownReported) {
+      this.fnHoldDownReported = false;
+      this.send("desktopFnHoldChanged", { held: false, cancelled: true });
+    }
+    stopFnMonitor();
+  }
+
+  private drainFnHoldEvents(): void {
+    for (;;) {
+      const event = pollFnMonitor();
+      if (event === null) break;
+      if (event === "down" && !this.fnHoldDownReported) {
+        this.fnHoldDownReported = true;
+        this.send("desktopFnHoldChanged", { held: true, cancelled: false });
+      } else if (
+        (event === "up" || event === "up-chord") &&
+        this.fnHoldDownReported
+      ) {
+        this.fnHoldDownReported = false;
+        this.send("desktopFnHoldChanged", {
+          held: false,
+          cancelled: event === "up-chord",
+        });
+      }
+    }
+    // Overflow resync: if the queue dropped transitions, trust the physical
+    // key state so a stuck "held" chip cannot outlive the actual hold.
+    if (this.fnHoldDownReported && !isFnKeyDown()) {
+      this.fnHoldDownReported = false;
+      this.send("desktopFnHoldChanged", { held: false, cancelled: true });
+    }
   }
 
   // MARK: - Auto Launch
@@ -2841,6 +2928,7 @@ X-GNOME-Autostart-enabled=true
     this.releaseNotesView?.remove();
     this.releaseNotesView = null;
     this.releaseNotesWindow = null;
+    await this.stopFnHoldMonitor();
     await this.unregisterAllShortcuts();
     await this.destroyTray();
     this.trayMenuItems.clear();

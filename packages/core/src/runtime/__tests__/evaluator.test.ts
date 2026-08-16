@@ -1202,3 +1202,151 @@ describe("malformed envelope recovery (#18240 class — the 2026-08-10 leak)", (
 		).not.toBe("malformed_envelope_text");
 	});
 });
+
+describe("FINISH with a progress-promise message coerces to CONTINUE", () => {
+	const makeParams = (evaluatorJson: string) => ({
+		runtime: { useModel: vi.fn(async () => evaluatorJson) },
+		context: {
+			id: "ctx",
+			staticPrefix: {
+				characterPrompt: { content: "agent_name: Eliza", stable: true },
+			},
+			events: [
+				{
+					id: "msg",
+					type: "message" as const,
+					message: {
+						role: "user" as const,
+						content: { text: "find the best keyboard" },
+					},
+				},
+			],
+		},
+		trajectory: {
+			context: { id: "ctx" },
+			steps: [
+				{
+					toolCall: { name: "WEB_SEARCH", args: { query: "best keyboard" } },
+					result: { success: true, text: '{"results":[{"url":"x"}]}' },
+				},
+			],
+			archivedSteps: [],
+			plannedQueue: [],
+			evaluatorOutputs: [],
+		},
+		effects: { copyToClipboard: vi.fn(), messageToUser: vi.fn() },
+	});
+
+	it("bare final ack after a successful tool continues the loop (live: 'checking.')", async () => {
+		const result = await runEvaluator(
+			makeParams(
+				'{"success": true, "decision": "FINISH", "thought": "found a list.", "messageToUser": "checking."}',
+			),
+		);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+	});
+
+	it("promise-tailed message continues the loop (live: link + 'checking this list for the top pick')", async () => {
+		const result = await runEvaluator(
+			makeParams(
+				'{"success": true, "decision": "FINISH", "thought": "found it.", "messageToUser": "<https://example.com/best-keyboards>\\n\\nchecking this list for the top pick under $150."}',
+			),
+		);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+	});
+
+	it("substantive answer that merely opens with a gerund stays FINISH", async () => {
+		const answer =
+			"Checking accounts are bank accounts designed for everyday spending; for your $150 budget the Keychron V5 is the pick.";
+		const result = await runEvaluator(
+			makeParams(
+				`{"success": true, "decision": "FINISH", "thought": "answered.", "messageToUser": ${JSON.stringify(answer)}}`,
+			),
+		);
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toContain("Keychron V5");
+	});
+
+	it("real deliverable ending in a plain sentence stays FINISH", async () => {
+		const answer =
+			"top pick: Keychron V5 ($95) — hot-swappable, gasket mount, well under your $150 budget.";
+		const result = await runEvaluator(
+			makeParams(
+				`{"success": true, "decision": "FINISH", "thought": "done.", "messageToUser": ${JSON.stringify(answer)}}`,
+			),
+		);
+		expect(result.decision).toBe("FINISH");
+	});
+});
+
+describe("fabricated marker invocations are rejected, real widgets pass", () => {
+	const finishWith = (messageToUser: string) =>
+		`{"success": true, "decision": "FINISH", "thought": "done.", "messageToUser": ${JSON.stringify(messageToUser)}}`;
+	const paramsWithTool = (json: string) => ({
+		runtime: { useModel: vi.fn(async () => json) },
+		context: {
+			id: "ctx",
+			staticPrefix: {
+				characterPrompt: { content: "agent_name: Eliza", stable: true },
+			},
+			events: [
+				{
+					id: "msg",
+					type: "message" as const,
+					message: {
+						role: "user" as const,
+						content: { text: "what documents do i have" },
+					},
+				},
+			],
+		},
+		trajectory: {
+			context: { id: "ctx" },
+			steps: [
+				{
+					toolCall: { name: "DOCUMENTS", args: {} },
+					result: { success: true, text: "{}" },
+				},
+			],
+			archivedSteps: [],
+			plannedQueue: [],
+			evaluatorOutputs: [],
+		},
+		effects: { copyToClipboard: vi.fn(), messageToUser: vi.fn() },
+	});
+
+	it("a fabricated [DOCUMENT_SEARCH] marker coerces to CONTINUE and does not ship (live leak)", async () => {
+		for (const answer of [
+			'checking documents context. [DOCUMENT_SEARCH] {"limit":20} [/DOCUMENT_SEARCH]',
+			'checking documents context. [ DOCUMENT_SEARCH ] {"limit":20,} [ / DOCUMENT_SEARCH ]',
+		]) {
+			const result = await runEvaluator(paramsWithTool(finishWith(answer)));
+			expect(result.decision).toBe("CONTINUE");
+			expect(result.messageToUser ?? "").not.toContain("DOCUMENT_SEARCH");
+		}
+	});
+
+	it("a real [CHECKLIST] widget block is NOT treated as an invocation", async () => {
+		const result = await runEvaluator(
+			paramsWithTool(
+				finishWith(
+					'here is your list:\n[CHECKLIST]\n{"title":"x","items":[{"content":"a","status":"pending"}]}\n[/CHECKLIST]',
+				),
+			),
+		);
+		expect(result.decision).toBe("FINISH");
+	});
+
+	it("literal bracket-tag documentation stays FINISH", async () => {
+		for (const answer of [
+			"Wrap the value in [SECTION]content[/SECTION].",
+			'Example:\n```text\n[DOCUMENT_SEARCH] {"limit":20} [/DOCUMENT_SEARCH]\n```',
+		]) {
+			const result = await runEvaluator(paramsWithTool(finishWith(answer)));
+			expect(result.decision).toBe("FINISH");
+			expect(result.messageToUser).toBe(answer);
+		}
+	});
+});

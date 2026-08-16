@@ -12,7 +12,10 @@ import {
 	replyEffectStatusFieldEvaluator,
 	replyTextFieldEvaluator,
 } from "../builtin-field-evaluators";
-import { parseMessageHandlerOutput } from "../message-handler";
+import {
+	parseMessageHandlerOutput,
+	routeMessageHandlerOutput,
+} from "../message-handler";
 import { ResponseHandlerFieldRegistry } from "../response-handler-field-registry";
 
 describe("message handler retrieval hint output", () => {
@@ -197,5 +200,52 @@ describe("message handler retrieval hint output", () => {
 			Object.keys(HANDLE_RESPONSE_SCHEMA.properties ?? {}),
 		);
 		expect(composedSchema.required).toEqual(HANDLE_RESPONSE_SCHEMA.required);
+	});
+});
+
+describe("task-status claim on the simple path promotes to planning", () => {
+	const makeOutput = (reply: string) =>
+		({
+			processMessage: "RESPOND",
+			thought: "",
+			plan: {
+				contexts: ["simple"],
+				reply,
+				simple: true,
+				requiresTool: false,
+			},
+		}) as never;
+
+	it("parroted 'no task exists' denial for a status ask routes to tasks planning with TASKS seeded", () => {
+		const output = makeOutput(
+			'no task exists for "nubs website". the app idea got stopped before anything shipped. nothing running now.',
+		);
+		const route = routeMessageHandlerOutput(output, {
+			messageText:
+				"whats the real status of the nubs website build task right now",
+		});
+		expect(route.type).toBe("planning_needed");
+		if (route.type === "planning_needed") {
+			expect(route.contexts).toEqual(["tasks"]);
+			expect(route.output.plan.candidateActions).toContain("TASKS");
+		}
+	});
+
+	it("a genuine simple answer to a status ask stays final", () => {
+		const output = makeOutput(
+			"the site shipped this morning — it lives at https://example.org/apps/nubs/",
+		);
+		const route = routeMessageHandlerOutput(output, {
+			messageText: "is the website build task done?",
+		});
+		expect(route.type).toBe("final_reply");
+	});
+
+	it("a task-state claim without a status ask stays final", () => {
+		const output = makeOutput("nothing running now, all quiet.");
+		const route = routeMessageHandlerOutput(output, {
+			messageText: "hows your day going",
+		});
+		expect(route.type).toBe("final_reply");
 	});
 });

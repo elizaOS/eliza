@@ -17,10 +17,12 @@ import type {
   ScheduledTaskRunner,
   ScheduledTaskTrigger,
 } from "./scheduled-task/types.js";
+import { resolveExplicitSharedReminderDelay } from "./shared-reminder-relative-delay.js";
 
 /** Dedicated runtimes route imported Shared reminders through Cloud's trusted gateway. */
 export const SHARED_CUTOVER_GATEWAY_CHANNEL = "shared_gateway_dm";
 export const SHARED_REMINDER_MAX_TEXT_LENGTH = 2000;
+const MAX_DATE_TIMESTAMP_MS = 8_640_000_000_000_000;
 
 export const SHARED_REMINDERS_EDGE_COMPATIBILITY = {
   target: "edge",
@@ -145,12 +147,24 @@ async function actionFailure(
 function reminderTrigger(
   input: Record<string, unknown>,
   now: Date,
+  explicitDelayMilliseconds?: number,
 ): ScheduledTaskTrigger | undefined {
+  if (explicitDelayMilliseconds !== undefined) {
+    const at = now.getTime() + explicitDelayMilliseconds;
+    if (Number.isFinite(at) && Math.abs(at) <= MAX_DATE_TIMESTAMP_MS) {
+      return { kind: "once", atIso: new Date(at).toISOString() };
+    }
+    return undefined;
+  }
   const inMinutes = positiveNumber(input, "inMinutes", "minutesFromNow");
   if (inMinutes !== undefined) {
+    const at = now.getTime() + inMinutes * 60_000;
+    if (!Number.isFinite(at) || Math.abs(at) > MAX_DATE_TIMESTAMP_MS) {
+      return undefined;
+    }
     return {
       kind: "once",
-      atIso: new Date(now.getTime() + inMinutes * 60_000).toISOString(),
+      atIso: new Date(at).toISOString(),
     };
   }
   const atIso = textParameter(input, "atIso", "at");
@@ -344,7 +358,19 @@ export function createSharedRemindersEdgeAction(
             callback,
           );
         }
-        const trigger = reminderTrigger(input, now());
+        const explicitDelay = resolveExplicitSharedReminderDelay(
+          message.content?.text,
+        );
+        if (explicitDelay.kind === "invalid") {
+          return await actionFailure(explicitDelay.reason, callback);
+        }
+        const trigger = reminderTrigger(
+          input,
+          now(),
+          explicitDelay.kind === "resolved"
+            ? explicitDelay.milliseconds
+            : undefined,
+        );
         if (!trigger) {
           return await actionFailure(
             "A reminder time is required: inMinutes, atIso, everyMinutes, or cronExpression with timezone.",
