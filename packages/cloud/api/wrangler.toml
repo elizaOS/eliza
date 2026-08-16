@@ -129,6 +129,10 @@ class_name = "TwitterOAuthRefreshCoordinator"
 name = "PERSONAL_DELIVERY_PROJECTIONS"
 class_name = "PersonalDeliveryProjection"
 
+[[durable_objects.bindings]]
+name = "PERSONAL_TELEGRAM_DELIVERIES"
+class_name = "PersonalTelegramDelivery"
+
 [[migrations]]
 tag = "shared-runtime-conversations-v1"
 new_sqlite_classes = ["SharedRuntimeConversation"]
@@ -152,6 +156,10 @@ new_sqlite_classes = ["TwitterOAuthRefreshCoordinator"]
 [[migrations]]
 tag = "personal-delivery-projection-v1"
 new_sqlite_classes = ["PersonalDeliveryProjection"]
+
+[[migrations]]
+tag = "personal-telegram-delivery-v1"
+new_sqlite_classes = ["PersonalTelegramDelivery"]
 
 # General API limits and queues may use Railway Redis via REDIS_URL. Inference
 # routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
@@ -180,6 +188,7 @@ new_sqlite_classes = ["PersonalDeliveryProjection"]
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "false"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
+PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
@@ -451,6 +460,9 @@ SHARED_ELIZA_AGENT_RUNTIME = "true"
 # Staging exercises the strongly invalidated sender projection while default
 # and production stay on canonical resolution until the live latency matrix passes.
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "true"
+# Staging serves the official Personal Shared Telegram connector at the edge;
+# other providers and every Dedicated path remain on gateway-webhook.
+PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "true"
 # Emit per-turn inference spans at info for the staging latency matrix without
 # changing production log volume or recording prompt content.
 ELIZA_INFERENCE_TIMING = "info"
@@ -654,6 +666,10 @@ class_name = "TwitterOAuthRefreshCoordinator"
 name = "PERSONAL_DELIVERY_PROJECTIONS"
 class_name = "PersonalDeliveryProjection"
 
+[[env.staging.durable_objects.bindings]]
+name = "PERSONAL_TELEGRAM_DELIVERIES"
+class_name = "PersonalTelegramDelivery"
+
 [[env.staging.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615311"
@@ -714,6 +730,7 @@ __filename = '"/worker.js"'
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "true"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
+PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
@@ -885,6 +902,10 @@ class_name = "TwitterOAuthRefreshCoordinator"
 [[env.production.durable_objects.bindings]]
 name = "PERSONAL_DELIVERY_PROJECTIONS"
 class_name = "PersonalDeliveryProjection"
+
+[[env.production.durable_objects.bindings]]
+name = "PERSONAL_TELEGRAM_DELIVERIES"
+class_name = "PersonalTelegramDelivery"
 
 [[env.production.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"

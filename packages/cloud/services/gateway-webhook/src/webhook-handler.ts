@@ -1,4 +1,14 @@
 /** Handles authenticated connector webhooks from verification through reply delivery. */
+import {
+  executeResponseAttempts,
+  type ResponseAttemptsResult,
+} from "@elizaos/cloud-services-common/response-attempts";
+import {
+  executeTelegramDelivery,
+  type TelegramDeliveryLedger,
+  type TelegramDeliveryState,
+  TelegramEgressAlreadyClaimedError,
+} from "@elizaos/cloud-services-common/telegram-delivery";
 import type {
   ChatEvent,
   Platform,
@@ -35,10 +45,6 @@ const OPAQUE_TRACE_ID =
   /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 const ZERO_TRACE_ID = "0".repeat(32);
 
-class TelegramEgressAlreadyClaimedError extends Error {
-  override readonly name = "TelegramEgressAlreadyClaimedError";
-}
-
 class PersonalSharedPreEgressError extends Error {
   override readonly name = "PersonalSharedPreEgressError";
 }
@@ -60,6 +66,45 @@ interface PersonalSharedDeliveryTiming {
 interface MessageTraceContext {
   traceId: string;
   gatewayReceivedAtMs: number;
+}
+
+function redisTelegramDeliveryLedger(
+  redis: GatewayRedis,
+  dedupKey: string,
+): TelegramDeliveryLedger {
+  const processingKey = `${dedupKey}:processing`;
+  return {
+    async read(): Promise<TelegramDeliveryState | null> {
+      const state = await redis.get<string>(dedupKey);
+      return state === TELEGRAM_EGRESS_STARTED || state === TELEGRAM_DELIVERED
+        ? state
+        : null;
+    },
+    async claimProcessing(): Promise<boolean> {
+      return Boolean(
+        await redis.set(processingKey, "1", {
+          nx: true,
+          ex: PROCESSING_TTL_SECONDS,
+        }),
+      );
+    },
+    async releaseProcessing(): Promise<void> {
+      await redis.del(processingKey);
+    },
+    async claimEgress(): Promise<boolean> {
+      return Boolean(
+        await redis.set(dedupKey, TELEGRAM_EGRESS_STARTED, {
+          nx: true,
+          ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+        }),
+      );
+    },
+    async markDelivered(): Promise<void> {
+      await redis.set(dedupKey, TELEGRAM_DELIVERED, {
+        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+      });
+    },
+  };
 }
 
 function resolveTraceId(request: Request): string {
@@ -137,82 +182,45 @@ export async function handleWebhook(
     project,
     agentId,
   );
-  const priorDeliveryState = await redis.get<string>(dedupKey);
-  if (priorDeliveryState) {
-    if (
-      adapter.platform === "telegram" &&
-      priorDeliveryState === TELEGRAM_EGRESS_STARTED
-    ) {
-      logger.error(
-        "Telegram webhook delivery outcome is uncertain; refusing replay",
-        {
+  if (adapter.platform === "telegram") {
+    try {
+      const outcome = await executeTelegramDelivery(
+        redisTelegramDeliveryLedger(redis, dedupKey),
+        (beforeEgress) =>
+          processMessage(
+            adapter,
+            config,
+            event,
+            deps,
+            project,
+            trace,
+            agentId,
+            beforeEgress,
+          ),
+      );
+      if (outcome === "uncertain") {
+        logger.error(
+          "Telegram webhook delivery outcome is uncertain; refusing replay",
+          { platform: adapter.platform, messageId: event.messageId, dedupKey },
+        );
+        return new Response(
+          JSON.stringify({ error: "delivery outcome uncertain" }),
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (outcome === "in_progress") {
+        return new Response(JSON.stringify({ error: "update in progress" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (outcome === "duplicate") {
+        logger.debug("Duplicate webhook skipped", {
           platform: adapter.platform,
           messageId: event.messageId,
           dedupKey,
-        },
-      );
-      return new Response(
-        JSON.stringify({ error: "delivery outcome uncertain" }),
-        {
-          status: 503,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
-    logger.debug("Duplicate webhook skipped", {
-      platform: adapter.platform,
-      messageId: event.messageId,
-      dedupKey,
-    });
-    return ackResponse(adapter.platform);
-  }
-
-  if (adapter.platform === "telegram") {
-    const processingKey = `${dedupKey}:processing`;
-    const claimed = await redis.set(processingKey, "1", {
-      nx: true,
-      ex: PROCESSING_TTL_SECONDS,
-    });
-    if (!claimed) {
-      return new Response(JSON.stringify({ error: "update in progress" }), {
-        status: 503,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    let egressStarted = false;
-    try {
-      await processMessage(
-        adapter,
-        config,
-        event,
-        deps,
-        project,
-        trace,
-        agentId,
-        async () => {
-          // Write the no-replay barrier before the Bot API call. A crash or
-          // ambiguous network failure after this point must fail visibly on a
-          // Telegram retry instead of sending the same response twice.
-          const egressClaimed = await redis.set(
-            dedupKey,
-            TELEGRAM_EGRESS_STARTED,
-            {
-              nx: true,
-              ex: TELEGRAM_DELIVERY_TTL_SECONDS,
-            },
-          );
-          if (!egressClaimed) {
-            throw new TelegramEgressAlreadyClaimedError(
-              "Telegram egress was already claimed for this update",
-            );
-          }
-          egressStarted = true;
-        },
-      );
-      await redis.set(dedupKey, TELEGRAM_DELIVERED, {
-        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
-      });
+        });
+      }
       return ackResponse(adapter.platform);
     } catch (error) {
       if (error instanceof TelegramEgressAlreadyClaimedError) {
@@ -227,11 +235,17 @@ export async function handleWebhook(
         );
       }
       throw error;
-    } finally {
-      if (!egressStarted) {
-        await redis.del(processingKey);
-      }
     }
+  }
+
+  const priorDeliveryState = await redis.get<string>(dedupKey);
+  if (priorDeliveryState) {
+    logger.debug("Duplicate webhook skipped", {
+      platform: adapter.platform,
+      messageId: event.messageId,
+      dedupKey,
+    });
+    return ackResponse(adapter.platform);
   }
 
   const isNew = await redis.set(dedupKey, "1", {
@@ -645,7 +659,6 @@ async function sendPersonalSharedReply(
       "connector cannot resolve the supplied voice note",
     );
   }
-  const cloudStartedAt = Date.now();
   // Voice turns can spend most of the 120-second processing lease in STT + the
   // model. Only a stale-auth retry is safe inline; provider/transport failures
   // reopen the webhook for Telegram's durable retry instead of overlapping it.
@@ -684,111 +697,73 @@ async function sendPersonalSharedReply(
     });
 
   let authHeader: Record<string, string> = getAuthHeader();
-  let response: Response | null = null;
-  let lastTransportError: unknown;
-  let attemptsUsed = 0;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    attemptsUsed = attempt;
-    const attemptStartedAt = Date.now();
-    try {
-      response = await postMessage(authHeader);
-      if (response.status === 401 && attempt < maxAttempts) {
-        logger.warn("Personal Shared Cloud attempt requires fresh auth", {
+  let attemptResult: ResponseAttemptsResult;
+  try {
+    attemptResult = await executeResponseAttempts({
+      maxAttempts,
+      request: () => postMessage(authHeader),
+      refreshAuth: async () => {
+        authHeader = await reauth();
+      },
+      retryStatuses: !voiceNote,
+      retryTransport: !voiceNote,
+      retryDelayCapMs: PERSONAL_SHARED_RETRY_DELAY_CAP_MS,
+      observe: (observation) => {
+        const response = observation.response;
+        const attemptContext = {
           traceId,
           project,
           platform: adapter.platform,
           messageId: event.messageId,
-          attempt,
-          maxAttempts,
-          durationMs: Date.now() - attemptStartedAt,
-          status: response.status,
-          retryable: true,
-          retryReason: "auth_refresh",
-          retryAfterSeconds: null,
-          retryDelayMs: 0,
-          cloudServerTiming: response.headers.get("Server-Timing"),
-          cloudFailureStage: response.headers.get("X-Eliza-Failure-Stage"),
-          cloudFailureName: response.headers.get("X-Eliza-Failure-Name"),
-        });
-        authHeader = await reauth();
-        continue;
-      }
-      const retryable =
-        response.status === 408 ||
-        response.status === 425 ||
-        response.status === 429 ||
-        response.status >= 500;
-      const shouldRetry =
-        !response.ok && retryable && attempt < maxAttempts && !voiceNote;
-      const retryAfterSeconds = Number.parseInt(
-        response.headers.get("Retry-After") ?? "",
-        10,
-      );
-      const retryDelayMs = shouldRetry
-        ? Number.isFinite(retryAfterSeconds)
-          ? Math.min(
-              Math.max(retryAfterSeconds, 0) * 1_000,
-              PERSONAL_SHARED_RETRY_DELAY_CAP_MS,
-            )
-          : 200 * attempt
-        : null;
-      const attemptContext = {
-        traceId,
-        project,
-        platform: adapter.platform,
-        messageId: event.messageId,
-        attempt,
-        maxAttempts,
-        durationMs: Date.now() - attemptStartedAt,
-        status: response.status,
-        retryable,
-        retryReason: shouldRetry ? "status" : null,
-        retryAfterSeconds: Number.isFinite(retryAfterSeconds)
-          ? retryAfterSeconds
-          : null,
-        retryDelayMs,
-        cloudServerTiming: response.headers.get("Server-Timing"),
-        cloudFailureStage: response.headers.get("X-Eliza-Failure-Stage"),
-        cloudFailureName: response.headers.get("X-Eliza-Failure-Name"),
-      };
-      if (response.ok) {
-        logger.info("Personal Shared Cloud attempt completed", attemptContext);
-      } else {
-        logger.warn("Personal Shared Cloud attempt failed", attemptContext);
-      }
-      if (!shouldRetry || retryDelayMs === null) break;
-      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
-    } catch (error) {
-      response = null;
-      lastTransportError = error;
-      const shouldRetry = !voiceNote && attempt < maxAttempts;
-      const retryDelayMs = shouldRetry ? 200 * attempt : null;
-      logger.warn("Personal Shared Cloud attempt transport failed", {
-        traceId,
-        project,
-        platform: adapter.platform,
-        messageId: event.messageId,
-        attempt,
-        maxAttempts,
-        durationMs: Date.now() - attemptStartedAt,
-        status: null,
-        retryable: shouldRetry,
-        retryReason: shouldRetry ? "transport" : null,
-        retryAfterSeconds: null,
-        retryDelayMs,
-        cloudServerTiming: null,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      if (!shouldRetry || retryDelayMs === null) break;
-      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
-    }
-  }
-  if (!response) {
+          attempt: observation.attempt,
+          maxAttempts: observation.maxAttempts,
+          durationMs: observation.durationMs,
+          status: response?.status ?? null,
+          retryable: observation.retryable,
+          retryReason: observation.retryReason,
+          retryAfterSeconds: observation.retryAfterSeconds,
+          retryDelayMs: observation.retryDelayMs,
+          cloudServerTiming: response?.headers.get("Server-Timing") ?? null,
+          cloudFailureStage:
+            response?.headers.get("X-Eliza-Failure-Stage") ?? null,
+          cloudFailureName:
+            response?.headers.get("X-Eliza-Failure-Name") ?? null,
+          ...(observation.error
+            ? {
+                error:
+                  observation.error instanceof Error
+                    ? observation.error.message
+                    : String(observation.error),
+              }
+            : {}),
+        };
+        if (observation.retryReason === "auth_refresh") {
+          logger.warn(
+            "Personal Shared Cloud attempt requires fresh auth",
+            attemptContext,
+          );
+        } else if (response?.ok) {
+          logger.info(
+            "Personal Shared Cloud attempt completed",
+            attemptContext,
+          );
+        } else if (response) {
+          logger.warn("Personal Shared Cloud attempt failed", attemptContext);
+        } else {
+          logger.warn(
+            "Personal Shared Cloud attempt transport failed",
+            attemptContext,
+          );
+        }
+      },
+    });
+  } catch (error) {
     throw new PersonalSharedPreEgressError(
-      `personal Shared chat transport failed: ${lastTransportError instanceof Error ? lastTransportError.message : String(lastTransportError)}`,
-      { cause: lastTransportError },
+      `personal Shared chat transport failed: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
+  const { response } = attemptResult;
   if (!response.ok) {
     let diagnostics: string;
     try {
@@ -803,7 +778,7 @@ async function sendPersonalSharedReply(
   }
   const cloudServerTiming = response.headers.get("Server-Timing");
   const body: unknown = await response.json();
-  const cloudMs = Date.now() - cloudStartedAt;
+  const cloudMs = attemptResult.durationMs;
   const reply =
     body && typeof body === "object" && "data" in body
       ? (body.data as { reply?: unknown } | null)?.reply
@@ -818,7 +793,7 @@ async function sendPersonalSharedReply(
   if (reply.length === 0) {
     return {
       cloudMs,
-      cloudAttempts: attemptsUsed,
+      cloudAttempts: attemptResult.attempts,
       egressMs: 0,
       cloudServerTiming,
     };
@@ -828,7 +803,7 @@ async function sendPersonalSharedReply(
   await adapter.sendReply(config, event, reply);
   return {
     cloudMs,
-    cloudAttempts: attemptsUsed,
+    cloudAttempts: attemptResult.attempts,
     egressMs: Date.now() - egressStartedAt,
     cloudServerTiming,
   };
