@@ -160,6 +160,21 @@ function wallFor(match: CapabilityMatch): SharedCapabilityWall {
   return { capability, label, reply };
 }
 
+function matchesForRule(
+  rule: (typeof RULES)[number],
+  priority: number,
+  text: string,
+): CapabilityMatch[] {
+  const flags = rule.pattern.global ? rule.pattern.flags : `${rule.pattern.flags}g`;
+  const pattern = new RegExp(rule.pattern.source, flags);
+  return Array.from(text.matchAll(pattern), (match) => ({
+    rule,
+    priority,
+    index: match.index,
+    end: match.index + match[0].length,
+  }));
+}
+
 function beginsSeparateClause(text: string, primary: CapabilityMatch, candidate: CapabilityMatch) {
   if (candidate.index < primary.end) return false;
   const between = text.slice(primary.end, candidate.index);
@@ -177,12 +192,9 @@ export function resolveSharedCapabilityIntent(
 ): SharedCapabilityResolution | null {
   const text = (message ?? "").trim();
   if (!text || NON_EXECUTION_CONTEXT.test(text)) return null;
-  const matches = RULES.flatMap((rule, priority) => {
-    const match = rule.pattern.exec(text);
-    return match
-      ? [{ rule, priority, index: match.index, end: match.index + match[0].length }]
-      : [];
-  }).sort((left, right) => left.index - right.index || left.priority - right.priority);
+  const matches = RULES.flatMap((rule, priority) => matchesForRule(rule, priority, text)).sort(
+    (left, right) => left.index - right.index || left.priority - right.priority,
+  );
   const primary = matches[0];
   if (!primary) return null;
   if (!isEnabled(primary, capabilities)) {

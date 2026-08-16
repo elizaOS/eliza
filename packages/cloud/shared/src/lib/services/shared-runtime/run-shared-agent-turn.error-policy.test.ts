@@ -235,7 +235,7 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     const input = {
       character: { name: "Eliza", system: "You are Eliza." },
       history: [],
-      message: "add milk to my todo list. Then email Bob now",
+      message: "add call Mom to my todo list. Then email Bob now",
       execution: {
         engine: "eliza-runtime" as const,
         agentKey: "personal:agent",

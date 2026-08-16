@@ -81,6 +81,20 @@ describe("Shared capability wall", () => {
     },
   );
 
+  test.each([
+    ["remind me tomorrow to call Mom; then email Bob now", "reminders"],
+    ["add call Mom to my todo list. Then text Alice now", "todos"],
+  ])(
+    "does not let a nested match hide a later clause of the same capability: %s",
+    (message, primary) => {
+      expect(resolveSharedCapabilityIntent(message, { reminders: true, todos: true })).toEqual({
+        kind: "enabled-primary",
+        primary: expect.objectContaining({ capability: primary }),
+        blockedSecondary: [expect.objectContaining({ capability: "communications" })],
+      });
+    },
+  );
+
   test("keeps first-command authority when an unsupported command precedes a reminder", () => {
     expect(
       resolveSharedCapabilityIntent("email Bob now and remind me tomorrow", {
