@@ -31,6 +31,10 @@ export const GATEWAY_TOKEN_LIFETIME_SECONDS = 60;
 
 const SHORT_LIVED_GATEWAY_SERVICES = new Set(["webhook-gateway", "discord-gateway"]);
 
+export function isShortLivedGatewayService(service: string | undefined): boolean {
+  return service !== undefined && SHORT_LIVED_GATEWAY_SERVICES.has(service);
+}
+
 /**
  * Issuer claim for internal JWTs.
  */
@@ -90,7 +94,7 @@ export interface SignTokenOptions {
 }
 
 export function internalTokenLifetimeForService(service: string | undefined): number {
-  return service && SHORT_LIVED_GATEWAY_SERVICES.has(service)
+  return isShortLivedGatewayService(service)
     ? GATEWAY_TOKEN_LIFETIME_SECONDS
     : TOKEN_LIFETIME_SECONDS;
 }
