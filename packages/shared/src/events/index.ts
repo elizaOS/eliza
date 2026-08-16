@@ -15,6 +15,19 @@ export const COMMAND_PALETTE_EVENT = "eliza:command-palette" as const;
  *  report key-up, so the hotkey path is press-to-start/press-to-send rather
  *  than hold-to-talk. */
 export const PUSH_TO_TALK_TOGGLE_EVENT = "eliza:push-to-talk-toggle" as const;
+/** Global fn-hold push-to-talk quasimode (#20483): the native fn (Globe) key
+ *  monitor reports true hold semantics — down starts pill listening, up sends,
+ *  and a cancelled release (fn-chord, monitor loss) aborts without sending.
+ *  Complements {@link PUSH_TO_TALK_TOGGLE_EVENT}, which stays the toggle
+ *  fallback for non-mac and store builds. */
+export const PUSH_TO_TALK_HOLD_EVENT = "eliza:push-to-talk-hold" as const;
+
+/** Detail payload for {@link PUSH_TO_TALK_HOLD_EVENT}. */
+export interface PushToTalkHoldDetail {
+  held: boolean;
+  /** True on a release that must abort instead of send. */
+  cancelled: boolean;
+}
 export const EMOTE_PICKER_EVENT = "eliza:emote-picker" as const;
 export const STOP_EMOTE_EVENT = "eliza:stop-emote" as const;
 
@@ -299,6 +312,7 @@ export interface ChatAvatarVoiceEventDetail {
 export type ElizaDocumentEventName =
   | typeof COMMAND_PALETTE_EVENT
   | typeof PUSH_TO_TALK_TOGGLE_EVENT
+  | typeof PUSH_TO_TALK_HOLD_EVENT
   | typeof EMOTE_PICKER_EVENT
   | typeof STOP_EMOTE_EVENT
   | typeof AGENT_READY_EVENT
