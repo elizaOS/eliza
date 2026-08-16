@@ -17,11 +17,12 @@ import {
 	ModelType,
 	type State,
 } from "../../../types/index.ts";
+import { secretContextFromMessage } from "../secret-context.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
 } from "../services/secrets.ts";
-import type { SecretContext, SecretType } from "../types.ts";
+import type { SecretType } from "../types.ts";
 import { inferValidationStrategy } from "../validation.ts";
 
 /**
@@ -193,13 +194,7 @@ export async function setSecretHandler(
 
 	// Determine storage context
 	const level = extracted.level ?? "global";
-	const context: SecretContext = {
-		level,
-		agentId: runtime.agentId,
-		worldId: level === "world" ? message.worldId : undefined,
-		userId: level === "user" ? message.entityId : undefined,
-		requesterId: message.entityId,
-	};
+	const context = secretContextFromMessage(runtime, message, level);
 
 	// Store each extracted secret
 	const results: Array<{ key: string; success: boolean; error?: string }> = [];

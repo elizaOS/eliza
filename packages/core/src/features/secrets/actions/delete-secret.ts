@@ -14,11 +14,12 @@ import {
 	type Memory,
 	type State,
 } from "../../../types/index.ts";
+import { secretContextFromMessage } from "../secret-context.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
 } from "../services/secrets.ts";
-import type { SecretContext, SecretLevel } from "../types.ts";
+import type { SecretLevel } from "../types.ts";
 
 interface DeleteSecretParams {
 	key: string;
@@ -88,13 +89,7 @@ export async function deleteSecretHandler(
 
 	const key = rawKey.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
 	const level: SecretLevel = rawLevel ?? "global";
-	const context: SecretContext = {
-		level,
-		agentId: runtime.agentId,
-		worldId: level === "world" ? message.worldId : undefined,
-		userId: level === "user" ? message.entityId : undefined,
-		requesterId: message.entityId,
-	};
+	const context = secretContextFromMessage(runtime, message, level);
 
 	const deleted = await secretsService.delete(key, context);
 	logger.info(`[SECRETS:delete] ${key} (level=${level}, deleted=${deleted})`);

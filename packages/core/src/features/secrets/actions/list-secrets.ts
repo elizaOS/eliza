@@ -13,11 +13,12 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
+import { secretContextFromMessage } from "../secret-context.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
 } from "../services/secrets.ts";
-import type { SecretContext, SecretLevel } from "../types.ts";
+import type { SecretLevel } from "../types.ts";
 
 interface ListSecretsParams {
 	level?: SecretLevel;
@@ -64,13 +65,7 @@ export async function listSecretsHandler(
 
 	const { level: rawLevel, prefix } = readParams(options);
 	const level: SecretLevel = rawLevel ?? "global";
-	const context: SecretContext = {
-		level,
-		agentId: runtime.agentId,
-		worldId: level === "world" ? message.worldId : undefined,
-		userId: level === "user" ? message.entityId : undefined,
-		requesterId: message.entityId,
-	};
+	const context = secretContextFromMessage(runtime, message, level);
 
 	const allMetadata = await secretsService.list(context);
 	const filterPrefix = prefix?.toUpperCase();
