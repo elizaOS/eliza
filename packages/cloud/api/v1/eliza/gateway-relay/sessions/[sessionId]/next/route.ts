@@ -6,6 +6,7 @@
  * client waiting on a closed connection.
  */
 
+import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -13,13 +14,12 @@ import { agentGatewayRelayService } from "@/lib/services/agent-gateway-relay";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
+const MAX_TIMEOUT_MS = 25_000;
 
 function parseTimeoutMs(raw: string | undefined): number {
-  const parsed = raw ? Number.parseInt(raw, 10) : 25_000;
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 25_000;
-  }
-  return Math.min(parsed, 25_000);
+  const parsed = parsePositiveInteger(raw, MAX_TIMEOUT_MS);
+  if (parsed === undefined) return MAX_TIMEOUT_MS;
+  return Math.min(parsed, MAX_TIMEOUT_MS);
 }
 
 app.get("/", async (c) => {
