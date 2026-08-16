@@ -160,6 +160,41 @@ describe("StewardLoginSection OAuth launch", () => {
     },
   );
 
+  it("releases the OAuth provider lock after a back-forward cache restoration", async () => {
+    renderSection();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Google" }));
+
+    await waitFor(() =>
+      expect(window.location.href).toContain(
+        "/steward/auth/oauth/google/authorize",
+      ),
+    );
+    expect(
+      (screen.getByRole("button", { name: "Google" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+
+    const historyRestore = new Event("pageshow");
+    Object.defineProperty(historyRestore, "persisted", { value: true });
+    fireEvent(window, historyRestore);
+
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Google" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    expect(
+      (screen.getByRole("button", { name: "Discord" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: "GitHub" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
   it("keeps the form retryable when browser storage cannot save the verifier", async () => {
     oauthState.storeVerifier = false;
     renderSection();

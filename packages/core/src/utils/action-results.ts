@@ -8,6 +8,7 @@
  * recent results (capped at `MAX_PROMPTED_ACTION_RESULTS`) into the prompt block.
  */
 import type { ActionResult, ProviderDataRecord } from "../types/components";
+import { tailWellFormed, truncateWellFormed } from "./well-formed";
 
 export const MAX_PROMPTED_ACTION_RESULTS = 8;
 export const MAX_ACTION_RESULT_TEXT_CHARS = 4000;
@@ -113,18 +114,23 @@ export function truncateMiddle(
 		return trimmed;
 	}
 
-	let marker = "\n\n[... chars omitted ...]\n\n";
-	let available = Math.max(0, maxChars - marker.length);
-	let headChars = Math.ceil(available / 2);
-	let tailChars = Math.floor(available / 2);
-	const omittedChars = Math.max(0, trimmed.length - headChars - tailChars);
-	marker = `\n\n[... ${omittedChars} chars omitted ...]\n\n`;
-	available = Math.max(0, maxChars - marker.length);
-	headChars = Math.ceil(available / 2);
-	tailChars = Math.floor(available / 2);
-	const rendered = `${trimmed.slice(0, headChars)}${marker}${trimmed.slice(
-		trimmed.length - tailChars,
-	)}`;
+	const markerFor = (omittedChars: number) =>
+		`\n\n[... ${omittedChars} chars omitted ...]\n\n`;
+
+	// Reserve space using the largest possible count. Safe cuts may retain one
+	// fewer code unit at either boundary, so derive the displayed count from the
+	// actual slices rather than the requested budget.
+	const retainedBudget = Math.max(
+		0,
+		maxChars - markerFor(trimmed.length).length,
+	);
+	const head = truncateWellFormed(trimmed, Math.ceil(retainedBudget / 2));
+	const tail = tailWellFormed(trimmed, Math.floor(retainedBudget / 2));
+	const marker = markerFor(trimmed.length - head.length - tail.length);
+	const rendered =
+		head.length + marker.length + tail.length <= maxChars
+			? `${head}${marker}${tail}`
+			: truncateWellFormed(trimmed, maxChars);
 
 	return reference ? `${rendered}\n\nFull output: ${reference}` : rendered;
 }
