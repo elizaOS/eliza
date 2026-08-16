@@ -1,16 +1,13 @@
 /** Handles webhook gateway authentication for authenticated connector fan-in. */
+import {
+  GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
+  gatewayTokenRefreshDelayMs,
+  gatewayTokenRetryDelayMs,
+  parseGatewayTokenResponse,
+} from "@elizaos/cloud-services-common/gateway-auth";
 import { logger } from "./logger";
 
 const HTTP_TIMEOUT_MS = 10_000;
-const TOKEN_REFRESH_PERCENTAGE = 0.8;
-const TOKEN_REFRESH_RETRY_MIN_MS = 1_000;
-const TOKEN_REFRESH_RETRY_MAX_MS = 30_000;
-
-interface TokenResponse {
-  access_token: string;
-  token_type: "Bearer";
-  expires_in: number;
-}
 
 interface AuthConfig {
   cloudUrl: string;
@@ -19,6 +16,7 @@ interface AuthConfig {
 }
 
 let accessToken: string | null = null;
+let accessTokenExpiresAt = 0;
 let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
 let config: AuthConfig | null = null;
 let refreshRetryAttempt = 0;
@@ -46,6 +44,7 @@ async function acquireToken(): Promise<void> {
   if (!config) throw new Error("Auth not initialized");
   const lifecycleGeneration = authLifecycleGeneration;
   const activeConfig = config;
+  const acquisitionStartedAt = Date.now();
 
   logger.info("Acquiring JWT token", { podName: activeConfig.podName });
 
@@ -61,6 +60,7 @@ async function acquireToken(): Promise<void> {
         pod_name: activeConfig.podName,
         service: "webhook-gateway",
       }),
+      timeout: GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
     },
   );
 
@@ -69,11 +69,12 @@ async function acquireToken(): Promise<void> {
     throw new Error(`Failed to acquire token: ${response.status} - ${error}`);
   }
 
-  const data = (await response.json()) as TokenResponse;
+  const data = parseGatewayTokenResponse(await response.json());
   if (lifecycleGeneration !== authLifecycleGeneration) {
     throw new Error("Auth lifecycle changed during token acquisition");
   }
   accessToken = data.access_token;
+  accessTokenExpiresAt = acquisitionStartedAt + data.expires_in * 1_000;
 
   logger.info("JWT token acquired", {
     podName: activeConfig.podName,
@@ -91,7 +92,7 @@ async function refreshToken(): Promise<void> {
 function scheduleRefresh(expiresInSeconds: number): void {
   if (refreshTimeout) clearTimeout(refreshTimeout);
 
-  const refreshInMs = expiresInSeconds * 1000 * TOKEN_REFRESH_PERCENTAGE;
+  const refreshInMs = gatewayTokenRefreshDelayMs(expiresInSeconds);
   refreshRetryAttempt = 0;
   const timeout = setTimeout(() => {
     // error-policy:J1 The timer boundary converts renewal failure into a paced retry.
@@ -108,11 +109,8 @@ function scheduleRefresh(expiresInSeconds: number): void {
 function scheduleRefreshRetry(): void {
   if (refreshTimeout) clearTimeout(refreshTimeout);
 
-  const retryInMs = Math.min(
-    TOKEN_REFRESH_RETRY_MIN_MS * 2 ** refreshRetryAttempt,
-    TOKEN_REFRESH_RETRY_MAX_MS,
-  );
-  refreshRetryAttempt = Math.min(refreshRetryAttempt + 1, 5);
+  const retryInMs = gatewayTokenRetryDelayMs(refreshRetryAttempt);
+  refreshRetryAttempt = Math.min(refreshRetryAttempt + 1, 4);
   const lifecycleGeneration = authLifecycleGeneration;
   const timeout = setTimeout(() => {
     if (lifecycleGeneration !== authLifecycleGeneration) return;
@@ -134,6 +132,12 @@ function scheduleRefreshRetry(): void {
 
 export async function initAuth(authConfig: AuthConfig): Promise<void> {
   authLifecycleGeneration += 1;
+  if (refreshTimeout) {
+    clearTimeout(refreshTimeout);
+    refreshTimeout = null;
+  }
+  accessToken = null;
+  accessTokenExpiresAt = 0;
   config = authConfig;
   await acquireToken();
 }
@@ -168,7 +172,7 @@ export async function reacquireAuthHeader(): Promise<{
 }
 
 export function getAuthHeader(): { Authorization: string } {
-  if (!accessToken) {
+  if (!accessToken || Date.now() >= accessTokenExpiresAt) {
     throw new Error("No access token available - call initAuth first");
   }
   return { Authorization: `Bearer ${accessToken}` };
@@ -181,6 +185,7 @@ export function shutdownAuth(): void {
     refreshTimeout = null;
   }
   accessToken = null;
+  accessTokenExpiresAt = 0;
   config = null;
   refreshRetryAttempt = 0;
 }

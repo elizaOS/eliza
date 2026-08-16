@@ -65,6 +65,29 @@ describe("bounded gateway JWT lifetime", () => {
     });
   });
 
+  test("rejects caller-selected non-gateway service claims", async () => {
+    const response = await tokenApp.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Gateway-Secret": "bootstrap-test-secret",
+        },
+        body: JSON.stringify({
+          pod_name: "gateway-webhook-test",
+          service: "scheduler",
+        }),
+      },
+      { GATEWAY_BOOTSTRAP_SECRET: "bootstrap-test-secret" } as never,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "unsupported_gateway_service",
+    });
+  });
+
   test.each(["webhook-gateway", "discord-gateway"])(
     "rejects self-refresh for %s tokens",
     async (service) => {

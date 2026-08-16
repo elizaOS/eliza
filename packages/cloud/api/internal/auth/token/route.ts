@@ -12,6 +12,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { isJWKSConfigured } from "@/lib/auth/jwks";
 import {
   internalTokenLifetimeForService,
+  isShortLivedGatewayService,
   signInternalToken,
 } from "@/lib/auth/jwt-internal";
 import { logger } from "@/lib/utils/logger";
@@ -50,6 +51,9 @@ app.post("/*", async (c) => {
     }
     const service =
       typeof body.service === "string" ? body.service.trim() : undefined;
+    if (!isShortLivedGatewayService(service)) {
+      return c.json({ error: "unsupported_gateway_service" }, 400);
+    }
 
     const token = await signInternalToken({
       subject,
