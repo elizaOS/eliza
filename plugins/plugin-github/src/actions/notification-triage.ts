@@ -55,6 +55,7 @@ const SUBJECT_TYPE_SCORES: Record<string, number> = {
 };
 
 const NOTIFICATION_TRIAGE_LIMIT = 25;
+const NOTIFICATION_PAGE_SIZE = 50;
 
 export interface TriagedNotification {
   id: string;
@@ -75,11 +76,11 @@ export async function fetchAllUnreadNotifications(
   for (let page = 1; ; page += 1) {
     const response = await activity.listNotificationsForAuthenticatedUser({
       all: false,
-      per_page: 100,
+      per_page: NOTIFICATION_PAGE_SIZE,
       page,
     });
     notifications.push(...response.data);
-    if (response.data.length < 100) return notifications;
+    if (response.data.length < NOTIFICATION_PAGE_SIZE) return notifications;
   }
 }
 
