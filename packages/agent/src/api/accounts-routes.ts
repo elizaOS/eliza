@@ -855,6 +855,16 @@ export async function handleAccountsRoutes(
     return handleListAllAccounts(ctx);
   }
 
+  // ── /api/accounts/consumer-keys (OWNER-only admin, #16478) ────────
+  // Must run before the :providerId parse below — "consumer-keys" is not a
+  // provider id and would otherwise 400.
+  if (pathname.startsWith(`${ACCOUNTS_PREFIX}/consumer-keys`)) {
+    const { handleConsumerKeyRoutes } = await import(
+      "./consumer-key-routes.ts"
+    );
+    return handleConsumerKeyRoutes(ctx);
+  }
+
   // ── /api/accounts/:providerId... ──────────────────────────────────
   if (!pathname.startsWith(`${ACCOUNTS_PREFIX}/`)) return false;
   const remainder = pathname.slice(ACCOUNTS_PREFIX.length + 1);

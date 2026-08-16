@@ -12,7 +12,11 @@ import { logger } from "@elizaos/core";
 import type { TwitterClientState } from "../../types";
 import { getSetting } from "../../utils/settings";
 import { DEFAULT_X_ACCOUNT_ID, resolveRequestedXAccountId } from "../accounts";
-import { promptForRedirectedUrl, waitForLoopbackCallback } from "./interactive";
+import {
+  assertOAuthState,
+  promptForRedirectedUrl,
+  waitForLoopbackCallback,
+} from "./interactive";
 import { createCodeChallenge, createCodeVerifier, createState } from "./pkce";
 import type { StoredOAuth2Tokens, TokenStore } from "./token-store";
 import { chooseDefaultTokenStore } from "./token-store";
@@ -244,9 +248,7 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
       const parsedCode = parsed.searchParams.get("code");
       const parsedState = parsed.searchParams.get("state");
       if (!parsedCode) throw new Error("Pasted URL did not include ?code=");
-      if (parsedState && parsedState !== state) {
-        throw new Error("OAuth state mismatch");
-      }
+      assertOAuthState(parsedState, state);
       code = parsedCode;
     }
 

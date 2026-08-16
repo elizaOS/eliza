@@ -10,6 +10,8 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { isJWKSConfigured } from "@/lib/auth/jwks";
 import {
   extractBearerToken,
+  internalTokenLifetimeForService,
+  isShortLivedGatewayService,
   signInternalToken,
   verifyInternalToken,
 } from "@/lib/auth/jwt-internal";
@@ -39,7 +41,18 @@ app.post("/*", async (c) => {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const refreshed = await signInternalToken({ subject: sub, service });
+    // Gateway credentials are deliberately bounded bearer capabilities. They
+    // must return to the bootstrap-secret exchange so a captured token cannot
+    // extend its own replay window through an unbounded refresh chain.
+    if (isShortLivedGatewayService(service)) {
+      return c.json({ error: "gateway_token_rebootstrap_required" }, 403);
+    }
+
+    const refreshed = await signInternalToken({
+      subject: sub,
+      service,
+      expiresIn: internalTokenLifetimeForService(service),
+    });
     return c.json(refreshed);
   } catch (err) {
     logger.error("[internal/auth/refresh]", { error: err });

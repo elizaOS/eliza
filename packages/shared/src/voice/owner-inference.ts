@@ -54,12 +54,22 @@ const DEFAULT_MIN_OBSERVATIONS = 3;
 const DEFAULT_MIN_CONFIDENCE = 0.7;
 const DEFAULT_MIN_MARGIN = 1;
 
+function assertUnitInterval(value: number, name: string): void {
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new RangeError(`${name} must be a finite number between 0 and 1`);
+  }
+}
+
 /**
  * Propose the most likely owner from recognized voice observations, or stay
  * undecided. A candidate is returned only when there are at least
  * `minObservations` confident, recognized turns AND the top speaker leads the
  * runner-up by at least `minMargin` (confidence-weighted). Ties and thin
  * evidence yield `ownerEntityId: null`.
+ *
+ * @throws {RangeError} When a numeric option or observation confidence is
+ * outside its documented finite range.
+ * @throws {TypeError} When a recognized observation has an empty entity id.
  */
 export function resolveOwnerCandidate(
   observations: ReadonlyArray<OwnerObservation>,
@@ -69,11 +79,25 @@ export function resolveOwnerCandidate(
   const minConfidence = options.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
   const minMargin = options.minMargin ?? DEFAULT_MIN_MARGIN;
 
+  if (!Number.isSafeInteger(minObservations) || minObservations <= 0) {
+    throw new RangeError("minObservations must be a positive safe integer");
+  }
+  assertUnitInterval(minConfidence, "minConfidence");
+  if (!Number.isFinite(minMargin) || minMargin < 0) {
+    throw new RangeError("minMargin must be a finite non-negative number");
+  }
+
   const scores = new Map<string, number>();
   let qualifying = 0;
   let totalScore = 0;
-  for (const obs of observations) {
+  for (const [index, obs] of observations.entries()) {
+    assertUnitInterval(obs.confidence, `observations[${index}].confidence`);
     if (obs.entityId === null) continue;
+    if (obs.entityId.trim().length === 0) {
+      throw new TypeError(
+        `observations[${index}].entityId must be null or a non-empty string`,
+      );
+    }
     if (!(obs.confidence >= minConfidence)) continue;
     qualifying += 1;
     const next = (scores.get(obs.entityId) ?? 0) + obs.confidence;
@@ -93,12 +117,13 @@ export function resolveOwnerCandidate(
   const ranked = [...scores.entries()].sort((a, b) => b[1] - a[1]);
   const [topId, topScore] = ranked[0];
   const runnerUpScore = ranked[1]?.[1] ?? 0;
-  if (topScore - runnerUpScore < minMargin) {
+  const lead = topScore - runnerUpScore;
+  if (lead <= 0 || lead < minMargin) {
     return {
       ownerEntityId: null,
       share: totalScore > 0 ? topScore / totalScore : 0,
       qualifyingObservations: qualifying,
-      reason: `ambiguous lead (top ${topScore.toFixed(2)} vs runner-up ${runnerUpScore.toFixed(2)}, margin < ${minMargin})`,
+      reason: `ambiguous lead (top ${topScore.toFixed(2)} vs runner-up ${runnerUpScore.toFixed(2)}, required margin ${minMargin})`,
     };
   }
 
