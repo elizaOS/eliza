@@ -25,6 +25,31 @@ import {
 } from "../join/lib/resolve-cloud-connection";
 import { type JoinFlowResult, runJoinFlow } from "../join/lib/run-join-flow";
 
+interface PersonalEntryHandoff {
+  authToken: string;
+  result: JoinFlowResult;
+}
+
+let pendingPersonalEntryHandoff: PersonalEntryHandoff | null = null;
+
+/**
+ * Carry the already-authoritative `/join` result across the public-to-full
+ * renderer swap. The Steward token binds the one-shot receipt to the session
+ * that resolved it, so a later account can never consume stale identity state.
+ */
+export function publishPersonalEntryHandoff(
+  authToken: string,
+  result: JoinFlowResult,
+): void {
+  pendingPersonalEntryHandoff = { authToken, result };
+}
+
+function takePersonalEntryHandoff(authToken: string): JoinFlowResult | null {
+  const pending = pendingPersonalEntryHandoff;
+  pendingPersonalEntryHandoff = null;
+  return pending?.authToken === authToken ? pending.result : null;
+}
+
 /** The persisted-active-server id a resolved personal Eliza binds under. */
 export function personalEntryBindingId(result: JoinFlowResult): string {
   return `cloud:${result.agentId}`;
@@ -47,6 +72,8 @@ export function usePersonalEntry(
           "PersonalEntry: no Steward session token for an authenticated entry.",
         );
       }
+      const handedOff = takePersonalEntryHandoff(authToken);
+      if (handedOff) return handedOff;
       return runJoinFlow({
         client,
         effects: { savePersistedActiveServer, savePersistedFirstRunComplete },
