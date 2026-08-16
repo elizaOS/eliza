@@ -285,6 +285,7 @@ export class SharedRuntimeConversation {
   private hydration: Promise<void> | undefined;
   private queue: Promise<void> = Promise.resolve();
   private mirrorQueue: Promise<void> = Promise.resolve();
+  private alarmMutationQueue: Promise<void> = Promise.resolve();
   // Instance field rather than a direct constant read so the deterministic
   // unit harness can shorten the stall window without a real two-minute wait.
   private streamStallTimeoutMs = STREAM_STALL_TIMEOUT_MS;
@@ -414,21 +415,40 @@ export class SharedRuntimeConversation {
   private async updateAlarmDeadlines(
     mutate: (current: StoredAlarmDeadlines) => StoredAlarmDeadlines,
   ): Promise<void> {
-    const current =
-      (await this.state.storage.get<StoredAlarmDeadlines>(
-        ALARM_DEADLINES_KEY,
-      )) ?? {};
-    const next = mutate(current);
-    const times = [next.mirrorRetryAt, next.idleExpiryAt].filter(
-      (time): time is number => typeof time === "number",
-    );
-    if (times.length === 0) {
-      await this.state.storage.delete(ALARM_DEADLINES_KEY);
-      await this.state.storage.deleteAlarm();
-      return;
-    }
-    await this.state.storage.put(ALARM_DEADLINES_KEY, next);
-    await this.state.storage.setAlarm(Math.min(...times));
+    await this.runAlarmMutation(async () => {
+      // A deadline update that was queued before deletion must not recreate an
+      // alarm or storage after the tombstone lands.
+      if (await this.deletionTombstone()) {
+        await this.state.storage.delete(ALARM_DEADLINES_KEY);
+        await this.state.storage.deleteAlarm();
+        return;
+      }
+      const current =
+        (await this.state.storage.get<StoredAlarmDeadlines>(
+          ALARM_DEADLINES_KEY,
+        )) ?? {};
+      const next = mutate(current);
+      const times = [next.mirrorRetryAt, next.idleExpiryAt].filter(
+        (time): time is number => typeof time === "number",
+      );
+      if (times.length === 0) {
+        await this.state.storage.delete(ALARM_DEADLINES_KEY);
+        await this.state.storage.deleteAlarm();
+        return;
+      }
+      await this.state.storage.put(ALARM_DEADLINES_KEY, next);
+      await this.state.storage.setAlarm(Math.min(...times));
+    });
+  }
+
+  private async runAlarmMutation(
+    operation: () => Promise<void>,
+  ): Promise<void> {
+    const current = this.alarmMutationQueue
+      .catch(() => undefined)
+      .then(operation);
+    this.alarmMutationQueue = current;
+    await current;
   }
 
   private async deletionTombstone(): Promise<StoredDeletionTombstone | null> {
@@ -457,7 +477,14 @@ export class SharedRuntimeConversation {
           snapshot.history,
           MAX_HISTORY_MESSAGES,
         );
+        // The caller purges Postgres before dispatching the DO delete. A merge
+        // already in flight can therefore finish after that purge. Re-check
+        // the durable fence and remove the resurrected row before returning.
+        if (await this.deletionTombstone()) {
+          await sharedRuntimeHistoryRepository.deleteByAgent(snapshot.agentId);
+        }
       });
+      if (await this.deletionTombstone()) return;
       const current =
         await this.state.storage.get<StoredConversation>(CONVERSATION_KEY);
       if (
@@ -1223,16 +1250,33 @@ export class SharedRuntimeConversation {
     // Postgres mirror rows are dropped; also cancels a pending mirror-retry
     // alarm so a queued retry cannot fire against the emptied room.
     if (payload.operation === "delete") {
-      await this.state.storage.deleteAll();
-      await this.state.storage.deleteAlarm();
-      this.conversation = null;
-      // The tombstone survives the purge so late mirrors, queued alarms, and
-      // stale clients addressing this room name are fenced permanently; agent
-      // ids are never reused, so the room name is dead once its agent is.
-      await this.state.storage.put(DELETION_TOMBSTONE_KEY, {
-        agentId: payload.agentId,
-        deletedAt: Date.now(),
-      } satisfies StoredDeletionTombstone);
+      await this.runAlarmMutation(async () => {
+        // Existing keys + tombstone must commit together: a crash between a
+        // deleteAll and a separate put would leave an empty but unfenced room
+        // that stale clients could hydrate again. DurableObjectTransaction has
+        // no deleteAll, so delete its key snapshot in API-sized batches.
+        await this.state.storage.transaction(async (txn) => {
+          const keys = [...(await txn.list()).keys()];
+          for (let offset = 0; offset < keys.length; offset += 128) {
+            await txn.delete(keys.slice(offset, offset + 128));
+          }
+          await txn.put(DELETION_TOMBSTONE_KEY, {
+            agentId: payload.agentId,
+            deletedAt: Date.now(),
+          } satisfies StoredDeletionTombstone);
+        });
+        await this.state.storage.deleteAlarm();
+        this.conversation = null;
+      });
+      // The caller deletes Postgres first, but an already-running mirror can
+      // land in the network gap before this tombstone. Purge again from inside
+      // the fenced DO operation; retries are intentionally idempotent.
+      await this.runWithBindings(async () => {
+        const { sharedRuntimeHistoryRepository } = await import(
+          "@/db/repositories/shared-runtime-history"
+        );
+        await sharedRuntimeHistoryRepository.deleteByAgent(payload.agentId);
+      });
       return Response.json({ success: true });
     }
 

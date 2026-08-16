@@ -27,8 +27,10 @@ mock.module("@/lib/api/errors", () => ({
 
 let repositoryReads = 0;
 let repositoryWrites = 0;
+let repositoryDeletes = 0;
 let repositoryRow: unknown[] = [];
 let repositoryMergeError: Error | null = null;
+let repositoryMergeGate: Promise<void> | null = null;
 const repositoryHistoryLengths: number[] = [];
 const repositoryHistories: unknown[][] = [];
 let streamMergeGate: Promise<void> | null = null;
@@ -84,6 +86,7 @@ mock.module("@/db/repositories/shared-runtime-history", () => ({
     },
     merge: async (_agentId: string, _channelId: string, history: unknown[]) => {
       if (repositoryMergeError) throw repositoryMergeError;
+      if (repositoryMergeGate) await repositoryMergeGate;
       repositoryWrites++;
       const byId = new Map<string, unknown>();
       for (const message of [...repositoryRow, ...history]) {
@@ -94,6 +97,11 @@ mock.module("@/db/repositories/shared-runtime-history", () => ({
       repositoryHistories.push(merged);
       repositoryRow = merged;
       return merged;
+    },
+    deleteByAgent: async () => {
+      repositoryDeletes++;
+      repositoryRow = [];
+      return 1;
     },
   },
 }));
@@ -228,6 +236,8 @@ type SharedRuntimeConversationInstance = InstanceType<
 
 beforeEach(() => {
   repositoryMergeError = null;
+  repositoryMergeGate = null;
+  repositoryDeletes = 0;
   streamMergeGate = null;
   resolveStreamMergeGate = () => {};
   rehydrateCalls = 0;
@@ -265,6 +275,26 @@ function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
       deleteAll: async () => {
         data.clear();
       },
+      transaction: async (
+        operation: (txn: {
+          list(): Promise<Map<string, unknown>>;
+          delete(keys: string[]): Promise<number>;
+          put(key: string, value: unknown): Promise<void>;
+        }) => Promise<void>,
+      ) =>
+        await operation({
+          list: async () => new Map(data),
+          delete: async (keys) => {
+            let deleted = 0;
+            for (const key of keys) {
+              if (data.delete(key)) deleted++;
+            }
+            return deleted;
+          },
+          put: async (key, value) => {
+            data.set(key, structuredClone(value));
+          },
+        }),
     },
     waitUntil: (promise: Promise<unknown>) => background.push(promise),
   };
@@ -1548,6 +1578,82 @@ test("a deletion tombstone fences late mirrors and alarms from resurrecting cont
   );
   await expect(retried.json()).resolves.toEqual({ success: true });
   expect(data.size).toBe(1);
+});
+
+test("delete removes a Postgres mirror that finishes after the caller-side purge", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryDeletes = 0;
+  repositoryRow = [];
+  let releaseMerge = () => {};
+  repositoryMergeGate = new Promise<void>((resolve) => {
+    releaseMerge = resolve;
+  });
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const state = makeState(data, background);
+  const object = new SharedRuntimeConversation(state as never, {} as never);
+
+  const lateMirror = (
+    object as unknown as {
+      mirrorConversation(snapshot: unknown): Promise<void>;
+    }
+  ).mirrorConversation({
+    agentId: AGENT_FIXTURE.id,
+    channelId: "room-1",
+    history: [{ id: "m-1", role: "user", content: "secret", createdAt: 1 }],
+    dirty: true,
+    version: 1,
+  });
+  await Promise.resolve();
+
+  const deletion = object.fetch(
+    new Request("https://shared-runtime.internal/delete", {
+      method: "POST",
+      body: JSON.stringify({ operation: "delete", agentId: AGENT_FIXTURE.id }),
+    }),
+  );
+  await Promise.resolve();
+  releaseMerge();
+  await lateMirror;
+  const response = await deletion;
+  await expect(response.json()).resolves.toEqual({ success: true });
+
+  expect(repositoryWrites).toBe(1);
+  expect(repositoryDeletes).toBeGreaterThanOrEqual(1);
+  expect(repositoryRow).toEqual([]);
+  expect(data.has("deletion-tombstone")).toBe(true);
+});
+
+test("concurrent alarm updates preserve both persisted deadlines", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const state = makeState(data, background);
+  const object = new SharedRuntimeConversation(state as never, {} as never);
+  const updateAlarmDeadlines = (
+    object as unknown as {
+      updateAlarmDeadlines(
+        mutate: (current: Record<string, number>) => Record<string, number>,
+      ): Promise<void>;
+    }
+  ).updateAlarmDeadlines.bind(object);
+
+  await Promise.all([
+    updateAlarmDeadlines((current) => ({
+      ...current,
+      mirrorRetryAt: 200,
+    })),
+    updateAlarmDeadlines((current) => ({
+      ...current,
+      idleExpiryAt: 300,
+    })),
+  ]);
+
+  expect(data.get("alarm-deadlines")).toEqual({
+    mirrorRetryAt: 200,
+    idleExpiryAt: 300,
+  });
+  expect(state.alarmTime).toBe(200);
 });
 
 test("an idle mirror-confirmed room expires by alarm and re-hydrates losslessly", async () => {
