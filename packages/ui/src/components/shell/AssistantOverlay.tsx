@@ -15,6 +15,11 @@ export interface AssistantOverlayProps {
   phase: ShellPhase;
   onClose: () => void;
   children: React.ReactNode;
+  /** Explicit overlay visibility from the shell's open state. When provided it
+   *  overrides the phase-derived fallback — required for the hold-to-talk
+   *  quasimode (#20483), where `listening`/`responding` can be active while
+   *  the overlay stays closed (pill-only capture). */
+  open?: boolean;
 }
 
 const FOCUSABLE_SELECTOR =
@@ -40,10 +45,12 @@ export function AssistantOverlay({
   phase,
   onClose,
   children,
+  open,
 }: AssistantOverlayProps): React.JSX.Element | null {
   const { appName } = useBranding();
   const isOpen =
-    phase === "summoned" || phase === "listening" || phase === "responding";
+    open ??
+    (phase === "summoned" || phase === "listening" || phase === "responding");
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
   const glassTier = useNativeGlassAnchor(dialogRef);
   const previousFocusRef = React.useRef<HTMLElement | null>(null);

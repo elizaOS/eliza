@@ -242,6 +242,7 @@ function Harness(): React.JSX.Element {
     setComposerHasDraft: () => {},
     startRecording: () => {},
     stopRecording: () => {},
+    cancelRecording: () => {},
     toggleAgentVoiceMute: () => {},
     unlockAudio: () => {},
     openSettings: () => {},
