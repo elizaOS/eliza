@@ -121,13 +121,20 @@ export function AppModeEntryRoute({
     return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
   }
 
+  // The Cloud route registry is mounted inside appElement. Do not wait for the
+  // app-mode agents query before mounting it on a management URL: doing so
+  // deadlocks private-route registration and leaves authenticated users on
+  // "Loading your agent" when the query is slow or a stale agent credential
+  // is being repaired. Management surfaces own their loading/error states.
+  if (isCloudManagementPath) {
+    return <>{appElement}</>;
+  }
+
   if (agentsQuery.isError) {
-    // Management routes own their own unavailable/error states and remain
-    // usable for account recovery. Ordinary entry can only boot chat when a
-    // Cloud binding already identifies the runtime; otherwise /join retries
-    // selection instead of starting an unbound agent shell.
-    return isCloudManagementPath ||
-      loadPersistedActiveServer()?.kind === "cloud" ? (
+    // Ordinary entry can only boot chat when a Cloud binding already identifies
+    // the runtime; otherwise /join retries selection instead of starting an
+    // unbound agent shell.
+    return loadPersistedActiveServer()?.kind === "cloud" ? (
       appElement
     ) : (
       <Navigate to="/join" replace />

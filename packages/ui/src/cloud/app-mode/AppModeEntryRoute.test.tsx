@@ -65,7 +65,7 @@ function agent(
 
 interface StubRoutes {
   /** Response for GET /api/v1/eliza/agents. */
-  agents: () => Response;
+  agents: () => Response | Promise<Response>;
   /** Response for GET <cloud>/api/v1/eliza/personal (rowless personal entry). */
   personal?: () => Response;
 }
@@ -321,6 +321,16 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
     renderEntry("/cloud/billing");
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
+  });
+
+  it("mounts Cloud management while the app-mode agents query is still pending", () => {
+    signIn();
+    stubNetwork({
+      agents: () => new Promise<Response>(() => undefined),
+    });
+    renderEntry("/cloud/billing");
+
+    expect(screen.getByTestId("agent-app")).toBeTruthy();
   });
 });
 
