@@ -186,6 +186,9 @@ export async function searchKeylessWeb(
 	if (!text) return undefined;
 
 	const maxResultChars = options.maxResultChars ?? DEFAULT_RESULT_CHARS;
+	if (!Number.isSafeInteger(maxResultChars) || maxResultChars < 0) {
+		throw new RangeError("maxResultChars must be a non-negative safe integer");
+	}
 	const truncationSuffix = "\n[truncated]";
 	const retainedSuffix = truncateWellFormed(truncationSuffix, maxResultChars);
 	return {
