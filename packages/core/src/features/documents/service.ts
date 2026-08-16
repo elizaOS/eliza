@@ -138,6 +138,7 @@ const HYBRID_BM25_WEIGHT = 1 - HYBRID_VECTOR_WEIGHT;
 const DOCUMENTS_TABLE = "documents";
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 const PRE_DOCUMENTS_TABLE = "knowledge";
+const DOCUMENT_INGESTION_PENDING_TIMEOUT_MS = 5 * 60 * 1_000;
 const CHARACTER_DOCUMENT_EMBEDDING_WAIT_TIMEOUT_MS = 120_000;
 const CHARACTER_DOCUMENT_EMBEDDING_WAIT_INTERVAL_MS = 1_000;
 const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
@@ -919,13 +920,23 @@ export class DocumentService extends Service {
 				});
 			}
 			if (snapshot.ingestionState === "pending") {
-				throw new ElizaError(
-					`Document ${contentBasedId} ingestion is already in progress`,
-					{
-						code: "DOCUMENT_INGESTION_IN_PROGRESS",
-						context: { documentId: contentBasedId },
-					},
+				if (!this.pendingIngestionHasExpired(existingDocument)) {
+					throw new ElizaError(
+						`Document ${contentBasedId} ingestion is already in progress`,
+						{
+							code: "DOCUMENT_INGESTION_IN_PROGRESS",
+							context: { documentId: contentBasedId },
+						},
+					);
+				}
+				logger.warn(
+					`"${options.originalFilename}" has an expired pending ingestion; deleting its exact snapshot and reprocessing`,
 				);
+				await this.deleteDocumentSnapshotForIngestion(contentBasedId, snapshot);
+				return this.processDocument({
+					...options,
+					clientDocumentId: contentBasedId,
+				});
 			}
 			const fragmentCount = await this.getDocumentFragmentCount(contentBasedId);
 			if (snapshot.ingestionState === "failed" || fragmentCount === 0) {
@@ -1231,34 +1242,34 @@ export class DocumentService extends Service {
 						},
 					);
 				}
+
+				const completed = await this.runtime.adapter.compareAndSwapDocument({
+					...this.ingestionMutationContext(),
+					documentId: clientDocumentId,
+					expected: ingestionSnapshot,
+					replacement: {
+						...persistedDocument,
+						metadata: {
+							...(persistedDocument.metadata ?? {}),
+							ingestionState: "ready",
+						} as unknown as Metadata,
+					},
+				});
+				if (completed.status !== "updated") {
+					throw new ElizaError(
+						"Document ingestion ownership changed before completion",
+						{
+							code: "DOCUMENT_INGESTION_CONFLICT",
+							context: { clientDocumentId, status: completed.status },
+						},
+					);
+				}
 			} catch (fragmentError) {
 				await this.compensateFailedIngestion(
 					clientDocumentId,
 					ingestionAttemptId,
 				);
 				throw fragmentError;
-			}
-
-			const completed = await this.runtime.adapter.compareAndSwapDocument({
-				...this.ingestionMutationContext(),
-				documentId: clientDocumentId,
-				expected: ingestionSnapshot,
-				replacement: {
-					...persistedDocument,
-					metadata: {
-						...(persistedDocument.metadata ?? {}),
-						ingestionState: "ready",
-					} as unknown as Metadata,
-				},
-			});
-			if (completed.status !== "updated") {
-				throw new ElizaError(
-					"Document ingestion ownership changed before completion",
-					{
-						code: "DOCUMENT_INGESTION_CONFLICT",
-						context: { clientDocumentId, status: completed.status },
-					},
-				);
 			}
 
 			logger.debug(
@@ -1288,6 +1299,16 @@ export class DocumentService extends Service {
 			requesterRoomIds: [] as UUID[],
 			requesterRole: "OWNER" as const,
 		};
+	}
+
+	private pendingIngestionHasExpired(document: Memory): boolean {
+		const addedAt = (document.metadata as DocumentMemoryMetadata | undefined)
+			?.addedAt;
+		return (
+			typeof addedAt === "number" &&
+			Number.isFinite(addedAt) &&
+			Date.now() - addedAt >= DOCUMENT_INGESTION_PENDING_TIMEOUT_MS
+		);
 	}
 
 	private async deleteDocumentSnapshotForIngestion(
@@ -1412,7 +1433,15 @@ export class DocumentService extends Service {
 			existingDocument.metadata?.type === MemoryType.CUSTOM
 		) {
 			const snapshot = readDocumentMutationSnapshot(existingDocument);
-			if (!snapshot || snapshot.ingestionState === "pending") {
+			if (!snapshot) {
+				return false;
+			}
+			if (snapshot.ingestionState === "pending") {
+				if (!this.pendingIngestionHasExpired(existingDocument)) return true;
+				logger.warn(
+					`Document ${documentId} has an expired pending ingestion; deleting its exact snapshot before retry`,
+				);
+				await this.deleteDocumentSnapshotForIngestion(documentId, snapshot);
 				return false;
 			}
 			const fragmentCount = await this.getDocumentFragmentCount(documentId);
