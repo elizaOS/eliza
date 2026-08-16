@@ -37,9 +37,10 @@ async function __hono_GET(
     const rawDays = new URL(request.url).searchParams.get("days");
     const parsedDays = parsePositiveInteger(rawDays);
     if (
-      rawDays &&
-      (rawDays !== rawDays.trim() ||
-        parsedDays === undefined ||
+      rawDays !== null &&
+      rawDays !== "" &&
+      (parsedDays === undefined ||
+        rawDays !== String(parsedDays) ||
         parsedDays > MAX_DAYS)
     ) {
       return Response.json(

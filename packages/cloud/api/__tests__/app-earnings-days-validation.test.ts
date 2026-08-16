@@ -94,6 +94,8 @@ describe("GET /api/v1/apps/:id/earnings days validation", () => {
     ["partial", "30abc"],
     ["fractional", "1.5"],
     ["exponent form", "2e3"],
+    ["leading zero", "07"],
+    ["explicit plus", "+7"],
     ["surrounding whitespace", " 7 "],
     ["above maximum", "91"],
     ["unsafe integer", "9007199254740992"],
