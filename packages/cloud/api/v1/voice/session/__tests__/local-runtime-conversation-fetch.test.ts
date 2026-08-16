@@ -51,7 +51,7 @@ function committedAbortStatus(
 }
 
 describe("local runtime conversation fetch", () => {
-  test("prewarms the loopback provider once and joins it before the real stream", async () => {
+  test("coalesces prewarm without blocking the real stream", async () => {
     const calls: string[] = [];
     let releasePrewarm!: () => void;
     const prewarmGate = new Promise<void>((resolve) => {
@@ -97,21 +97,17 @@ describe("local runtime conversation fetch", () => {
       },
     );
 
-    await Promise.resolve();
+    await expect(stream).resolves.toBeInstanceOf(Response);
     expect(
       calls.filter((path) => path === "/api/cloud/inference/prewarm"),
     ).toHaveLength(1);
-    expect(calls).not.toContain(
+    expect(calls).toContain(
       `/api/conversations/${CONVERSATION_ID}/messages/stream`,
     );
 
     releasePrewarm();
     await expect(firstPrewarm).resolves.toBeUndefined();
     await expect(concurrentPrewarm).resolves.toBeUndefined();
-    await expect(stream).resolves.toBeInstanceOf(Response);
-    expect(calls).toContain(
-      `/api/conversations/${CONVERSATION_ID}/messages/stream`,
-    );
   });
 
   test("rewrites the cloud route to canonical local SSE without cloud credentials", async () => {

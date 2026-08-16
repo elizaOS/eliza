@@ -517,11 +517,10 @@ export function createLocalRuntimeConversationFetch(
       }
     })();
     const deliveryPromise = (async () => {
-      // Session startup begins this one-token provider probe while the user is
-      // speaking. If it is still running at transcript commit, join only that
-      // already-bounded work so the real turn does not duplicate the gateway's
-      // sequential cache-warming ladder.
-      await activePrewarm?.catch(() => undefined);
+      // Prewarm is a latency hint, never an admission barrier. A slow provider
+      // probe must not recreate a multi-second Thinking queue in front of the
+      // user's authoritative turn; the provider limiter and typed warming
+      // retries safely arbitrate the rare overlap.
       const resolvedRoomId = await roomPromise;
       await awaitPriorRuntimeAbort(resolvedRoomId, body.clientMessageId);
       streamAttempted = true;

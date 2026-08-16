@@ -1,17 +1,14 @@
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 
-// Admission warming is tied to the local runtime/provider lifecycle, not to a
-// voice turn. Re-running a real one-token inference for every newly opened
-// voice session can overlap the user's first utterance and recreate the exact
-// multi-second "Thinking" delay this hint exists to remove. A runtime restart
-// recreates this module and therefore naturally permits one fresh warmup.
-const DEFAULT_PREWARM_COOLDOWN_MS = Number.POSITIVE_INFINITY;
+// Coalesce closely spaced sessions while still refreshing after a long idle;
+// the Cloud streaming admission cache can cool while a dev gateway remains up.
+const DEFAULT_PREWARM_COOLDOWN_MS = 60_000;
 
 export type CloudTextPrewarmResult = "warmed" | "already-warm";
 
 /**
  * Creates a process-local, coalescing text-gateway prewarmer. The probe uses
- * the normal runtime model router with a one-token response cap: it exercises
+ * the normal runtime model router with a tiny response cap: it exercises
  * the exact Cloud auth, admission, billing, model-catalog, and provider path
  * without creating a conversation turn or persisting synthetic chat history.
  */
