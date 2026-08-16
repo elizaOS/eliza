@@ -31,24 +31,28 @@ type ConversationRequest =
       agent: CachedAgentSandbox;
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
+      trustedUserUtterance?: string;
     }
   | {
       operation: "personal-bridge";
       agent: SharedRuntimeAgent;
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
+      trustedUserUtterance?: string;
     }
   | {
       operation: "stream";
       agent: CachedAgentSandbox;
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
+      trustedUserUtterance?: string;
     }
   | {
       operation: "personal-stream";
       agent: SharedRuntimeAgent;
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
+      trustedUserUtterance?: string;
     }
   | {
       operation: "prewarm";
@@ -1328,6 +1332,7 @@ export class SharedRuntimeConversation {
           turnClaims,
           funding: personal ? "platform" : "organization-credits",
           trustedMessageRole: payload.trustedMessageRole,
+          trustedUserUtterance: payload.trustedUserUtterance,
           executionEngine,
         });
       }
@@ -1337,6 +1342,7 @@ export class SharedRuntimeConversation {
         turnClaims,
         funding: personal ? "platform" : "organization-credits",
         trustedMessageRole: payload.trustedMessageRole,
+        trustedUserUtterance: payload.trustedUserUtterance,
         executionEngine,
       });
       return Response.json(result);
