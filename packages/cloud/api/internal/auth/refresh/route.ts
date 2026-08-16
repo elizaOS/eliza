@@ -10,6 +10,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { isJWKSConfigured } from "@/lib/auth/jwks";
 import {
   extractBearerToken,
+  internalTokenLifetimeForService,
   signInternalToken,
   verifyInternalToken,
 } from "@/lib/auth/jwt-internal";
@@ -39,7 +40,11 @@ app.post("/*", async (c) => {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const refreshed = await signInternalToken({ subject: sub, service });
+    const refreshed = await signInternalToken({
+      subject: sub,
+      service,
+      expiresIn: internalTokenLifetimeForService(service),
+    });
     return c.json(refreshed);
   } catch (err) {
     logger.error("[internal/auth/refresh]", { error: err });
