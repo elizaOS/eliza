@@ -946,7 +946,7 @@ function resolveDefinitionInRecords(
   if (exactMatches.length > 1) {
     return {
       match: null,
-      ambiguousCandidates: exactMatches.map((entry) => entry.definition.title),
+      ambiguousCandidates: exactMatches.map(definitionDisambiguationLabel),
     };
   }
   const substringMatches = defs.filter((entry) =>
@@ -961,9 +961,7 @@ function resolveDefinitionInRecords(
   if (substringMatches.length > 1) {
     return {
       match: null,
-      ambiguousCandidates: substringMatches.map(
-        (entry) => entry.definition.title,
-      ),
+      ambiguousCandidates: substringMatches.map(definitionDisambiguationLabel),
     };
   }
   const targetTokens = new Set(tokenizeTitle(target));
@@ -995,7 +993,7 @@ function resolveDefinitionInRecords(
   if (bestMatches.length >= 1) {
     return {
       match: null,
-      ambiguousCandidates: bestMatches.map((entry) => entry.definition.title),
+      ambiguousCandidates: bestMatches.map(definitionDisambiguationLabel),
     };
   }
   return { match: null, ambiguousCandidates: [] };
@@ -1012,6 +1010,41 @@ async function resolveDefinition(
     domain ? e.definition.domain === domain : true,
   );
   return resolveDefinitionInRecords(defs, target, destructive);
+}
+
+/** "title — cadence" disambiguation label so identical-title duplicates are
+ * tellable-apart in a clarification list (live matrix F37: two "water the
+ * ficus" reminders rendered as two identical lines with no times — an
+ * unanswerable question). */
+function definitionDisambiguationLabel(entry: LifeOpsDefinitionRecord): string {
+  const when = summarizeCadence(entry.definition.cadence)?.trim();
+  return when && when.length > 0
+    ? `${entry.definition.title} — ${when}`
+    : entry.definition.title;
+}
+
+/** Resolve a duplicate-title tie by a clock hint in the owner's own words:
+ * each candidate's cadence summary contributes its clock tokens ("10am",
+ * "5:30 pm"), and the tie resolves only when EXACTLY ONE candidate's tokens
+ * appear in the owner text — zero or multiple hits keep the clarification
+ * ask (destructive ops never act on a guess). */
+function resolveDuplicateByTimeHint(
+  candidates: LifeOpsDefinitionRecord[],
+  ownerText: string,
+): LifeOpsDefinitionRecord | null {
+  const normalizedOwner = ownerText.toLowerCase().replace(/\s+/g, " ");
+  const hits = candidates.filter((entry) => {
+    const summary = summarizeCadence(entry.definition.cadence) ?? "";
+    const clockTokens =
+      summary.toLowerCase().match(/\d{1,2}(?::\d{2})?\s*(?:am|pm)/g) ?? [];
+    return clockTokens.some((token) => {
+      const flexible = token
+        .replace(/\s+/g, "\\s*")
+        .replace(/:/g, "[:. ]?");
+      return new RegExp(`\\b${flexible}\\b`).test(normalizedOwner);
+    });
+  });
+  return hits.length === 1 ? (hits.at(0) ?? null) : null;
 }
 
 async function resolveDefinitionForMutation(
@@ -1036,11 +1069,13 @@ async function resolveDefinitionForMutation(
     };
   }
   if (explicitlyNamed.length > 1) {
+    const byTimeHint = resolveDuplicateByTimeHint(explicitlyNamed, ownerText);
+    if (byTimeHint) {
+      return { match: byTimeHint, ambiguousCandidates: [] };
+    }
     return {
       match: null,
-      ambiguousCandidates: explicitlyNamed.map(
-        (entry) => entry.definition.title,
-      ),
+      ambiguousCandidates: explicitlyNamed.map(definitionDisambiguationLabel),
     };
   }
 
@@ -1068,9 +1103,13 @@ async function resolveDefinitionForMutation(
     };
   }
   if (bestMatches.length >= 1) {
+    const byTimeHint = resolveDuplicateByTimeHint(bestMatches, ownerText);
+    if (byTimeHint) {
+      return { match: byTimeHint, ambiguousCandidates: [] };
+    }
     return {
       match: null,
-      ambiguousCandidates: bestMatches.map((entry) => entry.definition.title),
+      ambiguousCandidates: bestMatches.map(definitionDisambiguationLabel),
     };
   }
   return resolveDefinition(service, target, domain, destructive);
@@ -3074,6 +3113,13 @@ function shouldAdoptPlannerCadence(args: {
   return true;
 }
 
+/** Explicit deferred-consent request: the owner asked to SEE it before it is
+ * written ("preview it first", "do not save until I confirm", "don't save it
+ * yet", "ask me before"). A user-requested preview outranks every
+ * crisp-ask immediate-save exemption below. */
+const LIFE_TEXT_REQUESTS_PREVIEW_RE =
+  /\b(?:preview\b[^.!?]{0,40}\bfirst|(?:do not|don'?t)\s+(?:save|add|create|write)\b[^.!?]{0,40}\b(?:until|unless|before)\b|(?:until|unless|before)\s+i\s+(?:confirm|approve|say so)|(?:don'?t|do not)\s+(?:save|add|create|write)\s+(?:it\s+)?yet\b|ask\s+(?:me\s+)?(?:first|before))/i;
+
 function shouldRequireLifeCreateConfirmation(args: {
   confirmed: boolean;
   messageSource: string | undefined;
@@ -3081,9 +3127,19 @@ function shouldRequireLifeCreateConfirmation(args: {
   cadence?: LifeOpsCadence;
   multiStep?: boolean;
   explicitUndated?: boolean;
+  previewRequested?: boolean;
 }): boolean {
   if (args.messageSource === "autonomy") {
     return false;
+  }
+  // An explicit "preview first / don't save until I confirm" in the owner's
+  // own words defeats BOTH immediate-save exemptions below AND the extracted
+  // `confirmed` flag itself: a future-consent clause means consent has NOT
+  // been given on THIS turn, even when the extractor (mis)reads the sentence
+  // as a confirmation. The follow-up turn's plain "yes, save it" carries no
+  // such clause and confirms normally.
+  if (args.previewRequested === true) {
+    return true;
   }
   // Crisp single dated asks save immediately (#16935); a multi-milestone ask
   // ("reminders for outline, rough draft, and final proofread") collapses into
@@ -4697,7 +4753,14 @@ async function runLifeOperationHandlerInner(
           requestKind: timedRequestKind,
           cadence: definitionDraft.request.cadence,
           multiStep: llmPlan?.multiStep === true,
-          explicitUndated: textStatesExplicitUndatedTodo(currentText),
+          // Creates only: an EDIT that re-states undatedness keeps the
+          // two-phase preview (the #20182 draft-lifecycle contract) — the
+          // skip is for the owner's fresh "add a todo: X, no deadline" ask,
+          // where the preview would echo back exactly what they just said.
+          explicitUndated:
+            !editingDeferredDefinitionDraft &&
+            textStatesExplicitUndatedTodo(currentText),
+          previewRequested: LIFE_TEXT_REQUESTS_PREVIEW_RE.test(currentText),
         })
       ) {
         const draftLeadSteps = (
@@ -5089,6 +5152,9 @@ async function runLifeOperationHandlerInner(
             typeof message.content.source === "string"
               ? message.content.source
               : undefined,
+          previewRequested: LIFE_TEXT_REQUESTS_PREVIEW_RE.test(
+            messageText(message),
+          ),
         })
       ) {
         if (
