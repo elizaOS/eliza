@@ -167,33 +167,6 @@ export function isBlockedSpawnEnvKey(key: string): boolean {
 	return BLOCKED_SPAWN_ENV_PREFIXES.some((prefix) => upper.startsWith(prefix));
 }
 
-/**
- * Exec-critical baseline captured at module load, BEFORE any runtime config
- * write can poison process.env (the config→env→spawn hijack this policy
- * exists to close). PATH/HOME/SHELL are stripped from the merged spawn env
- * like every other blocked key — a request-time value is never trusted — but
- * a child spawned with NO PATH falls back to the shell's compiled-in default
- * (`/usr/local/sbin:…:/bin`), so anything installed under `~/.bun/bin` or
- * `~/.local/bin` exits 127 and HOME-dependent tooling breaks (observed live:
- * a coding sub-agent's SHELL `ls -la` returned command_failed while FILE
- * tools worked). Restoring the boot-time values keeps children runnable while
- * keeping the hijack window closed: influencing this snapshot requires
- * controlling the environment before boot, at which point the attacker
- * already owns the process.
- */
-const BOOT_BASELINE_EXEC_ENV: Readonly<Record<string, string>> = (() => {
-	const out: Record<string, string> = {};
-	if (typeof process !== "undefined" && process.env) {
-		for (const key of ["PATH", "HOME", "SHELL"] as const) {
-			const value = process.env[key];
-			if (typeof value === "string" && value.length > 0) {
-				out[key] = value;
-			}
-		}
-	}
-	return Object.freeze(out);
-})();
-
 export function sanitizeSpawnEnv(
 	env: Record<string, string | undefined>,
 ): Record<string, string | undefined> {
@@ -202,9 +175,6 @@ export function sanitizeSpawnEnv(
 		if (isBlockedSpawnEnvKey(key)) {
 			continue;
 		}
-		out[key] = value;
-	}
-	for (const [key, value] of Object.entries(BOOT_BASELINE_EXEC_ENV)) {
 		out[key] = value;
 	}
 	return out;
