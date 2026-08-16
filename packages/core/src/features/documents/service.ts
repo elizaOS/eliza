@@ -36,6 +36,7 @@ import {
 	type DocumentListCursor,
 	type DocumentListQueryParams,
 	type DocumentListRequesterRole,
+	type DocumentMutationSnapshot,
 	type IAgentRuntime,
 	type Memory,
 	MemoryType,
@@ -909,12 +910,29 @@ export class DocumentService extends Service {
 			(existingDocument.metadata?.type === MemoryType.DOCUMENT ||
 				existingDocument.metadata?.type === MemoryType.CUSTOM)
 		) {
-			const fragmentCount = await this.getDocumentFragmentCount(contentBasedId);
-			if (fragmentCount === 0) {
-				logger.warn(
-					`"${options.originalFilename}" already exists with 0 fragments; deleting stale document stub and reprocessing`,
+			const snapshot = readDocumentMutationSnapshot(existingDocument);
+			if (!snapshot) {
+				throw new ElizaError("Stored document ingestion metadata is invalid", {
+					code: "DOCUMENT_AUTHORIZATION_INVALID",
+					context: { documentId: contentBasedId },
+					severity: "fatal",
+				});
+			}
+			if (snapshot.ingestionState === "pending") {
+				throw new ElizaError(
+					`Document ${contentBasedId} ingestion is already in progress`,
+					{
+						code: "DOCUMENT_INGESTION_IN_PROGRESS",
+						context: { documentId: contentBasedId },
+					},
 				);
-				await this.runtime.deleteMemory(contentBasedId);
+			}
+			const fragmentCount = await this.getDocumentFragmentCount(contentBasedId);
+			if (snapshot.ingestionState === "failed" || fragmentCount === 0) {
+				logger.warn(
+					`"${options.originalFilename}" has an incomplete prior ingestion; deleting its exact snapshot and reprocessing`,
+				);
+				await this.deleteDocumentSnapshotForIngestion(contentBasedId, snapshot);
 			} else {
 				logger.info(
 					`"${options.originalFilename}" already exists with ${fragmentCount} fragments - skipping`,
@@ -1089,6 +1107,7 @@ export class DocumentService extends Service {
 						: agentId;
 			const scopedEntityId =
 				documentScope === "global" ? undefined : targetEntityId;
+			const ingestionAttemptId = this.runtime.createRunId();
 			const scopedMetadata = {
 				...metadata,
 				scope: documentScope,
@@ -1097,6 +1116,8 @@ export class DocumentService extends Service {
 				addedByRole: addedByRole ?? "RUNTIME",
 				addedFrom: addedFrom ?? "runtime-internal",
 				addedAt: Date.now(),
+				ingestionAttemptId,
+				ingestionState: "pending" as const,
 			};
 
 			const documentMemory = createDocumentMemory({
@@ -1120,41 +1141,73 @@ export class DocumentService extends Service {
 				roomId: roomId || agentId,
 				entityId: targetEntityId,
 			};
-
-			let fragmentCount: number;
 			if (fragments !== undefined) {
 				memoryWithScope.content = {
 					...memoryWithScope.content,
 					text: this.runtime.redactSecrets(extractedText),
 				};
-				const fragmentMemories = await preparePreChunkedFragmentMemories({
-					runtime: this.runtime,
-					documentId: clientDocumentId,
-					fragments,
-					agentId,
-					roomId: roomId || agentId,
-					entityId: targetEntityId,
-					worldId: worldId || agentId,
-					documentTitle: originalFilename,
-					documentMetadata:
-						(documentMemory.metadata as Record<string, unknown>) ?? undefined,
-				});
-				await this.runtime.createMemories([
+			}
+
+			await this.runtime.createMemory(memoryWithScope, DOCUMENTS_TABLE);
+			const persistedDocument =
+				await this.runtime.getMemoryById(clientDocumentId);
+			const ingestionSnapshot = persistedDocument
+				? readDocumentMutationSnapshot(persistedDocument)
+				: null;
+			if (
+				!persistedDocument ||
+				!ingestionSnapshot ||
+				ingestionSnapshot.ingestionAttemptId !== ingestionAttemptId ||
+				ingestionSnapshot.ingestionState !== "pending"
+			) {
+				const existingFragmentCount =
+					await this.getDocumentFragmentCount(clientDocumentId);
+				if (
+					persistedDocument?.id &&
+					ingestionSnapshot &&
+					(ingestionSnapshot.ingestionState === "ready" ||
+						ingestionSnapshot.ingestionState === undefined) &&
+					existingFragmentCount > 0
+				) {
+					return {
+						clientDocumentId,
+						storedDocumentMemoryId: persistedDocument.id as UUID,
+						fragmentCount: existingFragmentCount,
+					};
+				}
+				throw new ElizaError(
+					`Document ${clientDocumentId} ingestion is owned by another attempt`,
 					{
-						memory: memoryWithScope,
-						tableName: DOCUMENTS_TABLE,
-						unique: false,
+						code: "DOCUMENT_INGESTION_IN_PROGRESS",
+						context: { clientDocumentId },
 					},
-					...fragmentMemories.map((memory) => ({
-						memory,
-						tableName: DOCUMENT_FRAGMENTS_TABLE,
-						unique: false,
-					})),
-				]);
-				fragmentCount = fragmentMemories.length;
-			} else {
-				await this.runtime.createMemory(memoryWithScope, DOCUMENTS_TABLE);
-				try {
+				);
+			}
+
+			let fragmentCount: number;
+			try {
+				if (fragments !== undefined) {
+					const fragmentMemories = await preparePreChunkedFragmentMemories({
+						runtime: this.runtime,
+						documentId: clientDocumentId,
+						fragments,
+						agentId,
+						roomId: roomId || agentId,
+						entityId: targetEntityId,
+						worldId: worldId || agentId,
+						documentTitle: originalFilename,
+						documentMetadata:
+							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
+					});
+					await this.runtime.createMemories(
+						fragmentMemories.map((memory) => ({
+							memory,
+							tableName: DOCUMENT_FRAGMENTS_TABLE,
+							unique: false,
+						})),
+					);
+					fragmentCount = fragmentMemories.length;
+				} else {
 					fragmentCount = await processFragmentsSynchronously({
 						runtime: this.runtime,
 						documentId: clientDocumentId,
@@ -1168,24 +1221,8 @@ export class DocumentService extends Service {
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
 					});
-				} catch (fragmentError) {
-					// error-policy:J2 The parent DOCUMENT row was already written; an
-					// embed-time failure here would otherwise leave an orphaned
-					// zero-fragment document visible in lists but unsearchable
-					// (#16021). Compensate by removing the parent (and any partially
-					// persisted fragments) before rethrowing the original failure,
-					// which the outer catch wraps with document identity.
-					await this.compensateFailedIngestion(clientDocumentId);
-					throw fragmentError;
 				}
-				// extractedText is verified non-empty above, so the splitter always
-				// yields at least one chunk — zero saved fragments means every chunk
-				// failed (typically an embed-time provider failure that
-				// processAndSaveFragments counts rather than throws). Surface that as
-				// the failure it is instead of a healthy-looking zero-fragment
-				// document (#16021).
 				if (fragmentCount === 0) {
-					await this.compensateFailedIngestion(clientDocumentId);
 					throw new ElizaError(
 						`All fragments failed processing for ${originalFilename}`,
 						{
@@ -1194,6 +1231,34 @@ export class DocumentService extends Service {
 						},
 					);
 				}
+			} catch (fragmentError) {
+				await this.compensateFailedIngestion(
+					clientDocumentId,
+					ingestionAttemptId,
+				);
+				throw fragmentError;
+			}
+
+			const completed = await this.runtime.adapter.compareAndSwapDocument({
+				...this.ingestionMutationContext(),
+				documentId: clientDocumentId,
+				expected: ingestionSnapshot,
+				replacement: {
+					...persistedDocument,
+					metadata: {
+						...(persistedDocument.metadata ?? {}),
+						ingestionState: "ready",
+					} as unknown as Metadata,
+				},
+			});
+			if (completed.status !== "updated") {
+				throw new ElizaError(
+					"Document ingestion ownership changed before completion",
+					{
+						code: "DOCUMENT_INGESTION_CONFLICT",
+						context: { clientDocumentId, status: completed.status },
+					},
+				);
 			}
 
 			logger.debug(
@@ -1216,61 +1281,124 @@ export class DocumentService extends Service {
 		}
 	}
 
+	private ingestionMutationContext() {
+		return {
+			agentId: this.runtime.agentId,
+			requesterEntityId: this.runtime.agentId,
+			requesterRoomIds: [] as UUID[],
+			requesterRole: "OWNER" as const,
+		};
+	}
+
+	private async deleteDocumentSnapshotForIngestion(
+		documentId: UUID,
+		expected: DocumentMutationSnapshot,
+	): Promise<void> {
+		const deleted = await this.runtime.adapter.deleteDocumentWithSnapshot({
+			...this.ingestionMutationContext(),
+			documentId,
+			expected,
+		});
+		if (deleted.status !== "deleted") {
+			throw new ElizaError(
+				"Document ingestion snapshot changed before cleanup",
+				{
+					code: "DOCUMENT_INGESTION_CONFLICT",
+					context: { documentId, status: deleted.status },
+				},
+			);
+		}
+	}
+
 	/**
-	 * Best-effort rollback for a create-path ingestion that failed after the
-	 * parent DOCUMENT row was written: delete any partially persisted fragments,
-	 * then the parent row itself, so failed adds are invisible instead of
-	 * surfacing as zero-fragment orphans (#16021). Cleanup failures are reported
-	 * but never mask the original ingestion error the caller is rethrowing.
+	 * Persist a failed lifecycle marker before transactional cleanup. The marker
+	 * survives a cleanup outage, so retries never accept partial fragments as a
+	 * healthy document. Every write and delete is fenced by the attempt token.
 	 */
-	private async compensateFailedIngestion(documentId: UUID): Promise<void> {
+	private async compensateFailedIngestion(
+		documentId: UUID,
+		ingestionAttemptId: UUID,
+	): Promise<void> {
 		try {
-			const fragments = await this.runtime.getMemories({
-				tableName: DOCUMENT_FRAGMENTS_TABLE,
-				agentId: this.runtime.agentId,
-				count: 10_000,
-			});
-			for (const fragment of fragments) {
-				if (
-					fragment.id &&
-					(fragment.metadata as DocumentFragmentMemoryMetadata | undefined)
-						?.documentId === documentId
-				) {
-					await this.runtime.deleteMemory(fragment.id);
-				}
+			const current = await this.runtime.getMemoryById(documentId);
+			const pendingSnapshot = current
+				? readDocumentMutationSnapshot(current)
+				: null;
+			if (
+				!current ||
+				!pendingSnapshot ||
+				pendingSnapshot.ingestionAttemptId !== ingestionAttemptId ||
+				pendingSnapshot.ingestionState !== "pending"
+			) {
+				throw new ElizaError(
+					"Document ingestion ownership changed before compensation",
+					{
+						code: "DOCUMENT_INGESTION_CONFLICT",
+						context: { documentId },
+					},
+				);
 			}
-			await this.runtime.deleteMemory(documentId);
+
+			const failed = await this.runtime.adapter.compareAndSwapDocument({
+				...this.ingestionMutationContext(),
+				documentId,
+				expected: pendingSnapshot,
+				replacement: {
+					...current,
+					metadata: {
+						...(current.metadata ?? {}),
+						ingestionState: "failed" as const,
+					} as unknown as Metadata,
+				},
+			});
+			if (failed.status !== "updated") {
+				throw new ElizaError(
+					"Document ingestion ownership changed while marking failure",
+					{
+						code: "DOCUMENT_INGESTION_CONFLICT",
+						context: { documentId, status: failed.status },
+					},
+				);
+			}
+			const failedSnapshot = readDocumentMutationSnapshot(failed.document);
+			if (
+				!failedSnapshot ||
+				failedSnapshot.ingestionAttemptId !== ingestionAttemptId ||
+				failedSnapshot.ingestionState !== "failed"
+			) {
+				throw new ElizaError("Failed document lifecycle snapshot is invalid", {
+					code: "DOCUMENT_INGESTION_CONFLICT",
+					context: { documentId },
+				});
+			}
+
+			await this.deleteDocumentSnapshotForIngestion(documentId, failedSnapshot);
 			logger.warn(
-				`DocumentService: rolled back parent document ${documentId} after fragment processing failed`,
+				`DocumentService: rolled back failed ingestion ${ingestionAttemptId} for document ${documentId}`,
 			);
 		} catch (cleanupError) {
-			// error-policy:J7 Compensation is diagnostic cleanup — the original
-			// fragment-processing failure is the error that must propagate; a
-			// failed rollback degrades to the pre-existing self-heal on retry
-			// (checkExistingDocument deletes zero-fragment stubs).
+			// error-policy:J7 Cleanup is best effort and must not mask the original
+			// extraction/embedding failure. A successfully persisted `failed` marker
+			// makes the next retry clean the exact snapshot before starting again.
 			this.runtime.reportError(
 				"DocumentService.compensateFailedIngestion",
 				cleanupError instanceof Error
 					? cleanupError
 					: new Error(String(cleanupError)),
-				{ documentId },
+				{ documentId, ingestionAttemptId },
 			);
 		}
 	}
 
 	private async getDocumentFragmentCount(documentId: UUID): Promise<number> {
-		const fragments = await this.runtime.getMemories({
+		return this.runtime.countMemories({
 			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			agentId: this.runtime.agentId,
-			count: 10_000,
+			metadata: {
+				type: MemoryType.FRAGMENT,
+				documentId,
+			},
 		});
-
-		return fragments.filter(
-			(f) =>
-				f.metadata?.type === MemoryType.FRAGMENT &&
-				(f.metadata as DocumentFragmentMemoryMetadata | undefined)
-					?.documentId === documentId,
-		).length;
 	}
 
 	async checkExistingDocument(documentId: UUID): Promise<boolean> {
@@ -1283,12 +1411,16 @@ export class DocumentService extends Service {
 			existingDocument.metadata?.type === MemoryType.DOCUMENT ||
 			existingDocument.metadata?.type === MemoryType.CUSTOM
 		) {
+			const snapshot = readDocumentMutationSnapshot(existingDocument);
+			if (!snapshot || snapshot.ingestionState === "pending") {
+				return false;
+			}
 			const fragmentCount = await this.getDocumentFragmentCount(documentId);
-			if (fragmentCount === 0) {
+			if (snapshot.ingestionState === "failed" || fragmentCount === 0) {
 				logger.warn(
-					`Document ${documentId} already exists with 0 fragments; deleting stale document stub and reprocessing`,
+					`Document ${documentId} has an incomplete ingestion; deleting its exact snapshot before retry`,
 				);
-				await this.runtime.deleteMemory(documentId);
+				await this.deleteDocumentSnapshotForIngestion(documentId, snapshot);
 				return false;
 			}
 		}

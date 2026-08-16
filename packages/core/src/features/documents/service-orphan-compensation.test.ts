@@ -8,7 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../../runtime.ts";
 import { createTestRuntime } from "../../testing/pglite-runtime.ts";
-import type { UUID } from "../../types/index.ts";
+import type { Memory, UUID } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
 import { DocumentService } from "./service.ts";
 
@@ -24,6 +24,8 @@ let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
 let service: DocumentService;
 let embedShouldFail = false;
+let embedGate: Promise<void> | undefined;
+let notifyEmbed: (() => void) | undefined;
 
 async function fragmentsFor(documentId: string): Promise<number> {
 	const memories = await runtime.getMemories({
@@ -46,6 +48,8 @@ beforeAll(async () => {
 	// One switchable handler for both embedding routes so the failure mode is
 	// exactly an embed-time provider outage, not a missing model.
 	const embed = async () => {
+		notifyEmbed?.();
+		await embedGate;
 		if (embedShouldFail) {
 			throw new Error("injected embedding provider outage");
 		}
@@ -158,4 +162,204 @@ describe("addDocument orphan compensation (#16021)", () => {
 			await runtime.getMemoryById(retried.clientDocumentId as UUID),
 		).not.toBeNull();
 	}, 120_000);
+
+	it("does not let a concurrent loser process or roll back the winning ingestion", async () => {
+		embedShouldFail = false;
+		let releaseEmbed!: () => void;
+		embedGate = new Promise<void>((resolve) => {
+			releaseEmbed = resolve;
+		});
+		let enteredEmbed!: () => void;
+		const embeddingStarted = new Promise<void>((resolve) => {
+			enteredEmbed = resolve;
+		});
+		notifyEmbed = enteredEmbed;
+		const options = {
+			agentId: runtime.agentId,
+			clientDocumentId: "f1600000-0000-4000-8000-000000000004" as UUID,
+			content: `concurrent winner ${DOC_TEXT}`,
+			contentType: "text/plain",
+			originalFilename: "orphan-concurrent.txt",
+			worldId: runtime.agentId as UUID,
+			roomId: runtime.agentId as UUID,
+			entityId: runtime.agentId as UUID,
+		};
+
+		const winner = service.addDocument(options);
+		await embeddingStarted;
+		notifyEmbed = undefined;
+		await expect(service.addDocument(options)).rejects.toThrow(
+			/already in progress|owned by another attempt/,
+		);
+		releaseEmbed();
+		embedGate = undefined;
+		const stored = await winner;
+		expect(stored.fragmentCount).toBeGreaterThan(0);
+		expect(
+			await runtime.getMemoryById(stored.clientDocumentId as UUID),
+		).not.toBeNull();
+		expect(await fragmentsFor(stored.clientDocumentId)).toBe(
+			stored.fragmentCount,
+		);
+	}, 120_000);
+
+	it("preserves failed state and the original cause when cleanup is unavailable, then retries", async () => {
+		embedShouldFail = true;
+		const adapter = runtime.adapter as typeof runtime.adapter & {
+			deleteDocumentWithSnapshot: typeof runtime.adapter.deleteDocumentWithSnapshot;
+		};
+		const realDelete = adapter.deleteDocumentWithSnapshot.bind(adapter);
+		adapter.deleteDocumentWithSnapshot = async () => {
+			throw new Error("injected transactional cleanup outage");
+		};
+		const options = {
+			agentId: runtime.agentId,
+			clientDocumentId: "f1600000-0000-4000-8000-000000000005" as UUID,
+			content: `cleanup outage ${DOC_TEXT}`,
+			contentType: "text/plain",
+			originalFilename: "orphan-cleanup-outage.txt",
+			worldId: runtime.agentId as UUID,
+			roomId: runtime.agentId as UUID,
+			entityId: runtime.agentId as UUID,
+		};
+		let caught: unknown;
+		try {
+			await service.addDocument(options);
+		} catch (error) {
+			caught = error;
+		} finally {
+			adapter.deleteDocumentWithSnapshot = realDelete;
+		}
+		const causeMessages: string[] = [];
+		let cause = caught;
+		while (cause instanceof Error) {
+			causeMessages.push(cause.message);
+			cause = cause.cause;
+		}
+		expect(causeMessages.join(" | ")).toContain(
+			"All fragments failed processing",
+		);
+
+		const documents = await runtime.getMemories({
+			tableName: "documents",
+			agentId: runtime.agentId,
+			count: 100,
+		});
+		const failed = documents.find(
+			(memory) =>
+				(memory.metadata as { originalFilename?: string } | undefined)
+					?.originalFilename === options.originalFilename,
+		);
+		const failedMetadata = failed?.metadata as
+			| { ingestionState?: string; ingestionAttemptId?: string }
+			| undefined;
+		expect(failedMetadata?.ingestionState).toBe("failed");
+		expect(typeof failedMetadata?.ingestionAttemptId).toBe("string");
+		expect(failed?.id).toBeDefined();
+		const listed = await runtime.adapter.queryDocuments({
+			agentId: runtime.agentId,
+			requesterEntityId: runtime.agentId,
+			requesterRoomIds: [runtime.agentId as UUID],
+			requesterRole: "OWNER",
+			limit: 25,
+			offset: 0,
+		});
+		expect(listed.documents.map((memory) => memory.id)).not.toContain(
+			failed?.id,
+		);
+
+		embedShouldFail = false;
+		const retried = await service.addDocument(options);
+		expect(retried.fragmentCount).toBeGreaterThan(0);
+		const retriedMetadata = (
+			await runtime.getMemoryById(retried.clientDocumentId as UUID)
+		)?.metadata as { ingestionState?: string } | undefined;
+		expect(retriedMetadata?.ingestionState).toBe("ready");
+	}, 120_000);
+
+	it("transactionally removes 10,001 target fragments and preserves unrelated rows", async () => {
+		const documentId = runtime.createRunId();
+		const unrelatedDocumentId = runtime.createRunId();
+		const attemptId = runtime.createRunId();
+		await runtime.createMemory(
+			{
+				id: documentId,
+				agentId: runtime.agentId,
+				roomId: runtime.agentId,
+				entityId: runtime.agentId,
+				content: { text: "failed bulk ingestion" },
+				metadata: {
+					type: "document",
+					documentId,
+					source: "test",
+					timestamp: Date.now(),
+					scope: "agent-private",
+					documentRevision: 0,
+					ingestionAttemptId: attemptId,
+					ingestionState: "failed",
+				} as unknown as Memory["metadata"],
+			},
+			"documents",
+		);
+		const fragment = (fragmentDocumentId: UUID, position: number): Memory => ({
+			id: runtime.createRunId(),
+			agentId: runtime.agentId,
+			roomId: runtime.agentId,
+			entityId: runtime.agentId,
+			content: { text: `fragment ${position}` },
+			metadata: {
+				type: "fragment",
+				documentId: fragmentDocumentId,
+				position,
+			},
+		});
+		const entries = Array.from({ length: 10_001 }, (_, position) => ({
+			memory: fragment(documentId, position),
+			tableName: DOCUMENT_FRAGMENTS_TABLE,
+		}));
+		entries.push(
+			{
+				memory: fragment(unrelatedDocumentId, 0),
+				tableName: DOCUMENT_FRAGMENTS_TABLE,
+			},
+			{
+				memory: fragment(unrelatedDocumentId, 1),
+				tableName: DOCUMENT_FRAGMENTS_TABLE,
+			},
+		);
+		await runtime.createMemories(entries);
+		expect(
+			await runtime.countMemories({
+				tableName: DOCUMENT_FRAGMENTS_TABLE,
+				agentId: runtime.agentId,
+				metadata: { documentId },
+			}),
+		).toBe(10_001);
+		expect(
+			await runtime.countMemories({
+				tableName: DOCUMENT_FRAGMENTS_TABLE,
+				agentId: runtime.agentId,
+				metadata: { documentId: unrelatedDocumentId },
+			}),
+		).toBe(2);
+
+		await expect(service.checkExistingDocument(documentId)).resolves.toBe(
+			false,
+		);
+		expect(await runtime.getMemoryById(documentId)).toBeNull();
+		expect(
+			await runtime.countMemories({
+				tableName: DOCUMENT_FRAGMENTS_TABLE,
+				agentId: runtime.agentId,
+				metadata: { documentId },
+			}),
+		).toBe(0);
+		expect(
+			await runtime.countMemories({
+				tableName: DOCUMENT_FRAGMENTS_TABLE,
+				agentId: runtime.agentId,
+				metadata: { documentId: unrelatedDocumentId },
+			}),
+		).toBe(2);
+	}, 180_000);
 });
