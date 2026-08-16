@@ -519,17 +519,7 @@ export function getGeneratedAgentId(
     const subdomain = hostname.slice(0, -suffix.length);
     if (AGENT_ID_RE.test(subdomain)) return subdomain;
   }
-
-  // Keep legacy UUID agent hosts on the authenticated dedicated-agent proxy
-  // until the canonical nested-wildcard DNS and certificate cutover is live.
-  // Redirecting these bridge requests first strips them from the only working
-  // host and makes fail-closed snapshots/restarts time out (#19047).
-  const classified = hostname ? classifyElizaHostname(hostname) : null;
-  return classified?.role === "legacy-dedicated-agent" &&
-    classified.agentId &&
-    AGENT_ID_RE.test(classified.agentId)
-    ? classified.agentId
-    : null;
+  return null;
 }
 
 export function redirectFrontendHost(
@@ -578,10 +568,7 @@ export function redirectFrontendHost(
     classified.agentId &&
     AGENT_ID_RE.test(classified.agentId)
   ) {
-    // UUID agent hosts remain on the legacy hostname until the canonical
-    // nested-wildcard DNS/certificate cutover is complete. The worker proxies
-    // them below through the same authenticated dedicated-agent path.
-    return null;
+    canonicalHostname = classified.canonicalHostname;
   } else {
     canonicalHostname = canonicalElizaServiceHostname(hostname);
     if (!canonicalHostname && hostname === "os.elizacloud.ai") {

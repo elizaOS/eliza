@@ -115,10 +115,13 @@ function isApprovalTaskService(
   );
 }
 
-function parseLimit(raw: string | null): number {
-  if (!raw) return 50;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 50;
+function parseLimit(raw: string | null): number | null {
+  if (raw === null || raw === "") return 50;
+  // Strict decimal digits only. Number.parseInt("1e3", 10) === 1 would
+  // silently under-read a client page size as 1.
+  if (!/^[1-9]\d*$/.test(raw)) return null;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
   return Math.min(parsed, 500);
 }
 
@@ -319,11 +322,16 @@ export async function handleApprovalRoute(
   }
 
   const url = new URL(req.url ?? pathname, "http://localhost");
+  const limit = parseLimit(url.searchParams.get("limit"));
+  if (limit === null) {
+    helpers.error(res, "limit must be a positive integer", 400);
+    return true;
+  }
   const filter: ApprovalListFilter = {
     subjectUserId: null,
     state: parseState(url.searchParams.get("state")),
     action: null,
-    limit: parseLimit(url.searchParams.get("limit")),
+    limit,
   };
 
   const queue = getAgentApprovalQueue(state);

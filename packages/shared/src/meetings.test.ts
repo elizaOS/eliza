@@ -34,6 +34,15 @@ describe("parseMeetingUrl", () => {
     expect(parsed?.nativeMeetingId).toBe("19:meeting_abc@thread.v2/0");
   });
 
+  it("rejects a Teams short link whose numeric id is only a path prefix", () => {
+    expect(
+      parseMeetingUrl("https://teams.microsoft.com/meet/123456789?p=abc"),
+    ).toMatchObject({ platform: "teams", nativeMeetingId: "123456789" });
+    expect(
+      parseMeetingUrl("https://teams.microsoft.com/meet/123not-a-meeting"),
+    ).toBeNull();
+  });
+
   it("returns null (never throws URIError) on a malformed percent-escape Teams id", () => {
     // A lone trailing `%` is an invalid escape: decodeURIComponent throws
     // URIError, which used to crash the Transcripts view on every keystroke,
