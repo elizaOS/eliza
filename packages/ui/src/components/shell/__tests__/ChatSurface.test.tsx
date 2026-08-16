@@ -123,7 +123,7 @@ describe("ChatSurface", () => {
     );
   });
 
-  it("keeps ordinary reminder actions available in the ambient packaged chat", () => {
+  it("keeps reminder prose but removes reminder controls from ambient packaged chat", () => {
     const messages: ShellMessage[] = [
       {
         id: "reminder",
@@ -146,9 +146,56 @@ describe("ChatSurface", () => {
     );
 
     expect(screen.getByText("Time to stretch.")).toBeTruthy();
-    expect(screen.getByTestId("choice-done")).toBeTruthy();
-    expect(screen.getByText("Snooze 10m")).toBeTruthy();
-    expect(screen.getByText("Skip")).toBeTruthy();
+    expect(screen.queryByTestId("choice-done")).toBeNull();
+    expect(screen.queryByText("Snooze 10m")).toBeNull();
+    expect(screen.queryByText("Skip")).toBeNull();
+  });
+
+  it("omits a reminder-only assistant turn instead of rendering a blank bubble", () => {
+    const messages: ShellMessage[] = [
+      {
+        id: "prompt",
+        role: "user",
+        content: "What fired?",
+        createdAt: 0,
+      },
+      {
+        id: "reminder-only",
+        role: "assistant",
+        content:
+          "[CHOICE:lifeops-reminder id=reminder]\ndone=Done\nskip=Skip\n[/CHOICE]",
+        createdAt: 1,
+      },
+    ];
+
+    render(
+      <ChatSurface messages={messages} onSend={() => {}} canSend={true} />,
+    );
+
+    const conversation = screen.getByRole("list", { name: "Conversation" });
+    expect(conversation.childElementCount).toBe(1);
+    expect(screen.getByText("What fired?")).toBeTruthy();
+    expect(screen.queryByText("Done")).toBeNull();
+  });
+
+  it("preserves ordinary interactive choices in ambient packaged chat", () => {
+    const messages: ShellMessage[] = [
+      {
+        id: "plan",
+        role: "assistant",
+        content: "[CHOICE:plan]\nship=Ship it\nwait=Wait\n[/CHOICE]",
+        createdAt: 0,
+      },
+    ];
+
+    render(
+      <ChatSurface messages={messages} onSend={() => {}} canSend={true} />,
+    );
+
+    const ship = screen.getByRole("button", { name: "Ship it" });
+    expect(screen.getByRole("button", { name: "Wait" })).toBeTruthy();
+    fireEvent.click(ship);
+    expect(inlineWidgetMock.sendActionMessage).toHaveBeenCalledWith("ship");
   });
 
   it("disables send when input is empty", () => {

@@ -8,9 +8,10 @@
 // (ChatTranscript → MessageContent). The PARSER layer is already deduped + pinned
 // (parser-parity.contract.test.ts, #9304) — both call the same `parseSegments`.
 // This contract guards the layer ABOVE the parser: that the two component trees
-// emit the SAME interactive-widget / code-block / reasoning / secret-request
-// STRUCTURE for a shared message corpus. If a future edit to either tree adds,
-// drops, or diverges a structural affordance, this fails.
+// emit the SAME required interactive-widget / code-block / reasoning /
+// secret-request STRUCTURE for a shared message corpus. If a future edit to
+// either tree adds, drops, or diverges a required structural affordance, this
+// fails. Reminder action controls are an explicitly pinned Home divergence.
 //
 // It is structural, not pixel-level: the two surfaces legitimately differ in
 // chrome (bubble glass vs flat row), animation, and the press-and-hold copy
@@ -279,21 +280,17 @@ describe("chat render parity (ThreadLine vs MessageContent) — #9954", () => {
     );
   });
 
-  it("keeps reminder controls actionable on both chat surfaces", () => {
+  it("keeps ordinary controls actionable on both chat surfaces", () => {
     const { viewPrint, overlayPrint } = renderBoth(
       assistant(
-        "Time to stretch.\n\n[CHOICE:lifeops-reminder id=reminder-123]\ndone=Done\n10 minutes=Snooze 10m\nskip=Skip\n[/CHOICE]",
+        "What next?\n[CHOICE:plan]\nship=Ship it\nwait=Wait\n[/CHOICE]",
       ),
     );
 
     for (const fingerprint of [viewPrint, overlayPrint]) {
       expect(fingerprint.hasChoiceWidget).toBe(true);
       expect(fingerprint.choiceOptionValues).toEqual(
-        expect.arrayContaining([
-          "choice-done",
-          "choice-10 minutes",
-          "choice-skip",
-        ]),
+        expect.arrayContaining(["choice-ship", "choice-wait"]),
       );
     }
   });
@@ -301,11 +298,12 @@ describe("chat render parity (ThreadLine vs MessageContent) — #9954", () => {
 
 // ── PINNED divergences ──────────────────────────────────────────────────────
 //
-// The two surfaces DO legitimately diverge in two structural ways today. These
-// are pinned (not "fixed" here) so each is a CONSCIOUS contract: the only way to
-// reconcile a surface is to flip the assertion in this file, never a silent edit
-// to one switch statement. Mirrors how parser-parity.contract.test.ts pins the
-// FORM-marker regex asymmetry with an explicit, commented expectation.
+// The two surfaces DO legitimately diverge in four structural ways today.
+// These are pinned (not "fixed" here) so each is a CONSCIOUS contract: the only
+// way to reconcile a surface is to flip the assertion in this file, never a
+// silent edit to one switch statement. Mirrors how
+// parser-parity.contract.test.ts pins the FORM-marker regex asymmetry with an
+// explicit, commented expectation.
 describe("chat render parity — PINNED divergences (intended/tracked) — #9954 item 7", () => {
   beforeEach(() => {
     clientMock.getPlugins.mockResolvedValue([]);
@@ -314,6 +312,39 @@ describe("chat render parity — PINNED divergences (intended/tracked) — #9954
     cleanup();
     __setAppValueForTests(null);
     vi.clearAllMocks();
+  });
+
+  it("PIN: reminder actions stay in ChatView and are absent from the Home overlay", () => {
+    const { viewPrint, overlayPrint } = renderBoth(
+      assistant(
+        "Time to stretch.\n\n[CHOICE:lifeops-reminder id=reminder-123]\ndone=Done\n10 minutes=Snooze 10m\nskip=Skip\n[/CHOICE]",
+      ),
+    );
+
+    expect(viewPrint.hasChoiceWidget).toBe(true);
+    expect(viewPrint.choiceOptionValues).toEqual(
+      expect.arrayContaining([
+        "choice-done",
+        "choice-10 minutes",
+        "choice-skip",
+      ]),
+    );
+    expect(overlayPrint.hasChoiceWidget).toBe(false);
+    expect(overlayPrint.choiceOptionValues).toEqual([]);
+  });
+
+  it("PIN: a reminder-only turn is absent from the Home overlay", () => {
+    const message = assistant(
+      "[CHOICE:lifeops-reminder id=reminder-123]\ndone=Done\nskip=Skip\n[/CHOICE]",
+    );
+    const view = withApp(<MessageContent message={message} />);
+    expect(view.getByTestId("choice-done")).not.toBeNull();
+    cleanup();
+
+    const overlay = withApp(
+      __renderThreadLineForParity(toShellMessage(message)),
+    );
+    expect(overlay.container.childElementCount).toBe(0);
   });
 
   // (1) Inline `` `code` ``. ChatView's MessageTextBody lifts each backtick span

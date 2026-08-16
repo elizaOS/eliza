@@ -4,6 +4,7 @@
  * this module owns transcript-only presentation policy.
  */
 
+import { Fragment } from "react";
 import type { ChatTurnStatus } from "../../api/client-types-chat";
 import { splitLeadingSlashCommand } from "../../chat/slash-menu";
 import {
@@ -25,6 +26,10 @@ import type {
 } from "../composites/chat/chat-types";
 import { TurnStatus } from "../composites/chat/chat-typing-indicator";
 import { Button } from "../ui/button";
+import {
+  shouldDisplayAmbientMessage,
+  withoutAmbientReminderChoices,
+} from "./ambient-choice-policy";
 import type { ShellMessage } from "./shell-state";
 import { WALLPAPER_FLOAT_SHADOW } from "./wallpaper-idiom";
 
@@ -74,7 +79,9 @@ function OverlayAssistantTurnBody({
         </div>
       ) : (
         <div className="col-start-1 row-start-1 min-h-[1.4375rem] min-w-0">
-          <InlineWidgetText content={message.text} />
+          <InlineWidgetText
+            content={withoutAmbientReminderChoices(message.text)}
+          />
           {attachmentsNode}
           {message.secretRequest ? (
             <div className="pointer-events-auto">
@@ -264,6 +271,9 @@ export function __renderThreadLineForParity(
     onDismissSuggestion?: (messageId: string) => void;
   },
 ): React.JSX.Element {
+  if (!shouldDisplayAmbientMessage(message)) {
+    return <Fragment key="ambient-reminder-suppressed" />;
+  }
   return (
     <ChatMessage
       appearance="glass"

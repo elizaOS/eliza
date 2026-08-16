@@ -1420,6 +1420,50 @@ describe("ChatOverlay", () => {
     expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(1);
   });
 
+  it("suppresses reminder controls and reminder-only rows without hiding other choices", () => {
+    render(
+      <ChatOverlay
+        controller={makeController({
+          messages: [
+            { id: "u", role: "user", content: "What fired?", createdAt: 1 },
+            {
+              id: "reminder-only",
+              role: "assistant",
+              content:
+                "[CHOICE:lifeops-reminder id=empty]\ndone=Done\n[/CHOICE]",
+              createdAt: 2,
+            },
+            {
+              id: "reminder-prose",
+              role: "assistant",
+              content:
+                "Time to stretch.\n\n[CHOICE:lifeops-reminder id=reminder]\ndone=Done\n10 minutes=Snooze 10m\nskip=Skip\n[/CHOICE]",
+              createdAt: 3,
+            },
+            {
+              id: "plan",
+              role: "assistant",
+              content: "[CHOICE:plan]\nship=Ship it\nwait=Wait\n[/CHOICE]",
+              createdAt: 4,
+            },
+          ],
+        })}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    const log = document.getElementById("continuous-thread");
+    expect(log?.querySelectorAll('[data-testid="thread-line"]')).toHaveLength(
+      3,
+    );
+    expect(screen.getByText("Time to stretch.")).toBeTruthy();
+    expect(screen.queryByText("Done")).toBeNull();
+    expect(screen.queryByText("Snooze 10m")).toBeNull();
+    expect(screen.queryByText("Skip")).toBeNull();
+    expect(screen.getByRole("button", { name: "Ship it" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Wait" })).toBeTruthy();
+  });
+
   it("hides the topic chips bar + dividers on a single-topic thread", () => {
     // The lock-screen leak: a fresh thread whose only Stage-1 topic is
     // `greeting` was rendering a grey `greeting` chip top-left and a

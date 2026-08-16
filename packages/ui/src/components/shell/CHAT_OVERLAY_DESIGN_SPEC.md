@@ -36,6 +36,13 @@ grows **up** out of it inside the same panel.
 No chrome/signage: no message counter, no "new chat", no tab strip. Controls
 dissolve into the glass; status is a soft breath of light, not a branded alert.
 
+The Home transcript suppresses only `lifeops-reminder` choice controls so a
+passive reminder reads as conversation instead of a Done/Snooze/Skip dashboard.
+Every other choice remains interactive here, including first-run, model status,
+boot recovery, approvals, and plans; the canonical full ChatView also retains
+reminder actions. If a reminder choice block is the turn's entire payload, the
+whole ambient row is omitted rather than leaving an empty assistant bubble.
+
 ## Materials — liquid glass, sourced from the token system
 
 The frosted panel is a **system surface**: its material comes from the shared

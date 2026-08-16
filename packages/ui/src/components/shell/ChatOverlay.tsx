@@ -135,6 +135,7 @@ import {
   useMessageScroller,
 } from "../ui/message-scroller";
 import { Textarea } from "../ui/textarea";
+import { selectAmbientMessages } from "./ambient-choice-policy";
 import {
   clamp01,
   grabberBarOpacity,
@@ -1923,6 +1924,10 @@ export function ChatOverlay({
       ),
     [messages, phase, responding],
   );
+  const ambientMessages = React.useMemo(
+    () => selectAmbientMessages(renderableMessages),
+    [renderableMessages],
+  );
   // Mirror the active id so an async older-page result is dropped after a
   // mid-flight conversation switch: a page fetched for the previous thread must
   // never prepend into the newly active one.
@@ -1949,13 +1954,13 @@ export function ChatOverlay({
   // never unbounds the DOM. The one shared engine (also drives ChatView),
   // reset when the active conversation changes.
   const renderWindow = useConversationRenderWindow({
-    renderableCount: renderableMessages.length,
+    renderableCount: ambientMessages.length,
     conversationKey: activeConversationId,
     fetchOlder,
   });
   const hasFirstRunMessages = React.useMemo(
-    () => renderableMessages.some(isFirstRunShellMessage),
-    [renderableMessages],
+    () => ambientMessages.some(isFirstRunShellMessage),
+    [ambientMessages],
   );
   const [firstRunFallbackReady, setFirstRunFallbackReady] =
     React.useState(false);
@@ -1972,16 +1977,16 @@ export function ChatOverlay({
   const visibleMessages = React.useMemo(() => {
     if (firstRunOpen)
       return selectFirstRunDisplayMessages(
-        renderableMessages,
+        ambientMessages,
         firstRunFallbackReady,
       );
-    return renderableMessages.length > renderWindow.windowSize
-      ? renderableMessages.slice(-renderWindow.windowSize)
-      : renderableMessages;
+    return ambientMessages.length > renderWindow.windowSize
+      ? ambientMessages.slice(-renderWindow.windowSize)
+      : ambientMessages;
   }, [
     firstRunFallbackReady,
     firstRunOpen,
-    renderableMessages,
+    ambientMessages,
     renderWindow.windowSize,
   ]);
   // Automatic realtime speech belongs to the composer-wide voice state. Only

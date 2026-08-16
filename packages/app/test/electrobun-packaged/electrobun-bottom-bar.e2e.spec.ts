@@ -403,9 +403,9 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
       )
       .toMatchObject({
         transcript: expect.stringContaining("Time to stretch."),
-        doneVisible: true,
-        snoozeVisible: true,
-        skipVisible: true,
+        doneVisible: false,
+        snoozeVisible: false,
+        skipVisible: false,
       });
 
     await harness.eval(

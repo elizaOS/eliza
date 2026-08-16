@@ -24,6 +24,10 @@ import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
 import { ChatBubble } from "../composites/chat/chat-bubble";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import { Input } from "../ui/input";
+import {
+  selectAmbientMessages,
+  withoutAmbientReminderChoices,
+} from "./ambient-choice-policy";
 import { GlassIconButton } from "./glass-composer";
 import { GLASS_COMPOSER_CLASS } from "./glass-composer.helpers";
 import type { ShellMessage } from "./shell-state";
@@ -73,12 +77,16 @@ export function ChatSurface({
   // draft the overlay edits (one draft per active conversation, persistence
   // and dictation included); standalone mounts fall back to local state.
   const { chatInput: draft, setChatInput: setDraft } = useChatComposerOrLocal();
-  const messageCount = messages.length;
+  const visibleMessages = React.useMemo(
+    () => selectAmbientMessages(messages),
+    [messages],
+  );
+  const messageCount = visibleMessages.length;
   const trimmed = draft.trim();
   const canSendNow = canSend && trimmed.length > 0;
   // Follow the tail while at the bottom and leave a reader who scrolled up
   // alone via the one shared thread-scroll engine.
-  const lastMessage = messages.at(-1);
+  const lastMessage = visibleMessages.at(-1);
   const { scrollRef } = useThreadAutoScroll<HTMLDivElement>({
     growthKey: `${messageCount}:${lastMessage?.id ?? ""}:${lastMessage?.content.length ?? 0}`,
   });
@@ -121,7 +129,7 @@ export function ChatSurface({
           ref={scrollRef}
           className="h-full overflow-y-auto overflow-x-hidden py-2"
         >
-          {messages.length === 0 ? (
+          {visibleMessages.length === 0 ? (
             <p className="text-sm text-muted">
               {greeting ??
                 t("chatsurface.greeting", {
@@ -137,7 +145,7 @@ export function ChatSurface({
               })}
               className="flex flex-col gap-2"
             >
-              {messages.map((message) => {
+              {visibleMessages.map((message) => {
                 const isUser = message.role === "user";
                 const isEmptyAssistant =
                   message.role === "assistant" && message.content === "";
@@ -164,7 +172,11 @@ export function ChatSurface({
                         {isUser ? (
                           <UserMessageContent content={message.content} />
                         ) : (
-                          <InlineWidgetText content={message.content} />
+                          <InlineWidgetText
+                            content={withoutAmbientReminderChoices(
+                              message.content,
+                            )}
+                          />
                         )}
                       </ChatBubble>
                     )}
