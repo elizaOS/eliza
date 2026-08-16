@@ -230,4 +230,109 @@ describe("iOS local agent transport (ui copy)", () => {
     await expect(response.json()).resolves.toEqual({ ready: true });
     expect(originalFetch).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["remote-mac", "cloud"])(
+    "keeps port 31337 on the real network transport in %s mode",
+    async (mode) => {
+      vi.stubEnv("VITE_ELIZA_IOS_ALLOW_SIMULATOR_LOOPBACK", "1");
+      const originalFetch = vi.fn(async () =>
+        Response.json({ source: "mac-runtime" }),
+      );
+      vi.stubGlobal("fetch", originalFetch);
+      vi.stubGlobal("localStorage", {
+        getItem: (key: string) =>
+          key === "eliza:mobile-runtime-mode" ? mode : null,
+      });
+
+      const { installIosLocalAgentFetchBridge, isIosInProcessLocalAgentUrl } =
+        await import("./ios-local-agent-transport");
+      const macRuntimeUrl = "http://127.0.0.1:31337/api/health";
+
+      expect(isIosInProcessLocalAgentUrl(macRuntimeUrl)).toBe(false);
+      installIosLocalAgentFetchBridge();
+      const response = await fetch(macRuntimeUrl);
+
+      await expect(response.json()).resolves.toEqual({
+        source: "mac-runtime",
+      });
+      expect(originalFetch).toHaveBeenCalledOnce();
+      expect(originalFetch).toHaveBeenCalledWith(macRuntimeUrl, undefined);
+    },
+  );
+
+  it("lets the explicit remote-mac selection override a strict local-runtime build", async () => {
+    vi.stubEnv("VITE_ELIZA_IOS_ALLOW_SIMULATOR_LOOPBACK", "1");
+    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_STRICT", "1");
+    capacitorState.pluginAvailable = true;
+    const start = vi.fn(async () => ({ ok: true }));
+    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+    const call = vi.fn();
+    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+      ElizaBunRuntime: { start, getStatus, call },
+    }));
+    const originalFetch = vi.fn(async () =>
+      Response.json({ source: "mac-runtime" }),
+    );
+    vi.stubGlobal("fetch", originalFetch);
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "remote-mac" : null,
+    });
+
+    const {
+      handleIosLocalAgentNativeRequest,
+      installIosLocalAgentFetchBridge,
+    } = await import("./ios-local-agent-transport");
+    installIosLocalAgentFetchBridge();
+
+    const url = "http://127.0.0.1:31337/api/notifications?limit=100";
+    const response = await fetch(url);
+
+    await expect(response.json()).resolves.toEqual({
+      source: "mac-runtime",
+    });
+    expect(originalFetch).toHaveBeenCalledWith(url, undefined);
+    await expect(
+      handleIosLocalAgentNativeRequest({
+        method: "GET",
+        path: "/api/notifications?limit=100",
+      }),
+    ).rejects.toThrow("remote-agent modes cannot use local-agent IPC");
+    expect(start).not.toHaveBeenCalled();
+    expect(getStatus).not.toHaveBeenCalled();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it("retains port 31337 as the on-device agent in local mode", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "local" : null,
+    });
+
+    const { isIosInProcessLocalAgentUrl } = await import(
+      "./ios-local-agent-transport"
+    );
+
+    expect(
+      isIosInProcessLocalAgentUrl("http://127.0.0.1:31337/api/health"),
+    ).toBe(true);
+  });
+
+  it.each(["local", "cloud-hybrid", "tunnel-to-mobile"])(
+    "retains native IPC as the on-device agent in %s mode",
+    async (mode) => {
+      vi.stubGlobal("localStorage", {
+        getItem: (key: string) =>
+          key === "eliza:mobile-runtime-mode" ? mode : null,
+      });
+
+      const { isIosInProcessLocalAgentUrl } = await import(
+        "./ios-local-agent-transport"
+      );
+
+      expect(
+        isIosInProcessLocalAgentUrl("eliza-local-agent://ipc/api/health"),
+      ).toBe(true);
+    },
+  );
 });

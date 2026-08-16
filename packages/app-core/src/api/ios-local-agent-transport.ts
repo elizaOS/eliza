@@ -44,10 +44,12 @@ import {
 } from "@elizaos/ui/bridge/eliza-window-bridge";
 import { isStoreBuild } from "@elizaos/ui/build-variant";
 import {
+  isCommittedOnDeviceMobileRuntimeMode,
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
   isMobileLocalAgentIpcUrl,
   MOBILE_LOCAL_AGENT_PORT,
   mobileLocalAgentPathFromUrl,
+  normalizeMobileRuntimeMode,
 } from "@elizaos/ui/first-run/mobile-runtime-mode";
 
 let transport: AgentRequestTransport | null = null;
@@ -219,6 +221,7 @@ function readRuntimeMode(): string | null {
 function shouldRequireFullBunRuntime(): boolean {
   const env = viteEnv();
   const runtimeMode = readRuntimeMode();
+  if (isRemoteMacRuntimeMode(runtimeMode)) return false;
   if (runtimeMode === "cloud" || runtimeMode === "cloud-hybrid") return false;
   const fullBunBuiltIn = isFullBunRuntimeBuiltIn();
   return (
@@ -230,6 +233,10 @@ function shouldRequireFullBunRuntime(): boolean {
         (isTruthyBuildFlag(env.PROD) && runtimeMode === "local") ||
         (isNativeIos() && !isDevBuild() && runtimeMode === "local")))
   );
+}
+
+function isRemoteMacRuntimeMode(mode: string | null): boolean {
+  return mode === "remote-mac";
 }
 
 function hasIosFullBunSmokeRequest(): boolean {
@@ -289,7 +296,7 @@ function isNativeIosCloudRuntime(): boolean {
 }
 
 function isPureRemoteRuntimeMode(mode: string | null): boolean {
-  return mode === "cloud";
+  return mode === "cloud" || isRemoteMacRuntimeMode(mode);
 }
 
 function usesStrictIosNetworkPolicy(): boolean {
@@ -380,20 +387,33 @@ function isMobileLocalAgentUrl(value: string): boolean {
 }
 
 /**
+ * Classify the legacy loopback HTTP identity only when the selected runtime
+ * actually owns an on-device agent. In `remote-mac`, loopback port 31337 is
+ * the developer's Mac and must stay on the real network transport.
+ */
+function isIosOnDeviceAgentHttpUrl(value: string): boolean {
+  if (!isMobileLocalAgentUrl(value)) return false;
+  const mode = readRuntimeMode();
+  return mode === null
+    ? canUseIosLocalAgentIpc()
+    : iosRuntimeHasOnDeviceAgent();
+}
+
+/**
  * Whether the selected iOS runtime owns an on-device agent process/runtime.
- * `cloud` is the only pure remote mode. `cloud-hybrid` still runs the bundled
- * agent while routing inference through cloud, and `tunnel-to-mobile` exposes
- * the phone-side agent through a relay for a remote client.
+ * Tunnel mode is the phone-side relay into Bun IPC, even though first-run
+ * treats its connection target as externally configured.
  */
 function iosRuntimeHasOnDeviceAgent(): boolean {
-  const mode = readRuntimeMode();
+  const mode = normalizeMobileRuntimeMode(readRuntimeMode());
   return (
-    mode === "local" || mode === "cloud-hybrid" || mode === "tunnel-to-mobile"
+    mode === "tunnel-to-mobile" || isCommittedOnDeviceMobileRuntimeMode(mode)
   );
 }
 
 function canUseIosLocalAgentIpc(): boolean {
   if (!isNativeIos()) return false;
+  if (isRemoteMacRuntimeMode(readRuntimeMode())) return false;
   if (iosRuntimeHasOnDeviceAgent() || shouldRequireFullBunRuntime()) {
     return true;
   }
@@ -470,7 +490,7 @@ export function isIosInProcessLocalAgentUrl(url: string): boolean {
     // explicitly outside the in-process transport.
     return false;
   }
-  return isNativeIos() && isMobileLocalAgentUrl(url);
+  return isNativeIos() && isIosOnDeviceAgentHttpUrl(url);
 }
 
 export function isIosInProcessLocalAgentBase(
@@ -937,6 +957,9 @@ export async function handleIosLocalAgentNativeRequest(
   if (!/^[A-Z]{1,16}$/.test(method)) {
     throw new Error("Unsupported HTTP method");
   }
+  if (isRemoteMacRuntimeMode(readRuntimeMode())) {
+    throw new TypeError("iOS remote-agent modes cannot use local-agent IPC");
+  }
   if (
     isNativeIosCloudRuntime() &&
     !iosRuntimeHasOnDeviceAgent() &&
@@ -1025,7 +1048,7 @@ function shouldBridgeFetchUrl(url: URL): boolean {
       "iOS store/cloud builds block cleartext loopback or private-network requests",
     );
   }
-  if (isMobileLocalAgentUrl(url.toString())) return true;
+  if (isIosOnDeviceAgentHttpUrl(url.toString())) return true;
   if (isNativeIosCloudRuntime()) return false;
   if ((url.pathname || "").startsWith("/api/")) {
     return (
