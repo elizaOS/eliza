@@ -31,6 +31,7 @@ const KEYS = makeKeys();
 
 const denylistStore = new Map<string, string>();
 let denylistGetError: Error | null = null;
+let denylistGetCount = 0;
 let workerRuntime = false;
 let lastRedisEnv: Record<string, string | undefined> | undefined;
 
@@ -47,6 +48,7 @@ mock.module("../cache/redis-factory", () => ({
     if (!hasConfiguredRedis(env)) return null;
     return {
       async get(key: string) {
+        denylistGetCount += 1;
         if (denylistGetError) throw denylistGetError;
         return denylistStore.get(key) ?? null;
       },
@@ -66,7 +68,10 @@ mock.module("../cache/redis-factory", () => ({
 
 mock.module("../utils/logger", () => ({
   logger: {
+    debug: mock(() => undefined),
+    error: mock(() => undefined),
     info: mock(() => undefined),
+    warn: mock(() => undefined),
   },
 }));
 
@@ -81,6 +86,7 @@ describe("internal JWT jti revocation denylist (#12879)", () => {
     process.env.MOCK_REDIS = "1";
     denylistStore.clear();
     denylistGetError = null;
+    denylistGetCount = 0;
     workerRuntime = false;
     lastRedisEnv = undefined;
     denylistMod.__resetDenylistClientForTests();
@@ -177,6 +183,61 @@ describe("internal JWT jti revocation denylist (#12879)", () => {
       });
 
       await expect(mod.verifyInternalToken(access_token)).rejects.toThrow(/redis unavailable/i);
+    });
+
+    test("verifies one-minute gateway request tokens without a remote denylist read", async () => {
+      denylistGetError = new Error("remote denylist must stay off this path");
+      const { access_token, expires_in } = await mod.signInternalToken({
+        subject: "gateway-webhook-1",
+        service: "webhook-gateway",
+        expiresIn: mod.internalTokenLifetimeForService("webhook-gateway"),
+      });
+
+      const result = await mod.verifyInternalRequestToken(access_token);
+
+      expect(result.payload.service).toBe("webhook-gateway");
+      expect(expires_in).toBe(mod.GATEWAY_TOKEN_LIFETIME_SECONDS);
+      expect(result.payload.exp - result.payload.iat).toBe(mod.GATEWAY_TOKEN_LIFETIME_SECONDS);
+      expect(denylistGetCount).toBe(0);
+    });
+
+    test("keeps long-lived gateway tokens on the fail-closed denylist", async () => {
+      denylistGetError = new Error("long-lived gateway denylist unavailable");
+      const { access_token } = await mod.signInternalToken({
+        subject: "gateway-webhook-legacy",
+        service: "webhook-gateway",
+        expiresIn: mod.GATEWAY_TOKEN_LIFETIME_SECONDS + 1,
+      });
+
+      await expect(mod.verifyInternalRequestToken(access_token)).rejects.toThrow(
+        /long-lived gateway denylist unavailable/i,
+      );
+      expect(denylistGetCount).toBe(1);
+    });
+
+    test("keeps short-lived non-gateway tokens on the fail-closed denylist", async () => {
+      denylistGetError = new Error("non-gateway denylist unavailable");
+      const { access_token } = await mod.signInternalToken({
+        subject: "internal-job",
+        service: "scheduler",
+        expiresIn: mod.GATEWAY_TOKEN_LIFETIME_SECONDS,
+      });
+
+      await expect(mod.verifyInternalRequestToken(access_token)).rejects.toThrow(
+        /non-gateway denylist unavailable/i,
+      );
+      expect(denylistGetCount).toBe(1);
+    });
+
+    test("preserves ordinary token lifetime selection", () => {
+      expect(mod.internalTokenLifetimeForService("discord-gateway")).toBe(
+        mod.GATEWAY_TOKEN_LIFETIME_SECONDS,
+      );
+      expect(mod.internalTokenLifetimeForService("webhook-gateway")).toBe(
+        mod.GATEWAY_TOKEN_LIFETIME_SECONDS,
+      );
+      expect(mod.internalTokenLifetimeForService("scheduler")).toBe(mod.TOKEN_LIFETIME_SECONDS);
+      expect(mod.internalTokenLifetimeForService(undefined)).toBe(mod.TOKEN_LIFETIME_SECONDS);
     });
   });
 
