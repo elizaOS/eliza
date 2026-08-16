@@ -462,12 +462,29 @@ export function encryptedCharacter(character: Character): Character {
 	const encryptedChar: Character = {
 		...character,
 		secrets: character.secrets ? { ...character.secrets } : undefined,
+		settings: character.settings
+			? {
+					...character.settings,
+					secrets: character.settings.secrets
+						? { ...character.settings.secrets }
+						: undefined,
+				}
+			: undefined,
 	};
 	const salt = getSalt();
 
 	// Encrypt character.secrets if it exists
 	if (encryptedChar.secrets) {
 		encryptedChar.secrets = encryptObjectValues(encryptedChar.secrets, salt);
+	}
+
+	// Both secret containers are persisted through this boundary, so neither may
+	// retain plaintext while the rest of the character remains readable.
+	if (encryptedChar.settings?.secrets) {
+		encryptedChar.settings.secrets = encryptObjectValues(
+			encryptedChar.settings.secrets,
+			salt,
+		);
 	}
 
 	return encryptedChar;
@@ -486,12 +503,27 @@ export function decryptedCharacter(
 	const decryptedChar: Character = {
 		...character,
 		secrets: character.secrets ? { ...character.secrets } : undefined,
+		settings: character.settings
+			? {
+					...character.settings,
+					secrets: character.settings.secrets
+						? { ...character.settings.secrets }
+						: undefined,
+				}
+			: undefined,
 	};
 	const salt = getSalt();
 
 	// Decrypt character.secrets if it exists
 	if (decryptedChar.secrets) {
 		decryptedChar.secrets = decryptObjectValues(decryptedChar.secrets, salt);
+	}
+
+	if (decryptedChar.settings?.secrets) {
+		decryptedChar.settings.secrets = decryptObjectValues(
+			decryptedChar.settings.secrets,
+			salt,
+		);
 	}
 
 	return decryptedChar;
