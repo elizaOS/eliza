@@ -5,6 +5,7 @@
  * so Telegram retries cannot duplicate a reply.
  */
 
+import { sha256Hex } from "@/lib/oidc/crypto";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -12,6 +13,9 @@ export const PERSONAL_TELEGRAM_DELIVERY_PATH = "/v1/delivery";
 const PROCESSING_TTL_MS = 120_000;
 const DELIVERY_TTL_MS = 30 * 24 * 60 * 60_000;
 const MESSAGE_ID_RE = /^\d{1,32}$/;
+const PROJECT_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const ACCOUNT_FINGERPRINT_RE = /^[a-f0-9]{64}$/;
+const TELEGRAM_ID_RE = /^[1-9]\d{0,31}$/;
 
 type DeliveryState = "uncertain" | "delivered";
 type DeliveryOperation =
@@ -41,6 +45,45 @@ interface DeliveryRequest {
 
 const CHUNK_DIGEST_RE = /^[0-9a-f]{64}$/;
 const MAX_REPLY_CHUNKS = 64;
+
+export interface PersonalTelegramDeliveryScope {
+  project: string;
+  accountFingerprint: string;
+  senderId: string;
+}
+
+export class InvalidPersonalTelegramDeliveryScopeError extends Error {
+  override readonly name = "InvalidPersonalTelegramDeliveryScopeError";
+}
+
+export async function personalTelegramDeliveryObjectName(
+  scope: PersonalTelegramDeliveryScope,
+): Promise<string> {
+  if (
+    !PROJECT_RE.test(scope.project) ||
+    !ACCOUNT_FINGERPRINT_RE.test(scope.accountFingerprint) ||
+    !TELEGRAM_ID_RE.test(scope.senderId)
+  ) {
+    throw new InvalidPersonalTelegramDeliveryScopeError(
+      "Invalid Personal Telegram delivery scope",
+    );
+  }
+  const senderFingerprint = await sha256Hex(scope.senderId);
+  return `telegram:${scope.project}:${scope.accountFingerprint}:${senderFingerprint}`;
+}
+
+export async function personalTelegramDeliveryStub(
+  env: AppEnv["Bindings"],
+  scope: PersonalTelegramDeliveryScope,
+): Promise<{
+  fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+}> {
+  const namespace = env.PERSONAL_TELEGRAM_DELIVERIES;
+  if (!namespace) {
+    throw new Error("Personal Telegram delivery binding is missing");
+  }
+  return namespace.getByName(await personalTelegramDeliveryObjectName(scope));
+}
 
 function isDeliveryRequest(value: unknown): value is DeliveryRequest {
   if (!value || typeof value !== "object") return false;

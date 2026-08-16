@@ -16,7 +16,10 @@ import type {
   WebhookConfig,
 } from "./adapters/types";
 import { reacquireAuthHeader } from "./auth";
-import { resolveConnectorAccountId } from "./connector-account";
+import {
+  resolveConnectorAccountId,
+  resolveTelegramBotAccountFingerprint,
+} from "./connector-account";
 import { tryConfirmIdentityLink } from "./identity-link";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
@@ -55,6 +58,8 @@ interface HandlerDeps {
   deliveryAuthoritySecret?: string;
   getAuthHeader: () => { Authorization: string };
   reacquireAuthHeader?: () => Promise<Record<string, string>>;
+  /** Test seam; production always resolves the canonical Cloud ledger. */
+  personalTelegramLedger?: TelegramDeliveryLedger;
 }
 
 interface PersonalSharedDeliveryTiming {
@@ -69,139 +74,7 @@ interface MessageTraceContext {
   gatewayReceivedAtMs: number;
 }
 
-async function reconcileLegacyTelegramDelivery(
-  deps: HandlerDeps,
-  project: string,
-  event: ChatEvent,
-  traceId: string,
-  operation: "mark_uncertain" | "mark_delivered",
-): Promise<"uncertain" | "delivered"> {
-  const secret = (deps.deliveryAuthoritySecret ?? "").trim();
-  if (!secret) {
-    throw new Error("Telegram delivery authority secret is not configured");
-  }
-  const response = await fetch(
-    `${deps.cloudBaseUrl}/api/eliza-app/webhook/telegram/delivery`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        [ELIZA_TRACE_ID_HEADER]: traceId,
-        "X-Eliza-Webhook-Forwarder-Secret": secret,
-      },
-      body: JSON.stringify({
-        project,
-        senderId: event.senderId,
-        messageId: event.messageId,
-        operation,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    },
-  );
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new Error(
-      `Telegram delivery reconciliation failed (${response.status})`,
-    );
-  }
-  const body: unknown = await response.json();
-  if (
-    !body ||
-    typeof body !== "object" ||
-    !("state" in body) ||
-    (body.state !== "uncertain" && body.state !== "delivered")
-  ) {
-    throw new Error("Telegram delivery reconciliation returned invalid JSON");
-  }
-  return body.state;
-}
-
-async function forwardPersonalTelegramToEdge(
-  request: Request,
-  rawBody: string,
-  deps: HandlerDeps,
-  project: string,
-  event: ChatEvent,
-  dedupKey: string,
-  traceId: string,
-): Promise<Response> {
-  const secret = (deps.deliveryAuthoritySecret ?? "").trim();
-  if (!secret) {
-    throw new Error("Telegram delivery authority secret is not configured");
-  }
-  const legacy = await deps.redis.get<string>(dedupKey);
-  if (legacy === TELEGRAM_EGRESS_STARTED || legacy === TELEGRAM_DELIVERED) {
-    const reconciled = await reconcileLegacyTelegramDelivery(
-      deps,
-      project,
-      event,
-      traceId,
-      legacy === TELEGRAM_DELIVERED ? "mark_delivered" : "mark_uncertain",
-    );
-    if (reconciled === "delivered") {
-      await deps.redis.set(dedupKey, TELEGRAM_DELIVERED, {
-        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
-      });
-      return ackResponse("telegram");
-    }
-    return new Response(
-      JSON.stringify({ error: "delivery outcome uncertain" }),
-      {
-        status: 503,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
-  }
-
-  const processingKey = `${dedupKey}:processing`;
-  const processingClaimed = await deps.redis.set(processingKey, "1", {
-    nx: true,
-    ex: PROCESSING_TTL_SECONDS,
-  });
-  if (!processingClaimed) {
-    return new Response(JSON.stringify({ error: "update in progress" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-  try {
-    const marker = await deps.redis.get<string>(dedupKey);
-    if (!marker) {
-      await deps.redis.set(dedupKey, TELEGRAM_EGRESS_STARTED, {
-        nx: true,
-        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
-      });
-    } else if (marker !== TELEGRAM_EGRESS_STARTED) {
-      throw new Error("Telegram delivery authority transition conflicted");
-    }
-    const telegramSignature =
-      request.headers.get("x-telegram-bot-api-secret-token") ?? "";
-    const response = await fetch(
-      `${deps.cloudBaseUrl}/api/eliza-app/webhook/telegram/edge`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          [ELIZA_TRACE_ID_HEADER]: traceId,
-          "X-Eliza-Webhook-Forwarder-Secret": secret,
-          "X-Telegram-Bot-Api-Secret-Token": telegramSignature,
-        },
-        body: rawBody,
-        signal: AbortSignal.timeout(PERSONAL_SHARED_VOICE_TIMEOUT_MS),
-      },
-    );
-    if (response.ok) {
-      await deps.redis.set(dedupKey, TELEGRAM_DELIVERED, {
-        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
-      });
-    }
-    return response;
-  } finally {
-    await deps.redis.del(processingKey);
-  }
-}
-
-function redisTelegramDeliveryLedger(
+export function redisTelegramDeliveryLedger(
   redis: GatewayRedis,
   dedupKey: string,
 ): TelegramDeliveryLedger {
@@ -267,6 +140,109 @@ function redisTelegramDeliveryLedger(
       await redis.set(dedupKey, TELEGRAM_DELIVERED, {
         ex: TELEGRAM_DELIVERY_TTL_SECONDS,
       });
+    },
+  };
+}
+
+const PERSONAL_TELEGRAM_LEDGER_PATH =
+  "/api/internal/eliza-app/personal-shared/telegram-delivery";
+
+function canonicalTelegramDeliveryLedger(
+  config: WebhookConfig,
+  event: ChatEvent,
+  deps: HandlerDeps,
+  project: string,
+  traceId: string,
+): TelegramDeliveryLedger {
+  if (!config.botToken) {
+    throw new Error("Official Personal Shared Telegram bot token is missing");
+  }
+  const accountFingerprint = resolveTelegramBotAccountFingerprint(
+    config.botToken,
+  );
+  const call = async (operation: string): Promise<Record<string, unknown>> => {
+    const request = async (authHeader: Record<string, string>) =>
+      fetch(`${deps.cloudBaseUrl}${PERSONAL_TELEGRAM_LEDGER_PATH}`, {
+        method: "POST",
+        headers: {
+          ...authHeader,
+          "Content-Type": "application/json",
+          "X-Eliza-Trace-Id": traceId,
+        },
+        body: JSON.stringify({
+          project,
+          accountFingerprint,
+          senderId: event.senderId,
+          messageId: event.messageId,
+          operation,
+        }),
+      });
+    let response = await request(deps.getAuthHeader());
+    if (response.status === 401) {
+      await response.body?.cancel();
+      response = await request(
+        await (deps.reacquireAuthHeader ?? reacquireAuthHeader)(),
+      );
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(
+        `Canonical Telegram delivery ledger failed (${response.status})`,
+      );
+    }
+    const body: unknown = await response.json();
+    if (!body || typeof body !== "object") {
+      throw new Error(
+        "Canonical Telegram delivery ledger returned invalid JSON",
+      );
+    }
+    return body as Record<string, unknown>;
+  };
+  return {
+    async read() {
+      const body = await call("read");
+      if (body.state === null) return null;
+      if (
+        body.state === TELEGRAM_EGRESS_STARTED ||
+        body.state === TELEGRAM_DELIVERED
+      ) {
+        return body.state;
+      }
+      throw new Error(
+        "Canonical Telegram delivery ledger returned invalid state",
+      );
+    },
+    async claimProcessing() {
+      const claimed = (await call("claim_processing")).claimed;
+      if (typeof claimed !== "boolean") {
+        throw new Error(
+          "Canonical Telegram delivery ledger returned invalid claim",
+        );
+      }
+      return claimed;
+    },
+    async releaseProcessing() {
+      if ((await call("release_processing")).released !== true) {
+        throw new Error(
+          "Canonical Telegram delivery ledger did not release claim",
+        );
+      }
+    },
+    async claimEgress() {
+      const claimed = (await call("claim_egress")).claimed;
+      if (typeof claimed !== "boolean") {
+        throw new Error(
+          "Canonical Telegram delivery ledger returned invalid claim",
+        );
+      }
+      return claimed;
+    },
+    async markDelivered() {
+      if ((await call("mark_delivered")).delivered !== true) {
+        throw new Error(
+          "Canonical Telegram delivery ledger did not mark delivery",
+        );
+      }
     },
   };
 }
@@ -348,38 +324,28 @@ export async function handleWebhook(
   );
   if (adapter.platform === "telegram") {
     try {
-      const configuredPersonalProject =
-        (process.env.ELIZA_APP_WEBHOOK_PROJECT ?? "eliza-app").trim() ||
-        "eliza-app";
-      if (
-        !agentId &&
-        project === configuredPersonalProject &&
-        deps.deliveryAuthoritySecret !== undefined
-      ) {
-        return forwardPersonalTelegramToEdge(
-          request,
-          rawBody,
+      const ledger =
+        deps.personalTelegramLedger ??
+        (!agentId && project === "eliza-app"
+          ? canonicalTelegramDeliveryLedger(
+              config,
+              event,
+              deps,
+              project,
+              trace.traceId,
+            )
+          : redisTelegramDeliveryLedger(redis, dedupKey));
+      const outcome = await executeTelegramDelivery(ledger, (beforeEgress) =>
+        processMessage(
+          adapter,
+          config,
+          event,
           deps,
           project,
-          event,
-          dedupKey,
-          trace.traceId,
-        );
-      }
-      const localLedger = redisTelegramDeliveryLedger(redis, dedupKey);
-      const outcome = await executeTelegramDelivery(
-        localLedger,
-        (deliveryHooks) =>
-          processMessage(
-            adapter,
-            config,
-            event,
-            deps,
-            project,
-            trace,
-            agentId,
-            deliveryHooks,
-          ),
+          trace,
+          agentId,
+          beforeEgress,
+        ),
       );
       if (outcome === "uncertain") {
         logger.error(

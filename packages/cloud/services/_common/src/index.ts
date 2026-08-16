@@ -29,6 +29,7 @@ export {
   type ResponseAttemptsResult,
   type ResponseRetryReason,
 } from "./response-attempts";
+export { parseTelegramBotId } from "./telegram-account";
 export {
   parseTelegramWebhook,
   resolveTelegramVoiceNote,

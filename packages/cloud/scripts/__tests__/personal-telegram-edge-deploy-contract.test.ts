@@ -27,6 +27,12 @@ const workflow = parse(
     "utf8",
   ),
 ) as Workflow;
+const wrangler = Bun.TOML.parse(
+  readFileSync(resolve(repoRoot, "packages/cloud/api/wrangler.toml"), "utf8"),
+) as {
+  env?: { staging?: { vars?: Record<string, string> } };
+  migrations?: Array<{ tag?: string; new_sqlite_classes?: string[] }>;
+};
 
 function namedStep(name: string): WorkflowStep {
   const step = workflow.jobs["deploy-api"].steps.find(
@@ -53,5 +59,19 @@ describe("Personal Shared Telegram edge deploy contract", () => {
     expect(run).toContain("ELIZA_APP_TELEGRAM_BOT_TOKEN");
     expect(run).toContain("ELIZA_APP_TELEGRAM_WEBHOOK_SECRET");
     expect(run).toContain('queue_secret "$name"');
+  });
+
+  test("creates a fail-closed post-migration version before activation", () => {
+    const steps = workflow.jobs["deploy-api"].steps;
+    expect(steps.indexOf(prepare)).toBeLessThan(
+      steps.indexOf(namedStep("Deploy to Cloudflare Workers")),
+    );
+    expect(
+      wrangler.env?.staging?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
+    ).toBe("false");
+    expect(wrangler.migrations).toContainEqual({
+      tag: "personal-telegram-delivery-v1",
+      new_sqlite_classes: ["PersonalTelegramDelivery"],
+    });
   });
 });

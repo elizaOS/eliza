@@ -156,7 +156,7 @@ async function run(
   return app.fetch(
     request,
     {
-      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:AAAAAAAAAAAAAAAAAAAA",
       ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
       ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
       PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,

@@ -1,10 +1,13 @@
 /** Exercises durable Telegram delivery claims, eviction survival, and validation. */
 
 import { describe, expect, test } from "bun:test";
+import { parseTelegramBotId } from "@elizaos/cloud-services-common/telegram-account";
+import { sha256Hex } from "@/lib/oidc/crypto";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   PERSONAL_TELEGRAM_DELIVERY_PATH,
   PersonalTelegramDelivery,
+  personalTelegramDeliveryObjectName,
 } from "./personal-telegram-delivery";
 
 class MemoryStorage {
@@ -192,5 +195,76 @@ describe("PersonalTelegramDelivery", () => {
     expect(storage.values.has("delivery:old")).toBe(false);
     expect(storage.values.has("delivery:live")).toBe(true);
     expect(storage.alarmAt).toBe(nextExpiration);
+  });
+
+  test("keeps one authority across gateway-edge-gateway cutover and token rotation", async () => {
+    const oldToken = "123456789:AAAAAAAAAAAAAAAAAAAA";
+    const rotatedToken = "123456789:BBBBBBBBBBBBBBBBBBBB";
+    const oldFingerprint = await sha256Hex(parseTelegramBotId(oldToken));
+    const rotatedFingerprint = await sha256Hex(
+      parseTelegramBotId(rotatedToken),
+    );
+    expect(rotatedFingerprint).toBe(oldFingerprint);
+
+    const scope = {
+      project: "eliza-app",
+      accountFingerprint: oldFingerprint,
+      senderId: "987654321",
+    };
+    const rotatedScope = { ...scope, accountFingerprint: rotatedFingerprint };
+    expect(await personalTelegramDeliveryObjectName(rotatedScope)).toBe(
+      await personalTelegramDeliveryObjectName(scope),
+    );
+
+    const object = new PersonalTelegramDelivery(
+      durableState(),
+      {} as AppEnv["Bindings"],
+    );
+    // Gateway before cutover fails before egress and releases the same claim.
+    expect(
+      await json(object.fetch(operation("1001", "claim_processing"))),
+    ).toEqual({ claimed: true });
+    await object.fetch(operation("1001", "release_processing"));
+    // Edge claims irreversible egress, then rollback gateway sees the tombstone.
+    expect(
+      await json(object.fetch(operation("1001", "claim_processing"))),
+    ).toEqual({ claimed: true });
+    expect(await json(object.fetch(operation("1001", "claim_egress")))).toEqual(
+      { claimed: true },
+    );
+    expect(await json(object.fetch(operation("1001", "read")))).toEqual({
+      state: "egress_started",
+    });
+    expect(await json(object.fetch(operation("1001", "claim_egress")))).toEqual(
+      { claimed: false },
+    );
+  });
+
+  test("serializes mixed concurrent claims from cutover authorities", async () => {
+    const object = new PersonalTelegramDelivery(
+      durableState(),
+      {} as AppEnv["Bindings"],
+    );
+    const claims = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        json(object.fetch(operation("2002", "claim_processing"))),
+      ),
+    );
+    expect(
+      claims.filter(
+        (claim) => (claim as { claimed?: boolean }).claimed === true,
+      ),
+    ).toHaveLength(1);
+
+    const egressClaims = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        json(object.fetch(operation("2002", "claim_egress"))),
+      ),
+    );
+    expect(
+      egressClaims.filter(
+        (claim) => (claim as { claimed?: boolean }).claimed === true,
+      ),
+    ).toHaveLength(1);
   });
 });

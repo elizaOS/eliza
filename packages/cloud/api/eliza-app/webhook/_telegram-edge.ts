@@ -10,6 +10,7 @@ import {
   identityLinkReply,
 } from "@elizaos/cloud-services-common/identity-link-code";
 import { executeResponseAttempts } from "@elizaos/cloud-services-common/response-attempts";
+import { parseTelegramBotId } from "@elizaos/cloud-services-common/telegram-account";
 import {
   parseTelegramWebhook,
   resolveTelegramVoiceNote,
@@ -26,7 +27,10 @@ import {
   TelegramEgressAlreadyClaimedError,
 } from "@elizaos/cloud-services-common/telegram-delivery";
 import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
-import { PERSONAL_TELEGRAM_DELIVERY_PATH } from "@/api-app/personal-telegram-delivery";
+import {
+  PERSONAL_TELEGRAM_DELIVERY_PATH,
+  personalTelegramDeliveryStub,
+} from "@/api-app/personal-telegram-delivery";
 import { runWithDbCacheAsync } from "@/db/client";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { appendServerTiming } from "@/lib/observability/http-telemetry";
@@ -247,14 +251,15 @@ export async function handlePersonalTelegramDeliveryLedger(
 async function edgeLedger(
   env: AppEnv["Bindings"],
   project: string,
+  botToken: string,
   event: TelegramConnectorEvent,
 ): Promise<TelegramDeliveryLedger> {
-  const namespace = env.PERSONAL_TELEGRAM_DELIVERIES;
-  if (!namespace)
-    throw new Error("Personal Telegram delivery binding is missing");
-  const stub = namespace.getByName(
-    `telegram:${project}:personal-shared:${event.senderId}`,
-  );
+  const accountFingerprint = await sha256Hex(parseTelegramBotId(botToken));
+  const stub = await personalTelegramDeliveryStub(env, {
+    project,
+    accountFingerprint,
+    senderId: event.senderId,
+  });
   return {
     async read() {
       const body = await callLedger(stub, event.messageId, "read");
@@ -447,7 +452,7 @@ export async function handlePersonalTelegramEdge(
   const project =
     readEnvString(c.env, "ELIZA_APP_WEBHOOK_PROJECT") ?? "eliza-app";
   const config = { botToken, webhookSecret };
-  const ledger = await edgeLedger(c.env, project, event);
+  const ledger = await edgeLedger(c.env, project, config.botToken, event);
 
   try {
     let turnMs = 0;

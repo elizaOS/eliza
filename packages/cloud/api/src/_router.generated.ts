@@ -148,6 +148,7 @@ import _route_internal_discord_gateway_heartbeat_route from "../internal/discord
 import _route_internal_discord_gateway_shutdown_route from "../internal/discord/gateway/shutdown/route";
 import _route_internal_discord_gateway_status_route from "../internal/discord/gateway/status/route";
 import _route_internal_eliza_app_personal_shared_messages_route from "../internal/eliza-app/personal-shared/messages/route";
+import _route_internal_eliza_app_personal_shared_telegram_delivery_route from "../internal/eliza-app/personal-shared/telegram-delivery/route";
 import _route_internal_identity_resolve_route from "../internal/identity/resolve/route";
 import _route_internal_webhook_config_route from "../internal/webhook/config/route";
 import _route_invites_accept_route from "../invites/accept/route";
@@ -1045,6 +1046,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route(
     "/api/internal/eliza-app/personal-shared/messages",
     _route_internal_eliza_app_personal_shared_messages_route,
+  );
+  app.route(
+    "/api/internal/eliza-app/personal-shared/telegram-delivery",
+    _route_internal_eliza_app_personal_shared_telegram_delivery_route,
   );
   app.route(
     "/api/internal/identity/resolve",
