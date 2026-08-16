@@ -245,11 +245,13 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
 
   if (inWorkerRuntime) {
     options.max = parsePositiveInteger(env.LOCAL_PG_POOL_MAX, 1);
-    // The Worker connection manager already scopes this pool to one request.
-    // Reusing its sole client keeps pg-pool teardown off each query's critical
-    // path while the short idle timer reaps the request-owned socket promptly.
-    options.maxUses = 0;
-    options.idleTimeoutMillis = 1_000;
+    // Discard connections after a single query — Workers can't reliably
+    // share I/O across requests. EXCEPT against local PGlite: the PGlite
+    // socket bridge is fragile and creating a fresh TCP connection per
+    // query causes "Connection terminated unexpectedly" mid-stream. Local
+    // dev uses long-lived connections instead; the per-request isolation
+    // workers need only matters for shared remote pools.
+    options.maxUses = isLocalTcp ? 0 : 1;
     options.connectionTimeoutMillis = 30_000;
   }
 
