@@ -469,6 +469,11 @@ PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "true"
 # Emit per-turn inference spans at info for the staging latency matrix without
 # changing production log volume or recording prompt content.
 ELIZA_INFERENCE_TIMING = "info"
+# Self-hosted TEI embeddings sidecar (packages/cloud/services/embeddings,
+# bge-small-en-v1.5, 384 dims). The sidecar requires a bearer credential —
+# LOCAL_EMBEDDINGS_API_KEY is published as a Worker secret by cloud-cf-release
+# and must never appear in a [vars] block.
+LOCAL_EMBEDDINGS_BASE_URL = "https://embeddings-staging-staging.up.railway.app"
 # Apps (Product 2): wire the real deploy trigger so POST /api/v1/apps/:id/deploy
 # enqueues an APP_DEPLOY job the provisioning-worker daemon runs (instead of the
 # legacy status-only stub). Staging only — the apps data plane (tenant DB +
