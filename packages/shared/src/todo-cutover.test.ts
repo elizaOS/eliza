@@ -276,6 +276,16 @@ describe("Shared Todo cutover contract", () => {
       { committedAt: "not-a-time" },
       "TODO_CUTOVER_INVALID_TIMESTAMP",
     ],
+    [
+      "non-ISO commit timestamp",
+      { committedAt: "August 14, 2026 10:00:00" },
+      "TODO_CUTOVER_INVALID_TIMESTAMP",
+    ],
+    [
+      "impossible ISO calendar date",
+      { committedAt: "2026-02-30T10:00:00Z" },
+      "TODO_CUTOVER_INVALID_TIMESTAMP",
+    ],
   ])("rejects invalid mutation %s", async (_label, overrides, code) => {
     await expect(
       createSharedTodoCutoverSnapshot({
