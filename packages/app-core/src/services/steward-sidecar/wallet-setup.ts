@@ -4,9 +4,13 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { fingerprintRandomToken, generateApiKey } from "./helpers";
-import type { StewardCredentials, StewardSidecarStatus } from "./types";
+import type {
+  StewardCredentialCheckpoint,
+  StewardCredentials,
+  StewardSidecarStatus,
+} from "./types";
 import {
   CREDENTIALS_FILE,
   DEFAULT_AGENT_ID,
@@ -19,13 +23,21 @@ import {
  * Ensure wallet is set up: verify existing wallet or perform first-launch setup.
  */
 export async function ensureWalletSetup(
-  credentials: StewardCredentials | null,
+  credentials: StewardCredentialCheckpoint | null,
   apiBase: string,
   masterPassword: string | undefined,
   dataDir: string,
   updateStatus: (partial: Partial<StewardSidecarStatus>) => void,
 ): Promise<StewardCredentials> {
   if (credentials?.walletAddress) {
+    if (!hasAgentToken(credentials)) {
+      return completeAgentTokenSetup(
+        credentials,
+        apiBase,
+        dataDir,
+        updateStatus,
+      );
+    }
     await verifyExistingWallet(credentials, apiBase, updateStatus);
     return credentials;
   }
@@ -36,6 +48,127 @@ export async function ensureWalletSetup(
     dataDir,
     updateStatus,
   );
+}
+
+function hasAgentToken(
+  credentials: StewardCredentialCheckpoint,
+): credentials is StewardCredentials {
+  return (
+    typeof credentials.agentToken === "string" &&
+    Boolean(credentials.agentToken.trim())
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function persistCredentials(
+  credentials: StewardCredentialCheckpoint,
+  dataDir: string,
+): void {
+  const credPath = path.join(dataDir, CREDENTIALS_FILE);
+  fs.writeFileSync(credPath, JSON.stringify(credentials, null, 2), {
+    mode: 0o600,
+  });
+}
+
+async function requestAgentToken(
+  credentials: StewardCredentialCheckpoint,
+  apiBase: string,
+): Promise<string> {
+  const tokenResponse = await fetch(
+    `${apiBase}/agents/${credentials.agentId}/token`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Steward-Tenant": credentials.tenantId,
+        "X-Steward-Key": credentials.tenantApiKey,
+      },
+    },
+  );
+
+  let payload: unknown;
+  try {
+    payload = await tokenResponse.json();
+  } catch (cause) {
+    // error-policy:J2 the token endpoint is an external boundary; preserve its
+    // parser failure while naming the setup step that cannot continue.
+    throw new ElizaError(
+      "Failed to generate agent token: response was not valid JSON",
+      {
+        code: "STEWARD_AGENT_TOKEN_RESPONSE_INVALID",
+        cause,
+        context: {
+          agentId: credentials.agentId,
+          status: tokenResponse.status,
+        },
+        severity: "ephemeral",
+      },
+    );
+  }
+
+  if (!tokenResponse.ok) {
+    const serverError =
+      isRecord(payload) && typeof payload.error === "string"
+        ? payload.error.trim()
+        : "";
+    const suffix = serverError ? `: ${serverError}` : "";
+    throw new ElizaError(
+      `Failed to generate agent token (HTTP ${tokenResponse.status})${suffix}`,
+      {
+        code: "STEWARD_AGENT_TOKEN_REQUEST_FAILED",
+        context: {
+          agentId: credentials.agentId,
+          status: tokenResponse.status,
+        },
+        severity: "ephemeral",
+      },
+    );
+  }
+
+  const data =
+    isRecord(payload) && payload.ok === true && isRecord(payload.data)
+      ? payload.data
+      : null;
+  const agentToken =
+    data && typeof data.token === "string" ? data.token.trim() : "";
+  if (!agentToken) {
+    throw new ElizaError(
+      "Failed to generate agent token: response did not include a token",
+      {
+        code: "STEWARD_AGENT_TOKEN_MISSING",
+        context: { agentId: credentials.agentId },
+        severity: "fatal",
+      },
+    );
+  }
+  return agentToken;
+}
+
+async function completeAgentTokenSetup(
+  credentials: StewardCredentialCheckpoint,
+  apiBase: string,
+  dataDir: string,
+  updateStatus: (partial: Partial<StewardSidecarStatus>) => void,
+): Promise<StewardCredentials> {
+  const agentToken = await requestAgentToken(credentials, apiBase);
+  const completedCredentials: StewardCredentials = {
+    ...credentials,
+    agentToken,
+  };
+  persistCredentials(completedCredentials, dataDir);
+
+  updateStatus({
+    walletAddress: completedCredentials.walletAddress,
+    agentId: completedCredentials.agentId,
+    tenantId: completedCredentials.tenantId,
+  });
+  logger.info(
+    `[StewardSidecar] Wallet created: ${completedCredentials.walletAddress}`,
+  );
+  return completedCredentials;
 }
 
 async function verifyExistingWallet(
@@ -131,50 +264,18 @@ async function performFirstLaunchSetup(
     throw new Error("Agent creation returned unexpected response");
   }
 
-  // 3. Generate agent token
-  const tokenResponse = await fetch(
-    `${apiBase}/agents/${DEFAULT_AGENT_ID}/token`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Steward-Tenant": DEFAULT_TENANT_ID,
-        "X-Steward-Key": tenantApiKey,
-      },
-    },
-  );
-
-  let agentToken = "";
-  if (tokenResponse.ok) {
-    const tokenResult = (await tokenResponse.json()) as {
-      ok: boolean;
-      data?: { token: string };
-    };
-    agentToken = tokenResult.data?.token ?? "";
-  }
-
-  // 4. Save credentials (never persist masterPassword to disk)
-  const credentials: StewardCredentials = {
+  // 3. Save an explicit incomplete checkpoint before requesting the token.
+  // The tenant and agent already exist remotely, so losing their generated
+  // tenant key here would make a later retry unable to authenticate.
+  const credentials: StewardCredentialCheckpoint = {
     tenantId: DEFAULT_TENANT_ID,
     tenantApiKey,
     agentId: DEFAULT_AGENT_ID,
-    agentToken,
     walletAddress: agentResult.data.walletAddress,
-    masterPassword: "",
   };
+  persistCredentials(credentials, dataDir);
 
-  const credPath = path.join(dataDir, CREDENTIALS_FILE);
-  fs.writeFileSync(credPath, JSON.stringify(credentials, null, 2), {
-    mode: 0o600,
-  });
-
-  updateStatus({
-    walletAddress: credentials.walletAddress,
-    agentId: credentials.agentId,
-    tenantId: credentials.tenantId,
-  });
-
-  logger.info(`[StewardSidecar] Wallet created: ${credentials.walletAddress}`);
-
-  return credentials;
+  // 4. Complete and persist the required token. A failure leaves the explicit
+  // checkpoint above so the next launch retries only this recoverable step.
+  return completeAgentTokenSetup(credentials, apiBase, dataDir, updateStatus);
 }
