@@ -373,6 +373,91 @@ describe("with-package-build-lock", () => {
     expect(existsSync(lockPath)).toBe(false);
   });
 
+  test("keeps a third contender out while a paused takeover holds the mutex (#20265)", async () => {
+    // The review-reproduced interleaving on #19356: stale contender A pauses
+    // immediately before its quarantine rename, live peer B replaces the
+    // stale lock and starts its command, A's resumed rename then moves B's
+    // LIVE lock and empties the canonical path, and a third contender C wins
+    // open(lockPath, "wx") while B is still active. With every canonical-path
+    // mutation holding the kernel-arbitrated mutex, B and C must instead wait
+    // out A's pause, and no two commands may ever overlap.
+    const packageKey = uniquePackageKey("three-party");
+    const lockPath = lockPathFor(packageKey);
+    mkdirSync(path.dirname(lockPath), { recursive: true });
+    writeFileSync(
+      lockPath,
+      `${JSON.stringify({ pid: 2_147_483_647, ownerId: "dead", createdAt: new Date().toISOString() })}\n`,
+    );
+    const evidenceDir = mkdtempSync(path.join(tmpdir(), "eliza-lock-three-"));
+    cleanupPaths.add(evidenceDir);
+    const readyPath = path.join(evidenceDir, "rename-ready");
+    const releasePath = path.join(evidenceDir, "rename-release");
+    const readyAfterPath = path.join(evidenceDir, "rename-ready-after");
+    const releaseAfterPath = path.join(evidenceDir, "rename-release-after");
+    const preloadPath = path.join(evidenceDir, "rename-barrier.mjs");
+    const activePath = path.join(evidenceDir, "active");
+    const overlapPath = path.join(evidenceDir, "overlap");
+    // Two-stage barrier: pause immediately before AND immediately after the
+    // wrapper's actual fs.rename, matching the interleaving reproduced in the
+    // #19356 review. Marker files persist, so later renames pass straight
+    // through both stages.
+    writeFileSync(
+      preloadPath,
+      `import fs from "node:fs/promises";\nconst originalRename=fs.rename.bind(fs);\nconst pause=async(ready,release)=>{await fs.writeFile(ready,"ready");while(true){try{await fs.access(release);break;}catch(error){/* error-policy:J3 a missing release marker remains an explicit blocked state. */if(error?.code!=="ENOENT")throw error;}await new Promise(resolve=>setTimeout(resolve,5));}};\nfs.rename=async(source,destination)=>{if(source===process.env.ELIZA_BUILD_LOCK_TEST_TARGET){await pause(process.env.ELIZA_BUILD_LOCK_TEST_READY,process.env.ELIZA_BUILD_LOCK_TEST_RELEASE);const result=await originalRename(source,destination);await pause(process.env.ELIZA_BUILD_LOCK_TEST_READY_AFTER,process.env.ELIZA_BUILD_LOCK_TEST_RELEASE_AFTER);return result;}return originalRename(source,destination);};\n`,
+    );
+    const childCode = `const fs=require("node:fs");const active=${JSON.stringify(activePath)};const overlap=${JSON.stringify(overlapPath)};if(fs.existsSync(active))fs.writeFileSync(overlap,"overlap");fs.writeFileSync(active,String(process.pid));setTimeout(()=>fs.rmSync(active,{force:true}),800);`;
+
+    const pausedTakeover = spawnWrapper(
+      packageKey,
+      [NODE_BIN, "-e", childCode],
+      "1",
+      {
+        NODE_OPTIONS: `--import=${preloadPath}`,
+        ELIZA_BUILD_LOCK_TEST_TARGET: lockPath,
+        ELIZA_BUILD_LOCK_TEST_READY: readyPath,
+        ELIZA_BUILD_LOCK_TEST_RELEASE: releasePath,
+        ELIZA_BUILD_LOCK_TEST_READY_AFTER: readyAfterPath,
+        ELIZA_BUILD_LOCK_TEST_RELEASE_AFTER: releaseAfterPath,
+      },
+    );
+    const pausedResult = collect(pausedTakeover);
+    await waitForPath(readyPath);
+
+    // A is paused before its rename. Under the mutex protocol B must wait out
+    // the pause; under the broken protocol B completes its own takeover and
+    // is mid-command when A's resumed rename moves B's live lock away.
+    const livePeer = spawnWrapper(packageKey, [NODE_BIN, "-e", childCode], "1");
+    const livePeerResult = collect(livePeer);
+    await Bun.sleep(250);
+    writeFileSync(releasePath, "release");
+    await waitForPath(readyAfterPath);
+
+    // A is now frozen between its rename and its validate/restore step. With
+    // the mutex, C just queues; without it, C wins open(lockPath, "wx") on
+    // the emptied canonical path while B's command is still active, and A's
+    // later restoration hits EEXIST and strands B in quarantine.
+    const thirdContender = spawnWrapper(
+      packageKey,
+      [NODE_BIN, "-e", childCode],
+      "1",
+    );
+    await Bun.sleep(250);
+    writeFileSync(releaseAfterPath, "release");
+
+    const [pausedOutcome, peerOutcome, thirdOutcome] = await Promise.all([
+      pausedResult,
+      livePeerResult,
+      collect(thirdContender),
+    ]);
+
+    expect(pausedOutcome.code).toBe(0);
+    expect(pausedOutcome.stderr).toBe("");
+    expect(peerOutcome.code).toBe(0);
+    expect(thirdOutcome.code).toBe(0);
+    expect(existsSync(overlapPath)).toBe(false);
+    expect(existsSync(lockPath)).toBe(false);
+  }, 20_000);
+
   test("an old owner cleanup preserves a replacement lock", () => {
     const packageKey = uniquePackageKey("replacement");
     const lockPath = lockPathFor(packageKey);
