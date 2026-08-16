@@ -51,9 +51,18 @@ describe("sliceToFitBudget", () => {
 		expect(sliceToFitBudget([], byLength, 100)).toEqual([]);
 	});
 
-	it("returns empty for a zero or negative budget", () => {
+	it("returns empty for a zero, negative, or non-finite budget", () => {
 		expect(sliceToFitBudget(["a"], byLength, 0)).toEqual([]);
 		expect(sliceToFitBudget(["a"], byLength, -10)).toEqual([]);
+		expect(sliceToFitBudget(["a", "b", "c"], byLength, Number.NaN)).toEqual([]);
+		expect(
+			sliceToFitBudget(["a", "b", "c"], byLength, Number.NaN, {
+				fromEnd: true,
+			}),
+		).toEqual([]);
+		expect(
+			sliceToFitBudget(["a", "b"], byLength, Number.NEGATIVE_INFINITY),
+		).toEqual([]);
 	});
 
 	it("treats a zero budget as no room even for a zero-cost item", () => {
