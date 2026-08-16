@@ -938,8 +938,13 @@ export function serveMediaFile(
           "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
           "Content-Length": range.end - range.start + 1,
         });
-      } catch {
-        return;
+      } catch (error) {
+        stream.destroy();
+        // error-policy:J1 A client can close between the state check and the
+        // transport write; only that expected HTTP boundary race is consumed.
+        if ((error as NodeJS.ErrnoException).code === "ERR_STREAM_DESTROYED")
+          return;
+        throw error;
       }
       stream.pipe(res);
     });
@@ -967,8 +972,13 @@ export function serveMediaFile(
       if (res.destroyed || res.headersSent || res.writableEnded) return;
       try {
         res.writeHead(200, { ...baseHeaders, "Content-Length": size });
-      } catch {
-        return;
+      } catch (error) {
+        stream.destroy();
+        // error-policy:J1 A client can close between the state check and the
+        // transport write; only that expected HTTP boundary race is consumed.
+        if ((error as NodeJS.ErrnoException).code === "ERR_STREAM_DESTROYED")
+          return;
+        throw error;
       }
       stream.pipe(res);
     });
