@@ -5980,7 +5980,18 @@ async function runLifeOperationHandlerInner(
           definitionReviewSurface(record) === surface,
       );
       let selected = active;
-      if (targetName) {
+      // A list-shaped review sometimes arrives with the planner's own list
+      // verbiage stamped into the target ("list all my todos" → title
+      // "list all"); treating that junk as a hard filter empty-matched and
+      // answered "couldn't find an item matching \"list all\"" against a
+      // store with real rows (observed live). List verbiage is never an item
+      // name — drop the filter and list normally.
+      const isListVerbiageTarget =
+        typeof targetName === "string" &&
+        /^(?:list|show|view|all|everything|(?:list|show|view)\s+all|all\s+of\s+them|(?:all\s+)?my\s+\w+|todos?|goals?|reminders?|routines?|alarms?|habits?)$/iu.test(
+          targetName.trim(),
+        );
+      if (targetName && !isListVerbiageTarget) {
         const resolved = resolveDefinitionInRecords(active, targetName);
         if (resolved.ambiguousCandidates.length > 0) {
           const fallback = `Multiple ${definitionReviewSurfaceLabel(surface)} match "${targetName}": ${resolved.ambiguousCandidates.join(", ")}. Which one did you mean?`;
@@ -5996,6 +6007,9 @@ async function runLifeOperationHandlerInner(
           };
         }
         if (!resolved.match) {
+          // A genuine miss stays a pure not-found: disclosing other items
+          // here is a deliberate no-leak contract (see
+          // life.review-definitions.test.ts isolation coverage).
           const fallback = `I couldn't find an active ${definitionReviewSurfaceLabel(surface)} item matching "${targetName}".`;
           return {
             success: false,
