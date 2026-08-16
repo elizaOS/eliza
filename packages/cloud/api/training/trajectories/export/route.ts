@@ -16,6 +16,10 @@ type ExportLimitResult =
   | { ok: true; value: number | undefined }
   | { ok: false };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function isValidExportLimit(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 1 && value <= MAX_EXPORT_LIMIT;
 }
@@ -40,6 +44,10 @@ function parseBodyLimit(input: Record<string, unknown>): ExportLimitResult {
 
 function invalidLimitResponse() {
   return Response.json({ error: "Invalid limit" }, { status: 400 });
+}
+
+function invalidRequestBodyResponse() {
+  return Response.json({ error: "Invalid request body" }, { status: 400 });
 }
 
 function parseDate(value: string | null): Date | undefined {
@@ -112,7 +120,15 @@ async function __hono_GET(request: Request) {
 async function __hono_POST(request: Request) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
-    const body = ((await request.json()) ?? {}) as Record<string, unknown>;
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      // error-policy:J3 malformed JSON is an explicit invalid request, never a default export.
+      return invalidRequestBodyResponse();
+    }
+    if (!isRecord(body)) return invalidRequestBodyResponse();
+
     const parsedLimit = parseBodyLimit(body);
     if (!parsedLimit.ok) return invalidLimitResponse();
 

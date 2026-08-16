@@ -32,6 +32,14 @@ function postExport(body: unknown) {
   });
 }
 
+function postRawExport(body: string) {
+  return app.request("/api/training/trajectories/export", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body,
+  });
+}
+
 describe("/api/training/trajectories/export limit validation", () => {
   beforeEach(() => {
     exportAsTrainingJSONL.mockClear();
@@ -124,15 +132,28 @@ describe("/api/training/trajectories/export limit validation", () => {
   });
 
   test("rejects a non-finite POST number before export", async () => {
-    const response = await app.request("/api/training/trajectories/export", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: '{"limit":1e999}',
-    });
+    const response = await postRawExport('{"limit":1e999}');
 
     expect(response.status).toBe(400);
     expect((await response.json()) as { error: string }).toEqual({
       error: "Invalid limit",
+    });
+    expect(exportAsTrainingJSONL).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["null", "null"],
+    ["array", "[]"],
+    ["string", '"payload"'],
+    ["number", "37"],
+    ["boolean", "true"],
+    ["malformed JSON", "{"],
+  ])("rejects a %s POST body before export", async (_name, body) => {
+    const response = await postRawExport(body);
+
+    expect(response.status).toBe(400);
+    expect((await response.json()) as { error: string }).toEqual({
+      error: "Invalid request body",
     });
     expect(exportAsTrainingJSONL).not.toHaveBeenCalled();
   });
