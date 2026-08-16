@@ -97,7 +97,7 @@ export async function recentConversationTexts(args: {
     const memoryTexts = Array.isArray(memories)
       ? memories
           .map((memory) =>
-            typeof memory.content.text === "string"
+            memory.content && typeof memory.content.text === "string"
               ? normalizeConversationLine(memory.content.text)
               : "",
           )
