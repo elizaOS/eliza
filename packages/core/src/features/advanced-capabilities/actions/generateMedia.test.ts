@@ -25,6 +25,11 @@ function runtimeWithMediaService(
 				? { canGenerateMedia: vi.fn(() => canGenerateMedia), generateMedia }
 				: undefined,
 		getModel: vi.fn(() => undefined),
+		// Video is opt-in in production (bills per clip); tests exercising the
+		// video paths run with the operator opt-in granted.
+		getSetting: vi.fn((key: string) =>
+			key === "ELIZA_VIDEO_GENERATION_ENABLED" ? "true" : undefined,
+		),
 	} as never;
 }
 

@@ -30,6 +30,7 @@ import type {
 } from "../../../types/index.ts";
 import { ContentType, ModelType, ServiceType } from "../../../types/index.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
+import { resolveSetting } from "../../../utils/resolve-setting.ts";
 
 const spec: ActionDoc = getActionSpec("GENERATE_MEDIA") ?? {
 	name: "GENERATE_MEDIA",
@@ -469,6 +470,40 @@ export const generateMediaAction = {
 				text: "Media prompt is required",
 				values: { success: false, error: "MISSING_PROMPT" },
 				data: { actionName: "GENERATE_MEDIA", error: "Missing prompt" },
+				success: false,
+			};
+		}
+
+		// Video generation is OPT-IN: every clip bills real provider money
+		// (fal veo3 ≈ $3–4/video via Eliza Cloud) and role policy can expose
+		// GENERATE_MEDIA in public rooms, so an operator must enable it
+		// deliberately with ELIZA_VIDEO_GENERATION_ENABLED. Disabled ⇒ an
+		// honest grounded decline — never a silent denial the model invents.
+		const videoOptIn = (
+			resolveSetting(runtime, "ELIZA_VIDEO_GENERATION_ENABLED") ?? ""
+		)
+			.trim()
+			.toLowerCase();
+		if (
+			request.mediaType === "video" &&
+			!["1", "true", "yes", "on"].includes(videoOptIn)
+		) {
+			const disabledText =
+				"video generation is switched off on this deployment (it bills per clip). the operator can enable it with ELIZA_VIDEO_GENERATION_ENABLED.";
+			return {
+				text: disabledText,
+				userFacingText: disabledText,
+				verifiedUserFacing: true,
+				values: {
+					success: false,
+					error: "VIDEO_GENERATION_DISABLED",
+					mediaType: request.mediaType,
+				},
+				data: {
+					actionName: "GENERATE_MEDIA",
+					mediaType: request.mediaType,
+					disabled: true,
+				},
 				success: false,
 			};
 		}
