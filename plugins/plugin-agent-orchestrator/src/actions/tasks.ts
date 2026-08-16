@@ -2745,7 +2745,16 @@ function taskMatchesSearch(task: TaskThreadDto, search: string): boolean {
     .filter((part): part is string => typeof part === "string")
     .join(" ")
     .toLowerCase();
-  return haystack.includes(needle);
+  if (haystack.includes(needle)) return true;
+  // Token-AND fallback: planner-composed searches are noun phrases in the
+  // planner's word order ("nubs website"), while the stored title carries the
+  // user's ("personal website for nubs") — a whole-phrase substring miss then
+  // reads as "no task exists" against a store that plainly holds it (observed
+  // live). Every whitespace token present somewhere in the haystack matches.
+  const tokens = needle.split(/\s+/).filter((token) => token.length > 0);
+  return (
+    tokens.length > 1 && tokens.every((token) => haystack.includes(token))
+  );
 }
 
 function sessionMatchesHistoryFilters(

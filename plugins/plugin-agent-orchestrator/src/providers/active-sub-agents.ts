@@ -129,25 +129,16 @@ const PROVIDER_NAME = "ACTIVE_SUB_AGENTS";
 export const activeSubAgentsProvider: Provider = {
   name: PROVIDER_NAME,
   description:
-    "Active ACPX sub-agent sessions the main agent can reply to via SEND_TO_AGENT or terminate via STOP_AGENT.",
-  dynamic: true,
+    "Active ACPX sub-agent sessions the main agent can reply to via SEND_TO_AGENT or terminate via STOP_AGENT, plus non-terminal durable tasks.",
+  // Ambient, not dynamic: a dynamic provider only composes when a turn
+  // explicitly requests it, so status-shaped asks ("is my build done?")
+  // never saw this state and answered from chat impressions (observed live:
+  // a `validating` task described as "stopped before shipping" while its
+  // deliverable was live). The section is empty-text when nothing is in
+  // flight and cache-stable otherwise, so ambient inclusion costs nothing
+  // on idle turns.
+  dynamic: false,
   position: 0,
-  relevanceKeywords: [
-    "sub-agent",
-    "sub agent",
-    "subagent",
-    "task agent",
-    "coding agent",
-    "acpx",
-    // Status-shaped asks about delegated work ("is my build/site/task done?")
-    // must pull the in-flight task rows, or the turn answers from chat vibes.
-    "task",
-    "build",
-    "built",
-    "website",
-    "finished",
-    "done yet",
-  ],
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const waves = readWaveStatuses(runtime);
     const inFlightTaskLines = await readInFlightTaskLines(runtime);
