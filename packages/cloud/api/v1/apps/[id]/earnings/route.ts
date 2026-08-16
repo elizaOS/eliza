@@ -1,4 +1,8 @@
-// Handles v1 cloud API v1 apps id earnings route traffic with route-local auth expectations.
+/**
+ * Serves authenticated app-earnings summaries and chart data.
+ * It validates the requested chart window before any app or earnings lookup.
+ */
+import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
@@ -6,6 +10,9 @@ import { appEarningsService } from "@/lib/services/app-earnings";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+
+const DEFAULT_DAYS = 30;
+const MAX_DAYS = 90;
 
 /**
  * GET /api/v1/apps/[id]/earnings
@@ -27,10 +34,21 @@ async function __hono_GET(
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
-    const daysParam = new URL(request.url).searchParams.get("days");
-    const days = daysParam
-      ? Math.min(Math.max(parseInt(daysParam, 10), 1), 90)
-      : 30;
+    const rawDays = new URL(request.url).searchParams.get("days");
+    const parsedDays = parsePositiveInteger(rawDays);
+    if (
+      rawDays !== null &&
+      rawDays !== "" &&
+      (parsedDays === undefined ||
+        rawDays !== String(parsedDays) ||
+        parsedDays > MAX_DAYS)
+    ) {
+      return Response.json(
+        { success: false, error: "Invalid days" },
+        { status: 400 },
+      );
+    }
+    const days = parsedDays ?? DEFAULT_DAYS;
 
     const app = await appsService.getById(id);
 
@@ -75,6 +93,7 @@ async function __hono_GET(
       },
     });
   } catch (error) {
+    // error-policy:J1 route boundary translates failures into structured HTTP errors.
     logger.error("Failed to get app earnings:", error);
     return Response.json(
       {
