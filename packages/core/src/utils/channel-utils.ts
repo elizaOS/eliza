@@ -249,9 +249,6 @@ export function shouldAckReaction(params: AckReactionGateParams): boolean {
 		if (!params.isMentionableGroup) {
 			return false;
 		}
-		if (!params.requireMention) {
-			return false;
-		}
 		if (!params.canDetectMention) {
 			return false;
 		}
