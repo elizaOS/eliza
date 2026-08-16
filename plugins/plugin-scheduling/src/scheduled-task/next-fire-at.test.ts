@@ -274,3 +274,42 @@ describe("computeNextFireAt during_window bounds", () => {
     },
   );
 });
+
+describe("computeNextFireAt during_window immediate within active window", () => {
+  function duringWindowTask(windowKey: string, opts?: { firedAt?: string; lastWindowFireKey?: string; status?: ScheduledTask["state"]["status"] }) {
+    return {
+      trigger: { kind: "during_window", windowKey } as ScheduledTask["trigger"],
+      state: {
+        status: (opts?.status ?? "pending") as ScheduledTask["state"]["status"],
+        firedAt: opts?.firedAt,
+        followupCount: 0,
+      } as ScheduledTask["state"],
+      metadata: opts?.lastWindowFireKey ? { lastWindowFireKey: opts.lastWindowFireKey } : {},
+    } as Pick<ScheduledTask, "trigger" | "state" | "metadata">;
+  }
+
+  it("task created at 07:00 inside morning 06:00-11:00 indexes immediately at now, not tomorrow 06:00", async () => {
+    const now = new Date("2026-05-11T07:00:00.000Z");
+    const facts: OwnerFactsView = { timezone: "UTC", morningWindow: { start: "06:00", end: "11:00" }, eveningWindow: { start: "18:00", end: "22:00" } };
+    const next = await computeNextFireAt(duringWindowTask("morning"), { now, ownerFacts: facts, anchors: null });
+    // Before fix this returned 2026-05-12T06:00:00.000Z (tomorrow's start).
+    expect(next).toBe(now.toISOString());
+  });
+
+  it("already fired inside same window does not return now but next day's start", async () => {
+    const now = new Date("2026-05-11T07:00:00.000Z");
+    const facts: OwnerFactsView = { timezone: "UTC", morningWindow: { start: "06:00", end: "11:00" }, eveningWindow: { start: "18:00", end: "22:00" } };
+    const next = await computeNextFireAt(
+      duringWindowTask("morning", { firedAt: "2026-05-11T06:30:00.000Z", status: "fired" }),
+      { now, ownerFacts: facts, anchors: null },
+    );
+    expect(next).toBe("2026-05-12T06:00:00.000Z");
+  });
+
+  it("task at 05:00 before morning window indexes at today's 06:00", async () => {
+    const now = new Date("2026-05-11T05:00:00.000Z");
+    const facts: OwnerFactsView = { timezone: "UTC", morningWindow: { start: "06:00", end: "11:00" }, eveningWindow: { start: "18:00", end: "22:00" } };
+    const next = await computeNextFireAt(duringWindowTask("morning"), { now, ownerFacts: facts, anchors: null });
+    expect(next).toBe("2026-05-11T06:00:00.000Z");
+  });
+});
