@@ -189,6 +189,44 @@ describe("buildSkillCommandSpecs", () => {
     assert.ok(specs[0].description.length <= 100);
   });
 
+  it("truncates descriptions without splitting UTF-16 surrogate pairs", () => {
+    // 98 ascii characters followed by 🤖 (which is 2 UTF-16 code units, at indices 98 and 99)
+    const descWithSurrogateAtBoundary = `${"a".repeat(98)}🤖extra`;
+    const entries: SkillEntry[] = [
+      {
+        skill: { name: "emoji-desc", description: descWithSurrogateAtBoundary },
+        frontmatter: {},
+        metadata: {},
+        invocation: {},
+      },
+    ];
+    const specs = buildSkillCommandSpecs(entries);
+    assert.strictEqual(specs[0].description, `${"a".repeat(98)}…`);
+  });
+
+  it("replaces pre-existing lone surrogates before building descriptions", () => {
+    const entries: SkillEntry[] = [
+      {
+        skill: { name: "short", description: "before \uD83D after" },
+        frontmatter: {},
+        metadata: {},
+        invocation: {},
+      },
+      {
+        skill: {
+          name: "boundary",
+          description: `${"a".repeat(98)}\uD83Dextra`,
+        },
+        frontmatter: {},
+        metadata: {},
+        invocation: {},
+      },
+    ];
+    const specs = buildSkillCommandSpecs(entries);
+    assert.strictEqual(specs[0].description, "before � after");
+    assert.strictEqual(specs[1].description, `${"a".repeat(98)}�…`);
+  });
+
   it("handles duplicate skill names by adding numeric suffix", () => {
     const entries: SkillEntry[] = [
       {
