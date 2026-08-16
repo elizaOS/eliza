@@ -104,6 +104,38 @@ interface StoredRelationship {
   createdAt?: string;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function dataContainsFilter(value: unknown, filter: Record<string, unknown> | undefined): boolean {
+  if (!filter) return true;
+  if (!isPlainObject(value)) return false;
+
+  for (const [key, expected] of Object.entries(filter)) {
+    const actual = value[key];
+    if (isPlainObject(expected)) {
+      if (!dataContainsFilter(actual, expected)) return false;
+      continue;
+    }
+    if (Array.isArray(expected)) {
+      if (!Array.isArray(actual)) return false;
+      for (const expectedItem of expected) {
+        const found = actual.some((actualItem) =>
+          isPlainObject(expectedItem)
+            ? dataContainsFilter(actualItem, expectedItem)
+            : actualItem === expectedItem
+        );
+        if (!found) return false;
+      }
+      continue;
+    }
+    if (actual !== expected) return false;
+  }
+
+  return true;
+}
+
 interface StoredCacheEntry<T = unknown> {
   value: T;
   expiresAt?: number;
@@ -430,36 +462,67 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     includeAllComponents?: boolean;
     entityContext?: UUID;
   }): Promise<Entity[]> {
-    let entityIds: UUID[];
-    if (params.entityIds && params.entityIds.length > 0) {
-      entityIds = params.entityIds;
-    } else {
-      const allComponents = await this.storage.getWhere<Component>(COLLECTIONS.COMPONENTS, (c) => {
-        if (params.componentType && c.type !== params.componentType) return false;
-        if (params.worldId && c.worldId !== params.worldId) return false;
-        if (params.componentDataFilter) {
-          const data = (c as Component & { data?: Record<string, unknown> }).data;
-          if (!data || typeof data !== "object") return false;
-          for (const [k, v] of Object.entries(params.componentDataFilter)) {
-            if (data[k] !== v) return false;
+    const hasComponentQuery =
+      params.componentType !== undefined ||
+      params.componentDataFilter !== undefined ||
+      params.worldId !== undefined;
+    const matchedComponentsByEntity = new Map<UUID, Component[]>();
+
+    if (hasComponentQuery) {
+      const matchedComponents = await this.storage.getWhere<Component>(
+        COLLECTIONS.COMPONENTS,
+        (component) => {
+          if (params.agentId && component.agentId !== params.agentId) return false;
+          if (params.entityIds?.length && !params.entityIds.includes(component.entityId)) {
+            return false;
           }
+          if (params.componentType !== undefined && component.type !== params.componentType) {
+            return false;
+          }
+          if (params.worldId !== undefined && component.worldId !== params.worldId) return false;
+          return dataContainsFilter(component.data, params.componentDataFilter);
         }
-        return true;
-      });
-      entityIds = [...new Set(allComponents.map((c) => c.entityId as UUID))];
+      );
+      for (const component of matchedComponents) {
+        const bucket = matchedComponentsByEntity.get(component.entityId) ?? [];
+        bucket.push(component);
+        matchedComponentsByEntity.set(component.entityId, bucket);
+      }
     }
 
-    const offset = params.offset ?? 0;
-    const limit = params.limit;
-    const sliced =
-      limit !== undefined ? entityIds.slice(offset, offset + limit) : entityIds.slice(offset);
+    let entityIds: UUID[];
+    if (hasComponentQuery) {
+      entityIds = params.entityIds?.length
+        ? params.entityIds.filter((entityId) => matchedComponentsByEntity.has(entityId))
+        : [...matchedComponentsByEntity.keys()];
+    } else if (params.entityIds?.length) {
+      entityIds = [...params.entityIds];
+    } else if (params.limit !== undefined) {
+      const entities = await this.storage.getWhere<Entity>(COLLECTIONS.ENTITIES, (entity) =>
+        params.agentId ? entity.agentId === params.agentId : true
+      );
+      entityIds = entities.flatMap((entity) => (entity.id ? [entity.id] : []));
+    } else {
+      return [];
+    }
 
-    const entities = await this.getEntitiesByIds(sliced);
-    if (params.includeAllComponents) {
-      for (const entity of entities) {
-        if (!entity.id) continue;
-        const components = await this.getComponentsForEntities([entity.id]);
-        (entity as Entity & { components?: Component[] }).components = components;
+    const candidates = (await this.getEntitiesByIds(entityIds)).filter((entity) =>
+      params.agentId ? entity.agentId === params.agentId : true
+    );
+    const offset = params.offset ?? 0;
+    const limit = params.limit ?? candidates.length;
+    const entities = candidates.slice(offset, offset + limit).map((entity) => ({ ...entity }));
+    for (const entity of entities) {
+      if (!entity.id) continue;
+      const components = params.includeAllComponents
+        ? (await this.getComponentsForEntities([entity.id])).filter((component) =>
+            params.agentId ? component.agentId === params.agentId : true
+          )
+        : (matchedComponentsByEntity.get(entity.id) ?? []);
+      if (components.length > 0) {
+        entity.components = components;
+      } else {
+        delete entity.components;
       }
     }
     return entities;
