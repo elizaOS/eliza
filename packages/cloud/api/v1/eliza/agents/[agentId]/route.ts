@@ -464,7 +464,17 @@ app.delete("/", async (c) => {
       );
     }
 
-    if (existing.execution_tier === "shared" && !expectedIdentity) {
+    // Only container-free shared agents may be torn down synchronously in the
+    // Worker. A shared row with a sandbox_id has container-era state whose
+    // teardown (SSH stop, key revoke, managed-DB drop) cannot run in workerd;
+    // it goes straight to the idempotent async delete job below, where any
+    // teardown failure is preserved on the job record instead of surfacing as
+    // an opaque 500 from a doomed synchronous attempt.
+    if (
+      existing.execution_tier === "shared" &&
+      existing.sandbox_id === null &&
+      !expectedIdentity
+    ) {
       const result = await elizaSandboxService.deleteAgent(
         agentId,
         user.organization_id,
