@@ -30,6 +30,7 @@ import type {
 } from "../../../types/index.ts";
 import { ContentType, ModelType, ServiceType } from "../../../types/index.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
+import { resolveSetting } from "../../../utils/resolve-setting.ts";
 
 const spec: ActionDoc = getActionSpec("GENERATE_MEDIA") ?? {
 	name: "GENERATE_MEDIA",
@@ -265,8 +266,80 @@ function titleFor(
 	return `${prefix}_${timestamp}.${extensionFor(url, request.mediaType)}`;
 }
 
+// error-policy:J1 Media generation is an action boundary and returns an
+// explicit unsuccessful result.
+function mediaGenerationFailure(
+	runtime: IAgentRuntime,
+	request: MediaGenerationRequest,
+	error: unknown,
+): ActionResult {
+	const errorMessage = error instanceof Error ? error.message : String(error);
+	logger.error(
+		{
+			src: "plugin:advanced-capabilities:action:generate_media",
+			agentId: runtime.agentId,
+			mediaType: request.mediaType,
+			error: errorMessage,
+		},
+		"Media generation failed",
+	);
+	return {
+		text: `Media generation failed: ${errorMessage}`,
+		values: {
+			success: false,
+			error: "MEDIA_GENERATION_FAILED",
+			mediaType: request.mediaType,
+			prompt: request.prompt,
+		},
+		data: {
+			actionName: "GENERATE_MEDIA",
+			mediaType: request.mediaType,
+			prompt: request.prompt,
+			error: errorMessage,
+		},
+		success: false,
+	};
+}
+
 function hasImageGenerationModel(runtime: IAgentRuntime): boolean {
 	return typeof runtime.getModel(ModelType.IMAGE) === "function";
+}
+
+function hasVideoGenerationModel(runtime: IAgentRuntime): boolean {
+	return typeof runtime.getModel(ModelType.VIDEO) === "function";
+}
+
+/** Direct VIDEO-model fallback, mirror of {@link fallbackGenerateImage}: a
+ * runtime with a registered VIDEO handler (e.g. Eliza Cloud's
+ * /generate-video) can serve video asks without the media-generation
+ * service — previously such runtimes falsely denied "no video generator"
+ * (the same self-belief class the image fallback fixed). */
+async function fallbackGenerateVideo(
+	runtime: IAgentRuntime,
+	request: MediaGenerationRequest,
+): Promise<MediaGenerationResponse> {
+	// Duration and aspect ratio are deliberately NOT forwarded: providers
+	// hard-reject out-of-range or mistyped values (fal veo3 422s on
+	// durationSeconds outside its fixed clip length AND on "16:9" arriving in
+	// its resolution field — both observed live), and a default-shaped video
+	// beats a failed request for the whole ask. The bare prompt (+ optional
+	// reference image) is the proven-working request shape.
+	const videoResponse = (await runtime.useModel(ModelType.VIDEO, {
+		prompt: request.prompt,
+		...(request.imageUrl ? { imageUrl: request.imageUrl } : {}),
+	})) as { url?: string; videoUrl?: string } | string | undefined;
+	const videoUrl =
+		typeof videoResponse === "string"
+			? videoResponse
+			: (videoResponse?.videoUrl ?? videoResponse?.url);
+	if (!videoUrl) {
+		throw new Error("Video generation failed - no valid response received");
+	}
+	return {
+		mediaType: "video",
+		videoUrl,
+		url: videoUrl,
+	};
 }
 
 async function fallbackGenerateImage(
@@ -313,6 +386,10 @@ async function generateWithService(
 		return fallbackGenerateImage(runtime, request);
 	}
 
+	if (request.mediaType === "video" && hasVideoGenerationModel(runtime)) {
+		return fallbackGenerateVideo(runtime, request);
+	}
+
 	throw new Error(
 		service
 			? `${request.mediaType} generation is not configured.`
@@ -344,7 +421,8 @@ export const generateMediaAction = {
 		);
 		const canGenerate =
 			(service && (await service.canGenerateMedia(request))) ||
-			(request.mediaType === "image" && hasImageGenerationModel(runtime));
+			(request.mediaType === "image" && hasImageGenerationModel(runtime)) ||
+			(request.mediaType === "video" && hasVideoGenerationModel(runtime));
 		if (!canGenerate) {
 			logger.debug(
 				{
@@ -396,6 +474,40 @@ export const generateMediaAction = {
 			};
 		}
 
+		// Video generation is OPT-IN: every clip bills real provider money
+		// (fal veo3 ≈ $3–4/video via Eliza Cloud) and role policy can expose
+		// GENERATE_MEDIA in public rooms, so an operator must enable it
+		// deliberately with ELIZA_VIDEO_GENERATION_ENABLED. Disabled ⇒ an
+		// honest grounded decline — never a silent denial the model invents.
+		const videoOptIn = (
+			resolveSetting(runtime, "ELIZA_VIDEO_GENERATION_ENABLED") ?? ""
+		)
+			.trim()
+			.toLowerCase();
+		if (
+			request.mediaType === "video" &&
+			!["1", "true", "yes", "on"].includes(videoOptIn)
+		) {
+			const disabledText =
+				"video generation is switched off on this deployment (it bills per clip). the operator can enable it with ELIZA_VIDEO_GENERATION_ENABLED.";
+			return {
+				text: disabledText,
+				userFacingText: disabledText,
+				verifiedUserFacing: true,
+				values: {
+					success: false,
+					error: "VIDEO_GENERATION_DISABLED",
+					mediaType: request.mediaType,
+				},
+				data: {
+					actionName: "GENERATE_MEDIA",
+					mediaType: request.mediaType,
+					disabled: true,
+				},
+				success: false,
+			};
+		}
+
 		let result: MediaGenerationResponse;
 		try {
 			logger.debug(
@@ -409,36 +521,44 @@ export const generateMediaAction = {
 				"GENERATE_MEDIA handler invoking media service",
 			);
 			result = await generateWithService(runtime, request);
-		} catch (error) {
-			// error-policy:J1 Media generation is an action boundary and returns
-			// an explicit unsuccessful result.
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
-			logger.error(
-				{
-					src: "plugin:advanced-capabilities:action:generate_media",
-					agentId: runtime.agentId,
-					mediaType: request.mediaType,
-					error: errorMessage,
-				},
-				"Media generation failed",
-			);
-			return {
-				text: `Media generation failed: ${errorMessage}`,
-				values: {
-					success: false,
-					error: "MEDIA_GENERATION_FAILED",
-					mediaType: request.mediaType,
-					prompt: request.prompt,
-				},
-				data: {
-					actionName: "GENERATE_MEDIA",
-					mediaType: request.mediaType,
-					prompt: request.prompt,
-					error: errorMessage,
-				},
-				success: false,
-			};
+		} catch (firstError) {
+			// Provider param constraints (fal veo3 422s on durationSeconds and on
+			// aspect-ratio-as-resolution — observed live) fail the WHOLE ask over
+			// planner-supplied extras the user never insisted on. Retry once with
+			// the bare proven shape (prompt + optional reference image) before
+			// giving up: a default-shaped result beats a failed request. The
+			// rejected attempt is not billed.
+			const hadShapingExtras =
+				request.duration !== undefined ||
+				request.aspectRatio !== undefined ||
+				request.size !== undefined ||
+				request.seed !== undefined;
+			if (hadShapingExtras) {
+				logger.warn(
+					{
+						src: "plugin:advanced-capabilities:action:generate_media",
+						agentId: runtime.agentId,
+						mediaType: request.mediaType,
+						error:
+							firstError instanceof Error
+								? firstError.message
+								: String(firstError),
+					},
+					"Media generation failed with shaping extras; retrying with the bare prompt shape",
+				);
+				try {
+					result = await generateWithService(runtime, {
+						mediaType: request.mediaType,
+						prompt: request.prompt,
+						audioKind: request.audioKind,
+						imageUrl: request.imageUrl,
+					});
+				} catch (retryError) {
+					return mediaGenerationFailure(runtime, request, retryError);
+				}
+			} else {
+				return mediaGenerationFailure(runtime, request, firstError);
+			}
 		}
 
 		const url = resultUrl(result);
@@ -481,12 +601,18 @@ export const generateMediaAction = {
 							? "sound effect"
 							: "audio";
 		const responseText = `Generated ${label}`;
+		const caption = `here's your ${label}.`;
 		const responseContent = {
 			attachments: [attachment],
 			thought: `Generated ${label} based on: "${request.prompt}"`,
 			actions: ["GENERATE_MEDIA"],
-			// Attachment-only callback: the planner/evaluator composes user-facing text.
-			text: "",
+			// Caption rides WITH the attachment so connectors deliver ONE message
+			// (media + caption). The old attachment-only callback (text: "") plus
+			// a planner-composed follow-up shipped as TWO Discord messages — the
+			// image, then a trailing "your image." (owner-reported UX bug). The
+			// turn is marked terminal below, so this caption is the turn's whole
+			// user-facing text on every surface.
+			text: caption,
 			source: "media-generation",
 		};
 
@@ -508,12 +634,13 @@ export const generateMediaAction = {
 
 		return {
 			text: responseText,
-			userFacingText:
-				request.mediaType === "video"
-					? "Here's your video."
-					: request.mediaType === "image"
-						? "Here's your image."
-						: "Here's your audio.",
+			userFacingText: caption,
+			// The media + caption already delivered as one connector message via
+			// the callback above; a planner finish pass would only add a second,
+			// redundant text message ("your image.") after the attachment. End
+			// the chain in deliberate silence — a follow-up ask re-invokes
+			// normally on its own turn.
+			continueChain: false,
 			values: {
 				success: true,
 				mediaGenerated: true,
@@ -524,6 +651,9 @@ export const generateMediaAction = {
 			},
 			data: {
 				actionName: "GENERATE_MEDIA",
+				// Pairs with continueChain above: blanks the planner finish text so
+				// the delivered media+caption message stays the ONLY message.
+				suppressPlannerReply: true,
 				mediaType: request.mediaType,
 				audioKind: request.audioKind,
 				mediaUrl: url,
