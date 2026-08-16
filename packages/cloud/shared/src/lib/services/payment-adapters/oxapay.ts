@@ -16,6 +16,7 @@ import { logger } from "../../utils/logger";
 import { isOxaPayConfigured, oxaPayService } from "../oxapay";
 import { type PaymentProviderAdapter, type PaymentRequestRow } from "../payment-requests";
 import { IgnoredWebhookEvent } from "../payment-webhook-errors";
+import { oxapayInvoiceLifetimeSeconds } from "./checkout-lifetime";
 
 function readMetaString(request: PaymentRequestRow, key: string): string | undefined {
   const meta = (request.metadata ?? {}) as Record<string, unknown>;
@@ -83,6 +84,9 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
       }
 
       const returnUrl = request.successUrl ?? readMetaString(request, "success_url");
+      // Bind the invoice lifetime to the request deadline so the hosted pay
+      // link cannot outlive the request by more than OxaPay's floor.
+      const lifetimeSeconds = oxapayInvoiceLifetimeSeconds(request.expiresAt, new Date());
       const invoice = await oxaPayService.createInvoice({
         amount: amountUsd,
         currency: (request.currency || "usd").toUpperCase(),
@@ -91,6 +95,7 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
         description: request.reason ?? readMetaString(request, "product_description"),
         callbackUrl,
         returnUrl,
+        lifetime: lifetimeSeconds,
       });
 
       logger.info("[OxaPayPaymentAdapter] Created invoice", {
