@@ -1776,6 +1776,7 @@ describe("money-spend questions route to the finances reader (non-possessive)", 
 	it("spend/pay/owe phrasings all route to finances", () => {
 		for (const text of [
 			"how much have i spent",
+			"how much money did i spend this month",
 			"how much do i owe",
 			"what did i spend on groceries",
 			"what did i pay for the car",
@@ -1791,6 +1792,13 @@ describe("money-spend questions route to the finances reader (non-possessive)", 
 			"i want to spend time with the kids",
 			"how should i budget my spending please give advice",
 			"how much time did i spend coding",
+			"how much did i spend time coding",
+			"what did i spend effort on",
+			"what did i pay attention to",
+			"how much do i owe you an apology",
+			"how much did we spend on the team lunch",
+			"when I say how much did I spend, what does that mean?",
+			"the phrase how much did I spend is a finance question",
 		]) {
 			expect(
 				inferDirectCurrentRequestCandidateInference([finances], text).names,

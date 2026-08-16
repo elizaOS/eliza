@@ -32,7 +32,9 @@ import {
   runLifeOperationHandler,
 } from "./life.js";
 import {
+  MONEY_CONTEXTS,
   MONEY_PARAMETERS,
+  MONEY_TAGS,
   OWNER_FINANCE_SIMILES,
   runMoneyHandler,
 } from "./money.js";
@@ -631,6 +633,13 @@ export const ownerFinancesAction: Action = {
     "Owner finances: sources, imports, spending, recurring charges, subscriptions.",
   descriptionCompressed:
     "owner finances dashboard|sources|csv|transactions|spending|recurring|subscription",
+  routingHint:
+    "owner finance records, spending, payments, and subscriptions -> OWNER_FINANCES; owner-only LifeOps",
+  tags: [...MONEY_TAGS],
+  contexts: [...MONEY_CONTEXTS],
+  roleGate: OWNER_OPERATION_ROLE_GATE,
+  suppressPostActionContinuation:
+    OWNER_OPERATION_SUPPRESS_POST_ACTION_CONTINUATION,
   parameters: [
     {
       name: "action",
