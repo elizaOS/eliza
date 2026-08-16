@@ -107,7 +107,8 @@ const coordinateSharedHistory = mock(async () => [
 const namespace = {
   getByName: mock(() => ({ fetch: mock(async () => new Response()) })),
 };
-const runtimeExecutionCtx = { waitUntil() {} };
+const runtimeWaitUntil = mock((_promise: Promise<unknown>) => undefined);
+const runtimeExecutionCtx = { waitUntil: runtimeWaitUntil };
 
 mock.module("@/lib/services/eliza-app", () => ({
   elizaAppUserService: {
@@ -209,6 +210,7 @@ describe("personal Shared messaging deliveries", () => {
     findActivePersonalDedicatedTarget.mockClear();
     sharedRestMessageSend.mockClear();
     prewarmPersonalSharedAgentTurnCaches.mockClear();
+    runtimeWaitUntil.mockClear();
     runOnboardingChat.mockClear();
     bridge.mockClear();
     importCanonicalConversation.mockClear();
@@ -291,6 +293,7 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
     );
     expect(order).toEqual(["prewarm", "turn"]);
+    expect(runtimeWaitUntil).toHaveBeenCalledTimes(1);
     expect(response.headers.get("server-timing")).toMatch(
       /^account;dur=\d+\.\d;desc="[^"]+", prewarm;dur=\d+\.\d, shared;dur=\d+\.\d$/,
     );
@@ -301,6 +304,7 @@ describe("personal Shared messaging deliveries", () => {
 
     expect(response.status).toBe(200);
     expect(prewarmPersonalSharedAgentTurnCaches).not.toHaveBeenCalled();
+    expect(runtimeWaitUntil).not.toHaveBeenCalled();
   });
 
   test("correlates a Shared failure without logging its sensitive message", async () => {
@@ -439,6 +443,43 @@ describe("personal Shared messaging deliveries", () => {
       await expect(response.json()).resolves.toMatchObject({
         data: { reply: "hello from Eliza" },
       });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("overlaps new-account prewarm with Telegram voice transcription", async () => {
+    personalDeliveryIsNew = true;
+    const order: string[] = [];
+    prewarmPersonalSharedAgentTurnCaches.mockImplementationOnce(async () => {
+      order.push("prewarm");
+    });
+    sharedRestMessageSend.mockImplementationOnce(async () => {
+      order.push("turn");
+      return { text: "hello from Eliza" };
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => {
+      order.push("transcription");
+      return Response.json({ text: "remember the red bicycle" });
+    }) as unknown as typeof fetch;
+    const bytes = Buffer.from("OggSvoice-note");
+
+    try {
+      const response = await request({
+        ...valid,
+        message: undefined,
+        voiceNote: {
+          bytesBase64: bytes.toString("base64"),
+          mimeType: "audio/ogg",
+          filename: "telegram-42.ogg",
+          sizeBytes: bytes.length,
+          durationSeconds: 4,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(order).toEqual(["prewarm", "transcription", "turn"]);
     } finally {
       globalThis.fetch = originalFetch;
     }
