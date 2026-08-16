@@ -20,6 +20,10 @@ function stripThinkingAndMarkup(input: string): string {
 		/<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
 		" ",
 	);
+	text = text.replace(
+		/<(?:think|analysis|reasoning|tool_calls?|tools?)\b[^>]*$/gi,
+		" ",
+	);
 	text = text.replace(/```[\s\S]*?```/g, " ");
 	text = text.replace(/`([^`]+)`/g, "$1");
 	text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");

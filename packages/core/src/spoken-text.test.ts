@@ -7,12 +7,43 @@ import { describe, expect, it } from "vitest";
 
 import { sanitizeSpeechText } from "./spoken-text";
 
+const hiddenBlockTags = [
+	"think",
+	"analysis",
+	"reasoning",
+	"tool_call",
+	"tool_calls",
+	"tool",
+	"tools",
+] as const;
+
 describe("sanitizeSpeechText", () => {
-	it("removes an unterminated hidden model block through end of input", () => {
-		expect(
-			sanitizeSpeechText(
-				"Visible answer. <analysis>private reasoning must not be spoken",
-			),
-		).toBe("Visible answer.");
-	});
+	it.each(hiddenBlockTags)(
+		"removes a closed <%s> block and preserves following speech",
+		(tag) => {
+			expect(
+				sanitizeSpeechText(
+					`Visible. <${tag}>private payload</${tag}> Continue.`,
+				),
+			).toBe("Visible. Continue.");
+		},
+	);
+
+	it.each(hiddenBlockTags)(
+		"removes an unterminated <%s> block through end of input",
+		(tag) => {
+			expect(sanitizeSpeechText(`Visible. <${tag}>private payload`)).toBe(
+				"Visible.",
+			);
+		},
+	);
+
+	it.each(hiddenBlockTags)(
+		"removes a truncated <%s> opening tag through end of input",
+		(tag) => {
+			expect(sanitizeSpeechText(`Visible. <${tag} private payload`)).toBe(
+				"Visible.",
+			);
+		},
+	);
 });
