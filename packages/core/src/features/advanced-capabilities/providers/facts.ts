@@ -20,7 +20,6 @@
  * and the responding model decides which surfaced preferences apply.
  */
 import { ElizaError } from "../../../errors.ts";
-import { ModelType } from "../../../types/model.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
 import type {
@@ -32,6 +31,7 @@ import type {
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
+import { ModelType } from "../../../types/model.ts";
 import {
 	buildFactQueryText,
 	scoreFactKeywordRelevance,
@@ -446,8 +446,7 @@ const factsProvider: Provider = {
 							...searchedRoom,
 							...searchedEntities.flat(),
 						]).filter(
-							(memory) =>
-								!minimizePrivateFacts || !isMarkedPrivateFact(memory),
+							(memory) => !minimizePrivateFacts || !isMarkedPrivateFact(memory),
 						);
 					}
 				} catch (error) {

@@ -8,9 +8,7 @@ import { describe, expect, test } from "vitest";
 import type { OwnerContactRoutingHint } from "../config/owner-contacts.ts";
 import { resolveDeliverableChannels } from "./escalation.ts";
 
-const hint = (
-  lastResponseAt: string | null,
-): OwnerContactRoutingHint =>
+const hint = (lastResponseAt: string | null): OwnerContactRoutingHint =>
   ({
     source: "x",
     entityId: null,

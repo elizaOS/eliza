@@ -2752,9 +2752,7 @@ function taskMatchesSearch(task: TaskThreadDto, search: string): boolean {
   // reads as "no task exists" against a store that plainly holds it (observed
   // live). Every whitespace token present somewhere in the haystack matches.
   const tokens = needle.split(/\s+/).filter((token) => token.length > 0);
-  return (
-    tokens.length > 1 && tokens.every((token) => haystack.includes(token))
-  );
+  return tokens.length > 1 && tokens.every((token) => haystack.includes(token));
 }
 
 function sessionMatchesHistoryFilters(
