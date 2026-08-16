@@ -30,11 +30,6 @@ export interface IdentityLinkAttempt {
   linked?: boolean;
 }
 
-/** Extracts a link code from message text, or null when there is none. */
-export function extractLinkCode(text: string | undefined): string | null {
-  return extractIdentityLinkCode(text);
-}
-
 /**
  * Confirms a link code for an attested platform identity. Returns handled=false
  * only when the text carries no code at all; a code that fails to confirm is
@@ -48,7 +43,7 @@ export async function tryConfirmIdentityLink(
   platformName: string | undefined,
   text: string | undefined,
 ): Promise<IdentityLinkAttempt> {
-  const code = extractLinkCode(text);
+  const code = extractIdentityLinkCode(text);
   if (!code) return { handled: false };
 
   const doFetch = deps.fetchImpl ?? fetch;

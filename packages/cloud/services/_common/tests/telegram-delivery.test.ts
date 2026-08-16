@@ -10,9 +10,19 @@ import {
 
 function memoryLedger(initial: TelegramDeliveryState | null = null): {
   ledger: TelegramDeliveryLedger;
-  state: { delivery: TelegramDeliveryState | null; processing: boolean };
+  state: {
+    delivery: TelegramDeliveryState | null;
+    processing: boolean;
+    plan: string[] | null;
+    chunks: Map<number, TelegramDeliveryState>;
+  };
 } {
-  const state = { delivery: initial, processing: false };
+  const state = {
+    delivery: initial,
+    processing: false,
+    plan: null as string[] | null,
+    chunks: new Map<number, TelegramDeliveryState>(),
+  };
   return {
     state,
     ledger: {
@@ -27,10 +37,28 @@ function memoryLedger(initial: TelegramDeliveryState | null = null): {
       async releaseProcessing() {
         state.processing = false;
       },
-      async claimEgress() {
-        if (state.delivery) return false;
-        state.delivery = "egress_started";
+      async preparePlan(digests) {
+        if (!state.plan) {
+          state.plan = [...digests];
+          return "prepared";
+        }
+        return state.plan.join(":") === digests.join(":")
+          ? "prepared"
+          : "conflict";
+      },
+      async readChunk(index) {
+        return state.chunks.get(index) ?? null;
+      },
+      async claimChunk(index) {
+        if (state.chunks.has(index)) return false;
+        state.chunks.set(index, "uncertain");
         return true;
+      },
+      async releaseChunk(index) {
+        state.chunks.delete(index);
+      },
+      async markChunkDelivered(index) {
+        state.chunks.set(index, "delivered");
       },
       async markDelivered() {
         state.delivery = "delivered";
@@ -40,19 +68,22 @@ function memoryLedger(initial: TelegramDeliveryState | null = null): {
 }
 
 describe("executeTelegramDelivery", () => {
-  test("marks a successful send delivered after the pre-egress barrier", async () => {
+  test("marks a successful chunk delivered after its egress claim", async () => {
     const memory = memoryLedger();
-    let barrierObserved = false;
+    let claimObserved = false;
     const outcome = await executeTelegramDelivery(
       memory.ledger,
-      async (beforeEgress) => {
-        await beforeEgress();
-        barrierObserved = memory.state.delivery === "egress_started";
+      async (hooks) => {
+        await hooks.prepare(["reply"]);
+        expect(await hooks.shouldSend(0, "reply")).toBe(true);
+        claimObserved = memory.state.chunks.get(0) === "uncertain";
+        await hooks.accepted(0, "reply", "provider-1");
       },
     );
 
     expect(outcome).toBe("delivered");
-    expect(barrierObserved).toBe(true);
+    expect(claimObserved).toBe(true);
+    expect(memory.state.chunks.get(0)).toBe("delivered");
     expect(memory.state.delivery).toBe("delivered");
   });
 
@@ -70,15 +101,23 @@ describe("executeTelegramDelivery", () => {
   test("keeps the irreversible tombstone after an ambiguous provider send", async () => {
     const memory = memoryLedger();
     await expect(
-      executeTelegramDelivery(memory.ledger, async (beforeEgress) => {
-        await beforeEgress();
+      executeTelegramDelivery(memory.ledger, async (hooks) => {
+        await hooks.prepare(["reply"]);
+        await hooks.shouldSend(0, "reply");
         throw new Error("provider response lost");
       }),
     ).rejects.toThrow("provider response lost");
-    expect(memory.state.delivery).toBe("egress_started");
+    expect(memory.state.chunks.get(0)).toBe("uncertain");
     expect(
       await executeTelegramDelivery(memory.ledger, async () => undefined),
-    ).toBe("uncertain");
+    ).toBe("in_progress");
+    memory.state.processing = false;
+    await expect(
+      executeTelegramDelivery(memory.ledger, async (hooks) => {
+        await hooks.prepare(["reply"]);
+        await hooks.shouldSend(0, "reply");
+      }),
+    ).rejects.toBeInstanceOf(TelegramEgressAlreadyClaimedError);
   });
 
   test("reports duplicates and concurrent processing without running delivery", async () => {
@@ -101,12 +140,35 @@ describe("executeTelegramDelivery", () => {
 
   test("surfaces an egress claim lost after processing ownership", async () => {
     const memory = memoryLedger();
-    memory.ledger.claimEgress = async () => false;
+    memory.ledger.claimChunk = async () => false;
     await expect(
-      executeTelegramDelivery(memory.ledger, async (beforeEgress) => {
-        await beforeEgress();
+      executeTelegramDelivery(memory.ledger, async (hooks) => {
+        await hooks.prepare(["reply"]);
+        await hooks.shouldSend(0, "reply");
       }),
     ).rejects.toBeInstanceOf(TelegramEgressAlreadyClaimedError);
     expect(memory.state.processing).toBe(false);
+  });
+
+  test("never resends after provider acceptance when persistence fails", async () => {
+    const memory = memoryLedger();
+    memory.ledger.markChunkDelivered = async () => {
+      throw new Error("ledger write failed after provider acceptance");
+    };
+    await expect(
+      executeTelegramDelivery(memory.ledger, async (hooks) => {
+        await hooks.prepare(["reply"]);
+        await hooks.shouldSend(0, "reply");
+        await hooks.accepted(0, "reply", "provider-1");
+      }),
+    ).rejects.toThrow("ledger write failed after provider acceptance");
+    expect(memory.state.chunks.get(0)).toBe("uncertain");
+    memory.state.processing = false;
+    await expect(
+      executeTelegramDelivery(memory.ledger, async (hooks) => {
+        await hooks.prepare(["reply"]);
+        await hooks.shouldSend(0, "reply");
+      }),
+    ).rejects.toBeInstanceOf(TelegramEgressAlreadyClaimedError);
   });
 });

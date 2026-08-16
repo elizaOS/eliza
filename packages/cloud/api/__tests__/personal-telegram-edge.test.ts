@@ -13,8 +13,10 @@ const TRACE_ID = "11111111-1111-4111-8111-111111111111";
 const originalFetch = globalThis.fetch;
 
 interface LedgerValue {
-  delivery?: "egress_started" | "delivered";
+  delivery?: "uncertain" | "delivered";
   processing?: boolean;
+  plan?: string[];
+  chunks?: Map<number, "uncertain" | "delivered">;
 }
 
 type RunTurn = NonNullable<
@@ -24,17 +26,24 @@ type RunTurn = NonNullable<
 function namespace(): {
   binding: AppEnv["Bindings"]["PERSONAL_TELEGRAM_DELIVERIES"];
   values: Map<string, LedgerValue>;
+  names: string[];
 } {
   const values = new Map<string, LedgerValue>();
+  const names: string[] = [];
   return {
     values,
+    names,
     binding: {
       getByName(name: string) {
+        names.push(name);
         return {
           async fetch(_input: RequestInfo | URL, init?: RequestInit) {
             const body = JSON.parse(String(init?.body)) as {
               messageId: string;
               operation: string;
+              chunkDigests?: string[];
+              chunkIndex?: number;
+              chunkDigest?: string;
             };
             const key = `${name}:${body.messageId}`;
             const value = values.get(key) ?? {};
@@ -52,13 +61,44 @@ function namespace(): {
               values.set(key, value);
               return Response.json({ released: true });
             }
-            if (body.operation === "claim_egress") {
-              if (value.delivery) return Response.json({ claimed: false });
-              value.delivery = "egress_started";
+            if (body.operation === "prepare_plan") {
+              if (
+                value.plan &&
+                value.plan.join(":") !== body.chunkDigests?.join(":")
+              ) {
+                return Response.json({ plan: "conflict" });
+              }
+              value.plan = body.chunkDigests ?? [];
+              values.set(key, value);
+              return Response.json({ plan: "prepared" });
+            }
+            const chunkIndex = body.chunkIndex ?? -1;
+            value.chunks ??= new Map();
+            if (body.operation === "read_chunk") {
+              return Response.json({
+                state: value.chunks.get(chunkIndex) ?? null,
+              });
+            }
+            if (body.operation === "claim_chunk") {
+              if (value.chunks.has(chunkIndex)) {
+                return Response.json({ claimed: false });
+              }
+              value.chunks.set(chunkIndex, "uncertain");
               values.set(key, value);
               return Response.json({ claimed: true });
             }
-            value.delivery = "delivered";
+            if (body.operation === "release_chunk") {
+              value.chunks.delete(chunkIndex);
+              values.set(key, value);
+              return Response.json({ released: true });
+            }
+            if (body.operation === "mark_chunk_delivered") {
+              value.chunks.set(chunkIndex, "delivered");
+              values.set(key, value);
+              return Response.json({ delivered: true });
+            }
+            value.delivery =
+              body.operation === "mark_uncertain" ? "uncertain" : "delivered";
             values.set(key, value);
             return Response.json({ delivered: true });
           },
@@ -289,5 +329,73 @@ describe("Personal Shared Telegram edge", () => {
     expect(forwardedUrl).toBe(
       "https://gateway.example.test/webhook/eliza-app/telegram/agent-123",
     );
+  });
+
+  test("serves the authenticated Railway ledger from a token-independent Durable Object", async () => {
+    const ledger = namespace();
+    const app = new Hono<AppEnv>();
+    app.route("/api/eliza-app/webhook/telegram", telegramRoute);
+    const request = () =>
+      new Request(
+        "https://api-staging.eliza.app/api/eliza-app/webhook/telegram/delivery",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Eliza-Webhook-Forwarder-Secret": "gateway-secret",
+          },
+          body: JSON.stringify({
+            project: "eliza-app",
+            senderId: "123456",
+            messageId: "81607",
+            operation: "prepare_plan",
+            chunkDigests: ["a".repeat(64)],
+          }),
+        },
+      );
+    const env = {
+      ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
+      PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
+    } as AppEnv["Bindings"];
+
+    expect((await app.fetch(request(), env, executionContext())).status).toBe(
+      200,
+    );
+    expect((await app.fetch(request(), env, executionContext())).status).toBe(
+      200,
+    );
+    expect(new Set(ledger.names)).toEqual(
+      new Set(["telegram:eliza-app:personal-shared:123456"]),
+    );
+    const unauthorized = request();
+    unauthorized.headers.set("X-Eliza-Webhook-Forwarder-Secret", "wrong");
+    expect(
+      (await app.fetch(unauthorized, env, executionContext())).status,
+    ).toBe(401);
+  });
+
+  test("accepts the gateway edge handoff while public cutover is false and rechecks provider auth", async () => {
+    const app = new Hono<AppEnv>();
+    app.route("/api/eliza-app/webhook/telegram", telegramRoute);
+    const inbound = telegramRequest(81608);
+    const request = new Request(
+      "https://api-staging.eliza.app/api/eliza-app/webhook/telegram/edge",
+      inbound,
+    );
+    request.headers.set("X-Eliza-Webhook-Forwarder-Secret", "gateway-secret");
+    request.headers.set("X-Telegram-Bot-Api-Secret-Token", "wrong-provider");
+
+    const response = await app.fetch(
+      request,
+      {
+        PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED: "false",
+        ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
+        ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
+        ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      } as AppEnv["Bindings"],
+      executionContext(),
+    );
+
+    expect(response.status).toBe(401);
   });
 });

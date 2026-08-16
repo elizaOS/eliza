@@ -5,8 +5,8 @@ import {
 } from "@elizaos/cloud-services-common/response-attempts";
 import {
   executeTelegramDelivery,
+  type TelegramDeliveryHooks,
   type TelegramDeliveryLedger,
-  type TelegramDeliveryState,
   TelegramEgressAlreadyClaimedError,
 } from "@elizaos/cloud-services-common/telegram-delivery";
 import type {
@@ -32,9 +32,9 @@ const DEDUP_TTL_SECONDS = 300;
 // Must outlive the 75s non-idempotent message-forward budget plus Telegram
 // egress. Otherwise a provider retry can reclaim the update while the first
 // worker is still generating and execute the same user turn twice.
-const PROCESSING_TTL_SECONDS = 120;
 const PERSONAL_SHARED_ATTEMPTS = 3;
 const PERSONAL_SHARED_RETRY_DELAY_CAP_MS = 5_000;
+const PROCESSING_TTL_SECONDS = 120;
 const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
 const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
@@ -52,6 +52,7 @@ class PersonalSharedPreEgressError extends Error {
 interface HandlerDeps {
   redis: GatewayRedis;
   cloudBaseUrl: string;
+  deliveryAuthoritySecret?: string;
   getAuthHeader: () => { Authorization: string };
   reacquireAuthHeader?: () => Promise<Record<string, string>>;
 }
@@ -68,19 +69,155 @@ interface MessageTraceContext {
   gatewayReceivedAtMs: number;
 }
 
+async function reconcileLegacyTelegramDelivery(
+  deps: HandlerDeps,
+  project: string,
+  event: ChatEvent,
+  traceId: string,
+  operation: "mark_uncertain" | "mark_delivered",
+): Promise<"uncertain" | "delivered"> {
+  const secret = (deps.deliveryAuthoritySecret ?? "").trim();
+  if (!secret) {
+    throw new Error("Telegram delivery authority secret is not configured");
+  }
+  const response = await fetch(
+    `${deps.cloudBaseUrl}/api/eliza-app/webhook/telegram/delivery`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        [ELIZA_TRACE_ID_HEADER]: traceId,
+        "X-Eliza-Webhook-Forwarder-Secret": secret,
+      },
+      body: JSON.stringify({
+        project,
+        senderId: event.senderId,
+        messageId: event.messageId,
+        operation,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(
+      `Telegram delivery reconciliation failed (${response.status})`,
+    );
+  }
+  const body: unknown = await response.json();
+  if (
+    !body ||
+    typeof body !== "object" ||
+    !("state" in body) ||
+    (body.state !== "uncertain" && body.state !== "delivered")
+  ) {
+    throw new Error("Telegram delivery reconciliation returned invalid JSON");
+  }
+  return body.state;
+}
+
+async function forwardPersonalTelegramToEdge(
+  request: Request,
+  rawBody: string,
+  deps: HandlerDeps,
+  project: string,
+  event: ChatEvent,
+  dedupKey: string,
+  traceId: string,
+): Promise<Response> {
+  const secret = (deps.deliveryAuthoritySecret ?? "").trim();
+  if (!secret) {
+    throw new Error("Telegram delivery authority secret is not configured");
+  }
+  const legacy = await deps.redis.get<string>(dedupKey);
+  if (legacy === TELEGRAM_EGRESS_STARTED || legacy === TELEGRAM_DELIVERED) {
+    const reconciled = await reconcileLegacyTelegramDelivery(
+      deps,
+      project,
+      event,
+      traceId,
+      legacy === TELEGRAM_DELIVERED ? "mark_delivered" : "mark_uncertain",
+    );
+    if (reconciled === "delivered") {
+      await deps.redis.set(dedupKey, TELEGRAM_DELIVERED, {
+        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+      });
+      return ackResponse("telegram");
+    }
+    return new Response(
+      JSON.stringify({ error: "delivery outcome uncertain" }),
+      {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  }
+
+  const processingKey = `${dedupKey}:processing`;
+  const processingClaimed = await deps.redis.set(processingKey, "1", {
+    nx: true,
+    ex: PROCESSING_TTL_SECONDS,
+  });
+  if (!processingClaimed) {
+    return new Response(JSON.stringify({ error: "update in progress" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  try {
+    const marker = await deps.redis.get<string>(dedupKey);
+    if (!marker) {
+      await deps.redis.set(dedupKey, TELEGRAM_EGRESS_STARTED, {
+        nx: true,
+        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+      });
+    } else if (marker !== TELEGRAM_EGRESS_STARTED) {
+      throw new Error("Telegram delivery authority transition conflicted");
+    }
+    const telegramSignature =
+      request.headers.get("x-telegram-bot-api-secret-token") ?? "";
+    const response = await fetch(
+      `${deps.cloudBaseUrl}/api/eliza-app/webhook/telegram/edge`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [ELIZA_TRACE_ID_HEADER]: traceId,
+          "X-Eliza-Webhook-Forwarder-Secret": secret,
+          "X-Telegram-Bot-Api-Secret-Token": telegramSignature,
+        },
+        body: rawBody,
+        signal: AbortSignal.timeout(PERSONAL_SHARED_VOICE_TIMEOUT_MS),
+      },
+    );
+    if (response.ok) {
+      await deps.redis.set(dedupKey, TELEGRAM_DELIVERED, {
+        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+      });
+    }
+    return response;
+  } finally {
+    await deps.redis.del(processingKey);
+  }
+}
+
 function redisTelegramDeliveryLedger(
   redis: GatewayRedis,
   dedupKey: string,
 ): TelegramDeliveryLedger {
   const processingKey = `${dedupKey}:processing`;
+  const planKey = `${dedupKey}:plan`;
+  const chunkKey = (chunkIndex: number, chunkDigest: string) =>
+    `${dedupKey}:chunk:${chunkIndex}:${chunkDigest}`;
   return {
-    async read(): Promise<TelegramDeliveryState | null> {
+    async read() {
       const state = await redis.get<string>(dedupKey);
-      return state === TELEGRAM_EGRESS_STARTED || state === TELEGRAM_DELIVERED
-        ? state
-        : null;
+      if (state === TELEGRAM_EGRESS_STARTED || state === "uncertain") {
+        return "uncertain";
+      }
+      return state === TELEGRAM_DELIVERED ? "delivered" : null;
     },
-    async claimProcessing(): Promise<boolean> {
+    async claimProcessing() {
       return Boolean(
         await redis.set(processingKey, "1", {
           nx: true,
@@ -88,18 +225,45 @@ function redisTelegramDeliveryLedger(
         }),
       );
     },
-    async releaseProcessing(): Promise<void> {
+    async releaseProcessing() {
       await redis.del(processingKey);
     },
-    async claimEgress(): Promise<boolean> {
+    async preparePlan(chunkDigests) {
+      const encoded = JSON.stringify(chunkDigests);
+      const existing = await redis.get<string>(planKey);
+      if (existing !== null) {
+        return existing === encoded ? "prepared" : "conflict";
+      }
+      const claimed = await redis.set(planKey, encoded, {
+        nx: true,
+        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+      });
+      if (claimed) return "prepared";
+      return (await redis.get<string>(planKey)) === encoded
+        ? "prepared"
+        : "conflict";
+    },
+    async readChunk(chunkIndex, chunkDigest) {
+      const state = await redis.get<string>(chunkKey(chunkIndex, chunkDigest));
+      return state === "uncertain" || state === "delivered" ? state : null;
+    },
+    async claimChunk(chunkIndex, chunkDigest) {
       return Boolean(
-        await redis.set(dedupKey, TELEGRAM_EGRESS_STARTED, {
+        await redis.set(chunkKey(chunkIndex, chunkDigest), "uncertain", {
           nx: true,
           ex: TELEGRAM_DELIVERY_TTL_SECONDS,
         }),
       );
     },
-    async markDelivered(): Promise<void> {
+    async releaseChunk(chunkIndex, chunkDigest) {
+      await redis.del(chunkKey(chunkIndex, chunkDigest));
+    },
+    async markChunkDelivered(chunkIndex, chunkDigest) {
+      await redis.set(chunkKey(chunkIndex, chunkDigest), "delivered", {
+        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+      });
+    },
+    async markDelivered() {
       await redis.set(dedupKey, TELEGRAM_DELIVERED, {
         ex: TELEGRAM_DELIVERY_TTL_SECONDS,
       });
@@ -184,9 +348,28 @@ export async function handleWebhook(
   );
   if (adapter.platform === "telegram") {
     try {
+      const configuredPersonalProject =
+        (process.env.ELIZA_APP_WEBHOOK_PROJECT ?? "eliza-app").trim() ||
+        "eliza-app";
+      if (
+        !agentId &&
+        project === configuredPersonalProject &&
+        deps.deliveryAuthoritySecret !== undefined
+      ) {
+        return forwardPersonalTelegramToEdge(
+          request,
+          rawBody,
+          deps,
+          project,
+          event,
+          dedupKey,
+          trace.traceId,
+        );
+      }
+      const localLedger = redisTelegramDeliveryLedger(redis, dedupKey);
       const outcome = await executeTelegramDelivery(
-        redisTelegramDeliveryLedger(redis, dedupKey),
-        (beforeEgress) =>
+        localLedger,
+        (deliveryHooks) =>
           processMessage(
             adapter,
             config,
@@ -195,7 +378,7 @@ export async function handleWebhook(
             project,
             trace,
             agentId,
-            beforeEgress,
+            deliveryHooks,
           ),
       );
       if (outcome === "uncertain") {
@@ -318,7 +501,7 @@ async function processMessage(
   project: string,
   trace: MessageTraceContext,
   explicitAgentId?: string,
-  beforeEgress?: () => Promise<void>,
+  deliveryHooks?: TelegramDeliveryHooks,
 ): Promise<void> {
   const startedAt = Date.now();
   let stageStartedAt = startedAt;
@@ -338,8 +521,7 @@ async function processMessage(
     event.text,
   );
   if (linkAttempt.handled && linkAttempt.reply) {
-    await beforeEgress?.();
-    await adapter.sendReply(config, event, linkAttempt.reply);
+    await adapter.sendReply(config, event, linkAttempt.reply, deliveryHooks);
     return;
   }
 
@@ -358,7 +540,7 @@ async function processMessage(
         deps,
         project,
         trace.traceId,
-        beforeEgress,
+        deliveryHooks,
       );
       logger.info("Personal Eliza connector message completed", {
         project,
@@ -409,7 +591,7 @@ async function processMessage(
       deps,
       project,
       trace.traceId,
-      beforeEgress,
+      deliveryHooks,
     );
     return;
   }
@@ -466,7 +648,7 @@ async function processMessage(
       deps,
       project,
       trace.traceId,
-      beforeEgress,
+      deliveryHooks,
     );
     return;
   }
@@ -526,8 +708,7 @@ async function processMessage(
 
   try {
     stageStartedAt = Date.now();
-    await beforeEgress?.();
-    await adapter.sendReply(config, event, responseText);
+    await adapter.sendReply(config, event, responseText, deliveryHooks);
     logger.info("Connector message completed", {
       project,
       platform: adapter.platform,
@@ -619,7 +800,7 @@ async function sendUnlinkedReply(
   deps: HandlerDeps,
   project: string,
   traceId: string,
-  beforeEgress?: () => Promise<void>,
+  deliveryHooks?: TelegramDeliveryHooks,
 ): Promise<void> {
   if (
     adapter.platform === "telegram" ||
@@ -633,11 +814,11 @@ async function sendUnlinkedReply(
       deps,
       project,
       traceId,
-      beforeEgress,
+      deliveryHooks,
     );
     return;
   }
-  await sendOnboardingReply(adapter, config, event, deps, beforeEgress);
+  await sendOnboardingReply(adapter, config, event, deps, deliveryHooks);
 }
 
 async function sendPersonalSharedReply(
@@ -647,7 +828,7 @@ async function sendPersonalSharedReply(
   deps: HandlerDeps,
   project: string,
   traceId: string,
-  beforeEgress?: () => Promise<void>,
+  deliveryHooks?: TelegramDeliveryHooks,
 ): Promise<PersonalSharedDeliveryTiming> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
@@ -799,8 +980,7 @@ async function sendPersonalSharedReply(
     };
   }
   const egressStartedAt = Date.now();
-  await beforeEgress?.();
-  await adapter.sendReply(config, event, reply);
+  await adapter.sendReply(config, event, reply, deliveryHooks);
   return {
     cloudMs,
     cloudAttempts: attemptResult.attempts,
@@ -814,7 +994,7 @@ async function sendOnboardingReply(
   config: WebhookConfig,
   event: ChatEvent,
   deps: HandlerDeps,
-  beforeEgress?: () => Promise<void>,
+  deliveryHooks?: TelegramDeliveryHooks,
 ): Promise<void> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
@@ -878,8 +1058,7 @@ async function sendOnboardingReply(
   if (typeof reply !== "string" || reply.trim().length === 0) {
     throw new Error("onboarding chat returned no reply");
   }
-  await beforeEgress?.();
-  await adapter.sendReply(config, event, reply);
+  await adapter.sendReply(config, event, reply, deliveryHooks);
 }
 
 function ackResponse(platform: Platform): Response {

@@ -57,6 +57,7 @@
     "@types/ws": "^8.18.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
     "miniflare": "4.20260730.0",
     "pg": "^8.23.0",
     "typescript": "^6.0.3",

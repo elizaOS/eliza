@@ -47,13 +47,17 @@ function durableState(storage = new MemoryStorage()): DurableObjectState {
   return { storage } as unknown as DurableObjectState;
 }
 
-function operation(messageId: string, value: string): Request {
+function operation(
+  messageId: string,
+  value: string,
+  input: Record<string, unknown> = {},
+): Request {
   return new Request(
     `https://personal-telegram-delivery${PERSONAL_TELEGRAM_DELIVERY_PATH}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageId, operation: value }),
+      body: JSON.stringify({ messageId, operation: value, ...input }),
     },
   );
 }
@@ -63,25 +67,56 @@ async function json(response: Promise<Response>): Promise<unknown> {
 }
 
 describe("PersonalTelegramDelivery", () => {
-  test("persists the irreversible egress state across object eviction", async () => {
+  test("persists an uncertain chunk across object eviction", async () => {
     const storage = new MemoryStorage();
     const first = new PersonalTelegramDelivery(
       durableState(storage),
       {} as AppEnv["Bindings"],
     );
-    expect(await json(first.fetch(operation("123", "claim_egress")))).toEqual({
-      claimed: true,
-    });
+    const chunkDigest = "a".repeat(64);
+    expect(
+      await json(
+        first.fetch(
+          operation("123", "prepare_plan", {
+            chunkDigests: [chunkDigest],
+          }),
+        ),
+      ),
+    ).toEqual({ plan: "prepared" });
+    expect(
+      await json(
+        first.fetch(
+          operation("123", "claim_chunk", {
+            chunkIndex: 0,
+            chunkDigest,
+          }),
+        ),
+      ),
+    ).toEqual({ claimed: true });
 
     const afterEviction = new PersonalTelegramDelivery(
       durableState(storage),
       {} as AppEnv["Bindings"],
     );
-    expect(await json(afterEviction.fetch(operation("123", "read")))).toEqual({
-      state: "egress_started",
-    });
     expect(
-      await json(afterEviction.fetch(operation("123", "claim_egress"))),
+      await json(
+        afterEviction.fetch(
+          operation("123", "read_chunk", {
+            chunkIndex: 0,
+            chunkDigest,
+          }),
+        ),
+      ),
+    ).toEqual({ state: "uncertain" });
+    expect(
+      await json(
+        afterEviction.fetch(
+          operation("123", "claim_chunk", {
+            chunkIndex: 0,
+            chunkDigest,
+          }),
+        ),
+      ),
     ).toEqual({ claimed: false });
   });
 
@@ -109,16 +144,31 @@ describe("PersonalTelegramDelivery", () => {
       durableState(),
       {} as AppEnv["Bindings"],
     );
-    await object.fetch(operation("789", "claim_egress"));
     expect(
       await json(object.fetch(operation("789", "mark_delivered"))),
-    ).toEqual({ delivered: true });
+    ).toEqual({ state: "delivered" });
     expect(await json(object.fetch(operation("789", "read")))).toEqual({
       state: "delivered",
     });
     expect((await object.fetch(operation("../secret", "read"))).status).toBe(
       400,
     );
+  });
+
+  test("never downgrades a delivered turn during legacy reconciliation", async () => {
+    const object = new PersonalTelegramDelivery(
+      durableState(),
+      {} as AppEnv["Bindings"],
+    );
+    expect(
+      await json(object.fetch(operation("790", "mark_delivered"))),
+    ).toEqual({ state: "delivered" });
+    expect(
+      await json(object.fetch(operation("790", "mark_uncertain"))),
+    ).toEqual({ state: "delivered" });
+    expect(await json(object.fetch(operation("790", "read")))).toEqual({
+      state: "delivered",
+    });
   });
 
   test("physically deletes expired keys and schedules the next live expiration", async () => {

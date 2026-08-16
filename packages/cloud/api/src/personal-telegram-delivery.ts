@@ -13,12 +13,17 @@ const PROCESSING_TTL_MS = 120_000;
 const DELIVERY_TTL_MS = 30 * 24 * 60 * 60_000;
 const MESSAGE_ID_RE = /^\d{1,32}$/;
 
-type DeliveryState = "egress_started" | "delivered";
+type DeliveryState = "uncertain" | "delivered";
 type DeliveryOperation =
   | "read"
   | "claim_processing"
   | "release_processing"
-  | "claim_egress"
+  | "prepare_plan"
+  | "read_chunk"
+  | "claim_chunk"
+  | "release_chunk"
+  | "mark_chunk_delivered"
+  | "mark_uncertain"
   | "mark_delivered";
 
 interface ExpiringState<T> {
@@ -29,19 +34,53 @@ interface ExpiringState<T> {
 interface DeliveryRequest {
   messageId: string;
   operation: DeliveryOperation;
+  chunkDigests?: string[];
+  chunkIndex?: number;
+  chunkDigest?: string;
 }
+
+const CHUNK_DIGEST_RE = /^[0-9a-f]{64}$/;
+const MAX_REPLY_CHUNKS = 64;
 
 function isDeliveryRequest(value: unknown): value is DeliveryRequest {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.messageId !== "string" ||
+    !MESSAGE_ID_RE.test(candidate.messageId)
+  ) {
+    return false;
+  }
+  const operation = candidate.operation;
+  if (
+    operation === "read" ||
+    operation === "claim_processing" ||
+    operation === "release_processing" ||
+    operation === "mark_uncertain" ||
+    operation === "mark_delivered"
+  ) {
+    return true;
+  }
+  if (operation === "prepare_plan") {
+    return (
+      Array.isArray(candidate.chunkDigests) &&
+      candidate.chunkDigests.length <= MAX_REPLY_CHUNKS &&
+      candidate.chunkDigests.every(
+        (digest) => typeof digest === "string" && CHUNK_DIGEST_RE.test(digest),
+      )
+    );
+  }
   return (
-    typeof candidate.messageId === "string" &&
-    MESSAGE_ID_RE.test(candidate.messageId) &&
-    (candidate.operation === "read" ||
-      candidate.operation === "claim_processing" ||
-      candidate.operation === "release_processing" ||
-      candidate.operation === "claim_egress" ||
-      candidate.operation === "mark_delivered")
+    (operation === "read_chunk" ||
+      operation === "claim_chunk" ||
+      operation === "release_chunk" ||
+      operation === "mark_chunk_delivered") &&
+    typeof candidate.chunkIndex === "number" &&
+    Number.isInteger(candidate.chunkIndex) &&
+    candidate.chunkIndex >= 0 &&
+    candidate.chunkIndex < MAX_REPLY_CHUNKS &&
+    typeof candidate.chunkDigest === "string" &&
+    CHUNK_DIGEST_RE.test(candidate.chunkDigest)
   );
 }
 
@@ -51,6 +90,24 @@ function processingKey(messageId: string): string {
 
 function deliveryKey(messageId: string): string {
   return `delivery:${messageId}`;
+}
+
+function planKey(messageId: string): string {
+  return `plan:${messageId}`;
+}
+
+function chunkKey(messageId: string, chunkIndex: number): string {
+  return `chunk:${messageId}:${chunkIndex}`;
+}
+
+function plansEqual(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((digest, index) => digest === right[index])
+  );
 }
 
 export class PersonalTelegramDelivery {
@@ -112,26 +169,78 @@ export class PersonalTelegramDelivery {
       await this.state.storage.delete(processingStorageKey);
       return Response.json({ released: true });
     }
-    if (input.operation === "claim_egress") {
-      const existing =
-        await this.readExpiring<DeliveryState>(deliveryStorageKey);
-      if (existing) return Response.json({ claimed: false });
+    if (input.operation === "prepare_plan") {
+      const chunkDigests = input.chunkDigests ?? [];
+      const storageKey = planKey(input.messageId);
+      const existing = await this.readExpiring<string[]>(storageKey);
+      if (existing) {
+        return Response.json({
+          plan: plansEqual(existing, chunkDigests) ? "prepared" : "conflict",
+        });
+      }
       const expiresAt = Date.now() + DELIVERY_TTL_MS;
-      await this.state.storage.put(deliveryStorageKey, {
-        value: "egress_started",
+      await this.state.storage.put(storageKey, {
+        value: chunkDigests,
+        expiresAt,
+      } satisfies ExpiringState<string[]>);
+      await this.scheduleCleanup(expiresAt);
+      return Response.json({ plan: "prepared" });
+    }
+    if (
+      input.operation === "read_chunk" ||
+      input.operation === "claim_chunk" ||
+      input.operation === "release_chunk" ||
+      input.operation === "mark_chunk_delivered"
+    ) {
+      const chunkIndex = input.chunkIndex ?? -1;
+      const chunkDigest = input.chunkDigest ?? "";
+      const plan = await this.readExpiring<string[]>(planKey(input.messageId));
+      if (!plan || plan[chunkIndex] !== chunkDigest) {
+        return Response.json(
+          { error: "Telegram chunk does not match plan" },
+          { status: 409 },
+        );
+      }
+      const storageKey = chunkKey(input.messageId, chunkIndex);
+      if (input.operation === "read_chunk") {
+        const state = await this.readExpiring<DeliveryState>(storageKey);
+        return Response.json({ state });
+      }
+      if (input.operation === "release_chunk") {
+        await this.state.storage.delete(storageKey);
+        return Response.json({ released: true });
+      }
+      if (input.operation === "claim_chunk") {
+        const existing = await this.readExpiring<DeliveryState>(storageKey);
+        if (existing) return Response.json({ claimed: false });
+        const expiresAt = Date.now() + DELIVERY_TTL_MS;
+        await this.state.storage.put(storageKey, {
+          value: "uncertain",
+          expiresAt,
+        } satisfies ExpiringState<DeliveryState>);
+        await this.scheduleCleanup(expiresAt);
+        return Response.json({ claimed: true });
+      }
+      const expiresAt = Date.now() + DELIVERY_TTL_MS;
+      await this.state.storage.put(storageKey, {
+        value: "delivered",
         expiresAt,
       } satisfies ExpiringState<DeliveryState>);
       await this.scheduleCleanup(expiresAt);
-      return Response.json({ claimed: true });
+      return Response.json({ delivered: true });
     }
+    const existing = await this.readExpiring<DeliveryState>(deliveryStorageKey);
+    const requested =
+      input.operation === "mark_uncertain" ? "uncertain" : "delivered";
+    const value = existing === "delivered" ? "delivered" : requested;
     const expiresAt = Date.now() + DELIVERY_TTL_MS;
     await this.state.storage.put(deliveryStorageKey, {
-      value: "delivered",
+      value,
       expiresAt,
     } satisfies ExpiringState<DeliveryState>);
     await this.state.storage.delete(processingStorageKey);
     await this.scheduleCleanup(expiresAt);
-    return Response.json({ delivered: true });
+    return Response.json({ state: value });
   }
 
   async alarm(): Promise<void> {

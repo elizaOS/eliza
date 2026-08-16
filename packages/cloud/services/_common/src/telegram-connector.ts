@@ -9,6 +9,7 @@ const MAX_MESSAGE_LENGTH = 4096;
 export const TELEGRAM_HOSTED_FILE_MAX_BYTES = 20 * 1024 * 1024;
 export const TELEGRAM_VOICE_MAX_BYTES = 8 * 1024 * 1024;
 const TELEGRAM_API_TIMEOUT_MS = 10_000;
+const TELEGRAM_REJECTION_RETRY_CAP_MS = 5_000;
 export const TELEGRAM_VOICE_MAX_DURATION_SECONDS = 15 * 60;
 const TELEGRAM_FILE_FETCH_TIMEOUT_MS = 30_000;
 
@@ -45,6 +46,17 @@ export interface TelegramDeliveryReceipt {
   providerMessageIds: string[];
 }
 
+export interface TelegramReplyDeliveryHooks {
+  prepare(chunks: readonly string[]): Promise<void>;
+  shouldSend(chunkIndex: number, chunk: string): Promise<boolean>;
+  accepted(
+    chunkIndex: number,
+    chunk: string,
+    providerMessageId: string,
+  ): Promise<void>;
+  rejected(chunkIndex: number, chunk: string): Promise<void>;
+}
+
 export interface TelegramResolvedVoiceNote {
   bytesBase64: string;
   mimeType: "audio/ogg";
@@ -78,7 +90,7 @@ interface TelegramUpdate {
   message?: TelegramMessage;
 }
 
-class TelegramApiTransportError extends Error {
+export class TelegramApiTransportError extends Error {
   constructor(method: string) {
     super(`Telegram API ${method} transport failed`);
     this.name = "TelegramApiTransportError";
@@ -129,6 +141,7 @@ export function parseTelegramWebhook(
   try {
     update = JSON.parse(rawBody) as TelegramUpdate;
   } catch {
+    // error-policy:J3 provider webhook JSON is untrusted input.
     logger?.warn("Failed to parse Telegram webhook payload");
     return null;
   }
@@ -227,10 +240,7 @@ async function telegramApi<T>(
     data = (await response.json()) as typeof data;
   } catch {
     // error-policy:J3 Telegram is an untrusted JSON boundary.
-    throw new TelegramApiResponseError(
-      "Telegram API returned invalid JSON",
-      response.status,
-    );
+    throw new TelegramApiTransportError(method);
   }
   if (!data.ok) {
     const errorCode =
@@ -257,7 +267,10 @@ async function telegramApi<T>(
   return data.result as T;
 }
 
-function splitMessage(text: string, maxLength = MAX_MESSAGE_LENGTH): string[] {
+export function splitTelegramMessage(
+  text: string,
+  maxLength = MAX_MESSAGE_LENGTH,
+): string[] {
   const chunks: string[] = [];
   if (!text) return chunks;
   let current = "";
@@ -287,33 +300,75 @@ export async function sendTelegramReply(
   event: TelegramConnectorEvent,
   text: string,
   logger?: TelegramConnectorLogger,
+  deliveryHooks?: TelegramReplyDeliveryHooks,
 ): Promise<TelegramDeliveryReceipt> {
   if (!config.botToken) throw new Error("Missing botToken for Telegram reply");
   const providerMessageIds: string[] = [];
-  for (const chunk of splitMessage(text)) {
-    try {
-      const message = await telegramApi<TelegramMessage>(
-        config.botToken,
-        "sendMessage",
-        { chat_id: event.chatId, text: chunk, parse_mode: "Markdown" },
-      );
-      providerMessageIds.push(String(message.message_id));
-    } catch (error) {
+  const chunks = splitTelegramMessage(text);
+  await deliveryHooks?.prepare(chunks);
+  for (const [chunkIndex, chunk] of chunks.entries()) {
+    let rejectionRetries = 0;
+    while (true) {
       if (
-        !(error instanceof TelegramApiResponseError) ||
-        !isMarkdownFormattingRejection(error)
+        deliveryHooks &&
+        !(await deliveryHooks.shouldSend(chunkIndex, chunk))
       ) {
-        throw error;
+        break;
       }
-      logger?.warn("Telegram sendMessage failed, retrying without Markdown", {
-        error: error.message,
-      });
-      const message = await telegramApi<TelegramMessage>(
-        config.botToken,
-        "sendMessage",
-        { chat_id: event.chatId, text: chunk },
-      );
-      providerMessageIds.push(String(message.message_id));
+      try {
+        let message: TelegramMessage;
+        try {
+          message = await telegramApi<TelegramMessage>(
+            config.botToken,
+            "sendMessage",
+            { chat_id: event.chatId, text: chunk, parse_mode: "Markdown" },
+          );
+        } catch (error) {
+          // error-policy:J4 retry without formatting only for Telegram's exact parse rejection.
+          if (
+            !(error instanceof TelegramApiResponseError) ||
+            !isMarkdownFormattingRejection(error)
+          ) {
+            throw error;
+          }
+          logger?.warn(
+            "Telegram sendMessage failed, retrying without Markdown",
+            { error: error.message },
+          );
+          message = await telegramApi<TelegramMessage>(
+            config.botToken,
+            "sendMessage",
+            { chat_id: event.chatId, text: chunk },
+          );
+        }
+        const providerMessageId = String(message.message_id);
+        await deliveryHooks?.accepted(chunkIndex, chunk, providerMessageId);
+        providerMessageIds.push(providerMessageId);
+        break;
+      } catch (error) {
+        // error-policy:J1 translate typed provider rejection at the delivery boundary.
+        if (!(error instanceof TelegramApiResponseError)) throw error;
+        await deliveryHooks?.rejected(chunkIndex, chunk);
+        if (
+          !deliveryHooks ||
+          error.errorCode !== 429 ||
+          rejectionRetries >= 1 ||
+          error.retryAfterSeconds === undefined
+        ) {
+          throw error;
+        }
+        const retryAfterSeconds = error.retryAfterSeconds;
+        rejectionRetries += 1;
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            Math.min(
+              retryAfterSeconds * 1_000,
+              TELEGRAM_REJECTION_RETRY_CAP_MS,
+            ),
+          ),
+        );
+      }
     }
   }
   return { providerMessageIds };
