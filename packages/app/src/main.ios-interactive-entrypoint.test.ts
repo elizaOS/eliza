@@ -17,7 +17,7 @@ const iosBoot = vi.hoisted(() => ({
   createRoot: vi.fn(),
   runEmbedHandshake: vi.fn(async () => undefined),
   registerServiceWorker: vi.fn(),
-  setAccessoryBarVisible: vi.fn(async () => undefined),
+  initializeAccessoryBar: vi.fn(async () => undefined),
   keyboardListeners: new Map<string, (value?: unknown) => void>(),
   lifecycleDependencies: undefined as
     | { handleDeepLink: (url: string) => void }
@@ -42,6 +42,9 @@ vi.mock("@elizaos/ui/bridge/storage-bridge", () => ({
 vi.mock("@elizaos/ui/bridge/capacitor-bridge", () => ({
   initializeCapacitorBridge: iosBoot.initializeCapacitor,
 }));
+vi.mock("@elizaos/ui/components/shell/ios-chat-accessory-bar", () => ({
+  initializeIosKeyboardAccessoryBar: iosBoot.initializeAccessoryBar,
+}));
 vi.mock("@elizaos/app-core/api/ios-local-agent-transport", () => ({
   installIosLocalAgentNativeRequestBridge: iosBoot.installNativeRequest,
   installIosLocalAgentFetchBridge: iosBoot.installFetch,
@@ -61,7 +64,6 @@ vi.mock("@capacitor/keyboard", () => ({
   Keyboard: {
     setResizeMode: vi.fn(async () => undefined),
     setScroll: vi.fn(async () => undefined),
-    setAccessoryBarVisible: iosBoot.setAccessoryBarVisible,
     addListener: vi.fn((name: string, listener: (value?: unknown) => void) => {
       iosBoot.keyboardListeners.set(name, listener);
       return Promise.resolve({ remove: vi.fn(async () => undefined) });
@@ -145,10 +147,7 @@ describe("renderer interactive iOS composition", () => {
     await vi.waitFor(() =>
       expect(iosBoot.initializeAppLifecycle).toHaveBeenCalledOnce(),
     );
-    expect(iosBoot.setAccessoryBarVisible).toHaveBeenCalledOnce();
-    expect(iosBoot.setAccessoryBarVisible).toHaveBeenCalledWith({
-      isVisible: true,
-    });
+    expect(iosBoot.initializeAccessoryBar).toHaveBeenCalledOnce();
 
     expect(main.isIOS).toBe(true);
     expect(main.isNative).toBe(true);

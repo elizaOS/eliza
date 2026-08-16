@@ -81,6 +81,7 @@ import {
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
+import { initializeIosKeyboardAccessoryBar } from "@elizaos/ui/components/shell/ios-chat-accessory-bar";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
@@ -1933,7 +1934,7 @@ async function initializeKeyboard(): Promise<void> {
       await Keyboard.setScroll({ isDisabled: true });
       // Preserve WebKit's navigation/dismissal accessory for every ordinary
       // form. The chat composer suppresses it only while that field owns focus.
-      await Keyboard.setAccessoryBarVisible({ isVisible: true });
+      await initializeIosKeyboardAccessoryBar();
     }
 
     keyboardListenersRegistered = true;

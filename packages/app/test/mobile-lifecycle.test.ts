@@ -97,12 +97,16 @@ const { appListeners, networkListeners, capacitorAppMock, networkMock } =
 const keyboardMock = vi.hoisted(() => ({
   setResizeMode: vi.fn(async () => undefined),
   setScroll: vi.fn(async () => undefined),
-  setAccessoryBarVisible: vi.fn(async () => undefined),
   addListener: vi.fn(async () => ({ remove: async () => undefined })),
 }));
 
+const initializeAccessoryBar = vi.hoisted(() => vi.fn(async () => undefined));
+
 vi.mock("@capacitor/app", () => ({ App: capacitorAppMock }));
 vi.mock("@capacitor/network", () => ({ Network: networkMock }));
+vi.mock("@elizaos/ui/components/shell/ios-chat-accessory-bar", () => ({
+  initializeIosKeyboardAccessoryBar: initializeAccessoryBar,
+}));
 // `mobile-lifecycle.ts` imports these statically; only the app lifecycle and
 // network paths are exercised here, so the keyboard module just needs to load.
 vi.mock("@capacitor/keyboard", () => ({
@@ -206,10 +210,7 @@ describe("createMobileLifecycle — keyboard", () => {
 
     await lifecycle.initializeKeyboard();
 
-    expect(keyboardMock.setAccessoryBarVisible).toHaveBeenCalledOnce();
-    expect(keyboardMock.setAccessoryBarVisible).toHaveBeenCalledWith({
-      isVisible: true,
-    });
+    expect(initializeAccessoryBar).toHaveBeenCalledOnce();
   });
 });
 
