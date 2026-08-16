@@ -110,11 +110,35 @@ describe("formatDurationMs", () => {
 });
 
 describe("formatUsd", () => {
-  it("renders grouped USD, accepts numeric strings, falls back on junk", () => {
+  it("renders grouped USD and accepts complete decimal strings", () => {
     expect(formatUsd(1234.56)).toBe("$1,234.56");
-    expect(formatUsd("1234.5")).toBe("$1,234.50");
+    expect(formatUsd(" 1234.5 ")).toBe("$1,234.50");
+    expect(formatUsd("+12.")).toBe("$12.00");
+    expect(formatUsd("-.5")).toBe("-$0.50");
+    expect(formatUsd("1.25e2")).toBe("$125.00");
+    expect(formatUsd("1e-2")).toBe("$0.01");
+  });
+
+  it.each([
+    ["missing", null],
+    ["undefined", undefined],
+    ["empty", ""],
+    ["whitespace", "   "],
+    ["plain junk", "abc"],
+    ["currency suffix", "12.50USD"],
+    ["junk after exponent", "1e2junk"],
+    ["hexadecimal", "0x10"],
+    ["binary", "0b10"],
+    ["octal", "0o10"],
+    ["incomplete exponent", "1e"],
+    ["double sign", "--1"],
+    ["non-finite number", Number.POSITIVE_INFINITY],
+  ])("falls back for %s input", (_label, value) => {
+    expect(formatUsd(value)).toBe("—");
+  });
+
+  it("uses a custom fallback for invalid input", () => {
     expect(formatUsd(null)).toBe("—");
-    expect(formatUsd("abc")).toBe("—");
     expect(formatUsd(undefined, { fallback: "n/a" })).toBe("n/a");
   });
 });
