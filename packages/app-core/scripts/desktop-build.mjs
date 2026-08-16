@@ -1371,6 +1371,17 @@ function stageDesktopBuild() {
     "Ensuring Electrobun workspace dependencies are installed",
   );
 
+  // The renderer is built by invoking the vite binary directly, which bypasses
+  // the app package's `prebuild` hook. Since the Cloud/eliza.app consolidation
+  // the app's public web entry imports the homepage's generated
+  // `src/generated/release-data.ts`, so the generator must run first or vite
+  // fails with UNLOADABLE_DEPENDENCY (#16212). The generator is offline-safe:
+  // it writes a fallback file when the GitHub releases API is unreachable.
+  runBun([path.join(SCRIPT_DIR, "write-homepage-release-data.mjs")], {
+    cwd: ROOT,
+    label: "Generating homepage release data for the renderer build",
+  });
+
   // Capture the moment the renderer build starts so we can prove afterward that
   // a FRESH bundle was produced — not a stale dist silently reused (issue #9309).
   const rendererBuildStartedAt = Date.now() - 1000;
