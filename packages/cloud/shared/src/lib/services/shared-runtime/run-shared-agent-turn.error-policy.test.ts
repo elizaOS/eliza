@@ -267,7 +267,9 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
       }),
     );
     expect(streamed.blockedSecondaryCapabilities?.[0]?.capability).toBe("communications");
-    expect(recordedReplies).toEqual([turn.reply, parts.at(-1)?.text]);
+    // Streaming persistence is owned by SharedRuntimeChatService so cancellation
+    // and retries converge on the transport's stable message ids.
+    expect(recordedReplies).toEqual([turn.reply]);
   });
 
   test("tells the model the same capability truth for ambiguous follow-ups", async () => {

@@ -586,6 +586,7 @@ describe("SharedRuntimeChatService", () => {
   });
 
   test("streams successful primary effects together with blocked secondary capability results", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     const blockedCommunication = {
       capability: "communications",
       label: "Calls and messages",
@@ -613,6 +614,12 @@ describe("SharedRuntimeChatService", () => {
     expect(body).toContain(JSON.stringify(expectedTodoActionResult));
     expect(body).toContain('"actionName":"DEDICATED_CAPABILITY_REQUIRED"');
     expect(body).toContain('"capability":"communications"');
+    expect(memoryPairs).toEqual([
+      expect.objectContaining({
+        assistantReply: "Created: [ ] Buy milk\n\nI can't initiate a separate email.",
+        interrupted: false,
+      }),
+    ]);
   });
 
   test("enables reminders only for platform-funded turns with trusted private delivery", async () => {
