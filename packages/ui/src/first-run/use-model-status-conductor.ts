@@ -21,7 +21,6 @@ import type { ConversationMessage } from "../api";
 import { client } from "../api";
 import { useShellControllerContext } from "../components/shell/ShellControllerContext.hooks";
 import type { HomeModelStatus } from "../services/local-inference/home-model-status";
-import { TEXT_GENERATION_SLOTS } from "../services/local-inference/types";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import {
   MODEL_ACTION_PREFIX,
@@ -243,11 +242,8 @@ export function useModelStatusConductor(status: HomeModelStatus): void {
           choices: [],
         });
         busyRef.current = true;
-        void Promise.all(
-          TEXT_GENERATION_SLOTS.map((slot) =>
-            client.setLocalInferencePreferredProvider(slot, "elizacloud"),
-          ),
-        )
+        void client
+          .setLocalInferenceTextRouting("elizacloud", "manual")
           // error-policy:J4 — a failed provider switch is surfaced as a card.
           .catch((err: unknown) => {
             pinOverride({

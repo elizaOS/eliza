@@ -175,6 +175,10 @@ declare module "./client-base" {
       slot: AgentModelSlot,
       provider: string | null,
     ): Promise<{ preferences: RoutingPreferences }>;
+    setLocalInferenceTextRouting(
+      provider: string,
+      policy?: RoutingPolicy,
+    ): Promise<{ preferences: RoutingPreferences }>;
     setLocalInferencePolicy(
       slot: AgentModelSlot,
       policy: RoutingPolicy | null,
@@ -376,6 +380,17 @@ ElizaClient.prototype.setLocalInferencePreferredProvider = async function (
   return this.fetch("/api/local-inference/routing/preferred", {
     method: "POST",
     body: JSON.stringify({ slot, provider }),
+  });
+};
+
+ElizaClient.prototype.setLocalInferenceTextRouting = async function (
+  this: ElizaClient,
+  provider: string,
+  policy: RoutingPolicy = "manual",
+) {
+  return this.fetch("/api/local-inference/routing/text", {
+    method: "POST",
+    body: JSON.stringify({ provider, policy }),
   });
 };
 
