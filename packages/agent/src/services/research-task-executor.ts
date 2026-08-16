@@ -7,6 +7,7 @@ import {
   type IAgentRuntime,
   isElizaError,
   ModelType,
+  type ResearchResult,
 } from "@elizaos/core";
 import type { TaskExecutor, TaskResult, TaskSpec } from "./task-executor.ts";
 
@@ -27,24 +28,14 @@ export class ResearchTaskExecutor implements TaskExecutor {
   async execute(spec: TaskSpec, runtime: IAgentRuntime): Promise<TaskResult> {
     const startTime = Date.now();
     try {
-      let researchResult:
-        | {
-            text?: string;
-            annotations?: Array<{ url?: string; title?: string }>;
-          }
-        | string;
+      let researchResult: ResearchResult;
       try {
         researchResult = (await runtime.useModel(ModelType.RESEARCH, {
           input: spec.description,
           tools: [{ type: "web_search_preview" }],
-          background: true,
+          background: false,
           reasoningSummary: "auto",
-        })) as
-          | {
-              text?: string;
-              annotations?: Array<{ url?: string; title?: string }>;
-            }
-          | string;
+        })) as ResearchResult;
       } catch (cause) {
         // error-policy:J2 provider errors gain a stable research-task code and
         // preserve their cause before the executor boundary translates them.
@@ -60,10 +51,33 @@ export class ResearchTaskExecutor implements TaskExecutor {
         );
       }
 
-      const output =
-        typeof researchResult === "string"
-          ? researchResult
-          : (researchResult.text ?? "");
+      if (researchResult.status === "failed") {
+        throw new ElizaError(
+          "The research provider reported a terminal failure",
+          {
+            code: "RESEARCH_FAILED_RESULT",
+            context: { taskId: spec.id, responseId: researchResult.id },
+          },
+        );
+      }
+      if (
+        researchResult.status === "queued" ||
+        researchResult.status === "in_progress"
+      ) {
+        throw new ElizaError(
+          `The research provider returned a non-terminal ${researchResult.status} result`,
+          {
+            code: "RESEARCH_NON_TERMINAL_RESULT",
+            context: {
+              taskId: spec.id,
+              responseId: researchResult.id,
+              status: researchResult.status,
+            },
+          },
+        );
+      }
+
+      const output = researchResult.text;
       if (output.trim().length === 0) {
         throw new ElizaError("The research provider returned no report", {
           code: "RESEARCH_EMPTY_RESULT",
