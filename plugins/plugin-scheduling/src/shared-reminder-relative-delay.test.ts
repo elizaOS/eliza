@@ -36,6 +36,7 @@ describe("explicit Shared reminder relative delay", () => {
     ["Remind me in 1 minute: cancel that meeting with Bob.", 60_000],
     ["Remind me in 1 minute: cancel the subscription.", 60_000],
     ["Remind me in 1 minute: never mind the meeting title.", 60_000],
+    ["Remind me in 1 minute: cancel that meeting, please.", 60_000],
   ])("resolves %s", (text, milliseconds) => {
     expect(resolveExplicitSharedReminderDelay(text)).toEqual({
       kind: "resolved",
@@ -92,6 +93,11 @@ describe("explicit Shared reminder relative delay", () => {
     "Remind me in 1 minute — actually cancel that.",
     "Remind me in 1 minute... cancel that.",
     "Remind me in 1 minute… cancel that.",
+    "Remind me in 1 minute, cancel that, please.",
+    "Remind me in 1 minute. Cancel it please.",
+    "Remind me in 1 minute; never mind please.",
+    "Remind me in 1 minute. However, cancel that.",
+    "Remind me in 1 minute, actually, cancel that.",
   ])("fails closed for a negated reminder command: %s", (text) => {
     expect(resolveExplicitSharedReminderDelay(text)).toEqual({
       kind: "invalid",
@@ -228,6 +234,11 @@ describe("explicit Shared reminder relative delay", () => {
     ["a cancel-that cancellation", "Remind me in 1 minute, cancel that."],
     ["an em-dash cancellation", "Remind me in 1 minute — cancel that."],
     ["an ellipsis cancellation", "Remind me in 1 minute… cancel that."],
+    ["a polite cancellation", "Remind me in 1 minute, cancel that, please."],
+    [
+      "a punctuated discourse cancellation",
+      "Remind me in 1 minute. However, cancel that.",
+    ],
   ])("rejects %s before persistence", async (_label, text) => {
     const scheduleWithResult = vi.fn(async (_input: ScheduledTaskInput) => {
       throw new Error("Ambiguous reminder must not be scheduled");
