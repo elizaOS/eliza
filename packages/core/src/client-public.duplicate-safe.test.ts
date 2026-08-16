@@ -32,6 +32,7 @@ describe("@elizaos/core/client-public is duplicate-safe", () => {
 			"isTruthyEnvValue",
 			"resolveAliasedEnvValue",
 			"sanitizeForSettingsDebug",
+			"sanitizeSpeechText",
 			"settingsDebugCloudSummary",
 		]);
 	});
@@ -42,6 +43,7 @@ describe("@elizaos/core/client-public is duplicate-safe", () => {
 		expect(typeof clientPublic.resolveAliasedEnvValue).toBe("function");
 		expect(typeof clientPublic.isElizaSettingsDebugEnabled).toBe("function");
 		expect(typeof clientPublic.sanitizeForSettingsDebug).toBe("function");
+		expect(typeof clientPublic.sanitizeSpeechText).toBe("function");
 		expect(typeof clientPublic.settingsDebugCloudSummary).toBe("function");
 	});
 
