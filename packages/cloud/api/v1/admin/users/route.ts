@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { usersRepository } from "@/db/repositories/users";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
+import { parseClampedLimit } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -20,7 +21,7 @@ app.get("/", async (c) => {
   try {
     await requireAdmin(c);
 
-    const limit = Math.min(parseInt(c.req.query("limit") || "200", 10), 1000);
+    const limit = parseClampedLimit(c.req.query("limit"), 200, 1000);
 
     const rows = await usersRepository.listForAdminDashboard(limit);
 
