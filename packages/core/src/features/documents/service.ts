@@ -1219,6 +1219,25 @@ export class DocumentService extends Service {
 				);
 			}
 
+			let _resolvedWorldId = worldId as UUID | undefined;
+			const _isUuid = (v: string) =>
+				/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+					v,
+				);
+			if (_resolvedWorldId && !_isUuid(_resolvedWorldId))
+				_resolvedWorldId = undefined;
+			if (roomId) {
+				try {
+					const _room = await this.runtime.getRoom(roomId as UUID);
+					if (_room?.worldId) {
+						if (_resolvedWorldId && _room.worldId !== _resolvedWorldId)
+							_resolvedWorldId = _room.worldId as UUID;
+						else if (!_resolvedWorldId)
+							_resolvedWorldId = _room.worldId as UUID;
+					}
+				} catch {}
+			}
+			_resolvedWorldId = _resolvedWorldId ?? (agentId as UUID);
 			let fragmentCount: number;
 			try {
 				if (fragments !== undefined) {
@@ -1229,7 +1248,7 @@ export class DocumentService extends Service {
 						agentId,
 						roomId: roomId || agentId,
 						entityId: targetEntityId,
-						worldId: worldId || agentId,
+						worldId: _resolvedWorldId,
 						documentTitle: originalFilename,
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
@@ -1251,7 +1270,7 @@ export class DocumentService extends Service {
 						contentType,
 						roomId: roomId || agentId,
 						entityId: targetEntityId,
-						worldId: worldId || agentId,
+						worldId: _resolvedWorldId,
 						documentTitle: originalFilename,
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
