@@ -4,6 +4,7 @@
  * `disableModelInvocation` are omitted from the prompt (invocable only via an
  * explicit command). Consumed by the enabled-skills provider.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { Skill, SkillCommandSpec, SkillEntry } from "./types.js";
 
 function compactPromptField(str: string): string {
@@ -120,10 +121,11 @@ export function buildSkillCommandSpecs(
     used.add(unique.toLowerCase());
 
     const rawDescription = entry.skill.description?.trim() || rawName;
+    const wellFormedDescription = toWellFormedUnicode(rawDescription);
     const description =
-      rawDescription.length > SKILL_COMMAND_DESCRIPTION_MAX_LENGTH
-        ? `${rawDescription.slice(0, SKILL_COMMAND_DESCRIPTION_MAX_LENGTH - 1)}…`
-        : rawDescription;
+      wellFormedDescription.length > SKILL_COMMAND_DESCRIPTION_MAX_LENGTH
+        ? `${truncateWellFormed(wellFormedDescription, SKILL_COMMAND_DESCRIPTION_MAX_LENGTH - 1)}…`
+        : wellFormedDescription;
 
     const dispatch = (() => {
       const kindRaw = (
