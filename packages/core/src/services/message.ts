@@ -2671,6 +2671,12 @@ async function collectV5PlannerCandidateActions(args: {
 	selectedContexts?: readonly AgentContext[];
 	candidateActions?: readonly string[];
 	userRoles?: readonly RoleGateRole[];
+	/** Out-param: normalized names of EXPLICIT stage-1 candidates whose
+	 * resolved action was rejected by the action gate (role/context/privacy).
+	 * Lets the planner entry distinguish "capability exists but is gated on
+	 * this surface" from ordinary no-match, and answer honestly instead of
+	 * planning against an unrelated retrieval surface. */
+	diagnostics?: { gateRejectedExplicitCandidates: string[] };
 }): Promise<Action[]> {
 	// The candidate surface starts from every runtime action and applies only the
 	// same execution gates the planner executor will enforce — it deliberately does
@@ -2718,6 +2724,7 @@ async function collectV5PlannerCandidateActions(args: {
 		});
 		if (gateFailure !== undefined) {
 			if (explicitCandidateName) {
+				args.diagnostics?.gateRejectedExplicitCandidates.push(action.name);
 				args.runtime.logger.warn(
 					{
 						src: "service:message",
@@ -8020,6 +8027,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		// NOTIFY and the turn ended answerless). Preserve the pre-patch reply so
 		// the planner loop's answer rescue and the answerless-final fallback can
 		// still deliver it.
+		const candidateGateDiagnostics = {
+			gateRejectedExplicitCandidates: [] as string[],
+		};
 		const prePatchStageOneReply =
 			typeof messageHandler.plan.reply === "string" &&
 			messageHandler.plan.reply.trim().length > 0
@@ -8364,7 +8374,47 @@ export async function runV5MessageRuntimeStage1(args: {
 					selectedContexts,
 					candidateActions: getMessageHandlerCandidateActions(messageHandler),
 					userRoles: [senderRole],
+					diagnostics: candidateGateDiagnostics,
 				});
+		// Surface-privacy short-circuit: stage-1 named a capability that EXISTS
+		// but is gated on this surface (role/privacy — e.g. owner-life actions in
+		// a public channel), and no named candidate survived into the collected
+		// set. Planning anyway hands the model an unrelated retrieval surface and
+		// it improvises around the missing capability — observed live on the
+		// Discord group channel: a "todos" ask got a WEB_SEARCH surface and
+		// shipped a fabricated "todo added" with zero writes, and a todos READ
+		// answered a false empty from the orchestrator task store. Answer with an
+		// honest surface denial instead. The phrasing confirms nothing about the
+		// data — only that the surface is private to another channel.
+		if (candidateGateDiagnostics.gateRejectedExplicitCandidates.length > 0) {
+			const collectedNames = new Set(
+				plannerCandidateActions.map((action) =>
+					normalizeActionIdentifier(action.name),
+				),
+			);
+			const candidateLookup = buildRuntimeActionLookup(args.runtime);
+			const anyNamedCandidateSurvived = (
+				getMessageHandlerCandidateActions(messageHandler) ?? []
+			).some((name) => {
+				const resolved = resolveRuntimeAction(candidateLookup, String(name));
+				return (
+					resolved !== undefined &&
+					collectedNames.has(normalizeActionIdentifier(resolved.name))
+				);
+			});
+			if (!anyNamedCandidateSurvived) {
+				return {
+					kind: "direct_reply",
+					messageHandler,
+					result: createV5ReplyStrategyResult({
+						...args,
+						text: "that's a private surface — ask me in a DM and I'll handle it there.",
+						thought: messageHandler.thought,
+						agentVoiced: false,
+					}),
+				};
+			}
+		}
 		const localizedExamplesProvider = getLocalizedExamplesProvider(
 			args.runtime,
 		);
