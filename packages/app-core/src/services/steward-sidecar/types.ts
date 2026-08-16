@@ -46,13 +46,19 @@ export interface StewardWalletInfo {
   walletAddress: string;
 }
 
-export interface StewardCredentials {
+/** Durable local setup state; the token is absent while acquisition awaits retry. */
+export interface StewardCredentialCheckpoint {
   tenantId: string;
   tenantApiKey: string;
   agentId: string;
-  agentToken: string;
+  agentToken?: string;
   walletAddress: string;
   masterPassword?: string;
+}
+
+/** Complete credentials exposed after wallet setup succeeds. */
+export interface StewardCredentials extends StewardCredentialCheckpoint {
+  agentToken: string;
 }
 
 // ---------------------------------------------------------------------------
