@@ -730,7 +730,10 @@ __filename = '"/worker.js"'
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "true"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
-PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
+# PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED is deliberately ABSENT here: the
+# protected cutover workflow owns it as a secret binding (absence = off), and a
+# var with this name collides with the secret publish (CF 10053 — the exact
+# staging incident on 2026-08-16). The secret/var lint enforces this.
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of

@@ -108,16 +108,14 @@ describe("Worker secret/var collision lint (CF error 10053 class)", () => {
     expect([...unmapped].sort()).toEqual([]);
   });
 
-  test("prophylactic: the production edge flip requires removing the production var first", () => {
-    // The staging incident repeats verbatim on the production cutover unless
-    // [env.production.vars] drops PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED before
-    // any workflow publishes it as a production secret. This assertion is the
-    // tripwire: whoever extends the activation workflow to production must
-    // delete the var in the same change (this test's mapping gains
-    // "production" then, and the collision test above enforces the removal).
+  test("the production edge-flip var stays deleted (CF 10053 prevention)", () => {
+    // Production cutover prep (2026-08-16): the var was removed so the
+    // protected activation workflow can own the name as a production secret
+    // binding (absence = off). Re-adding it recreates the staging 10053
+    // incident verbatim on the production flip.
     expect(
       vars.get("production")?.has("PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED") ??
         false,
-    ).toBe(true);
+    ).toBe(false);
   });
 });
