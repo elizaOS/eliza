@@ -5,7 +5,12 @@
   "type": "module",
   "elizaos": {
     "app": {
-      "defaults": {},
+      "defaults": {
+        "personal-assistant": {
+          "enabled": true,
+          "requiredForReady": true
+        }
+      },
       "capabilities": {
         "text-large": "required",
         "messaging": "optional",

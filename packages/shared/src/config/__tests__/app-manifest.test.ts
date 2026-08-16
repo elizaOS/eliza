@@ -146,7 +146,10 @@ describe("applyAppManifestDefaults", () => {
       plugins?: { entries?: Record<string, { enabled?: boolean }> };
     } = {};
     const applied = applyAppManifestDefaults(config, {
-      defaults: { wallet: { enabled: false }, anthropic: { enabled: true } },
+      defaults: {
+        wallet: { enabled: false },
+        anthropic: { enabled: true, requiredForReady: true },
+      },
     });
     expect(applied.sort()).toEqual(["anthropic", "wallet"]);
     expect(config.plugins?.entries?.wallet).toEqual({ enabled: false });

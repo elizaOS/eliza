@@ -418,7 +418,7 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities
   // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   "@elizaos/plugin-google-workspace", // Google Workspace connector (requires googleapis + explicit OAuth config); only loaded when LifeOps/Google is enabled
-  "@elizaos/plugin-personal-assistant", // LifeOps: personal ops - tasks, goals, calendar, inbox, website blocking. Default-on for full desktop/server boots via the collector gate (#17023); stays out of CORE_PLUGINS so mobile/lean-chat/store/slim-cloud images (#8081) never load it; opt out via plugins.entries or ELIZA_DISABLE_PERSONAL_ASSISTANT
+  "@elizaos/plugin-personal-assistant", // LifeOps: personal ops - tasks, goals, calendar, inbox, website blocking. The Eliza app manifest enables it and requires registration before ready (#17023); standalone agent installs stay opt-in because they do not ship this package.
   "@elizaos/plugin-finances", // Owner finances dashboard (app_finances schema); auto-registered by plugin-personal-assistant, also enablable standalone
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
