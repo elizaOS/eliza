@@ -2175,6 +2175,52 @@
       "kind": "plugin",
       "registryKind": "plugin",
       "directory": null
+    },
+    "plugin-x402-finance": {
+      "git": {
+        "repo": "lokixc84/x402-finance-api",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-x402-finance",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Base Mainnet token safety + market data via x402 micropayments. CHECK_TOKEN_SAFETY returns agent_action (block|warn|allow|skip). No API keys.",
+      "homepage": "https://x402-paid-api.x402-finance.workers.dev/llms.txt",
+      "topics": [
+        "x402",
+        "base",
+        "defi",
+        "security",
+        "token-safety",
+        "micropayments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
     }
   }
 }
