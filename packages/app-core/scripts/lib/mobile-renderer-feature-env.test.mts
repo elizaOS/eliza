@@ -9,6 +9,16 @@ import {
 } from "./mobile-renderer-feature-env.mjs";
 
 describe("resolveMobileRendererFeatureEnv", () => {
+  it("enables the runtime chooser only for the local iOS lane", () => {
+    expect(resolveMobileRendererFeatureEnv({ platform: "ios-local" })).toEqual({
+      VITE_ELIZA_ENABLE_RUNTIME_CHOOSER: "1",
+    });
+
+    for (const platform of ["ios", "ios-overlay", "android"]) {
+      expect(resolveMobileRendererFeatureEnv({ platform })).toEqual({});
+    }
+  });
+
   it("enables the realtime voice client for the LP3 cloud-debug lane", () => {
     expect(
       resolveMobileRendererFeatureEnv({
