@@ -110,7 +110,7 @@ describe("Personal Shared Telegram edge deploy", () => {
     expect(apply.run).not.toContain('grep -qi "not found"');
   });
 
-  test("keeps every tracked Worker environment fail-closed", () => {
+  test("keeps every tracked Worker environment fail-closed without colliding with the activation secret", () => {
     const config = Bun.TOML.parse(
       readFileSync(
         new URL("packages/cloud/api/wrangler.toml", repoRoot),
@@ -123,7 +123,7 @@ describe("Personal Shared Telegram edge deploy", () => {
     expect(config.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED).toBe("false");
     expect(
       config.env?.staging?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
-    ).toBe("false");
+    ).toBeUndefined();
     expect(
       config.env?.production?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
     ).toBe("false");
