@@ -585,17 +585,18 @@ describe("canonical cloud deployment environment contract", () => {
     expect(preflight?.run).not.toContain('echo "$value"');
   });
 
-  test("publishes configured shared secrets and preserves absent Worker values", () => {
-    const publish = step(cloud, "deploy-api", "Publish Worker AI secrets");
+  test("queues configured shared secrets and preserves absent Worker values", () => {
+    const publish = step(
+      cloud,
+      "deploy-api",
+      "Prepare Worker secrets for atomic deploy",
+    );
     for (const name of cloudWorkerSecretNames) {
       expect(publish.env?.[name]).toContain("secrets.");
       expect(publish.run).toContain(`\n  ${name}\n`);
     }
     expect(publish.run).toContain("managed_worker_provisioning_secrets=(");
-    expect(publish.run).toContain('publish_secret "$name" || exit 1');
-    expect(publish.run).toContain('bunx wrangler versions secret put "$name"');
-    expect(publish.run).toContain('--versions "$name"');
-    expect(publish.run).not.toContain('bunx wrangler secret put "$name"');
+    expect(publish.run).toContain('queue_secret "$name" || exit 1');
     expect(publish.run).toContain(
       'echo "::notice::$name is not configured; skipping"',
     );
