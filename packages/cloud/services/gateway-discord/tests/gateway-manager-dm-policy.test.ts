@@ -37,6 +37,7 @@ interface GatewayManagerHarness {
   connections: Map<string, HarnessConnection>;
   redis: object | null;
   accessToken: string | null;
+  tokenExpiresAt: Date | null;
   handleMessage(connectionId: string, message: Message): Promise<void>;
   pollForBots(): Promise<void>;
   voiceHandler: {
@@ -120,6 +121,7 @@ function createBoundary(topology: Topology) {
   const harness = manager as unknown as GatewayManagerHarness;
   harness.redis = {};
   harness.accessToken = "test-token";
+  harness.tokenExpiresAt = new Date(Date.now() + 60_000);
 
   return {
     harness,

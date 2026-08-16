@@ -1,6 +1,14 @@
 // Shares index service primitives across cloud worker sidecars.
 
 export {
+  GATEWAY_TOKEN_MAX_LIFETIME_SECONDS,
+  GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
+  type GatewayTokenResponse,
+  gatewayTokenRefreshDelayMs,
+  gatewayTokenRetryDelayMs,
+  parseGatewayTokenResponse,
+} from "./gateway-auth";
+export {
   extractIdentityLinkCode,
   identityLinkReply,
 } from "./identity-link-code";

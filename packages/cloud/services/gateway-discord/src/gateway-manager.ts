@@ -1,4 +1,10 @@
 /** Coordinates multi-tenant Discord gateway connections and event routing. */
+import {
+  GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
+  gatewayTokenRefreshDelayMs,
+  gatewayTokenRetryDelayMs,
+  parseGatewayTokenResponse,
+} from "@elizaos/cloud-services-common/gateway-auth";
 import { Redis } from "@upstash/redis";
 import {
   type Attachment,
@@ -280,18 +286,6 @@ interface GatewayConfig {
   project: string;
 }
 
-/** JWT token response from token endpoint */
-interface TokenResponse {
-  access_token: string;
-  token_type: "Bearer";
-  expires_in: number;
-}
-
-/** Percentage of token lifetime at which to refresh. */
-const TOKEN_REFRESH_PERCENTAGE = 0.8;
-const TOKEN_REFRESH_RETRY_MIN_MS = 1_000;
-const TOKEN_REFRESH_RETRY_MAX_MS = 30_000;
-
 interface BotConnection {
   connectionId: string;
   organizationId: string;
@@ -555,6 +549,7 @@ export class GatewayManager {
    */
   private async acquireToken(): Promise<void> {
     const lifecycleGeneration = this.authLifecycleGeneration;
+    const acquisitionStartedAt = Date.now();
     logger.info("Acquiring JWT token", { podName: this.config.podName });
 
     const response = await fetchWithTimeout(
@@ -569,6 +564,7 @@ export class GatewayManager {
           pod_name: this.config.podName,
           service: "discord-gateway",
         }),
+        timeout: GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
       },
     );
 
@@ -577,19 +573,20 @@ export class GatewayManager {
       throw new Error(`Failed to acquire token: ${response.status} - ${error}`);
     }
 
-    const data = (await response.json()) as TokenResponse;
+    const data = parseGatewayTokenResponse(await response.json());
     if (lifecycleGeneration !== this.authLifecycleGeneration) {
       throw new Error("Auth lifecycle changed during token acquisition");
     }
     this.accessToken = data.access_token;
-    this.tokenExpiresAt = new Date(Date.now() + data.expires_in * 1000);
+    this.tokenExpiresAt = new Date(
+      acquisitionStartedAt + data.expires_in * 1_000,
+    );
 
     logger.info("JWT token acquired", {
       podName: this.config.podName,
       expiresAt: this.tokenExpiresAt.toISOString(),
     });
 
-    // Schedule token refresh at 80% of lifetime
     this.scheduleTokenRefresh(data.expires_in);
   }
 
@@ -601,14 +598,14 @@ export class GatewayManager {
   }
 
   /**
-   * Schedule token refresh at 80% of token lifetime.
+   * Schedule token refresh halfway through the token lifetime.
    */
   private scheduleTokenRefresh(expiresInSeconds: number): void {
     if (this.tokenRefreshTimeout) {
       clearTimeout(this.tokenRefreshTimeout);
     }
 
-    const refreshInMs = expiresInSeconds * 1000 * TOKEN_REFRESH_PERCENTAGE;
+    const refreshInMs = gatewayTokenRefreshDelayMs(expiresInSeconds);
     this.tokenRefreshRetryAttempt = 0;
     const timeout = setTimeout(() => {
       // error-policy:J1 The timer boundary converts renewal failure into a paced retry.
@@ -632,13 +629,10 @@ export class GatewayManager {
       clearTimeout(this.tokenRefreshTimeout);
     }
 
-    const retryInMs = Math.min(
-      TOKEN_REFRESH_RETRY_MIN_MS * 2 ** this.tokenRefreshRetryAttempt,
-      TOKEN_REFRESH_RETRY_MAX_MS,
-    );
+    const retryInMs = gatewayTokenRetryDelayMs(this.tokenRefreshRetryAttempt);
     this.tokenRefreshRetryAttempt = Math.min(
       this.tokenRefreshRetryAttempt + 1,
-      5,
+      4,
     );
     const lifecycleGeneration = this.authLifecycleGeneration;
     const timeout = setTimeout(() => {
@@ -668,7 +662,11 @@ export class GatewayManager {
    * Throws if no token is available.
    */
   private getAuthHeader(): { Authorization: string } {
-    if (!this.accessToken) {
+    if (
+      !this.accessToken ||
+      !this.tokenExpiresAt ||
+      Date.now() >= this.tokenExpiresAt.getTime()
+    ) {
       throw new Error("No access token available - call acquireToken first");
     }
     return { Authorization: `Bearer ${this.accessToken}` };

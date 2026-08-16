@@ -175,7 +175,7 @@ describe("reacquireAuthHeader is single-flight", () => {
           JSON.stringify({
             access_token: `tok-${bootstraps}`,
             token_type: "Bearer",
-            expires_in: 3600,
+            expires_in: 60,
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
@@ -238,6 +238,33 @@ describe("reacquireAuthHeader is single-flight", () => {
     expect(paths.every((path) => path === "/api/internal/auth/token")).toBe(
       true,
     );
+  });
+
+  test("rejects a malformed bootstrap response without installing it", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            access_token: "invalid-token",
+            token_type: "NotBearer",
+            expires_in: -1,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    ) as typeof fetch;
+
+    const { getAuthHeader, initAuth, shutdownAuth } = await import(
+      "../src/auth"
+    );
+    await expect(
+      initAuth({
+        cloudUrl: "https://api.test",
+        bootstrapSecret: "bootstrap",
+        podName: "test-pod",
+      }),
+    ).rejects.toThrow("Invalid gateway token response");
+    expect(() => getAuthHeader()).toThrow("No access token available");
+    shutdownAuth();
   });
 
   test("scheduled renewal retries bootstrap after a transient failure", async () => {
