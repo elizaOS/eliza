@@ -1054,6 +1054,48 @@ function resolveDuplicateByTimeHint(
   return hits.length === 1 ? (hits.at(0) ?? null) : null;
 }
 
+/** Records whose DISTINCT titles the owner named verbatim in one enumerated
+ * delete ask ("delete these todos: A, B and C. keep D."). Destructive, so
+ * every guard fails toward the single-target clarify path: at least two
+ * DISTINCT titles must be verbatim-contained in the owner's own words; a
+ * contained title matching more than one stored record aborts entirely
+ * (duplicate titles keep the disambiguation ask); and a title preceded by a
+ * keep-style cue ("keep X", "except X", "leave X", "but not X", "don't
+ * delete X") is excluded from deletion rather than deleted by containment. */
+const ENUMERATED_DELETE_KEEP_CUE_RE =
+  /(?:\bkeep|\bexcept(?:\s+for)?|\bleave|\bbut\s+not|\bdon'?t\s+(?:delete|remove)|\bnot|\bspare)\s*(?:the\s+)?$/i;
+
+async function resolveEnumeratedDeleteTargets(
+  service: LifeOpsService,
+  ownerText: string,
+  domain?: LifeOpsDomain,
+): Promise<LifeOpsDefinitionRecord[]> {
+  const normalizedOwner = normalizeTitle(ownerText);
+  if (!normalizedOwner) return [];
+  const defs = (await service.listDefinitions()).filter((entry) =>
+    domain ? entry.definition.domain === domain : true,
+  );
+  const byTitle = new Map<string, LifeOpsDefinitionRecord[]>();
+  for (const entry of defs) {
+    const key = normalizeTitle(entry.definition.title);
+    if (!key) continue;
+    byTitle.set(key, [...(byTitle.get(key) ?? []), entry]);
+  }
+  const targets: LifeOpsDefinitionRecord[] = [];
+  for (const [key, records] of byTitle) {
+    // A very short title ("go", "gym") is contained in too much ordinary
+    // prose to serve as a deletion warrant on its own.
+    if (key.length < 4) continue;
+    const index = normalizedOwner.indexOf(key);
+    if (index < 0) continue;
+    if (records.length !== 1) return [];
+    const prefix = normalizedOwner.slice(Math.max(0, index - 32), index);
+    if (ENUMERATED_DELETE_KEEP_CUE_RE.test(prefix)) continue;
+    targets.push(records[0]);
+  }
+  return targets.length > 1 ? targets : [];
+}
+
 async function resolveDefinitionForMutation(
   service: LifeOpsService,
   target: string | undefined,
@@ -5568,6 +5610,57 @@ async function runLifeOperationHandlerInner(
             actionName: ownerSurfaceActionName,
             noop: true,
             blockedReason: "broad_destructive_delete",
+          },
+        };
+      }
+      // Enumerated multi-target delete first: several DISTINCT verbatim-named
+      // items in one ask delete together (guards documented on the resolver;
+      // anything ambiguous falls through to the single-target path below).
+      const enumeratedTargets = await resolveEnumeratedDeleteTargets(
+        service,
+        messageText(message) || intent,
+        domain,
+      );
+      if (enumeratedTargets.length > 1) {
+        for (const entry of enumeratedTargets) {
+          await service.deleteDefinition(entry.definition.id);
+        }
+        const titles = enumeratedTargets.map(
+          (entry) => `"${entry.definition.title}"`,
+        );
+        const lastDeleted =
+          enumeratedTargets[enumeratedTargets.length - 1].definition;
+        const fallback = `Deleted ${enumeratedTargets.length} items: ${titles.join(", ")}.`;
+        return {
+          success: true,
+          text: await renderLifeActionReply({
+            runtime,
+            message,
+            state,
+            intent,
+            scenario: "deleted_definition",
+            fallback,
+            context: {
+              deleted: {
+                title: titles.join(", "),
+              },
+            },
+          }),
+          data: {
+            actionName: ownerSurfaceActionName,
+            // The receipt deriver reads `deleted` (single record, audit-backed
+            // commit proof); the full enumeration rides `deletedMany` so the
+            // canonical text stays bound to a real committed receipt.
+            deleted: {
+              kind: "definition",
+              id: lastDeleted.id,
+              title: lastDeleted.title,
+            },
+            deletedMany: enumeratedTargets.map((entry) => ({
+              kind: "definition",
+              id: entry.definition.id,
+              title: entry.definition.title,
+            })),
           },
         };
       }
