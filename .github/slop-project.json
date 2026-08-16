@@ -1,6 +1,6 @@
 {
   "kind": "slop-project-authority",
-  "policyRevision": "2026-08-16.1",
+  "policyRevision": "2026-08-16.3",
   "projectId": "eliza",
   "proposal": "https://github.com/elizaOS/slopdotcash/issues/115",
   "repository": {
