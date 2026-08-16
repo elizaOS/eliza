@@ -74,6 +74,7 @@ describe("Shared capability wall", () => {
     "remind me in 1 minute: QA20315-DISCORD-DM-R3 verified",
     "remind me in two minutes to text Alice",
     "remind me tomorrow to email Bob the itinerary",
+    "remind me to email Bob and call Alice",
   ])("keeps nested communication inside an enabled reminder payload: %s", (message) => {
     expect(resolveSharedCapabilityIntent(message, { reminders: true })).toEqual({
       kind: "enabled-primary",
@@ -106,8 +107,11 @@ describe("Shared capability wall", () => {
 
   test.each([
     ["remind me tomorrow, then email Bob now", "communications"],
+    ["remind me tomorrow and email Bob now", "communications"],
+    ["remind me to email Bob, then email Alice now", "communications"],
     ["remind me tomorrow; delete the file in my workspace", "filesystem"],
     ["add milk to my todo list. Then buy groceries", "purchases"],
+    ["add milk to my todo list and email Bob now", "communications"],
   ])(
     "preserves enabled primary intent and reports a blocked later clause: %s",
     (message, blocked) => {
