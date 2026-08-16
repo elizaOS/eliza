@@ -90,15 +90,21 @@ describe("HomePill", () => {
     );
   });
 
-  it("turns the capsule red with staggered waveform bars while listening", () => {
+  it("grows into a dark red-ringed chip with waveform bars while listening", () => {
     render(<HomePill phase="listening" onOpen={() => {}} onClose={() => {}} />);
     const mark = screen.getByTestId("shell-home-pill-mark");
-    expect(mark.className).toContain("bg-red-500/95");
+    // Wispr-style listening chip: larger dark capsule + red hot-mic ring.
+    expect(mark.className).toContain("bg-neutral-900/95");
+    expect(mark.className).toContain("h-7");
+    expect(mark.className).toContain("w-20");
+    expect(mark.className).toContain("239,68,68");
     expect(mark.className).not.toContain("bg-white/95");
     const bars = screen.getAllByTestId("shell-home-pill-wave-bar");
-    expect(bars).toHaveLength(5);
-    const delays = bars.map((b) => b.style.animationDelay);
-    expect(new Set(delays).size).toBe(bars.length);
+    expect(bars).toHaveLength(9);
+    // Center-weighted stagger: symmetric around the middle bar, not monotonic.
+    const delays = bars.map((b) => Number.parseInt(b.style.animationDelay, 10));
+    expect(delays).toEqual([...delays].reverse());
+    expect(Math.min(...delays)).toBe(delays[4]);
     for (const bar of bars) {
       expect(bar.className).toContain("home-pill-wave-bar");
       expect(bar.className).toContain("motion-reduce:animate-none");

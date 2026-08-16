@@ -199,6 +199,7 @@ import { TutorialConductorMount } from "./tutorial/TutorialConductor";
 import { isElizaCloudControlPlaneAgentlessBase } from "./utils/cloud-agent-base";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { openExternalUrl } from "./utils/openExternalUrl";
+import { playCaptureSendCue, playCaptureStartCue } from "./voice/capture-cues";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
@@ -1836,8 +1837,16 @@ function ShellFoundationMount() {
         phase={controller.phase}
         onOpen={controller.open}
         onClose={controller.close}
-        onHoldStart={() => controller.startRecording("ptt")}
-        onHoldEnd={controller.stopRecording}
+        onHoldStart={() => {
+          // Audible mic-open ping BEFORE capture spins up: the cue is the
+          // "start talking" signal, so it must not wait on getUserMedia.
+          playCaptureStartCue();
+          controller.startRecording("ptt");
+        }}
+        onHoldEnd={() => {
+          playCaptureSendCue();
+          controller.stopRecording();
+        }}
         onHoldCancel={controller.cancelRecording}
       />
       <AssistantOverlay

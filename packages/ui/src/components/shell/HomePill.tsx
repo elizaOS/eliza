@@ -42,8 +42,21 @@ export const HOLD_THRESHOLD_MS = 150;
  *  the iOS "slide off to cancel" convention. */
 export const SLIDE_CANCEL_PX = 44;
 
-/** Stagger offsets (ms) for the listening-state waveform bars. */
-const WAVE_BAR_DELAYS_MS = [0, 150, 300, 450, 600] as const;
+/** Listening-state waveform bars: nine bars with center-weighted, symmetric
+ *  stagger delays so the chip reads as a live waveform (shimmering from the
+ *  middle out) rather than a marching sequence — mirroring the density of the
+ *  studied Wispr Flow bar. Ids are stable keys; delays repeat symmetrically. */
+const WAVE_BARS = [
+  { id: "l4", delayMs: 420 },
+  { id: "l3", delayMs: 240 },
+  { id: "l2", delayMs: 120 },
+  { id: "l1", delayMs: 60 },
+  { id: "c0", delayMs: 0 },
+  { id: "r1", delayMs: 60 },
+  { id: "r2", delayMs: 120 },
+  { id: "r3", delayMs: 240 },
+  { id: "r4", delayMs: 420 },
+] as const;
 
 /**
  * Persistent Flow-style handle at the bottom-center of the viewport.
@@ -203,12 +216,20 @@ export function HomePill({
         aria-hidden="true"
         data-testid="shell-home-pill-mark"
         className={cn(
-          "flex h-2.5 w-12 items-center justify-center gap-[3px] rounded-full",
-          "transition-[width,opacity,transform,background-color,box-shadow] duration-200 group-hover:w-14",
-          phase === "listening" ? "bg-red-500/95" : "bg-white/95",
-          phase === "responding"
-            ? "shadow-[0_0_10px_rgba(255,138,42,0.6),0_0_0_1px_rgba(0,0,0,0.12)]"
-            : "shadow-[0_0_0_1px_rgba(0,0,0,0.12)]",
+          "flex items-center justify-center rounded-full",
+          "transition-[width,height,opacity,transform,background-color,box-shadow] duration-200",
+          // Listening mirrors the studied Wispr Flow bar: the capsule GROWS
+          // into a dark rounded chip holding live white bars — big enough that
+          // the mic-live state is legible from across the room — with a red
+          // ring keeping "hot mic" unambiguous. Other phases stay the slim
+          // white handle.
+          phase === "listening"
+            ? "h-7 w-20 gap-[3px] bg-neutral-900/95 shadow-[0_0_0_1.5px_rgba(239,68,68,0.9),0_4px_16px_rgba(0,0,0,0.35)]"
+            : "h-2.5 w-12 gap-[3px] bg-white/95 group-hover:w-14",
+          phase !== "listening" &&
+            (phase === "responding"
+              ? "shadow-[0_0_10px_rgba(255,138,42,0.6),0_0_0_1px_rgba(0,0,0,0.12)]"
+              : "shadow-[0_0_0_1px_rgba(0,0,0,0.12)]"),
           phase === "booting" &&
             "animate-pulse opacity-65 motion-reduce:animate-none",
           phase === "responding" &&
@@ -216,12 +237,12 @@ export function HomePill({
         )}
       >
         {phase === "listening" &&
-          WAVE_BAR_DELAYS_MS.map((delayMs) => (
+          WAVE_BARS.map((bar) => (
             <span
-              key={delayMs}
+              key={bar.id}
               data-testid="shell-home-pill-wave-bar"
-              className="home-pill-wave-bar h-[3px] w-[2.5px] rounded-full bg-white/95 motion-reduce:animate-none"
-              style={{ animationDelay: `${delayMs}ms` }}
+              className="home-pill-wave-bar h-[6px] w-[3px] rounded-full bg-white/95 motion-reduce:animate-none"
+              style={{ animationDelay: `${bar.delayMs}ms` }}
             />
           ))}
       </span>
