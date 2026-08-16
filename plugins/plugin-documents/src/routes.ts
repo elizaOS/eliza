@@ -82,6 +82,15 @@ const DOCUMENT_CONTENT_TYPE_VALIDATION_ERROR =
 const MIME_ESSENCE_PATTERN =
   /^[a-z0-9][a-z0-9!#$%&'*+.^_`|~-]*\/[a-z0-9][a-z0-9!#$%&'*+.^_`|~-]*$/;
 
+function isUuidValue(value: unknown): value is UUID {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value.trim(),
+    )
+  );
+}
+
 type DocumentFilter = SharedDocumentFilter & {
   /**
    * Hub display facet (#13594): the coarse client-facing bucket the Knowledge
@@ -1191,8 +1200,12 @@ export async function handleDocumentsRoutes(
       throw new Error(uploadFilters.error);
     }
     const scopedToEntityId = uploadFilters.scopedToEntityId;
-    const roomId = asUuid(document.roomId) ?? agentId;
-    const worldId = asUuid(document.worldId) ?? agentId;
+    const roomId = isUuidValue(document.roomId)
+      ? (document.roomId.trim() as UUID)
+      : agentId;
+    const worldId = isUuidValue(document.worldId)
+      ? (document.worldId.trim() as UUID)
+      : agentId;
     const entityId =
       uploadFilters.scope === "user-private"
         ? (scopedToEntityId ?? actor.entityId)
@@ -1520,8 +1533,12 @@ export async function handleDocumentsRoutes(
       return true;
     }
     const scopedToEntityId = uploadFilters.scopedToEntityId;
-    const roomId = asUuid(body.roomId) ?? agentId;
-    const worldId = asUuid(body.worldId) ?? agentId;
+    const roomId = isUuidValue(body.roomId)
+      ? (body.roomId.trim() as UUID)
+      : agentId;
+    const worldId = isUuidValue(body.worldId)
+      ? (body.worldId.trim() as UUID)
+      : agentId;
     const entityId =
       uploadFilters.scope === "user-private"
         ? (scopedToEntityId ?? routeActor.entityId)
