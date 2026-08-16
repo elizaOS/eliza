@@ -75,7 +75,12 @@ describe("searchKeylessWeb", () => {
 	});
 
 	it("rejects invalid result budgets instead of silently returning an uncapped result", async () => {
-		for (const maxResultChars of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+		for (const maxResultChars of [
+			-1,
+			1.5,
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+		]) {
 			await expect(
 				searchKeylessWeb("invalid budget", {
 					fetchImpl: async () => mcp("long result"),
