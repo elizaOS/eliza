@@ -11,6 +11,7 @@
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
+import { initializeIosKeyboardAccessoryBar } from "@elizaos/ui/components/shell/ios-chat-accessory-bar";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
@@ -102,7 +103,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
         await Keyboard.setScroll({ isDisabled: true });
         // Preserve WebKit's navigation/dismissal accessory for every ordinary
         // form. The chat composer suppresses it only while that field owns focus.
-        await Keyboard.setAccessoryBarVisible({ isVisible: true });
+        await initializeIosKeyboardAccessoryBar();
       }
 
       keyboardListenersRegistered = true;

@@ -5930,9 +5930,6 @@ export function ChatOverlay({
                       : "Transcribing — say “exit transcription mode” to stop"}
                   </div>
                 ) : null}
-                {!transcriptionComposerActive ? (
-                  <ServingProviderChip className="pointer-events-none ml-auto shrink-0 self-center" />
-                ) : null}
               </motion.div>
             ) : null}
 
@@ -6382,6 +6379,11 @@ export function ChatOverlay({
                   error={isSlashDraft && slash.error}
                   onPick={pickSlashItem}
                 />
+              ) : null}
+              {/* Keep the serving source visible on the primary chat surface
+                  even while the history sheet is collapsed. */}
+              {!transcriptionComposerActive ? (
+                <ServingProviderChip className="pointer-events-none order-last shrink-0 self-center pr-1" />
               ) : null}
               {/* The "+" opens shell navigation plus surface-local Search and
                   Upload actions for this in-app conversation, never connector actions on a
