@@ -243,7 +243,7 @@ describe("agent entry character passthrough", () => {
       {
         item: {
           case: "directory",
-          value: { directory: "/knowledge" },
+          value: { path: "/knowledge", shared: undefined },
         },
       },
     ]);

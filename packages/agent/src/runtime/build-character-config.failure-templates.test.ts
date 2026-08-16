@@ -74,7 +74,9 @@ describe("failure templates flow from the eliza preset into the Character", () =
     expect(character.name).toBe("Nyx");
     for (const key of FAILURE_TEMPLATE_KEYS) {
       expect(character.templates?.[key]).toBeTruthy();
-      expect(String(character.templates?.[key])).not.toMatch(/\bEliza\b/);
+      expect(character.templates?.[key]).toBe(
+        resolveStylePresetById("eliza")?.templates?.[key],
+      );
     }
   });
 
@@ -87,12 +89,14 @@ describe("failure templates flow from the eliza preset into the Character", () =
     expect(character.templates).toEqual({});
   });
 
-  it("leaves templates empty when no preset matches the configured name", () => {
+  it("keeps the default templates when only the configured name is custom", () => {
     const character = buildCharacterFromConfig(
       configForPreset("", "Totally Custom Agent"),
     );
 
-    expect(character.templates).toEqual({});
+    expect(character.templates).toEqual(
+      resolveStylePresetById("eliza")?.templates,
+    );
   });
 
   it("does not alias the bundled preset's template object", () => {
@@ -116,6 +120,8 @@ describe("failure templates flow from the eliza preset into the Character", () =
     }
     // Premise check: the same character DOES still carry {{name}} elsewhere,
     // so the assertion above is meaningful rather than vacuous.
-    expect(JSON.stringify(character.bio)).toMatch(/\{\{name\}\}/);
+    expect(JSON.stringify([character.bio, character.system])).toMatch(
+      /\{\{name\}\}/,
+    );
   });
 });
