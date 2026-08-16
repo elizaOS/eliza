@@ -101,6 +101,24 @@ function roomTableKey(tableName: string, roomId: UUID): string {
 	return `${tableName}:${String(roomId)}`;
 }
 
+function clampPositiveLimit(value: unknown, fallback: number): number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+		? value
+		: fallback;
+}
+
+function clampOffset(value: unknown): number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+		? value
+		: 0;
+}
+
+function clampLimitOrUnbounded(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+		? value
+		: undefined;
+}
+
 function memoryMatchesMetadata(
 	memory: Memory,
 	filter: Record<string, unknown>,
@@ -942,7 +960,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		includeEmbedding?: boolean;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
-		const effectiveLimit = params.limit ?? params.count ?? Infinity;
+		const rawLimit = params.limit ?? params.count;
+		const effectiveLimit =
+			typeof rawLimit === "number" &&
+			Number.isSafeInteger(rawLimit) &&
+			rawLimit > 0
+				? rawLimit
+				: Infinity;
 		const tableName = params.tableName;
 		let all =
 			params.roomId !== undefined
@@ -1016,7 +1040,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				: bId.localeCompare(aId);
 		});
 
-		const offset = typeof params.offset === "number" ? params.offset : 0;
+		const offset = clampOffset(params.offset);
 		return all.slice(
 			offset,
 			offset + (effectiveLimit === Infinity ? all.length : effectiveLimit),
@@ -1068,8 +1092,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			return tb - ta;
 		});
 
-		const offset = typeof params.offset === "number" ? params.offset : 0;
-		const limit = params.limit ?? 20;
+		const offset = clampOffset(params.offset);
+		const limit = clampPositiveLimit(params.limit, 20);
 		return all.slice(offset, offset + limit);
 	}
 
@@ -1100,8 +1124,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			),
 		);
 		const ranked = rankMessageSearch(windowed, params.query);
-		const offset = typeof params.offset === "number" ? params.offset : 0;
-		const limit = params.limit ?? 20;
+		const offset = clampOffset(params.offset);
+		const limit = clampPositiveLimit(params.limit, 20);
 		return ranked
 			.slice(offset, offset + limit)
 			.map(({ item, ftsRank, trigramSimilarity }) => ({
@@ -1124,7 +1148,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		limit?: number;
 		offset?: number;
 	}): Promise<Log[]> {
-		const effectiveLimit = params.limit ?? 10;
+		const effectiveLimit = clampPositiveLimit(params.limit, 10);
 		let filtered = this.logs;
 
 		// Filter by entityId if provided
@@ -1143,7 +1167,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}
 
 		// Apply offset (skip first N results)
-		const offset = params.offset ?? 0;
+		const offset = clampOffset(params.offset);
 		filtered = filtered.slice(offset);
 
 		// Apply limit (limit results)
@@ -1471,9 +1495,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				out.push(room);
 			}
 		}
-		const off = offset ?? 0;
+		const off = clampOffset(offset);
 		out = out.slice(off);
-		if (limit != null) out = out.slice(0, limit);
+		const lim = clampLimitOrUnbounded(limit);
+		if (lim !== undefined) out = out.slice(0, lim);
 		return out;
 	}
 
@@ -1647,11 +1672,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		);
 
 		const offset =
-			typeof params.offset === "number" && params.offset > 0
+			typeof params.offset === "number" &&
+			Number.isSafeInteger(params.offset) &&
+			params.offset > 0
 				? params.offset
 				: 0;
 		const limit =
-			typeof params.limit === "number" && params.limit >= 0
+			typeof params.limit === "number" &&
+			Number.isSafeInteger(params.limit) &&
+			params.limit >= 0
 				? params.limit
 				: undefined;
 		const windowed =
@@ -1773,10 +1802,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		});
 
 		// Paginate to bound result size.
-		const offset = params.offset ?? 0;
+		const offset = clampOffset(params.offset);
 		filtered = filtered.slice(offset);
-		if (params.limit) {
-			filtered = filtered.slice(0, params.limit);
+		const limit = clampLimitOrUnbounded(params.limit);
+		if (limit !== undefined) {
+			filtered = filtered.slice(0, limit);
 		}
 
 		return filtered;
@@ -1841,7 +1871,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (worldIds.length === 0) return [];
 		const rooms = await this.getRoomsByWorlds(worldIds);
 		const roomIds = rooms.map((r) => r.id);
-		const effectiveLimit = params.limit ?? 50;
+		const effectiveLimit = clampPositiveLimit(params.limit, 50);
 		const out: Memory[] = [];
 		for (const rid of roomIds) {
 			if (params.tableName) {
