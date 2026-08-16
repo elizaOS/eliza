@@ -1,3 +1,7 @@
+/**
+ * Defines the cross-platform MobileSignals permission, capability, and snapshot
+ * contract consumed by Capacitor clients.
+ */
 import type { PluginListenerHandle } from "@capacitor/core";
 
 export type MobileSignalsPlatform = "android" | "ios" | "web";

@@ -598,11 +598,6 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         let healthSettingsTarget: Any = healthAvailableInBuild
             ? "health"
             : NSNull()
-        let authorization = screenTimeStatus["authorization"] as? [String: Any] ?? [:]
-        let screenTimeAuthStatus = authorization["status"] as? String ?? "unavailable"
-        let screenTimeCanRequest = authorization["canRequest"] as? Bool ?? false
-        let screenTimeSupported = screenTimeStatus["supported"] as? Bool ?? false
-        let screenTimeReady = screenTimeAuthStatus == "approved"
         let screenTimeReason = screenTimeStatus["reason"] ?? NSNull()
         let notificationsReady = notification.status == "granted"
 
