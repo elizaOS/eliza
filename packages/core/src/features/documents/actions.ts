@@ -485,9 +485,25 @@ async function scopedAddOptions(
 ) {
 	const scopedToEntityId = getScopedToEntityId(runtime, message, scope, params);
 	const addedBy = message.entityId;
+	let worldId = message.worldId as UUID | undefined;
+	if (!worldId) {
+		let room: Awaited<ReturnType<typeof runtime.getRoom>> | null = null;
+		try {
+			room = await runtime.getRoom(message.roomId as UUID);
+		} catch {
+			room = null;
+		}
+		if (!room?.worldId) {
+			throw new ElizaError("Document world resolution failed", {
+				code: "DOCUMENT_WORLD_MISSING",
+				context: { roomId: message.roomId },
+			});
+		}
+		worldId = room.worldId as UUID;
+	}
 	return {
 		agentId: runtime.agentId,
-		worldId: message.worldId ?? runtime.agentId,
+		worldId,
 		roomId: message.roomId,
 		entityId: scopedToEntityId ?? addedBy,
 		scope,
