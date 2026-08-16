@@ -19,6 +19,10 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
+import {
+  MAX_CHAT_MEDIA_BASE64_BYTES,
+  MAX_CHAT_MEDIA_RAW_BYTES,
+} from "@elizaos/shared/chat-upload-limits";
 import { resolveStateDir } from "../config/paths.ts";
 import { generateThumbnailBytes } from "./media-thumbnail.ts";
 
@@ -423,6 +427,10 @@ export function persistDataUrl(dataUrl: string): PersistedMedia | null {
   if (!match) return null;
   const header = match[1] ?? "";
   const payload = match[2] ?? "";
+  // Bound the encoded payload before decode. Buffer.from / decodeURIComponent
+  // of an unbounded data: URL is the heap DoS; a post-decode byte check still
+  // materializes the Buffer. Share the chat attachment encoded cap.
+  if (payload.length > MAX_CHAT_MEDIA_BASE64_BYTES) return null;
   const tokens = header.split(";");
   const mimeType = (tokens.shift() ?? "").trim() || "application/octet-stream";
   const isBase64 = tokens.some((token) => token.trim() === "base64");
@@ -438,10 +446,7 @@ export function persistDataUrl(dataUrl: string): PersistedMedia | null {
     return null;
   }
   if (buffer.length === 0) return null;
-  // Bound data: URLs — unbounded base64 would otherwise decode into a heap-sized Buffer.
-  // Cap at the chat media limit order (15 MiB); larger payloads are treated as invalid.
-  const MAX_DATA_URL_BYTES = 15 * 1024 * 1024;
-  if (buffer.length > MAX_DATA_URL_BYTES) return null;
+  if (buffer.length > MAX_CHAT_MEDIA_RAW_BYTES) return null;
   return persistMediaBytes(buffer, mimeType);
 }
 
