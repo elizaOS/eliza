@@ -203,11 +203,16 @@ function buildOutputPreview(content: string, maxLength = 3_000): string {
   if (trimmed.length <= maxLength) {
     return formatOutputBlock(trimmed);
   }
-  return `${trimmed.slice(0, maxLength).trimEnd()}\n\n[... ${trimmed.length - maxLength} chars omitted; use the attachment for full output ...]`;
+  const suffix = `\n\n[... ${trimmed.length - maxLength} chars omitted; use the attachment for full output ...]`;
+  if (maxLength <= suffix.length) return suffix.slice(0, maxLength);
+  return `${trimmed.slice(0, maxLength - suffix.length).trimEnd()}${suffix}`;
 }
 
 function truncateForData(text: string, max = MAX_TERMINAL_DATA_CHARS): string {
-  return text.length <= max ? text : `${text.slice(0, max)}\n…[truncated]`;
+  if (text.length <= max) return text;
+  const suffix = "\n…[truncated]";
+  if (max <= suffix.length) return suffix.slice(0, max);
+  return `${text.slice(0, max - suffix.length)}${suffix}`;
 }
 
 async function createCommandOutputAttachment(
