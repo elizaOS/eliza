@@ -297,21 +297,54 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     // Mid-entry centering probe (#20063 round-2 finding 2): the settle loop
     // below waits out the 220ms entry animation, so resting-state assertions
     // alone would pass even if the animation replaced the centering transform
-    // (the round-1 bug). Pause the entry animation deterministically at its
-    // midpoint and assert the panel is horizontally centered THERE, where the
-    // round-1 bug would place it off-center by ~half its width.
+    // (the round-1 bug). Deterministically RESTART the entry animation, flush
+    // styles, then pause at the 110ms midpoint and assert the panel is
+    // horizontally centered THERE, where the round-1 bug would place it ~half
+    // its width off-center. A computed animationName alone is NOT evidence the
+    // animation is still running (it stays declared after finish), and a
+    // finished animation ignores animationDelay/playState changes — hence the
+    // explicit restart (round-3 review finding).
     {
       const midEntry = await harness.eval(`(() => {
         const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
         if (!(panel instanceof HTMLElement)) throw new Error('panel missing');
         const cs = getComputedStyle(panel);
         if (cs.animationName !== 'shell-overlay-in-anchored') {
-          // prefers-reduced-motion or animation already finished: nothing to
+          // prefers-reduced-motion (or animation not applied): nothing to
           // probe mid-flight; the settled assertions below still apply.
           return { skipped: true, reason: cs.animationName };
         }
-        panel.style.animationPlayState = 'paused';
-        panel.style.animationDelay = '-110ms'; // seek to midpoint of 220ms
+        // Capture the utility-declared shorthand so restoration is exact.
+        const declared = {
+          name: cs.animationName,
+          duration: cs.animationDuration,
+          timing: cs.animationTimingFunction,
+          delay: cs.animationDelay,
+          iteration: cs.animationIterationCount,
+          direction: cs.animationDirection,
+          fill: cs.animationFillMode,
+          play: cs.animationPlayState,
+        };
+        // Restart: cancel any in-flight/finished animation, then re-declare
+        // it so a NEW CSSAnimation starts from time zero.
+        for (const anim of panel.getAnimations()) anim.cancel();
+        panel.style.animation = 'none';
+        void panel.offsetWidth; // force style flush
+        panel.style.animation = [
+          declared.duration, declared.timing, '0ms', declared.iteration,
+          declared.direction, declared.fill, 'paused', declared.name,
+        ].join(' ');
+        void panel.offsetWidth; // flush so the paused animation exists
+        // Seek to the midpoint of the 220ms duration via currentTime.
+        const durationMs =
+          Number.parseFloat(declared.duration) *
+          (declared.duration.endsWith('ms') ? 1 : 1000);
+        const anim = panel.getAnimations()[0];
+        if (!(anim instanceof CSSAnimation)) {
+          return { skipped: true, reason: 'no CSSAnimation after restart' };
+        }
+        anim.currentTime = durationMs / 2;
+        void panel.offsetWidth; // flush the seeked frame
         const rect = panel.getBoundingClientRect();
         return {
           skipped: false,
@@ -321,22 +354,23 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
           viewportWidth: window.innerWidth,
         };
       })()`);
-      if (!midEntry.skipped) {
-        expect(midEntry.animationName).toBe("shell-overlay-in-anchored");
-        const midOffset = Math.abs(
-          midEntry.left + midEntry.width / 2 - midEntry.viewportWidth / 2,
+      try {
+        if (!midEntry.skipped) {
+          expect(midEntry.animationName).toBe("shell-overlay-in-anchored");
+          const midOffset = Math.abs(
+            midEntry.left + midEntry.width / 2 - midEntry.viewportWidth / 2,
+          );
+          expect(midOffset).toBeLessThanOrEqual(4);
+        }
+      } finally {
+        // Restoration must run even when an assertion throws (round-3).
+        await harness.eval(
+          `(() => {
+            const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
+            if (panel instanceof HTMLElement) panel.style.animation = '';
+          })()`,
         );
-        expect(midOffset).toBeLessThanOrEqual(4);
       }
-      await harness.eval(
-        `(() => {
-          const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
-          if (panel instanceof HTMLElement) {
-            panel.style.animationPlayState = '';
-            panel.style.animationDelay = '';
-          }
-        })()`,
-      );
     }
 
     // The panel enters via a 220ms translate animation (motion-safe). Measuring
