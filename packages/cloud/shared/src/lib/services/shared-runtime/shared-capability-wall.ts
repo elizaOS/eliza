@@ -210,18 +210,13 @@ export function resolveSharedCapabilityIntent(
   if (!isEnabled(primary, capabilities)) {
     return { kind: "blocked-primary", blocked: wallFor(primary) };
   }
-  const blockedMatches = matches
+  const blockedSecondary = matches
     .slice(1)
     .filter(
       (candidate) =>
         !isEnabled(candidate, capabilities) && beginsSeparateClause(text, primary, candidate),
-    );
-  const blockedCapabilities = new Set<SharedDedicatedCapability>();
-  const blockedSecondary = blockedMatches.flatMap((match) => {
-    if (blockedCapabilities.has(match.rule.capability)) return [];
-    blockedCapabilities.add(match.rule.capability);
-    return [wallFor(match)];
-  });
+    )
+    .map(wallFor);
   return {
     kind: "enabled-primary",
     primary: wallFor(primary),
