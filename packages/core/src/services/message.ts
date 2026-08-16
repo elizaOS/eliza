@@ -8818,10 +8818,14 @@ export async function runV5MessageRuntimeStage1(args: {
 		// When the rejected candidates are reminder/alarm-shaped and TRIGGER
 		// survived collection, let the turn plan — the trigger path serves it.
 		const rejectedReminderish =
-			candidateGateDiagnostics.disclosureRejectedExplicitCandidates.some((name) => {
-				const normalized = normalizeActionIdentifier(name);
-				return normalized.includes("REMINDER") || normalized.includes("ALARM");
-			});
+			candidateGateDiagnostics.disclosureRejectedExplicitCandidates.some(
+				(name) => {
+					const normalized = normalizeActionIdentifier(name);
+					return (
+						normalized.includes("REMINDER") || normalized.includes("ALARM")
+					);
+				},
+			);
 		const ungatedTriggerSiblingAvailable =
 			rejectedReminderish && collectedCandidateNames.has("TRIGGER");
 		if (
