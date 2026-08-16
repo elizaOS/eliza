@@ -26,11 +26,13 @@ interface Recorded {
 const recorded: Recorded[] = [];
 const store = new Map<string, string>();
 let failNextFetch = false;
+let nextPipelineResponse: unknown = null;
 
 function installFetch(): void {
   recorded.length = 0;
   store.clear();
   failNextFetch = false;
+  nextPipelineResponse = null;
   global.fetch = vi.fn(async (input: unknown, init?: RequestInit) => {
     if (failNextFetch) {
       failNextFetch = false;
@@ -41,6 +43,12 @@ function installFetch(): void {
     recorded.push({ url, body });
 
     if (url.endsWith("/pipeline")) {
+      if (nextPipelineResponse !== null) {
+        return {
+          ok: true,
+          json: async () => nextPipelineResponse,
+        } as unknown as Response;
+      }
       for (const cmd of body as string[][]) {
         if (cmd[0] === "SET") store.set(cmd[1], cmd[2]);
       }
@@ -104,6 +112,15 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
       "EX",
       "90",
     ]);
+  });
+
+  it("rejects a top-level Upstash pipeline error response", async () => {
+    nextPipelineResponse = { error: "pipeline unavailable" };
+    const reg = new SandboxRegistry(baseConfig);
+
+    await expect(reg.register()).rejects.toThrow(
+      "Upstash pipeline returned an invalid response",
+    );
   });
 
   it("unregister() deletes keys only when they still point at this sandbox", async () => {

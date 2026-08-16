@@ -32,6 +32,8 @@ export interface RateLimiter {
   dispose(): void;
 }
 
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 export function createRateLimiter(opts: RateLimiterOptions): RateLimiter {
   const { windowMs } = opts;
   if (
@@ -45,12 +47,17 @@ export function createRateLimiter(opts: RateLimiterOptions): RateLimiter {
     opts.sweepIntervalMs !== undefined &&
     (typeof opts.sweepIntervalMs !== "number" ||
       !Number.isFinite(opts.sweepIntervalMs) ||
-      opts.sweepIntervalMs <= 0)
+      opts.sweepIntervalMs <= 0 ||
+      opts.sweepIntervalMs > MAX_TIMER_DELAY_MS)
   ) {
-    throw new RangeError("sweepIntervalMs must be a positive finite number");
+    throw new RangeError(
+      `sweepIntervalMs must be between 1 and ${MAX_TIMER_DELAY_MS}`,
+    );
   }
 
-  const sweepIntervalMs = opts.sweepIntervalMs ?? Math.ceil(windowMs * 1.5);
+  const sweepIntervalMs =
+    opts.sweepIntervalMs ??
+    Math.min(Math.ceil(windowMs * 1.5), MAX_TIMER_DELAY_MS);
   const map = new Map<string, number>(); // key → lastActionAt
 
   let sweepTimer: ReturnType<typeof setInterval> | null = setInterval(() => {

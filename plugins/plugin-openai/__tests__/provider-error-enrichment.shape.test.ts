@@ -106,6 +106,28 @@ describe("isTransientProviderError with response bodies", () => {
     expect(__INTERNAL_isTransientProviderError(error)).toBe(true);
   });
 
+  it("classifies OpenRouter's intermittent no-models routing 400 as transient", () => {
+    const error = apiCallError({
+      statusCode: 400,
+      responseBody: '{"error":{"message":"No models provided","code":400}}',
+    });
+    expect(__INTERNAL_isTransientProviderError(error)).toBe(true);
+  });
+
+  it("keeps other missing-model validation errors non-transient", () => {
+    for (const message of [
+      "required field 'model' is missing",
+      "model is invalid",
+      "unsupported model identifier",
+    ]) {
+      const error = apiCallError({
+        statusCode: 400,
+        responseBody: JSON.stringify({ error: { message } }),
+      });
+      expect(__INTERNAL_isTransientProviderError(error), message).toBe(false);
+    }
+  });
+
   it("keeps a genuine validation 400 non-transient (no retry masking)", () => {
     const error = apiCallError({ statusCode: 400, responseBody: CEREBRAS_FLAT_400 });
     expect(__INTERNAL_isTransientProviderError(error)).toBe(false);

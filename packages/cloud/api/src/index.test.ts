@@ -822,7 +822,31 @@ describe("cloud-api worker entrypoint", () => {
       status: "ok",
       region: "local-test",
       commit: "feedfacefeedfacefeedfacefeedfacefeedface",
+      personalSharedTelegramEdge: { enabled: false },
     });
+  });
+
+  test("reports only the served Personal Shared Telegram edge gate state", async () => {
+    const response = await cloudApiWorker.fetch(
+      new Request("https://api-staging.eliza.app/api/health", {
+        headers: { host: "api-staging.eliza.app" },
+      }),
+      {
+        ENVIRONMENT: "staging",
+        PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED: "true",
+        ELIZA_APP_TELEGRAM_BOT_TOKEN: "never-return-this-bot-token",
+        ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "never-return-this-webhook-secret",
+      } as never,
+      {} as never,
+    );
+
+    const text = await response.text();
+    expect(JSON.parse(text)).toMatchObject({
+      environment: "staging",
+      personalSharedTelegramEdge: { enabled: true },
+    });
+    expect(text).not.toContain("never-return-this-bot-token");
+    expect(text).not.toContain("never-return-this-webhook-secret");
   });
 
   test("reports only value-free staging session cutover readiness", async () => {
@@ -968,24 +992,27 @@ describe("cloud-api worker entrypoint", () => {
     );
   });
 
-  test("activates sender projection and inference timing only in staging", async () => {
+  test("keeps the Personal Shared edge fail-closed pending a post-migration canary", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
       vars?: {
         PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+        PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
         ELIZA_INFERENCE_TIMING?: string;
       };
       env?: {
         staging?: {
           vars?: {
             PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+            PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
             ELIZA_INFERENCE_TIMING?: string;
           };
         };
         production?: {
           vars?: {
             PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+            PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
             ELIZA_INFERENCE_TIMING?: string;
           };
         };
@@ -1001,11 +1028,53 @@ describe("cloud-api worker entrypoint", () => {
     expect(
       config.env?.production?.vars?.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED,
     ).toBe("false");
+    expect(config.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED).toBe("false");
+    expect(
+      config.env?.staging?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
+    ).toBe("false");
+    expect(
+      config.env?.production?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
+    ).toBe("false");
     expect(config.vars?.ELIZA_INFERENCE_TIMING).toBeUndefined();
     expect(config.env?.staging?.vars?.ELIZA_INFERENCE_TIMING).toBe("info");
     expect(
       config.env?.production?.vars?.ELIZA_INFERENCE_TIMING,
     ).toBeUndefined();
+  });
+
+  test("binds the Personal Telegram delivery ledger in every Worker environment", async () => {
+    type DurableBinding = { name?: string; class_name?: string };
+    type DurableConfig = {
+      bindings?: DurableBinding[];
+    };
+    const config = Bun.TOML.parse(
+      await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
+    ) as {
+      durable_objects?: DurableConfig;
+      env?: {
+        staging?: { durable_objects?: DurableConfig };
+        production?: { durable_objects?: DurableConfig };
+      };
+      migrations?: Array<{
+        tag?: string;
+        new_sqlite_classes?: string[];
+      }>;
+    };
+
+    for (const durableObjects of [
+      config.durable_objects,
+      config.env?.staging?.durable_objects,
+      config.env?.production?.durable_objects,
+    ]) {
+      expect(durableObjects?.bindings).toContainEqual({
+        name: "PERSONAL_TELEGRAM_DELIVERIES",
+        class_name: "PersonalTelegramDelivery",
+      });
+    }
+    expect(config.migrations).toContainEqual({
+      tag: "personal-telegram-delivery-v1",
+      new_sqlite_classes: ["PersonalTelegramDelivery"],
+    });
   });
 
   test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {

@@ -230,3 +230,43 @@ describe("media generation cold-cache warming retry", () => {
     expect(postApiV1GenerateMusic).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("terminal cloud failure diagnosability (2026-08-16 opaque video outage)", () => {
+  it("surfaces the server-attached provider details in the thrown message", async () => {
+    const apiError = Object.assign(new Error("Video provider request failed"), {
+      errorBody: {
+        success: false,
+        error: "Video provider request failed",
+        code: "internal_error",
+        details: {
+          provider: "fal",
+          model: "veo-3",
+          upstreamStatus: 403,
+          upstreamCode: "auth_error",
+          upstreamMessage: "API key not authorized for this model",
+        },
+      },
+    });
+    const postApiV1GenerateVideo = vi.fn().mockRejectedValue(apiError);
+    setCloudMediaClientFactoryForTesting(() => ({
+      routes: { postApiV1GenerateVideo, postApiV1GenerateMusic: vi.fn() },
+    }));
+
+    await expect(handleVideoGeneration(runtime(), { prompt: "x" })).rejects.toThrow(
+      "Video provider request failed (provider=fal model=veo-3 upstream=403/auth_error API key not authorized for this model)"
+    );
+  });
+
+  it("passes a detail-less error through unchanged", async () => {
+    const postApiV1GenerateVideo = vi
+      .fn()
+      .mockRejectedValue(new Error("Video provider request failed"));
+    setCloudMediaClientFactoryForTesting(() => ({
+      routes: { postApiV1GenerateVideo, postApiV1GenerateMusic: vi.fn() },
+    }));
+
+    await expect(handleVideoGeneration(runtime(), { prompt: "x" })).rejects.toThrow(
+      /^Video provider request failed$/
+    );
+  });
+});

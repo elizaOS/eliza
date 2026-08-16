@@ -17,6 +17,7 @@ import { logger } from "../../utils/logger";
 import { paymentMethodsService } from "../payment-methods";
 import { type PaymentProviderAdapter, type PaymentRequestRow } from "../payment-requests";
 import { IgnoredWebhookEvent } from "../payment-webhook-errors";
+import { stripeCheckoutExpiresAtSeconds } from "./checkout-lifetime";
 
 interface RequestMetadata {
   successUrl?: string;
@@ -94,6 +95,10 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
 
       const productName = meta.productName ?? request.reason ?? "Payment";
 
+      // Bind the Checkout session lifetime to the request deadline so the
+      // hosted page cannot outlive the request by more than Stripe's floor.
+      const sessionExpiresAtSeconds = stripeCheckoutExpiresAtSeconds(request.expiresAt, new Date());
+
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         payment_method_types: ["card"],
@@ -117,6 +122,7 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
         ...(!customerId && meta.customerEmail ? { customer_email: meta.customerEmail } : {}),
         metadata: sharedMetadata,
         payment_intent_data: { metadata: sharedMetadata },
+        expires_at: sessionExpiresAtSeconds,
       });
 
       const paymentIntent = session.payment_intent;
@@ -135,6 +141,7 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
           stripe_session_id: session.id,
           stripe_payment_intent_id: paymentIntentId,
           stripe_checkout_url: session.url,
+          stripe_session_expires_at: new Date(sessionExpiresAtSeconds * 1000).toISOString(),
         },
       };
     },

@@ -203,11 +203,12 @@ export function mergeEntities(args: {
     }
     for (const [key, attr] of Object.entries(source.attributes ?? {})) {
       const existing = attributes[key];
-      if (!existing || attr.confidence > existing.confidence) {
+      if (!existing) {
         attributes[key] = attr;
-      } else if (attr.confidence === existing.confidence) {
+      } else {
+        const chosen = attr.confidence > existing.confidence ? attr : existing;
         attributes[key] = {
-          ...existing,
+          ...chosen,
           evidence: Array.from(
             new Set([...existing.evidence, ...attr.evidence]),
           ),

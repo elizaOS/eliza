@@ -52,3 +52,40 @@ describe("SharedRuntimeHistoryRepository.deleteByAgent", () => {
     expect(sql.params).toContain("e06bb509-6c52-4c33-a9f7-66addc43e8c8");
   });
 });
+
+describe("SharedRuntimeHistoryRepository.listRecentlyActiveAgentIds", () => {
+  test("selects distinct agents strictly newer than the window start, capped", async () => {
+    let capturedRecency: SQL | undefined;
+    let capturedLimit: number | undefined;
+    const rows = [{ agentId: "agent-a" }, { agentId: "agent-b" }];
+    const limitFn = mock((n: number) => {
+      capturedLimit = n;
+      return Promise.resolve(rows);
+    });
+    const whereFn = mock((clause: SQL) => {
+      capturedRecency = clause;
+      return { limit: limitFn };
+    });
+    const fromFn = mock(() => ({ where: whereFn }));
+    const selectDistinct = mock(() => ({ from: fromFn }));
+    const dbReadMock = new Proxy(realClient.dbRead as unknown as Record<PropertyKey, unknown>, {
+      get(target, prop, receiver) {
+        if (prop === "selectDistinct") return selectDistinct;
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    mock.module("../client", () => ({ ...realClient, dbRead: dbReadMock }));
+    try {
+      const { SharedRuntimeHistoryRepository } = await import("./shared-runtime-history");
+      const since = new Date("2026-08-16T00:00:00Z");
+      const ids = await new SharedRuntimeHistoryRepository().listRecentlyActiveAgentIds(since, 50);
+      expect(ids).toEqual(["agent-a", "agent-b"]);
+      expect(capturedLimit).toBe(50);
+      const sql = new PgDialect().sqlToQuery(capturedRecency as SQL);
+      expect(sql.sql).toContain('"updated_at" >');
+      expect(sql.params).toContainEqual(since.toISOString());
+    } finally {
+      mock.module("../client", () => realClient);
+    }
+  });
+});

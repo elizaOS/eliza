@@ -87,7 +87,7 @@ function coerceString(value: unknown): string | null {
 function coerceNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value !== "string" || value.trim().length === 0) return null;
-  const parsed = Number.parseFloat(value);
+  const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 

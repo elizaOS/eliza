@@ -104,22 +104,45 @@ function parseUntilValue(value: string): number {
       59,
       59,
     );
-    if (!Number.isFinite(ms)) invalidRecurrence(`UNTIL=${value}`);
+    const date = new Date(ms);
+    if (
+      !Number.isFinite(ms) ||
+      date.getUTCFullYear() !== Number(dateOnly[1]) ||
+      date.getUTCMonth() !== Number(dateOnly[2]) - 1 ||
+      date.getUTCDate() !== Number(dateOnly[3])
+    ) {
+      invalidRecurrence(`UNTIL=${value}`);
+    }
     return ms;
   }
   const dateTime = value.match(
     /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/,
   );
   if (dateTime) {
+    const second = Number(dateTime[6]);
+    // ECMAScript cannot represent leap seconds. RFC 5545 directs
+    // implementations without that support to interpret second 60 as 59.
+    const representedSecond = second === 60 ? 59 : second;
     const ms = Date.UTC(
       Number(dateTime[1]),
       Number(dateTime[2]) - 1,
       Number(dateTime[3]),
       Number(dateTime[4]),
       Number(dateTime[5]),
-      Number(dateTime[6]),
+      representedSecond,
     );
-    if (!Number.isFinite(ms)) invalidRecurrence(`UNTIL=${value}`);
+    const date = new Date(ms);
+    if (
+      !Number.isFinite(ms) ||
+      date.getUTCFullYear() !== Number(dateTime[1]) ||
+      date.getUTCMonth() !== Number(dateTime[2]) - 1 ||
+      date.getUTCDate() !== Number(dateTime[3]) ||
+      date.getUTCHours() !== Number(dateTime[4]) ||
+      date.getUTCMinutes() !== Number(dateTime[5]) ||
+      date.getUTCSeconds() !== representedSecond
+    ) {
+      invalidRecurrence(`UNTIL=${value}`);
+    }
     return ms;
   }
   invalidRecurrence(

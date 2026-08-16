@@ -103,4 +103,23 @@ describe("stableStringify", () => {
 		// arrays keep order.
 		expect(stableStringify([3, 1, 2])).toBe("[3,1,2]");
 	});
+
+	it("serializes Date instances to ISO timestamp strings rather than empty objects", () => {
+		const date = new Date("2026-01-01T00:00:00.000Z");
+		expect(stableStringify(date)).toBe('"2026-01-01T00:00:00.000Z"');
+		expect(stableStringify({ createdAt: date, id: "123" })).toBe(
+			'{"createdAt":"2026-01-01T00:00:00.000Z","id":"123"}',
+		);
+		expect(stableStringify([date])).toBe('["2026-01-01T00:00:00.000Z"]');
+	});
+
+	it("preserves native JSON semantics for invalid Date instances", () => {
+		const invalidDate = new Date(Number.NaN);
+		expect(stableStringify(invalidDate)).toBe("null");
+		expect(stableStringify({ createdAt: invalidDate })).toBe(
+			'{"createdAt":null}',
+		);
+		expect(stableStringify([invalidDate])).toBe("[null]");
+		expect(stableStringify("Invalid Date")).toBe('"Invalid Date"');
+	});
 });

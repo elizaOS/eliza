@@ -53,8 +53,32 @@ describe("RemindersMigration", () => {
         /INSERT INTO .*app_reminders.*life_escalation_states/s.test(s),
       ),
     ).toBe(true);
+    expect(log.some((s) => s.includes('ON CONFLICT ("id") DO NOTHING'))).toBe(
+      true,
+    );
     // never touches the source
     expect(log.some((s) => /DROP|ALTER .*app_lifeops/.test(s))).toBe(false);
+  });
+
+  it("tolerates a concurrent migration after observing an empty target", async () => {
+    const exec: SqlExecutor = async (sql) => {
+      if (sql.includes("to_regclass")) return [{ present: true }];
+      if (sql.includes("SELECT NOT EXISTS")) return [{ empty: true }];
+      if (
+        sql.includes("INSERT INTO") &&
+        !sql.includes('ON CONFLICT ("id") DO NOTHING')
+      ) {
+        throw new Error("duplicate key value violates unique constraint");
+      }
+      return [];
+    };
+
+    await expect(
+      migrateReminderTable(exec, "life_reminder_plans"),
+    ).resolves.toEqual({
+      table: "life_reminder_plans",
+      outcome: "copied",
+    });
   });
 
   it("creates the target schema and processes every reminder table", async () => {

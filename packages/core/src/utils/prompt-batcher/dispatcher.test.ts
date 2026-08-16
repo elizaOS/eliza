@@ -177,4 +177,43 @@ describe("PromptDispatcher", () => {
 		expect(seen).toHaveLength(1);
 		expect(seen[0]?.params?.priority).toBe("interactive");
 	});
+
+	test("limits simultaneous calls to configured finite parallelism", async () => {
+		let active = 0;
+		let peak = 0;
+		let started = 0;
+		let releaseGate: (() => void) | undefined;
+		const gate = new Promise<void>((resolve) => {
+			releaseGate = resolve;
+		});
+		const runtime = createMockRuntime({
+			dynamicPromptExecFromState: async () => {
+				active += 1;
+				started += 1;
+				peak = Math.max(peak, active);
+				if (started === 2) {
+					releaseGate?.();
+				}
+				await gate;
+				active -= 1;
+				return {};
+			},
+		});
+		const dispatcher = new PromptDispatcher({
+			packingDensity: 1,
+			maxTokensPerCall: 8_000,
+			maxParallelCalls: 2,
+			modelSeparation: 1,
+			maxSectionsPerCall: 8,
+		});
+		const isolated = ["first", "second", "third"].map((id) => ({
+			...makeResolvedSection(id, 0),
+			isolated: true,
+		}));
+
+		await dispatcher.dispatch(isolated, runtime);
+
+		expect(started).toBe(3);
+		expect(peak).toBe(2);
+	});
 });

@@ -32,7 +32,8 @@ export const CHANNEL_TOPICS_SEARCH_ROUTE: Route = {
 			return;
 		}
 		const rawLimit = Number(firstQueryValue(req.query?.limit));
-		const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? rawLimit : 20;
+		const limit =
+			Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 20;
 		const svc = runtime.getService("channel_topics") as
 			| (TopicSearchService & object)
 			| null;

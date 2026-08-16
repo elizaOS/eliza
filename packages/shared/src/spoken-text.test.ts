@@ -8,7 +8,50 @@ import { describe, expect, it } from "vitest";
 
 import { sanitizeSpeechText } from "./spoken-text";
 
+// Twin-pin: this table is byte-identical to the one in
+// packages/core/src/spoken-text.test.ts. The two sanitizers share one contract
+// ("hidden model markup must never reach spoken output"), so a fix landing on
+// one side only must fail the other side's suite (#20519).
+const hiddenBlockTags = [
+  "think",
+  "analysis",
+  "reasoning",
+  "tool_call",
+  "tool_calls",
+  "tool",
+  "tools",
+] as const;
+
 describe("sanitizeSpeechText", () => {
+  it.each(hiddenBlockTags)(
+    "removes a closed <%s> block and preserves following speech",
+    (tag) => {
+      expect(
+        sanitizeSpeechText(
+          `Visible. <${tag}>private payload</${tag}> Continue.`,
+        ),
+      ).toBe("Visible. Continue.");
+    },
+  );
+
+  it.each(hiddenBlockTags)(
+    "removes an unterminated <%s> block through end of input",
+    (tag) => {
+      expect(sanitizeSpeechText(`Visible. <${tag}>private payload`)).toBe(
+        "Visible.",
+      );
+    },
+  );
+
+  it.each(hiddenBlockTags)(
+    "removes a truncated <%s> opening tag through end of input (#20519)",
+    (tag) => {
+      expect(sanitizeSpeechText(`Visible. <${tag} private payload`)).toBe(
+        "Visible.",
+      );
+    },
+  );
+
   it("removes closed internal thinking and reasoning blocks", () => {
     expect(
       sanitizeSpeechText(

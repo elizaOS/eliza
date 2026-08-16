@@ -42,6 +42,7 @@
       const ipcBase = 'eliza-local-agent://ipc';
       const ipcPathPrefix = `//${ipcHost}`;
       const localAgentPort = '31337';
+      const mobileRuntimeModeStorageKey = 'eliza:mobile-runtime-mode';
 
       // The loopback (127.0.0.1:31337) → native-IPC rewrite below is only
       // correct on a NATIVE Capacitor platform (iOS/Android), where the
@@ -62,6 +63,19 @@
           return p === 'ios' || p === 'android';
         } catch (_) {
           return false;
+        }
+      }
+
+      function nativeModeUsesOnDeviceAgent() {
+        try {
+          const mode = window.localStorage.getItem(mobileRuntimeModeStorageKey);
+          if (mode === 'remote-mac' || mode === 'cloud') {
+            return false;
+          }
+          return true;
+        } catch (_) {
+          // error-policy:J4 storage unavailable — preserve native-local compatibility.
+          return true;
         }
       }
 
@@ -87,6 +101,7 @@
           const url = new URL(trimmed, window.location?.href ? window.location.href : 'https://cloud.eliza.app');
           if (
             isNativeCapacitorAgentHost() &&
+            nativeModeUsesOnDeviceAgent() &&
             url.protocol === 'http:' &&
             url.port === localAgentPort &&
             (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]' || url.hostname === '::1')

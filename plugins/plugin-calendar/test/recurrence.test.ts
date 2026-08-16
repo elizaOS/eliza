@@ -53,6 +53,12 @@ describe("parseRecurrenceRule", () => {
     expect(parseRecurrenceRule("RRULE:FREQ=DAILY;UNTIL=20260310").untilMs).toBe(
       Date.UTC(2026, 2, 10, 23, 59, 59),
     );
+    expect(parseRecurrenceRule("RRULE:FREQ=DAILY;UNTIL=20240229").untilMs).toBe(
+      Date.UTC(2024, 1, 29, 23, 59, 59),
+    );
+    expect(
+      parseRecurrenceRule("RRULE:FREQ=DAILY;UNTIL=19970630T235960Z").untilMs,
+    ).toBe(Date.UTC(1997, 5, 30, 23, 59, 59));
     expect(
       parseRecurrenceRule("RRULE:FREQ=MONTHLY;BYMONTHDAY=15,-1").byMonthDay,
     ).toEqual([15, -1]);
@@ -77,6 +83,15 @@ describe("parseRecurrenceRule", () => {
       "RRULE:FREQ=DAILY;INTERVAL=0",
       "RRULE:FREQ=DAILY;COUNT=0",
       "RRULE:FREQ=DAILY;UNTIL=tomorrow",
+      "RRULE:FREQ=DAILY;UNTIL=20260010",
+      "RRULE:FREQ=DAILY;UNTIL=20261310",
+      "RRULE:FREQ=DAILY;UNTIL=20260200",
+      "RRULE:FREQ=DAILY;UNTIL=20260231",
+      "RRULE:FREQ=DAILY;UNTIL=20250229",
+      "RRULE:FREQ=DAILY;UNTIL=20260431T120000Z",
+      "RRULE:FREQ=DAILY;UNTIL=20260430T250000Z",
+      "RRULE:FREQ=DAILY;UNTIL=20260430T126000Z",
+      "RRULE:FREQ=DAILY;UNTIL=20260430T125961Z",
       "RRULE:FREQ=DAILY;COUNT=3;UNTIL=20260310",
       "RRULE:FREQ=MONTHLY;BYMONTHDAY=0",
       "RRULE:FREQ=MONTHLY;BYMONTHDAY=45",

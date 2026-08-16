@@ -387,6 +387,60 @@ describe("PR agent attribution", () => {
     assert.deepEqual(labelled.attribution.modelIds, ["openai/gpt-5.6-sol"]);
   });
 
+  it("accepts the skill's v2 receipt marker alongside or instead of the bare template marker (#18457)", () => {
+    const receiptFooter = `AI provider/model: anthropic / claude-opus-5
+Client / agent tooling: Claude Code
+Contribution skill revision: elizaOS/army@9259107132edeab02d9e47dbb7ce383721bada77:skills/contribute-to-eliza
+Compute receipt: 1234 project-attributed tokens (exact; device-signed, locally reported)
+Attribution status: self-reported
+— [qa-agent]
+<!-- elizaos-contribution-attribution:v2 {"provider":"anthropic","model":"claude-opus-5","client":"Claude Code","skill_revision":"elizaOS/army@9259107132edeab02d9e47dbb7ce383721bada77:skills/contribute-to-eliza","run":{"schema_version":"1","run_id":"0f2c","device_signature":"abc123"}} -->`;
+
+    // A filled template plus the appended skill footer carries one marker of
+    // each spelling and must pass.
+    const both = evaluatePrAttribution(`${body()}\n\n${receiptFooter}`);
+    assert.equal(
+      both.ok,
+      true,
+      both.findings.map((finding) => finding.message).join("; "),
+    );
+
+    // The v2 receipt alone satisfies the marker requirement when the rows
+    // are present without the bare template marker.
+    const withoutTemplateMarker = body().replace(
+      "<!-- contribution-attribution:v1 -->\n",
+      "",
+    );
+    const v2Only = evaluatePrAttribution(
+      `${withoutTemplateMarker}\n\n${receiptFooter}`,
+    );
+    assert.equal(
+      v2Only.ok,
+      true,
+      v2Only.findings.map((finding) => finding.message).join("; "),
+    );
+
+    // Duplicate v2 receipts are still rejected.
+    const duplicated = evaluatePrAttribution(
+      `${body()}\n\n${receiptFooter}\n${receiptFooter}`,
+    );
+    assert.equal(duplicated.ok, false);
+    assert.ok(
+      duplicated.findings.some(
+        (finding) => finding.id === "marker" && finding.status === "duplicate",
+      ),
+    );
+
+    // Neither marker present still reports missing.
+    const missing = evaluatePrAttribution(withoutTemplateMarker);
+    assert.equal(missing.ok, false);
+    assert.ok(
+      missing.findings.some(
+        (finding) => finding.id === "marker" && finding.status === "missing",
+      ),
+    );
+  });
+
   it("keeps PR template labels free of army terminal-footer collisions (#17855)", () => {
     const templatePath = path.join(
       repositoryRoot,

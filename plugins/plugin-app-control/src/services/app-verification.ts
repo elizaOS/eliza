@@ -26,6 +26,7 @@ import {
 	type PackageManager,
 	parseEslintOutput,
 	parseTscOutput,
+	parseVitestCounts,
 	parseVitestOutput,
 	stripAnsi,
 	truncate,
@@ -299,20 +300,6 @@ function combineOutput(rawStdout: string, rawStderr: string): string {
 	return `${stdout}\n--- stderr ---\n${stderr}`;
 }
 
-function parseProvenVitestSummary(output: string): TestRunSummary | null {
-	const testsLine = output
-		.split(/\r?\n/)
-		.find((line) => /^\s*Tests\s+/.test(line));
-	if (!testsLine) return null;
-	const failedMatch = /(\d+)\s+failed/.exec(testsLine);
-	const passedMatch = /(\d+)\s+passed/.exec(testsLine);
-	if (!failedMatch && !passedMatch) return null;
-	return {
-		passed: passedMatch ? Number.parseInt(passedMatch[1] ?? "0", 10) : 0,
-		failed: failedMatch ? Number.parseInt(failedMatch[1] ?? "0", 10) : 0,
-	};
-}
-
 async function runTypecheck(
 	dir: string,
 	pm: PackageManager,
@@ -410,7 +397,7 @@ async function runTests(
 	const full = combineOutput(stdout, stderr);
 	const outputPath = await persistOutput(dir, "test", full);
 	const summary = parseVitestOutput(full);
-	const provenSummary = parseProvenVitestSummary(full);
+	const provenSummary = parseVitestCounts(full);
 	const diagnostics: Diagnostic[] = summary.failures.map((failure) => ({
 		file: "test",
 		message: failure,

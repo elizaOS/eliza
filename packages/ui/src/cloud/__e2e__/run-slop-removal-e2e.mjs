@@ -532,9 +532,9 @@ await page.getByTestId("surface-account").waitFor({ timeout: 60_000 });
 await page.waitForTimeout(3000);
 await snap("surface-account-desktop");
 
-// --- mobile pass over the two most-changed surfaces --------------------------
+// --- 320px pass over the two most-changed surfaces ---------------------------
 const mobile = await context.browser().newContext({
-  viewport: { width: 390, height: 844 },
+  viewport: { width: 320, height: 844 },
 });
 const mpage = await mobile.newPage();
 await mpage.goto(`${ORIGIN}/?surface=billing&canceled=true`);
@@ -549,10 +549,17 @@ await mpage.screenshot({
 });
 await mpage.goto(`${ORIGIN}/?surface=monetization`);
 await mpage.getByRole("tab", { name: /Earnings/i }).waitFor({ timeout: 60_000 });
+await mpage.getByRole("tab", { name: /Affiliates/i }).click();
+await mpage
+  .getByTestId("cloud-affiliates-copy-affiliate")
+  .waitFor({ timeout: 60_000 });
 await mpage.waitForTimeout(2500);
 shot += 1;
 await mpage.screenshot({
-  path: join(outDir, `${String(shot).padStart(2, "0")}-surface-monetization-mobile.png`),
+  path: join(
+    outDir,
+    `${String(shot).padStart(2, "0")}-surface-monetization-affiliates-mobile-320.png`,
+  ),
   fullPage: true,
 });
 await mobile.close();

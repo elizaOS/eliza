@@ -44,6 +44,21 @@ Body`;
     assert.strictEqual(result.body, "Body");
   });
 
+  it("handles opening delimiter with trailing whitespace", () => {
+    const content = "---   \nname: test-trailing\ndescription: Test\n--- \nBody";
+    const result = parseFrontmatter<SkillFrontmatter>(content);
+    assert.strictEqual(result.frontmatter.name, "test-trailing");
+    assert.strictEqual(result.frontmatter.description, "Test");
+    assert.strictEqual(result.body, "Body");
+  });
+
+  it("does not treat non-delimiter prefix strings as frontmatter", () => {
+    const content = "---not-a-delimiter\nname: test\n---\nBody";
+    const result = parseFrontmatter(content);
+    assert.deepStrictEqual(result.frontmatter, {});
+    assert.strictEqual(result.body, content);
+  });
+
   it("handles Windows-style line endings (CRLF)", () => {
     const content = "---\r\nname: test\r\n---\r\nBody";
     const result = parseFrontmatter<SkillFrontmatter>(content);

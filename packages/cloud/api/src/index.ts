@@ -36,6 +36,7 @@ export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { PersonalDeliveryProjection } from "./personal-delivery-projection";
+export { PersonalTelegramDelivery } from "./personal-telegram-delivery";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
 export { isThinStewardPublicPath } from "./steward/public-paths";
 export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordinator";
@@ -427,6 +428,8 @@ async function dispatchInference(
 }
 
 function healthResponse(env: AppEnv["Bindings"]): Response {
+  const personalSharedTelegramEdgeEnabled =
+    env.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED === "true";
   const stagingSessionVersion =
     env.STAGING_SESSION_EXCHANGE_VERSION?.trim() || null;
   const stagingSessionSigningSecret =
@@ -471,6 +474,13 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       // the beacon the cross-environment routing verifier probes
       // (packages/cloud/scripts/verify-environment-routing.mjs).
       environment: env.ENVIRONMENT ?? null,
+      // The protected Telegram cutover uses a secret binding to override the
+      // tracked false default without changing code. This value-free beacon
+      // lets the release workflow prove the served state and fail closed when
+      // a provider-side mutation has an ambiguous result.
+      personalSharedTelegramEdge: {
+        enabled: personalSharedTelegramEdgeEnabled,
+      },
       // Value-free cutover receipt for the default-off staging QA bridge. The
       // deploy workflow proves exact code first, flips the secret last, then
       // requires this beacon to report the expected version/readiness. No key,

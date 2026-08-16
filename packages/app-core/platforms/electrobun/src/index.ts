@@ -41,6 +41,7 @@ import {
 } from "./brand-env-reads";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
+import { hydrateCloudOnlyEnv } from "./cloud-only-boot";
 import {
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
@@ -95,9 +96,9 @@ import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
   disableBackForwardNavigationGestures,
-  ensureShadow,
   setNativeDragRegion,
   setTrafficLightsPosition,
+  setWindowShadow,
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
@@ -448,7 +449,10 @@ const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
  * the desktop. Only the chromeless pill and the tray popover are transparent,
  * and each paints its own surface — the dashboard is a normal opaque window.
  */
-function applyMacOSWindowEffects(win: BrowserWindow): void {
+function applyMacOSWindowEffects(
+  win: BrowserWindow,
+  nativeShadow: boolean,
+): void {
   if (process.platform !== "darwin") return;
 
   const ptr = (win as { ptr?: unknown }).ptr;
@@ -457,10 +461,13 @@ function applyMacOSWindowEffects(win: BrowserWindow): void {
     return;
   }
 
-  const shadowEnabled = ensureShadow(ptr as Parameters<typeof ensureShadow>[0]);
+  const shadowConfigured = setWindowShadow(
+    ptr as Parameters<typeof setWindowShadow>[0],
+    nativeShadow,
+  );
   updateCurrentMainWindowEffectsState({
     vibrancyEnabled: false,
-    shadowEnabled,
+    shadowEnabled: shadowConfigured ? nativeShadow : null,
   });
 
   const alignButtons = () =>
@@ -1224,8 +1231,9 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
     return win;
   }
 
-  // Bottom-bar shell: pin always-on-top and apply the macOS chrome (shadow,
-  // drag region — no vibrancy, so the pill is the only painted surface). The bar
+  // Bottom-bar shell: pin always-on-top and apply the macOS chrome (with its
+  // native shadow disabled, plus the drag region; no vibrancy, so the pill is
+  // the only painted surface). The bar
   // has fixed, display-derived geometry, so skip bounds persistence + the
   // first-launch maximize entirely.
   if (bottomBar) {
@@ -1254,14 +1262,14 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         );
       }
     }
-    applyMacOSWindowEffects(win);
+    applyMacOSWindowEffects(win, presentation.nativeShadow);
     // Keep the bar pinned to the primary display's bottom edge across display
     // plug/unplug + resolution changes (recompute on showWindow() + 5s poll).
     getDesktopManager().enableBottomBarReanchor();
     return win;
   }
 
-  applyMacOSWindowEffects(win);
+  applyMacOSWindowEffects(win, presentation.nativeShadow);
   win.on("resize", () => scheduleStateSave(statePath, win));
   win.on("move", () => scheduleStateSave(statePath, win));
 
@@ -1812,6 +1820,24 @@ function injectApiBase(win: BrowserWindow): void {
     apiBaseOwner.notifyChange(
       win,
       runtimeResolution.externalApi.base,
+      resolveApiToken(process.env) ?? "",
+    );
+    setAgentReady(true);
+    return;
+  }
+
+  if (runtimeResolution.mode === "disabled") {
+    // Runtime-less consumer bundle: there is no embedded agent, so minting a
+    // local API token here would be worse than useless — the renderer's cloud
+    // resolver (getCloudAuthToken) falls back to the client REST token, so a
+    // fabricated local token masquerades as a Cloud credential, silently
+    // skips interactive sign-in, and 401s the join flow. Publish the (dead)
+    // loopback base with NO token so the sign-in flow runs for real.
+    apiBaseOwner.notifyChange(
+      win,
+      resolveInitialApiBase(
+        process.env as Record<string, string | undefined>,
+      ) ?? `http://127.0.0.1:${resolveDesktopApiPort(process.env)}`,
       resolveApiToken(process.env) ?? "",
     );
     setAgentReady(true);
@@ -2485,6 +2511,16 @@ async function main(): Promise<void> {
   recordStartupPhase("env_loaded", {
     pid: process.pid,
   });
+  // Cloud-only consumer bundles bake `cloudOnly` into brand-config.json and
+  // ship no embedded runtime; promote that to the runtime env contract before
+  // the first runtime-mode resolution. Runs after env-file loading so an
+  // operator's explicit env always wins.
+  const cloudOnlyHydration = hydrateCloudOnlyEnv(BRAND.cloudOnly);
+  if (cloudOnlyHydration.applied.length > 0) {
+    console.log(
+      `[Env] cloud-only brand flag raised: ${cloudOnlyHydration.applied.join(", ")}`,
+    );
+  }
   // Start the static renderer server in parallel with the rest of pre-window
   // work — first paint needs the renderer URL, so kicking it off now overlaps
   // the server bind/port-scan with crash-prompt checks, WebGPU init, and bridge

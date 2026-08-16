@@ -8340,6 +8340,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		const route = routeMessageHandlerOutput(messageHandler, {
 			addressedToOtherParticipant,
+			messageText: getUserMessageText(args.message) ?? "",
 		});
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
@@ -8618,21 +8619,52 @@ export async function runV5MessageRuntimeStage1(args: {
 			),
 		);
 		const stageOneCandidateLookup = buildRuntimeActionLookup(args.runtime);
+		// Resolve candidates exactly the way collection does — direct name/simile
+		// first, then the shared parent-alias map. Collection admits an aliased
+		// action (Stage-1's invented "SEARCH" → WEB_SEARCH) but a direct-only
+		// check here reads that same candidate as resolving to nothing, counts
+		// the turn as "no survivors", and the privacy denial fires on a turn
+		// whose web capability is sitting in the collected set (observed live:
+		// group "search the web … within my budget" — the possessive-budget
+		// heuristic's OWNER_FINANCES was rightly privacy-rejected, and the
+		// denial swallowed a servable web search).
 		const anyNamedStageOneCandidateSurvived = (
 			getMessageHandlerCandidateActions(messageHandler) ?? []
 		).some((name) => {
-			const resolved = resolveRuntimeAction(
+			const candidateName = String(name);
+			const direct = resolveRuntimeAction(
 				stageOneCandidateLookup,
-				String(name),
+				candidateName,
 			);
-			return (
-				resolved !== undefined &&
-				collectedCandidateNames.has(normalizeActionIdentifier(resolved.name))
+			const resolvedSet = direct
+				? [direct]
+				: parentAliasesForCandidateAction(candidateName)
+						.map((alias) =>
+							resolveRuntimeAction(stageOneCandidateLookup, alias),
+						)
+						.filter((action): action is Action => action !== undefined);
+			return resolvedSet.some((resolved) =>
+				collectedCandidateNames.has(normalizeActionIdentifier(resolved.name)),
 			);
 		});
+		// The privacy denial is only terminal when NO ungated sibling can serve
+		// the ask. Reminders have one: the agent-level TRIGGER action claims
+		// "remind me …" and legitimately works in group channels (observed live:
+		// in-channel triggers created and fired there for months; the denial
+		// regressed that the moment OWNER_REMINDERS got named as the candidate).
+		// When the rejected candidates are reminder/alarm-shaped and TRIGGER
+		// survived collection, let the turn plan — the trigger path serves it.
+		const rejectedReminderish =
+			candidateGateDiagnostics.gateRejectedExplicitCandidates.some((name) => {
+				const normalized = normalizeActionIdentifier(name);
+				return normalized.includes("REMINDER") || normalized.includes("ALARM");
+			});
+		const ungatedTriggerSiblingAvailable =
+			rejectedReminderish && collectedCandidateNames.has("TRIGGER");
 		if (
 			candidateGateDiagnostics.gateRejectedExplicitCandidates.length > 0 &&
-			!anyNamedStageOneCandidateSurvived
+			!anyNamedStageOneCandidateSurvived &&
+			!ungatedTriggerSiblingAvailable
 		) {
 			return {
 				kind: "direct_reply",

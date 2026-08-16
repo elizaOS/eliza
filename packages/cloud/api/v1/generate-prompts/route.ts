@@ -11,6 +11,7 @@ import { streamText } from "ai";
 import { Hono } from "hono";
 import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { billUsage } from "@/lib/services/ai-billing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -18,7 +19,9 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   try {
-    await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
+    const caller = await requireGenerativeRouteCaller(c, {
+      rateLimitEndpoint: "strict",
+    });
 
     const body = ((await c.req.json().catch(() => ({}))) ?? {}) as {
       seed?: string | number;
@@ -76,6 +79,36 @@ Random seed: ${promptSeed}`,
       maxOutputTokens: 500,
       topP: 0.95,
     });
+
+    // Bill actual gpt-4o token usage once the stream settles. This route
+    // previously served inference UNBILLED (audit finding: the platform paid
+    // OpenAI for every call); `result.usage` resolves after the stream
+    // finishes, and waitUntil settles the charge without delaying the
+    // streamed response.
+    c.executionCtx.waitUntil(
+      (async () => {
+        try {
+          const usage = await result.usage;
+          await billUsage(
+            {
+              organizationId: caller.user.organization_id,
+              userId: caller.user.id,
+              apiKeyId: caller.apiKeyId,
+              model: "gpt-4o",
+              provider: "openai",
+              description: "generate-prompts agent-concept suggestions",
+            },
+            usage,
+          );
+        } catch (error) {
+          // error-policy:J7 billing settlement runs post-response; a failure
+          // must be loud in logs (revenue) but cannot affect the stream.
+          logger.error("[generate-prompts] usage billing failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      })(),
+    );
 
     return result.toTextStreamResponse();
   } catch (error) {

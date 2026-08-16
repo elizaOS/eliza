@@ -19,103 +19,200 @@ import {
   DashboardLoadingState,
 } from "@elizaos/ui/cloud-ui";
 import { ArrowRight, CheckCircle, XCircle } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { CreditBalanceDisplay } from "./components/success-client";
 import { useVerifyCheckout } from "./data/billing-data";
 
-export default function BillingSuccessPage() {
-  const t = useCloudT();
-  const session = useSessionAuth();
-  const [params] = useSearchParams();
-  const fromSettings = params.get("from") === "settings";
-  const sessionId = params.get("session_id") ?? undefined;
+type VerificationState =
+  | { generation: number; key: string; status: "pending" }
+  | { generation: number; key: string; status: "verified" }
+  | { generation: number; key: string; status: "rejected" }
+  | { error: unknown; generation: number; key: string; status: "error" };
 
-  const verify = useVerifyCheckout();
-  const triggered = useRef(false);
+interface VerificationRequest {
+  generation: number;
+  key: string;
+}
+
+function isVerifiedCheckoutOutcome(data: unknown): boolean {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    (data as { success?: unknown }).success === true
+  );
+}
+
+function PaymentIssue({
+  error,
+  sessionId,
+}: {
+  error?: unknown;
+  sessionId?: string;
+}) {
+  const t = useCloudT();
+  const message =
+    error instanceof Error
+      ? error.message
+      : t("cloud.billingSuccess.unableToVerify", {
+          defaultValue: "Unable to verify payment",
+        });
+
+  return (
+    <div className="flex items-center justify-center min-h-[80vh]">
+      <Card className="max-w-md w-full" role="alert" aria-live="assertive">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10">
+            <XCircle className="h-10 w-10 text-red-500" />
+          </div>
+          <CardTitle className="text-2xl">
+            {t("cloud.billingSuccess.paymentIssue", {
+              defaultValue: "Payment Issue",
+            })}
+          </CardTitle>
+          <CardDescription>{message}</CardDescription>
+        </CardHeader>
+
+        <CardContent className="text-center space-y-4">
+          {sessionId ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {t("cloud.billingSuccess.contactSupport", {
+                  defaultValue:
+                    "If you believe this is an error, please contact support with your session ID.",
+                })}
+              </p>
+              <p className="text-xs text-muted-foreground bg-muted p-2 rounded-sm">
+                {t("cloud.billingSuccess.sessionLabel", {
+                  sessionId: `${sessionId.substring(0, 20)}...`,
+                  defaultValue: "Session: {{sessionId}}",
+                })}
+              </p>
+            </>
+          ) : null}
+        </CardContent>
+
+        <CardFooter className="flex flex-col gap-2">
+          <Button asChild variant="outline" className="w-full">
+            <Link to="/settings#cloud-billing">
+              {t("cloud.billingSuccess.backToBilling", {
+                defaultValue: "Back to Billing",
+              })}
+            </Link>
+          </Button>
+        </CardFooter>
+      </Card>
+    </div>
+  );
+}
+
+function BillingVerificationAttempt({
+  checkoutSource,
+  sessionId,
+  verificationKey,
+}: {
+  checkoutSource?: "settings";
+  sessionId: string;
+  verificationKey: string;
+}) {
+  const t = useCloudT();
+
+  const { mutate: verifyCheckout } = useVerifyCheckout();
+  const [verification, setVerification] = useState<VerificationState>({
+    generation: 0,
+    key: verificationKey,
+    status: "pending",
+  });
+  const activeRequest = useRef<VerificationRequest | null>(null);
+  const nextGeneration = useRef(0);
 
   useEffect(() => {
-    if (!session.ready || !session.authenticated) return;
-    if (!sessionId) return;
-    if (triggered.current) return;
-    triggered.current = true;
-    verify.mutate({
-      sessionId,
-      from: fromSettings ? "settings" : undefined,
+    if (activeRequest.current?.key === verificationKey) return;
+
+    const request = {
+      generation: ++nextGeneration.current,
+      key: verificationKey,
+    };
+    activeRequest.current = request;
+    setVerification({
+      generation: request.generation,
+      key: verificationKey,
+      status: "pending",
     });
-  }, [session.ready, session.authenticated, sessionId, fromSettings, verify]);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (
+        cancelled ||
+        activeRequest.current?.generation !== request.generation
+      ) {
+        return;
+      }
+      verifyCheckout(
+        { from: checkoutSource, sessionId },
+        {
+          onError: (error) => {
+            if (activeRequest.current?.generation !== request.generation)
+              return;
+            setVerification((current) =>
+              current?.key === request.key &&
+              current.generation === request.generation
+                ? {
+                    error,
+                    generation: request.generation,
+                    key: request.key,
+                    status: "error",
+                  }
+                : current,
+            );
+          },
+          onSuccess: (data) => {
+            if (activeRequest.current?.generation !== request.generation)
+              return;
+            setVerification((current) =>
+              current?.key === request.key &&
+              current.generation === request.generation
+                ? isVerifiedCheckoutOutcome(data)
+                  ? {
+                      generation: request.generation,
+                      key: request.key,
+                      status: "verified",
+                    }
+                  : {
+                      generation: request.generation,
+                      key: request.key,
+                      status: "rejected",
+                    }
+                : current,
+            );
+          },
+        },
+      );
+    });
 
-  if (!session.ready || !session.authenticated) {
-    return (
-      <DashboardLoadingState
-        label={t("cloud.billingSuccess.loading", { defaultValue: "Loading" })}
-      />
-    );
-  }
+    return () => {
+      cancelled = true;
+      if (activeRequest.current?.generation === request.generation) {
+        activeRequest.current = null;
+      }
+    };
+  }, [checkoutSource, sessionId, verificationKey, verifyCheckout]);
 
+  const currentVerification = verification;
   const verificationFailed =
-    !sessionId ||
-    verify.isError ||
-    (verify.isSuccess && verify.data?.success !== true);
+    currentVerification?.status === "error" ||
+    currentVerification?.status === "rejected";
 
   if (verificationFailed) {
-    const message =
-      sessionId && verify.isError && verify.error instanceof Error
-        ? verify.error.message
-        : t("cloud.billingSuccess.unableToVerify", {
-            defaultValue: "Unable to verify payment",
-          });
-    return (
-      <div className="flex items-center justify-center min-h-[80vh]">
-        <Card className="max-w-md w-full" role="alert" aria-live="assertive">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10">
-              <XCircle className="h-10 w-10 text-red-500" />
-            </div>
-            <CardTitle className="text-2xl">
-              {t("cloud.billingSuccess.paymentIssue", {
-                defaultValue: "Payment Issue",
-              })}
-            </CardTitle>
-            <CardDescription>{message}</CardDescription>
-          </CardHeader>
-
-          <CardContent className="text-center space-y-4">
-            {sessionId ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  {t("cloud.billingSuccess.contactSupport", {
-                    defaultValue:
-                      "If you believe this is an error, please contact support with your session ID.",
-                  })}
-                </p>
-                <p className="text-xs text-muted-foreground bg-muted p-2 rounded-sm">
-                  {t("cloud.billingSuccess.sessionLabel", {
-                    sessionId: `${sessionId.substring(0, 20)}...`,
-                    defaultValue: "Session: {{sessionId}}",
-                  })}
-                </p>
-              </>
-            ) : null}
-          </CardContent>
-
-          <CardFooter className="flex flex-col gap-2">
-            <Button asChild variant="outline" className="w-full">
-              <Link to="/settings#cloud-billing">
-                {t("cloud.billingSuccess.backToBilling", {
-                  defaultValue: "Back to Billing",
-                })}
-              </Link>
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
-    );
+    const error =
+      currentVerification?.status === "error"
+        ? currentVerification.error
+        : undefined;
+    return <PaymentIssue error={error} sessionId={sessionId} />;
   }
 
-  if (!verify.isSuccess) {
+  if (currentVerification?.status !== "verified") {
     return (
       <DashboardLoadingState
         label={t("cloud.billingSuccess.verifyingPayment", {
@@ -173,5 +270,40 @@ export default function BillingSuccessPage() {
         </CardFooter>
       </Card>
     </div>
+  );
+}
+
+export default function BillingSuccessPage() {
+  const t = useCloudT();
+  const session = useSessionAuth();
+  const [params] = useSearchParams();
+  const checkoutSource =
+    params.get("from") === "settings" ? "settings" : undefined;
+  const sessionId = params.get("session_id") ?? undefined;
+  const userId = session.user?.id || null;
+
+  if (!session.ready || !session.authenticated || !userId) {
+    return (
+      <DashboardLoadingState
+        label={t("cloud.billingSuccess.loading", { defaultValue: "Loading" })}
+      />
+    );
+  }
+
+  if (!sessionId) return <PaymentIssue />;
+
+  const verificationKey = JSON.stringify([
+    userId,
+    sessionId,
+    checkoutSource ?? null,
+  ]);
+
+  return (
+    <BillingVerificationAttempt
+      key={verificationKey}
+      checkoutSource={checkoutSource}
+      sessionId={sessionId}
+      verificationKey={verificationKey}
+    />
   );
 }

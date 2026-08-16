@@ -197,7 +197,13 @@ export function sanitizeOutboundText(text: string): string {
 	// blank-line spacing inside fences.
 	processed = processed.replace(/\n{3,}/g, "\n\n");
 
-	for (let index = 0; index < codeSpans.length; index++) {
+	// Restore in REVERSE order. Phase 2 (inline spans) runs over text that
+	// already holds phase-1 fence sentinels, and the inline content class
+	// matches a sentinel, so a later-indexed span can contain an earlier one.
+	// Forward restoration then no-ops on the buried sentinel and re-injects it
+	// raw. Nesting only ever runs later-contains-earlier, because fences are
+	// extracted from the original text and cannot hold an inline sentinel.
+	for (let index = codeSpans.length - 1; index >= 0; index--) {
 		processed = processed.replace(
 			`${CODE_SENTINEL_PREFIX}${index}${CODE_SENTINEL_PREFIX}`,
 			() => codeSpans[index],

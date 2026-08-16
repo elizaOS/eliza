@@ -24,43 +24,39 @@ function hasInsufficientCreditsSignal(input: string): boolean {
  * error — these are noisy but not fatal, so callers should warn instead of crash.
  */
 export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
-  const formatted = formatUncaughtError(reason);
-  if (
-    !/AI_NoOutputGeneratedError|No output generated|AI_APICallError|AI_RetryError/i.test(
-      formatted,
-    )
-  ) {
-    return false;
-  }
-
-  if (hasInsufficientCreditsSignal(formatted)) {
-    return true;
-  }
-
   const seen = new Set<unknown>();
-  let current: unknown = reason;
-  while (current && typeof current === "object" && !seen.has(current)) {
+  const pending: unknown[] = [reason];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current || typeof current !== "object" || seen.has(current)) continue;
     seen.add(current);
 
-    const statusCode = (current as { statusCode?: number }).statusCode;
-    if (statusCode === 402) return true;
+    const formatted = formatUncaughtError(current);
+    const isProviderError =
+      /AI_NoOutputGeneratedError|No output generated|AI_APICallError|AI_RetryError/i.test(
+        formatted,
+      );
+    if (isProviderError) {
+      if (hasInsufficientCreditsSignal(formatted)) return true;
 
-    const responseBody = (current as { responseBody?: unknown }).responseBody;
-    if (
-      typeof responseBody === "string" &&
-      hasInsufficientCreditsSignal(responseBody)
-    ) {
-      return true;
+      const statusCode = (current as { statusCode?: number }).statusCode;
+      if (statusCode === 402) return true;
+
+      const responseBody = (current as { responseBody?: unknown }).responseBody;
+      if (
+        typeof responseBody === "string" &&
+        hasInsufficientCreditsSignal(responseBody)
+      ) {
+        return true;
+      }
     }
 
     const errors = (current as { errors?: unknown }).errors;
     if (Array.isArray(errors)) {
-      for (const inner of errors) {
-        if (shouldIgnoreUnhandledRejection(inner)) return true;
-      }
+      pending.push(...errors);
     }
 
-    current = (current as { cause?: unknown }).cause;
+    pending.push((current as { cause?: unknown }).cause);
   }
 
   return false;

@@ -135,6 +135,7 @@ import {
   type FocusConnectorEventDetail,
   listenForConnectRequests,
   NAVIGATE_VIEW_EVENT,
+  PUSH_TO_TALK_TOGGLE_EVENT,
 } from "./events";
 import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
 import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
@@ -199,6 +200,7 @@ import { TutorialConductorMount } from "./tutorial/TutorialConductor";
 import { isElizaCloudControlPlaneAgentlessBase } from "./utils/cloud-agent-base";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { openExternalUrl } from "./utils/openExternalUrl";
+import { playCaptureSendCue, playCaptureStartCue } from "./voice/capture-cues";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
@@ -1810,6 +1812,31 @@ function ShellFoundationMount() {
     return () => controller.setDictationSink(null);
   }, [controller, setChatInput, chatInputRef]);
 
+  // Global push-to-talk hotkey (#20483): the OS shortcut is trigger-only (no
+  // key-up event reaches the renderer), so the hotkey drives the SAME ptt
+  // capture as the pill's hold, in toggle form — first press opens the mic
+  // (ping + red chip on the pill), second press stops and sends (tick). No
+  // window is summoned and no focus is taken; the pill alone shows the state.
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const onToggle = () => {
+      const shell = controllerRef.current;
+      if (!shell) return;
+      if (shell.recording) {
+        playCaptureSendCue();
+        shell.stopRecording();
+        return;
+      }
+      playCaptureStartCue();
+      shell.startRecording("ptt");
+    };
+    document.addEventListener(PUSH_TO_TALK_TOGGLE_EVENT, onToggle);
+    return () =>
+      document.removeEventListener(PUSH_TO_TALK_TOGGLE_EVENT, onToggle);
+  }, []);
+
   useEffect(() => {
     if (!hasController) return undefined;
     let cancelled = false;
@@ -1834,10 +1861,26 @@ function ShellFoundationMount() {
     <>
       <HomePill
         phase={controller.phase}
+        speaking={controller.speaking}
         onOpen={controller.open}
         onClose={controller.close}
+        onHoldStart={() => {
+          // Audible mic-open ping BEFORE capture spins up: the cue is the
+          // "start talking" signal, so it must not wait on getUserMedia.
+          playCaptureStartCue();
+          controller.startRecording("ptt");
+        }}
+        onHoldEnd={() => {
+          playCaptureSendCue();
+          controller.stopRecording();
+        }}
+        onHoldCancel={controller.cancelRecording}
       />
-      <AssistantOverlay phase={controller.phase} onClose={controller.close}>
+      <AssistantOverlay
+        phase={controller.phase}
+        onClose={controller.close}
+        open={controller.isOpen}
+      >
         <ChatSurface
           messages={controller.messages}
           onSend={controller.send}

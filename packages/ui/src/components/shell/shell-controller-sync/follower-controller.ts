@@ -81,6 +81,7 @@ export function buildFollowerController(
     startRecording: (intent) =>
       fire({ kind: "startRecording", ...(intent ? { intent } : {}) }),
     stopRecording: () => fire({ kind: "stopRecording" }),
+    cancelRecording: () => fire({ kind: "cancelRecording" }),
     handsFree: snapshot.handsFree,
     toggleHandsFree: () => fire({ kind: "toggleHandsFree" }),
     micPermission: snapshot.micPermission,

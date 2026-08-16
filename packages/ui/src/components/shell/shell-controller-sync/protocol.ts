@@ -43,9 +43,10 @@ export type ShellControllerCommand =
   | { kind: "toggleRecording" }
   | {
       kind: "startRecording";
-      intent?: "converse" | "dictate" | "transcription";
+      intent?: "converse" | "dictate" | "transcription" | "ptt";
     }
   | { kind: "stopRecording" }
+  | { kind: "cancelRecording" }
   | { kind: "toggleHandsFree" }
   | { kind: "toggleTranscriptionMode" }
   | { kind: "stopTranscriptionAndMic" }
@@ -130,6 +131,7 @@ const NO_ARG_COMMANDS: ReadonlySet<ShellControllerCommandKind> = new Set([
   "captureVision",
   "toggleRecording",
   "stopRecording",
+  "cancelRecording",
   "toggleHandsFree",
   "toggleTranscriptionMode",
   "stopTranscriptionAndMic",
@@ -182,7 +184,8 @@ export function parseShellControllerCommand(
       return value.intent === undefined ||
         value.intent === "converse" ||
         value.intent === "dictate" ||
-        value.intent === "transcription"
+        value.intent === "transcription" ||
+        value.intent === "ptt"
         ? (value as unknown as ShellControllerCommand)
         : null;
     case "speak":

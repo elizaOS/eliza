@@ -604,19 +604,22 @@ export async function runEvaluator(
 		});
 	}
 	const output = sanitizeOutputMessage(
-		repairFinishedToolTurnWithoutUserMessage(
-			repairMissingEvaluatorMessage(
-				repairMissingEvaluatorSuccess(
-					rejectEvaluatorInvocationMessage(
-						recoverEvaluatorTextOutput(
-							parseEvaluatorOutput(raw),
-							raw,
-							params.trajectory,
+		repairFinishWithProgressPromise(
+			repairFinishedToolTurnWithoutUserMessage(
+				repairMissingEvaluatorMessage(
+					repairMissingEvaluatorSuccess(
+						rejectEvaluatorInvocationMessage(
+							recoverEvaluatorTextOutput(
+								parseEvaluatorOutput(raw),
+								raw,
+								params.trajectory,
+							),
 						),
+						params.trajectory,
 					),
+					params.context,
 					params.trajectory,
 				),
-				params.context,
 				params.trajectory,
 			),
 			params.trajectory,
@@ -1116,6 +1119,50 @@ function repairFinishedToolTurnWithoutUserMessage(
 		decision: "CONTINUE",
 		thought:
 			"Evaluator finished without a user-facing message; replanning from recorded tool results.",
+	};
+}
+
+/**
+ * A FINISH whose user message promises ongoing work is self-contradictory:
+ * the evaluator ends the turn while telling the user the work continues, so
+ * the promised delivery never happens (observed live twice on web-search
+ * turns: a bare final "checking.", and "<link> … checking this list for the
+ * top pick under $150." posted as the turn's last message with no pick ever
+ * delivered). Coerce to CONTINUE and drop the promise text — the planner gets
+ * the iteration the message promised, bounded by the loop's existing caps.
+ *
+ * Matching is deliberately narrow to keep substantive answers final: either
+ * the whole message is a short bare ack ("checking.", "on it", "one moment"),
+ * or the LAST sentence opens with a progress verb aimed at a referent
+ * ("checking this list …", "looking into that now"). Informative statements
+ * that merely open with a gerund ("Checking accounts are bank accounts …")
+ * fail the determiner test and stay final.
+ */
+const FINISH_BARE_PROGRESS_ACK_RE =
+	/^(?:checking|fetching|gathering|reading|scanning|looking (?:up|into)|working on it|on it|one (?:moment|sec(?:ond)?)|give me a (?:sec(?:ond)?|moment)|let me (?!know\b)[a-z]+)[.…!\s]*$/i;
+const FINISH_PROGRESS_PROMISE_TAIL_RE =
+	/(?:^|[.!?…]\s+|\n\s*)(?:checking|reading|opening|fetching|scanning|pulling(?: up)?|going through|digging into|looking (?:up|into)|working on)\s+(?:this|that|these|those|it\b|the\b)[^.!?\n]{0,80}[.!?…]?\s*$/i;
+
+function repairFinishWithProgressPromise(
+	output: EvaluatorOutput,
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	if (output.decision !== "FINISH") return output;
+	const message = (output.messageToUser ?? "").trim();
+	if (!message) return output;
+	if (!hasSuccessfulToolResult(trajectory)) return output;
+	const bareAck =
+		message.length <= 64 && FINISH_BARE_PROGRESS_ACK_RE.test(message);
+	if (!bareAck && !FINISH_PROGRESS_PROMISE_TAIL_RE.test(message)) {
+		return output;
+	}
+	return {
+		...output,
+		success: false,
+		decision: "CONTINUE",
+		messageToUser: undefined,
+		thought:
+			"Evaluator finished while promising ongoing work; continuing so the promised result is actually delivered.",
 	};
 }
 

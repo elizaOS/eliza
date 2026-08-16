@@ -4,7 +4,10 @@
  * untrusted-metadata → typed-DTO boundary.
  */
 import { describe, expect, it } from "vitest";
-import { sanitizeConversationMetadata } from "./conversation-metadata.ts";
+import {
+  extractConversationMetadataFromRoom,
+  sanitizeConversationMetadata,
+} from "./conversation-metadata.ts";
 
 /**
  * `sanitizeConversationMetadata` is the untrusted-input → typed-DTO boundary for
@@ -71,5 +74,67 @@ describe("sanitizeConversationMetadata", () => {
       workflowId: "wf-1",
       workflowName: "Daily report",
     });
+  });
+});
+
+describe("extractConversationMetadataFromRoom", () => {
+  it.each([
+    ["missing", undefined],
+    ["empty", ""],
+    ["whitespace-only", "   "],
+    ["different", "conversation-2"],
+  ])("rejects pinned metadata with a %s stored id", (_label, storedId) => {
+    const webConversation = {
+      scope: "page-wallet",
+      ...(storedId !== undefined ? { conversationId: storedId } : {}),
+    };
+
+    expect(
+      extractConversationMetadataFromRoom(
+        { metadata: { webConversation } },
+        "conversation-1",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("returns pinned metadata only for the matching normalized stored id", () => {
+    expect(
+      extractConversationMetadataFromRoom(
+        {
+          metadata: {
+            webConversation: {
+              conversationId: "  conversation-1  ",
+              scope: "page-wallet",
+              unknown: "discarded",
+            },
+          },
+        },
+        "conversation-1",
+      ),
+    ).toEqual({ scope: "page-wallet" });
+  });
+
+  it("keeps an omitted expected id unpinned", () => {
+    expect(
+      extractConversationMetadataFromRoom({
+        metadata: { webConversation: { scope: "page-wallet" } },
+      }),
+    ).toEqual({ scope: "page-wallet" });
+  });
+
+  it("does not treat an explicitly empty expected id as unpinned", () => {
+    expect(
+      extractConversationMetadataFromRoom(
+        {
+          metadata: {
+            webConversation: {
+              conversationId: "conversation-1",
+              scope: "page-wallet",
+            },
+          },
+        },
+        "",
+      ),
+    ).toBeUndefined();
   });
 });

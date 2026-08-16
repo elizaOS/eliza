@@ -76,6 +76,7 @@ export interface DesktopShellWindowPresentation {
   mode: DesktopShellWindowMode;
   titleBarStyle: DesktopShellTitleBarStyle;
   transparent: boolean;
+  nativeShadow: boolean;
 }
 
 /**
@@ -86,6 +87,9 @@ export interface DesktopShellWindowPresentation {
  * over dark web content reads as a full-window frosted sheet (the pill is the
  * only surface that should show the desktop through it). Win/Linux transparency
  * support varies, so the pill also stays opaque there for now (fork gap G4).
+ * The transparent macOS pill disables the native window shadow because its
+ * visible handle already paints a neutral separator; stacking both creates a
+ * heavy halo on light desktops.
  */
 export function resolveDesktopShellWindowPresentation(
   env: Record<string, string | undefined> = process.env,
@@ -103,6 +107,7 @@ export function resolveDesktopShellWindowPresentation(
           ? "hiddenInset"
           : "default",
     transparent: bottomBar && platform === "darwin",
+    nativeShadow: !kiosk && !bottomBar,
   };
 }
 

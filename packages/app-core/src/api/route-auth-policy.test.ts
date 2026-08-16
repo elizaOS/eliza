@@ -94,6 +94,12 @@ describe("compat route auth policy table", () => {
       resolveCompatRouteAuthPolicy("POST", "/api/cloud/disconnect"),
     ).toMatchObject({ id: "cloud.disconnect", tier: "session" });
     expect(
+      resolveCompatRouteAuthPolicy("GET", "/api/tts/local-inference/status"),
+    ).toMatchObject({ id: "tts.local-inference.status", tier: "session" });
+    expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/tts/local-inference"),
+    ).toMatchObject({ id: "tts.local-inference", tier: "session" });
+    expect(
       resolveCompatRouteAuthPolicy("POST", "/api/tts/elevenlabs"),
     ).toMatchObject({
       id: "tts.elevenlabs-passthrough",

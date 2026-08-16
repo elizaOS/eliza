@@ -10,6 +10,11 @@ import type { UiLanguage } from "../i18n/language.js";
 
 // ── App lifecycle ────────────────────────────────────────────────────────
 export const COMMAND_PALETTE_EVENT = "eliza:command-palette" as const;
+/** Global push-to-talk hotkey toggle (#20483): first press starts pill
+ *  listening, second press stops and sends. Trigger-only OS shortcuts cannot
+ *  report key-up, so the hotkey path is press-to-start/press-to-send rather
+ *  than hold-to-talk. */
+export const PUSH_TO_TALK_TOGGLE_EVENT = "eliza:push-to-talk-toggle" as const;
 export const EMOTE_PICKER_EVENT = "eliza:emote-picker" as const;
 export const STOP_EMOTE_EVENT = "eliza:stop-emote" as const;
 
@@ -293,6 +298,7 @@ export interface ChatAvatarVoiceEventDetail {
 
 export type ElizaDocumentEventName =
   | typeof COMMAND_PALETTE_EVENT
+  | typeof PUSH_TO_TALK_TOGGLE_EVENT
   | typeof EMOTE_PICKER_EVENT
   | typeof STOP_EMOTE_EVENT
   | typeof AGENT_READY_EVENT

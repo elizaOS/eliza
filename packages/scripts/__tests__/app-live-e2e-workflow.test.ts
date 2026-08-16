@@ -26,6 +26,8 @@ interface WorkflowStep {
 
 interface WorkflowJob {
   env?: Record<string, string>;
+  environment?: string;
+  if?: string;
   steps?: WorkflowStep[];
 }
 
@@ -117,6 +119,112 @@ describe("App Live E2E real Cloud job (#14357, #16194)", () => {
 
     expect(spec).toContain("await seedCloudLiveBrowserAuth(page)");
     expect(spec).toContain('test.use({ trace: "off" });');
+  });
+});
+
+describe("App Live E2E staging Cloud job (#18076)", () => {
+  const stagingJob = workflow.jobs?.["cloud-live-staging"];
+
+  function stagingStep(name: string): WorkflowStep {
+    const step = stagingJob?.steps?.find(
+      (candidate) => candidate.name === name,
+    );
+    if (!step) {
+      throw new Error(`Missing cloud-live-staging workflow step: ${name}`);
+    }
+    return step;
+  }
+
+  test("pins the staging origin, expectation, and Environment-scoped credential", () => {
+    expect(stagingJob?.environment).toBe("staging");
+    expect(stagingJob?.env?.ELIZAOS_CLOUD_BASE_URL).toBe(
+      "https://api-staging.eliza.app",
+    );
+    expect(stagingJob?.env?.ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV).toBe("staging");
+    // The staging credential must come only from the staging Environment —
+    // a production repository-secret fallback would silently retarget prod.
+    expect(stagingJob?.env?.ELIZAOS_CLOUD_API_KEY).toBe(
+      "$" + "{{ secrets.ELIZAOS_CLOUD_API_KEY }}",
+    );
+    expect(stagingJob?.env?.ELIZAOS_CLOUD_API_KEY).not.toContain("||");
+  });
+
+  test("stays opt-in on schedule until the staging key is provisioned", () => {
+    expect(stagingJob?.if).toContain("ELIZA_CLOUD_STAGING_LIVE_READY");
+    expect(stagingJob?.if).toContain("inputs.run_cloud_staging");
+  });
+
+  test("fails closed before setup on a missing credential or a wrong origin", () => {
+    const steps = stagingJob?.steps ?? [];
+    const guardIndex = steps.findIndex(
+      (step) =>
+        step.name === "Require staging-scoped Cloud credential and origin",
+    );
+    const firstExpensiveStepIndex = steps.findIndex(
+      (step) => step.name === "Free disk space for browser smoke",
+    );
+    const testIndex = steps.findIndex(
+      (step) => step.name === "Run real STAGING cloud login + provision + chat",
+    );
+
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(firstExpensiveStepIndex).toBeGreaterThan(guardIndex);
+    expect(testIndex).toBeGreaterThan(guardIndex);
+
+    const run = stagingStep(
+      "Require staging-scoped Cloud credential and origin",
+    ).run;
+    expect(run).toBeDefined();
+
+    const stagingEnv = {
+      ...process.env,
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app",
+    };
+
+    const missingKey = spawnSync("bash", ["-c", run ?? ""], {
+      encoding: "utf8",
+      env: { ...stagingEnv, ELIZAOS_CLOUD_API_KEY: "" },
+    });
+    expect(missingKey.status).toBe(1);
+    expect(missingKey.stdout).toContain(
+      "never falling back to the production key",
+    );
+
+    const wrongOrigin = spawnSync("bash", ["-c", run ?? ""], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ELIZAOS_CLOUD_API_KEY: "staging-contract-key",
+        ELIZAOS_CLOUD_BASE_URL: "https://api.eliza.app",
+      },
+    });
+    expect(wrongOrigin.status).toBe(1);
+    expect(wrongOrigin.stdout).toContain("must pin ELIZAOS_CLOUD_BASE_URL");
+
+    const configured = spawnSync("bash", ["-c", run ?? ""], {
+      encoding: "utf8",
+      env: { ...stagingEnv, ELIZAOS_CLOUD_API_KEY: "staging-contract-key" },
+    });
+    expect(configured.status).toBe(0);
+  });
+
+  test("asserts the resolved API origin inside the spec before onboarding", () => {
+    const spec = read("packages/app/test/ui-smoke/cloud-live.spec.ts");
+    expect(spec).toContain("resolveCloudLiveOriginContract(process.env)");
+    expect(spec).toContain("cloud-api-origin");
+    expect(spec).toContain("renderer-source");
+  });
+
+  test("keeps production and staging as separate jobs and artifacts", () => {
+    expect(cloudJob?.env?.ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV).toBe("production");
+    const prodUpload = cloudJob?.steps?.find((step) =>
+      step.uses?.startsWith("actions/upload-artifact"),
+    );
+    const stagingUpload = stagingJob?.steps?.find((step) =>
+      step.uses?.startsWith("actions/upload-artifact"),
+    );
+    expect(prodUpload?.with?.name).toBe("app-live-e2e-cloud");
+    expect(stagingUpload?.with?.name).toBe("app-live-e2e-cloud-staging");
   });
 });
 

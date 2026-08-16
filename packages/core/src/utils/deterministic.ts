@@ -115,6 +115,11 @@ function sortStable(value: unknown): unknown {
 		return value.map((entry) => sortStable(entry));
 	}
 
+	if (value instanceof Date) {
+		// Keep native Date#toJSON behavior, including null for an invalid date.
+		return value;
+	}
+
 	if (value && typeof value === "object") {
 		return Object.fromEntries(
 			Object.entries(value as Record<string, unknown>)

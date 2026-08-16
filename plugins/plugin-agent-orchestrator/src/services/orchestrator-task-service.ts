@@ -4011,22 +4011,33 @@ export class OrchestratorTaskService extends Service {
       );
       if (independent) {
         if (independent.inconclusive) {
-          // A verifier crash/empty verdict is never a pass — keep validating.
-          await this.store.addEvent({
-            id: randomUUID(),
+          // A verifier crash/empty verdict is never a pass — but a silent
+          // return here parked the task in `validating` forever with no
+          // re-prompt, no escalation, and no signal to the task creator
+          // (observed live: a website-build task whose final task_complete hit
+          // "no usable CompletionEnvelope" and then sat `validating` for
+          // hours while the user asked "is it done?"). Route it through the
+          // shared re-engage/escalate path like every other non-pass verdict:
+          // under the attempts cap the worker is re-prompted to re-report
+          // with the structured envelope (making the next verify decidable);
+          // at the cap the task parks on waiting_on_user instead of ghosting.
+          await this.reEngageOrEscalate({
             taskId,
             sessionId,
+            correction: [
+              "Independent verification of your completion was inconclusive:",
+              `- ${independent.summary}`,
+              "Re-report your completion when the work is truly done. End your final message with the fenced ```json CompletionEnvelope exactly matching the required schema, and include concrete evidence (commands run, their real output, and where the deliverable lives).",
+            ].join("\n"),
             eventType: "independent_verify_inconclusive",
+            verifier: INDEPENDENT_ACP_VERIFIER_NAME,
             summary: independent.summary,
-            data: {
-              verifier: INDEPENDENT_ACP_VERIFIER_NAME,
-              unmet: independent.unmet,
-              failedCommands: independent.failedCommands,
-            },
-            timestamp: Date.now(),
-            createdAt: nowIso(),
+            missing: [
+              ...independent.unmet,
+              ...independent.failedCommands.map((c) => `command failed: ${c}`),
+            ],
+            attempt: attempts,
           });
-          this.emitChange(taskId);
           return;
         }
         if (!independent.passed) {

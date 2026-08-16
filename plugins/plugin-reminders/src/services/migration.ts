@@ -86,7 +86,8 @@ export async function migrateReminderTable(
        SELECT s.* FROM ${source} AS s
        WHERE NOT EXISTS (
          SELECT 1 FROM ${target} AS t WHERE t.id = s.id
-       )`,
+       )
+       ON CONFLICT (${quoteIdent("id")}) DO NOTHING`,
   );
   return { table, outcome: "copied" };
 }

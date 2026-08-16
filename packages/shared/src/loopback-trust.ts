@@ -216,12 +216,13 @@ export function isLoopbackRemoteAddress(
 ): boolean {
   if (!remoteAddress) return false;
   const normalized = remoteAddress.trim().toLowerCase();
+  if (isIP(normalized) === 0) return false;
   return (
-    normalized === "127.0.0.1" ||
+    normalized.startsWith("127.") ||
     normalized === "::1" ||
     normalized === "0:0:0:0:0:0:0:1" ||
-    normalized === "::ffff:127.0.0.1" ||
-    normalized === "::ffff:0:127.0.0.1"
+    normalized.startsWith("::ffff:127.") ||
+    normalized.startsWith("::ffff:0:127.")
   );
 }
 

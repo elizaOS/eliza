@@ -11,9 +11,11 @@ import {
 import { isStoreBuild } from "../build-variant";
 import { getBootConfig } from "../config/boot-config";
 import {
+  isCommittedOnDeviceMobileRuntimeMode,
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
   isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,
+  normalizeMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import {
@@ -47,6 +49,8 @@ const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
  */
 const IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE =
   "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active";
+const IOS_REMOTE_MODE_LOCAL_IPC_POLICY_MESSAGE =
+  "iOS remote-agent modes cannot use local-agent IPC";
 
 /**
  * Message fragments of TERMINAL (non-retryable) native agent/transport boot
@@ -57,6 +61,7 @@ const IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE =
  */
 const TERMINAL_IOS_NATIVE_AGENT_BOOT_ERROR_FRAGMENTS: readonly string[] = [
   IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE,
+  IOS_REMOTE_MODE_LOCAL_IPC_POLICY_MESSAGE,
   "iOS store builds must use eliza-local-agent://ipc for local-agent requests",
   "iOS store/cloud builds block cleartext loopback or private-network requests",
   // fullBunStartupError(): the build REQUIRES the embedded Bun engine and it
@@ -445,6 +450,7 @@ function readRuntimeMode(): string | null {
 function shouldRequireFullBunRuntime(): boolean {
   const env = viteEnv();
   const runtimeMode = readRuntimeMode();
+  if (isRemoteMacRuntimeMode(runtimeMode)) return false;
   if (runtimeMode === "cloud" || runtimeMode === "cloud-hybrid") return false;
   const fullBunBuiltIn = isFullBunRuntimeBuiltIn();
   return (
@@ -456,6 +462,10 @@ function shouldRequireFullBunRuntime(): boolean {
         (isTruthyBuildFlag(env.PROD) && runtimeMode === "local") ||
         (isNativeIos() && !isDevBuild() && runtimeMode === "local")))
   );
+}
+
+function isRemoteMacRuntimeMode(mode: string | null): boolean {
+  return mode === "remote-mac";
 }
 
 function hasIosFullBunSmokeRequest(): boolean {
@@ -606,19 +616,33 @@ function isMobileLocalAgentUrl(value: string): boolean {
 }
 
 /**
+ * Classify the legacy loopback HTTP identity only when the selected runtime
+ * actually owns an on-device agent. In `remote-mac`, loopback port 31337 is
+ * the developer's Mac and must stay on the real network transport.
+ */
+function isIosOnDeviceAgentHttpUrl(value: string): boolean {
+  if (!isMobileLocalAgentUrl(value)) return false;
+  const mode = readRuntimeMode();
+  return mode === null
+    ? canUseIosLocalAgentIpc()
+    : iosRuntimeHasOnDeviceAgent();
+}
+
+/**
  * Whether the selected runtime runs an on-device agent that serves local-agent
- * IPC. `local`, `cloud-hybrid`, and `tunnel-to-mobile` all run the bundled
- * phone-side agent; only pure `cloud` talks exclusively to a remote agent.
+ * IPC. Tunnel mode is the phone-side relay into Bun IPC, even though first-run
+ * treats its connection target as externally configured.
  */
 function iosRuntimeHasOnDeviceAgent(): boolean {
-  const mode = readRuntimeMode();
+  const mode = normalizeMobileRuntimeMode(readRuntimeMode());
   return (
-    mode === "local" || mode === "cloud-hybrid" || mode === "tunnel-to-mobile"
+    mode === "tunnel-to-mobile" || isCommittedOnDeviceMobileRuntimeMode(mode)
   );
 }
 
 function canUseIosLocalAgentIpc(): boolean {
   if (!isNativeIos()) return false;
+  if (isRemoteMacRuntimeMode(readRuntimeMode())) return false;
   if (iosRuntimeHasOnDeviceAgent() || shouldRequireFullBunRuntime()) {
     return true;
   }
@@ -695,7 +719,7 @@ export function isIosInProcessLocalAgentUrl(url: string): boolean {
     // network policy rather than treating it as an in-process agent URL.
     return false;
   }
-  return isNativeIos() && isMobileLocalAgentUrl(url);
+  return isNativeIos() && isIosOnDeviceAgentHttpUrl(url);
 }
 
 export function isIosInProcessLocalAgentBase(
@@ -1044,6 +1068,9 @@ export async function handleIosLocalAgentNativeRequest(
   if (!/^[A-Z]{1,16}$/.test(method)) {
     throw new Error("Unsupported HTTP method");
   }
+  if (isRemoteMacRuntimeMode(readRuntimeMode())) {
+    throw new TypeError(IOS_REMOTE_MODE_LOCAL_IPC_POLICY_MESSAGE);
+  }
   if (
     isNativeIosCloudRuntime() &&
     !iosRuntimeHasOnDeviceAgent() &&
@@ -1126,7 +1153,7 @@ function shouldBridgeFetchUrl(url: URL): boolean {
       "iOS store/cloud builds block cleartext loopback or private-network requests",
     );
   }
-  if (isMobileLocalAgentUrl(url.toString())) return true;
+  if (isIosOnDeviceAgentHttpUrl(url.toString())) return true;
   if (isNativeIosCloudRuntime()) return false;
   if ((url.pathname || "").startsWith("/api/")) {
     return (

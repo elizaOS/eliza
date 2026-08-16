@@ -60,6 +60,7 @@ description: Subdirectory skill description
 
       const result = loadSkillsFromDir({ dir: tempDir, source: "test" });
       assert.strictEqual(result.skills.length, 2);
+      assert.strictEqual(result.diagnostics.length, 0);
 
       const rootSkill = result.skills.find((s) => s.name === "root-skill");
       assert.ok(rootSkill);
@@ -74,6 +75,51 @@ description: Subdirectory skill description
         subSkill.description,
         "Subdirectory skill description",
       );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("defaults flat markdown skill name to filename slug when name is omitted", () => {
+    const tempDir = createTempDir("skill-loader-flat-slug");
+    try {
+      writeFileSync(
+        join(tempDir, "auto-named-tool.md"),
+        `---
+description: Tool description without explicit name
+---
+# Content`,
+      );
+
+      const result = loadSkillsFromDir({ dir: tempDir, source: "test" });
+      assert.strictEqual(result.skills.length, 1);
+      assert.strictEqual(result.diagnostics.length, 0);
+      assert.strictEqual(result.skills[0]?.name, "auto-named-tool");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("emits warning diagnostic when flat markdown skill name does not match filename slug", () => {
+    const tempDir = createTempDir("skill-loader-mismatched-slug");
+    try {
+      writeFileSync(
+        join(tempDir, "actual-filename.md"),
+        `---
+name: different-name
+description: Mismatched skill name
+---
+# Content`,
+      );
+
+      const result = loadSkillsFromDir({ dir: tempDir, source: "test" });
+      assert.strictEqual(result.skills.length, 1);
+      const diag = result.diagnostics.find((d) =>
+        d.message.includes(
+          'name "different-name" does not match filename slug "actual-filename"',
+        ),
+      );
+      assert.ok(diag);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

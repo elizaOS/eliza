@@ -1,0 +1,153 @@
+name: Device E2E
+
+# Exact-head Android emulator and iOS simulator device-bundle proof (#19640,
+# #14336). The retired android-device-e2e.yml / mobile-build-smoke.yml producers
+# were deleted by the CI consolidation (926dc8b58a1); this workflow restores a
+# minimal route without the retired sprawl. Each job hands the whole lane to
+# the single bundle-owning runner (android-e2e.mjs / ios-e2e.mjs --output) so
+# build, install, boot, and drive failures all land inside one bundle root
+# (inline/, logs/, summary.json, junit.xml), and the artifact is uploaded on
+# success AND failure. No repository secrets are read anywhere, so fork PRs
+# stay credential-free.
+#
+# Reachability: repository policy forbids direct pull-request triggers
+# (audit:workflow-triggers), so canonical ci.yml calls this workflow behind the
+# `ci:device` label gate — the emulator/simulator legs are heavy and a PR runs
+# them only when explicitly opted in. Labels are read from the run's event
+# payload, so apply `ci:device` before the head push (or re-open) that should
+# carry the proof. workflow_dispatch remains the on-demand route for arbitrary
+# refs.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: device-e2e-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  BUN_VERSION: "1.3.14" # pinned to the repository packageManager; match .github/ci-bun-version.json (#15071)
+  NODE_VERSION: "24.15.0"
+
+jobs:
+  android-device-bundle:
+    name: Android emulator bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
+      ELIZA_WEBVIEW_DEBUG: "1"
+      ELIZA_BUN_RISCV64_OPTIONAL: "1"
+      ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
+      # The embedded on-device agent (bun + llama) SIGSEGVs on a stock x86_64
+      # emulator, so this lane proves build + install + WebView attach + route
+      # coverage against the host-run agent; the LOCAL arm64 route stays on
+      # self-hosted device runners.
+      ELIZA_ANDROID_BACKEND: "host"
+      ELIZA_DEVICE_BUNDLE_ROOT: ${{ github.workspace }}/device-e2e-artifacts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+
+      - name: Install workspace
+        run: bun install --frozen-lockfile
+
+      # KVM enables a usable emulator on GitHub ubuntu runners.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+
+      # android-e2e.mjs owns the whole lane inside the emulator session — APK
+      # build (--build), install, WebView route coverage — so every preflight
+      # failure is a recorded bundle step instead of a bundle-less job failure.
+      - name: Android device-bundle run
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: "34"
+          arch: x86_64
+          ram-size: 6144M
+          # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.
+          emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
+          script: node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --output "$ELIZA_DEVICE_BUNDLE_ROOT/android"
+
+      - name: Upload Android device bundle
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-device-e2e-bundle
+          path: device-e2e-artifacts/android/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  ios-simulator-bundle:
+    name: iOS simulator bundle
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      LANG: en_US.UTF-8
+      # The simulator smoke drives a loopback host agent. Use the direct
+      # developer iOS lane; App Store/cloud builds intentionally reject
+      # cleartext loopback and are covered by release workflows.
+      ELIZA_BUILD_VARIANT: "direct"
+      ELIZA_RELEASE_AUTHORITY: "developer-toolchain"
+      VITE_ELIZA_IOS_ALLOW_SIMULATOR_LOOPBACK: "1"
+      ELIZA_IOS_FULL_BUN_ENGINE: "0"
+      NODE_OPTIONS: "--max-old-space-size=8192"
+      ELIZA_DEVICE_BUNDLE_ROOT: ${{ github.workspace }}/device-e2e-artifacts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          run-postinstall: "true"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      # vite.config.ts imports dist-only workspace packages; build those
+      # package chains before the runner's internal Vite/Capacitor build.
+      - name: Build Vite config package deps
+        run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/vault
+
+      # ios-e2e.mjs owns the whole lane — simulator boot, app build, install,
+      # auth deep-link drive — inside one bundle root.
+      - name: iOS device-bundle run
+        run: node packages/app/scripts/ios-e2e.mjs --skip-local-chat --output "$ELIZA_DEVICE_BUNDLE_ROOT/ios"
+
+      - name: Upload iOS simulator bundle
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-simulator-e2e-bundle
+          path: device-e2e-artifacts/ios/**
+          if-no-files-found: warn
+          retention-days: 14
