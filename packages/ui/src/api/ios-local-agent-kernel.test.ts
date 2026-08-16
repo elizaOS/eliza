@@ -554,6 +554,12 @@ describe("handleIosLocalAgentRequest", () => {
       memories: [expect.objectContaining({ id: "m1" })],
       count: 1,
     });
+    await expect(getJson("/api/memories/feed?before=0")).resolves.toEqual({
+      memories: [],
+      count: 0,
+      limit: 50,
+      hasMore: false,
+    });
     await expect(
       getJson("/api/memories/feed?limit=junk"),
     ).resolves.toMatchObject({ limit: 50 });

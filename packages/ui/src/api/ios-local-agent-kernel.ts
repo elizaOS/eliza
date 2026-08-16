@@ -782,7 +782,7 @@ function handleLocalMemoriesRoute(
     let items = localMemoryTypeHasRows(url.searchParams.get("type"))
       ? localMemoryFeedItems()
       : [];
-    if (before) {
+    if (before !== undefined) {
       items = items.filter((item) => item.createdAt < before);
     }
     const page = items.slice(0, limit);
