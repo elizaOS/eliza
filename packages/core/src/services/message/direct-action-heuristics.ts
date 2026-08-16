@@ -1734,6 +1734,7 @@ export type ContinuationDialogueEntry = {
 		text?: unknown;
 		type?: unknown;
 		source?: unknown;
+		actions?: unknown;
 		actionCallbackHistory?: unknown;
 		metadata?: unknown;
 	};
@@ -1803,6 +1804,18 @@ function isContinuationDialogueArtifact(
 	if (!content || typeof content !== "object") return true;
 	if (content.type === "action_result") return true;
 	if (
+		Array.isArray(content.actions) &&
+		content.actions.some(
+			(action) =>
+				typeof action === "string" &&
+				!["REPLY", "NONE", "IGNORE"].includes(
+					normalizeActionIdentifier(action),
+				),
+		)
+	) {
+		return true;
+	}
+	if (
 		typeof content.source === "string" &&
 		content.source.includes("sub-agent")
 	) {
@@ -1821,6 +1834,14 @@ function isContinuationDialogueArtifact(
 
 const CONTINUATION_LOOKBACK_ENTRIES = 12;
 const PENDING_ASSISTANT_TURN_MAX_CHARS = 160;
+
+function looksLikePendingAssistantTurn(text: string): boolean {
+	if (text.endsWith("?")) return true;
+	if (text.length > PENDING_ASSISTANT_TURN_MAX_CHARS) return false;
+	return /^(?:(?:ok(?:ay)?|sure|great)[,.!]?\s+)?(?:on it|working on it|ready (?:to proceed|when you are)|(?:i\s+(?:can|could|will)|i['’]ll)\b)/iu.test(
+		text,
+	);
+}
 
 /**
  * Resolves an explicit continuation turn ("finish my request", "that is
@@ -1850,19 +1871,21 @@ export function resolveExplicitContinuationRequestText(
 		.slice(-CONTINUATION_LOOKBACK_ENTRIES);
 
 	if (kind === "approval") {
-		const lastAssistant = [...ordered]
-			.reverse()
-			.find((entry) => entry.entityId === agentId);
-		if (!lastAssistant || isContinuationDialogueArtifact(lastAssistant)) {
+		// Approval must answer the immediately preceding visible assistant turn.
+		// Looking farther back can authorize a newer user request that the agent
+		// never previewed or asked permission to execute.
+		const lastAssistant = ordered.at(-1);
+		if (
+			!lastAssistant ||
+			lastAssistant.entityId !== agentId ||
+			isContinuationDialogueArtifact(lastAssistant)
+		) {
 			return null;
 		}
 		const callbacks = lastAssistant.content?.actionCallbackHistory;
 		if (Array.isArray(callbacks) && callbacks.length > 0) return null;
 		const lastText = continuationEntryText(lastAssistant);
-		const looksPending =
-			lastText.endsWith("?") ||
-			lastText.length <= PENDING_ASSISTANT_TURN_MAX_CHARS;
-		if (!looksPending) return null;
+		if (!looksLikePendingAssistantTurn(lastText)) return null;
 	}
 
 	for (let index = ordered.length - 1; index >= 0; index--) {

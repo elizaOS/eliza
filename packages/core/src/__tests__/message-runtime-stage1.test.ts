@@ -7026,4 +7026,59 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 		expect(result.kind).toBe("direct_reply");
 		expect(useModelCalls(runtime)).toHaveLength(1);
 	});
+
+	it("does not replay a completed action when the user praises its short reply", async () => {
+		const shellHandler = vi.fn(async () => ({ success: true, text: "" }));
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Thanks!",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "SHELL",
+				similes: [],
+				description: "Run a local shell command.",
+				parameters: [],
+				examples: [],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		const agentId = runtime.agentId;
+		const state = recentState([
+			{
+				id: "00000000-0000-0000-0000-00000000ef01" as UUID,
+				entityId: "00000000-0000-0000-0000-00000000ef11" as UUID,
+				agentId,
+				roomId,
+				createdAt: 1,
+				content: {
+					text: "delete the temporary file with the shell",
+					source: "test",
+				},
+			},
+			{
+				id: "00000000-0000-0000-0000-00000000ef02" as UUID,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 2,
+				content: { text: "Done.", source: "test" },
+			},
+		]);
+		runtime.composeState = vi.fn(async () => state);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "that is great" }),
+			state,
+			responseId: "00000000-0000-0000-0000-0000000000c4" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
 });
