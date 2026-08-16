@@ -86,7 +86,7 @@ async function runClipboardAction(
     const text = await driverReadClipboard();
     const preview =
       text.length > CLIPBOARD_PREVIEW_BYTES
-        ? `${text.slice(0, CLIPBOARD_PREVIEW_BYTES)}…`
+        ? `${text.slice(0, CLIPBOARD_PREVIEW_BYTES - 1)}…`
         : text;
     return {
       success: true,

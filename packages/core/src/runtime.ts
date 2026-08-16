@@ -9218,7 +9218,7 @@ ${section_end}`;
 						const validatedParts: string[] = [];
 						for (const [field, content] of validatedContent) {
 							const truncated =
-								content.length > 500 ? `${content.slice(0, 500)}...` : content;
+								content.length > 500 ? `${content.slice(0, 497)}...` : content;
 							validatedParts.push(
 								stringifyStructuredForPrompt({ [field]: truncated }),
 							);
