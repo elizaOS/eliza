@@ -184,11 +184,12 @@ export async function searchKeylessWeb(
 	if (!text) return undefined;
 
 	const maxResultChars = options.maxResultChars ?? DEFAULT_RESULT_CHARS;
+	const truncationSuffix = "\n[truncated]";
 	return {
 		provider,
 		text:
 			text.length > maxResultChars
-				? `${text.slice(0, maxResultChars)}\n[truncated]`
+				? `${text.slice(0, maxResultChars - truncationSuffix.length)}${truncationSuffix}`
 				: text,
 		truncated: text.length > maxResultChars,
 	};
