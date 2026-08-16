@@ -553,7 +553,7 @@ function isDedicatedCloudAgentBase(value: string | null | undefined): boolean {
   }
 }
 
-function getInjectedWsBase(): string | undefined {
+function getInjectedWsBase(explicitBaseUrl: string): string | undefined {
   if (typeof window === "undefined") return undefined;
   const values = [
     (window as { __ELIZA_WS_BASE__?: unknown }).__ELIZA_WS_BASE__,
@@ -562,7 +562,30 @@ function getInjectedWsBase(): string | undefined {
   for (const value of values) {
     if (typeof value !== "string") continue;
     const trimmed = value.trim();
-    if (trimmed) return trimmed;
+    if (!trimmed) continue;
+    if (explicitBaseUrl) {
+      try {
+        const injected = new URL(trimmed);
+        const selected = new URL(explicitBaseUrl);
+        // The Vite dev server injects its own page origin so a no-base client
+        // can reach `/ws` through the dev proxy. Once the user explicitly
+        // selects a different runtime, that same-origin value is stale: HTTP
+        // already follows the selected server while realtime would remain on
+        // the old proxy. A genuinely separate injected WS host is still an
+        // intentional transport override and keeps precedence.
+        if (
+          injected.host === window.location.host &&
+          selected.host !== window.location.host
+        ) {
+          continue;
+        }
+      } catch {
+        // Preserve the existing boundary behavior: connectWs owns URL parsing
+        // and surfaces a malformed configured override rather than silently
+        // replacing it with a plausible endpoint.
+      }
+    }
+    return trimmed;
   }
   return undefined;
 }
@@ -1849,7 +1872,7 @@ export class ElizaClient {
 
     let host: string;
     let wsProtocol: "ws:" | "wss:";
-    const wsBase = getInjectedWsBase();
+    const wsBase = getInjectedWsBase(this.baseUrl);
     if (wsBase) {
       const parsed = new URL(wsBase);
       host = parsed.host;
