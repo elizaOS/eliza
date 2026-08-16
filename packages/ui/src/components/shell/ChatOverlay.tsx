@@ -5412,6 +5412,14 @@ export function ChatOverlay({
       !restoreDragging &&
       !fullBleed &&
       !firstRunOpen,
+    // The chat sheet is dark chrome even when the device appearance is light.
+    // Match its native UIGlassEffect to the DOM fallback so the material never
+    // becomes a bright slab over the conversation.
+    colorScheme: "dark",
+    // Native glass without a tint is transparent enough for home cards and
+    // their text to compete with the conversation. Preserve refraction while
+    // giving the sheet the same dark-warm reading field as the CSS fallback.
+    tintColor: "#16090DD9",
   });
   const nativeInsetSheet = nativeSheetTier === "native";
   // Keep the CSS material identity stable through fullscreen and its restore.
@@ -5863,9 +5871,10 @@ export function ChatOverlay({
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
               One infinite thread (#13531): no maximize/minimize (that's a
               vertical pull now) and no clear/new-chat (the thread never resets).
-              It carries NO buttons — Home/search/upload live in the composer
-              "+" menu — so the chat stops acting like a second app nav bar. The bar remains only to reserve
-              the safe-area top inset at full-bleed and host the transcribe badge. */}
+              It carries no buttons — Home/search/upload live in the composer
+              "+" menu — so the chat stops acting like a second app nav bar. The
+              bar reserves the safe-area top inset, reports the serving source,
+              and hosts the transcribe badge. */}
             {threadPresented ? (
               <motion.div
                 data-testid="chat-sheet-header"
@@ -5903,9 +5912,13 @@ export function ChatOverlay({
                   "mx-auto w-full max-w-3xl",
                 )}
               >
-                {/* The header carries no nav/search buttons — Home, Search, and
-                    Upload live in the composer "+" menu. This bar exists only to reserve the safe-area
-                    top inset at full-bleed and host the transcription badge. */}
+                {/* Routing truth belongs with the revealed conversation, not in
+                    the compact composer where provider text competed with the
+                    draft and primary action. Settings remains the detailed
+                    authority; this reads the same reconciled serving axes. */}
+                {!transcriptionComposerActive ? (
+                  <ServingProviderChip className="pointer-events-none ml-auto shrink-0 text-white/65" />
+                ) : null}
                 {transcriptionComposerActive ? (
                   <div
                     data-testid="chat-transcribing-badge"
@@ -6365,12 +6378,6 @@ export function ChatOverlay({
                   error={isSlashDraft && slash.error}
                   onPick={pickSlashItem}
                 />
-              ) : null}
-              {/* Who is answering this chat. The overlay is the primary chat
-                  surface, so without it the serving source was only visible in
-                  Settings (#20045 U6). */}
-              {!transcriptionComposerActive ? (
-                <ServingProviderChip className="pointer-events-none order-last shrink-0 self-center pr-1" />
               ) : null}
               {/* The "+" opens shell navigation plus surface-local Search and
                   Upload actions for this in-app conversation, never connector actions on a

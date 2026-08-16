@@ -47,6 +47,10 @@ vi.mock("../../api/client", () => ({
     // resolved value is the real `GET /api/conversations/messages/search`
     // response shape so the query→results→jump path is exercised end to end.
     searchConversationMessages: vi.fn(),
+    // Provider resolution is asynchronous in production. Keep it pending by
+    // default so unrelated overlay tests do not receive a late state update;
+    // the placement regression below supplies one explicit resolved response.
+    getModelsConfig: vi.fn(() => new Promise(() => {})),
   },
 }));
 
@@ -252,6 +256,7 @@ describe("ChatOverlay", () => {
     expect(screen.getByLabelText("talk")).toBeTruthy();
     expect(screen.getAllByTestId("chat-composer-mic")).toHaveLength(1);
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
+    expect(screen.queryByTestId("serving-provider-chip")).toBeNull();
     expect(screen.queryByLabelText("send")).toBeNull();
   });
 
@@ -464,6 +469,26 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
+  it("shows serving truth in the open header, never inside the compact composer", async () => {
+    vi.mocked(client.getModelsConfig).mockResolvedValueOnce({
+      targets: { small: {}, large: {}, coding: {} },
+      activeChat: {
+        provider: "cerebras",
+        family: "OPENAI",
+        endpoint: "https://api.cerebras.ai/v1",
+      },
+    });
+    render(<ChatOverlay controller={makeController()} />);
+    expect(screen.queryByTestId("serving-provider-chip")).toBeNull();
+
+    fireEvent.focus(screen.getByLabelText("message"));
+    const chip = await screen.findByTestId("serving-provider-chip");
+    expect(screen.getByTestId("chat-sheet-header").contains(chip)).toBe(true);
+    expect(
+      screen.getByTestId("chat-composer-trailing-controls").contains(chip),
+    ).toBe(false);
+  });
+
   it("adopts native glass only once the open sheet SETTLES, after both native acks", async () => {
     const bridge = {
       attachGlass: vi.fn(async () => ({ attached: true })),
@@ -503,6 +528,12 @@ describe("ChatOverlay", () => {
     const attachOrder = bridge.attachGlass.mock.invocationCallOrder[0] ?? 0;
     expect(backdropOrder).toBeGreaterThan(0);
     expect(backdropOrder).toBeLessThan(attachOrder);
+    expect(bridge.attachGlass).toHaveBeenCalledWith(
+      expect.objectContaining({
+        colorScheme: "dark",
+        tintColor: "#16090DD9",
+      }),
+    );
     // Native material: fill + blur drop (the OS paints them); border, bevel,
     // and sheen stay — the branded edge survives on every tier.
     expect(surface.style.backgroundColor).toBe("transparent");
