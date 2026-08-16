@@ -110,6 +110,8 @@ function stubWindowOrigin(protocol: string, host: string): void {
 
 describe("ElizaClient websocket connection policy", () => {
   afterEach(() => {
+    Reflect.deleteProperty(window, "__ELIZA_WS_BASE__");
+    Reflect.deleteProperty(window, "__ELIZAOS_WS_BASE__");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     __resetNetworkStatusForTests();
@@ -158,6 +160,50 @@ describe("ElizaClient websocket connection policy", () => {
     expect(createdUrls).toHaveLength(1);
     expect(createdUrls[0]).toContain("wss://agent.example.test/ws?");
     expect(createdUrls[0]).toContain("token=agent-token");
+  });
+
+  it("follows an explicit remote runtime instead of a stale same-origin Vite websocket base", () => {
+    const createdUrls = stubWebSocket();
+    stubWindowOrigin("http:", "127.0.0.1:2653");
+    Object.assign(window, {
+      __ELIZA_WS_BASE__: "ws://127.0.0.1:2653",
+      __ELIZAOS_WS_BASE__: "ws://127.0.0.1:2653",
+    });
+
+    const client = new ElizaClient("http://127.0.0.1:31337", "agent-token");
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://127.0.0.1:31337/ws?");
+    expect(createdUrls[0]).not.toContain("127.0.0.1:2653");
+  });
+
+  it("preserves a genuine separate-host websocket override for an explicit runtime", () => {
+    const createdUrls = stubWebSocket();
+    stubWindowOrigin("https:", "app.example.test");
+    Object.assign(window, {
+      __ELIZA_WS_BASE__: "wss://realtime.example.test",
+    });
+
+    const client = new ElizaClient("https://agent.example.test", "agent-token");
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("wss://realtime.example.test/ws?");
+  });
+
+  it("retains the same-origin Vite websocket proxy when no runtime base is selected", () => {
+    const createdUrls = stubWebSocket();
+    stubWindowOrigin("http:", "127.0.0.1:2653");
+    Object.assign(window, {
+      __ELIZA_WS_BASE__: "ws://127.0.0.1:2653",
+    });
+
+    const client = new ElizaClient("", "agent-token");
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://127.0.0.1:2653/ws?");
   });
 
   it("opens a same-origin websocket from a portless HTTPS host in a plain browser", () => {

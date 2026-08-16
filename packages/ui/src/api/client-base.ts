@@ -553,7 +553,7 @@ function isDedicatedCloudAgentBase(value: string | null | undefined): boolean {
   }
 }
 
-function getInjectedWsBase(): string | undefined {
+function getInjectedWsBase(explicitBaseUrl: string): string | undefined {
   if (typeof window === "undefined") return undefined;
   const values = [
     (window as { __ELIZA_WS_BASE__?: unknown }).__ELIZA_WS_BASE__,
@@ -562,7 +562,30 @@ function getInjectedWsBase(): string | undefined {
   for (const value of values) {
     if (typeof value !== "string") continue;
     const trimmed = value.trim();
-    if (trimmed) return trimmed;
+    if (!trimmed) continue;
+    if (explicitBaseUrl) {
+      try {
+        const injected = new URL(trimmed);
+        const selected = new URL(explicitBaseUrl);
+        // The Vite dev server injects its own page origin so a no-base client
+        // can reach `/ws` through the dev proxy. Once the user explicitly
+        // selects a different runtime, that same-origin value is stale: HTTP
+        // already follows the selected server while realtime would remain on
+        // the old proxy. A genuinely separate injected WS host is still an
+        // intentional transport override and keeps precedence.
+        if (
+          injected.host === window.location.host &&
+          selected.host !== window.location.host
+        ) {
+          continue;
+        }
+      } catch {
+        // Preserve the existing boundary behavior: connectWs owns URL parsing
+        // and surfaces a malformed configured override rather than silently
+        // replacing it with a plausible endpoint.
+      }
+    }
+    return trimmed;
   }
   return undefined;
 }
@@ -1962,46 +1985,7 @@ export class ElizaClient {
 
     let host: string;
     let wsProtocol: "ws:" | "wss:";
-    let wsBase = getInjectedWsBase();
-    // #20342: the Vite dev server injects __ELIZA_WS_BASE__ unconditionally in
-    // serve mode (computed from the page origin) so tunnels can proxy /ws.
-    // That injection must be AMBIENT — it cannot override an HTTP(S) agent the
-    // user explicitly selected after boot. Rule: when a user-pinned HTTP(S)
-    // base exists and the injected WS base merely normalizes to the current
-    // page origin, derive realtime from the selected base instead. A genuinely
-    // separate injected WS host (different origin) remains authoritative.
-    const explicitHttpBase =
-      this._userSetBase && this.baseUrl
-        ? (() => {
-            try {
-              const protocol = new URL(this.baseUrl).protocol;
-              return protocol === "http:" || protocol === "https:";
-            } catch {
-              // error-policy:J3 malformed base URLs are explicitly ineligible
-              // for WS-base precedence; ambient derivation below still reads
-              // them exactly as before.
-              return false;
-            }
-          })()
-        : false;
-    if (wsBase && explicitHttpBase) {
-      try {
-        // Normalize ws/wss origins to their http/https equivalents for the
-        // comparison: same host+port+scheme means "just the dev origin".
-        // URL.origin keeps the ws/wss scheme, so map both spellings.
-        const toHttpOrigin = (value: string): string =>
-          value
-            .replace(/^wss:\/\//i, "https://")
-            .replace(/^ws:\/\//i, "http://");
-        const injectedOrigin = toHttpOrigin(new URL(wsBase).origin);
-        if (injectedOrigin === window.location.origin) {
-          wsBase = undefined; // fall through to the explicit client base
-        }
-      } catch {
-        // error-policy:J3 a malformed injected WS URL is not silently
-        // reinterpreted: the existing parse-and-throw below handles it.
-      }
-    }
+    const wsBase = getInjectedWsBase(this.baseUrl);
     if (wsBase) {
       const parsed = new URL(wsBase);
       host = parsed.host;
