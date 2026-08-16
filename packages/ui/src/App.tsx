@@ -135,6 +135,7 @@ import {
   type FocusConnectorEventDetail,
   listenForConnectRequests,
   NAVIGATE_VIEW_EVENT,
+  PUSH_TO_TALK_TOGGLE_EVENT,
 } from "./events";
 import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
 import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
@@ -1810,6 +1811,31 @@ function ShellFoundationMount() {
     });
     return () => controller.setDictationSink(null);
   }, [controller, setChatInput, chatInputRef]);
+
+  // Global push-to-talk hotkey (#20483): the OS shortcut is trigger-only (no
+  // key-up event reaches the renderer), so the hotkey drives the SAME ptt
+  // capture as the pill's hold, in toggle form — first press opens the mic
+  // (ping + red chip on the pill), second press stops and sends (tick). No
+  // window is summoned and no focus is taken; the pill alone shows the state.
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const onToggle = () => {
+      const shell = controllerRef.current;
+      if (!shell) return;
+      if (shell.recording) {
+        playCaptureSendCue();
+        shell.stopRecording();
+        return;
+      }
+      playCaptureStartCue();
+      shell.startRecording("ptt");
+    };
+    document.addEventListener(PUSH_TO_TALK_TOGGLE_EVENT, onToggle);
+    return () =>
+      document.removeEventListener(PUSH_TO_TALK_TOGGLE_EVENT, onToggle);
+  }, []);
 
   useEffect(() => {
     if (!hasController) return undefined;
