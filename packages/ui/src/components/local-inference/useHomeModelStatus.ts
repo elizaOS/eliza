@@ -53,22 +53,6 @@ function subscribeToMobileRuntimeMode(onStoreChange: () => void): () => void {
   };
 }
 
-function getMobileRuntimeModeSnapshot() {
-  return readPersistedMobileRuntimeMode();
-}
-
-function getServerMobileRuntimeModeSnapshot() {
-  return null;
-}
-
-function useMobileRuntimeMode() {
-  return useSyncExternalStore(
-    subscribeToMobileRuntimeMode,
-    getMobileRuntimeModeSnapshot,
-    getServerMobileRuntimeModeSnapshot,
-  );
-}
-
 function appendTokenParam(url: string): string {
   const token = getElizaApiToken()?.trim();
   if (!token) return url;
@@ -92,7 +76,11 @@ export function useHomeModelStatus(): HomeModelStatus {
   const [status, setStatus] = useState<HomeModelStatus>(NOT_REQUIRED);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const routingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mobileRuntimeMode = useMobileRuntimeMode();
+  const mobileRuntimeMode = useSyncExternalStore(
+    subscribeToMobileRuntimeMode,
+    readPersistedMobileRuntimeMode,
+    () => null,
+  );
   const runtimeMode = useRuntimeMode();
   // Auth gate (#11084): the shell mounts this hook before the auth probe
   // resolves, so the download SSE stream + hub fetches must stay dormant until
