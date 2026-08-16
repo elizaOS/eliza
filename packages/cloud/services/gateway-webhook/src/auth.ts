@@ -4,6 +4,7 @@ import { logger } from "./logger";
 const HTTP_TIMEOUT_MS = 10_000;
 const TOKEN_REFRESH_PERCENTAGE = 0.8;
 const TOKEN_REFRESH_RETRY_MS = 1_000;
+const MAX_GATEWAY_TOKEN_LIFETIME_SECONDS = 60;
 
 interface TokenResponse {
   access_token: string;
@@ -17,9 +18,30 @@ interface AuthConfig {
   podName: string;
 }
 
+function parseTokenResponse(value: unknown): TokenResponse {
+  if (!value || typeof value !== "object") {
+    throw new Error("Invalid token response");
+  }
+  const candidate = value as Partial<TokenResponse>;
+  if (
+    typeof candidate.access_token !== "string" ||
+    candidate.access_token.trim().length === 0 ||
+    candidate.token_type !== "Bearer" ||
+    typeof candidate.expires_in !== "number" ||
+    !Number.isFinite(candidate.expires_in) ||
+    candidate.expires_in <= 0 ||
+    candidate.expires_in > MAX_GATEWAY_TOKEN_LIFETIME_SECONDS
+  ) {
+    throw new Error("Invalid token response");
+  }
+  return candidate as TokenResponse;
+}
+
 let accessToken: string | null = null;
 let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
 let config: AuthConfig | null = null;
+let authGeneration = 0;
+let authStopped = true;
 
 async function fetchWithTimeout(
   url: string,
@@ -40,20 +62,22 @@ async function fetchWithTimeout(
 }
 
 async function acquireToken(): Promise<void> {
-  if (!config) throw new Error("Auth not initialized");
+  const activeConfig = config;
+  const generation = authGeneration;
+  if (!activeConfig || authStopped) throw new Error("Auth not initialized");
 
-  logger.info("Acquiring JWT token", { podName: config.podName });
+  logger.info("Acquiring JWT token", { podName: activeConfig.podName });
 
   const response = await fetchWithTimeout(
-    `${config.cloudUrl}/api/internal/auth/token`,
+    `${activeConfig.cloudUrl}/api/internal/auth/token`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Gateway-Secret": config.bootstrapSecret,
+        "X-Gateway-Secret": activeConfig.bootstrapSecret,
       },
       body: JSON.stringify({
-        pod_name: config.podName,
+        pod_name: activeConfig.podName,
         service: "webhook-gateway",
       }),
     },
@@ -64,11 +88,14 @@ async function acquireToken(): Promise<void> {
     throw new Error(`Failed to acquire token: ${response.status} - ${error}`);
   }
 
-  const data = (await response.json()) as TokenResponse;
+  const data = parseTokenResponse(await response.json());
+  if (authStopped || generation !== authGeneration || config !== activeConfig) {
+    throw new Error("Token acquisition completed after authentication stopped");
+  }
   accessToken = data.access_token;
 
   logger.info("JWT token acquired", {
-    podName: config.podName,
+    podName: activeConfig.podName,
     expiresIn: `${data.expires_in}s`,
   });
 
@@ -123,6 +150,7 @@ async function refreshToken(): Promise<void> {
 }
 
 function scheduleRefresh(expiresInSeconds: number): void {
+  if (authStopped) return;
   if (refreshTimeout) clearTimeout(refreshTimeout);
 
   const refreshInMs = expiresInSeconds * 1000 * TOKEN_REFRESH_PERCENTAGE;
@@ -132,13 +160,14 @@ function scheduleRefresh(expiresInSeconds: number): void {
       logger.error("Token refresh failed", {
         error: error instanceof Error ? error.message : String(error),
       });
-      if (refreshTimeout === timeout) scheduleRefreshRetry();
+      if (!authStopped && refreshTimeout === timeout) scheduleRefreshRetry();
     });
   }, refreshInMs);
   refreshTimeout = timeout;
 }
 
 function scheduleRefreshRetry(): void {
+  if (authStopped) return;
   if (refreshTimeout) clearTimeout(refreshTimeout);
 
   const timeout = setTimeout(() => {
@@ -147,13 +176,18 @@ function scheduleRefreshRetry(): void {
       logger.error("Token refresh retry failed", {
         error: error instanceof Error ? error.message : String(error),
       });
-      if (refreshTimeout === timeout) scheduleRefreshRetry();
+      if (!authStopped && refreshTimeout === timeout) scheduleRefreshRetry();
     });
   }, TOKEN_REFRESH_RETRY_MS);
   refreshTimeout = timeout;
 }
 
 export async function initAuth(authConfig: AuthConfig): Promise<void> {
+  authGeneration += 1;
+  authStopped = false;
+  if (refreshTimeout) clearTimeout(refreshTimeout);
+  refreshTimeout = null;
+  accessToken = null;
   config = authConfig;
   await acquireToken();
 }
@@ -170,9 +204,12 @@ let reacquireInFlight: Promise<void> | null = null;
 export async function reacquireAuthHeader(): Promise<{
   Authorization: string;
 }> {
-  reacquireInFlight ??= acquireToken().finally(() => {
-    reacquireInFlight = null;
-  });
+  if (!reacquireInFlight) {
+    const tracked = acquireToken().finally(() => {
+      if (reacquireInFlight === tracked) reacquireInFlight = null;
+    });
+    reacquireInFlight = tracked;
+  }
   await reacquireInFlight;
   return getAuthHeader();
 }
@@ -185,10 +222,13 @@ export function getAuthHeader(): { Authorization: string } {
 }
 
 export function shutdownAuth(): void {
+  authStopped = true;
+  authGeneration += 1;
   if (refreshTimeout) {
     clearTimeout(refreshTimeout);
     refreshTimeout = null;
   }
   accessToken = null;
   config = null;
+  reacquireInFlight = null;
 }

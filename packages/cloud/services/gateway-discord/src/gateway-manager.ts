@@ -291,6 +291,27 @@ interface TokenResponse {
 const TOKEN_REFRESH_PERCENTAGE = 0.8;
 /** Bounded retry cadence keeps a transient bootstrap failure from stranding renewal. */
 const TOKEN_REFRESH_RETRY_MS = 1_000;
+/** Gateway bootstrap tokens are deliberately bounded to one minute. */
+const MAX_GATEWAY_TOKEN_LIFETIME_SECONDS = 60;
+
+function parseTokenResponse(value: unknown): TokenResponse {
+  if (!value || typeof value !== "object") {
+    throw new Error("Invalid token response");
+  }
+  const candidate = value as Partial<TokenResponse>;
+  if (
+    typeof candidate.access_token !== "string" ||
+    candidate.access_token.trim().length === 0 ||
+    candidate.token_type !== "Bearer" ||
+    typeof candidate.expires_in !== "number" ||
+    !Number.isFinite(candidate.expires_in) ||
+    candidate.expires_in <= 0 ||
+    candidate.expires_in > MAX_GATEWAY_TOKEN_LIFETIME_SECONDS
+  ) {
+    throw new Error("Invalid token response");
+  }
+  return candidate as TokenResponse;
+}
 
 interface BotConnection {
   connectionId: string;
@@ -397,6 +418,9 @@ export class GatewayManager {
   private accessToken: string | null = null;
   /** Token expiration timestamp */
   private tokenExpiresAt: Date | null = null;
+  /** Fences late bootstrap completions across shutdown and restart. */
+  private authGeneration = 0;
+  private authStopped = true;
 
   // ============================================
   // Eliza App Bot (Leader Election)
@@ -551,6 +575,7 @@ export class GatewayManager {
    * This must be called before any API operations.
    */
   private async acquireToken(): Promise<void> {
+    const generation = this.authGeneration;
     logger.info("Acquiring JWT token", { podName: this.config.podName });
 
     const response = await fetchWithTimeout(
@@ -573,7 +598,12 @@ export class GatewayManager {
       throw new Error(`Failed to acquire token: ${response.status} - ${error}`);
     }
 
-    const data = (await response.json()) as TokenResponse;
+    const data = parseTokenResponse(await response.json());
+    if (this.authStopped || generation !== this.authGeneration) {
+      throw new Error(
+        "Token acquisition completed after authentication stopped",
+      );
+    }
     this.accessToken = data.access_token;
     this.tokenExpiresAt = new Date(Date.now() + data.expires_in * 1000);
 
@@ -643,6 +673,7 @@ export class GatewayManager {
    * Schedule token refresh at 80% of token lifetime.
    */
   private scheduleTokenRefresh(expiresInSeconds: number): void {
+    if (this.authStopped) return;
     if (this.tokenRefreshTimeout) {
       clearTimeout(this.tokenRefreshTimeout);
     }
@@ -652,7 +683,7 @@ export class GatewayManager {
       // error-policy:J1 The timer boundary converts renewal failure into a paced retry.
       this.refreshToken().catch((error) => {
         logger.error("Token refresh failed", { error: sanitizeError(error) });
-        if (this.tokenRefreshTimeout === timeout) {
+        if (!this.authStopped && this.tokenRefreshTimeout === timeout) {
           this.scheduleTokenRefreshRetry();
         }
       });
@@ -666,6 +697,7 @@ export class GatewayManager {
   }
 
   private scheduleTokenRefreshRetry(): void {
+    if (this.authStopped) return;
     if (this.tokenRefreshTimeout) {
       clearTimeout(this.tokenRefreshTimeout);
     }
@@ -676,7 +708,7 @@ export class GatewayManager {
         logger.error("Token refresh retry failed", {
           error: sanitizeError(error),
         });
-        if (this.tokenRefreshTimeout === timeout) {
+        if (!this.authStopped && this.tokenRefreshTimeout === timeout) {
           this.scheduleTokenRefreshRetry();
         }
       });
@@ -697,6 +729,8 @@ export class GatewayManager {
 
   async start(): Promise<void> {
     logger.info("Starting gateway manager", { podName: this.config.podName });
+    this.authGeneration += 1;
+    this.authStopped = false;
 
     // Acquire JWT token before any API calls - fail fast if this fails
     await this.acquireToken();
@@ -755,11 +789,16 @@ export class GatewayManager {
 
   async shutdown(): Promise<void> {
     logger.info("Shutting down gateway manager");
+    this.authStopped = true;
+    this.authGeneration += 1;
 
     if (this.pollInterval) clearInterval(this.pollInterval);
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     if (this.failoverInterval) clearInterval(this.failoverInterval);
-    if (this.tokenRefreshTimeout) clearTimeout(this.tokenRefreshTimeout);
+    if (this.tokenRefreshTimeout) {
+      clearTimeout(this.tokenRefreshTimeout);
+      this.tokenRefreshTimeout = null;
+    }
     if (this.elizaAppLeaderInterval) clearInterval(this.elizaAppLeaderInterval);
     if (this.greetingPollInterval) clearInterval(this.greetingPollInterval);
     if (this.dmPollInterval) clearInterval(this.dmPollInterval);
@@ -838,6 +877,8 @@ export class GatewayManager {
     }
 
     this.connections.clear();
+    this.accessToken = null;
+    this.tokenExpiresAt = null;
     logger.info("Gateway manager shutdown complete");
   }
 

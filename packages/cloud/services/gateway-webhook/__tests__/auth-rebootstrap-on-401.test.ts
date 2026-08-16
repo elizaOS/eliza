@@ -175,7 +175,7 @@ describe("reacquireAuthHeader is single-flight", () => {
           JSON.stringify({
             access_token: `tok-${bootstraps}`,
             token_type: "Bearer",
-            expires_in: 3600,
+            expires_in: 60,
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
@@ -240,12 +240,19 @@ describe("reacquireAuthHeader is single-flight", () => {
     );
   });
 
-  test("scheduled renewal retries bootstrap after a transient failure", async () => {
+  test("paces retry after a malformed scheduled bootstrap response", async () => {
     let bootstraps = 0;
     globalThis.fetch = mock(async () => {
       bootstraps += 1;
       if (bootstraps === 2) {
-        return new Response("temporarily unavailable", { status: 503 });
+        return new Response(
+          JSON.stringify({
+            access_token: "",
+            token_type: "Bearer",
+            expires_in: 60,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
       }
       return new Response(
         JSON.stringify({
@@ -264,6 +271,9 @@ describe("reacquireAuthHeader is single-flight", () => {
         bootstrapSecret: "bootstrap",
         podName: "test-pod",
       });
+      await waitFor(() => bootstraps === 2);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(bootstraps).toBe(2);
       await waitFor(() => bootstraps === 3);
     } finally {
       shutdownAuth();
@@ -271,7 +281,92 @@ describe("reacquireAuthHeader is single-flight", () => {
 
     expect(bootstraps).toBe(3);
   });
+
+  test("rejects malformed bootstrap responses without publishing a token", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            access_token: "",
+            token_type: "Bearer",
+            expires_in: 60,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    ) as typeof fetch;
+
+    const { getAuthHeader, initAuth, shutdownAuth } = await import(
+      "../src/auth"
+    );
+    try {
+      await expect(
+        initAuth({
+          cloudUrl: "https://api.test",
+          bootstrapSecret: "bootstrap",
+          podName: "test-pod",
+        }),
+      ).rejects.toThrow("Invalid token response");
+      expect(() => getAuthHeader()).toThrow("No access token available");
+    } finally {
+      shutdownAuth();
+    }
+  });
+
+  test("shutdown fences an in-flight re-bootstrap completion", async () => {
+    const lateResponse = deferred<Response>();
+    let bootstraps = 0;
+    globalThis.fetch = mock(async () => {
+      bootstraps += 1;
+      if (bootstraps === 1) {
+        return new Response(
+          JSON.stringify({
+            access_token: "initial-token",
+            token_type: "Bearer",
+            expires_in: 60,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return lateResponse.promise;
+    }) as typeof fetch;
+
+    const { getAuthHeader, initAuth, reacquireAuthHeader, shutdownAuth } =
+      await import("../src/auth");
+    await initAuth({
+      cloudUrl: "https://api.test",
+      bootstrapSecret: "bootstrap",
+      podName: "test-pod",
+    });
+    const reacquire = reacquireAuthHeader();
+    shutdownAuth();
+    lateResponse.resolve(
+      new Response(
+        JSON.stringify({
+          access_token: "late-token",
+          token_type: "Bearer",
+          expires_in: 60,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await expect(reacquire).rejects.toThrow(
+      "Token acquisition completed after authentication stopped",
+    );
+    expect(() => getAuthHeader()).toThrow("No access token available");
+  });
 });
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 async function waitFor(predicate: () => boolean): Promise<void> {
   const deadline = Date.now() + 2_000;

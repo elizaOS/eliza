@@ -10,7 +10,11 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { isJWKSConfigured } from "@/lib/auth/jwks";
-import { signInternalToken } from "@/lib/auth/jwt-internal";
+import {
+  internalTokenLifetimeForService,
+  isShortLivedGatewayService,
+  signInternalToken,
+} from "@/lib/auth/jwt-internal";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -47,8 +51,15 @@ app.post("/*", async (c) => {
     }
     const service =
       typeof body.service === "string" ? body.service.trim() : undefined;
+    if (!isShortLivedGatewayService(service)) {
+      return c.json({ error: "unsupported_gateway_service" }, 400);
+    }
 
-    const token = await signInternalToken({ subject, service });
+    const token = await signInternalToken({
+      subject,
+      service,
+      expiresIn: internalTokenLifetimeForService(service),
+    });
     return c.json(token);
   } catch (err) {
     logger.error("[internal/auth/token]", { error: err });
