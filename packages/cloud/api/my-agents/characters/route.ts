@@ -30,8 +30,9 @@ app.get("/", async (c) => {
     const category = c.req.query("category") as CategoryId | undefined;
     const sortBy = (c.req.query("sortBy") || "newest") as SortBy;
     const order = (c.req.query("order") || "desc") as SortOrder;
-    const page = parseClampedLimit(c.req.query("page"), 1, 10_000);
     const limit = parseClampedLimit(c.req.query("limit"), 30, 1000);
+    const maxPage = Math.floor(Number.MAX_SAFE_INTEGER / limit) + 1;
+    const page = parseClampedLimit(c.req.query("page"), 1, maxPage);
 
     logger.debug("[My Agents API] Search request:", {
       userId: user.id,

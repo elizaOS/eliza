@@ -80,20 +80,21 @@ describe("clamp-limit batch2 — 4 routed sites", () => {
     expect(parseClampedOffset("5junk", 0)).toBe(0);
   });
 
-  test("my-agents page: fallback 1 strict, allows 1..10000", () => {
-    expect(parseClampedLimit(null, 1, 10_000)).toBe(1);
-    expect(parseClampedLimit("1", 1, 10_000)).toBe(1);
-    expect(parseClampedLimit("5", 1, 10_000)).toBe(5);
-    expect(parseClampedLimit("0", 1, 10_000)).toBe(1);
+  test("my-agents page: fallback 1 strict without narrowing valid pages", () => {
+    expect(parseClampedLimit(null, 1, Number.MAX_SAFE_INTEGER)).toBe(1);
+    expect(parseClampedLimit("1", 1, Number.MAX_SAFE_INTEGER)).toBe(1);
+    expect(parseClampedLimit("5", 1, Number.MAX_SAFE_INTEGER)).toBe(5);
+    expect(parseClampedLimit("10001", 1, Number.MAX_SAFE_INTEGER)).toBe(10_001);
+    expect(parseClampedLimit("0", 1, Number.MAX_SAFE_INTEGER)).toBe(1);
     for (const bad of ["abc", "-1", "5junk", "5.5", "Infinity", ""]) {
-      expect(parseClampedLimit(bad, 1, 10_000)).toBe(1);
+      expect(parseClampedLimit(bad, 1, Number.MAX_SAFE_INTEGER)).toBe(1);
     }
     expect(Number.isNaN(oldParseMyAgentsPage("abc"))).toBe(true);
-    expect(parseClampedLimit("abc", 1, 10_000)).toBe(1);
+    expect(parseClampedLimit("abc", 1, Number.MAX_SAFE_INTEGER)).toBe(1);
     expect(oldParseMyAgentsPage("5junk")).toBe(5);
-    expect(parseClampedLimit("5junk", 1, 10_000)).toBe(1);
+    expect(parseClampedLimit("5junk", 1, Number.MAX_SAFE_INTEGER)).toBe(1);
     // derived offset must not be NaN
-    const page = parseClampedLimit("abc", 1, 10_000);
+    const page = parseClampedLimit("abc", 1, Number.MAX_SAFE_INTEGER);
     const limit = parseClampedLimit("abc", 30, 1000);
     const offset = (page - 1) * limit;
     expect(offset).toBe(0);
@@ -121,7 +122,7 @@ describe("clamp-limit batch2 — 4 routed sites", () => {
         Number.isNaN(pageOld) || Number.isNaN(limitOld) ? NaN : (pageOld - 1) * limitOld;
       // old leaks NaN for abc
       if (raw === "abc") expect(Number.isNaN(offsetOld)).toBe(true);
-      const pageNew = parseClampedLimit(raw, 1, 10_000);
+      const pageNew = parseClampedLimit(raw, 1, Number.MAX_SAFE_INTEGER);
       const limitNew = parseClampedLimit(raw, 30, 1000);
       const offsetNew = (pageNew - 1) * limitNew;
       expect(Number.isNaN(offsetNew)).toBe(false);
