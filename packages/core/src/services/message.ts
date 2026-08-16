@@ -3176,6 +3176,48 @@ function buildV5PlannerActionSurface(params: {
 		}
 	}
 
+	// Selected-context representation guarantee: stage-1 routed this turn to
+	// specific contexts, and a narrowed surface with ZERO callable actions for
+	// a selected context contradicts that routing — the planner then improvises
+	// with off-context tools (observed live: a web+notes composite surfaced
+	// WEB_FETCH/WEB_SEARCH only, so the "save a note" half of the ask was
+	// impossible and the turn ended on an in-flight claim with nothing saved).
+	// For each selected context with no exposed representative, expose the
+	// highest-ranked action that DECLARES the context; `params.actions` is the
+	// already gate-checked collection, so this can never expose a gated action.
+	for (const context of params.selectedContexts ?? []) {
+		const normalizedContext = String(context).trim().toLowerCase();
+		if (!normalizedContext || normalizedContext === "simple") continue;
+		const declaresContext = (action: Action): boolean =>
+			(action.contexts ?? []).some(
+				(declared) =>
+					String(declared).trim().toLowerCase() === normalizedContext,
+			);
+		const hasRepresentative = params.actions.some(
+			(action) =>
+				exposedActionNames.has(normalizeActionIdentifier(action.name)) &&
+				declaresContext(action),
+		);
+		if (hasRepresentative) continue;
+		const scoreByName = new Map(
+			retrieval.results.map((result) => [
+				normalizeActionIdentifier(result.name),
+				result.score,
+			]),
+		);
+		const best = params.actions
+			.filter(declaresContext)
+			.sort(
+				(a, b) =>
+					(scoreByName.get(normalizeActionIdentifier(b.name)) ?? 0) -
+					(scoreByName.get(normalizeActionIdentifier(a.name)) ?? 0),
+			)
+			.at(0);
+		if (best) {
+			exposedActionNames.add(normalizeActionIdentifier(best.name));
+		}
+	}
+
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
 	).length;
