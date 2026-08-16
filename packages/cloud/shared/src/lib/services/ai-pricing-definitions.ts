@@ -1,4 +1,4 @@
-// Coordinates cloud service ai pricing definitions behavior behind route handlers.
+/** Defines supported AI models and their authoritative Cloud billing sources. */
 export type PricingProductFamily =
   | "language"
   | "embedding"
@@ -314,6 +314,13 @@ export const SUPPORTED_IMAGE_MODELS: SupportedImageModelDefinition[] = [
  * confirmed `image:generation` catalog row (see ai-pricing/providers/atlascloud.ts).
  */
 export const DEFAULT_IMAGE_MODEL_ID = "google/nano-banana-2/text-to-image";
+
+/**
+ * Ordered models for an unspecified video request. The first configured model
+ * is primary and later entries are terminal-failure fallbacks; explicit model
+ * requests never use this chain.
+ */
+export const DEFAULT_VIDEO_MODEL_IDS = ["fal-ai/veo3", "vidu/q3-turbo/text-to-video"] as const;
 
 export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
   {
