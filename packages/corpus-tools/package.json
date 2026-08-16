@@ -1,0 +1,36 @@
+{
+  "name": "@elizaos/corpus-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Private personal-corpus interchange schema, validators, and archive collectors for the LifeOps corpus program.",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "node ../scripts/run-biome-typescript.mjs src check",
+    "lint:check": "node ../scripts/run-biome-typescript.mjs src check",
+    "lint:fix": "node ../scripts/run-biome-typescript.mjs src check --write",
+    "format": "node ../scripts/run-biome-typescript.mjs src format",
+    "format:fix": "node ../scripts/run-biome-typescript.mjs src format --write"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "fflate": "^0.8.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@types/node": "^24.0.0"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
+}

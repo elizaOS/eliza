@@ -823,6 +823,19 @@
         "vitest": "^4.0.0",
       },
     },
+    "packages/corpus-tools": {
+      "name": "@elizaos/corpus-tools",
+      "version": "0.0.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "fflate": "^0.8.3",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@types/node": "^24.0.0",
+        "@typescript/native": "npm:typescript@^7.0.2",
+      },
+    },
     "packages/docs": {
       "name": "@elizaos/docs",
       "version": "2.0.0-beta.2",
@@ -3933,6 +3946,8 @@
     "@elizaos/container-control-plane": ["@elizaos/container-control-plane@workspace:packages/cloud/services/container-control-plane"],
 
     "@elizaos/core": ["@elizaos/core@workspace:packages/core"],
+
+    "@elizaos/corpus-tools": ["@elizaos/corpus-tools@workspace:packages/corpus-tools"],
 
     "@elizaos/docs": ["@elizaos/docs@workspace:packages/docs"],
 
