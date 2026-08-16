@@ -188,7 +188,11 @@ new_sqlite_classes = ["PersonalTelegramDelivery"]
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "false"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
-PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
+# PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED is deliberately ABSENT here (and in
+# env.staging.vars): the protected cutover owns it as a per-environment secret,
+# and any [vars] spelling of the name collides with `wrangler secret put`
+# (CF error 10053 — run 31970252094 failed on exactly this top-level entry).
+# Absence is fail-closed: the Worker treats a missing binding as edge-off.
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
