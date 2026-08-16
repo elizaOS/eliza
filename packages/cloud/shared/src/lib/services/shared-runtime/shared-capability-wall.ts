@@ -167,7 +167,6 @@ function startsInNonExecutionClause(text: string, index: number): boolean {
   const clauseStart = boundary ? boundary.index + boundary[0].length : 0;
   return NON_EXECUTION_CONTEXT.test(text.slice(clauseStart, index));
 }
-
 function matchesForRule(
   rule: (typeof RULES)[number],
   priority: number,
@@ -192,6 +191,9 @@ function beginsSeparateClause(text: string, primary: CapabilityMatch, candidate:
     return !isReminderPayload || /[.!?;,]\s*(?:and\s+)?then\b[\s\S]*$/i.test(between);
   }
   if (!/\band\s*$/i.test(between)) return false;
+  // An infinitive after "remind me" is reminder content, even when that
+  // content coordinates several actions. A completed trigger followed by
+  // "and" starts a new command instead.
   return !isReminderPayload;
 }
 
@@ -217,10 +219,10 @@ export function resolveSharedCapabilityIntent(
       (candidate) =>
         !isEnabled(candidate, capabilities) && beginsSeparateClause(text, primary, candidate),
     )
-    .flatMap((match) => {
-      if (blockedCapabilities.has(match.rule.capability)) return [];
-      blockedCapabilities.add(match.rule.capability);
-      return [wallFor(match)];
+    .flatMap((candidate) => {
+      if (blockedCapabilities.has(candidate.rule.capability)) return [];
+      blockedCapabilities.add(candidate.rule.capability);
+      return [wallFor(candidate)];
     });
   return {
     kind: "enabled-primary",
