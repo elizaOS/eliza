@@ -8,6 +8,7 @@
 import { writeFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
 import { installDefaultAppRoutes } from "./helpers";
+import { seedStewardSession } from "./helpers/test-auth";
 
 const PROVIDERS = {
   passkey: false,
@@ -27,6 +28,7 @@ const TEST_AUTH_ENABLED =
   process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
   process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true";
 const PERSONAL_ID = "personal:11111111-1111-5111-8111-111111111111";
+const ONBOARDING_TOKEN = "aaaaaaaa-test-test-test-tokentoken01";
 const SURFACES = [
   { name: "desktop", viewport: { width: 1440, height: 900 } },
   { name: "mobile", viewport: { width: 390, height: 844 } },
@@ -59,6 +61,58 @@ async function installManagedOriginProxy(
   return managed.origin;
 }
 
+async function installAuthenticatedPersonalRoutes(
+  page: Page,
+  managedOrigin: string,
+  personalGate?: Promise<void>,
+): Promise<() => number> {
+  await installDefaultAppRoutes(page);
+  await page.context().addCookies([
+    {
+      name: "eliza-test-auth",
+      value: "1",
+      domain: "cloud.eliza.app",
+      path: "/",
+      sameSite: "Lax",
+    },
+  ]);
+  await seedStewardSession(page, {
+    jwt: true,
+    userId: "22222222-2222-4222-8222-222222222222",
+    email: "managed-handoff@test.local",
+  });
+
+  let personalRequests = 0;
+  await page.route("**/api/v1/eliza/agents", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true, data: [] }),
+    });
+  });
+  await page.route("**/api/v1/eliza/personal", async (route) => {
+    personalRequests += 1;
+    if (personalGate) await personalGate;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        data: {
+          identity: {
+            id: PERSONAL_ID,
+            displayName: "Eliza",
+            runtime: "shared",
+            activeAgentId: "22222222-2222-4222-8222-222222222222",
+            apiBase: managedOrigin,
+          },
+        },
+      }),
+    });
+  });
+  return () => personalRequests;
+}
+
 for (const surface of SURFACES) {
   test(`authenticated login handoff mounts chat in the same document (${surface.name})`, async ({
     page,
@@ -71,23 +125,19 @@ for (const surface of SURFACES) {
     if (!baseURL) throw new Error("Playwright baseURL is required");
     await page.setViewportSize(surface.viewport);
     const managedOrigin = await installManagedOriginProxy(page, baseURL);
-    await installDefaultAppRoutes(page);
     const documentRequests: string[] = [];
     const pageErrors: string[] = [];
     const requestFailures: string[] = [];
     const consoleMessages: Array<{ type: string; text: string }> = [];
-    let personalRequests = 0;
     let releasePersonal: (() => void) | undefined;
     const personalGate = new Promise<void>((resolve) => {
       releasePersonal = resolve;
     });
-    const jwtPart = (value: unknown) =>
-      Buffer.from(JSON.stringify(value)).toString("base64url");
-    const stewardToken = `${jwtPart({ alg: "none", typ: "JWT" })}.${jwtPart({
-      userId: "22222222-2222-4222-8222-222222222222",
-      email: "managed-handoff@test.local",
-      exp: Math.floor(Date.now() / 1000) + 3_600,
-    })}.sig`;
+    const personalRequests = await installAuthenticatedPersonalRoutes(
+      page,
+      managedOrigin,
+      personalGate,
+    );
 
     page.on("request", (request) => {
       if (
@@ -106,46 +156,6 @@ for (const surface of SURFACES) {
     page.on("console", (message) => {
       consoleMessages.push({ type: message.type(), text: message.text() });
     });
-    await page.context().addCookies([
-      {
-        name: "eliza-test-auth",
-        value: "1",
-        domain: "cloud.eliza.app",
-        path: "/",
-        sameSite: "Lax",
-      },
-    ]);
-    await page.addInitScript((token) => {
-      localStorage.setItem("steward_session_token", token);
-    }, stewardToken);
-    await page.route("**/api/v1/eliza/agents", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ success: true, data: [] }),
-      });
-    });
-    await page.route("**/api/v1/eliza/personal", async (route) => {
-      personalRequests += 1;
-      await personalGate;
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          success: true,
-          data: {
-            identity: {
-              id: PERSONAL_ID,
-              displayName: "Eliza",
-              runtime: "shared",
-              activeAgentId: "22222222-2222-4222-8222-222222222222",
-              apiBase: managedOrigin,
-            },
-          },
-        }),
-      });
-    });
-
     await page.goto(`${managedOrigin}/join`);
     await expect(page.getByText(/Opening your personal Eliza/)).toBeVisible();
     await page.evaluate(() => {
@@ -153,7 +163,7 @@ for (const surface of SURFACES) {
     });
     releasePersonal?.();
 
-    await expect.poll(() => personalRequests).toBeGreaterThanOrEqual(1);
+    await expect.poll(personalRequests).toBe(1);
     await expect(page.locator("html")).toHaveAttribute(
       "data-login-document",
       "survived",
@@ -165,6 +175,7 @@ for (const surface of SURFACES) {
     await page.waitForTimeout(1_000);
 
     expect(documentRequests).toHaveLength(1);
+    expect(personalRequests()).toBe(1);
     expect(new URL(documentRequests[0]).pathname).toBe("/join");
     expect(pageErrors).toEqual([]);
     expect(requestFailures).toEqual([]);
@@ -184,7 +195,7 @@ for (const surface of SURFACES) {
             entryPath: "/join",
             finalUrl: page.url(),
             documentRequests,
-            personalRequests,
+            personalRequests: personalRequests(),
             pageErrors,
             requestFailures,
             consoleMessages,
@@ -289,4 +300,203 @@ for (const surface of SURFACES) {
       }
     });
   }
+}
+
+for (const surface of SURFACES) {
+  test(`email callback reaches chat without replacing the document (${surface.name})`, async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.skip(
+      !TEST_AUTH_ENABLED,
+      "requires VITE_PLAYWRIGHT_TEST_AUTH=true in the renderer build",
+    );
+    if (!baseURL) throw new Error("Playwright baseURL is required");
+    await page.setViewportSize(surface.viewport);
+    const managedOrigin = await installManagedOriginProxy(page, baseURL);
+    const personalRequests = await installAuthenticatedPersonalRoutes(
+      page,
+      managedOrigin,
+    );
+    const documentRequests: string[] = [];
+    const failures: string[] = [];
+    page.on("request", (request) => {
+      if (
+        request.isNavigationRequest() &&
+        request.frame() === page.mainFrame()
+      ) {
+        documentRequests.push(request.url());
+      }
+    });
+    page.on("pageerror", (error) => failures.push(error.message));
+    page.on("requestfailed", (request) => {
+      failures.push(
+        `${request.method()} ${request.url()} ${request.failure()?.errorText ?? "unknown"}`,
+      );
+    });
+
+    await page.goto(`${managedOrigin}/auth/callback/email`);
+    await page.evaluate(() => {
+      document.documentElement.dataset.emailCallbackDocument = "survived";
+    });
+    await expect(
+      page.getByRole("heading", { name: "Signed in" }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(`${managedOrigin}/`, { timeout: 15_000 });
+    await expect(page.getByTestId("home-screen")).toBeVisible({
+      timeout: 15_000,
+    });
+
+    expect(documentRequests).toHaveLength(1);
+    expect(new URL(documentRequests[0]).pathname).toBe("/auth/callback/email");
+    expect(personalRequests()).toBe(1);
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-email-callback-document",
+      "survived",
+    );
+    expect(failures).toEqual([]);
+
+    if (process.env.E2E_RECORD === "1") {
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `${surface.name}-email-callback-same-document.png`,
+        ),
+        fullPage: true,
+      });
+      await writeFile(
+        testInfo.outputPath(`${surface.name}-email-callback-observations.json`),
+        `${JSON.stringify(
+          {
+            head: process.env.GITHUB_SHA ?? "local-exact-head",
+            entryPath: "/auth/callback/email",
+            finalUrl: page.url(),
+            documentRequests,
+            personalRequests: personalRequests(),
+            failures,
+            documentMarker: await page
+              .locator("html")
+              .getAttribute("data-email-callback-document"),
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    }
+  });
+}
+
+for (const surface of SURFACES) {
+  test(`messaging continuation opens chat without replacing the document (${surface.name})`, async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.skip(
+      !TEST_AUTH_ENABLED,
+      "requires VITE_PLAYWRIGHT_TEST_AUTH=true in the renderer build",
+    );
+    if (!baseURL) throw new Error("Playwright baseURL is required");
+    await page.setViewportSize(surface.viewport);
+    const managedOrigin = await installManagedOriginProxy(page, baseURL);
+    const personalRequests = await installAuthenticatedPersonalRoutes(
+      page,
+      managedOrigin,
+    );
+    await page.route("**/api/eliza-app/onboarding/chat**", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            success: true,
+            data: {
+              platform: "discord",
+              platformUserId: "1234567890",
+              platformDisplayName: "managed-login-test",
+              returnUrl: null,
+            },
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: { linked: true } }),
+      });
+    });
+    const documentRequests: string[] = [];
+    const failures: string[] = [];
+    page.on("request", (request) => {
+      if (
+        request.isNavigationRequest() &&
+        request.frame() === page.mainFrame()
+      ) {
+        documentRequests.push(request.url());
+      }
+    });
+    page.on("pageerror", (error) => failures.push(error.message));
+    page.on("requestfailed", (request) => {
+      failures.push(
+        `${request.method()} ${request.url()} ${request.failure()?.errorText ?? "unknown"}`,
+      );
+    });
+
+    await page.goto(
+      `${managedOrigin}/get-started?onboardingSession=${ONBOARDING_TOKEN}`,
+    );
+    await page.evaluate(() => {
+      document.documentElement.dataset.messagingContinuationDocument =
+        "survived";
+    });
+    await expect(page.getByText("managed-login-test")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Connect this Discord account" })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "You're connected" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Or chat here instead" }).click();
+    await expect(page).toHaveURL(`${managedOrigin}/`, { timeout: 15_000 });
+    await expect(page.getByTestId("home-screen")).toBeVisible({
+      timeout: 15_000,
+    });
+
+    expect(documentRequests).toHaveLength(1);
+    expect(new URL(documentRequests[0]).pathname).toBe("/get-started");
+    expect(personalRequests()).toBe(1);
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-messaging-continuation-document",
+      "survived",
+    );
+    expect(failures).toEqual([]);
+
+    if (process.env.E2E_RECORD === "1") {
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `${surface.name}-messaging-continuation-same-document.png`,
+        ),
+        fullPage: true,
+      });
+      await writeFile(
+        testInfo.outputPath(
+          `${surface.name}-messaging-continuation-observations.json`,
+        ),
+        `${JSON.stringify(
+          {
+            head: process.env.GITHUB_SHA ?? "local-exact-head",
+            entryPath: "/get-started",
+            finalUrl: page.url(),
+            documentRequests,
+            personalRequests: personalRequests(),
+            failures,
+            documentMarker: await page
+              .locator("html")
+              .getAttribute("data-messaging-continuation-document"),
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    }
+  });
 }

@@ -23,6 +23,7 @@ import {
   savePersistedFirstRunComplete,
 } from "../../state/persistence";
 import { appModeNavigation } from "../app-mode/app-mode";
+import { publishPersonalEntryHandoff } from "../app-mode/use-personal-entry";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   clearSsoLoggedOut,
@@ -92,11 +93,11 @@ export default function JoinPage(): React.JSX.Element {
           },
         });
         controller.signal.throwIfAborted();
+        publishPersonalEntryHandoff(authToken, result);
         setPhase("ready");
         // The flow has configured the in-memory client and persisted the exact
-        // binding, so chat can mount without replacing the browser document.
-        // `void result` keeps the resolved identity available for telemetry.
-        void result;
+        // binding. Its session-bound handoff receipt lets app-mode consume the
+        // same authoritative result without a duplicate identity request.
       } catch (err) {
         if (controller.signal.aborted) return;
         setError(describeJoinError(err));
