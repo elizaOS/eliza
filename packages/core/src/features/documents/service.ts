@@ -913,13 +913,36 @@ export class DocumentService extends Service {
 		) {
 			const snapshot = readDocumentMutationSnapshot(existingDocument);
 			if (!snapshot) {
-				throw new ElizaError("Stored document ingestion metadata is invalid", {
-					code: "DOCUMENT_AUTHORIZATION_INVALID",
-					context: { documentId: contentBasedId },
-					severity: "fatal",
-				});
-			}
-			if (snapshot.ingestionState === "pending") {
+				const metadata = existingDocument.metadata as
+					| Record<string, unknown>
+					| undefined;
+				if (
+					metadata?.ingestionAttemptId !== undefined ||
+					metadata?.ingestionState !== undefined
+				) {
+					throw new ElizaError(
+						"Stored document ingestion metadata is invalid",
+						{
+							code: "DOCUMENT_AUTHORIZATION_INVALID",
+							context: { documentId: contentBasedId },
+							severity: "fatal",
+						},
+					);
+				}
+				const legacyFragmentCount =
+					await this.getDocumentFragmentCount(contentBasedId);
+				if (legacyFragmentCount > 0) {
+					return {
+						clientDocumentId: contentBasedId,
+						storedDocumentMemoryId: existingDocument.id as UUID,
+						fragmentCount: legacyFragmentCount,
+					};
+				}
+				logger.warn(
+					`"${options.originalFilename}" has a legacy zero-fragment stub; deleting it before attempt-fenced reprocessing`,
+				);
+				await this.runtime.deleteMemory(contentBasedId);
+			} else if (snapshot.ingestionState === "pending") {
 				if (!this.pendingIngestionHasExpired(existingDocument)) {
 					throw new ElizaError(
 						`Document ${contentBasedId} ingestion is already in progress`,
@@ -937,23 +960,24 @@ export class DocumentService extends Service {
 					...options,
 					clientDocumentId: contentBasedId,
 				});
-			}
-			const fragmentCount = await this.getDocumentFragmentCount(contentBasedId);
-			if (snapshot.ingestionState === "failed" || fragmentCount === 0) {
+			} else {
+				const fragmentCount =
+					await this.getDocumentFragmentCount(contentBasedId);
+				if (snapshot.ingestionState !== "failed" && fragmentCount > 0) {
+					logger.info(
+						`"${options.originalFilename}" already exists with ${fragmentCount} fragments - skipping`,
+					);
+
+					return {
+						clientDocumentId: contentBasedId,
+						storedDocumentMemoryId: existingDocument.id as UUID,
+						fragmentCount,
+					};
+				}
 				logger.warn(
 					`"${options.originalFilename}" has an incomplete prior ingestion; deleting its exact snapshot and reprocessing`,
 				);
 				await this.deleteDocumentSnapshotForIngestion(contentBasedId, snapshot);
-			} else {
-				logger.info(
-					`"${options.originalFilename}" already exists with ${fragmentCount} fragments - skipping`,
-				);
-
-				return {
-					clientDocumentId: contentBasedId,
-					storedDocumentMemoryId: existingDocument.id as UUID,
-					fragmentCount,
-				};
 			}
 		}
 
