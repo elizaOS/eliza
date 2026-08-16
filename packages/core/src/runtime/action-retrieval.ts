@@ -1346,18 +1346,22 @@ function escapeRegex(value: string): string {
  * the exact name the glob is anchored to (#20467).
  */
 function wildcardCandidateRegex(candidateAction: string): RegExp | null {
-	const rawSegments = String(candidateAction).replace(/\*+/g, "*").split("*");
+	const rawSegments = String(candidateAction)
+		.trim()
+		.replace(/\*+/g, "*")
+		.split("*");
 	const lastIndex = rawSegments.length - 1;
 	const parts = rawSegments.map((rawSegment, index) => {
-		const trimmed = rawSegment.trim();
 		const normalized = normalizeActionName(rawSegment);
 		if (!normalized) {
 			// A separator-only segment between wildcards ("A*_*B") still
-			// constrains the match; whitespace-only or absent segments do not.
-			return index > 0 && index < lastIndex && trimmed.length > 0 ? "_" : "";
+			// constrains the match. Overall whitespace was trimmed before splitting,
+			// so a whitespace-only middle segment is also an intentional separator.
+			return index > 0 && index < lastIndex && rawSegment.length > 0 ? "_" : "";
 		}
-		const lead = index > 0 && /^[^A-Za-z0-9]/.test(trimmed) ? "_" : "";
-		const trail = index < lastIndex && /[^A-Za-z0-9]$/.test(trimmed) ? "_" : "";
+		const lead = index > 0 && /^[^A-Za-z0-9]/.test(rawSegment) ? "_" : "";
+		const trail =
+			index < lastIndex && /[^A-Za-z0-9]$/.test(rawSegment) ? "_" : "";
 		return `${lead}${normalized}${trail}`;
 	});
 	if (parts.every((part) => part === "")) {

@@ -179,23 +179,40 @@ describe("action catalogue and retrieval", () => {
 	});
 
 	it("keeps a wildcard's adjacent underscore from swallowing sibling namespaces (#20467)", () => {
-		// The underscore ahead of the wildcard is load-bearing in the compiled
-		// pattern: "GMAIL_*" must translate to ^GMAIL_.*$, not ^GMAIL.*$ — a
-		// greedy translation would wrongly claim GMAILSYNC and its children.
+		// A normalized separator ahead of the wildcard is load-bearing in the
+		// compiled pattern: neither "GMAIL_*" nor "GMAIL *" may translate to
+		// ^GMAIL.*$ and wrongly claim GMAILSYNC or its children.
 		const catalog = buildActionCatalog([
+			{ name: "GMAIL_SEND", description: "Send a mail message." },
 			{ name: "GMAILSYNC", description: "Synchronize the mail archive." },
 			{ name: "CALENDAR", description: "Manage calendar events." },
 		]);
-		const response = retrieveActions({
-			catalog,
-			candidateActions: ["GMAIL_*"],
-		});
-		expect(
-			response.results.some(
-				(entry) =>
-					entry.name === "GMAILSYNC" && entry.matchedBy.includes("regex"),
-			),
-		).toBe(false);
+		const creditedBy = (hint: string) =>
+			retrieveActions({ catalog, candidateActions: [hint] })
+				.results.filter((entry) => entry.matchedBy.includes("regex"))
+				.map((entry) => entry.name);
+
+		expect(creditedBy("GMAIL_*")).toEqual(["GMAIL_SEND"]);
+		expect(creditedBy("  GMAIL *  ")).toEqual(["GMAIL_SEND"]);
+	});
+
+	it("preserves a separator-only literal between wildcards (#20467 review)", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "GMAIL_CREATE_DRAFT",
+				description: "Create a Gmail draft.",
+			},
+			{
+				name: "GMAILCREATEDRAFT",
+				description: "A sibling without normalized separators.",
+			},
+		]);
+		const creditedBy = (hint: string) =>
+			retrieveActions({ catalog, candidateActions: [hint] })
+				.results.filter((entry) => entry.matchedBy.includes("regex"))
+				.map((entry) => entry.name);
+
+		expect(creditedBy("GMAIL* *DRAFT")).toEqual(["GMAIL_CREATE_DRAFT"]);
 	});
 
 	it("groups promoted virtual subactions under their umbrella parent", () => {
