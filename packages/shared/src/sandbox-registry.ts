@@ -181,10 +181,21 @@ export class SandboxRegistry {
         `Upstash pipeline failed: ${res.status} ${await res.text()}`,
       );
     }
-    const json = (await res.json()) as Array<{ error?: string }>;
-    if (Array.isArray(json)) {
-      for (const entry of json) {
-        if (entry?.error) throw new Error(`Upstash error: ${entry.error}`);
+    const json: unknown = await res.json();
+    if (!Array.isArray(json) || json.length !== commands.length) {
+      throw new Error("Upstash pipeline returned an invalid response");
+    }
+    for (const entry of json) {
+      if (typeof entry !== "object" || entry === null) {
+        throw new Error("Upstash pipeline returned an invalid response");
+      }
+      const result = Reflect.get(entry, "result");
+      const error = Reflect.get(entry, "error");
+      if (typeof error === "string" && error.length > 0) {
+        throw new Error(`Upstash error: ${error}`);
+      }
+      if (result !== "OK") {
+        throw new Error("Upstash pipeline returned an invalid response");
       }
     }
   }
