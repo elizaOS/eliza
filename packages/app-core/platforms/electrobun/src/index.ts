@@ -41,6 +41,7 @@ import {
 } from "./brand-env-reads";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
+import { hydrateCloudOnlyEnv } from "./cloud-only-boot";
 import {
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
@@ -2492,6 +2493,16 @@ async function main(): Promise<void> {
   recordStartupPhase("env_loaded", {
     pid: process.pid,
   });
+  // Cloud-only consumer bundles bake `cloudOnly` into brand-config.json and
+  // ship no embedded runtime; promote that to the runtime env contract before
+  // the first runtime-mode resolution. Runs after env-file loading so an
+  // operator's explicit env always wins.
+  const cloudOnlyHydration = hydrateCloudOnlyEnv(BRAND.cloudOnly);
+  if (cloudOnlyHydration.applied.length > 0) {
+    console.log(
+      `[Env] cloud-only brand flag raised: ${cloudOnlyHydration.applied.join(", ")}`,
+    );
+  }
   // Start the static renderer server in parallel with the rest of pre-window
   // work — first paint needs the renderer URL, so kicking it off now overlaps
   // the server bind/port-scan with crash-prompt checks, WebGPU init, and bridge

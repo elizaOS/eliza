@@ -149,13 +149,17 @@ export function resolveCloudHostedAgentApiBase(
  * Topology-aware runtime-mode resolution. Layers the persisted deployment
  * target on top of the pure env resolver ({@link resolveDesktopRuntimeMode}):
  *
- * - If env already forces `external`/`disabled`, that wins (unchanged).
+ * - If env forces `external` (an explicit API base), that wins (unchanged).
  * - Else, if the persisted deployment is a cloud-hosted (`runtime: "cloud"`) or
  *   external (`runtime: "remote"`) agent AND a renderer-ready agent API base is
  *   resolvable (env override or the persisted `remoteApiBase`), resolve to
  *   `external` with that base so the embedded agent is skipped and the renderer
- *   points at the cloud/external agent (topology 3).
- * - Otherwise fall through to the env result (`local`).
+ *   points at the cloud/external agent (topology 3). This deliberately
+ *   outranks an env `disabled` (`ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT=1`): a
+ *   runtime-less consumer/store bundle boots with the skip flag baked in, and
+ *   once the user has connected a cloud agent the renderer must be pointed at
+ *   it rather than at a dead loopback port.
+ * - Otherwise fall through to the env result (`local`/`disabled`).
  *
  * Topology 1 (local agent → cloud inference; persisted runtime is `"local"`,
  * branded cloud via {@link resolveDesktopRuntimeModeSignal}) and topology 2
@@ -166,7 +170,7 @@ export function resolveDesktopRuntimeModeWithDeployment(
   deployment: PersistedDeployment | null,
 ): DesktopRuntimeModeResolution {
   const envResolution = resolveDesktopRuntimeMode(env);
-  if (envResolution.mode !== "local") {
+  if (envResolution.mode === "external") {
     return envResolution;
   }
 

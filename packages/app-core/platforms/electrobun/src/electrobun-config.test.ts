@@ -46,6 +46,22 @@ describe("Electrobun Store packaging", () => {
     expect(Object.values(copy)).not.toContain("remotes");
   });
 
+  it("omits the embedded runtime tree for cloud-only consumer builds", () => {
+    const copy = resolveElectrobunCopyMap({
+      buildVariant: "direct",
+      runtimeDistDir: "eliza-dist",
+      embedRuntime: shouldEmbedRuntimeBundle({
+        ELIZA_DESKTOP_CLOUD_ONLY: "1",
+      }),
+    });
+
+    expect(Object.values(copy)).not.toContain("eliza-dist");
+    expect(Object.values(copy)).not.toContain("eliza-dist/package.json");
+    expect(
+      Object.values(copy).some((target) => target.startsWith("eliza-dist/")),
+    ).toBe(false);
+  });
+
   it("keeps the embedded runtime tree when external API env is invalid", () => {
     const copy = resolveElectrobunCopyMap({
       buildVariant: "direct",

@@ -54,6 +54,11 @@ export function shouldEmbedRuntimeBundle(
       return false;
     }
   }
+  // Cloud-only consumer builds never run a local agent, so shipping the
+  // multi-GB runtime tree would be pure download weight.
+  if (isTruthyEnv(env.ELIZA_DESKTOP_CLOUD_ONLY)) {
+    return false;
+  }
   return !isTruthyEnv(env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT);
 }
 
@@ -466,13 +471,15 @@ function resolveBrandConfigCopySource({
   const explicitConfigPath = trimEnv("ELIZA_BRAND_CONFIG_PATH");
   const namespace = trimEnv("ELIZA_NAMESPACE");
   const appDescription = trimEnv("ELIZA_APP_DESCRIPTION");
+  const cloudOnly = isTruthyEnv(process.env.ELIZA_DESKTOP_CLOUD_ONLY);
   const hasBrandOverride = Boolean(
     explicitConfigPath ||
       trimEnv("ELIZA_APP_NAME") ||
       trimEnv("ELIZA_APP_ID") ||
       trimEnv("ELIZA_URL_SCHEME") ||
       namespace ||
-      appDescription,
+      appDescription ||
+      cloudOnly,
   );
 
   if (!hasBrandOverride) {
@@ -496,6 +503,7 @@ function resolveBrandConfigCopySource({
     urlScheme,
     buildVariant:
       process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
+    ...(cloudOnly ? { cloudOnly: true } : {}),
     namespace: namespace || fileConfig.namespace || "elizaos",
     configDirName,
     ...(appDescription

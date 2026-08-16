@@ -116,6 +116,32 @@ describe("resolveDesktopRuntimeModeWithDeployment — three topologies", () => {
     expect(resolution.externalApi.base).toBe("http://127.0.0.1:9999");
     expect(resolution.externalApi.source).toBe("ELIZA_DESKTOP_API_BASE");
   });
+
+  it("consumer bundle: skip-embedded env + a connected cloud deployment resolves external, not disabled", () => {
+    const resolution = resolveDesktopRuntimeModeWithDeployment(
+      { ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT: "1" },
+      cloudDeployment,
+    );
+    expect(resolution.mode).toBe("external");
+    expect(resolution.externalApi.base).toBe(CLOUD_AGENT_URL);
+  });
+
+  it("consumer bundle: skip-embedded env with no cloud deployment stays disabled (nothing to point at)", () => {
+    const resolution = resolveDesktopRuntimeModeWithDeployment(
+      { ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT: "1" },
+      null,
+    );
+    expect(resolution.mode).toBe("disabled");
+    expect(resolution.externalApi.base).toBeNull();
+  });
+
+  it("consumer bundle: skip-embedded env with an unresolvable cloud deployment stays disabled", () => {
+    const resolution = resolveDesktopRuntimeModeWithDeployment(
+      { ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT: "1" },
+      { runtime: "cloud", remoteApiBase: null },
+    );
+    expect(resolution.mode).toBe("disabled");
+  });
 });
 
 describe("resolveCloudHostedAgentApiBase — precedence + validation", () => {
