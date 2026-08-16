@@ -83,6 +83,16 @@
       "import": "./dist/connector-account-catalog.js",
       "default": "./dist/connector-account-catalog.js"
     },
+    "./discord-dm-policy": {
+      "types": "./dist/discord-dm-policy.d.ts",
+      "eliza-source": {
+        "types": "./src/discord-dm-policy.ts",
+        "import": "./src/discord-dm-policy.ts",
+        "default": "./src/discord-dm-policy.ts"
+      },
+      "import": "./dist/discord-dm-policy.js",
+      "default": "./dist/discord-dm-policy.js"
+    },
     "./types": {
       "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js",
