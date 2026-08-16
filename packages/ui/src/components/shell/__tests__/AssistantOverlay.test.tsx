@@ -101,6 +101,8 @@ describe("AssistantOverlay", () => {
     );
     const dialog = screen.getByRole("dialog");
     expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(dialog.getAttribute("data-popup-material")).toBe("dark-frosted");
+    expect(dialog.classList.contains("eliza-glass-sheet")).toBe(true);
   });
 
   it("removes the Escape listener on unmount", () => {

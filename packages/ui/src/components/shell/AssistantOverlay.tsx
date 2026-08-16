@@ -130,7 +130,7 @@ export function AssistantOverlay({
       aria-modal="true"
       aria-label={`${appName} assistant`}
       data-testid="shell-assistant-overlay"
-      data-popup-material="light-frosted"
+      data-popup-material="dark-frosted"
       data-phase={phase}
       data-glass-tier={glassTier}
       // Sits one tick above the pill in stacking order. The desktop overlay
