@@ -11,9 +11,12 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
  *   LLM_RECORDING=/tmp/session.json  PORT=8899  node llm-proxy.mjs
  *   MODE=replay  LLM_RECORDING=/tmp/session.json  PORT=8899  node llm-proxy.mjs
  *
- * Point the agent at http://127.0.0.1:$PORT/v1 (OPENAI_BASE_URL).
+ * Point the agent at http://127.0.0.1:$PORT/v1 (OPENAI_BASE_URL). Orchestrators
+ * pass PORT=0 for a kernel-assigned port and read the bound port from
+ * LLM_PROXY_PORT_FILE (#18359) — the proxy binds first, then advertises.
  */
 import { createServer } from "node:http";
+import { advertisePort } from "../../../../scripts/e2e-ports.mjs";
 
 const MODE = process.env.MODE || "replay";
 const UPSTREAM = process.env.LLM_UPSTREAM || "https://api.cerebras.ai/v1";
@@ -167,6 +170,10 @@ const server = createServer((req, res) => {
     res.end(raw);
   });
 });
-server.listen(PORT, "127.0.0.1", () =>
-  console.error(`[llm-proxy] ${MODE} on http://127.0.0.1:${PORT}/v1`),
-);
+server.listen(PORT, "127.0.0.1", () => {
+  const boundPort = server.address().port;
+  if (process.env.LLM_PROXY_PORT_FILE) {
+    advertisePort(process.env.LLM_PROXY_PORT_FILE, boundPort);
+  }
+  console.error(`[llm-proxy] ${MODE} on http://127.0.0.1:${boundPort}/v1`);
+});

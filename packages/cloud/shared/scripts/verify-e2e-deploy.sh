@@ -11,14 +11,18 @@
 # Requires: sudo docker (passwordless), bun. Run from packages/cloud/shared/.
 set -uo pipefail
 
-PG=apps-tenant-pg
-PGPORT=55445
+# Per-run unique resource names (and a fresh APP_ID, which the real builder
+# turns into the app network name): fixed container/network names collide when
+# concurrent verify runs share one docker host (#18359). The host port is
+# docker-assigned at container start (see PGPORT below).
+RUN_ID="$$-$RANDOM"
+PG="apps-tenant-pg-$RUN_ID"
 PGPASS=adminpw
 IMG=postgres:16-alpine
-SEEDNET=apps-seednet
-APP_ID="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-APP_RUN=app-run
-INGRESS=app-ingress
+SEEDNET="apps-seednet-$RUN_ID"
+APP_ID=$(bun -e "process.stdout.write(crypto.randomUUID())")
+APP_RUN="app-run-$RUN_ID"
+INGRESS="app-ingress-$RUN_ID"
 PASS=0; FAIL=0
 check(){ if [ "$1" = ok ]; then echo "PASS  $2"; PASS=$((PASS+1)); else echo "FAIL  $2 ${3:-}"; FAIL=$((FAIL+1)); fi; }
 
@@ -41,11 +45,12 @@ sudo docker image inspect "$IMAGE_REF" >/dev/null 2>&1 \
 
 echo
 echo "=== 2) PROVISION per-tenant DBs through the real composed stack ==="
-sudo docker rm -f "$PG" >/dev/null 2>&1 || true
-sudo docker network rm "$SEEDNET" >/dev/null 2>&1 || true
 sudo docker network create --driver bridge "$SEEDNET" >/dev/null
-sudo docker run -d --name "$PG" --network "$SEEDNET" -p "$PGPORT:5432" \
+sudo docker run -d --name "$PG" --network "$SEEDNET" -p 5432 \
   -e POSTGRES_PASSWORD="$PGPASS" "$IMG" >/dev/null
+# Docker bound the host side at container start (kernel-assigned): no fixed
+# port to collide on and no probe-then-release window (#18359).
+PGPORT=$(sudo docker port "$PG" 5432/tcp | head -n1 | sed 's/.*://')
 for i in $(seq 1 30); do sudo docker exec "$PG" pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
 
 export ADMIN_DSN="postgresql://postgres:${PGPASS}@localhost:${PGPORT}/postgres?sslmode=disable"
