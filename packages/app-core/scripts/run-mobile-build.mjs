@@ -1163,7 +1163,7 @@ async function buildWeb(platform) {
     requiresFreshRenderer
   ) {
     console.log(
-      `[mobile-build] Rebuilding renderer for '${platform}': debug feature flags require fresh output.`,
+      `[mobile-build] Rebuilding renderer for '${platform}': lane-specific feature flags require fresh output.`,
     );
   }
   if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD === "1") {
