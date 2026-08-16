@@ -17,6 +17,24 @@ describe("PostLoadFromDirectoryRequestSchema", () => {
     expect(parsed.directory).toBe("/tmp/apps");
   });
 
+  it("matches the host platform's rooted-path semantics", () => {
+    if (process.platform === "win32") {
+      expect(
+        PostLoadFromDirectoryRequestSchema.parse({ directory: "C:\\apps" })
+          .directory,
+      ).toBe("C:\\apps");
+      expect(
+        PostLoadFromDirectoryRequestSchema.parse({ directory: "\\apps" })
+          .directory,
+      ).toBe("\\apps");
+      return;
+    }
+
+    expect(() =>
+      PostLoadFromDirectoryRequestSchema.parse({ directory: "C:\\apps" }),
+    ).toThrow(/absolute path/);
+  });
+
   it("rejects a relative path", () => {
     expect(() =>
       PostLoadFromDirectoryRequestSchema.parse({ directory: "apps" }),

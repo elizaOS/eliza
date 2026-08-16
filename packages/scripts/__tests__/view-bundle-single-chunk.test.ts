@@ -2,12 +2,12 @@
 import { describe, expect, test } from "bun:test";
 import { createViewBundleConfig } from "../view-bundle-vite.config.ts";
 
-// The two rolldown output fields this config controls. Typed narrowly instead
-// of importing rolldown's `OutputOptions` (rolldown is not a resolvable
-// dependency in this worktree).
+// The Rollup and Rolldown output fields this config controls. Typed narrowly
+// instead of importing either bundler's `OutputOptions`.
 type ViewBundleOutput = {
   codeSplitting?: boolean;
   exports?: string;
+  inlineDynamicImports?: boolean;
 };
 
 // Regression for #11040 / #10830: the cockpit terminal pane rendered blank
@@ -18,11 +18,9 @@ type ViewBundleOutput = {
 // "react") could not resolve — killing the whole lazy graph, including
 // PtyTerminalPane's xterm import.
 //
-// The fix is `output.codeSplitting: false` in the shared view-bundle Vite
-// config, so every view is one self-contained bundle.js. This suite asserts
-// that seam directly. (A full build assertion would need rolldown, which is
-// not installed in this worktree — the property is the single source of truth
-// the build consumes.)
+// The shared config sets both `output.codeSplitting: false` for Rolldown and
+// `output.inlineDynamicImports: true` for Rollup so every view is one
+// self-contained bundle.js under either Vite build path.
 
 function outputOf(
   opts?: Parameters<typeof createViewBundleConfig>[0],
@@ -46,6 +44,7 @@ describe("view-bundle Vite config: single self-contained bundle", () => {
     // Must be explicitly false — `undefined` lets rolldown fall back to
     // code-splitting, which reintroduces the blank-terminal bug.
     expect(output.codeSplitting).toBe(false);
+    expect(output.inlineDynamicImports).toBe(true);
   });
 
   test("emits exactly one ES module named bundle.js with named exports", () => {
@@ -75,6 +74,7 @@ describe("view-bundle Vite config: single self-contained bundle", () => {
         additionalExternals,
       });
       expect(output.codeSplitting).toBe(false);
+      expect(output.inlineDynamicImports).toBe(true);
     }
   });
 });
