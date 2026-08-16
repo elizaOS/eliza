@@ -143,8 +143,11 @@ function validateCreateInput(input: CreatePaymentRequestInput): void {
   if (input.callbackSecret && !input.callbackUrl) {
     throw new Error("callbackSecret requires callbackUrl");
   }
-  if (input.expiresInMs !== undefined && input.expiresInMs <= 0) {
-    throw new Error("expiresInMs must be positive");
+  if (
+    input.expiresInMs !== undefined &&
+    (!Number.isFinite(input.expiresInMs) || input.expiresInMs <= 0)
+  ) {
+    throw new Error("expiresInMs must be a finite positive number");
   }
 }
 
@@ -207,6 +210,9 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
     const expiresInMs = input.expiresInMs ?? DEFAULT_EXPIRES_IN_MS;
     const now = new Date();
     const expiresAt = new Date(now.getTime() + expiresInMs);
+    if (!Number.isFinite(expiresAt.getTime())) {
+      throw new Error("expiresInMs must produce a valid expiration date");
+    }
 
     const created = await this.repository.createPaymentRequest({
       organizationId: input.organizationId,

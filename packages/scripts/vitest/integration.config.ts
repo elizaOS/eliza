@@ -146,12 +146,6 @@ const cloudSdkSource = path.join(
   "src",
   "index.ts",
 );
-const elizaCloudSourceRoot = path.join(
-  elizaWorkspaceRoot,
-  "plugins",
-  "plugin-elizacloud",
-  "src",
-);
 // Include/exclude globs are cwd-relative, but the eliza workspace sits at
 // `eliza/` in the nested eliza layout and at the repo root in a flat eliza
 // checkout (#11047). Derive the prefix instead of hardcoding `eliza/` so the
@@ -203,14 +197,6 @@ const integrationResolveAlias: ModuleAlias[] = [
   {
     find: /^@elizaos\/cloud-sdk$/,
     replacement: cloudSdkSource,
-  },
-  {
-    find: /^@elizaos\/plugin-elizacloud$/,
-    replacement: path.join(elizaCloudSourceRoot, "index.node.ts"),
-  },
-  {
-    find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
-    replacement: `${elizaCloudSourceRoot.split(path.sep).join("/")}/$1`,
   },
   {
     // The generic source alias maps subpaths to sibling `.ts` files; `kms` is

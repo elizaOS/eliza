@@ -18,6 +18,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
+import { schedulingPlugin } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app-core/test/helpers/real-runtime.ts";
 import { runLifeOperationHandler } from "../src/actions/life.js";
@@ -91,11 +92,14 @@ function send(params: Record<string, unknown>, messageText?: string) {
 // an unconfirmed create here previews instead of persisting immediately.
 function sendFromOwnerChat(
   params: Record<string, unknown>,
+  messageId: string,
   messageText?: string,
 ) {
   return runLifeOperationHandler(
     runtime,
     {
+      id: messageId,
+      roomId: "00000000-0000-0000-0000-000000000010",
       entityId: runtime.agentId,
       content: {
         source: "discord",
@@ -110,7 +114,7 @@ function sendFromOwnerChat(
 beforeAll(async () => {
   setIsolatedLifeSmokeEnv();
   const result = await createRealTestRuntime({
-    plugins: [personalAssistantPlugin],
+    plugins: [schedulingPlugin, personalAssistantPlugin],
   });
   runtime = result.runtime;
   cleanup = result.cleanup;
@@ -176,7 +180,10 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     };
 
     // Unconfirmed, from owner chat (not "autonomy") -> a PREVIEW, not a save.
-    const preview = await sendFromOwnerChat(recurring);
+    const preview = await sendFromOwnerChat(
+      recurring,
+      "00000000-0000-0000-0000-000000000011",
+    );
     expect(preview).toMatchObject({ success: false });
     expect((preview as { data?: Record<string, unknown> }).data).toMatchObject({
       deferred: true,
@@ -185,10 +192,14 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     });
 
     // Confirming the same recurring create persists a real definition.
-    const saved = await sendFromOwnerChat({
-      ...recurring,
-      details: { ...recurring.details, confirmed: true },
-    });
+    const saved = await sendFromOwnerChat(
+      {
+        ...recurring,
+        details: { ...recurring.details, confirmed: true },
+      },
+      "00000000-0000-0000-0000-000000000012",
+      "Yes, save it.",
+    );
     expect(saved).toMatchObject({ success: true });
     expect((saved as { text: string }).text).toContain("Wind down");
   }, 60_000);

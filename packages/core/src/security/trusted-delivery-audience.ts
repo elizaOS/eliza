@@ -26,6 +26,7 @@ import type { DisclosureGate } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
+import { stringToUuid } from "../utils";
 
 const trustedDeliveryAudienceBrand: unique symbol = Symbol(
 	"eliza.trusted-delivery-audience.brand",
@@ -194,6 +195,76 @@ function normalizeTtlMs(ttlMs: number | undefined): number {
 	return Math.floor(ttlMs);
 }
 
+/**
+ * Drop the runtime's own synthetic actors from a disclosure candidate's
+ * participant census before it becomes audience evidence. Trigger fires join
+ * their per-trigger entity (`stringToUuid("trigger-entity:" + triggerId)`) to
+ * the originating room as a durable participant. Persisted marker reads are
+ * enabled only for an owner-private candidate; shared and external turns can
+ * never pass this gate and must not pay one entity read per room member.
+ * Exclusion is self-certifying, never name-based. An unreadable entity stays
+ * in the census and the storage failure is reported, so the gate fails closed.
+ */
+async function filterRuntimeInternalParticipants(
+	runtime: IAgentRuntime,
+	participants: readonly UUID[],
+	verifyPersistedMarkers: boolean,
+): Promise<UUID[]> {
+	if (!verifyPersistedMarkers) {
+		return [...participants];
+	}
+	const processLocalFiltered = participants.filter(
+		(participantId) =>
+			participantId === runtime.agentId ||
+			!isRuntimeManagedInternalActor(runtime, participantId),
+	);
+	if (processLocalFiltered.length <= 2) {
+		return processLocalFiltered;
+	}
+	const lookupFailures: unknown[] = [];
+	const kept = await Promise.all(
+		processLocalFiltered.map(async (participantId) => {
+			if (participantId === runtime.agentId) {
+				return participantId;
+			}
+			try {
+				const entity = await runtime.getEntityById(participantId);
+				const marker = (
+					entity?.metadata as
+						| { triggerEntity?: { triggerId?: unknown } }
+						| undefined
+				)?.triggerEntity;
+				if (
+					typeof marker?.triggerId === "string" &&
+					marker.triggerId.length > 0 &&
+					stringToUuid(`trigger-entity:${marker.triggerId}`) === participantId
+				) {
+					return null;
+				}
+			} catch (cause) {
+				lookupFailures.push(cause);
+			}
+			return participantId;
+		}),
+	);
+	if (lookupFailures.length > 0) {
+		// error-policy:J4 an entity-storage failure keeps every unreadable
+		// participant and degrades owner-private surfaces to unavailable.
+		runtime.reportError(
+			"TrustedDeliveryAudience.filterRuntimeInternalParticipants",
+			new ElizaError(
+				"Could not verify runtime-internal delivery-audience participants.",
+				{
+					code: "DELIVERY_AUDIENCE_ENTITY_LOOKUP_FAILED",
+					cause: lookupFailures[0],
+					context: { failureCount: lookupFailures.length },
+				},
+			),
+		);
+	}
+	return kept.filter((id): id is UUID => id !== null);
+}
+
 function canonicalParticipants(participants: readonly UUID[]): UUID[] {
 	return [
 		...new Set(participants.filter((id) => typeof id === "string" && id)),
@@ -201,7 +272,7 @@ function canonicalParticipants(participants: readonly UUID[]): UUID[] {
 }
 
 function membershipVersion(participants: readonly UUID[]): string {
-	return canonicalParticipants(participants).join("\u0000");
+	return JSON.stringify(canonicalParticipants(participants));
 }
 
 function sameParticipants(
@@ -331,13 +402,23 @@ export async function attestDeliveryAudienceFromCanonicalRoom(
 	options: { nowMs?: number; ttlMs?: number } = {},
 ): Promise<TrustedDeliveryAudience> {
 	const nowMs = options.nowMs ?? Date.now();
-	const [room, participants, canonicalOwnerEntityId] = await Promise.all([
+	const [room, rawParticipants, canonicalOwnerEntityId] = await Promise.all([
 		runtime.getRoom(message.roomId),
 		runtime.getParticipantsForRoom(message.roomId),
 		resolveCanonicalOwnerIdForMessage(runtime, message),
 	]);
+	const kind = classifyCanonicalRoom(room?.type);
+	const ownerPrivateCandidate =
+		canonicalOwnerEntityId !== null &&
+		message.entityId === canonicalOwnerEntityId &&
+		(kind === "direct" || kind === "voice_private");
+	const participants = await filterRuntimeInternalParticipants(
+		runtime,
+		rawParticipants,
+		ownerPrivateCandidate,
+	);
 	const audience = createAudience({
-		kind: classifyCanonicalRoom(room?.type),
+		kind,
 		provenance: "canonical_room",
 		actorEntityId: message.entityId,
 		canonicalOwnerEntityId,
@@ -363,12 +444,21 @@ export async function attestAuthenticatedApiDeliveryAudience(
 	options: { nowMs?: number; ttlMs?: number } = {},
 ): Promise<TrustedDeliveryAudience> {
 	const nowMs = options.nowMs ?? Date.now();
-	const [canonicalOwnerEntityId, participants] = await Promise.all([
+	const [canonicalOwnerEntityId, rawParticipants] = await Promise.all([
 		resolveCanonicalOwnerIdForMessage(runtime, message),
 		runtime.getParticipantsForRoom(message.roomId),
 	]);
 	const ownerPrincipal =
 		principal.kind === "owner_session" || principal.kind === "owner_api_token";
+	const ownerPrivateCandidate =
+		ownerPrincipal &&
+		canonicalOwnerEntityId !== null &&
+		message.entityId === canonicalOwnerEntityId;
+	const participants = await filterRuntimeInternalParticipants(
+		runtime,
+		rawParticipants,
+		ownerPrivateCandidate,
+	);
 	const audience = createAudience({
 		kind: ownerPrincipal ? "api_private" : "api_external",
 		provenance: ownerPrincipal ? "authenticated_owner_api" : "service_gateway",
@@ -590,10 +680,18 @@ export async function revalidateOwnerExclusiveDisclosure(
 	if (!initial.allowed) return initial;
 
 	try {
-		const [participants, canonicalOwnerEntityId] = await Promise.all([
+		const [rawParticipants, canonicalOwnerEntityId] = await Promise.all([
 			runtime.getParticipantsForRoom(message.roomId),
 			resolveCanonicalOwnerIdForMessage(runtime, message),
 		]);
+		// The attested census excluded runtime-internal synthetic actors, so the
+		// revalidation must compare like with like — otherwise a room that ever
+		// hosted a trigger fire flips every later check to audience_changed.
+		const participants = await filterRuntimeInternalParticipants(
+			runtime,
+			rawParticipants,
+			initial.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+		);
 		const room =
 			initial.audience.provenance === "canonical_room"
 				? await runtime.getRoom(message.roomId)

@@ -258,6 +258,7 @@ describe("Discord message connector adapter", () => {
 				client: {} as HistoryServiceInternals["client"],
 				resolveDiscordEntityId: (userId: string) =>
 					`00000000-0000-0000-0000-${userId.slice(-12)}`,
+				isOwnerAliasedDiscordUser: () => false,
 				getChannelType: vi.fn().mockResolvedValue("GROUP"),
 				isGuildTextBasedChannel: vi.fn(),
 			},

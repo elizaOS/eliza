@@ -68,6 +68,8 @@ const currentUser = {
   organization: { id: ORG_A, name: "Org A", is_active: true },
   is_active: true,
   role: "owner",
+  telegram_id: null as string | null,
+  discord_id: null as string | null,
 };
 
 // VALUE snapshot at module evaluation + mock installed in beforeAll — never at
@@ -149,9 +151,19 @@ const cutoverCoordinatorFetch = mock(
 const cutoverNamespace = {
   getByName: mock(() => ({ fetch: cutoverCoordinatorFetch })),
 };
+const invalidatedDeliveryProjections: string[] = [];
+const personalDeliveryProjectionNamespace = {
+  getByName: mock((name: string) => ({
+    fetch: mock(async () => {
+      invalidatedDeliveryProjections.push(name);
+      return Response.json({ success: true });
+    }),
+  })),
+};
 const ENV = {
   NODE_ENV: "test",
   SHARED_RUNTIME_CONVERSATIONS: cutoverNamespace,
+  PERSONAL_DELIVERY_PROJECTIONS: personalDeliveryProjectionNamespace,
   ELIZA_CLOUD_AGENT_BASE_DOMAIN: "dedicated-cutover.test",
 } as unknown as AppEnv["Bindings"];
 
@@ -968,6 +980,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       organization_id: ORG_C,
       role: "owner",
       steward_user_id: `steward-${USER_C}`,
+      telegram_id: "919191",
     });
     await dbWrite.insert(agentSandboxes).values({
       id: CUTOVER_TARGET,
@@ -995,6 +1008,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       name: "Cutover Org",
       is_active: true,
     };
+    currentUser.telegram_id = "919191";
     const convergenceToken = `phone-telegram:source:${USER_C}`;
     const { createSharedTodoStore, sharedTodoStorageScope } = await import(
       "@/lib/services/shared-runtime/shared-todos"
@@ -1008,6 +1022,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
 
     try {
       cutoverCoordinatorOperations.length = 0;
+      invalidatedDeliveryProjections.length = 0;
       cutoverCoordinatorTokens.length = 0;
       cutoverSealToken = null;
       cutoverSealCommitted = false;
@@ -1370,6 +1385,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         },
       });
       expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
+      expect(invalidatedDeliveryProjections).toContain("telegram:919191");
       expect(markerObservedAtCommit).toMatchObject({
         sourceAgentId: PERSONAL_C,
         cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
@@ -1535,6 +1551,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         name: "Org A",
         is_active: true,
       };
+      currentUser.telegram_id = null;
       cutoverHistory = [
         { id: "u1", role: "user", content: "hello", createdAt: 10 },
         {

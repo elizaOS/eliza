@@ -18,6 +18,7 @@
 import { computeNextCronRunAtMs } from "@elizaos/core/edge";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
+import { windowOccurrenceKey } from "./due.js";
 import { resolveLocalHHMMToIso } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
@@ -25,6 +26,10 @@ import type {
   ScheduledTask,
   ScheduledTaskTrigger,
 } from "./types.js";
+import {
+  formatLocalHHMM,
+  resolveOwnerWindowBoundsMinutes,
+} from "./window-bounds.js";
 
 const MINUTE_MS = 60_000;
 
@@ -53,36 +58,53 @@ function isRepresentableMs(ms: number): boolean {
 function nextWindowStartIso(
   windowKey: string,
   context: ComputeNextFireAtContext,
+  task: Pick<ScheduledTask, "state" | "metadata">,
 ): string | null {
   const facts = context.ownerFacts;
   const timeZone = facts.timezone ?? "UTC";
-  const morningStart = facts.morningWindow?.start;
-  const eveningStart = facts.eveningWindow?.start;
-  const eveningEnd = facts.eveningWindow?.end;
-  let candidateTimes: Array<string | undefined>;
+  const { morningStart, morningEnd, eveningStart, eveningEnd } =
+    resolveOwnerWindowBoundsMinutes(facts);
+  let candidateMinutes: number[];
   switch (windowKey) {
     case "morning":
-      candidateTimes = [morningStart];
+      candidateMinutes = [morningStart];
       break;
     case "afternoon":
-      candidateTimes = [facts.morningWindow?.end];
+      candidateMinutes = [morningEnd];
       break;
     case "evening":
-      candidateTimes = [eveningStart];
+      candidateMinutes = [eveningStart];
       break;
     case "night":
-      candidateTimes = [eveningEnd, "00:00"];
+      candidateMinutes = [eveningEnd];
       break;
     case "morning_or_night":
-      candidateTimes = [morningStart, eveningEnd];
+      candidateMinutes = [morningStart, eveningEnd];
       break;
     case "morning_or_evening":
-      candidateTimes = [morningStart, eveningStart];
+      candidateMinutes = [morningStart, eveningStart];
       break;
     default:
       return null;
   }
+  const candidateTimes = candidateMinutes.map(formatLocalHHMM);
   const nowMs = context.now.getTime();
+
+  // An active occurrence is always the next candidate, even when a composite
+  // window has another start later today. Reuse the authoritative due helper
+  // so the index and due evaluation agree on midnight-spanning occurrences.
+  const fireKey = windowOccurrenceKey(context.now, timeZone, windowKey, facts);
+  if (fireKey !== null) {
+    const firedAtMs = parseIsoMs(task.state.firedAt);
+    const alreadyFired =
+      task.metadata?.lastWindowFireKey === fireKey ||
+      (task.state.status !== "scheduled" &&
+        firedAtMs !== null &&
+        windowOccurrenceKey(new Date(firedAtMs), timeZone, windowKey, facts) ===
+          fireKey);
+    if (!alreadyFired) return context.now.toISOString();
+  }
+
   const today = candidateTimes
     .map((hhmm) => resolveLocalHHMMToIso(context.now, hhmm, timeZone, 0))
     .map((iso) => parseIsoMs(iso))
@@ -239,7 +261,7 @@ export async function computeNextFireAt(
     case "relative_to_anchor":
       return nextAnchorIso(trigger, context);
     case "during_window":
-      return nextWindowStartIso(trigger.windowKey, context);
+      return nextWindowStartIso(trigger.windowKey, context, task);
     case "event":
     case "manual":
     case "after_task":

@@ -125,6 +125,20 @@ export const STANDARD_OPTIONS = {
 } as const;
 
 /**
+ * Typed cancel classification shared by timeout and selection.
+ * Only an existing option whose `isCancel` is explicitly true is a cancel.
+ * A missing name fail-closes as cancel. Names such as `ABORT` are not special.
+ */
+function isCancelApprovalOption(
+	options: readonly ApprovalOption[] | undefined,
+	selectedName: string,
+): boolean {
+	if (!options) return true;
+	const option = options.find((o) => o.name === selectedName);
+	return option ? option.isCancel === true : true;
+}
+
+/**
  * ApprovalService provides a interface for task-based approvals.
  */
 export class ApprovalService extends Service {
@@ -444,8 +458,7 @@ export class ApprovalService extends Service {
 
 		// Resolve with timeout default or cancel
 		const defaultOption = request.timeoutDefault ?? "cancel";
-		const isCancel =
-			request.options.find((o) => o.name === defaultOption)?.isCancel ?? true;
+		const isCancel = isCancelApprovalOption(request.options, defaultOption);
 
 		pending.resolve({
 			selectedOption: defaultOption,
@@ -488,10 +501,7 @@ export class ApprovalService extends Service {
 		}
 
 		const request = pending?.request;
-		const option = request?.options.find((o) => o.name === selectedOption);
-		const isCancel =
-			option?.isCancel ??
-			(selectedOption === "cancel" || selectedOption === "ABORT");
+		const isCancel = isCancelApprovalOption(request?.options, selectedOption);
 
 		logger.info(
 			{

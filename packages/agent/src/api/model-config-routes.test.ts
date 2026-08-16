@@ -3,10 +3,12 @@
  * rejections, the dual-seam config write (config.env + config.env.vars +
  * process.env), restart semantics per target (chat restarts via the operation
  * manager, coding does not), external-env conflict reporting, and the GET
- * resolution order. Deterministic — catalog, process env, save, and the
- * operation manager are injected; no live runtime or filesystem is touched.
+ * resolution order. Deterministic — catalog, process env, save, the
+ * operation manager, and optional runtime registrations are injected; no
+ * live filesystem is touched.
  */
 import type http from "node:http";
+import { ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config";
 import { buildModelCatalog } from "./model-catalog";
@@ -23,6 +25,7 @@ interface HarnessOptions {
   config?: ElizaConfig;
   processEnv?: NodeJS.ProcessEnv;
   managerStart?: ReturnType<typeof vi.fn>;
+  runtime?: { getModelRegistrations: () => unknown[] } | null;
 }
 
 function makeHarness(
@@ -50,7 +53,7 @@ function makeHarness(
     pathname: "/api/models/config",
     json,
     readJsonBody: vi.fn(async () => body),
-    state: { config },
+    state: { config, runtime: opts.runtime },
     saveElizaConfig,
     runtimeOperationManager: { start: managerStart } as never,
     catalog,
@@ -276,6 +279,16 @@ describe("POST /api/models/config chat writes", () => {
             },
           },
         } as never,
+        runtime: {
+          getModelRegistrations: () => [
+            {
+              modelType: ModelType.TEXT_SMALL,
+              provider: "elizaOSCloud",
+              priority: 50,
+              registrationOrder: 1,
+            },
+          ],
+        },
       },
     );
     await handleModelConfigRoutes(ctx as never);
@@ -547,9 +560,26 @@ describe("GET /api/models/config activeChat", () => {
     },
   } as never;
 
+  function runtimeWithCloudHandler(registered: boolean) {
+    return {
+      getModelRegistrations: () =>
+        registered
+          ? [
+              {
+                modelType: ModelType.TEXT_SMALL,
+                provider: "elizaOSCloud",
+                priority: 50,
+                registrationOrder: 1,
+              },
+            ]
+          : [],
+    };
+  }
+
   it("names the cloud brain + its endpoint under cloud-proxy routing", async () => {
     const { ctx, json } = makeHarness("GET", null, {
       config: cloudRoutedConfig,
+      runtime: runtimeWithCloudHandler(true),
       processEnv: {
         // Inert for chat under cloud-proxy — must NOT leak into the endpoint.
         OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
@@ -722,6 +752,16 @@ describe("GET /api/models/config activeChat", () => {
           ELIZAOS_CLOUD_BASE_URL: "https://process.cloud.example/api/v1",
         },
         endpoint: "nested.cloud.example",
+        runtime: {
+          getModelRegistrations: () => [
+            {
+              modelType: ModelType.TEXT_SMALL,
+              provider: "elizaOSCloud",
+              priority: 50,
+              registrationOrder: 1,
+            },
+          ],
+        },
       },
       {
         name: "Cerebras provider default uses its provider-owned base override",
@@ -746,6 +786,7 @@ describe("GET /api/models/config activeChat", () => {
       const harness = makeHarness("GET", null, {
         config: testCase.config as never,
         processEnv: { ...testCase.processEnv },
+        runtime: "runtime" in testCase ? testCase.runtime : undefined,
       });
       await handleModelConfigRoutes(harness.ctx as never);
       expect(
@@ -760,6 +801,36 @@ describe("GET /api/models/config activeChat", () => {
     await handleModelConfigRoutes(ctx as never);
     const { body } = responseOf(json);
     expect(body.activeChat).toBeUndefined();
+  });
+
+  it("omits activeChat when cloud-proxy is configured but no cloud handler is registered", async () => {
+    // Reproduces #20045: cloud-proxy + no signed-in cloud account means the
+    // plugin skips TEXT_SMALL registration and the runtime serves locally.
+    const { ctx, json } = makeHarness("GET", null, {
+      config: cloudRoutedConfig,
+      runtime: runtimeWithCloudHandler(false),
+      processEnv: {
+        ELIZAOS_CLOUD_BASE_URL: "https://elizacloud.ai/api/v1",
+      },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const { body } = responseOf(json);
+    expect(body.activeChat).toBeUndefined();
+    const targets = body.targets as Record<
+      string,
+      Record<string, { value: string; source: string } | null>
+    >;
+    expect(targets.small?.ELIZAOS_CLOUD_SMALL_MODEL).toBeNull();
+    expect(targets.large?.ELIZAOS_CLOUD_LARGE_MODEL).toBeNull();
+  });
+
+  it("omits activeChat when cloud-proxy is configured and the runtime is not yet booted", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: cloudRoutedConfig,
+      runtime: null,
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toBeUndefined();
   });
 });
 

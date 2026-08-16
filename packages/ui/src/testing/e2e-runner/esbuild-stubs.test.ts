@@ -1,19 +1,16 @@
 /**
- * Contract test for the `@elizaos/core` fixture stub: bundles a module that
- * subclasses `ElizaError` through real esbuild with `stubElizaCore()`, then
- * evaluates the output. The stub replaces core's Node graph, but any symbol a
- * fixture actually *uses at evaluation time* must be a working implementation —
- * a Proxy fallback surfaces `undefined` through esbuild's ESM interop, and
- * `class … extends undefined` crashes the whole bundle at load. `client-cloud.ts`
- * subclasses `ElizaError`, so the stub must export a real one rather than force
- * production code to guard its own base class.
+ * Contract tests for the shared shell-fixture stubs bundle representative core
+ * and Node built-in imports through real esbuild, then evaluate the browser
+ * output. Any named symbol reached during bundling or module initialization must
+ * remain a concrete export; a Proxy fallback cannot satisfy esbuild's named ESM
+ * interop and crashes the fixture before the render path runs.
  */
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
-import { stubElizaCore } from "./esbuild-stubs";
+import { stubElizaCore, stubNodeBuiltins } from "./esbuild-stubs";
 
 async function bundleWithCoreStub(source: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "eliza-core-stub-"));
@@ -31,6 +28,25 @@ async function bundleWithCoreStub(source: string): Promise<string> {
   const output = result.outputFiles?.[0]?.text;
   if (!output)
     throw new Error("esbuild produced no output for the stub bundle");
+  return output;
+}
+
+async function bundleWithNodeStub(source: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "eliza-node-stub-"));
+  const entry = join(root, "entry.mjs");
+  await writeFile(entry, source);
+  const result = await build({
+    entryPoints: [entry],
+    bundle: true,
+    write: false,
+    format: "iife",
+    globalName: "fixture",
+    platform: "browser",
+    plugins: [stubNodeBuiltins()],
+  });
+  const output = result.outputFiles?.[0]?.text;
+  if (!output)
+    throw new Error("esbuild produced no output for the Node stub bundle");
   return output;
 }
 
@@ -100,5 +116,20 @@ describe("stubElizaCore", () => {
     )() as string;
 
     expect(evaluated).toBe("fixture reply");
+  });
+});
+
+describe("stubNodeBuiltins", () => {
+  it("exports the concrete host identity used during route preference initialization", async () => {
+    const bundle = await bundleWithNodeStub(`
+      import { hostname } from "node:os";
+      export const observed = hostname();
+    `);
+
+    const evaluated = new Function(
+      `${bundle}; return fixture.observed;`,
+    )() as string;
+
+    expect(evaluated).toBe("eliza-browser-fixture");
   });
 });

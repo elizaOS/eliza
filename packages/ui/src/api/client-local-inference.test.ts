@@ -1,11 +1,16 @@
 /**
- * Unit coverage for device-tier classification from a hardware probe. Pure
- * function, no harness.
+ * Covers local-inference client policy helpers: deterministic device-tier
+ * classification and the real fetch boundary for atomic text routing.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { HardwareProbe } from "../services/local-inference/types";
+import { ElizaClient } from "./client-base";
 import { classifyDeviceTierFromProbe } from "./client-local-inference";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function probe(overrides: Partial<HardwareProbe>): HardwareProbe {
   return {
@@ -96,5 +101,28 @@ describe("classifyDeviceTierFromProbe", () => {
     );
     expect(result.tier).toBe("POOR");
     expect(result.mobile).toBe(true);
+  });
+});
+
+describe("setLocalInferenceTextRouting", () => {
+  it("publishes both text slots through one atomic request", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ preferences: {} }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await client.setLocalInferenceTextRouting("elizacloud", "manual");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toContain("/api/local-inference/routing/text");
+    expect(init).toMatchObject({ method: "POST" });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      provider: "elizacloud",
+      policy: "manual",
+    });
   });
 });

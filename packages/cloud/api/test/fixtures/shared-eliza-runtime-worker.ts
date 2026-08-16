@@ -5,6 +5,11 @@
 
 import { searchKeylessWeb, type UUID } from "@elizaos/core/edge";
 import type {
+  ScheduledTask,
+  ScheduledTaskInput,
+  ScheduledTaskRunner,
+} from "@elizaos/plugin-scheduling/edge";
+import type {
   CreateTodoInput,
   Todo,
   TodoMutationRecord,
@@ -149,6 +154,46 @@ function createTodoProbeStore(records: Todo[]): TodoStore {
   };
 }
 
+function createReminderProbeRunner(
+  records: ScheduledTask[],
+): ScheduledTaskRunner {
+  const scheduleWithResult = async (input: ScheduledTaskInput) => {
+    const task: ScheduledTask = {
+      taskId: `92000000-0000-4000-8000-${String(records.length + 1).padStart(12, "0")}`,
+      ...input,
+      state: { status: "scheduled", followupCount: 0 },
+    };
+    records.push(task);
+    return {
+      task,
+      commit: {
+        logId: `93000000-0000-4000-8000-${String(records.length).padStart(12, "0")}`,
+        taskId: task.taskId,
+        agentId: "workerd-reminder-probe",
+        occurredAtIso: "2026-08-15T00:00:00.000Z",
+        transition: "scheduled" as const,
+        rolledUp: false,
+      },
+      replayed: false,
+    };
+  };
+  return {
+    scheduleWithResult,
+    async schedule(input: ScheduledTaskInput) {
+      return (await scheduleWithResult(input)).task;
+    },
+    async list() {
+      return records;
+    },
+    async apply() {
+      throw new Error("The Workerd reminder probe does not mutate tasks");
+    },
+    async pipeline() {
+      return [];
+    },
+  };
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     return await runWithCloudBindingsAsync(env, async () => {
@@ -181,6 +226,34 @@ export default {
           },
         });
         return Response.json({ result, storedTodos });
+      }
+      if (url.pathname === "/reminder-turn") {
+        const scheduledTasks: ScheduledTask[] = [];
+        const result = await runSharedAgentTurn({
+          character: {
+            name: "Shared Eliza Workerd Probe",
+            system: "You are Eliza.",
+            model: "local/shared-runtime-probe",
+          },
+          history: [],
+          message: "remind me in two minutes to stretch",
+          messageIds: {
+            user: "70000000-0000-5000-8000-000000000013",
+            assistant: "70000000-0000-5000-8000-000000000014",
+          },
+          execution: {
+            engine: "eliza-runtime",
+            agentKey: "personal:70000000-0000-5000-8000-000000000015",
+            reminders: {
+              delivery: {
+                platform: "discord",
+                discordUserId: "123456789012345678",
+              },
+              runner: createReminderProbeRunner(scheduledTasks),
+            },
+          },
+        });
+        return Response.json({ result, scheduledTasks });
       }
       if (url.pathname === "/search-turn") {
         const result = await runSharedAgentTurn({

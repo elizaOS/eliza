@@ -20,6 +20,7 @@ import {
 import { getOAuthIntentsService } from "@/lib/services/oauth-intents-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { parsePaginationParam } from "../pagination";
 
 const ProviderSchema = z.enum([
   "google",
@@ -59,8 +60,6 @@ const ListQuerySchema = z.object({
   status: StatusSchema.optional(),
   provider: ProviderSchema.optional(),
   agentId: z.string().min(1).max(256).optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional(),
-  offset: z.coerce.number().int().min(0).optional(),
 });
 
 const app = new Hono<AppEnv>();
@@ -111,12 +110,22 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
+    const limitResult = parsePaginationParam(c.req.query("limit"), "limit", 50);
+    if (!limitResult.ok) {
+      return c.json({ success: false, error: limitResult.error }, 400);
+    }
+    const offsetResult = parsePaginationParam(
+      c.req.query("offset"),
+      "offset",
+      0,
+    );
+    if (!offsetResult.ok) {
+      return c.json({ success: false, error: offsetResult.error }, 400);
+    }
     const parsed = ListQuerySchema.safeParse({
       status: c.req.query("status"),
       provider: c.req.query("provider"),
       agentId: c.req.query("agentId"),
-      limit: c.req.query("limit"),
-      offset: c.req.query("offset"),
     });
     if (!parsed.success) {
       return c.json(
@@ -134,8 +143,8 @@ app.get("/", async (c) => {
       status: parsed.data.status,
       provider: parsed.data.provider,
       agentId: parsed.data.agentId,
-      limit: parsed.data.limit,
-      offset: parsed.data.offset,
+      limit: limitResult.value,
+      offset: offsetResult.value,
     });
 
     return c.json({ success: true, oauthIntents });

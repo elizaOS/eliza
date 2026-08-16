@@ -71,6 +71,7 @@ import {
 import { AppBackground } from "./backgrounds/AppBackground";
 import {
   invokeDesktopBridgeRequest,
+  invokeDesktopBridgeRequestWithTimeout,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
@@ -101,6 +102,7 @@ import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
+import { useChatOverlayWindowBounds } from "./components/shell/chat-overlay-window-bounds";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
@@ -313,6 +315,18 @@ function ChatOverlayShell() {
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
   const overlayOpen = controller?.isOpen ?? false;
+  const setActionNotice = useAppSelector((state) => state.setActionNotice);
+  const handleWindowBoundsFailure = useCallback((): void => {
+    if (overlayOpen) {
+      controller?.close();
+    }
+    setActionNotice(
+      "Desktop chat window resize failed. Close and reopen Eliza to retry.",
+      "error",
+      6_000,
+    );
+  }, [controller, overlayOpen, setActionNotice]);
+  useChatOverlayWindowBounds(overlayOpen, handleWindowBoundsFailure);
   // Escape collapses the overlay first — while it is open, AssistantOverlay's
   // own Escape handler closes it. Once already collapsed, Escape hides the
   // desktop window entirely (#12184) so the pill dismisses to the background
@@ -1778,6 +1792,8 @@ function SecretsManagerModalMount(): ReactNode {
 
 function ShellFoundationMount() {
   const controller = useShellControllerContext();
+  const hasController = controller !== null;
+  const shellIsOpen = controller?.isOpen ?? false;
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
   // Push-to-talk dictation on the ChatSurface mic drops its transcript into
@@ -1793,6 +1809,25 @@ function ShellFoundationMount() {
     });
     return () => controller.setDictationSink(null);
   }, [controller, setChatInput, chatInputRef]);
+
+  useEffect(() => {
+    if (!hasController) return undefined;
+    let cancelled = false;
+
+    void (async () => {
+      if (cancelled) return;
+      await invokeDesktopBridgeRequestWithTimeout<undefined>({
+        rpcMethod: "desktopSetBottomBarExpanded",
+        ipcChannel: "desktop:setBottomBarExpanded",
+        params: { expanded: shellIsOpen },
+        timeoutMs: 1_000,
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasController, shellIsOpen]);
   if (!controller) return null;
 
   return (

@@ -113,6 +113,25 @@ export function resolveTestLaneDirs(lane, opts) {
 }
 
 /**
+ * Raw `elizaos.scripts.testLanes` declarations, keyed by workspace-relative
+ * dir, for every package that declares the key at all — present regardless of
+ * whether the value is a well-formed lane array. `resolveTestLaneDirs` silently
+ * drops a malformed or unrecognized declaration (`Array.isArray` + `includes`),
+ * which is correct for resolving one lane's membership but hides the mistake
+ * from a completeness auditor. audit-test-lane-membership.mjs uses this
+ * unfiltered read to tell "not declared" apart from "declared but invalid".
+ */
+export function resolveTestLaneDeclarations(opts) {
+  const map = new Map();
+  for (const pkg of packagesWithScriptMeta(opts)) {
+    if (Object.hasOwn(pkg.scripts, "testLanes")) {
+      map.set(pkg.dir, pkg.scripts.testLanes);
+    }
+  }
+  return map;
+}
+
+/**
  * The `buildModel` exception maps (audit-build-typecheck.mjs) as package name
  * to package-owned reason, plus validation errors for malformed declarations.
  */

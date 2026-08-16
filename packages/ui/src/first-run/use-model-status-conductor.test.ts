@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     setLocalInferencePreferredProvider: vi.fn(async () => ({
       preferences: {},
     })),
+    setLocalInferenceTextRouting: vi.fn(async () => ({ preferences: {} })),
   },
 }));
 
@@ -139,18 +140,20 @@ describe("useModelStatusConductor", () => {
     unmount();
   });
 
-  it("switch-cloud → routes both text slots to elizacloud", async () => {
+  it("switch-cloud → atomically routes both text slots to elizacloud", async () => {
     const { card, unmount } = renderConductor(DOWNLOADING);
     await waitFor(() => expect(card()).toBeTruthy());
     tryHandleModelAction("__model__:switch-cloud");
     await waitFor(() =>
-      expect(
-        mocks.client.setLocalInferencePreferredProvider,
-      ).toHaveBeenCalledWith("TEXT_LARGE", "elizacloud"),
+      expect(mocks.client.setLocalInferenceTextRouting).toHaveBeenCalledWith(
+        "elizacloud",
+        "manual",
+      ),
     );
+    expect(mocks.client.setLocalInferenceTextRouting).toHaveBeenCalledTimes(1);
     expect(
       mocks.client.setLocalInferencePreferredProvider,
-    ).toHaveBeenCalledWith("TEXT_SMALL", "elizacloud");
+    ).not.toHaveBeenCalled();
     expect(card()?.text).toContain("Eliza Cloud");
     unmount();
   });

@@ -8,15 +8,24 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { resolveNodeExecPath } from "../run-node-runtime.mjs";
 
 export function resolveViteCommand({
   appDir,
   force = false,
-  nodePath = process.execPath,
+  nodePath,
   port,
   viteArgs = [],
 }) {
-  if (!nodePath) {
+  const resolvedNodePath =
+    nodePath === undefined
+      ? resolveNodeExecPath({
+          currentExecPath: process.execPath,
+          explicitNodePath: process.env.ELIZA_NODE_PATH,
+          platform: process.platform,
+        })
+      : nodePath;
+  if (!resolvedNodePath) {
     throw new Error("Node.js is required to run the Vite dev server.");
   }
   const viteCli = path.join(appDir, "node_modules", "vite", "bin", "vite.js");
@@ -40,5 +49,5 @@ export function resolveViteCommand({
   if (force) args.push("--force");
   if (port !== undefined) args.push("--port", String(port));
   args.push(...viteArgs);
-  return { command: nodePath, args };
+  return { command: resolvedNodePath, args };
 }

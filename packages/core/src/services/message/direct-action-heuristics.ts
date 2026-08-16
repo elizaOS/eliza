@@ -363,6 +363,8 @@ export function isShellDirectActionName(
  * - "owner-goals": concrete owner goal create/save/confirm phrasing.
  * - "owner-routines": habit/routine commitment phrasing, including recurring
  *   cadences ("3 times a day") — an owner mutation, never navigation.
+ * - "owner-scheduled-admin": snooze/reschedule/skip verbs acting on an
+ *   existing scheduled item — owner mutations that navigation cannot satisfy.
  * - "owner-reads": a possessive owner-data read ("list my personal todos",
  *   "what are my reminders") — the read-side mirror of the mutation rule
  *   above: data asks are owner-domain evidence, and VIEWS can only navigate,
@@ -384,6 +386,9 @@ export type DirectCurrentRequestCandidateKind =
 	| "owner-goals"
 	| "owner-routines"
 	| "owner-reads"
+	| "owner-scheduled-admin"
+	| "owner-work-thread"
+	| "media-generation"
 	| "view-surface"
 	| "view-navigation"
 	| "view-capability"
@@ -636,6 +641,192 @@ function findOwnerRoutinesActionName(
 	return findAvailableActionName(actions, OWNER_ROUTINES_ACTION_NAMES);
 }
 
+type ScheduledAdminDomain =
+	| "reminders"
+	| "alarms"
+	| "routines"
+	| "scheduled-tasks";
+
+const SCHEDULED_ADMIN_VERB_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze|skip|delete|remove|cancel|clear|(?:get\s+rid\s+of)|(?:stop\s+tracking))(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_ALARM_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])alarms?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_STRUCTURAL_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:check[- ]?ins?|follow[- ]?ups?)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_ROUTINE_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:routines?|habits?)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_RAW_TASK_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])scheduled\s+tasks?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_TASK_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])tasks?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_TEMPORAL_VERB_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_REMINDER_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])reminders?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+
+const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
+	ScheduledAdminDomain,
+	readonly string[]
+> = {
+	reminders: ["OWNER_REMINDERS", "REMINDERS", "REMINDER"],
+	alarms: ["OWNER_ALARMS", "ALARMS", "ALARM"],
+	routines: OWNER_ROUTINES_ACTION_NAMES,
+	"scheduled-tasks": ["SCHEDULED_TASKS"],
+};
+
+/**
+ * Detects admin operations on an existing scheduled item and preserves the
+ * owning action boundary. Reminder, alarm, and routine definitions use their
+ * owner surfaces; structural check-ins, follow-ups, and raw scheduled tasks use
+ * SCHEDULED_TASKS. A bare "skip this task" remains ambiguous and yields no
+ * deterministic candidate.
+ */
+function detectScheduledItemAdminDomain(
+	text: string,
+): ScheduledAdminDomain | null {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (
+		!normalized ||
+		looksLikeActionExplanationRequest(normalized) ||
+		!SCHEDULED_ADMIN_VERB_PATTERN.test(normalized)
+	) {
+		return null;
+	}
+	if (SCHEDULED_ADMIN_ALARM_PATTERN.test(normalized)) return "alarms";
+	if (SCHEDULED_ADMIN_STRUCTURAL_PATTERN.test(normalized)) {
+		return "scheduled-tasks";
+	}
+	if (SCHEDULED_ADMIN_ROUTINE_PATTERN.test(normalized)) return "routines";
+	if (SCHEDULED_ADMIN_RAW_TASK_PATTERN.test(normalized)) {
+		return "scheduled-tasks";
+	}
+	if (
+		SCHEDULED_ADMIN_TASK_PATTERN.test(normalized) &&
+		SCHEDULED_ADMIN_TEMPORAL_VERB_PATTERN.test(normalized)
+	) {
+		return "scheduled-tasks";
+	}
+	if (SCHEDULED_ADMIN_REMINDER_PATTERN.test(normalized)) return "reminders";
+	return null;
+}
+
+function findScheduledAdminActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	domain: ScheduledAdminDomain,
+): string | undefined {
+	return findAvailableActionName(
+		actions,
+		SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN[domain],
+	);
+}
+
+const MEDIA_GENERATION_ACTION_NAMES = [
+	"GENERATE_MEDIA",
+	"GENERATE_IMAGE",
+	"CREATE_IMAGE",
+] as const;
+
+/**
+ * Detects an explicit media-generation ask ("make me a pixel-art castle
+ * image", "generate a picture of a lighthouse"). Live regression (matrix
+ * F35, tj-fcf8c1c21be91f): Stage-1 classified a styled image ask as
+ * ["simple"] with no candidates, the planner ran with HANDLE_RESPONSE only,
+ * and the model declared "I don't have an image generator" — an hour after
+ * the same runtime generated and delivered one. Capability self-belief
+ * follows tool exposure, so the deterministic candidate is what keeps the
+ * answer consistent. Generation verbs must pair with a visual-artifact noun:
+ * "create a todo" and "draw up a plan" never match.
+ */
+function looksLikeMediaGenerationRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized || looksLikeActionExplanationRequest(normalized)) {
+		return false;
+	}
+	return /\b(?:generate|make|draw|create|render|paint|produce)\b[^.!?]{0,60}\b(?:image|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif)s?\b/iu.test(
+		normalized,
+	);
+}
+
+function findMediaGenerationActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string | undefined {
+	return findAvailableActionName(actions, MEDIA_GENERATION_ACTION_NAMES);
+}
+
+const WORK_THREAD_ACTION_NAMES = [
+	"WORK_THREAD",
+	"OWNER_TASKS",
+	"WORK_THREADS",
+] as const;
+
+/**
+ * Detects an explicit work-thread lifecycle ask ("start a work thread: plan
+ * the garage cleanout", "resume the kitchen reno work thread"). Live
+ * regression (matrix F27, tj-ee16a14fea597e): Stage-1 classified the ask as
+ * bare ["general"] with no candidates, the planner ran with HANDLE_RESPONSE
+ * only, and the model composed a fictional surface refusal ("can't do that
+ * here — dm me") — the same drift class as the owner-item delete leg. The
+ * phrase "work thread" is the surface's own vocabulary, so the deterministic
+ * candidate is precise.
+ */
+function looksLikeWorkThreadRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized || looksLikeActionExplanationRequest(normalized)) {
+		return false;
+	}
+	return /\b(?:start|open|kick ?off|begin|resume|continue|pick (?:up|back up))\b[^.!?]{0,40}\bwork[- ]threads?\b/iu.test(
+		normalized,
+	);
+}
+
+function findWorkThreadActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string | undefined {
+	return findAvailableActionName(actions, WORK_THREAD_ACTION_NAMES);
+}
+
+/**
+ * Detects a destructive owner-item operation ("delete the reminder named
+ * water the ficus", "cancel the call marco reminder", "remove my dentist
+ * alarm") and names the owning domain. Live regression (matrix F31,
+ * tj-f02205ae366226 family): Stage-1 classified exact-name reminder deletes
+ * as ["simple"] with no candidates, the turn planned with HANDLE_RESPONSE
+ * only, and the model composed a fictional surface refusal ("can't delete
+ * reminders here — dm me") that then self-reinforced through conversation
+ * history. Deletes are owner mutations on existing data — the same
+ * owner-domain-evidence rule as the other mutation legs — resolved
+ * per-domain through the same preference lists the read leg uses.
+ */
+function detectOwnerItemDeleteDomain(text: string): OwnerLifeReadDomain | null {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized || looksLikeActionExplanationRequest(normalized)) {
+		return null;
+	}
+	// Surface-noun asks stay with the navigation legs ("close the reminders
+	// tab" is view work, not a data mutation).
+	if (
+		/\b(?:view|views|page|screen|tab|panel|window|ui|dashboard|app)\b/iu.test(
+			normalized,
+		)
+	) {
+		return null;
+	}
+	if (
+		!/\b(?:delete|remove|cancel|clear|get\s+rid\s+of|stop\s+tracking)\b/iu.test(
+			normalized,
+		)
+	) {
+		return null;
+	}
+	for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
+		// Finance records have no named-item delete surface; "clear my
+		// spending" is not an item deletion.
+		if (domain === "finances") continue;
+		if (noun.test(normalized)) return domain;
+	}
+	return null;
+}
+
 /**
  * Owner-life domains with a possessive read shape. Each maps to its reader
  * surface in preference order: the personal-assistant umbrella first, then the
@@ -670,7 +861,7 @@ const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
 	["reminders", /\breminders?\b/iu],
 	["routines", /\b(?:routines?|habits?)\b/iu],
 	["alarms", /\balarms?\b/iu],
-	["finances", /\b(?:finances|spending|expenses)\b/iu],
+	["finances", /\b(?:finances|budget|spending|expenses)\b/iu],
 ];
 
 function ownerLifeReadDomainsInPossessiveScopes(
@@ -871,6 +1062,59 @@ export function inferDirectCurrentRequestCandidateInference(
 		const ownerGoalsAction = findOwnerGoalsActionName(actions);
 		if (ownerGoalsAction) {
 			return { names: [ownerGoalsAction], kind: "owner-goals" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Scheduled-item admin verbs are mutations on an existing owner record.
+	// Resolve the noun's owning surface first so a co-registered reminders
+	// umbrella cannot steal alarms, routines, check-ins, or raw scheduled tasks.
+	const scheduledAdminDomain = detectScheduledItemAdminDomain(messageText);
+	if (scheduledAdminDomain) {
+		const scheduledAdminAction = findScheduledAdminActionName(
+			actions,
+			scheduledAdminDomain,
+		);
+		if (scheduledAdminAction) {
+			return { names: [scheduledAdminAction], kind: "owner-scheduled-admin" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Destructive owner-item operations are owner mutations on existing data.
+	// Stage-1 drift can classify an exact-name delete as simple chat (matrix
+	// F31); the deterministic candidate keeps the turn on the planning path
+	// where the owning umbrella can act, ask, or fail closed on its own
+	// surface. Same no-candidate-on-missing-surface rule as the legs above.
+	const ownerDeleteDomain = detectOwnerItemDeleteDomain(messageText);
+	if (ownerDeleteDomain) {
+		const ownerDeleteAction = findOwnerLifeReadActionName(
+			actions,
+			ownerDeleteDomain,
+		);
+		if (ownerDeleteAction) {
+			return { names: [ownerDeleteAction], kind: "owner-scheduled-admin" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Work-thread lifecycle asks name the surface's own vocabulary; without a
+	// deterministic candidate Stage-1 drift leaves the turn tool-less and the
+	// model invents a surface refusal (matrix F27). Same
+	// no-candidate-on-missing-surface rule as the legs above.
+	if (looksLikeWorkThreadRequest(messageText)) {
+		const workThreadAction = findWorkThreadActionName(actions);
+		if (workThreadAction) {
+			return { names: [workThreadAction], kind: "owner-work-thread" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Media-generation asks: capability self-belief follows tool exposure, so
+	// a Stage-1 drift that leaves the turn tool-less makes the model deny a
+	// capability it demonstrably has (matrix F35). Unlike the owner legs, a
+	// missing surface yields no candidate AND no forced escalation — an agent
+	// genuinely without a generator should answer honestly from chat.
+	if (looksLikeMediaGenerationRequest(messageText)) {
+		const mediaAction = findMediaGenerationActionName(actions);
+		if (mediaAction) {
+			return { names: [mediaAction], kind: "media-generation" };
 		}
 		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}
@@ -1363,7 +1607,7 @@ function normalizeSingularToken(token: string): string {
 	if (token.length > 3 && token.endsWith("IES")) {
 		return `${token.slice(0, -3)}Y`;
 	}
-	if (token.length > 3 && token.endsWith("S")) {
+	if (token.length > 3 && token.endsWith("S") && !token.endsWith("SS")) {
 		return token.slice(0, -1);
 	}
 	return token;

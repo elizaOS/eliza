@@ -4,12 +4,16 @@
  * Discord user is collapsed to the canonical owner entity or kept auditable as
  * their own connector identity.
  */
+
+import { createUniqueUuid } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
 	buildDiscordWorldMetadata,
 	extractDiscordOwnerUserIds,
 	extractDiscordTeamAdminUserIds,
+	isAliasedDiscordEntityId,
 	parseDiscordOwnerUserIds,
+	resolveDiscordRuntimeEntityId,
 } from "../identity.ts";
 
 /**
@@ -191,5 +195,53 @@ describe("buildDiscordWorldMetadata", () => {
 		expect(metadata?.roleSources?.[guildOwnerEntityId as string]).toBe(
 			"connector_admin",
 		);
+	});
+});
+
+describe("isAliasedDiscordEntityId", () => {
+	const runtime = {
+		agentId: "00000000-0000-0000-0000-000000000001",
+		character: { name: "Agent" },
+		getSetting: (key: string) =>
+			key === "ELIZA_ADMIN_ENTITY_ID"
+				? "11111111-1111-1111-1111-111111111111"
+				: undefined,
+	} as never;
+
+	it("flags a user whose resolution was substituted by the owner alias list", () => {
+		const resolved = resolveDiscordRuntimeEntityId(runtime, SNOWFLAKE_B, [
+			SNOWFLAKE_B,
+		]);
+		expect(resolved).toBe("11111111-1111-1111-1111-111111111111");
+		expect(isAliasedDiscordEntityId(runtime, SNOWFLAKE_B, resolved)).toBe(true);
+	});
+
+	it("does not flag a user whose entity id derives from their own snowflake", () => {
+		const resolved = resolveDiscordRuntimeEntityId(runtime, SNOWFLAKE_A, [
+			SNOWFLAKE_B,
+		]);
+		expect(resolved).toBe(createUniqueUuid(runtime, SNOWFLAKE_A));
+		expect(isAliasedDiscordEntityId(runtime, SNOWFLAKE_A, resolved)).toBe(
+			false,
+		);
+	});
+
+	it("does not flag the owner when the canonical entity is their own derived id", () => {
+		const ownDerived = createUniqueUuid(runtime, SNOWFLAKE_C);
+		const selfCanonicalRuntime = {
+			agentId: "00000000-0000-0000-0000-000000000001",
+			character: { name: "Agent" },
+			getSetting: (key: string) =>
+				key === "ELIZA_ADMIN_ENTITY_ID" ? ownDerived : undefined,
+		} as never;
+		const resolved = resolveDiscordRuntimeEntityId(
+			selfCanonicalRuntime,
+			SNOWFLAKE_C,
+			[SNOWFLAKE_C],
+		);
+		expect(resolved).toBe(ownDerived);
+		expect(
+			isAliasedDiscordEntityId(selfCanonicalRuntime, SNOWFLAKE_C, resolved),
+		).toBe(false);
 	});
 });

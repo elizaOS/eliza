@@ -153,9 +153,13 @@ const CHAIN_LOOKUP_LIMIT = 1000;
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
-  const normalized = value.trim();
-  if (!/^\d+$/.test(normalized)) return fallback;
-  const parsed = Number(normalized);
+  // The whole trimmed string must be digits: parseInt stops at the first
+  // non-digit, so "7junk" parsed to 7 and silently passed the range check
+  // (#20013). isSafeInteger additionally rejects digit strings beyond the
+  // double-precision safe range instead of letting them round-trip.
+  const trimmed = value.trim();
+  if (!/^[0-9]+$/.test(trimmed)) return fallback;
+  const parsed = Number.parseInt(trimmed, 10);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 

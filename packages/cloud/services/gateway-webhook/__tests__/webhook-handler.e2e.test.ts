@@ -1,10 +1,11 @@
 /** Exercises gateway webhook routing with deterministic cloud-service fixtures. */
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type {
   ChatEvent,
   PlatformAdapter,
   WebhookConfig,
 } from "../src/adapters/types";
+import { logger } from "../src/logger";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
 
@@ -146,6 +147,49 @@ describe("gateway webhook handler e2e routing", () => {
     mock.restore();
   });
 
+  test("handles a link code before an existing provisional identity can route it as chat", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ text: "LINK-ABCDEFGH" });
+    const adapter = createAdapter(event);
+    const negativeCacheKey = `identity:twilio:${event.senderId}`;
+    await redis.set(negativeCacheKey, JSON.stringify({ notFound: true }));
+    let confirmBody: Record<string, unknown> | null = null;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith("/api/eliza-app/identity-link/confirm")) {
+        confirmBody = (await request.json()) as Record<string, unknown>;
+        return Response.json({ success: true, data: { status: "linked" } });
+      }
+      throw new Error(
+        `Link challenge incorrectly entered normal routing: ${request.url}`,
+      );
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(() => adapter.replies.length === 1, "identity-link reply");
+    expect(confirmBody).toEqual({
+      code: "LINK-ABCDEFGH",
+      platform: "twilio",
+      platformId: event.senderId,
+      platformName: event.senderName,
+    });
+    expect(adapter.replies[0]).toContain("linked");
+    expect(await redis.get(negativeCacheKey)).toBeNull();
+  });
+
   test("acks before an unresolved phone message enters personal Shared", async () => {
     configureEnv();
     const redis = new MemoryRedis();
@@ -198,6 +242,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedBody).toEqual({
       message: "My name is Ada",
       platform: "twilio",
+      project: "eliza-app",
       phoneNumber: "+15551234567",
       messageId: `twilio:eliza-app:${event.messageId}`,
     });
@@ -272,6 +317,7 @@ describe("gateway webhook handler e2e routing", () => {
     await waitFor(() => replies.length === 1, "Blooio personal Shared reply");
     expect(sharedBody).toEqual({
       platform: "blooio",
+      project: "eliza-app",
       phoneNumber: "+15551234567",
       messageId: "blooio:eliza-app:blooio-message-1",
       message: "hello from iMessage",
@@ -412,6 +458,7 @@ describe("gateway webhook handler e2e routing", () => {
       senderId: "123456789",
       senderName: "Ada",
       text: "what should I focus on today?",
+      providerSentAtMs: Date.now() - 2_000,
       rawPayload: {},
     };
     const sendReply = mock(async () => undefined);
@@ -424,23 +471,32 @@ describe("gateway webhook handler e2e routing", () => {
       sendReply,
     };
     const redis = new MemoryRedis();
+    const completionLog = spyOn(logger, "info").mockImplementation(
+      () => undefined,
+    );
     let sharedBody: Record<string, unknown> | null = null;
+    let sharedTraceId: string | null = null;
     globalThis.fetch = mock(async (input, init) => {
-      const url = String(input);
+      const request = new Request(input, init);
+      const url = request.url;
       if (url.endsWith("/api/internal/identity/resolve")) {
         return new Response(JSON.stringify({ error: "not found" }), {
           status: 404,
         });
       }
       if (url.endsWith("/api/internal/eliza-app/personal-shared/messages")) {
-        sharedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        sharedTraceId = request.headers.get("x-eliza-trace-id");
+        sharedBody = (await request.json()) as Record<string, unknown>;
         return new Response(
           JSON.stringify({
             data: { reply: "start with the launch checklist" },
           }),
           {
             status: 200,
-            headers: { "content-type": "application/json" },
+            headers: {
+              "content-type": "application/json",
+              "server-timing": "account;dur=5.2, shared;dur=17.8",
+            },
           },
         );
       }
@@ -450,6 +506,9 @@ describe("gateway webhook handler e2e routing", () => {
     const response = await handleWebhook(
       new Request("https://gateway.example/webhook/eliza-app/telegram", {
         method: "POST",
+        headers: {
+          "x-eliza-trace-id": "11111111-1111-4111-8111-111111111111",
+        },
         body: "{}",
       }),
       adapter,
@@ -462,6 +521,7 @@ describe("gateway webhook handler e2e routing", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(sharedTraceId).toBe("11111111-1111-4111-8111-111111111111");
     expect(sharedBody).toEqual({
       platform: "telegram",
       project: "eliza-app",
@@ -475,6 +535,141 @@ describe("gateway webhook handler e2e routing", () => {
       expect.anything(),
       event,
       "start with the launch checklist",
+    );
+    expect(completionLog).toHaveBeenCalledWith(
+      "Personal Shared Cloud attempt completed",
+      expect.objectContaining({
+        traceId: "11111111-1111-4111-8111-111111111111",
+        attempt: 1,
+        maxAttempts: 3,
+        status: 200,
+        retryable: false,
+        retryDelayMs: null,
+        cloudServerTiming: "account;dur=5.2, shared;dur=17.8",
+      }),
+    );
+    expect(completionLog).toHaveBeenCalledWith(
+      "Personal Eliza connector message completed",
+      expect.objectContaining({
+        project: "eliza-app",
+        platform: "telegram",
+        messageId: "update-personal-1",
+        traceId: "11111111-1111-4111-8111-111111111111",
+        providerToGatewayMs: expect.any(Number),
+        cloudMs: expect.any(Number),
+        cloudAttempts: 1,
+        cloudServerTiming: "account;dur=5.2, shared;dur=17.8",
+        egressMs: expect.any(Number),
+        totalMs: expect.any(Number),
+      }),
+    );
+  });
+
+  test("correlates every retry and preserves prior Cloud timing", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const traceId = "22222222-2222-4222-8222-222222222222";
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "update-attempt-trace",
+      chatId: "chat-1",
+      chatType: "private",
+      senderId: "123456789",
+      senderName: "Ada",
+      text: "trace this turn",
+      providerSentAtMs: Date.now() - 1_000,
+      rawPayload: {},
+    };
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      getDedupeScope: () => "scope",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator: mock(async () => undefined),
+      sendReply: mock(async () => undefined),
+    };
+    const redis = new MemoryRedis();
+    const infoLog = spyOn(logger, "info").mockImplementation(() => undefined);
+    const warnLog = spyOn(logger, "warn").mockImplementation(() => undefined);
+    const forwardedTraceIds: Array<string | null> = [];
+    let attempt = 0;
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        !request.url.endsWith(
+          "/api/internal/eliza-app/personal-shared/messages",
+        )
+      ) {
+        throw new Error(`unexpected request: ${request.url}`);
+      }
+      forwardedTraceIds.push(request.headers.get("x-eliza-trace-id"));
+      attempt += 1;
+      if (attempt === 1) {
+        return new Response("cold failure", {
+          status: 503,
+          headers: {
+            "Retry-After": "0",
+            "Server-Timing": "failed_worker;dur=1234",
+            "X-Eliza-Failure-Stage": "shared_runtime",
+            "X-Eliza-Failure-Name": "TypeError",
+          },
+        });
+      }
+      return Response.json(
+        { data: { reply: "retried successfully" } },
+        { headers: { "Server-Timing": "account;dur=4, shared;dur=20" } },
+      );
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/telegram", {
+        method: "POST",
+        headers: { "X-Eliza-Trace-Id": traceId },
+        body: "{}",
+      }),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    expect(forwardedTraceIds).toEqual([traceId, traceId]);
+    expect(warnLog).toHaveBeenCalledWith(
+      "Personal Shared Cloud attempt failed",
+      expect.objectContaining({
+        traceId,
+        attempt: 1,
+        status: 503,
+        retryable: true,
+        retryReason: "status",
+        retryAfterSeconds: 0,
+        retryDelayMs: 0,
+        cloudServerTiming: "failed_worker;dur=1234",
+        cloudFailureStage: "shared_runtime",
+        cloudFailureName: "TypeError",
+      }),
+    );
+    expect(infoLog).toHaveBeenCalledWith(
+      "Personal Shared Cloud attempt completed",
+      expect.objectContaining({
+        traceId,
+        attempt: 2,
+        status: 200,
+        retryable: false,
+        retryDelayMs: null,
+        cloudServerTiming: "account;dur=4, shared;dur=20",
+      }),
+    );
+    expect(infoLog).toHaveBeenCalledWith(
+      "Personal Eliza connector message completed",
+      expect.objectContaining({
+        traceId,
+        providerToGatewayMs: expect.any(Number),
+        cloudAttempts: 2,
+      }),
     );
   });
 
@@ -678,6 +873,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(adapter.replies).toEqual(["agent reply: container is running"]);
     expect(personalBody).toEqual({
       platform: "twilio",
+      project: "eliza-app",
       phoneNumber: "+15551234567",
       messageId: "twilio:eliza-app:SM_linked_1",
       message: "Are you running?",
@@ -801,6 +997,7 @@ describe("gateway webhook handler e2e routing", () => {
     ]);
     expect(sharedBody).toMatchObject({
       platform: "twilio",
+      project: "eliza-app",
       phoneNumber: "+15551234567",
       messageId: "twilio:eliza-app:SM_provisioning_1",
     });

@@ -83,7 +83,7 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
   ],
 }));
 mock.module("@/lib/services/org-rate-limits", () => ({
-  getOrgTier: async (orgId: string) => {
+  readOrgTierFromSources: async (orgId: string) => {
     seenOrgIds.push(orgId);
     return { completionsRpm: 60, embeddingsRpm: 120 };
   },

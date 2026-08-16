@@ -164,6 +164,18 @@ describe("GET /api/channel-topics/search (#8927)", () => {
 		expect((res.body as { count: number }).count).toBe(1);
 	});
 
+	it("falls back to the default limit for a partially numeric value", async () => {
+		const searchTopics = vi.fn(() => HITS);
+		const res = makeRes();
+		await CHANNEL_TOPICS_SEARCH_ROUTE.handler?.(
+			{ query: { q: "stripe", limit: "5junk" } } as never,
+			res as never,
+			runtimeWith({ searchTopics }),
+		);
+		expect(res.code).toBe(200);
+		expect(searchTopics).toHaveBeenCalledWith("stripe", 20);
+	});
+
 	it("returns 400 when q is missing", async () => {
 		const res = makeRes();
 		await CHANNEL_TOPICS_SEARCH_ROUTE.handler?.(

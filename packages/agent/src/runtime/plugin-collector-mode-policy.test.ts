@@ -88,6 +88,58 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
+  it("keeps local inference available for unsigned Cloud text intent", () => {
+    const config: ElizaConfig = {
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
+  });
+
+  it("lets a usable env credential make Cloud the exclusive text provider", () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "cloud-test";
+    const config: ElizaConfig = {
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+  });
+
+  it.each(["[REDACTED]", "vault://providers.elizacloud.api-key"])(
+    "does not treat %s as a serving credential",
+    (unresolvedCredential) => {
+      process.env.ELIZAOS_CLOUD_API_KEY = unresolvedCredential;
+      const config: ElizaConfig = {
+        serviceRouting: {
+          llmText: {
+            backend: "elizacloud",
+            transport: "cloud-proxy",
+          },
+        },
+      } as ElizaConfig;
+
+      const names = collectPluginNames(config);
+
+      expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
+    },
+  );
+
   it("keeps a direct Cerebras text provider beside Cloud capabilities", () => {
     process.env.CEREBRAS_API_KEY = "csk-test";
     process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";

@@ -9,6 +9,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 
 // This proof owns its DB: force an isolated in-memory PGlite regardless of the
 // ambient DATABASE_URL / TEST_DATABASE_URL the CI lane exports. resolveDatabaseUrl
@@ -208,6 +209,62 @@ describe("App config backup/restore", () => {
         generatedAt: "2026-07-01T00:00:00.000Z",
       },
     ]);
+  });
+
+  test("export rejects a non-finite value from either monetization field", async () => {
+    if (!pgliteReady) return;
+    const { orgId, userId } = await seed();
+    const { app: source } = await appsService.create({
+      name: "Corrupt Monetization App",
+      organization_id: orgId,
+      created_by_user_id: userId,
+      app_url: "https://corrupt.example.com",
+    });
+
+    await dbWrite
+      .update(apps)
+      .set({ inference_markup_percentage: Number.NaN })
+      .where(eq(apps.id, source.id));
+    let corrupt = await appsService.getById(source.id);
+    await expect(appBackupService.exportApp(corrupt!)).rejects.toThrow(
+      /inference_markup_percentage/,
+    );
+
+    const { app: purchaseShareSource } = await appsService.create({
+      name: "Corrupt Purchase Share App",
+      organization_id: orgId,
+      created_by_user_id: userId,
+      app_url: "https://corrupt-share.example.com",
+    });
+    await dbWrite
+      .update(apps)
+      .set({ purchase_share_percentage: Number.NaN })
+      .where(eq(apps.id, purchaseShareSource.id));
+    corrupt = await appsService.getById(purchaseShareSource.id);
+    await expect(appBackupService.exportApp(corrupt!)).rejects.toThrow(/purchase_share_percentage/);
+  });
+
+  test("export preserves the distinct monetization range boundaries", async () => {
+    if (!pgliteReady) return;
+    const { orgId, userId } = await seed();
+    const { app: source } = await appsService.create({
+      name: "Boundary Monetization App",
+      organization_id: orgId,
+      created_by_user_id: userId,
+      app_url: "https://boundary.example.com",
+    });
+
+    await dbWrite
+      .update(apps)
+      .set({ inference_markup_percentage: 1000, purchase_share_percentage: 100 })
+      .where(eq(apps.id, source.id));
+    const boundary = await appsService.getById(source.id);
+    const backup = await appBackupService.exportApp(boundary!);
+
+    expect(backup.monetization).toMatchObject({
+      inference_markup_percentage: 1000,
+      purchase_share_percentage: 100,
+    });
   });
 
   test("restore rejects an unsupported backup version", async () => {

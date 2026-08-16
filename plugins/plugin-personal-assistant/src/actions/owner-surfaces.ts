@@ -19,6 +19,7 @@ import type {
 import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
+import { isOwnerReminderNonCommandContext } from "../lifeops/reminders/direct-routing.js";
 import { runBookTravelHandler } from "./book-travel.js";
 import { createOwnerHealthAction, runHealthHandler } from "./health.js";
 import { runSchedulingNegotiationHandler } from "./lib/scheduling-handler.js";
@@ -231,6 +232,27 @@ function makeOwnerLifeAction(args: {
     handler: async (runtime, message, state, options, callback) => {
       const params = readParameters(options);
       const action = normalizeOwnerActionFromAllowed(options, allowedActions);
+      const messageText =
+        typeof message.content.text === "string" ? message.content.text : "";
+      if (
+        args.name === "OWNER_REMINDERS" &&
+        (action === undefined || action === "create") &&
+        isOwnerReminderNonCommandContext(messageText)
+      ) {
+        const text =
+          "I didn't create a reminder because that wasn't an unambiguous request to remind you.";
+        return {
+          success: true,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          data: {
+            outcome: "no_action",
+            reason: "REMINDER_CREATE_CONTEXT_REJECTED",
+          },
+          turnComplete: true,
+        };
+      }
       const merged = {
         ...params,
         // Pinned, not defaulted: a planner-supplied kind must not flip the

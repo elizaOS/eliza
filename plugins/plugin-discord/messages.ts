@@ -70,7 +70,10 @@ import {
 	sweepExpiredCoordinationSlots,
 	verifySpeakerLease,
 } from "./group-coordination";
-import { buildDiscordWorldMetadata } from "./identity";
+import {
+	buildDiscordWorldMetadata,
+	isAliasedDiscordEntityId,
+} from "./identity";
 import { formatInboundEnvelope } from "./inbound-envelope";
 import { buildDiscordReplyPayload } from "./interactions";
 import {
@@ -1609,12 +1612,22 @@ export class MessageManager {
 			}
 			inboundMemoryId = newMessage.id;
 
+			// Owner-aliased authors (ELIZA_DISCORD_OWNER_USER_IDS_JSON) resolve to
+			// the canonical owner entity while the wire author is someone else — a
+			// webhook or a deliberate alias account. Attaching that author's
+			// name/userName/id here rewrote the canonical entity's identity record
+			// to whichever alias spoke last, so identity fields are attached only
+			// when the entity id actually derives from this author.
+			const aliasedAuthor = isAliasedDiscordEntityId(
+				this.runtime,
+				message.author.id,
+				newMessage.entityId,
+			);
 			await this.runtime.ensureConnection({
 				entityId: newMessage.entityId,
 				roomId,
 				roomName,
-				userName,
-				name,
+				...(aliasedAuthor ? {} : { userName, name }),
 				source: "discord",
 				channelId: message.channel.id,
 				// Convert Discord snowflake to UUID (see service.ts header for why stringToUuid not asUUID)
@@ -1624,8 +1637,9 @@ export class MessageManager {
 				type,
 				worldId,
 				worldName: message.guild?.name,
-				// Preserve the raw Discord user id in source metadata for role and allowlist checks.
-				userId: message.author.id as UUID,
+				// Preserve the raw Discord user id in source metadata for role and
+				// allowlist checks — but only when it is the entity's own id.
+				...(aliasedAuthor ? {} : { userId: message.author.id as UUID }),
 				metadata: {
 					...buildDiscordWorldMetadata(
 						this.runtime,

@@ -12,7 +12,7 @@
 import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core/edge";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
-import { parseLocalHHMM, resolveLocalHHMMToIso } from "./local-time.js";
+import { InvalidLocalTimeError, resolveLocalHHMMToIso } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
   OwnerFactsView,
@@ -20,6 +20,7 @@ import type {
   ScheduledTaskStatus,
   ScheduledTaskTrigger,
 } from "./types.js";
+import { resolveOwnerWindowBoundsMinutes } from "./window-bounds.js";
 
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
@@ -79,25 +80,32 @@ function localParts(
   hour: number;
   minute: number;
 } {
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  const parts = formatter.formatToParts(date);
-  const read = (type: string): number =>
-    Number(parts.find((part) => part.type === type)?.value ?? 0);
-  return {
-    year: read("year"),
-    month: read("month"),
-    day: read("day"),
-    hour: read("hour") % 24,
-    minute: read("minute"),
-  };
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(date);
+    const read = (type: string): number =>
+      Number(parts.find((part) => part.type === type)?.value ?? 0);
+    return {
+      year: read("year"),
+      month: read("month"),
+      day: read("day"),
+      hour: read("hour") % 24,
+      minute: read("minute"),
+    };
+  } catch (error) {
+    // error-policy:J2 normalize Intl's implementation-specific RangeError so
+    // due evaluation and next-fire indexing reject invalid zones identically.
+    if (error instanceof InvalidLocalTimeError) throw error;
+    throw new InvalidLocalTimeError("invalid_time_zone", undefined, timeZone);
+  }
 }
 
 function localDateKey(date: Date, timeZone: string): string {
@@ -316,12 +324,8 @@ function windowBoundsMinutes(
   windowKey: string,
   ownerFacts: OwnerFactsView,
 ): Array<{ name: string; start: number; end: number }> {
-  const morningStart =
-    parseLocalHHMM(ownerFacts.morningWindow?.start) ?? 6 * 60;
-  const morningEnd = parseLocalHHMM(ownerFacts.morningWindow?.end) ?? 11 * 60;
-  const eveningStart =
-    parseLocalHHMM(ownerFacts.eveningWindow?.start) ?? 18 * 60;
-  const eveningEnd = parseLocalHHMM(ownerFacts.eveningWindow?.end) ?? 22 * 60;
+  const { morningStart, morningEnd, eveningStart, eveningEnd } =
+    resolveOwnerWindowBoundsMinutes(ownerFacts);
   const afternoonStart = morningEnd;
   const afternoonEnd = eveningStart;
   const windows: Record<
@@ -360,7 +364,7 @@ function windowBoundsMinutes(
  * the date component of the key rolls over while the segment is still active
  * (#12030). Returns `null` when no segment of the window is active at `at`.
  */
-function windowOccurrenceKey(
+export function windowOccurrenceKey(
   at: Date,
   timeZone: string,
   windowKey: string,

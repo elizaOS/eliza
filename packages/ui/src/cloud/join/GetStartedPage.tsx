@@ -18,7 +18,7 @@
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../components/ui/button";
 import { syncStewardSessionCookie } from "../public-pages/lib/steward-session";
 import { useCloudT } from "../shell/CloudI18nProvider";
@@ -57,12 +57,17 @@ function describeContinuationError(err: unknown): string {
 
 export default function GetStartedPage(): React.JSX.Element {
   const t = useCloudT();
+  const navigate = useNavigate();
   const session = useJoinSessionAuth();
   const [searchParams] = useSearchParams();
   const [phase, setPhase] = useState<GetStartedPhase>("checking");
   const [error, setError] = useState<string | null>(null);
   const [platformIdentity, setPlatformIdentity] =
     useState<MessagingContinuationPreview | null>(null);
+  const [
+    telegramClaimPersistenceRecovered,
+    setTelegramClaimPersistenceRecovered,
+  ] = useState(false);
   // StrictMode double-mount guard: the redemption POST must run once.
   const startedRef = useRef(false);
 
@@ -100,8 +105,26 @@ export default function GetStartedPage(): React.JSX.Element {
     session.ready &&
       !session.authenticated &&
       urlContinuation?.purpose === TELEGRAM_ACCOUNT_CLAIM_PURPOSE &&
-      !urlContinuation.persisted,
+      !urlContinuation.persisted &&
+      !telegramClaimPersistenceRecovered,
   );
+
+  const retryTelegramClaimPersistence = useCallback(() => {
+    if (
+      !urlContinuation ||
+      urlContinuation.purpose !== TELEGRAM_ACCOUNT_CLAIM_PURPOSE
+    ) {
+      return;
+    }
+    if (
+      storePendingOnboardingSession(
+        urlContinuation.token,
+        TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+      )
+    ) {
+      setTelegramClaimPersistenceRecovered(true);
+    }
+  }, [urlContinuation]);
 
   const claimTelegramAccount = useCallback(async (continuation: string) => {
     setPhase("linking");
@@ -259,7 +282,7 @@ export default function GetStartedPage(): React.JSX.Element {
             {platformIdentity?.returnUrl ? (
               <Button
                 asChild
-                className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
+                className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
               >
                 <a href={platformIdentity.returnUrl}>
                   Back to {messagingPlatformLabel(platformIdentity.platform)}
@@ -269,8 +292,8 @@ export default function GetStartedPage(): React.JSX.Element {
             <Button
               variant="ghost"
               type="button"
-              onClick={() => window.location.assign("/join")}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
+              onClick={() => navigate("/join")}
+              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
             >
               {t("cloud.getStarted.openChat", {
                 defaultValue: "Or chat here instead",
@@ -290,7 +313,7 @@ export default function GetStartedPage(): React.JSX.Element {
               type="button"
               onClick={() => {
                 if (telegramClaimPersistenceBlocked) {
-                  window.location.reload();
+                  retryTelegramClaimPersistence();
                   return;
                 }
                 if (telegramClaimToken) {
@@ -302,7 +325,7 @@ export default function GetStartedPage(): React.JSX.Element {
                 if (platformIdentity) void redeem(token);
                 else void preview(token);
               }}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
+              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
             >
               {t("cloud.getStarted.retry", { defaultValue: "Try again" })}
             </Button>

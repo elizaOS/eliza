@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium } from "playwright";
+import { FILE_FIXTURE_BOOTSTRAP } from "../../../testing/e2e-runner/fixture-bundle.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-notifications");
@@ -141,7 +142,7 @@ const html = `<!doctype html><html><head><meta charset="utf-8">
     repeating-linear-gradient(120deg, rgba(255,255,255,0.06) 0 1px, transparent 1px 24px),
     repeating-linear-gradient(30deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 24px);
   background-attachment:fixed;}</style>
-<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
+<script>${FILE_FIXTURE_BOOTSTRAP}</script>
 </head><body><div id="root"></div><script>${js}</script></body></html>`;
 const htmlPath = join(outDir, "notifications.html");
 await writeFile(htmlPath, html);

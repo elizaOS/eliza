@@ -603,6 +603,18 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		).toEqual({ names: ["VIEWS"], kind: "view-capability" });
 	});
 
+	it.each([
+		["dismiss the active view", "view-surface"],
+		["dismiss my settings", "view-capability"],
+	] as const)(
+		"preserves SS operation tokens for %s",
+		(message: string, kind: "view-surface" | "view-capability") => {
+			expect(
+				inferDirectCurrentRequestCandidateInference([viewsAction], message),
+			).toEqual({ names: ["VIEWS"], kind });
+		},
+	);
+
 	it("routes recurring-habit commitments to the owner routine surface, never VIEWS (#17028)", () => {
 		const routinesAction: Pick<Action, "name" | "similes" | "tags"> = {
 			name: "OWNER_ROUTINES",
@@ -1179,5 +1191,271 @@ describe("cloud-apps surface request inference", () => {
 				"settings",
 			),
 		).toEqual(["VIEWS"]);
+	});
+});
+
+describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () => {
+	const viewsAction = {
+		name: "VIEWS",
+		similes: ["OPEN_VIEW"],
+		tags: ["views", "ui", "finances", "app"],
+	};
+
+	it("'what is my budget?' routes to the finances reader, never VIEWS (F3, tj-a5f72b6aa95253)", () => {
+		const finances = { name: "OWNER_FINANCES", similes: [], tags: [] };
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, finances],
+				"what is my budget?",
+			),
+		).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+		// No reader registered → no candidate, never the view catalog.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction],
+				"what is my budget?",
+			),
+		).toEqual({ names: [], kind: null });
+	});
+
+	it("routes scheduled-admin nouns to their owner with the full action set", () => {
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		const actions = [
+			viewsAction,
+			appAction,
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_ALARMS", similes: [], tags: [] },
+			{ name: "OWNER_ROUTINES", similes: [], tags: [] },
+			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+		];
+		const cases = [
+			[
+				"snooze the water the ficus reminder until 6pm sunday",
+				"OWNER_REMINDERS",
+			],
+			["reschedule my dentist reminder to friday", "OWNER_REMINDERS"],
+			["snooze my 6am alarm", "OWNER_ALARMS"],
+			["postpone my morning routine", "OWNER_ROUTINES"],
+			["skip today's check-in", "SCHEDULED_TASKS"],
+			["reschedule my follow-up", "SCHEDULED_TASKS"],
+			["delete check-in task st_checkin_123", "SCHEDULED_TASKS"],
+			["delete follow-up task st_followup_123", "SCHEDULED_TASKS"],
+			["reschedule the scheduled task", "SCHEDULED_TASKS"],
+			["delete scheduled task st_custom_123", "SCHEDULED_TASKS"],
+			["snooze the task until tomorrow", "SCHEDULED_TASKS"],
+		] as const;
+
+		for (const [message, expected] of cases) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(actions, message),
+			).toEqual({ names: [expected], kind: "owner-scheduled-admin" });
+		}
+	});
+
+	it("never falls back to reminders when the scheduled-admin owner is absent", () => {
+		const actions = [
+			viewsAction,
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_ROUTINES", similes: [], tags: [] },
+			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+		];
+		expect(
+			inferDirectCurrentRequestCandidateInference(actions, "snooze my alarm"),
+		).toEqual({ names: [], kind: null });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				actions.filter((action) => action.name !== "SCHEDULED_TASKS"),
+				"skip today's check-in",
+			),
+		).toEqual({ names: [], kind: null });
+	});
+
+	it("requires Unicode-complete admin verbs and nouns while allowing punctuation", () => {
+		const actions = [
+			{ name: "OWNER_ALARMS", similes: [], tags: [] },
+			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+		];
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				actions,
+				"snooze—my 6am alarm!",
+			),
+		).toEqual({ names: ["OWNER_ALARMS"], kind: "owner-scheduled-admin" });
+		for (const message of [
+			"skipé my alarm",
+			"snooze my alarmé",
+			"snooze my alarm計画",
+			"snooze my alarm\u0301",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(actions, message),
+			).toEqual({ names: [], kind: null });
+		}
+	});
+
+	it("keeps ambiguous task skips and nounless snooze requests unhinted", () => {
+		const actions = [
+			viewsAction,
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+		];
+		for (const message of ["skip this task", "i want to snooze for a bit"]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(actions, message),
+			).toEqual({ names: [], kind: null });
+		}
+	});
+
+	it("owner-item deletes hint the owning umbrella (F31, tj-f02205ae366226)", () => {
+		const reminders = { name: "OWNER_REMINDERS", similes: [], tags: [] };
+		const alarms = { name: "OWNER_ALARMS", similes: [], tags: [] };
+		const todos = { name: "OWNER_TODOS", similes: [], tags: [] };
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		const registered = [viewsAction, appAction, reminders, alarms, todos];
+		// The live F31 shapes: exact-name deletes that Stage-1 classified as
+		// simple chat, producing a fictional "can't delete reminders here — dm
+		// me" surface refusal with no tool exposed.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"delete the reminder named water the ficus",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"delete both water the ficus reminders",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"cancel the call marco reminder",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"remove my dentist alarm",
+			),
+		).toEqual({ names: ["OWNER_ALARMS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"delete the todo about sandpaper",
+			),
+		).toEqual({ names: ["OWNER_TODOS"], kind: "owner-scheduled-admin" });
+		// Delete verb with no owner surface registered: yield nothing, never
+		// the view/app overlap.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction],
+				"delete the reminder named water the ficus",
+			),
+		).toEqual({ names: [], kind: null });
+		// Surface-noun asks stay with navigation, and explanation requests stay
+		// chat.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"close the reminders tab",
+			).kind,
+		).not.toBe("owner-scheduled-admin");
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"how do i delete a reminder",
+			).kind,
+		).not.toBe("owner-scheduled-admin");
+	});
+
+	it("work-thread lifecycle asks hint the work-thread surface (F27, tj-ee16a14fea597e)", () => {
+		const workThread = { name: "WORK_THREAD", similes: [], tags: [] };
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, workThread],
+				"start a work thread: plan the garage cleanout",
+			),
+		).toEqual({ names: ["WORK_THREAD"], kind: "owner-work-thread" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, workThread],
+				"resume the kitchen reno work thread",
+			),
+		).toEqual({ names: ["WORK_THREAD"], kind: "owner-work-thread" });
+		// No work-thread surface registered: yield nothing, never the view/app
+		// overlap.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction],
+				"start a work thread: plan the garage cleanout",
+			),
+		).toEqual({ names: [], kind: null });
+		// Explanations and bare mentions stay chat.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, workThread],
+				"what is a work thread",
+			).kind,
+		).not.toBe("owner-work-thread");
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, workThread],
+				"the work thread idea sounds nice",
+			).kind,
+		).not.toBe("owner-work-thread");
+	});
+	it("media-generation asks hint the generator (F35, tj-fcf8c1c21be91f)", () => {
+		const generateMedia = { name: "GENERATE_MEDIA", similes: [], tags: [] };
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, generateMedia],
+				"make me a pixel-art castle image, 64x64 retro game vibe",
+			),
+		).toEqual({ names: ["GENERATE_MEDIA"], kind: "media-generation" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, generateMedia],
+				"generate a picture of a lighthouse at dusk",
+			),
+		).toEqual({ names: ["GENERATE_MEDIA"], kind: "media-generation" });
+		// No generator registered: no candidate, honest chat answer allowed.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction],
+				"generate a picture of a lighthouse at dusk",
+			),
+		).toEqual({ names: [], kind: null });
+		// Generation verbs without a visual-artifact noun never match.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, generateMedia],
+				"create a todo: buy sandpaper",
+			).kind,
+		).not.toBe("media-generation");
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, generateMedia],
+				"draw up a plan for the garage",
+			).kind,
+		).not.toBe("media-generation");
 	});
 });

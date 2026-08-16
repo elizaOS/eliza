@@ -1,8 +1,11 @@
 name: Monetized Loop Nightly
 
-# Scheduled keyless coverage for the cloud monetization lifecycle. The same
-# specs run in the PR cloud lane; this schedule catches dependency and service
-# drift even when no cloud-owned path changes.
+# Scheduled keyless coverage for the full packages/cloud/e2e Playwright suite
+# (#18474): monetization lifecycle plus every other stack spec. The PR cloud
+# lane (cloud-tests.yml stack-e2e-tests) runs only the shared-to-dedicated
+# funnel subset for wall-time reasons; this schedule is where the complete
+# suite executes, and it also catches dependency and service drift even when
+# no cloud-owned path changes.
 on:
   schedule:
     - cron: "30 7 * * *"
@@ -19,7 +22,7 @@ jobs:
   monetized-loop:
     name: Monetized loop (mock stack)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       NODE_ENV: test
       NODE_OPTIONS: --max-old-space-size=4096
@@ -44,11 +47,11 @@ jobs:
       - name: Install Playwright browsers
         run: .github/scripts/install-playwright-browsers.sh chromium
 
-      - name: Run monetization lifecycle
-        run: >-
-          bun run cloud:e2e --
-          monetized-full-loop.spec.ts
-          monetized-mock-llm-journey.spec.ts
+      # The full suite (33 specs) measured ~12 minutes of Playwright wall time
+      # locally on top of the linked-workspace build; the 30-minute historical
+      # budget for two specs becomes 60 for the whole lane.
+      - name: Run full cloud stack e2e suite
+        run: bun run cloud:e2e
 
       - name: Upload Playwright evidence
         if: always()

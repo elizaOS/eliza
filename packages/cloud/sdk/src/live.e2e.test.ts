@@ -70,9 +70,10 @@ const profileWriteDescribe =
   liveEnabled && apiKey && profileWriteEnabled && destructiveEnabled
     ? describe
     : describe.skip;
-// Live public endpoints regularly cross Vitest's 5s default on hosted CI.
-// This is a timeout budget for real network work, not an artificial delay.
-const LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS = 15_000;
+// Live public endpoints regularly approach 15s during a staging rollout on
+// hosted CI. This remains a bounded timeout for real network work, not an
+// artificial delay or a soft-fail path.
+const LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS = 30_000;
 const openApiIt =
   apiKey || process.env.ELIZA_CLOUD_SDK_LIVE_OPENAPI === "1" ? it : it.skip;
 

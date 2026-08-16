@@ -2,9 +2,10 @@
  * Selectable provider control used by ProviderSwitcher, in two shapes: the
  * compact `pill` chip for long provider lists, and the full-width `tile` row
  * (icon + label + one-line description + status) for the few top-level
- * choices — Cloud vs Local — where each option earns an explanation. Agent-
- * addressable via `useAgentElement`; selection is fully controlled by the
- * parent.
+ * choices — Cloud vs Local — where each option earns an explanation. `current`
+ * is the provider serving inference (orange + Active). `selected` is only
+ * which panel is open; it must not reuse the serving chrome. Agent-addressable
+ * via `useAgentElement`; selection is fully controlled by the parent.
  */
 
 import { CheckCircle2 } from "lucide-react";
@@ -54,13 +55,26 @@ export function ProviderCard({
   variant = "pill",
 }: ProviderCardProps) {
   const stateLabel = current ? "Active" : status.label;
+  // Serving (current) owns the orange fill. An open-but-not-serving tile is
+  // only inspected — a quiet border, never the same accent chrome, so Cloud
+  // can stay expanded without looking like it is answering chat (#20045).
+  const tileChrome = current
+    ? "border-accent/40 bg-accent/8 hover:bg-accent/16"
+    : selected
+      ? "border-txt/20 bg-card hover:bg-surface"
+      : "border-border bg-card hover:bg-surface";
+  const iconChrome = current
+    ? "text-accent"
+    : selected
+      ? "text-txt"
+      : "text-muted";
 
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `provider-${id}`,
     role: "card",
     label,
     group: "provider-cards",
-    status: selected ? "selected" : current ? "current" : undefined,
+    status: current ? "current" : selected ? "selected" : undefined,
     onActivate: () => onSelect(id),
   });
 
@@ -69,25 +83,19 @@ export function ProviderCard({
       <Button
         ref={ref}
         variant="ghost"
-        aria-current={selected ? "true" : undefined}
+        aria-current={current ? "true" : undefined}
+        aria-pressed={selected}
         aria-label={`${label}, ${stateLabel}`}
         onClick={() => onSelect(id)}
         title={`${label} · ${stateLabel}`}
         {...agentProps}
         className={cn(
           "h-auto w-full items-start justify-start gap-3 rounded-md border p-3 text-left transition-colors",
-          selected
-            ? "border-accent/50 bg-accent/12"
-            : current
-              ? "border-accent/40 bg-accent/8 hover:bg-accent/12"
-              : "border-border bg-card hover:bg-surface",
+          tileChrome,
         )}
       >
         <Icon
-          className={cn(
-            "mt-0.5 h-5 w-5 shrink-0",
-            selected || current ? "text-accent" : "text-muted",
-          )}
+          className={cn("mt-0.5 h-5 w-5 shrink-0", iconChrome)}
           aria-hidden
         />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -127,27 +135,22 @@ export function ProviderCard({
     <Button
       ref={ref}
       variant="ghost"
-      aria-current={selected ? "true" : undefined}
+      aria-current={current ? "true" : undefined}
+      aria-pressed={selected}
       aria-label={`${label}, ${stateLabel}`}
       onClick={() => onSelect(id)}
       title={`${label} · ${stateLabel}`}
       {...agentProps}
       className={cn(
-        "min-h-[2.25rem] max-w-full gap-2 rounded-full border px-3 py-1.5 text-left text-sm transition-colors   ",
-        selected
-          ? "border-accent/50 bg-accent/12 text-accent"
-          : current
-            ? "border-accent/40 bg-accent/8 text-txt-strong hover:bg-accent/12"
+        "min-h-[2.25rem] max-w-full gap-2 rounded-full border px-3 py-1.5 text-left text-sm transition-colors",
+        current
+          ? "border-accent/40 bg-accent/8 text-txt-strong hover:bg-accent/16"
+          : selected
+            ? "border-txt/20 bg-card text-txt hover:bg-surface"
             : "border-border bg-card text-txt hover:bg-surface",
       )}
     >
-      <Icon
-        className={cn(
-          "h-4 w-4 shrink-0",
-          selected ? "text-accent" : current ? "text-accent" : "text-muted",
-        )}
-        aria-hidden
-      />
+      <Icon className={cn("h-4 w-4 shrink-0", iconChrome)} aria-hidden />
       <span className="truncate font-medium">{label}</span>
       {current ? (
         <CheckCircle2

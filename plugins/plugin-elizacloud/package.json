@@ -137,7 +137,7 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test": "vitest run",
+    "test": "vitest run && bun test __tests__/dist-packaging.test.ts",
     "test:unit": "vitest run __tests__/unit/",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-elizacloud -- bun run build:unlocked",

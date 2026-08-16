@@ -17,10 +17,12 @@ import {
   type Room,
   type UUID,
 } from "@elizaos/core";
+import type { ScheduledTaskDispatchRecord } from "@elizaos/plugin-scheduling";
 import { describe, expect, it, vi } from "vitest";
 import {
   bindScheduledTaskToInboundChat,
   isInternalMessageSource,
+  revalidateScheduledTaskChatDeliveryBinding,
 } from "./delivery-binding";
 
 const INTERNAL_SENTINELS = Object.values(MESSAGE_SOURCES);
@@ -146,6 +148,45 @@ describe("bindScheduledTaskToInboundChat provenance guards", () => {
         agentEntityId: AGENT,
       },
     });
+    expect(binding?.audience.membershipVersion).toBe(
+      JSON.stringify([OWNER, AGENT]),
+    );
+    expect(binding?.audience.membershipVersion).not.toContain("\u0000");
+  });
+
+  it("revalidates legacy NUL-delimited membership from compatible stores", async () => {
+    const runtime = connectorRuntime({ roomSource: "discord" });
+    const message = await attestedMessage(runtime, "discord");
+    const binding = await bindScheduledTaskToInboundChat(runtime, message);
+    expect(binding).not.toBeNull();
+    if (!binding) {
+      throw new Error("Expected an attested chat delivery binding");
+    }
+    const legacyBinding = {
+      ...binding,
+      audience: {
+        ...binding.audience,
+        membershipVersion: [OWNER, AGENT].sort().join("\u0000"),
+      },
+    };
+    const record = {
+      taskId: "legacy-membership",
+      kind: "reminder",
+      firedAtIso: "2026-08-16T00:00:00.000Z",
+      channelKey: "discord",
+      intensity: "normal",
+      promptInstructions: "Deliver the reminder.",
+      ownerVisible: true,
+      output: {
+        destination: "channel",
+        target: `discord:${CHANNEL}`,
+      },
+      metadata: { chatDeliveryBinding: legacyBinding },
+    } as ScheduledTaskDispatchRecord;
+
+    await expect(
+      revalidateScheduledTaskChatDeliveryBinding(runtime, record),
+    ).resolves.toMatchObject({ ok: true });
   });
 
   it.each(INTERNAL_SENTINELS)(

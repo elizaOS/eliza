@@ -651,6 +651,13 @@ test("automations overview empty state encourages creating tasks and workflows",
   await expect(page.getByRole("button", { name: "Workflows" })).toBeVisible();
   await expect(page.getByText("Nothing scheduled yet")).toBeVisible();
 
+  await page.getByRole("button", { name: "Workflows" }).click();
+  await expect(page.getByTestId("automations-empty-state")).toHaveAttribute(
+    "aria-label",
+    "No workflows",
+  );
+  await expect(page.getByText("No workflows")).toHaveClass(/sr-only/);
+
   await expect(
     page.getByRole("button", { name: "New automation" }),
   ).toBeVisible();

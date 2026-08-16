@@ -27,5 +27,12 @@
   },
   "devDependencies": {
     "bun-types": "*"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
   }
 }

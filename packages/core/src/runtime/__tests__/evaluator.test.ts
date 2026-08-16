@@ -475,6 +475,95 @@ df -h / /home
 		);
 	});
 
+	it("verified tool text overrides recovered prose — committed state is authoritative (F30)", async () => {
+		// Live fabrication (tj-e9bdfb8015bc11): OWNER_REMINDERS_REVIEW returned
+		// verified "water the ficus at 10am. then again at 5pm." and the
+		// unparseable evaluator prose invented conversation-history items
+		// ("your 20 pushups and the sandpaper run"). The verified
+		// do-not-paraphrase text must ship, not the prose.
+		const runtime = {
+			useModel: vi.fn(
+				async () =>
+					"your 20 pushups and the sandpaper run. you've got the dentist in two days.",
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "tool-1",
+							name: "OWNER_REMINDERS_REVIEW",
+							params: {},
+						},
+						result: {
+							success: true,
+							text: "water the ficus at 10am. then again at 5pm.",
+							userFacingText: "water the ficus at 10am. then again at 5pm.",
+							verifiedUserFacing: true,
+						},
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe(
+			"water the ficus at 10am. then again at 5pm.",
+		);
+		expect(result.messageToUser).not.toContain("pushups");
+	});
+
+	it("keeps prose recovery for tools without a verified-text claim", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => "The search found three articles about ficus care.",
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "tool-1", name: "WEB_SEARCH", params: {} },
+						result: { success: true, text: "3 results" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe(
+			"The search found three articles about ficus care.",
+		);
+	});
+
 	it("strips a trailing evaluator JSON envelope from recovered prose", async () => {
 		const runtime = {
 			useModel: vi.fn(
@@ -900,6 +989,26 @@ describe("native tool dialects never recover as the user-facing answer", () => {
 		);
 		expect(result.messageToUser ?? "").not.toContain("tool_call");
 		expect(result.messageToUser ?? "").not.toContain("arg_key");
+	});
+
+	it("does not launder pseudo-tag tool markup into a fabricated effect claim (matrix F38, tj-9129a432454364)", async () => {
+		// Live stage-7 shape: prose claiming the effect beside an UNEXECUTED
+		// `<NOTES_CREATE>{…}</NOTES_CREATE>` invocation. Recovering the prose
+		// would ship "saving note." while no note exists — the strip-and-send
+		// launder. The turn must stay on the replanning path instead.
+		const result = await runWithModelText(
+			'temp is 35°C. saving note.\n\n<NOTES_CREATE>\n{"title": "b50 paris wx", "content": "Paris temperature: 35°C"}\n</NOTES_CREATE>',
+		);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser ?? "").toBe("");
+	});
+
+	it("still recovers prose that merely quotes a short acronym tag", async () => {
+		const result = await runWithModelText(
+			"the <AI> tag in that template is just a label, not markup you need to escape.",
+		);
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser ?? "").toContain("<AI>");
 	});
 
 	it("does not deliver a standalone bare action name + JSON args block", async () => {

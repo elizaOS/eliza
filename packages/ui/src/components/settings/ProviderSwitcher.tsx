@@ -14,9 +14,11 @@ import {
   isSubscriptionProviderSelectionId,
 } from "../../providers";
 import { useAppSelectorShallow } from "../../state";
+import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { AccountManagementPanel } from "../accounts/AccountManagementPanel";
 import { ProvidersList } from "../local-inference/ProvidersList";
 import { RoutingMatrix } from "../local-inference/RoutingMatrix";
+import { IntelligenceServingSummary } from "./IntelligenceServingSummary";
 import { ModelConfigurationPanel } from "./ModelConfigurationPanel";
 import { ProviderCard } from "./ProviderCard";
 import { ApiKeyPanel, CloudPanel, LocalProviderPanel } from "./ProviderPanels";
@@ -35,6 +37,7 @@ import {
   resolveProviderIdForSwitch,
   useProviderSelection,
 } from "./useProviderSelection";
+import { useServingAxes } from "./useServingAxes";
 
 interface ProviderSwitcherProps {
   elizaCloudConnected?: boolean;
@@ -57,6 +60,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     pluginSaveSuccess: s.pluginSaveSuccess,
     loadPlugins: s.loadPlugins,
     handlePluginConfigSave: s.handlePluginConfigSave,
+    handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
     setActionNotice: s.setActionNotice,
   }));
   const t = app.t;
@@ -81,6 +85,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const handlePluginConfigSave =
     props.handlePluginConfigSave ?? app.handlePluginConfigSave;
   const setActionNotice = app.setActionNotice;
+  const handleInteractiveCloudLogin = app.handleInteractiveCloudLogin;
 
   const notifySelectionFailure = useCallback(
     (prefix: string, err: unknown) => {
@@ -102,40 +107,44 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const selection = useProviderSelection(
     availableProviderIds,
     notifySelectionFailure,
+    elizaCloudConnected,
   );
   const cloudModel = useCloudModelConfig(notifySelectionFailure);
   const bootstrap = useProviderBootstrap(selection, cloudModel);
 
-  const { apiProviderChoices, providerEntries } = useProviderEntries({
-    allAiProviders,
-    elizaCloudConnected,
-    cloudCallsDisabled: selection.cloudCallsDisabled,
-    isCloudSelected: selection.isCloudSelected,
-    resolvedSelectedId: selection.resolvedSelectedId,
-    subscriptionStatus: bootstrap.subscriptionStatus,
-    anthropicCliDetected: bootstrap.anthropicCliDetected,
-    t,
-  });
+  const { apiProviderChoices, providerEntries, servingLocalFallback } =
+    useProviderEntries({
+      allAiProviders,
+      elizaCloudConnected,
+      cloudCallsDisabled: selection.cloudCallsDisabled,
+      isCloudSelected: selection.isCloudSelected,
+      isCloudConfigured: selection.isCloudConfigured,
+      resolvedSelectedId: selection.resolvedSelectedId,
+      subscriptionStatus: bootstrap.subscriptionStatus,
+      anthropicCliDetected: bootstrap.anthropicCliDetected,
+      t,
+    });
 
   const { visibleProviderPanelId, resolvedSelectedId } = selection;
+
+  // The tiles below only answer "who computes chat replies?". Runtime is the
+  // other, independent axis — without it a hosted Cloud agent and a local
+  // agent on Cloud models are indistinguishable here.
+  const servingAxes = useServingAxes({
+    elizaCloudConnected,
+    isCloudSelected: selection.isCloudSelected,
+    cloudCallsDisabled: selection.cloudCallsDisabled,
+  });
 
   const activeEntry = useMemo(
     () => providerEntries.find((entry) => entry.current) ?? null,
     [providerEntries],
   );
 
-  // Pin the model-configuration panel's chat provider to the active
-  // intelligence selection when it unambiguously maps to a catalog provider.
-  // Subscription selections don't route chat and other BYOK providers have no
-  // curated catalog slice — those keep the free per-target choice.
-  const activeChatCatalogProvider =
-    resolvedSelectedId === "__cloud__"
-      ? "elizacloud"
-      : resolvedSelectedId === "cerebras"
-        ? "cerebras"
-        : resolvedSelectedId === "anthropic"
-          ? "claude-chat"
-          : undefined;
+  const activeChatCatalogProvider = resolveActiveChatCatalogProvider(
+    resolvedSelectedId,
+    elizaCloudConnected,
+  );
 
   const selectedPanelProvider = useMemo(() => {
     if (
@@ -156,6 +165,19 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       ?.label ??
     selectedPanelProvider?.name ??
     "";
+
+  const handleCloudSignIn = useCallback(() => {
+    // Keep the popup user-activation alive across the async login start.
+    claimCloudLoginWindow();
+    void handleInteractiveCloudLogin?.().catch((error: unknown) => {
+      // error-policy:J4 Login failed; keep Settings usable and show the notice.
+      setActionNotice?.(
+        error instanceof Error ? error.message : "Could not start Cloud login.",
+        "error",
+        5000,
+      );
+    });
+  }, [handleInteractiveCloudLogin, setActionNotice]);
 
   const onSwitchProvider = useCallback(
     (id: string) => {
@@ -221,10 +243,15 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   // setup is "pick one of two cards", not "decode a chip cloud".
   const intelligenceDescription = (entry: ProviderListEntry) =>
     entry.category === "cloud"
-      ? t("providerswitcher.cloudTileDescription", {
-          defaultValue:
-            "Managed models through your Eliza Cloud account. No setup — sign in and it works.",
-        })
+      ? elizaCloudConnected
+        ? t("providerswitcher.cloudTileDescription", {
+            defaultValue:
+              "Managed models through your Eliza Cloud account. No setup — sign in and it works.",
+          })
+        : t("providerswitcher.cloudTileUnsignedDescription", {
+            defaultValue:
+              "Sign in to use managed models. Chat replies use Local until then.",
+          })
       : t("providerswitcher.localTileDescription", {
           defaultValue:
             "Runs entirely on this device with the bundled local model. Private and works offline.",
@@ -237,10 +264,13 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           defaultValue: "Intelligence",
         })}
         description={t("providerswitcher.intelligenceGroupDescription", {
-          defaultValue: "Choose what powers your agent's replies.",
+          defaultValue:
+            "Agent runtime and chat inference are separate. The tiles below pick inference — the Active source is answering chat. Open a tile to inspect or switch.",
         })}
         bare
       >
+        <IntelligenceServingSummary axes={servingAxes} t={t} />
+
         {/* Subscription-active needs the honesty clarifier (it does NOT route
             chat); a Cloud/Local active state is already shown on its tile. */}
         {activeEntry && activeEntry.category === "subscription" ? (
@@ -269,15 +299,17 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             cloudCallsDisabled={selection.cloudCallsDisabled}
             routingModeSaving={selection.routingModeSaving}
             onSelectLocalOnly={() => void selection.handleSelectLocalOnly()}
+            servingFallback={Boolean(servingLocalFallback)}
           />
         ) : null}
 
         {visibleProviderPanelId === "__cloud__" ? (
           <CloudPanel
             cloudCallsDisabled={selection.cloudCallsDisabled}
-            isCloudSelected={selection.isCloudSelected}
+            isCloudSelected={selection.isCloudConfigured}
             routingModeSaving={selection.routingModeSaving}
             onSelectCloud={() => void selection.handleSelectCloud()}
+            onSignIn={handleCloudSignIn}
             elizaCloudConnected={elizaCloudConnected}
             largeModelOptions={cloudModel.largeModelOptions}
             cloudModelSchema={cloudModel.cloudModelSchema}
@@ -389,6 +421,26 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       </SettingsGroup>
     </SettingsStack>
   );
+}
+
+/**
+ * Catalog chat provider implied by the current intelligence selection.
+ * Cloud only pins when the account is actually connected — a cloud-proxy
+ * config without a signed-in session falls through to local inference and
+ * must not lock the model panel to Eliza Cloud / Gemma 4 31B (#20045).
+ *
+ * @internal Exported for testing only.
+ */
+export function resolveActiveChatCatalogProvider(
+  resolvedSelectedId: string | null,
+  elizaCloudConnected: boolean,
+): "elizacloud" | "cerebras" | "claude-chat" | undefined {
+  if (resolvedSelectedId === "__cloud__") {
+    return elizaCloudConnected ? "elizacloud" : undefined;
+  }
+  if (resolvedSelectedId === "cerebras") return "cerebras";
+  if (resolvedSelectedId === "anthropic") return "claude-chat";
+  return undefined;
 }
 
 /**

@@ -14,6 +14,7 @@ import { TrajectoryLimitExceeded } from "../limits";
 import {
 	__renderRoutingHintsBlockForTests,
 	actionResultToPlannerToolResult,
+	FAILED_TOOL_FALLBACK_MESSAGE,
 	PROGRESS_ONLY_ANSWER_REJECT,
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 	parsePlannerOutput,
@@ -2581,6 +2582,75 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("never ships an in-flight action claim as the failure-synthesis reply (matrix F40)", async () => {
+		// Live shape: the forced failure-aware synthesis pass answered with an
+		// imminent-action promise instead of a diagnosis. The synthesis is the
+		// turn's last model call, so "calling web search now." is a false claim
+		// and must degrade to the generic failed-step sentence.
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-1",
+							name: "SHELL",
+							arguments: { command: "curl https://stale.example.invalid" },
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-2",
+							name: "SHELL",
+							arguments: { command: "curl https://backup.example.com" },
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "calling web search now.",
+					toolCalls: [],
+				}),
+		};
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				text: "command_failed: DNS lookup failed",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				text: "backup source returned a result",
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "FINISH" as const,
+				thought: "The first lookup failed, but I forgot to include a reply.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "The backup source returned a result.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "SHELL", description: "Run a shell command." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(result.finalMessage).not.toContain("calling web search");
+	});
+
 	it("does not finish with terminal planner text after tool work when the evaluator asks to continue", async () => {
 		let plannerCallCount = 0;
 		const runtime = {
@@ -4446,5 +4516,84 @@ describe("tool-turn reply guarantee (#16935)", () => {
 			expect.objectContaining({ err: "provider 500" }),
 			expect.stringContaining("forced synthesis pass failed"),
 		);
+	});
+});
+
+describe("terminal-only tool surface short-circuit", () => {
+	const terminalOnlyTools = [
+		{ name: "REPLY", description: "Reply to the user." },
+		{ name: "IGNORE", description: "Ignore the message." },
+		{ name: "STOP", description: "Stop the conversation." },
+	];
+	const baseContext = {
+		id: "ctx",
+		staticPrefix: {
+			characterPrompt: { content: "agent_name: Eliza", stable: true },
+		},
+		events: [
+			{
+				id: "msg",
+				type: "message" as const,
+				message: {
+					role: "user" as const,
+					content: { text: "send a text message to my mom" },
+				},
+			},
+		],
+	};
+
+	it("ships the answer-shaped stage-1 decline without a model call", async () => {
+		const runtime = { useModel: vi.fn(), getService: vi.fn(() => null) };
+		const result = await runPlannerLoop({
+			runtime,
+			context: baseContext,
+			tools: terminalOnlyTools,
+			stageOneReplyText:
+				"can't do that from here. i don't have phone/sms access configured.",
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(
+			"can't do that from here. i don't have phone/sms access configured.",
+		);
+		expect(runtime.useModel).not.toHaveBeenCalled();
+	});
+
+	it("still runs the loop when the stage-1 draft is not answer-shaped", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: '{"success":true,"decision":"FINISH","thought":"done","messageToUser":"nothing to run here."}',
+			})),
+			getService: vi.fn(() => null),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: baseContext,
+			tools: terminalOnlyTools,
+			stageOneReplyText: "On it.",
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+		expect(runtime.useModel).toHaveBeenCalled();
+		expect(result.status).toBe("finished");
+	});
+
+	it("does not short-circuit the deliberate no-tools planning mode", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: '{"success":true,"decision":"FINISH","thought":"done","messageToUser":"the capital is ulaanbaatar."}',
+			})),
+			getService: vi.fn(() => null),
+		};
+		await runPlannerLoop({
+			runtime,
+			context: baseContext,
+			stageOneReplyText:
+				"can't do that from here. i don't have phone/sms access configured.",
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+		expect(runtime.useModel).toHaveBeenCalled();
 	});
 });

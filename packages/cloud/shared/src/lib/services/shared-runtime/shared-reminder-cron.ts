@@ -2,38 +2,22 @@
 
 import {
   listDueScheduledTaskRefs,
+  listRecoverableScheduledTaskRefs,
+  parseSharedReminderDelivery,
   type ScheduledTaskDispatcher,
   type ScheduledTaskDispatchRecord,
+  SHARED_REMINDER_MAX_TEXT_LENGTH,
+  type SharedReminderDelivery,
 } from "@elizaos/plugin-scheduling/edge";
 import type { Bindings } from "../../../types/cloud-worker-env";
 import { createSharedScheduledTaskRunner, executeSharedSchedulingSql } from "./shared-scheduling";
 
-interface ReminderDelivery {
-  platform: "telegram";
-  project: string;
-  chatId: string;
-}
-
-function reminderDelivery(record: ScheduledTaskDispatchRecord): ReminderDelivery {
-  const value = record.metadata?.delivery;
-  if (!value || typeof value !== "object") {
-    throw new Error("Shared reminder has no trusted delivery metadata");
-  }
-  const delivery = value as Record<string, unknown>;
-  if (
-    delivery.platform !== "telegram" ||
-    typeof delivery.project !== "string" ||
-    !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(delivery.project) ||
-    typeof delivery.chatId !== "string" ||
-    !/^-?\d{1,20}$/.test(delivery.chatId)
-  ) {
+function reminderDelivery(record: ScheduledTaskDispatchRecord): SharedReminderDelivery {
+  const delivery = parseSharedReminderDelivery(record.metadata?.delivery);
+  if (!delivery) {
     throw new Error("Shared reminder delivery metadata is invalid");
   }
-  return {
-    platform: "telegram",
-    project: delivery.project,
-    chatId: delivery.chatId,
-  };
+  return delivery;
 }
 
 function gatewayBaseUrl(env: Bindings): string {
@@ -43,16 +27,60 @@ function gatewayBaseUrl(env: Bindings): string {
   return value.replace(/\/+$/, "");
 }
 
+function discordGatewayBaseUrl(env: Bindings): string {
+  const value = env.ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL ?? env.DISCORD_WEBHOOK_HANDLER_URL;
+  if (!value) {
+    throw new Error("Shared Discord reminder gateway URL is not configured");
+  }
+  return value.replace(/\/+$/, "");
+}
+
+type GatewayDeliveryResponse = {
+  success?: unknown;
+  acceptedAt?: unknown;
+  acceptance?: unknown;
+  acceptanceUnknown?: unknown;
+  idempotencyKey?: unknown;
+  providerMessageIds?: unknown;
+  retryable?: unknown;
+};
+
+async function readGatewayDeliveryResponse(
+  response: Response,
+): Promise<GatewayDeliveryResponse | undefined> {
+  try {
+    const value = await response.json();
+    return value && typeof value === "object" ? (value as GatewayDeliveryResponse) : undefined;
+  } catch {
+    // error-policy:J3 an unreadable connector response is never accepted.
+    return undefined;
+  }
+}
+
 export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher {
   const secret = env.GATEWAY_INTERNAL_SECRET;
   if (!secret) {
     throw new Error("GATEWAY_INTERNAL_SECRET is not configured");
   }
-  const baseUrl = gatewayBaseUrl(env);
   return {
     async dispatch(record) {
       const delivery = reminderDelivery(record);
-      const idempotencyKey = `${record.taskId}:${record.firedAtIso}`;
+      const idempotencyKey = record.metadata?.dispatchIdempotencyKey;
+      if (typeof idempotencyKey !== "string" || !idempotencyKey) {
+        throw new Error("Shared reminder dispatch idempotency key is missing");
+      }
+      const text = record.output?.fallback?.body ?? record.promptInstructions;
+      if (text.length > SHARED_REMINDER_MAX_TEXT_LENGTH) {
+        return {
+          ok: false,
+          reason: "transport_error",
+          userActionable: true,
+          acceptance: "not_accepted",
+          message: `Reminder text exceeds the ${SHARED_REMINDER_MAX_TEXT_LENGTH}-character connector limit.`,
+        };
+      }
+      const baseUrl =
+        delivery.platform === "discord" ? discordGatewayBaseUrl(env) : gatewayBaseUrl(env);
       let response: Response;
       try {
         response = await fetch(`${baseUrl}/internal/deliver`, {
@@ -63,7 +91,7 @@ export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher
           },
           body: JSON.stringify({
             ...delivery,
-            text: record.output?.fallback?.body ?? record.promptInstructions,
+            text,
             idempotencyKey,
           }),
           signal: AbortSignal.timeout(10_000),
@@ -78,6 +106,7 @@ export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher
           message: error instanceof Error ? error.message : String(error),
         };
       }
+      const result = await readGatewayDeliveryResponse(response);
       if (response.status === 409 || response.status === 429) {
         return {
           ok: false,
@@ -96,22 +125,31 @@ export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher
         };
       }
       if (!response.ok) {
+        if (result?.acceptance === "not_accepted" && result.retryable === true) {
+          const retryAfterSeconds = Number(response.headers.get("Retry-After") ?? "60");
+          return {
+            ok: false,
+            reason: "rate_limited",
+            retryAfterMinutes:
+              Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+                ? Math.max(1, Math.ceil(retryAfterSeconds / 60))
+                : 1,
+            userActionable: false,
+            acceptance: "not_accepted",
+          };
+        }
         return {
           ok: false,
           reason: "transport_error",
           userActionable: false,
-          acceptance: response.status >= 500 ? "unknown" : "not_accepted",
+          acceptance: result?.acceptance === "not_accepted" ? "not_accepted" : "unknown",
         };
       }
-      const result = (await response.json()) as {
-        acceptedAt?: unknown;
-        acceptanceUnknown?: unknown;
-        idempotencyKey?: unknown;
-        providerMessageIds?: unknown;
-      };
-      const acceptedAt =
-        typeof result.acceptedAt === "string" ? result.acceptedAt : new Date().toISOString();
-      if (result.acceptanceUnknown === true) {
+      if (
+        response.status === 202 ||
+        result?.acceptanceUnknown === true ||
+        result?.acceptance === "unknown"
+      ) {
         return {
           ok: false,
           reason: "transport_error",
@@ -120,17 +158,43 @@ export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher
           message: "Reminder delivery could not be confirmed; it was not recorded as fired.",
         };
       }
+      const acceptedAt =
+        typeof result?.acceptedAt === "string" && Number.isFinite(Date.parse(result.acceptedAt))
+          ? result.acceptedAt
+          : undefined;
+      const providerMessageIds = Array.isArray(result?.providerMessageIds)
+        ? result.providerMessageIds.filter(
+            (id): id is string => typeof id === "string" && id.length > 0,
+          )
+        : [];
+      if (
+        result?.success !== true ||
+        result.idempotencyKey !== idempotencyKey ||
+        !acceptedAt ||
+        providerMessageIds.length === 0
+      ) {
+        return {
+          ok: false,
+          reason: "transport_error",
+          userActionable: true,
+          acceptance: "unknown",
+          message: "Reminder delivery returned no verifiable provider receipt.",
+        };
+      }
       return {
         ok: true,
         channelKey: "current_dm",
-        target: delivery.chatId,
+        target:
+          delivery.platform === "telegram"
+            ? delivery.chatId
+            : delivery.platform === "blooio"
+              ? delivery.phoneNumber
+              : delivery.discordUserId,
         metadata: {
           idempotencyKey,
           acceptedAt,
-          acceptanceUnknown: result.acceptanceUnknown === true,
-          providerMessageIds: Array.isArray(result.providerMessageIds)
-            ? result.providerMessageIds.filter((id): id is string => typeof id === "string")
-            : [],
+          acceptanceUnknown: false,
+          providerMessageIds,
         },
       };
     },
@@ -142,20 +206,40 @@ export async function processDueSharedReminders(
   options: { now?: Date; limit?: number } = {},
 ) {
   const now = options.now ?? new Date();
+  const limit = Math.min(Math.max(Math.trunc(options.limit ?? 100), 1), 500);
+  const recoveryCutoff = new Date(now.getTime() - 2 * 60 * 1000);
+  const recoverable = await listRecoverableScheduledTaskRefs(executeSharedSchedulingSql, {
+    updatedBeforeIso: recoveryCutoff.toISOString(),
+    limit,
+  });
   const due = await listDueScheduledTaskRefs(executeSharedSchedulingSql, {
     dueAtIso: now.toISOString(),
-    limit: options.limit,
+    limit,
   });
   const dispatcher = sharedReminderDispatcher(env);
   let fired = 0;
   let raced = 0;
   let deferred = 0;
   let failed = 0;
-  for (let offset = 0; offset < due.length; offset += 10) {
-    const batch = due.slice(offset, offset + 10);
+  const work = [
+    ...recoverable.map((ref) => ({ ...ref, recovery: true as const })),
+    ...due
+      .filter(
+        (ref) =>
+          !recoverable.some(
+            (candidate) => candidate.taskId === ref.taskId && candidate.agentId === ref.agentId,
+          ),
+      )
+      .map((ref) => ({ ...ref, recovery: false as const })),
+  ].slice(0, limit);
+  for (let offset = 0; offset < work.length; offset += 10) {
+    const batch = work.slice(offset, offset + 10);
     const outcomes = await Promise.all(
-      batch.map(({ agentId, taskId }) =>
-        createSharedScheduledTaskRunner(agentId, dispatcher).fireWithResult(taskId),
+      batch.map((item) =>
+        createSharedScheduledTaskRunner(item.agentId, dispatcher).fireWithResult(
+          item.taskId,
+          item.recovery ? { recoverFiredAtIso: item.firedAtIso } : { allowTerminalRefire: true },
+        ),
       ),
     );
     for (const outcome of outcomes) {
@@ -165,5 +249,5 @@ export async function processDueSharedReminders(
       else failed += 1;
     }
   }
-  return { scanned: due.length, fired, raced, deferred, failed };
+  return { scanned: work.length, fired, raced, deferred, failed };
 }
