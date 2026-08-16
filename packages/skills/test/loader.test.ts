@@ -115,7 +115,9 @@ description: Mismatched skill name
       const result = loadSkillsFromDir({ dir: tempDir, source: "test" });
       assert.strictEqual(result.skills.length, 1);
       const diag = result.diagnostics.find((d) =>
-        d.message.includes('name "different-name" does not match filename slug "actual-filename"'),
+        d.message.includes(
+          'name "different-name" does not match filename slug "actual-filename"',
+        ),
       );
       assert.ok(diag);
     } finally {
