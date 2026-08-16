@@ -341,7 +341,17 @@ export interface ScheduledTaskFilter {
   ownerVisibleOnly?: boolean;
 }
 
+/** Durable outcome for one scheduling request, including replay authority. */
+export interface ScheduledTaskScheduleResult {
+  task: ScheduledTask;
+  commit: ScheduledTaskLogEntry;
+  replayed: boolean;
+}
+
 export interface ScheduledTaskRunner {
+  scheduleWithResult(
+    task: Omit<ScheduledTask, "taskId" | "state">,
+  ): Promise<ScheduledTaskScheduleResult>;
   schedule(
     task: Omit<ScheduledTask, "taskId" | "state">,
   ): Promise<ScheduledTask>;

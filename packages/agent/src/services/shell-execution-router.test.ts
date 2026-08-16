@@ -7,6 +7,10 @@
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+  captureHostExecutionBaseline,
+  getHostExecutionBaseline,
+} from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetShellRouterBrokerForTests,
@@ -19,6 +23,7 @@ const MODE_ENV_KEYS = [
   "RUNTIME_MODE",
   "LOCAL_RUNTIME_MODE",
   "ELIZA_PLATFORM",
+  "PATH",
 ] as const;
 
 describe("runShell", () => {
@@ -29,6 +34,7 @@ describe("runShell", () => {
   let oldStateDir: string | undefined;
 
   beforeEach(async () => {
+    captureHostExecutionBaseline();
     tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "agent-shell-router-"));
     oldStateDir = process.env.ELIZA_STATE_DIR;
     process.env.ELIZA_STATE_DIR = tmpDir;
@@ -86,6 +92,38 @@ describe("runShell", () => {
     });
     expect(result.sandbox).toBe("host");
     expect(result.stdout).toBe("hello\n");
+  });
+
+  it("resolves a real bare host command only through the captured PATH", async () => {
+    const executableName = path.basename(process.execPath);
+    process.env.PATH = "/tmp/runtime-controlled-bin";
+
+    const result = await runShell({
+      command: executableName,
+      args: ["-e", "process.stdout.write(process.env.PATH ?? '')"],
+      toolName: "test:boot-path",
+      timeoutMs: 5_000,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe(getHostExecutionBaseline().path);
+  });
+
+  it("rejects an executable absolute path outside the boot PATH authority", async () => {
+    if (process.platform === "win32") return;
+    const executable = path.join(tmpDir, "outside-path");
+    await fsp.writeFile(executable, "#!/bin/sh\nexit 0\n");
+    await fsp.chmod(executable, 0o755);
+
+    const result = await runShell({
+      command: executable,
+      args: [],
+      toolName: "test:absolute-path-authority",
+      timeoutMs: 5_000,
+    });
+
+    expect(result.exitCode).toBe(-1);
+    expect(result.stderr).toContain("outside the boot PATH authority");
   });
 
   it("strips dangerous spawn env vars from the host child, passes benign ones", async () => {
@@ -195,6 +233,45 @@ describe("runShell", () => {
     expect(result.sandbox).toBe("docker");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("ok");
+  });
+
+  it("local-safe preserves container-native env with and without a hostile host-style overlay", async () => {
+    process.env.ELIZA_RUNTIME_MODE = "local-safe";
+    const run = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: "ok",
+      stderr: "",
+      durationMs: 1,
+      executedInSandbox: true,
+    });
+    const fakeManager = { run, engineType: "docker" };
+
+    await runShell(
+      {
+        command: "env",
+        args: [],
+        toolName: "test:safe-native-env",
+      },
+      // biome-ignore lint/suspicious/noExplicitAny: deliberate fake for unit test
+      { sandboxManager: fakeManager as any },
+    );
+    await runShell(
+      {
+        command: "env",
+        args: [],
+        env: {
+          PATH: "/host/bin",
+          HOME: "/host/home",
+          SHELL: "/host/shell",
+        },
+        toolName: "test:safe-host-env",
+      },
+      // biome-ignore lint/suspicious/noExplicitAny: deliberate fake for unit test
+      { sandboxManager: fakeManager as any },
+    );
+
+    expect(run.mock.calls[0]?.[0].env).toBeUndefined();
+    expect(run.mock.calls[1]?.[0].env).toEqual({});
   });
 
   it("local-safe routes through SandboxManager on Windows when a backend is available", async () => {

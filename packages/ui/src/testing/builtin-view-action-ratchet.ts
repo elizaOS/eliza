@@ -247,9 +247,9 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "packages/ui/src/components/pages/MemoryDetailPanel.tsx",
     ],
     semanticActions: ["MEMORY"],
-    maxMutationSites: 15,
+    maxMutationSites: 23,
     notes:
-      "Memory browse/prune controls pair with MEMORY (op create|search|update|delete, packages/agent/src/actions/memories.ts).",
+      "Memory browse/prune controls and the restacked type/person filter affordances pair with MEMORY (op create|search|update|delete, packages/agent/src/actions/memories.ts).",
   },
   {
     viewId: "automations",

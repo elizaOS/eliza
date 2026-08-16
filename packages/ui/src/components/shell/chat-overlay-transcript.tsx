@@ -124,6 +124,34 @@ export function renderOverlayMessageBody(
     );
   }
 
+  // A drained balance is terminal for this turn: retrying re-hits the same
+  // empty balance, so the overlay renders the structured out-of-credits gate
+  // (banner + Add credits CTA, no Retry chip) mirroring the ChatView surface.
+  if (!isUser && message.failureKind === "insufficient_credits") {
+    return (
+      <div
+        className={cn(
+          "max-w-[85%] rounded-2xl rounded-bl-md border border-accent/30 bg-scrim px-3.5 py-3 text-txt",
+          WALLPAPER_FLOAT_SHADOW,
+        )}
+      >
+        <div className="mb-1 text-[14px] font-medium">Out of credits</div>
+        <div className="mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-strong [overflow-wrap:anywhere]">
+          {message.text}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          data-testid="chat-insufficient-credits-add"
+          onClick={() => onOpenSettings?.()}
+          className="h-auto rounded-full border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-txt transition-colors hover:bg-bg-hover"
+        >
+          Add credits
+        </Button>
+      </div>
+    );
+  }
+
   if (isUser) {
     return (
       <>

@@ -1,21 +1,9 @@
-// Opt-in REAL cloud e2e: real login + real provisioning + real cloud chat,
-// through the app UI, against real Eliza Cloud. This is the un-mocked counterpart
-// to cloud-provisioning-startup.spec.ts (which asserts the UI against page.route
-// fixtures). NOTHING here mocks a cloud endpoint — the requests hit the live
-// stack, which proxies /api/cloud/* to real cloud-api.
-//
-// Requirements (all enforced by the skip guard below; the manual live-smoke.yml
-// lane supplies them):
-//   - ELIZA_UI_SMOKE_CLOUD_LIVE=1  → the live stack leaves first-run UNcompleted
-//     so this spec can drive cloud onboarding through the UI.
-//   - ELIZA_UI_SMOKE_LIVE_STACK=1  → the live stack boots the real app-core
-//     runtime instead of the deterministic stub (shouldForceStubStack).
-//   - ELIZAOS_CLOUD_API_KEY        → real cloud credential; the app treats cloud
-//     as connected, so no interactive OAuth window is needed.
-//
-// It must NEVER run in a keyless PR lane: it spends real cloud credits and needs
-// secrets. It is classified LIVE_ONLY in ui-smoke-coverage.test.ts and is wired
-// only into the manual live-smoke.yml workflow.
+/**
+ * Exercises real login, provisioning, and chat through the app UI against
+ * Eliza Cloud, without mocking cloud endpoints. The opt-in workflow must supply
+ * both live-stack flags and ELIZAOS_CLOUD_API_KEY; this test spends real cloud
+ * credits and must never run in a keyless PR lane.
+ */
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { seedCloudLiveBrowserAuth } from "../cloud-live-browser-auth";
@@ -27,7 +15,8 @@ const CLOUD_LIVE_ENABLED =
   process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 const HAS_CLOUD_KEY = Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
 
-const PROVISION_TIMEOUT_MS = 180_000;
+const PROVISION_ATTEMPT_TIMEOUT_MS = 180_000;
+const PROVISION_ATTEMPTS = 2;
 
 // This lane deliberately places a real Cloud bearer in browser storage. A
 // Playwright trace records init-script arguments and request headers, so never
@@ -73,7 +62,29 @@ async function readActiveServer(page: Page): Promise<{
   });
 }
 
+async function waitForProvisioningOutcome(
+  page: Page,
+): Promise<"cloud" | "retry"> {
+  let outcome: "cloud" | "retry" | "pending" = "pending";
+  await expect
+    .poll(
+      async () => {
+        const active = await readActiveServer(page);
+        if (active?.kind === "cloud") outcome = "cloud";
+        else if (
+          await page.getByTestId("choice-__first_run__:error:retry").isVisible()
+        )
+          outcome = "retry";
+        return outcome;
+      },
+      { timeout: PROVISION_ATTEMPT_TIMEOUT_MS },
+    )
+    .not.toBe("pending");
+  return outcome;
+}
+
 test.describe("real cloud login + provisioning + chat", () => {
+  test.setTimeout(420_000);
   test.skip(
     !CLOUD_LIVE_ENABLED,
     "set ELIZA_UI_SMOKE_CLOUD_LIVE=1 and ELIZA_UI_SMOKE_LIVE_STACK=1 to run against real Eliza Cloud",
@@ -103,13 +114,21 @@ test.describe("real cloud login + provisioning + chat", () => {
 
     // Real provisioning (create -> provision -> poll jobs -> launch) persists a
     // cloud active-server with the provisioned agent's bridge URL. This only
-    // succeeds if real login + provisioning actually completed.
-    await expect
-      .poll(() => readActiveServer(page).then((s) => s?.kind ?? null), {
-        timeout: PROVISION_TIMEOUT_MS,
-      })
-      .toBe("cloud");
+    // succeeds if real login + provisioning actually completed. Retry once
+    // through the product's explicit recovery choice when a transient Cloud
+    // request fails; a repeated error remains a hard failure.
+    for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt += 1) {
+      const outcome = await waitForProvisioningOutcome(page);
+      if (outcome === "cloud") break;
+      if (attempt === PROVISION_ATTEMPTS) {
+        throw new Error(
+          `Eliza Cloud provisioning requested retry ${PROVISION_ATTEMPTS} times`,
+        );
+      }
+      await page.getByTestId("choice-__first_run__:error:retry").click();
+    }
     const active = await readActiveServer(page);
+    expect(active?.kind).toBe("cloud");
     expect(
       active?.apiBase,
       "provisioned cloud agent must expose a bridge URL",

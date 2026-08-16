@@ -93,3 +93,35 @@ describe("collectActionResultSizeWarnings", () => {
 		]);
 	});
 });
+
+describe("truncateMiddle Unicode safety", () => {
+	it("never splits a surrogate pair when truncating emoji-bearing output", () => {
+		// A raw .slice() lands on an arbitrary UTF-16 index; when that index
+		// falls between the halves of a surrogate pair the result carries a
+		// lone surrogate, which strict-JSON providers reject outright.
+		const text = '{"user":"ana","note":"shipped 🚀 ok"},'.repeat(400);
+		const out = truncateMiddle(text, 4000);
+
+		expect(out.isWellFormed()).toBe(true);
+		expect(out.length).toBeLessThanOrEqual(4000);
+		const marker = out.match(/\n\n\[\.\.\. (\d+) chars omitted \.\.\.\]\n\n/);
+		expect(marker).not.toBeNull();
+		const [head, tail] = out.split(marker?.[0] ?? "");
+		expect(Number(marker?.[1])).toBe(text.length - head.length - tail.length);
+	});
+
+	it("stays well-formed across truncation lengths, not just lucky ones", () => {
+		const text = "abc😀".repeat(400);
+		for (let maxChars = 40; maxChars <= 240; maxChars++) {
+			const out = truncateMiddle(text, maxChars);
+			expect(out.isWellFormed()).toBe(true);
+			expect(out.length).toBeLessThanOrEqual(maxChars);
+		}
+	});
+
+	it("honors limits too small for an omission marker", () => {
+		const out = truncateMiddle("😀".repeat(20), 3);
+		expect(out.isWellFormed()).toBe(true);
+		expect(out.length).toBeLessThanOrEqual(3);
+	});
+});

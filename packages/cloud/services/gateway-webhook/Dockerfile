@@ -10,7 +10,7 @@
 #   docker build -f packages/cloud/services/gateway-webhook/Dockerfile .
 #
 # The deps stage writes a pruned workspace root containing just this service and
-# the one package it needs, so `bun install` resolves the workspace link without
+# the workspace packages it needs, so `bun install` resolves every link without
 # installing the whole monorepo (32 packages rather than several thousand).
 
 # BUN_BASE selects the Bun base image. Default targets linux/amd64 + linux/arm64
@@ -34,7 +34,10 @@ ARG SERVICE_DIR
 ARG COMMON_DIR
 COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
 COPY ${COMMON_DIR}/package.json ${COMMON_DIR}/
-RUN printf '{"name":"gateway-webhook-build","private":true,"workspaces":["packages/cloud/services/*"]}\n' > package.json \
+# Production dependency resolution must not traverse test-only workspace links;
+# doing so would require vendoring cloud-shared's entire transitive workspace.
+RUN bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); delete manifest.devDependencies; await Bun.write(path, JSON.stringify(manifest));' "${SERVICE_DIR}/package.json" \
+    && printf '{"name":"gateway-webhook-build","private":true,"workspaces":["packages/cloud/services/*"]}\n' > package.json \
     && bun install --production
 
 # Build stage

@@ -16,6 +16,9 @@
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/capacitor-bun-runtime": [
+        "../plugin-native-bun-runtime/src/index.ts"
+      ],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"]
     }

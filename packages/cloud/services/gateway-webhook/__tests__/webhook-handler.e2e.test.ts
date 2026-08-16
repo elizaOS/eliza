@@ -147,6 +147,49 @@ describe("gateway webhook handler e2e routing", () => {
     mock.restore();
   });
 
+  test("handles a link code before an existing provisional identity can route it as chat", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ text: "LINK-ABCDEFGH" });
+    const adapter = createAdapter(event);
+    const negativeCacheKey = `identity:twilio:${event.senderId}`;
+    await redis.set(negativeCacheKey, JSON.stringify({ notFound: true }));
+    let confirmBody: Record<string, unknown> | null = null;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith("/api/eliza-app/identity-link/confirm")) {
+        confirmBody = (await request.json()) as Record<string, unknown>;
+        return Response.json({ success: true, data: { status: "linked" } });
+      }
+      throw new Error(
+        `Link challenge incorrectly entered normal routing: ${request.url}`,
+      );
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(() => adapter.replies.length === 1, "identity-link reply");
+    expect(confirmBody).toEqual({
+      code: "LINK-ABCDEFGH",
+      platform: "twilio",
+      platformId: event.senderId,
+      platformName: event.senderName,
+    });
+    expect(adapter.replies[0]).toContain("linked");
+    expect(await redis.get(negativeCacheKey)).toBeNull();
+  });
+
   test("acks before an unresolved phone message enters personal Shared", async () => {
     configureEnv();
     const redis = new MemoryRedis();
@@ -199,6 +242,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedBody).toEqual({
       message: "My name is Ada",
       platform: "twilio",
+      project: "eliza-app",
       phoneNumber: "+15551234567",
       messageId: `twilio:eliza-app:${event.messageId}`,
     });
@@ -273,6 +317,7 @@ describe("gateway webhook handler e2e routing", () => {
     await waitFor(() => replies.length === 1, "Blooio personal Shared reply");
     expect(sharedBody).toEqual({
       platform: "blooio",
+      project: "eliza-app",
       phoneNumber: "+15551234567",
       messageId: "blooio:eliza-app:blooio-message-1",
       message: "hello from iMessage",
@@ -564,6 +609,8 @@ describe("gateway webhook handler e2e routing", () => {
           headers: {
             "Retry-After": "0",
             "Server-Timing": "failed_worker;dur=1234",
+            "X-Eliza-Failure-Stage": "shared_runtime",
+            "X-Eliza-Failure-Name": "TypeError",
           },
         });
       }
@@ -601,6 +648,8 @@ describe("gateway webhook handler e2e routing", () => {
         retryAfterSeconds: 0,
         retryDelayMs: 0,
         cloudServerTiming: "failed_worker;dur=1234",
+        cloudFailureStage: "shared_runtime",
+        cloudFailureName: "TypeError",
       }),
     );
     expect(infoLog).toHaveBeenCalledWith(
@@ -824,6 +873,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(adapter.replies).toEqual(["agent reply: container is running"]);
     expect(personalBody).toEqual({
       platform: "twilio",
+      project: "eliza-app",
       phoneNumber: "+15551234567",
       messageId: "twilio:eliza-app:SM_linked_1",
       message: "Are you running?",
@@ -947,6 +997,7 @@ describe("gateway webhook handler e2e routing", () => {
     ]);
     expect(sharedBody).toMatchObject({
       platform: "twilio",
+      project: "eliza-app",
       phoneNumber: "+15551234567",
       messageId: "twilio:eliza-app:SM_provisioning_1",
     });

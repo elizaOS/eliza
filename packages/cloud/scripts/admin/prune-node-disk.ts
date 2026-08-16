@@ -45,6 +45,7 @@
 
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseTcpPort } from "../../../scripts/lib/cli-numbers.mjs";
 
 async function loadDeps() {
   const [{ dockerNodesRepository }, { DockerSSHClient }, diskMgr] =
@@ -108,13 +109,10 @@ export function parsePruneArgs(
     throw new Error("Provide only ONE of --node-id or --host, not both");
   }
 
-  const sshPort = Number.parseInt(
+  const sshPort = parseTcpPort(
     flags.get("ssh-port") ?? env.PRUNE_NODE_SSH_PORT ?? "22",
-    10,
-  );
-  if (!Number.isInteger(sshPort) || sshPort < 1 || sshPort > 65535) {
-    throw new Error(`Invalid ssh-port: ${flags.get("ssh-port")}`);
-  }
+    "--ssh-port",
+  ) as number;
   const sshUser = flags.get("ssh-user") ?? env.PRUNE_NODE_SSH_USER ?? "root";
 
   return {

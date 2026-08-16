@@ -13,6 +13,7 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
+import type { ExistingElizaInstallInfo } from "@elizaos/shared/types";
 import type { RPCSchema } from "electrobun/bun";
 import type {
   DatabaseBackupResult,
@@ -119,21 +120,10 @@ export interface NavigateBrowserWorkspaceTabRequest {
 }
 
 // -- Desktop --
-export type ExistingElizaInstallSource =
-  | "config-path-env"
-  | "state-dir-env"
-  | "default-state-dir"
-  | "legacy-dot-state-dir";
-
-export interface ExistingElizaInstallInfo {
-  detected: boolean;
-  stateDir: string;
-  configPath: string;
-  configExists: boolean;
-  stateDirExists: boolean;
-  hasStateEntries: boolean;
-  source: ExistingElizaInstallSource;
-}
+export type {
+  ExistingElizaInstallInfo,
+  ExistingElizaInstallSource,
+} from "@elizaos/shared/types";
 
 export interface StateDirMigrationResult {
   ok: boolean;

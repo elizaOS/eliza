@@ -34,22 +34,68 @@ async function seed(messages: Memory[]): Promise<InMemoryDatabaseAdapter> {
 }
 
 describe("InMemoryDatabaseAdapter — textContains", () => {
-	it("treats entityId as requester context rather than a memory row predicate", async () => {
+	it("filters by entityId while keeping get/count pagination consistent", async () => {
 		const adapter = await seed([
 			msg("requester-authored", 1),
 			{ ...msg("other-authored", 2), entityId: otherEntityId },
 		]);
 
-		const rows = await adapter.getMemories({
+		const mine = await adapter.getMemories({
 			entityId,
 			agentId,
 			tableName: "messages",
 		});
-
-		expect(rows.map((memory) => memory.content.text)).toEqual([
-			"other-authored",
+		expect(mine.map((memory) => memory.content.text)).toEqual([
 			"requester-authored",
 		]);
+
+		const theirs = await adapter.getMemories({
+			entityId: otherEntityId,
+			agentId,
+			tableName: "messages",
+		});
+		expect(theirs.map((memory) => memory.content.text)).toEqual([
+			"other-authored",
+		]);
+
+		// Pagination stays consistent with the predicate: limit/count and offset apply after filtering.
+		const paged = await adapter.getMemories({
+			entityId,
+			agentId,
+			tableName: "messages",
+			limit: 1,
+			offset: 0,
+		});
+		expect(paged).toHaveLength(1);
+		expect(paged[0].content.text).toBe("requester-authored");
+
+		const offsetPast = await adapter.getMemories({
+			entityId,
+			agentId,
+			tableName: "messages",
+			limit: 10,
+			offset: 1,
+		});
+		expect(offsetPast).toHaveLength(0);
+
+		// countMemories must agree with the getMemories predicate so callers paginating by count do not drift.
+		const countMine = await adapter.countMemories({
+			entityId,
+			agentId,
+			tableName: "messages",
+		});
+		expect(countMine).toBe(1);
+		const countTheirs = await adapter.countMemories({
+			entityId: otherEntityId,
+			agentId,
+			tableName: "messages",
+		});
+		expect(countTheirs).toBe(1);
+		const countAll = await adapter.countMemories({
+			agentId,
+			tableName: "messages",
+		});
+		expect(countAll).toBe(2);
 	});
 
 	it("filters to messages whose text contains the keyword (case-insensitive)", async () => {

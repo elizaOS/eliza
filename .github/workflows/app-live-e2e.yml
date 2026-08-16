@@ -126,7 +126,12 @@ jobs:
       # guards in these specs open. The two *-interactions specs also run keyless
       # in scenario-pr.yml (skipping their deep blocks); here they run them.
       - name: Run settings + vault live-stack deep e2e
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/vault-routing.spec.ts test/ui-smoke/wallet-keys.spec.ts test/ui-smoke/provider-config.spec.ts test/ui-smoke/vault-modal-interactions.spec.ts test/ui-smoke/settings-sections-interactions.spec.ts --project=chromium
+        run: |
+          bun run --cwd packages/app test:e2e test/ui-smoke/vault-routing.spec.ts test/ui-smoke/wallet-keys.spec.ts test/ui-smoke/vault-modal-interactions.spec.ts test/ui-smoke/settings-sections-interactions.spec.ts --project=chromium
+          # Provider switching deliberately restarts the runtime. Run it in a
+          # fresh final harness so its lifecycle cannot strand unrelated tests
+          # behind the startup shell while the selected test provider restarts.
+          bun run --cwd packages/app test:e2e test/ui-smoke/provider-config.spec.ts --project=chromium
 
       - name: Upload live-chat artifacts
         if: ${{ always() }}

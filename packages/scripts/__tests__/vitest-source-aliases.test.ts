@@ -1,12 +1,13 @@
 /**
- * Verifies workspace source aliases target source files without prebuilt dist
- * artifacts, including deterministic package-export fixtures.
+ * Verifies workspace and integration source aliases target source files
+ * without prebuilt dist artifacts, including deterministic export fixtures.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import integrationConfig from "../vitest/integration.config.ts";
 import {
   buildWorkspaceSourceAliases,
   workspaceRepoRoot,
@@ -21,15 +22,39 @@ afterEach(() => {
 });
 
 function resolveAlias(
-  aliases: ReturnType<typeof buildWorkspaceSourceAliases>,
+  aliases: Array<{ find: string | RegExp; replacement: string }>,
   specifier: string,
 ): string {
-  const alias = aliases.find(({ find }) => find.test(specifier));
+  const alias = aliases.find(({ find }) =>
+    typeof find === "string"
+      ? specifier === find || specifier.startsWith(`${find}/`)
+      : find.test(specifier),
+  );
   expect(alias, `${specifier} must have a source alias`).toBeDefined();
-  return specifier.replace(alias?.find ?? /$^/, alias?.replacement ?? "");
+  if (!alias) return specifier;
+  return specifier.replace(alias.find, alias.replacement);
 }
 
 describe("workspace source aliases", () => {
+  test("keeps package-aware aliases effective in the integration lane", () => {
+    const aliases = integrationConfig.resolve?.alias;
+    if (!Array.isArray(aliases)) {
+      throw new Error("Integration aliases must be an ordered array");
+    }
+
+    const replacement = resolveAlias(
+      aliases as Array<{ find: string | RegExp; replacement: string }>,
+      "@elizaos/plugin-elizacloud/endpoint-config",
+    );
+
+    expect(replacement).toBe(
+      path.join(
+        workspaceRepoRoot,
+        "plugins/plugin-elizacloud/src/utils/config.ts",
+      ),
+    );
+  });
+
   test("resolve file and directory subpaths to source targets", () => {
     const aliases = buildWorkspaceSourceAliases(workspaceRepoRoot);
     const cases = [

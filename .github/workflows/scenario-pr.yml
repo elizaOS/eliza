@@ -85,6 +85,9 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
+      - name: Build core exports for real API harness
+        run: bun run --cwd packages/core build
+
       - name: Scenario runner unit coverage
         run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts src/__tests__/deterministic-action-coverage.test.ts
 
@@ -708,6 +711,9 @@ jobs:
 
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Build core exports for real API harness
+        run: bun run --cwd packages/core build
 
       - name: Install Playwright browsers (Chromium)
         run: .github/scripts/install-playwright-browsers.sh chromium

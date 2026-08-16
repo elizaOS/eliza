@@ -101,9 +101,9 @@ import {
 import { resolveTestLaneDirs } from "./lib/script-metadata.mjs";
 import {
   isParallelSafeTask,
-  normalizeConcurrency,
   parseShardSpec,
   partitionTasks,
+  resolveConcurrency,
   runPool,
   taskBelongsToShard,
 } from "./lib/test-task-pool.mjs";
@@ -319,13 +319,10 @@ if (argv.length > 0) {
 }
 
 try {
-  const concurrencyEnv = process.env.TEST_CONCURRENCY;
-  const concurrencyInput =
-    concurrencyFlag ??
-    (concurrencyEnv === undefined || concurrencyEnv.trim() === ""
-      ? undefined
-      : concurrencyEnv);
-  concurrency = normalizeConcurrency(concurrencyInput);
+  concurrency = resolveConcurrency(
+    concurrencyFlag,
+    process.env.TEST_CONCURRENCY,
+  );
 } catch (error) {
   // error-policy:J1 CLI and environment validation share the exit-2 boundary.
   failUsage(error.message);

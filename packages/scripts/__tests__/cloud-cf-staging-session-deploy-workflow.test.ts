@@ -56,7 +56,7 @@ describe("Cloud CF staging session cutover", () => {
     const ordered = [
       "Deploy freshness guard",
       "Disable staging session exchange before cutover",
-      "Publish Worker AI secrets",
+      "Prepare Worker secrets for atomic deploy",
       "Deploy to Cloudflare Workers",
       "Verify deployed API commit",
       "Activate and verify staging session exchange after deploy proof",
@@ -72,15 +72,15 @@ describe("Cloud CF staging session cutover", () => {
     );
     expect(disable.run).not.toContain('grep -qi "not found"');
 
-    const publish = step("Publish Worker AI secrets");
+    const publish = step("Prepare Worker secrets for atomic deploy");
     expect(publish.if).toContain("steps.freshness.outputs.should_deploy");
     expect(publish.run).toContain('STAGING_SESSION_EXCHANGE_ENABLED=""');
     expect(publish.run).toContain(
-      "publish_toggle_secret STAGING_SESSION_EXCHANGE_ENABLED",
+      "queue_toggle_secret STAGING_SESSION_EXCHANGE_ENABLED",
     );
     expect(
       publish.run?.indexOf(
-        "publish_toggle_secret STAGING_SESSION_EXCHANGE_ENABLED",
+        "queue_toggle_secret STAGING_SESSION_EXCHANGE_ENABLED",
       ),
     ).toBeLessThan(
       publish.run?.indexOf("staging_session_config_names=(") ?? -1,
@@ -124,7 +124,7 @@ describe("Cloud CF staging session cutover", () => {
     }
     expect(
       index("Disable staging session exchange before cutover"),
-    ).toBeLessThan(index("Publish Worker AI secrets"));
+    ).toBeLessThan(index("Prepare Worker secrets for atomic deploy"));
   });
 
   test("uses the names-only idempotent helper at every removal boundary", () => {
@@ -132,8 +132,10 @@ describe("Cloud CF staging session cutover", () => {
     expect(
       workflowSource.match(/ensure-worker-secret-absent\.mjs/g),
     ).toHaveLength(4);
-    expect(step("Publish Worker AI secrets").run).toContain('"$name" ');
-    expect(step("Publish Worker AI secrets").run).toContain(
+    expect(step("Prepare Worker secrets for atomic deploy").run).toContain(
+      '"$name" ',
+    );
+    expect(step("Prepare Worker secrets for atomic deploy").run).toContain(
       "steps.env.outputs.wrangler_args",
     );
     expect(step("Deploy to Cloudflare Workers").run).toContain(

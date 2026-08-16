@@ -159,6 +159,25 @@ export async function captureBaselineDirty(workdir: string): Promise<string[]> {
 }
 
 /**
+ * Untracked paths already present in the workspace at spawn time, in the same
+ * collapsed representation `git status --porcelain` reports them (`dir/` for a
+ * wholly-untracked directory). A lived-in workdir (a home-dir cwd, a shared
+ * checkout) carries untracked files no sub-agent created; without this
+ * baseline the completion-residuals gate counts them as this run's leftover
+ * work and blocks every completion there forever.
+ */
+export async function captureBaselineUntracked(
+  workdir: string,
+): Promise<string[]> {
+  if (!(await isWorkTree(workdir))) return [];
+  return ((await git(workdir, ["status", "--porcelain"])) ?? "")
+    .split("\n")
+    .filter((line) => line.startsWith("?? "))
+    .map((line) => line.slice(3).trim())
+    .filter((line) => line.length > 0);
+}
+
+/**
  * Parse `git diff --name-status` output into the set of affected paths. Renames
  * appear as `R100\told\tnew` — the post-rename path is what changed, so take
  * the last tab-separated field for every status.

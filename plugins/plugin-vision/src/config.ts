@@ -16,7 +16,7 @@ export const defaultVisionConfig: VisionConfig = {
   vlmUpdateInterval: 10000,
   tfChangeThreshold: 10,
   vlmChangeThreshold: 50,
-  visionMode: "CAMERA" as VisionMode,
+  visionMode: "OFF" as VisionMode,
   screenCaptureInterval: 2000,
   tileSize: 256,
   tileProcessingOrder: "priority",
@@ -36,7 +36,7 @@ export const VisionConfigSchema = z.object({
   vlmUpdateInterval: z.number().min(1000).max(300000).default(10000),
   tfChangeThreshold: z.number().min(0).max(100).default(10),
   vlmChangeThreshold: z.number().min(0).max(100).default(50),
-  visionMode: z.enum(["OFF", "CAMERA", "SCREEN", "BOTH"]).default("CAMERA"),
+  visionMode: z.enum(["OFF", "CAMERA", "SCREEN", "BOTH"]).default("OFF"),
   screenCaptureInterval: z.number().min(100).max(60000).default(2000),
   tileSize: z.number().min(64).max(1024).default(256),
   tileProcessingOrder: z

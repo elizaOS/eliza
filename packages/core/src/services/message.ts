@@ -351,11 +351,13 @@ import {
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 	isShellDirectActionName,
+	isToolDerivedAssistantContent,
 	LEGACY_CODING_DELEGATION_ACTION_NAMES,
 	looksLikeBareLinkShare,
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
 	normalizeActionIdentifier,
+	resolveExplicitContinuationRequestText,
 } from "./message/direct-action-heuristics";
 import {
 	buildFailureReplyPrompt,
@@ -2264,12 +2266,36 @@ function priorDialogueContent(text: string, speaker?: string): string {
 	return `${speaker}: ${text}`;
 }
 
+/**
+ * How many of the agent's own prior turns the tool-planner context renders.
+ * Enough to cover the pending question/preview plus a short back-and-forth,
+ * small enough to keep the stale-answer surface and token cost bounded.
+ */
+const PLANNER_MAX_OWN_REPLY_TURNS = 4;
+
+/**
+ * Structural marker for an assistant memory whose text is a tool-derived
+ * answer rather than plain dialogue: it carries merged action-callback
+ * history, or its recorded actions include a real tool (anything beyond the
+ * reply/none envelope). The planner context excludes these rows so a stale
+ * tool-derived answer is never parroted in place of a fresh tool run.
+ */
 function appendPriorDialogueEvents(
 	events: ContextEvent[],
 	runtime: IAgentRuntime,
 	state: State,
 	currentMessage: Memory,
-	options?: { includeOwnReplies?: boolean },
+	options?: {
+		includeOwnReplies?: boolean;
+		/**
+		 * Planner mode: keep ordinary own replies (questions, previews, acks —
+		 * what "yes"/"finish it" refers to) while excluding tool-derived own
+		 * answers structurally (stale-answer hazard) and bounding how many own
+		 * turns render.
+		 */
+		excludeToolDerivedOwnReplies?: boolean;
+		maxOwnReplies?: number;
+	},
 ): void {
 	const includeOwnReplies = options?.includeOwnReplies ?? false;
 	const providers = state.data?.providers;
@@ -2297,12 +2323,19 @@ function appendPriorDialogueEvents(
 			// (role-tagged prior_message:agent below): the current_turn_boundary
 			// contract tells the model these blocks are its only chat-recall
 			// source, so dropping its own turns made it confabulate about what it
-			// previously said. The tool planner opts out (includeOwnReplies=false)
-			// because a planner that sees its own stale tool-derived answer
-			// parrots it instead of running the fresh check. The artifact guards
+			// previously said. The tool planner keeps ordinary own dialogue too
+			// (the question/preview a continuation turn refers to) but excludes
+			// tool-derived own answers structurally so it never parrots a stale
+			// tool result instead of running the fresh check. The artifact guards
 			// below still strip non-dialogue agent output for every sender.
-			if (!includeOwnReplies && m.entityId === runtime.agentId) {
-				return false;
+			if (m.entityId === runtime.agentId) {
+				if (!includeOwnReplies) return false;
+				if (
+					options?.excludeToolDerivedOwnReplies === true &&
+					isToolDerivedAssistantContent(m.content)
+				) {
+					return false;
+				}
 			}
 			if (
 				typeof m.content?.source === "string" &&
@@ -2329,6 +2362,20 @@ function appendPriorDialogueEvents(
 			return text.length > 0;
 		})
 		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+	// Bound how many of the agent's own turns render (newest win): the planner
+	// needs the immediate question/preview a continuation refers to, not the
+	// agent's whole side of a long conversation.
+	const maxOwnReplies = options?.maxOwnReplies;
+	if (maxOwnReplies !== undefined) {
+		let ownRepliesKept = 0;
+		for (let index = dialogue.length - 1; index >= 0; index--) {
+			if (dialogue[index]?.entityId !== runtime.agentId) continue;
+			ownRepliesKept++;
+			if (ownRepliesKept > maxOwnReplies) {
+				dialogue.splice(index, 1);
+			}
+		}
+	}
 	for (const memory of dialogue) {
 		const text = getUserMessageText(memory);
 		if (!text) continue;
@@ -2503,20 +2550,53 @@ function looksLikePriorDialogueArtifact(text: string): boolean {
 	);
 }
 
-function hasStructuredRecentMessagesProvider(state: State): boolean {
-	const providers = state.data?.providers;
+function getStructuredRecentMessages(
+	state: State | undefined,
+): Memory[] | null {
+	const providers = state?.data?.providers;
 	if (!providers || typeof providers !== "object") {
-		return false;
+		return null;
 	}
 	const recent = (providers as Record<string, unknown>).RECENT_MESSAGES;
 	if (!recent || typeof recent !== "object") {
-		return false;
+		return null;
 	}
 	const data = (recent as { data?: unknown }).data;
-	return Boolean(
-		data &&
-			typeof data === "object" &&
-			Array.isArray((data as { recentMessages?: unknown }).recentMessages),
+	const recentMessages =
+		data && typeof data === "object" && "recentMessages" in data
+			? (data as { recentMessages?: unknown }).recentMessages
+			: undefined;
+	return Array.isArray(recentMessages) ? (recentMessages as Memory[]) : null;
+}
+
+function hasStructuredRecentMessagesProvider(state: State): boolean {
+	return getStructuredRecentMessages(state) !== null;
+}
+
+/**
+ * Resolves an explicit continuation turn ("finish my request", "that is
+ * good") to the nearest prior user request from the composed RECENT_MESSAGES
+ * window so candidate inference reruns against the request the turn refers
+ * to. Returns null for every non-continuation turn (topic switches, fresh
+ * asks, and turns without structured history are untouched); the resolved
+ * text feeds ONLY action-candidate inference — the prompt keeps the user's
+ * literal message.
+ */
+function resolveContinuationInferenceMessageText(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State | undefined,
+): string | null {
+	const currentText = getUserMessageText(message);
+	if (!currentText?.trim()) return null;
+	const recentMessages = getStructuredRecentMessages(state);
+	if (!recentMessages) return null;
+	return resolveExplicitContinuationRequestText(
+		currentText,
+		recentMessages,
+		runtime.agentId,
+		message.entityId,
+		message.id,
 	);
 }
 
@@ -2671,6 +2751,12 @@ async function collectV5PlannerCandidateActions(args: {
 	selectedContexts?: readonly AgentContext[];
 	candidateActions?: readonly string[];
 	userRoles?: readonly RoleGateRole[];
+	/** Out-param: normalized names of EXPLICIT stage-1 candidates whose
+	 * resolved action was rejected by the action gate (role/context/privacy).
+	 * Lets the planner entry distinguish "capability exists but is gated on
+	 * this surface" from ordinary no-match, and answer honestly instead of
+	 * planning against an unrelated retrieval surface. */
+	diagnostics?: { gateRejectedExplicitCandidates: string[] };
 }): Promise<Action[]> {
 	// The candidate surface starts from every runtime action and applies only the
 	// same execution gates the planner executor will enforce — it deliberately does
@@ -2718,6 +2804,7 @@ async function collectV5PlannerCandidateActions(args: {
 		});
 		if (gateFailure !== undefined) {
 			if (explicitCandidateName) {
+				args.diagnostics?.gateRejectedExplicitCandidates.push(action.name);
 				args.runtime.logger.warn(
 					{
 						src: "service:message",
@@ -3169,6 +3256,48 @@ function buildV5PlannerActionSurface(params: {
 		}
 	}
 
+	// Selected-context representation guarantee: stage-1 routed this turn to
+	// specific contexts, and a narrowed surface with ZERO callable actions for
+	// a selected context contradicts that routing — the planner then improvises
+	// with off-context tools (observed live: a web+notes composite surfaced
+	// WEB_FETCH/WEB_SEARCH only, so the "save a note" half of the ask was
+	// impossible and the turn ended on an in-flight claim with nothing saved).
+	// For each selected context with no exposed representative, expose the
+	// highest-ranked action that DECLARES the context; `params.actions` is the
+	// already gate-checked collection, so this can never expose a gated action.
+	for (const context of params.selectedContexts ?? []) {
+		const normalizedContext = String(context).trim().toLowerCase();
+		if (!normalizedContext || normalizedContext === "simple") continue;
+		const declaresContext = (action: Action): boolean =>
+			(action.contexts ?? []).some(
+				(declared) =>
+					String(declared).trim().toLowerCase() === normalizedContext,
+			);
+		const hasRepresentative = params.actions.some(
+			(action) =>
+				exposedActionNames.has(normalizeActionIdentifier(action.name)) &&
+				declaresContext(action),
+		);
+		if (hasRepresentative) continue;
+		const scoreByName = new Map(
+			retrieval.results.map((result) => [
+				normalizeActionIdentifier(result.name),
+				result.score,
+			]),
+		);
+		const best = params.actions
+			.filter(declaresContext)
+			.sort(
+				(a, b) =>
+					(scoreByName.get(normalizeActionIdentifier(b.name)) ?? 0) -
+					(scoreByName.get(normalizeActionIdentifier(a.name)) ?? 0),
+			)
+			.at(0);
+		if (best) {
+			exposedActionNames.add(normalizeActionIdentifier(best.name));
+		}
+	}
+
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
 	).length;
@@ -3315,10 +3444,18 @@ async function createV5MessageContextObject(args: {
 
 	appendPriorDialogueEvents(events, args.runtime, args.state, args.message, {
 		// The response handler needs the agent's own prior turns for grounded
-		// chat recall ("did you tell me X?"); the tool planner must not see its
-		// own stale tool-derived answers or it answers from them instead of
-		// executing the fresh check the user asked for.
-		includeOwnReplies: !args.includeTools,
+		// chat recall ("did you tell me X?"). The tool planner needs the
+		// ordinary ones too — the question/preview a continuation turn ("finish
+		// it", "that is good") refers to — but role-wide inclusion resurrects
+		// the stale-answer hazard, so the planner's window is bounded and
+		// excludes tool-derived own answers structurally.
+		includeOwnReplies: true,
+		...(args.includeTools
+			? {
+					excludeToolDerivedOwnReplies: true,
+					maxOwnReplies: PLANNER_MAX_OWN_REPLY_TURNS,
+				}
+			: {}),
 	});
 
 	// Contexts are routing taxonomy, not proof that a handler exists. Promise
@@ -3360,7 +3497,7 @@ async function createV5MessageContextObject(args: {
 		source: "message-service",
 		stable: false,
 		content: args.includeTools
-			? "current_turn_boundary: Plan and execute only the final message:user. Prior messages and reply_reference are context for resolving references, never pending commands. Stage 1 already decided this turn needs tools; use current tool results for live data and side effects, and never claim work that no tool result proves."
+			? 'current_turn_boundary: Plan and execute only the final message:user. Prior messages and reply_reference are context for resolving references, never pending commands. The prior_message:agent blocks are your own earlier replies, shown only so you can resolve what a continuation like "finish it", "yes", or "that is good" refers to — treat every fact in them as stale. Stage 1 already decided this turn needs tools; use current tool results for live data and side effects, never answer by repeating a prior reply in place of executing the fresh check, and never claim work that no tool result proves.'
 			: 'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there. This recall exception covers only what was literally SAID in the visible chat. It does NOT cover the user\'s tracked work: a recap, status, or what-did-I-get-done ask about their todos, tasks, reminders, habits, goals, notes, or day ("recap my day", "what\'s left today", "did I finish everything", "how did I do this week") is a live tasks lookup, not chat recall — route it to the tasks tools and answer from what they return; never report an empty or missing day from the visible window alone.' +
 				// Only the chat-recall context renders the agent's own prior turns;
 				// the tool-planner context deliberately omits them (stale-answer
@@ -3596,6 +3733,18 @@ export { replyClaimsCompletedSideEffect, replyClaimsEmptyTrackedWorkState };
 export interface EligibleDirectActionRoute {
 	rule: DirectActionRoutingRule;
 	action: Action;
+}
+
+function routeReplacesStage1Candidate(
+	rule: DirectActionRoutingRule,
+	candidateActions: readonly string[] | undefined,
+): boolean {
+	const replacements = rule.replacesActionNames ?? [];
+	if (replacements.length === 0 || !candidateActions?.length) return false;
+	const candidates = new Set(candidateActions.map(normalizeActionIdentifier));
+	return replacements.some((name) =>
+		candidates.has(normalizeActionIdentifier(name)),
+	);
 }
 
 /**
@@ -3964,25 +4113,54 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 		{
 			name: "core.direct_registered_capability_request",
 			description:
-				"Promotes a plugin-declared current-turn intent only when a matching, capability-tagged action is executable for this actor.",
+				"Promotes or reconciles a plugin-declared current-turn intent only when a matching, capability-tagged action is executable for this actor.",
 			priority: 15,
 			shouldRun: ({ message, messageHandler, runtime }) => {
 				if (messageHandler.processMessage !== "RESPOND") return false;
-				if (messageHandler.plan.requiresTool === true) return false;
 				if (isSubAgentCompletionArtifact(message)) return false;
 				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
 					(context) => context !== SIMPLE_CONTEXT_ID,
 				);
-				if (nonSimpleContexts.length > 0) return false;
 				const text = getUserMessageText(message)?.trim() ?? "";
-				return (
-					text.length > 0 &&
-					getDirectActionRoutingRules(runtime).some((rule) =>
-						rule.matches(text),
-					)
+				if (text.length === 0) return false;
+				const matchingRules = getDirectActionRoutingRules(runtime).filter(
+					(rule) => rule.matches(text),
 				);
+				if (matchingRules.length === 0) return false;
+				// A plugin may reconcile an already-tool-bearing/non-simple plan only
+				// for the explicit fallback candidates it owns. All other plans keep
+				// their Stage-1 route, even when their text happens to match.
+				if (
+					messageHandler.plan.requiresTool === true ||
+					nonSimpleContexts.length > 0
+				) {
+					return matchingRules.some((rule) =>
+						routeReplacesStage1Candidate(
+							rule,
+							messageHandler.plan.candidateActions,
+						),
+					);
+				}
+				return true;
 			},
-			evaluate: async ({ message, state, runtime, userRoles }) => {
+			evaluate: async ({
+				message,
+				messageHandler,
+				state,
+				runtime,
+				userRoles,
+			}) => {
+				const text = getUserMessageText(message)?.trim() ?? "";
+				const declaredReplacementRules = new Set(
+					getDirectActionRoutingRules(runtime).filter(
+						(rule) =>
+							rule.matches(text) &&
+							routeReplacesStage1Candidate(
+								rule,
+								messageHandler.plan.candidateActions,
+							),
+					),
+				);
 				const routes = await resolveEligibleDirectActionRoutes({
 					runtime,
 					message,
@@ -3990,21 +4168,49 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					userRoles,
 				});
 				if (routes.length === 0) return undefined;
-				const candidateActions = uniqueActionNames(
-					routes.map(({ action }) => action.name),
+				// A declared owner keeps exclusive reconciliation authority even when
+				// its action is unavailable. Falling through to a second text-matching
+				// direct route could execute adjacent work now instead of preserving the
+				// original Stage-1 fallback.
+				const replacingRoutes =
+					declaredReplacementRules.size > 0
+						? routes.filter(({ rule }) => declaredReplacementRules.has(rule))
+						: [];
+				if (declaredReplacementRules.size > 0 && replacingRoutes.length === 0) {
+					return undefined;
+				}
+				const selectedRoutes =
+					replacingRoutes.length > 0 ? replacingRoutes : routes;
+				const replacedActionNames = new Set(
+					replacingRoutes.flatMap(({ rule }) =>
+						(rule.replacesActionNames ?? []).map(normalizeActionIdentifier),
+					),
 				);
+				const retainedStage1Candidates = (
+					messageHandler.plan.candidateActions ?? []
+				).filter(
+					(candidate) =>
+						!replacedActionNames.has(normalizeActionIdentifier(candidate)),
+				);
+				const candidateActions = uniqueActionNames([
+					...retainedStage1Candidates,
+					...selectedRoutes.map(({ action }) => action.name),
+				]);
 				const contexts = mergeAgentContexts(
-					...routes.map(({ rule }) => rule.contexts),
+					...selectedRoutes.map(({ rule }) => rule.contexts),
 				);
 				return {
 					requiresTool: true,
 					addContexts: contexts,
 					addCandidateActions: candidateActions,
+					...(replacingRoutes.length > 0
+						? { clearCandidateActions: true }
+						: {}),
 					// A deterministic read route must not emit Stage-1's speculative
 					// answer or a progress bubble before the real action responds.
 					clearReply: true,
 					debug: [
-						`current request matched executable direct route(s): ${routes.map(({ rule }) => rule.id).join(", ")} -> ${candidateActions.join(", ")}`,
+						`current request matched executable direct route(s): ${selectedRoutes.map(({ rule }) => rule.id).join(", ")} -> ${candidateActions.join(", ")}`,
 					],
 				};
 			},
@@ -4014,7 +4220,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 			description:
 				"Promotes simple-path replies to planning when the current user request matches a registered action's metadata.",
 			priority: 20,
-			shouldRun: ({ message, messageHandler, runtime }) => {
+			shouldRun: ({ message, messageHandler, runtime, state }) => {
 				if (messageHandler.processMessage !== "RESPOND") return false;
 				if (messageHandler.plan.requiresTool === true) return false;
 				// A sub-agent completion relay is owned by the sub-agent-completion
@@ -4031,9 +4237,15 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				if (nonSimpleContexts.length > 0) return false;
 				const text = getUserMessageText(message);
 				if (!text?.trim()) return false;
+				// A continuation turn ("finish it", "that is good") has no
+				// inferable intent of its own — rerun inference on the resolved
+				// nearest prior user request instead.
+				const inferenceText =
+					resolveContinuationInferenceMessageText(runtime, message, state) ??
+					text;
 				const inference = inferDirectCurrentRequestCandidateInference(
 					runtime.actions ?? [],
-					text,
+					inferenceText,
 				);
 				if (inference.names.length === 0) return false;
 				// Same escalation valve as messageHandlerFromFieldResult: this
@@ -4047,11 +4259,14 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					stageOneCandidateActions: messageHandler.plan.candidateActions ?? [],
 				});
 			},
-			evaluate: ({ message, messageHandler, runtime }) => {
+			evaluate: ({ message, messageHandler, runtime, state }) => {
 				const text = getUserMessageText(message) ?? "";
+				const inferenceText =
+					resolveContinuationInferenceMessageText(runtime, message, state) ??
+					text;
 				const inference = inferDirectCurrentRequestCandidateInference(
 					runtime.actions ?? [],
-					text,
+					inferenceText,
 				);
 				const candidateActions = shouldSuppressInferredCandidateEscalation({
 					inference,
@@ -4185,6 +4400,7 @@ direct/private rules:
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
 - Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
 - Never deny a capability when current_turn_boundary says a role-visible executable action can attempt it. available_contexts supplies routing domains but does not by itself prove a handler exists.
+- History never creates a capability: a surface with no matching context/action (SMS/texting, calls, unlisted connectors) is "not available here" even if earlier messages implied it; never ask follow-up details for a surface you don't have.
 - A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.
 - Crisis/legal/medical/self-harm/police/CPS: contexts=["simple"], replyText deferral only; no actions or conceal/evasion/testimony/contraband advice. Refer to lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline.
 - For tool/planning paths, replyText is only a brief ack ("On it."). Never refuse because tools may run after this stage.
@@ -7691,6 +7907,24 @@ export async function runV5MessageRuntimeStage1(args: {
 			ModelType.RESPONSE_HANDLER,
 		);
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+		// An explicit continuation turn ("finish my request", "that is good")
+		// carries no inferable intent of its own, so candidate inference runs on
+		// the nearest pending prior user request instead. The substitution feeds
+		// only routing heuristics — prompts keep the literal user text.
+		const continuationResolvedMessageText =
+			resolveContinuationInferenceMessageText(
+				args.runtime,
+				args.message,
+				args.state,
+			);
+		const inferenceMessageText =
+			continuationResolvedMessageText ?? getUserMessageText(args.message);
+		if (continuationResolvedMessageText) {
+			args.runtime.logger?.debug?.(
+				{ src: "service:message" },
+				"[message] continuation turn resolved to prior user request for candidate inference",
+			);
+		}
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 		let messageHandler: MessageHandlerResult | null = null;
 		if (rawFieldParsed) {
@@ -7711,7 +7945,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				fieldRunResult,
 				{
 					actions: args.runtime.actions,
-					messageText: getUserMessageText(args.message),
+					messageText: inferenceMessageText,
 					candidateBackstopRules: getCandidateActionBackstopRules(args.runtime),
 					subAgentCompletionRelay: isSubAgentCompletionArtifact(args.message),
 				},
@@ -7720,7 +7954,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		if (!messageHandler) {
 			messageHandler = parseMessageHandlerModelOutput(rawMessageHandler, {
 				actions: args.runtime.actions,
-				messageText: getUserMessageText(args.message),
+				messageText: inferenceMessageText,
 				subAgentCompletionRelay: isSubAgentCompletionArtifact(args.message),
 			});
 		}
@@ -7762,7 +7996,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler = synthesizePlannerFallbackFromStage1Failure({
 				reason: stage1FailureReason,
 				actions: args.runtime.actions,
-				messageText: getUserMessageText(args.message),
+				messageText: inferenceMessageText,
 			});
 			args.runtime.logger?.warn?.(
 				{
@@ -8019,6 +8253,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		// NOTIFY and the turn ended answerless). Preserve the pre-patch reply so
 		// the planner loop's answer rescue and the answerless-final fallback can
 		// still deliver it.
+		const candidateGateDiagnostics = {
+			gateRejectedExplicitCandidates: [] as string[],
+		};
 		const prePatchStageOneReply =
 			typeof messageHandler.plan.reply === "string" &&
 			messageHandler.plan.reply.trim().length > 0
@@ -8211,7 +8448,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// heuristic must not undo that decision.
 		const directPlannerInference = inferDirectCurrentRequestCandidateInference(
 			args.runtime.actions ?? [],
-			getUserMessageText(args.message) ?? "",
+			inferenceMessageText ?? "",
 		);
 		const directPlannerCandidateActions = directPlannerInference.names;
 		if (
@@ -8363,7 +8600,90 @@ export async function runV5MessageRuntimeStage1(args: {
 					selectedContexts,
 					candidateActions: getMessageHandlerCandidateActions(messageHandler),
 					userRoles: [senderRole],
+					diagnostics: candidateGateDiagnostics,
 				});
+		// Surface-privacy short-circuit: stage-1 named a capability that EXISTS
+		// but is gated on this surface (role/privacy — e.g. owner-life actions in
+		// a public channel), and no named candidate survived into the collected
+		// set. Planning anyway hands the model an unrelated retrieval surface and
+		// it improvises around the missing capability — observed live on the
+		// Discord group channel: a "todos" ask got a WEB_SEARCH surface and
+		// shipped a fabricated "todo added" with zero writes, and a todos READ
+		// answered a false empty from the orchestrator task store. Answer with an
+		// honest surface denial instead. The phrasing confirms nothing about the
+		// data — only that the surface is private to another channel.
+		const collectedCandidateNames = new Set(
+			plannerCandidateActions.map((action) =>
+				normalizeActionIdentifier(action.name),
+			),
+		);
+		const stageOneCandidateLookup = buildRuntimeActionLookup(args.runtime);
+		const anyNamedStageOneCandidateSurvived = (
+			getMessageHandlerCandidateActions(messageHandler) ?? []
+		).some((name) => {
+			const resolved = resolveRuntimeAction(
+				stageOneCandidateLookup,
+				String(name),
+			);
+			return (
+				resolved !== undefined &&
+				collectedCandidateNames.has(normalizeActionIdentifier(resolved.name))
+			);
+		});
+		if (
+			candidateGateDiagnostics.gateRejectedExplicitCandidates.length > 0 &&
+			!anyNamedStageOneCandidateSurvived
+		) {
+			return {
+				kind: "direct_reply",
+				messageHandler,
+				result: createV5ReplyStrategyResult({
+					...args,
+					text: "that's a private surface — ask me in a DM and I'll handle it there.",
+					thought: messageHandler.thought,
+					agentVoiced: false,
+				}),
+			};
+		}
+		// Live-lookup unavailability short-circuit. The progress-ack promotion
+		// (routeMessageHandlerOutput, #20249) now routes "On it."-shaped turns
+		// into planning, which bypassed the direct-reply egress replacement that
+		// used to convert a live-lookup ask with NO registered web action into
+		// the honest decline. A planner round cannot conjure the missing
+		// capability — its best case is a model-authored decline and its worst
+		// case is a shell fallback — so decline deterministically here, exactly
+		// like the egress-side replacement. Scope: only turns whose planning
+		// round exists purely because of the promotion (stage-1's own plan
+		// selected no non-simple context). When stage-1 genuinely routed to a
+		// context, or a named candidate survived collection, the planner may
+		// hold a registered domain action that serves the ask without web
+		// search — those turns still plan.
+		const stageOneOwnNonSimpleContexts = (
+			messageHandler.plan.contexts ?? []
+		).filter((context) => {
+			const normalized = String(context).trim().toLowerCase();
+			return normalized.length > 0 && normalized !== SIMPLE_CONTEXT_ID;
+		});
+		if (
+			stageOneOwnNonSimpleContexts.length === 0 &&
+			!anyNamedStageOneCandidateSurvived &&
+			shouldReplaceUnavailableLiveLookupAck({
+				message: args.message,
+				actions: args.runtime.actions ?? [],
+				reply: prePatchStageOneReply ?? "",
+			})
+		) {
+			return {
+				kind: "direct_reply",
+				messageHandler,
+				result: createV5ReplyStrategyResult({
+					...args,
+					text: LIVE_LOOKUP_UNAVAILABLE_REPLY,
+					thought: messageHandler.thought,
+					agentVoiced: false,
+				}),
+			};
+		}
 		const localizedExamplesProvider = getLocalizedExamplesProvider(
 			args.runtime,
 		);

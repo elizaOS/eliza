@@ -3048,6 +3048,16 @@ describe("residualsSpawnBaseline — spawn-time metadata classification", () => 
     ).toEqual({ baselineDirtyPaths: ["a.ts", "b.ts"] });
   });
 
+  it("parses the untracked-at-spawn baseline, dropping non-string entries", () => {
+    expect(
+      residualsSpawnBaseline({
+        metadata: {
+          codingBaselineUntracked: ["notes/", 42, "scratch.txt", ""],
+        },
+      }),
+    ).toEqual({ baselineUntrackedPaths: ["notes/", "scratch.txt"] });
+  });
+
   it("classifies a route-mapped, non-isolated workdir as shared", () => {
     expect(
       residualsSpawnBaseline({ metadata: { workdirRouteId: "agent-home" } }),
