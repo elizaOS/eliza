@@ -10,11 +10,14 @@ import {
   type Agent,
   ChannelType,
   type CharacterSettings,
+  clearSaltCache,
+  encryptedCharacter,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { agentTable } from "../../schema";
@@ -258,6 +261,156 @@ describe("Agent Integration Tests", () => {
         expect(createdAgent.name).toBe(minimalAgent.name);
         expect(createdAgent.enabled).toBe(true); // Should use the default value
         expect(createdAgent.settings).toEqual({}); // Should have empty settings object
+      });
+    });
+
+    describe("secret persistence", () => {
+      const previousSalt = process.env.SECRET_SALT;
+      const settingsSecret = "test-settings-secret-20354";
+
+      beforeEach(() => {
+        process.env.SECRET_SALT = "test-persistence-salt-20354";
+        clearSaltCache();
+      });
+
+      afterEach(() => {
+        if (previousSalt === undefined) delete process.env.SECRET_SALT;
+        else process.env.SECRET_SALT = previousSalt;
+        clearSaltCache();
+      });
+
+      async function readRawAgent(agentId: UUID) {
+        const [row] = await adapter
+          .getDatabase()
+          .select()
+          .from(agentTable)
+          .where(eq(agentTable.id, agentId))
+          .limit(1);
+        if (!row) throw new Error("Raw agent row should exist");
+        return row;
+      }
+
+      it("encrypts create and update payloads at rest while public reads stay plaintext", async () => {
+        const agentId = uuidv4() as UUID;
+        const input: Agent = {
+          ...testAgent,
+          id: agentId,
+          name: "Encrypted persistence agent",
+          settings: {
+            visibleSetting: "preserved",
+            secrets: {
+              SETTINGS_SECRET: settingsSecret,
+              enabled: true,
+              attempts: 3,
+            },
+          },
+        };
+        const original = structuredClone(input);
+
+        expect(await adapter.createAgent(input)).toBe(true);
+        expect(input).toEqual(original);
+
+        const rawCreated = await readRawAgent(agentId);
+        const rawCreatedJson = JSON.stringify(rawCreated);
+        expect(rawCreatedJson).not.toContain(settingsSecret);
+        expect(rawCreatedJson).toContain("v2:");
+
+        const created = await adapter.getAgent(agentId);
+        expect(created?.settings?.secrets?.SETTINGS_SECRET).toBe(settingsSecret);
+        expect(created?.settings?.secrets?.enabled).toBe(true);
+        const [createdByIds] = await adapter.getAgentsByIds([agentId]);
+        expect(createdByIds?.settings?.secrets?.SETTINGS_SECRET).toBe(settingsSecret);
+
+        const updatedSettingsSecret = "test-settings-secret-updated-20354";
+        const update: Partial<Agent> = {
+          settings: { secrets: { SETTINGS_SECRET: updatedSettingsSecret } },
+        };
+        const originalUpdate = structuredClone(update);
+
+        expect(await adapter.updateAgent(agentId, update)).toBe(true);
+        expect(update).toEqual(originalUpdate);
+
+        const rawUpdated = await readRawAgent(agentId);
+        const rawUpdatedJson = JSON.stringify(rawUpdated);
+        expect(rawUpdatedJson).not.toContain(updatedSettingsSecret);
+        expect(rawUpdatedJson).toContain("v2:");
+
+        const updated = await adapter.getAgent(agentId);
+        expect(updated?.settings?.secrets?.SETTINGS_SECRET).toBe(updatedSettingsSecret);
+      });
+
+      it("migrates legacy plaintext secrets during the next settings update", async () => {
+        const agentId = uuidv4() as UUID;
+        const legacySettingsSecret = "test-legacy-settings-secret-20354";
+        await adapter.createAgent({ ...testAgent, id: agentId, name: "Legacy plaintext agent" });
+        await adapter
+          .getDatabase()
+          .update(agentTable)
+          .set({
+            settings: { secrets: { LEGACY_SETTINGS: legacySettingsSecret } },
+          })
+          .where(eq(agentTable.id, agentId));
+
+        expect(
+          await adapter.updateAgent(agentId, {
+            name: "Migrated on write",
+            settings: { migratedSetting: "preserved" },
+          })
+        ).toBe(true);
+
+        const raw = await readRawAgent(agentId);
+        const rawJson = JSON.stringify(raw);
+        expect(rawJson).not.toContain(legacySettingsSecret);
+        expect(rawJson).toContain("v2:");
+
+        const restored = await adapter.getAgent(agentId);
+        expect(restored?.name).toBe("Migrated on write");
+        expect(restored?.settings?.migratedSetting).toBe("preserved");
+        expect(restored?.settings?.secrets?.LEGACY_SETTINGS).toBe(legacySettingsSecret);
+      });
+
+      it("preserves already-encrypted inputs without double encryption", async () => {
+        const agentId = uuidv4() as UUID;
+        const encrypted = encryptedCharacter({
+          settings: { secrets: { PRE_ENCRYPTED_SETTINGS: settingsSecret } },
+        });
+        const input: Agent = {
+          ...testAgent,
+          id: agentId,
+          name: "Already encrypted agent",
+          settings: encrypted.settings,
+        };
+        const original = structuredClone(input);
+
+        expect(await adapter.createAgent(input)).toBe(true);
+        expect(input).toEqual(original);
+
+        const raw = await readRawAgent(agentId);
+        expect(raw.settings).toEqual(encrypted.settings);
+
+        const restored = await adapter.getAgent(agentId);
+        expect(restored?.settings?.secrets?.PRE_ENCRYPTED_SETTINGS).toBe(settingsSecret);
+      });
+
+      it("fails closed through adapter reads when the storage salt is wrong", async () => {
+        const agentId = uuidv4() as UUID;
+        expect(
+          await adapter.createAgent({
+            ...testAgent,
+            id: agentId,
+            name: "Wrong salt agent",
+            settings: { secrets: { WRONG_SALT_SETTINGS: settingsSecret } },
+          })
+        ).toBe(true);
+
+        process.env.SECRET_SALT = "different-test-persistence-salt-20354";
+        clearSaltCache();
+        await expect(adapter.getAgent(agentId)).rejects.toThrow("Failed to decrypt secret setting");
+
+        process.env.SECRET_SALT = "test-persistence-salt-20354";
+        clearSaltCache();
+        const restored = await adapter.getAgent(agentId);
+        expect(restored?.settings?.secrets?.WRONG_SALT_SETTINGS).toBe(settingsSecret);
       });
     });
 

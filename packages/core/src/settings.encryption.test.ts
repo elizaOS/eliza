@@ -4,8 +4,8 @@
  * an "elizaos:settings:v2" AAD. The properties pinned here are the ones a secret
  * store lives or dies by: an exact round-trip, semantic security (same plaintext
  * → different ciphertext), idempotent re-encryption, type pass-through, and —
- * critically — that a WRONG salt fails *safe* (returns the ciphertext, never a
- * garbled/partial plaintext).
+ * critically — that a WRONG salt fails *safe* with a typed error instead of
+ * returning ciphertext or garbled/partial plaintext as a usable value.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -18,7 +18,7 @@ import {
 	encryptObjectValues,
 	encryptStringValue,
 } from "./settings.ts";
-import type { Character, IAgentRuntime } from "./types";
+import type { Character } from "./types";
 
 const SALT = "salt-alpha";
 const SECRET = "sk-api-key-do-not-leak-1234567890";
@@ -122,7 +122,7 @@ describe("encryptedCharacter / decryptedCharacter", () => {
 			"anthropic-secret",
 		);
 
-		const decrypted = decryptedCharacter(encrypted, {} as IAgentRuntime);
+		const decrypted = decryptedCharacter(encrypted);
 		expect(decrypted).toEqual(character);
 		expect(encrypted.settings?.secrets?.ANTHROPIC_API_KEY).toMatch(/^v2:/);
 	});
@@ -134,17 +134,11 @@ describe("encryptedCharacter / decryptedCharacter", () => {
 			settings: { defaultTemperature: 0.2 },
 		};
 
+		expect(decryptedCharacter(encryptedCharacter(withoutSettings))).toEqual(
+			withoutSettings,
+		);
 		expect(
-			decryptedCharacter(
-				encryptedCharacter(withoutSettings),
-				{} as IAgentRuntime,
-			),
-		).toEqual(withoutSettings);
-		expect(
-			decryptedCharacter(
-				encryptedCharacter(withoutNestedSecrets),
-				{} as IAgentRuntime,
-			),
+			decryptedCharacter(encryptedCharacter(withoutNestedSecrets)),
 		).toEqual(withoutNestedSecrets);
 	});
 });
