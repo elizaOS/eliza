@@ -12,7 +12,11 @@ export default defineConfig({
 		timeout: 30_000,
 	},
 	use: {
-		baseURL: "http://localhost:13789",
+		// Kernel-assigned per run: global-setup binds port 0 and advertises the
+		// bound origin here. Workers re-evaluate this config after inheriting the
+		// runner's env (the same channel that carries __E2E_SKIP__), so the value
+		// is always set by the time a worker resolves it (#18359).
+		baseURL: process.env.CORE_E2E_BASE_URL,
 	},
 	projects: [
 		{
