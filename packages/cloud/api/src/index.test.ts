@@ -822,7 +822,31 @@ describe("cloud-api worker entrypoint", () => {
       status: "ok",
       region: "local-test",
       commit: "feedfacefeedfacefeedfacefeedfacefeedface",
+      personalSharedTelegramEdge: { enabled: false },
     });
+  });
+
+  test("reports only the served Personal Shared Telegram edge gate state", async () => {
+    const response = await cloudApiWorker.fetch(
+      new Request("https://api-staging.eliza.app/api/health", {
+        headers: { host: "api-staging.eliza.app" },
+      }),
+      {
+        ENVIRONMENT: "staging",
+        PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED: "true",
+        ELIZA_APP_TELEGRAM_BOT_TOKEN: "never-return-this-bot-token",
+        ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "never-return-this-webhook-secret",
+      } as never,
+      {} as never,
+    );
+
+    const text = await response.text();
+    expect(JSON.parse(text)).toMatchObject({
+      environment: "staging",
+      personalSharedTelegramEdge: { enabled: true },
+    });
+    expect(text).not.toContain("never-return-this-bot-token");
+    expect(text).not.toContain("never-return-this-webhook-secret");
   });
 
   test("reports only value-free staging session cutover readiness", async () => {
