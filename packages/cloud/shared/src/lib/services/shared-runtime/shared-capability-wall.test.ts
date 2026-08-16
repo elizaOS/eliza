@@ -14,11 +14,13 @@ describe("Shared capability wall", () => {
     ["show my checklist", "todos"],
     ["complete the laundry todo", "todos"],
     ["show my calendar events", "calendar"],
+    ["list my meetings", "calendar"],
     ["book me dinner for four", "bookings"],
     ["book a flight to san francisco", "bookings"],
     ["email Bob the itinerary", "communications"],
     ["call Mom", "communications"],
     ["text Alice that I'm late", "communications"],
+    ["message Bob the update", "communications"],
     ["order dinner for me", "purchases"],
     ["save this as a note", "notes"],
     ["connect my Gmail", "cloud-apps"],
@@ -40,6 +42,9 @@ describe("Shared capability wall", () => {
     "What restaurant should I choose?",
     "Write a TypeScript function",
     "Let's discuss my meeting tomorrow",
+    "Remember this code word for my next message: apricot-816.",
+    "List two ways to make a meeting shorter.",
+    "Make this message shorter.",
   ])("keeps discussion and research in Shared: %s", (message) => {
     expect(resolveSharedCapabilityWall(message)).toBeNull();
   });
