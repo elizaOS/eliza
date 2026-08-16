@@ -8036,12 +8036,28 @@ export class ElizaSandboxService {
 
   // Shutdown
 
+  /**
+   * Stops the agent's container and flips the row to `stopped`, capturing a
+   * pre-stop snapshot first. Fail-closed by default: a capture failure leaves
+   * the agent running and returns an explicit refusal. The sole sanctioned
+   * bypass is `options.stateLossAcknowledged` (#18228) — an operator's
+   * explicit acceptance that state since the last durable backup is discarded
+   * — which proceeds to stop without a capture, loudly, and reports
+   * `stateLossAcknowledged: true` in the result. It is never implied.
+   */
   async shutdown(
     agentId: string,
     orgId: string,
-  ): Promise<{ success: boolean; error?: string; retryable?: boolean }> {
+    options?: { readonly stateLossAcknowledged?: boolean },
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    retryable?: boolean;
+    stateLossAcknowledged?: boolean;
+  }> {
     let snapshotAgentId: string | null = null;
     let captureUnsupported = false;
+    let captureWaivedByOperator = false;
     let preShutdownSnapshot: {
       stateData: AgentBackupStateData;
       sizeBytes: number;
@@ -8063,6 +8079,17 @@ export class ElizaSandboxService {
           logger.warn(
             "[agent-sandbox] Shutdown proceeding without capture: image has no snapshot endpoint",
             { agentId },
+          );
+        } else if (options?.stateLossAcknowledged) {
+          // Sanctioned operator override (#18228): a persistent capture or
+          // transfer-hop failure otherwise makes the agent unstoppable through
+          // every safe path. The operator explicitly acknowledged the state
+          // loss, so proceed to stop WITHOUT a capture — never silently: the
+          // waiver is logged here and reported in the result.
+          captureWaivedByOperator = true;
+          logger.error(
+            "[agent-sandbox] Shutdown proceeding WITHOUT pre-stop capture: operator acknowledged state loss",
+            { agentId, captureError: message },
           );
         } else if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
           // TRANSIENT (PGlite closing race): do NOT weaken the fail-closed
@@ -8138,7 +8165,12 @@ export class ElizaSandboxService {
         } as const;
       }
 
-      if (rec.status === "running" && rec.bridge_url && !captureUnsupported) {
+      if (
+        rec.status === "running" &&
+        rec.bridge_url &&
+        !captureUnsupported &&
+        !captureWaivedByOperator
+      ) {
         // The capture must be OF THIS generation. A capture taken against a
         // different bridge_url (the row moved between the unlocked fetch and
         // this locked read) is some other container's state; persisting it
@@ -8189,6 +8221,9 @@ export class ElizaSandboxService {
       `);
 
       snapshotAgentId = rec.id;
+      if (captureWaivedByOperator) {
+        return { success: true, stateLossAcknowledged: true } as const;
+      }
       return { success: true } as const;
     });
 
@@ -8199,7 +8234,10 @@ export class ElizaSandboxService {
           error: error instanceof Error ? error.message : String(error),
         });
       });
-      logger.info("[agent-sandbox] Shutdown complete", { agentId });
+      logger.info("[agent-sandbox] Shutdown complete", {
+        agentId,
+        stateLossAcknowledged: captureWaivedByOperator || undefined,
+      });
     }
 
     return result;
@@ -8678,6 +8716,7 @@ export class ElizaSandboxService {
   async executeRestart(
     agentId: string,
     orgId: string,
+    options?: { readonly stateLossAcknowledged?: boolean },
   ): Promise<{
     success: boolean;
     containerStopped: boolean;
@@ -8706,7 +8745,9 @@ export class ElizaSandboxService {
       await this.prepareLegacyWarmClaimCredentialRecovery(agentId, orgId);
     }
 
-    const shutdownResult = await this.shutdown(agentId, orgId);
+    const shutdownResult = await this.shutdown(agentId, orgId, {
+      stateLossAcknowledged: options?.stateLossAcknowledged,
+    });
     if (!shutdownResult.success) {
       return {
         success: false,
