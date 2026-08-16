@@ -372,6 +372,114 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("short-circuits an explicit owner-private candidate denied by disclosure", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user requested an owner-private read.",
+				contexts: ["general"],
+				candidateActionNames: ["OWNER_TODOS"],
+				extra: { requiresTool: true },
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "OWNER_TODOS",
+				disclosureGate: { require: "owner_exclusive" },
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toMatch(/private/i);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
+	it("keeps a role-rejected explicit candidate on the planner path", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user requested a restricted action.",
+				contexts: ["general"],
+				candidateActionNames: ["ADMIN_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Explain the actual limitation.",
+				toolCalls: [],
+				messageToUser: "This action requires an administrator role.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction("OWNER"),
+				name: "ADMIN_TASK",
+				contexts: ["general"],
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000007" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"This action requires an administrator role.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it("keeps a context-rejected explicit candidate on the planner path", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user requested an action outside this context.",
+				contexts: ["general"],
+				candidateActionNames: ["CONTEXT_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Explain the context limitation.",
+				toolCalls: [],
+				messageToUser: "This action is unavailable in the current context.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "CONTEXT_TASK",
+				contexts: ["general"],
+				contextGate: { noneOf: ["general"] },
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000008" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"This action is unavailable in the current context.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
 	it("blocks a Stage-1 action envelope before the direct-reply route", async () => {
 		const actionEnvelope =
 			'{"action":"BROWSER","parameters":{"url":"https://example.com"},"status":"retry","toolCallId":"call-1"}';

@@ -9,6 +9,7 @@ import type { Memory } from "../types/memory";
 import {
 	type ActionGateContext,
 	actionGateFailure,
+	actionGateRejection,
 	canActionRun,
 	type GateableAction,
 } from "./action-gate";
@@ -62,6 +63,9 @@ describe("canActionRun — roleGate", () => {
 	it("denies a USER an OWNER-gated action, allows an OWNER", () => {
 		const owned = action({ name: "SECRETS", roleGate: { minRole: "OWNER" } });
 		expect(canActionRun(owned, ctx({ userRoles: ["USER"] }))).toBe(false);
+		expect(actionGateRejection(owned, ctx({ userRoles: ["USER"] }))?.kind).toBe(
+			"role",
+		);
 		expect(canActionRun(owned, ctx({ userRoles: ["OWNER"] }))).toBe(true);
 	});
 
@@ -90,6 +94,9 @@ describe("canActionRun — private-action gate", () => {
 	it("returns a descriptive failure reason", () => {
 		expect(actionGateFailure(priv, ctx({ message: userTurn }))).toMatch(
 			/private/i,
+		);
+		expect(actionGateRejection(priv, ctx({ message: userTurn }))?.kind).toBe(
+			"private",
 		);
 	});
 });
@@ -129,6 +136,9 @@ describe("canActionRun — ACTION_ROLE_POLICY replaces the declared gate", () =>
 		expect(actionGateFailure(secrets, ctx({ userRoles: ["OWNER"] }))).toContain(
 			"missing_attestation",
 		);
+		expect(
+			actionGateRejection(secrets, ctx({ userRoles: ["OWNER"] }))?.kind,
+		).toBe("disclosure");
 	});
 });
 
@@ -171,6 +181,9 @@ describe("canActionRun — contextGate", () => {
 			contextGate: { contexts: ["coding" as AgentContext] },
 		});
 		expect(canActionRun(coding, ctx({ activeContexts: [] }))).toBe(false);
+		expect(actionGateRejection(coding, ctx({ activeContexts: [] }))?.kind).toBe(
+			"context",
+		);
 		expect(
 			canActionRun(coding, ctx({ activeContexts: ["coding" as AgentContext] })),
 		).toBe(true);
