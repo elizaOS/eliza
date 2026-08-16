@@ -327,6 +327,25 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	SEARCH_ONLINE: ["WEB_SEARCH"],
 	INTERNET_SEARCH: ["WEB_SEARCH"],
 	GOOGLE_SEARCH: ["WEB_SEARCH"],
+	// Contact/person lookups: stage-1 invents CONTACTS_LOOKUP / WHO_IS / etc for
+	// "who is X in my rolodex", which resolves to nothing — the candidate narrow
+	// then collapsed the surface to PAGE_DELEGATE (saturated-tie rank-1) and the
+	// planner invented a non-existent "CONTACTS_LOOKUP" page capability, failing
+	// the read even though CONTACT (score 1.0) and ENTITY (0.99) were retrieved
+	// (observed live). Hint both the CONTACT CRUD umbrella and the ENTITY graph.
+	CONTACTS_LOOKUP: ["CONTACT", "ENTITY"],
+	CONTACT_LOOKUP: ["CONTACT", "ENTITY"],
+	LOOKUP_CONTACT: ["CONTACT", "ENTITY"],
+	FIND_CONTACT: ["CONTACT", "ENTITY"],
+	FIND_PERSON: ["CONTACT", "ENTITY"],
+	CONTACT_INFO: ["CONTACT", "ENTITY"],
+	WHO_IS: ["CONTACT", "ENTITY"],
+	GET_CONTACT: ["CONTACT", "ENTITY"],
+	SHOW_CONTACT: ["CONTACT", "ENTITY"],
+	CONTACTS: ["CONTACT", "ENTITY"],
+	ROLODEX: ["CONTACT", "ENTITY"],
+	ADD_CONTACT: ["CONTACT", "ENTITY"],
+	CREATE_CONTACT: ["CONTACT", "ENTITY"],
 	FIND_MESSAGES: ["MESSAGE"],
 	FIND_MESSAGE: ["MESSAGE"],
 	ARRANGE_VIEWS: ["VIEWS"],
