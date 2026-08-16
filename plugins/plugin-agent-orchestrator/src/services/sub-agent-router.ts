@@ -2677,7 +2677,19 @@ function isUnsupportedAcpMethodError(data: unknown): boolean {
   return !/session\/prompt/i.test(serialized);
 }
 
-function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
+/**
+ * Guarantee the verified deliverable URLs survive the completion relay. The
+ * sub-agent's own narration routinely describes its LAST STEP instead of the
+ * deliverable ("updated app/layout.tsx metadata … verified on disk") — live
+ * 2026-08-16 website-build receipt: the user asked "tell me where it lives"
+ * and never got the URL even though the router held it in `verifiedUrls`.
+ * Model compliance with the "lead with the URL" spawn-brief line is not
+ * enforceable; this projection is. Exported for unit coverage.
+ */
+export function verifiedUrlCompletionFallback(
+  text: string,
+  verifiedUrls: string[],
+) {
   const userFacingUrls = publicPreferredUrls(verifiedUrls);
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const retained: string[] = [];
@@ -2711,6 +2723,21 @@ function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
       meaningfulLines.join("\n") !== userFacingUrls.join("\n")
     ) {
       return [header, ...userFacingUrls].filter(Boolean).join("\n");
+    }
+    // Prose narration that omits every user-facing deliverable URL: lead with
+    // the URLs (right after the planner header) instead of trusting the
+    // model's narration to mention where the result lives. Containment is
+    // checked against the PUBLIC projection — a narration that only names the
+    // loopback variant still gets the public URL surfaced.
+    if (
+      userFacingUrls.length > 0 &&
+      !userFacingUrls.some((url) => meaningful.includes(url))
+    ) {
+      const body = retained
+        .filter((line) => !line.trim().startsWith("[sub-agent:"))
+        .join("\n")
+        .trim();
+      return [header, ...userFacingUrls, body].filter(Boolean).join("\n");
     }
     return text;
   }
