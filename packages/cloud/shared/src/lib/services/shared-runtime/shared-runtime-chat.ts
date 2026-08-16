@@ -57,6 +57,7 @@ import {
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
+import { createSharedMemoryStore } from "./shared-memory-store";
 import { navIntentActionResult } from "./shared-nav-intent";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
@@ -217,6 +218,25 @@ function sharedElizaRuntimeExecution(
         }
       : {}),
   };
+}
+
+/**
+ * Flag-gated durable memory mirror for one turn (P2 edge memory store). Null
+ * while `SHARED_MEMORY_TABLES_ENABLED !== "true"`. Tenant scope comes from the
+ * server-resolved agent row, so a client can never choose the tenant; storage
+ * uuids reuse the Todo scope so memory rows line up with the runtime's
+ * projected identities.
+ */
+function sharedTurnMemoryStore(agent: SharedRuntimeAgent) {
+  return createSharedMemoryStore({
+    organizationId: agent.organization_id,
+    userId: agent.user_id,
+    agentKey: agent.id,
+    storage: sharedTodoStorageScope({
+      sourceAgentId: agent.id,
+      ownerId: agent.user_id,
+    }),
+  });
 }
 
 function stableUuid(raw: string): string {
@@ -835,6 +855,7 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
+    const memoryStore = sharedTurnMemoryStore(agent);
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
@@ -845,6 +866,7 @@ export class SharedRuntimeChatService {
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
+        ...(memoryStore ? { memory: memoryStore } : {}),
         ...(options.executionEngine === "eliza-runtime"
           ? {
               execution: sharedElizaRuntimeExecution(agent, params, options.funding),
@@ -1015,6 +1037,7 @@ export class SharedRuntimeChatService {
     const detachRequestAbort = () =>
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
+    const streamMemoryStore = sharedTurnMemoryStore(agent);
     const providerSetupStartedAt = performance.now();
     try {
       turn = await runSharedAgentTurnStream({
@@ -1026,6 +1049,7 @@ export class SharedRuntimeChatService {
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
+        ...(streamMemoryStore ? { memory: streamMemoryStore } : {}),
         ...(options.executionEngine === "eliza-runtime"
           ? {
               execution: sharedElizaRuntimeExecution(agent, params, options.funding),
