@@ -68,4 +68,25 @@ describe("Steward SDK agent-scoped pending approvals", () => {
       client.listPendingApprovals("agent-1", { limit: 2, offset: 1 }),
     ).rejects.toBeInstanceOf(StewardApiError);
   });
+
+  test("fails closed when the scoped response contains a malformed approval", async () => {
+    globalThis.fetch = mock(async () =>
+      Response.json({
+        ok: true,
+        data: {
+          approvals: [{ queueId: "approval-1", status: "pending" }],
+          limit: 2,
+          offset: 0,
+        },
+      }),
+    ) as unknown as typeof fetch;
+    const client = new StewardClient({
+      baseUrl: "https://steward.example",
+      bearerToken: "verified-session",
+    });
+
+    await expect(
+      client.listPendingApprovals("agent-1", { limit: 2, offset: 0 }),
+    ).rejects.toBeInstanceOf(StewardApiError);
+  });
 });

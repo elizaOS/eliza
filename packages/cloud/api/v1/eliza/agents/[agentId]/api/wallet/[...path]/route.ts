@@ -1,4 +1,5 @@
-// Handles v1 cloud API v1 eliza agents agentid api wallet ...path route traffic with route-local auth expectations.
+/** Proxies an authenticated Cloud agent's supported wallet operations to its mapped Steward wallet. */
+import { ElizaError } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { dbWrite } from "@/db/helpers";
@@ -235,6 +236,16 @@ function isPolicyType(value: unknown): value is PolicyType {
 
 function isJsonObject(value: unknown): value is JsonObject {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function assertPendingApprovalTotal(value: unknown): asserts value is number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new ElizaError("Steward returned an invalid pending approval total", {
+      code: "INVALID_STEWARD_PENDING_APPROVAL_TOTAL",
+      context: { value },
+      severity: "fatal",
+    });
+  }
 }
 
 function assertStewardWalletClient(
@@ -498,6 +509,7 @@ export async function handleDirectWalletRequest(
       client.listPendingApprovals(stewardAgentId, { limit, offset }),
       client.getAgentDashboard(stewardAgentId),
     ]);
+    assertPendingApprovalTotal(dashboard.pendingApprovals);
     return json({
       approvals,
       total: dashboard.pendingApprovals,

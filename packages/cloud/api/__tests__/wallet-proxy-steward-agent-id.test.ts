@@ -1,4 +1,4 @@
-// Exercises cloud API tests wallet proxy steward agent id.test behavior with deterministic Worker route fixtures.
+/** Exercises Steward wallet routing with deterministic Cloud auth, mapping, and upstream fixtures. */
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 // Spread the real module into the partial mock below — `mock.module` is
 // process-global, so dropping the other real exports breaks every later
@@ -351,6 +351,22 @@ describe("wallet proxy steward agent id resolution", () => {
     expect(response.status).toBe(200);
     expect(createStewardClient).toHaveBeenCalledWith({
       organizationId: "org-1",
+    });
+  });
+
+  test("fails closed when Steward returns an invalid pending approval total", async () => {
+    dbRows.push({ stewardAgentId: "cloud-client-address" });
+    stewardClient.getAgentDashboard.mockResolvedValue({
+      pendingApprovals: -1,
+      recentTransactions: [],
+    });
+
+    await expect(
+      callWallet("steward-pending-approvals", "GET", undefined, {
+        authorization: "Bearer header.payload.signature",
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_STEWARD_PENDING_APPROVAL_TOTAL",
     });
   });
 });

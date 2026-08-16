@@ -81,7 +81,7 @@
      getAgentSpend(agentId: string): Promise<AgentSpendSummary>;
 --- a/dist/client.js
 +++ b/dist/client.js
-@@ -2032,6 +2032,21 @@
+@@ -2032,6 +2032,26 @@
              throw new StewardApiError(response.error, response.status, response.data);
          return response.data;
      }
@@ -96,7 +96,12 @@
 +        const response = await this.request(`/vault/${encodeURIComponent(agentId)}/pending${qs ? `?${qs}` : ""}`);
 +        if (!response.ok)
 +            throw new StewardApiError(response.error, response.status, response.data);
-+        if (!response.data || !Array.isArray(response.data.approvals))
++        if (!response.data || !Array.isArray(response.data.approvals) ||
++            !response.data.approvals.every((approval) => approval && typeof approval === "object" &&
++                typeof approval.queueId === "string" && approval.status === "pending" &&
++                typeof approval.requestedAt === "string" && approval.transaction &&
++                typeof approval.transaction === "object" && !Array.isArray(approval.transaction) &&
++                typeof approval.transaction.id === "string"))
 +            throw new StewardApiError("Steward pending approvals response is invalid", 502, response.data);
 +        return response.data.approvals;
 +    }
