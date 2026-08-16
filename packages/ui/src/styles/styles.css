@@ -173,6 +173,15 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
   left: 50%;
   width: min(560px, calc(100% - 24px));
   height: min(600px, calc(100% - 80px));
+  /* Horizontal centering only. The component drops its responsive
+     `-translate-*`/viewport-centering utilities entirely in this shell
+     (AssistantOverlay reads useChatOverlayShell()), so there is no
+     individual `translate` to cancel and nothing for the CSS pipeline to
+     fold away — the historical failure mode where Tailwind v4's
+     `translate: -50% -50%` composed with this transform and pushed the
+     panel ~50% of its own height above the bottom anchor (measured
+     y ≈ -276px, transcripts invisible outside the native window; #20063,
+     #19996) is now structurally impossible rather than cascade-managed. */
   transform: translateX(-50%);
   border-radius: 1.5rem;
   border-color: rgb(255 255 255 / 72%);

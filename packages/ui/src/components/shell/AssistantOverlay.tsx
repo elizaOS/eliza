@@ -9,6 +9,7 @@ import { useBranding } from "../../config/branding";
 import { useNativeGlassAnchor } from "../../glass";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { Button } from "../ui/button";
+import { useChatOverlayShell } from "./chat-overlay-shell-context";
 import type { ShellPhase } from "./shell-state";
 
 export interface AssistantOverlayProps {
@@ -47,6 +48,9 @@ export function AssistantOverlay({
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
   const glassTier = useNativeGlassAnchor(dialogRef);
   const previousFocusRef = React.useRef<HTMLElement | null>(null);
+  // Must run unconditionally (React hooks rules): the conditional class list
+  // below reads it, and the component early-returns on !isOpen AFTER this.
+  const isChatOverlayShell = useChatOverlayShell();
 
   // Manage Escape, focus trap, initial focus, and focus return as a single
   // effect bound to isOpen so cleanup/setup pair correctly across opens.
@@ -136,11 +140,22 @@ export function AssistantOverlay({
       style={{ zIndex: Z_SHELL_OVERLAY + 1, position: "fixed" }}
       className={[
         "shell-assistant-overlay-panel eliza-glass-sheet pointer-events-auto overflow-hidden",
-        // Position: bottom sheet on mobile, centered drawer on >= sm
-        "fixed inset-x-0 bottom-0",
-        "sm:left-1/2 sm:right-auto sm:top-1/2 sm:bottom-auto",
-        "sm:-translate-x-1/2 sm:-translate-y-1/2",
-        "sm:w-[min(560px,90vw)] sm:h-[min(640px,80vh)]",
+        // Position: bottom sheet on mobile, centered drawer on >= sm —
+        // except in the chat-overlay desktop shell, which anchors the panel
+        // above the persistent pill via the stylesheet override instead
+        // (#20063: the responsive `-translate-*` utilities emit the
+        // individual CSS `translate` property, which composes with the
+        // shell's `transform` and cannot be reliably cancelled from CSS —
+        // the CSS pipeline folds any co-declared cancel away).
+        isChatOverlayShell
+          ? "fixed inset-x-0 bottom-0"
+          : "fixed inset-x-0 bottom-0 sm:left-1/2 sm:right-auto sm:top-1/2 sm:bottom-auto",
+        ...(isChatOverlayShell
+          ? []
+          : [
+              "sm:-translate-x-1/2 sm:-translate-y-1/2",
+              "sm:w-[min(560px,90vw)] sm:h-[min(640px,80vh)]",
+            ]),
         // Size on mobile
         "h-[80vh]",
         // Surface

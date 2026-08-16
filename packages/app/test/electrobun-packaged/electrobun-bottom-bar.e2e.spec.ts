@@ -263,24 +263,65 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         height: 600,
       });
 
-    const expandedGeometry = await harness.eval<{
+    const readGeometry = (): Promise<{
+      panelTop: number;
       panelBottom: number;
+      panelLeft: number;
+      panelRight: number;
       pillTop: number;
-    }>(`(() => {
+      viewportWidth: number;
+    }> =>
+      harness.eval(`(() => {
       const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
       const pill = document.querySelector('[data-testid="shell-home-pill"]');
       if (!(panel instanceof HTMLElement) || !(pill instanceof HTMLElement)) {
         throw new Error('expanded chat geometry unavailable');
       }
+      const rect = panel.getBoundingClientRect();
       return {
-        panelBottom: Math.round(panel.getBoundingClientRect().bottom),
+        panelTop: Math.round(rect.top),
+        panelBottom: Math.round(rect.bottom),
+        panelLeft: Math.round(rect.left),
+        panelRight: Math.round(rect.right),
         pillTop: Math.round(pill.getBoundingClientRect().top),
+        viewportWidth: window.innerWidth,
       };
     })()`);
+
+    // The panel enters via a 220ms translate animation (motion-safe). Measuring
+    // mid-slide reports the panel displaced up to 8% of its height below its
+    // resting place, tripping the containment assertions below. Wait for the
+    // geometry to settle (two identical consecutive reads) before asserting.
+    let settled = await readGeometry();
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 150));
+      const next = await readGeometry();
+      if (
+        next.panelTop === settled.panelTop &&
+        next.panelBottom === settled.panelBottom
+      ) {
+        settled = next;
+        break;
+      }
+      settled = next;
+    }
+    const expandedGeometry = settled;
     expect(expandedGeometry.panelBottom).toBeLessThan(expandedGeometry.pillTop);
     expect(
       expandedGeometry.pillTop - expandedGeometry.panelBottom,
     ).toBeGreaterThanOrEqual(8);
+    // Two-sided containment (#20063): the expanded panel must sit FULLY inside
+    // the native window — a panel translated ~50% of its own height upward
+    // (the individual-CSS-`translate` leak this issue describes, measured
+    // y ≈ -276px in a 680px window) still satisfies the one-sided
+    // bottom-above-pill check above, while being visually outside the window.
+    expect(expandedGeometry.panelTop).toBeGreaterThanOrEqual(0);
+    expect(expandedGeometry.panelLeft).toBeGreaterThanOrEqual(0);
+    expect(expandedGeometry.panelRight).toBeLessThanOrEqual(
+      expandedGeometry.viewportWidth,
+    );
+    // Intended top breathing room: ≥ 24px of window above the panel.
+    expect(expandedGeometry.panelTop).toBeGreaterThanOrEqual(24);
 
     await harness.eval(
       `document.querySelector('[aria-label="Close assistant"]')?.click()`,
