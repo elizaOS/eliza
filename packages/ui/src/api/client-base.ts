@@ -1977,6 +1977,9 @@ export class ElizaClient {
               const protocol = new URL(this.baseUrl).protocol;
               return protocol === "http:" || protocol === "https:";
             } catch {
+              // error-policy:J3 malformed base URLs are explicitly ineligible
+              // for WS-base precedence; ambient derivation below still reads
+              // them exactly as before.
               return false;
             }
           })()
@@ -1995,8 +1998,8 @@ export class ElizaClient {
           wsBase = undefined; // fall through to the explicit client base
         }
       } catch {
-        // Invalid injected URL: keep the existing parse-and-throw behavior
-        // below rather than silently reinterpreting it.
+        // error-policy:J3 a malformed injected WS URL is not silently
+        // reinterpreted: the existing parse-and-throw below handles it.
       }
     }
     if (wsBase) {
