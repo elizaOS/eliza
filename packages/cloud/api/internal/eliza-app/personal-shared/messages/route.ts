@@ -326,6 +326,17 @@ app.post("/", async (c) => {
       userId: account.userId,
       organizationId: account.organizationId,
     });
+    const personalPrewarm = isNewPersonalAccount
+      ? (() => {
+          const startedAt = performance.now();
+          const timing = prewarmPersonalSharedAgentTurnCaches(
+            agent,
+            worker.namespace,
+          ).then(() => performance.now() - startedAt);
+          worker.executionCtx.waitUntil(timing);
+          return timing;
+        })()
+      : null;
     let deliveryMessage = parsed.data.message;
     if (
       parsed.data.platform === "telegram" &&
@@ -585,12 +596,7 @@ app.post("/", async (c) => {
       });
     }
     stage = "shared_runtime";
-    let prewarmMs: number | undefined;
-    if (isNewPersonalAccount) {
-      const prewarmStartedAt = performance.now();
-      await prewarmPersonalSharedAgentTurnCaches(agent, worker.namespace);
-      prewarmMs = performance.now() - prewarmStartedAt;
-    }
+    const prewarmMs = personalPrewarm ? await personalPrewarm : undefined;
     const sharedStartedAt = performance.now();
     const trustedDelivery =
       parsed.data.platform === "telegram"
