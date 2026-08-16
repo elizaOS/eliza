@@ -540,25 +540,13 @@ export class EmbeddedWorkflowService extends Service {
         input: pending.input,
         signal: controller.signal,
         onEvent: (event) => this.recordEvent(running, event),
-        generate: async ({ prompt, messages, structured, signal }) => {
+        generate: async ({ prompt, messages, signal }) => {
           const promptText =
             typeof prompt === 'string' ? prompt : JSON.stringify(prompt ?? messages ?? '');
-          const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
+          return this.runtime.useModel(ModelType.TEXT_LARGE, {
             prompt: promptText,
             signal,
-            ...(structured ? { responseFormat: { type: 'json_object' as const } } : {}),
           });
-          if (!structured) return response;
-          try {
-            return JSON.parse(response);
-          } catch (error) {
-            // error-policy:J2 structured output is a required Smithers task
-            // contract, so preserve the model response as failure context.
-            throw new WorkflowApiError('elizaOS model returned invalid structured output', 502, {
-              response,
-              cause: error instanceof Error ? error.message : String(error),
-            });
-          }
         },
       });
       const completed: WorkflowExecution = {

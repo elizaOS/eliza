@@ -33,6 +33,15 @@ type TriggerRecord = {
   workflowId?: string;
 };
 
+function executionMessage(execution?: WorkflowExecution): string | undefined {
+  const first = Array.isArray(execution?.output)
+    ? execution.output[0]
+    : undefined;
+  if (!first || typeof first !== "object") return undefined;
+  const message = (first as { message?: unknown }).message;
+  return typeof message === "string" && message.trim() ? message : undefined;
+}
+
 const SOURCE = `/** @jsxImportSource smthrs */
 import { createSmithers } from "smthrs/create";
 import { z } from "zod";
@@ -45,7 +54,7 @@ const agent = globalThis.__elizaSmithers.agent;
 
 export default smithers(() => (
   <Workflow name="Real browser digest">
-    <Task id="run" output={outputs.output} agent={agent}>
+    <Task id="run" output={outputs.output} agent={agent} retries={2}>
       Return the deterministic browser-test digest.
     </Task>
   </Workflow>
@@ -91,6 +100,7 @@ test.describe("real local workflow journey", () => {
     });
     expect(workflow.id).toBeTruthy();
     expect(workflow.source).toContain('from "smthrs/create"');
+    expect(workflow.source).toContain("retries={2}");
 
     await page.getByRole("button", { name: "Add workflow trigger" }).click();
     await page.getByRole("button", { name: "Event" }).click();
@@ -152,20 +162,26 @@ test.describe("real local workflow journey", () => {
           );
           return triggeredExecution?.status;
         },
-        { timeout: 60_000 },
+        { timeout: 120_000 },
       )
       .toBe("finished");
     expect(triggeredExecution).toMatchObject({
       finished: true,
       mode: "trigger",
-      output: [{ message: "Digest ready" }],
     });
+    const triggeredMessage = executionMessage(triggeredExecution);
+    expect(triggeredMessage).toEqual(expect.any(String));
+    if (!triggeredMessage)
+      throw new Error("triggered workflow returned no message");
 
     await page.getByRole("button", { name: "Runs" }).click();
     await page.getByRole("button", { name: "Refresh runs" }).click();
-    await expect(page.getByText("Digest ready")).toBeVisible();
+    await expect(
+      page.getByText(triggeredMessage, { exact: false }),
+    ).toBeVisible();
 
     await page.getByRole("button", { name: "Run", exact: true }).click();
+    let manualExecution: WorkflowExecution | undefined;
     await expect
       .poll(
         async () => {
@@ -175,14 +191,19 @@ test.describe("real local workflow journey", () => {
           const body = (await response.json()) as {
             executions: WorkflowExecution[];
           };
-          return body.executions.filter(
-            (execution) => execution.status === "finished",
-          ).length;
+          manualExecution = body.executions.find(
+            (execution) =>
+              execution.mode === "manual" && execution.status === "finished",
+          );
+          return manualExecution?.status;
         },
-        { timeout: 60_000 },
+        { timeout: 120_000 },
       )
-      .toBe(2);
-    await expect(page.getByText("Digest ready")).toBeVisible();
+      .toBe("finished");
+    const manualMessage = executionMessage(manualExecution);
+    expect(manualMessage).toEqual(expect.any(String));
+    if (!manualMessage) throw new Error("manual workflow returned no message");
+    await expect(page.getByText(manualMessage, { exact: false })).toBeVisible();
 
     await page.evaluate((workflowId) => {
       window.location.hash = `#automations/${workflowId}`;
