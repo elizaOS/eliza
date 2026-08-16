@@ -156,16 +156,20 @@ export function createInternalElizaConversationFetchFactory(
         env as unknown as Record<string, unknown>,
         async () => {
           let agent = await readCachedAgent();
+          let conversationPrewarmAttemptedByHydration = false;
           if (!agent) {
             scheduleHydration();
             // Capture before awaiting: the hydration's finally block clears the
             // shared slot. Joining this exact promise lets the first voice turn
             // use the freshly cached scope without cache-miss polling/backoff.
             const pendingHydration = hydrationPromise;
-            if (pendingHydration) await pendingHydration;
+            if (pendingHydration) {
+              await pendingHydration;
+              conversationPrewarmAttemptedByHydration = true;
+            }
             agent = await readCachedAgent();
           }
-          if (!agent) return;
+          if (!agent || conversationPrewarmAttemptedByHydration) return;
           await coordinateSharedConversationPrewarm(
             agent.id,
             claims.conversationId,
