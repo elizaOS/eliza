@@ -1,0 +1,9 @@
+{
+  "package": "@aomi-labs/eliza-plugin-aomi",
+  "repository": "github:aomi-labs/eliza-plugin-aomi",
+  "kind": "plugin",
+  "description": "Delegates open-ended on-chain workflows to Aomi while elizaOS retains wallet custody, subject-bound confirmation, signing, and submission.",
+  "homepage": "https://github.com/aomi-labs/eliza-plugin-aomi",
+  "version": "0.1.0",
+  "tags": ["aomi", "blockchain", "wallet", "evm", "solana", "defi"]
+}
