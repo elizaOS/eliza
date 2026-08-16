@@ -29,12 +29,12 @@ import {
   getInteractiveCerebrasLanguageModel,
   hasLanguageModelProviderConfigured,
 } from "../../providers/language-model";
-import type { SharedMemoryStore } from "./shared-memory-store";
 import {
   resolveSharedCapabilityIntent,
   type SharedCapabilityResolution,
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
+import type { SharedMemoryStore } from "./shared-memory-store";
 import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-intent";
 
 export interface SharedTurnMessage {

@@ -232,10 +232,16 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
   );
 
   test("executes an enabled primary and carries a blocked secondary clause truthfully", async () => {
+    const recordedReplies: string[] = [];
     const input = {
       character: { name: "Eliza", system: "You are Eliza." },
       history: [],
       message: "add call Mom to my todo list. Then email Bob now",
+      memory: {
+        recordTurnPair: async ({ assistantReply }: { assistantReply: string }) => {
+          recordedReplies.push(assistantReply);
+        },
+      } as never,
       execution: {
         engine: "eliza-runtime" as const,
         agentKey: "personal:agent",
@@ -249,6 +255,7 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     expect(turn.blockedSecondaryCapabilities).toEqual([
       expect.objectContaining({ capability: "communications" }),
     ]);
+    expect(recordedReplies).toEqual([turn.reply]);
 
     const streamed = await runSharedAgentTurnStream(input);
     const parts = [];
@@ -260,6 +267,7 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
       }),
     );
     expect(streamed.blockedSecondaryCapabilities?.[0]?.capability).toBe("communications");
+    expect(recordedReplies).toEqual([turn.reply, parts.at(-1)?.text]);
   });
 
   test("tells the model the same capability truth for ambiguous follow-ups", async () => {
