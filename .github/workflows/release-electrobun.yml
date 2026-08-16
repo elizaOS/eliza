@@ -311,9 +311,38 @@ jobs:
       - name: Regression matrix contract
         run: bun run test:regression-matrix:release
 
+      # The heavy suites gate on a real Chrome binary; without one they
+      # self-skip and run-heavy-e2e.mjs fails the lane closed. Reuse a
+      # runner-image Chrome when present, otherwise install a pinned build.
+      - name: Provision Chrome for heavy E2E regression suite
+        id: provision-chrome
+        run: |
+          for candidate in /usr/bin/google-chrome /usr/bin/google-chrome-stable /usr/bin/chromium-browser /usr/bin/chromium; do
+            if [ -x "$candidate" ]; then
+              echo "Using preinstalled browser: $candidate"
+              echo "chrome-path=$candidate" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          install_dir="$RUNNER_TEMP/heavy-e2e-chrome"
+          bunx --yes @puppeteer/browsers install chrome@stable --path "$install_dir"
+          chrome_path="$(find "$install_dir" -type f -name chrome -perm -u+x | head -n 1)"
+          if [ -z "$chrome_path" ]; then
+            echo "::error::Chrome provisioning produced no executable under $install_dir; the heavy E2E gate cannot run." >&2
+            exit 1
+          fi
+          echo "chrome-path=$chrome_path" >> "$GITHUB_OUTPUT"
+
+      # run-heavy-e2e.mjs fails closed: missing env here turns the step red
+      # instead of letting both suites self-skip to a vacuous green.
       - name: Run heavy E2E regression suite
-        # TODO: verify this target exists in eliza root package.json.
         run: bun run test:e2e:heavy
+        env:
+          ELIZA_LIVE_TEST: "1"
+          ELIZA_CHROME_PATH: ${{ steps.provision-chrome.outputs.chrome-path }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Probe optional cloud live regression key
         id: probe-cloud-live-key
