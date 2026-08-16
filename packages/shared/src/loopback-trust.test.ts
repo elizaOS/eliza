@@ -65,10 +65,14 @@ function clearTrustEnv() {
 describe("isLoopbackRemoteAddress", () => {
   it.each([
     "127.0.0.1",
+    "127.0.0.2",
+    "127.255.255.254",
     "::1",
     "0:0:0:0:0:0:0:1",
     "::ffff:127.0.0.1",
+    "::ffff:127.0.0.2",
     "::ffff:0:127.0.0.1",
+    "::ffff:0:127.0.0.2",
   ])("accepts loopback peer %s", (addr) => {
     expect(isLoopbackRemoteAddress(addr)).toBe(true);
   });
