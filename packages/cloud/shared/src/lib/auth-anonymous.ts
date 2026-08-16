@@ -1,24 +1,10 @@
 /**
- * Anonymous User Authentication
- *
- * Handles authentication and session management for free/anonymous users.
- * Cookie creation is owned by the Hono route `apps/api/auth/anonymous-session`.
- *
- * Flow:
- * 1. User visits a public `/chat/:characterRef` route without auth
- * 2. System creates anonymous user + session (via API + Set-Cookie)
- * 3. Session cookie tracks the user (7 day expiry)
- * 4. User gets a limited number of free messages (tracked per session, NOT via credits)
- * 5. After limit, prompted to sign up
- * 6. On signup, anonymous data transfers to real account
- *
- * Security:
- * - httpOnly cookies prevent XSS attacks
- * - sameSite: strict prevents CSRF attacks
- * - Tokens hashed for logging
+ * Authenticates anonymous users and enforces their session and hourly limits.
+ * Cookie issuance stays at the Hono route boundary; tokens are hashed for logs.
  */
 
 import { createHash } from "node:crypto";
+import { parseNonNegativeInteger } from "@elizaos/shared/utils/number-parsing";
 import { eq } from "drizzle-orm";
 import { dbRead } from "../db/helpers";
 import { userIdentities } from "../db/schemas/user-identities";
@@ -29,7 +15,7 @@ import type { UserWithOrganization } from "./types";
 import { logger } from "./utils/logger";
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
-const ANON_HOURLY_LIMIT = Number.parseInt(process.env.ANON_HOURLY_LIMIT || "10", 10);
+const ANON_HOURLY_LIMIT = parseNonNegativeInteger(process.env.ANON_HOURLY_LIMIT, 10);
 
 type AnonymousUserWithOrganization = Omit<UserWithOrganization, "organization_id"> & {
   organization_id: null;
