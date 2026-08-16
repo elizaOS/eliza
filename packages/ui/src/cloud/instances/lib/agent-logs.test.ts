@@ -242,13 +242,49 @@ describe("agent log protocol", () => {
     ).rejects.toBeInstanceOf(AgentLogsTimeoutError);
   });
 
+  it("aborts a hung enqueue request when the operation deadline expires", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(
+      async (_url, init) =>
+        await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(init.signal?.reason),
+            { once: true },
+          );
+        }),
+    );
+
+    const promise = loadAgentLogs({
+      agentId: "agent-1",
+      tail: 100,
+      signal: new AbortController().signal,
+      fetchImpl,
+      timeoutMs: 1_000,
+    });
+    const rejection = expect(promise).rejects.toBeInstanceOf(
+      AgentLogsTimeoutError,
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await rejection;
+    expect(fetchImpl.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    vi.useRealTimers();
+  });
+
   it("passes the abort signal through every request", async () => {
     const controller = new AbortController();
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockImplementation(async (_url, init) => {
-        expect(init?.signal).toBe(controller.signal);
-        throw new DOMException("Aborted", "AbortError");
+        await new Promise<void>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(init.signal?.reason),
+            { once: true },
+          );
+        });
+        throw new Error("unreachable");
       });
 
     const promise = loadAgentLogs({
@@ -259,5 +295,6 @@ describe("agent log protocol", () => {
     });
     controller.abort();
     await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchImpl.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
   });
 });
