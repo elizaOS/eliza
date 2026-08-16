@@ -51,8 +51,12 @@ const PUBLISHED_WORKER_SECRETS: Array<{ name: string; envs: string[] }> = [
   // cloud-cf-release.yml publish_secret / publish_toggle_secret chain
   { name: "CARTESIA_API_KEY", envs: ["staging", "production"] },
   { name: "STAGING_SESSION_EXCHANGE_ENABLED", envs: ["staging"] },
-  // activate-personal-shared-telegram-edge.yml (staging-only protected cutover)
-  { name: "PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED", envs: ["staging"] },
+  // activate-personal-shared-telegram-edge.yml (staging-only protected cutover).
+  // "default" is guarded too: the classic `wrangler secret put --env staging`
+  // path materializes bindings from the LOCAL config where a top-level [vars]
+  // spelling of the name still collides (CF 10053 — activation run 31970252094
+  // failed on the top-level entry after env.staging.vars was already clean).
+  { name: "PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED", envs: ["default", "staging"] },
 ];
 
 describe("Worker secret/var collision lint (CF error 10053 class)", () => {
