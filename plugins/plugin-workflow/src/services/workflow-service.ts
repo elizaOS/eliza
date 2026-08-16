@@ -108,6 +108,7 @@ Source contract:
 - Register the final task schema under the key "output" so its durable result is returned to elizaOS run surfaces.
 - Default-export the result of smithers(...).
 - Use globalThis.__elizaSmithers.agent for every Task agent so all inference is routed through elizaOS Cloud. Never instantiate OpenAI, Anthropic, Claude, Codex, or Gateway clients.
+- Give every interactive Task a finite retries value. Default to retries={2} unless the requested workflow requires a smaller explicit budget.
 - Use Smithers Workflow, Task, Sequence, Parallel, Branch, Loop, Approval, Signal, Timer, UI, and TUI primitives as appropriate.
 - Make Task ids stable and identical to ids in steps.
 - Include a UI component and widget manifest when the workflow has useful interactive output.

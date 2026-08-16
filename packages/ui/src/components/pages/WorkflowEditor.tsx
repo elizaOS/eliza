@@ -61,7 +61,7 @@ const agent = globalThis.__elizaSmithers.agent;
 
 export default smithers(() => (
   <Workflow name="New workflow">
-    <Task id="run" output={outputs.output} agent={agent}>
+    <Task id="run" output={outputs.output} agent={agent} retries={2}>
       Complete the requested workflow and return a concise result.
     </Task>
   </Workflow>

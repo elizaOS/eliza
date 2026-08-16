@@ -22,7 +22,6 @@ if (mode === 'ignore-termination') {
     kind: 'agent-request',
     requestId: 'never-answered',
     prompt: 'request that outlives the worker',
-    structured: false,
   });
   setTimeout(() => process.exit(0), 10);
 } else if (mode === 'closed-input-result') {
@@ -32,7 +31,6 @@ if (mode === 'ignore-termination') {
       kind: 'agent-request',
       requestId: 'late-request',
       prompt: 'reply after stdin closes',
-      structured: false,
     });
   }, 10);
   setTimeout(() => {
