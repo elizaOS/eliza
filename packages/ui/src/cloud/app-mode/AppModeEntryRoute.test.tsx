@@ -10,6 +10,7 @@ import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "../../state/persistence";
+import { LocalStewardAuthContext } from "../shell/StewardProviderShared";
 import { AppModeEntryRoute } from "./AppModeEntryRoute";
 import { type AppModeAgent, appModeNavigation } from "./app-mode";
 import { publishPersonalEntryHandoff } from "./use-personal-entry";
@@ -121,30 +122,59 @@ function LoginProbe(): React.JSX.Element {
   return <div data-testid="login-page">{location.search}</div>;
 }
 
-function renderEntry(initialPath = "/"): void {
+function renderEntry(
+  initialPath = "/",
+  options?: { sessionLoading?: boolean },
+): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  render(
+  // The management destination lives INSIDE appElement's route registry (the
+  // real shape: AppModeEntryRoute mounts appElement, whose internal router
+  // serves /cloud/*). Registering it as an outer sibling would let React
+  // Router bypass the component entirely — a false guard (#20652 review).
+  const appElement = (
+    <Routes>
+      <Route
+        path="/cloud/agents"
+        element={<div data-testid="instances-page" />}
+      />
+      <Route path="*" element={<div data-testid="agent-app" />} />
+    </Routes>
+  );
+  const entry = (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
           <Route path="/login" element={<LoginProbe />} />
-          <Route
-            path="/cloud/agents"
-            element={<div data-testid="instances-page" />}
-          />
           <Route path="/join" element={<div data-testid="join-page" />} />
           <Route
             path="*"
-            element={
-              <AppModeEntryRoute appElement={<div data-testid="agent-app" />} />
-            }
+            element={<AppModeEntryRoute appElement={appElement} />}
           />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  if (options?.sessionLoading) {
+    render(
+      <LocalStewardAuthContext.Provider
+        value={{
+          isAuthenticated: false,
+          isLoading: true,
+          user: null,
+          session: null,
+          signOut: () => undefined,
+          getToken: () => null,
+          verifyEmailCallback: () => Promise.reject(new Error("not stubbed")),
+        }}
+      >
+        {entry}
+      </LocalStewardAuthContext.Provider>,
+    );
+    return;
+  }
+  render(entry);
 }
 
 afterEach(() => {
@@ -351,12 +381,34 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
     });
     renderEntry("/cloud/agents");
 
-    // The management surface mounts and its internal router serves the
-    // /cloud/agents destination (the harness registers it as instances-page).
-    // The deadlock shape is the persistent loading notice with NOTHING
-    // mounted; both must be absent.
+    // The component was exercised (the query ran), the management surface
+    // mounted, and its internal router serves the /cloud/agents destination.
+    // The deadlock shape — a persistent loading notice with nothing mounted —
+    // must be absent.
     expect(await screen.findByTestId("instances-page")).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        fetchLog.some((line) => line.includes("/api/v1/eliza/agents")),
+      ).toBe(true),
+    );
     expect(screen.queryByText("Loading your agent")).toBeNull();
+  });
+
+  it("holds the session gate before the management bypass: auth still resolving mounts nothing (#20652)", async () => {
+    // Negative control from the acceptance: the bypass fires only AFTER
+    // session resolution. With the auth provider still loading, even a
+    // management path holds the loading notice — the bypass cannot surface
+    // an app before the session is known.
+    signIn();
+    stubNetwork({
+      agents: () => new Promise<Response>(() => undefined),
+    });
+    renderEntry("/cloud/agents", { sessionLoading: true });
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByText("Loading")).toBeTruthy();
+    expect(screen.queryByTestId("instances-page")).toBeNull();
+    expect(screen.queryByTestId("agent-app")).toBeNull();
   });
 
   it("ordinary entry keeps the existing query-error policy when the agents query rejects with 401", async () => {
