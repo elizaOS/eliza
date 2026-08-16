@@ -24,6 +24,7 @@ import { users } from "../../../db/schemas/users";
 import { isUniqueConstraintError } from "../../utils/db-errors";
 import { logger } from "../../utils/logger";
 import { isValidE164, normalizePhoneNumber } from "../../utils/phone-normalization";
+import { invalidateBoundPersonalDeliveryProjection } from "./personal-delivery-projection-contract";
 
 /** Unambiguous alphabet (no 0/O, 1/I/L) so codes survive being typed by hand. */
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -166,6 +167,7 @@ export async function confirmIdentityLink(
   }
 
   let result: ConfirmIdentityLinkResult;
+  let replayInvalidation: { platform: "telegram" | "discord"; platformId: string } | undefined;
   try {
     result = await dbWrite.transaction(async (tx) => {
       const [row] = await tx
@@ -175,7 +177,16 @@ export async function confirmIdentityLink(
         .for("update")
         .limit(1);
       if (!row) return { status: "code_not_found" };
-      if (row.status === "linked") return { status: "already_used" };
+      if (row.status === "linked") {
+        if (
+          row.platform === input.platform &&
+          row.platform_id === platformId &&
+          (row.platform === "telegram" || row.platform === "discord")
+        ) {
+          replayInvalidation = { platform: row.platform, platformId };
+        }
+        return { status: "already_used" };
+      }
       if (row.status === "expired" || row.expires_at.getTime() <= Date.now()) {
         return { status: "expired" };
       }
@@ -215,6 +226,17 @@ export async function confirmIdentityLink(
     // handle. The transaction rollback also restores this code to pending.
     if (isUniqueConstraintError(error)) return { status: "handle_conflict" };
     throw error;
+  }
+
+  const projectionInvalidation =
+    result.status === "linked" && (result.platform === "telegram" || result.platform === "discord")
+      ? { platform: result.platform, platformId }
+      : replayInvalidation;
+  if (projectionInvalidation) {
+    await invalidateBoundPersonalDeliveryProjection(
+      projectionInvalidation.platform,
+      projectionInvalidation.platformId,
+    );
   }
 
   if (result.status !== "linked") return result;

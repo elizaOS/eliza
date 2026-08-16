@@ -4,7 +4,7 @@
  * platform mismatch, cross-account handle-conflict rejection, and the actual
  * canonical + projection binding writes. Real SQL, no rollback-capable mocks.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -23,7 +23,10 @@ import {
 } from "../../../db/schemas/organizations";
 import { userIdentities } from "../../../db/schemas/user-identities";
 import { users } from "../../../db/schemas/users";
+import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
+import { runWithCloudBindingsAsync } from "../../runtime/cloud-bindings";
 import { confirmIdentityLink, startIdentityLink } from "./identity-link";
+import { PERSONAL_DELIVERY_PROJECTION_BINDING } from "./personal-delivery-projection-contract";
 
 const PGLITE_TIMEOUT = 60_000;
 const ORG_A = "00000000-0000-4000-8000-00000000a001";
@@ -136,6 +139,88 @@ describe("startIdentityLink", () => {
 });
 
 describe("confirmIdentityLink", () => {
+  test("invalidates a cached provisional sender before the next Telegram resolve", async () => {
+    await seedAccount(USER_A, ORG_A, "steward-a");
+    const { code } = await startIdentityLink({
+      userId: USER_A,
+      organizationId: ORG_A,
+      platform: "telegram",
+    });
+
+    let cachedOwner: string | null = USER_B;
+    const fetch = mock(async () => {
+      cachedOwner = null;
+      return Response.json({ success: true });
+    });
+    const getByName = mock(() => ({ fetch }));
+
+    const confirmed = await runWithCloudBindingsAsync(
+      {
+        [PERSONAL_DELIVERY_PROJECTION_BINDING]: {
+          getByName,
+        } as unknown as RuntimeDurableObjectNamespace,
+      },
+      () =>
+        confirmIdentityLink({
+          code,
+          platform: "telegram",
+          platformId: "424242",
+          platformName: "linked_owner",
+        }),
+    );
+
+    expect(confirmed).toMatchObject({ status: "linked", userId: USER_A });
+    expect(getByName).toHaveBeenCalledWith("telegram:424242");
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    const nextOwner =
+      cachedOwner ??
+      (
+        await dbWrite
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.telegram_id, "424242"))
+          .limit(1)
+      )[0]?.id;
+    expect(nextOwner).toBe(USER_A);
+  });
+
+  test("a matching LINK replay heals a transient projection invalidation failure", async () => {
+    await seedAccount(USER_A, ORG_A, "steward-a");
+    const { code } = await startIdentityLink({
+      userId: USER_A,
+      organizationId: ORG_A,
+      platform: "discord",
+    });
+
+    let attempts = 0;
+    const fetch = mock(async () => {
+      attempts += 1;
+      return attempts === 1
+        ? Response.json({ error: "unavailable" }, { status: 503 })
+        : Response.json({ success: true });
+    });
+    const bindings = {
+      [PERSONAL_DELIVERY_PROJECTION_BINDING]: {
+        getByName: () => ({ fetch }),
+      } as unknown as RuntimeDurableObjectNamespace,
+    };
+    const confirmation = {
+      code,
+      platform: "discord" as const,
+      platformId: "987654321",
+      platformName: "linked_owner",
+    };
+
+    await expect(
+      runWithCloudBindingsAsync(bindings, () => confirmIdentityLink(confirmation)),
+    ).rejects.toThrow("projection invalidation failed with status 503");
+    expect(
+      await runWithCloudBindingsAsync(bindings, () => confirmIdentityLink(confirmation)),
+    ).toEqual({ status: "already_used" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   test("binds the handle once and reports replay as already_used", async () => {
     await seedAccount(USER_A, ORG_A, "steward-a");
     const { code } = await startIdentityLink({
