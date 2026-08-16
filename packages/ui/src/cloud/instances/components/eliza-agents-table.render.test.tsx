@@ -100,6 +100,10 @@ describe("ElizaAgentsTable per-row view model", () => {
     ).toBe("managed");
     expect(derive({ executionTier: "shared" }).runtimeKind).toBe("shared");
     expect(derive({ status: "provisioning" }).runtimeKind).toBe("sandbox");
+    // Stopped and disconnected are post-provision lifecycle states, not
+    // evidence that a dedicated sandbox was never set up.
+    expect(derive({ status: "stopped" }).runtimeKind).toBe("sandbox");
+    expect(derive({ status: "disconnected" }).runtimeKind).toBe("sandbox");
     expect(
       derive({
         status: "pending",
