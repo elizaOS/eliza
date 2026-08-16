@@ -112,6 +112,7 @@ const appMock = vi.hoisted(() => ({
     uiLanguage: "en",
     elizaCloudConnected: false,
     elizaCloudVoiceProxyAvailable: false,
+    handleInteractiveCloudLogin: vi.fn(async () => {}),
   },
   // Live server-reported turn status (#8813), read via useChatTurnStatus().
   serverTurnStatus: null as { kind: string } | null,
@@ -303,8 +304,24 @@ vi.mock("../../../voice/useWakeListenWindow", () => ({
   },
 }));
 
+const authGateMock = vi.hoisted(() => ({
+  value: {
+    gated: false,
+    phase: "clear" as "checking" | "needs-auth" | "clear",
+  },
+}));
+
+vi.mock("../useShellAuthGate", () => ({
+  useShellAuthGate: () => authGateMock.value,
+}));
+
+vi.mock("../../../state/cloud-login-launch", () => ({
+  claimCloudLoginWindow: vi.fn(() => null),
+}));
+
 afterEach(() => {
   cleanup();
+  authGateMock.value = { gated: false, phase: "clear" };
   appMock.value.startupCoordinator.phase = "ready";
   appMock.value.activeConversationId = null;
   appMock.value.conversationMessages = [];
@@ -2459,5 +2476,44 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     } finally {
       window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
     }
+  });
+});
+
+describe("useShellController cloud-only auth gate", () => {
+  it("stays booting while the auth probe is checking, even when the proxy is ready", () => {
+    authGateMock.value = { gated: true, phase: "checking" };
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.phase).toBe("booting");
+    expect(result.current.authGate.gated).toBe(true);
+  });
+
+  it("surfaces needs-auth and routes open + startRecording to sign-in", () => {
+    authGateMock.value = { gated: true, phase: "needs-auth" };
+    const login = appMock.value.handleInteractiveCloudLogin;
+    login.mockClear();
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.phase).toBe("needs-auth");
+
+    act(() => {
+      result.current.open();
+      result.current.startRecording("ptt");
+    });
+
+    expect(result.current.isOpen).toBe(false);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(login).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not launch sign-in from a checking probe", () => {
+    authGateMock.value = { gated: true, phase: "checking" };
+    const login = appMock.value.handleInteractiveCloudLogin;
+    login.mockClear();
+    const { result } = renderHook(() => useShellController());
+
+    act(() => {
+      result.current.requestSignIn();
+    });
+
+    expect(login).not.toHaveBeenCalled();
   });
 });

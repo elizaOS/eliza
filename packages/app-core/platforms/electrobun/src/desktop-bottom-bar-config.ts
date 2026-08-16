@@ -115,9 +115,42 @@ export function resolveDesktopShellWindowPresentation(
 export const DEFAULT_BOTTOM_BAR_WIDTH = 96;
 export const DEFAULT_BOTTOM_BAR_HEIGHT = 56;
 
+/** Intermediate hit area around the cloud-only "Sign in to Eliza" chip. */
+export const AUTH_GATE_BOTTOM_BAR_WIDTH = 240;
+export const AUTH_GATE_BOTTOM_BAR_HEIGHT = DEFAULT_BOTTOM_BAR_HEIGHT;
+
 /** Expanded native hit area around the 560×640 glass panel and bottom pill. */
 export const EXPANDED_BOTTOM_BAR_WIDTH = 600;
 export const EXPANDED_BOTTOM_BAR_HEIGHT = 820;
+
+export interface BottomBarSizeOptions {
+  expanded: boolean;
+  /** Labeled needs-auth chip. Ignored while the overlay is expanded. */
+  chip?: boolean;
+}
+
+/** Resolve the native bottom-bar size for rest, sign-in chip, or overlay. */
+export function resolveBottomBarFrameSize(options: BottomBarSizeOptions): {
+  width: number;
+  height: number;
+} {
+  if (options.expanded) {
+    return {
+      width: EXPANDED_BOTTOM_BAR_WIDTH,
+      height: EXPANDED_BOTTOM_BAR_HEIGHT,
+    };
+  }
+  if (options.chip) {
+    return {
+      width: AUTH_GATE_BOTTOM_BAR_WIDTH,
+      height: AUTH_GATE_BOTTOM_BAR_HEIGHT,
+    };
+  }
+  return {
+    width: DEFAULT_BOTTOM_BAR_WIDTH,
+    height: DEFAULT_BOTTOM_BAR_HEIGHT,
+  };
+}
 
 /**
  * Compute a bottom-centered window frame that is no larger than the visible

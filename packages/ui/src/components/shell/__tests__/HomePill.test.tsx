@@ -54,6 +54,7 @@ describe("HomePill", () => {
 
   it.each<ShellPhase>([
     "booting",
+    "needs-auth",
     "idle",
     "summoned",
     "listening",
@@ -178,6 +179,44 @@ describe("HomePill", () => {
     expect(mark.className).not.toContain("animate-pulse");
   });
 
+  it("grows into a labeled sign-in chip while needs-auth and does not arm hold", () => {
+    const onOpen = vi.fn();
+    const hold = holdHandlers();
+    render(
+      <HomePill
+        phase="needs-auth"
+        onOpen={onOpen}
+        onClose={() => {}}
+        {...hold}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: /sign in to eliza/i });
+    expect(btn.getAttribute("data-phase")).toBe("needs-auth");
+    expect(screen.getByTestId("shell-home-pill-sign-in").textContent).toBe(
+      "Sign in to Eliza",
+    );
+    const mark = screen.getByTestId("shell-home-pill-mark");
+    expect(mark.className).toContain("bg-neutral-900/95");
+    expect(mark.className).toContain("min-w-[11.5rem]");
+    expect(screen.queryAllByTestId("shell-home-pill-wave-bar")).toHaveLength(0);
+    fireEvent.click(btn);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("pulses the sign-in chip while Cloud login is in flight", () => {
+    render(
+      <HomePill
+        phase="needs-auth"
+        signingIn
+        onOpen={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("shell-home-pill-mark").className).toContain(
+      "animate-pulse",
+    );
+  });
+
   it("stays available while booting and opens on click", () => {
     const onOpen = vi.fn();
     render(<HomePill phase="booting" onOpen={onOpen} onClose={() => {}} />);
@@ -283,6 +322,27 @@ describe("HomePill hold-to-talk quasimode (#20483)", () => {
     fireEvent.pointerCancel(btn);
     expect(hold.onHoldCancel).toHaveBeenCalledTimes(1);
     expect(hold.onHoldEnd).not.toHaveBeenCalled();
+  });
+
+  it("needs-auth never arms the hold, even when hold handlers are provided", () => {
+    const onOpen = vi.fn();
+    const hold = holdHandlers();
+    render(
+      <HomePill
+        phase="needs-auth"
+        onOpen={onOpen}
+        onClose={() => {}}
+        {...hold}
+      />,
+    );
+    const btn = screen.getByRole("button");
+    fireEvent.pointerDown(btn, { button: 0, clientX: 10, clientY: 10 });
+    vi.advanceTimersByTime(HOLD_THRESHOLD_MS + 200);
+    fireEvent.pointerUp(btn, { clientX: 10, clientY: 10 });
+    fireEvent.click(btn);
+    expect(hold.onHoldStart).not.toHaveBeenCalled();
+    expect(hold.onHoldEnd).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it("a right-click press never arms the hold", () => {

@@ -35,6 +35,7 @@ const SANCTIONED_INTERACTIVE_SITES = new Set([
   "src/components/settings/CloudOverviewSection.tsx",
   "src/components/settings/ProviderSwitcher.tsx",
   "src/cloud/connectors/CloudConnectorsUpsell.tsx",
+  "src/components/shell/useShellController.ts",
 ]);
 
 const EXCLUDE_DIRS = new Set([

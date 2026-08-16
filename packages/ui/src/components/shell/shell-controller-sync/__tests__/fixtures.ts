@@ -53,6 +53,9 @@ export function baseSnapshot(
 export function makeFakeShellController(): ShellController {
   return {
     phase: "idle",
+    authGate: { gated: false, phase: "clear" },
+    requestSignIn: vi.fn(),
+    signingIn: false,
     responding: false,
     turnStatus: null,
     messages: [],

@@ -293,9 +293,11 @@ export function isShellControllerSnapshot(value: unknown): boolean {
   const model = value.modelStatus;
   return (
     (phase === "booting" ||
+      phase === "needs-auth" ||
       phase === "idle" ||
       phase === "summoned" ||
       phase === "listening" ||
+      phase === "processing" ||
       phase === "responding") &&
     typeof value.responding === "boolean" &&
     (value.turnStatus === null || isRecord(value.turnStatus)) &&
