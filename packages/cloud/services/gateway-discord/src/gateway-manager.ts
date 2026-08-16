@@ -287,8 +287,10 @@ interface TokenResponse {
   expires_in: number;
 }
 
-/** Percentage of token lifetime at which to refresh (80% = refresh at 48min for 1hr token) */
+/** Percentage of token lifetime at which to refresh. */
 const TOKEN_REFRESH_PERCENTAGE = 0.8;
+/** Bounded retry cadence keeps a transient bootstrap failure from stranding renewal. */
+const TOKEN_REFRESH_RETRY_MS = 1_000;
 
 interface BotConnection {
   connectionId: string;
@@ -600,16 +602,40 @@ export class GatewayManager {
     }
 
     const refreshInMs = expiresInSeconds * 1000 * TOKEN_REFRESH_PERCENTAGE;
-    this.tokenRefreshTimeout = setTimeout(() => {
+    const timeout = setTimeout(() => {
+      // error-policy:J1 The timer boundary converts renewal failure into a paced retry.
       this.refreshToken().catch((error) => {
         logger.error("Token refresh failed", { error: sanitizeError(error) });
+        if (this.tokenRefreshTimeout === timeout) {
+          this.scheduleTokenRefreshRetry();
+        }
       });
     }, refreshInMs);
+    this.tokenRefreshTimeout = timeout;
 
     logger.debug("Token refresh scheduled", {
       refreshInMs,
       refreshInMinutes: Math.round(refreshInMs / 60000),
     });
+  }
+
+  private scheduleTokenRefreshRetry(): void {
+    if (this.tokenRefreshTimeout) {
+      clearTimeout(this.tokenRefreshTimeout);
+    }
+
+    const timeout = setTimeout(() => {
+      // error-policy:J1 The timer boundary retains the paced retry until recovery.
+      this.refreshToken().catch((error) => {
+        logger.error("Token refresh retry failed", {
+          error: sanitizeError(error),
+        });
+        if (this.tokenRefreshTimeout === timeout) {
+          this.scheduleTokenRefreshRetry();
+        }
+      });
+    }, TOKEN_REFRESH_RETRY_MS);
+    this.tokenRefreshTimeout = timeout;
   }
 
   /**

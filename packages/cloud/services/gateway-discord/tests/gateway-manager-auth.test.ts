@@ -5,6 +5,7 @@ import { GatewayManager } from "../src/gateway-manager";
 
 interface AuthHarness {
   refreshToken(): Promise<void>;
+  scheduleTokenRefresh(expiresInSeconds: number): void;
   tokenRefreshTimeout: NodeJS.Timeout | null;
 }
 
@@ -61,4 +62,47 @@ describe("GatewayManager token renewal", () => {
       },
     ]);
   });
+
+  test("retries scheduled bootstrap renewal after a transient failure", async () => {
+    let bootstraps = 0;
+    globalThis.fetch = mock(async () => {
+      bootstraps += 1;
+      if (bootstraps === 1) {
+        return new Response("temporarily unavailable", { status: 503 });
+      }
+      return new Response(
+        JSON.stringify({
+          access_token: "replacement-token",
+          token_type: "Bearer",
+          expires_in: 60,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const manager = new GatewayManager({
+      podName: "test-pod",
+      elizaCloudUrl: "https://api.test",
+      gatewayBootstrapSecret: "bootstrap-secret",
+      project: "test",
+    });
+    const harness = manager as unknown as AuthHarness;
+    try {
+      harness.scheduleTokenRefresh(0.01);
+      await waitFor(() => bootstraps === 2);
+    } finally {
+      if (harness.tokenRefreshTimeout)
+        clearTimeout(harness.tokenRefreshTimeout);
+    }
+
+    expect(bootstraps).toBe(2);
+  });
 });
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("Timed out waiting for retry");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
