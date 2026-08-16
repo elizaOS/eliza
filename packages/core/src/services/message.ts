@@ -8300,13 +8300,14 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply = "I'm not sure how to answer that.";
 				replyIsModelVoice = false;
 			}
-			if (
-				shouldReplaceUnavailableLiveLookupAck({
+			const missingLiveLookupCapability = shouldReplaceUnavailableLiveLookupAck(
+				{
 					message: args.message,
 					actions: args.runtime.actions ?? [],
 					reply,
-				})
-			) {
+				},
+			);
+			if (missingLiveLookupCapability) {
 				reply = LIVE_LOOKUP_UNAVAILABLE_REPLY;
 				replyIsModelVoice = false;
 			}
@@ -8327,6 +8328,9 @@ export async function runV5MessageRuntimeStage1(args: {
 					text: reply,
 					thought: messageHandler.thought,
 					agentVoiced: replyIsModelVoice,
+					...(missingLiveLookupCapability
+						? { failureKind: "missing_capability" as const }
+						: {}),
 				}),
 			};
 		}

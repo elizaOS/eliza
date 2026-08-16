@@ -2460,6 +2460,40 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("marks a simple-path live lookup refusal as a non-persistable capability failure", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "I'll check the current price for you.",
+			}),
+		]);
+		runtime.actions = [];
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "What is the current BTC price?",
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent).toMatchObject({
+				text: "I don't have a live web search action available here, so I can't look up current information in this chat.",
+				failureKind: "missing_capability",
+				elizaSyntheticFailure: true,
+				transient: false,
+				doNotPersist: true,
+			});
+		}
+	});
+
 	it("does not resolve synthetic current-price Stage 1 candidates to shell", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
