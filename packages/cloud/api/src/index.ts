@@ -29,6 +29,7 @@ import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-tele
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { serveBlobHostRequest } from "./blob-host";
+import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import { serveRegistryHostRequest } from "./registry-host";
 import { isThinStewardPublicPath } from "./steward/public-paths";
 
@@ -429,7 +430,7 @@ async function dispatchInference(
 
 function healthResponse(env: AppEnv["Bindings"]): Response {
   const personalSharedTelegramEdgeEnabled =
-    env.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED === "true";
+    isPersonalSharedTelegramEdgeEnabled(env);
   const stagingSessionVersion =
     env.STAGING_SESSION_EXCHANGE_VERSION?.trim() || null;
   const stagingSessionSigningSecret =

@@ -51,12 +51,9 @@ const PUBLISHED_WORKER_SECRETS: Array<{ name: string; envs: string[] }> = [
   // cloud-cf-release.yml publish_secret / publish_toggle_secret chain
   { name: "CARTESIA_API_KEY", envs: ["staging", "production"] },
   { name: "STAGING_SESSION_EXCHANGE_ENABLED", envs: ["staging"] },
-  // activate-personal-shared-telegram-edge.yml (staging-only protected cutover).
-  // "default" is guarded too: the classic `wrangler secret put --env staging`
-  // path materializes bindings from the LOCAL config where a top-level [vars]
-  // spelling of the name still collides (CF 10053 — activation run 31970252094
-  // failed on the top-level entry after env.staging.vars was already clean).
-  { name: "PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED", envs: ["default", "staging"] },
+  // The staging cutover uses a fresh secret name because keep_vars preserved
+  // the legacy plaintext binding on the served Worker (run 31970252094).
+  { name: "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED", envs: ["staging"] },
 ];
 
 describe("Worker secret/var collision lint (CF error 10053 class)", () => {
@@ -112,16 +109,18 @@ describe("Worker secret/var collision lint (CF error 10053 class)", () => {
     expect([...unmapped].sort()).toEqual([]);
   });
 
-  test("prophylactic: the production edge flip requires removing the production var first", () => {
-    // The staging incident repeats verbatim on the production cutover unless
-    // [env.production.vars] drops PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED before
-    // any workflow publishes it as a production secret. This assertion is the
-    // tripwire: whoever extends the activation workflow to production must
-    // delete the var in the same change (this test's mapping gains
-    // "production" then, and the collision test above enforces the removal).
+  test("keeps production fail-closed while the replacement name stays unreserved", () => {
+    // Production has no activation workflow. Its tracked legacy false remains
+    // explicit, while the replacement is absent so a future protected cutover
+    // can choose its own secret contract without another type collision.
     expect(
       vars.get("production")?.has("PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED") ??
         false,
     ).toBe(true);
+    expect(
+      vars
+        .get("production")
+        ?.has("PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED") ?? false,
+    ).toBe(false);
   });
 });
