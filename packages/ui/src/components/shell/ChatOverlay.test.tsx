@@ -503,6 +503,12 @@ describe("ChatOverlay", () => {
     const attachOrder = bridge.attachGlass.mock.invocationCallOrder[0] ?? 0;
     expect(backdropOrder).toBeGreaterThan(0);
     expect(backdropOrder).toBeLessThan(attachOrder);
+    expect(bridge.attachGlass).toHaveBeenCalledWith(
+      expect.objectContaining({
+        colorScheme: "dark",
+        tintColor: "#16090DD9",
+      }),
+    );
     // Native material: fill + blur drop (the OS paints them); border, bevel,
     // and sheen stay — the branded edge survives on every tier.
     expect(surface.style.backgroundColor).toBe("transparent");

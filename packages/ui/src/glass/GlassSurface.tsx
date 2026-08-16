@@ -102,6 +102,8 @@ export interface NativeGlassAnchorOptions {
   interactive?: boolean;
   /** Appearance forwarded to the native material for this anchored surface. */
   colorScheme?: "light" | "dark" | "system";
+  /** Optional CSS-hex tint forwarded to the native material. */
+  tintColor?: string;
 }
 
 /**
@@ -132,9 +134,12 @@ export function useNativeGlassAnchor(
     enabled = true,
     interactive = false,
     colorScheme = "system",
+    tintColor,
   }: NativeGlassAnchorOptions = {},
 ): GlassTier {
   const regionId = useId();
+  const attachmentGenerationRef = useRef(0);
+  const activeAttachmentIdRef = useRef<string | null>(null);
   const [available, setAvailable] = useState(false);
   const [nativeLive, setNativeLive] = useState(false);
   const backdropActive = useNativeBackdropActive();
@@ -168,6 +173,10 @@ export function useNativeGlassAnchor(
       return;
     }
     let alive = true;
+    // An appearance change restarts this effect while an earlier native attach
+    // may still be pending. Each attempt owns a distinct native region so a
+    // stale completion can detach only itself, never the newer material.
+    const attachmentId = `${regionId}:${++attachmentGenerationRef.current}`;
     let lease: NativeBackdropLease | null = null;
     let attached = false;
     let observer: ResizeObserver | null = null;
@@ -177,7 +186,8 @@ export function useNativeGlassAnchor(
       return { x: r.x, y: r.y, width: r.width, height: r.height };
     };
     const sync = () => {
-      if (attached) void bridge.updateRect({ id: regionId, rect: rectOf() });
+      if (attached)
+        void bridge.updateRect({ id: attachmentId, rect: rectOf() });
     };
     // Idempotent (flag-guarded): runs from effect cleanup AND from the store
     // subscription when the backdrop force-deactivates under us (wallpaper
@@ -189,14 +199,20 @@ export function useNativeGlassAnchor(
       window.removeEventListener("resize", sync);
       if (attached) {
         attached = false;
-        void bridge.detachGlass({ id: regionId });
+        void bridge.detachGlass({ id: attachmentId });
       }
       if (lease) {
         const heldLease = lease;
         lease = null;
         releaseNativeBackdrop(heldLease);
       }
-      setNativeLive(false);
+      // A superseded attach can settle after the current generation is live.
+      // It still tears down its own native region, but only the generation that
+      // owns the rendered material may demote this surface back to CSS.
+      if (activeAttachmentIdRef.current === attachmentId) {
+        activeAttachmentIdRef.current = null;
+        setNativeLive(false);
+      }
     };
     void (async () => {
       const acquired = await acquireNativeBackdrop();
@@ -211,11 +227,12 @@ export function useNativeGlassAnchor(
       try {
         ok = (
           await bridge.attachGlass({
-            id: regionId,
+            id: attachmentId,
             rect: rectOf(),
             cornerRadius: radius,
             interactive,
             colorScheme,
+            tintColor,
           })
         ).attached;
       } catch {
@@ -225,7 +242,7 @@ export function useNativeGlassAnchor(
       }
       if (ok) attached = true;
       if (!alive || !ok) {
-        if (!ok) setNativeGlassDiag("native-refused-region");
+        if (!ok && alive) setNativeGlassDiag("native-refused-region");
         teardown();
         return;
       }
@@ -236,6 +253,7 @@ export function useNativeGlassAnchor(
         teardown();
         return;
       }
+      activeAttachmentIdRef.current = attachmentId;
       setNativeGlassDiag("native-anchored");
       setNativeLive(true);
       unsubscribe = subscribeNativeBackdrop(() => {
@@ -251,7 +269,16 @@ export function useNativeGlassAnchor(
       unsubscribe?.();
       teardown();
     };
-  }, [wantNative, enabled, available, interactive, colorScheme, ref, regionId]);
+  }, [
+    wantNative,
+    enabled,
+    available,
+    interactive,
+    colorScheme,
+    tintColor,
+    ref,
+    regionId,
+  ]);
 
   return nativeLive && backdropActive ? "native" : cssGlassTier();
 }
