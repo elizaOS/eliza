@@ -287,8 +287,10 @@ interface TokenResponse {
   expires_in: number;
 }
 
-/** Percentage of token lifetime at which to refresh (80% = refresh at 48min for 1hr token) */
+/** Percentage of token lifetime at which to refresh. */
 const TOKEN_REFRESH_PERCENTAGE = 0.8;
+const TOKEN_REFRESH_RETRY_MIN_MS = 1_000;
+const TOKEN_REFRESH_RETRY_MAX_MS = 30_000;
 
 interface BotConnection {
   connectionId: string;
@@ -384,6 +386,9 @@ export class GatewayManager {
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private failoverInterval: NodeJS.Timeout | null = null;
   private tokenRefreshTimeout: NodeJS.Timeout | null = null;
+  private tokenRefreshRetryAttempt = 0;
+  /** Invalidates auth work that outlives shutdown. */
+  private authLifecycleGeneration = 0;
   private voiceHandler: VoiceMessageHandler;
   private readonly routingAdapters: GatewayManagerRoutingAdapters;
   private consecutivePollFailures: number = 0;
@@ -549,6 +554,7 @@ export class GatewayManager {
    * This must be called before any API operations.
    */
   private async acquireToken(): Promise<void> {
+    const lifecycleGeneration = this.authLifecycleGeneration;
     logger.info("Acquiring JWT token", { podName: this.config.podName });
 
     const response = await fetchWithTimeout(
@@ -572,6 +578,9 @@ export class GatewayManager {
     }
 
     const data = (await response.json()) as TokenResponse;
+    if (lifecycleGeneration !== this.authLifecycleGeneration) {
+      throw new Error("Auth lifecycle changed during token acquisition");
+    }
     this.accessToken = data.access_token;
     this.tokenExpiresAt = new Date(Date.now() + data.expires_in * 1000);
 
@@ -588,53 +597,7 @@ export class GatewayManager {
    * Refresh the JWT token before it expires.
    */
   private async refreshToken(): Promise<void> {
-    if (!this.accessToken) {
-      // No token to refresh, acquire new one
-      await this.acquireToken();
-      return;
-    }
-
-    logger.info("Refreshing JWT token", { podName: this.config.podName });
-
-    try {
-      const response = await fetchWithTimeout(
-        `${this.config.elizaCloudUrl}/api/internal/auth/refresh`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.accessToken}`,
-          },
-        },
-      );
-
-      if (!response.ok) {
-        // Token refresh failed, try to acquire new token
-        logger.warn("Token refresh failed, acquiring new token", {
-          status: response.status,
-        });
-        await this.acquireToken();
-        return;
-      }
-
-      const data = (await response.json()) as TokenResponse;
-      this.accessToken = data.access_token;
-      this.tokenExpiresAt = new Date(Date.now() + data.expires_in * 1000);
-
-      logger.info("JWT token refreshed", {
-        podName: this.config.podName,
-        expiresAt: this.tokenExpiresAt.toISOString(),
-      });
-
-      // Schedule next refresh
-      this.scheduleTokenRefresh(data.expires_in);
-    } catch (error) {
-      logger.error("Error refreshing token, attempting re-acquisition", {
-        error: sanitizeError(error),
-      });
-      // Retry with exponential backoff could be added here
-      await this.acquireToken();
-    }
+    await this.acquireToken();
   }
 
   /**
@@ -646,15 +609,57 @@ export class GatewayManager {
     }
 
     const refreshInMs = expiresInSeconds * 1000 * TOKEN_REFRESH_PERCENTAGE;
-    this.tokenRefreshTimeout = setTimeout(() => {
+    this.tokenRefreshRetryAttempt = 0;
+    const timeout = setTimeout(() => {
+      // error-policy:J1 The timer boundary converts renewal failure into a paced retry.
       this.refreshToken().catch((error) => {
         logger.error("Token refresh failed", { error: sanitizeError(error) });
+        if (this.tokenRefreshTimeout === timeout) {
+          this.scheduleTokenRefreshRetry();
+        }
       });
     }, refreshInMs);
+    this.tokenRefreshTimeout = timeout;
 
     logger.debug("Token refresh scheduled", {
       refreshInMs,
       refreshInMinutes: Math.round(refreshInMs / 60000),
+    });
+  }
+
+  private scheduleTokenRefreshRetry(): void {
+    if (this.tokenRefreshTimeout) {
+      clearTimeout(this.tokenRefreshTimeout);
+    }
+
+    const retryInMs = Math.min(
+      TOKEN_REFRESH_RETRY_MIN_MS * 2 ** this.tokenRefreshRetryAttempt,
+      TOKEN_REFRESH_RETRY_MAX_MS,
+    );
+    this.tokenRefreshRetryAttempt = Math.min(
+      this.tokenRefreshRetryAttempt + 1,
+      5,
+    );
+    const lifecycleGeneration = this.authLifecycleGeneration;
+    const timeout = setTimeout(() => {
+      if (lifecycleGeneration !== this.authLifecycleGeneration) {
+        return;
+      }
+      // error-policy:J1 The timer boundary retains the paced retry until recovery.
+      this.refreshToken().catch((error) => {
+        logger.error("Token refresh retry failed", {
+          error: sanitizeError(error),
+        });
+        if (this.tokenRefreshTimeout === timeout) {
+          this.scheduleTokenRefreshRetry();
+        }
+      });
+    }, retryInMs);
+    this.tokenRefreshTimeout = timeout;
+
+    logger.debug("Token refresh retry scheduled", {
+      retryInMs,
+      retryAttempt: this.tokenRefreshRetryAttempt,
     });
   }
 
@@ -730,10 +735,15 @@ export class GatewayManager {
   async shutdown(): Promise<void> {
     logger.info("Shutting down gateway manager");
 
+    this.authLifecycleGeneration += 1;
+
     if (this.pollInterval) clearInterval(this.pollInterval);
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     if (this.failoverInterval) clearInterval(this.failoverInterval);
-    if (this.tokenRefreshTimeout) clearTimeout(this.tokenRefreshTimeout);
+    if (this.tokenRefreshTimeout) {
+      clearTimeout(this.tokenRefreshTimeout);
+      this.tokenRefreshTimeout = null;
+    }
     if (this.elizaAppLeaderInterval) clearInterval(this.elizaAppLeaderInterval);
     if (this.greetingPollInterval) clearInterval(this.greetingPollInterval);
     if (this.dmPollInterval) clearInterval(this.dmPollInterval);
