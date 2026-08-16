@@ -124,7 +124,7 @@ STATE_FILE="$(mktemp)"
 trap 'rm -f "$STATE_FILE"' EXIT
 printf '%s' '${initialInventory}' > "$STATE_FILE"
 bunx() {
-  if [[ "$1" == wrangler* && "$2" == "secret" && "$3" == "put" ]]; then
+  if [[ "$1" == wrangler* && "$2" == "versions" && "$3" == "secret" && "$4" == "put" ]]; then
     cat >/dev/null
     if [ "$PUT_SUCCEEDS" != "true" ]; then
       return 1
@@ -372,7 +372,7 @@ executedDescribe(
       const result = runProductionVoiceBootstrap("cartesia-test", false);
       expect(result.status).toBe(1);
       expect(`${result.stdout}${result.stderr}`).toContain(
-        "wrangler secret put CARTESIA_API_KEY failed after 3 attempts",
+        "wrangler versions secret put CARTESIA_API_KEY failed after 3 attempts",
       );
     });
 
