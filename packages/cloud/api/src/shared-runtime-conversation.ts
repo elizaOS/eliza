@@ -135,6 +135,36 @@ const PROVISIONAL_CONVERGENCE_IMPORT_PREFIX =
   "personal-provisional-convergence-import:";
 const RETRY_DELAY_MS = 30_000;
 
+/**
+ * Retention lifecycle (#17006). The single DO alarm is multiplexed across two
+ * persisted deadlines: `mirrorRetryAt` (re-run a failed Postgres mirror) and
+ * `idleExpiryAt` (drop a mirror-confirmed conversation window after the room
+ * has been idle). Expiry never deletes an unmirrored (`dirty`) snapshot and
+ * never runs for `personal:` rooms, whose `history-archive:*` keys exist only
+ * in DO storage — deleting those would be lossy. A deletion tombstone written
+ * by the `delete` operation fences every later save, hydration, alarm, and
+ * late mirror so a purged agent's content cannot be resurrected.
+ */
+const ALARM_DEADLINES_KEY = "alarm-deadlines";
+const DELETION_TOMBSTONE_KEY = "deletion-tombstone";
+const IDLE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * Backstop for a stalled streaming client (#17006): if the response body
+ * makes no progress for this long, the upstream reader is canceled (fencing
+ * the old turn) and room serialization is released.
+ */
+const STREAM_STALL_TIMEOUT_MS = 120_000;
+
+interface StoredAlarmDeadlines {
+  mirrorRetryAt?: number;
+  idleExpiryAt?: number;
+}
+
+interface StoredDeletionTombstone {
+  agentId: string;
+  deletedAt: number;
+}
+
 interface StoredCutoverSeal {
   token: string;
   expiresAt: number;
@@ -255,6 +285,9 @@ export class SharedRuntimeConversation {
   private hydration: Promise<void> | undefined;
   private queue: Promise<void> = Promise.resolve();
   private mirrorQueue: Promise<void> = Promise.resolve();
+  // Instance field rather than a direct constant read so the deterministic
+  // unit harness can shorten the stall window without a real two-minute wait.
+  private streamStallTimeoutMs = STREAM_STALL_TIMEOUT_MS;
 
   constructor(state: DurableObjectState, env: AppEnv["Bindings"]) {
     this.state = state;
@@ -372,9 +405,47 @@ export class SharedRuntimeConversation {
     });
   }
 
+  /**
+   * Recompute the persisted deadline set and (re)arm the single DO alarm to
+   * the earliest remaining deadline, or cancel it when none remain. All alarm
+   * scheduling funnels through here so the two lifecycles cannot clobber each
+   * other's wake-ups.
+   */
+  private async updateAlarmDeadlines(
+    mutate: (current: StoredAlarmDeadlines) => StoredAlarmDeadlines,
+  ): Promise<void> {
+    const current =
+      (await this.state.storage.get<StoredAlarmDeadlines>(
+        ALARM_DEADLINES_KEY,
+      )) ?? {};
+    const next = mutate(current);
+    const times = [next.mirrorRetryAt, next.idleExpiryAt].filter(
+      (time): time is number => typeof time === "number",
+    );
+    if (times.length === 0) {
+      await this.state.storage.delete(ALARM_DEADLINES_KEY);
+      await this.state.storage.deleteAlarm();
+      return;
+    }
+    await this.state.storage.put(ALARM_DEADLINES_KEY, next);
+    await this.state.storage.setAlarm(Math.min(...times));
+  }
+
+  private async deletionTombstone(): Promise<StoredDeletionTombstone | null> {
+    return (
+      (await this.state.storage.get<StoredDeletionTombstone>(
+        DELETION_TOMBSTONE_KEY,
+      )) ?? null
+    );
+  }
+
   private async mirrorConversation(
     snapshot: StoredConversation,
   ): Promise<void> {
+    // A mirror queued before the agent's deletion must not run after it: the
+    // Postgres rows were purged with the agent, and a late merge would
+    // resurrect deleted conversation content.
+    if (await this.deletionTombstone()) return;
     try {
       await this.runWithBindings(async () => {
         const { sharedRuntimeHistoryRepository } = await import(
@@ -398,6 +469,9 @@ export class SharedRuntimeConversation {
         this.conversation = { ...current, dirty: false };
         await this.state.storage.put(CONVERSATION_KEY, this.conversation);
       }
+      await this.updateAlarmDeadlines(
+        ({ mirrorRetryAt: _settled, ...rest }) => rest,
+      );
     } catch (error) {
       // error-policy:J7 the Durable Object copy is authoritative for active
       // chat; a failed reporting mirror is retried by alarm and must not kill
@@ -408,7 +482,10 @@ export class SharedRuntimeConversation {
         channelId: snapshot.channelId,
         error: error instanceof Error ? error.message : String(error),
       });
-      await this.state.storage.setAlarm(Date.now() + RETRY_DELAY_MS);
+      await this.updateAlarmDeadlines((deadlines) => ({
+        ...deadlines,
+        mirrorRetryAt: Date.now() + RETRY_DELAY_MS,
+      }));
     }
   }
 
@@ -502,6 +579,15 @@ export class SharedRuntimeConversation {
         await this.state.storage.put(CONVERSATION_KEY, snapshot);
         this.conversation = snapshot;
         this.scheduleMirror(snapshot);
+        // Refresh the idle-expiry deadline on every save. Personal rooms are
+        // exempt: their archive keys have no Postgres copy, so expiry could
+        // not re-hydrate them.
+        if (!startEmpty && !agentId.startsWith("personal:")) {
+          await this.updateAlarmDeadlines((deadlines) => ({
+            ...deadlines,
+            idleExpiryAt: Date.now() + IDLE_EXPIRY_MS,
+          }));
+        }
         return snapshot.history;
       },
     };
@@ -659,6 +745,21 @@ export class SharedRuntimeConversation {
 
   private async handle(request: Request): Promise<Response> {
     const payload = (await request.json()) as ConversationRequest;
+    // Deletion fence: once the agent behind this room is purged, every later
+    // operation (save, hydration, history read, forwarded turn) fails closed
+    // instead of re-creating state for a deleted agent. The `delete` op stays
+    // idempotent.
+    if (payload.operation !== "delete" && (await this.deletionTombstone())) {
+      return Response.json(
+        {
+          success: false,
+          error: "This agent has been deleted.",
+          code: "agent_deleted",
+          retryable: false,
+        },
+        { status: 410 },
+      );
+    }
     const personal =
       payload.operation === "personal-bridge" ||
       payload.operation === "personal-stream" ||
@@ -1125,6 +1226,13 @@ export class SharedRuntimeConversation {
       await this.state.storage.deleteAll();
       await this.state.storage.deleteAlarm();
       this.conversation = null;
+      // The tombstone survives the purge so late mirrors, queued alarms, and
+      // stale clients addressing this room name are fenced permanently; agent
+      // ids are never reused, so the room name is dead once its agent is.
+      await this.state.storage.put(DELETION_TOMBSTONE_KEY, {
+        agentId: payload.agentId,
+        deletedAt: Date.now(),
+      } satisfies StoredDeletionTombstone);
       return Response.json({ success: true });
     }
 
@@ -1200,20 +1308,46 @@ export class SharedRuntimeConversation {
       return response;
     }
     const reader = response.body.getReader();
+    // Stall backstop: a client that stops pulling would otherwise hold the
+    // room queue forever. The watchdog is refreshed on every consumed chunk;
+    // on a stall it FIRST cancels the upstream reader — fencing the wedged
+    // turn so it cannot keep writing — and only then releases serialization.
+    let stallTimer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      if (stallTimer !== undefined) clearTimeout(stallTimer);
+      release();
+    };
+    const armStallTimer = () => {
+      if (settled) return;
+      if (stallTimer !== undefined) clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        reader
+          .cancel("shared-runtime room stream stalled past backstop")
+          // error-policy:J6 canceling an already-errored reader is teardown
+          // only; the lock release below is the recovery that matters.
+          .catch(() => undefined)
+          .finally(settle);
+      }, this.streamStallTimeoutMs);
+    };
+    armStallTimer();
     const body = new ReadableStream<Uint8Array>({
       pull: async (controller) => {
         try {
           const next = await reader.read();
           if (next.done) {
-            release();
+            settle();
             controller.close();
             return;
           }
+          armStallTimer();
           controller.enqueue(next.value);
         } catch (error) {
           // error-policy:J1 the response-stream boundary must release the
           // conversation lock before surfacing a read failure to the caller.
-          release();
+          settle();
           controller.error(error);
         }
       },
@@ -1221,7 +1355,7 @@ export class SharedRuntimeConversation {
         try {
           await reader.cancel(reason);
         } finally {
-          release();
+          settle();
         }
       },
     });
@@ -1309,12 +1443,79 @@ export class SharedRuntimeConversation {
     }
   }
 
-  async alarm(): Promise<void> {
+  /**
+   * Drop a mirror-confirmed idle conversation window so the Postgres mirror
+   * becomes the sole copy; the next request re-hydrates through the existing
+   * cold-migration path, so expiry is loss-free. A still-dirty snapshot is
+   * hard-retained: the mirror is retried and expiry re-armed instead.
+   */
+  private async expireIdleConversation(): Promise<void> {
+    await this.updateAlarmDeadlines(({ idleExpiryAt: _due, ...rest }) => rest);
     const snapshot =
       this.conversation ??
       (await this.state.storage.get<StoredConversation>(CONVERSATION_KEY));
-    if (snapshot?.dirty) {
+    if (!snapshot) return;
+    if (snapshot.agentId.startsWith("personal:")) return;
+    if (snapshot.dirty) {
       await this.scheduleMirror(snapshot);
+      const settled =
+        this.conversation ??
+        (await this.state.storage.get<StoredConversation>(CONVERSATION_KEY));
+      if (!settled || settled.dirty) {
+        await this.updateAlarmDeadlines((deadlines) => ({
+          ...deadlines,
+          idleExpiryAt: Date.now() + RETRY_DELAY_MS,
+        }));
+        return;
+      }
+    }
+    await this.state.storage.delete(CONVERSATION_KEY);
+    // The turn-claim replay window is only meaningful for in-flight client
+    // retries; after a full idle period it is dead weight, and the billing
+    // admission gate still dedupes by deterministic identity.
+    await this.state.storage.delete(TURN_CLAIMS_KEY);
+    this.conversation = undefined;
+  }
+
+  async alarm(): Promise<void> {
+    if (await this.deletionTombstone()) return;
+    const deadlines =
+      await this.state.storage.get<StoredAlarmDeadlines>(ALARM_DEADLINES_KEY);
+    if (!deadlines) {
+      // Pre-deadline deployments armed the alarm directly for mirror retry;
+      // honor that contract for rooms that carried one across the upgrade.
+      const snapshot =
+        this.conversation ??
+        (await this.state.storage.get<StoredConversation>(CONVERSATION_KEY));
+      if (snapshot?.dirty) {
+        await this.scheduleMirror(snapshot);
+      }
+      return;
+    }
+    const now = Date.now();
+    if (
+      typeof deadlines.mirrorRetryAt === "number" &&
+      deadlines.mirrorRetryAt <= now
+    ) {
+      await this.updateAlarmDeadlines(
+        ({ mirrorRetryAt: _due, ...rest }) => rest,
+      );
+      const snapshot =
+        this.conversation ??
+        (await this.state.storage.get<StoredConversation>(CONVERSATION_KEY));
+      if (snapshot?.dirty) {
+        await this.scheduleMirror(snapshot);
+      }
+    }
+    if (
+      typeof deadlines.idleExpiryAt === "number" &&
+      deadlines.idleExpiryAt <= now
+    ) {
+      await this.expireIdleConversation();
+    } else {
+      // A retried or early wake-up must not orphan future deadlines: re-arm
+      // the alarm to the earliest one that remains.
+      await this.updateAlarmDeadlines((current) => current);
     }
   }
 }
