@@ -27,6 +27,7 @@ describe("Shared capability wall", () => {
     ["text Alice that I'm late", "communications"],
     ["send Bob a message", "communications"],
     ["remind me tomorrow and message Bob now", "reminders"],
+    ["message Bob the update", "communications"],
     ["order dinner for me", "purchases"],
     ["save this as a note", "notes"],
     ["connect my Gmail", "cloud-apps"],
@@ -54,6 +55,8 @@ describe("Shared capability wall", () => {
     "List two ways to make a meeting shorter.",
     "List three ways to make a meeting shorter.",
     "Give me two ideas for making a meeting shorter.",
+    "Remember this code word for my next message: apricot-816.",
+    "Make this message shorter.",
   ])("keeps discussion and research in Shared: %s", (message) => {
     expect(resolveSharedCapabilityWall(message)).toBeNull();
   });
