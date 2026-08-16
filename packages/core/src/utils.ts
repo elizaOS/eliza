@@ -964,8 +964,12 @@ export function truncateToCompleteSentence(
 	text: string,
 	maxLength: number,
 ): string {
+	if (maxLength <= 0) return "";
 	if (text.length <= maxLength) {
 		return text;
+	}
+	if (maxLength <= 3) {
+		return truncateWellFormed(text, maxLength);
 	}
 
 	// Attempt to truncate at the last period within the limit

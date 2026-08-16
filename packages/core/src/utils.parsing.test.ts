@@ -98,9 +98,12 @@ describe("truncateToCompleteSentence", () => {
 		expect(out.length).toBeLessThanOrEqual(12);
 	});
 
-	it("never exceeds maxLength on the word-boundary path, ellipsis included", () => {
-		const out = truncateToCompleteSentence("alpha beta gamma delta", 12);
-		expect(out.length).toBeLessThanOrEqual(12);
+	it("never exceeds tiny limits that cannot fit an ellipsis", () => {
+		expect(truncateToCompleteSentence("abcdef", 0)).toBe("");
+		expect(truncateToCompleteSentence("abcdef", 1)).toBe("a");
+		expect(truncateToCompleteSentence("abcdef", 2)).toBe("ab");
+		expect(truncateToCompleteSentence("abcdef", 3)).toBe("abc");
+		expect(truncateToCompleteSentence("😀abc", 1)).toBe("");
 	});
 
 	it("keeps a tweet-sized truncation within the 280 character cap", () => {
