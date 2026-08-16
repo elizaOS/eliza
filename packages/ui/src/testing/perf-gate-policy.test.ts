@@ -1,6 +1,7 @@
 /**
  * Proves the shell performance gate rejects sustained frame loss while
- * tolerating the bounded minority of noisy-runner windows it was designed for.
+ * tolerating the bounded minority of noisy-runner windows it was designed for,
+ * and that a run with zero measured windows fails closed rather than passing.
  */
 
 import { describe, expect, it } from "vitest";
@@ -40,6 +41,14 @@ describe("maximize/restore performance-gate policy", () => {
       ).toEqual({ failed: true, flaggedCount: 3, windowCount: 5 });
     },
   );
+
+  it("fails closed on zero windows instead of passing vacuously", () => {
+    expect(evaluateFrameBudgetWindows([], RELAYOUT_FRAME_GATE)).toEqual({
+      failed: true,
+      flaggedCount: 0,
+      windowCount: 0,
+    });
+  });
 
   it("tolerates two isolated noisy windows", () => {
     const degraded = summaryWithDroppedRatio(0.4);
