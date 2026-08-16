@@ -1,8 +1,9 @@
 /**
  * Covers `requireConfirmation`: it confirms a pending action only when the
  * follow-up text is a metadata-marked wrapped external payload, and treats
- * marker-shaped user text lacking that metadata as a cancellation. Deterministic:
- * Map-backed runtime cache stub, no model or database.
+ * marker-shaped user text lacking that metadata as a cancellation. It also
+ * pins multilingual confirmation tokens through the real two-turn gate.
+ * Deterministic: Map-backed runtime cache stub, no model or database.
  */
 import { describe, expect, it } from "vitest";
 import { wrapExternalContent } from "../security/external-content";
@@ -30,6 +31,20 @@ function message(text: string, metadata?: Record<string, unknown>): Memory {
 		content: { text, source: "api", metadata },
 		createdAt: Date.now(),
 	} as Memory;
+}
+
+async function resolveConfirmation(text: string) {
+	const runtime = createRuntimeStub();
+	const args = {
+		runtime,
+		actionName: "DELETE_TEST_RESOURCE",
+		pendingKey: "resource:1",
+		prompt: "Delete resource 1?",
+	};
+	await expect(
+		requireConfirmation({ ...args, message: message("delete resource 1") }),
+	).resolves.toEqual({ status: "pending" });
+	return requireConfirmation({ ...args, message: message(text) });
 }
 
 describe("requireConfirmation", () => {
@@ -94,4 +109,35 @@ describe("requireConfirmation", () => {
 			}),
 		).resolves.toEqual({ status: "cancelled", metadata: undefined });
 	});
+
+	it.each([
+		"sí",
+		"SÍ!",
+		"はい",
+		"はい。",
+		"はい！",
+		"はい？",
+		"はい、分かりました",
+		"「はい」",
+		"确认",
+		"确认，请继续",
+		"確認。",
+		"확인",
+		"확인 했습니다",
+	])("confirms the multilingual follow-up %j", async (text) => {
+		await expect(resolveConfirmation(text)).resolves.toEqual({
+			status: "confirmed",
+			metadata: undefined,
+		});
+	});
+
+	it.each(["sígueme", "确认了", "はいはい", "확인했습니다"])(
+		"rejects a longer word beginning with a confirmation token: %j",
+		async (text) => {
+			await expect(resolveConfirmation(text)).resolves.toEqual({
+				status: "cancelled",
+				metadata: undefined,
+			});
+		},
+	);
 });
