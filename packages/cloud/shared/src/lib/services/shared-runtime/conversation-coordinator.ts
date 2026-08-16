@@ -23,6 +23,8 @@ export interface SharedConversationCoordinatorOptions {
   agentKind?: "sandbox" | "personal";
   /** Authenticated server-only role override; never accepted from RPC params. */
   trustedMessageRole?: "system";
+  /** Authenticated raw utterance when RPC text also contains server-composed context. */
+  trustedUserUtterance?: string;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -220,6 +222,9 @@ export async function coordinateSharedBridge(
         agent,
         rpc,
         ...(options.trustedMessageRole ? { trustedMessageRole: options.trustedMessageRole } : {}),
+        ...(options.trustedUserUtterance
+          ? { trustedUserUtterance: options.trustedUserUtterance }
+          : {}),
       }),
     });
   await requireCoordinatorResponse(response, "conversation");
@@ -242,6 +247,9 @@ export async function coordinateSharedStream(
         agent,
         rpc,
         ...(options.trustedMessageRole ? { trustedMessageRole: options.trustedMessageRole } : {}),
+        ...(options.trustedUserUtterance
+          ? { trustedUserUtterance: options.trustedUserUtterance }
+          : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     });

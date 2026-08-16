@@ -324,12 +324,15 @@ describe("shared-rest-adapter — messages", () => {
       NAMESPACE,
       "telegram:update-1",
       "platform",
+      undefined,
+      "hello",
     );
 
     expect(coordinateSharedBridge.mock.calls[0][2]).toEqual({
       executionCtx: EXECUTION_CTX,
       namespace: NAMESPACE,
       agentKind: "personal",
+      trustedUserUtterance: "hello",
     });
   });
 

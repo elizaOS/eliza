@@ -525,6 +525,7 @@ export async function sharedRestMessageSend(
   clientMessageId?: string,
   funding: "organization-credits" | "platform" = "organization-credits",
   trustedDelivery?: SharedReminderDelivery,
+  trustedUserUtterance?: string,
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -545,6 +546,7 @@ export async function sharedRestMessageSend(
     executionCtx,
     namespace,
     ...(funding === "platform" ? { agentKind: "personal" as const } : {}),
+    ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
   });
   if (response.error) {
     // A credit-reserve rejection is a permanent add-credits condition, not a
