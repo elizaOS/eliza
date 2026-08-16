@@ -360,6 +360,17 @@ function describeCaptureFailure(err: unknown): string {
   ) {
     return "No microphone was found. Connect a microphone to use voice.";
   }
+  // Post-capture transcription failure (cloud/local STT): the mic worked and
+  // the utterance was recorded, but the words could not be transcribed — the
+  // honest message is "didn't catch that", not a microphone accusation.
+  if (
+    haystack.includes("cloudstterror") ||
+    haystack.includes("cloud asr") ||
+    haystack.includes("transcri") ||
+    haystack.includes("no microphone audio was captured")
+  ) {
+    return "Didn't catch that — voice transcription failed. Try again.";
+  }
   return "Could not start the microphone. Check your microphone permissions and try again.";
 }
 
@@ -762,6 +773,10 @@ export function useShellController(): ShellController {
   const modelStatus = useHomeModelStatus();
   const [isOpen, setIsOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
+  // Post-release STT drain (#20483): the mic is closed but the utterance is
+  // still transcribing. Drives the pill's "processing" phase so the gap
+  // between hold-release and the send/turn never reads as a silent idle.
+  const [sttPending, setSttPending] = React.useState(false);
   const [transcript, setTranscript] = React.useState("");
   const [analyser, setAnalyser] = React.useState<AnalyserNode | null>(null);
   // True when the most recent user turn was voice-originated (VOICE_DM). Gates
@@ -1028,32 +1043,55 @@ export function useShellController(): ShellController {
     [sendChatText],
   );
 
-  const stopCaptureAndDrain = React.useCallback(async () => {
-    const handle = captureRef.current;
-    captureRef.current = null;
-    // Mark this as a user-initiated stop so the clean-auto-stop carryover does
-    // NOT fire — a toggle-off / barge-in / typing-pause must discard a
-    // half-finished utterance rather than carry or commit it.
-    explicitStopRef.current = true;
-    turnCarryoverRef.current = "";
-    turnAggregatorRef.current?.reset();
-    if (handle) {
-      try {
-        await handle.stop();
-      } catch {
-        /* stop is best-effort from UI controls */
-      } finally {
-        handle.dispose();
+  const stopCaptureAndDrain = React.useCallback(
+    async (options?: { immediateUiReset?: boolean }) => {
+      const handle = captureRef.current;
+      captureRef.current = null;
+      // Mark this as a user-initiated stop so the clean-auto-stop carryover does
+      // NOT fire — a toggle-off / barge-in / typing-pause must discard a
+      // half-finished utterance rather than carry or commit it.
+      explicitStopRef.current = true;
+      turnCarryoverRef.current = "";
+      turnAggregatorRef.current?.reset();
+      // Push-to-talk release (#20483): drop the listening UI state IMMEDIATELY.
+      // For the cloud backend `handle.stop()` includes the whole STT round trip
+      // (seconds), and the pill's hold release must visibly end the hot-mic
+      // state the instant the finger lifts — the mic hardware is already done
+      // capturing; only transcription remains. That remainder is surfaced as
+      // the `processing` phase via sttPending so the drain never reads as a
+      // silent idle. Opt-in only: the mode-handoff drains (hands-free →
+      // transcription) key their replacement-capture effects off `recording`,
+      // so flipping it early there would open the next recorder mid-drain.
+      if (options?.immediateUiReset) {
+        setAnalyser(null);
+        setRecording(false);
+        setTranscript("");
+        if (handle) setSttPending(true);
       }
-    }
-    setAnalyser(null);
-    setRecording(false);
-    setTranscript("");
-  }, []);
+      if (handle) {
+        try {
+          await handle.stop();
+        } catch {
+          /* stop is best-effort from UI controls; transcribe failures surface
+             through onStateChange("error") */
+        } finally {
+          handle.dispose();
+          if (options?.immediateUiReset) setSttPending(false);
+        }
+      }
+      setAnalyser(null);
+      setRecording(false);
+      setTranscript("");
+    },
+    [],
+  );
 
-  const stopCapture = React.useCallback(() => {
-    void stopCaptureAndDrain();
-  }, [stopCaptureAndDrain]);
+  const stopCapture = React.useCallback(
+    (options?: { immediateUiReset?: boolean }) => {
+      void stopCaptureAndDrain(options);
+    },
+    [stopCaptureAndDrain],
+  );
 
   // Hold-to-talk cancel (#20483): drop the capture WITHOUT the stop() drain, so
   // no STT round-trip runs and nothing is transcribed or sent. dispose() runs
@@ -1075,6 +1113,7 @@ export function useShellController(): ShellController {
     }
     setAnalyser(null);
     setRecording(false);
+    setSttPending(false);
     setTranscript("");
   }, []);
 
@@ -1352,7 +1391,15 @@ export function useShellController(): ShellController {
             setTranscript(committed ? "" : aggregator.pending);
           }
         },
-        onStateChange: (state: VoiceCaptureState) => {
+        onStateChange: (state: VoiceCaptureState, error?: Error) => {
+          // A transcribe failure after a real utterance must be VISIBLE: the
+          // hold-to-talk contract is that a ghost hold costs nothing but a
+          // spoken turn never silently vanishes (#20483). Cloud STT throwing
+          // at stop() lands here as the error state; surface one actionable
+          // notice instead of letting the words evaporate.
+          if (state === "error" && error) {
+            setActionNotice(describeCaptureFailure(error), "error", 6000);
+          }
           if (state === "error" || state === "stopped" || state === "idle") {
             // Capture ended (clean stop, dispose, or error). Drop the handle and
             // analyser so the shell phase returns to idle/summoned and a later
@@ -1722,13 +1769,15 @@ export function useShellController(): ShellController {
   const phase: ShellPhase =
     recording || realtimeVoiceListening
       ? "listening"
-      : responding
-        ? "responding"
-        : isOpen
-          ? "summoned"
-          : ready
-            ? "idle"
-            : "booting";
+      : sttPending
+        ? "processing"
+        : responding
+          ? "responding"
+          : isOpen
+            ? "summoned"
+            : ready
+              ? "idle"
+              : "booting";
 
   // Boot-progress token for the slow-boot escalation (#14040 sub-defect 3). It
   // advances whenever the readiness poll observes fresh progress while still
@@ -1904,7 +1953,9 @@ export function useShellController(): ShellController {
       stopRealtimeVoice();
       return;
     }
-    stopCapture();
+    // Push-to-talk release: end the visible hot-mic state the instant the
+    // finger lifts — the STT drain continues in the background (#20483).
+    stopCapture({ immediateUiReset: true });
   }, [stopCapture, stopRealtimeVoice]);
 
   // A LIVE Talk session that dies past the client's reconnect budget (network

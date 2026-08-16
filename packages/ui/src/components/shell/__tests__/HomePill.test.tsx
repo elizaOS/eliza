@@ -57,6 +57,7 @@ describe("HomePill", () => {
     "idle",
     "summoned",
     "listening",
+    "processing",
     "responding",
   ])("renders a data-phase attribute for phase=%s", (phase) => {
     render(<HomePill phase={phase} onOpen={() => {}} onClose={() => {}} />);
@@ -131,6 +132,25 @@ describe("HomePill", () => {
     }
   });
 
+  it("keeps the dark chip with pulsing dots (no red ring) while processing", () => {
+    render(
+      <HomePill phase="processing" onOpen={() => {}} onClose={() => {}} />,
+    );
+    const mark = screen.getByTestId("shell-home-pill-mark");
+    expect(mark.className).toContain("bg-neutral-900/95");
+    expect(mark.className).not.toContain("239,68,68");
+    const dots = screen.getAllByTestId("shell-home-pill-process-dot");
+    expect(dots).toHaveLength(3);
+    for (const dot of dots) {
+      expect(dot.className).toContain("home-pill-process-dot");
+      expect(dot.className).toContain("motion-reduce:animate-none");
+    }
+    expect(screen.queryAllByTestId("shell-home-pill-wave-bar")).toHaveLength(0);
+    expect(
+      screen.getByRole("button", { name: /transcribing your words/i }),
+    ).toBeTruthy();
+  });
+
   it("breathes a warm accent glow while responding", () => {
     render(
       <HomePill phase="responding" onOpen={() => {}} onClose={() => {}} />,
@@ -139,6 +159,22 @@ describe("HomePill", () => {
     expect(mark.className).toContain("255,138,42");
     expect(mark.className).toContain("animate-pulse");
     expect(mark.className).toContain("motion-reduce:animate-none");
+  });
+
+  it("sharpens the glow and drops the pulse while speaking aloud", () => {
+    render(
+      <HomePill
+        phase="responding"
+        speaking
+        onOpen={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: /is speaking/i });
+    expect(btn.getAttribute("data-speaking")).toBe("true");
+    const mark = screen.getByTestId("shell-home-pill-mark");
+    expect(mark.className).toContain("0.85");
+    expect(mark.className).not.toContain("animate-pulse");
   });
 
   it("stays available while booting and opens on click", () => {

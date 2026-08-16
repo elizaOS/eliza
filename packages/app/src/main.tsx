@@ -98,6 +98,7 @@ import {
   dispatchAppEvent,
   dispatchConnectRequest,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+  PUSH_TO_TALK_TOGGLE_EVENT,
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
@@ -2432,6 +2433,28 @@ async function initializeDesktopShell(): Promise<void> {
     }
   }
 
+  // Global push-to-talk toggle (#20483). Electrobun's GlobalShortcut is
+  // trigger-only (no key-up), so the OS-wide voice hotkey is press-to-start /
+  // press-again-to-send rather than a held quasimode — the pill's own
+  // press-and-hold remains the true hold gesture. Best-effort: a rejected
+  // accelerator (another app owns it) logs and moves on; voice stays reachable
+  // via the pill.
+  const pushToTalkRegistration = await invokeDesktopBridgeRequest<{
+    success: boolean;
+  }>({
+    rpcMethod: "desktopRegisterShortcut",
+    ipcChannel: "desktop:registerShortcut",
+    params: {
+      id: "push-to-talk",
+      accelerator: "CommandOrControl+Shift+Space",
+    },
+  });
+  if (pushToTalkRegistration?.success !== true) {
+    console.warn(
+      "[desktop-shell] Operating system rejected the push-to-talk shortcut; the pill hold gesture remains available",
+    );
+  }
+
   // Toggle semantics (#12184): a focused + visible overlay is dismissed
   // (focus returns to the previously active app via the macOS orderOut path);
   // otherwise summon + focus it. Blur does NOT hide the pill — it is a resting
@@ -2478,6 +2501,8 @@ async function initializeDesktopShell(): Promise<void> {
         dispatchAppEvent(COMMAND_PALETTE_EVENT);
       } else if (id === "chat-overlay") {
         void summonChatOverlay();
+      } else if (id === "push-to-talk") {
+        dispatchAppEvent(PUSH_TO_TALK_TOGGLE_EVENT);
       }
     },
   });

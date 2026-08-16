@@ -275,7 +275,13 @@ export function createVoiceCapture(
     const next = await startLocalAsrRecorder({
       ...(localAsrAutoStop ? { autoStop: localAsrAutoStop } : {}),
       onAutoStop: () => {
-        void stop();
+        // stop() both reports a transcribe failure via setState("error", err)
+        // AND rethrows it for awaiting callers. This fire-and-forget auto-stop
+        // has no awaiting caller, so observe the rejection here — otherwise
+        // every failed transcribe on the silence path surfaces as an unhandled
+        // promise rejection on top of the already-delivered error state.
+        // error-policy:J5 the same rejection is delivered via onStateChange.
+        void stop().catch(() => {});
       },
     });
     recorder = next;
