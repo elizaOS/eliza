@@ -192,16 +192,34 @@ function extForMime(mimeType: string): string {
 // Size-capped eviction
 // ---------------------------------------------------------------------------
 
-const DEFAULT_MAX_STORE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
+export const DEFAULT_MEDIA_STORE_MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 const EVICT_INTERVAL_MS = 30_000;
 let lastEvictAt = 0;
 
+/** Complete positive decimal: reject `1e9`, `8abc`, hex, leading zeros, fractions. */
+const CANONICAL_POSITIVE_DECIMAL = /^[1-9]\d*$/;
+
+/**
+ * Resolve `ELIZA_MEDIA_STORE_MAX_BYTES`. Unset/empty/invalid tokens keep the
+ * 2 GiB default so a silent `Number.parseInt("1e9") === 1` cannot evict the
+ * store down to a 1-byte cap.
+ */
+export function resolveMediaStoreMaxBytes(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_MEDIA_STORE_MAX_BYTES;
+  const trimmed = raw.trim();
+  if (trimmed === "") return DEFAULT_MEDIA_STORE_MAX_BYTES;
+  if (!CANONICAL_POSITIVE_DECIMAL.test(trimmed)) {
+    return DEFAULT_MEDIA_STORE_MAX_BYTES;
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    return DEFAULT_MEDIA_STORE_MAX_BYTES;
+  }
+  return parsed;
+}
+
 function maxStoreBytes(): number {
-  const raw = process.env.ELIZA_MEDIA_STORE_MAX_BYTES;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0
-    ? parsed
-    : DEFAULT_MAX_STORE_BYTES;
+  return resolveMediaStoreMaxBytes(process.env.ELIZA_MEDIA_STORE_MAX_BYTES);
 }
 
 export interface MediaFileStat {
