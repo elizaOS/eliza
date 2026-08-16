@@ -71,6 +71,7 @@ function makeRes(): {
   });
   let headersSent = false;
   let writableEnded = false;
+  let destroyed = false;
   const closeHandlers: Record<string, (() => void)[]> = {};
   const res = {
     get headersSent() {
@@ -78,6 +79,9 @@ function makeRes(): {
     },
     get writableEnded() {
       return writableEnded;
+    },
+    get destroyed() {
+      return destroyed;
     },
     writeHead(s: number, h: Record<string, unknown>) {
       status = s;
@@ -116,6 +120,7 @@ function makeRes(): {
     },
     // test helper to trigger close
     __triggerClose() {
+      destroyed = true;
       for (const h of closeHandlers.close ?? []) h();
     },
   } as unknown as ServerResponse & { __triggerClose: () => void };
@@ -720,6 +725,94 @@ describe("serveMediaFile stream fault handling (#20164)", () => {
       expect(fake.destroy).toHaveBeenCalled();
     } finally {
       spy.mockRestore();
+    }
+  });
+
+  it("does not start a full-file stream that opens after the client disconnects", () => {
+    const { url } = persistMediaBytes(Buffer.from("late-open"), "image/png");
+    const { res, get } = makeRes();
+    const fake = makeFakeStream();
+    const spy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
+    try {
+      serveMediaFile({ method: "GET", headers: {} } as never, res, url);
+      (res as unknown as { __triggerClose: () => void }).__triggerClose();
+      fake.emit("open");
+      expect(get().status).toBe(0);
+      expect(fake.destroy).toHaveBeenCalledTimes(1);
+      expect(fake.pipe).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("does not start a Range stream that opens after the client disconnects", () => {
+    const { url } = persistMediaBytes(Buffer.from("0123456789"), "audio/mpeg");
+    const { res, get } = makeRes();
+    const fake = makeFakeStream();
+    const spy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
+    try {
+      serveMediaFile(
+        { method: "GET", headers: { range: "bytes=0-3" } } as never,
+        res,
+        url,
+      );
+      (res as unknown as { __triggerClose: () => void }).__triggerClose();
+      fake.emit("open");
+      expect(get().status).toBe(0);
+      expect(fake.destroy).toHaveBeenCalledTimes(1);
+      expect(fake.pipe).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("consumes only the destroyed-response race from writeHead", () => {
+    const { url } = persistMediaBytes(Buffer.from("write-race"), "image/png");
+    const { res } = makeRes();
+    const fake = makeFakeStream();
+    const streamSpy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
+    const destroyedError = Object.assign(new Error("response destroyed"), {
+      code: "ERR_STREAM_DESTROYED",
+    });
+    const writeHeadSpy = vi.spyOn(res, "writeHead").mockImplementation(() => {
+      throw destroyedError;
+    });
+    try {
+      serveMediaFile({ method: "GET", headers: {} } as never, res, url);
+      expect(() => fake.emit("open")).not.toThrow();
+      expect(fake.destroy).toHaveBeenCalledTimes(1);
+      expect(fake.pipe).not.toHaveBeenCalled();
+    } finally {
+      writeHeadSpy.mockRestore();
+      streamSpy.mockRestore();
+    }
+  });
+
+  it("rethrows an unexpected writeHead failure", () => {
+    const { url } = persistMediaBytes(Buffer.from("write-fail"), "image/png");
+    const { res } = makeRes();
+    const fake = makeFakeStream();
+    const streamSpy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
+    const unexpectedError = new Error("unexpected write failure");
+    const writeHeadSpy = vi.spyOn(res, "writeHead").mockImplementation(() => {
+      throw unexpectedError;
+    });
+    try {
+      serveMediaFile({ method: "GET", headers: {} } as never, res, url);
+      expect(() => fake.emit("open")).toThrow(unexpectedError);
+      expect(fake.destroy).toHaveBeenCalledTimes(1);
+      expect(fake.pipe).not.toHaveBeenCalled();
+    } finally {
+      writeHeadSpy.mockRestore();
+      streamSpy.mockRestore();
     }
   });
 
