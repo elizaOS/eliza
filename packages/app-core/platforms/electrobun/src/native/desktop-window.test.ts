@@ -25,6 +25,12 @@ vi.mock("./mac-window-effects", () => ({
   setTrafficLightsPosition: vi.fn(),
   startAccessingSecurityScopedBookmark: vi.fn(() => false),
   stopAccessingSecurityScopedBookmarks: vi.fn(),
+  startFnMonitor: vi.fn(() => "unavailable" as const),
+  stopFnMonitor: vi.fn(),
+  pollFnMonitor: vi.fn(() => null),
+  isFnMonitorHealthy: vi.fn(() => false),
+  isFnKeyDown: vi.fn(() => false),
+  getFnSystemUsageType: vi.fn(() => 0),
 }));
 
 const electrobunMock = vi.hoisted(() => {
