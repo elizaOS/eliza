@@ -317,7 +317,7 @@ describe("Personal Shared Telegram edge", () => {
     const response = await app.fetch(
       suffixedRequest,
       {
-        PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED: "true",
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED: "true",
         ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
         ELIZA_APP_WEBHOOK_GATEWAY_URL: "https://gateway.example.test",
         ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
@@ -388,7 +388,7 @@ describe("Personal Shared Telegram edge", () => {
     const response = await app.fetch(
       request,
       {
-        PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED: "false",
+        PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED: "false",
         ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
         ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
         ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
