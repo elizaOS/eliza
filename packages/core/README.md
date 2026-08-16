@@ -176,13 +176,19 @@ Important behavior:
 
 Relevant runtime knobs (all `PROMPT_BATCHER_*`, read in `src/runtime.ts`):
 
-- `PROMPT_BATCHER_BATCH_SIZE`
-- `PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS`
-- `PROMPT_BATCHER_MAX_SECTIONS_PER_CALL`
-- `PROMPT_BATCHER_PACKING_DENSITY`
-- `PROMPT_BATCHER_MAX_TOKENS_PER_CALL`
-- `PROMPT_BATCHER_MAX_PARALLEL_CALLS`
-- `PROMPT_BATCHER_MODEL_SEPARATION`
+| Setting | Default | Accepted values |
+| --- | ---: | --- |
+| `PROMPT_BATCHER_BATCH_SIZE` | `8` | Positive integer |
+| `PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS` | `30000` | Positive integer |
+| `PROMPT_BATCHER_MAX_SECTIONS_PER_CALL` | `8` | Positive integer |
+| `PROMPT_BATCHER_PACKING_DENSITY` | `0.85` | Finite number from `0` through `1` |
+| `PROMPT_BATCHER_MAX_TOKENS_PER_CALL` | `24000` | Positive integer |
+| `PROMPT_BATCHER_MAX_PARALLEL_CALLS` | `2` | Positive integer |
+| `PROMPT_BATCHER_MODEL_SEPARATION` | `1` | Finite number from `0` through `1` |
+
+Absent or blank values use the defaults. Invalid explicit values fail runtime
+construction with `PROMPT_BATCHER_CONFIG_INVALID` so malformed deployment
+configuration cannot silently disable batching resource bounds.
 
 The prompt batcher implementation lives in `src/utils/prompt-batcher/` (`batcher.ts`, `dispatcher.ts`). The lower-level queue primitives (`PriorityQueue` / `BatchProcessor` / `TaskDrain` / `BatchQueue`) live in `src/utils/batch-queue/`.
 
