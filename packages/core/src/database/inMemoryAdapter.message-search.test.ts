@@ -34,7 +34,7 @@ async function seed(messages: Memory[]): Promise<InMemoryDatabaseAdapter> {
 }
 
 describe("InMemoryDatabaseAdapter — textContains", () => {
-	it("filters by entityId as a row predicate (mirrors plugin-sql RLS row filtering)", async () => {
+	it("filters by entityId while keeping get/count pagination consistent", async () => {
 		const adapter = await seed([
 			msg("requester-authored", 1),
 			{ ...msg("other-authored", 2), entityId: otherEntityId },
