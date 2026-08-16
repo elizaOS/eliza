@@ -33,6 +33,12 @@ type MacEffectsSymbols = {
   elizaOnboardingNotificationDismiss(): void;
   checkNotificationPermission(): number;
   requestNotificationPermission(): number;
+  elizaFnMonitorStart(): number;
+  elizaFnMonitorStop(): void;
+  elizaFnMonitorPoll(): number;
+  elizaFnMonitorIsHealthy(): boolean;
+  elizaFnMonitorIsFnDown(): boolean;
+  elizaFnSystemUsageType(): number;
 };
 
 type LoadedMacEffectsLib = { symbols: MacEffectsSymbols; close(): void };
@@ -117,6 +123,12 @@ function loadLib(): MacEffectsLib {
       },
       checkNotificationPermission: { args: [], returns: FFIType.i32 },
       requestNotificationPermission: { args: [], returns: FFIType.i32 },
+      elizaFnMonitorStart: { args: [], returns: FFIType.i32 },
+      elizaFnMonitorStop: { args: [], returns: FFIType.void },
+      elizaFnMonitorPoll: { args: [], returns: FFIType.i32 },
+      elizaFnMonitorIsHealthy: { args: [], returns: FFIType.bool },
+      elizaFnMonitorIsFnDown: { args: [], returns: FFIType.bool },
+      elizaFnSystemUsageType: { args: [], returns: FFIType.i32 },
     }) as MacEffectsLib;
   } catch (err) {
     console.warn("[MacEffects] Failed to load dylib:", err);
@@ -282,4 +294,75 @@ export function checkNotificationPermission(): number | null {
 export function requestNotificationPermission(): number | null {
   const lib = getLib();
   return lib ? lib.symbols.requestNotificationPermission() : null;
+}
+
+// ── Fn-key hold monitor (push-to-talk quasimode, #20483) ──────────────────
+
+/** Outcome of starting the fn monitor. `permission-missing` means macOS
+ *  refused the listen-only event tap — Accessibility (or Input Monitoring)
+ *  trust has not been granted to this app bundle. */
+export type FnMonitorStartResult =
+  | "started"
+  | "permission-missing"
+  | "failed"
+  | "unavailable";
+
+/** One drained fn-key transition. `up-chord` is a release where another key
+ *  was pressed mid-hold (fn+arrow etc.) — treat as cancel, not send. */
+export type FnMonitorEvent = "down" | "up" | "up-chord";
+
+export function startFnMonitor(): FnMonitorStartResult {
+  const lib = getLib();
+  if (!lib) return "unavailable";
+  switch (lib.symbols.elizaFnMonitorStart()) {
+    case 0:
+      return "started";
+    case 1:
+      return "permission-missing";
+    default:
+      return "failed";
+  }
+}
+
+export function stopFnMonitor(): void {
+  getLib()?.symbols.elizaFnMonitorStop();
+}
+
+/** Drain one queued fn transition; null when the queue is empty. */
+export function pollFnMonitor(): FnMonitorEvent | null {
+  const lib = getLib();
+  if (!lib) return null;
+  switch (lib.symbols.elizaFnMonitorPoll()) {
+    case 1:
+      return "down";
+    case 2:
+      return "up";
+    case 3:
+      return "up-chord";
+    default:
+      return null;
+  }
+}
+
+/** False while started means the tap was disabled out from under us (secure
+ *  input, tap timeout) and the monitor needs a stop/start cycle. */
+export function isFnMonitorHealthy(): boolean {
+  return getLib()?.symbols.elizaFnMonitorIsHealthy() ?? false;
+}
+
+/** Physical fn key state right now — resync anchor after queue overflow. */
+export function isFnKeyDown(): boolean {
+  return getLib()?.symbols.elizaFnMonitorIsFnDown() ?? false;
+}
+
+/** The system "Press 🌐 key to..." action (com.apple.HIToolbox
+ *  AppleFnUsageType): 0 none, 1 input source, 2 emoji, 3 dictation. macOS
+ *  defaults to 2 when the key was never configured; a bare fn tap fires it
+ *  and a listen-only tap cannot swallow it, so callers surface a "set it to
+ *  Do Nothing" hint when this is not 0. */
+export function getFnSystemUsageType(): number {
+  const lib = getLib();
+  if (!lib) return -1;
+  const value = lib.symbols.elizaFnSystemUsageType();
+  return value === -1 ? 2 : value;
 }

@@ -67,7 +67,11 @@ import {
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
-import { actionGateFailure, canActionRun } from "../runtime/action-gate";
+import {
+	actionGateFailure,
+	actionGateRejection,
+	canActionRun,
+} from "../runtime/action-gate";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
@@ -2751,12 +2755,21 @@ async function collectV5PlannerCandidateActions(args: {
 	selectedContexts?: readonly AgentContext[];
 	candidateActions?: readonly string[];
 	userRoles?: readonly RoleGateRole[];
-	/** Out-param: normalized names of EXPLICIT stage-1 candidates whose
-	 * resolved action was rejected by the action gate (role/context/privacy).
+	/** Out-param: normalized names and reasons for EXPLICIT stage-1 candidates
+	 * rejected by the owner-exclusive disclosure gate.
 	 * Lets the planner entry distinguish "capability exists but is gated on
 	 * this surface" from ordinary no-match, and answer honestly instead of
 	 * planning against an unrelated retrieval surface. */
-	diagnostics?: { gateRejectedExplicitCandidates: string[] };
+	diagnostics?: {
+		disclosureRejectedExplicitCandidates: string[];
+		/** The disclosure reason per rejected explicit candidate, so the
+		 * privacy short-circuit can answer accurately: a non-owner
+		 * (`owner_mismatch`) needs a permission-truthful decline, while an owner
+		 * on a group surface (`participant_mismatch`) needs the "ask me in a DM"
+		 * routing hint. Same index order as
+		 * `disclosureRejectedExplicitCandidates`. */
+		disclosureRejectedReasons: string[];
+	};
 }): Promise<Action[]> {
 	// The candidate surface starts from every runtime action and applies only the
 	// same execution gates the planner executor will enforce — it deliberately does
@@ -2797,21 +2810,28 @@ async function collectV5PlannerCandidateActions(args: {
 		// Explicit Stage-1 hints need a diagnostic when their resolved action is
 		// rejected. The all-action pass stays quiet because ordinary gate misses
 		// are expected while building a narrowed surface.
-		const gateFailure = actionGateFailure(action, {
+		const gateRejection = actionGateRejection(action, {
 			message: args.message,
 			activeContexts,
 			userRoles: args.userRoles,
 		});
-		if (gateFailure !== undefined) {
+		if (gateRejection !== undefined) {
 			if (explicitCandidateName) {
-				args.diagnostics?.gateRejectedExplicitCandidates.push(action.name);
+				if (gateRejection.kind === "disclosure") {
+					args.diagnostics?.disclosureRejectedExplicitCandidates.push(
+						action.name,
+					);
+					args.diagnostics?.disclosureRejectedReasons.push(
+						gateRejection.reason,
+					);
+				}
 				args.runtime.logger.warn(
 					{
 						src: "service:message",
 						action: action.name,
 						candidate: explicitCandidateName,
 						gate: "action-gate",
-						reason: gateFailure,
+						reason: gateRejection.reason,
 					},
 					"Explicit stage-1 candidate rejected at the action gate",
 				);
@@ -3029,6 +3049,37 @@ function getMessageHandlerCandidateActions(
 // so an absent optional field normalizes to the empty shape those pure
 // predicates already treat as "nothing there" — normalized here once instead of
 // at every call site.
+/**
+ * Choose the honest decline for a gated owner-private ask, driven by the actual
+ * gate-failure reason instead of a single hardcoded line. The old fixed reply
+ * ("ask me in a DM") is correct ONLY when the asker is the owner on a shared
+ * surface — for a genuine non-owner it is misleading advice, since a DM would
+ * be denied too. Reasons come from `actionGateFailure` and end in the disclosure
+ * decision reason (`participant_mismatch`, `owner_mismatch`, …).
+ *
+ *  - owner on a group/shared surface (`participant_mismatch` /
+ *    `destination_not_private`) → the DM routing hint is accurate.
+ *  - not the owner (`owner_mismatch`) → a permission-truthful decline with NO
+ *    DM hint, because access, not surface, is missing.
+ */
+export function privacyDenialReplyForReasons(
+	reasons: readonly string[],
+): string {
+	const joined = reasons.join(" | ").toLowerCase();
+	const ownerOnWrongSurface =
+		/participant_mismatch|destination_not_private/.test(joined);
+	const notTheOwner = /owner_mismatch/.test(joined);
+	// Owner-on-a-group takes precedence when multiple disclosure-gated candidates
+	// fail for different audience reasons.
+	if (ownerOnWrongSurface && !notTheOwner) {
+		return "that's private, so i can't pull it up in a shared channel — ask me in a DM and i'll handle it there.";
+	}
+	if (notTheOwner) {
+		return "that's the owner's private info, so i can't share it — it's only available to them.";
+	}
+	return "i can't share that private information in this conversation.";
+}
+
 function messageHandlerStageOneReplyContexts(
 	messageHandler: MessageHandlerResult,
 ): { stageOneContexts: readonly string[]; stageOneReplyText: string } {
@@ -8254,7 +8305,8 @@ export async function runV5MessageRuntimeStage1(args: {
 		// the planner loop's answer rescue and the answerless-final fallback can
 		// still deliver it.
 		const candidateGateDiagnostics = {
-			gateRejectedExplicitCandidates: [] as string[],
+			disclosureRejectedExplicitCandidates: [] as string[],
+			disclosureRejectedReasons: [] as string[],
 		};
 		const prePatchStageOneReply =
 			typeof messageHandler.plan.reply === "string" &&
@@ -8604,15 +8656,17 @@ export async function runV5MessageRuntimeStage1(args: {
 					diagnostics: candidateGateDiagnostics,
 				});
 		// Surface-privacy short-circuit: stage-1 named a capability that EXISTS
-		// but is gated on this surface (role/privacy — e.g. owner-life actions in
-		// a public channel), and no named candidate survived into the collected
-		// set. Planning anyway hands the model an unrelated retrieval surface and
+		// but its owner-exclusive disclosure gate rejected this destination, and
+		// no named candidate survived into the collected set. Planning anyway
+		// hands the model an unrelated retrieval surface and
 		// it improvises around the missing capability — observed live on the
 		// Discord group channel: a "todos" ask got a WEB_SEARCH surface and
 		// shipped a fabricated "todo added" with zero writes, and a todos READ
 		// answered a false empty from the orchestrator task store. Answer with an
 		// honest surface denial instead. The phrasing confirms nothing about the
-		// data — only that the surface is private to another channel.
+		// data — only that the disclosure boundary rejected this requester or
+		// destination. Role, context, and autonomy denials keep the ordinary
+		// planner path because they do not prove a privacy denial.
 		const collectedCandidateNames = new Set(
 			plannerCandidateActions.map((action) =>
 				normalizeActionIdentifier(action.name),
@@ -8655,14 +8709,19 @@ export async function runV5MessageRuntimeStage1(args: {
 		// When the rejected candidates are reminder/alarm-shaped and TRIGGER
 		// survived collection, let the turn plan — the trigger path serves it.
 		const rejectedReminderish =
-			candidateGateDiagnostics.gateRejectedExplicitCandidates.some((name) => {
-				const normalized = normalizeActionIdentifier(name);
-				return normalized.includes("REMINDER") || normalized.includes("ALARM");
-			});
+			candidateGateDiagnostics.disclosureRejectedExplicitCandidates.some(
+				(name) => {
+					const normalized = normalizeActionIdentifier(name);
+					return (
+						normalized.includes("REMINDER") || normalized.includes("ALARM")
+					);
+				},
+			);
 		const ungatedTriggerSiblingAvailable =
 			rejectedReminderish && collectedCandidateNames.has("TRIGGER");
 		if (
-			candidateGateDiagnostics.gateRejectedExplicitCandidates.length > 0 &&
+			candidateGateDiagnostics.disclosureRejectedExplicitCandidates.length >
+				0 &&
 			!anyNamedStageOneCandidateSurvived &&
 			!ungatedTriggerSiblingAvailable
 		) {
@@ -8671,7 +8730,9 @@ export async function runV5MessageRuntimeStage1(args: {
 				messageHandler,
 				result: createV5ReplyStrategyResult({
 					...args,
-					text: "that's a private surface — ask me in a DM and I'll handle it there.",
+					text: privacyDenialReplyForReasons(
+						candidateGateDiagnostics.disclosureRejectedReasons,
+					),
 					thought: messageHandler.thought,
 					agentVoiced: false,
 				}),

@@ -32,6 +32,7 @@ import { chromium } from "playwright";
 import postcss from "postcss";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
+import { waitForAdvertisedPort } from "../../../../../scripts/e2e-ports.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const uiSrc = resolve(here, "../../..");
@@ -40,11 +41,11 @@ const outDir = join(here, "output-credentials");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
-// Leg-4 port range (364xx).
-const API_PORT = 36413;
-const PAGE_PORT = 36414;
-const PROVIDER_PORT = 36415;
-const API_BASE = `http://127.0.0.1:${API_PORT}`;
+// Kernel-assigned per run: the fixed 364xx legs died EADDRINUSE when the
+// main-pipeline fan-out put concurrent harness jobs on one runner (#18359).
+// Each consumer binds port 0 itself (the in-process Bun servers directly, the
+// spawned cloud-api via API_DEV_PORT=0 + a port-file handshake), so no port
+// is ever probed and released before its owner binds it.
 
 const GOOD_KEY = "sk-live-good-abc123XYZlongenough";
 const BAD_KEY = "sk-live-bad-def456UVWlongenough";
@@ -61,7 +62,7 @@ function assert(cond, msg) {
 
 const providerStub = Bun.serve({
   hostname: "127.0.0.1",
-  port: PROVIDER_PORT,
+  port: 0,
   fetch(request) {
     const url = new URL(request.url);
     if (!url.pathname.endsWith("/models")) {
@@ -87,6 +88,7 @@ process.on("exit", () => {
     providerStub.stop(true);
   } catch {}
 });
+const PROVIDER_PORT = providerStub.port;
 
 // ---------------------------------------------------------------------------
 // 1. Real mock cloud stack (probe pointed at the stub)
@@ -101,12 +103,14 @@ const bunSourceCondition = "--conditions=eliza-source";
 const bunOptions = process.env.BUN_OPTIONS?.includes(bunSourceCondition)
   ? process.env.BUN_OPTIONS
   : `${process.env.BUN_OPTIONS ?? ""} ${bunSourceCondition}`.trim();
+const apiPortFile = join(outDir, "cloud-api.port");
 const stackEnv = {
   ...process.env,
   BUN_OPTIONS: bunOptions,
   MOCK_REDIS: "1",
   DATABASE_URL: `pglite://${pgdata}`,
-  API_DEV_PORT: String(API_PORT),
+  API_DEV_PORT: "0",
+  API_DEV_PORT_FILE: apiPortFile,
   CRON_SECRET: "local-cron-secret",
   ELIZA_KMS_BACKEND: "local",
   ELIZA_LOCAL_ROOT_KEY: Buffer.alloc(32, 7).toString("base64"),
@@ -148,6 +152,10 @@ process.on("exit", () => {
     apiServer.kill("SIGTERM");
   } catch {}
 });
+const API_PORT = await waitForAdvertisedPort(apiPortFile, {
+  child: apiServer,
+});
+const API_BASE = `http://127.0.0.1:${API_PORT}`;
 {
   let healthy = false;
   for (let i = 0; i < 240 && !healthy; i += 1) {
@@ -386,7 +394,7 @@ const pageHtml = `<!doctype html><html><head><meta charset="utf-8">
 
 const pageServer = Bun.serve({
   hostname: "127.0.0.1",
-  port: PAGE_PORT,
+  port: 0,
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) {
@@ -443,7 +451,7 @@ const rgbOf = (el, prop = "backgroundColor") => {
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
 };
 
-const PAGE_URL = `http://127.0.0.1:${PAGE_PORT}/`;
+const PAGE_URL = `http://127.0.0.1:${pageServer.port}/`;
 await page.goto(PAGE_URL);
 
 // --- empty state -------------------------------------------------------------

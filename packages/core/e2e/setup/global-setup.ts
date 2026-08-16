@@ -1,6 +1,9 @@
 /**
  * Playwright global setup: boots a real AgentRuntime with a live LLM provider
- * and exposes it through a lightweight HTTP server on port 13789.
+ * and exposes it through a lightweight HTTP server on a kernel-assigned port,
+ * advertised to workers via the CORE_E2E_BASE_URL environment variable (the
+ * same runner-to-worker env channel as __E2E_SKIP__). A fixed port collides
+ * when CI fan-out places concurrent jobs on one runner host (#18359).
  */
 import http from "node:http";
 import { v4 as uuidv4 } from "uuid";
@@ -12,8 +15,6 @@ import { createOllamaModelHandlers } from "../../src/testing/ollama-provider";
 import type { Character, Memory, Plugin, UUID } from "../../src/types";
 import { ChannelType } from "../../src/types";
 import { loadEnvFile } from "../../src/utils/environment";
-
-const PORT = 13789;
 
 const TEST_CHARACTER: Character = {
 	name: "E2ETestAgent",
@@ -428,12 +429,20 @@ export default async function globalSetup(): Promise<void> {
 		}
 	});
 
+	// Bind port 0 so the kernel assigns a free port at bind time; the socket is
+	// never probed and released, so concurrent suites cannot steal it (#18359).
 	await new Promise<void>((resolve) => {
-		server.listen(PORT, () => {
-			console.log(`[e2e] Test server listening on http://localhost:${PORT}`);
-			resolve();
-		});
+		server.listen(0, "127.0.0.1", () => resolve());
 	});
+	const address = server.address();
+	if (!address || typeof address === "string") {
+		throw new Error(`[e2e] test server bound no TCP address: ${address}`);
+	}
+	const baseURL = `http://127.0.0.1:${address.port}`;
+	// Workers spawn after global setup and inherit this env; playwright.config
+	// re-evaluates in each worker and reads it as `use.baseURL`.
+	process.env.CORE_E2E_BASE_URL = baseURL;
+	console.log(`[e2e] Test server listening on ${baseURL}`);
 
 	// Store for teardown
 	(globalThis as Record<string, unknown>).__e2eServer = server;

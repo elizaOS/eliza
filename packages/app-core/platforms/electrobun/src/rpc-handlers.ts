@@ -758,6 +758,8 @@ export function buildBunRpcHandlers({
     desktopIsShortcutRegistered: async (
       params: Parameters<typeof desktop.isShortcutRegistered>[0],
     ) => desktop.isShortcutRegistered(params),
+    desktopStartFnHoldMonitor: async () => desktop.startFnHoldMonitor(),
+    desktopStopFnHoldMonitor: async () => desktop.stopFnHoldMonitor(),
 
     // ---- Desktop: Auto Launch ----
     desktopSetAutoLaunch: async (

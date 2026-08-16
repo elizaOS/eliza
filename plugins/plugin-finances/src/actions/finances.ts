@@ -12,6 +12,7 @@
 
 import type {
   ActionResult,
+  AgentContext,
   HandlerOptions,
   IAgentRuntime,
   Memory,
@@ -234,7 +235,7 @@ export const MONEY_TAGS: readonly string[] = [
   "cost:expensive",
 ];
 
-export const MONEY_CONTEXTS: readonly string[] = [
+export const MONEY_CONTEXTS = [
   "payments",
   "finance",
   "wallet",
@@ -242,7 +243,7 @@ export const MONEY_CONTEXTS: readonly string[] = [
   "subscriptions",
   "browser",
   "automation",
-];
+] satisfies readonly AgentContext[];
 
 type PaymentsSubaction =
   | "dashboard"

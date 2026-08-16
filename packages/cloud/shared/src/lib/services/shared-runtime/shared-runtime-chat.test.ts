@@ -222,6 +222,24 @@ mock.module("./shared-todos", () => ({
   sharedTodoStorageScope,
 }));
 
+type TestMemoryPair = {
+  userMessage: string;
+  assistantReply: string;
+  messageIds?: { user: string; assistant: string };
+  messageRole?: "system" | "user";
+  interrupted?: boolean;
+};
+const memoryPairs: TestMemoryPair[] = [];
+const recordTurnPair = mock(async (pair: TestMemoryPair) => {
+  memoryPairs.push(pair);
+});
+const createSharedMemoryStore = mock(() =>
+  process.env.SHARED_MEMORY_TABLES_ENABLED === "true" ? { recordTurnPair } : null,
+);
+mock.module("./shared-memory-store", () => ({
+  createSharedMemoryStore,
+}));
+
 class TestInferenceAdmissionDispatchMarkError extends Error {}
 
 mock.module("../inference-admission-gate", () => ({
@@ -385,6 +403,10 @@ beforeEach(() => {
   streamAbortSignal = undefined;
   createSharedTodoStore.mockClear();
   sharedTodoStorageScope.mockClear();
+  delete process.env.SHARED_MEMORY_TABLES_ENABLED;
+  memoryPairs.length = 0;
+  recordTurnPair.mockClear();
+  createSharedMemoryStore.mockClear();
   turn = {
     degraded: false,
     reply: "hello back",
@@ -762,6 +784,7 @@ describe("SharedRuntimeChatService", () => {
   });
 
   test("streams chunks, persists the completed turn, and bills off path", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     const service = new SharedRuntimeChatService();
     const h = harness();
     const response = await service.stream(agent, rpc, h);
@@ -769,6 +792,13 @@ describe("SharedRuntimeChatService", () => {
     expect(body).toContain("event: chunk");
     expect(body).toContain("event: done");
     expect(h.history()).toHaveLength(3);
+    expect(memoryPairs).toEqual([
+      expect.objectContaining({
+        userMessage: "hello",
+        assistantReply: "hello back",
+        interrupted: false,
+      }),
+    ]);
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
   });
@@ -871,9 +901,16 @@ describe("SharedRuntimeChatService", () => {
     expect(settleUnknownCalls).toBe(1);
   });
 
-  test("stream cancellation persists interrupted history without waiting for provider teardown", async () => {
+  test("a keyed cancellation and retry converge history and memory on one stable assistant id", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     const service = new SharedRuntimeChatService();
     const h = harness();
+    const { store: turnClaims } = memoryTurnClaims();
+    const keyedCancellationRpc = {
+      ...rpc,
+      id: "cancel-retry-key",
+      params: { ...rpc.params, clientMessageId: "cancel-retry-key" },
+    };
     let releaseProviderStream = () => {};
     const providerStreamGate = new Promise<void>((resolve) => {
       releaseProviderStream = resolve;
@@ -901,7 +938,7 @@ describe("SharedRuntimeChatService", () => {
       })(),
     };
 
-    const response = await service.stream(agent, rpc, h);
+    const response = await service.stream(agent, keyedCancellationRpc, { ...h, turnClaims });
     const reader = response.body!.getReader();
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toContain("partial");
@@ -932,6 +969,18 @@ describe("SharedRuntimeChatService", () => {
     expect(streamAbortSignal?.reason).toBe("barge-in");
     expect(providerCancelReason).toBe("barge-in");
     expect(settleUnknownCalls).toBe(1);
+    const interruptedIds = memoryPairs[0]?.messageIds;
+    expect(memoryPairs).toEqual([
+      expect.objectContaining({
+        userMessage: "hello",
+        assistantReply: "partial ",
+        interrupted: true,
+        messageIds: expect.objectContaining({
+          user: expect.any(String),
+          assistant: expect.any(String),
+        }),
+      }),
+    ]);
 
     // Provider teardown remains observed under waitUntil, but it is no longer
     // part of the room-lock release condition. Let both mocked provider tasks
@@ -947,7 +996,42 @@ describe("SharedRuntimeChatService", () => {
       content: "partial",
       interrupted: true,
     });
+    expect(memoryPairs).toEqual([
+      expect.objectContaining({
+        assistantReply: "partial ",
+        interrupted: true,
+      }),
+    ]);
     expect(settleUnknownCalls).toBe(1);
+
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "complete " };
+        yield {
+          type: "finish",
+          text: "complete response",
+          usage: { inputTokens: 1, outputTokens: 2 },
+        };
+      })(),
+    };
+    const retry = await service.stream(agent, keyedCancellationRpc, { ...h, turnClaims });
+    expect(await retry.text()).toContain("complete response");
+    await Promise.all(h.background);
+
+    expect(memoryPairs).toHaveLength(2);
+    expect(memoryPairs[1]).toMatchObject({
+      userMessage: "hello",
+      assistantReply: "complete response",
+      messageIds: interruptedIds,
+    });
+    expect(memoryPairs[1]).not.toHaveProperty("interrupted", true);
+    expect(h.history().at(-1)).toMatchObject({
+      id: interruptedIds?.assistant,
+      role: "assistant",
+      content: "complete response",
+    });
+    expect(h.history().at(-1)).not.toHaveProperty("interrupted", true);
   });
 
   test("stream cancellation observes provider teardown failures off the room-lock path", async () => {
@@ -1088,8 +1172,9 @@ describe("SharedRuntimeChatService", () => {
 
   type ClaimRecord = { hash: string; result?: Record<string, unknown> };
 
-  function memoryTurnClaims() {
+  function memoryTurnClaims(options: { failCompleteAttempts?: number } = {}) {
     const claims = new Map<string, ClaimRecord>();
+    let remainingCompleteFailures = options.failCompleteAttempts ?? 0;
     return {
       claims,
       store: {
@@ -1106,6 +1191,10 @@ describe("SharedRuntimeChatService", () => {
           return { state: "claimed" as const };
         },
         complete: async (key: string, result: Record<string, unknown>) => {
+          if (remainingCompleteFailures > 0) {
+            remainingCompleteFailures--;
+            throw new Error("claim completion failed");
+          }
           const existing = claims.get(key);
           if (existing) existing.result = result;
         },
@@ -1235,5 +1324,80 @@ describe("SharedRuntimeChatService", () => {
     expect(secondDone.fullText).toBe("hello back");
     expect(secondDone.messageId).toBe(firstDone.messageId);
     expect(secondDone.userMessageId).toBe(firstDone.userMessageId);
+  });
+
+  test("claim completion failure retries to one canonical history, memory, and replay result", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims({ failCompleteAttempts: 1 });
+    const options = { ...h, turnClaims: store };
+
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "first " };
+        yield {
+          type: "finish",
+          text: "first completed reply",
+          usage: { inputTokens: 1, outputTokens: 2 },
+        };
+      })(),
+    };
+    const first = await service.stream(agent, keyedRpc, options);
+    expect(await first.text()).toContain("Shared runtime stream failed");
+    expect(memoryPairs.length).toBeGreaterThanOrEqual(1);
+    const firstAttemptPairCount = memoryPairs.length;
+    const stableIds = memoryPairs[0]?.messageIds;
+    expect(memoryPairs[0]).toMatchObject({
+      assistantReply: "first completed reply",
+      messageIds: stableIds,
+    });
+    for (const pair of memoryPairs) {
+      expect(pair).toMatchObject({
+        messageIds: stableIds,
+      });
+    }
+    expect(h.history().at(-1)).toMatchObject({
+      id: stableIds?.assistant,
+    });
+
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "retry " };
+        yield {
+          type: "finish",
+          text: "retry terminal reply",
+          usage: { inputTokens: 1, outputTokens: 2 },
+        };
+      })(),
+    };
+    const retry = await service.stream(agent, keyedRpc, options);
+    const retryBody = await retry.text();
+    expect(retryBody).toContain("retry terminal reply");
+    expect(memoryPairs.length).toBeGreaterThan(firstAttemptPairCount);
+    const retryPairs = memoryPairs.slice(firstAttemptPairCount);
+    expect(retryPairs).toContainEqual(
+      expect.objectContaining({
+        assistantReply: "retry terminal reply",
+        messageIds: stableIds,
+      }),
+    );
+    for (const pair of retryPairs) {
+      expect(pair).toMatchObject({
+        messageIds: stableIds,
+      });
+    }
+    expect(h.history().at(-1)).toMatchObject({
+      id: stableIds?.assistant,
+      content: "retry terminal reply",
+    });
+
+    const pairCountAfterRetry = memoryPairs.length;
+    const replay = await service.stream(agent, keyedRpc, options);
+    expect(await replay.text()).toContain("retry terminal reply");
+    expect(streamTurnCalls).toBe(2);
+    expect(memoryPairs).toHaveLength(pairCountAfterRetry);
   });
 });

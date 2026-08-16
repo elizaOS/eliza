@@ -180,6 +180,11 @@ describe("WorkflowEditor", () => {
     await waitFor(() =>
       expect(api.createWorkflowDefinition).toHaveBeenCalledTimes(1),
     );
+    expect(api.createWorkflowDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: expect.stringContaining("retries={2}"),
+      }),
+    );
     await waitFor(() =>
       expect(api.runWorkflowDefinition).toHaveBeenCalledWith("workflow-1", {}),
     );

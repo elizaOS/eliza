@@ -296,6 +296,26 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	TRIP_SAVINGS_PLAN: ["OWNER_GOALS"],
 	SEARCH_CHATS: ["MESSAGE"],
 	SEARCH_CHAT: ["MESSAGE"],
+	// OWNER_<VERB>_<NOUN> permutations: the registered owner umbrellas are
+	// noun-first (OWNER_TODOS, promoted OWNER_TODOS_DELETE), but Stage-1
+	// routinely inverts to verb-first ("actually delete it" one turn after a
+	// todo create emitted candidate OWNER_DELETE_TODO, live trajectory
+	// tj-85d166dc4710f0 — it resolved to nothing, the candidate narrow
+	// collapsed the surface to VIEWS, and the planner invented an undeclared
+	// "delete-todo" view capability). Same dual-owner hints as the noun-first
+	// entries above.
+	OWNER_ADD_TODO: ["OWNER_TODOS", "TODO"],
+	OWNER_CREATE_TODO: ["OWNER_TODOS", "TODO"],
+	OWNER_DELETE_TODO: ["OWNER_TODOS", "TODO"],
+	OWNER_COMPLETE_TODO: ["OWNER_TODOS", "TODO"],
+	OWNER_DELETE_GOAL: ["OWNER_GOALS"],
+	OWNER_CREATE_GOAL: ["OWNER_GOALS"],
+	OWNER_DELETE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	OWNER_CREATE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	OWNER_DELETE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+	OWNER_CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+	OWNER_DELETE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
+	OWNER_CREATE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
 	// Bare "SEARCH" is a routine Stage-1 invention for open-web asks ("latest
 	// merged PR on develop, search for it" emitted candidate SEARCH, live
 	// trajectory tj-df4f61ac001a27). It resolved to nothing, the candidate
@@ -307,6 +327,23 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	SEARCH_ONLINE: ["WEB_SEARCH"],
 	INTERNET_SEARCH: ["WEB_SEARCH"],
 	GOOGLE_SEARCH: ["WEB_SEARCH"],
+	// Contact lookups: stage-1 invents CONTACTS_LOOKUP and similar names for
+	// "who is X in my rolodex", which resolves to nothing — the candidate narrow
+	// then collapsed the surface to PAGE_DELEGATE (saturated-tie rank-1) and the
+	// planner invented a non-existent "CONTACTS_LOOKUP" page capability, failing
+	// the read even though CONTACT (score 1.0) and ENTITY (0.99) were retrieved
+	// (observed live). Hint both the CONTACT CRUD umbrella and the ENTITY graph,
+	// but only for names that unambiguously identify a contact surface. Generic
+	// inventions such as WHO_IS must remain available to public-information
+	// actions, and existing CONTACT similes already cover CRUD names.
+	CONTACTS_LOOKUP: ["CONTACT", "ENTITY"],
+	CONTACT_LOOKUP: ["CONTACT", "ENTITY"],
+	LOOKUP_CONTACT: ["CONTACT", "ENTITY"],
+	FIND_CONTACT: ["CONTACT", "ENTITY"],
+	CONTACT_INFO: ["CONTACT", "ENTITY"],
+	SHOW_CONTACT: ["CONTACT", "ENTITY"],
+	CONTACTS: ["CONTACT", "ENTITY"],
+	ROLODEX: ["CONTACT", "ENTITY"],
 	FIND_MESSAGES: ["MESSAGE"],
 	FIND_MESSAGE: ["MESSAGE"],
 	ARRANGE_VIEWS: ["VIEWS"],

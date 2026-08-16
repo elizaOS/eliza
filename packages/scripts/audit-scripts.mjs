@@ -177,6 +177,10 @@ const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
     "run-live-test-with-artifacts.mjs",
     "standalone live-test runner (writes gitignored reports/live-test-runs); the producer that check-live-test-artifact-coverage.mjs validates",
   ],
+  [
+    "e2e-ports.mjs",
+    "shared library imported by cross-process e2e harnesses; consumers are package source files rather than directly invocable script roots",
+  ],
 ]);
 
 const ROOT_CWD_WRAPPER_ALLOWLIST = new Map([

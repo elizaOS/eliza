@@ -15,7 +15,7 @@ export type CodingAuthFailureReason =
 const REFRESH_TOKEN_EXPIRED_PATTERN =
   /\brefresh[_ ]token[_ ](?:(?:has|is)[_ ])?expired\b/i;
 const TOKEN_EXPIRED_PATTERN =
-  /\b(?:token[_ ](?:has[_ ])?expired|expired[_ ]?token|oauth token (?:has )?expired|access token (?:has )?expired|token is expired|jwt expired|session expired)\b/i;
+  /\b(?:token[_ ](?:(?:has|is)[_ ])?expired|expired[_ ]?token|(?:oauth|access)[_ ]token[_ ](?:(?:has|is)[_ ])?expired|jwt[_ ]expired|session[_ ]expired)\b/i;
 
 /** Returns true only for explicit access-token expiry language. */
 export function isTokenExpiryText(text: string | null | undefined): boolean {

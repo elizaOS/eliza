@@ -52,18 +52,20 @@ export const brandFavicons = {
   androidChrome512: "/brand/favicons/android-chrome-512x512.png",
 } as const;
 
+// The sized renditions synced from packages/shared/assets/concepts/; the
+// unsized originals existed only in the retired eliza-archive overlay.
 export const brandConcepts = {
-  billboard: "/brand/concepts/billboard_concept.jpg",
-  chibiUsb: "/brand/concepts/chibi_usb_concept.jpg",
-  miniPc: "/brand/concepts/concept_minipc.jpg",
-  phone: "/brand/concepts/concept_phone.jpg",
-  usbDrive: "/brand/concepts/concept_usbdrive.jpg",
+  billboard: "/brand/concepts/billboard_concept_1200.jpg",
+  chibiUsb: "/brand/concepts/chibi_usb_concept_900.jpg",
+  miniPc: "/brand/concepts/concept_minipc_900.jpg",
+  phone: "/brand/concepts/concept_phone_800.jpg",
+  usbDrive: "/brand/concepts/concept_usbdrive_900.jpg",
 } as const;
 
+// The full-quality loop sources shipped only in the retired eliza-archive
+// overlay (#16290); the poster and the optimized renditions remain.
 export const brandCloudBackgrounds = {
   poster: "/brand/background/clouds_background.jpg",
-  sourceMp4: "/brand/background/Clouds_Loop_HQ_1080p.mp4",
-  sourceMobileMp4: "/brand/background/Clouds_Loop_Mobile_480p.mp4",
   optimized: {
     clouds1x360pMp4: "/brand/background/optimized/clouds_1x_360p.mp4",
     clouds1x360pWebm: "/brand/background/optimized/clouds_1x_360p.webm",

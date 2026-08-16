@@ -1519,10 +1519,14 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       cloudApiBase: "https://eliza.app",
     });
     // #19511: the bind takes no agent inventory; the account's one personal
-    // Eliza is resolved server-side, so the call shape stays token + base.
+    // Eliza is resolved server-side. The signal lets a bounded first-run
+    // attempt cancel this request without changing that server-side policy.
     expect(
       Object.keys(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).sort(),
-    ).toEqual(["authToken", "cloudApiBase"]);
+    ).toEqual(["authToken", "cloudApiBase", "signal"]);
+    expect(
+      mocks.client.getPersonalSharedEliza.mock.calls[0][0]?.signal,
+    ).toBeInstanceOf(AbortSignal);
     unmount();
   });
 
@@ -2313,6 +2317,72 @@ describe("bounded cloud sign-in wait (#19255)", () => {
       ),
     ).toBe(false);
     localStorage.removeItem("steward_session_token");
+    unmount();
+  });
+
+  it("an attempt aborted during personal-Eliza resolution cannot persist or complete after a retry starts", async () => {
+    vi.useFakeTimers();
+    localStorage.removeItem("eliza:enable-runtime-chooser");
+    localStorage.removeItem("steward_session_token");
+    const personalEliza = {
+      personalElizaId: PERSONAL_ELIZA_ID,
+      agentId: PERSONAL_ELIZA_ID,
+      activeAgentId: PERSONAL_ELIZA_ID,
+      agentName: "Eliza Cloud",
+      apiBase: PERSONAL_ELIZA_API_BASE,
+      runtime: "shared" as const,
+    };
+    const resolveJoin: Array<(value: typeof personalEliza) => void> = [];
+    mocks.client.getPersonalSharedEliza.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveJoin.push(resolve);
+        }),
+    );
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+
+    // Start A as a visible, already-authenticated entry so its unbounded wait
+    // is the personal-Eliza lookup itself rather than interactive OAuth.
+    localStorage.setItem("steward_session_token", "cloud-token");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    const signalA = mocks.client.getPersonalSharedEliza.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    expect(signalA).toBeInstanceOf(AbortSignal);
+    expect(signalA?.aborted).toBe(false);
+
+    // The deadline abandons A and transfers ownership to a retry B.
+    await act(async () => vi.advanceTimersByTimeAsync(90_000));
+    expect(signalA?.aborted).toBe(true);
+    expect(turn("first-run:cloud-login-waiting")?.text).toContain(
+      "didn't finish",
+    );
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(2);
+
+    // A's network boundary ignores cancellation and resolves late. The
+    // post-await abort checkpoint must stop every persistence/completion side
+    // effect while B remains the current attempt.
+    await act(async () => {
+      resolveJoin[0]?.(personalEliza);
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(localStorage.getItem("elizaos:active-server")).toBeNull();
+
+    // B can still settle normally and is the only attempt allowed to commit.
+    await act(async () => {
+      resolveJoin[1]?.(personalEliza);
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem("elizaos:active-server")).toContain(
+      PERSONAL_ELIZA_ID,
+    );
     unmount();
   });
 

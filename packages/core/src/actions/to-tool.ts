@@ -68,7 +68,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 		replyText: {
 			type: "string",
 			description:
-				'User-facing reply. Simple=whole answer. Planning=brief ack ("On it.", "Working on it.").',
+				'User-facing reply. Simple=whole answer. Planning=brief ack ("On it.", "Working on it."). When declining a capability you lack, say plainly that you can\'t do it; do NOT invent a reason you are unsure of (e.g. "no shell access in this channel", "not connected") — an invented surface/setup cause misleads when the real reason is permission or availability.',
 		},
 		replyEffectStatus: {
 			type: "string",

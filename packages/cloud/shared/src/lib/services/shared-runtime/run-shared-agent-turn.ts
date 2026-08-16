@@ -30,6 +30,7 @@ import {
   hasLanguageModelProviderConfigured,
 } from "../../providers/language-model";
 import { resolveSharedCapabilityWall, type SharedCapabilityWall } from "./shared-capability-wall";
+import type { SharedMemoryStore } from "./shared-memory-store";
 import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-intent";
 
 export interface SharedTurnMessage {
@@ -77,6 +78,13 @@ export interface RunSharedAgentTurnInput {
   /** Cancels provider generation when the response consumer disconnects. */
   abortSignal?: AbortSignal;
   /**
+   * Flag-gated durable mirror of the landed user/assistant pair into the
+   * tenant-scoped `shared_agent_memories` table (P2 edge memory store).
+   * Attached by the caller only while `SHARED_MEMORY_TABLES_ENABLED === "true"`;
+   * both the direct-model and eliza-runtime engines commit through it.
+   */
+  memory?: SharedMemoryStore;
+  /**
    * Transition-only selector for the genuine Workerd AgentRuntime path. The
    * direct model path remains the control until the runtime path has passed
    * live model and connector proof.
@@ -94,6 +102,9 @@ export interface RunSharedAgentTurnInput {
     };
   };
 }
+
+/** Streaming persistence belongs to the consumer-aware transport finalizer. */
+export type RunSharedAgentTurnStreamInput = Omit<RunSharedAgentTurnInput, "memory">;
 
 export interface RunSharedAgentTurnResult {
   reply: string;
@@ -276,6 +287,34 @@ export function appendSharedTurn(
   ];
 }
 
+/**
+ * Durable commit of the landed user/assistant pair into the tenant-scoped
+ * memory table. Runs only when the caller attached a flag-gated
+ * `execution.memory` store, and only for turns a model/runtime actually
+ * produced — the deterministic capability-wall/nav-intent/degraded fast paths
+ * are transport UX, not model conversation, and stay out of the memory rows.
+ *
+ * WHY a plain await and not waitUntil: this module is deliberately
+ * executionCtx-independent (it also runs outside Cloudflare Workers), so no
+ * waitUntil exists here. The await happens strictly AFTER the reply has fully
+ * landed — TTFT and token streaming are unaffected — and it adds one bounded
+ * scoped insert pair to the turn's final commit. A write failure propagates so
+ * a turn is never reported durable while its memory rows silently vanished.
+ */
+async function commitSharedTurnMemory(
+  input: RunSharedAgentTurnInput,
+  reply: string,
+): Promise<void> {
+  const memory = input.memory;
+  if (!memory) return;
+  await memory.recordTurnPair({
+    userMessage: input.message.trim(),
+    assistantReply: reply,
+    ...(input.messageIds ? { messageIds: input.messageIds } : {}),
+    ...(input.messageRole ? { messageRole: input.messageRole } : {}),
+  });
+}
+
 function modelHistoryContent(message: SharedTurnMessage): string {
   if (message.role === "assistant" && message.interrupted) {
     return `[interrupted assistant partial]\n${message.content}`;
@@ -359,7 +398,7 @@ export async function runSharedAgentTurn(
 
   if (input.execution?.engine === "eliza-runtime") {
     const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
-    return await runSharedElizaRuntimeTurn({
+    const turn = await runSharedElizaRuntimeTurn({
       ...input,
       character: {
         ...input.character,
@@ -371,8 +410,11 @@ export async function runSharedAgentTurn(
       agentKey: input.execution.agentKey,
       model: modelId,
     });
+    await commitSharedTurnMemory(input, turn.reply);
+    return turn;
   }
 
+  let turn: RunSharedAgentTurnResult;
   try {
     const model = getInteractiveCerebrasLanguageModel(modelId);
     const system = buildSystemPrompt(input.character, {
@@ -395,7 +437,7 @@ export async function runSharedAgentTurn(
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     });
     const reply = text.trim() || "…";
-    return {
+    turn = {
       reply,
       history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: modelId,
@@ -415,6 +457,11 @@ export async function runSharedAgentTurn(
       { cause: error },
     );
   }
+  // The durable memory commit runs OUTSIDE the provider try/catch: its failure
+  // is a storage fault on an already-landed reply and must not be re-labeled
+  // as a provider outcome for the caller's settlement classification.
+  await commitSharedTurnMemory(input, turn.reply);
+  return turn;
 }
 
 /**
@@ -424,7 +471,7 @@ export async function runSharedAgentTurn(
  * stream into the shared-runtime turn shape.
  */
 export async function runSharedAgentTurnStream(
-  input: RunSharedAgentTurnInput,
+  input: RunSharedAgentTurnStreamInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
 
