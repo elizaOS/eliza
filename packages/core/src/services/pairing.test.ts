@@ -272,4 +272,46 @@ describe("PairingService bounded reads", () => {
 			normalizePairingPageOptions({ offset: Number.MAX_SAFE_INTEGER + 1 }),
 		).toThrow(RangeError);
 	});
+
+	it("avoids pairing code collisions case-insensitively", async () => {
+		const existingRequest: PairingRequest = {
+			id: uuid(1),
+			channel: "discord",
+			senderId: "sender-1",
+			code: "ABCDEFGH",
+			createdAt: new Date(),
+			lastSeenAt: new Date(),
+			agentId: MOCK_AGENT_ID,
+		};
+		const getPairingRequests = vi.fn<IAgentRuntime["getPairingRequests"]>(
+			async () => [
+				{
+					channel: "discord",
+					agentId: MOCK_AGENT_ID,
+					requests: [existingRequest],
+				},
+			],
+		);
+		const runtime = runtimeWith({
+			getPairingRequests,
+			getPairingAllowlists: vi.fn(async () => []),
+		});
+		const service = new PairingService(runtime);
+		const generateCodeSpy = vi
+			.spyOn(
+				service as unknown as { generateCode: () => string },
+				"generateCode",
+			)
+			.mockReturnValueOnce("abcdefgh")
+			.mockReturnValueOnce("UNIQUE99");
+
+		const code = await (
+			service as unknown as {
+				generateUniqueCode: (c: "discord") => Promise<string>;
+			}
+		).generateUniqueCode("discord");
+
+		expect(code).toBe("UNIQUE99");
+		expect(generateCodeSpy).toHaveBeenCalledTimes(2);
+	});
 });

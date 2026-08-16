@@ -99,7 +99,7 @@ export class PairingService extends Service {
 
 		for (let attempt = 0; attempt < 500; attempt++) {
 			const code = this.generateCode();
-			if (!existingCodes.has(code)) {
+			if (!existingCodes.has(code.toUpperCase())) {
 				return code;
 			}
 		}
