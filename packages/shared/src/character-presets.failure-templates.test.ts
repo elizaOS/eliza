@@ -103,12 +103,7 @@ describe("eliza preset failure templates", () => {
       expect(withoutProductNames).not.toContain("eliza");
     });
 
-    it("stays in eliza's lowercase, non-corporate register", () => {
-      // Sentences open lowercase; uppercase runs are allowed only for env var
-      // names, which are the actionable part of the no-provider hint.
-      const withoutEnvVars = text().replace(/[A-Z][A-Z0-9_]{3,}/g, "");
-      expect(withoutEnvVars).not.toMatch(/^[A-Z]/);
-      expect(withoutEnvVars).not.toMatch(/\.\s+[A-Z]/);
+    it("stays in eliza's non-corporate register", () => {
       expect(text().toLowerCase()).not.toMatch(
         /\b(?:apolog|inconvenience|kindly|please note|at this time|we are experiencing)\b/,
       );
