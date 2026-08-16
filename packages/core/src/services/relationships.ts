@@ -1041,8 +1041,10 @@ export class RelationshipsService extends Service {
 
 		const relationship = relationships.find(
 			(r) =>
-				r.targetEntityId === targetEntityId ||
-				r.sourceEntityId === targetEntityId,
+				(r.sourceEntityId === sourceEntityId &&
+					r.targetEntityId === targetEntityId) ||
+				(r.sourceEntityId === targetEntityId &&
+					r.targetEntityId === sourceEntityId),
 		) as ExtendedRelationship | undefined;
 
 		// Get recent messages from rooms both entities share. `inReplyTo` stores a
