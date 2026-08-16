@@ -259,13 +259,26 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
   );
 
   test(
-    "--min-tasks restores the numeric floor the develop-pr plugin gate passes",
+    "the retired --min-tasks flag fails closed at argv parse (#17070)",
     () => {
-      // The consolidation (02d89802f2c) dropped --min-tasks while
-      // develop-pr.yml still passes --min-tasks=<selected count>, so every
-      // plugin-touching PR failed at argv parse (exit 2) before a single test
-      // ran. The flag is a supported surface again: n > 0 implies the
-      // --require-work guards plus a lane-wide >= n collection floor.
+      // The numeric collection floor was a historical-count baseline; it is
+      // removed rather than silently ignored, so a stale caller dies loudly
+      // before any test runs instead of running with a floor it believes is
+      // armed.
+      const result = run(["--no-cloud", "--min-tasks=1", "--plan"]);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("unknown argument");
+      expect(result.stderr).toContain("--min-tasks=1");
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  test(
+    "the retired MIN_TEST_TASKS env is inert (#17070)",
+    () => {
+      // The env twin of --min-tasks must not resurrect the numeric floor: a
+      // lane that matches one task succeeds even under an absurd env floor,
+      // and the boolean zero-task guard is unaffected.
       rmSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true, force: true });
       mkdirSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true });
       try {
@@ -285,57 +298,21 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
           )}\n`,
         );
 
-        // The develop-pr shape: floor satisfied by the one selected task.
-        const satisfied = run([
-          "--plan=json",
-          "--only=test",
-          "--no-cloud",
-          "--filter=@elizaos/run-all-tests-plan-floor-fixture",
-          "--min-tasks=1",
-        ]);
-        expect(satisfied.status).toBe(0);
-        expect(JSON.parse(satisfied.stdout).summary.taskCount).toBe(1);
-
-        // Below the declared floor: loud exit 3, before plan mode exits.
-        const belowFloor = run([
-          "--plan=json",
-          "--only=test",
-          "--no-cloud",
-          "--filter=@elizaos/run-all-tests-plan-floor-fixture",
-          "--min-tasks=2",
-        ]);
-        expect(belowFloor.status).toBe(3);
-        expect(belowFloor.stderr).toContain("VACUOUS-GREEN GUARD");
-        expect(belowFloor.stderr).toContain("< required 2");
+        const result = run(
+          [
+            "--plan=json",
+            "--only=test",
+            "--no-cloud",
+            "--filter=@elizaos/run-all-tests-plan-floor-fixture",
+            "--require-work",
+          ],
+          { MIN_TEST_TASKS: "999" },
+        );
+        expect(result.status).toBe(0);
+        expect(JSON.parse(result.stdout).summary.taskCount).toBe(1);
       } finally {
         rmSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true, force: true });
       }
-    },
-    SPAWN_TIMEOUT_MS,
-  );
-
-  test(
-    "--min-tasks > 0 arms the zero-task require-work guard",
-    () => {
-      const result = run([
-        "--no-cloud",
-        `--filter=${NOWHERE_FILTER}`,
-        "--min-tasks=1",
-      ]);
-      expect(result.status).toBe(3);
-      expect(`${result.stdout}${result.stderr}`).toContain(
-        ZERO_TASK_DIAGNOSTIC,
-      );
-    },
-    SPAWN_TIMEOUT_MS,
-  );
-
-  test(
-    "a malformed --min-tasks value fails usage, not the guard",
-    () => {
-      const result = run(["--no-cloud", "--min-tasks=abc", "--plan"]);
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain("--min-tasks/MIN_TEST_TASKS");
     },
     SPAWN_TIMEOUT_MS,
   );

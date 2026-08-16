@@ -195,7 +195,6 @@ let excludeFlags;
 let concurrencyFlag;
 let concurrency;
 let planFlag;
-let minTasksFlag;
 try {
   filterFlag = parseFlagValue("--filter");
   patternFlag = parseFlagValue("--pattern");
@@ -204,30 +203,18 @@ try {
   excludeFlags = parseRepeatedFlagValue("--exclude");
   concurrencyFlag = parseFlagValue("--concurrency");
   planFlag = parseFlagValue("--plan");
-  minTasksFlag = parseFlagValue("--min-tasks");
 } catch (error) {
   // error-policy:J1 CLI parsing failures become a bounded usage error.
   failUsage(error.message);
 }
 
-// `--min-tasks=<n>` / MIN_TEST_TASKS is the numeric ancestor of
-// `--require-work` and remains a supported surface: callers that KNOW how many
-// tasks their filter selected (the develop-pr changed-plugin gate passes its
-// exact selection count) get a floor the boolean cannot express. n > 0 implies
-// every `--require-work` guard plus the lane-wide `>= n` collection floor;
-// n = 0 is off. Dropping the flag broke those callers loudly at argv parse
-// (exit 2 before any test ran), which is the wrong kind of loud.
-const minTasksRaw = minTasksFlag ?? process.env.MIN_TEST_TASKS ?? "0";
-const minTasks =
-  typeof minTasksRaw === "string" && /^\d+$/.test(minTasksRaw)
-    ? Number(minTasksRaw)
-    : Number.NaN;
-if (!Number.isSafeInteger(minTasks)) {
-  failUsage(
-    `--min-tasks/MIN_TEST_TASKS must be a non-negative integer, got "${minTasksRaw}"`,
-  );
-}
-const requireWork = requireWorkFlag || minTasks > 0;
+// `--min-tasks=<n>` / MIN_TEST_TASKS — the numeric ancestor of
+// `--require-work` — is retired (#17070). A numeric collection floor is a
+// historical-count baseline: it fails a lane because a task count changed, not
+// because a source contract broke. The boolean `--require-work` guards remain
+// the vacuous-green protection; a caller still passing the retired flag fails
+// closed at argv parse (unknown argument, exit 2).
+const requireWork = requireWorkFlag;
 
 // Per-child wall-clock bound. 0 disables (the historical behaviour and the
 // default — no caller is armed implicitly). A caller that sets it turns a hung
@@ -285,8 +272,6 @@ if (helpFlag) {
       "  --plan[=text|json]   Print the discovered test plan without running it.",
       "  --require-work       Fail (exit 3) when no runnable task is selected,",
       "                       a shard owns no task, or no reconciled testcase runs.",
-      "  --min-tasks=<n>      --require-work plus a lane-wide floor: fail (exit 3)",
-      "                       when fewer than n tasks are collected. 0 = off.",
       "",
       "Env vars:",
       "  TEST_LANE=pr|post-merge        Lane select (default: pr).",
@@ -295,7 +280,6 @@ if (helpFlag) {
       "  TEST_PACKAGE_FILTER=<regex>     Equivalent to --filter (legacy).",
       "  TEST_SCRIPT_FILTER=<regex>      Filter by script name.",
       "  TEST_START_AT=<substring>       Skip until first matching label.",
-      "  MIN_TEST_TASKS=<n>              Same as --min-tasks (default 0 = off).",
       "",
       "See `.env.test.example` for deterministic PR and live lane env setup.",
       "",
@@ -1565,16 +1549,6 @@ if (requireWork && laneMatchedTaskCount === 0) {
   console.error(
     "[eliza-test] VACUOUS-GREEN GUARD lane matched 0 runnable tasks. " +
       "A filter or source contract collapsed this required lane.",
-  );
-  process.exit(3);
-}
-// Lane-wide, not per-shard: TEST_SHARD intentionally splits a healthy lane
-// into M parts, so a shard owning 1/M of the work is not a collapsed glob.
-if (minTasks > 0 && laneMatchedTaskCount < minTasks) {
-  console.error(
-    `[eliza-test] VACUOUS-GREEN GUARD lane matched ${laneMatchedTaskCount} task(s) < required ${minTasks}` +
-      (shardConfig ? ` (this shard: ${tasks.length})` : "") +
-      ". A filter/shard/glob collapsed this lane below its declared selection.",
   );
   process.exit(3);
 }
