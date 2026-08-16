@@ -21,6 +21,7 @@ import {
   formatSlackUserMention,
   markdownToSlackMrkdwn,
   parseSlackMessagePermalink,
+  splitSlackText,
   stripSlackFormatting,
   truncateText,
 } from "./formatting.ts";
@@ -152,6 +153,20 @@ describe("chunkSlackText", () => {
       expect((c.match(/```/g) || []).length % 2).toBe(0);
     }
   });
+});
+
+describe("splitSlackText", () => {
+  it.each(["\n", " "])(
+    "keeps the service send path within the cap at an exact %j boundary",
+    (boundary) => {
+      const text = `${"a".repeat(4000)}${boundary}${"b".repeat(100)}`;
+      const chunks = splitSlackText(text, 4000);
+
+      expect(chunks.map((chunk) => chunk.length)).toEqual([4000, 101]);
+      expect(chunks.every((chunk) => chunk.length <= 4000)).toBe(true);
+      expect(chunks.join("")).toBe(text);
+    },
+  );
 });
 
 describe("truncateText", () => {

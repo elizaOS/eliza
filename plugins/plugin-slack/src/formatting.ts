@@ -195,6 +195,47 @@ export interface ChunkSlackTextOpts {
 const DEFAULT_MAX_CHARS = 4000;
 
 /**
+ * Splits plain Slack message text at newline/space boundaries without ever
+ * emitting more than `maxChars`. Unlike `chunkSlackText`, this does not add
+ * code-fence balancing characters.
+ */
+export function splitSlackText(
+  text: string,
+  maxChars: number = DEFAULT_MAX_CHARS,
+): string[] {
+  if (text.length <= maxChars) {
+    return [text];
+  }
+
+  const messages: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxChars) {
+      messages.push(remaining);
+      break;
+    }
+
+    let splitIndex = maxChars;
+    const lastNewline = remaining.lastIndexOf("\n", maxChars);
+    if (lastNewline > maxChars / 2) {
+      splitIndex = lastNewline + 1;
+    } else {
+      const lastSpace = remaining.lastIndexOf(" ", maxChars);
+      if (lastSpace > maxChars / 2) {
+        splitIndex = lastSpace + 1;
+      }
+    }
+
+    splitIndex = Math.min(splitIndex, maxChars);
+    messages.push(remaining.slice(0, splitIndex));
+    remaining = remaining.slice(splitIndex);
+  }
+
+  return messages;
+}
+
+/**
  * Chunks Slack text while preserving code blocks
  */
 export function chunkSlackText(

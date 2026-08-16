@@ -404,7 +404,7 @@ import {
   type ResolvedSlackAccount,
   resolveDefaultSlackAccountId,
 } from "./accounts";
-import { markdownToSlackMrkdwn } from "./formatting";
+import { markdownToSlackMrkdwn, splitSlackText } from "./formatting";
 import {
   extractSlackEventWorkspace,
   SlackAccountPolicyResolver,
@@ -4028,41 +4028,7 @@ export class SlackService extends Service implements ISlackService {
   }
 
   private splitMessage(text: string): string[] {
-    if (text.length <= MAX_SLACK_MESSAGE_LENGTH) {
-      return [text];
-    }
-
-    const messages: string[] = [];
-    let remaining = text;
-
-    while (remaining.length > 0) {
-      if (remaining.length <= MAX_SLACK_MESSAGE_LENGTH) {
-        messages.push(remaining);
-        break;
-      }
-
-      // Find a good split point (prefer newlines, then spaces)
-      let splitIndex = MAX_SLACK_MESSAGE_LENGTH;
-
-      const lastNewline = remaining.lastIndexOf("\n", MAX_SLACK_MESSAGE_LENGTH);
-      if (lastNewline > MAX_SLACK_MESSAGE_LENGTH / 2) {
-        splitIndex = lastNewline + 1;
-      } else {
-        const lastSpace = remaining.lastIndexOf(" ", MAX_SLACK_MESSAGE_LENGTH);
-        if (lastSpace > MAX_SLACK_MESSAGE_LENGTH / 2) {
-          splitIndex = lastSpace + 1;
-        }
-      }
-
-      // lastIndexOf is inclusive, so a break character exactly at
-      // MAX_SLACK_MESSAGE_LENGTH would make splitIndex one past the cap.
-      splitIndex = Math.min(splitIndex, MAX_SLACK_MESSAGE_LENGTH);
-
-      messages.push(remaining.slice(0, splitIndex));
-      remaining = remaining.slice(splitIndex);
-    }
-
-    return messages;
+    return splitSlackText(text, MAX_SLACK_MESSAGE_LENGTH);
   }
 
   async addAllowedChannel(
