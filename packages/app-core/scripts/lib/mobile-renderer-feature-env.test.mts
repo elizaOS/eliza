@@ -57,11 +57,14 @@ describe("resolveMobileRendererFeatureEnv", () => {
 });
 
 describe("mobileRendererRequiresFreshBuild", () => {
-  it("rebuilds cloud-debug renderers because their optional flags are not stamped", () => {
+  it("rebuilds renderers for lanes whose optional flags are not stamped", () => {
     expect(
       mobileRendererRequiresFreshBuild({ platform: "android-cloud-debug" }),
     ).toBe(true);
-    for (const platform of ["android", "android-cloud", "ios", "ios-local"]) {
+    expect(mobileRendererRequiresFreshBuild({ platform: "ios-local" })).toBe(
+      true,
+    );
+    for (const platform of ["android", "android-cloud", "ios"]) {
       expect(mobileRendererRequiresFreshBuild({ platform })).toBe(false);
     }
   });
