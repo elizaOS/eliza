@@ -246,6 +246,20 @@ export async function loadAgentLogs({
     LOG_COLLECTION_TIMEOUT_MESSAGE,
   );
   const requestController = new AbortController();
+  const requestSignal = requestController.signal;
+  let rejectRequestAbort = () => {};
+  const requestAborted = new Promise<never>((_resolve, reject) => {
+    rejectRequestAbort = () => {
+      reject(requestSignal.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    if (requestSignal.aborted) rejectRequestAbort();
+    else
+      requestSignal.addEventListener("abort", rejectRequestAbort, {
+        once: true,
+      });
+  });
+  const withinRequestDeadline = <T>(operation: Promise<T>): Promise<T> =>
+    Promise.race([operation, requestAborted]);
   const abortFromCaller = () => {
     requestController.abort(
       signal.reason ?? new DOMException("Aborted", "AbortError"),
@@ -258,13 +272,19 @@ export async function loadAgentLogs({
   }, timeoutMs);
 
   try {
-    const requestSignal = requestController.signal;
     const query = new URLSearchParams({ tail: String(tail) });
-    const startResponse = await fetchImpl(
-      `/api/compat/agents/${encodeURIComponent(agentId)}/logs?${query}`,
-      { cache: "no-store", signal: requestSignal },
+    const startResponse = await withinRequestDeadline(
+      fetchImpl(
+        `/api/compat/agents/${encodeURIComponent(agentId)}/logs?${query}`,
+        {
+          cache: "no-store",
+          signal: requestSignal,
+        },
+      ),
     );
-    const startBody = await readJson(startResponse, "The log request");
+    const startBody = await withinRequestDeadline(
+      readJson(startResponse, "The log request"),
+    );
     if (!startResponse.ok) {
       throw new AgentLogsProtocolError(
         readHttpFailureMessage("request", startResponse.status),
@@ -276,11 +296,15 @@ export async function loadAgentLogs({
 
     let intervalMs = start.intervalMs;
     while (now() <= deadline) {
-      const response = await fetchImpl(
-        `/api/v1/jobs/${encodeURIComponent(start.jobId)}`,
-        { cache: "no-store", signal: requestSignal },
+      const response = await withinRequestDeadline(
+        fetchImpl(`/api/v1/jobs/${encodeURIComponent(start.jobId)}`, {
+          cache: "no-store",
+          signal: requestSignal,
+        }),
       );
-      const body = await readJson(response, "The log job");
+      const body = await withinRequestDeadline(
+        readJson(response, "The log job"),
+      );
       if (!response.ok) {
         throw new AgentLogsProtocolError(
           readHttpFailureMessage("job", response.status),
@@ -293,7 +317,7 @@ export async function loadAgentLogs({
       intervalMs = job.intervalMs;
 
       if (now() + intervalMs > deadline) break;
-      await wait(intervalMs, requestSignal);
+      await withinRequestDeadline(wait(intervalMs, requestSignal));
     }
 
     throw timeoutError;
@@ -305,5 +329,6 @@ export async function loadAgentLogs({
   } finally {
     globalThis.clearTimeout(timeoutId);
     signal.removeEventListener("abort", abortFromCaller);
+    requestSignal.removeEventListener("abort", rejectRequestAbort);
   }
 }
