@@ -110,7 +110,7 @@ describe("index.html local-agent fetch bridge", () => {
     });
   });
 
-  it.each(["remote-mac", "cloud", "tunnel-to-mobile"])(
+  it.each(["remote-mac", "cloud"])(
     "lets native %s mode reach loopback HTTP directly",
     async (runtimeMode) => {
       const { agentRequest, originalFetch } = createHarness("ios", runtimeMode);
@@ -123,7 +123,7 @@ describe("index.html local-agent fetch bridge", () => {
     },
   );
 
-  it.each(["local", "cloud-hybrid"])(
+  it.each(["local", "cloud-hybrid", "tunnel-to-mobile"])(
     "keeps native %s mode on Agent.request",
     async (runtimeMode) => {
       const { agentRequest, originalFetch } = createHarness("ios", runtimeMode);

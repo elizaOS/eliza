@@ -423,7 +423,7 @@ describe("iOS local agent transport bridge", () => {
     });
   });
 
-  it.each(["remote-mac", "cloud", "tunnel-to-mobile"])(
+  it.each(["remote-mac", "cloud"])(
     "keeps port 31337 on the real network transport in %s mode",
     async (mode) => {
       vi.stubEnv("VITE_ELIZA_IOS_ALLOW_SIMULATOR_LOOPBACK", "1");
@@ -485,6 +485,22 @@ describe("iOS local agent transport bridge", () => {
       ).toBe(true);
     },
   );
+
+  it("retains port 31337 as the phone-side agent in tunnel-to-mobile mode", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn((key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "tunnel-to-mobile" : null,
+      ),
+    });
+
+    const transportModule = await import("./ios-local-agent-transport");
+
+    expect(
+      transportModule.isIosInProcessLocalAgentUrl(
+        "http://127.0.0.1:31337/api/health",
+      ),
+    ).toBe(true);
+  });
 
   it("routes iOS IPC local-agent URLs through the same in-process transport", async () => {
     const { iosInProcessAgentTransportForUrl } = await import(

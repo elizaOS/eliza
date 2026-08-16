@@ -626,8 +626,9 @@ function isIosOnDeviceAgentHttpUrl(value: string): boolean {
  * drift from restore and active-server policy.
  */
 function iosRuntimeHasOnDeviceAgent(): boolean {
-  return isCommittedOnDeviceMobileRuntimeMode(
-    normalizeMobileRuntimeMode(readRuntimeMode()),
+  const mode = normalizeMobileRuntimeMode(readRuntimeMode());
+  return (
+    mode === "tunnel-to-mobile" || isCommittedOnDeviceMobileRuntimeMode(mode)
   );
 }
 
