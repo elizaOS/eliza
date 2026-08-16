@@ -831,8 +831,16 @@ export function maybeAugmentChatMessageWithWalletContext(
 // Wallet intent detection & replies
 // ---------------------------------------------------------------------------
 
+// Bare finance verbs (swap/trade/transfer) are NOT wallet evidence on their
+// own: "add a todo: swap the canon filter" is a chore, yet the bare-verb match
+// made isWalletActionRequiredIntent claim the turn, and the api layer then
+// REPLACED a successful OWNER_TODOS_CREATE reply with the wallet-not-executed
+// dump — internal wallet/RPC state leaked into chat and the real confirmation
+// was destroyed (observed live). The verbs count only with a crypto/wallet
+// object nearby, exactly like the existing `send` arm; wallet NOUNS anywhere
+// in the prompt still qualify the turn on their own.
 const WALLET_CHAT_INTENT_RE =
-  /\b(wallet|onchain|on-chain|address|balance|swap|trade|transfer|token|bnb|t?bnb|eth|sol)\b|(?:\bsend\b(?=[\s\S]{0,40}\b(?:token|eth|sol|t?bnb|wallet|crypto|coin)\b))/i;
+  /\b(wallet|onchain|on-chain|address|balance|token|bnb|t?bnb|eth|sol)\b|(?:\b(?:send|swap|trade|transfer)\b(?=[\s\S]{0,40}\b(?:tokens?|eth|sol|t?bnb|wallet|crypto|coins?|usdc|usdt)\b))/i;
 
 export const WALLET_EXECUTION_INTENT_RE =
   /\b(swap|trade|transfer|buy|sell|execute|approve)\b|(?:\bsend\b(?=[\s\S]{0,40}\b(?:token|eth|sol|t?bnb|wallet|crypto|coin)\b))/i;
