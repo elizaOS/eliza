@@ -263,12 +263,15 @@ const EXPLICIT_MEDIA_GENERATION_REQUEST_RE =
 
 /** Capability-denial reply shape ("can't do that here — no video tools in
  * this setup", "I don't have an image generator", "that's a private
- * surface"). The private-surface arm exists because the denial text this
- * runtime itself ships in group channels becomes room history that stage-1
- * then parrots VERBATIM for asks an ungated sibling could serve (observed
- * live: "remind me in 3 minutes" denied in one stage with empty contexts). */
+ * surface / private info / limited to the owner"). The privacy arm exists
+ * because the denial text this runtime itself ships in group channels becomes
+ * room history that stage-1 then parrots VERBATIM for asks an ungated sibling
+ * could serve (observed live: "remind me in 3 minutes" denied in one stage
+ * with empty contexts). Kept in sync with `privacyDenialReplyForReasons`
+ * (services/message.ts) — every owner-private decline it can ship must match
+ * one arm here. */
 const CAPABILITY_DENIAL_REPLY_RE =
-	/\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|capabilit|action|model|service|setup|environment)|private surface/i;
+	/\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|capabilit|action|model|service|setup|environment)|private surface|owner'?s private info|(?:limited|only available) to (?:the owner|them)|don'?t have access to that/i;
 
 /** Explicit reminder/alarm request shape — as unambiguous as an ask gets. */
 const EXPLICIT_REMINDER_REQUEST_RE =

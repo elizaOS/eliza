@@ -2756,7 +2756,15 @@ async function collectV5PlannerCandidateActions(args: {
 	 * Lets the planner entry distinguish "capability exists but is gated on
 	 * this surface" from ordinary no-match, and answer honestly instead of
 	 * planning against an unrelated retrieval surface. */
-	diagnostics?: { gateRejectedExplicitCandidates: string[] };
+	diagnostics?: {
+		gateRejectedExplicitCandidates: string[];
+		/** The gate-failure reason per rejected explicit candidate, so the
+		 * privacy short-circuit can answer accurately: a non-owner
+		 * (`owner_mismatch`) needs a permission-truthful decline, while an owner
+		 * on a group surface (`participant_mismatch`) needs the "ask me in a DM"
+		 * routing hint. Same index order as `gateRejectedExplicitCandidates`. */
+		gateRejectedReasons: string[];
+	};
 }): Promise<Action[]> {
 	// The candidate surface starts from every runtime action and applies only the
 	// same execution gates the planner executor will enforce — it deliberately does
@@ -2805,6 +2813,7 @@ async function collectV5PlannerCandidateActions(args: {
 		if (gateFailure !== undefined) {
 			if (explicitCandidateName) {
 				args.diagnostics?.gateRejectedExplicitCandidates.push(action.name);
+				args.diagnostics?.gateRejectedReasons.push(gateFailure);
 				args.runtime.logger.warn(
 					{
 						src: "service:message",
@@ -3029,6 +3038,39 @@ function getMessageHandlerCandidateActions(
 // so an absent optional field normalizes to the empty shape those pure
 // predicates already treat as "nothing there" — normalized here once instead of
 // at every call site.
+/**
+ * Choose the honest decline for a gated owner-private ask, driven by the actual
+ * gate-failure reason instead of a single hardcoded line. The old fixed reply
+ * ("ask me in a DM") is correct ONLY when the asker is the owner on a shared
+ * surface — for a genuine non-owner it is misleading advice, since a DM would
+ * be denied too. Reasons come from `actionGateFailure` and end in the disclosure
+ * decision reason (`participant_mismatch`, `owner_mismatch`, …) or a role/context
+ * phrase.
+ *
+ *  - owner on a group/shared surface (`participant_mismatch` /
+ *    `destination_not_private`) → the DM routing hint is accurate.
+ *  - not the owner (`owner_mismatch`) or role/context-gated → a permission-
+ *    truthful decline with NO DM hint, because access, not surface, is missing.
+ */
+export function privacyDenialReplyForReasons(reasons: readonly string[]): string {
+	const joined = reasons.join(" | ").toLowerCase();
+	const ownerOnWrongSurface =
+		/participant_mismatch|destination_not_private/.test(joined);
+	const notTheOwner = /owner_mismatch/.test(joined);
+	// Owner-on-a-group takes precedence: when the same turn rejected one
+	// candidate for the surface and another for role, the actionable fix for the
+	// legitimate owner is still to move to a private surface.
+	if (ownerOnWrongSurface && !notTheOwner) {
+		return "that's private, so i can't pull it up in a shared channel — ask me in a DM and i'll handle it there.";
+	}
+	if (notTheOwner) {
+		return "that's the owner's private info, so i can't share it — it's only available to them.";
+	}
+	// Role/context-gated (or an unlabeled reason): access is missing, not the
+	// surface. State that plainly without implying a DM would help.
+	return "you don't have access to that here — it's limited to the owner.";
+}
+
 function messageHandlerStageOneReplyContexts(
 	messageHandler: MessageHandlerResult,
 ): { stageOneContexts: readonly string[]; stageOneReplyText: string } {
@@ -8255,6 +8297,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// still deliver it.
 		const candidateGateDiagnostics = {
 			gateRejectedExplicitCandidates: [] as string[],
+			gateRejectedReasons: [] as string[],
 		};
 		const prePatchStageOneReply =
 			typeof messageHandler.plan.reply === "string" &&
@@ -8668,7 +8711,9 @@ export async function runV5MessageRuntimeStage1(args: {
 				messageHandler,
 				result: createV5ReplyStrategyResult({
 					...args,
-					text: "that's a private surface — ask me in a DM and I'll handle it there.",
+					text: privacyDenialReplyForReasons(
+						candidateGateDiagnostics.gateRejectedReasons,
+					),
 					thought: messageHandler.thought,
 					agentVoiced: false,
 				}),
