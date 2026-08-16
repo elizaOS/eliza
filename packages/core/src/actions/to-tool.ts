@@ -52,7 +52,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 			type: "string",
 			enum: ["RESPOND", "IGNORE", "STOP"],
 			description:
-				"RESPOND=reply/run actions. IGNORE=silent. STOP=explicit user stop.",
+				'RESPOND=reply/run actions — a question, a request, or ambient chatter with real substance you can add to (stay chatty). IGNORE=silent — pure acknowledgements/reactions with no content ("lol", "ok", "nice", "same", "haha", "brb"), status/feed noise, or people clearly talking to each other. STOP=explicit user stop.',
 		},
 		contexts: {
 			type: "array",
