@@ -828,7 +828,7 @@ export const readAttachmentAction: Action = {
 			}
 			const storedContent = hasContent ? contentForRecords(records) : "";
 			if (action === "save_as_document") {
-				return saveAttachmentAsDocument({
+				return await saveAttachmentAsDocument({
 					runtime,
 					message: messageWithParams,
 					records,
