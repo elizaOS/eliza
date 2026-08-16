@@ -908,7 +908,6 @@ describe("jobsRepository.recoverStaleJobs", () => {
     const startupRecovered = await repo.recoverInProgressJobsStartedBefore({
       type: "agent_admin_canary_image",
       startedBefore: new Date(Date.now() + 60_000),
-      maxAttempts: 1,
     });
 
     expect(incremented).toBeUndefined();
