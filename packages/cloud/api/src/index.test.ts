@@ -606,7 +606,7 @@ describe("cloud-api worker entrypoint", () => {
     }
   });
 
-  test("keeps legacy UUID agents proxied while redirecting public service hosts", () => {
+  test("redirects legacy UUID agents and public service hosts", () => {
     const response = redirectFrontendHost(
       new URL(
         "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/chat?room=1",
@@ -614,7 +614,20 @@ describe("cloud-api worker entrypoint", () => {
       { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app" },
     );
 
-    expect(response).toBeNull();
+    expect(response?.status).toBe(308);
+    expect(response?.headers.get("location")).toBe(
+      "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.cloud.eliza.app/chat?room=1",
+    );
+    const stagingResponse = redirectFrontendHost(
+      new URL(
+        "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.staging.elizacloud.ai/api/health?probe=1",
+      ),
+      { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud-staging.eliza.app" },
+    );
+    expect(stagingResponse?.status).toBe(308);
+    expect(stagingResponse?.headers.get("location")).toBe(
+      "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.cloud-staging.eliza.app/api/health?probe=1",
+    );
     const serviceCases = [
       [
         "https://blob.elizacloud.ai/object.bin",
@@ -698,7 +711,7 @@ describe("cloud-api worker entrypoint", () => {
     }
   });
 
-  test("extracts canonical and legacy UUID hosts for the dedicated-agent proxy", () => {
+  test("extracts only canonical UUID hosts for the dedicated-agent proxy", () => {
     const env = { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app" };
     const agentId = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
 
@@ -713,7 +726,7 @@ describe("cloud-api worker entrypoint", () => {
         new URL(`https://${agentId}.elizacloud.ai/api/health`),
         env,
       ),
-    ).toBe(agentId);
+    ).toBeNull();
     expect(
       getGeneratedAgentId(new URL("https://blob.elizacloud.ai/object"), env),
     ).toBeNull();
