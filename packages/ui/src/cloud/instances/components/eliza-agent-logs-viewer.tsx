@@ -5,8 +5,9 @@
  */
 import { LogViewer } from "@elizaos/ui/cloud-ui";
 import { FileText } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { isAbortError, loadAgentLogs } from "../lib/agent-logs";
 
 interface ElizaAgentLogsViewerProps {
   agentId: string;
@@ -20,46 +21,9 @@ interface LogsState {
   lines: string[];
   loading: boolean;
   error: string | null;
+  notice: string | null;
   fetchedAt: string | null;
 }
-
-interface LogsApiResponse {
-  success?: boolean;
-  error?: string;
-  data?: string | LogsJobPayload;
-}
-
-interface LogsJobPayload {
-  jobId?: string;
-  status?: string;
-  polling?: {
-    endpoint?: string;
-    intervalMs?: number;
-    expectedDurationMs?: number;
-  };
-}
-
-interface LogsJobResult {
-  logs?: string;
-  message?: string;
-  error?: string;
-}
-
-interface LogsJobStatusResponse {
-  success?: boolean;
-  error?: string;
-  data?: {
-    status?: string;
-    result?: LogsJobResult | null;
-    error?: string | null;
-  };
-  polling?: {
-    intervalMs?: number;
-    shouldContinue?: boolean;
-  };
-}
-
-const LOG_JOB_TIMEOUT_MS = 30_000;
 
 const STATUS_BADGE_STYLES: Record<string, string> = {
   running: "border-green-500/40 bg-green-500/10 text-green-400",
@@ -101,66 +65,8 @@ function getLineClass(line: string): string {
   return "border-l-neutral-700 text-neutral-300";
 }
 
-function isLogsJobPayload(
-  data: LogsApiResponse["data"],
-): data is LogsJobPayload {
-  return (
-    typeof data === "object" && data !== null && typeof data.jobId === "string"
-  );
-}
-
 function splitLines(raw: string): string[] {
   return raw.length > 0 ? raw.split("\n").filter(Boolean) : [];
-}
-
-function logsJobResultToRaw(result: LogsJobResult | null | undefined): string {
-  if (typeof result?.logs === "string" && result.logs.length > 0) {
-    return result.logs;
-  }
-  if (typeof result?.message === "string" && result.message.length > 0) {
-    return result.message;
-  }
-  return "";
-}
-
-async function waitForLogsJob(
-  endpoint: string,
-  initialIntervalMs: number,
-): Promise<string> {
-  const deadline = Date.now() + LOG_JOB_TIMEOUT_MS;
-  let intervalMs = initialIntervalMs;
-
-  while (Date.now() <= deadline) {
-    const response = await fetch(endpoint, { cache: "no-store" });
-    const payload: LogsJobStatusResponse = await response
-      .json()
-      .catch(() => ({}));
-
-    if (!response.ok || !payload.success) {
-      throw new Error(payload.error ?? `HTTP ${response.status}`);
-    }
-
-    const status = payload.data?.status;
-    if (status === "completed") {
-      if (payload.data?.result?.error) {
-        throw new Error(payload.data.result.error);
-      }
-      return logsJobResultToRaw(payload.data?.result);
-    }
-    if (status === "failed") {
-      throw new Error(
-        payload.data?.error ??
-          payload.data?.result?.error ??
-          "Log collection failed",
-      );
-    }
-
-    const nextIntervalMs = payload.polling?.intervalMs ?? intervalMs;
-    intervalMs = Math.min(Math.max(nextIntervalMs, 500), 5_000);
-    await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
-  }
-
-  return "Log collection is still running. Refresh again in a moment.";
 }
 
 export function ElizaAgentLogsViewer({
@@ -174,61 +80,74 @@ export function ElizaAgentLogsViewer({
     lines: [],
     loading: true,
     error: null,
+    notice: null,
     fetchedAt: null,
   });
   const [tail, setTail] = useState("200");
   const [searchQuery, setSearchQuery] = useState("");
+  const activeRequestRef = useRef<{
+    controller: AbortController;
+    generation: number;
+  } | null>(null);
+  const generationRef = useRef(0);
 
   const fetchLogs = useCallback(async () => {
-    setLogsState((prev) => ({ ...prev, loading: true, error: null }));
+    activeRequestRef.current?.controller.abort();
+    const controller = new AbortController();
+    const generation = ++generationRef.current;
+    activeRequestRef.current = { controller, generation };
+    setLogsState((prev) => ({
+      ...prev,
+      loading: true,
+      error: null,
+      notice: null,
+    }));
 
     try {
-      const params = new URLSearchParams({ tail });
-      const response = await fetch(
-        `/api/compat/agents/${agentId}/logs?${params}`,
-        {
-          cache: "no-store",
-        },
-      );
-      const payload: LogsApiResponse = await response.json().catch(() => ({}));
-
-      if (!response.ok || !payload.success) {
-        throw new Error(
-          payload.error ??
-            (response.ok
-              ? "Log response did not include log data"
-              : `HTTP ${response.status}`),
-        );
+      const result = await loadAgentLogs({
+        agentId,
+        tail: Number.parseInt(tail, 10),
+        signal: controller.signal,
+      });
+      if (generationRef.current !== generation || controller.signal.aborted) {
+        return;
       }
 
-      const raw = isLogsJobPayload(payload.data)
-        ? await waitForLogsJob(
-            payload.data.polling?.endpoint ??
-              `/api/v1/jobs/${payload.data.jobId}`,
-            payload.data.polling?.intervalMs ?? 2_000,
-          )
-        : typeof payload.data === "string"
-          ? payload.data
-          : "";
-
       setLogsState({
-        raw,
-        lines: splitLines(raw),
+        raw: result.logs,
+        lines: splitLines(result.logs),
         loading: false,
         error: null,
+        notice: result.notice,
         fetchedAt: new Date().toISOString(),
       });
     } catch (error) {
+      if (
+        isAbortError(error) ||
+        generationRef.current !== generation ||
+        controller.signal.aborted
+      ) {
+        return;
+      }
       setLogsState((prev) => ({
         ...prev,
         loading: false,
         error: error instanceof Error ? error.message : String(error),
+        notice: null,
       }));
+    } finally {
+      if (activeRequestRef.current?.generation === generation) {
+        activeRequestRef.current = null;
+      }
     }
   }, [agentId, tail]);
 
   useEffect(() => {
-    fetchLogs();
+    void fetchLogs();
+    return () => {
+      activeRequestRef.current?.controller.abort();
+      activeRequestRef.current = null;
+    };
   }, [fetchLogs]);
 
   const filteredLines = useMemo(
@@ -300,6 +219,17 @@ export function ElizaAgentLogsViewer({
             <div className="flex items-start gap-3 border border-white/10 bg-black/30 p-4">
               <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
               <p className="text-sm text-white/70">{statusHint}</p>
+            </div>
+          )}
+          {logsState.notice && (
+            <div
+              className="flex items-start gap-3 border border-white/10 bg-black/30 p-4"
+              role="status"
+            >
+              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+              <p className="min-w-0 [overflow-wrap:anywhere] text-sm text-white/70">
+                {logsState.notice}
+              </p>
             </div>
           )}
         </>
