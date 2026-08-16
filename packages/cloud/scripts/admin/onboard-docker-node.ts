@@ -42,6 +42,10 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  parseCanonicalInt,
+  parseTcpPort,
+} from "../../../scripts/lib/cli-numbers.mjs";
 
 // The cloud-shared modules are imported lazily inside main() (see loadDeps) so
 // importing this file for its pure helpers — e.g. from the unit test — does not
@@ -184,7 +188,12 @@ export function capacityForOnboardUpsert(
   return existing?.capacity ?? flagCapacity;
 }
 
-/** Parse argv + env into a validated config. Throws on missing required fields. */
+/**
+ * Parse argv + env into a validated config. Throws on missing required
+ * fields or a non-canonical ssh-port / capacity token (scientific notation,
+ * hex, leading zeros, trailing junk) so Number.parseInt cannot silently
+ * retarget the host or shrink the slot count.
+ */
 export function parseArgs(argv: string[], env: NodeJS.ProcessEnv): OnboardArgs {
   const flags = new Map<string, string>();
   let dryRun = false;
@@ -215,22 +224,18 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv): OnboardArgs {
     flags.get("key") ??
     env.ONBOARD_NODE_SSH_KEY ??
     path.join(os.homedir(), ".ssh", "id_ed25519");
-  const sshPort = Number.parseInt(
+  // parseInt("1e4")===1 is still a legal TCP port; require the same
+  // canonical decimal the rest of the repo uses for CLI ports/limits.
+  const sshPort = parseTcpPort(
     flags.get("ssh-port") ?? env.ONBOARD_NODE_SSH_PORT ?? "22",
-    10,
-  );
+    "--ssh-port",
+  ) as number;
   const sshUser = flags.get("ssh-user") ?? env.ONBOARD_NODE_SSH_USER ?? "root";
   const capacityRaw = flags.get("capacity") ?? env.ONBOARD_NODE_CAPACITY ?? "8";
-  const capacity = Number.parseInt(capacityRaw, 10);
-
-  if (!Number.isInteger(sshPort) || sshPort < 1 || sshPort > 65535) {
-    throw new Error(
-      `Invalid ssh-port: ${flags.get("ssh-port") ?? env.ONBOARD_NODE_SSH_PORT}`,
-    );
-  }
-  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 64) {
-    throw new Error(`Invalid capacity (must be 1..64): ${capacityRaw}`);
-  }
+  const capacity = parseCanonicalInt(capacityRaw, "--capacity", {
+    min: 1,
+    max: 64,
+  }) as number;
 
   return { host, nodeId, keyPath, sshPort, sshUser, capacity, dryRun };
 }
