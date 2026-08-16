@@ -462,12 +462,31 @@ export function encryptedCharacter(character: Character): Character {
 	const encryptedChar: Character = {
 		...character,
 		secrets: character.secrets ? { ...character.secrets } : undefined,
+		settings: character.settings
+			? {
+					...character.settings,
+					secrets: character.settings.secrets
+						? { ...character.settings.secrets }
+						: undefined,
+				}
+			: undefined,
 	};
 	const salt = getSalt();
 
 	// Encrypt character.secrets if it exists
 	if (encryptedChar.secrets) {
 		encryptedChar.secrets = encryptObjectValues(encryptedChar.secrets, salt);
+	}
+
+	// Encrypt character.settings.secrets if it exists (API keys stored via settings.secrets leak plaintext otherwise)
+	if (encryptedChar.settings?.secrets) {
+		encryptedChar.settings.secrets = encryptObjectValues(
+			encryptedChar.settings.secrets as Record<
+				string,
+				string | number | boolean
+			>,
+			salt,
+		);
 	}
 
 	return encryptedChar;
@@ -486,12 +505,31 @@ export function decryptedCharacter(
 	const decryptedChar: Character = {
 		...character,
 		secrets: character.secrets ? { ...character.secrets } : undefined,
+		settings: character.settings
+			? {
+					...character.settings,
+					secrets: character.settings.secrets
+						? { ...character.settings.secrets }
+						: undefined,
+				}
+			: undefined,
 	};
 	const salt = getSalt();
 
 	// Decrypt character.secrets if it exists
 	if (decryptedChar.secrets) {
 		decryptedChar.secrets = decryptObjectValues(decryptedChar.secrets, salt);
+	}
+
+	// Decrypt character.settings.secrets if it exists
+	if (decryptedChar.settings?.secrets) {
+		decryptedChar.settings.secrets = decryptObjectValues(
+			decryptedChar.settings.secrets as Record<
+				string,
+				string | number | boolean
+			>,
+			salt,
+		);
 	}
 
 	return decryptedChar;
