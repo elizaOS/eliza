@@ -424,11 +424,11 @@ export default function PaymentRequestPage() {
 
           <div className="mt-8">
             <Button
-              variant="ghost"
+              variant="surfaceAccent"
               type="button"
               disabled={!canPay || isPaying}
               onClick={beginCheckout}
-              className="flex w-full items-center justify-center gap-3 bg-accent-subtle px-4 py-4 text-txt transition hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-30"
+              className="flex h-auto w-full items-center justify-center gap-3 px-4 py-4 disabled:opacity-30"
             >
               {isPaying ? (
                 <Loader2 className="h-5 w-5 animate-spin" />

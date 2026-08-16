@@ -56,8 +56,14 @@ vi.mock("../../../lib/api-client", () => ({
 }));
 
 vi.mock("../../../../components/ui/button", () => ({
-  Button: ({ children, ...props }: ComponentProps<"button">) => (
-    <button {...props}>{children}</button>
+  Button: ({
+    children,
+    variant,
+    ...props
+  }: ComponentProps<"button"> & { variant?: string }) => (
+    <button data-variant={variant} {...props}>
+      {children}
+    </button>
   ),
 }));
 
@@ -126,6 +132,9 @@ describe("PaymentRequestPage public DTO contract", () => {
       name: /pay with wallet/i,
     });
     expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(button.getAttribute("data-variant")).toBe("surfaceAccent");
+    expect(button.className).not.toContain("hover:bg-bg-hover");
+    expect(button.className).not.toContain("bg-accent-subtle");
     expect(screen.queryByText(/wallet_native/)).toBeNull();
   });
 
