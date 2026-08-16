@@ -19,7 +19,7 @@ In browser environments a web fallback is provided using `document.visibilitySta
 | Device state (active/idle/locked) | Yes | Yes | Partial (visibility/focus only) |
 | Battery on/off charging | Yes | Yes | Yes (Battery Status API) |
 | Sleep stage / biometrics | HealthKit | Health Connect | No |
-| Screen time / usage | Privacy-preserving in-extension DeviceActivity report | `PACKAGE_USAGE_STATS` | No |
+| Screen time / usage | Unavailable; preparatory DeviceActivity extension only | `PACKAGE_USAGE_STATS` | No |
 | Background refresh | Not available (foreground monitoring only) | Not available | No |
 
 ## Installation
@@ -92,15 +92,15 @@ Screen Time features additionally require:
 - `DeviceActivityMonitorExtension` and `DeviceActivityReportExtension` app-extension targets in the Xcode project.
 - The `FamilyControls` and `DeviceActivity` frameworks linked via the podspec.
 
-Apple supplies Screen Time usage only to the sandboxed report extension. The
-extension contains a private on-device summary, but the current host does not
-yet present `DeviceActivityReport`, and it cannot move those values into the
-Capacitor host, an app group, or a network request. Consequently the iOS status
-keeps `reportAvailable`, `coarseSummaryAvailable`, `thresholdEventsAvailable`,
-and `rawUsageExportAvailable` `false`. `reportAvailable` may become true only
-after the host presents the matching report context. Threshold availability
-must stay false until the app schedules a concrete `DeviceActivityEvent` and
-handles its callback through a typed signal path.
+Apple supplies Screen Time usage only to a sandboxed report extension. The
+bundled extension context is preparatory: the current host has no
+`DeviceActivityReport` presenter, so no user-visible report or aggregation
+ships, and values cannot move into the Capacitor host, an app group, or a
+network request. Consequently the iOS status keeps `reportAvailable`,
+`coarseSummaryAvailable`, `thresholdEventsAvailable`, and
+`rawUsageExportAvailable` `false`. Threshold availability must stay false until
+the app schedules a concrete `DeviceActivityEvent` and handles its callback
+through a typed signal path.
 
 Validate the iOS build wiring:
 
@@ -134,6 +134,6 @@ await MobileSignals.openSettings({ target: "usageAccess" });
 ## Platform notes
 
 - **Node (desktop):** No native integration. The web fallback applies.
-- **iOS:** Device state and HealthKit snapshots are supported. A private Screen Time report extension is bundled, but no host report presenter, host-readable usage export, or configured threshold event ships yet.
+- **iOS:** Device state and HealthKit snapshots are supported. A preparatory Screen Time report extension is bundled, but no host presenter, report aggregation, host-readable usage export, or configured threshold event ships yet.
 - **Android:** Full support for device state and Health Connect. Usage stats require manual user grant via settings.
 - **Web:** Graceful fallback only. Health and screen-time capabilities are unavailable.

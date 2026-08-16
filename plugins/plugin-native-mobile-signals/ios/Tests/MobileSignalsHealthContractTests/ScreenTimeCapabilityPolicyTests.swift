@@ -7,6 +7,8 @@ import XCTest
 
 final class ScreenTimeCapabilityPolicyTests: XCTestCase {
     func testHostDoesNotAdvertiseSandboxedOrUnimplementedData() {
+        XCTAssertFalse(ScreenTimeCapabilityPolicy.unavailableReason.isEmpty)
+        XCTAssertTrue(ScreenTimeCapabilityPolicy.unavailableReason.contains("no DeviceActivity presenter"))
         XCTAssertFalse(ScreenTimeCapabilityPolicy.authorizationRequestAvailable)
         XCTAssertFalse(ScreenTimeCapabilityPolicy.reportAvailable)
         XCTAssertFalse(ScreenTimeCapabilityPolicy.coarseSummaryAvailable)

@@ -105,14 +105,13 @@ Screen Time / DeviceActivity features require additional entitlements and Xcode 
 
 Without these, `screenTime.supported` will be `false` and `screenTime.authorization.status` will be `"unavailable"`.
 
-Apple provides DeviceActivity results only inside the sandboxed report
-extension. The extension contains a real private aggregate, but the current
-host has no `DeviceActivityReport` presenter, so `reportAvailable` remains
-`false`. It may become true only when the host presents the matching report
-context. `coarseSummaryAvailable`, `thresholdEventsAvailable`, and
-`rawUsageExportAvailable` must remain `false` until a lawful host producer or a
-concrete scheduled threshold-event signal exists. Never move report data
-through app groups or the network.
+Apple provides DeviceActivity results only inside a sandboxed report extension.
+The bundled extension context is preparatory: the current host has no
+`DeviceActivityReport` presenter, so it performs no report aggregation and
+`reportAvailable` remains `false`. `coarseSummaryAvailable`,
+`thresholdEventsAvailable`, and `rawUsageExportAvailable` must remain `false`
+until a lawful host surface or a concrete scheduled threshold-event signal
+exists. Never move report data through app groups or the network.
 
 ## Android requirements
 
