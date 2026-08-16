@@ -34,11 +34,11 @@ import Capacitor
 ///   so a busy model is never mistaken for a crash, the same way Android's
 ///   `ProbeResult.BUSY` never counts a strike).
 /// * **Mode gate** → reads the renderer's own source of truth
-///   (`localStorage["eliza:mobile-runtime-mode"]`). `cloud` is pure remote and
-///   keeps the watchdog dormant. `local`, `cloud-hybrid`, and `tunnel-to-mobile`
-///   all own a phone-side agent and therefore arm the watchdog when the runtime
-///   plugin is present. An unset mode with the plugin present (fresh install
-///   autostart) arms it as well.
+///   (`localStorage["eliza:mobile-runtime-mode"]`). `cloud` and `remote-mac` are
+///   pure remote modes and keep the watchdog dormant. `local`, `cloud-hybrid`,
+///   and `tunnel-to-mobile` all own a phone-side agent and therefore arm the
+///   watchdog when the runtime plugin is present. An unset mode with the plugin
+///   present (fresh install autostart) arms it as well.
 /// * **"Restart" entrypoint** → re-initializing the in-process runtime via the
 ///   renderer's existing `ElizaBunRuntime.start(...)` path. The watchdog does not
 ///   invent a second restart mechanism and never fabricates a start config it
@@ -490,15 +490,15 @@ final class AgentWatchdog {
 
     /// Reads the renderer's runtime mode (its own `localStorage` source of truth)
     /// and the live `ElizaBunRuntime` plugin status. `local` is false for
-    /// pure cloud mode (or a missing plugin) so the watchdog no-ops there;
-    /// `ready` reflects the in-process engine being up.
+    /// pure cloud or remote-Mac mode (or a missing plugin) so the watchdog
+    /// no-ops there; `ready` reflects the in-process engine being up.
     private static let probeScript = """
     var mode = null;
     try { mode = window.localStorage.getItem('eliza:mobile-runtime-mode'); } catch (e) {}
     var cap = window.Capacitor;
     var rt = (cap && cap.Plugins) ? cap.Plugins.ElizaBunRuntime : null;
     var present = !!(rt && typeof rt.getStatus === 'function');
-    var isPureRemote = (mode === 'cloud');
+    var isPureRemote = (mode === 'cloud' || mode === 'remote-mac');
     var local = present && !isPureRemote;
     var ready = false;
     var engine = null;
