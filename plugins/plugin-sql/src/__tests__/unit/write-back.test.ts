@@ -11,6 +11,7 @@ describe("WriteBackService", () => {
 
   afterEach(() => {
     fetchSpy?.mockRestore();
+    vi.useRealTimers();
   });
 
   it("is disabled when no options are provided", () => {
@@ -248,6 +249,34 @@ describe("WriteBackService", () => {
     expect(batch1.writes).toHaveLength(100);
     expect(batch2.writes).toHaveLength(100);
     expect(batch3.writes).toHaveLength(50);
+  });
+
+  it("flushes immediately when the queue reaches the batch size limit", async () => {
+    vi.useFakeTimers();
+    fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ success: true, results: [] }), { status: 200 })
+      );
+
+    const wb = new WriteBackService({
+      writeBaseUrl: "https://api.example.com",
+      agentId: "agent-1",
+      serviceKey: "key-1",
+    });
+
+    for (let i = 0; i < 99; i++) {
+      wb.enqueue("memories", "insert", { id: `m-${i}` });
+    }
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    wb.enqueue("memories", "insert", { id: "m-99" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchSpy.mock.calls[0]?.[1]?.body as string);
+    expect(body.writes).toHaveLength(100);
   });
 
   it("generates unique writeIds for each write", async () => {
