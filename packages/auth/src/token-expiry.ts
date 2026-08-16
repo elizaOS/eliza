@@ -12,12 +12,18 @@ export type CodingAuthFailureReason =
   | "rate_limited"
   | "unknown";
 
+const REFRESH_TOKEN_EXPIRED_PATTERN =
+  /\brefresh[_ ]token[_ ](?:(?:has|is)[_ ])?expired\b/i;
 const TOKEN_EXPIRED_PATTERN =
-  /\b(?:token (?:has )?expired|expired[_ ]?token|oauth token (?:has )?expired|access token (?:has )?expired|token is expired|jwt expired|session expired)\b/i;
+  /\b(?:token[_ ](?:has[_ ])?expired|expired[_ ]?token|oauth token (?:has )?expired|access token (?:has )?expired|token is expired|jwt expired|session expired)\b/i;
 
 /** Returns true only for explicit access-token expiry language. */
 export function isTokenExpiryText(text: string | null | undefined): boolean {
-  return !!text && TOKEN_EXPIRED_PATTERN.test(text);
+  return (
+    !!text &&
+    !REFRESH_TOKEN_EXPIRED_PATTERN.test(text) &&
+    TOKEN_EXPIRED_PATTERN.test(text)
+  );
 }
 
 /** Refines an auth-shaped provider error without widening the auth classifier. */

@@ -340,6 +340,7 @@
     "@elizaos/plugin-cloud-apps": "workspace:*",
     "@elizaos/plugin-calendar": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
+    "@elizaos/plugin-companion": "workspace:*",
     "@elizaos/plugin-commands": "workspace:*",
     "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/plugin-discord": "workspace:*",

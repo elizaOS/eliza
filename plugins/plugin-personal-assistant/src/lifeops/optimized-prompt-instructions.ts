@@ -49,7 +49,14 @@ the schedule-changing or reply-needed items first. Mention each non-empty
 domain once. If a domain is empty, omit it rather than saying "nothing to
 report". Plain everyday words only: no internal ids, no ISO timestamps, no
 schema or field names. No invented facts; only describe items in the data
-below.`;
+below.
+
+Obey the editorial block in the data: open with its "lead" item (the highest
+consequence item), cover the "include" items, give "demote" items at most a
+passing mention, and never resurface an "omit" item. Never describe more
+than editorial.maxItems items in total. When editorial.pushback is set,
+end by naming exactly one meeting to cancel, decline, or shorten and justify
+that cut in plain terms.`;
 
 export const MEETING_PREP_INSTRUCTIONS =
   "Prepare the next working block: scan upcoming calendar events, related threads, docs, blockers, and people context. Surface missing agenda, location, dial-in, prep document, decision owner, and likely follow-up. Keep the owner-facing result compact.";

@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
     resolvedBy: null,
     resolutionReason: null,
   })),
+  listTasks: vi.fn(async (): Promise<unknown[]> => []),
   schedule: vi.fn(async (task: { kind: string; trigger: unknown }) => ({
     taskId: `task-${Math.random().toString(36).slice(2, 8)}`,
     kind: task.kind,
@@ -73,7 +74,7 @@ vi.mock("../src/lifeops/scheduled-task/service.js", () => ({
   getScheduledTaskRunner: () => ({
     schedule: mocks.schedule,
     apply: mocks.apply,
-    list: vi.fn(),
+    list: mocks.listTasks,
     pipeline: vi.fn(),
     evaluateCompletion: vi.fn(),
     fire: vi.fn(),
@@ -135,6 +136,8 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
     mocks.schedule.mockClear();
     mocks.upsertCommitmentLedgerRecord.mockClear();
     mocks.apply.mockClear();
+    mocks.listTasks.mockClear();
+    mocks.listTasks.mockImplementation(async () => []);
   });
 
   describe("metadata", () => {
@@ -491,6 +494,127 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
       });
       expect(result.success).toBe(false);
       expect(result.data).toMatchObject({ error: "INVALID_RESOLUTION" });
+    });
+  });
+
+  describe("guarantee_class (#14864)", () => {
+    it("installs an event-triggered standing guarantee for a class", async () => {
+      const result = await callDoc(makeRuntime(), makeMessage(), {
+        subaction: "guarantee_class",
+        obligationClass: "renewal",
+      });
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        subaction: "guarantee_class",
+        obligationClass: "renewal",
+        warnDaysBefore: 60,
+      });
+      expect(mocks.schedule).toHaveBeenCalledTimes(1);
+      const scheduled = mocks.schedule.mock.calls[0]?.[0] as {
+        trigger: { kind: string; eventKind?: string; filter?: unknown };
+        idempotencyKey: string;
+        metadata: Record<string, unknown>;
+      };
+      expect(scheduled.trigger.kind).toBe("event");
+      expect(scheduled.trigger.eventKind).toBe("document.obligation.observed");
+      expect(scheduled.trigger.filter).toEqual({ obligationKind: "renewal" });
+      expect(scheduled.idempotencyKey).toBe("commitment-guarantee:renewal");
+      expect(scheduled.metadata).toMatchObject({
+        standingGuarantee: true,
+        warnDaysBefore: 60,
+      });
+    });
+
+    it("rejects an unknown obligation class", async () => {
+      const result = await callDoc(makeRuntime(), makeMessage(), {
+        subaction: "guarantee_class",
+        obligationClass: "vibes",
+      });
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ error: "MISSING_OBLIGATIONCLASS" });
+      expect(mocks.schedule).not.toHaveBeenCalled();
+    });
+
+    it("track_deadline under a matching guarantee adds the lead-time warn watcher and fires the obligation event", async () => {
+      const emitEvent = vi.fn(async () => undefined);
+      const runtime = {
+        ...makeRuntime(),
+        emitEvent,
+      } as unknown as IAgentRuntime;
+      mocks.listTasks.mockImplementation(async () => [
+        {
+          taskId: "guarantee-1",
+          kind: "watcher",
+          trigger: {
+            kind: "event",
+            eventKind: "document.obligation.observed",
+            filter: { obligationKind: "renewal" },
+          },
+          metadata: { standingGuarantee: true, warnDaysBefore: 60 },
+          state: { status: "scheduled", followupCount: 0 },
+        },
+      ]);
+      const deadline = new Date(
+        Date.now() + 120 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+
+      const created = await callDoc(runtime, makeMessage(), {
+        subaction: "request_approval",
+        documentTitle: "Vendor MSA renewal",
+      });
+      const docId = (created.data as { documentRequestId: string })
+        .documentRequestId;
+      const result = await callDoc(runtime, makeMessage(), {
+        subaction: "track_deadline",
+        documentRequestId: docId,
+        deadline,
+      });
+      expect(result.success).toBe(true);
+
+      const scheduledInputs = mocks.schedule.mock.calls.map(
+        (call) =>
+          call[0] as {
+            trigger: { kind: string; atIso?: string };
+            idempotencyKey?: string;
+          },
+      );
+      const warn = scheduledInputs.find((input) =>
+        input.idempotencyKey?.startsWith("commitment-warn:"),
+      );
+      expect(warn).toBeDefined();
+      expect(warn?.trigger.kind).toBe("once");
+      expect(warn?.trigger.atIso).toBe(
+        new Date(Date.parse(deadline) - 60 * 24 * 60 * 60 * 1000).toISOString(),
+      );
+      expect(emitEvent).toHaveBeenCalledWith(
+        "document.obligation.observed",
+        expect.objectContaining({ obligationKind: "renewal", deadline }),
+      );
+    });
+
+    it("track_deadline with no installed guarantee schedules only the deadline watcher", async () => {
+      const runtime = makeRuntime();
+      const deadline = new Date(
+        Date.now() + 30 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const created = await callDoc(runtime, makeMessage(), {
+        subaction: "request_approval",
+        documentTitle: "Simple NDA",
+      });
+      const docId = (created.data as { documentRequestId: string })
+        .documentRequestId;
+      const result = await callDoc(runtime, makeMessage(), {
+        subaction: "track_deadline",
+        documentRequestId: docId,
+        deadline,
+      });
+      expect(result.success).toBe(true);
+      const warnCalls = mocks.schedule.mock.calls.filter((call) =>
+        (call[0] as { idempotencyKey?: string }).idempotencyKey?.startsWith(
+          "commitment-warn:",
+        ),
+      );
+      expect(warnCalls).toHaveLength(0);
     });
   });
 });

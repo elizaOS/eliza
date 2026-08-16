@@ -11,6 +11,7 @@ import type {
   MeetingGhostAttendanceContext,
   MeetingTranscriptFinalizedPayload,
 } from "@elizaos/shared";
+import { projectFinalizedTranscriptCommitments } from "../commitments/transcript-hook.js";
 import {
   type RunMeetingGhostInput,
   runMeetingGhostForTranscript,
@@ -73,6 +74,10 @@ export function meetingGhostInputFromFinalizedPayload(
 export async function handleMeetingTranscriptFinalized(
   payload: FinalizedMeetingEvent,
 ): Promise<void> {
+  // Commitment projection (#14864) self-gates on owner identity and ledger
+  // availability, and must run even when the ghost-attendance interpretation
+  // below is skipped — the owner's spoken promises are their own record.
+  await projectFinalizedTranscriptCommitments(payload.runtime, payload);
   const input = meetingGhostInputFromFinalizedPayload(payload.runtime, payload);
   if (!input) return;
   await runMeetingGhostForTranscript(payload.runtime, input);

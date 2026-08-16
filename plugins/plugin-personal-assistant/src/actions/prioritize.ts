@@ -2,9 +2,10 @@
  * `PRIORITIZE` umbrella action — LLM-ranked importance × urgency.
  *
  * Subactions:
- *   - `rank_todos`     — todo items in the owner's life domain
- *   - `rank_threads`   — open inbox / messaging threads
- *   - `rank_decisions` — pending approval queue decisions
+ *   - `rank_todos`       — todo items in the owner's life domain
+ *   - `rank_threads`     — open inbox / messaging threads
+ *   - `rank_decisions`   — pending approval queue decisions
+ *   - `rank_commitments` — regret-audited commitment-ledger obligations (#14864)
  *
  * Loads items via the relevant loader hook, then calls
  * `runtime.useModel(ModelType.TEXT_LARGE)` once with a structured prompt that
@@ -25,10 +26,20 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType, runWithTrajectoryPurpose } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import {
+  buildCommitmentRegretAudit,
+  type CommitmentRegretAuditItem,
+} from "../lifeops/commitments/index.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 
 const ACTION_NAME = "PRIORITIZE";
 
-const SUBACTIONS = ["rank_todos", "rank_threads", "rank_decisions"] as const;
+const SUBACTIONS = [
+  "rank_todos",
+  "rank_threads",
+  "rank_decisions",
+  "rank_commitments",
+] as const;
 
 type Subaction = (typeof SUBACTIONS)[number];
 
@@ -37,20 +48,24 @@ const SIMILE_NAMES: readonly string[] = [
   "RANK_TODAY",
   "WHAT_MATTERS_MOST",
   "PRIORITIZE_TODAY",
+  "WHAT_WILL_I_REGRET",
+  "REGRET_AUDIT",
 ];
 
-type Subject = "todos" | "threads" | "decisions";
+type Subject = "todos" | "threads" | "decisions" | "commitments";
 
 const SUBJECT_TO_SUBACTION: Readonly<Record<Subject, Subaction>> = {
   todos: "rank_todos",
   threads: "rank_threads",
   decisions: "rank_decisions",
+  commitments: "rank_commitments",
 };
 
 const SUBACTION_TO_SUBJECT: Readonly<Record<Subaction, Subject>> = {
   rank_todos: "todos",
   rank_threads: "threads",
   rank_decisions: "decisions",
+  rank_commitments: "commitments",
 };
 
 interface PrioritizeActionParameters {
@@ -93,6 +108,9 @@ export interface PrioritizeLoaders {
     args: PrioritizeLoaderArgs,
   ) => Promise<readonly PrioritizeRankableItem[]>;
   loadDecisions: (
+    args: PrioritizeLoaderArgs,
+  ) => Promise<readonly PrioritizeRankableItem[]>;
+  loadCommitments: (
     args: PrioritizeLoaderArgs,
   ) => Promise<readonly PrioritizeRankableItem[]>;
 }
@@ -379,10 +397,65 @@ async function loadDecisionsFromRuntime({
   }
 }
 
+/** Map one regret-audit item onto the generic rankable shape. */
+export function mapRegretAuditItemToRankable(
+  item: CommitmentRegretAuditItem,
+): PrioritizeRankableItem {
+  return {
+    id: item.record.id,
+    title: item.record.summary,
+    summary: item.reasons.join("; "),
+    ...(item.record.dueAt ? { dueAt: item.record.dueAt } : {}),
+    metadata: metadata([
+      ["source", "commitment_ledger"],
+      ["kind", item.record.kind],
+      ["status", item.record.status],
+      ["counterparty", item.record.counterparty],
+      ["regretScore", item.score],
+      ["scheduledTaskId", item.record.scheduledTaskId],
+    ]),
+  };
+}
+
+/**
+ * "What will I regret?" (#14864): open/tracked commitment-ledger rows ranked
+ * by `buildCommitmentRegretAudit`, so the LLM pass ranks against the audit's
+ * deterministic scores and reasons instead of re-deriving urgency from prose.
+ * No-DB hosts have no ledger — that is a designed-empty ranking source.
+ */
+async function loadCommitmentsFromLedgerAudit({
+  runtime,
+}: PrioritizeLoaderArgs): Promise<readonly PrioritizeRankableItem[]> {
+  const agentId = runtimeAgentId(runtime);
+  if (!agentId) return [];
+  const adapter = (runtime as { adapter?: { db?: unknown } }).adapter;
+  if (!adapter?.db) return [];
+  try {
+    const records = await new LifeOpsRepository(
+      runtime,
+    ).listCommitmentLedgerRecords(agentId, { statuses: ["open", "tracked"] });
+    const audit = buildCommitmentRegretAudit(records, {
+      nowIso: new Date().toISOString(),
+    });
+    return audit.items
+      .slice(0, MAX_PRIORITIZE_SOURCE_ITEMS)
+      .map(mapRegretAuditItemToRankable);
+  } catch (error) {
+    // error-policy:J4 same degrade contract as the sibling loaders — one
+    // broken ranking source returns designed-empty instead of killing the
+    // whole PRIORITIZE turn; the failure stays visible in the warn log.
+    logger.warn(
+      `[PRIORITIZE] rank_commitments load failed: ${errorDetail(error)}`,
+    );
+    return [];
+  }
+}
+
 const defaultLoaders: PrioritizeLoaders = {
   loadTodos: loadTodosFromRuntime,
   loadThreads: loadThreadsFromRuntime,
   loadDecisions: loadDecisionsFromRuntime,
+  loadCommitments: loadCommitmentsFromLedgerAudit,
 };
 
 let activeLoaders: PrioritizeLoaders = defaultLoaders;
@@ -418,7 +491,12 @@ function normalizeSubaction(value: unknown): Subaction | null {
 function normalizeSubject(value: unknown): Subject | null {
   if (typeof value !== "string") return null;
   const lower = value.trim().toLowerCase();
-  if (lower === "todos" || lower === "threads" || lower === "decisions") {
+  if (
+    lower === "todos" ||
+    lower === "threads" ||
+    lower === "decisions" ||
+    lower === "commitments"
+  ) {
     return lower;
   }
   return null;
@@ -450,6 +528,8 @@ async function loadItemsForSubaction(
       return activeLoaders.loadThreads({ runtime, message });
     case "rank_decisions":
       return activeLoaders.loadDecisions({ runtime, message });
+    case "rank_commitments":
+      return activeLoaders.loadCommitments({ runtime, message });
   }
 }
 
@@ -581,11 +661,11 @@ export const prioritizeAction: Action & {
     "surface:internal",
   ],
   description:
-    "Rank owner open todos, message threads, pending decisions by urgency × importance. LLM pass. Subactions: rank_todos, rank_threads, rank_decisions.",
+    "Rank owner open todos, message threads, pending decisions, or regret-audited commitments by urgency × importance. LLM pass. Subactions: rank_todos, rank_threads, rank_decisions, rank_commitments.",
   descriptionCompressed:
-    "prioritize: rank_todos|rank_threads|rank_decisions; topN ranking by urgency × importance",
+    "prioritize: rank_todos|rank_threads|rank_decisions|rank_commitments; topN ranking by urgency × importance",
   routingHint:
-    'prioritization ("focus on", "rank today", "which thread first", "what matters most") -> PRIORITIZE; do not use plain list -> OWNER_TODOS.list / MESSAGE.list_inbox',
+    'prioritization ("focus on", "rank today", "which thread first", "what matters most", "what will I regret") -> PRIORITIZE; do not use plain list -> OWNER_TODOS.list / MESSAGE.list_inbox',
   contexts: ["focus", "tasks", "inbox", "approvals"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -593,16 +673,17 @@ export const prioritizeAction: Action & {
   parameters: [
     {
       name: "action",
-      description: "Prioritize op: rank_todos | rank_threads | rank_decisions.",
+      description:
+        "Prioritize op: rank_todos | rank_threads | rank_decisions | rank_commitments.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
       name: "subject",
       description:
-        "Alt selector: todos | threads | decisions. Maps to subaction.",
+        "Alt selector: todos | threads | decisions | commitments. Maps to subaction.",
       schema: {
         type: "string" as const,
-        enum: ["todos", "threads", "decisions"],
+        enum: ["todos", "threads", "decisions", "commitments"],
       },
     },
     {
@@ -635,7 +716,7 @@ export const prioritizeAction: Action & {
     if (!subaction) {
       return {
         success: false,
-        text: "Tell me what to rank: rank_todos, rank_threads, or rank_decisions.",
+        text: "Tell me what to rank: rank_todos, rank_threads, rank_decisions, or rank_commitments.",
         data: { error: "MISSING_SUBACTION" },
       };
     }

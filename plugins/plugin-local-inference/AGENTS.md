@@ -20,7 +20,7 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 - **handles** `VOICE_ENTITY_BOUND` (`handleVoiceEntityBound`, registered in `provider.ts`) — persists the merge-engine's `entityId` onto every profile in the imprint cluster via `VoiceProfileStore.bindEntity` (the runtime caller that issue #8234 was missing).
 
 ### Model handlers (registered by `createLocalInferenceModelHandlers()`)
-`TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, `TRANSCRIPTION`
+`TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, `TRANSCRIPTION`, `PII_SCRUB`
 
 `TEXT_EMBEDDING` is **not** registered on the static plugin object — it is wired at boot by `ensureLocalInferenceHandler()` in the runtime subpath to avoid claiming the embedding slot before a backend is active.
 
@@ -67,6 +67,7 @@ src/
 
   pii/
     llm-recognizer.ts             LLM-backed PII named-entity recognizer (person/org/location) — prompt build, JSON parse, verbatim relocation, chunking
+    scrub-handler.ts              PII_SCRUB judgment prompt builder + fail-closed completion parser (production scrub escalation, #15973)
     service.ts                    LocalPiiRecognizerService — injects the recognizer behind core's PII_ENTITY_RECOGNIZER_SERVICE seam
 
   actions/
