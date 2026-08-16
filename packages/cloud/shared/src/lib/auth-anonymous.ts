@@ -29,7 +29,13 @@ import type { UserWithOrganization } from "./types";
 import { logger } from "./utils/logger";
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
-const ANON_HOURLY_LIMIT = Number.parseInt(process.env.ANON_HOURLY_LIMIT || "10", 10);
+function anonHourlyLimit(): number {
+  const raw = process.env.ANON_HOURLY_LIMIT;
+  if (!raw) return 10;
+  const n = Number(raw.trim());
+  return Number.isInteger(n) && Number.isFinite(n) && n >= 0 ? n : 10;
+}
+const ANON_HOURLY_LIMIT = anonHourlyLimit();
 
 type AnonymousUserWithOrganization = Omit<UserWithOrganization, "organization_id"> & {
   organization_id: null;
