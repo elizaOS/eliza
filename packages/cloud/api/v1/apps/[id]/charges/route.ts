@@ -16,6 +16,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appChargeRequestsService } from "@/lib/services/app-charge-requests";
+import { parseClampedLimit } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -104,11 +105,11 @@ app.get("/", async (c) => {
     }
 
     const limitParam = c.req.query("limit");
-    const limit = limitParam ? Number.parseInt(limitParam, 10) : 50;
+    const limit = parseClampedLimit(limitParam, 50);
     const charges = await appChargeRequestsService.listForApp(
       appId,
       user.organization_id,
-      Number.isFinite(limit) ? limit : 50,
+      limit,
     );
 
     return c.json({ success: true, charges });
