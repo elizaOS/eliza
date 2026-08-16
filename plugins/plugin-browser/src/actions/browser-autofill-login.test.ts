@@ -85,4 +85,45 @@ describe("executeBrowserAutofillLogin", () => {
     expect(result.text).toContain("No password input found");
     expect(JSON.stringify(result)).not.toContain("vault-password");
   });
+
+  it.each([
+    undefined,
+    {},
+    { ok: true, filled: {} },
+    { ok: false, filled: { password: true } },
+  ])("fails closed for malformed evaluator result %#", async (rawResult) => {
+    mocks.evaluateBrowserWorkspaceTab.mockResolvedValue(rawResult);
+
+    const result = await executeBrowserAutofillLogin({} as never, undefined, {
+      parameters: { domain: "example.com", username: "alice" },
+    } as never);
+
+    expect(result.success).toBe(false);
+    expect(result.values).toMatchObject({
+      success: false,
+      error: "AGENT_AUTOFILL_NO_INPUTS",
+      filled: false,
+    });
+    expect(JSON.stringify(result)).not.toContain("vault-password");
+  });
+
+  it("preserves a verified password-fill result as success", async () => {
+    mocks.evaluateBrowserWorkspaceTab.mockResolvedValue({
+      ok: true,
+      filled: { username: true, password: true },
+      submitted: false,
+    });
+
+    const result = await executeBrowserAutofillLogin({} as never, undefined, {
+      parameters: { domain: "example.com", username: "alice" },
+    } as never);
+
+    expect(result).toMatchObject({
+      success: true,
+      values: { success: true, filled: true, submitted: false },
+      data: { filled: true },
+    });
+    expect(result.text).toContain("Filled login on example.com");
+    expect(JSON.stringify(result)).not.toContain("vault-password");
+  });
 });

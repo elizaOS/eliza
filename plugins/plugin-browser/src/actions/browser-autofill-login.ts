@@ -168,14 +168,17 @@ function narrowSnippetResult(raw: unknown): {
   if (!raw || typeof raw !== "object") {
     return { filled: false, fillReason: null };
   }
-  const obj = raw as { filled?: { username?: boolean; password?: boolean } };
-  const hasFilledProp = "filled" in obj && Boolean(obj.filled);
+  const obj = raw as {
+    ok?: unknown;
+    filled?: { username?: boolean; password?: boolean };
+  };
+  const filled = obj.ok === true && obj.filled?.password === true;
   let fillReason: string | null = null;
   const reasonVal = "reason" in obj ? obj.reason : undefined;
   if (typeof reasonVal === "string") {
     fillReason = reasonVal.slice(0, MAX_FILL_REASON_CHARS);
   }
-  return { filled: hasFilledProp, fillReason };
+  return { filled, fillReason };
 }
 
 /**
