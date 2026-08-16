@@ -37,6 +37,12 @@ Representative examples:
   `main`-targeted PRs carrying the `ci:full` label.
 - `ui-e2e-gate.yml` and `ui-fixture-e2e.yml` run the packages/ui Chromium and
   WebKit fixture gates when `packages/ui/src/**` changes.
+- `device-e2e.yml` is the exact-head Android-emulator and iOS-simulator
+  device-bundle producer (#19640). Canonical `ci.yml` calls it only for PRs
+  carrying the `ci:device` label; `workflow_dispatch` is the on-demand route.
+  Both jobs run the bundle-owning runners with `--output` and upload the full
+  bundle (`inline/`, `logs/`, `summary.json`, `junit.xml`) on success and
+  failure, without reading any repository secret.
 
 ## Manual operations
 
