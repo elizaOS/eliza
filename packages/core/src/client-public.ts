@@ -18,4 +18,5 @@ export {
 	sanitizeForSettingsDebug,
 	settingsDebugCloudSummary,
 } from "./settings-debug.ts";
+export { sanitizeSpeechText } from "./spoken-text.ts";
 export { formatError } from "./utils/format-error.ts";

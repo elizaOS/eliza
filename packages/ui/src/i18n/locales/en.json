@@ -7759,7 +7759,6 @@
   "cloud.billingTab.minAmount": "Minimum amount is ${{min}}",
   "cloud.billingTab.maxAmount": "Maximum amount is ${{max}}",
   "cloud.billingTab.createPaymentFailed": "Failed to create payment",
-  "cloud.billingTab.processing": "Processing…",
   "cloud.billingTab.noPaymentLink": "No payment link returned",
   "cloud.billingTab.redirectingPayment": "Redirecting to payment page...",
   "cloud.billingTab.createCryptoFailed": "Failed to create crypto payment",
