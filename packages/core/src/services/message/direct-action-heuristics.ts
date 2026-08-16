@@ -648,7 +648,7 @@ type ScheduledAdminDomain =
 	| "scheduled-tasks";
 
 const SCHEDULED_ADMIN_VERB_PATTERN =
-	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze|skip)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze|skip|delete|remove|cancel|clear|(?:get\s+rid\s+of)|(?:stop\s+tracking))(?=$|[^\p{L}\p{N}\p{M}])/iu;
 const SCHEDULED_ADMIN_ALARM_PATTERN =
 	/(?:^|[^\p{L}\p{N}\p{M}])alarms?(?=$|[^\p{L}\p{N}\p{M}])/iu;
 const SCHEDULED_ADMIN_STRUCTURAL_PATTERN =
@@ -685,7 +685,11 @@ function detectScheduledItemAdminDomain(
 	text: string,
 ): ScheduledAdminDomain | null {
 	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
-	if (!normalized || !SCHEDULED_ADMIN_VERB_PATTERN.test(normalized)) {
+	if (
+		!normalized ||
+		looksLikeActionExplanationRequest(normalized) ||
+		!SCHEDULED_ADMIN_VERB_PATTERN.test(normalized)
+	) {
 		return null;
 	}
 	if (SCHEDULED_ADMIN_ALARM_PATTERN.test(normalized)) return "alarms";

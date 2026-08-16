@@ -1242,7 +1242,10 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 			["postpone my morning routine", "OWNER_ROUTINES"],
 			["skip today's check-in", "SCHEDULED_TASKS"],
 			["reschedule my follow-up", "SCHEDULED_TASKS"],
+			["delete check-in task st_checkin_123", "SCHEDULED_TASKS"],
+			["delete follow-up task st_followup_123", "SCHEDULED_TASKS"],
 			["reschedule the scheduled task", "SCHEDULED_TASKS"],
+			["delete scheduled task st_custom_123", "SCHEDULED_TASKS"],
 			["snooze the task until tomorrow", "SCHEDULED_TASKS"],
 		] as const;
 
