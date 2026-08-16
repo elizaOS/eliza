@@ -106,7 +106,7 @@
 	"scripts": {
 		"build": "bun run build.ts",
 		"dev": "bun run build.ts",
-		"test": "NODE_OPTIONS='--experimental-sqlite' vitest run",
+		"test": "NODE_OPTIONS='--experimental-sqlite' vitest run && bun test native/verify/asr_bench.test.ts native/verify/bargein_endurance_harness.test.mjs native/verify/eliza1_vision_smoke.test.mjs native/verify/mtp_runtime_smoke.test.mjs native/verify/speculative_benchmark_report.test.mjs native/verify/voice_profile_emotion_status.test.mjs native/voice-bench/src/__tests__",
 		"test:asr:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/asr-real-smoke.ts",
 		"meetingstress:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/meeting-acoustic-stress-real.ts",
 		"test:kokoro:real": "bun scripts/kokoro-real-smoke.ts",
