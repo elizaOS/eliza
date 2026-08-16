@@ -5412,6 +5412,10 @@ export function ChatOverlay({
       !restoreDragging &&
       !fullBleed &&
       !firstRunOpen,
+    // The chat sheet is dark chrome even when the device appearance is light.
+    // Match its native UIGlassEffect to the DOM fallback so the material never
+    // becomes a bright slab over the conversation.
+    colorScheme: "dark",
   });
   const nativeInsetSheet = nativeSheetTier === "native";
   // Keep the CSS material identity stable through fullscreen and its restore.
@@ -5865,7 +5869,8 @@ export function ChatOverlay({
               vertical pull now) and no clear/new-chat (the thread never resets).
               It carries NO buttons — Home/search/upload live in the composer
               "+" menu — so the chat stops acting like a second app nav bar. The bar remains only to reserve
-              the safe-area top inset at full-bleed and host the transcribe badge. */}
+              the safe-area top inset at full-bleed and host the quiet serving
+              source or transcribe badge. */}
             {threadPresented ? (
               <motion.div
                 data-testid="chat-sheet-header"
@@ -5904,8 +5909,8 @@ export function ChatOverlay({
                 )}
               >
                 {/* The header carries no nav/search buttons — Home, Search, and
-                    Upload live in the composer "+" menu. This bar exists only to reserve the safe-area
-                    top inset at full-bleed and host the transcription badge. */}
+                    Upload live in the composer "+" menu. This bar reserves the
+                    full-bleed safe area and keeps status labels out of the input. */}
                 {transcriptionComposerActive ? (
                   <div
                     data-testid="chat-transcribing-badge"
@@ -5915,6 +5920,9 @@ export function ChatOverlay({
                       ? "Finishing transcription…"
                       : "Transcribing — say “exit transcription mode” to stop"}
                   </div>
+                ) : null}
+                {!transcriptionComposerActive ? (
+                  <ServingProviderChip className="pointer-events-none ml-auto shrink-0 self-center" />
                 ) : null}
               </motion.div>
             ) : null}
@@ -6365,12 +6373,6 @@ export function ChatOverlay({
                   error={isSlashDraft && slash.error}
                   onPick={pickSlashItem}
                 />
-              ) : null}
-              {/* Who is answering this chat. The overlay is the primary chat
-                  surface, so without it the serving source was only visible in
-                  Settings (#20045 U6). */}
-              {!transcriptionComposerActive ? (
-                <ServingProviderChip className="pointer-events-none order-last shrink-0 self-center pr-1" />
               ) : null}
               {/* The "+" opens shell navigation plus surface-local Search and
                   Upload actions for this in-app conversation, never connector actions on a
