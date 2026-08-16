@@ -152,6 +152,17 @@ function gitpathologistRequested(config: ElizaConfig): boolean {
 }
 
 /**
+ * Env kill-switch for the default LifeOps owner-chat capability (#17023).
+ * Config-level opt-out (`plugins.entries["personal-assistant"].enabled=false`)
+ * is honored separately by the explicit-disable sweep in collectPluginNames.
+ */
+function personalAssistantDisabledByEnv(): boolean {
+  const raw =
+    process.env.ELIZA_DISABLE_PERSONAL_ASSISTANT?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+/**
  * The opt-in standalone Telegram polling bot (the standalone mode of
  * `@elizaos/plugin-telegram`) runs when `ELIZA_TELEGRAM_STANDALONE_BOT` is
  * truthy and the resolved plugin set is not in LifeOps passive mode. The same
@@ -622,6 +633,35 @@ export function collectPluginNames(
     track(
       "@elizaos/plugin-gitpathologist",
       "gitpathologist (auto-on when .git/ present; gate ELIZA_GITPATHOLOGIST)",
+    );
+  }
+  // Default LifeOps owner-chat capability (#17023). The default app advertises
+  // tasks/habits/routines, and every routine-creating chat action
+  // (OWNER_ROUTINES and the other owner umbrellas) registers only from
+  // plugin-personal-assistant — always-loaded plugin-scheduling hosts the
+  // single runner and the /api/lifeops REST surface but zero actions. Full
+  // desktop/server boots therefore load personal-assistant by default so an
+  // OWNER conversation can actually create the routines the surface claims.
+  // Excluded shapes keep their existing constraints: mobile has no PA loader
+  // in the app sandbox, lean-chat stays lean (#8434), and store builds plus
+  // slim provisioned cloud containers do not bundle PA's googleapis/
+  // @capacitor/core dependency closure (#8081). Explicit operator opt-out via
+  // plugins.entries["personal-assistant"].enabled=false is honored by the
+  // explicit-disable sweep below; ELIZA_DISABLE_PERSONAL_ASSISTANT is the env
+  // kill-switch. Registration stays in the deferred wave, whose
+  // runtime.reportError boundary makes a resolution/registration failure
+  // visible instead of a silent capability hole.
+  if (
+    !onMobile &&
+    !leanChat &&
+    !storeBuild &&
+    !isCloudContainer &&
+    !personalAssistantDisabledByEnv()
+  ) {
+    pluginsToLoad.add("@elizaos/plugin-personal-assistant");
+    track(
+      "@elizaos/plugin-personal-assistant",
+      "default LifeOps owner-chat capability (#17023; opt out via plugins.entries or ELIZA_DISABLE_PERSONAL_ASSISTANT)",
     );
   }
   // Allow list is additive — extra plugins on top of auto-detection,
