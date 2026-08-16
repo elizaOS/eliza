@@ -1,5 +1,9 @@
 // Defines the shared runtime history Drizzle table shape used by cloud repositories and services.
+import type { PublicWebGrounding } from "@elizaos/core/edge";
 import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+
+/** Bounded successful public-read output retained so a follow-up can stay grounded. */
+export type SharedRuntimePublicGrounding = PublicWebGrounding;
 
 /** One persisted turn in a shared-runtime conversation. Mirrors `SharedTurnMessage`. */
 export type SharedRuntimeHistoryMessage = {
@@ -11,6 +15,8 @@ export type SharedRuntimeHistoryMessage = {
   createdAt?: number;
   /** True when an assistant message is a partial interrupted response. */
   interrupted?: boolean;
+  /** Successful public read result attached to this reply; never mutation or private-account data. */
+  grounding?: SharedRuntimePublicGrounding;
 };
 
 /**

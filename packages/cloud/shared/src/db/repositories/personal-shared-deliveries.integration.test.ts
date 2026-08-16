@@ -142,6 +142,109 @@ describe("Telegram personal Shared repeat delivery", () => {
     expect(projectionAfter.updated_at).toEqual(projectionBefore.updated_at);
   });
 
+  test("revalidates a candidate hint in exactly one authoritative statement", async () => {
+    const input = telegramInput("714700111");
+    const created = await elizaAppUserService.resolvePersonalDelivery(input);
+
+    const query = spyOn(getPgliteClientForTests(), "query");
+    const verified = await elizaAppUserService.revalidatePersonalDeliveryProjection(input, {
+      userId: created.userId,
+    });
+    expect(query).toHaveBeenCalledTimes(1);
+    query.mockRestore();
+
+    expect(verified).toMatchObject({
+      userId: created.userId,
+      organizationId: created.organizationId,
+      dedicatedTarget: null,
+      resolution: "sender-projection-hit",
+    });
+  });
+
+  test("rejects an old Telegram handle after it is relinked", async () => {
+    const input = telegramInput("714700112");
+    const created = await elizaAppUserService.resolvePersonalDelivery(input);
+    const replacementId = "714700113";
+    await dbWrite
+      .update(users)
+      .set({ telegram_id: replacementId })
+      .where(eq(users.id, created.userId));
+    await dbWrite
+      .update(userIdentities)
+      .set({ telegram_id: replacementId })
+      .where(eq(userIdentities.user_id, created.userId));
+
+    await expect(
+      elizaAppUserService.revalidatePersonalDeliveryProjection(input, {
+        userId: created.userId,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  for (const lifecycle of [
+    "user inactive",
+    "user deleted",
+    "organization inactive",
+    "organization deleted",
+  ] as const) {
+    test(`rejects a candidate when its ${lifecycle}`, async () => {
+      const input = telegramInput(
+        lifecycle === "user inactive"
+          ? "714700114"
+          : lifecycle === "user deleted"
+            ? "714700115"
+            : lifecycle === "organization inactive"
+              ? "714700116"
+              : "714700119",
+      );
+      const created = await elizaAppUserService.resolvePersonalDelivery(input);
+      if (lifecycle === "user inactive") {
+        await dbWrite.update(users).set({ is_active: false }).where(eq(users.id, created.userId));
+      } else if (lifecycle === "user deleted") {
+        await dbWrite
+          .update(users)
+          .set({ deleted_at: new Date() })
+          .where(eq(users.id, created.userId));
+      } else if (lifecycle === "organization inactive") {
+        await dbWrite
+          .update(organizations)
+          .set({ is_active: false })
+          .where(eq(organizations.id, created.organizationId));
+      } else {
+        await dbWrite.delete(organizations).where(eq(organizations.id, created.organizationId));
+      }
+
+      await expect(
+        elizaAppUserService.revalidatePersonalDeliveryProjection(input, {
+          userId: created.userId,
+        }),
+      ).resolves.toBeNull();
+    });
+  }
+
+  test("derives the current active organization after an organization move", async () => {
+    const input = telegramInput("714700117");
+    const created = await elizaAppUserService.resolvePersonalDelivery(input);
+    const [currentOrganization] = await dbWrite
+      .insert(organizations)
+      .values({ name: "Current Organization", slug: "current-organization-714700117" })
+      .returning();
+    await dbWrite
+      .update(users)
+      .set({ organization_id: currentOrganization.id })
+      .where(eq(users.id, created.userId));
+
+    const verified = await elizaAppUserService.revalidatePersonalDeliveryProjection(input, {
+      userId: created.userId,
+    });
+
+    expect(verified).toMatchObject({
+      userId: created.userId,
+      organizationId: currentOrganization.id,
+    });
+    expect(verified?.organizationId).not.toBe(created.organizationId);
+  });
+
   test("returns the exact authoritative Dedicated target in the repeat statement", async () => {
     const input = telegramInput("714700102");
     const account = await elizaAppUserService.resolvePersonalDelivery(input);
@@ -165,12 +268,43 @@ describe("Telegram personal Shared repeat delivery", () => {
       .returning();
 
     const query = spyOn(getPgliteClientForTests(), "query");
-    const replayed = await elizaAppUserService.resolvePersonalDelivery(input);
+    const replayed = await elizaAppUserService.revalidatePersonalDeliveryProjection(input, {
+      userId: account.userId,
+    });
     expect(query).toHaveBeenCalledTimes(1);
     query.mockRestore();
-    expect(replayed.dedicatedTarget).toMatchObject({
+    expect(replayed?.dedicatedTarget).toMatchObject({
       id: target.id,
       status: "running",
+    });
+  });
+
+  test("derives a stopped Dedicated target so the delivery boundary can start it", async () => {
+    const input = telegramInput("714700118");
+    const account = await elizaAppUserService.resolvePersonalDelivery(input);
+    const sourceAgentId = personalSharedAgentId({
+      userId: account.userId,
+      organizationId: account.organizationId,
+    });
+    await dbWrite.insert(agentSandboxes).values({
+      organization_id: account.organizationId,
+      user_id: account.userId,
+      execution_tier: "dedicated-always",
+      status: "stopped",
+      agent_config: {
+        [AGENT_UPGRADED_FROM_KEY]: sourceAgentId,
+        [AGENT_PERSONAL_CUTOVER_KEY]: cutoverFor(sourceAgentId),
+      },
+    });
+
+    const verified = await elizaAppUserService.revalidatePersonalDeliveryProjection(input, {
+      userId: account.userId,
+    });
+
+    expect(verified).toMatchObject({
+      userId: account.userId,
+      organizationId: account.organizationId,
+      dedicatedTarget: { status: "stopped" },
     });
   });
 

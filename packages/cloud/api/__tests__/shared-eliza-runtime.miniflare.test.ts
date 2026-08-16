@@ -644,7 +644,7 @@ describe("Shared Eliza runtime in Workerd", () => {
       metadata: {
         delivery: {
           platform: "discord",
-          discordUserId: "123456789012345678",
+          discordUserId: "1234567890123456",
         },
       },
     });

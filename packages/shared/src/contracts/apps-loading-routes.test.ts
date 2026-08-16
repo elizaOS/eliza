@@ -17,6 +17,14 @@ describe("PostLoadFromDirectoryRequestSchema", () => {
     expect(parsed.directory).toBe("/tmp/apps");
   });
 
+  it("recognizes Windows absolute path syntax without a Node runtime", () => {
+    expect(
+      PostLoadFromDirectoryRequestSchema.parse({
+        directory: "C:\\Users\\eliza\\apps",
+      }).directory,
+    ).toBe("C:\\Users\\eliza\\apps");
+  });
+
   it("rejects a relative path", () => {
     expect(() =>
       PostLoadFromDirectoryRequestSchema.parse({ directory: "apps" }),

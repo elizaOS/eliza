@@ -52,7 +52,6 @@ import {
   PostInstallAppRequestSchema,
   type PostInstallAppResponse,
   PostLaunchAppRequestSchema,
-  PostLoadFromDirectoryRequestSchema,
   PostOverlayPresenceRequestSchema,
   type PostOverlayPresenceResponse,
   type PostRefreshAppsResponse,
@@ -69,6 +68,7 @@ import {
   parseAppIsolation,
   parseAppPermissions,
 } from "@elizaos/shared";
+import { PostLoadFromDirectoryServerRequestSchema } from "./apps-loading-directory-schema";
 
 const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",
@@ -1558,13 +1558,11 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/load-from-directory") {
-    // Body validation goes through PostLoadFromDirectoryRequestSchema
-    // (zod, see @elizaos/shared/contracts/apps-loading-routes.ts).
-    // The schema handles the required check, the absolute-path check,
-    // and rejects extra unknown fields via .strict().
+    // The shared schema owns the wire shape; the server-only refinement uses
+    // this host's path semantics before any filesystem access.
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawBody === null) return true;
-    const parsed = PostLoadFromDirectoryRequestSchema.safeParse(rawBody);
+    const parsed = PostLoadFromDirectoryServerRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       const path = issue?.path.join(".");

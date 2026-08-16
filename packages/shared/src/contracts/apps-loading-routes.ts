@@ -22,21 +22,27 @@
  *     500:     filesystem failure during scan
  */
 
-import nodePath from "node:path";
 import z from "zod";
 
 /**
- * `path.isAbsolute` is platform-aware (POSIX vs Windows). Using it
- * inside `.refine()` keeps the schema honest on whichever runtime
- * the agent is on; declaring "must start with /" would silently miss
- * on Windows.
+ * Recognize absolute path wire syntax without importing a Node builtin into
+ * the browser-facing contracts barrel. The server repeats this check with its
+ * host-native `path.isAbsolute` before touching the filesystem.
  */
+function hasAbsolutePathSyntax(value: string): boolean {
+  return (
+    value.startsWith("/") ||
+    value.startsWith("\\") ||
+    /^[A-Za-z]:[\\/]/.test(value)
+  );
+}
+
 export const PostLoadFromDirectoryRequestSchema = z
   .object({
     directory: z
       .string()
       .min(1, "directory is required")
-      .refine((value) => nodePath.isAbsolute(value), {
+      .refine(hasAbsolutePathSyntax, {
         message: "directory must be an absolute path",
       }),
   })

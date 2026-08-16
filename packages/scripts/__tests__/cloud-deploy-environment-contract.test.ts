@@ -581,6 +581,34 @@ describe("canonical cloud deployment environment contract", () => {
     expect(preflight.run).not.toContain('echo "$value"');
   });
 
+  test("keeps apps worker restart and health verification under one host lock", () => {
+    const deploy = step(
+      appsWorker,
+      "deploy",
+      "Deploy, restart, and health check apps worker",
+    );
+    const remoteScript = deploy.with?.script ?? "";
+    const restartIndex = remoteScript.indexOf(
+      'sudo systemctl restart "$SYSTEMD_UNIT"',
+    );
+    const journalBoundaryIndex = remoteScript.indexOf("HEALTH_SINCE_TS=");
+    const healthLoopIndex = remoteScript.indexOf(
+      "for attempt in $(seq 1 18); do",
+    );
+
+    expect(remoteScript.match(/eliza-apps-worker-deploy\.lock/g)).toHaveLength(
+      1,
+    );
+    expect(journalBoundaryIndex).toBeGreaterThan(0);
+    expect(journalBoundaryIndex).toBeLessThan(restartIndex);
+    expect(healthLoopIndex).toBeGreaterThan(restartIndex);
+    expect(
+      appsWorker.jobs?.deploy?.steps?.some(
+        (candidate) => candidate.name === "Health check",
+      ),
+    ).toBe(false);
+  });
+
   test("validates canonical Worker routes before any cutover mutation", () => {
     const steps = cloud.jobs?.["deploy-api"]?.steps ?? [];
     const preflightIndex = steps.findIndex(
@@ -615,6 +643,15 @@ describe("canonical cloud deployment environment contract", () => {
     }
     expect(publish.run).toContain("managed_worker_provisioning_secrets=(");
     expect(publish.run).toContain('queue_secret "$name" || exit 1');
+    expect(publish.run).toContain("worker_secret_names=()");
+    expect(publish.run).toContain('worker_secret_names+=("$name")');
+    expect(publish.run).toContain("worker-secrets-file.mjs");
+    expect(publish.run).toContain("verify_production_voice_secret_candidates");
+    expect(publish.run).not.toContain("wrangler versions secret bulk");
+    expect(publish.run).not.toContain('bunx wrangler secret put "$name"');
+    expect(publish.run).toContain("version_args=(--versions)");
+    expect(publish.run).toContain('"$' + '{version_args[@]}" "$name"');
+    expect(publish.run).toContain("bunx wrangler@4.100.0 secret list");
     expect(publish.run).toContain(
       'echo "::notice::$name is not configured; skipping"',
     );

@@ -1569,6 +1569,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			evaluate: () => ({
 				requiresTool: true,
 				clearReply: true,
+				// Evaluator routing patches may help the planner, but cannot grant the
+				// context required by their own deterministic action nomination.
+				addContexts: ["settings" as const],
 				deterministicToolCall: { name: "SETTINGS_ONLY" },
 			}),
 		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
@@ -1594,6 +1597,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
 		]);
+		// The evaluator did add the target context to the downstream planner route;
+		// deterministic execution still used the pre-evaluator Stage-1 snapshot.
+		expect(result.messageHandler.plan.contexts).toContain("settings");
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.actionResults).toMatchObject([{ success: false }]);
@@ -1781,7 +1787,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		// string, and suppression compares against this set — recording only the
 		// sanitized form would deliver a duplicate bubble on every drift turn.
 		const rawPayload = '{"status":"ok","taskId":"abc123"}';
-		const driftedRewrite = "Task created: abc123.<tool_call>notify_owner";
+		const driftedRewrite = "Task details: abc123.<tool_call>notify_owner";
 		const delivered: string[] = [];
 		const deliveredVisibleTexts = new Set<string>();
 		const action = makeMockAction({
@@ -1850,10 +1856,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		});
 
 		// The connector saw ONLY the sanitized wire text.
-		expect(delivered).toEqual(["Task created: abc123."]);
+		expect(delivered).toEqual(["Task details: abc123."]);
 		// Both forms were recorded: raw for suppression, sanitized as sent.
 		expect(deliveredVisibleTexts).toContain(driftedRewrite.toLowerCase());
-		expect(deliveredVisibleTexts).toContain("task created: abc123.");
+		expect(deliveredVisibleTexts).toContain("task details: abc123.");
 		// The planner's raw-drift echo was suppressed against the raw record.
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {

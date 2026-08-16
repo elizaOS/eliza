@@ -496,7 +496,6 @@ describe("iOS local agent transport bridge", () => {
     expect(call).not.toHaveBeenCalled();
     expect(kernelMock.startIosLocalAgentKernel).not.toHaveBeenCalled();
   });
-
   it("retains port 31337 as the on-device agent in local mode", async () => {
     vi.stubGlobal("localStorage", {
       getItem: (key: string) =>
@@ -530,6 +529,21 @@ describe("iOS local agent transport bridge", () => {
     },
   );
 
+  it("retains port 31337 as the phone-side agent in tunnel-to-mobile mode", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn((key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "tunnel-to-mobile" : null,
+      ),
+    });
+
+    const transportModule = await import("./ios-local-agent-transport");
+
+    expect(
+      transportModule.isIosInProcessLocalAgentUrl(
+        "http://127.0.0.1:31337/api/health",
+      ),
+    ).toBe(true);
+  });
   it("routes iOS IPC local-agent URLs through the same in-process transport", async () => {
     const { iosInProcessAgentTransportForUrl } = await import(
       "./ios-local-agent-transport"

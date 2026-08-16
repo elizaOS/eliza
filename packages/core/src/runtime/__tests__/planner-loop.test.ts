@@ -2582,7 +2582,18 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
-	it("never ships an in-flight action claim as the failure-synthesis reply (matrix F40)", async () => {
+	it.each([
+		{
+			name: "rejects an in-flight action claim (matrix F40)",
+			report: "calling web search now.",
+			expected: FAILED_TOOL_FALLBACK_MESSAGE,
+		},
+		{
+			name: "preserves a substantive diagnosis beginning with calling",
+			report: "Calling the endpoint failed with HTTP 401.",
+			expected: "Calling the endpoint failed with HTTP 401.",
+		},
+	])("$name", async ({ report, expected }) => {
 		// Live shape: the forced failure-aware synthesis pass answered with an
 		// imminent-action promise instead of a diagnosis. The synthesis is the
 		// turn's last model call, so "calling web search now." is a false claim
@@ -2611,7 +2622,7 @@ describe("v5 planner loop skeleton", () => {
 					],
 				})
 				.mockResolvedValueOnce({
-					text: "calling web search now.",
+					text: report,
 					toolCalls: [],
 				}),
 		};
@@ -2647,8 +2658,7 @@ describe("v5 planner loop skeleton", () => {
 			evaluate,
 		});
 
-		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
-		expect(result.finalMessage).not.toContain("calling web search");
+		expect(result.finalMessage).toBe(expected);
 	});
 
 	it("does not finish with terminal planner text after tool work when the evaluator asks to continue", async () => {
@@ -4284,6 +4294,17 @@ describe("progress-only reply vocabulary single-sourcing", () => {
 			PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 		);
 	});
+
+	it.each([
+		"Calling conventions differ by ABI.",
+		"Calling the endpoint failed with HTTP 401.",
+	])(
+		"does not globally classify substantive calling text as progress: %s",
+		(sample) => {
+			expect(sharedBase.test(sample), sample).toBe(false);
+			expect(PROGRESS_ONLY_ANSWER_REJECT.test(sample), sample).toBe(false);
+		},
+	);
 });
 
 describe("routing hints — promoted-family fallback", () => {
@@ -4519,81 +4540,93 @@ describe("tool-turn reply guarantee (#16935)", () => {
 	});
 });
 
-describe("terminal-only tool surface short-circuit", () => {
+describe("terminal-only capability boundary", () => {
 	const terminalOnlyTools = [
 		{ name: "REPLY", description: "Reply to the user." },
 		{ name: "IGNORE", description: "Ignore the message." },
 		{ name: "STOP", description: "Stop the conversation." },
 	];
-	const baseContext = {
-		id: "ctx",
+	const context = {
+		id: "terminal-only",
 		staticPrefix: {
 			characterPrompt: { content: "agent_name: Eliza", stable: true },
 		},
 		events: [
 			{
-				id: "msg",
-				type: "message" as const,
-				message: {
-					role: "user" as const,
-					content: { text: "send a text message to my mom" },
+				id: "private-context",
+				type: "provider" as const,
+				provider: {
+					name: "PRIVATE_RECORDS",
+					text: "Authoritative selected provider data.",
 				},
 			},
 		],
 	};
 
-	it("ships the answer-shaped stage-1 decline without a model call", async () => {
+	it("preserves only a strict safe refusal as typed missing capability", async () => {
 		const runtime = { useModel: vi.fn(), getService: vi.fn(() => null) };
 		const result = await runPlannerLoop({
 			runtime,
-			context: baseContext,
+			context,
 			tools: terminalOnlyTools,
 			stageOneReplyText:
-				"can't do that from here. i don't have phone/sms access configured.",
+				"I can't send that here because messaging access is not available.",
 			executeToolCall: vi.fn(),
 			evaluate: vi.fn(),
 		});
-		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe(
-			"can't do that from here. i don't have phone/sms access configured.",
-		);
+
+		expect(result).toMatchObject({
+			status: "finished",
+			finalMessage:
+				"I can't send that here because messaging access is not available.",
+			failureKind: "missing_capability",
+		});
+		expect(result.trajectory.steps).toEqual([]);
 		expect(runtime.useModel).not.toHaveBeenCalled();
 	});
 
-	it("still runs the loop when the stage-1 draft is not answer-shaped", async () => {
+	it.each([
+		"SSH keys use asymmetric cryptography.",
+		"Please share the exact error message?",
+		"I can help compare the available options.",
+	])("does not mask ordinary Stage-1 text: %s", async (stageOneReplyText) => {
 		const runtime = {
 			useModel: vi.fn(async () => ({
-				text: '{"success":true,"decision":"FINISH","thought":"done","messageToUser":"nothing to run here."}',
+				text: '{"success":true,"decision":"FINISH","thought":"grounded","messageToUser":"Provider-grounded answer."}',
 			})),
 			getService: vi.fn(() => null),
 		};
 		const result = await runPlannerLoop({
 			runtime,
-			context: baseContext,
+			context,
 			tools: terminalOnlyTools,
-			stageOneReplyText: "On it.",
+			stageOneReplyText,
 			executeToolCall: vi.fn(),
 			evaluate: vi.fn(),
 		});
-		expect(runtime.useModel).toHaveBeenCalled();
-		expect(result.status).toBe("finished");
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(result.finalMessage).toBe("Provider-grounded answer.");
+		expect(result.failureKind).toBeUndefined();
 	});
 
-	it("does not short-circuit the deliberate no-tools planning mode", async () => {
+	it("rejects a refusal that also promises future work", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({
-				text: '{"success":true,"decision":"FINISH","thought":"done","messageToUser":"the capital is ulaanbaatar."}',
+				text: '{"success":true,"decision":"FINISH","thought":"done","messageToUser":"No messaging tool is available."}',
 			})),
 			getService: vi.fn(() => null),
 		};
 		await runPlannerLoop({
 			runtime,
-			context: baseContext,
+			context,
+			tools: terminalOnlyTools,
 			stageOneReplyText:
-				"can't do that from here. i don't have phone/sms access configured.",
+				"I can't access messaging yet, but I'll send it in a moment.",
 			executeToolCall: vi.fn(),
 			evaluate: vi.fn(),
 		});
-		expect(runtime.useModel).toHaveBeenCalled();
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 });

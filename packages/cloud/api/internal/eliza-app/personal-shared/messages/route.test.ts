@@ -87,6 +87,14 @@ const importCanonicalConversation = mock(
       role: "user" | "assistant";
       text: string;
       timestamp?: number;
+      grounding?: {
+        kind: "web_search";
+        query: string;
+        provider: "parallel" | "exa";
+        text: string;
+        observedAt: number;
+        truncated: boolean;
+      };
     }>,
   ): Promise<ImportReceipt | null> => ({
     complete: true,
@@ -102,6 +110,14 @@ const coordinateSharedHistory = mock(async () => [
     role: "assistant" as const,
     content: "after",
     createdAt: 101,
+    grounding: {
+      kind: "web_search" as const,
+      query: "current release status",
+      provider: "parallel" as const,
+      text: "released today",
+      observedAt: 100,
+      truncated: false,
+    },
   },
 ]);
 const namespace = {
@@ -645,7 +661,7 @@ describe("personal Shared messaging deliveries", () => {
       "platform",
       {
         platform: "discord",
-        discordUserId: "123456789012345678",
+        discordUserId,
       },
     );
   });
@@ -836,6 +852,14 @@ describe("personal Shared messaging deliveries", () => {
           role: "assistant",
           text: "after",
           timestamp: 101,
+          grounding: {
+            kind: "web_search",
+            query: "current release status",
+            provider: "parallel",
+            text: "released today",
+            observedAt: 100,
+            truncated: false,
+          },
         },
       ],
     );

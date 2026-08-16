@@ -12,6 +12,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { installReadyDesktopShellBridge } from "./helpers/desktop-shell-bridge";
 import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
@@ -586,6 +587,7 @@ async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
       }),
     );
   });
+  await installReadyDesktopShellBridge(page);
 }
 
 async function installChatSpeechRecognitionShim(page: Page): Promise<void> {

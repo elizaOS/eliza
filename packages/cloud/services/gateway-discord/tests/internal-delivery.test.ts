@@ -58,7 +58,7 @@ function request(
     },
     body: JSON.stringify({
       platform: "discord",
-      discordUserId: "123456789012345678",
+      discordUserId: "1234567890123456",
       text: "take a break",
       idempotencyKey: "task-1:2026-08-15T20:00:00.000Z",
       ...overrides,
@@ -96,7 +96,7 @@ describe("Discord internal proactive delivery", () => {
     });
     expect(sendDirectMessage).toHaveBeenCalledTimes(1);
     expect(sendDirectMessage.mock.calls[0]?.[0]).toEqual({
-      discordUserId: "123456789012345678",
+      discordUserId: "1234567890123456",
       text: "take a break",
       nonce: discordReminderNonce("task-1:2026-08-15T20:00:00.000Z"),
     });

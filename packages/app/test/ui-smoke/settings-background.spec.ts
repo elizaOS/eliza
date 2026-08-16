@@ -13,6 +13,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { installReadyDesktopShellBridge } from "./helpers/desktop-shell-bridge";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 // #9143 follow-up — Settings now uses the TRANSPARENT app shell so the unified
@@ -365,6 +366,7 @@ async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
       }),
     );
   });
+  await installReadyDesktopShellBridge(page);
 }
 
 async function screenshot(page: Page, name: string): Promise<void> {
