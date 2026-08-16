@@ -56,6 +56,15 @@ describe("sliceToFitBudget", () => {
 		expect(sliceToFitBudget(["a"], byLength, -10)).toEqual([]);
 	});
 
+	it("returns empty for a NaN budget", () => {
+		expect(sliceToFitBudget(["a"], byLength, Number.NaN)).toEqual([]);
+	});
+
+	it("returns empty for an Infinity budget", () => {
+		expect(sliceToFitBudget(["a"], byLength, Infinity)).toEqual([]);
+		expect(sliceToFitBudget(["a"], byLength, -Infinity)).toEqual([]);
+	});
+
 	it("treats a zero budget as no room even for a zero-cost item", () => {
 		// Without the explicit `targetChars <= 0` guard this returns [""],
 		// because 0 + 0 never exceeds 0. A caller asking for zero characters
