@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createOwnerReminderDirectRoutingRule,
+  isOwnerReminderNonCommandContext,
   looksLikeOwnerReminderCreateRequest,
 } from "./direct-routing";
 
@@ -97,5 +98,26 @@ describe("owner reminder direct routing", () => {
       ]),
       contexts: ["tasks", "productivity"],
     });
+  });
+
+  it.each([
+    "Remind me along with Alex to call Pat tomorrow.",
+    "Remind me to call Pat tomorrow — those were Alice’s exact words.",
+    "Remind me to call Pat tomorrow appears on the whiteboard.",
+    "Remind me to call Pat tomorrow, actually ignore that request.",
+    "Remind me to call Pat tomorrow is sample syntax.",
+  ])(
+    "marks non-command contexts for handler-level mutation defense: %s",
+    (text) => {
+      expect(isOwnerReminderNonCommandContext(text)).toBe(true);
+    },
+  );
+
+  it("keeps an unambiguous reminder command available to the handler", () => {
+    expect(
+      isOwnerReminderNonCommandContext(
+        "Remind me in 20 minutes to inspect the evidence.",
+      ),
+    ).toBe(false);
   });
 });

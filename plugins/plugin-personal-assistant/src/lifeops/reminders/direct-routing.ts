@@ -37,21 +37,28 @@ const REPORTED_REMINDER =
 const RESCINDED_REMINDER =
   /\bremind\s+(?:me|myself)\b[\s\S]{0,160}(?:[;,—-]\s*(?:actually\s+)?(?:disregard|ignore|cancel|scratch|withdraw|forget)\b(?:\s+(?:it|this|that)(?:\s+request)?)?|\bnever\s+mind\b)/iu;
 
+export function isOwnerReminderNonCommandContext(text: string): boolean {
+  const normalized = text.trim();
+  return (
+    REMINDER_META_PREFIX.test(normalized) ||
+    REMINDER_META_SUFFIX.test(normalized) ||
+    REMINDER_META_CONTEXT.test(normalized) ||
+    THIRD_PARTY_REMINDER.test(normalized) ||
+    MIXED_RECIPIENT_REMINDER.test(normalized) ||
+    QUOTED_REMINDER.test(normalized) ||
+    REPORTED_REMINDER.test(normalized) ||
+    RESCINDED_REMINDER.test(normalized)
+  );
+}
+
 export function looksLikeOwnerReminderCreateRequest(text: string): boolean {
   const normalized = text.trim();
   const directRequest = normalized.replace(DIRECT_REQUEST_LEAD_IN, "");
   return (
     normalized.length > 0 &&
-    !REMINDER_META_PREFIX.test(normalized) &&
-    !REMINDER_META_SUFFIX.test(normalized) &&
-    !REMINDER_META_CONTEXT.test(normalized) &&
+    !isOwnerReminderNonCommandContext(normalized) &&
     !REMINDER_NEGATION.test(normalized) &&
     !REMINDER_RECALL.test(normalized) &&
-    !THIRD_PARTY_REMINDER.test(normalized) &&
-    !MIXED_RECIPIENT_REMINDER.test(normalized) &&
-    !QUOTED_REMINDER.test(normalized) &&
-    !REPORTED_REMINDER.test(normalized) &&
-    !RESCINDED_REMINDER.test(normalized) &&
     REMINDER_CREATE_PATTERNS.some((pattern) => pattern.test(directRequest))
   );
 }
