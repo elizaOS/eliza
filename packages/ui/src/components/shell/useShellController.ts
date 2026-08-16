@@ -773,6 +773,10 @@ export function useShellController(): ShellController {
   const modelStatus = useHomeModelStatus();
   const [isOpen, setIsOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
+  // Post-release STT drain (#20483): the mic is closed but the utterance is
+  // still transcribing. Drives the pill's "processing" phase so the gap
+  // between hold-release and the send/turn never reads as a silent idle.
+  const [sttPending, setSttPending] = React.useState(false);
   const [transcript, setTranscript] = React.useState("");
   const [analyser, setAnalyser] = React.useState<AnalyserNode | null>(null);
   // True when the most recent user turn was voice-originated (VOICE_DM). Gates
@@ -1053,14 +1057,16 @@ export function useShellController(): ShellController {
       // For the cloud backend `handle.stop()` includes the whole STT round trip
       // (seconds), and the pill's hold release must visibly end the hot-mic
       // state the instant the finger lifts — the mic hardware is already done
-      // capturing; only transcription remains. Opt-in only: the mode-handoff
-      // drains (hands-free → transcription) key their replacement-capture
-      // effects off `recording`, so flipping it early there would open the
-      // next recorder before this one finishes draining.
+      // capturing; only transcription remains. That remainder is surfaced as
+      // the `processing` phase via sttPending so the drain never reads as a
+      // silent idle. Opt-in only: the mode-handoff drains (hands-free →
+      // transcription) key their replacement-capture effects off `recording`,
+      // so flipping it early there would open the next recorder mid-drain.
       if (options?.immediateUiReset) {
         setAnalyser(null);
         setRecording(false);
         setTranscript("");
+        if (handle) setSttPending(true);
       }
       if (handle) {
         try {
@@ -1070,6 +1076,7 @@ export function useShellController(): ShellController {
              through onStateChange("error") */
         } finally {
           handle.dispose();
+          if (options?.immediateUiReset) setSttPending(false);
         }
       }
       setAnalyser(null);
@@ -1106,6 +1113,7 @@ export function useShellController(): ShellController {
     }
     setAnalyser(null);
     setRecording(false);
+    setSttPending(false);
     setTranscript("");
   }, []);
 
@@ -1761,13 +1769,15 @@ export function useShellController(): ShellController {
   const phase: ShellPhase =
     recording || realtimeVoiceListening
       ? "listening"
-      : responding
-        ? "responding"
-        : isOpen
-          ? "summoned"
-          : ready
-            ? "idle"
-            : "booting";
+      : sttPending
+        ? "processing"
+        : responding
+          ? "responding"
+          : isOpen
+            ? "summoned"
+            : ready
+              ? "idle"
+              : "booting";
 
   // Boot-progress token for the slow-boot escalation (#14040 sub-defect 3). It
   // advances whenever the readiness poll observes fresh progress while still

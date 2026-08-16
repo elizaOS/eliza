@@ -1861,6 +1861,7 @@ function ShellFoundationMount() {
     <>
       <HomePill
         phase={controller.phase}
+        speaking={controller.speaking}
         onOpen={controller.open}
         onClose={controller.close}
         onHoldStart={() => {
