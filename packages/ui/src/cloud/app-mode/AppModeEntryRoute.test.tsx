@@ -332,6 +332,62 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
 
     expect(screen.getByTestId("agent-app")).toBeTruthy();
   });
+
+  // --- #20652 acceptance completion ------------------------------------
+  // The landed reorder (develop 110111a12e) bypasses the agents gate on
+  // management paths, but the deadlock's exact live shape — a REJECTED
+  // credential, not a slow one — and the negative controls below were
+  // unguarded. These pin them.
+
+  it("keeps /cloud management mounted when the agents query REJECTS with a stale credential (the #20652 deadlock shape)", async () => {
+    // The live incident: a stale dedicated-agent credential made
+    // GET /api/v1/eliza/agents return 401; the gate then waited forever on
+    // "Loading your agent" with the Cloud registry unmounted, locking the
+    // user out of the very page that mints a fresh pairing token.
+    signIn();
+    stubNetwork({
+      agents: () =>
+        jsonResponse(401, { error: "stale dedicated-agent credential" }),
+    });
+    renderEntry("/cloud/agents");
+
+    // The management surface mounts and its internal router serves the
+    // /cloud/agents destination (the harness registers it as instances-page).
+    // The deadlock shape is the persistent loading notice with NOTHING
+    // mounted; both must be absent.
+    expect(await screen.findByTestId("instances-page")).toBeTruthy();
+    expect(screen.queryByText("Loading your agent")).toBeNull();
+  });
+
+  it("ordinary entry keeps the existing query-error policy when the agents query rejects with 401", async () => {
+    // Negative control: the management bypass must not leak into the ordinary
+    // path. A cloud-bound session renders the chat app (existing fallback);
+    // an unbound one routes to /join — either way, NOT the management bypass.
+    signIn();
+    bindCloudAgent();
+    stubNetwork({
+      agents: () =>
+        jsonResponse(401, { error: "stale dedicated-agent credential" }),
+    });
+    renderEntry("/");
+
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    expect(screen.queryByText("Loading your agent")).toBeNull();
+  });
+
+  it("ordinary entry with the agents query unresolved still holds the loading notice (the bypass is management-only)", async () => {
+    signIn();
+    stubNetwork({
+      agents: () => new Promise<Response>(() => undefined),
+    });
+    renderEntry("/");
+
+    // Give the query a beat to settle into pending; the notice must persist
+    // and the app element must NOT mount.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByText("Loading your agent")).toBeTruthy();
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+  });
 });
 
 describe("AppModeEntryRoute — rowless personal entry", () => {
