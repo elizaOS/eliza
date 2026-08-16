@@ -167,7 +167,6 @@ function startsInNonExecutionClause(text: string, index: number): boolean {
   const clauseStart = boundary ? boundary.index + boundary[0].length : 0;
   return NON_EXECUTION_CONTEXT.test(text.slice(clauseStart, index));
 }
-
 function matchesForRule(
   rule: (typeof RULES)[number],
   priority: number,
