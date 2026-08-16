@@ -20,6 +20,7 @@ import {
   findLiveTierUpgradeTarget,
 } from "@/lib/services/agent-tier-upgrade-target";
 import { readPersonalElizaCutover } from "@/lib/services/eliza-agent-config";
+import { invalidatePersonalDeliveryProjection } from "@/lib/services/eliza-app/personal-delivery-projection-contract";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
   coordinateSharedCutoverCommit,
@@ -46,6 +47,24 @@ const bodySchema = z.object({ dedicatedAgentId: z.string().uuid() });
 
 function json(body: unknown, status = 200): Response {
   return applyCorsHeaders(Response.json(body, { status }), CORS_METHODS);
+}
+
+async function invalidateUserDeliveryProjections(
+  env: AppEnv["Bindings"],
+  user: { telegram_id?: string | null; discord_id?: string | null },
+): Promise<void> {
+  await Promise.all([
+    invalidatePersonalDeliveryProjection(
+      env.PERSONAL_DELIVERY_PROJECTIONS,
+      "telegram",
+      user.telegram_id,
+    ),
+    invalidatePersonalDeliveryProjection(
+      env.PERSONAL_DELIVERY_PROJECTIONS,
+      "discord",
+      user.discord_id,
+    ),
+  ]);
 }
 
 function prepareRemindersForDedicated(
@@ -303,6 +322,7 @@ app.post("/", async (c) => {
         activeBase
       ) {
         try {
+          await invalidateUserDeliveryProjections(c.env, user);
           await coordinateSharedCutoverCommit(
             sourceAgentId,
             sourceAgentId,
@@ -552,6 +572,7 @@ app.post("/", async (c) => {
         sharedTodoDigest: todoSnapshot.digest,
       });
       markerCommitted = true;
+      await invalidateUserDeliveryProjections(c.env, user);
       await coordinateSharedCutoverCommit(
         sourceAgentId,
         sourceAgentId,
