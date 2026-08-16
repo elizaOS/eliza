@@ -8619,16 +8619,27 @@ export async function runV5MessageRuntimeStage1(args: {
 			),
 		);
 		const stageOneCandidateLookup = buildRuntimeActionLookup(args.runtime);
+		// Resolve candidates exactly the way collection does — direct name/simile
+		// first, then the shared parent-alias map. Collection admits an aliased
+		// action (Stage-1's invented "SEARCH" → WEB_SEARCH) but a direct-only
+		// check here reads that same candidate as resolving to nothing, counts
+		// the turn as "no survivors", and the privacy denial fires on a turn
+		// whose web capability is sitting in the collected set (observed live:
+		// group "search the web … within my budget" — the possessive-budget
+		// heuristic's OWNER_FINANCES was rightly privacy-rejected, and the
+		// denial swallowed a servable web search).
 		const anyNamedStageOneCandidateSurvived = (
 			getMessageHandlerCandidateActions(messageHandler) ?? []
 		).some((name) => {
-			const resolved = resolveRuntimeAction(
-				stageOneCandidateLookup,
-				String(name),
-			);
-			return (
-				resolved !== undefined &&
-				collectedCandidateNames.has(normalizeActionIdentifier(resolved.name))
+			const candidateName = String(name);
+			const direct = resolveRuntimeAction(stageOneCandidateLookup, candidateName);
+			const resolvedSet = direct
+				? [direct]
+				: parentAliasesForCandidateAction(candidateName)
+						.map((alias) => resolveRuntimeAction(stageOneCandidateLookup, alias))
+						.filter((action): action is Action => action !== undefined);
+			return resolvedSet.some((resolved) =>
+				collectedCandidateNames.has(normalizeActionIdentifier(resolved.name)),
 			);
 		});
 		// The privacy denial is only terminal when NO ungated sibling can serve

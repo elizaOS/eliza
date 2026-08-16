@@ -1489,8 +1489,13 @@ export const calendarAction: Action & {
   // "general" included so messageHandler can route direct owner calendar
   // most user-facing event/scheduling requests to "general" rather than
   // "calendar", so retrieval would otherwise filter CALENDAR out before
-  // the planner sees it. See `12-real-root-cause.md`.
-  contexts: ["general", "calendar", "contacts", "tasks", "connectors", "web"],
+  // the planner sees it. See `12-real-root-cause.md`. "web" is deliberately
+  // NOT claimed: on live-web-lookup turns the context-match boost tied every
+  // promoted CALENDAR_* subaction with WEB_SEARCH at score 1.0, and the
+  // registration-order tie-break handed the planner a calendar-only surface
+  // for a web ask (observed live: "latest merged PR, search for it" →
+  // CALENDAR_BULK_RESCHEDULE).
+  contexts: ["general", "calendar", "contacts", "tasks", "connectors"],
   roleGate: { minRole: "OWNER" },
   // CALENDAR is a flat-subaction umbrella: every verb is selected via the
   // `subaction` parameter enum below, and the handler routes via `route()`
