@@ -7871,10 +7871,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			continuationResolvedMessageText ?? getUserMessageText(args.message);
 		if (continuationResolvedMessageText) {
 			args.runtime.logger?.debug?.(
-				{
-					src: "service:message",
-					resolvedRequest: continuationResolvedMessageText.slice(0, 200),
-				},
+				{ src: "service:message" },
 				"[message] continuation turn resolved to prior user request for candidate inference",
 			);
 		}

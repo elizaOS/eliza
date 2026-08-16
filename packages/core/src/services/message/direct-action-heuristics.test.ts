@@ -1515,6 +1515,7 @@ describe("resolveExplicitContinuationRequestText", () => {
 			text: string;
 			createdAt: number;
 			callbacks?: string[];
+			actions?: string[];
 		}>,
 	) =>
 		entries.map((entry) => ({
@@ -1524,6 +1525,7 @@ describe("resolveExplicitContinuationRequestText", () => {
 			content: {
 				text: entry.text,
 				...(entry.callbacks ? { actionCallbackHistory: entry.callbacks } : {}),
+				...(entry.actions ? { actions: entry.actions } : {}),
 			},
 		}));
 
@@ -1572,6 +1574,49 @@ describe("resolveExplicitContinuationRequestText", () => {
 			AGENT_ID,
 		);
 		expect(delivered).toBe(null);
+	});
+
+	it("does not treat a short completed reply as pending approval", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"that is great",
+			room([
+				{ id: "m1", text: "delete the temporary file", createdAt: 1 },
+				{ id: "m2", agent: true, text: "Done.", createdAt: 2 },
+			]),
+			AGENT_ID,
+		);
+		expect(resolved).toBe(null);
+	});
+
+	it("does not approve a new user request against an older assistant turn", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"yes",
+			room([
+				{ id: "m1", text: "show my files", createdAt: 1 },
+				{ id: "m2", agent: true, text: "Want me to continue?", createdAt: 2 },
+				{ id: "m3", text: "delete the temporary file", createdAt: 3 },
+			]),
+			AGENT_ID,
+		);
+		expect(resolved).toBe(null);
+	});
+
+	it("does not approve an assistant turn marked as tool-derived", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"sounds good",
+			room([
+				{ id: "m1", text: "show my files", createdAt: 1 },
+				{
+					id: "m2",
+					agent: true,
+					text: "On it.",
+					createdAt: 2,
+					actions: ["SHELL"],
+				},
+			]),
+			AGENT_ID,
+		);
+		expect(resolved).toBe(null);
 	});
 
 	it("returns null for non-continuation turns and empty history", () => {
