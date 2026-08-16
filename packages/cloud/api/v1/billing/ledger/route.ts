@@ -14,6 +14,39 @@ import { activeBillingService } from "@/lib/services/active-billing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+function parsePaginationParam(
+  rawValue: string | undefined,
+  parameter: "limit" | "offset",
+  defaultValue: number,
+): number | string {
+  const value = rawValue?.trim();
+  if (!value) return defaultValue;
+
+  if (!/^(?:0|[1-9]\d*)$/.test(value)) {
+    return `Invalid ${parameter} ${JSON.stringify(
+      rawValue,
+    )}: expected a canonical decimal integer`;
+  }
+
+  const parsed = Number(value);
+  const maximum = parameter === "limit" ? 500 : Number.MAX_SAFE_INTEGER;
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < (parameter === "limit" ? 1 : 0) ||
+    parsed > maximum
+  ) {
+    const bounds =
+      parameter === "limit"
+        ? "between 1 and 500"
+        : "greater than or equal to 0";
+    return `Invalid ${parameter} ${JSON.stringify(
+      rawValue,
+    )}: expected an integer ${bounds}`;
+  }
+
+  return parsed;
+}
+
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
@@ -21,10 +54,13 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const rawLimit = Number(c.req.query("limit") ?? 50);
+    const limit = parsePaginationParam(c.req.query("limit"), "limit", 50);
+    if (typeof limit === "string") {
+      return c.json({ success: false, error: limit }, 400);
+    }
     const ledger = await activeBillingService.listLedger(
       user.organization_id,
-      Number.isFinite(rawLimit) ? rawLimit : 50,
+      limit,
     );
 
     return c.json({

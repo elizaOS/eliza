@@ -14,9 +14,40 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const galleryQuerySchema = z.object({
   type: z.enum(["image", "video"]).optional(),
-  limit: z.coerce.number().int().min(1).max(1000).default(100),
-  offset: z.coerce.number().int().min(0).default(0),
 });
+
+function parsePaginationParam(
+  rawValue: string | undefined,
+  parameter: "limit" | "offset",
+  defaultValue: number,
+): number | string {
+  const value = rawValue?.trim();
+  if (!value) return defaultValue;
+
+  if (!/^(?:0|[1-9]\d*)$/.test(value)) {
+    return `Invalid ${parameter} ${JSON.stringify(
+      rawValue,
+    )}: expected a canonical decimal integer`;
+  }
+
+  const parsed = Number(value);
+  const maximum = parameter === "limit" ? 500 : Number.MAX_SAFE_INTEGER;
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < (parameter === "limit" ? 1 : 0) ||
+    parsed > maximum
+  ) {
+    const bounds =
+      parameter === "limit"
+        ? "between 1 and 500"
+        : "greater than or equal to 0";
+    return `Invalid ${parameter} ${JSON.stringify(
+      rawValue,
+    )}: expected an integer ${bounds}`;
+  }
+
+  return parsed;
+}
 
 const app = new Hono<AppEnv>();
 
@@ -24,10 +55,16 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
+    const limit = parsePaginationParam(c.req.query("limit"), "limit", 100);
+    if (typeof limit === "string") {
+      return c.json({ error: limit }, 400);
+    }
+    const offset = parsePaginationParam(c.req.query("offset"), "offset", 0);
+    if (typeof offset === "string") {
+      return c.json({ error: offset }, 400);
+    }
     const parsedQuery = galleryQuerySchema.safeParse({
       type: c.req.query("type") || undefined,
-      limit: c.req.query("limit") || undefined,
-      offset: c.req.query("offset") || undefined,
     });
 
     if (!parsedQuery.success) {
@@ -37,9 +74,9 @@ app.get("/", async (c) => {
       );
     }
 
-    const { type, limit, offset } = parsedQuery.data;
+    const { type } = parsedQuery.data;
 
-    const fetchLimit = Math.min(limit + 1, 1001);
+    const fetchLimit = limit + 1;
     const allGenerations =
       await generationsService.listByOrganizationAndStatusSummary(
         user.organization_id,
