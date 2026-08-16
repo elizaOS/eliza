@@ -69,6 +69,10 @@ export function resolveOwnerCandidate(
   const minConfidence = options.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
   const minMargin = options.minMargin ?? DEFAULT_MIN_MARGIN;
 
+  if (!Number.isSafeInteger(minObservations) || minObservations <= 0) {
+    throw new RangeError("minObservations must be a positive safe integer");
+  }
+
   const scores = new Map<string, number>();
   let qualifying = 0;
   let totalScore = 0;

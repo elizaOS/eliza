@@ -20,6 +20,12 @@ describe("resolveOwnerCandidate", () => {
     expect(r.reason).toMatch(/insufficient/);
   });
 
+  it("rejects a non-finite minimum observation count", () => {
+    expect(() =>
+      resolveOwnerCandidate([], { minObservations: Number.NaN }),
+    ).toThrow(RangeError);
+  });
+
   it("names a dominant speaker as the owner", () => {
     const r = resolveOwnerCandidate([
       C("owner"),
