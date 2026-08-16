@@ -140,6 +140,19 @@ describe("Shared capability wall", () => {
     },
   );
 
+  test("reports one actionable wall for repeated clauses of the same blocked capability", () => {
+    expect(
+      resolveSharedCapabilityIntent(
+        "add milk to my todo list. Then email Bob now, then email Alice now",
+        { todos: true },
+      ),
+    ).toEqual({
+      kind: "enabled-primary",
+      primary: expect.objectContaining({ capability: "todos" }),
+      blockedSecondary: [expect.objectContaining({ capability: "communications" })],
+    });
+  });
+
   test("keeps first-command authority when an unsupported command precedes a reminder", () => {
     expect(
       resolveSharedCapabilityIntent("email Bob now and remind me tomorrow", {
