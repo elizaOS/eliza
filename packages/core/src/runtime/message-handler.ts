@@ -274,6 +274,20 @@ const CAPABILITY_DENIAL_REPLY_RE =
 const EXPLICIT_REMINDER_REQUEST_RE =
 	/\bremind me\b|\bset (?:a |an )?(?:reminder|alarm)\b/i;
 
+/** Explicit delegated-task status ask ("is the build task done?", "status of
+ * the website task", "did the build finish?") — answerable only from the
+ * durable task store, never from chat impressions. */
+const EXPLICIT_TASK_STATUS_REQUEST_RE =
+	/\b(?:status|progress)\s+(?:of|on)\b[^.!?]{0,60}\b(?:task|build|job|agent)\b|\b(?:task|build|job)\b[^.!?]{0,40}\b(?:done|finished|complete[d]?|status|still (?:running|going))\b|\b(?:is|did)\b[^.!?]{0,40}\b(?:task|build)\b[^.!?]{0,30}\b(?:finish(?:ed)?|done|complete[d]?)\b/i;
+
+/** Task-state claim/denial reply shape ("no task exists", "got stopped before
+ * shipping", "nothing running now"). Stage-1 asserting store state it never
+ * read is the history-poisoning shape again: the runtime's own denials become
+ * room history the next turn parrots verbatim (observed live ×3 on one room —
+ * "no task exists for …" repeated while the store held the task `validating`). */
+const TASK_STATE_CLAIM_REPLY_RE =
+	/\bno (?:such )?task\b|\btask (?:doesn'?t|does not) exist\b|\b(?:got|was|been) (?:stopped|aborted|cancelled)\b|\bnothing (?:is )?running\b|\bstill (?:running|working)\b|\bnot (?:finished|done|complete)\b/i;
+
 export function routeMessageHandlerOutput(
 	output: V5MessageHandlerOutput,
 	options?: {
@@ -330,6 +344,9 @@ export function routeMessageHandlerOutput(
 	const isExplicitReminderAsk = EXPLICIT_REMINDER_REQUEST_RE.test(
 		messageTextForRouting,
 	);
+	const isExplicitTaskStatusAsk = EXPLICIT_TASK_STATUS_REQUEST_RE.test(
+		messageTextForRouting,
+	);
 	const seedCandidate = (name: string): void => {
 		if (
 			(output.plan.candidateActions ?? []).some(
@@ -353,6 +370,9 @@ export function routeMessageHandlerOutput(
 			seedCandidate("OWNER_REMINDERS");
 			seedCandidate("TRIGGER");
 		}
+		// Task-status asks anchor the durable-store read so the planner answers
+		// from TASKS_HISTORY rows, not from room history.
+		if (isExplicitTaskStatusAsk) seedCandidate("TASKS");
 	};
 	const candidateActions = output.plan.candidateActions ?? [];
 	const hasCandidateActions = candidateActions.length > 0;
@@ -422,6 +442,20 @@ export function routeMessageHandlerOutput(
 				type: "planning_needed",
 				output,
 				contexts: isExplicitMediaAsk ? ["media"] : ["tasks"],
+			};
+		}
+		// A task-state claim on the simple path for an explicit task-status ask
+		// is the same poisoning shape with the task store as the ground truth:
+		// stage-1 asserts "no task exists"/"got stopped" from its own prior
+		// denials in room history without ever reading the store. Promote so
+		// the planner consults TASKS — a real absence then ships from the
+		// store's answer instead of from memory.
+		if (isExplicitTaskStatusAsk && TASK_STATE_CLAIM_REPLY_RE.test(reply)) {
+			seedMediaCandidate();
+			return {
+				type: "planning_needed",
+				output,
+				contexts: ["tasks"],
 			};
 		}
 		// A progress-shaped reply on the pure-simple path is a self-contradiction:
