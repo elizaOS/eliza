@@ -136,12 +136,20 @@ async function persistKeywordOnlyFragments(args: {
 			source,
 			documentTitle: args.documentTitle,
 		};
+		let resolvedWorldId = args.worldId as UUID | undefined;
+		if (!resolvedWorldId && args.roomId) {
+			try {
+				const room = await args.runtime.getRoom(args.roomId as UUID);
+				if (room?.worldId) resolvedWorldId = room.worldId as UUID;
+			} catch {}
+		}
+		resolvedWorldId = resolvedWorldId ?? (args.agentId as UUID);
 		const memory: Memory = {
 			id: uuidv4() as UUID,
 			agentId: args.agentId,
 			roomId: args.roomId ?? args.agentId,
 			entityId: args.entityId ?? args.agentId,
-			worldId: args.worldId ?? args.agentId,
+			worldId: resolvedWorldId,
 			content: { text },
 			metadata,
 		};
@@ -223,6 +231,14 @@ export async function processFragmentsSynchronously({
 		providerLimits.rateLimitEnabled,
 	);
 
+	let resolvedWorldId2 = worldId as UUID | undefined;
+	if (!resolvedWorldId2 && roomId) {
+		try {
+			const room = await runtime.getRoom(roomId as UUID);
+			if (room?.worldId) resolvedWorldId2 = room.worldId as UUID;
+		} catch {}
+	}
+	resolvedWorldId2 = resolvedWorldId2 ?? (agentId as UUID);
 	const { savedCount, failedCount } = await processAndSaveFragments({
 		runtime,
 		documentId,
@@ -232,7 +248,7 @@ export async function processFragmentsSynchronously({
 		agentId,
 		roomId: roomId || agentId,
 		entityId: entityId || agentId,
-		worldId: worldId || agentId,
+		worldId: resolvedWorldId2,
 		concurrencyLimit: CONCURRENCY_LIMIT,
 		rateLimiter,
 		documentTitle,
@@ -603,11 +619,19 @@ async function processAndSaveFragments({
 					source: fragmentSource,
 					documentTitle,
 				};
+				let resolvedFragmentWorldId = worldId as UUID | undefined;
+				if (!resolvedFragmentWorldId && roomId) {
+					try {
+						const room = await runtime.getRoom(roomId as UUID);
+						if (room?.worldId) resolvedFragmentWorldId = room.worldId as UUID;
+					} catch {}
+				}
+				resolvedFragmentWorldId = resolvedFragmentWorldId ?? (agentId as UUID);
 				const fragmentMemory: Memory = {
 					id: uuidv4() as UUID,
 					agentId,
 					roomId: roomId || agentId,
-					worldId: worldId || agentId,
+					worldId: resolvedFragmentWorldId,
 					entityId: entityId || agentId,
 					embedding,
 					content: { text: contextualizedChunkText },

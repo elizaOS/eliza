@@ -281,8 +281,28 @@ const updateRoute: Route = {
 			return { status: 403, body: { error: "manage access required" } };
 		}
 		const agentId = ctx.runtime.agentId as UUID;
+		let resolvedUpdateWorldId = body.worldId as UUID | undefined;
+		if (
+			resolvedUpdateWorldId &&
+			!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+				resolvedUpdateWorldId,
+			)
+		)
+			resolvedUpdateWorldId = undefined;
+		if (body.roomId) {
+			try {
+				const room = await ctx.runtime.getRoom(body.roomId as UUID);
+				if (room?.worldId) {
+					if (resolvedUpdateWorldId && room.worldId !== resolvedUpdateWorldId)
+						resolvedUpdateWorldId = room.worldId as UUID;
+					else if (!resolvedUpdateWorldId)
+						resolvedUpdateWorldId = room.worldId as UUID;
+				}
+			} catch {}
+		}
+		resolvedUpdateWorldId = resolvedUpdateWorldId ?? (agentId as UUID);
 		const updated = await service(ctx).update(ctx.params.id as UUID, {
-			worldId: (body.worldId ?? agentId) as UUID,
+			worldId: resolvedUpdateWorldId,
 			roomId: (body.roomId ?? agentId) as UUID,
 			entityId: (body.entityId ?? agentId) as UUID,
 			patch: { title: body.title, segments: body.segments },
@@ -329,8 +349,28 @@ const createRoute: Route = {
 			crypto.randomUUID(),
 			Date.now(),
 		);
+		let resolvedCreateWorldId = body.worldId as UUID | undefined;
+		if (
+			resolvedCreateWorldId &&
+			!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+				resolvedCreateWorldId,
+			)
+		)
+			resolvedCreateWorldId = undefined;
+		if (body.roomId) {
+			try {
+				const room = await ctx.runtime.getRoom(body.roomId as UUID);
+				if (room?.worldId) {
+					if (resolvedCreateWorldId && room.worldId !== resolvedCreateWorldId)
+						resolvedCreateWorldId = room.worldId as UUID;
+					else if (!resolvedCreateWorldId)
+						resolvedCreateWorldId = room.worldId as UUID;
+				}
+			} catch {}
+		}
+		resolvedCreateWorldId = resolvedCreateWorldId ?? (agentId as UUID);
 		const saved = await service(ctx).create({
-			worldId: (body.worldId ?? agentId) as UUID,
+			worldId: resolvedCreateWorldId,
 			roomId: (body.roomId ?? agentId) as UUID,
 			entityId: (body.entityId ?? agentId) as UUID,
 			transcript,

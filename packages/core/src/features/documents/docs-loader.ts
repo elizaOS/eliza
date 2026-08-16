@@ -201,7 +201,13 @@ export async function addDocumentFromFilePath({
 		clientDocumentId: "" as UUID,
 		contentType,
 		originalFilename: fileName,
-		worldId: worldId || agentId,
+		worldId:
+			worldId &&
+			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+				worldId,
+			)
+				? (worldId as UUID)
+				: agentId,
 		content,
 		roomId: roomId || agentId,
 		entityId: entityId || agentId,
