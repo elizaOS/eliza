@@ -6,9 +6,8 @@
  * Second migration in the typed-routes initiative — the App Permissions
  * routes were the pilot in `./app-permissions-routes.ts`. The pattern
  * (schema in shared, safeParse on server, infer types on client) is
- * the same here; the only new wrinkle is `.refine()` for the
- * absolute-path check that previously lived as a hand-rolled `if
- * (!path.isAbsolute(directory))` guard in the route handler.
+ * the same here. Host-platform path semantics remain at the server boundary so
+ * this browser-safe contract does not depend on, or emulate, Node's path API.
  *
  * Routes covered:
  *   POST /api/apps/load-from-directory
@@ -24,28 +23,9 @@
 
 import z from "zod";
 
-/**
- * Match `path.isAbsolute` without importing a Node-only module into the shared
- * browser-safe contract barrel. Windows accepts rooted slash/backslash paths
- * and drive-rooted paths; POSIX requires a leading slash.
- */
-function isAbsoluteDirectoryPath(value: string): boolean {
-  const platform =
-    typeof process === "undefined" ? undefined : process.platform;
-  if (platform === "win32") {
-    return /^[\\/]/.test(value) || /^[A-Za-z]:[\\/]/.test(value);
-  }
-  return value.startsWith("/");
-}
-
 export const PostLoadFromDirectoryRequestSchema = z
   .object({
-    directory: z
-      .string()
-      .min(1, "directory is required")
-      .refine(isAbsoluteDirectoryPath, {
-        message: "directory must be an absolute path",
-      }),
+    directory: z.string().min(1, "directory is required"),
   })
   .strict();
 
