@@ -419,7 +419,7 @@ export interface Bindings {
   GATEWAY_WEBHOOK_URL?: string;
   ELIZA_APP_WEBHOOK_PROJECT?: string;
   /** Moves only the official Personal Shared Telegram transport to the Worker edge. */
-  PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
+  PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
   ELIZA_APP_TELEGRAM_BOT_TOKEN?: string;
   ELIZA_APP_TELEGRAM_WEBHOOK_SECRET?: string;
   // Dedicated shared secret stamped onto forwarded webhook calls so the internal

@@ -429,7 +429,7 @@ async function dispatchInference(
 
 function healthResponse(env: AppEnv["Bindings"]): Response {
   const personalSharedTelegramEdgeEnabled =
-    env.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED === "true";
+    env.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED === "true";
   const stagingSessionVersion =
     env.STAGING_SESSION_EXCHANGE_VERSION?.trim() || null;
   const stagingSessionSigningSecret =

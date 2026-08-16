@@ -98,7 +98,10 @@ describe("Personal Shared Telegram edge deploy", () => {
     const apply = step("Apply and verify served edge state");
     expect(apply.run).toContain("wrangler@4.100.0 secret put");
     expect(apply.run).toContain(
-      "PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED --env staging",
+      "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED --env staging",
+    );
+    expect(apply.run).not.toContain(
+      " PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED --env staging",
     );
     expect(apply.run).toContain("ensure-worker-secret-absent.mjs");
     expect(apply.run).toContain("trap rollback_on_unproven_exit EXIT");
@@ -117,9 +120,11 @@ describe("Personal Shared Telegram edge deploy", () => {
         "utf8",
       ),
     ) as {
+      keep_vars?: boolean;
       vars?: Record<string, string>;
       env?: Record<string, { vars?: Record<string, string> }>;
     };
+    expect(config.keep_vars).toBe(true);
     expect(config.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED).toBe("false");
     expect(
       config.env?.staging?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
@@ -127,5 +132,15 @@ describe("Personal Shared Telegram edge deploy", () => {
     expect(
       config.env?.production?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
     ).toBe("false");
+    expect(
+      config.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED,
+    ).toBeUndefined();
+    expect(
+      config.env?.staging?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED,
+    ).toBeUndefined();
+    expect(
+      config.env?.production?.vars
+        ?.PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED,
+    ).toBeUndefined();
   });
 });
