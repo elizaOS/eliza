@@ -80,4 +80,50 @@ describe("pollTrackedDiscordDms", () => {
     expect(onError).not.toHaveBeenCalled();
     expect(report.removed).toBe(1);
   });
+
+  it("polls channels concurrently without reordering messages inside a channel", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const routed: string[] = [];
+    const report = await pollTrackedDiscordDms({
+      listTracked: async () =>
+        ["1", "2", "3", "4"].map((suffix) => ({
+          channelId: `channel-${suffix}`,
+          userId: `user-${suffix}`,
+          lastMessageId: "100",
+        })),
+      fetchAfter: async (state) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        return [
+          {
+            id: `${state.channelId.slice(-1)}02`,
+            author: { bot: false },
+            content: "second",
+          },
+          {
+            id: `${state.channelId.slice(-1)}01`,
+            author: { bot: false },
+            content: "first",
+          },
+        ];
+      },
+      claimMessage: async () => true,
+      routeMessage: async (message) => routed.push(message.id),
+      updateCursor: async () => {},
+      removeTracked: async () => {},
+      isTerminalChannelError: () => false,
+      channelConcurrency: 2,
+    });
+
+    expect(maxActive).toBe(2);
+    for (const suffix of ["1", "2", "3", "4"]) {
+      expect(routed.indexOf(`${suffix}01`)).toBeLessThan(
+        routed.indexOf(`${suffix}02`),
+      );
+    }
+    expect(report).toMatchObject({ channels: 4, messages: 8, routed: 8 });
+  });
 });
