@@ -291,6 +291,56 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
     });
   });
 
+  describe("rank_commitments (#14864)", () => {
+    it("ranks regret-audited ledger obligations through the model pass", async () => {
+      setPrioritizeLoaders({
+        loadCommitments: async () => [
+          {
+            id: "commit-1",
+            title: "Send Dana the revised numbers",
+            summary: "no scheduled tracker; due within the regret horizon",
+            dueAt: "2026-08-14T17:00:00.000Z",
+            metadata: { source: "commitment_ledger", regretScore: 1.19 },
+          },
+        ],
+      });
+      const useModel = vi.fn(async () =>
+        JSON.stringify({
+          ranked: [
+            { id: "commit-1", score: 0.9, reasoning: "orphaned promise" },
+          ],
+        }),
+      );
+      const result = await callPrioritize(
+        makeRuntime({ useModel }),
+        makeMessage(),
+        { subaction: "rank_commitments" },
+      );
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        subaction: string;
+        ranked: { id: string; rank: number }[];
+      };
+      expect(data.subaction).toBe("rank_commitments");
+      expect(data.ranked[0]).toMatchObject({ id: "commit-1", rank: 1 });
+    });
+
+    it("maps the commitments subject alias onto rank_commitments", async () => {
+      setPrioritizeLoaders({ loadCommitments: async () => [] });
+      const useModel = vi.fn();
+      const result = await callPrioritize(
+        makeRuntime({ useModel: useModel as never }),
+        makeMessage(),
+        { subject: "commitments" },
+      );
+      expect(result.success).toBe(true);
+      const data = result.data as { subaction: string; ranked: unknown[] };
+      expect(data.subaction).toBe("rank_commitments");
+      expect(data.ranked).toHaveLength(0);
+      expect(useModel).not.toHaveBeenCalled();
+    });
+  });
+
   describe("rank_decisions", () => {
     it("loads pending approvals from the production queue by owner", async () => {
       const listApprovals = vi.fn(async () => [

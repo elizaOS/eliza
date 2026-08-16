@@ -7,7 +7,8 @@
  *   - `compose_weekly`   — `period: this_week` by default
  *
  * Pulls from each domain (calendar feed, inbox triage, life-domain due items,
- * money recurring charges) per the `include` arg, then runs a single LLM
+ * money recurring charges, regret-audited commitment-ledger obligations) per
+ * the `include` arg, then runs a single LLM
  * compose pass to render a narrative over the structured `LifeOpsBriefing`
  * shape. Briefings are kept in-memory.
  *
@@ -38,6 +39,10 @@ import {
   type LifeOpsBriefItemEngagementSummary,
 } from "../lifeops/briefing/editorial-judgment.js";
 import {
+  buildCommitmentRegretAudit,
+  type CommitmentRegretAuditItem,
+} from "../lifeops/commitments/index.js";
+import {
   BRIEF_NARRATIVE_INSTRUCTIONS,
   MEETING_PREP_INSTRUCTIONS,
 } from "../lifeops/optimized-prompt-instructions.js";
@@ -45,6 +50,7 @@ import { LifeOpsRepository } from "../lifeops/repository.js";
 import type {
   LifeOpsBriefing,
   LifeOpsBriefingCalendarItem,
+  LifeOpsBriefingCommitmentItem,
   LifeOpsBriefingEditorialContract,
   LifeOpsBriefingInboxItem,
   LifeOpsBriefingKind,
@@ -109,6 +115,7 @@ interface BriefIncludeFlags {
   inbox?: boolean;
   life?: boolean;
   money?: boolean;
+  commitments?: boolean;
 }
 
 interface BriefActionParameters {
@@ -374,6 +381,58 @@ async function loadMoneyFromPayments(args: {
   }
 }
 
+const MAX_BRIEF_COMMITMENT_ITEMS = 10;
+
+/** Map one regret-audit item onto the briefing's commitment shape. */
+export function mapRegretAuditItemToBriefingItem(
+  item: CommitmentRegretAuditItem,
+): LifeOpsBriefingCommitmentItem {
+  return {
+    id: item.record.id,
+    kind: item.record.kind,
+    summary: item.record.summary,
+    counterparty: item.record.counterparty,
+    dueAt: item.record.dueAt,
+    status: item.record.status === "tracked" ? "tracked" : "open",
+    regretScore: item.score,
+    reasons: item.reasons,
+  };
+}
+
+/**
+ * Regret-audited commitment-ledger obligations (#14864): open and tracked
+ * promises ranked by `buildCommitmentRegretAudit`, so the narrative can name
+ * what the owner would regret dropping. No-DB hosts have no ledger — that is
+ * a designed-empty section, not an error.
+ */
+async function loadCommitmentsFromLedger(args: {
+  runtime: IAgentRuntime;
+}): Promise<readonly LifeOpsBriefingCommitmentItem[]> {
+  const adapter = (args.runtime as { adapter?: { db?: unknown } }).adapter;
+  if (!adapter?.db) return [];
+  try {
+    const records = await new LifeOpsRepository(
+      args.runtime,
+    ).listCommitmentLedgerRecords(String(args.runtime.agentId), {
+      statuses: ["open", "tracked"],
+    });
+    const audit = buildCommitmentRegretAudit(records, {
+      nowIso: new Date().toISOString(),
+    });
+    return audit.items
+      .slice(0, MAX_BRIEF_COMMITMENT_ITEMS)
+      .map(mapRegretAuditItemToBriefingItem);
+  } catch (error) {
+    // error-policy:J4 the brief composes from independent optional sources;
+    // a broken ledger read must not kill the whole brief. The degrade is
+    // designed (section omitted) and stays observable through reportError.
+    args.runtime.reportError("Brief.loadCommitments", error, {
+      surface: "brief-commitment-regret-audit",
+    });
+    return [];
+  }
+}
+
 async function loadEngagementSummariesFromLifeOps(args: {
   runtime: IAgentRuntime;
 }): Promise<readonly LifeOpsBriefItemEngagementSummary[]> {
@@ -418,6 +477,10 @@ export interface BriefComposers {
   loadCompletedToday: (args: {
     runtime: IAgentRuntime;
   }) => Promise<readonly LifeOpsBriefingLifeItem[]>;
+  /** Regret-audited commitment-ledger obligations (#14864). */
+  loadCommitments: (args: {
+    runtime: IAgentRuntime;
+  }) => Promise<readonly LifeOpsBriefingCommitmentItem[]>;
   /** Persisted owner response signals that influence editorial ranking. */
   loadEngagementSummaries: (args: {
     runtime: IAgentRuntime;
@@ -430,6 +493,7 @@ const defaultComposers: BriefComposers = {
   loadLife: loadLifeFromOverview,
   loadMoney: loadMoneyFromPayments,
   loadCompletedToday: loadCompletedTodayFromService,
+  loadCommitments: loadCommitmentsFromLedger,
   loadEngagementSummaries: loadEngagementSummariesFromLifeOps,
 };
 
@@ -483,12 +547,14 @@ function resolveIncludeFlags(input: BriefIncludeFlags | undefined): {
   inbox: boolean;
   life: boolean;
   money: boolean;
+  commitments: boolean;
 } {
   return {
     calendar: input?.calendar !== false,
     inbox: input?.inbox !== false,
     life: input?.life !== false,
     money: input?.money !== false,
+    commitments: input?.commitments !== false,
   };
 }
 
@@ -642,6 +708,7 @@ async function assembleBriefing(args: {
     inboxItems,
     lifeItems,
     moneyItems,
+    commitmentItems,
     engagementSummaries,
   ] = await Promise.all([
     args.include.calendar
@@ -656,6 +723,9 @@ async function assembleBriefing(args: {
     args.include.money
       ? composers.loadMoney({ runtime: args.runtime, period: args.period })
       : Promise.resolve([] as readonly LifeOpsBriefingMoneyItem[]),
+    args.include.commitments
+      ? composers.loadCommitments({ runtime: args.runtime })
+      : Promise.resolve([] as readonly LifeOpsBriefingCommitmentItem[]),
     composers.loadEngagementSummaries({ runtime: args.runtime }),
   ]);
 
@@ -674,6 +744,9 @@ async function assembleBriefing(args: {
     ...(args.include.life ? { life: lifeItems } : {}),
     ...(completedToday.length > 0 ? { completedToday } : {}),
     ...(args.include.money ? { money: moneyItems } : {}),
+    ...(args.include.commitments && commitmentItems.length > 0
+      ? { commitments: commitmentItems }
+      : {}),
   };
 
   const editorial = buildBriefEditorialContract({
@@ -822,7 +895,7 @@ export const briefAction: Action & {
       `Composed your ${briefing.kind} briefing for ${briefing.period}.`;
 
     logger.info(
-      `[BRIEF] ${subaction} id=${briefing.id} period=${briefing.period} calendar=${briefing.sections.calendar?.length ?? 0} inbox=${briefing.sections.inbox?.length ?? 0} life=${briefing.sections.life?.length ?? 0} money=${briefing.sections.money?.length ?? 0}`,
+      `[BRIEF] ${subaction} id=${briefing.id} period=${briefing.period} calendar=${briefing.sections.calendar?.length ?? 0} inbox=${briefing.sections.inbox?.length ?? 0} life=${briefing.sections.life?.length ?? 0} money=${briefing.sections.money?.length ?? 0} commitments=${briefing.sections.commitments?.length ?? 0}`,
     );
 
     await callback?.({

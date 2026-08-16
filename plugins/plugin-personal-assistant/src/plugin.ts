@@ -122,6 +122,7 @@ import {
   registerChannelRegistry,
   registerDefaultChannelPack,
 } from "./lifeops/channels/index.js";
+import { commitmentExtractionEvaluator } from "./lifeops/commitments/extraction-evaluator.js";
 import {
   createConnectorRegistry,
   registerConnectorRegistry,
@@ -793,7 +794,11 @@ const rawPersonalAssistantPlugin: Plugin = {
   responseHandlerFieldEvaluators: [threadOpsFieldEvaluator],
   // Post-turn evaluators join the runtime's single merged SMALL-model
   // evaluation call (EvaluatorService) — no extra model round-trip per turn.
-  evaluators: [ftuGoalDiscoveryEvaluator, anticipationFeedbackEvaluator],
+  evaluators: [
+    ftuGoalDiscoveryEvaluator,
+    anticipationFeedbackEvaluator,
+    commitmentExtractionEvaluator,
+  ],
   // No views — the LifeOps overview surface was removed (owner: "no need for an
   // overview"). Domain views live in the per-domain plugins; the personal
   // assistant is the chat itself (PERSONAL_ASSISTANT action).

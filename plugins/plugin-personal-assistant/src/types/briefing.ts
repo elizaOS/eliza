@@ -48,6 +48,23 @@ export interface LifeOpsBriefingMoneyItem {
   readonly nextChargeAt: string | null;
 }
 
+/**
+ * One commitment-ledger obligation surfaced by the regret audit (#14864):
+ * an open/tracked promise or deadline the owner would regret dropping,
+ * carrying the audit's deterministic score and reasons so the compose model
+ * can rank it honestly instead of re-deriving urgency from prose.
+ */
+export interface LifeOpsBriefingCommitmentItem {
+  readonly id: string;
+  readonly kind: "commitment" | "renewal" | "filing" | "warranty";
+  readonly summary: string;
+  readonly counterparty: string | null;
+  readonly dueAt: string | null;
+  readonly status: "open" | "tracked";
+  readonly regretScore: number;
+  readonly reasons: readonly string[];
+}
+
 export interface LifeOpsBriefingSections {
   readonly calendar?: readonly LifeOpsBriefingCalendarItem[];
   readonly inbox?: readonly LifeOpsBriefingInboxItem[];
@@ -59,6 +76,8 @@ export interface LifeOpsBriefingSections {
    */
   readonly completedToday?: readonly LifeOpsBriefingLifeItem[];
   readonly money?: readonly LifeOpsBriefingMoneyItem[];
+  /** Regret-audited open obligations from the commitment ledger (#14864). */
+  readonly commitments?: readonly LifeOpsBriefingCommitmentItem[];
 }
 
 export interface LifeOpsBriefingEditorialItem {
