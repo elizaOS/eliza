@@ -69,7 +69,7 @@
       function nativeModeUsesOnDeviceAgent() {
         try {
           const mode = window.localStorage.getItem(mobileRuntimeModeStorageKey);
-          if (mode === 'remote-mac' || mode === 'cloud' || mode === 'tunnel-to-mobile') {
+          if (mode === 'remote-mac' || mode === 'cloud') {
             return false;
           }
           return true;

@@ -630,12 +630,13 @@ function isIosOnDeviceAgentHttpUrl(value: string): boolean {
 
 /**
  * Whether the selected runtime runs an on-device agent that serves local-agent
- * IPC. Delegates to the first-run runtime-mode authority so transports cannot
- * drift from restore and active-server policy.
+ * IPC. Tunnel mode is the phone-side relay into Bun IPC, even though first-run
+ * treats its connection target as externally configured.
  */
 function iosRuntimeHasOnDeviceAgent(): boolean {
-  return isCommittedOnDeviceMobileRuntimeMode(
-    normalizeMobileRuntimeMode(readRuntimeMode()),
+  const mode = normalizeMobileRuntimeMode(readRuntimeMode());
+  return (
+    mode === "tunnel-to-mobile" || isCommittedOnDeviceMobileRuntimeMode(mode)
   );
 }
 
