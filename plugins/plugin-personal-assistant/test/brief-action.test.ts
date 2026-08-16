@@ -90,7 +90,10 @@ async function callBrief(
 describe("BRIEF umbrella action — Daily Operations", () => {
   beforeEach(() => {
     __resetBriefComposersForTests();
-    setBriefComposers({ loadEngagementSummaries: async () => [] });
+    setBriefComposers({
+      loadEngagementSummaries: async () => [],
+      recordRenderedImpressions: async () => 0,
+    });
     mocks.hasOwnerAccess.mockReset().mockResolvedValue(true);
   });
 

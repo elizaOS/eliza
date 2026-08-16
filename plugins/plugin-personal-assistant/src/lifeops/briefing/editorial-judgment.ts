@@ -55,6 +55,10 @@ export interface LifeOpsBriefItemEngagementSummary {
   readonly ignoredCount: number;
   readonly actedOnCount: number;
   readonly lastEventAt: string | null;
+  /** Newest explicit owner `demoted` marker for this class, if any. */
+  readonly lastDemotedAt: string | null;
+  /** Newest explicit owner `kept` marker for this class, if any. */
+  readonly lastKeptAt: string | null;
 }
 
 export interface LifeOpsBriefEditorialDecision {
@@ -233,6 +237,8 @@ export function summarizeBriefEngagementRows(
         ignoredCount: 0,
         actedOnCount: 0,
         lastEventAt: null,
+        lastDemotedAt: null,
+        lastKeptAt: null,
       } satisfies LifeOpsBriefItemEngagementSummary);
     summaries.set(row.itemClass, {
       itemClass: row.itemClass,
@@ -246,10 +252,42 @@ export function summarizeBriefEngagementRows(
         current.lastEventAt && current.lastEventAt > row.eventAt
           ? current.lastEventAt
           : row.eventAt,
+      lastDemotedAt:
+        row.eventType === "demoted" &&
+        (!current.lastDemotedAt || row.eventAt > current.lastDemotedAt)
+          ? row.eventAt
+          : current.lastDemotedAt,
+      lastKeptAt:
+        row.eventType === "kept" &&
+        (!current.lastKeptAt || row.eventAt > current.lastKeptAt)
+          ? row.eventAt
+          : current.lastKeptAt,
     });
   }
   return [...summaries.values()].sort((a, b) =>
     a.itemClass.localeCompare(b.itemClass),
+  );
+}
+
+/**
+ * True when the owner's newest explicit marker for a class is `demoted`
+ * (a `kept` marker at the same or a later instant wins, so a reset always
+ * reverses a demotion recorded in the same second).
+ */
+function isExplicitlyDemoted(
+  summary: LifeOpsBriefItemEngagementSummary,
+): boolean {
+  return Boolean(
+    summary.lastDemotedAt &&
+      (!summary.lastKeptAt || summary.lastDemotedAt > summary.lastKeptAt),
+  );
+}
+
+/** True when the owner's newest explicit marker for a class is `kept`. */
+function isExplicitlyKept(summary: LifeOpsBriefItemEngagementSummary): boolean {
+  return Boolean(
+    summary.lastKeptAt &&
+      (!summary.lastDemotedAt || summary.lastKeptAt >= summary.lastDemotedAt),
   );
 }
 
@@ -259,14 +297,46 @@ export function recalibrateBriefItemClasses(
 ): readonly string[] {
   const ignoredThreshold = options.ignoredThreshold ?? 5;
   return summaries
-    .filter(
-      (summary) =>
+    .filter((summary) => {
+      // Explicit owner markers take precedence over inferred ignore history:
+      // a `demoted` marker demotes regardless of counts, and a newer `kept`
+      // marker restores the class regardless of counts.
+      if (isExplicitlyDemoted(summary)) return true;
+      if (isExplicitlyKept(summary)) return false;
+      return (
         summary.ignoredCount >= ignoredThreshold &&
         summary.actedOnCount === 0 &&
-        summary.ignoredCount >= summary.renderedCount - summary.actedOnCount,
-    )
+        summary.ignoredCount >= summary.renderedCount - summary.actedOnCount
+      );
+    })
     .map((summary) => summary.itemClass)
     .sort();
+}
+
+/**
+ * Classes an owner-initiated `recalibrate` command may demote.
+ *
+ * With an explicit `itemClass` the command is a direct owner decision: the
+ * matching class is selected whenever it has any ledger history and is not
+ * already demoted. Without one, only revealed preference qualifies: classes
+ * the owner has seen at least `surfacedThreshold` times (rendered + ignored)
+ * without ever acting on. Filtering happens here, before any write, so a
+ * targeted command can never touch an unrelated class.
+ */
+export function selectRecalibrationCandidates(
+  summaries: readonly LifeOpsBriefItemEngagementSummary[],
+  options: { itemClass?: string; surfacedThreshold?: number } = {},
+): readonly LifeOpsBriefItemEngagementSummary[] {
+  const surfacedThreshold = options.surfacedThreshold ?? 5;
+  const alreadyDemoted = new Set(recalibrateBriefItemClasses(summaries));
+  return summaries.filter((summary) => {
+    if (alreadyDemoted.has(summary.itemClass)) return false;
+    if (options.itemClass) return summary.itemClass === options.itemClass;
+    return (
+      summary.actedOnCount === 0 &&
+      summary.renderedCount + summary.ignoredCount >= surfacedThreshold
+    );
+  });
 }
 
 export function buildBriefEditorialContract(args: {

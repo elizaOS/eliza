@@ -6,7 +6,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildBriefEditorialContract,
+  recalibrateBriefItemClasses,
+  selectRecalibrationCandidates,
   structureBriefingItems,
+  summarizeBriefEngagementRows,
 } from "../src/lifeops/briefing/editorial-judgment.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import type { LifeOpsBriefingSections } from "../src/types/briefing.js";
@@ -89,6 +92,8 @@ describe("brief editorial judgment", () => {
           ignoredCount: 5,
           actedOnCount: 0,
           lastEventAt: "2026-07-05T12:00:00.000Z",
+          lastDemotedAt: null,
+          lastKeptAt: null,
         },
       ],
     });
@@ -102,6 +107,113 @@ describe("brief editorial judgment", () => {
           "inbox:newsletter-digest has repeated ignore history with no acted-on signal",
       }),
     );
+  });
+
+  it("tracks explicit demoted/kept markers and gives them precedence over ignore counts", () => {
+    const rows = [
+      {
+        itemClass: "inbox:newsletter-digest",
+        eventType: "rendered" as const,
+        eventAt: "2026-07-01T12:00:00.000Z",
+      },
+      {
+        itemClass: "inbox:newsletter-digest",
+        eventType: "demoted" as const,
+        eventAt: "2026-07-02T12:00:00.000Z",
+      },
+      {
+        itemClass: "life:habit",
+        eventType: "ignored" as const,
+        eventAt: "2026-07-02T12:00:00.000Z",
+      },
+    ];
+    const summaries = summarizeBriefEngagementRows(rows);
+    const newsletter = summaries.find(
+      (summary) => summary.itemClass === "inbox:newsletter-digest",
+    );
+    expect(newsletter).toMatchObject({
+      lastDemotedAt: "2026-07-02T12:00:00.000Z",
+      lastKeptAt: null,
+    });
+
+    // Explicit demoted marker demotes even though ignoredCount is below the
+    // automatic threshold.
+    expect(recalibrateBriefItemClasses(summaries)).toEqual([
+      "inbox:newsletter-digest",
+    ]);
+
+    // A later kept marker reverses the demotion regardless of counts —
+    // including a same-instant reset, which must win.
+    const reset = summarizeBriefEngagementRows([
+      ...rows,
+      {
+        itemClass: "inbox:newsletter-digest",
+        eventType: "kept" as const,
+        eventAt: "2026-07-02T12:00:00.000Z",
+      },
+    ]);
+    expect(recalibrateBriefItemClasses(reset)).toEqual([]);
+
+    // A kept marker also overrides the automatic ignore rule.
+    const keptDespiteIgnores = summarizeBriefEngagementRows(
+      Array.from({ length: 5 }, (_, index) => ({
+        itemClass: "inbox:newsletter-digest",
+        eventType: "ignored" as const,
+        eventAt: `2026-07-0${index + 1}T12:00:00.000Z`,
+      })).concat([
+        {
+          itemClass: "inbox:newsletter-digest",
+          eventType: "kept" as const,
+          eventAt: "2026-07-06T12:00:00.000Z",
+        },
+      ]),
+    );
+    expect(recalibrateBriefItemClasses(keptDespiteIgnores)).toEqual([]);
+  });
+
+  it("selects recalibration candidates by revealed preference and exact targeted class", () => {
+    const summaries = summarizeBriefEngagementRows([
+      // Rendered five times, never acted on -> untargeted candidate.
+      ...Array.from({ length: 5 }, (_, index) => ({
+        itemClass: "inbox:newsletter-digest",
+        eventType: "rendered" as const,
+        eventAt: `2026-07-0${index + 1}T12:00:00.000Z`,
+      })),
+      // Rendered five times but acted on -> never an untargeted candidate.
+      ...Array.from({ length: 5 }, (_, index) => ({
+        itemClass: "calendar:meeting",
+        eventType: "rendered" as const,
+        eventAt: `2026-07-0${index + 1}T13:00:00.000Z`,
+      })),
+      {
+        itemClass: "calendar:meeting",
+        eventType: "completed" as const,
+        eventAt: "2026-07-05T14:00:00.000Z",
+      },
+      // Barely surfaced -> below the threshold.
+      {
+        itemClass: "life:habit",
+        eventType: "rendered" as const,
+        eventAt: "2026-07-05T15:00:00.000Z",
+      },
+    ]);
+
+    expect(
+      selectRecalibrationCandidates(summaries).map((s) => s.itemClass),
+    ).toEqual(["inbox:newsletter-digest"]);
+
+    // A targeted command selects exactly the named class and nothing else,
+    // even when that class would not qualify automatically.
+    expect(
+      selectRecalibrationCandidates(summaries, {
+        itemClass: "life:habit",
+      }).map((s) => s.itemClass),
+    ).toEqual(["life:habit"]);
+    expect(
+      selectRecalibrationCandidates(summaries, {
+        itemClass: "calendar:meeting",
+      }).map((s) => s.itemClass),
+    ).toEqual(["calendar:meeting"]);
   });
 
   it("persists engagement rows and summarizes recalibration signals", async () => {
@@ -155,6 +267,8 @@ describe("brief editorial judgment", () => {
         ignoredCount: 5,
         actedOnCount: 0,
         lastEventAt: "2026-07-05T12:00:00.000Z",
+        lastDemotedAt: null,
+        lastKeptAt: null,
       },
     ]);
     expect(
