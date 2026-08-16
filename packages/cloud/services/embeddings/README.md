@@ -24,6 +24,12 @@ platform price row lives in
 `packages/cloud/shared/src/lib/services/ai-pricing/providers/bitrouter.ts`
 ($0.005/1M input tokens, billingSource `selfhosted`).
 
+Both runtime dependencies are immutable Docker build defaults: `TEI_IMAGE`
+pins the upstream OCI index digest and `EMBEDDINGS_MODEL_REVISION` pins the
+Hugging Face model commit. A dependency bump must update the corresponding pin
+only after a staging deployment passes `/health` and returns a 384-dimensional
+embedding.
+
 ## Deploy (owner action)
 
 The service is pinned in-repo (`Dockerfile` + `railway.toml`):
