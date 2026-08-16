@@ -24,7 +24,6 @@ import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
 import { ChatBubble } from "../composites/chat/chat-bubble";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import { Input } from "../ui/input";
-import { withoutAmbientChoices } from "./ambient-choice-policy";
 import { GlassIconButton } from "./glass-composer";
 import { GLASS_COMPOSER_CLASS } from "./glass-composer.helpers";
 import type { ShellMessage } from "./shell-state";
@@ -165,9 +164,7 @@ export function ChatSurface({
                         {isUser ? (
                           <UserMessageContent content={message.content} />
                         ) : (
-                          <InlineWidgetText
-                            content={withoutAmbientChoices(message.content)}
-                          />
+                          <InlineWidgetText content={message.content} />
                         )}
                       </ChatBubble>
                     )}

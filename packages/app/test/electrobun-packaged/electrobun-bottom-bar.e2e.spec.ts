@@ -391,13 +391,17 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
           const surface = document.querySelector('[data-testid="shell-chat-surface"]');
           return {
             transcript: surface?.textContent ?? '',
-            choiceCount: surface?.querySelectorAll('[data-testid^="choice-"]').length ?? -1,
+            doneVisible: Boolean(surface?.querySelector('[data-testid="choice-done"]')),
+            snoozeVisible: Boolean(surface?.querySelector('[data-testid="choice-10 minutes"]')),
+            skipVisible: Boolean(surface?.querySelector('[data-testid="choice-skip"]')),
           };
         })()`),
       )
       .toMatchObject({
         transcript: expect.stringContaining("Time to stretch."),
-        choiceCount: 0,
+        doneVisible: true,
+        snoozeVisible: true,
+        skipVisible: true,
       });
 
     await harness.eval(

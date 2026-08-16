@@ -123,7 +123,7 @@ describe("ChatSurface", () => {
     );
   });
 
-  it("keeps ordinary reminder actions out of the ambient packaged chat", () => {
+  it("keeps ordinary reminder actions available in the ambient packaged chat", () => {
     const messages: ShellMessage[] = [
       {
         id: "reminder",
@@ -146,9 +146,9 @@ describe("ChatSurface", () => {
     );
 
     expect(screen.getByText("Time to stretch.")).toBeTruthy();
-    expect(screen.queryByTestId("choice-done")).toBeNull();
-    expect(screen.queryByText("Snooze 10m")).toBeNull();
-    expect(screen.queryByText("Skip")).toBeNull();
+    expect(screen.getByTestId("choice-done")).toBeTruthy();
+    expect(screen.getByText("Snooze 10m")).toBeTruthy();
+    expect(screen.getByText("Skip")).toBeTruthy();
   });
 
   it("disables send when input is empty", () => {
