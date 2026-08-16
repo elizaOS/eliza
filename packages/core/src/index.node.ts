@@ -313,6 +313,8 @@ export {
 } from "./runtime/validated-model-call";
 // Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
+// Runtime factory helpers using AgentFactoryOptions (createAgent, createAgents, stopAgents)
+export * from "./runtime-factory";
 export * from "./runtime-env";
 export * from "./runtime-route-context";
 export {

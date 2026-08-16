@@ -18,6 +18,8 @@ export {
 export * from "./access-context";
 export * from "./action-failure";
 export * from "./agent";
+// Agent integration helpers and middleware types for factory/composition use cases
+export * from "./agent-integration";
 // Channel configuration types for plugins
 export * from "./channel-config";
 // Chat pre-handler contract (generic pre-action dispatch extension point);
