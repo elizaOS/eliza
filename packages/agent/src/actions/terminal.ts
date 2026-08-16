@@ -29,6 +29,7 @@ import {
   logger,
   redactSensitiveText,
   stringToUuid,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { readAliasedEnv, resolveServerOnlyPort } from "@elizaos/shared";
 import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
@@ -198,21 +199,38 @@ function buildCommandArtifactContent(result: CapturedTerminalRun): string {
     .join("\n");
 }
 
-function buildOutputPreview(content: string, maxLength = 3_000): string {
+/** @internal Exported for deterministic boundary tests. */
+export function buildOutputPreview(content: string, maxLength = 3_000): string {
+  if (maxLength <= 0) return "";
   const trimmed = content.trimEnd();
   if (trimmed.length <= maxLength) {
-    return formatOutputBlock(trimmed);
+    return truncateWellFormed(formatOutputBlock(trimmed), maxLength);
   }
-  const suffix = `\n\n[... ${trimmed.length - maxLength} chars omitted; use the attachment for full output ...]`;
-  if (maxLength <= suffix.length) return suffix.slice(0, maxLength);
-  return `${trimmed.slice(0, maxLength - suffix.length).trimEnd()}${suffix}`;
+
+  const suffixFor = (omittedChars: number) =>
+    `\n\n[... ${omittedChars} chars omitted; use the attachment for full output ...]`;
+  const retainedBudget = Math.max(
+    0,
+    maxLength - suffixFor(trimmed.length).length,
+  );
+  const prefix = truncateWellFormed(trimmed, retainedBudget).trimEnd();
+  const suffix = suffixFor(trimmed.length - prefix.length);
+
+  return prefix.length + suffix.length <= maxLength
+    ? `${prefix}${suffix}`
+    : truncateWellFormed(trimmed, maxLength);
 }
 
-function truncateForData(text: string, max = MAX_TERMINAL_DATA_CHARS): string {
+/** @internal Exported for deterministic boundary tests. */
+export function truncateForData(
+  text: string,
+  max = MAX_TERMINAL_DATA_CHARS,
+): string {
+  if (max <= 0) return "";
   if (text.length <= max) return text;
   const suffix = "\n…[truncated]";
-  if (max <= suffix.length) return suffix.slice(0, max);
-  return `${text.slice(0, max - suffix.length)}${suffix}`;
+  if (max <= suffix.length) return truncateWellFormed(text, max);
+  return `${truncateWellFormed(text, max - suffix.length)}${suffix}`;
 }
 
 async function createCommandOutputAttachment(
