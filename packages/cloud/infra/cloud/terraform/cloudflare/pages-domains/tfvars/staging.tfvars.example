@@ -10,7 +10,6 @@ dns_record_import_ids = {
   "pages/console"                                                     = "<record-id-for-staging.elizacloud.ai>"
   "pages/app"                                                         = "<record-id-for-app-staging.elizacloud.ai>"
   "pages/legacy_api"                                                  = "<record-id-for-api-staging.elizacloud.ai>"
-  "pages/legacy_blob"                                                 = "<record-id-for-blob-staging.elizacloud.ai>"
   "pages/legacy_plugins"                                              = "<record-id-for-plugins.staging.elizacloud.ai>"
   "pages/legacy_relay"                                                = "<record-id-for-relay-staging.elizacloud.ai>"
   "pages/legacy_x402"                                                 = "<record-id-for-x402-staging.elizacloud.ai>"
