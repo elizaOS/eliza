@@ -50,6 +50,7 @@ import {
   type OwnerFactsView,
   type ScheduledTask,
   type ScheduledTaskFilter,
+  type ScheduledTaskLogEntry,
   type ScheduledTaskRef,
   type ScheduledTaskRunner,
   type ScheduledTaskScheduleResult,
@@ -344,6 +345,43 @@ function defaultTaskIdGenerator(): string {
   return `st_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+const CREATION_RECEIPT_METADATA_KEY = "schedulingCreationReceipt";
+
+interface SchedulingCreationReceiptAnchor {
+  logId: string;
+  occurredAtIso: string;
+}
+
+function readCreationReceiptAnchor(
+  task: ScheduledTask,
+): SchedulingCreationReceiptAnchor | null {
+  const value = task.metadata?.[CREATION_RECEIPT_METADATA_KEY];
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.logId === "string" &&
+    candidate.logId.length > 0 &&
+    typeof candidate.occurredAtIso === "string" &&
+    !Number.isNaN(Date.parse(candidate.occurredAtIso))
+    ? { logId: candidate.logId, occurredAtIso: candidate.occurredAtIso }
+    : null;
+}
+
+async function creationReceiptLogId(
+  agentId: string,
+  taskId: string,
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${agentId}\0${taskId}`),
+  );
+  const hex = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `stl_create_${hex}`;
+}
+
 function isTerminal(status: ScheduledTask["state"]["status"]): boolean {
   return (
     status === "completed" ||
@@ -597,8 +635,8 @@ export interface ScheduledTaskRunnerExtras {
     },
   ): Promise<ScheduledTask>;
   /**
-   * Run the nightly rollup pass on the state-log. Default retention is 90
-   * days.
+   * Run the nightly rollup pass on non-creation state-log rows. Default
+   * retention is 90 days; stable `scheduled` creation receipts remain raw.
    */
   rolloverStateLog(opts?: { retentionDays?: number }): Promise<{
     rolledUp: number;
@@ -800,6 +838,68 @@ export function createScheduledTaskRunner(
     return (await scheduleWithResult(input)).task;
   }
 
+  async function creationCommit(
+    task: ScheduledTask,
+  ): Promise<ScheduledTaskLogEntry> {
+    const anchor = readCreationReceiptAnchor(task);
+    const entries = await deps.logStore.list({
+      agentId: deps.agentId,
+      taskId: task.taskId,
+      excludeRollups: true,
+    });
+    const existing = anchor
+      ? entries.find(
+          (entry) =>
+            entry.logId === anchor.logId && entry.transition === "scheduled",
+        )
+      : entries.find((entry) => entry.transition === "scheduled");
+    if (existing) return existing;
+    if (!anchor) {
+      throw new Error(
+        `Scheduled task ${task.taskId} has no durable creation receipt`,
+      );
+    }
+
+    const commit: ScheduledTaskLogEntry = {
+      logId: anchor.logId,
+      taskId: task.taskId,
+      agentId: deps.agentId,
+      occurredAtIso: anchor.occurredAtIso,
+      transition: "scheduled",
+      rolledUp: false,
+      detail: {
+        kind: task.kind,
+        priority: task.priority,
+        triggerKind: task.trigger.kind,
+      },
+    };
+    try {
+      await deps.logStore.append(commit);
+      return commit;
+    } catch (error) {
+      // error-policy:J1 The durable-store boundary resolves a concurrent
+      // append by reading the stable receipt identity back before surfacing it.
+      const raced = (
+        await deps.logStore.list({
+          agentId: deps.agentId,
+          taskId: task.taskId,
+          excludeRollups: true,
+        })
+      ).find(
+        (entry) =>
+          entry.logId === anchor.logId && entry.transition === "scheduled",
+      );
+      if (raced) return raced;
+      throw error;
+    }
+  }
+
+  async function replaySchedule(
+    task: ScheduledTask,
+  ): Promise<ScheduledTaskScheduleResult> {
+    return { task, commit: await creationCommit(task), replayed: true };
+  }
+
   async function scheduleWithResult(
     input: Omit<ScheduledTask, "taskId" | "state">,
   ): Promise<ScheduledTaskScheduleResult> {
@@ -807,21 +907,7 @@ export function createScheduledTaskRunner(
       const existing = await deps.store.findByIdempotencyKey(
         input.idempotencyKey,
       );
-      if (existing) {
-        const commit = (
-          await deps.logStore.list({
-            agentId: deps.agentId,
-            taskId: existing.taskId,
-            excludeRollups: true,
-          })
-        ).find((entry) => entry.transition === "scheduled");
-        if (!commit) {
-          throw new Error(
-            `Scheduled task ${existing.taskId} has no durable creation receipt`,
-          );
-        }
-        return { task: existing, commit, replayed: true };
-      }
+      if (existing) return replaySchedule(existing);
     }
 
     const validationIssues = validateScheduledTaskInput(input, deps);
@@ -851,19 +937,32 @@ export function createScheduledTaskRunner(
       status: "scheduled",
       followupCount: 0,
     };
+    const taskId = newTaskId();
+    const creationReceipt: SchedulingCreationReceiptAnchor = {
+      logId: await creationReceiptLogId(deps.agentId, taskId),
+      occurredAtIso: now().toISOString(),
+    };
     const task: ScheduledTask = {
-      taskId: newTaskId(),
+      taskId,
       ...withApprovalDefaults,
+      metadata: {
+        ...(withApprovalDefaults.metadata ?? {}),
+        [CREATION_RECEIPT_METADATA_KEY]: creationReceipt,
+      },
       state: initialState,
     };
-    await persist(task);
-    const commit = await logger.log(task.taskId, "scheduled", {
-      detail: {
-        kind: task.kind,
-        priority: task.priority,
-        triggerKind: task.trigger.kind,
-      },
-    });
+    try {
+      await persist(task);
+    } catch (error) {
+      // error-policy:J1 A same-key insert race is translated to the already
+      // committed task; unrelated persistence failures still fail closed.
+      const existing = input.idempotencyKey
+        ? await deps.store.findByIdempotencyKey(input.idempotencyKey)
+        : null;
+      if (existing) return replaySchedule(existing);
+      throw error;
+    }
+    const commit = await creationCommit(task);
     if (
       task.completionCheck?.followupAfterMinutes &&
       task.pipeline?.onSkip &&
