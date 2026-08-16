@@ -155,7 +155,7 @@ export default function PaymentRequestPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<PageError | null>(null);
   const [isPaying, setIsPaying] = useState(false);
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [nowMs, setNowMs] = useState<number | null>(null);
   // Monotonic key: only the latest load (or a checkout revalidation started
   // under it) may commit state, so stale responses cannot cross routes.
   const loadGenerationRef = useRef(0);
@@ -341,7 +341,9 @@ export default function PaymentRequestPage() {
 
   const isPaid = paymentRequest.status === "settled";
   const deadline = parseDeadline(paymentRequest.expiresAt);
-  const deadlinePassed = isDeadlinePassed(deadline, nowMs);
+  // Loading the request and capturing its comparison timestamp happen at the
+  // same effect boundary. Fail closed if they ever become temporarily split.
+  const deadlinePassed = nowMs === null || isDeadlinePassed(deadline, nowMs);
   const hasInvalidPayableDeadline =
     isPayableStatus(paymentRequest.status) && deadline.kind === "invalid";
   const isExpired =
