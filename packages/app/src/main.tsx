@@ -307,7 +307,7 @@ const App = lazy(async () => {
 });
 
 const AppWindowRenderer = lazyNamedComponent<{ slug: string }>(async () => {
-  const mod = await import("@elizaos/ui/components/apps/AppWindowRenderer");
+  const mod = await import("@elizaos/app-core/desktop-shell");
   return mod.AppWindowRenderer;
 });
 

@@ -140,3 +140,8 @@ gate) each render distinguishably. Loading is never rendered as a broken empty
 box; empty is never rendered as loading. Long / adversarial content wraps within
 the pinned reading column and scrolls; the composer placeholder never wraps past
 two lines.
+
+The overlay composer does not render provider branding in any detent. Provider
+configuration and diagnostics remain available in their dedicated full-app
+surfaces, while the ambient chat stays focused on the conversation and voice
+controls.
