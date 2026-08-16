@@ -1,8 +1,9 @@
 /**
  * Resolves renderer feature flags and cache policy for mobile build lanes.
- * LP3 debug artifacts always enable the realtime voice client, while every
- * Android cloud-debug build starts from a fresh renderer because the current
- * lane stamp does not encode optional Vite feature flags.
+ * Local iOS artifacts expose the existing runtime chooser so a sideload can
+ * select its bundled agent without Cloud authentication. LP3 debug artifacts
+ * enable the realtime voice client, while lanes with optional flags start from
+ * a fresh renderer because the current stamp does not encode those flags.
  */
 
 const ANDROID_CLOUD_DEBUG = "android-cloud-debug";
@@ -10,6 +11,9 @@ const ANDROID_CLOUD_DEBUG = "android-cloud-debug";
 export function resolveMobileRendererFeatureEnv({ platform, env = {} } = {}) {
   if (typeof platform !== "string" || platform.length === 0) {
     throw new Error("resolveMobileRendererFeatureEnv: platform is required");
+  }
+  if (platform === "ios-local") {
+    return { VITE_ELIZA_ENABLE_RUNTIME_CHOOSER: "1" };
   }
   const isLp3Debug =
     platform === ANDROID_CLOUD_DEBUG &&
@@ -25,5 +29,5 @@ export function mobileRendererRequiresFreshBuild({ platform } = {}) {
   if (typeof platform !== "string" || platform.length === 0) {
     throw new Error("mobileRendererRequiresFreshBuild: platform is required");
   }
-  return platform === ANDROID_CLOUD_DEBUG;
+  return platform === ANDROID_CLOUD_DEBUG || platform === "ios-local";
 }
