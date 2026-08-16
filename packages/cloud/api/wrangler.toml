@@ -125,6 +125,10 @@ class_name = "OnboardingSessionCoordinator"
 name = "TWITTER_OAUTH_REFRESH_COORDINATORS"
 class_name = "TwitterOAuthRefreshCoordinator"
 
+[[durable_objects.bindings]]
+name = "PERSONAL_DELIVERY_PROJECTIONS"
+class_name = "PersonalDeliveryProjection"
+
 [[migrations]]
 tag = "shared-runtime-conversations-v1"
 new_sqlite_classes = ["SharedRuntimeConversation"]
@@ -144,6 +148,10 @@ new_sqlite_classes = ["OnboardingSessionCoordinator"]
 [[migrations]]
 tag = "twitter-oauth-refresh-coordinator-v1"
 new_sqlite_classes = ["TwitterOAuthRefreshCoordinator"]
+
+[[migrations]]
+tag = "personal-delivery-projection-v1"
+new_sqlite_classes = ["PersonalDeliveryProjection"]
 
 # General API limits and queues may use Railway Redis via REDIS_URL. Inference
 # routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
@@ -635,6 +643,10 @@ class_name = "OnboardingSessionCoordinator"
 name = "TWITTER_OAUTH_REFRESH_COORDINATORS"
 class_name = "TwitterOAuthRefreshCoordinator"
 
+[[env.staging.durable_objects.bindings]]
+name = "PERSONAL_DELIVERY_PROJECTIONS"
+class_name = "PersonalDeliveryProjection"
+
 [[env.staging.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615311"
@@ -861,6 +873,10 @@ class_name = "OnboardingSessionCoordinator"
 [[env.production.durable_objects.bindings]]
 name = "TWITTER_OAUTH_REFRESH_COORDINATORS"
 class_name = "TwitterOAuthRefreshCoordinator"
+
+[[env.production.durable_objects.bindings]]
+name = "PERSONAL_DELIVERY_PROJECTIONS"
+class_name = "PersonalDeliveryProjection"
 
 [[env.production.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"

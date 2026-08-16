@@ -98,6 +98,9 @@ export interface Bindings {
   /** One strongly ordered X credential refresh coordinator per organization and role. */
   TWITTER_OAUTH_REFRESH_COORDINATORS?: RuntimeDurableObjectNamespace;
 
+  /** One explicitly invalidated Shared account projection per connector sender. */
+  PERSONAL_DELIVERY_PROJECTIONS?: RuntimeDurableObjectNamespace;
+
   // ---- Cloudflare machine-local protective rate limits ----
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
   CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
