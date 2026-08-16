@@ -253,7 +253,7 @@ export const actionStateProvider: Provider = {
 						const rawThought = String(firstMemory?.content.planThought || "");
 						const thought =
 							rawThought.length > MAX_THOUGHT_CHARS
-								? `${rawThought.slice(0, MAX_THOUGHT_CHARS)}…`
+								? `${rawThought.slice(0, MAX_THOUGHT_CHARS - 1)}…`
 								: rawThought;
 						return `**Run ${runId.slice(0, 8)}**${thought ? ` - ${thought}` : ""}\n${runText}`;
 					})

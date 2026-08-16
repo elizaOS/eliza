@@ -63,7 +63,7 @@ function serializeContext(
 		return undefined;
 	}
 	return text.length > MAX_CONTEXT_CHARS
-		? `${text.slice(0, MAX_CONTEXT_CHARS)}…`
+		? `${text.slice(0, MAX_CONTEXT_CHARS - 1)}…`
 		: text;
 }
 

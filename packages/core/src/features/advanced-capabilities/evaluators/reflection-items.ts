@@ -446,7 +446,7 @@ const ENTITY_NAMES_RENDER_MAX_CHARS = 240;
 
 function boundRender(text: string, maxChars: number): string {
 	if (text.length <= maxChars) return text;
-	return `${text.slice(0, maxChars)}…[truncated]`;
+	return `${text.slice(0, maxChars - "…[truncated]".length)}…[truncated]`;
 }
 
 function boundReflectionEntities(params: {
