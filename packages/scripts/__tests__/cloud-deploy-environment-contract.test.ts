@@ -95,7 +95,7 @@ const requiredAuthWorkerSecretNames = [
 ] as const;
 
 describe("canonical cloud deployment environment contract", () => {
-  test("runs genuine Shared Eliza on staging while production remains gated", () => {
+  test("runs genuine Shared Eliza in staging and production", () => {
     const staging = cloudApiWranglerSource.slice(
       cloudApiWranglerSource.indexOf("[env.staging.vars]"),
       cloudApiWranglerSource.indexOf("[env.production.vars]"),
@@ -105,7 +105,7 @@ describe("canonical cloud deployment environment contract", () => {
     );
 
     expect(staging).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
-    expect(production).toContain('SHARED_ELIZA_AGENT_RUNTIME = "false"');
+    expect(production).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
   });
 
   test("keeps the fixed SlopHub cutover behind a reviewed production plan", () => {
@@ -263,6 +263,9 @@ describe("canonical cloud deployment environment contract", () => {
     expect(plan.run).toContain("terraform plan");
     const packagePlan = step(infra, "terraform", "Package reviewed plan");
     expect(packagePlan.run).toContain("sha256sum selected.tfplan");
+    expect(packagePlan.run).toContain(
+      '--arg planScope "$TERRAFORM_PLAN_SCOPE"',
+    );
     expect(packagePlan.run).toContain("plan-metadata.json");
     expect(packagePlan.run).toContain("selected.tfplan.enc");
     expect(packagePlan.run).toContain("terraform-plan-envelope.mjs");
@@ -306,6 +309,9 @@ describe("canonical cloud deployment environment contract", () => {
       "Reviewed artifact contains a plaintext Terraform plan",
     );
     expect(validateArtifact.run).toContain("EXPECTED_SOURCE_SHA");
+    expect(validateArtifact.run).toContain(
+      "planScope: process.env.TERRAFORM_PLAN_SCOPE",
+    );
     const decrypt = step(infra, "terraform", "Decrypt reviewed plan");
     expect(decrypt.run).toContain("terraform-plan-envelope.mjs");
     expect(decrypt.run).toContain("actual_digest");
@@ -334,6 +340,83 @@ describe("canonical cloud deployment environment contract", () => {
     expect(summary.run).toContain("Artifact digest: sha256:$ARTIFACT_DIGEST");
     expect(infraSource).not.toContain(
       "$RUNNER_TEMP/terraform-plan-artifact/selected.tfplan\n",
+    );
+  });
+
+  test("can isolate additive canonical wildcard resources from unrelated Pages drift", () => {
+    const validate = step(
+      infra,
+      "terraform",
+      "Validate credentials and state operation",
+    );
+    expect(validate.run).toContain(
+      '[ "$' + '{{ inputs.component }}" = "pages-domains" ]',
+    );
+    expect(validate.run).toContain(
+      '[ "$TERRAFORM_PLAN_SCOPE" = "canonical-edge-additive" ]',
+    );
+    expect(validate.run).toContain('[ "$OPERATION" != "state-rm" ]');
+
+    const plan = step(infra, "terraform", "Plan");
+    expect(plan.run).toContain('select((.value.id // "") == "")');
+    expect(plan.run).toContain(
+      '"-target=cloudflare_certificate_pack.canonical_edge[\\"$key\\"]"',
+    );
+    expect(plan.run).toContain('site_wildcard="*.sites.eliza.app"');
+    expect(plan.run).toContain('site_wildcard="*.sites-staging.eliza.app"');
+    expect(plan.run).toContain(
+      '"-target=cloudflare_dns_record.canonical_edge_wildcard[\\"$site_wildcard|$origin\\"]"',
+    );
+    expect(plan.run).toContain("terraform show -json selected.tfplan");
+    expect(plan.run).toContain(
+      "validate-terraform-canonical-edge-additive-plan.mjs",
+    );
+    expect(plan.run).not.toContain("legacy_redirect");
+    expect(plan.run).not.toContain("cloudflare_dns_record.pages");
+
+    const scopedPlanValidation = step(
+      infra,
+      "terraform",
+      "Validate additive canonical edge plan",
+    );
+    expect(scopedPlanValidation.run).toContain(
+      "terraform show -json selected.tfplan",
+    );
+    expect(scopedPlanValidation.run).toContain(
+      "validate-terraform-canonical-edge-additive-plan.mjs",
+    );
+
+    const scopedVerification = step(
+      infra,
+      "terraform",
+      "Verify additive canonical edge state",
+    );
+    expect(scopedVerification.run).toContain(
+      'terraform refresh "${refresh_args[@]}"',
+    );
+    expect(scopedVerification.run).toContain(
+      'refresh_args+=("-target=$address")',
+    );
+    expect(scopedVerification.run).not.toContain(
+      "terraform refresh -no-color -input=false",
+    );
+    expect(scopedVerification.run).toContain(
+      "canonical-edge-reviewed-plan.json",
+    );
+    expect(scopedVerification.run).toContain("canonical.certificate_packs");
+    expect(scopedVerification.run).not.toContain("legacy_certificate_packs");
+
+    const cleanup = step(infra, "terraform", "Remove plaintext reviewed plan");
+    expect(cleanup.run).toContain(
+      'shred -u "$RUNNER_TEMP/canonical-edge-reviewed-plan.json"',
+    );
+    const planCleanup = step(
+      infra,
+      "terraform",
+      "Remove plaintext planned state",
+    );
+    expect(planCleanup.run).toContain(
+      'shred -u "$RUNNER_TEMP/canonical-edge-reviewed-plan.json"',
     );
   });
 
@@ -394,7 +477,7 @@ describe("canonical cloud deployment environment contract", () => {
     const outputCheck = step(
       infra,
       "terraform",
-      "Verify Pages domain and certificate state",
+      "Verify full Pages domain and certificate state",
     );
     for (const output of [
       "pages_domains",
