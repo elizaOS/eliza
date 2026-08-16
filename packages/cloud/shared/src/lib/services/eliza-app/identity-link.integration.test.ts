@@ -26,7 +26,10 @@ import { users } from "../../../db/schemas/users";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { runWithCloudBindingsAsync } from "../../runtime/cloud-bindings";
 import { confirmIdentityLink, startIdentityLink } from "./identity-link";
-import { PERSONAL_DELIVERY_PROJECTION_BINDING } from "./personal-delivery-projection-contract";
+import {
+  PERSONAL_DELIVERY_PROJECTION_BINDING,
+  personalDeliveryProjectionObjectName,
+} from "./personal-delivery-projection-contract";
 
 const PGLITE_TIMEOUT = 60_000;
 const ORG_A = "00000000-0000-4000-8000-00000000a001";
@@ -170,7 +173,9 @@ describe("confirmIdentityLink", () => {
     );
 
     expect(confirmed).toMatchObject({ status: "linked", userId: USER_A });
-    expect(getByName).toHaveBeenCalledWith("telegram:424242");
+    expect(getByName).toHaveBeenCalledWith(
+      personalDeliveryProjectionObjectName("telegram", "424242"),
+    );
     expect(fetch).toHaveBeenCalledTimes(1);
 
     const nextOwner =

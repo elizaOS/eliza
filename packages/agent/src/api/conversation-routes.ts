@@ -33,6 +33,9 @@ import {
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
+  PUBLIC_WEB_GROUNDING_METADATA_KEY,
+  type PublicWebGrounding,
+  parsePublicWebGrounding,
   type RolesWorldMetadata,
   type RoomHandlerLease,
   RoomHandlerQueueClosedError,
@@ -3238,7 +3241,13 @@ export async function handleConversationRoutes(
           rec.sourceId.length <= 256
             ? rec.sourceId.trim()
             : undefined;
-        return { role, text, timestamp, sourceId } as const;
+        const grounding =
+          rec.grounding === undefined
+            ? undefined
+            : parsePublicWebGrounding(rec.grounding);
+        if (rec.grounding !== undefined && !grounding) return null;
+        if (grounding && role !== "assistant") return null;
+        return { role, text, timestamp, sourceId, grounding } as const;
       })
       .filter(
         (
@@ -3248,8 +3257,17 @@ export async function handleConversationRoutes(
           readonly text: string;
           readonly timestamp: number | undefined;
           readonly sourceId: string | undefined;
+          readonly grounding: PublicWebGrounding | undefined;
         } => m !== null,
       );
+    if (importMessages.length !== rawMessages.length) {
+      error(
+        res,
+        "Every imported message must have a valid role, text, and grounding envelope",
+        400,
+      );
+      return true;
+    }
     const sourceIds = importMessages.map((message) => message.sourceId);
     const exactImport = sourceIds.length > 0 && sourceIds.every(Boolean);
     if (sourceIds.some(Boolean) && !exactImport) {
@@ -3498,6 +3516,9 @@ export async function handleConversationRoutes(
             if (m.sourceId) {
               memory.metadata.sourceId = m.sourceId;
               memory.metadata.platformMessageId = m.sourceId;
+            }
+            if (m.grounding) {
+              memory.metadata[PUBLIC_WEB_GROUNDING_METADATA_KEY] = m.grounding;
             }
           }
           if (m.sourceId) {

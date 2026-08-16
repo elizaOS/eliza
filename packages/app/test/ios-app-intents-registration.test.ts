@@ -46,6 +46,13 @@ const liveActivityBridgeSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaLiveActivityBridge.swift"),
   "utf8",
 );
+const screenTimeReportSwift = readFileSync(
+  path.join(
+    iosAppRoot,
+    "App/DeviceActivityReportExtension/DeviceActivityReportExtension.swift",
+  ),
+  "utf8",
+);
 interface StringCatalogEntry {
   localizations?: Record<
     string,
@@ -363,6 +370,16 @@ describe("native assistant entry contracts", () => {
         new RegExp(`isa = PBXBuildFile; fileRef = ${shortcutsFileRef} `, "g"),
       )?.length,
     ).toBe(1);
+  });
+
+  it("keeps the unpresented Screen Time extension explicitly dormant", () => {
+    expect(screenTimeReportSwift).toContain(
+      "Screen Time reports are not available in this version.",
+    );
+    expect(screenTimeReportSwift).toContain("_ = data");
+    expect(screenTimeReportSwift).not.toMatch(
+      /for await|UserDefaults|URLSession|appGroup|containerURL/,
+    );
   });
 
   it("builds the ElizaWidgets extension target with widget + controls sources", () => {

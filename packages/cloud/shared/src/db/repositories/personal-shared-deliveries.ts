@@ -26,6 +26,10 @@ export interface ReusablePersonalDelivery {
   } | null;
 }
 
+export interface ExpectedPersonalDeliveryUser {
+  userId: string;
+}
+
 interface ReusablePersonalDeliveryRow {
   user_id: string;
   organization_id: string;
@@ -56,6 +60,7 @@ export async function findReusablePersonalDelivery(
         discordGlobalName?: string | null;
         discordAvatarUrl?: string | null;
       },
+  expected?: ExpectedPersonalDeliveryUser,
 ): Promise<ReusablePersonalDelivery | null> {
   const canonicalIdentity =
     params.platform === "telegram"
@@ -125,6 +130,7 @@ export async function findReusablePersonalDelivery(
         LIMIT 1
       ) dedicated ON TRUE
       WHERE ${projectedIdentity}
+        AND (${expected?.userId ?? null}::uuid IS NULL OR canonical.id = ${expected?.userId ?? null})
         AND canonical.deleted_at IS NULL
         AND canonical.is_active = TRUE
         AND canonical.organization_id IS NOT NULL

@@ -16,6 +16,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { installReadyDesktopShellBridge } from "./helpers/desktop-shell-bridge";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 const MAC_CHROME_USER_AGENT =
@@ -42,6 +43,7 @@ async function seedElectrobunRuntime(page: Page) {
       request: {},
     };
   });
+  await installReadyDesktopShellBridge(page);
 }
 
 async function getAppRegion(locator: Locator): Promise<string> {

@@ -22,6 +22,7 @@ import {
 	GazetteerEntityRecognizer,
 	PseudonymSession,
 } from "../security/index.js";
+import { PRIVACY_DENIED_TEXT } from "../security/trusted-delivery-audience";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	messageHandlerFromFieldResult,
@@ -372,6 +373,114 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("short-circuits only an explicit owner-private candidate denied by the disclosure gate", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user requested an owner-private read.",
+				contexts: ["general"],
+				candidateActionNames: ["OWNER_TODOS"],
+				extra: { requiresTool: true },
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "OWNER_TODOS",
+				disclosureGate: { require: "owner_exclusive" },
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(PRIVACY_DENIED_TEXT);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
+	it("does not misreport a role-rejected explicit candidate as a private destination", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user requested a restricted action.",
+				contexts: ["general"],
+				candidateActionNames: ["ADMIN_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Explain the actual limitation.",
+				toolCalls: [],
+				messageToUser: "This action requires an administrator role.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction("OWNER"),
+				name: "ADMIN_TASK",
+				contexts: ["general"],
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000007" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"This action requires an administrator role.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it("does not misreport a context-rejected explicit candidate as a private destination", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user requested an action outside this context.",
+				contexts: ["general"],
+				candidateActionNames: ["CONTEXT_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Explain the context limitation.",
+				toolCalls: [],
+				messageToUser: "This action is unavailable in the current context.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "CONTEXT_TASK",
+				contexts: ["general"],
+				contextGate: { noneOf: ["general"] },
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000008" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"This action is unavailable in the current context.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
 	it("blocks a Stage-1 action envelope before the direct-reply route", async () => {
 		const actionEnvelope =
 			'{"action":"BROWSER","parameters":{"url":"https://example.com"},"status":"retry","toolCallId":"call-1"}';
@@ -636,6 +745,48 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(
 				"I can follow up with Dana Whitfield.",
 			);
+		}
+	});
+
+	it("delivers a terminal-only safe refusal as typed missing capability", async () => {
+		const refusal = "I can't send it: no messaging access.";
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "No matching capability is available.",
+				contexts: ["general"],
+				candidateActionNames: ["MISSING_SMS"],
+				replyText: refusal,
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "REPLY",
+				description: "Reply to the user.",
+				contexts: ["general"],
+				parameters: [],
+				examples: [],
+				validate: async () => true,
+				handler: async () => ({ success: true }),
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Send a message for me." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toMatchObject({
+				text: refusal,
+				failureKind: "missing_capability",
+				elizaSyntheticFailure: true,
+				transient: false,
+				doNotPersist: true,
+			});
 		}
 	});
 
@@ -1513,16 +1664,11 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
-	it("keeps tool-like direct messages on the structured routing path", async () => {
+	it("returns a typed missing-capability refusal when a direct web ask has no web action", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["general"],
 				replyText: "Looking into it.",
-			}),
-			JSON.stringify({
-				thought: "No tool is registered in this fixture.",
-				toolCalls: [],
-				messageToUser: "I would need a web tool to check current prices.",
 			}),
 		]);
 
@@ -1536,9 +1682,19 @@ describe("runV5MessageRuntimeStage1", () => {
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("planned_reply");
+		expect(result.kind).toBe("direct_reply");
 		const firstCall = useModelCalls(runtime)[0];
 		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent).toMatchObject({
+				text: "I don't have a live web search action available here, so I can't look up current information in this chat.",
+				failureKind: "missing_capability",
+				elizaSyntheticFailure: true,
+				transient: false,
+				doNotPersist: true,
+			});
+		}
 	});
 
 	it("keeps edit-style direct messages on the structured routing path", async () => {
@@ -2405,6 +2561,46 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(
 				"I don't have a live web search action available here, so I can't look up current information in this chat.",
 			);
+			expect(result.result.responseContent).toMatchObject({
+				failureKind: "missing_capability",
+				elizaSyntheticFailure: true,
+				transient: false,
+				doNotPersist: true,
+			});
+		}
+	});
+
+	it("marks a simple-path live lookup refusal as a non-persistable capability failure", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "I'll check the current price for you.",
+			}),
+		]);
+		runtime.actions = [];
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "What is the current BTC price?",
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent).toMatchObject({
+				text: "I don't have a live web search action available here, so I can't look up current information in this chat.",
+				failureKind: "missing_capability",
+				elizaSyntheticFailure: true,
+				transient: false,
+				doNotPersist: true,
+			});
 		}
 	});
 
@@ -2475,6 +2671,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(
 				"I don't have a live web search action available here, so I can't look up current information in this chat.",
 			);
+			expect(result.result.responseContent).toMatchObject({
+				failureKind: "missing_capability",
+				elizaSyntheticFailure: true,
+				transient: false,
+				doNotPersist: true,
+			});
 		}
 	});
 
@@ -2625,6 +2827,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(
 				"I don't have a live web search action available here, so I can't look up current information in this chat.",
 			);
+			expect(result.result.responseContent).toMatchObject({
+				failureKind: "missing_capability",
+				elizaSyntheticFailure: true,
+				transient: false,
+				doNotPersist: true,
+			});
 		}
 	});
 

@@ -510,6 +510,71 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
 	});
 
+	it("combines grounded current-request and plugin action inference for an ack", () => {
+		const webSearch = makeAction("WEB_SEARCH");
+		const createNote = makeAction("OWNER_NOTES_CREATE");
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: [],
+				replyText: "Checking Paris weather now.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [webSearch, createNote],
+				messageText:
+					"Check the current weather in Paris and save it as a note.",
+				candidateBackstopRules: [
+					{
+						actionNames: ["OWNER_NOTES_CREATE"],
+						matches: (text) => /\bsave\b.*\bnote\b/i.test(text),
+					},
+				],
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual([
+			"WEB_SEARCH",
+			"OWNER_NOTES_CREATE",
+		]);
+	});
+
+	it("keeps short gerund-led answers simple when the current request is not actionable", () => {
+		for (const replyText of [
+			"Using SSH keys is safer than passwords.",
+			"Running shoes need proper cushioning.",
+			"Starting a business takes careful planning.",
+		]) {
+			const handler = messageHandlerFromFieldResult(
+				{
+					shouldRespond: "RESPOND",
+					contexts: ["simple"],
+					candidateActionNames: [],
+					replyText,
+					intents: [],
+					facts: [],
+					addressedTo: [],
+				},
+				undefined,
+				{
+					actions: [SHELL],
+					messageText: "Explain this concept in one sentence.",
+				},
+			);
+
+			expect(handler.plan.simple).toBe(true);
+			expect(handler.plan.requiresTool).toBe(false);
+			expect(handler.plan.reply).toBe(replyText);
+		}
+	});
+
 	it("routes ack-only local submodule checks to shell", () => {
 		const handler = messageHandlerFromFieldResult(
 			{

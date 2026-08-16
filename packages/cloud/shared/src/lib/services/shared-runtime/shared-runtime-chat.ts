@@ -60,7 +60,7 @@ import { capabilityWallActionResult } from "./shared-capability-wall";
 import { navIntentActionResult } from "./shared-nav-intent";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
-import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
+import { MAX_HISTORY_MESSAGES, sharedPublicWebGrounding } from "./shared-runtime-history-policy";
 import { createSharedScheduledTaskRunner } from "./shared-scheduling";
 import { createSharedTodoStore, sharedTodoStorageScope } from "./shared-todos";
 
@@ -1084,7 +1084,11 @@ export class SharedRuntimeChatService {
     }
 
     const encoder = new TextEncoder();
-    const makeTurnMessages = (reply: string, interrupted: boolean): SharedTurnMessage[] => {
+    const makeTurnMessages = (
+      reply: string,
+      interrupted: boolean,
+      grounding?: SharedTurnMessage["grounding"],
+    ): SharedTurnMessage[] => {
       const sentAt = Date.now();
       const messages: SharedTurnMessage[] = [
         { id: messageIds.user, role: messageRole, content: text, createdAt: sentAt },
@@ -1097,6 +1101,7 @@ export class SharedRuntimeChatService {
           content: assistantText,
           createdAt: sentAt + 1,
           interrupted,
+          ...(grounding ? { grounding } : {}),
         });
       }
       return messages;
@@ -1118,6 +1123,7 @@ export class SharedRuntimeChatService {
     const finalizeMessages = (
       reply: string,
       interrupted: boolean,
+      grounding?: SharedTurnMessage["grounding"],
       afterWrite?: () => Promise<void>,
     ): Promise<void> => {
       if (finalized) return finalizationPromise ?? Promise.resolve();
@@ -1126,7 +1132,7 @@ export class SharedRuntimeChatService {
         await mergeHistory(
           agent.id,
           roomId,
-          makeTurnMessages(reply, interrupted),
+          makeTurnMessages(reply, interrupted, grounding),
           options.historyStore,
         );
         await afterWrite?.();
@@ -1184,34 +1190,39 @@ export class SharedRuntimeChatService {
             const actionResults = part.actionResults?.length
               ? part.actionResults
               : turnActionResults(turn);
-            await finalizeMessages(finalReply, false, async () => {
-              // Durable claim completion before the done frame: a lost/dropped
-              // terminal frame replays this result on retry instead of
-              // re-dispatching the provider. Interrupted turns stay pending.
-              if (claimKey && options.turnClaims) {
-                await options.turnClaims.complete(claimKey, {
-                  text: finalReply,
-                  messageId: messageIds.assistant,
-                  userMessageId: messageIds.user,
-                  agentName: character.name,
-                  channelId: roomId,
-                  model: turn.model,
-                  degraded: false,
-                  runtime: "shared",
-                  transport: "shared-runtime",
-                  ...(actionResults ? { actionResults } : {}),
-                });
-              }
-              if (isDeterministicFreeTurn(turn)) {
-                terminalSettlementStarted = true;
-                await billing?.settle(0);
-              } else if (billing) {
-                terminalSettlementStarted = true;
-                await settleOffResponsePath(options.executionCtx, () =>
-                  finishBilling(agent, billing, finalReply, text, part.usage),
-                );
-              }
-            });
+            await finalizeMessages(
+              finalReply,
+              false,
+              sharedPublicWebGrounding(actionResults),
+              async () => {
+                // Durable claim completion before the done frame: a lost/dropped
+                // terminal frame replays this result on retry instead of
+                // re-dispatching the provider. Interrupted turns stay pending.
+                if (claimKey && options.turnClaims) {
+                  await options.turnClaims.complete(claimKey, {
+                    text: finalReply,
+                    messageId: messageIds.assistant,
+                    userMessageId: messageIds.user,
+                    agentName: character.name,
+                    channelId: roomId,
+                    model: turn.model,
+                    degraded: false,
+                    runtime: "shared",
+                    transport: "shared-runtime",
+                    ...(actionResults ? { actionResults } : {}),
+                  });
+                }
+                if (isDeterministicFreeTurn(turn)) {
+                  terminalSettlementStarted = true;
+                  await billing?.settle(0);
+                } else if (billing) {
+                  terminalSettlementStarted = true;
+                  await settleOffResponsePath(options.executionCtx, () =>
+                    finishBilling(agent, billing, finalReply, text, part.usage),
+                  );
+                }
+              },
+            );
             const done = actionResults
               ? {
                   messageId: messageIds.assistant,
@@ -1229,7 +1240,7 @@ export class SharedRuntimeChatService {
             controller.enqueue(encoder.encode(chatSseFrame("done", done)));
           }
           if (!finished) {
-            await finalizeMessages(streamedReply, true, () =>
+            await finalizeMessages(streamedReply, true, undefined, () =>
               settleInterruptedTurn("provider stream ended without completion"),
             );
             if (!consumerCanceled) {
@@ -1244,7 +1255,7 @@ export class SharedRuntimeChatService {
           }
         } catch (error) {
           // error-policy:J1 partial SSE cannot become an HTTP error.
-          await finalizeMessages(streamedReply, true, async () => {
+          await finalizeMessages(streamedReply, true, undefined, async () => {
             if (!terminalSettlementStarted) {
               terminalSettlementStarted = true;
               await settleFailedProviderWorkOffPath(
@@ -1294,7 +1305,7 @@ export class SharedRuntimeChatService {
         // The room may advance only after interrupted history is durable. It
         // must not wait for provider teardown: abort is already signalled and
         // consumerCanceled fences all late output from persistence/delivery.
-        await finalizeMessages(interruptedReply, true, () =>
+        await finalizeMessages(interruptedReply, true, undefined, () =>
           settleInterruptedTurn("consumer canceled stream"),
         );
       },

@@ -7,6 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import defaultConfig from "../vitest/default.config.ts";
 import integrationConfig from "../vitest/integration.config.ts";
 import {
   buildWorkspaceSourceAliases,
@@ -36,6 +37,17 @@ function resolveAlias(
 }
 
 describe("workspace source aliases", () => {
+  test("keeps the core edge entry ahead of the default bare-package alias", () => {
+    const aliases = defaultConfig.resolve?.alias;
+    if (!Array.isArray(aliases)) {
+      throw new Error("Default aliases must be an ordered array");
+    }
+
+    expect(resolveAlias(aliases, "@elizaos/core/edge")).toBe(
+      path.join(workspaceRepoRoot, "packages/core/src/index.edge.ts"),
+    );
+  });
+
   test("keeps package-aware aliases effective in the integration lane", () => {
     const aliases = integrationConfig.resolve?.alias;
     if (!Array.isArray(aliases)) {

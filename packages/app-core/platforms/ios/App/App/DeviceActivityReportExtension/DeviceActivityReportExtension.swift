@@ -1,3 +1,7 @@
+/**
+ * Declares the dormant Screen Time report-extension context without claiming a
+ * user-visible report before the host has a lawful DeviceActivity presenter.
+ */
 import DeviceActivity
 import SwiftUI
 
@@ -27,7 +31,7 @@ private struct ElizaDeviceActivityReportScene: DeviceActivityReportScene {
         _ = data
         return ElizaDeviceActivityReportConfiguration(
             title: "Screen Time",
-            message: "Screen Time activity is available for this report."
+            message: "Screen Time reports are not available in this version."
         )
     }
 }

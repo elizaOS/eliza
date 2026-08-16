@@ -5,7 +5,7 @@
 
 import crypto from "node:crypto";
 import { isIP } from "node:net";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, type PublicWebGrounding } from "@elizaos/core";
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   resolveRetainableAgentBackupBytes,
@@ -5843,6 +5843,7 @@ export class ElizaSandboxService {
       role: "user" | "assistant";
       text: string;
       timestamp?: number;
+      grounding?: PublicWebGrounding;
     }>,
   ): Promise<{
     complete: true;

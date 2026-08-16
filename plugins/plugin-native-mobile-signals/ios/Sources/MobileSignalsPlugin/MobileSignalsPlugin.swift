@@ -99,7 +99,9 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc public override func requestPermissions(_ call: CAPPluginCall) {
         let target = call.getString("target") ?? "all"
         if target == "screenTime" {
-            resolvePermissionAfterScreenTimeRequest(call)
+            buildPermissionResult { result in
+                call.resolve(result)
+            }
             return
         }
         if target == "notifications" {
@@ -107,15 +109,13 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
-        let shouldRequestScreenTime = target != "health"
         let types = requestedHealthTypes()
         guard !types.isEmpty else {
             resolvePermissionResult(
                 call,
                 status: "not-applicable",
                 canRequest: false,
-                reason: "HealthKit sleep and biometric types are unavailable on this device.",
-                requestScreenTime: shouldRequestScreenTime
+                reason: "HealthKit sleep and biometric types are unavailable on this device."
             )
             return
         }
@@ -131,8 +131,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 }
                 self.resolvePermissionResult(
                     call,
-                    reason: healthReason,
-                    requestScreenTime: shouldRequestScreenTime
+                    reason: healthReason
                 )
             }
         }
@@ -533,55 +532,18 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     private func mobileSignalsCapabilities() -> [String: Any] {
         [
             "health": HKHealthStore.isHealthDataAvailable(),
-            "screenTime": true,
+            "screenTime": false,
             "notifications": true,
             "settings": true,
         ]
-    }
-
-    private func resolvePermissionAfterScreenTimeRequest(
-        _ call: CAPPluginCall,
-        status: String? = nil,
-        canRequest: Bool? = nil,
-        reason: String? = nil
-    ) {
-        ScreenTimeSupport.requestAuthorizationIfAvailable { [weak self] screenTimeReason in
-            guard let self = self else { return }
-            self.buildPermissionResult(
-                status: status,
-                canRequest: canRequest,
-                reason: reason
-            ) { result in
-                var next = result
-                if let screenTimeReason {
-                    if let existingReason = next["reason"] as? String, !existingReason.isEmpty {
-                        next["reason"] = "\(existingReason) \(screenTimeReason)"
-                    } else {
-                        next["reason"] = screenTimeReason
-                    }
-                }
-                call.resolve(next)
-            }
-        }
     }
 
     private func resolvePermissionResult(
         _ call: CAPPluginCall,
         status: String? = nil,
         canRequest: Bool? = nil,
-        reason: String? = nil,
-        requestScreenTime: Bool
+        reason: String? = nil
     ) {
-        if requestScreenTime {
-            resolvePermissionAfterScreenTimeRequest(
-                call,
-                status: status,
-                canRequest: canRequest,
-                reason: reason
-            )
-            return
-        }
-
         buildPermissionResult(
             status: status,
             canRequest: canRequest,
@@ -598,11 +560,6 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         notification: NotificationPermissionCapture
     ) -> [[String: Any]] {
         let healthReady = healthStatus == "granted"
-        let authorization = screenTimeStatus["authorization"] as? [String: Any] ?? [:]
-        let screenTimeAuthStatus = authorization["status"] as? String ?? "unavailable"
-        let screenTimeCanRequest = authorization["canRequest"] as? Bool ?? false
-        let screenTimeSupported = screenTimeStatus["supported"] as? Bool ?? false
-        let screenTimeReady = screenTimeAuthStatus == "approved"
         let screenTimeReason = screenTimeStatus["reason"] ?? NSNull()
         let notificationsReady = notification.status == "granted"
 
@@ -623,13 +580,11 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             [
                 "id": "screen_time_authorization",
                 "label": "Screen Time",
-                "status": screenTimeReady
-                    ? "ready"
-                    : (screenTimeSupported ? "needs-action" : "unavailable"),
-                "canRequest": screenTimeCanRequest,
-                "canOpenSettings": true,
+                "status": "unavailable",
+                "canRequest": false,
+                "canOpenSettings": false,
                 "settingsTarget": "screenTime",
-                "reason": screenTimeReady ? NSNull() : screenTimeReason,
+                "reason": screenTimeReason,
             ],
             [
                 "id": "local_network",

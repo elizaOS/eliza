@@ -23,7 +23,12 @@ import {
   UnavailableCapabilityRouter,
   type UUID,
 } from "@elizaos/core";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// The production agent captures this before loading mutable runtime config.
+// This direct package harness must establish the same host authority explicitly.
+captureHostExecutionBaseline();
 
 // These tests exercise the SHELL action through `pwd`, `cd`, `git -C`, and
 // inline pipelines. The action itself does run on Windows (it routes to

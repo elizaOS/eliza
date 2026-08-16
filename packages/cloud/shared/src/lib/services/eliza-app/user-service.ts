@@ -12,7 +12,10 @@
  */
 
 import { organizationsRepository } from "../../../db/repositories/organizations";
-import { findReusablePersonalDelivery } from "../../../db/repositories/personal-shared-deliveries";
+import {
+  findReusablePersonalDelivery,
+  type ReusablePersonalDelivery,
+} from "../../../db/repositories/personal-shared-deliveries";
 import { type UserWithOrganization, usersRepository } from "../../../db/repositories/users";
 import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
 import type { Organization } from "../../../db/schemas/organizations";
@@ -66,6 +69,10 @@ export type PersonalDeliveryInput =
       globalName?: string | null;
       avatarUrl?: string | null;
     };
+
+export interface PersonalDeliveryProjectionHint {
+  userId: string;
+}
 
 function generateSlugFromTelegram(username?: string, telegramId?: string): string {
   const base = username ? username.toLowerCase().replace(/[^a-z0-9]/g, "-") : `tg-${telegramId}`;
@@ -173,6 +180,105 @@ async function createUserWithOrganization(params: {
 }
 
 class ElizaAppUserService {
+  private async reusablePersonalDeliveryResult(
+    params: PersonalDeliveryInput,
+    reusable: ReusablePersonalDelivery,
+    projectionHit: boolean,
+  ): Promise<PersonalDeliveryResult> {
+    const personalAgentId = personalSharedAgentId({
+      userId: reusable.userId,
+      organizationId: reusable.organizationId,
+    });
+    const candidate = reusable.dedicatedCandidate;
+    let dedicatedTarget: PersonalDeliveryResult["dedicatedTarget"] = null;
+    let resolution: PersonalDeliveryResult["resolution"] = projectionHit
+      ? "sender-projection-hit"
+      : "single-query-repeat";
+    if (candidate) {
+      if (readUpgradedFromAgentId(candidate.agent_config) === personalAgentId) {
+        dedicatedTarget = isAuthoritativePersonalDedicatedTarget(candidate, personalAgentId)
+          ? candidate
+          : null;
+      } else {
+        dedicatedTarget = await findActivePersonalDedicatedTarget(
+          reusable.organizationId,
+          personalAgentId,
+        );
+        resolution = "exact-dedicated-fallback";
+      }
+    }
+    logger.info(`[ElizaAppUserService] Reused ${params.platform} personal account`, {
+      userId: reusable.userId,
+      organizationId: reusable.organizationId,
+      platform: params.platform,
+      resolution,
+    });
+    return {
+      userId: reusable.userId,
+      organizationId: reusable.organizationId,
+      dedicatedTarget,
+      isNew: false,
+      resolution,
+    };
+  }
+
+  private async findReusablePersonalDeliveryResult(
+    params: PersonalDeliveryInput,
+    expected?: PersonalDeliveryProjectionHint,
+  ): Promise<PersonalDeliveryResult | null> {
+    const senderId =
+      params.platform === "telegram" ? params.telegramId.trim() : params.discordId.trim();
+    const username = params.username?.trim() || undefined;
+    const firstName =
+      params.platform === "telegram" ? params.firstName?.trim() || undefined : undefined;
+    const globalName =
+      params.platform === "discord"
+        ? params.globalName === undefined
+          ? undefined
+          : params.globalName?.trim() || null
+        : undefined;
+    const reusable = await findReusablePersonalDelivery(
+      params.platform === "telegram"
+        ? {
+            platform: "telegram",
+            telegramId: senderId,
+            telegramUsername: username,
+            telegramFirstName: firstName,
+          }
+        : {
+            platform: "discord",
+            discordId: senderId,
+            discordUsername: params.username.trim(),
+            discordGlobalName: globalName,
+            discordAvatarUrl: params.avatarUrl,
+          },
+      expected,
+    );
+    return reusable
+      ? await this.reusablePersonalDeliveryResult(params, reusable, expected !== undefined)
+      : null;
+  }
+
+  /**
+   * Treats a sender projection as a lookup hint, never as authorization. The
+   * primary database must still prove the exact identity, active user, current
+   * organization, active tenant, and current Dedicated route in one targeted
+   * statement before the cached account can address a private conversation.
+   */
+  async revalidatePersonalDeliveryProjection(
+    params: PersonalDeliveryInput,
+    expected: PersonalDeliveryProjectionHint,
+  ): Promise<PersonalDeliveryResult | null> {
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        expected.userId,
+      )
+    ) {
+      return null;
+    }
+    return await this.findReusablePersonalDeliveryResult(params, expected);
+  }
+
   /**
    * Resolves Telegram's verified sender directly into the rowless personal
    * service. This path starts at $0 and never creates an API key or sandbox;
@@ -246,57 +352,8 @@ class ElizaAppUserService {
       username ||
       "Eliza user";
 
-    const reusable = await findReusablePersonalDelivery(
-      params.platform === "telegram"
-        ? {
-            platform: "telegram",
-            telegramId: senderId,
-            telegramUsername: username,
-            telegramFirstName: firstName,
-          }
-        : {
-            platform: "discord",
-            discordId: senderId,
-            discordUsername: params.username.trim(),
-            discordGlobalName: globalName,
-            discordAvatarUrl: avatarUrl,
-          },
-    );
-    if (reusable) {
-      const personalAgentId = personalSharedAgentId({
-        userId: reusable.userId,
-        organizationId: reusable.organizationId,
-      });
-      const candidate = reusable.dedicatedCandidate;
-      let dedicatedTarget: PersonalDeliveryResult["dedicatedTarget"] = null;
-      let resolution: PersonalDeliveryResult["resolution"] = "single-query-repeat";
-      if (candidate) {
-        if (readUpgradedFromAgentId(candidate.agent_config) === personalAgentId) {
-          dedicatedTarget = isAuthoritativePersonalDedicatedTarget(candidate, personalAgentId)
-            ? candidate
-            : null;
-        } else {
-          dedicatedTarget = await findActivePersonalDedicatedTarget(
-            reusable.organizationId,
-            personalAgentId,
-          );
-          resolution = "exact-dedicated-fallback";
-        }
-      }
-      logger.info(`[ElizaAppUserService] Reused ${params.platform} personal account`, {
-        userId: reusable.userId,
-        organizationId: reusable.organizationId,
-        platform: params.platform,
-        resolution,
-      });
-      return {
-        userId: reusable.userId,
-        organizationId: reusable.organizationId,
-        dedicatedTarget,
-        isNew: false,
-        resolution,
-      };
-    }
+    const reusable = await this.findReusablePersonalDeliveryResult(params);
+    if (reusable) return reusable;
 
     const result = await usersRepository.findOrCreateMessagingPersonalAccount(
       params.platform === "telegram"

@@ -3194,13 +3194,6 @@ function shouldAdoptPlannerCadence(args: {
   return true;
 }
 
-/** Explicit deferred-consent request: the owner asked to SEE it before it is
- * written ("preview it first", "do not save until I confirm", "don't save it
- * yet", "ask me before"). A user-requested preview outranks every
- * crisp-ask immediate-save exemption below. */
-const LIFE_TEXT_REQUESTS_PREVIEW_RE =
-  /\b(?:preview\b[^.!?]{0,40}\bfirst|(?:do not|don'?t)\s+(?:save|add|create|write)\b[^.!?]{0,40}\b(?:until|unless|before)\b|(?:until|unless|before)\s+i\s+(?:confirm|approve|say so)|(?:don'?t|do not)\s+(?:save|add|create|write)\s+(?:it\s+)?yet\b|ask\s+(?:me\s+)?(?:first|before))/i;
-
 function shouldRequireLifeCreateConfirmation(args: {
   confirmed: boolean;
   messageSource: string | undefined;
@@ -3208,18 +3201,15 @@ function shouldRequireLifeCreateConfirmation(args: {
   cadence?: LifeOpsCadence;
   multiStep?: boolean;
   explicitUndated?: boolean;
-  previewRequested?: boolean;
+  ownerRequestedPreview?: boolean;
+  draftWasEdited?: boolean;
 }): boolean {
   if (args.messageSource === "autonomy") {
     return false;
   }
-  // An explicit "preview first / don't save until I confirm" in the owner's
-  // own words defeats BOTH immediate-save exemptions below AND the extracted
-  // `confirmed` flag itself: a future-consent clause means consent has NOT
-  // been given on THIS turn, even when the extractor (mis)reads the sentence
-  // as a confirmation. The follow-up turn's plain "yes, save it" carries no
-  // such clause and confirms normally.
-  if (args.previewRequested === true) {
+  // An explicit owner request to inspect the draft first overrides every
+  // immediate-save exemption, including planner-authored `confirmed: true`.
+  if (args.ownerRequestedPreview) {
     return true;
   }
   // Crisp single dated asks save immediately (#16935); a multi-milestone ask
@@ -3240,11 +3230,52 @@ function shouldRequireLifeCreateConfirmation(args: {
   if (
     args.cadence?.kind === "unscheduled" &&
     args.explicitUndated === true &&
-    !args.multiStep
+    !args.multiStep &&
+    !args.draftWasEdited
   ) {
     return false;
   }
   return !args.confirmed;
+}
+
+function ownerRequestsLifeCreatePreview(text: string): boolean {
+  const sentences = text
+    .toLowerCase()
+    .replace(/[’']/gu, "'")
+    .split(/[.!?。！？；;\n]+/u)
+    .map((sentence) => sentence.replace(/[^\p{L}\p{N}']+/gu, " ").trim())
+    .filter(Boolean);
+  return sentences.some(
+    (sentence) =>
+      /^(?:please\s+)?preview\b/u.test(sentence) ||
+      /\bpreview\s+(?:it|this|that|the\s+(?:todo|task|plan))\b/u.test(
+        sentence,
+      ) ||
+      /\b(?:preview|show|draft)\b.{0,48}\b(?:first|before)\b/u.test(sentence) ||
+      /\b(?:do not|don't|dont|hold off|wait)\b.{0,48}\b(?:save|create|add|persist)\b/u.test(
+        sentence,
+      ) ||
+      /\b(?:save|create|add|persist)\b.{0,48}\b(?:only after|until|when)\b.{0,32}\b(?:i\s+)?confirm\b/u.test(
+        sentence,
+      ) ||
+      /(?:vista previa|mu[eé]str(?:a|ame|amelo)\s+primero|no\s+(?:lo\s+)?guardes|espera\s+hasta\s+que\s+confirme)/u.test(
+        sentence,
+      ) ||
+      /(?:pr[eé][ -]?visualiz|mostr[ea](?: me)?\s+primeiro|n[aã]o\s+(?:o\s+)?salve|espere\s+at[eé]\s+eu\s+confirmar)/u.test(
+        sentence,
+      ) ||
+      /(?:xem\s+trước|hiển\s+thị\s+trước|đừng\s+lưu|chờ\s+tôi\s+xác\s+nhận)/u.test(
+        sentence,
+      ) ||
+      /(?:i[ -]?preview|ipakita\s+muna|huwag\s+(?:i[ -]?)?save|maghintay\s+hanggang\s+kumpirmahin)/u.test(
+        sentence,
+      ) ||
+      /(?:预览|先显示|不要保存|等我确认|确认后再保存)/u.test(sentence) ||
+      /(?:プレビュー|先に見せ|保存しない|確認するまで)/u.test(sentence) ||
+      /(?:미리\s*보기|먼저\s*보여|저장하지\s*마|확인할\s*때까지)/u.test(
+        sentence,
+      ),
+  );
 }
 
 function formatGoalExperienceLoopSummary(
@@ -4834,14 +4865,9 @@ async function runLifeOperationHandlerInner(
           requestKind: timedRequestKind,
           cadence: definitionDraft.request.cadence,
           multiStep: llmPlan?.multiStep === true,
-          // Creates only: an EDIT that re-states undatedness keeps the
-          // two-phase preview (the #20182 draft-lifecycle contract) — the
-          // skip is for the owner's fresh "add a todo: X, no deadline" ask,
-          // where the preview would echo back exactly what they just said.
-          explicitUndated:
-            !editingDeferredDefinitionDraft &&
-            textStatesExplicitUndatedTodo(currentText),
-          previewRequested: LIFE_TEXT_REQUESTS_PREVIEW_RE.test(currentText),
+          explicitUndated: textStatesExplicitUndatedTodo(currentText),
+          ownerRequestedPreview: ownerRequestsLifeCreatePreview(currentText),
+          draftWasEdited: editingDeferredDefinitionDraft,
         })
       ) {
         const draftLeadSteps = (
@@ -5233,7 +5259,7 @@ async function runLifeOperationHandlerInner(
             typeof message.content.source === "string"
               ? message.content.source
               : undefined,
-          previewRequested: LIFE_TEXT_REQUESTS_PREVIEW_RE.test(
+          ownerRequestedPreview: ownerRequestsLifeCreatePreview(
             messageText(message),
           ),
         })
