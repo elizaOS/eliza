@@ -5412,6 +5412,14 @@ export function ChatOverlay({
       !restoreDragging &&
       !fullBleed &&
       !firstRunOpen,
+    // The chat sheet is dark chrome even when the device appearance is light.
+    // Match its native UIGlassEffect to the DOM fallback so the material never
+    // becomes a bright slab over the conversation.
+    colorScheme: "dark",
+    // Native glass without a tint is transparent enough for home cards and
+    // their text to compete with the conversation. Preserve refraction while
+    // giving the sheet the same dark-warm reading field as the CSS fallback.
+    tintColor: "#16090DD9",
   });
   const nativeInsetSheet = nativeSheetTier === "native";
   // Keep the CSS material identity stable through fullscreen and its restore.
