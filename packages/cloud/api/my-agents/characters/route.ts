@@ -16,6 +16,7 @@ import { charactersService } from "@/lib/services/characters/characters";
 import { discordService } from "@/lib/services/discord";
 import type { ElizaCharacter } from "@/lib/types";
 import type { CategoryId, SortBy, SortOrder } from "@/lib/types/my-agents";
+import { parseClampedLimit } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -29,11 +30,9 @@ app.get("/", async (c) => {
     const category = c.req.query("category") as CategoryId | undefined;
     const sortBy = (c.req.query("sortBy") || "newest") as SortBy;
     const order = (c.req.query("order") || "desc") as SortOrder;
-    const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
-    const limit = Math.min(
-      1000,
-      Math.max(1, parseInt(c.req.query("limit") || "30", 10)),
-    );
+    const limit = parseClampedLimit(c.req.query("limit"), 30, 1000);
+    const maxPage = Math.floor(Number.MAX_SAFE_INTEGER / limit) + 1;
+    const page = parseClampedLimit(c.req.query("page"), 1, maxPage);
 
     logger.debug("[My Agents API] Search request:", {
       userId: user.id,
