@@ -1318,15 +1318,14 @@ describe("fabricated marker invocations are rejected, real widgets pass", () => 
 	});
 
 	it("a fabricated [DOCUMENT_SEARCH] marker coerces to CONTINUE and does not ship (live leak)", async () => {
-		const result = await runEvaluator(
-			paramsWithTool(
-				finishWith(
-					'checking documents context. [DOCUMENT_SEARCH] {"limit":20} [/DOCUMENT_SEARCH]',
-				),
-			),
-		);
-		expect(result.decision).toBe("CONTINUE");
-		expect(result.messageToUser ?? "").not.toContain("[DOCUMENT_SEARCH]");
+		for (const answer of [
+			'checking documents context. [DOCUMENT_SEARCH] {"limit":20} [/DOCUMENT_SEARCH]',
+			'checking documents context. [ DOCUMENT_SEARCH ] {"limit":20,} [ / DOCUMENT_SEARCH ]',
+		]) {
+			const result = await runEvaluator(paramsWithTool(finishWith(answer)));
+			expect(result.decision).toBe("CONTINUE");
+			expect(result.messageToUser ?? "").not.toContain("DOCUMENT_SEARCH");
+		}
 	});
 
 	it("a real [CHECKLIST] widget block is NOT treated as an invocation", async () => {
@@ -1338,5 +1337,16 @@ describe("fabricated marker invocations are rejected, real widgets pass", () => 
 			),
 		);
 		expect(result.decision).toBe("FINISH");
+	});
+
+	it("literal bracket-tag documentation stays FINISH", async () => {
+		for (const answer of [
+			"Wrap the value in [SECTION]content[/SECTION].",
+			'Example:\n```text\n[DOCUMENT_SEARCH] {"limit":20} [/DOCUMENT_SEARCH]\n```',
+		]) {
+			const result = await runEvaluator(paramsWithTool(finishWith(answer)));
+			expect(result.decision).toBe("FINISH");
+			expect(result.messageToUser).toBe(answer);
+		}
 	});
 });
