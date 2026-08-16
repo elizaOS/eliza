@@ -6163,33 +6163,37 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     includeAllComponents?: boolean;
     entityContext?: UUID;
   }): Promise<Entity[]> {
-    // If specific entityIds are provided, delegate to getEntitiesByIds
-    if (params.entityIds?.length) {
-      const entities = await this.getEntitiesByIds(params.entityIds);
-      return entities || [];
-    }
-
     return this.withDatabase(async () => {
       const conditions: SQL[] = [];
+      const hasComponentQuery =
+        params.componentType !== undefined ||
+        params.componentDataFilter !== undefined ||
+        params.worldId !== undefined;
 
       if (params.agentId) {
         conditions.push(eq(entityTable.agentId, params.agentId));
+      }
+      if (params.entityIds?.length) {
+        conditions.push(inArray(entityTable.id, params.entityIds));
       }
 
       // Build a single EXISTS subquery when filtering by componentType,
       // component data, and/or worldId.
       // Both predicates apply to the component table so they share one subquery.
-      if (params.componentType || params.componentDataFilter || params.worldId) {
+      if (hasComponentQuery) {
         const subConditions: SQL[] = [sql`${componentTable.entityId} = ${entityTable.id}`];
-        if (params.componentType) {
+        if (params.agentId) {
+          subConditions.push(sql`${componentTable.agentId} = ${params.agentId}`);
+        }
+        if (params.componentType !== undefined) {
           subConditions.push(sql`${componentTable.type} = ${params.componentType}`);
         }
-        if (params.componentDataFilter) {
+        if (params.componentDataFilter !== undefined) {
           subConditions.push(
             sql`${componentTable.data} @> ${JSON.stringify(params.componentDataFilter)}::jsonb`
           );
         }
-        if (params.worldId) {
+        if (params.worldId !== undefined) {
           subConditions.push(sql`${componentTable.worldId} = ${params.worldId}`);
         }
         const subquery = sql`EXISTS (
@@ -6204,27 +6208,70 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .from(entityTable)
         .where(conditions.length > 0 ? and(...conditions) : undefined);
 
-      if (params.limit) {
+      if (params.limit !== undefined && !params.entityIds?.length) {
         query = query.limit(params.limit) as typeof query;
       }
-      if (params.offset) {
+      if (params.offset !== undefined && !params.entityIds?.length) {
         query = query.offset(params.offset) as typeof query;
       }
 
       const result = await query;
 
-      const entities: Entity[] = result.map((row) => ({
+      let entities: Entity[] = result.map((row) => ({
         ...row,
         id: row.id as UUID,
         agentId: row.agentId as UUID,
         names: (row.names || []) as string[],
         metadata: (row.metadata || {}) as Metadata,
       }));
+      if (params.entityIds?.length) {
+        const inputOrder = new Map(params.entityIds.map((entityId, index) => [entityId, index]));
+        entities.sort(
+          (left, right) =>
+            (inputOrder.get(left.id as UUID) ?? Number.MAX_SAFE_INTEGER) -
+            (inputOrder.get(right.id as UUID) ?? Number.MAX_SAFE_INTEGER)
+        );
+        const offset = params.offset ?? 0;
+        const limit = params.limit ?? entities.length;
+        entities = entities.slice(offset, offset + limit);
+      }
 
-      // Load components for returned entities when requested
-      if (params.includeAllComponents && entities.length > 0) {
+      // Component-filtered queries return the components that established the
+      // match. Callers may explicitly request every component on those entities.
+      if ((params.includeAllComponents || hasComponentQuery) && entities.length > 0) {
         const entityIds = entities.flatMap((entity) => (entity.id ? [entity.id] : []));
-        const components = await this.getComponentsForEntities(entityIds, params.worldId);
+        const componentConditions: SQL[] = [inArray(componentTable.entityId, entityIds)];
+        if (params.agentId) {
+          componentConditions.push(eq(componentTable.agentId, params.agentId));
+        }
+        if (!params.includeAllComponents) {
+          if (params.componentType !== undefined) {
+            componentConditions.push(eq(componentTable.type, params.componentType));
+          }
+          if (params.componentDataFilter !== undefined) {
+            componentConditions.push(
+              sql`${componentTable.data} @> ${JSON.stringify(params.componentDataFilter)}::jsonb`
+            );
+          }
+          if (params.worldId !== undefined) {
+            componentConditions.push(eq(componentTable.worldId, params.worldId));
+          }
+        }
+        const componentRows = await this.db
+          .select()
+          .from(componentTable)
+          .where(and(...componentConditions));
+        const components: Component[] = componentRows.map((component) => ({
+          ...component,
+          id: component.id as UUID,
+          entityId: component.entityId as UUID,
+          agentId: component.agentId as UUID,
+          roomId: component.roomId as UUID,
+          worldId: (component.worldId ?? "") as UUID,
+          sourceEntityId: (component.sourceEntityId ?? "") as UUID,
+          data: component.data as Metadata,
+          createdAt: component.createdAt.getTime(),
+        }));
         const componentsByEntity = new Map<UUID, Component[]>();
         for (const comp of components) {
           const list = componentsByEntity.get(comp.entityId) ?? [];

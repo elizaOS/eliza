@@ -574,7 +574,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 		let entityIds: UUID[] = [];
 		if (matchedComponentsByEntity.size > 0) {
-			entityIds = Array.from(matchedComponentsByEntity.keys()).map(asUuid);
+			entityIds = _params.entityIds?.length
+				? _params.entityIds.filter((entityId) =>
+						matchedComponentsByEntity.has(String(entityId)),
+					)
+				: Array.from(matchedComponentsByEntity.keys()).map(asUuid);
 		} else if (!hasComponentQuery && _params.limit !== undefined) {
 			for (const entity of this.entities.values()) {
 				if (!entity.id) continue;
@@ -593,6 +597,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			return [];
 		}
 
+		entityIds = entityIds.filter((entityId) => {
+			const entity = this.entities.get(String(entityId));
+			return (
+				entity !== undefined &&
+				(!_params.agentId || entity.agentId === _params.agentId)
+			);
+		});
+
 		const offset = _params.offset ?? 0;
 		const limit = _params.limit ?? entityIds.length;
 		entityIds = entityIds.slice(offset, offset + limit);
@@ -601,18 +613,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		for (const entityId of entityIds) {
 			const entity = this.entities.get(String(entityId));
 			if (!entity) continue;
-			if (
-				_params.agentId &&
-				entity.agentId &&
-				entity.agentId !== _params.agentId
-			) {
-				continue;
-			}
-
 			const matchedComponents =
 				matchedComponentsByEntity.get(String(entityId)) ?? [];
 			const components = _params.includeAllComponents
-				? this.getStoredComponentsForEntity(entity.id)
+				? this.getStoredComponentsForEntity(entity.id).filter(
+						(component) =>
+							!_params.agentId || component.agentId === _params.agentId,
+					)
 				: matchedComponents;
 			entities.push(this.attachComponents(entity, components));
 		}

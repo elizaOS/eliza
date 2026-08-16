@@ -597,7 +597,10 @@ export class RelationshipsService extends Service {
 
 	// In-memory caches for performance
 	private contactInfoCache: Map<UUID, ContactInfo> = new Map();
-	private analyticsCache: Map<string, RelationshipAnalytics> = new Map();
+	private analyticsCache: Map<
+		string,
+		{ analytics: RelationshipAnalytics; cachedAt: number }
+	> = new Map();
 	private categoriesCache: ContactCategory[] = [];
 	private static readonly CONTACT_CACHE_LIMIT = 2000;
 	private static readonly ANALYTICS_CACHE_LIMIT = 2000;
@@ -1022,20 +1025,16 @@ export class RelationshipsService extends Service {
 		sourceEntityId: UUID,
 		targetEntityId: UUID,
 	): Promise<RelationshipAnalytics | null> {
-		const cacheKey = `${sourceEntityId}-${targetEntityId}`;
+		const [firstEntityId, secondEntityId] =
+			sourceEntityId < targetEntityId
+				? [sourceEntityId, targetEntityId]
+				: [targetEntityId, sourceEntityId];
+		const cacheKey = `${firstEntityId}-${secondEntityId}`;
 
-		// Check cache first
-		if (this.analyticsCache.has(cacheKey)) {
-			const cached = this.analyticsCache.get(cacheKey);
-			if (cached) {
-				// Cache for 1 hour
-				if (
-					cached.lastInteractionAt &&
-					Date.now() - new Date(cached.lastInteractionAt).getTime() < 3600000
-				) {
-					return cached;
-				}
-			}
+		// Check cache first (valid for 1 hour from computation)
+		const cached = this.analyticsCache.get(cacheKey);
+		if (cached && Date.now() - cached.cachedAt < 3600000) {
+			return cached.analytics;
 		}
 
 		// Get relationship
@@ -1177,7 +1176,7 @@ export class RelationshipsService extends Service {
 		this.setCacheWithLimit(
 			this.analyticsCache,
 			cacheKey,
-			analytics,
+			{ analytics, cachedAt: Date.now() },
 			RelationshipsService.ANALYTICS_CACHE_LIMIT,
 		);
 
