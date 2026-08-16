@@ -49,7 +49,7 @@ const NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN =
 // some thoughts". Vocabulary mirrors the scheduled-item nouns the LifeOps
 // surfaces own.
 const SIDE_EFFECT_SUBJECT_NOUN_PATTERN =
-	/\b(?:remind(?:er)?s?|alarms?|schedul(?:e|ed|ing)|scheduled\s+(?:task|item)s?|tasks?|appointments?|calendar|routines?|habits?|goals?|todos?|to[- ]dos?|check[- ]?ins?|follow[- ]?ups?|set[- ]?up|setup|onboard(?:ing)?|first[- ]?run|settings|defaults|configur(?:ation|ed))\b/i;
+	/\b(?:remind(?:er)?s?|alarms?|schedul(?:e|ed|ing)|scheduled\s+(?:task|item)s?|tasks?|appointments?|calendar|routines?|habits?|goals?|todos?|to[- ]dos?|notes?|check[- ]?ins?|follow[- ]?ups?|set[- ]?up|setup|onboard(?:ing)?|first[- ]?run|settings|defaults|configur(?:ation|ed))\b/i;
 
 // True when the sentence containing the match (scanning forward from the
 // match) terminates in "?" — the shape of a consent-seeking offer or a
@@ -77,11 +77,29 @@ function sideEffectClaimSentenceIsQuestion(
  * set…") are NOT claims and must return false — rewriting them to "On it."
  * turns a question the user asked into an action they did not consent to.
  */
+// Subjectless past-participle openers — "Added todo: sand the shelf",
+// "saved a note: the charger is in the drawer", "Deleted the reminder." The
+// live fabrication shape the I-subject patterns miss: the model reports
+// finished work headline-style with no pronoun (observed on the Discord
+// group surface: "Added todo: sand the dc5 shelf (no deadline, general
+// task)" shipped with ZERO tool calls). Anchored to a sentence start so
+// ordinary mid-sentence past tense ("the note I added yesterday") passes;
+// bare "set" is deliberately absent — "Set a reminder on your phone…" is a
+// common advisory imperative, not a report.
+const SUBJECTLESS_PAST_SIDE_EFFECT_CLAIM_PATTERN =
+	/(?:^|[.!?]\s+)(?:added|created|saved|scheduled|booked|logged|deleted|removed|renamed|cancell?ed|arranged)\b/gi;
+
 export function replyClaimsCompletedSideEffect(reply: string): boolean {
 	const text = reply.trim();
 	if (!text) return false;
 	if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(text)) return false;
 	if (STATE_SIDE_EFFECT_CLAIM_PATTERN.test(text)) return true;
+	for (const match of text.matchAll(
+		SUBJECTLESS_PAST_SIDE_EFFECT_CLAIM_PATTERN,
+	)) {
+		if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
+		return true;
+	}
 	for (const match of text.matchAll(PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN)) {
 		if (
 			!NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(text.slice(0, match.index))
