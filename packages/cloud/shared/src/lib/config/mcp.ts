@@ -1,35 +1,35 @@
-/**
- * MCP (Model Context Protocol) Configuration Constants
- * Centralized configuration for MCP endpoints and SSE streaming
- */
-
-function envInt(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const n = Number(raw.trim());
-  return Number.isInteger(n) && Number.isFinite(n) && n >= 0 ? n : fallback;
-}
+/** Centralizes MCP endpoint, SSE streaming, and operation-cost configuration. */
+import { parseNonNegativeInteger } from "@elizaos/shared/utils/number-parsing";
 
 /**
  * Request Timeout Configuration
  */
-export const MCP_REQUEST_TIMEOUT = envInt("MCP_TIMEOUT", 60);
-export const SSE_MAX_DURATION = envInt("SSE_MAX_DURATION", 300);
+export const MCP_REQUEST_TIMEOUT = parseNonNegativeInteger(process.env.MCP_TIMEOUT, 60);
+export const SSE_MAX_DURATION = parseNonNegativeInteger(process.env.SSE_MAX_DURATION, 300);
 
 /**
  * SSE (Server-Sent Events) Configuration
  */
-export const SSE_POLL_INTERVAL_MS = envInt("SSE_POLL_INTERVAL_MS", 500);
-export const SSE_HEARTBEAT_INTERVAL = envInt("SSE_HEARTBEAT_INTERVAL", 30); // Send heartbeat every N polls
+export const SSE_POLL_INTERVAL_MS = parseNonNegativeInteger(process.env.SSE_POLL_INTERVAL_MS, 500);
+export const SSE_HEARTBEAT_INTERVAL = parseNonNegativeInteger(
+  process.env.SSE_HEARTBEAT_INTERVAL,
+  30,
+); // Send heartbeat every N polls
 export const SSE_CONNECTION_TIMEOUT_MS = SSE_MAX_DURATION * 1000; // 5 minutes default
 
 /**
  * SSE Connection Limits and Backoff Configuration
  * SECURITY FIX: Prevent resource exhaustion attacks
  */
-export const SSE_MAX_CONNECTIONS_PER_ORG = envInt("SSE_MAX_CONNECTIONS_PER_ORG", 10);
-export const SSE_BACKOFF_INITIAL_MS = envInt("SSE_BACKOFF_INITIAL_MS", 500);
-export const SSE_BACKOFF_MAX_MS = envInt("SSE_BACKOFF_MAX_MS", 5000);
+export const SSE_MAX_CONNECTIONS_PER_ORG = parseNonNegativeInteger(
+  process.env.SSE_MAX_CONNECTIONS_PER_ORG,
+  10,
+);
+export const SSE_BACKOFF_INITIAL_MS = parseNonNegativeInteger(
+  process.env.SSE_BACKOFF_INITIAL_MS,
+  500,
+);
+export const SSE_BACKOFF_MAX_MS = parseNonNegativeInteger(process.env.SSE_BACKOFF_MAX_MS, 5000);
 export const SSE_BACKOFF_MULTIPLIER = Number.parseFloat(
   process.env.SSE_BACKOFF_MULTIPLIER || "1.5",
 );

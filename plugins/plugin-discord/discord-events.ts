@@ -114,14 +114,12 @@ function parseSettingInt(
 	fallback: number,
 ): number {
 	if (typeof raw === "number")
-		return Number.isInteger(raw) && Number.isFinite(raw) && raw >= 0
-			? raw
-			: fallback;
+		return Number.isSafeInteger(raw) && raw >= 0 ? raw : fallback;
 	if (typeof raw === "string") {
 		const t = raw.trim();
-		if (!t) return fallback;
+		if (!/^\d+$/.test(t)) return fallback;
 		const n = Number(t);
-		return Number.isInteger(n) && Number.isFinite(n) && n >= 0 ? n : fallback;
+		return Number.isSafeInteger(n) ? n : fallback;
 	}
 	return fallback;
 }
