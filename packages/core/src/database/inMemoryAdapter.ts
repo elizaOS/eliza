@@ -951,6 +951,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (params.agentId) {
 			all = all.filter((memory) => memory.agentId === params.agentId);
 		}
+		if (params.entityId) {
+			all = all.filter((memory) => memory.entityId === params.entityId);
+		}
 		if (params.unique) {
 			all = all.filter((memory) => memory.unique);
 		}
