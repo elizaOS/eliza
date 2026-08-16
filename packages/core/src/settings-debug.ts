@@ -57,7 +57,8 @@ function sanitizeDebugString(value: string): string {
 	if (trimmed.length > 48 || /^(sk-|pk_|Bearer\s)/i.test(trimmed)) {
 		return maskString(trimmed);
 	}
-	if (trimmed.length > MAX_STRING) return `${trimmed.slice(0, MAX_STRING)}…`;
+	if (trimmed.length > MAX_STRING)
+		return `${trimmed.slice(0, MAX_STRING - 1)}…`;
 	return trimmed;
 }
 

@@ -51,7 +51,7 @@ function memoryText(memory: Memory): string {
 function truncateSingleLine(text: string, maxChars: number): string {
 	const collapsed = text.replace(/\s+/g, " ").trim();
 	return collapsed.length > maxChars
-		? `${collapsed.slice(0, maxChars)}…`
+		? `${collapsed.slice(0, maxChars - 1)}…`
 		: collapsed;
 }
 
@@ -63,7 +63,7 @@ function withBoundedText(memory: Memory): Memory {
 		...memory,
 		content: {
 			...memory.content,
-			text: `${text.slice(0, MAX_REPLY_WINDOW_MESSAGE_CHARS)}…`,
+			text: `${text.slice(0, MAX_REPLY_WINDOW_MESSAGE_CHARS - 1)}…`,
 		},
 	};
 }
