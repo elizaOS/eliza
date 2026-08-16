@@ -39,16 +39,16 @@ voicebench/run.sh --profile=elevenlabs \
 ### Running on GPU (single-GPU tier)
 
 For Linux + NVIDIA hosts, the harness ships per-GPU autotune profiles
-under `packages/inference/configs/gpu/` (3090, 4090, 5090, H200). The
+under `plugins/plugin-local-inference/native/configs/gpu/` (3090, 4090, 5090, H200). The
 inference engine for this tier is **llama.cpp / llama-server** — not
 vLLM or SGLang.
 
 Detect the host card and print the resolved autotune plan:
 
 ```bash
-bun run --cwd packages/inference/voice-bench bench gpu
+bun run --cwd plugins/plugin-local-inference/native/voice-bench bench gpu
 # Or narrowed to a specific bundle:
-bun run --cwd packages/inference/voice-bench bench gpu --bundle eliza-1-9b
+bun run --cwd plugins/plugin-local-inference/native/voice-bench bench gpu --bundle eliza-1-9b
 ```
 
 The subcommand calls `nvidia-smi --query-gpu=name,memory.total` and
@@ -62,20 +62,20 @@ ctx_size) tuples we benchmark. Each row maps to one autotune config.
 Per-GPU expected metrics live in the config JSON files and are flagged
 `"_provenance": "extrapolated"` until a real run replaces them. The
 override mechanism + per-GPU known limits are documented in
-[`packages/inference/configs/gpu/SPECS.md`](../configs/gpu/SPECS.md) and
+[`plugins/plugin-local-inference/native/configs/gpu/SPECS.md`](../configs/gpu/SPECS.md) and
 [`docs/inference/gpu-tier.md`](../../../docs/inference/gpu-tier.md).
 
 Unit tests:
 
 ```bash
-bun run --cwd packages/inference/voice-bench test
-bun run --cwd packages/inference/voice-bench typecheck
+bun run --cwd plugins/plugin-local-inference/native/voice-bench test
+bun run --cwd plugins/plugin-local-inference/native/voice-bench typecheck
 ```
 
 Regenerate fixture WAVs into `fixtures/`:
 
 ```bash
-bun run --cwd packages/inference/voice-bench generate-fixtures
+bun run --cwd plugins/plugin-local-inference/native/voice-bench generate-fixtures
 ```
 
 The `fixtures/` directory is gitignored — the harness uses in-memory
@@ -123,9 +123,9 @@ When a real optimization legitimately improves a metric, record a new
 baseline:
 
 ```bash
-bun run --cwd packages/inference/voice-bench bench \
+bun run --cwd plugins/plugin-local-inference/native/voice-bench bench \
   --bundle eliza-1-2b --backend metal --runs 5 \
-  --output packages/inference/voice-bench/baselines/M4Max-metal.json
+  --output plugins/plugin-local-inference/native/voice-bench/baselines/M4Max-metal.json
 ```
 
 Commit the JSON. Future PRs compare against it.
