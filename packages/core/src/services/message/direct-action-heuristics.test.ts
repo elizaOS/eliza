@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Action } from "../../types/components";
 import {
+	classifyExplicitContinuationTurn,
 	findAvailableActionName,
 	findCodingDelegationActionName,
 	findShellDirectActionName,
@@ -17,10 +18,12 @@ import {
 	inferDirectCurrentRequestCandidateActions,
 	inferDirectCurrentRequestCandidateInference,
 	isShellDirectActionName,
+	isToolDerivedAssistantContent,
 	linkShareOwnText,
 	looksLikeBareLinkShare,
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
+	resolveExplicitContinuationRequestText,
 } from "./direct-action-heuristics.ts";
 
 /** The exact processed-content shape Discord produces for a shared link with a
@@ -1457,5 +1460,278 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 				"draw up a plan for the garage",
 			).kind,
 		).not.toBe("media-generation");
+	});
+});
+describe("classifyExplicitContinuationTurn", () => {
+	it("classifies directive continuations", () => {
+		expect(classifyExplicitContinuationTurn("finish my request")).toBe(
+			"directive",
+		);
+		expect(classifyExplicitContinuationTurn("Finish it.")).toBe("directive");
+		expect(classifyExplicitContinuationTurn("continue")).toBe("directive");
+		expect(classifyExplicitContinuationTurn("ok, go ahead")).toBe("directive");
+		expect(classifyExplicitContinuationTurn("yes please do it")).toBe(
+			"directive",
+		);
+		expect(classifyExplicitContinuationTurn("keep going")).toBe("directive");
+	});
+
+	it("classifies approval continuations", () => {
+		expect(classifyExplicitContinuationTurn("that is good")).toBe("approval");
+		expect(classifyExplicitContinuationTurn("that's good, go ahead")).toBe(
+			"approval",
+		);
+		expect(classifyExplicitContinuationTurn("yes")).toBe("approval");
+		expect(classifyExplicitContinuationTurn("sounds good")).toBe("approval");
+		expect(classifyExplicitContinuationTurn("that works")).toBe("approval");
+	});
+
+	it("rejects ordinary chat, topic switches, and questions", () => {
+		expect(classifyExplicitContinuationTurn("that is a good question")).toBe(
+			null,
+		);
+		expect(
+			classifyExplicitContinuationTurn("how tall is the eiffel tower?"),
+		).toBe(null);
+		expect(
+			classifyExplicitContinuationTurn("finish my sandwich and tell me a joke"),
+		).toBe(null);
+		expect(classifyExplicitContinuationTurn("good morning")).toBe(null);
+		expect(classifyExplicitContinuationTurn("is that good?")).toBe(null);
+		expect(classifyExplicitContinuationTurn("")).toBe(null);
+		expect(
+			classifyExplicitContinuationTurn(
+				"that is good but now let's talk about the weather in tokyo instead",
+			),
+		).toBe(null);
+	});
+});
+
+describe("resolveExplicitContinuationRequestText", () => {
+	const AGENT_ID = "00000000-0000-0000-0000-0000000000aa";
+	const USER_ID = "00000000-0000-0000-0000-0000000000bb";
+	const OTHER_USER_ID = "00000000-0000-0000-0000-0000000000cc";
+	const room = (
+		entries: Array<{
+			id: string;
+			agent?: boolean;
+			entity?: string;
+			text: string;
+			createdAt: number;
+			callbacks?: string[];
+			actions?: string[];
+		}>,
+	) =>
+		entries.map((entry) => ({
+			id: entry.id,
+			entityId: entry.agent ? AGENT_ID : (entry.entity ?? USER_ID),
+			createdAt: entry.createdAt,
+			content: {
+				text: entry.text,
+				...(entry.callbacks ? { actionCallbackHistory: entry.callbacks } : {}),
+				...(entry.actions ? { actions: entry.actions } : {}),
+			},
+		}));
+
+	it("resolves a directive continuation to the nearest prior user request", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"finish my request",
+			room([
+				{ id: "m1", text: "track a 30 minute run for me", createdAt: 1 },
+				{
+					id: "m2",
+					agent: true,
+					text: "Want me to log it as cardio?",
+					createdAt: 2,
+				},
+				{ id: "m3", text: "finish my request", createdAt: 3 },
+			]),
+			AGENT_ID,
+			USER_ID,
+			"m3",
+		);
+		expect(resolved).toBe("track a 30 minute run for me");
+	});
+
+	it("resolves an approval turn only while the agent's last reply looks pending", () => {
+		const pending = resolveExplicitContinuationRequestText(
+			"that is good",
+			room([
+				{ id: "m1", text: "run ls in my home directory", createdAt: 1 },
+				{ id: "m2", agent: true, text: "On it.", createdAt: 2 },
+			]),
+			AGENT_ID,
+			USER_ID,
+		);
+		expect(pending).toBe("run ls in my home directory");
+
+		const delivered = resolveExplicitContinuationRequestText(
+			"that is good",
+			room([
+				{ id: "m1", text: "run ls in my home directory", createdAt: 1 },
+				{
+					id: "m2",
+					agent: true,
+					text: "Here are your files: a.txt b.txt",
+					createdAt: 2,
+					callbacks: ["Here are your files: a.txt b.txt"],
+				},
+			]),
+			AGENT_ID,
+			USER_ID,
+		);
+		expect(delivered).toBe(null);
+	});
+
+	it("does not treat a short completed reply as pending approval", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"that is great",
+			room([
+				{ id: "m1", text: "delete the temporary file", createdAt: 1 },
+				{ id: "m2", agent: true, text: "Done.", createdAt: 2 },
+			]),
+			AGENT_ID,
+			USER_ID,
+		);
+		expect(resolved).toBe(null);
+	});
+
+	it("does not approve a new user request against an older assistant turn", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"yes",
+			room([
+				{ id: "m1", text: "show my files", createdAt: 1 },
+				{ id: "m2", agent: true, text: "Want me to continue?", createdAt: 2 },
+				{ id: "m3", text: "delete the temporary file", createdAt: 3 },
+			]),
+			AGENT_ID,
+			USER_ID,
+		);
+		expect(resolved).toBe(null);
+	});
+
+	it("does not approve an assistant turn marked as tool-derived", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"sounds good",
+			room([
+				{ id: "m1", text: "show my files", createdAt: 1 },
+				{
+					id: "m2",
+					agent: true,
+					text: "On it.",
+					createdAt: 2,
+					actions: ["SHELL"],
+				},
+			]),
+			AGENT_ID,
+			USER_ID,
+		);
+		expect(resolved).toBe(null);
+	});
+
+	it("returns null for non-continuation turns and empty history", () => {
+		expect(
+			resolveExplicitContinuationRequestText(
+				"what's the weather in tokyo?",
+				room([{ id: "m1", text: "track a run", createdAt: 1 }]),
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe(null);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"finish it",
+				[],
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe(null);
+	});
+
+	it("skips prior continuation turns instead of chaining them", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"finish it",
+			room([
+				{ id: "m1", text: "run df -h on the server", createdAt: 1 },
+				{ id: "m2", agent: true, text: "Should I run it now?", createdAt: 2 },
+				{ id: "m3", text: "go ahead", createdAt: 3 },
+				{ id: "m4", agent: true, text: "Working on it.", createdAt: 4 },
+				{ id: "m5", text: "finish it", createdAt: 5 },
+			]),
+			AGENT_ID,
+			USER_ID,
+			"m5",
+		);
+		expect(resolved).toBe("run df -h on the server");
+	});
+
+	it("never resolves another participant's request", () => {
+		const messages = room([
+			{
+				id: "m1",
+				entity: OTHER_USER_ID,
+				text: "delete my deployment",
+				createdAt: 1,
+			},
+			{ id: "m2", agent: true, text: "Should I delete it?", createdAt: 2 },
+		]);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"go ahead",
+				messages,
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe(null);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"go ahead",
+				messages,
+				AGENT_ID,
+				OTHER_USER_ID,
+			),
+		).toBe("delete my deployment");
+	});
+
+	it("does not treat planner-terminal STOP as a completed tool (#20324 review)", () => {
+		expect(isToolDerivedAssistantContent({ actions: ["STOP"] })).toBe(false);
+		expect(isToolDerivedAssistantContent({ actions: ["REPLY"] })).toBe(false);
+		expect(
+			isToolDerivedAssistantContent({ actions: ["DELETE_DEPLOYMENT"] }),
+		).toBe(true);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"that is good",
+				room([
+					{ id: "m1", text: "run ls in my home directory", createdAt: 1 },
+					{
+						id: "m2",
+						agent: true,
+						text: "On it.",
+						createdAt: 2,
+						actions: ["STOP"],
+					},
+				]),
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe("run ls in my home directory");
+		expect(
+			resolveExplicitContinuationRequestText(
+				"that is good",
+				room([
+					{ id: "m1", text: "run ls in my home directory", createdAt: 1 },
+					{
+						id: "m2",
+						agent: true,
+						text: "Done.",
+						createdAt: 2,
+						actions: ["SHELL"],
+					},
+				]),
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe(null);
 	});
 });

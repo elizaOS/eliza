@@ -16,6 +16,7 @@ import {
   logResponse,
   recentLogs,
   removeLogListener,
+  logger as sharedLogger,
 } from "./logger";
 
 describe("logger", () => {
@@ -215,6 +216,135 @@ describe("logger", () => {
       .info({ src: "browser-test" }, "child message");
 
     expect(consoleInfo).toHaveBeenCalledWith("[BROWSER-TEST] child message");
+  });
+
+  it("dispatches singleton, factory, and child logs exactly once", () => {
+    const factoryLogger = createLogger({
+      level: "trace",
+      namespace: "factory",
+    });
+    const childLogger = factoryLogger.child({ namespace: "child" });
+    const listener = vi.fn<(entry: LogEntry) => void>();
+    const unsubscribe = addLogListener(listener);
+    const cases = [
+      {
+        marker: "single-dispatch-shared-fatal",
+        priority: 60,
+        write: () => sharedLogger.fatal("single-dispatch-shared-fatal"),
+      },
+      {
+        marker: "single-dispatch-factory-info",
+        priority: 30,
+        write: () => factoryLogger.info("single-dispatch-factory-info"),
+      },
+      {
+        marker: "single-dispatch-child-warn",
+        priority: 40,
+        write: () => childLogger.warn("single-dispatch-child-warn"),
+      },
+    ];
+
+    try {
+      for (const { marker, priority, write } of cases) {
+        const deliveriesBefore = listener.mock.calls.length;
+        write();
+        expect(listener.mock.calls).toHaveLength(deliveriesBefore + 1);
+        expect(listener.mock.calls.at(-1)?.[0]).toMatchObject({
+          level: priority,
+          msg: expect.stringContaining(marker),
+        });
+        expect(
+          recentLogs()
+            .split("\n")
+            .filter((line) => line.includes(marker)),
+        ).toHaveLength(1);
+      }
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("dispatches every public level once with its Pino priority", () => {
+    const logger = createLogger({ level: "trace" });
+    const listener = vi.fn<(entry: LogEntry) => void>();
+    const unsubscribe = addLogListener(listener);
+    const levels = [
+      ["trace", 10],
+      ["debug", 20],
+      ["success", 27],
+      ["progress", 28],
+      ["log", 29],
+      ["info", 30],
+      ["warn", 40],
+      ["error", 50],
+      ["fatal", 60],
+    ] as const;
+
+    try {
+      for (const [method, priority] of levels) {
+        const marker = `single-dispatch-level-${method}`;
+        const deliveriesBefore = listener.mock.calls.length;
+        logger[method](marker);
+        expect(listener.mock.calls).toHaveLength(deliveriesBefore + 1);
+        expect(listener.mock.calls.at(-1)?.[0]).toMatchObject({
+          level: priority,
+          msg: marker,
+        });
+        expect(
+          recentLogs()
+            .split("\n")
+            .filter((line) => line.includes(marker)),
+        ).toHaveLength(1);
+      }
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("dispatches structured and Error overloads exactly once", () => {
+    const logger = createLogger({ level: "trace", namespace: "overload" });
+    const child = logger.child({ namespace: "overload-child" });
+    const listener = vi.fn<(entry: LogEntry) => void>();
+    const unsubscribe = addLogListener(listener);
+    const cases = [
+      {
+        marker: "single-dispatch-structured",
+        priority: 30,
+        write: () =>
+          logger.info(
+            { src: "logger-test", requestId: "structured" },
+            "single-dispatch-structured",
+          ),
+      },
+      {
+        marker: "single-dispatch-error-overload",
+        priority: 50,
+        write: () =>
+          child.error(
+            new Error("single-dispatch-error-overload"),
+            "error context",
+          ),
+      },
+    ];
+
+    try {
+      for (const { marker, priority, write } of cases) {
+        const deliveriesBefore = listener.mock.calls.length;
+        write();
+        expect(listener.mock.calls).toHaveLength(deliveriesBefore + 1);
+        expect(listener.mock.calls.at(-1)?.[0]).toMatchObject({
+          level: priority,
+          msg: expect.stringContaining(marker),
+        });
+        expect(
+          recentLogs()
+            .split("\n")
+            .filter((line) => line.includes(marker)),
+        ).toHaveLength(1);
+      }
+    } finally {
+      unsubscribe();
+    }
   });
 
   it("keeps the public prompt/chat instrumentation helpers available", () => {
