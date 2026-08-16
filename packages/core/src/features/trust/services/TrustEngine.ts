@@ -728,7 +728,7 @@ export class TrustEngine extends Service {
 		const positiveCount = evidence.filter((e) => e.impact > 0).length;
 		const negativeCount = evidence.filter((e) => e.impact < 0).length;
 		const consistency =
-			1 - Math.abs(positiveCount - negativeCount) / evidence.length;
+			Math.abs(positiveCount - negativeCount) / evidence.length;
 
 		// Recency factor - how recent is the evidence?
 		const recentEvidence = evidence.filter(
