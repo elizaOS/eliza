@@ -42,5 +42,9 @@ export function parseDurationMs(
           : unit === "h"
             ? 3_600_000
             : 86_400_000;
-  return Math.round(value * multiplier);
+  const milliseconds = value * multiplier;
+  if (!Number.isFinite(milliseconds)) {
+    throw new Error(`invalid duration: ${raw}`);
+  }
+  return Math.round(milliseconds);
 }
