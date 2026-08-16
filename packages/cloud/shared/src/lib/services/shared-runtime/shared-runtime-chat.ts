@@ -1049,7 +1049,6 @@ export class SharedRuntimeChatService {
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
-        ...(streamMemoryStore ? { memory: streamMemoryStore } : {}),
         ...(options.executionEngine === "eliza-runtime"
           ? {
               execution: sharedElizaRuntimeExecution(agent, params, options.funding),
@@ -1153,6 +1152,15 @@ export class SharedRuntimeChatService {
           makeTurnMessages(reply, interrupted),
           options.historyStore,
         );
+        if (streamMemoryStore && !isDeterministicFreeTurn(turn)) {
+          await streamMemoryStore.recordTurnPair({
+            userMessage: text.trim(),
+            assistantReply: reply,
+            messageIds,
+            messageRole,
+            interrupted,
+          });
+        }
         await afterWrite?.();
         finalized = true;
       })().catch((error) => {

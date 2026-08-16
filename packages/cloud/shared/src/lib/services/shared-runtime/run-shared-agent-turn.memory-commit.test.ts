@@ -1,10 +1,12 @@
 /**
  * Pins the P2 edge-memory commit point in runSharedAgentTurn(Stream): a landed
  * user/assistant pair is durably recorded through the attached SharedMemoryStore
- * exactly once, after the reply lands and before a streamed finish frame is
- * observable; failed provider turns never write; store failures surface as
- * storage faults, not provider outcomes. The language-model router and `ai`
- * SDK are stubbed deterministically; the memory store is a scripted double.
+ * exactly once after a non-streamed reply lands. Streaming ownership stays at
+ * the transport finalization boundary, which alone knows whether the consumer
+ * accepted a complete reply or cancelled on an interrupted prefix. Failed
+ * provider turns never write; store failures surface as storage faults, not
+ * provider outcomes. The language-model router and `ai` SDK are stubbed
+ * deterministically; the memory store is a scripted double.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { SharedMemoryStore, SharedMemoryTurnPair } from "./shared-memory-store";
@@ -142,35 +144,20 @@ describe("runSharedAgentTurn memory commit", () => {
   });
 });
 
-describe("runSharedAgentTurnStream memory commit", () => {
-  test("commits the pair when the finish part lands, after all text deltas", async () => {
-    const memory = scriptedMemory();
+describe("runSharedAgentTurnStream memory boundary", () => {
+  test("leaves streaming memory commits to the consumer-aware transport boundary", async () => {
     const turn = await runSharedAgentTurnStream({
       character,
       history: [],
       message: "stream me",
       messageIds,
-      memory: memory.store,
     });
     if (!turn.parts) throw new Error("stream turn returned no parts");
-    const seen: Array<{ type: string; committed: number }> = [];
+    const seen: string[] = [];
     for await (const part of turn.parts) {
-      seen.push({ type: part.type, committed: memory.pairs.length });
+      seen.push(part.type);
     }
-    // No commit while deltas stream; by the time finish is observable the
-    // pair is durable (committed strictly before the finish part is yielded).
-    expect(seen).toEqual([
-      { type: "text-delta", committed: 0 },
-      { type: "text-delta", committed: 0 },
-      { type: "finish", committed: 1 },
-    ]);
-    expect(memory.pairs).toEqual([
-      {
-        userMessage: "stream me",
-        assistantReply: "landed reply",
-        messageIds,
-      },
-    ]);
+    expect(seen).toEqual(["text-delta", "text-delta", "finish"]);
   });
 
   test("without a memory store the stream shape is unchanged and nothing writes", async () => {

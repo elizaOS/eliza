@@ -222,6 +222,24 @@ mock.module("./shared-todos", () => ({
   sharedTodoStorageScope,
 }));
 
+type TestMemoryPair = {
+  userMessage: string;
+  assistantReply: string;
+  messageIds?: { user: string; assistant: string };
+  messageRole?: "system" | "user";
+  interrupted?: boolean;
+};
+const memoryPairs: TestMemoryPair[] = [];
+const recordTurnPair = mock(async (pair: TestMemoryPair) => {
+  memoryPairs.push(pair);
+});
+const createSharedMemoryStore = mock(() =>
+  process.env.SHARED_MEMORY_TABLES_ENABLED === "true" ? { recordTurnPair } : null,
+);
+mock.module("./shared-memory-store", () => ({
+  createSharedMemoryStore,
+}));
+
 class TestInferenceAdmissionDispatchMarkError extends Error {}
 
 mock.module("../inference-admission-gate", () => ({
@@ -385,6 +403,10 @@ beforeEach(() => {
   streamAbortSignal = undefined;
   createSharedTodoStore.mockClear();
   sharedTodoStorageScope.mockClear();
+  delete process.env.SHARED_MEMORY_TABLES_ENABLED;
+  memoryPairs.length = 0;
+  recordTurnPair.mockClear();
+  createSharedMemoryStore.mockClear();
   turn = {
     degraded: false,
     reply: "hello back",
@@ -762,6 +784,7 @@ describe("SharedRuntimeChatService", () => {
   });
 
   test("streams chunks, persists the completed turn, and bills off path", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     const service = new SharedRuntimeChatService();
     const h = harness();
     const response = await service.stream(agent, rpc, h);
@@ -769,6 +792,13 @@ describe("SharedRuntimeChatService", () => {
     expect(body).toContain("event: chunk");
     expect(body).toContain("event: done");
     expect(h.history()).toHaveLength(3);
+    expect(memoryPairs).toEqual([
+      expect.objectContaining({
+        userMessage: "hello",
+        assistantReply: "hello back",
+        interrupted: false,
+      }),
+    ]);
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
   });
@@ -872,6 +902,7 @@ describe("SharedRuntimeChatService", () => {
   });
 
   test("stream cancellation persists interrupted history without waiting for provider teardown", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     const service = new SharedRuntimeChatService();
     const h = harness();
     let releaseProviderStream = () => {};
@@ -932,6 +963,13 @@ describe("SharedRuntimeChatService", () => {
     expect(streamAbortSignal?.reason).toBe("barge-in");
     expect(providerCancelReason).toBe("barge-in");
     expect(settleUnknownCalls).toBe(1);
+    expect(memoryPairs).toEqual([
+      expect.objectContaining({
+        userMessage: "hello",
+        assistantReply: "partial ",
+        interrupted: true,
+      }),
+    ]);
 
     // Provider teardown remains observed under waitUntil, but it is no longer
     // part of the room-lock release condition. Let both mocked provider tasks
@@ -947,6 +985,12 @@ describe("SharedRuntimeChatService", () => {
       content: "partial",
       interrupted: true,
     });
+    expect(memoryPairs).toEqual([
+      expect.objectContaining({
+        assistantReply: "partial ",
+        interrupted: true,
+      }),
+    ]);
     expect(settleUnknownCalls).toBe(1);
   });
 

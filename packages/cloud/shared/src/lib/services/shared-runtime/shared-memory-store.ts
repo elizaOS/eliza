@@ -45,6 +45,8 @@ export interface SharedMemoryTurnPair {
   /** Transport-stable ids; reused as row ids so a claim replay cannot double-write. */
   messageIds?: { user: string; assistant: string };
   messageRole?: "system" | "user";
+  /** Mirrors the canonical history marker for a client-cancelled partial reply. */
+  interrupted?: boolean;
 }
 
 /** Row id from a transport message id: pass through uuids, hash anything else. */
@@ -89,6 +91,8 @@ export class SharedMemoryStore {
       },
       createdAt: new Date(landedAt),
     });
+    const assistantReply = pair.assistantReply.trim();
+    if (!assistantReply) return;
     await this.writer.insertMemory({
       ...(pair.messageIds ? { id: memoryRowId(pair.messageIds.assistant) } : {}),
       scope,
@@ -99,9 +103,10 @@ export class SharedMemoryStore {
       worldId,
       type: SHARED_MEMORY_TYPE,
       content: {
-        text: pair.assistantReply,
+        text: assistantReply,
         source: "shared-runtime",
         channelType: "DM",
+        ...(pair.interrupted ? { interrupted: true } : {}),
       },
       createdAt: new Date(landedAt + 1),
     });

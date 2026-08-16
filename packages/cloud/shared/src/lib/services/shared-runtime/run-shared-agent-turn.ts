@@ -103,6 +103,9 @@ export interface RunSharedAgentTurnInput {
   };
 }
 
+/** Streaming persistence belongs to the consumer-aware transport finalizer. */
+export type RunSharedAgentTurnStreamInput = Omit<RunSharedAgentTurnInput, "memory">;
+
 export interface RunSharedAgentTurnResult {
   reply: string;
   /** history + the new user message + the assistant reply (persist this). */
@@ -312,29 +315,6 @@ async function commitSharedTurnMemory(
   });
 }
 
-/**
- * Streaming variant of the memory commit: the pair lands at the terminal
- * `finish` part, so the write is awaited after every text delta has already
- * streamed and BEFORE the finish frame becomes observable — a consumer that
- * sees `finish` can rely on the pair being durable, mirroring the claim-store
- * ordering in shared-runtime-chat.
- */
-function withSharedMemoryCommit(
-  result: RunSharedAgentTurnStreamResult,
-  input: RunSharedAgentTurnInput,
-): RunSharedAgentTurnStreamResult {
-  const memory = input.memory;
-  const inner = result.parts;
-  if (!memory || !inner) return result;
-  const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
-    for await (const part of inner) {
-      if (part.type === "finish") await commitSharedTurnMemory(input, part.text);
-      yield part;
-    }
-  })();
-  return { ...result, parts };
-}
-
 function modelHistoryContent(message: SharedTurnMessage): string {
   if (message.role === "assistant" && message.interrupted) {
     return `[interrupted assistant partial]\n${message.content}`;
@@ -491,7 +471,7 @@ export async function runSharedAgentTurn(
  * stream into the shared-runtime turn shape.
  */
 export async function runSharedAgentTurnStream(
-  input: RunSharedAgentTurnInput,
+  input: RunSharedAgentTurnStreamInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
 
@@ -557,21 +537,18 @@ export async function runSharedAgentTurnStream(
 
   if (input.execution?.engine === "eliza-runtime") {
     const { runSharedElizaRuntimeTurnStream } = await import("./shared-eliza-runtime");
-    return withSharedMemoryCommit(
-      await runSharedElizaRuntimeTurnStream({
-        ...input,
-        character: {
-          ...input.character,
-          system: buildSystemPrompt(input.character, {
-            reminders: remindersEnabled,
-            todos: todosEnabled,
-          }),
-        },
-        agentKey: input.execution.agentKey,
-        model: modelId,
-      }),
-      input,
-    );
+    return await runSharedElizaRuntimeTurnStream({
+      ...input,
+      character: {
+        ...input.character,
+        system: buildSystemPrompt(input.character, {
+          reminders: remindersEnabled,
+          todos: todosEnabled,
+        }),
+      },
+      agentKey: input.execution.agentKey,
+      model: modelId,
+    });
   }
 
   try {
@@ -668,15 +645,12 @@ export async function runSharedAgentTurnStream(
       }
     })();
 
-    return withSharedMemoryCommit(
-      {
-        model: modelId,
-        degraded: false,
-        parts,
-        cancel,
-      },
-      input,
-    );
+    return {
+      model: modelId,
+      degraded: false,
+      parts,
+      cancel,
+    };
   } catch (error) {
     // error-policy:J2 context-adding rethrow. Preserve the setup/provider cause
     // so the caller refunds only a provably unaccepted invocation.

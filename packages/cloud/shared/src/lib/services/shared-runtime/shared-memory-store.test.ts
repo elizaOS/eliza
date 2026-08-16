@@ -138,6 +138,38 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     expect(assistantRow?.content?.role).toBeUndefined();
   });
 
+  test("mirrors interrupted history and omits an unseen empty assistant row", async () => {
+    const interrupted = scriptedWriter();
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      interrupted.writer,
+    );
+    await store.recordTurnPair({
+      userMessage: "tell me slowly",
+      assistantReply: "partial answer",
+      interrupted: true,
+    });
+    expect(interrupted.inserts[1]?.content).toEqual({
+      text: "partial answer",
+      source: "shared-runtime",
+      channelType: "DM",
+      interrupted: true,
+    });
+
+    const empty = scriptedWriter();
+    const emptyStore = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      empty.writer,
+    );
+    await emptyStore.recordTurnPair({
+      userMessage: "cancelled before output",
+      assistantReply: "   ",
+      interrupted: true,
+    });
+    expect(empty.inserts).toHaveLength(1);
+    expect(empty.inserts[0]?.content.text).toBe("cancelled before output");
+  });
+
   test("omits row ids without transport ids and propagates storage failures", async () => {
     const unkeyed = scriptedWriter();
     const store = new SharedMemoryStore(
