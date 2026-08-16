@@ -18,6 +18,7 @@ import {
 	inferDirectCurrentRequestCandidateActions,
 	inferDirectCurrentRequestCandidateInference,
 	isShellDirectActionName,
+	isToolDerivedAssistantContent,
 	linkShareOwnText,
 	looksLikeBareLinkShare,
 	looksLikeLocalShellRequest,
@@ -1690,5 +1691,47 @@ describe("resolveExplicitContinuationRequestText", () => {
 				OTHER_USER_ID,
 			),
 		).toBe("delete my deployment");
+	});
+
+	it("does not treat planner-terminal STOP as a completed tool (#20324 review)", () => {
+		expect(isToolDerivedAssistantContent({ actions: ["STOP"] })).toBe(false);
+		expect(isToolDerivedAssistantContent({ actions: ["REPLY"] })).toBe(false);
+		expect(
+			isToolDerivedAssistantContent({ actions: ["DELETE_DEPLOYMENT"] }),
+		).toBe(true);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"that is good",
+				room([
+					{ id: "m1", text: "run ls in my home directory", createdAt: 1 },
+					{
+						id: "m2",
+						agent: true,
+						text: "On it.",
+						createdAt: 2,
+						actions: ["STOP"],
+					},
+				]),
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe("run ls in my home directory");
+		expect(
+			resolveExplicitContinuationRequestText(
+				"that is good",
+				room([
+					{ id: "m1", text: "run ls in my home directory", createdAt: 1 },
+					{
+						id: "m2",
+						agent: true,
+						text: "Done.",
+						createdAt: 2,
+						actions: ["SHELL"],
+					},
+				]),
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe(null);
 	});
 });

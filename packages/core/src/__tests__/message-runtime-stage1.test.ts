@@ -6875,6 +6875,86 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 		}
 	});
 
+	it("still resolves an approval continuation after a planner-terminal STOP ack (#20324 review)", async () => {
+		const shellHandler = vi.fn(async () => ({
+			success: true,
+			text: "Filesystem usage: 42%",
+		}));
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Sure.",
+			}),
+			{
+				thought: "Run the pending disk-usage request.",
+				toolCalls: [
+					{
+						id: "shell-disk-usage-stop",
+						name: "SHELL",
+						args: { command: "df -h" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Shell returned the disk usage.",
+				messageToUser: "Filesystem usage is at 42%.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "SHELL",
+				similes: [],
+				description: "Run a local shell command.",
+				parameters: [
+					{
+						name: "command",
+						description: "Command to run",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		const agentId = runtime.agentId;
+		const state = recentState([
+			{
+				id: "00000000-0000-0000-0000-00000000ee11" as UUID,
+				entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+				agentId,
+				roomId,
+				createdAt: 1,
+				content: {
+					text: "show me disk usage on this server",
+					source: "test",
+				},
+			},
+			{
+				id: "00000000-0000-0000-0000-00000000ee12" as UUID,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 2,
+				content: { text: "On it.", source: "test", actions: ["STOP"] },
+			},
+		]);
+		runtime.composeState = vi.fn(async () => state);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "that is good" }),
+			state,
+			responseId: "00000000-0000-0000-0000-0000000000c6" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(shellHandler).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not promote a non-continuation turn from prior history (topic-switch control)", async () => {
 		const runtime = makeRuntime([
 			stage1Response({

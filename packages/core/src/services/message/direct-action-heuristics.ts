@@ -7,6 +7,7 @@
  * simply yields no candidate. Also derives a concrete shell command or web-search
  * query from the message text.
  */
+import { isReservedNonToolActionName } from "../../action-names";
 import type { Action } from "../../types/components";
 
 export interface DirectActionInferenceHooks {
@@ -1744,6 +1745,9 @@ export type ContinuationDialogueEntry = {
  * Identifies assistant text derived from a tool execution rather than ordinary
  * dialogue. Planner context and continuation resolution share this predicate
  * so either persisted provenance shape closes the completed-action replay path.
+ * Envelope membership comes from `isReservedNonToolActionName` so STOP stays
+ * a planner terminal, not a delivered tool, and new
+ * `NON_EXECUTABLE_RESPONSE_ACTION_NAMES` members cannot silently drift.
  */
 export function isToolDerivedAssistantContent(
 	content: ContinuationDialogueEntry["content"],
@@ -1759,12 +1763,7 @@ export function isToolDerivedAssistantContent(
 	return content.actions.some((action) => {
 		if (typeof action !== "string") return false;
 		const normalized = normalizeActionIdentifier(action);
-		return (
-			normalized.length > 0 &&
-			normalized !== "REPLY" &&
-			normalized !== "NONE" &&
-			normalized !== "IGNORE"
-		);
+		return normalized.length > 0 && !isReservedNonToolActionName(normalized);
 	});
 }
 
