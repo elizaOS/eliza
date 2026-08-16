@@ -142,6 +142,9 @@ export async function revokeInternalToken(jti: string, expSeconds?: number): Pro
   const ttl = computeTtlSeconds(expSeconds);
   // `set key value EX ttl` — value is a marker; presence is what matters.
   await redis.set(denylistKey(jti), "1", { ex: ttl });
+  // Same-isolate revocation takes effect immediately regardless of any warm
+  // negative-cache entry for this jti.
+  negativeCache.delete(jti);
   logger.info("[internal-jwt] revoked jti", { jti, ttl });
 }
 
@@ -155,12 +158,47 @@ export async function revokeInternalToken(jti: string, expSeconds?: number): Pro
  *   fail closed (reject the token) rather than treat an errored check as "not
  *   revoked".
  */
+/**
+ * Short-TTL isolate-local negative cache: `jti → last time the store said
+ * "not revoked"`. Every JWT-authenticated Worker request otherwise pays one
+ * external REST roundtrip here, and that read dominated the real ingress
+ * stage on the shared-agent path (~1.1s real vs ~77ms on the shared-secret
+ * probes that skip it — HQ #18309 latency split). Only NEGATIVE results for
+ * signature-valid tokens are cached: a revoked hit purges the entry and is
+ * never cached, store errors propagate uncached (fail-closed unchanged), and
+ * a same-isolate revoke purges immediately. The security trade is bounded and
+ * explicit: a token revoked from ANOTHER pod/isolate may be accepted by an
+ * isolate holding a warm negative for up to the TTL below.
+ */
+const NEGATIVE_CACHE_TTL_MS = 30_000;
+const NEGATIVE_CACHE_MAX_ENTRIES = 5_000;
+const negativeCache = new Map<string, number>();
+
+function readFreshNegative(jti: string): boolean {
+  const checkedAt = negativeCache.get(jti);
+  if (checkedAt === undefined) return false;
+  if (Date.now() - checkedAt >= NEGATIVE_CACHE_TTL_MS) {
+    negativeCache.delete(jti);
+    return false;
+  }
+  return true;
+}
+
+function rememberNegative(jti: string): void {
+  if (negativeCache.size >= NEGATIVE_CACHE_MAX_ENTRIES) {
+    const oldest = negativeCache.keys().next().value;
+    if (oldest !== undefined) negativeCache.delete(oldest);
+  }
+  negativeCache.set(jti, Date.now());
+}
+
 export async function isJtiRevoked(jti: string): Promise<boolean> {
   if (!jti) {
     // A missing jti can never have been individually revoked; the verifier
     // already rejects tokens without a jti claim upstream.
     return false;
   }
+  if (readFreshNegative(jti)) return false;
   const redis = getRedis();
   if (!redis) {
     // No backend configured: per-jti revocation genuinely unsupported.
@@ -168,9 +206,19 @@ export async function isJtiRevoked(jti: string): Promise<boolean> {
     return false;
   }
   // Intentionally NOT wrapped in try/catch → allow: a store error must
-  // propagate so the verifier fails closed.
+  // propagate so the verifier fails closed (and is never cached).
   const hit = await redis.get(denylistKey(jti));
-  return hit !== null && hit !== undefined;
+  if (hit !== null && hit !== undefined) {
+    negativeCache.delete(jti);
+    return true;
+  }
+  rememberNegative(jti);
+  return false;
+}
+
+/** Test-only: clear the negative revocation cache between cases. */
+export function __resetDenylistNegativeCacheForTests(): void {
+  negativeCache.clear();
 }
 
 /** Test-only: drop the cached client so a fresh env is picked up. */

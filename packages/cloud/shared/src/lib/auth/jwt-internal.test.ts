@@ -256,3 +256,70 @@ describe("internal JWT jti revocation denylist (#12879)", () => {
     });
   });
 });
+
+describe("denylist negative cache (warm-ingress latency, HQ #18309)", () => {
+  beforeEach(() => {
+    process.env.JWT_SIGNING_PRIVATE_KEY = KEYS.priv;
+    process.env.JWT_SIGNING_PUBLIC_KEY = KEYS.pub;
+    process.env.JWT_SIGNING_KEY_ID = "test";
+    process.env.MOCK_REDIS = "1";
+    denylistStore.clear();
+    denylistGetError = null;
+    workerRuntime = false;
+    denylistMod.__resetDenylistClientForTests();
+    denylistMod.__resetDenylistNegativeCacheForTests();
+    setSystemTime();
+  });
+
+  afterEach(() => {
+    delete process.env.JWT_SIGNING_PRIVATE_KEY;
+    delete process.env.JWT_SIGNING_PUBLIC_KEY;
+    delete process.env.JWT_SIGNING_KEY_ID;
+    delete process.env.MOCK_REDIS;
+    denylistGetError = null;
+    denylistMod.__resetDenylistNegativeCacheForTests();
+    setSystemTime();
+  });
+
+  test("a warm negative skips the store read entirely (verify succeeds with the store down)", async () => {
+    const { access_token } = await mod.signInternalToken({ subject: "pod-warm" });
+    expect((await mod.verifyInternalToken(access_token)).valid).toBe(true);
+
+    // Break the store: an uncached second verify would fail closed here.
+    denylistGetError = new Error("denylist store unreachable");
+    const warm = await mod.verifyInternalToken(access_token);
+    expect(warm.valid).toBe(true);
+  });
+
+  test("the negative expires after its TTL and fail-closed resumes on the next read", async () => {
+    const { access_token } = await mod.signInternalToken({ subject: "pod-ttl" });
+    expect((await mod.verifyInternalToken(access_token)).valid).toBe(true);
+
+    denylistGetError = new Error("denylist store unreachable");
+    setSystemTime(new Date(Date.now() + 31_000));
+    await expect(mod.verifyInternalToken(access_token)).rejects.toThrow(
+      "denylist store unreachable",
+    );
+  });
+
+  test("a same-isolate revoke purges the warm negative immediately", async () => {
+    const { access_token } = await mod.signInternalToken({ subject: "pod-revoke" });
+    const first = await mod.verifyInternalToken(access_token);
+    expect(first.valid).toBe(true);
+
+    await denylistMod.revokeInternalToken(first.payload.jti);
+    await expect(mod.verifyInternalToken(access_token)).rejects.toThrow("Token has been revoked");
+  });
+
+  test("a revoked hit found by the store is never cached as negative", async () => {
+    const { access_token } = await mod.signInternalToken({ subject: "pod-hit" });
+    const first = await mod.verifyInternalToken(access_token);
+    await denylistMod.revokeInternalToken(first.payload.jti);
+    denylistMod.__resetDenylistNegativeCacheForTests();
+
+    await expect(mod.verifyInternalToken(access_token)).rejects.toThrow("Token has been revoked");
+    // Still revoked on the immediate next check — the revoked result did not
+    // plant a fresh negative.
+    await expect(mod.verifyInternalToken(access_token)).rejects.toThrow("Token has been revoked");
+  });
+});
