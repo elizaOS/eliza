@@ -1,7 +1,8 @@
 /**
  * Verifies the real Docker/Apple Container argv contract without invoking a
- * container daemon. Both engines share this builder, so environment parity is
- * tested at the process boundary rather than through an engine mock.
+ * container daemon. Both engines share this builder, so environment flags and
+ * command tokenization are tested at the process boundary rather than through
+ * an engine mock.
  */
 
 import { describe, expect, it } from "vitest";
@@ -38,4 +39,32 @@ describe("container exec environment forwarding", () => {
       }),
     ).toEqual(["exec", "sandbox-1", "env"]);
   });
+
+  it.each([
+    {
+      command: String.raw`printf %s \"`,
+      expectedArgs: ["printf", "%s", '"'],
+      label: "terminal quote",
+    },
+    {
+      command: String.raw`printf %s \\`,
+      expectedArgs: ["printf", "%s", "\\"],
+      label: "terminal backslash",
+    },
+    {
+      command: String.raw`printf %s \  done`,
+      expectedArgs: ["printf", "%s", " ", "done"],
+      label: "space before another argument",
+    },
+  ])(
+    "preserves an argument containing only an escaped $label",
+    ({ command, expectedArgs }) => {
+      expect(
+        buildContainerExecArgs({
+          containerId: "sandbox-1",
+          command,
+        }),
+      ).toEqual(["exec", "sandbox-1", ...expectedArgs]);
+    },
+  );
 });
