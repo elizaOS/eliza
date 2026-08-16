@@ -16,7 +16,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 vi.mock("./mac-window-effects", () => ({
   createSecurityScopedBookmark: vi.fn(() => null),
   enableVibrancy: vi.fn(() => false),
-  ensureShadow: vi.fn(() => false),
+  setWindowShadow: vi.fn(() => false),
   isAppActive: vi.fn(() => false),
   isKeyWindow: vi.fn(() => false),
   makeKeyAndOrderFront: vi.fn(),

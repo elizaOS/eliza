@@ -20,6 +20,8 @@ describe("HomePill", () => {
     const mark = screen.getByTestId("shell-home-pill-mark");
     expect(mark.className).toContain("bg-white/95");
     expect(mark.className).toContain("w-12");
+    expect(mark.className).toContain("shadow-[0_0_0_1px_rgba(0,0,0,0.12)]");
+    expect(mark.className).not.toContain("0_1px_7px");
     expect(btn.textContent).toBe("");
     expect(btn.style.backgroundColor).toBe("");
     expect(btn.className).toContain("h-8");

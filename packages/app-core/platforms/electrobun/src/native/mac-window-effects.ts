@@ -16,7 +16,7 @@ import { resolveNativeLibraryCandidate } from "../../../../src/platform/native-l
  */
 type MacEffectsSymbols = {
   enableWindowVibrancy(ptr: Pointer): boolean;
-  ensureWindowShadow(ptr: Pointer): boolean;
+  setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
   setWindowTrafficLightsPosition(ptr: Pointer, x: number, y: number): boolean;
   setNativeWindowDragRegion(ptr: Pointer, x: number, height: number): boolean;
   disableWindowBackForwardNavigationGestures(ptr: Pointer): boolean;
@@ -70,7 +70,10 @@ function loadLib(): MacEffectsLib {
     // FFIType descriptors at the TypeScript level.
     return dlopen(dylibPath, {
       enableWindowVibrancy: { args: [FFIType.ptr], returns: FFIType.bool },
-      ensureWindowShadow: { args: [FFIType.ptr], returns: FFIType.bool },
+      setWindowShadowEnabled: {
+        args: [FFIType.ptr, FFIType.bool],
+        returns: FFIType.bool,
+      },
       setWindowTrafficLightsPosition: {
         args: [FFIType.ptr, FFIType.f64, FFIType.f64],
         returns: FFIType.bool,
@@ -152,8 +155,8 @@ export function enableVibrancy(ptr: Pointer): boolean {
   return getLib()?.symbols.enableWindowVibrancy(ptr) ?? false;
 }
 
-export function ensureShadow(ptr: Pointer): boolean {
-  return getLib()?.symbols.ensureWindowShadow(ptr) ?? false;
+export function setWindowShadow(ptr: Pointer, enabled: boolean): boolean {
+  return getLib()?.symbols.setWindowShadowEnabled(ptr, enabled) ?? false;
 }
 
 export function setTrafficLightsPosition(
