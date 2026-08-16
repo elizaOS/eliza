@@ -369,4 +369,701 @@ describe("trajectory plaintext serializers", () => {
 			}),
 		).toBe("prompt hit: segment-a");
 	});
+
+	it("covers lifecycle stream run_start, step_start, context_loaded, action_start, and default type", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "run_start" },
+			}),
+		)?.toMatchObject({
+			eventType: "run_start",
+			plaintext: "Run started",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "step_start", stepName: "validation" },
+			}),
+		)?.toMatchObject({
+			eventType: "step_start",
+			plaintext: "Step started: validation",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "context_loaded" },
+			}),
+		)?.toMatchObject({
+			eventType: "context_loaded",
+			plaintext: "Context loaded",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "action_start", actionName: "DEFER" },
+			}),
+		)?.toMatchObject({
+			eventType: "action_start",
+			plaintext: "Action started: DEFER",
+		});
+
+		// Default case: unknown type gets spaces instead of underscores
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "custom_event_type" },
+			}),
+		)?.toMatchObject({
+			eventType: "custom_event_type",
+			plaintext: "custom event type",
+		});
+	});
+
+	it("covers lifecycle stream edge cases: run_failed, step_failed, action_failed", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "run_end", success: false, error: "Timeout" },
+			}),
+		)?.toMatchObject({
+			eventType: "error",
+			plaintext: "Run failed: Timeout",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: {
+					type: "step_end",
+					success: false,
+					stepName: "validation",
+					error: "Schema mismatch",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "error",
+			plaintext: "Step failed: validation: Schema mismatch",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: {
+					type: "action_end",
+					success: false,
+					actionName: "TRANSFER",
+					error: "Insufficient funds",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "action_error",
+			plaintext: "Action failed: TRANSFER: Insufficient funds",
+		});
+	});
+
+	it("covers action stream skipped and error branches", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "action",
+				payload: {
+					type: "skipped",
+					actionName: "DEFER",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "action_skipped",
+			plaintext: "Action skipped: DEFER",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "action",
+				payload: {
+					type: "error",
+					actionName: "QUERY",
+					error: "Database unavailable",
+					duration: 500,
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "action_error",
+			plaintext: "Action failed: QUERY (500ms): Database unavailable",
+		});
+	});
+
+	it("covers tool stream all event types and default naming", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "tool",
+				payload: {
+					type: "tool_result",
+					toolName: "grep",
+					output: { matches: 42 },
+					durationMs: 120,
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "tool_result",
+			plaintext: 'Tool completed: grep (120ms): {"matches":42}',
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "tool",
+				payload: {
+					type: "unknown_type",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "tool_call",
+			plaintext: "Tool called: tool",
+		});
+	});
+
+	it("covers evaluator stream validated=false, error, and skipped", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "evaluator",
+				payload: {
+					type: "error",
+					evaluatorName: "schema-check",
+					error: "Invalid structure",
+					duration: 300,
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "evaluator_error",
+			plaintext: "Evaluator failed: schema-check (300ms): Invalid structure",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "evaluator",
+				payload: {
+					type: "skipped",
+					evaluatorName: "context-gates",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "evaluator_skipped",
+			plaintext: "Evaluator skipped: context-gates",
+		});
+	});
+
+	it("covers provider stream error, cached flag, complete, and default naming", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "provider",
+				payload: {
+					type: "error",
+					providerName: "contacts",
+					error: "API rate limited",
+					durationMs: 1200,
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "provider_error",
+			plaintext: "Provider failed: contacts (1.2s): API rate limited",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "provider",
+				payload: {
+					type: "complete",
+					fromCache: true,
+					data: { items: 5 },
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "provider_cached",
+			plaintext: 'Provider served from cache: provider: {"items":5}',
+		});
+
+		// Provider complete without cache flag
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "provider",
+				payload: {
+					type: "complete",
+					providerName: "scheduler",
+					data: { slots: 10 },
+					durationMs: 800,
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "provider_complete",
+			plaintext: 'Provider completed: scheduler (800ms): {"slots":10}',
+		});
+	});
+
+	it("covers message stream all verb types and missing fields", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "message",
+				payload: {
+					type: "sent",
+					channel: "email",
+					content: "Confirmation sent",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "message_sent",
+			plaintext: "Message sent on email: Confirmation sent",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "message",
+				payload: {
+					type: "queued",
+					hasAttachments: false,
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "message_queued",
+			plaintext: "Message queued",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "message",
+				payload: {
+					type: "failed",
+					error: "Delivery failed",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "message_failed",
+			plaintext: "Message failed: Delivery failed",
+		});
+	});
+
+	it("covers memory stream all event types and count pluralization", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "memory",
+				payload: {
+					type: "create",
+					tableName: "goals",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "memory_create",
+			plaintext: "Memory created in goals",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "memory",
+				payload: {
+					type: "update",
+					tableName: "memories",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "memory_update",
+			plaintext: "Memory updated in memories",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "memory",
+				payload: {
+					type: "delete",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "memory_delete",
+			plaintext: "Memory deleted",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "memory",
+				payload: {
+					type: "retrieved",
+					tableName: "messages",
+					count: 1,
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "memory_retrieved",
+			plaintext: "Memory retrieved in messages (1 item)",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "memory",
+				payload: {
+					type: "unknown",
+					tableName: "archive",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "memory_unknown",
+			plaintext: "Memory unknown in archive",
+		});
+	});
+
+	it("covers assistant stream all type variants and missing text", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "assistant",
+				payload: {
+					type: "thought",
+					text: "Consider this approach",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "assistant_thought",
+			plaintext: "Assistant thought: Consider this approach",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "assistant",
+				payload: {
+					type: "reflection",
+					text: "That worked well",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "assistant_reflection",
+			plaintext: "Assistant reflection: That worked well",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "assistant",
+				payload: {
+					type: "message",
+					text: "Hello there",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "message",
+			plaintext: "Assistant message: Hello there",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "assistant",
+				payload: {
+					type: "unknown_type",
+					content: "Some content",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "assistant_unknown_type",
+			plaintext: "Assistant activity: Some content",
+		});
+
+		// Missing text returns null
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "assistant",
+				payload: {
+					type: "thought",
+				},
+			}),
+		).toBeNull();
+	});
+
+	it("covers notification stream with priority levels", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "notification",
+				payload: {
+					notification: {
+						title: "Approval needed",
+						body: "Review the policy change",
+						priority: "urgent",
+					},
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "approval",
+			plaintext: "Approval needed - Review the policy change",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "notification",
+				payload: {
+					notification: {
+						title: "Update available",
+						priority: "low",
+					},
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "message",
+			plaintext: "Update available",
+		});
+
+		// Identical title and body are not duplicated
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "notification",
+				payload: {
+					notification: {
+						title: "Ready",
+						body: "Ready",
+					},
+				},
+			}),
+		)?.toMatchObject({
+			plaintext: "Ready",
+		});
+	});
+
+	it("covers PTY event types: task_complete, stopped, blocked, error", () => {
+		expect(
+			activityEventToPlaintext({
+				eventType: "task_complete",
+				data: {},
+			}),
+		)?.toMatchObject({
+			eventType: "task_complete",
+			plaintext: "Task completed",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				eventType: "stopped",
+				data: {},
+			}),
+		)?.toMatchObject({
+			eventType: "stopped",
+			plaintext: "Task stopped",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				eventType: "blocked",
+				data: {},
+			}),
+		)?.toMatchObject({
+			eventType: "blocked",
+			plaintext: "Waiting for input",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				eventType: "blocked_auto_resolved",
+				data: {},
+			}),
+		)?.toMatchObject({
+			eventType: "blocked_auto_resolved",
+			plaintext: "Decision auto-approved",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				eventType: "error",
+				data: { message: "Permission denied" },
+			}),
+		)?.toMatchObject({
+			eventType: "error",
+			plaintext: "Permission denied",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				eventType: "error",
+				data: {},
+			}),
+		)?.toMatchObject({
+			plaintext: "Error occurred",
+		});
+	});
+
+	it("covers PTY proactive-message and escalation events", () => {
+		expect(
+			activityEventToPlaintext({
+				eventType: "proactive-message",
+				message: { text: "Your goal is due soon" },
+			}),
+		)?.toMatchObject({
+			eventType: "proactive-message",
+			plaintext: "Your goal is due soon",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				eventType: "escalation",
+				data: {},
+			}),
+		)?.toMatchObject({
+			eventType: "escalation",
+			plaintext: "Escalated - needs attention",
+		});
+	});
+
+	it("handles malformed and missing payload gracefully", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "unknown_stream",
+				payload: null,
+			}),
+		).toBeNull();
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "action",
+				// No payload
+			}),
+		).toBeNull();
+
+		expect(
+			activityEventToPlaintext({
+				eventType: null,
+				data: { text: "text" },
+			}),
+		).toBeNull();
+
+		expect(activityEventToPlaintext(null)).toBeNull();
+		expect(activityEventToPlaintext("not an object")).toBeNull();
+	});
+
+	it("handles edge cases in payload preview with bigint and uncircular values", () => {
+		// Test with numeric detail
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "action",
+				payload: {
+					type: "complete",
+					actionName: "COUNT",
+					output: 42,
+				},
+			}),
+		)?.toMatchObject({
+			plaintext: "Action completed: COUNT: 42",
+		});
+
+		// Test with boolean detail
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "action",
+				payload: {
+					type: "complete",
+					actionName: "VERIFY",
+					output: true,
+				},
+			}),
+		)?.toMatchObject({
+			plaintext: "Action completed: VERIFY: true",
+		});
+
+		// Test with null detail (should be skipped)
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "action",
+				payload: {
+					type: "complete",
+					actionName: "NOOP",
+					output: null,
+				},
+			}),
+		)?.toMatchObject({
+			plaintext: "Action completed: NOOP",
+		});
+	});
+
+	it("formats duration correctly across milliseconds, seconds, minutes", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "run_end", success: true, duration: 45 },
+			}),
+		)?.toMatchObject({
+			plaintext: "Run completed (45ms)",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "run_end", success: true, duration: 5000 },
+			}),
+		)?.toMatchObject({
+			plaintext: "Run completed (5.0s)",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "run_end", success: true, duration: 125000 },
+			}),
+		)?.toMatchObject({
+			plaintext: "Run completed (2m 5s)",
+		});
+	});
+
+	it("truncates long plaintext to maxLength with whitespace normalization", () => {
+		const longText =
+			"A ".repeat(100) + "and some final text that exceeds the limit";
+		expect(
+			activityEventToPlaintext(
+				{
+					eventType: "message",
+					data: { text: longText },
+				},
+				{ maxLength: 50 },
+			)?.plaintext.length,
+		).toBeLessThanOrEqual(50);
+
+		// Multiple spaces normalized to single space
+		expect(
+			activityEventToPlaintext({
+				eventType: "message",
+				data: { text: "Text    with\n\nmultiple   spaces" },
+			})?.plaintext,
+		).toBe("Text with multiple spaces");
+	});
 });
