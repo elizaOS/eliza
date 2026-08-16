@@ -68,10 +68,15 @@ export interface TriagedNotification {
   score: number;
 }
 
-/** Fetch every unread notification page so ranking and totals are complete. */
+interface UnreadNotificationFetchResult {
+  notifications: GitHubNotificationSummary[];
+  totalUnreadIsLowerBound: boolean;
+}
+
+/** Fetch bounded unread pages and report when the collected total is partial. */
 export async function fetchAllUnreadNotifications(
   activity: GitHubOctokitClient["activity"],
-): Promise<GitHubNotificationSummary[]> {
+): Promise<UnreadNotificationFetchResult> {
   const notifications: GitHubNotificationSummary[] = [];
   const seenIds = new Set<string>();
   for (let page = 1; page <= NOTIFICATION_MAX_PAGES; page += 1) {
@@ -87,13 +92,15 @@ export async function fetchAllUnreadNotifications(
       seenIds.add(notification.id);
       notifications.push(notification);
     }
-    if (response.data.length < NOTIFICATION_PAGE_SIZE) return notifications;
+    if (response.data.length < NOTIFICATION_PAGE_SIZE) {
+      return { notifications, totalUnreadIsLowerBound: false };
+    }
   }
   logger.warn(
     { pages: NOTIFICATION_MAX_PAGES, collected: notifications.length },
     "[GitHub:GITHUB_NOTIFICATION_TRIAGE] unread notifications truncated at page cap",
   );
-  return notifications;
+  return { notifications, totalUnreadIsLowerBound: true };
 }
 
 function scoreNotification(params: {
@@ -115,7 +122,17 @@ function scoreNotification(params: {
   return base + subject + freshness;
 }
 
-export { scoreNotification };
+function formatTriageSummary(
+  triagedCount: number,
+  totalUnread: number,
+  totalUnreadIsLowerBound: boolean,
+): string {
+  return totalUnreadIsLowerBound
+    ? `Triaged ${triagedCount} of at least ${totalUnread} unread notification(s)`
+    : `Triaged ${triagedCount} unread notification(s)`;
+}
+
+export { formatTriageSummary, scoreNotification };
 
 export const notificationTriageAction: Action = {
   name: GitHubActions.GITHUB_NOTIFICATION_TRIAGE,
@@ -162,6 +179,7 @@ export const notificationTriageAction: Action = {
       notifications: TriagedNotification[];
       notificationLimit: number;
       totalUnread: number;
+      totalUnreadIsLowerBound: boolean;
     }>
   > => {
     const selection = resolveAccountSelection(options, "user");
@@ -172,9 +190,8 @@ export const notificationTriageAction: Action = {
     }
 
     try {
-      const notifications = await fetchAllUnreadNotifications(
-        resolved.client.activity,
-      );
+      const { notifications, totalUnreadIsLowerBound } =
+        await fetchAllUnreadNotifications(resolved.client.activity);
       const nowMs = Date.now();
       const triaged: TriagedNotification[] = notifications.map((n) => {
         const repoPushedAt = n.repository?.pushed_at ?? null;
@@ -205,7 +222,11 @@ export const notificationTriageAction: Action = {
       triaged.sort((a, b) => b.score - a.score);
       const boundedTriaged = triaged.slice(0, NOTIFICATION_TRIAGE_LIMIT);
       await callback?.({
-        text: `Triaged ${boundedTriaged.length} unread notification(s)`,
+        text: formatTriageSummary(
+          boundedTriaged.length,
+          triaged.length,
+          totalUnreadIsLowerBound,
+        ),
       });
       return {
         success: true,
@@ -213,6 +234,7 @@ export const notificationTriageAction: Action = {
           notifications: boundedTriaged,
           notificationLimit: NOTIFICATION_TRIAGE_LIMIT,
           totalUnread: triaged.length,
+          totalUnreadIsLowerBound,
         },
       };
     } catch (err) {
