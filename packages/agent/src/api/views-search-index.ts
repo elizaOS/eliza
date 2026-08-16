@@ -124,6 +124,7 @@ class ViewSearchIndex {
     }>
   > {
     if (this.entries.size === 0) return [];
+    if (!Number.isFinite(topK) || topK <= 0) return [];
 
     let queryEmbedding: number[];
     try {
