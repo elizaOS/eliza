@@ -688,23 +688,13 @@ export class PromptBatcher {
 			secondPassMessages.length > 0 ? secondPassMessages : messages;
 		if (drainedMessages.length > 0) {
 			const current = this.messageBuffers.get(affinityKey) ?? [];
-			if (current.length > drainedMessages.length) {
-				const prefixMatches = drainedMessages.every((m, i) => current[i] === m);
-				if (prefixMatches) {
-					this.messageBuffers.set(
-						affinityKey,
-						current.slice(drainedMessages.length),
-					);
-				} else {
-					const drainedSet = new Set(drainedMessages);
-					this.messageBuffers.set(
-						affinityKey,
-						current.filter((m) => !drainedSet.has(m)),
-					);
-				}
-			} else {
-				this.messageBuffers.set(affinityKey, []);
-			}
+			const drainedSet = new Set(drainedMessages);
+			// Reference identity remains correct when the capped buffer evicts old
+			// entries while a drain is in flight and its length does not increase.
+			this.messageBuffers.set(
+				affinityKey,
+				current.filter((message) => !drainedSet.has(message)),
+			);
 		}
 
 		this._emitDrainLog({
