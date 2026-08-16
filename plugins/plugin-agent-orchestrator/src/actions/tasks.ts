@@ -3068,9 +3068,28 @@ async function runHistory(
         responseText = `I found ${count} orchestrator task${count === 1 ? "" : "s"}${filterSuffix}.`;
       } else if (tasks.length === 0) {
         inFlight = await findInFlightWork(runtime, taskCandidates);
+        // Search-matched tasks the status/window filter excluded. A
+        // planner-guessed status list ("active, done, failed") silently hides
+        // a `validating` task, and the bare "found nothing" then reads as "no
+        // task exists" against a store that plainly holds it (observed live).
+        // Disclose what the filters hid instead of implying absence.
+        const excludedByFilters = taskCandidates
+          .filter((task) => !sessionTask || task.id === sessionTask.id)
+          .filter(
+            (task) =>
+              !taskMatchesHistoryFilters(task, statuses, windowFilters, search),
+          )
+          .slice(0, 3);
         responseText = inFlight
           ? `Nothing has finished yet — I'm still working on ${inFlight.name}.`
-          : `I did not find any orchestrator task threads${filterSuffix}.`;
+          : excludedByFilters.length > 0
+            ? [
+                `No task threads matched${filterSuffix}, but related tasks exist outside those filters:`,
+                ...excludedByFilters.map(
+                  (task) => `- "${task.title}" — status=${task.status}`,
+                ),
+              ].join("\n")
+            : `I did not find any orchestrator task threads${filterSuffix}.`;
       } else if (metric === "detail") {
         const task = tasks[0];
         responseText = [

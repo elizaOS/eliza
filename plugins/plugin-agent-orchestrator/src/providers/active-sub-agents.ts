@@ -138,6 +138,10 @@ export const activeSubAgentsProvider: Provider = {
   // flight and cache-stable otherwise, so ambient inclusion costs nothing
   // on idle turns.
   dynamic: false,
+  // Explicit contexts beat the catalog's ["code","automation"] pin: task-status
+  // turns route through "general"/"tasks" (and promoted simple turns), so the
+  // narrow pin excluded this state from exactly the turns that ask about it.
+  contexts: ["general", "tasks", "code", "automation"],
   position: 0,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const waves = readWaveStatuses(runtime);
