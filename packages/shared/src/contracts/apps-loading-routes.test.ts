@@ -1,7 +1,7 @@
 /**
- * Contract tests for the load-apps-from-directory route Zod schemas: the request (absolute-path
- * requirement) and the success response carrying registered items plus rejected-manifest
- * diagnostics. Parses real fixtures for accept/reject cases.
+ * Contract tests for the load-apps-from-directory route Zod schemas: the structural request and
+ * success response carrying registered items plus rejected-manifest diagnostics. Host-native path
+ * semantics are exercised by the server route tests.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -17,28 +17,14 @@ describe("PostLoadFromDirectoryRequestSchema", () => {
     expect(parsed.directory).toBe("/tmp/apps");
   });
 
-  it("matches the host platform's rooted-path semantics", () => {
-    if (process.platform === "win32") {
-      expect(
-        PostLoadFromDirectoryRequestSchema.parse({ directory: "C:\\apps" })
-          .directory,
-      ).toBe("C:\\apps");
-      expect(
-        PostLoadFromDirectoryRequestSchema.parse({ directory: "\\apps" })
-          .directory,
-      ).toBe("\\apps");
-      return;
-    }
-
-    expect(() =>
-      PostLoadFromDirectoryRequestSchema.parse({ directory: "C:\\apps" }),
-    ).toThrow(/absolute path/);
-  });
-
-  it("rejects a relative path", () => {
-    expect(() =>
-      PostLoadFromDirectoryRequestSchema.parse({ directory: "apps" }),
-    ).toThrow(/absolute path/);
+  it("leaves host-native path validation to the server boundary", () => {
+    expect(
+      PostLoadFromDirectoryRequestSchema.parse({ directory: "apps" }).directory,
+    ).toBe("apps");
+    expect(
+      PostLoadFromDirectoryRequestSchema.parse({ directory: "C:\\apps" })
+        .directory,
+    ).toBe("C:\\apps");
   });
 
   it("rejects an empty string", () => {

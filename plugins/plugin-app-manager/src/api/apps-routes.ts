@@ -1560,8 +1560,8 @@ export async function handleAppsRoutes(
   if (method === "POST" && pathname === "/api/apps/load-from-directory") {
     // Body validation goes through PostLoadFromDirectoryRequestSchema
     // (zod, see @elizaos/shared/contracts/apps-loading-routes.ts).
-    // The schema handles the required check, the absolute-path check,
-    // and rejects extra unknown fields via .strict().
+    // The browser-safe schema handles the structural wire contract. The host
+    // owns native path semantics and rejects non-absolute directories here.
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawBody === null) return true;
     const parsed = PostLoadFromDirectoryRequestSchema.safeParse(rawBody);
@@ -1572,6 +1572,14 @@ export async function handleAppsRoutes(
       return true;
     }
     const directory = parsed.data.directory;
+    if (!path.isAbsolute(directory)) {
+      error(
+        res,
+        "Invalid request body at directory: directory must be an absolute path",
+        400,
+      );
+      return true;
+    }
 
     const runtimeWithServices = runtime as {
       getService?: (type: string) => {
