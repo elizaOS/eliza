@@ -40,6 +40,7 @@ import {
   elizaSandboxService,
 } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
+import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { type Context, Hono } from "hono";
 
@@ -795,10 +796,7 @@ app.post("/api/v1/cron/node-autoscale", nodeAutoscaleResponse);
 
 function processProvisioningJobsResponse(c: Context) {
   return handleInternal(c, async () => {
-    const rawLimit = Number(c.req.query("limit") ?? "5");
-    const batchSize = Number.isFinite(rawLimit)
-      ? Math.max(1, Math.min(25, rawLimit))
-      : 5;
+    const batchSize = parseClampedLimit(c.req.query("limit"), 5, 25);
     const result = await provisioningJobService.processPendingJobs(batchSize);
     return c.json({
       success: true,
