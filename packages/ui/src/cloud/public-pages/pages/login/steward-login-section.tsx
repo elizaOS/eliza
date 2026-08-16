@@ -514,6 +514,36 @@ export default function StewardLoginSection() {
     providers.passkey !== false && passkeyCapability?.usable === true;
 
   useEffect(() => {
+    const recoverOAuthIntentAfterHistoryRestore = (
+      event: PageTransitionEvent,
+    ) => {
+      if (!event.persisted) return;
+      setLoading((current) => {
+        if (
+          current === "google" ||
+          current === "discord" ||
+          current === "github"
+        ) {
+          return null;
+        }
+        return current;
+      });
+    };
+
+    // OAuth owns the current document, but browser Back may revive this React
+    // tree from the back/forward cache with its pre-navigation loading state.
+    // A fresh load already starts idle; only a persisted history restoration
+    // needs to release the provider lock (#20385).
+    window.addEventListener("pageshow", recoverOAuthIntentAfterHistoryRestore);
+    return () => {
+      window.removeEventListener(
+        "pageshow",
+        recoverOAuthIntentAfterHistoryRestore,
+      );
+    };
+  }, []);
+
+  useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) {
       setProvidersLoaded(true);
       return;

@@ -355,6 +355,15 @@ for (const surface of SURFACES) {
       });
     });
 
+    await page.addInitScript(() => {
+      window.addEventListener("pageshow", (event) => {
+        Object.defineProperty(window, "__elizaLoginHistoryRestore", {
+          configurable: true,
+          value: event.persisted,
+        });
+      });
+    });
+
     // Loopback is a browser trustworthy origin, so this reaches the real
     // WebCrypto-backed PKCE boundary. The canonical-host HTTP proxy used by
     // the handoff tests is intentionally not secure and cannot expose subtle.
@@ -381,6 +390,40 @@ for (const surface of SURFACES) {
       consoleMessages.filter((message) => message.type === "error"),
     ).toEqual([]);
 
+    await page.goBack();
+    await expect(google).toBeVisible();
+    await expect(google).toBeEnabled();
+    await expect(
+      page.getByRole("button", { name: "Discord", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      page.getByRole("button", { name: "GitHub", exact: true }),
+    ).toBeEnabled();
+    const restoredFromHistory = await page.evaluate(
+      () =>
+        (
+          window as typeof window & {
+            __elizaLoginHistoryRestore?: boolean;
+          }
+        ).__elizaLoginHistoryRestore,
+    );
+    expect(restoredFromHistory).toEqual(expect.any(Boolean));
+    await page.waitForTimeout(STABILITY_WINDOW_MS);
+    await expect(google).toBeEnabled();
+    const expectedDocumentPaths: Array<
+      string | ReturnType<typeof expect.stringContaining>
+    > = ["/login", expect.stringContaining("/auth/oauth/google/authorize")];
+    if (!restoredFromHistory) expectedDocumentPaths.push("/login");
+    expect(documentRequests.map((url) => new URL(url).pathname)).toEqual(
+      expectedDocumentPaths,
+    );
+    expect(popupCount).toBe(0);
+    expect(authorizeRequests).toBe(1);
+    expect(failures).toEqual([]);
+    expect(
+      consoleMessages.filter((message) => message.type === "error"),
+    ).toEqual([]);
+
     if (process.env.E2E_RECORD === "1") {
       await page.screenshot({
         path: testInfo.outputPath(`${surface.name}-oauth-current-document.png`),
@@ -395,6 +438,7 @@ for (const surface of SURFACES) {
             documentRequests,
             popupCount,
             authorizeRequests,
+            restoredFromHistory,
             failures,
             consoleMessages,
           },
