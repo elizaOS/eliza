@@ -25,13 +25,23 @@ function scheduledTask(input: ScheduledTaskInput): ScheduledTask {
 
 function harness(): {
   options: SharedRemindersEdgePluginOptions;
-  schedule: ReturnType<typeof vi.fn>;
+  scheduleWithResult: ReturnType<typeof vi.fn>;
 } {
-  const schedule = vi.fn(async (input: ScheduledTaskInput) =>
-    scheduledTask(input),
-  );
+  const scheduleWithResult = vi.fn(async (input: ScheduledTaskInput) => ({
+    task: scheduledTask(input),
+    commit: {
+      logId: "scheduled-log-1",
+      taskId: "reminder-1",
+      agentId: "personal:user-1",
+      occurredAtIso: NOW,
+      transition: "scheduled" as const,
+      rolledUp: false,
+    },
+    replayed: false,
+  }));
   const runner: ScheduledTaskRunner = {
-    schedule,
+    scheduleWithResult,
+    schedule: vi.fn(async (input: ScheduledTaskInput) => scheduledTask(input)),
     list: vi.fn(async () => []),
     apply: vi.fn(async () => {
       throw new Error("not used");
@@ -39,7 +49,7 @@ function harness(): {
     pipeline: vi.fn(async () => []),
   };
   return {
-    schedule,
+    scheduleWithResult,
     options: {
       runner,
       agentId: "personal:user-1",
@@ -91,7 +101,7 @@ describe("Shared reminders edge plugin", () => {
   });
 
   it("creates one canonical task and pins delivery to the trusted current DM", async () => {
-    const { options, schedule } = harness();
+    const { options, scheduleWithResult } = harness();
     const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
     const result = await action?.handler(
       {} as IAgentRuntime,
@@ -109,8 +119,8 @@ describe("Shared reminders edge plugin", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect(schedule).toHaveBeenCalledTimes(1);
-    expect(schedule.mock.calls[0]?.[0]).toMatchObject({
+    expect(scheduleWithResult).toHaveBeenCalledTimes(1);
+    expect(scheduleWithResult.mock.calls[0]?.[0]).toMatchObject({
       kind: "reminder",
       trigger: { kind: "once", atIso: "2026-08-14T20:02:00.000Z" },
       output: {
@@ -127,10 +137,35 @@ describe("Shared reminders edge plugin", () => {
       },
       executionProfile: "notify-only",
     });
+    expect(result).toMatchObject({
+      verifiedUserFacing: true,
+      userFacingEffectReceiptIds: ["shared-reminder:create:scheduled-log-1"],
+      effectReceipts: [
+        {
+          receiptId: "shared-reminder:create:scheduled-log-1",
+          outcome: "applied",
+          operation: "shared.reminder.create",
+          resource: {
+            kind: "shared.reminder",
+            id: "reminder-1",
+            version: "scheduled-log-1",
+          },
+          idempotency: {
+            key: "shared-reminder:message-1:create",
+            replayed: false,
+          },
+          commit: {
+            kind: "durable",
+            id: "scheduled-log-1",
+            committedAt: NOW,
+          },
+        },
+      ],
+    });
   });
 
   it("rejects a create without structural timing instead of guessing", async () => {
-    const { options, schedule } = harness();
+    const { options, scheduleWithResult } = harness();
     const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
     const result = await action?.handler(
       {} as IAgentRuntime,
@@ -140,11 +175,11 @@ describe("Shared reminders edge plugin", () => {
     );
 
     expect(result).toMatchObject({ success: false });
-    expect(schedule).not.toHaveBeenCalled();
+    expect(scheduleWithResult).not.toHaveBeenCalled();
   });
 
   it("rejects reminder text above the connector-safe limit", async () => {
-    const { options, schedule } = harness();
+    const { options, scheduleWithResult } = harness();
     const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
     const result = await action?.handler(
       {} as IAgentRuntime,
@@ -160,6 +195,52 @@ describe("Shared reminders edge plugin", () => {
     );
 
     expect(result).toMatchObject({ success: false });
-    expect(schedule).not.toHaveBeenCalled();
+    expect(scheduleWithResult).not.toHaveBeenCalled();
+  });
+
+  it("returns the original durable receipt identity as a replayed no-op", async () => {
+    const { options, scheduleWithResult } = harness();
+    scheduleWithResult.mockImplementationOnce(
+      async (input: ScheduledTaskInput) => ({
+        task: scheduledTask(input),
+        commit: {
+          logId: "scheduled-log-1",
+          taskId: "reminder-1",
+          agentId: "personal:user-1",
+          occurredAtIso: NOW,
+          transition: "scheduled" as const,
+          rolledUp: false,
+        },
+        replayed: true,
+      }),
+    );
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+    const result = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "message-1" } as Memory,
+      undefined,
+      {
+        parameters: {
+          operation: "create",
+          reminderText: "Stretch",
+          inMinutes: 2,
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      verifiedUserFacing: true,
+      effectReceipts: [
+        {
+          receiptId: "shared-reminder:create:scheduled-log-1",
+          outcome: "noop",
+          idempotency: {
+            key: "shared-reminder:message-1:create",
+            replayed: true,
+          },
+        },
+      ],
+    });
   });
 });

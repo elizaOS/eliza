@@ -180,13 +180,18 @@ describe("ScheduledTaskRunner — schedule + idempotency", () => {
 
   it("dedupes by idempotencyKey", async () => {
     const h = makeHarness();
-    const a = await h.runner.schedule(baseInput({ idempotencyKey: "uniq-1" }));
-    const b = await h.runner.schedule(
+    const a = await h.runner.scheduleWithResult(
+      baseInput({ idempotencyKey: "uniq-1" }),
+    );
+    const b = await h.runner.scheduleWithResult(
       baseInput({ idempotencyKey: "uniq-1", priority: "high" }),
     );
-    expect(b.taskId).toBe(a.taskId);
+    expect(a.replayed).toBe(false);
+    expect(b.replayed).toBe(true);
+    expect(b.task.taskId).toBe(a.task.taskId);
+    expect(b.commit).toEqual(a.commit);
     // The second call must not have updated priority.
-    expect(b.priority).toBe("medium");
+    expect(b.task.priority).toBe("medium");
   });
 
   it("imports an exact cutover task once and rejects mismatched retries", async () => {
