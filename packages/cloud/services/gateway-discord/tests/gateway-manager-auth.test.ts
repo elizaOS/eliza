@@ -5,8 +5,10 @@ import { GatewayManager } from "../src/gateway-manager";
 
 interface AuthHarness {
   accessToken: string | null;
+  getAuthHeader(): { Authorization: string };
   refreshToken(): Promise<void>;
   scheduleTokenRefresh(expiresInSeconds: number): void;
+  tokenExpiresAt: Date | null;
   tokenRefreshTimeout: NodeJS.Timeout | null;
 }
 
@@ -122,6 +124,7 @@ describe("GatewayManager token renewal", () => {
     });
     const harness = manager as unknown as AuthHarness;
     harness.accessToken = "existing-token";
+    harness.tokenExpiresAt = new Date(Date.now() + 60_000);
 
     const renewal = harness.refreshToken();
     await waitFor(() => resolveBootstrap !== undefined);
@@ -140,6 +143,37 @@ describe("GatewayManager token renewal", () => {
     await expect(renewal).rejects.toThrow("Auth lifecycle changed");
     expect(harness.accessToken).toBe("existing-token");
     expect(harness.tokenRefreshTimeout).toBeNull();
+  });
+
+  test("rejects malformed and locally expired credentials", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            access_token: "invalid-token",
+            token_type: "NotBearer",
+            expires_in: -1,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    ) as typeof fetch;
+
+    const manager = new GatewayManager({
+      podName: "test-pod",
+      elizaCloudUrl: "https://api.test",
+      gatewayBootstrapSecret: "bootstrap-secret",
+      project: "test",
+    });
+    const harness = manager as unknown as AuthHarness;
+
+    await expect(harness.refreshToken()).rejects.toThrow(
+      "Invalid gateway token response",
+    );
+    expect(harness.accessToken).toBeNull();
+
+    harness.accessToken = "expired-token";
+    harness.tokenExpiresAt = new Date(Date.now() - 1);
+    expect(() => harness.getAuthHeader()).toThrow("No access token available");
   });
 });
 

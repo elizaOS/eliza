@@ -25,7 +25,6 @@ const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const GATE_ORIGIN = "https://inference-admission.internal";
 const HYDRATION_GATE_TIMEOUT_MS = 5_000;
 const GATE_OPERATION_TIMEOUT_MS = 1_500;
-const RATE_LIMIT_GATE_TIMEOUT_MS = 5_000;
 const DISPATCH_GATE_TIMEOUT_MS = 1_500;
 const DISPATCH_GATE_MAX_ATTEMPTS = 3;
 
@@ -399,10 +398,7 @@ export async function consumeInferenceRateLimit(params: {
       maxRequests: params.maxRequests,
     },
     undefined,
-    // A brand-new organization addresses a brand-new Durable Object. Preserve
-    // the tighter money-mutation deadline above, but allow the lightweight
-    // rate-limit authority to survive genuine Worker/DO cold initialization.
-    AbortSignal.timeout(RATE_LIMIT_GATE_TIMEOUT_MS),
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
   );
   if (response.status !== 200 && response.status !== 429) {
     throw new InferenceAdmissionGateUnavailableError(

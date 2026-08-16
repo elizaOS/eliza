@@ -169,8 +169,9 @@ export async function prewarmSharedAgentTurnCaches(
 
 /**
  * Warm the two authorities a newly auto-registered personal agent needs.
- * Unlike dashboard agent creation, first contact already carries the user's
- * message, so the route awaits these concurrent legs before dispatching it.
+ * The messaging route starts these concurrent legs as soon as it resolves the
+ * account, overlaps them with other preparation, and joins them before Shared
+ * dispatch.
  */
 export async function prewarmPersonalSharedAgentTurnCaches(
   agent: Pick<SharedRuntimeAgent, "id" | "organization_id">,
