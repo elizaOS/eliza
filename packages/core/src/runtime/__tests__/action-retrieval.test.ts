@@ -1100,6 +1100,85 @@ describe("F21 alias rows: email + terminal candidates bind to real parents", () 
 		]);
 	});
 });
+
+describe("contact lookup candidate aliases", () => {
+	it.each([
+		"CONTACTS_LOOKUP",
+		"CONTACT_LOOKUP",
+		"LOOKUP_CONTACT",
+		"FIND_CONTACT",
+		"CONTACT_INFO",
+		"SHOW_CONTACT",
+		"CONTACTS",
+		"ROLODEX",
+	])("binds the contact-specific %s invention to both readers", (candidate) => {
+		expect(parentAliasesForCandidateAction(candidate)).toEqual([
+			"CONTACT",
+			"ENTITY",
+		]);
+	});
+
+	it("does not claim a generic WHO_IS invention for private contacts", () => {
+		expect(parentAliasesForCandidateAction("WHO_IS")).toEqual([]);
+
+		const catalog = buildActionCatalog([
+			{
+				name: "CONTACT",
+				description: "Read and manage private Rolodex contacts.",
+			},
+			{
+				name: "ENTITY",
+				description: "Read the owner's private entity graph.",
+			},
+			{
+				name: "WEB_SEARCH",
+				description: "Search the public web for people and facts.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "who is Ada Lovelace",
+			candidateActions: ["WHO_IS"],
+		});
+
+		expect(response.query.parentActionHints).toEqual([]);
+		expect(
+			response.results.find((result) => result.name === "CONTACT")?.matchedBy,
+		).not.toContain("exact");
+		expect(
+			response.results.find((result) => result.name === "ENTITY")?.matchedBy,
+		).not.toContain("exact");
+	});
+
+	it.each(["ADD_CONTACT", "CREATE_CONTACT", "GET_CONTACT", "FIND_PERSON"])(
+		"leaves existing CONTACT simile %s authoritative instead of adding ENTITY",
+		(candidate) => {
+			const catalog = buildActionCatalog([
+				{
+					name: "CONTACT",
+					description: "Read and manage private Rolodex contacts.",
+					similes: [candidate],
+				},
+				{
+					name: "ENTITY",
+					description: "Read the owner's private entity graph.",
+				},
+			]);
+			const response = retrieveActions({
+				catalog,
+				messageText: "",
+				candidateActions: [candidate],
+			});
+
+			expect(response.query.parentActionHints).toEqual(["CONTACT"]);
+			expect(response.results[0]).toMatchObject({ name: "CONTACT" });
+			expect(
+				response.results.find((result) => result.name === "ENTITY")?.matchedBy,
+			).not.toContain("exact");
+		},
+	);
+});
+
 describe("F21 aliases survive production retrieval topology filtering", () => {
 	it.each([
 		["EMAIL", "MESSAGE"],
