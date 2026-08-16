@@ -29,6 +29,7 @@ describe("parseEventCursor", () => {
     expect(parseEventCursor("")).toBeNull();
     expect(parseEventCursor("   ")).toBeNull();
     expect(parseEventCursor("not-a-number")).toBeNull();
+    expect(parseEventCursor("garbage999")).toBeNull();
   });
 
   it("parses a bare integer cursor", () => {
