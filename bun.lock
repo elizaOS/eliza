@@ -118,6 +118,7 @@
         "@elizaos/plugin-cloud-apps": "workspace:*",
         "@elizaos/plugin-coding-tools": "workspace:*",
         "@elizaos/plugin-commands": "workspace:*",
+        "@elizaos/plugin-companion": "workspace:*",
         "@elizaos/plugin-computeruse": "workspace:*",
         "@elizaos/plugin-contacts": "workspace:*",
         "@elizaos/plugin-discord": "workspace:*",
@@ -1571,6 +1572,22 @@
         "@types/bun": "^1.2.22",
         "@types/node": "^24.5.2",
         "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.18",
+      },
+    },
+    "plugins/plugin-companion": {
+      "name": "@elizaos/plugin-companion",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "ws": "^8.21.3",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.3",
+        "@types/ws": "^8.18.1",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
       },
@@ -4012,6 +4029,8 @@
     "@elizaos/plugin-coding-tools": ["@elizaos/plugin-coding-tools@workspace:plugins/plugin-coding-tools"],
 
     "@elizaos/plugin-commands": ["@elizaos/plugin-commands@workspace:plugins/plugin-commands"],
+
+    "@elizaos/plugin-companion": ["@elizaos/plugin-companion@workspace:plugins/plugin-companion"],
 
     "@elizaos/plugin-computeruse": ["@elizaos/plugin-computeruse@workspace:plugins/plugin-computeruse"],
 
