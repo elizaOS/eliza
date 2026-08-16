@@ -1,5 +1,5 @@
 // Persists shared runtime history records for cloud services through the shared DB boundary.
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { mergeSharedRuntimeHistoryMessages } from "../../lib/services/shared-runtime/shared-runtime-history-policy";
 import { dbRead, dbWrite } from "../client";
 import {
@@ -26,6 +26,21 @@ export class SharedRuntimeHistoryRepository {
       ),
     });
     return Array.isArray(row?.messages) ? row.messages : [];
+  }
+
+  /**
+   * Distinct agents with shared-runtime activity since `since`, most recent
+   * first, capped. Powers the keep-warm cron's hot set: rows in this table
+   * exist only for shared-runtime conversations, so membership alone marks a
+   * shared agent worth re-warming.
+   */
+  async listRecentlyActiveAgentIds(since: Date, limit: number): Promise<string[]> {
+    const rows = await dbRead
+      .selectDistinct({ agentId: sharedRuntimeHistory.agent_id })
+      .from(sharedRuntimeHistory)
+      .where(gt(sharedRuntimeHistory.updated_at, since))
+      .limit(limit);
+    return rows.map((row) => row.agentId);
   }
 
   /**

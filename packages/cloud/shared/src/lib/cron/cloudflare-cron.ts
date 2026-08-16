@@ -34,6 +34,12 @@ export const CRON_FANOUT: Record<string, string[]> = {
   ],
   "0 * * * *": ["/api/cron/agent-billing"],
   "*/5 * * * *": [
+    // Keep the cache-only shared first-turn gates warm for recently active
+    // agents (admission snapshot / pricing / character projection) so idle
+    // cache expiry never bills a human's next message with the 503 warming
+    // wall. Best-effort by the prewarm contract: latency-only, never an
+    // authorization or billing outcome.
+    "/api/v1/cron/shared-agent-keepwarm",
     "/api/cron/social-automation",
     "/api/cron/sample-eliza-price",
     "/api/cron/process-redemptions",
