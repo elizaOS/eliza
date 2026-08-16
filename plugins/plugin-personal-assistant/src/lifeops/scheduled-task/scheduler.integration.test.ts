@@ -17,6 +17,7 @@
 import {
   ChannelType,
   EventType,
+  encodeDeliveryAudienceMembershipVersion,
   logger,
   type Memory,
   ModelType,
@@ -32,6 +33,7 @@ import { createGlobalPauseStore } from "../global-pause/store.ts";
 import { resolvePendingPromptsStore } from "../pending-prompts/store.ts";
 import { LifeOpsRepository } from "../repository.ts";
 import { settleDeferredInboundScans } from "./deferred-inbound-scans.ts";
+import { readScheduledTaskChatDeliveryBinding } from "./delivery-binding.ts";
 import {
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
   type ScheduledTask,
@@ -205,7 +207,10 @@ describe("processDueScheduledTasks — production wiring", () => {
             ownerEntityId: ownerId,
             agentEntityId: runtime.agentId,
             participantEntityIds: [ownerId, runtime.agentId].sort(),
-            membershipVersion: [ownerId, runtime.agentId].sort().join("\u0000"),
+            membershipVersion: encodeDeliveryAudienceMembershipVersion([
+              ownerId,
+              runtime.agentId,
+            ]),
           },
         },
       },
@@ -251,6 +256,15 @@ describe("processDueScheduledTasks — production wiring", () => {
       runtime.agentId,
       seed.taskId,
     );
+    const persistedBinding = readScheduledTaskChatDeliveryBinding(
+      persisted?.metadata,
+    );
+    expect(persistedBinding?.audience.membershipVersion).not.toContain(
+      "\u0000",
+    );
+    expect(
+      JSON.parse(persistedBinding?.audience.membershipVersion ?? "null"),
+    ).toEqual([ownerId, runtime.agentId].sort());
     expect(persisted?.metadata).toMatchObject({
       dispatchPreparedMessage: "Your scheduled check is ready.",
       dispatchIdempotencyKey: `${seed.taskId}:${firedAt}`,

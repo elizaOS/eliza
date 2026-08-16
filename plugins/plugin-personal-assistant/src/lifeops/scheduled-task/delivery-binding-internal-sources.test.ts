@@ -17,10 +17,12 @@ import {
   type Room,
   type UUID,
 } from "@elizaos/core";
+import type { ScheduledTaskDispatchRecord } from "@elizaos/plugin-scheduling";
 import { describe, expect, it, vi } from "vitest";
 import {
   bindScheduledTaskToInboundChat,
   isInternalMessageSource,
+  revalidateScheduledTaskChatDeliveryBinding,
 } from "./delivery-binding";
 
 const INTERNAL_SENTINELS = Object.values(MESSAGE_SOURCES);
@@ -146,6 +148,44 @@ describe("bindScheduledTaskToInboundChat provenance guards", () => {
         agentEntityId: AGENT,
       },
     });
+    expect(binding?.audience.membershipVersion).not.toContain("\u0000");
+    expect(JSON.parse(binding?.audience.membershipVersion ?? "null")).toEqual(
+      [AGENT, OWNER].sort(),
+    );
+  });
+
+  it("revalidates an exact legacy NUL-delimited binding", async () => {
+    const runtime = connectorRuntime({ roomSource: "discord" });
+    const participants = [AGENT, OWNER].sort();
+    const record: ScheduledTaskDispatchRecord = {
+      taskId: "legacy-binding-task",
+      firedAtIso: "2026-08-16T00:00:00.000Z",
+      channelKey: "discord",
+      promptInstructions: "Deliver the scheduled reminder.",
+      contextRequest: {},
+      output: { destination: "channel", target: `discord:${CHANNEL}` },
+      metadata: {
+        chatDeliveryBinding: {
+          version: 1,
+          source: "discord",
+          roomId: ROOM,
+          channelId: CHANNEL,
+          accountId: "acct-1",
+          audience: {
+            kind: "direct",
+            provenance: "canonical_room",
+            ownerEntityId: OWNER,
+            agentEntityId: AGENT,
+            participantEntityIds: participants,
+            membershipVersion: participants.join("\u0000"),
+          },
+        },
+      },
+    };
+
+    await expect(
+      revalidateScheduledTaskChatDeliveryBinding(runtime, record),
+    ).resolves.toMatchObject({ ok: true });
   });
 
   it.each(INTERNAL_SENTINELS)(

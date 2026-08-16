@@ -9,6 +9,7 @@ import {
   MESSAGE_SOURCES,
   type Memory,
   type MessageSourceSentinel,
+  matchesDeliveryAudienceMembershipVersion,
 } from "@elizaos/core";
 import type { ScheduledTaskDispatchRecord } from "./index.js";
 
@@ -83,10 +84,6 @@ function canonicalParticipants(values: readonly string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort((a, b) =>
     a.localeCompare(b),
   );
-}
-
-function membershipVersion(values: readonly string[]): string {
-  return canonicalParticipants(values).join("\u0000");
 }
 
 /**
@@ -238,7 +235,10 @@ export async function revalidateScheduledTaskChatDeliveryBinding(
       binding.audience.agentEntityId !== runtime.agentId ||
       current.length !== expected.length ||
       current.some((value, index) => value !== expected[index]) ||
-      membershipVersion(current) !== binding.audience.membershipVersion ||
+      !matchesDeliveryAudienceMembershipVersion(
+        current,
+        binding.audience.membershipVersion,
+      ) ||
       current.length !== 2 ||
       !current.includes(binding.audience.ownerEntityId) ||
       !current.includes(binding.audience.agentEntityId)

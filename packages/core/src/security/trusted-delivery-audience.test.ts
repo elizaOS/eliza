@@ -10,7 +10,9 @@ import {
 	attestAuthenticatedApiDeliveryAudience,
 	attestDeliveryAudienceFromCanonicalRoom,
 	disclosureGateFailure,
+	encodeDeliveryAudienceMembershipVersion,
 	evaluateOwnerExclusiveDisclosure,
+	matchesDeliveryAudienceMembershipVersion,
 	OWNER_EXCLUSIVE_DISCLOSURE_GATE,
 	ownerExclusiveSuppressionNote,
 	registerRuntimeManagedInternalActor,
@@ -88,6 +90,42 @@ function message(overrides: Partial<Memory> = {}): Memory {
 }
 
 describe("trusted delivery audience", () => {
+	it("encodes deterministic collision-free membership without JSON-forbidden NUL", () => {
+		const encoded = encodeDeliveryAudienceMembershipVersion([
+			GUEST,
+			OWNER,
+			GUEST,
+			AGENT,
+		]);
+		expect(encoded).not.toContain("\u0000");
+		expect(JSON.parse(encoded)).toEqual([AGENT, GUEST, OWNER].sort());
+		expect(encodeDeliveryAudienceMembershipVersion(["alpha", "beta"])).not.toBe(
+			encodeDeliveryAudienceMembershipVersion(["alpha\u0000beta"]),
+		);
+	});
+
+	it("matches current membership and the exact legacy NUL encoding", () => {
+		const participants = [OWNER, AGENT];
+		expect(
+			matchesDeliveryAudienceMembershipVersion(
+				participants,
+				encodeDeliveryAudienceMembershipVersion(participants),
+			),
+		).toBe(true);
+		expect(
+			matchesDeliveryAudienceMembershipVersion(
+				participants,
+				[OWNER, AGENT].sort().join("\u0000"),
+			),
+		).toBe(true);
+		expect(
+			matchesDeliveryAudienceMembershipVersion(
+				participants,
+				JSON.stringify([OWNER, GUEST]),
+			),
+		).toBe(false);
+	});
+
 	it("cannot be minted by body metadata or a JSON round trip", async () => {
 		const { runtime } = harness();
 		const original = message();

@@ -149,8 +149,10 @@ export * from "./search";
 export * from "./security/redact";
 export {
 	disclosureGateFailure,
+	encodeDeliveryAudienceMembershipVersion,
 	evaluateOwnerExclusiveDisclosure,
 	getTrustedDeliveryAudience,
+	matchesDeliveryAudienceMembershipVersion,
 	OWNER_EXCLUSIVE_DISCLOSURE_GATE,
 	type OwnerExclusiveDisclosureDecision,
 	type OwnerExclusiveDisclosureDenial,

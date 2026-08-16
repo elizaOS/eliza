@@ -265,14 +265,34 @@ async function filterRuntimeInternalParticipants(
 	return kept.filter((id): id is UUID => id !== null);
 }
 
-function canonicalParticipants(participants: readonly UUID[]): UUID[] {
+function canonicalParticipants<T extends string>(
+	participants: readonly T[],
+): T[] {
 	return [
 		...new Set(participants.filter((id) => typeof id === "string" && id)),
 	].sort((a, b) => a.localeCompare(b));
 }
 
-function membershipVersion(participants: readonly UUID[]): string {
-	return canonicalParticipants(participants).join("\u0000");
+/**
+ * Encodes a canonical participant set for persistence in JSON-backed stores.
+ * JSON array framing is deterministic and collision-free for string members.
+ */
+export function encodeDeliveryAudienceMembershipVersion(
+	participants: readonly string[],
+): string {
+	return JSON.stringify(canonicalParticipants(participants));
+}
+
+/** Matches current JSON-safe versions and the exact legacy NUL encoding. */
+export function matchesDeliveryAudienceMembershipVersion(
+	participants: readonly string[],
+	version: string,
+): boolean {
+	const canonical = canonicalParticipants(participants);
+	return (
+		version === JSON.stringify(canonical) ||
+		version === canonical.join("\u0000")
+	);
 }
 
 function sameParticipants(
@@ -336,7 +356,7 @@ function createAudience(args: {
 		agentEntityId: args.agentEntityId,
 		roomId: args.roomId,
 		participantEntityIds: participants,
-		membershipVersion: membershipVersion(participants),
+		membershipVersion: encodeDeliveryAudienceMembershipVersion(participants),
 		issuedAtMs: args.nowMs,
 		expiresAtMs: args.nowMs + normalizeTtlMs(args.ttlMs),
 	});
