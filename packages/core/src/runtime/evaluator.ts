@@ -1333,9 +1333,47 @@ function trailingFinishEnvelopeMessage(text: string): string | null {
 		: null;
 }
 
+/**
+ * Real emittable widget markers — a paired `[NAME]…[/NAME]` (or single-line
+ * `[NAME…]`) block with one of these names renders to a native component and
+ * must NOT be treated as a fabricated tool invocation. Everything else that
+ * looks like `[SOME_ACTION] {json} [/SOME_ACTION]` is the model inventing a
+ * marker to "call" an action in prose (observed live: a documents ask replied
+ * `checking documents context. [DOCUMENT_SEARCH] {"limit":20} [/DOCUMENT_SEARCH]`
+ * — the raw marker shipped to the user AND no search actually ran). Kept in
+ * lockstep with the widget markers `stripDashboardOnlyMarkers` /
+ * `parseInteractionBlocks` recognize. */
+const KNOWN_WIDGET_MARKER_NAMES = new Set([
+	"CHECKLIST",
+	"WORKFLOW",
+	"FORM",
+	"CONFIG",
+	"BACKGROUND",
+	"FOLLOWUPS",
+	"CHOICE",
+	"TASK",
+]);
+
+/** A fabricated marker invocation: a paired uppercase bracket tag whose name is
+ * not a known widget marker. `[DOCUMENT_SEARCH] … [/DOCUMENT_SEARCH]`, but not
+ * `[CHECKLIST] … [/CHECKLIST]`. */
+function containsFabricatedMarkerInvocation(text: string): boolean {
+	for (const match of text.matchAll(
+		/\[([A-Z][A-Z0-9_]{2,})\][\s\S]*?\[\/\1\]/g,
+	)) {
+		const name = match[1];
+		if (name && !KNOWN_WIDGET_MARKER_NAMES.has(name)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function containsInvocationDsl(text: string): boolean {
-	return /(?:^|[^A-Za-z0-9_])(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z][A-Za-z0-9_.-]*)*\s*[({]/im.test(
-		text,
+	return (
+		/(?:^|[^A-Za-z0-9_])(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z][A-Za-z0-9_.-]*)*\s*[({]/im.test(
+			text,
+		) || containsFabricatedMarkerInvocation(text)
 	);
 }
 
