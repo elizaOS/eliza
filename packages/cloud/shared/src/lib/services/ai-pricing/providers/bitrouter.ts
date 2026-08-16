@@ -31,6 +31,10 @@ const OPENROUTER_PRICING_SOURCE_URL = "https://openrouter.ai/openai/gpt-oss-120b
 // Mirrors the gpt-oss-120b forced-pricing shape from PR #8307/#8319.
 const OPENAI_EMBEDDING_PRICING_SOURCE_URL = "https://openai.com/api/pricing";
 
+// Platform-set rate for infrastructure this repo operates itself (no upstream
+// invoice); mirrors the internal:// scheme of the Vast snapshot rows.
+const SELF_HOSTED_EMBEDDING_PRICING_SOURCE_URL = "internal://selfhosted/embeddings-pricing";
+
 const FORCED_BITROUTER_PRICING: ReadonlyArray<{
   model: string;
   provider: string;
@@ -40,6 +44,9 @@ const FORCED_BITROUTER_PRICING: ReadonlyArray<{
   outputUnitPrice: number;
   sourceUrl: string;
   priority?: number;
+  // Provenance override for rows that ride this forced list but are not
+  // BitRouter-billed (default "bitrouter" — the shared catalog key).
+  billingSource?: PreparedPricingEntry["billingSource"];
   metadata?: Record<string, unknown>;
 }> = [
   {
@@ -180,6 +187,22 @@ const FORCED_BITROUTER_PRICING: ReadonlyArray<{
         "OpenAI public pricing: text-embedding-ada-002 at $0.10/1M tokens. Bare-id variant for plugin-elizacloud, which sends the unprefixed id.",
     },
   },
+  // bge-small-en-v1.5 — $0.005 / 1M input tokens (self-hosted TEI sidecar)
+  {
+    model: "bge-small-en-v1.5",
+    provider: "selfhosted",
+    productFamily: "embedding",
+    unit: "token",
+    inputUnitPrice: 0.000000005,
+    outputUnitPrice: 0,
+    sourceUrl: SELF_HOSTED_EMBEDDING_PRICING_SOURCE_URL,
+    priority: -1,
+    billingSource: "selfhosted",
+    metadata: {
+      sourceNote:
+        "Platform rate for the self-hosted TEI embeddings sidecar (packages/cloud/services/embeddings, BAAI/bge-small-en-v1.5 at 384 dims): $0.005/1M input tokens covers our own serving infra, not an upstream provider invoice.",
+    },
+  },
 ];
 
 function bitRouterModelsUrl(): string {
@@ -314,10 +337,11 @@ function buildForcedBitRouterPricingEntries(): PreparedPricingEntry[] {
       outputUnitPrice,
       sourceUrl,
       priority,
+      billingSource,
       metadata,
     }) => [
       {
-        billingSource: "bitrouter" as const,
+        billingSource: billingSource ?? ("bitrouter" as const),
         provider,
         model,
         productFamily,
@@ -332,7 +356,7 @@ function buildForcedBitRouterPricingEntries(): PreparedPricingEntry[] {
         metadata,
       },
       {
-        billingSource: "bitrouter" as const,
+        billingSource: billingSource ?? ("bitrouter" as const),
         provider,
         model,
         productFamily,

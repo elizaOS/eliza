@@ -22,7 +22,11 @@ export type PricingBillingSource =
   | "fal"
   | "cartesia"
   | "elevenlabs"
-  | "suno";
+  | "suno"
+  // Platform-operated sidecars (e.g. the TEI embeddings service in
+  // packages/cloud/services/embeddings): the price covers our own infra, not
+  // an upstream provider invoice.
+  | "selfhosted";
 
 export type PricingChargeUnit =
   | "token"

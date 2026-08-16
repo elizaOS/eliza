@@ -144,6 +144,8 @@ export const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
   "text-embedding-3-small": 1536,
   "text-embedding-3-large": 3072,
   "text-embedding-ada-002": 1536,
+  // Self-hosted TEI sidecar (packages/cloud/services/embeddings, BAAI/bge-small-en-v1.5).
+  "bge-small-en-v1.5": 384,
   "embed-english-v3.0": 1024,
   "embed-multilingual-v3.0": 1024,
   "voyage-large-2": 1536,
