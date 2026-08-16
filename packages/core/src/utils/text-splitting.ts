@@ -37,6 +37,8 @@ export function isAbbreviationPeriod(
 export function extractFirstSentence(text: string): {
 	first: string;
 	rest: string;
+	/** Whether a sentence boundary was actually found in `text`. */
+	complete: boolean;
 } {
 	// Regex for finding sentence boundaries.
 	// Looks for a period, question mark, or exclamation mark followed by a space or end of string.
@@ -65,10 +67,10 @@ export function extractFirstSentence(text: string): {
 	if (boundaryIndex !== -1) {
 		const first = text.substring(0, boundaryIndex).trim();
 		const rest = text.substring(boundaryIndex).trim();
-		return { first, rest };
+		return { first, rest, complete: true };
 	}
 
-	return { first: text.trim(), rest: "" };
+	return { first: text.trim(), rest: "", complete: false };
 }
 
 /**
@@ -76,6 +78,8 @@ export function extractFirstSentence(text: string): {
  * Useful for streaming to know when to call extractFirstSentence.
  */
 export function hasFirstSentence(text: string): boolean {
-	const { rest } = extractFirstSentence(text);
-	return rest.length > 0;
+	// A boundary at the end of the text still completes a sentence, so this
+	// cannot key off `rest`: a reply that is exactly one sentence leaves it
+	// empty and would report false.
+	return extractFirstSentence(text).complete;
 }

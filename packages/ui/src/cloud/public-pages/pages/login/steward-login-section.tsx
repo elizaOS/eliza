@@ -40,12 +40,6 @@ import { DiscordIcon } from "../../../../cloud-ui/components/icons";
 import { Alert, AlertDescription } from "../../../../components/primitives";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
-import {
-  canNavigateSameTabForBlockedPopup,
-  preOpenCloudLoginWindow,
-} from "../../../../state/cloud-login-launch";
-import { navigatePreOpenedWindow } from "../../../../utils/openExternalUrl";
-import { isCloudAuthHandoffSurface } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   configuredStewardTenantId,
@@ -518,6 +512,36 @@ export default function StewardLoginSection() {
   const showWallets = hasAnyWalletProvider(providers);
   const showPasskey =
     providers.passkey !== false && passkeyCapability?.usable === true;
+
+  useEffect(() => {
+    const recoverOAuthIntentAfterHistoryRestore = (
+      event: PageTransitionEvent,
+    ) => {
+      if (!event.persisted) return;
+      setLoading((current) => {
+        if (
+          current === "google" ||
+          current === "discord" ||
+          current === "github"
+        ) {
+          return null;
+        }
+        return current;
+      });
+    };
+
+    // OAuth owns the current document, but browser Back may revive this React
+    // tree from the back/forward cache with its pre-navigation loading state.
+    // A fresh load already starts idle; only a persisted history restoration
+    // needs to release the provider lock (#20385).
+    window.addEventListener("pageshow", recoverOAuthIntentAfterHistoryRestore);
+    return () => {
+      window.removeEventListener(
+        "pageshow",
+        recoverOAuthIntentAfterHistoryRestore,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) {
@@ -1042,19 +1066,11 @@ export default function StewardLoginSection() {
   }
 
   async function handleOAuth(provider: StewardOAuthProvider) {
-    // Open synchronously while the click still has user-gesture context. The
-    // PKCE challenge is asynchronous, so opening after it resolves is blocked
-    // by browsers. Touch-primary browsers intentionally return null here and
-    // continue in the current tab.
-    //
-    // When this /login is already the device-code handoff surface (named
-    // popup or opened from local first-run), never nest a second OAuth
-    // window — that left the Steward sign-in form stranded while auth
-    // finished elsewhere (#18001). Stay same-tab instead.
-    // Popup name matches CLOUD_LOGIN_POPUP_NAME ("eliza-cloud-auth") — keep
-    // the default argument so partial mocks of cloud-login-launch still work.
-    const alreadyHandoffSurface = isCloudAuthHandoffSurface();
-    const authWindow = alreadyHandoffSurface ? null : preOpenCloudLoginWindow();
+    // This component is the sole hosted /login surface. Keep OAuth in its
+    // current document so the callback returns to the same authority that
+    // owns loading/error state and consumes the one-time code. A sibling
+    // popup leaves this form permanently disabled when that window is closed,
+    // blocked, or completes without notifying its opener (#20334).
     setLoading(provider);
     setError(null);
     const host = window.location.hostname.toLowerCase();
@@ -1065,7 +1081,6 @@ export default function StewardLoginSection() {
     try {
       const pkce = await createStewardPkcePair();
       if (!storeStewardPkceVerifier(pkce.verifier)) {
-        authWindow?.close();
         setError(
           "Could not start sign-in. Browser storage is unavailable. Enable cookies / site data and try again.",
         );
@@ -1074,7 +1089,6 @@ export default function StewardLoginSection() {
       }
       codeChallenge = pkce.challenge;
     } catch (e: unknown) {
-      authWindow?.close();
       setError(getErrorMessage(e, "Could not start sign-in"));
       setLoading(null);
       return;
@@ -1085,18 +1099,7 @@ export default function StewardLoginSection() {
       stewardTenantId: STEWARD_TENANT_ID,
       codeChallenge,
     });
-    if (alreadyHandoffSurface) {
-      // Stay in this tab so nested OAuth does not orphan the Steward form.
-      window.location.href = authorizeUrl;
-    } else if (authWindow && !authWindow.closed) {
-      navigatePreOpenedWindow(authWindow, authorizeUrl);
-    } else if (canNavigateSameTabForBlockedPopup()) {
-      // Plain web can safely preserve the sign-in round trip in this tab.
-      window.location.href = authorizeUrl;
-    } else {
-      // Native and desktop shells must retain their platform browser bridges.
-      navigatePreOpenedWindow(null, authorizeUrl);
-    }
+    window.location.href = authorizeUrl;
   }
 
   // First wallet click: mount the lazy wallet stack and remember which chain

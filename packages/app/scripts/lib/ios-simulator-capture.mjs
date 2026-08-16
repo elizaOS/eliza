@@ -110,6 +110,7 @@ export function captureIosSimulatorScreenshot({
   target = "booted",
   artifactDir,
   filename = "screenshot.png",
+  type,
   log = () => {},
 }) {
   if (!artifactDir) {
@@ -118,7 +119,10 @@ export function captureIosSimulatorScreenshot({
   fs.mkdirSync(artifactDir, { recursive: true });
   const localPath = path.join(artifactDir, filename);
   fs.rmSync(localPath, { force: true });
-  const result = runXcrun(["simctl", "io", target, "screenshot", localPath], {
+  const args = ["simctl", "io", target, "screenshot"];
+  if (type) args.push(`--type=${type}`);
+  args.push(localPath);
+  const result = runXcrun(args, {
     stdio: "pipe",
   });
   if (result.status !== 0 || !isNonEmptyFile(localPath)) {

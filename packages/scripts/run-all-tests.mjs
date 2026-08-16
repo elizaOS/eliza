@@ -63,6 +63,20 @@
  *   TEST_SCRIPT_FILTER   — regex over script name (test, test:e2e, ...)
  *   TEST_START_AT        — resume a suite from the first matching label
  *
+ * Result contract (#16994): every resolved task produces exactly one
+ * machine-readable result record (identity, pass/skip/fail status, exit code /
+ * signal / timeout, duration, and reconciled testcase counts when the command
+ * is a recognised runner). Designed exclusions are recorded as explicit
+ * `excluded` entries so they can never be mistaken for passes. The full ledger
+ * is written to ELIZA_TEST_RESULTS_FILE (JSON) when that env var is set, and a
+ * one-line `[eliza-test] RESULT {...}` is printed per task. A green run with a
+ * missing or duplicate record is a protocol violation and exits 3. A fail-fast
+ * run records every unreached task as `not-run`, an interrupted run flushes
+ * the partial ledger with `interrupted`, and the optional cloud stage lands in
+ * the artifact (pass/fail/excluded) before the file is finalized.
+ * TEST_TASK_TIMEOUT_MS (0 = off) bounds each child, the cloud stage included;
+ * a timed-out child is a failure, never a skip.
+ *
  * See `.env.test.example` and `packages/scripts/test-env.mjs` for live env setup.
  */
 
@@ -214,6 +228,25 @@ if (!Number.isSafeInteger(minTasks)) {
   );
 }
 const requireWork = requireWorkFlag || minTasks > 0;
+
+// Per-child wall-clock bound. 0 disables (the historical behaviour and the
+// default — no caller is armed implicitly). A caller that sets it turns a hung
+// child into a recorded timeout failure instead of an unobserved cancellation
+// at the job level.
+const taskTimeoutRaw = process.env.TEST_TASK_TIMEOUT_MS ?? "0";
+const taskTimeoutMs = /^\d+$/.test(taskTimeoutRaw)
+  ? Number(taskTimeoutRaw)
+  : Number.NaN;
+if (!Number.isSafeInteger(taskTimeoutMs)) {
+  failUsage(
+    `TEST_TASK_TIMEOUT_MS must be a non-negative integer of milliseconds, got "${taskTimeoutRaw}"`,
+  );
+}
+
+// Deterministic fault injection for the result-ledger protocol tests. The
+// exactly-once invariants (no duplicate, no missing record) cannot be violated
+// from outside the process, so the fault-injection suite flips them here.
+const faultInject = process.env.ELIZA_TEST_FAULT_INJECT || "";
 
 // A named root lane (`--lane server`) resolves the anchored package filter it
 // used to hardcode as a `TEST_PACKAGE_FILTER` regex in the root package.json:
@@ -1068,6 +1101,94 @@ function nextEvidencePath() {
 }
 
 // ---------------------------------------------------------------------------
+// Result ledger (#16994)
+// ---------------------------------------------------------------------------
+
+// Exactly-once machine-readable result records, keyed by task label. A label
+// identifies `<packageName> (<relativeDir>)#<scriptName>` which is unique in
+// the resolved plan (duplicate labels would collide here and fail closed).
+const resultLedger = new Map();
+
+function recordTaskResult(task, record) {
+  const full = {
+    label: task.label,
+    packageName: task.packageName,
+    relativeDir: path.relative(repoRoot, task.cwd) || ".",
+    scriptName: task.scriptName,
+    ...record,
+  };
+  if (resultLedger.has(task.label) || faultInject === "duplicate-record") {
+    console.error(
+      `[eliza-test] RESULT-PROTOCOL duplicate result record for ${task.label}; refusing to reconcile this run as green.`,
+    );
+    process.exit(3);
+  }
+  if (faultInject === "drop-record") {
+    return;
+  }
+  resultLedger.set(task.label, full);
+  console.log(`[eliza-test] RESULT ${JSON.stringify(full)}`);
+}
+
+function writeResultsFile(context) {
+  const outPath = process.env.ELIZA_TEST_RESULTS_FILE;
+  if (!outPath) return;
+  const payload = {
+    lane: TEST_LANE,
+    only: onlyFlag || "all",
+    shard: shardConfig,
+    requireWork,
+    taskTimeoutMs,
+    resolvedTaskCount: tasks.length,
+    laneMatchedTaskCount,
+    excluded: skippedPlanEntries,
+    results: [...resultLedger.values()],
+    ...context,
+  };
+  fs.writeFileSync(outPath, `${JSON.stringify(payload, null, 2)}\n`);
+}
+
+// Green-path protocol enforcement: after a run with no failed task, every
+// resolved task must have exactly one record. A missing record means a child
+// completed without being observed (result-protocol bug or injected fault) and
+// the run must not reconcile as green. Fail-fast serial runs stop early, so
+// this only applies when nothing failed.
+function enforceResultLedger(failures) {
+  const statuses = [...resultLedger.values()].map((r) => r.status);
+  const summary = {
+    pass: statuses.filter((s) => s === "pass").length,
+    skip: statuses.filter((s) => s === "skip").length,
+    fail: statuses.filter((s) => s === "fail").length,
+    notRun: statuses.filter((s) => s === "not-run").length,
+    excluded: skippedPlanEntries.length,
+  };
+  console.log(
+    `[eliza-test] RESULTS tasks=${tasks.length} pass=${summary.pass} fail=${summary.fail} ` +
+      `skip=${summary.skip} not-run=${summary.notRun} excluded=${summary.excluded} ` +
+      `unobserved=${outcomeTally.unobserved}`,
+  );
+  if (failures.length > 0) return;
+  const missing = tasks.filter((task) => !resultLedger.has(task.label));
+  if (missing.length > 0) {
+    console.error(
+      `[eliza-test] RESULT-PROTOCOL ${missing.length} resolved task(s) finished without a result record:\n  ${missing
+        .map((t) => t.label)
+        .join("\n  ")}`,
+    );
+    writeResultsFile({ protocolViolation: "missing-record" });
+    process.exit(3);
+  }
+  if (requireWork && tasks.length > 0 && summary.pass === 0) {
+    console.error(
+      `[eliza-test] VACUOUS-GREEN GUARD all ${tasks.length} resolved task(s) were skipped; ` +
+        "an all-skipped lane is not a pass.",
+    );
+    writeResultsFile({ protocolViolation: "all-skipped" });
+    process.exit(3);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Script runner
 // ---------------------------------------------------------------------------
 
@@ -1154,11 +1275,47 @@ function runScript(
       );
     });
 
+    // Armed timeout: a hung child is killed and recorded as a timeout FAILURE.
+    // A timed-out child that manages to exit 0 during the kill grace period is
+    // still a failure — its run was cut short, so its green exit proves nothing.
+    let timedOut = false;
+    let timeoutTimer = null;
+    if (taskTimeoutMs > 0) {
+      timeoutTimer = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGTERM");
+        setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+      }, taskTimeoutMs);
+      timeoutTimer.unref();
+    }
+
+    const failWith = (message, code, signal) => {
+      const error = new Error(message);
+      error.exitCode = code ?? null;
+      error.exitSignal = signal ?? null;
+      error.timedOut = timedOut;
+      reject(error);
+    };
+
     child.on("error", reject);
     child.on("exit", (code, signal) => {
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (timedOut) {
+        if (!stream && capturedOutput) {
+          process.stdout.write(
+            `\n[eliza-test] ----- captured output: ${label} -----\n${capturedOutput}\n[eliza-test] ----- end output: ${label} -----\n`,
+          );
+        }
+        failWith(
+          `${label} timed out after ${taskTimeoutMs}ms (TEST_TASK_TIMEOUT_MS)`,
+          code,
+          signal,
+        );
+        return;
+      }
       if (code === 0) {
         if (!evidence) {
-          resolve({ skipped: false, evidence: null });
+          resolve({ skipped: false, evidence: null, exitCode: 0 });
           return;
         }
         try {
@@ -1180,6 +1337,7 @@ function runScript(
             skipped: summary.executedTests === 0,
             skipReason: `${summary.tests} reported test(s), all skipped`,
             evidence: summary,
+            exitCode: 0,
           });
         } catch (error) {
           // error-policy:J2 add the package identity before rejecting invalid evidence.
@@ -1204,16 +1362,17 @@ function runScript(
           skipped: true,
           skipReason: "no test files found",
           evidence: null,
+          exitCode: code,
         });
         return;
       }
       if (!stream && retainedCapturedTestOutput(capturedOutput)) {
         process.stdout.write(formatCapturedTestOutput(capturedOutput, label));
       }
-      reject(
-        new Error(
-          `${label} failed with ${signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`}`,
-        ),
+      failWith(
+        `${label} failed with ${signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`}`,
+        code,
+        signal,
       );
     });
   });
@@ -1245,12 +1404,35 @@ function runCloudTests() {
       process.stderr.write(chunk);
     });
 
+    // The cloud stage honours the same per-child wall-clock bound as every
+    // resolved task: a hung cloud child becomes a recorded timeout failure,
+    // not an unbounded job.
+    let timedOut = false;
+    let timeoutTimer = null;
+    if (taskTimeoutMs > 0) {
+      timeoutTimer = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGTERM");
+        setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+      }, taskTimeoutMs);
+      timeoutTimer.unref();
+    }
+
     child.on("error", reject);
     child.on("exit", (code, signal) => {
+      if (timeoutTimer) clearTimeout(timeoutTimer);
       const durationMs = Date.now() - startedAt;
+      if (timedOut) {
+        const error = new Error(
+          `cloud#test timed out after ${taskTimeoutMs}ms (TEST_TASK_TIMEOUT_MS)`,
+        );
+        error.timedOut = true;
+        reject(error);
+        return;
+      }
       if (code === 0) {
         console.log(`[eliza-test] PASS cloud#test (${durationMs}ms)`);
-        resolve({ skipped: false });
+        resolve({ status: "pass", exitCode: 0, durationMs, timedOut: false });
         return;
       }
       reject(
@@ -1292,14 +1474,15 @@ for (const packageJsonPath of packageJsonPaths) {
   }
   if (noCloud && NO_CLOUD_PACKAGE_DIRS.has(relativeDir)) {
     const label = `${packageJson.name || relativeDir} (${relativeDir})`;
-    if (planEnabled) {
-      skippedPlanEntries.push({
-        label,
-        packageName: packageJson.name || relativeDir,
-        relativeDir,
-        reason: "cloud package skipped by --no-cloud",
-      });
-    } else {
+    // Designed exclusions are recorded in both plan and run modes so the
+    // result ledger can distinguish "deliberately not run" from "passed".
+    skippedPlanEntries.push({
+      label,
+      packageName: packageJson.name || relativeDir,
+      relativeDir,
+      reason: "cloud package skipped by --no-cloud",
+    });
+    if (!planEnabled) {
       console.log(
         `[eliza-test] SKIP ${label} (cloud package skipped by --no-cloud)`,
       );
@@ -1326,6 +1509,13 @@ for (const packageJsonPath of packageJsonPaths) {
       scriptName === "test:e2e" &&
       ROOT_PR_E2E_EXCLUDED_PACKAGE_DIRS.has(relativeDir)
     ) {
+      skippedPlanEntries.push({
+        label,
+        packageName,
+        relativeDir,
+        scriptName,
+        reason: "operator-run visual harness excluded from the pr lane",
+      });
       continue;
     }
     if (packageFilters.some((rx) => !rx.test(label))) {
@@ -1340,15 +1530,14 @@ for (const packageJsonPath of packageJsonPaths) {
       // readable; the empty-script check itself runs for every task because it
       // decides what counts as real lane work below.
       if (belongsToShard) {
-        if (planEnabled) {
-          skippedPlanEntries.push({
-            label,
-            packageName,
-            relativeDir,
-            scriptName,
-            reason: "no local test files for vitest script",
-          });
-        } else {
+        skippedPlanEntries.push({
+          label,
+          packageName,
+          relativeDir,
+          scriptName,
+          reason: "no local test files for vitest script",
+        });
+        if (!planEnabled) {
           console.log(
             `[eliza-test] SKIP ${label} (no local test files for vitest script)`,
           );
@@ -1437,6 +1626,24 @@ async function runTask(task, { stream }) {
     } else if (!result.skipped) {
       outcomeTally.unobserved += 1;
     }
+    recordTaskResult(task, {
+      status: result.skipped ? "skip" : "pass",
+      observed: Boolean(result.evidence),
+      exitCode: result.exitCode ?? null,
+      signal: null,
+      timedOut: false,
+      durationMs,
+      counts: result.evidence
+        ? {
+            tests: result.evidence.tests,
+            executed: result.evidence.executedTests,
+            failures: result.evidence.failures,
+            errors: result.evidence.errors,
+            skipped: result.evidence.skipped,
+          }
+        : null,
+      skipReason: result.skipped ? result.skipReason : undefined,
+    });
     if (result.skipped) {
       outcomeTally.skipped += 1;
       console.log(
@@ -1449,6 +1656,16 @@ async function runTask(task, { stream }) {
     return result;
   } catch (error) {
     const durationMs = Date.now() - startedAt;
+    recordTaskResult(task, {
+      status: "fail",
+      observed: false,
+      exitCode: error?.exitCode ?? null,
+      signal: error?.exitSignal ?? null,
+      timedOut: Boolean(error?.timedOut),
+      durationMs,
+      counts: null,
+      failReason: error instanceof Error ? error.message : String(error),
+    });
     console.error(`[eliza-test] FAIL ${task.label} (${durationMs}ms)`);
     throw error;
   }
@@ -1468,14 +1685,40 @@ function enforceRequiredWork() {
       `[eliza-test] VACUOUS-GREEN GUARD ${tasks.length} runnable task(s) completed without reconciled evidence that a testcase executed. ` +
         "Unsupported wrappers do not count as semantic work.",
     );
+    writeResultsFile({
+      protocolViolation: "vacuous-work",
+      failedTaskLabels: [],
+    });
     process.exit(3);
   }
 }
 
+const taskFailures = [];
+
+// A job-level cancellation still flushes the partial ledger, so a downstream
+// consumer sees an explicitly interrupted artifact rather than a missing or
+// stale one. Installed after task resolution so the payload fields exist.
+for (const interruptSignal of ["SIGINT", "SIGTERM"]) {
+  process.on(interruptSignal, () => {
+    console.error(`[eliza-test] INTERRUPTED by ${interruptSignal}`);
+    writeResultsFile({ interrupted: interruptSignal, failedTaskLabels: [] });
+    process.exit(interruptSignal === "SIGINT" ? 130 : 143);
+  });
+}
+
 if (concurrency <= 1) {
-  // Default: fully serial, fail-fast — the historical behaviour, unchanged.
+  // Default: fully serial, fail-fast — the historical behaviour, except the
+  // failure now flows through the shared result ledger before the run exits
+  // instead of surfacing as an unhandled top-level rejection.
   for (const task of tasks) {
-    await runTask(task, { stream: true });
+    try {
+      await runTask(task, { stream: true });
+    } catch (error) {
+      // error-policy:J1 the first serial failure ends the run with a recorded,
+      // machine-readable result instead of an unhandled rejection.
+      taskFailures.push({ label: task.label, error });
+      break;
+    }
   }
 } else {
   // Opt-in parallelism. Only the parallel-safe bucket (plain `test` scripts in
@@ -1494,8 +1737,6 @@ if (concurrency <= 1) {
     );
   }
 
-  const failures = [];
-
   const poolResults = await runPool(
     parallel,
     (task) => runTask(task, { stream: false }),
@@ -1503,29 +1744,85 @@ if (concurrency <= 1) {
   );
   poolResults.forEach((outcome, index) => {
     if (outcome && !outcome.ok) {
-      failures.push(parallel[index].label);
+      taskFailures.push({ label: parallel[index].label, error: outcome.error });
     }
   });
 
   for (const task of serial) {
     try {
       await runTask(task, { stream: true });
-    } catch {
-      failures.push(task.label);
+    } catch (error) {
+      // error-policy:J1 pooled mode runs every task to completion and reports
+      // all failures together at the shared exit boundary below.
+      taskFailures.push({ label: task.label, error });
     }
   }
+}
 
-  if (failures.length > 0) {
-    console.error(
-      `[eliza-test] ${failures.length} task(s) failed:\n  ${failures.join("\n  ")}`,
-    );
-    process.exit(1);
+// A failed run still writes a complete ledger: every resolved task the
+// fail-fast serial path never reached gets an explicit not-run record, so a
+// downstream consumer can distinguish "failed", "passed", and "never ran"
+// instead of reconciling a truncated prefix as the whole plan.
+if (taskFailures.length > 0) {
+  for (const task of tasks) {
+    if (!resultLedger.has(task.label)) {
+      recordTaskResult(task, {
+        status: "not-run",
+        observed: false,
+        exitCode: null,
+        signal: null,
+        timedOut: false,
+        durationMs: 0,
+        counts: null,
+        skipReason: "not run: an earlier task failed in fail-fast mode",
+      });
+    }
   }
+}
+
+enforceResultLedger(taskFailures);
+
+if (taskFailures.length > 0) {
+  writeResultsFile({
+    failedTaskLabels: taskFailures.map((failure) => failure.label),
+  });
+  console.error(
+    `[eliza-test] ${taskFailures.length} task(s) failed:\n  ${taskFailures
+      .map(
+        (failure) =>
+          `${failure.label}: ${failure.error instanceof Error ? failure.error.message : String(failure.error)}`,
+      )
+      .join("\n  ")}`,
+  );
+  process.exit(1);
 }
 
 enforceRequiredWork();
 
-// Final stage: cloud tests (unless --no-cloud was passed)
+// Final stage: cloud tests (unless --no-cloud was passed). The cloud child is
+// part of the run's result contract: its outcome lands in the results file,
+// which is only finalized after the stage settles so the artifact can never
+// claim a clean run that a later cloud failure contradicts.
+let cloudResult = {
+  status: "excluded",
+  reason: "cloud stage skipped by --no-cloud",
+};
 if (!noCloud) {
-  await runCloudTests();
+  try {
+    cloudResult = await runCloudTests();
+  } catch (error) {
+    // error-policy:J1 the cloud stage failure ends the run with a recorded,
+    // machine-readable result instead of an unhandled rejection.
+    cloudResult = {
+      status: "fail",
+      timedOut: Boolean(error?.timedOut),
+      failReason: error instanceof Error ? error.message : String(error),
+    };
+    writeResultsFile({ failedTaskLabels: ["cloud#test"], cloud: cloudResult });
+    console.error(
+      `[eliza-test] ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  }
 }
+writeResultsFile({ failedTaskLabels: [], cloud: cloudResult });

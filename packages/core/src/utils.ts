@@ -351,7 +351,9 @@ export const composePromptFromState = ({
  * const text = addHeader(header, body);
  */
 export const addHeader = (header: string, body: string) => {
-	return body.length > 0 ? `${header ? `${header}\n` : header}${body}\n` : "";
+	return body.length > 0
+		? `${header ? `${header}\n` : header}${body}\n`
+		: header;
 };
 
 /**
@@ -964,8 +966,12 @@ export function truncateToCompleteSentence(
 	text: string,
 	maxLength: number,
 ): string {
+	if (maxLength <= 0) return "";
 	if (text.length <= maxLength) {
 		return text;
+	}
+	if (maxLength <= 3) {
+		return truncateWellFormed(text, maxLength);
 	}
 
 	// Attempt to truncate at the last period within the limit
@@ -977,8 +983,10 @@ export function truncateToCompleteSentence(
 		}
 	}
 
-	// If no period, truncate to the nearest whitespace within the limit
-	const lastSpaceIndex = text.lastIndexOf(" ", maxLength - 1);
+	// If no period, truncate to the nearest whitespace within the limit.
+	// Search from maxLength - 3 so the appended ellipsis still fits the cap,
+	// matching the hard-truncate fallback below.
+	const lastSpaceIndex = text.lastIndexOf(" ", maxLength - 3);
 	if (lastSpaceIndex !== -1) {
 		const truncatedAtSpace = text.slice(0, lastSpaceIndex).trim();
 		if (truncatedAtSpace.length > 0) {

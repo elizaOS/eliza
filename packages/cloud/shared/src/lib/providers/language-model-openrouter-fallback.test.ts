@@ -53,6 +53,12 @@ function badGateway(): Response {
   return new Response(JSON.stringify({ error: { message: "Bad Gateway" } }), { status: 503 });
 }
 
+function noModelsProvided(): Response {
+  return new Response(JSON.stringify({ error: { message: "No models provided", code: 400 } }), {
+    status: 400,
+  });
+}
+
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
 });
@@ -96,5 +102,43 @@ describe("getLanguageModel native → OpenRouter fallback (AI SDK path)", () => 
     ).rejects.toBeDefined();
     // OpenRouter is never reached: a 400 is a real request error, not an outage.
     expect(hosts).toEqual(["openai"]);
+  });
+
+  test("retries OpenRouter's transient no-models 400 once after native failover", async () => {
+    let openRouterAttempts = 0;
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      const host = hostOf(url);
+      hosts.push(host);
+      if (host === "openai") return badGateway();
+      openRouterAttempts++;
+      return openRouterAttempts === 1
+        ? noModelsProvided()
+        : completion("openai/gpt-4", "recovered");
+    }) as typeof fetch;
+
+    const result = await generateText({
+      model: getLanguageModel("openai/gpt-4"),
+      prompt: "hi",
+      maxRetries: 0,
+    });
+
+    expect(result.text).toBe("recovered");
+    expect(hosts).toEqual(["openai", "openrouter", "openrouter"]);
+  });
+
+  test("does not retry an unrelated OpenRouter validation 400", async () => {
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      const host = hostOf(url);
+      hosts.push(host);
+      if (host === "openai") return badGateway();
+      return new Response(JSON.stringify({ error: { message: "model is invalid" } }), {
+        status: 400,
+      });
+    }) as typeof fetch;
+
+    await expect(
+      generateText({ model: getLanguageModel("openai/gpt-4"), prompt: "hi", maxRetries: 0 }),
+    ).rejects.toBeDefined();
+    expect(hosts).toEqual(["openai", "openrouter"]);
   });
 });

@@ -9,10 +9,17 @@
  * simulator Preference key while this script records screenshots and video.
  */
 import { execFileSync, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertLiveChallengeReply,
+  buildLivenessChallenge,
+  extractLivenessChallengeToken,
+} from "../test/liveness-contract.mjs";
+import { resolveRequiredFfmpeg } from "./lib/ffmpeg.mjs";
 import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
@@ -245,22 +252,66 @@ function modesToRun() {
   throw new Error(`Unsupported --mode ${mode}`);
 }
 
-function takeScreenshot(udid, artifactDir, label) {
+// Issue #16936 requires the MP4 + JPG evidence bundle from these lanes, so a
+// missing still or transcode is an evidence failure the lane must report
+// loudly — never a quiet pass without the required artifacts.
+function takeJpgScreenshot(udid, artifactDir, label, evidenceErrors) {
   try {
     return captureIosSimulatorScreenshot({
       target: udid,
       artifactDir,
-      filename: `${label}.png`,
+      filename: `${label}.jpg`,
+      type: "jpeg",
       log,
     });
   } catch (error) {
-    log(
-      `screenshot ${label} failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+    const detail = error instanceof Error ? error.message : String(error);
+    log(`screenshot ${label} failed: ${detail}`);
+    evidenceErrors.push(`JPG still ${label}.jpg missing: ${detail}`);
+    return null;
+  }
+}
+
+function convertRecordingToMp4(recordingPath, evidenceErrors) {
+  if (!recordingPath || !fs.existsSync(recordingPath)) {
+    evidenceErrors.push("screen recording missing — no video evidence exists");
+    return null;
+  }
+  if (!recordingPath.endsWith(".mov")) {
+    evidenceErrors.push(
+      `screen recording has unexpected extension: ${recordingPath}`,
     );
     return null;
   }
+  const ffmpeg = resolveRequiredFfmpeg({ log });
+  const outPath = recordingPath.replace(/\.mov$/, ".mp4");
+  const result = spawnSync(
+    ffmpeg,
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-i",
+      recordingPath,
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      outPath,
+    ],
+    { encoding: "utf8", timeout: 120_000 },
+  );
+  if (result.status !== 0 || !fs.existsSync(outPath)) {
+    const detail =
+      result.stderr?.trim() || result.error?.message || "unknown error";
+    log(`mp4 transcode failed for ${recordingPath}: ${detail}`);
+    evidenceErrors.push(`MP4 transcode failed: ${detail}`);
+    return null;
+  }
+  return outPath;
 }
 
 function startVideo(udid, artifactDir, mode) {
@@ -311,17 +362,36 @@ async function runMode({ udid, appId, mode, privateKey }) {
   const artifactDir = path.join(resultRoot, mode);
   fs.rmSync(artifactDir, { force: true, recursive: true });
   fs.mkdirSync(artifactDir, { recursive: true });
+  // Evidence-capture failures accumulate here and fail the lane after the
+  // run — a green lane without its #16936 MP4/JPG bundle is fabricated success.
+  const evidenceErrors = [];
 
   tryRun("xcrun", ["simctl", "terminate", udid, appId]);
   for (const key of FIRST_RUN_STATE_KEYS) defaultsDelete(udid, appId, key);
   installLatestApp(udid, appId);
   for (const key of FIRST_RUN_STATE_KEYS) defaultsDelete(udid, appId, key);
 
+  // Liveness contract (#14359 / #16936): strict non-stub liveness is intrinsic
+  // to every SIWE cloud-onboarding lane — the cloud agent is SIWE-provisioned
+  // and live, so the harness always requests it. The run-unique challenge
+  // token proves the reply came from this exact run, not a cached response: the
+  // harness extracts the expected token from the exact prompt it wrote and the
+  // reply must echo it.
+  const livenessChallenge = buildLivenessChallenge(
+    randomBytes(4).toString("hex"),
+  );
+  const livenessToken = extractLivenessChallengeToken(livenessChallenge);
+
   defaultsWriteString(udid, appId, E2E_WALLET_KEY, privateKey);
   if (mode === "autologin") {
     defaultsWriteString(udid, appId, E2E_WALLET_AUTOLOGIN_KEY, "1");
   }
-  defaultsWriteString(udid, appId, REQUEST_KEY, JSON.stringify({ mode }));
+  defaultsWriteString(
+    udid,
+    appId,
+    REQUEST_KEY,
+    JSON.stringify({ mode, livenessPrompt: livenessChallenge }),
+  );
   defaultsWriteString(
     udid,
     appId,
@@ -340,9 +410,9 @@ async function runMode({ udid, appId, mode, privateKey }) {
     log(`launching ${appId} for ${mode}`);
     simctl(["launch", udid, appId]);
     await new Promise((resolve) => setTimeout(resolve, 2_000));
-    takeScreenshot(udid, artifactDir, `${mode}-start`);
+    takeJpgScreenshot(udid, artifactDir, `${mode}-start`, evidenceErrors);
     const result = await pollResult(udid, appId, mode);
-    takeScreenshot(udid, artifactDir, `${mode}-home`);
+    takeJpgScreenshot(udid, artifactDir, `${mode}-home`, evidenceErrors);
     if (result.ok !== true) {
       throw new Error(
         `iOS cloud onboarding ${mode} completed with ok=false: ${JSON.stringify(result)}`,
@@ -356,6 +426,16 @@ async function runMode({ udid, appId, mode, privateKey }) {
     if (mode === "tap" && result.signInGreetingVisible !== true) {
       throw new Error("tap mode did not prove the sign-in greeting");
     }
+    // Liveness contract (#14359 / #16936): strict non-stub liveness is
+    // intrinsic to the lane, and the run-unique challenge token binds the
+    // accepted reply to this exact run — a pending status row ("Thinking"), a
+    // cached reply, or a wrong-code answer all fail here. The shared assertion
+    // — not a second hand-rolled copy of it — decides the lane.
+    assertLiveChallengeReply(result.livenessReply, {
+      challengeToken: livenessToken,
+      label: `iOS cloud onboarding ${mode}`,
+    });
+    takeJpgScreenshot(udid, artifactDir, `${mode}-reply`, evidenceErrors);
     fs.writeFileSync(
       path.join(artifactDir, "result.json"),
       `${JSON.stringify(result, null, 2)}\n`,
@@ -364,6 +444,20 @@ async function runMode({ udid, appId, mode, privateKey }) {
   } finally {
     const videoPath = await recording?.stop();
     if (videoPath) log(`video: ${videoPath}`);
+    // Issue #16936 evidence bundle: the acceptance bar names MP4 recordings;
+    // transcode the simulator MOV so the lane natively produces it. An
+    // explicit --no-video is an operator choice, not an evidence failure.
+    const mp4Path = has("--no-video")
+      ? null
+      : convertRecordingToMp4(videoPath, evidenceErrors);
+    if (mp4Path) log(`mp4: ${mp4Path}`);
+  }
+  // Checked after the finally block so a lane failure propagates untouched:
+  // a green run without its #16936 MP4/JPG bundle is fabricated success.
+  if (evidenceErrors.length > 0) {
+    throw new Error(
+      `iOS cloud onboarding ${mode} passed but required evidence artifacts are missing:\n  - ${evidenceErrors.join("\n  - ")}`,
+    );
   }
 }
 

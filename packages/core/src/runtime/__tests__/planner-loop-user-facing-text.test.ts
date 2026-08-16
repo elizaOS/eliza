@@ -8,6 +8,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
+	codingActionSummary,
 	latestToolResultText,
 	looksLikeActionEnvelopeJson,
 	looksLikeSpawnEnvelopeJson,
@@ -202,10 +203,11 @@ describe("singleVerifiedUserFacingToolResultText — canonical tool filter", () 
 	// action should not make a later verified tool ambiguous.
 	const trajectoryWith = (
 		steps: PlannerTrajectory["steps"],
+		archivedSteps: PlannerTrajectory["steps"] = [],
 	): PlannerTrajectory => ({
 		context: { id: "ctx" },
 		steps,
-		archivedSteps: [],
+		archivedSteps,
 		plannedQueue: [],
 		evaluatorOutputs: [],
 	});
@@ -235,6 +237,27 @@ describe("singleVerifiedUserFacingToolResultText — canonical tool filter", () 
 		expect(singleVerifiedUserFacingToolResultText(trajectory)).toBe(
 			"Wrote 14 files to /home/example/.bun/install/cache.",
 		);
+	});
+
+	it("includes archived successes in verified text and ambiguity checks", () => {
+		const archivedOnly = trajectoryWith([], [verifiedStep]);
+		expect(singleVerifiedUserFacingToolResultText(archivedOnly)).toBe(
+			"Wrote 14 files to /home/example/.bun/install/cache.",
+		);
+
+		const acrossBoundary = trajectoryWith(
+			[
+				{
+					...verifiedStep,
+					iteration: 2,
+					toolCall: { id: "call-3", name: "OTHER", arguments: {} },
+				},
+			],
+			[verifiedStep],
+		);
+		expect(
+			singleVerifiedUserFacingToolResultText(acrossBoundary),
+		).toBeUndefined();
 	});
 
 	it("returns undefined when two successful tools both have results", () => {
@@ -504,6 +527,40 @@ describe("singleVerifiedUserFacingToolResultText — canonical tool filter", () 
 
 		expect(result.finalMessage).toBe(preview);
 		expect(evaluate).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("codingActionSummary — archived steps", () => {
+	it("preserves execution order and deduplicates summaries across compaction", () => {
+		const trajectory: PlannerTrajectory = {
+			context: { id: "ctx" },
+			archivedSteps: [
+				{
+					iteration: 0,
+					result: { success: true, summary: "created the app" },
+				},
+			],
+			steps: [
+				{
+					iteration: 1,
+					result: { success: true, summary: "created the app" },
+				},
+				{
+					iteration: 2,
+					result: { success: true, summary: "ran the checks" },
+				},
+				{
+					iteration: 3,
+					result: { success: false, summary: "ignore this failure" },
+				},
+			],
+			plannedQueue: [],
+			evaluatorOutputs: [],
+		};
+
+		expect(codingActionSummary(trajectory)).toBe(
+			"Done — Created the app; ran the checks.",
+		);
 	});
 });
 

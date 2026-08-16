@@ -20,7 +20,10 @@ function entity(id: UUID, scopedAgentId = agentId): Entity {
 	};
 }
 
-function component(entityId: UUID): Component {
+function component(
+	entityId: UUID,
+	overrides: Partial<Component> = {},
+): Component {
 	return {
 		id: `${entityId}-component` as UUID,
 		entityId,
@@ -30,7 +33,8 @@ function component(entityId: UUID): Component {
 		sourceEntityId: agentId,
 		type: "form_session:room",
 		createdAt: 1,
-		data: { id: entityId },
+		data: { id: entityId, profile: { active: true }, tags: ["alpha", "beta"] },
+		...overrides,
 	};
 }
 
@@ -88,5 +92,67 @@ describe("InMemoryDatabaseAdapter queryEntities", () => {
 			"form_session:room",
 		]);
 		expect(idsOnly.map((item) => item.id)).toEqual([entityTwo]);
+	});
+
+	it("intersects data, world, agent, and paging filters before attaching components", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const otherWorld = "30000000-0000-0000-0000-000000000002" as UUID;
+		await adapter.createEntities([
+			entity(entityOne),
+			entity(entityTwo),
+			entity(entityThree),
+		]);
+		await adapter.createComponents([
+			component(entityOne),
+			component(entityOne, {
+				id: "40000000-0000-0000-0000-000000000002" as UUID,
+				type: "secondary",
+				worldId: otherWorld,
+				data: { enabled: true },
+			}),
+			component(entityTwo, {
+				id: "40000000-0000-0000-0000-000000000003" as UUID,
+				data: { profile: { active: false }, tags: ["alpha"] },
+			}),
+		]);
+
+		const page = await adapter.queryEntities({
+			entityIds: [entityThree, entityTwo, entityOne],
+			componentType: "form_session:room",
+			limit: 1,
+		});
+		const nestedDataMatch = await adapter.queryEntities({
+			entityIds: [entityOne, entityTwo],
+			componentDataFilter: { profile: { active: true }, tags: ["beta"] },
+		});
+		const otherWorldMatch = await adapter.queryEntities({
+			entityIds: [entityOne, entityTwo],
+			worldId: otherWorld,
+		});
+		const wrongAgent = await adapter.queryEntities({
+			entityIds: [entityOne],
+			agentId: otherAgentId,
+			limit: 1,
+		});
+		const allComponents = await adapter.queryEntities({
+			entityIds: [entityOne],
+			componentType: "form_session:room",
+			includeAllComponents: true,
+		});
+
+		expect(page.map((item) => item.id)).toEqual([entityTwo]);
+		expect(page[0].components?.map((item) => item.type)).toEqual([
+			"form_session:room",
+		]);
+		expect(nestedDataMatch.map((item) => item.id)).toEqual([entityOne]);
+		expect(otherWorldMatch.map((item) => item.id)).toEqual([entityOne]);
+		expect(otherWorldMatch[0].components?.map((item) => item.type)).toEqual([
+			"secondary",
+		]);
+		expect(wrongAgent).toEqual([]);
+		expect(
+			allComponents[0].components?.map((item) => item.type).sort(),
+		).toEqual(["form_session:room", "secondary"]);
 	});
 });

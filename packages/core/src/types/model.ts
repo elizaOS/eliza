@@ -533,6 +533,11 @@ export interface SpanSamplerPlan {
  * request still works, just without forcing.
  */
 export interface GenerateTextParams {
+	/** Runtime-only hook used to prepare request content for each resolved model attempt. */
+	prepareModelAttempt?: (
+		attempt: ModelAttemptContext,
+		params: GenerateTextParams,
+	) => Promise<void> | void;
 	/**
 	 * Legacy concatenated prompt string. v5 paths emit `messages` instead and
 	 * leave this field undefined. Adapters that haven't migrated to native chat
@@ -721,6 +726,13 @@ export interface GenerateTextParams {
 	 *           via the `x-eliza-span-samplers` header.
 	 */
 	spanSamplerPlan?: SpanSamplerPlan;
+}
+
+/** Exact registration identity selected for one runtime model attempt. */
+export interface ModelAttemptContext {
+	modelType: string;
+	provider: string;
+	metadata?: ModelRegistrationMetadata;
 }
 
 /**

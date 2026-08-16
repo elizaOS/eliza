@@ -2305,7 +2305,7 @@ extern "C" bool enableWindowVibrancy(void *windowPtr) {
 	return success;
 }
 
-extern "C" bool ensureWindowShadow(void *windowPtr) {
+extern "C" bool setWindowShadowEnabled(void *windowPtr, bool enabled) {
 	if (windowPtr == nullptr) {
 		return false;
 	}
@@ -2317,7 +2317,7 @@ extern "C" bool ensureWindowShadow(void *windowPtr) {
 			return;
 		}
 
-		[window setHasShadow:YES];
+		[window setHasShadow:enabled ? YES : NO];
 		[window invalidateShadow];
 		success = YES;
 	});

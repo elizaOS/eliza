@@ -328,10 +328,65 @@ function reportLiveTiming(timing: LivePromptTiming): void {
   );
 }
 
+/**
+ * Delete every conversation the live runtime currently holds so the next
+ * created conversation is the ONLY one at hydration time.
+ *
+ * Boot hydration deliberately skips a saved greeting-only draft whenever
+ * another conversation already holds a real user message (pinned by
+ * packages/ui/src/state/useChatCallbacks.hydrate.test.ts "skips a saved
+ * greeting-only draft when a real conversation exists"). Each live case here
+ * seeds a freshly created — therefore draft-only — conversation as active, so
+ * prior cases' transcripts would displace it and the chat-sheet would stay on
+ * the previous conversation id. Removing prior transcripts keeps the seeded
+ * isolation honest instead of fighting the product restore policy.
+ */
+async function deleteAllLiveConversations(page: Page): Promise<void> {
+  const listResponse = await page.request.get("/api/conversations");
+  expect(
+    listResponse.ok(),
+    `live runtime should list conversations (status=${listResponse.status()})`,
+  ).toBe(true);
+  const listBody: unknown = await listResponse.json();
+  if (
+    !listBody ||
+    typeof listBody !== "object" ||
+    !Array.isArray((listBody as { conversations?: unknown }).conversations)
+  ) {
+    throw new Error(
+      "live runtime returned an invalid conversation-list payload",
+    );
+  }
+  const ids = (listBody as { conversations: unknown[] }).conversations.map(
+    (conversation, index) => {
+      const id =
+        conversation && typeof conversation === "object"
+          ? (conversation as { id?: unknown }).id
+          : undefined;
+      if (typeof id !== "string" || id.trim().length === 0) {
+        throw new Error(
+          `live runtime conversation at index ${index} has no valid id`,
+        );
+      }
+      return id.trim();
+    },
+  );
+  for (const id of ids) {
+    const deleteResponse = await page.request.delete(
+      `/api/conversations/${encodeURIComponent(id)}`,
+    );
+    expect(
+      deleteResponse.ok(),
+      `live runtime should delete prior conversation ${id} (status=${deleteResponse.status()})`,
+    ).toBe(true);
+  }
+}
+
 async function createAndActivateLiveConversation(
   page: Page,
   title: string,
 ): Promise<void> {
+  await deleteAllLiveConversations(page);
   const response = await page.request.post("/api/conversations", {
     data: { title, metadata: { scope: "general" } },
   });

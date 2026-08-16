@@ -14,6 +14,7 @@
  * inference so routing stays language-agnostic (#10471).
  */
 
+import { ElizaError } from "../../errors.ts";
 import {
 	fetchRemoteMedia,
 	MediaFetchError,
@@ -648,9 +649,37 @@ async function saveAttachmentAsDocument(params: {
 			? titleForRecord(params.records[0])
 			: deriveDocumentTitle(params.content, "Saved attachments"));
 	const filename = createDocumentNoteFilename(title);
+	// Resolve worldId from the message or its room. Falling back to roomId
+	// mixes namespaces and corrupts world-scoped document isolation — world
+	// operations must use worldId, never roomId (see secret-context invariant
+	// and attachment-knowledge-ingest's room lookup pattern).
+	let resolvedWorldId = params.message.worldId as UUID | undefined;
+	if (!resolvedWorldId) {
+		let room: Awaited<ReturnType<IAgentRuntime["getRoom"]>>;
+		try {
+			room = await params.runtime.getRoom(params.message.roomId as UUID);
+		} catch (err) {
+			// error-policy:J2 world scoping is required for document isolation; fabricating
+			// a worldId from the roomId would hide a broken data path.
+			throw new ElizaError("attachment→document world resolution failed", {
+				code: "ATTACHMENT_DOCUMENT_WORLD_LOOKUP_FAILED",
+				cause: err instanceof Error ? err : new Error(String(err)),
+				severity: "ephemeral",
+				context: { roomId: params.message.roomId },
+			});
+		}
+		if (!room) {
+			throw new ElizaError("attachment→document room was not found", {
+				code: "ATTACHMENT_DOCUMENT_ROOM_NOT_FOUND",
+				severity: "ephemeral",
+				context: { roomId: params.message.roomId },
+			});
+		}
+		resolvedWorldId = (room.worldId ?? params.runtime.agentId) as UUID;
+	}
 	const stored = await service.addDocument({
 		agentId: params.runtime.agentId as UUID,
-		worldId: (params.message.worldId ?? params.message.roomId) as UUID,
+		worldId: resolvedWorldId,
 		roomId: params.message.roomId as UUID,
 		entityId: params.message.entityId as UUID,
 		clientDocumentId: "" as UUID,
@@ -799,7 +828,7 @@ export const readAttachmentAction: Action = {
 			}
 			const storedContent = hasContent ? contentForRecords(records) : "";
 			if (action === "save_as_document") {
-				return saveAttachmentAsDocument({
+				return await saveAttachmentAsDocument({
 					runtime,
 					message: messageWithParams,
 					records,

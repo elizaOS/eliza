@@ -338,7 +338,12 @@ describe("gateway webhook handler e2e routing", () => {
       text: "hello",
       rawPayload: {},
     };
-    const sendReply = mock(async () => undefined);
+    const sendReply = mock(async (_config, _event, text, deliveryHooks) => {
+      await deliveryHooks?.prepare([text]);
+      if (await deliveryHooks?.shouldSend(0, text)) {
+        await deliveryHooks.accepted(0, text, "provider-1");
+      }
+    });
     const adapter: PlatformAdapter = {
       platform: "telegram",
       getDedupeScope: () => "scope",
@@ -353,7 +358,7 @@ describe("gateway webhook handler e2e routing", () => {
         value: string,
         options: RedisSetOptions = {},
       ): Promise<unknown> {
-        if (value === "egress_started") return null;
+        if (value === "uncertain" && key.includes(":chunk:")) return null;
         return super.set(key, value, options);
       }
     }
@@ -381,7 +386,7 @@ describe("gateway webhook handler e2e routing", () => {
     );
 
     expect(response.status).toBe(503);
-    expect(sendReply).not.toHaveBeenCalled();
+    expect(sendReply).toHaveBeenCalledTimes(1);
     expect(
       redis.store.has("webhook:telegram:scope:message:update-1:processing"),
     ).toBe(false);
@@ -445,7 +450,7 @@ describe("gateway webhook handler e2e routing", () => {
     const retry = await handleWebhook(request(), adapter, deps, "eliza-app");
     expect(retry.status).toBe(200);
     expect(sendReply).toHaveBeenCalledTimes(1);
-    expect(redis.store.has(processingKey)).toBe(true);
+    expect(redis.store.has(processingKey)).toBe(false);
   });
 
   test("routes an unlinked Telegram DM to rowless personal Shared", async () => {
@@ -535,6 +540,7 @@ describe("gateway webhook handler e2e routing", () => {
       expect.anything(),
       event,
       "start with the launch checklist",
+      expect.anything(),
     );
     expect(completionLog).toHaveBeenCalledWith(
       "Personal Shared Cloud attempt completed",
@@ -754,6 +760,7 @@ describe("gateway webhook handler e2e routing", () => {
       expect.anything(),
       event,
       "I heard you",
+      expect.anything(),
     );
   });
 

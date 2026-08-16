@@ -1,4 +1,5 @@
 /** Defines normalized webhook events, configuration, and platform adapters. */
+import type { TelegramDeliveryHooks } from "@elizaos/cloud-services-common/telegram-delivery";
 export type Platform = "telegram" | "blooio" | "twilio" | "whatsapp";
 
 export interface ChatEvent {
@@ -45,11 +46,13 @@ export interface PlatformAdapter {
     config: WebhookConfig,
     event: ChatEvent,
     text: string,
+    deliveryHooks?: TelegramDeliveryHooks,
   ): Promise<void>;
   sendReplyWithReceipt?(
     config: WebhookConfig,
     event: ChatEvent,
     text: string,
+    deliveryHooks?: TelegramDeliveryHooks,
   ): Promise<PlatformDeliveryReceipt>;
   sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void>;
   /** Resolve provider-owned voice bytes while credentials are still local. */

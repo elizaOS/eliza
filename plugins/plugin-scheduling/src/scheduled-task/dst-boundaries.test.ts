@@ -383,7 +383,7 @@ describe("local HH:MM resolution at DST boundaries (relative_to_anchor)", () => 
     expect(localHourMinute(iso ?? "", SANTIAGO)).toBe("01:00");
   });
 
-  it("indexes across Santiago's midnight transition without inventing 00:00", async () => {
+  it("indexes immediately inside Santiago's active pre-transition night window", async () => {
     const next = await computeNextFireAt(
       makeTask({ trigger: { kind: "during_window", windowKey: "night" } }),
       {
@@ -393,8 +393,8 @@ describe("local HH:MM resolution at DST boundaries (relative_to_anchor)", () => 
         anchors: null,
       },
     );
-    expect(next).toBe("2026-09-06T04:00:00.000Z");
-    expect(localHourMinute(next ?? "", SANTIAGO)).toBe("01:00");
+    expect(next).toBe("2026-09-06T03:30:00.000Z");
+    expect(localHourMinute(next ?? "", SANTIAGO)).toBe("23:30");
   });
 
   it("Apia's skipped 2011-12-30 resolves to the same wall time after the date jump", () => {

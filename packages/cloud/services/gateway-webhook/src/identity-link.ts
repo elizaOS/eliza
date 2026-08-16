@@ -7,11 +7,12 @@
  * re-entering onboarding for the cache TTL (design §"Post-Handoff Routing").
  * Anything that is not clearly a link-code attempt falls through to onboarding.
  */
+import {
+  extractIdentityLinkCode,
+  identityLinkReply,
+} from "@elizaos/cloud-services-common/identity-link-code";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
-
-/** Mirrors LINK_CODE_PATTERN in cloud-shared's identity-link service. */
-const LINK_CODE_PATTERN = /\bLINK-([A-HJ-NP-Z2-9]{8})\b/i;
 
 const CONFIRM_TIMEOUT_MS = 15_000;
 
@@ -29,13 +30,6 @@ export interface IdentityLinkAttempt {
   linked?: boolean;
 }
 
-/** Extracts a link code from message text, or null when there is none. */
-export function extractLinkCode(text: string | undefined): string | null {
-  if (!text) return null;
-  const match = LINK_CODE_PATTERN.exec(text);
-  return match ? `LINK-${match[1].toUpperCase()}` : null;
-}
-
 /**
  * Confirms a link code for an attested platform identity. Returns handled=false
  * only when the text carries no code at all; a code that fails to confirm is
@@ -49,7 +43,7 @@ export async function tryConfirmIdentityLink(
   platformName: string | undefined,
   text: string | undefined,
 ): Promise<IdentityLinkAttempt> {
-  const code = extractLinkCode(text);
+  const code = extractIdentityLinkCode(text);
   if (!code) return { handled: false };
 
   const doFetch = deps.fetchImpl ?? fetch;
@@ -77,8 +71,7 @@ export async function tryConfirmIdentityLink(
     return {
       handled: true,
       linked: true,
-      reply:
-        "You're linked! This messaging account is now connected to your eliza.app account. Just keep chatting here.",
+      reply: identityLinkReply("linked"),
     };
   }
 
@@ -88,25 +81,10 @@ export async function tryConfirmIdentityLink(
     } | null;
     const status = body?.data?.status ?? "unknown";
     logger.info("Identity link code rejected", { platform, status });
-    return { handled: true, linked: false, reply: replyForRejection(status) };
+    return { handled: true, linked: false, reply: identityLinkReply(status) };
   }
 
   // Auth/transport failures are the gateway's problem, not the user's; fail
   // loudly to the caller instead of pretending the code was bad.
   throw new Error(`identity-link confirm failed (${response.status})`);
-}
-
-function replyForRejection(status: string): string {
-  switch (status) {
-    case "expired":
-      return "That link code has expired. Generate a fresh one from your eliza.app settings and send it here within 10 minutes.";
-    case "already_used":
-      return "That link code was already used. If this wasn't you, generate a new code from your eliza.app settings.";
-    case "platform_mismatch":
-      return "That link code was created for a different platform. Generate a code for this platform from your eliza.app settings.";
-    case "handle_conflict":
-      return "This messaging account is already linked to a different eliza.app account, so the code can't be applied.";
-    default:
-      return "That doesn't look like a valid link code. Double-check it or generate a new one from your eliza.app settings.";
-  }
 }
