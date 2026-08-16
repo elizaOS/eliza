@@ -94,7 +94,7 @@ export async function exchangeAnthropicAuthorizationCode(
   return {
     refresh: tokenData.refresh_token,
     access: tokenData.access_token,
-    expires: Date.now() + tokenData.expires_in * 1000 - 5 * 60 * 1000,
+    expires: Date.now() + tokenData.expires_in * 1000,
   };
 }
 
@@ -196,6 +196,6 @@ export async function refreshAnthropicToken(
     // persist undefined over a still-valid stored refresh token.
     refresh: data.refresh_token ?? refreshToken,
     access: data.access_token,
-    expires: Date.now() + data.expires_in * 1000 - 5 * 60 * 1000,
+    expires: Date.now() + data.expires_in * 1000,
   };
 }
