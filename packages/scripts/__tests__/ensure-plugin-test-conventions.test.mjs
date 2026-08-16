@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -166,8 +166,14 @@ describe("isBunTestFile", () => {
     expect(isBunTestFile(file)).toBe(true);
   });
 
-  test("is false for a file importing from vitest", () => {
-    const file = path.join(dir, "unit.test.ts");
+  test("is true for a file importing test primitives from node:test", () => {
+    const file = path.join(dir, "harness.test.mjs");
+    writeFileSync(file, 'import test from "node:test";\n');
+    expect(isBunTestFile(file)).toBe(true);
+  });
+
+  test("is false for a file importing from vitest, including .mjs suites", () => {
+    const file = path.join(dir, "unit.test.mjs");
     writeFileSync(file, 'import { describe, test, expect } from "vitest";\n');
     expect(isBunTestFile(file)).toBe(false);
   });
@@ -176,6 +182,15 @@ describe("isBunTestFile", () => {
     const file = path.join(dir, "globals.test.ts");
     writeFileSync(file, "describe('x', () => { test('y', () => {}); });\n");
     expect(isBunTestFile(file)).toBe(false);
+  });
+});
+
+describe("production orphan scan surface", () => {
+  test("inventories .mjs/.js vitest suites and plugins with no vitest config", () => {
+    const source = readFileSync(SCRIPT, "utf8");
+    expect(source).toContain("**/*.test.{ts,tsx,mts,cts,js,mjs,cjs}");
+    expect(source).toContain("node:test");
+    expect(source).not.toMatch(/if \(configPaths\.length === 0\) continue;/);
   });
 });
 

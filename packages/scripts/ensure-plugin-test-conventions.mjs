@@ -16,9 +16,12 @@
  *    missing pytest doesn't fail: command -v pytest >/dev/null 2>&1 && ...
  * 4. Top-level plugin workspaces must expose real test/typecheck/lint/format
  *    scripts so Turbo does not treat them as transit-only graph nodes.
- * 5. Orphaned test files: every on-disk plugin *.test.ts/*.test.tsx/
- *    *.spec.ts/*.spec.tsx file must be reachable by some vitest*.config.*
- *    include glob under the same plugin, or be a documented, dated exception.
+ * 5. Orphaned test files: every on-disk plugin `*.test.*`/`*.spec.*` file
+ *    (including `.mjs`/`.js` vitest suites) must be reachable by some
+ *    vitest*.config.* include glob under the same plugin, or by Vitest's
+ *    built-in default include when that plugin has no auto-discovered
+ *    config, or be a documented, dated exception. `bun:test` / `node:test`
+ *    files are out of scope.
  *
  * Usage:
  *   bun run ensure-plugin-test-conventions     # apply to all plugins
@@ -331,14 +334,12 @@ function processPackageJson(filePath) {
 // ---------------------------------------------------------------------------
 
 const PLUGIN_TEST_FILE_INCLUDE = [
-  "**/*.test.ts",
-  "**/*.test.tsx",
-  "**/*.spec.ts",
-  "**/*.spec.tsx",
+  "**/*.test.{ts,tsx,mts,cts,js,mjs,cjs}",
+  "**/*.spec.{ts,tsx,mts,cts,js,mjs,cjs}",
 ];
 const PLUGIN_TEST_STRUCTURAL_IGNORE = ["**/node_modules/**", "**/dist/**"];
 const VITEST_CONFIG_GLOB = ["**/vitest*.config.{ts,mts,cts,js,mjs,cjs}"];
-const BUN_TEST_IMPORT_RE = /from\s+["']bun:test["']/;
+const NON_VITEST_HARNESS_IMPORT_RE = /from\s+["'](?:bun:test|node:test)["']/;
 
 /**
  * Vitest's own auto-discovered default config filenames -- mirrors
@@ -401,13 +402,13 @@ export function hasAutoDiscoveredDefaultConfig(pluginDir) {
 }
 
 /**
- * True when a file's own imports declare it a Bun-native test (`bun:test`)
- * rather than a Vitest one -- see the module header for why that makes it
- * categorically out of scope for this guard regardless of which directory it
- * lives in.
+ * True when a file's own imports declare it a Bun-native or Node-native
+ * test (`bun:test` / `node:test`) rather than a Vitest one -- see the
+ * module header for why that makes it categorically out of scope for this
+ * guard regardless of which directory it lives in.
  */
 export function isBunTestFile(absPath) {
-  return BUN_TEST_IMPORT_RE.test(readFileSync(absPath, "utf8"));
+  return NON_VITEST_HARNESS_IMPORT_RE.test(readFileSync(absPath, "utf8"));
 }
 
 async function findOnDiskPluginTestFiles(pluginDir) {
@@ -508,7 +509,6 @@ async function checkOrphanedPluginTestFiles() {
   const configFailures = [];
   for (const pluginDir of pluginDirs) {
     const configPaths = await findVitestConfigPaths(pluginDir);
-    if (configPaths.length === 0) continue;
     const filesInPlugin = await findOnDiskPluginTestFiles(pluginDir);
     for (const file of filesInPlugin) {
       if (isBunTestFile(file)) continue;
