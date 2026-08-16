@@ -47,6 +47,41 @@ export interface AgentHttpRequestAuthorization {
   principal?: string;
 }
 
+/** Public (digest-free) consumer-key record surfaced to the owner dashboard. */
+export interface AccountPoolConsumerKeySummary {
+  id: string;
+  label: string;
+  enabled: boolean;
+  dailyTokenQuota: number | null;
+  keyPrefix: string;
+  createdAt: number;
+  updatedAt: number;
+  lastUsedAt?: number;
+}
+
+/**
+ * Owner-facing admin facade over the host's account-pool consumer-key store.
+ * `create`/`rotate` return the plaintext key exactly once; callers must hand
+ * it to the response and never persist or log it. `null` means not-found (or
+ * invalid input for `create`); `update` distinguishes a malformed patch as
+ * the literal string "invalid" so the boundary can answer 400 vs 404.
+ */
+export interface AccountPoolConsumerKeyAdmin {
+  list(): AccountPoolConsumerKeySummary[];
+  create(input: {
+    label?: unknown;
+    enabled?: unknown;
+    dailyTokenQuota?: unknown;
+  }): { key: string; consumer: AccountPoolConsumerKeySummary } | null;
+  update(
+    id: string,
+    input: { label?: unknown; enabled?: unknown; dailyTokenQuota?: unknown },
+  ): AccountPoolConsumerKeySummary | null | "invalid";
+  rotate(
+    id: string,
+  ): { key: string; consumer: AccountPoolConsumerKeySummary } | null;
+}
+
 /**
  * Host capabilities the agent runtime consumes at boot / request time. Every
  * member has a no-op default so a hostless (mobile / standalone) boot degrades
@@ -66,6 +101,12 @@ export interface AgentHostBridge {
   sharedVault(): Vault;
   getDefaultAccountPool(): unknown;
   getAccountPoolBrokerSnapshot(): AccountPoolBrokerSnapshot;
+  /**
+   * Owner-dashboard admin surface for account-pool consumer keys. Optional:
+   * a hostless (standalone/mobile) agent has no consumer-key store, and the
+   * route boundary answers "unavailable" when this is absent or returns null.
+   */
+  getAccountPoolConsumerKeyAdmin?(): AccountPoolConsumerKeyAdmin | null;
   applyAccountPoolApiCredentials(
     options: AccountPoolCredentialsOptions,
   ): Promise<void> | void;
