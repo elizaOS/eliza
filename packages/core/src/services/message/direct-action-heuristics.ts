@@ -883,7 +883,26 @@ function ownerLifeReadDomainsInPossessiveScopes(
 			"finances",
 		);
 		for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
-			if (noun.test(domainScope)) domains.add(domain);
+			if (!noun.test(domainScope)) continue;
+			// A noun-modified "budget" ("my keyboard budget", "my trip budget")
+			// names a conversational figure the user told the agent, not the
+			// owner finance ledger. Treating it as a finance read injected
+			// OWNER_FINANCES on a group turn, its privacy rejection made the
+			// whole turn a "private surface" denial, and a plain memory
+			// question died (observed live: "whats my keyboard budget" →
+			// denial while the $150 fact sat in room facts). Only an
+			// unmodified budget mention — bare or with a finance-ish adjective
+			// ("monthly", "overall") — counts as the finances domain.
+			if (
+				domain === "finances" &&
+				/\b(?!(?:monthly|weekly|annual|yearly|overall|total|current|entire|whole|full|remaining)\b)[a-z][a-z-]*\s+budget\b/iu.test(
+					domainScope,
+				) &&
+				!/\b(?:finances|spending|expenses)\b/iu.test(domainScope)
+			) {
+				continue;
+			}
+			domains.add(domain);
 		}
 	}
 	return domains;

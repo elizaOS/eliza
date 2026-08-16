@@ -1735,3 +1735,28 @@ describe("resolveExplicitContinuationRequestText", () => {
 		).toBe(null);
 	});
 });
+
+describe("noun-modified budget stays a conversational fact, not a finance read", () => {
+	const finances = { name: "OWNER_FINANCES", similes: [], tags: [] };
+
+	it("'whats my keyboard budget' produces no owner-finance candidate (live group denial)", () => {
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[finances],
+				"whats my keyboard budget",
+			),
+		).toEqual({ names: [], kind: null });
+	});
+
+	it("bare and finance-adjective budgets still route to the finances reader", () => {
+		for (const text of [
+			"what is my budget?",
+			"whats my monthly budget",
+			"show me my spending budget",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference([finances], text),
+			).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+		}
+	});
+});

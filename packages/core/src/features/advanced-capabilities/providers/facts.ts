@@ -20,6 +20,7 @@
  * and the responding model decides which surfaced preferences apply.
  */
 import { ElizaError } from "../../../errors.ts";
+import { ModelType } from "../../../types/model.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
 import type {
@@ -397,9 +398,67 @@ const factsProvider: Provider = {
 			const entityFacts = entityFactPools.flat();
 
 			const minimizePrivateFacts = shouldMinimizePrivateFactsForTurn(message);
-			const dedupedPool = dedupeById([...roomFacts, ...entityFacts]).filter(
+			let dedupedPool = dedupeById([...roomFacts, ...entityFacts]).filter(
 				(memory) => !minimizePrivateFacts || !isMarkedPrivateFact(memory),
 			);
+			// Bounded-pool blindness guard: both pools are RECENCY-fetched, so a
+			// fact older than the last CANDIDATE_POOL_PER_SEARCH extractions per
+			// scope is invisible to ranking no matter how directly the user asks
+			// for it (observed live: "whats my keyboard budget" fabricated an
+			// answer while the extracted "$150 max" fact sat in the store, pushed
+			// out of the recent pool by heavy room traffic). When keyword scoring
+			// finds NOTHING relevant in the recency pools, widen once with an
+			// embedding search over the same room/entity scopes and merge the
+			// hits — ranking stays local and keyword-based over the widened pool.
+			// Gated to genuine misses so ordinary turns pay no embedding cost;
+			// any failure degrades to the recency pools.
+			const poolHasKeywordHit = scoreFactKeywordRelevance(
+				queryText,
+				dedupedPool,
+			).some((entry) => entry.relevance > 0);
+			if (!poolHasKeywordHit) {
+				try {
+					const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+						text: queryText,
+					});
+					if (Array.isArray(embedding) && embedding.length > 0) {
+						const [searchedRoom, ...searchedEntities] = await Promise.all([
+							runtime.searchMemories({
+								embedding,
+								tableName: "facts",
+								roomId: message.roomId,
+								worldId: message.worldId,
+								count: 12,
+								unique: false,
+							}),
+							...relatedEntityIds.map((entityId) =>
+								runtime.searchMemories({
+									embedding,
+									tableName: "facts",
+									entityId,
+									count: 12,
+									unique: false,
+								}),
+							),
+						]);
+						dedupedPool = dedupeById([
+							...dedupedPool,
+							...searchedRoom,
+							...searchedEntities.flat(),
+						]).filter(
+							(memory) =>
+								!minimizePrivateFacts || !isMarkedPrivateFact(memory),
+						);
+					}
+				} catch (error) {
+					// error-policy:J4 the widened pool is an optional recall upgrade;
+					// an unavailable embedding model or search degrades to the
+					// recency pools while staying observable.
+					runtime.reportError?.("FactsProvider.poolWiden", error, {
+						roomId: message.roomId,
+					});
+				}
+			}
 			const { durable: durableCandidates, current: currentCandidates } =
 				partitionByKind(dedupedPool);
 
