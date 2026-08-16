@@ -193,6 +193,28 @@ describe("action tiering", () => {
 		);
 	});
 
+	it("keeps a sole absolute retrieval winner with asymmetric lexical evidence", () => {
+		const catalog = buildActionCatalog(actions);
+		const music = catalog.parentByName.get("MUSIC");
+		const email = catalog.parentByName.get("EMAIL");
+		if (!music || !email) {
+			throw new Error("missing parents");
+		}
+
+		const surface = tierActionResults({
+			catalog,
+			results: [
+				resultFor(music, 1, 1, { keyword: 1, bm25: 0.4 }),
+				resultFor(email, 0.5, 2, { exact: 1 }),
+			],
+			narrowToCandidateActions: ["SEND_EMAIL"],
+		});
+
+		expect(surface.exposedActionNames).toEqual(
+			expect.arrayContaining(["MUSIC", "EMAIL", "SEND_EMAIL"]),
+		);
+	});
+
 	it("keeps WEB_FETCH exposed for a real weather retrieval when Stage-1 omits it", () => {
 		const catalog = buildActionCatalog([
 			{
@@ -308,6 +330,49 @@ describe("action tiering", () => {
 		]);
 		expect(surface.exposedActionNames).not.toContain("HOUSEHOLD_OPERATIONS");
 		expect(surface.exposedActionNames).not.toContain("SCHOOL_SOURCES");
+	});
+
+	it("does not collapse an unmatched candidate to an arbitrary saturated winner", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "ALPHA_OPERATIONS",
+				description: "Handle a generic operation.",
+			},
+			{
+				name: "BETA_OPERATIONS",
+				description: "Handle a generic operation.",
+			},
+			{
+				name: "GAMMA_OPERATIONS",
+				description: "Handle a generic operation.",
+			},
+		]);
+		const alpha = catalog.parentByName.get("ALPHA_OPERATIONS");
+		const beta = catalog.parentByName.get("BETA_OPERATIONS");
+		const gamma = catalog.parentByName.get("GAMMA_OPERATIONS");
+		if (!alpha || !beta || !gamma) {
+			throw new Error("missing saturated-tie fixtures");
+		}
+
+		const surface = tierActionResults({
+			catalog,
+			results: [
+				resultFor(alpha, 1, 1, { keyword: 1, bm25: 1 }),
+				resultFor(beta, 1, 2, { keyword: 1, bm25: 1 }),
+				resultFor(gamma, 1, 3, { keyword: 1, bm25: 1 }),
+			],
+			narrowToCandidateActions: ["MODEL_INVENTED_ACTION"],
+		});
+
+		// Nothing in the catalog resolves the Stage-1 hint, and retrieval has no
+		// evidence that distinguishes the saturated parents. Preserve the normal
+		// tier-A surface instead of selecting whichever tied result was assigned
+		// rank 1 by a stable but semantically meaningless fallback order.
+		expect(surface.tierAParents.map((parent) => parent.name)).toEqual([
+			"ALPHA_OPERATIONS",
+			"BETA_OPERATIONS",
+			"GAMMA_OPERATIONS",
+		]);
 	});
 
 	it("still demotes a merely-good non-candidate match below the override score", () => {

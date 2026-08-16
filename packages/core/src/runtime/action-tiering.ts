@@ -28,11 +28,11 @@ export const TIER0_PROTOCOL_ACTIONS = [
 export type Tier0ProtocolAction = (typeof TIER0_PROTOCOL_ACTIONS)[number];
 
 // A near-certain non-candidate match may remain on the planner surface when
-// Stage-1 omits it. The absolute retrieval winner is authoritative even when
-// its lexical stages are asymmetric; otherwise independent keyword and BM25
-// agreement, or a unique keyword-plus-selected-context match, identifies one
-// unambiguous user-text-dominant fallback without reopening a broadly
-// saturated surface.
+// Stage-1 omits it. A sole highest-scoring retrieval winner is authoritative
+// even when its lexical stages are asymmetric; a saturated cohort has no
+// absolute winner. Otherwise independent keyword and BM25 agreement, or a
+// unique keyword-plus-selected-context match, identifies one unambiguous
+// user-text-dominant fallback without reopening a broadly saturated surface.
 const RETRIEVAL_OVERRIDE_SCORE = 0.97;
 const DOMINANT_LEXICAL_STAGE_SCORE = 0.99;
 
@@ -266,12 +266,21 @@ export function tierActionResults(
 		});
 		const unambiguousContextualOverride =
 			contextualOverrides.length === 1 ? contextualOverrides[0] : undefined;
-		const absoluteRankOneOverride = tierAParents.find(
+		const absoluteOverrideCandidates = tierAParents.filter(
 			(parent) =>
-				!matchesCandidate(parent) &&
-				parent.score >= RETRIEVAL_OVERRIDE_SCORE &&
-				parent.result.rank === 1,
+				!matchesCandidate(parent) && parent.score >= RETRIEVAL_OVERRIDE_SCORE,
 		);
+		const highestAbsoluteOverrideScore = Math.max(
+			...absoluteOverrideCandidates.map((parent) => parent.score),
+		);
+		const highestAbsoluteOverrides = absoluteOverrideCandidates.filter(
+			(parent) => parent.score === highestAbsoluteOverrideScore,
+		);
+		const absoluteRankOneOverride =
+			highestAbsoluteOverrides.length === 1 &&
+			highestAbsoluteOverrides[0]?.result.rank === 1
+				? highestAbsoluteOverrides[0]
+				: undefined;
 		const retrievalOverride =
 			absoluteRankOneOverride ??
 			unambiguousLexicalOverride ??
