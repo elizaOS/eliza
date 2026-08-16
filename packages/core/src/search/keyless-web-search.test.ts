@@ -51,9 +51,44 @@ describe("searchKeylessWeb", () => {
 
 		expect(result).toEqual({
 			provider: "parallel",
-			text: `${"x".repeat(32)}\n[truncated]`,
+			text: `${"x".repeat(20)}\n[truncated]`,
 			truncated: true,
 		});
+		expect(result?.text).toHaveLength(32);
+	});
+
+	it("keeps tiny result budgets and Unicode truncation well formed", async () => {
+		const tiny = await searchKeylessWeb("tiny", {
+			fetchImpl: async () => mcp("long result"),
+			maxResultChars: 5,
+		});
+		expect(tiny?.text).toBe("\n[tru");
+		expect(tiny?.text).toHaveLength(5);
+
+		const unicode = await searchKeylessWeb("unicode", {
+			fetchImpl: async () => mcp(`${"x".repeat(19)}🤖${"y".repeat(20)}`),
+			maxResultChars: 32,
+		});
+		expect(unicode?.text).toBe(`${"x".repeat(19)}\n[truncated]`);
+		expect(unicode?.text).toHaveLength(31);
+		expect(unicode?.text?.isWellFormed()).toBe(true);
+	});
+
+	it("rejects invalid result budgets instead of silently returning an uncapped result", async () => {
+		for (const maxResultChars of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+			await expect(
+				searchKeylessWeb("invalid budget", {
+					fetchImpl: async () => mcp("long result"),
+					maxResultChars,
+				}),
+			).rejects.toThrow("maxResultChars must be a non-negative safe integer");
+		}
+
+		const zero = await searchKeylessWeb("zero budget", {
+			fetchImpl: async () => mcp("long result"),
+			maxResultChars: 0,
+		});
+		expect(zero).toEqual({ provider: "parallel", text: "", truncated: true });
 	});
 
 	it("rejects oversized response bodies and returns no fabricated result", async () => {
