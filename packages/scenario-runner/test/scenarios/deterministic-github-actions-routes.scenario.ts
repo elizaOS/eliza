@@ -791,6 +791,9 @@ async function finalGithubCheck(): Promise<string | undefined> {
       method: "activity.listNotificationsForAuthenticatedUser",
       args: {
         all: false,
+        // fetchAllUnreadNotifications paginates explicitly (#20534); the fake
+        // returns fewer than per_page rows, so the loop stops after page 1.
+        page: 1,
         per_page: 50,
       },
     },
