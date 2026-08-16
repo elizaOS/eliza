@@ -5053,7 +5053,7 @@ export class AgentRuntime implements IAgentRuntime {
 				const providerRuntime: IAgentRuntime = this;
 				const inFlightKey =
 					message.id && !refreshSet?.has(provider.name)
-						? `${message.id}\u0000${provider.name}\u0000${
+						? `${message.id}\u0000${message.roomId}\u0000${provider.name}\u0000${
 								provider.disclosureGate?.require === "owner_exclusive"
 									? trustedDeliveryAudienceCacheKey(message)
 									: "public"
@@ -5572,6 +5572,7 @@ export class AgentRuntime implements IAgentRuntime {
 				state: {
 					values: { ...publicValues, providers: publicText },
 					data: {
+						__roomId: message.roomId,
 						__conversationSeed: conversationSeed,
 						__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 						providerOrder: publicProviders.map((provider) => provider.name),
