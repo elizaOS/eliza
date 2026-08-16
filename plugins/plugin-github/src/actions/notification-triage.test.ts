@@ -58,4 +58,53 @@ describe("fetchAllUnreadNotifications", () => {
     expect(notifications).toEqual(fullPage);
     expect(listNotificationsForAuthenticatedUser).toHaveBeenCalledTimes(2);
   });
+
+  it("drops re-served rows instead of double-counting them", async () => {
+    const firstPage = Array.from({ length: 50 }, (_, index) => ({
+      id: String(index),
+      updated_at: "2026-08-16T00:00:00Z",
+    }));
+    // A shifted window (inbox mutated mid-traversal) re-serves ids 40-49
+    // from the first page alongside 10 genuinely new rows.
+    const shiftedSecondPage = [
+      ...firstPage.slice(40),
+      ...Array.from({ length: 10 }, (_, index) => ({
+        id: String(index + 50),
+        updated_at: "2026-08-16T00:00:00Z",
+      })),
+    ];
+    const listNotificationsForAuthenticatedUser = vi
+      .fn()
+      .mockResolvedValueOnce({ data: firstPage })
+      .mockResolvedValueOnce({ data: shiftedSecondPage });
+    const activity = {
+      listNotificationsForAuthenticatedUser,
+    } as GitHubOctokitClient["activity"];
+
+    const notifications = await fetchAllUnreadNotifications(activity);
+
+    expect(notifications).toHaveLength(60);
+    expect(new Set(notifications.map((n) => n.id)).size).toBe(60);
+  });
+
+  it("stops after the page cap instead of looping on an always-full inbox", async () => {
+    const page = (start: number) =>
+      Array.from({ length: 50 }, (_, index) => ({
+        id: String(start + index),
+        updated_at: "2026-08-16T00:00:00Z",
+      }));
+    const listNotificationsForAuthenticatedUser = vi
+      .fn()
+      .mockImplementation(async ({ page: pageNumber }: { page: number }) => ({
+        data: page((pageNumber - 1) * 50),
+      }));
+    const activity = {
+      listNotificationsForAuthenticatedUser,
+    } as GitHubOctokitClient["activity"];
+
+    const notifications = await fetchAllUnreadNotifications(activity);
+
+    expect(listNotificationsForAuthenticatedUser).toHaveBeenCalledTimes(20);
+    expect(notifications).toHaveLength(1000);
+  });
 });
