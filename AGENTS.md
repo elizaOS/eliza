@@ -59,8 +59,8 @@ plugin is the deliberate exception because it reimplements the 1966 chatbot.
 ## Root commands
 
 ```bash
-bun install            # install workspaces, prepare submodules, apply patches, sync artifacts
-bun run install:light  # install without the large artifact sync
+bun install            # install workspaces, prepare submodules, apply patches
+bun run install:light  # alias of bun install (the implicit artifact sync is retired)
 bun run dev            # start the API and Eliza app development UI
 bun run start          # start the standalone agent host
 bun run build          # build the workspace through Turbo
@@ -105,6 +105,7 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 | Removed command | Use instead |
 | --- | --- |
 | `bun run test:ci` | `bun run test` |
+| `bun run sync:artifacts` | `bun run fetch:archive-artifacts` (explicit opt-in; never runs on install) |
 | `bun run test:cloud:playwright` | `bun run --cwd packages/app test:e2e` |
 | `bun run test:ui:playwright` | `bun run --cwd packages/app test:e2e` |
 | `bun run test:lifeops` | `bun run test:plugin 'plugin-personal-assistant'` |
