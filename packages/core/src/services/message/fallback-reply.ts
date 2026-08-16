@@ -6,11 +6,13 @@
  * Classification unwraps the AI SDK retry envelope and reads the structured HTTP
  * status first, falling back to a message-substring scan for status-less errors.
  * buildFailureReplyPrompt shapes the in-character apology (never answering on the
- * merits), and stripReasoningBlocks removes <think> spans from the raw reply.
+ * merits), and stripReasoningBlocks removes private-reasoning spans from the raw
+ * reply.
  */
 import { TrajectoryLimitExceeded } from "../../runtime/limits";
 import { readActionFailureProvenance } from "../../types/action-failure";
 import { ModelType } from "../../types/model";
+import { REASONING_TAG_NAMES } from "../../utils/reasoning-tags";
 
 type ErrorWithStatus = {
 	code?: unknown;
@@ -422,11 +424,25 @@ export function buildFailureReplyPrompt(
 	].join("\n");
 }
 
+const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|");
+
 export function stripReasoningBlocks(raw: string): string {
 	return raw
-		.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
-		.replace(/^[\s\S]*?<\/think>/i, "")
-		.replace(/<think\b[^>]*>[\s\S]*$/gi, "")
+		.replace(
+			new RegExp(
+				`<(?:${REASONING_TAG_ALTERNATION})\\b[^>]*>[\\s\\S]*?<\\/(?:${REASONING_TAG_ALTERNATION})>`,
+				"gi",
+			),
+			"",
+		)
+		.replace(
+			new RegExp(`^[\\s\\S]*?<\\/(?:${REASONING_TAG_ALTERNATION})>`, "i"),
+			"",
+		)
+		.replace(
+			new RegExp(`<(?:${REASONING_TAG_ALTERNATION})\\b[^>]*>[\\s\\S]*$`, "gi"),
+			"",
+		)
 		.replace(/\/?\bno_think\b/gi, "")
 		.trim();
 }
