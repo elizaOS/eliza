@@ -1,10 +1,4 @@
-/**
- * Verifies JoinPage retains auth until fresh-agent compensation is owned. The
- * page-level sign-out owner must await the active join controller. A
- * successful compensation permits SSO destruction; an AggregateError means
- * cleanup is unowned, keeps the user signed in, and exposes an explicit
- * sign-out-anyway decision. All network and navigation seams are deterministic.
- */
+/** Verifies JoinPage waits for its active identity read before destroying the SSO session. */
 // @vitest-environment jsdom
 
 import {
@@ -65,11 +59,12 @@ import JoinPage from "./JoinPage";
 
 function connectedResult() {
   return {
-    agentId: "agent-new",
+    personalElizaId: "personal:00000000-0000-5000-8000-000000000001",
+    agentId: "personal:00000000-0000-5000-8000-000000000001",
+    activeAgentId: "shared-runtime",
     agentName: "Eliza",
-    apiBase: "https://agent-new.cloud.eliza.app",
-    created: true,
-    dedicated: true,
+    apiBase: "https://api.eliza.app/api/v1/eliza/agents/shared-runtime",
+    runtime: "shared" as const,
   };
 }
 
@@ -104,46 +99,6 @@ describe("JoinPage sign-out cleanup ownership", () => {
     await act(async () => {
       finishJoin?.(connectedResult());
     });
-    await waitFor(() => expect(signOutMock).toHaveBeenCalledTimes(1));
-    expect(replaceMock).toHaveBeenCalledWith("/login");
-  });
-
-  it("keeps auth on cleanup failure and requires an explicit sign-out-anyway action", async () => {
-    runJoinFlowMock.mockImplementation(
-      ({ signal }: { signal: AbortSignal }) =>
-        new Promise((_resolve, reject) => {
-          signal.addEventListener(
-            "abort",
-            () => {
-              reject(
-                new AggregateError(
-                  [signal.reason, new Error("delete job failed")],
-                  "Join was cancelled after create, and compensating deletion failed",
-                ),
-              );
-            },
-            { once: true },
-          );
-        }),
-    );
-    render(<JoinPage />);
-    await waitFor(() => expect(runJoinFlowMock).toHaveBeenCalledTimes(1));
-
-    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
-
-    expect(
-      await screen.findByText(
-        /couldn't finish removing the newly created agent/i,
-      ),
-    ).toBeTruthy();
-    expect(screen.getByText(/delete job failed/i)).toBeTruthy();
-    const retry = screen.getByRole("button", { name: "Try again" });
-    expect(retry.className).toContain("text-bg");
-    expect(retry.className).toContain("hover:!text-bg");
-    expect(signOutMock).not.toHaveBeenCalled();
-    expect(replaceMock).not.toHaveBeenCalledWith("/login");
-
-    fireEvent.click(screen.getByRole("button", { name: "Sign out anyway" }));
     await waitFor(() => expect(signOutMock).toHaveBeenCalledTimes(1));
     expect(replaceMock).toHaveBeenCalledWith("/login");
   });

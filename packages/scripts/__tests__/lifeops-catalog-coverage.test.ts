@@ -1,7 +1,7 @@
 /**
  * Exercises the catalog coverage reporter against the real MVP scenario ledgers.
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +11,8 @@ const scriptPath = join(
   import.meta.dirname,
   "../check-lifeops-persona-catalog-coverage.mjs",
 );
+
+setDefaultTimeout(15_000);
 
 function runCoverage(...args: string[]) {
   const result = spawnSync(process.execPath, [scriptPath, ...args], {

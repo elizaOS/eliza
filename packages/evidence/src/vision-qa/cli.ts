@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { EvidenceError } from "../errors.ts";
 import { askAboutImage } from "./ask.ts";
-import { suggestQuestions } from "./suggest.ts";
+import { type AnalysisInput, suggestQuestions } from "./suggest.ts";
 import type {
   AskOptions,
   AskResult,
@@ -113,6 +113,78 @@ function parseAskArgs(argv: string[]): AskArgs {
   return { imagePath, questions, contextFile, viewName, json, options };
 }
 
+type JsonRecord = Record<string, unknown>;
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+function isOptionalFiniteNumber(value: unknown): boolean {
+  return (
+    value === undefined || (typeof value === "number" && Number.isFinite(value))
+  );
+}
+
+function isColorSignal(value: unknown): boolean {
+  if (value === undefined) return true;
+  return (
+    isJsonRecord(value) &&
+    isOptionalFiniteNumber(value.blue_fraction) &&
+    isOptionalFiniteNumber(value.blueFraction)
+  );
+}
+
+function isNormalizedCoordinate(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 1
+  );
+}
+
+function isBoundingBox(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (!Array.isArray(value) || value.length !== 4) return false;
+
+  const [minX, minY, maxX, maxY] = value;
+  return (
+    isNormalizedCoordinate(minX) &&
+    isNormalizedCoordinate(minY) &&
+    isNormalizedCoordinate(maxX) &&
+    isNormalizedCoordinate(maxY) &&
+    minX <= maxX &&
+    minY <= maxY
+  );
+}
+
+function isChangeSignal(value: unknown): boolean {
+  if (value === undefined) return true;
+  return (
+    isJsonRecord(value) &&
+    isOptionalFiniteNumber(value.changed_fraction) &&
+    isOptionalFiniteNumber(value.changedFraction) &&
+    isBoundingBox(value.changed_bbox_norm) &&
+    isBoundingBox(value.changedBboxNorm)
+  );
+}
+
+function isAnalysisInput(value: unknown): value is AnalysisInput {
+  return (
+    isJsonRecord(value) &&
+    isOptionalString(value.ocr_text) &&
+    isOptionalString(value.ocrText) &&
+    isColorSignal(value.color_fractions) &&
+    isColorSignal(value.colorFractions) &&
+    isChangeSignal(value.change_vs_baseline) &&
+    isChangeSignal(value.changeVsBaseline)
+  );
+}
+
 /**
  * Read the `--context` analysis file and derive suggested questions. Parse
  * failures throw typed (J3): a malformed context file is operator error, not a
@@ -141,7 +213,14 @@ function loadContextQuestions(
       cause: error,
     });
   }
-  return suggestQuestions(parsed as Parameters<typeof suggestQuestions>[0], {
+  if (!isAnalysisInput(parsed)) {
+    // error-policy:J3 reject malformed recognized fields before suggestion logic
+    throw new EvidenceError(
+      `--context has an invalid analysis shape: ${contextFile}`,
+      { code: "CLI_USAGE" },
+    );
+  }
+  return suggestQuestions(parsed, {
     ...(viewName !== undefined ? { viewName } : {}),
   });
 }
