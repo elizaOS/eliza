@@ -18,6 +18,7 @@ const AGENT_ID = "agent-under-test";
 let capturedWhere: SQL | undefined;
 let capturedLimit: number | undefined;
 const listRows = [{ id: "row-1" }, { id: "row-2" }];
+const readCapturedLimit = (): number | undefined => capturedLimit;
 const limitFn = mock((n: number) => {
   capturedLimit = n;
   return Promise.resolve(listRows);
@@ -38,6 +39,7 @@ const dbReadMock = new Proxy(realClient.dbRead as unknown as Record<PropertyKey,
 
 // Scripted write chain: capture the values object handed to insert().values().
 let capturedValues: Record<string, unknown> | undefined;
+const readCapturedValues = (): Record<string, unknown> | undefined => capturedValues;
 const valuesFn = mock((values: Record<string, unknown>) => {
   capturedValues = values;
   return Promise.resolve();
@@ -70,7 +72,7 @@ describe("SharedTurnTracesRepository.listRecentByAgent", () => {
 
     expect(rows).toEqual(listRows as never);
     expect(selectFn).toHaveBeenCalledTimes(1);
-    expect(capturedLimit).toBe(25);
+    expect(readCapturedLimit()).toBe(25);
 
     if (!capturedWhere) throw new Error("WHERE clause was not captured");
     const sql = new PgDialect().sqlToQuery(capturedWhere);
@@ -88,15 +90,15 @@ describe("SharedTurnTracesRepository.listRecentByAgent", () => {
 
     capturedLimit = undefined;
     await repository.listRecentByAgent(ORG_ID, AGENT_ID, 1_000_000);
-    expect(capturedLimit).toBe(200);
+    expect(readCapturedLimit()).toBe(200);
 
     capturedLimit = undefined;
     await repository.listRecentByAgent(ORG_ID, AGENT_ID, -5);
-    expect(capturedLimit).toBe(1);
+    expect(readCapturedLimit()).toBe(1);
 
     capturedLimit = undefined;
     await repository.listRecentByAgent(ORG_ID, AGENT_ID, Number.NaN);
-    expect(capturedLimit).toBe(1);
+    expect(readCapturedLimit()).toBe(1);
   });
 });
 
@@ -119,16 +121,17 @@ describe("SharedTurnTracesRepository.insertTrace", () => {
     });
 
     expect(insertFn).toHaveBeenCalledTimes(1);
-    if (!capturedValues) throw new Error("insert values were not captured");
-    expect(capturedValues.organization_id).toBe(ORG_ID);
-    expect(capturedValues.user_id).toBe("4e2ffab7-9f21-4a2c-92b7-33dd25c7f8a2");
-    expect(capturedValues.agent_id).toBe(AGENT_ID);
-    expect(capturedValues.trace_id).toBe("trace-1");
+    const values = readCapturedValues();
+    if (!values) throw new Error("insert values were not captured");
+    expect(values.organization_id).toBe(ORG_ID);
+    expect(values.user_id).toBe("4e2ffab7-9f21-4a2c-92b7-33dd25c7f8a2");
+    expect(values.agent_id).toBe(AGENT_ID);
+    expect(values.trace_id).toBe("trace-1");
     // jsonb columns are bound through jsonbParam (explicit ::jsonb SQL params).
-    const usageSql = new PgDialect().sqlToQuery(capturedValues.usage as SQL);
+    const usageSql = new PgDialect().sqlToQuery(values.usage as SQL);
     expect(usageSql.sql).toContain("::jsonb");
     expect(usageSql.params).toContain(JSON.stringify({ inputTokens: 12 }));
-    const stagesSql = new PgDialect().sqlToQuery(capturedValues.stages as SQL);
+    const stagesSql = new PgDialect().sqlToQuery(values.stages as SQL);
     expect(stagesSql.sql).toContain("::jsonb");
     expect(stagesSql.params).toContain(
       JSON.stringify({ finishReason: "reply", stages: [{ name: "model" }] }),
