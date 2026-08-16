@@ -408,6 +408,27 @@ body.pwa-standalone textarea {
   }
 }
 
+/*
+ * Processing-state dots: mic closed, transcription in flight. A soft
+ * opacity/scale breath sweeping left-to-right via per-dot animation-delay.
+ */
+.home-pill-process-dot {
+  animation: home-pill-process 1100ms ease-in-out infinite;
+}
+
+@keyframes home-pill-process {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+
+  40% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
 /* ── Animation utilities ────────────────────────────────────────────── */
 
 .animate-in {

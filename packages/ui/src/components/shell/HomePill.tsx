@@ -31,6 +31,9 @@ export interface HomePillProps {
   onHoldEnd?: () => void;
   /** Abandon hold-to-talk without sending (Esc mid-hold, slide-off). */
   onHoldCancel?: () => void;
+  /** True while the assistant reply is being spoken aloud. Sharpens the
+   *  responding glow so "speaking" and "thinking" read differently. */
+  speaking?: boolean;
 }
 
 /** How long the pointer must stay down before a press becomes a hold. Above
@@ -58,6 +61,14 @@ const WAVE_BARS = [
   { id: "r4", delayMs: 420 },
 ] as const;
 
+/** Processing-state dots: the mic closed but transcription is in flight —
+ *  three dots breathing left-to-right, the universal "working on it". */
+const PROCESS_DOTS = [
+  { id: "d0", delayMs: 0 },
+  { id: "d1", delayMs: 160 },
+  { id: "d2", delayMs: 320 },
+] as const;
+
 /**
  * Persistent Flow-style handle at the bottom-center of the viewport.
  *
@@ -67,11 +78,16 @@ const WAVE_BARS = [
  * user's way until it is invoked.
  *
  * Each shell phase reads distinctly at a glance (the capsule is the only
- * always-visible surface, so it carries all ambient status): booting dims and
- * pulses, idle is a solid white capsule, listening turns the capsule red with
- * animated white waveform bars (the mic-live convention), and responding
- * breathes a warm accent glow. Reduced-motion users get the static color/glow
- * treatments without the animations.
+ * always-visible surface, so it carries all ambient status):
+ *   booting     — dim pulsing handle ("waking up").
+ *   idle        — solid white handle ("here, ready").
+ *   listening   — dark chip, red hot-mic ring, live waveform bars.
+ *   processing  — dark chip, pulsing dots, no red ring — mic closed,
+ *                 transcription in flight ("heard you, working on it").
+ *   responding  — warm accent glow; `speaking` sharpens it while the reply
+ *                 is audibly playing (thinking vs speaking read differently).
+ * Reduced-motion users get the static color/glow treatments without the
+ * animations.
  */
 export function HomePill({
   phase,
@@ -80,6 +96,7 @@ export function HomePill({
   onHoldStart,
   onHoldEnd,
   onHoldCancel,
+  speaking = false,
 }: HomePillProps): React.JSX.Element {
   const { appName } = useBranding();
   // The pill reads as "open" (its click will close) only for the overlay
@@ -188,18 +205,25 @@ export function HomePill({
     else onOpen();
   }, [isOpen, onOpen, onClose]);
 
+  const chipExpanded = phase === "listening" || phase === "processing";
+  const label =
+    phase === "listening"
+      ? `${appName} is listening — release to send`
+      : phase === "processing"
+        ? `${appName} is transcribing your words`
+        : speaking
+          ? `${appName} is speaking`
+          : isOpen
+            ? `Close ${appName}`
+            : `Open ${appName}`;
+
   return (
     <Button
       variant="ghost"
-      aria-label={
-        phase === "listening"
-          ? `${appName} is listening — release to send`
-          : isOpen
-            ? `Close ${appName}`
-            : `Open ${appName}`
-      }
+      aria-label={label}
       aria-pressed={isOpen}
       data-phase={phase}
+      data-speaking={speaking || undefined}
       data-testid="shell-home-pill"
       onClick={handleClick}
       onPointerDown={handlePointerDown}
@@ -218,21 +242,30 @@ export function HomePill({
         className={cn(
           "flex items-center justify-center rounded-full",
           "transition-[width,height,opacity,transform,background-color,box-shadow] duration-200",
-          // Listening mirrors the studied Wispr Flow bar: the capsule GROWS
-          // into a dark rounded chip holding live white bars — big enough that
-          // the mic-live state is legible from across the room — with a red
-          // ring keeping "hot mic" unambiguous. Other phases stay the slim
-          // white handle.
-          phase === "listening"
-            ? "h-7 w-20 gap-[3px] bg-neutral-900/95 shadow-[0_0_0_1.5px_rgba(239,68,68,0.9),0_4px_16px_rgba(0,0,0,0.35)]"
+          // Listening/processing mirror the studied Wispr Flow bar: the capsule
+          // GROWS into a dark rounded chip — legible from across the room.
+          // Listening carries live bars + a red hot-mic ring; processing keeps
+          // the dark chip (continuity: "still your utterance") but swaps the
+          // bars for pulsing dots and drops the red ring — the mic is CLOSED.
+          // Other phases stay the slim white handle.
+          chipExpanded
+            ? "h-7 w-20 gap-[3px] bg-neutral-900/95"
             : "h-2.5 w-12 gap-[3px] bg-white/95 group-hover:w-14",
-          phase !== "listening" &&
+          phase === "listening" &&
+            "shadow-[0_0_0_1.5px_rgba(239,68,68,0.9),0_4px_16px_rgba(0,0,0,0.35)]",
+          phase === "processing" && "shadow-[0_4px_16px_rgba(0,0,0,0.35)]",
+          !chipExpanded &&
             (phase === "responding"
-              ? "shadow-[0_0_10px_rgba(255,138,42,0.6),0_0_0_1px_rgba(0,0,0,0.12)]"
+              ? speaking
+                ? // Speaking: stronger, tighter warm glow than thinking — the
+                  // reply is audibly playing right now.
+                  "shadow-[0_0_14px_rgba(255,138,42,0.85),0_0_0_1px_rgba(255,138,42,0.5)]"
+                : "shadow-[0_0_10px_rgba(255,138,42,0.6),0_0_0_1px_rgba(0,0,0,0.12)]"
               : "shadow-[0_0_0_1px_rgba(0,0,0,0.12)]"),
           phase === "booting" &&
             "animate-pulse opacity-65 motion-reduce:animate-none",
           phase === "responding" &&
+            !speaking &&
             "animate-pulse opacity-90 motion-reduce:animate-none",
         )}
       >
@@ -243,6 +276,15 @@ export function HomePill({
               data-testid="shell-home-pill-wave-bar"
               className="home-pill-wave-bar h-[6px] w-[3px] rounded-full bg-white/95 motion-reduce:animate-none"
               style={{ animationDelay: `${bar.delayMs}ms` }}
+            />
+          ))}
+        {phase === "processing" &&
+          PROCESS_DOTS.map((dot) => (
+            <span
+              key={dot.id}
+              data-testid="shell-home-pill-process-dot"
+              className="home-pill-process-dot h-[5px] w-[5px] rounded-full bg-white/90 motion-reduce:animate-none"
+              style={{ animationDelay: `${dot.delayMs}ms` }}
             />
           ))}
       </span>
