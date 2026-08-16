@@ -7,8 +7,8 @@ import { handlePersonalTelegramEdge } from "../_telegram-edge";
 const app = new Hono<AppEnv>();
 const handle = (c: Parameters<typeof handlePersonalTelegramEdge>[0]) =>
   c.req.method === "POST" &&
-    c.env.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED === "true" &&
-    safeWebhookSuffix(new URL(c.req.url).pathname, "telegram") === ""
+  c.env.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED === "true" &&
+  safeWebhookSuffix(new URL(c.req.url).pathname, "telegram") === ""
     ? handlePersonalTelegramEdge(c)
     : forwardToWebhookGateway(c, "telegram");
 app.all("/", handle);
