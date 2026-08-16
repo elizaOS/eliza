@@ -730,6 +730,30 @@ jobs:
             ' "${worker_secret_names[@]}"
           }
 
+          verify_staging_embeddings_secret_candidate() {
+            if [ "$DEPLOY_ENVIRONMENT" != "staging" ]; then
+              return 0
+            fi
+            local secret_inventory
+            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            printf '%s' "$secret_inventory" | node -e '
+              const fs = require("node:fs");
+              const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
+              const entries = Array.isArray(parsed)
+                ? parsed
+                : Array.isArray(parsed?.result)
+                  ? parsed.result
+                  : [];
+              const available = new Set(entries.map((entry) => entry?.name).filter(Boolean));
+              for (const name of process.argv.slice(1)) available.add(name);
+              if (!available.has("LOCAL_EMBEDDINGS_API_KEY")) {
+                console.error("::error::Staging local embeddings cannot be deployed without an existing or configured LOCAL_EMBEDDINGS_API_KEY Worker binding.");
+                process.exit(1);
+              }
+              console.log("Verified staging local embeddings bearer binding name; its value was not read.");
+            ' "${worker_secret_names[@]}"
+          }
+
           # Like queue_secret, but for values that act as ROUTING TOGGLES
           # (code branches on presence, e.g. `env.WHISPER_STT_URL`). An unset
           # source must DELETE any previously published secret. A plain
@@ -854,6 +878,11 @@ jobs:
           # active Worker: every required voice name must either already exist
           # or be queued for the atomic version below.
           verify_production_voice_secret_candidates || exit 1
+          # The staging base URL routes live traffic to an authenticated TEI
+          # sidecar, so its bearer binding must exist or be committed in the
+          # same Worker version. A missing value may never deploy as a healthy
+          # but permanently unauthorized embeddings path.
+          verify_staging_embeddings_secret_candidate || exit 1
 
           # Wrangler deploy accepts this JSON additively: named values are
           # committed in the same Worker version as the exact source, while
@@ -991,6 +1020,9 @@ jobs:
               "STEWARD_TENANT_API_KEY",
               "GATEWAY_INTERNAL_SECRET",
             ];
+            if (process.env.DEPLOY_ENVIRONMENT === "staging") {
+              required.push("LOCAL_EMBEDDINGS_API_KEY");
+            }
             if (
               process.env.DEPLOY_ENVIRONMENT === "production" &&
               process.env.VOICE_REALTIME_WS_ENABLED === "true"

@@ -147,14 +147,23 @@ describe("Worker secret/var collision lint (CF error 10053 class)", () => {
     expect(
       config.env?.production?.vars?.LOCAL_EMBEDDINGS_BASE_URL,
     ).toBeUndefined();
-    expect(vars.get("staging")?.has("LOCAL_EMBEDDINGS_API_KEY") ?? false).toBe(
-      false,
-    );
+    for (const [environment, names] of vars) {
+      expect(
+        names.has("LOCAL_EMBEDDINGS_API_KEY"),
+        `${environment} must not publish LOCAL_EMBEDDINGS_API_KEY as plaintext`,
+      ).toBe(false);
+    }
     expect(releaseWorkflowSource).toContain(
       "LOCAL_EMBEDDINGS_API_KEY: $" + "{{ secrets.LOCAL_EMBEDDINGS_API_KEY }}",
     );
     expect(releaseWorkflowSource).toContain(
       'LOCAL_EMBEDDINGS_API_KEY)\n                if [ "$DEPLOY_ENVIRONMENT" != "staging" ]; then',
+    );
+    expect(releaseWorkflowSource).toContain(
+      'if (!available.has("LOCAL_EMBEDDINGS_API_KEY"))',
+    );
+    expect(releaseWorkflowSource).toContain(
+      'required.push("LOCAL_EMBEDDINGS_API_KEY")',
     );
   });
 });
