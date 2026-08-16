@@ -48,14 +48,17 @@ export class EmbeddingGenerationService extends Service {
 			"Starting embedding generation service",
 		);
 
-		const embeddingModel = runtime.getModel(ModelType.TEXT_EMBEDDING);
-		if (!embeddingModel) {
+		const hasEmbeddingModel = Boolean(
+			runtime.getModel(ModelType.TEXT_EMBEDDING) ||
+				runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH),
+		);
+		if (!hasEmbeddingModel) {
 			runtime.logger.warn(
 				{
 					src: "plugin:basic-capabilities:service:embedding",
 					agentId: runtime.agentId,
 				},
-				"No TEXT_EMBEDDING model registered - service will not be initialized",
+				"No TEXT_EMBEDDING or TEXT_EMBEDDING_BATCH model registered - service will not be initialized",
 			);
 			const noOpService = new EmbeddingGenerationService(runtime);
 			noOpService.isDisabled = true;
