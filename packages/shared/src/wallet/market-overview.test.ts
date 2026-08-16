@@ -62,6 +62,19 @@ describe("wallet market-overview shared domain", () => {
     );
   });
 
+  it("rejects malformed numeric strings instead of parsing their prefix", () => {
+    expect(
+      mapCoinGeckoMarket({
+        id: "bitcoin",
+        symbol: "btc",
+        name: "Bitcoin",
+        current_price: "60000 USD",
+        price_change_percentage_24h: "1.5%",
+        market_cap_rank: "1st",
+      }),
+    ).toBeNull();
+  });
+
   it("flags stablecoins by id or symbol", () => {
     const usdc: CoinGeckoMarketRecord = {
       id: "usd-coin",

@@ -1,9 +1,8 @@
-// Keyless contract test: replays a REAL recorded CoinGecko /coins/markets
-// response (__fixtures__/coingecko-markets.recorded.json, captured from the live
-// public API) through the real handleWalletMarketOverviewRoute parser and asserts
-// the produced BFF DTO is contract-shaped. Validates the parser (mapCoinGeckoMarket)
-// against the real CoinGecko wire shape with no network. wallet-market-overview.real.test.ts
-// re-fetches the live API to catch drift from this recording.
+/**
+ * Replays recorded and adversarial provider payloads through the real wallet
+ * market-overview route. The harness is keyless and deterministic; the live
+ * drift suite separately checks CoinGecko's current public wire shape.
+ */
 
 import { readFileSync } from "node:fs";
 import type http from "node:http";
@@ -35,17 +34,24 @@ function jsonResponse(body: unknown): Response {
 
 // Inject a fetch that serves the recorded CoinGecko markets and an empty
 // Polymarket list, so the route's real aggregation + parse runs offline.
-function installRecordedFetch(): void {
+function installMarketFetch(
+  coinGeckoMarkets: unknown[],
+  polymarketMarkets: unknown[] = [],
+): void {
   __setWalletMarketOverviewFetchForTests((async (url: URL | string) => {
     const href = typeof url === "string" ? url : url.toString();
     if (href.includes("coingecko.com")) {
-      return jsonResponse(recorded.coinGeckoMarkets);
+      return jsonResponse(coinGeckoMarkets);
     }
     if (href.includes("polymarket.com")) {
-      return jsonResponse([]);
+      return jsonResponse(polymarketMarkets);
     }
     throw new Error(`unexpected fetch to ${href}`);
   }) as never);
+}
+
+function installRecordedFetch(): void {
+  installMarketFetch(recorded.coinGeckoMarkets);
 }
 
 function createRequest(): http.IncomingMessage {
@@ -87,7 +93,7 @@ afterEach(() => {
   __resetWalletMarketOverviewCacheForTests();
 });
 
-describe("wallet market overview — recorded real CoinGecko contract", () => {
+describe("wallet market overview provider contracts", () => {
   it("parses the real /coins/markets shape into a contract-shaped DTO", async () => {
     __resetWalletMarketOverviewCacheForTests();
     installRecordedFetch();
@@ -135,5 +141,43 @@ describe("wallet market overview — recorded real CoinGecko contract", () => {
       expect(m.symbol).toBe(m.symbol.toUpperCase());
       expect(typeof m.priceUsd).toBe("number");
     }
+  });
+
+  it("drops malformed numeric strings from both direct provider feeds", async () => {
+    installMarketFetch(
+      [
+        {
+          id: "bitcoin",
+          symbol: "btc",
+          name: "Bitcoin",
+          current_price: "60000 USD",
+          price_change_percentage_24h: "1.5%",
+          market_cap_rank: "1st",
+        },
+      ],
+      [
+        {
+          slug: "malformed-market",
+          question: "Will malformed data be accepted?",
+          outcomes: '["Yes","No"]',
+          outcomePrices: '["0.75","0.25"]',
+          volume24hr: "100 USD",
+        },
+      ],
+    );
+
+    const res = createResponse();
+    const handled = await handleWalletMarketOverviewRoute(createRequest(), res);
+    const dto = res.json<{
+      prices: unknown[];
+      movers: unknown[];
+      predictions: unknown[];
+    }>();
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(dto.prices).toEqual([]);
+    expect(dto.movers).toEqual([]);
+    expect(dto.predictions).toEqual([]);
   });
 });
