@@ -5558,6 +5558,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.messageHandler.plan.candidateActions).toEqual([
 			"MESSAGE_SEND",
 			"OWNER_REMINDERS",
+			"TRIGGER",
 		]);
 		expect(result.messageHandler.plan.candidateActions).not.toContain(
 			"TRIGGER_CREATE",

@@ -163,7 +163,8 @@
   "settings": {
     "DISCORD_STATUS_REACTIONS": "all",
     "voice": {
-      "voiceId": "b9c387c8-2583-4b89-9a8e-be6699e38a23"
+      "voiceId": "b9c387c8-2583-4b89-9a8e-be6699e38a23",
+      "speculativeReply": true
     },
     "routing": {
       "coding": {

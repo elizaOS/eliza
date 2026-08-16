@@ -73,6 +73,13 @@ export interface UseRealtimeVoiceMintResult {
   /** Owner agent UUID for the mint, or null when no cloud agent is resolvable. */
   agentId: string | null;
   /**
+   * Resolve the identity again on the actual Talk gesture. In forced local
+   * development the mount-time health probe is asynchronous, so a fast click
+   * must not lose realtime voice merely because React has not published the
+   * successful probe result yet.
+   */
+  resolveAgentIdForStart: () => Promise<string | null>;
+  /**
    * Obtain a one-time consent nonce for a realtime session. Resolves null on a
    * 404/503/any non-200, or a transport failure — the caller then uses batch.
    */
@@ -179,9 +186,20 @@ export function useRealtimeVoiceMint(options?: {
     resolvedAgentId ??
     (forceProbeArmed ? REALTIME_FORCE_SENTINEL_AGENT_ID : null);
 
+  const resolveAgentIdForStart = useCallback(async (): Promise<
+    string | null
+  > => {
+    if (resolvedAgentId) return resolvedAgentId;
+    if (!forceProbeEligible) return null;
+    const available = await probeRealtimeVoiceAvailability(doFetch, probePath);
+    if (!available) return null;
+    setForceProbeArmed(true);
+    return REALTIME_FORCE_SENTINEL_AGENT_ID;
+  }, [doFetch, forceProbeEligible, probePath, resolvedAgentId]);
+
   const getConsentNonce = useCallback(async (): Promise<string | null> => {
     return fetchConsentNonce(doFetch, consentPath);
   }, [consentPath, doFetch]);
 
-  return { agentId, getConsentNonce };
+  return { agentId, resolveAgentIdForStart, getConsentNonce };
 }

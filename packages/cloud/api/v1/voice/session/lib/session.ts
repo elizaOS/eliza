@@ -144,6 +144,8 @@ const SEMANTIC_EOT_ACTIVE_RECHECK_MS = 100;
  */
 const VOICE_PROGRESS_SPOKEN_THRESHOLD_MS = 900;
 const VOICE_PROGRESS_MAX_SPOKEN_UPDATES = 1;
+/** Retry one terminal phrase when a provider closes successfully with no PCM. */
+const VOICE_TTS_ZERO_AUDIO_RETRY_LIMIT = 1;
 /** Bound incremental display traffic while keeping the normal chat visibly live. */
 const VOICE_DISPLAY_MAX_CHARS = 32_768;
 const VOICE_DISPLAY_MIN_UPDATE_CHARS = 24;
@@ -1367,6 +1369,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     let tts: RealtimeTtsStream | null = null;
     let ttsGeneration = 0;
     let terminalTtsGeneration: number | null = null;
+    let terminalTtsFrameFloor = 0;
+    let terminalTtsText = "";
+    let terminalTtsZeroAudioRetries = 0;
+    const ttsFrameCounts = new Map<number, number>();
     let canonicalDisplayText = "";
     let lastDisplaySnapshot = "";
     let committedSpeechSourceEnd = 0;
@@ -1413,6 +1419,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const ensureTts = (): RealtimeTtsStream => {
       if (tts) return tts;
       const generation = ++ttsGeneration;
+      ttsFrameCounts.set(generation, 0);
       let callbackStream: RealtimeTtsStream | null = null;
       const releaseNonterminalStream = (): void => {
         if (tts === callbackStream) tts = null;
@@ -1442,10 +1449,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         onAudioFrame: (frame) => {
           // Guard: no post-cancel / stale-turn frames ever reach the client.
           if (!this.turnAuthority.isCurrent(lease)) return;
+          if (frame.bytes.byteLength > 0) {
+            ttsFrameCounts.set(
+              generation,
+              (ttsFrameCounts.get(generation) ?? 0) + 1,
+            );
+          }
           this.turnAuthority.markAudioEnqueued(lease);
           this.config.downlink.sendAudio(frame.bytes);
         },
-        onComplete: () => {
+        onComplete: (event) => {
           if (!this.turnAuthority.isCurrent(lease)) return;
           if (terminalTtsGeneration !== generation) {
             // A truthful progress preamble intentionally leaves its Cartesia
@@ -1455,6 +1468,42 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             // Release only that stream so the final answer can open a fresh
             // cancellable context under the same response lease.
             releaseNonterminalStream();
+            return;
+          }
+          const terminalFrameCount = Math.max(
+            event.frameCount,
+            ttsFrameCounts.get(generation) ?? 0,
+          );
+          if (terminalFrameCount <= terminalTtsFrameFloor) {
+            releaseNonterminalStream();
+            if (
+              terminalTtsText &&
+              terminalTtsZeroAudioRetries < VOICE_TTS_ZERO_AUDIO_RETRY_LIMIT
+            ) {
+              terminalTtsZeroAudioRetries += 1;
+              terminalTtsGeneration = null;
+              logger.warn(
+                "[voice-session] terminal TTS completed without audio; retrying once",
+                {
+                  traceId,
+                  generation,
+                  retry: terminalTtsZeroAudioRetries,
+                },
+              );
+              queueMicrotask(() => {
+                if (
+                  !this.turnAuthority.isCurrent(lease) ||
+                  abort.signal.aborted
+                ) {
+                  return;
+                }
+                sendTerminalTtsPhrase(terminalTtsText);
+              });
+              return;
+            }
+            this.send({ t: "error", code: "tts_no_audio", retryable: true });
+            abort.abort();
+            this.finishTurn(lease, "error");
             return;
           }
           this.send({ t: "speaking_end", traceId });
@@ -1496,6 +1545,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const sendTerminalTtsPhrase = (text: string): void => {
       const stream = ensureTts();
       terminalTtsGeneration = ttsGeneration;
+      terminalTtsText = text;
+      terminalTtsFrameFloor = ttsFrameCounts.get(ttsGeneration) ?? 0;
       stream.sendPhrase({ text, continueContext: false });
     };
 

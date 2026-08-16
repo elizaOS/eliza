@@ -405,6 +405,22 @@ export {
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 const MAX_COMMITTED_DIRECT_REPLY_BRIEF_CHARS = 240;
 const COMMITTED_DIRECT_REPLY_BRIEF_TARGET_CHARS = 120;
+const COMMITTED_DIRECT_REPLY_SPECULATIVE_BRIEF =
+	"Answer the current user request directly from the supplied context. This is only a static/simple-answer draft: never claim a tool call, live lookup, private read, or side effect.";
+
+function speculativeRealtimeVoiceReplyEnabled(runtime: IAgentRuntime): boolean {
+	const raw =
+		typeof process !== "undefined"
+			? process.env.ELIZA_VOICE_SPECULATIVE_REPLY?.trim().toLowerCase()
+			: undefined;
+	if (raw) {
+		return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+	}
+	const voiceSettings = runtime.character.settings?.voice as
+		| { speculativeReply?: unknown }
+		| undefined;
+	return voiceSettings?.speculativeReply === true;
+}
 
 const COMMITTED_DIRECT_REPLY_SYNTHESIS_INSTRUCTIONS = `task: Write the final user-visible reply for this direct/private turn.
 
@@ -428,6 +444,7 @@ rules:
 - Match the character's voice without mentioning models, routing, tools, prompts, or internal state.`;
 
 type CommittedReplySynthesisKind = "direct" | "action";
+type CommittedReplyPublicationDecision = "publish" | "discard";
 
 /**
  * Per-agent reply-length budget (#16395): a positive-integer `max_tokens`
@@ -5262,6 +5279,13 @@ async function synthesizeCommittedDirectReply(args: {
 	turnSignal: AbortSignal;
 	replyKind?: CommittedReplySynthesisKind;
 	actionResults?: readonly ActionResult[];
+	/**
+	 * Optional publication barrier for speculative voice synthesis. Provider
+	 * bytes may be parsed and security-validated while Stage 1 is still deciding,
+	 * but no byte may cross the visible stream until the authoritative route
+	 * explicitly publishes it. A discarded draft is never display/speech state.
+	 */
+	publicationGate?: Promise<CommittedReplyPublicationDecision>;
 }): Promise<CommittedDirectReplySynthesisResult> {
 	const parentStream = getStreamingContext();
 	const onStreamChunk = parentStream?.onStreamChunk;
@@ -5307,6 +5331,39 @@ async function synthesizeCommittedDirectReply(args: {
 	};
 
 	let committedVisibleText = "";
+	let validatedCommittedText = "";
+	let publicationState: "pending" | "publishing" | "discarded" =
+		args.publicationGate ? "pending" : "publishing";
+	let emissionTail: Promise<void> = Promise.resolve();
+	const scheduleValidatedEmission = (): Promise<void> => {
+		const emission = emissionTail.then(async () => {
+			if (publicationState !== "publishing") return;
+			if (!validatedCommittedText.startsWith(committedVisibleText)) {
+				throw new CommittedReplyProtocolError(
+					"Speculative publication diverged from the visible committed prefix",
+				);
+			}
+			const delta = validatedCommittedText.slice(committedVisibleText.length);
+			if (!delta) return;
+			args.turnSignal.throwIfAborted();
+			const visibleFormat =
+				preserveRequestedJson && isValidJsonText(validatedCommittedText)
+					? "json"
+					: "text";
+			await onStreamChunk(
+				delta,
+				parentStream.messageId,
+				validatedCommittedText,
+				{
+					authority: "committed_reply",
+					visibleFormat,
+				},
+			);
+			committedVisibleText = validatedCommittedText;
+		});
+		emissionTail = emission;
+		return emission;
+	};
 	const stream = new CommittedReplyStream({
 		preserveJsonBytes: preserveRequestedJson,
 		onCommit: async (_chunk, accumulated) => {
@@ -5319,24 +5376,15 @@ async function synthesizeCommittedDirectReply(args: {
 					actionResults: args.actionResults,
 				},
 			);
-			if (projected === null || !projected.startsWith(committedVisibleText)) {
+			if (projected === null || !projected.startsWith(validatedCommittedText)) {
 				throw new CommittedReplyProtocolError(
 					"Final output projection diverged from an irrevocable visible prefix",
 				);
 			}
-			const delta = projected.slice(committedVisibleText.length);
-			if (delta) {
-				args.turnSignal.throwIfAborted();
-				const visibleFormat =
-					preserveRequestedJson && isValidJsonText(accumulated)
-						? "json"
-						: "text";
-				await onStreamChunk(delta, parentStream.messageId, projected, {
-					authority: "committed_reply",
-					visibleFormat,
-				});
+			validatedCommittedText = projected;
+			if (publicationState === "publishing") {
+				await scheduleValidatedEmission();
 			}
-			committedVisibleText = projected;
 		},
 		validateCandidate: (candidate) => {
 			const projected = projectCommittedDirectReplyCandidate(
@@ -5347,9 +5395,23 @@ async function synthesizeCommittedDirectReply(args: {
 					actionResults: args.actionResults,
 				},
 			);
-			return projected?.startsWith(committedVisibleText) === true;
+			return projected?.startsWith(validatedCommittedText) === true;
 		},
 	});
+	const publicationDecisionTask = args.publicationGate?.then(
+		async (decision) => {
+			if (decision === "discard") {
+				publicationState = "discarded";
+				stream.abort();
+				return;
+			}
+			publicationState = "publishing";
+			await scheduleValidatedEmission();
+		},
+	);
+	// error-policy:J5 This observer prevents a transient unhandled-rejection
+	// report; the original task is awaited below and its failure still propagates.
+	void publicationDecisionTask?.catch(() => undefined);
 	const onAbort = () => stream.abort();
 	if (args.turnSignal.aborted) onAbort();
 	else args.turnSignal.addEventListener("abort", onAbort, { once: true });
@@ -5404,6 +5466,8 @@ async function synthesizeCommittedDirectReply(args: {
 			const result = await stream.finish(
 				restorePiiInUserReplyText(getV5ModelText(raw)),
 			);
+			await publicationDecisionTask;
+			await emissionTail;
 			return {
 				text: committedVisibleText,
 				interrupted: result.state !== "complete",
@@ -5426,6 +5490,65 @@ async function synthesizeCommittedDirectReply(args: {
 	} finally {
 		args.turnSignal.removeEventListener("abort", onAbort);
 	}
+}
+
+interface SpeculativeCommittedDirectReply {
+	publish: () => Promise<CommittedDirectReplySynthesisResult>;
+	discard: () => void;
+}
+
+function startSpeculativeCommittedDirectReply(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	context: ContextObject;
+	turnSignal: AbortSignal;
+}): SpeculativeCommittedDirectReply {
+	const controller = new AbortController();
+	const abortFromParent = () => controller.abort(args.turnSignal.reason);
+	if (args.turnSignal.aborted) abortFromParent();
+	else
+		args.turnSignal.addEventListener("abort", abortFromParent, { once: true });
+	let settled = false;
+	let resolvePublication!: (
+		decision: CommittedReplyPublicationDecision,
+	) => void;
+	const publicationGate = new Promise<CommittedReplyPublicationDecision>(
+		(resolve) => {
+			resolvePublication = resolve;
+		},
+	);
+	const synthesis = synthesizeCommittedDirectReply({
+		...args,
+		responseBrief: COMMITTED_DIRECT_REPLY_SPECULATIVE_BRIEF,
+		turnSignal: controller.signal,
+		publicationGate,
+	});
+	// A speculative provider may fail before Stage 1 decides. Attach a handler
+	// immediately; publish() still observes the original rejection and falls back
+	// through the authoritative sequential path.
+	// error-policy:J5 The original promise remains the publish() return value, so
+	// this observer suppresses only premature unhandled-rejection reporting.
+	void synthesis.catch(() => undefined);
+	void synthesis.then(
+		() => args.turnSignal.removeEventListener("abort", abortFromParent),
+		() => args.turnSignal.removeEventListener("abort", abortFromParent),
+	);
+	return {
+		publish: async () => {
+			if (!settled) {
+				settled = true;
+				resolvePublication("publish");
+			}
+			return synthesis;
+		},
+		discard: () => {
+			if (settled) return;
+			settled = true;
+			resolvePublication("discard");
+			controller.abort(new TurnAbortedError("Speculative reply discarded"));
+		},
+	};
 }
 
 /**
@@ -8233,6 +8356,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	} | null> = Promise.resolve(null);
 	let settledFactsOutcome: Awaited<typeof factsTask> | undefined;
 	let messageHandlerStageTask: Promise<void> = Promise.resolve();
+	let speculativeDirectReply: SpeculativeCommittedDirectReply | undefined;
 	try {
 		const messageHandlerStartedAt = Date.now();
 		const directMessageChannel =
@@ -8509,7 +8633,26 @@ export async function runV5MessageRuntimeStage1(args: {
 			"message:stage1:preprocess",
 			performance.now() - stage1PreprocessStartedAt,
 		);
-		let rawMessageHandler = (await invokeStage1Model()) as
+		const initialStage1Model = invokeStage1Model();
+		// Start the sealed Phase-2 draft only after the authoritative Stage-1 call
+		// has been admitted. Both providers now work in parallel, while the
+		// publication barrier keeps every draft byte private until Stage 1 proves
+		// this realtime voice turn is a simple response rather than IGNORE, STOP,
+		// or a tool/action path.
+		if (
+			deferDirectReplySynthesis &&
+			realtimeVoiceCommittedStream &&
+			speculativeRealtimeVoiceReplyEnabled(args.runtime)
+		) {
+			speculativeDirectReply = startSpeculativeCommittedDirectReply({
+				runtime: args.runtime,
+				message: args.message,
+				state: args.state,
+				context,
+				turnSignal: stage1TurnSignal,
+			});
+		}
+		let rawMessageHandler = (await initialStage1Model) as
 			| string
 			| GenerateTextResult;
 		let stage1RetryReason = getStage1RetryReason(rawMessageHandler);
@@ -9001,6 +9144,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageText: getUserMessageText(args.message) ?? "",
 		});
 		if (route.type === "ignored" || route.type === "stopped") {
+			speculativeDirectReply?.discard();
 			return {
 				kind: "terminal",
 				action: route.type === "stopped" ? "STOP" : "IGNORE",
@@ -9095,20 +9239,46 @@ export async function runV5MessageRuntimeStage1(args: {
 					messageText: getUserMessageText(args.message),
 				})
 			) {
-				const synthesized = await synthesizeCommittedDirectReply({
-					runtime: args.runtime,
-					message: args.message,
-					state: args.state,
-					context,
-					responseBrief: reply,
-					turnSignal: stage1TurnSignal,
-				});
+				let synthesized: CommittedDirectReplySynthesisResult | undefined;
+				if (speculativeDirectReply) {
+					try {
+						synthesized = await speculativeDirectReply.publish();
+					} catch (error) {
+						if (
+							error instanceof CommittedReplyDeliveryError ||
+							stage1TurnSignal.aborted ||
+							error instanceof TurnAbortedError ||
+							(isRecord(error) && error.code === "TURN_ABORTED")
+						) {
+							throw error;
+						}
+						args.runtime.reportError(
+							"MessageService.speculativeCommittedDirectReply",
+							error,
+							{
+								roomId: args.message.roomId,
+								phase: "precommit_fallback",
+							},
+						);
+					}
+				}
+				if (!synthesized?.text) {
+					synthesized = await synthesizeCommittedDirectReply({
+						runtime: args.runtime,
+						message: args.message,
+						state: args.state,
+						context,
+						responseBrief: reply,
+						turnSignal: stage1TurnSignal,
+					});
+				}
 				reply = synthesized.text || COMMITTED_DIRECT_REPLY_BLOCKED_REPLY;
 				replyWasInterrupted =
 					synthesized.interrupted && synthesized.text.length > 0;
 				replyIsModelVoice = synthesized.text.length > 0;
 				replyUsesCommittedStream = synthesized.text.length > 0;
 			}
+			if (!replyUsesCommittedStream) speculativeDirectReply?.discard();
 			return {
 				kind: "direct_reply",
 				messageHandler,
@@ -9129,6 +9299,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			};
 		}
 
+		speculativeDirectReply?.discard();
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
 		// Merge direct-request candidate inference before the early-ack gate so
@@ -9320,11 +9491,16 @@ export async function runV5MessageRuntimeStage1(args: {
 			getMessageHandlerCandidateActions(messageHandler) ?? []
 		).some((name) => {
 			const candidateName = String(name);
-			const direct = resolveRuntimeAction(stageOneCandidateLookup, candidateName);
+			const direct = resolveRuntimeAction(
+				stageOneCandidateLookup,
+				candidateName,
+			);
 			const resolvedSet = direct
 				? [direct]
 				: parentAliasesForCandidateAction(candidateName)
-						.map((alias) => resolveRuntimeAction(stageOneCandidateLookup, alias))
+						.map((alias) =>
+							resolveRuntimeAction(stageOneCandidateLookup, alias),
+						)
 						.filter((action): action is Action => action !== undefined);
 			return resolvedSet.some((resolved) =>
 				collectedCandidateNames.has(normalizeActionIdentifier(resolved.name)),
@@ -9340,9 +9516,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const rejectedReminderish =
 			candidateGateDiagnostics.gateRejectedExplicitCandidates.some((name) => {
 				const normalized = normalizeActionIdentifier(name);
-				return (
-					normalized.includes("REMINDER") || normalized.includes("ALARM")
-				);
+				return normalized.includes("REMINDER") || normalized.includes("ALARM");
 			});
 		const ungatedTriggerSiblingAvailable =
 			rejectedReminderish && collectedCandidateNames.has("TRIGGER");
@@ -10518,6 +10692,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		endStatus = "errored";
 		throw err;
 	} finally {
+		speculativeDirectReply?.discard();
 		// Trajectory persistence is diagnostic work. Preserve stage ordering in
 		// its own task without adding filesystem latency to the user-visible turn.
 		const finalizeTrajectory = async (waitForFacts: boolean) => {

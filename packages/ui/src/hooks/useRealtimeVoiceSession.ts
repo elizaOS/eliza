@@ -75,6 +75,11 @@ export type RealtimeVoiceFallbackReason =
   | "unknown"
   | "missing-identity";
 
+interface VoiceStartIdentity {
+  agentId: string;
+  conversationId: string;
+}
+
 /** Consent-nonce source. Returns null when consent could not be issued. */
 export type MintConsentNonce = () => Promise<string | null>;
 
@@ -184,7 +189,9 @@ export interface UseRealtimeVoiceSessionState {
    * mint, connect, and start capture. Resolves only when realtime is live or a
    * typed pre-live failure proves whether the same gesture should use batch.
    */
-  start: () => Promise<RealtimeVoiceStartOutcome>;
+  start: (
+    identityOverride?: VoiceStartIdentity,
+  ) => Promise<RealtimeVoiceStartOutcome>;
   /** Clean `bye` + full teardown. Idempotent. */
   stop: () => Promise<void>;
   /** Barge-in: flush local playback + notify server. No-op when not speaking. */
@@ -334,6 +341,7 @@ export function useRealtimeVoiceSession(
   // not mistake that in-flight handoff for an intentionally idle session.
   const identityRestartPendingRef = useRef(false);
   const startingRef = useRef(false);
+  const startIdentityOverrideRef = useRef<VoiceStartIdentity | null>(null);
   // The connect/ready watchdog. Armed while the CURRENT session sits in a
   // pre-live phase; a live phase (or any teardown/error) clears it. There is at
   // most one session, so one shared handle is enough — a newer start's arm
@@ -487,11 +495,16 @@ export function useRealtimeVoiceSession(
   }, [stopCurrentSession]);
 
   const start = useCallback(async (): Promise<RealtimeVoiceStartOutcome> => {
+    const identityOverride = startIdentityOverrideRef.current;
+    startIdentityOverrideRef.current = null;
     if (startingRef.current || clientRef.current) {
       return { kind: "unavailable" };
     }
     if (!flagEnabled) return { kind: "unavailable" };
-    const { agentId: aId, conversationId: cId } = idsRef.current;
+    const { agentId: currentAgentId, conversationId: currentConversationId } =
+      idsRef.current;
+    const aId = identityOverride?.agentId ?? currentAgentId;
+    const cId = identityOverride?.conversationId ?? currentConversationId;
     if (!aId || !cId) return { kind: "unavailable" };
 
     startingRef.current = true;
@@ -740,6 +753,14 @@ export function useRealtimeVoiceSession(
     resolveStartOutcome,
   ]);
 
+  const startWithIdentity = useCallback(
+    (identityOverride?: VoiceStartIdentity) => {
+      startIdentityOverrideRef.current = identityOverride ?? null;
+      return start();
+    },
+    [start],
+  );
+
   const reportFallback = useCallback((reason: RealtimeVoiceFallbackReason) => {
     setFallbackReason(reason);
   }, []);
@@ -857,7 +878,7 @@ export function useRealtimeVoiceSession(
       fallbackReason,
       reportFallback,
       speaker: speaker ?? null,
-      start,
+      start: startWithIdentity,
       stop,
       bargeIn,
       toggleMicrophoneMute,
@@ -879,7 +900,7 @@ export function useRealtimeVoiceSession(
       fallbackReason,
       reportFallback,
       speaker,
-      start,
+      startWithIdentity,
       stop,
       bargeIn,
       toggleMicrophoneMute,

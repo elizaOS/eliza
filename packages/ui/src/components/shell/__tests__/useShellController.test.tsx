@@ -142,16 +142,21 @@ const realtimeVoiceMock = vi.hoisted(() => {
     } | null,
     startOutcome: { kind: "live" } as RealtimeVoiceStartOutcome,
     startedConversationIds: [] as Array<string | null | undefined>,
-    start: vi.fn(
-      async (): Promise<RealtimeVoiceStartOutcome> => ({ kind: "live" }),
-    ),
+    start: vi.fn<
+      (identityOverride?: {
+        agentId: string;
+        conversationId: string;
+      }) => Promise<RealtimeVoiceStartOutcome>
+    >(async () => ({ kind: "live" })),
     stop: vi.fn(async () => {}),
     unlock: vi.fn(async () => {}),
     bargeIn: vi.fn(),
     toggleMicrophoneMute: vi.fn(),
   };
-  holder.start.mockImplementation(async () => {
-    holder.startedConversationIds.push(holder.options?.conversationId);
+  holder.start.mockImplementation(async (identityOverride) => {
+    holder.startedConversationIds.push(
+      identityOverride?.conversationId ?? holder.options?.conversationId,
+    );
     return holder.startOutcome;
   });
   return Object.assign(holder, {
@@ -192,6 +197,9 @@ const realtimeVoiceMock = vi.hoisted(() => {
 vi.mock("../../../hooks/useRealtimeVoiceMint", () => ({
   useRealtimeVoiceMint: () => ({
     agentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    resolveAgentIdForStart: vi.fn(
+      async () => "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    ),
     getConsentNonce: vi.fn(async () => "consent-nonce"),
   }),
 }));

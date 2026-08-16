@@ -796,8 +796,11 @@ export function useShellController(): ShellController {
   // embedding surfaces, but the visible shell Talk control must never hand a
   // failed Cartesia interaction to the unrelated batch Cloud-ASR recorder.
   const realtimeVoiceEnabled = isRealtimeVoiceFlagEnabled();
-  const { agentId: realtimeVoiceAgentId, getConsentNonce } =
-    useRealtimeVoiceMint();
+  const {
+    agentId: realtimeVoiceAgentId,
+    resolveAgentIdForStart: resolveRealtimeVoiceAgentIdForStart,
+    getConsentNonce,
+  } = useRealtimeVoiceMint();
   const realtimeVoice = useRealtimeVoiceSession({
     agentId: realtimeVoiceAgentId,
     conversationId: activeConversationId,
@@ -2175,7 +2178,12 @@ export function useShellController(): ShellController {
         return;
       }
 
-      const outcome = await realtimeVoiceRef.current.start();
+      const startAgentId =
+        realtimeVoiceAgentId ?? (await resolveRealtimeVoiceAgentIdForStart());
+      if (!realtimeVoiceWantedRef.current) return;
+      const outcome = await realtimeVoiceRef.current.start(
+        startAgentId ? { agentId: startAgentId, conversationId } : undefined,
+      );
       if (!realtimeVoiceWantedRef.current) {
         if (outcome.kind === "live") void realtimeVoiceRef.current.stop();
         return;
@@ -2203,7 +2211,9 @@ export function useShellController(): ShellController {
     },
     [
       ensureActiveConversationForVoice,
+      realtimeVoiceAgentId,
       realtimeVoiceEnabled,
+      resolveRealtimeVoiceAgentIdForStart,
       setActionNotice,
       stopCapture,
     ],

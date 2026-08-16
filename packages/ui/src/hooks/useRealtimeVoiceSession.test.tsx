@@ -180,6 +180,29 @@ describe("useRealtimeVoiceSession", () => {
     });
   });
 
+  it("atomically starts with a gesture-resolved identity before hook props rerender", async () => {
+    const { options, ws, mint } = makeOptions({ agentId: null });
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+
+    let startPromise!: ReturnType<typeof result.current.start>;
+    act(() => {
+      startPromise = result.current.start({
+        agentId: AGENT_ID,
+        conversationId: CONV_ID,
+      });
+    });
+    await flushAsync();
+    await driveReady(ws);
+
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
+    expect(mint.calls).toEqual([
+      expect.objectContaining({
+        agentId: AGENT_ID,
+        conversationId: CONV_ID,
+      }),
+    ]);
+  });
+
   it("invokes the advertised onMinted callback with the validated mint", async () => {
     const onMinted = vi.fn();
     const { options, ws } = makeOptions({ onMinted });

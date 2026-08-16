@@ -1767,6 +1767,43 @@ describe("voice-session WS lifecycle", () => {
     );
   });
 
+  test("retries one terminal phrase when Cartesia completes with zero answer audio", async () => {
+    const answer = "The terminal answer must produce real audible PCM.";
+    const client = new FakeClientSocket();
+    let streamCount = 0;
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch([answer]),
+      cartesiaSocketFactory: () =>
+        new FakeCartesiaSocket({ autoAudio: streamCount++ > 0 }),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "give me an audible answer");
+    await flush();
+    await flush();
+
+    const silentTerminal = FakeCartesiaSocket.instances.at(-1)!;
+    expect(silentTerminal.sentText()).toBe(answer);
+    expect(client.audioFrames).toHaveLength(0);
+    silentTerminal.emitDone();
+    await flush();
+    await flush();
+
+    const retry = FakeCartesiaSocket.instances.at(-1)!;
+    expect(retry).not.toBe(silentTerminal);
+    expect(retry.sentText()).toBe(answer);
+    expect(client.audioFrames.length).toBeGreaterThan(0);
+    expect(client.controlTypes()).not.toContain("usage");
+
+    retry.emitDone();
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "turn_end", outcome: "spoken" }),
+    );
+    expect(client.controlTypes()).toContain("usage");
+  });
+
   test("drains a retained committed phrase when the canonical stream later fails", async () => {
     const controlled = makeControlledCanonicalChunkFetch();
     const client = new FakeClientSocket();

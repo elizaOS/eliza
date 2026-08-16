@@ -67,6 +67,9 @@ interface ProviderScript extends ProviderTurnScript {
 		callIndex: number,
 		params: Record<string, unknown>,
 	) => void;
+	/** Holds the first Stage-1 result so tests can prove sealed Phase-2 overlap. */
+	stage1Gate?: Promise<void>;
+	speculativeReply?: boolean;
 	onModelCall?: (modelType: string) => void;
 	textToSpeech?: (
 		params: Record<string, unknown>,
@@ -229,6 +232,9 @@ function createHarness(script: ProviderScript): Harness {
 				const callIndex = responseHandlerCalls;
 				responseHandlerCalls += 1;
 				script.onResponseHandlerCall?.(callIndex, params);
+				if (callIndex === 0 && script.stage1Gate) {
+					await script.stage1Gate;
+				}
 				if (script.actionTurn && callIndex > 0) {
 					return JSON.stringify({
 						success: true,
@@ -342,6 +348,11 @@ function createHarness(script: ProviderScript): Harness {
 		character: {
 			name: "Eliza",
 			bio: "Direct streaming integration test agent",
+			...(script.speculativeReply === undefined
+				? {}
+				: {
+						settings: { voice: { speculativeReply: script.speculativeReply } },
+					}),
 		} as IAgentRuntime["character"],
 		logger: {
 			debug: vi.fn(),
@@ -951,6 +962,224 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 		expect(deliveredTexts(deliveries)).toEqual([terminal]);
 		expect(persistedAssistantTexts(harness)).toEqual([terminal]);
 		expect(JSON.stringify(result)).not.toContain(brief);
+	});
+
+	it("starts sealed GLM synthesis while Gemma Stage 1 is still pending and publishes only after approval", async () => {
+		const stage1Gate = createDeferred<void>();
+		const phase2Started = createDeferred<void>();
+		const terminal =
+			"The safe draft was computed in parallel and published only after routing approved it.";
+		const harness = createHarness({
+			speculativeReply: true,
+			stage1Brief: "Approve the direct static answer.",
+			providerChunks: [
+				"The safe draft was computed in parallel",
+				" and published only after routing approved it.",
+			],
+			terminalText: terminal,
+			stage1Gate: stage1Gate.promise,
+			onModelCall: (modelType) => {
+				if (modelType === ModelType.TEXT_LARGE) phase2Started.resolve();
+			},
+		});
+		const streamEvents: StreamEvent[] = [];
+		const deliveries: Content[] = [];
+		const message = harness.makeMessage(
+			"Give me the safe direct answer now.",
+			ChannelType.VOICE_DM,
+		);
+		message.content.metadata = { clientTransport: "realtime_voice" };
+
+		const pending = harness.service.handleMessage(
+			harness.runtime,
+			message,
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+			{
+				onStreamChunk: async (chunk, _messageId, accumulated) => {
+					streamEvents.push({ chunk, accumulated });
+				},
+			},
+		);
+		await phase2Started.promise;
+		await Promise.resolve();
+		expect(modelTypes(harness)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_LARGE,
+		]);
+		expect(streamEvents).toEqual([]);
+		expect(deliveries).toEqual([]);
+
+		stage1Gate.resolve();
+		const result = await pending;
+		await drainPostDeliveryTasks(harness.runtime);
+		expectMonotoneSourcePrefixes(streamEvents, terminal);
+		expect(result.responseContent?.text).toBe(terminal);
+		expect(deliveredTexts(deliveries)).toEqual([terminal]);
+		expect(persistedAssistantTexts(harness)).toEqual([terminal]);
+	});
+
+	it("discards a completed sealed GLM draft when Gemma decides IGNORE", async () => {
+		vi.stubEnv("ELIZA_VOICE_SPECULATIVE_REPLY", "1");
+		const stage1Gate = createDeferred<void>();
+		const phase2Started = createDeferred<void>();
+		const privateDraft = "PRIVATE_SPECULATIVE_DRAFT_MUST_NEVER_ESCAPE";
+		const harness = createHarness({
+			stage1Brief: "PRIVATE_STAGE1_IGNORE",
+			stage1Decision: "IGNORE",
+			providerChunks: [privateDraft],
+			terminalText: privateDraft,
+			stage1Gate: stage1Gate.promise,
+			onModelCall: (modelType) => {
+				if (modelType === ModelType.TEXT_LARGE) phase2Started.resolve();
+			},
+		});
+		const streamEvents: StreamEvent[] = [];
+		const deliveries: Content[] = [];
+		const message = harness.makeMessage(
+			"background conversation that is not for the agent",
+			ChannelType.VOICE_DM,
+		);
+		message.content.metadata = { clientTransport: "realtime_voice" };
+
+		const pending = harness.service.handleMessage(
+			harness.runtime,
+			message,
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+			{
+				onStreamChunk: async (chunk, _messageId, accumulated) => {
+					streamEvents.push({ chunk, accumulated });
+				},
+			},
+		);
+		await phase2Started.promise;
+		await Promise.resolve();
+		expect(streamEvents).toEqual([]);
+		stage1Gate.resolve();
+		const result = await pending;
+		await drainPostDeliveryTasks(harness.runtime);
+
+		expect(streamEvents).toEqual([]);
+		expect(deliveries).toEqual([]);
+		expect(persistedAssistantTexts(harness)).toEqual([]);
+		expect(result.responseContent).toBeNull();
+		expect(JSON.stringify({ result, deliveries, streamEvents })).not.toContain(
+			privateDraft,
+		);
+	});
+
+	it("falls back to authoritative sequential synthesis when the sealed draft fails before publication", async () => {
+		vi.stubEnv("ELIZA_VOICE_SPECULATIVE_REPLY", "1");
+		const speculativeFailure = new Error("sealed draft provider failed");
+		const terminal = "The authoritative fallback still completes safely.";
+		const first: ProviderTurnScript = {
+			stage1Brief: "Give the safe direct fallback answer.",
+			providerChunks: [],
+			providerError: speculativeFailure,
+		};
+		const second: ProviderTurnScript = {
+			stage1Brief: "unused",
+			providerChunks: [terminal],
+			terminalText: terminal,
+		};
+		const harness = createHarness({ ...first, turns: [first, second] });
+		const streamEvents: StreamEvent[] = [];
+		const deliveries: Content[] = [];
+		const message = harness.makeMessage(
+			"Give me the direct fallback answer.",
+			ChannelType.VOICE_DM,
+		);
+		message.content.metadata = { clientTransport: "realtime_voice" };
+
+		const result = await harness.service.handleMessage(
+			harness.runtime,
+			message,
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+			{
+				onStreamChunk: async (chunk, _messageId, accumulated) => {
+					streamEvents.push({ chunk, accumulated });
+				},
+			},
+		);
+		await drainPostDeliveryTasks(harness.runtime);
+
+		expect(modelTypes(harness)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_LARGE,
+			ModelType.TEXT_LARGE,
+		]);
+		expectMonotoneSourcePrefixes(streamEvents, terminal);
+		expect(result.responseContent?.text).toBe(terminal);
+		expect(deliveredTexts(deliveries)).toEqual([terminal]);
+		expect(harness.runtime.reportError).toHaveBeenCalledWith(
+			"MessageService.speculativeCommittedDirectReply",
+			speculativeFailure,
+			expect.objectContaining({ phase: "precommit_fallback" }),
+		);
+	});
+
+	it("aborts a gated speculative draft without exposing bytes when the voice turn is interrupted", async () => {
+		vi.stubEnv("ELIZA_VOICE_SPECULATIVE_REPLY", "1");
+		const stage1Gate = createDeferred<void>();
+		const phase2Started = createDeferred<void>();
+		const forbidden = "INTERRUPTED_SPECULATIVE_BYTES_MUST_STAY_PRIVATE";
+		const harness = createHarness({
+			stage1Brief: "This route never reaches approval.",
+			providerChunks: [forbidden],
+			terminalText: forbidden,
+			stage1Gate: stage1Gate.promise,
+			onModelCall: (modelType) => {
+				if (modelType === ModelType.TEXT_LARGE) phase2Started.resolve();
+			},
+		});
+		const streamEvents: StreamEvent[] = [];
+		const deliveries: Content[] = [];
+		const message = harness.makeMessage(
+			"Start a response that I will interrupt.",
+			ChannelType.VOICE_DM,
+		);
+		message.content.metadata = { clientTransport: "realtime_voice" };
+
+		const pending = harness.service.handleMessage(
+			harness.runtime,
+			message,
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+			{
+				onStreamChunk: async (chunk, _messageId, accumulated) => {
+					streamEvents.push({ chunk, accumulated });
+				},
+			},
+		);
+		await phase2Started.promise;
+		expect(abortInflightInference(harness.runtime, "voice-barge-in")).toEqual([
+			String(harness.roomId),
+		]);
+		stage1Gate.resolve();
+		const outcome = await pending.then(
+			(result) => ({ result, error: undefined }),
+			(error: unknown) => ({ result: undefined, error }),
+		);
+		await drainPostDeliveryTasks(harness.runtime);
+
+		expect(outcome.result).toBeUndefined();
+		expect(outcome.error).toBeInstanceOf(TurnAbortedError);
+		expect(streamEvents).toEqual([]);
+		expect(deliveries).toEqual([]);
+		expect(persistedAssistantTexts(harness)).toEqual([]);
+		expect(JSON.stringify({ streamEvents, deliveries })).not.toContain(
+			forbidden,
+		);
 	});
 
 	it("leaves realtime voice speech synthesis to the gateway instead of invoking runtime TTS", async () => {

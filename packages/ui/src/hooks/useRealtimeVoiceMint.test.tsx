@@ -30,6 +30,14 @@ import {
 
 const UUID = "33333333-3333-3333-3333-333333333333";
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe("useRealtimeVoiceMint", () => {
   it("resolves a valid dedicated agent UUID", () => {
     const { result } = renderHook(() =>
@@ -158,6 +166,31 @@ describe("useRealtimeVoiceMint", () => {
       await waitFor(() =>
         expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID),
       );
+    });
+
+    it("resolves a fast Talk gesture before the mount-time force probe publishes", async () => {
+      const mountProbe = deferred<Response>();
+      const fetch = vi
+        .fn()
+        .mockImplementationOnce(() => mountProbe.promise)
+        .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => null,
+          forceEnabled: true,
+          fetch,
+        }),
+      );
+
+      expect(result.current.agentId).toBeNull();
+      let resolved: string | null = null;
+      await act(async () => {
+        resolved = await result.current.resolveAgentIdForStart();
+      });
+
+      expect(resolved).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID);
+      expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID);
+      mountProbe.resolve(new Response("{}", { status: 200 }));
     });
 
     it("flag ON but a real agent id resolves → the REAL id wins, not the sentinel", () => {
