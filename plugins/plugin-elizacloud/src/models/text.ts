@@ -1216,20 +1216,21 @@ async function generateTextWithModel(
 
   logger.debug(`[ELIZAOS_CLOUD] Generating text with ${modelType} model: ${modelName}`);
 
-  // Stream the user-visible reply token-by-token. Gated to the structured
-  // reply path (`streamStructured`, set only by the RESPONSE_HANDLER stage-1
-  // call): that call carries a responseSkeleton, so the runtime's field
-  // extractor surfaces `replyText` incrementally to the UI. Planner/other
-  // native calls (no responseSkeleton) stay buffered — streaming their raw
-  // envelope would leak internals to the UI stream. The bare `/responses`
-  // route stays buffered too (different SSE schema, not on the reply path).
+  // Stream only an explicitly-authoritative user-visible path. Stage 1 uses
+  // `streamStructured` so the runtime extractor can reveal just replyText from
+  // a forced tool envelope. Committed Phase 2 uses `streamCommittedReply` and
+  // carries plaintext assistant prose whose caller owns final validation.
+  // Planner/other native calls stay buffered so raw control envelopes cannot
+  // leak into the UI stream. The bare `/responses` route stays buffered too.
   const paramsStreaming = params as {
     stream?: boolean;
     streamStructured?: boolean;
+		streamCommittedReply?: boolean;
   };
   const wantsStream =
     Boolean(paramsStreaming.stream) &&
-    paramsStreaming.streamStructured === true &&
+    (paramsStreaming.streamStructured === true ||
+			paramsStreaming.streamCommittedReply === true) &&
     resolveStreamingEnabled();
 
   logger.log(`[ELIZAOS_CLOUD] Using ${modelType} model: ${modelName}`);
@@ -2037,9 +2038,14 @@ export async function streamNativeChatCompletion(
           throw invalidNativeStream("stream finish_reason must be a non-empty string or null");
         }
         const frameFinishReason = firstString(finishValue);
-        if (Object.keys(delta).length === 0 && frameFinishReason === undefined) {
+        if (choice.delta === undefined && frameFinishReason === undefined) {
           throw invalidNativeStream("stream choice has neither a delta nor finish_reason");
         }
+        // OpenAI-compatible providers may send an explicit empty `delta: {}`
+        // as a content-free role/heartbeat frame. It carries no authoritative
+        // bytes, so ignoring it cannot fabricate or duplicate display text;
+        // the stream must still later provide real text/tool content, a finish
+        // frame, and [DONE] to satisfy the terminal checks below.
         // Raw (un-trimmed) content — inter-token whitespace is significant.
         // Structured Stage-1 streams must start with the tool-argument envelope;
         // compatible providers that narrate before the forced tool call would

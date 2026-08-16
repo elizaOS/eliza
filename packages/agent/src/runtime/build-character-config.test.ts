@@ -135,6 +135,27 @@ describe("custom-name persona inheritance", () => {
 });
 
 describe("agent entry character passthrough", () => {
+  it("preserves an explicit UUID so a character rename keeps runtime identity", () => {
+    const id = "b850bc30-45f8-0041-a00a-83df46d8555d";
+    const character = buildCharacterFromConfig({
+      agents: {
+        list: [{ id, name: "Renamed", system: "You are Renamed." }],
+      },
+    } as ElizaConfig);
+
+    expect(character.id).toBe(id);
+  });
+
+  it("does not install a non-UUID config label as a runtime agent id", () => {
+    const character = buildCharacterFromConfig({
+      agents: {
+        list: [{ id: "main", name: "Tester", system: "You are Tester." }],
+      },
+    } as ElizaConfig);
+
+    expect(character.id).toBeUndefined();
+  });
+
   it("keeps runtime capability hints idempotent across config rebuilds", () => {
     const workflowHint =
       "You can create, activate, deactivate, and delete workflows via natural language using the workflow actions.";

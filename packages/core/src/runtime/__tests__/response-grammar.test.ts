@@ -139,16 +139,16 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		);
 	});
 
-	it("treats one-to-one voice as a direct channel", () => {
+	it("keeps semantic turn-taking on one-to-one voice", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
 			{ actions: [] },
 			{ contexts: ["general"], channelType: "VOICE_DM" },
 		);
 		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
-			false,
+			true,
 		);
-		expect(grammar).not.toContain(
+		expect(grammar).toContain(
 			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
 		);
 	});
@@ -262,7 +262,7 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(c).not.toBe(a);
 	});
 
-	it("shares direct-channel semantics with one-to-one voice", () => {
+	it("keeps shouldRespond on voice while direct text stays deterministic", () => {
 		clearResponseGrammarCache();
 		const direct = buildResponseGrammar(
 			{ actions: [] },
@@ -272,14 +272,14 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 			{ actions: [] },
 			{ contexts: ["general"], channelType: "VOICE_DM" },
 		);
-		expect(direct).toBe(voice);
-		expect(direct.responseSkeleton.id).toBe(voice.responseSkeleton.id);
+		expect(direct).not.toBe(voice);
+		expect(direct.responseSkeleton.id).not.toBe(voice.responseSkeleton.id);
 		expect(
 			direct.responseSkeleton.spans.some((s) => s.key === "shouldRespond"),
 		).toBe(false);
 		expect(
 			voice.responseSkeleton.spans.some((s) => s.key === "shouldRespond"),
-		).toBe(false);
+		).toBe(true);
 	});
 });
 

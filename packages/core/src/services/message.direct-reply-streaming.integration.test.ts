@@ -18,8 +18,10 @@ import {
 	TurnControllerRegistry,
 } from "../runtime/turn-controller";
 import {
+	attestDeliveryAudienceFromCanonicalRoom,
 	GazetteerEntityRecognizer,
 	GuardedStreamScanner,
+	markOwnerExclusiveDisclosureUsed,
 	PseudonymSession,
 	redactWithSecrets,
 	SecretSwapSession,
@@ -46,6 +48,7 @@ import { drainPostDeliveryTasks } from "./post-delivery-task-tracker";
 
 interface ProviderTurnScript {
 	stage1Brief: string;
+	stage1Decision?: "RESPOND" | "IGNORE" | "STOP";
 	providerChunks?: readonly string[];
 	terminalText?: string;
 	providerError?: Error;
@@ -64,6 +67,7 @@ interface ProviderScript extends ProviderTurnScript {
 		callIndex: number,
 		params: Record<string, unknown>,
 	) => void;
+	onModelCall?: (modelType: string) => void;
 	textToSpeech?: (
 		params: Record<string, unknown>,
 	) => Promise<unknown> | unknown;
@@ -122,7 +126,10 @@ interface Harness {
 	makeMessage: (text: string, channelType?: ChannelType) => Memory;
 }
 
-function stage1DirectReply(replyText: string) {
+function stage1DirectReply(
+	replyText: string,
+	decision: "RESPOND" | "IGNORE" | "STOP" = "RESPOND",
+) {
 	return {
 		text: "",
 		toolCalls: [
@@ -130,12 +137,12 @@ function stage1DirectReply(replyText: string) {
 				id: "handle-response-direct-stream-1",
 				name: "HANDLE_RESPONSE",
 				arguments: {
-					shouldRespond: "RESPOND",
+					shouldRespond: decision,
 					thought: "The request can be answered directly.",
-					contexts: ["simple"],
+					contexts: decision === "RESPOND" ? ["simple"] : [],
 					intents: ["answer the current request"],
 					candidateActionNames: [],
-					replyText,
+					replyText: decision === "RESPOND" ? replyText : "",
 					requiresTool: false,
 					facts: [],
 					relationships: [],
@@ -209,6 +216,7 @@ function createHarness(script: ProviderScript): Harness {
 	const useModel = vi.fn(
 		async (modelType: string, params: Record<string, unknown> = {}) => {
 			const type = String(modelType);
+			script.onModelCall?.(type);
 			modelCalls.push({ type, params });
 			const trajectoryContext = getTrajectoryContext();
 			if (script.piiSwapSession && trajectoryContext) {
@@ -240,7 +248,10 @@ function createHarness(script: ProviderScript): Harness {
 				}
 				return script.actionTurn
 					? stage1ActionPlan(script.actionTurn.name, turnScript.stage1Brief)
-					: stage1DirectReply(turnScript.stage1Brief);
+					: stage1DirectReply(
+							turnScript.stage1Brief,
+							turnScript.stage1Decision,
+						);
 			}
 			if (type === ModelType.ACTION_PLANNER && script.actionTurn) {
 				if (script.actionTurn.plannerVisibleChunk) {
@@ -389,6 +400,7 @@ function createHarness(script: ProviderScript): Harness {
 		updateMemory: vi.fn(async () => true),
 		queueEmbeddingGeneration: vi.fn(async () => undefined),
 		getParticipantUserState: vi.fn(async () => null),
+		getParticipantsForRoom: vi.fn(async () => [entityId, agentId]),
 		getRoom: vi.fn(async () => room),
 		getRoomsByIds: vi.fn(async () => [room]),
 		getMemories: vi.fn(async () => []),
@@ -659,6 +671,64 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 		expect(observable).not.toContain(plannerEnvelope);
 	});
 
+	it("keeps a planner turn atomic when owner-private context is selected after public realtime voice Stage 1", async () => {
+		const actionResult =
+			"The owner-private lookup found the requested record safely.";
+		let activeMessage: Memory | undefined;
+		const harness = createHarness({
+			stage1Brief: "Look up the private record.",
+			providerChunks: ["This Phase 2 must not run."],
+			terminalText: "This Phase 2 must not run.",
+			onModelCall: (modelType) => {
+				if (modelType === ModelType.ACTION_PLANNER && activeMessage) {
+					markOwnerExclusiveDisclosureUsed(activeMessage);
+				}
+			},
+			actionTurn: {
+				name: "TEST_PRIVATE_LOOKUP",
+				resultText: actionResult,
+			},
+		});
+		const message = harness.makeMessage(
+			"Find my private record.",
+			ChannelType.VOICE_DM,
+		);
+		message.content.metadata = { clientTransport: "realtime_voice" };
+		vi.mocked(harness.runtime.getSetting).mockImplementation((key) =>
+			key === "ELIZA_ADMIN_ENTITY_ID" ? harness.entityId : undefined,
+		);
+		await attestDeliveryAudienceFromCanonicalRoom(harness.runtime, message);
+		activeMessage = message;
+		const streamEvents: StreamEvent[] = [];
+		const deliveries: Content[] = [];
+
+		const result = await harness.service.handleMessage(
+			harness.runtime,
+			message,
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+			{
+				onStreamChunk: async (chunk, _messageId, accumulated, metadata) => {
+					if (metadata?.authority === "committed_reply") {
+						streamEvents.push({ chunk, accumulated });
+					}
+				},
+			},
+		);
+		await drainPostDeliveryTasks(harness.runtime);
+
+		expect(modelTypes(harness)).toContain(ModelType.RESPONSE_HANDLER);
+		expect(modelTypes(harness)).toContain(ModelType.ACTION_PLANNER);
+		expect(modelTypes(harness)).not.toContain(ModelType.TEXT_LARGE);
+		expect(streamEvents).toEqual([]);
+		expect(result.responseContent?.text).toBe(actionResult);
+		expect(result.responseContent?.committedReplyAuthority).toBeUndefined();
+		expect(deliveredTexts(deliveries)).toEqual([actionResult]);
+		expect(persistedAssistantTexts(harness)).toEqual([actionResult]);
+	});
+
 	it("atomically preserves the gated action result when Phase 2 fails before committing a byte", async () => {
 		const actionResult =
 			"The lookup found Alpha as the newest matching record.";
@@ -776,6 +846,11 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 		expect(modelParams(harness, ModelType.RESPONSE_HANDLER)?.voiceOutput).toBe(
 			"user-visible",
 		);
+		const responseSkeleton = modelParams(harness, ModelType.RESPONSE_HANDLER)
+			?.responseSkeleton as { spans?: Array<{ key?: string }> } | undefined;
+		expect(
+			responseSkeleton?.spans?.some((span) => span.key === "shouldRespond"),
+		).toBe(false);
 		expect(result.responseContent?.text).toBe(stage1Answer);
 		expect(deliveredTexts(deliveries)).toEqual([stage1Answer]);
 		expect(persistedAssistantTexts(harness)).toEqual([stage1Answer]);
@@ -807,6 +882,11 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 		expect(modelParams(harness, ModelType.RESPONSE_HANDLER)?.voiceOutput).toBe(
 			"user-visible",
 		);
+		const responseSkeleton = modelParams(harness, ModelType.RESPONSE_HANDLER)
+			?.responseSkeleton as { spans?: Array<{ key?: string }> } | undefined;
+		expect(
+			responseSkeleton?.spans?.some((span) => span.key === "shouldRespond"),
+		).toBe(false);
 		expect(streamEvents).toEqual([]);
 		expect(result.responseContent?.text).toBe(stage1Answer);
 		expect(deliveredTexts(deliveries)).toEqual([stage1Answer]);
@@ -854,11 +934,108 @@ describe("DefaultMessageService two-phase direct-reply streaming", () => {
 		expect(modelParams(harness, ModelType.RESPONSE_HANDLER)?.voiceOutput).toBe(
 			"internal",
 		);
+		const realtimeStage1 = modelParams(harness, ModelType.RESPONSE_HANDLER);
+		const realtimeResponseSkeleton = realtimeStage1?.responseSkeleton as
+			| { spans?: Array<{ key?: string }> }
+			| undefined;
+		expect(
+			realtimeResponseSkeleton?.spans?.some(
+				(span) => span.key === "shouldRespond",
+			),
+		).toBe(true);
+		expect(JSON.stringify(realtimeStage1?.messages)).toContain(
+			"same participation judgment used for ambient group conversation",
+		);
 		expectMonotoneSourcePrefixes(streamEvents, terminal);
 		expect(result.responseContent?.text).toBe(terminal);
 		expect(deliveredTexts(deliveries)).toEqual([terminal]);
 		expect(persistedAssistantTexts(harness)).toEqual([terminal]);
 		expect(JSON.stringify(result)).not.toContain(brief);
+	});
+
+	it("leaves realtime voice speech synthesis to the gateway instead of invoking runtime TTS", async () => {
+		const terminal =
+			"Gateway speech owns this first sentence. It also owns this second sentence.";
+		const ttsParams: Record<string, unknown>[] = [];
+		const harness = createHarness({
+			stage1Brief: "Answer through the realtime gateway.",
+			providerChunks: [
+				"Gateway speech owns this first sentence.",
+				" It also owns this second sentence.",
+			],
+			terminalText: terminal,
+			textToSpeech: (params) => {
+				ttsParams.push(params);
+				return new Uint8Array([1, 2, 3, 4]);
+			},
+		});
+		const streamEvents: StreamEvent[] = [];
+		const deliveries: Content[] = [];
+		const message = harness.makeMessage(
+			"Answer through realtime voice.",
+			ChannelType.VOICE_DM,
+		);
+		message.content.metadata = { clientTransport: "realtime_voice" };
+
+		const result = await harness.service.handleMessage(
+			harness.runtime,
+			message,
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+			{
+				onStreamChunk: async (chunk, _messageId, accumulated) => {
+					streamEvents.push({ chunk, accumulated });
+				},
+			},
+		);
+		await drainPostDeliveryTasks(harness.runtime);
+
+		expectMonotoneSourcePrefixes(streamEvents, terminal);
+		expect(result.responseContent?.text).toBe(terminal);
+		expect(ttsParams).toEqual([]);
+		expect(deliveries.some((content) => content.attachments?.length)).toBe(
+			false,
+		);
+	});
+
+	it("lets the canonical handler keep an ambient realtime voice turn silent", async () => {
+		const harness = createHarness({
+			stage1Brief: "PRIVATE_IGNORED_VOICE_DRAFT",
+			stage1Decision: "IGNORE",
+			providerChunks: ["This must never be synthesized."],
+			terminalText: "This must never be synthesized.",
+		});
+		const streamEvents: StreamEvent[] = [];
+		const deliveries: Content[] = [];
+		const message = harness.makeMessage(
+			"background conversation between other people",
+			ChannelType.VOICE_DM,
+		);
+		message.content.metadata = { clientTransport: "realtime_voice" };
+
+		const result = await harness.service.handleMessage(
+			harness.runtime,
+			message,
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+			{
+				onStreamChunk: async (chunk, _messageId, accumulated) => {
+					streamEvents.push({ chunk, accumulated });
+				},
+			},
+		);
+		await drainPostDeliveryTasks(harness.runtime);
+
+		expect(modelTypes(harness)).toEqual([ModelType.RESPONSE_HANDLER]);
+		expect(streamEvents).toEqual([]);
+		expect(deliveries).toEqual([]);
+		expect(persistedAssistantTexts(harness)).toEqual([]);
+		expect(result.responseContent).toBeNull();
+		expect(JSON.stringify(result)).not.toContain("PRIVATE_IGNORED_VOICE_DRAFT");
 	});
 
 	it("falls back to the atomic Stage-1 answer when an output hook cannot attest prefix stability", async () => {

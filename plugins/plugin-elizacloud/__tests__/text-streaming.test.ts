@@ -544,6 +544,58 @@ describe("streamNativeChatCompletion", () => {
     expect((await result.usage)?.totalTokens).toBe(3);
   });
 
+  it("ignores explicit empty delta heartbeat frames without fabricating text", async () => {
+    nextResponse = sseResponse([
+      dataFrame({ choices: [{ index: 0, delta: {}, finish_reason: null }] }),
+      dataFrame(contentDelta("hello")),
+      dataFrame({ choices: [{ index: 0, delta: {}, finish_reason: null }] }),
+      dataFrame(finishFrame()),
+      DONE_FRAME,
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "TEXT_LARGE" as never,
+      nativeParams(),
+      { modelName: "zai-glm-4.7", prompt: "hi" }
+    );
+
+    expect(await readStream(result)).toEqual(["hello"]);
+    await expect(result.text).resolves.toBe("hello");
+    await expect(result.finishReason).resolves.toBe("stop");
+  });
+
+  it("still rejects a heartbeat-only stream with no authoritative content", async () => {
+    nextResponse = sseResponse([
+      dataFrame({ choices: [{ index: 0, delta: {}, finish_reason: null }] }),
+      dataFrame(finishFrame()),
+      DONE_FRAME,
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "TEXT_LARGE" as never,
+      nativeParams(),
+      { modelName: "zai-glm-4.7", prompt: "hi" }
+    );
+
+    await expect(readStream(result)).rejects.toMatchObject({
+      code: "ELIZA_CLOUD_STREAM_INVALID",
+    });
+    await expect(result.text).rejects.toMatchObject({
+      code: "ELIZA_CLOUD_STREAM_INVALID",
+    });
+    await expect(result.usage).rejects.toMatchObject({
+      code: "ELIZA_CLOUD_STREAM_INVALID",
+    });
+    await expect(result.finishReason).rejects.toMatchObject({
+      code: "ELIZA_CLOUD_STREAM_INVALID",
+    });
+    await expect((result as { toolCalls: Promise<unknown[]> }).toolCalls).rejects.toMatchObject({
+      code: "ELIZA_CLOUD_STREAM_INVALID",
+    });
+  });
+
   it("surfaces streamed tool calls on the result", async () => {
     nextResponse = sseResponse([
       dataFrame({
@@ -1121,10 +1173,10 @@ describe("resolveTextTimeoutMs", () => {
 
 /**
  * The routing DECISION in generateTextWithModel (text.ts wantsStream gate): only
- * the structured RESPONSE_HANDLER reply (`stream && streamStructured===true`)
- * streams token-by-token; everything else stays buffered so the planner/raw
- * envelope can't leak into the UI token stream. Distinguished by whether the
- * outgoing /chat/completions body carries `stream:true`.
+ * the structured RESPONSE_HANDLER reply and the explicit committed-plaintext
+ * Phase-2 reply stream token-by-token; everything else stays buffered so the
+ * planner/raw envelope can't leak into the UI token stream. Distinguished by
+ * whether the outgoing /chat/completions body carries `stream:true`.
  */
 describe("cloud streaming gate decision (wantsStream)", () => {
   function bufferedChatResponse(text: string): Response {
@@ -1174,6 +1226,24 @@ describe("cloud streaming gate decision (wantsStream)", () => {
     } as never)) as { textStream: AsyncIterable<string> };
     await readStream(result);
     expect(requestRaw).toHaveBeenCalledWith("POST", "/chat/completions", expect.anything());
+    expect(lastJson().stream).toBe(true);
+  });
+
+  it("streams committed plaintext deltas without enabling structured tool-argument mode", async () => {
+    nextResponse = sseResponse([
+      dataFrame(contentDelta("First sentence. ")),
+      dataFrame(contentDelta("Second sentence.")),
+      dataFrame(finishFrame("stop")),
+      DONE_FRAME,
+    ]);
+    const result = (await handleTextSmall(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      stream: true,
+      streamCommittedReply: true,
+    } as never)) as { textStream: AsyncIterable<string> };
+
+    expect(await readStream(result)).toEqual(["First sentence. ", "Second sentence."]);
     expect(lastJson().stream).toBe(true);
   });
 

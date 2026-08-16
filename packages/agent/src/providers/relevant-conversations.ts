@@ -26,6 +26,7 @@ import {
   embedRecallQuery,
   filterByAccessContext,
   markOwnerExclusiveDisclosureUsed,
+  OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
   recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
@@ -122,6 +123,7 @@ export const relevantConversationsProvider: Provider = {
   cacheStable: false,
   cacheScope: "turn",
   alwaysInResponseState: true,
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   roleGate: { minRole: "USER" },
 
   async get(

@@ -117,6 +117,55 @@ describe("stage1ResponseStateProviderNames", () => {
 		expect(names).not.toContain("DOCUMENTS");
 	});
 
+	it("keeps owner-private always-on providers out of ambient realtime voice Stage 1", () => {
+		const runtime = {
+			providers: [
+				{
+					name: "PUBLIC_ALWAYS_ON",
+					alwaysInResponseState: true,
+					get: async () => ({}),
+				},
+				{
+					name: "OWNER_PRIVATE_ALWAYS_ON",
+					alwaysInResponseState: true,
+					disclosureGate: { require: "owner_exclusive" },
+					get: async () => ({}),
+				},
+			],
+		} as unknown as IAgentRuntime;
+		const realtimeVoice = makeMessage(
+			"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4",
+			"ambient open mic",
+			{
+				channelType: ChannelType.VOICE_DM,
+				metadata: { clientTransport: "realtime_voice" },
+			},
+		);
+		const ordinaryDm = makeMessage(
+			"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5",
+			"private typed chat",
+			{ channelType: ChannelType.DM },
+		);
+		const nativeVoice = makeMessage(
+			"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6",
+			"native voice",
+			{ channelType: ChannelType.VOICE_DM },
+		);
+
+		expect(stage1ResponseStateProviderNames(runtime, realtimeVoice)).toContain(
+			"PUBLIC_ALWAYS_ON",
+		);
+		expect(
+			stage1ResponseStateProviderNames(runtime, realtimeVoice),
+		).not.toContain("OWNER_PRIVATE_ALWAYS_ON");
+		expect(stage1ResponseStateProviderNames(runtime, ordinaryDm)).toContain(
+			"OWNER_PRIVATE_ALWAYS_ON",
+		);
+		expect(stage1ResponseStateProviderNames(runtime, nativeVoice)).toContain(
+			"OWNER_PRIVATE_ALWAYS_ON",
+		);
+	});
+
 	it("skips excluded providers at stage 1 and defers them to the planner recompose", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "stage1-exec-test" } as Character,

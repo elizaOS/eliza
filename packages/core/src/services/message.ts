@@ -464,10 +464,14 @@ const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
 
 function buildDirectChannelResponseFieldSelection(
 	fields: ReadonlyArray<Pick<ResponseHandlerFieldEvaluator, "name">>,
+	options?: { includeShouldRespond?: boolean },
 ): ResponseHandlerFieldSelectionOptions {
 	const includeFieldNames = new Set<string>();
 	for (const field of fields) {
-		if (!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name)) {
+		if (
+			!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name) ||
+			(options?.includeShouldRespond === true && field.name === "shouldRespond")
+		) {
 			includeFieldNames.add(field.name);
 		}
 	}
@@ -592,6 +596,27 @@ function resolveStage1ReplyGateMode(
 		store.getSlot(message.entityId),
 		store.getSlot("global"),
 	).mode;
+}
+
+function isRealtimeVoiceTransport(message: Memory): boolean {
+	return (
+		message.content?.channelType === ChannelType.VOICE_DM &&
+		isRecord(message.content?.metadata) &&
+		message.content.metadata.clientTransport === "realtime_voice"
+	);
+}
+
+function providerRequiresOwnerExclusiveDisclosure(provider: Provider): boolean {
+	return provider.disclosureGate?.require === "owner_exclusive";
+}
+
+function providerHasPositiveContextRouting(provider: Provider): boolean {
+	return (
+		(provider.contexts?.length ?? 0) > 0 ||
+		(provider.contextGate?.contexts?.length ?? 0) > 0 ||
+		(provider.contextGate?.anyOf?.length ?? 0) > 0 ||
+		(provider.contextGate?.allOf?.length ?? 0) > 0
+	);
 }
 
 function committedReplyDeliveryIsPrefixStable(
@@ -1244,6 +1269,13 @@ export function stage1ResponseStateProviderNames(
 	const exclusions = new Set<string>(
 		stage1ExtraProviderExclusions(runtime, message),
 	);
+	if (isRealtimeVoiceTransport(message) && Array.isArray(runtime.providers)) {
+		for (const provider of runtime.providers as Provider[]) {
+			if (providerRequiresOwnerExclusiveDisclosure(provider)) {
+				exclusions.add(provider.name);
+			}
+		}
+	}
 	return [
 		...CORE_RESPONSE_STATE_PROVIDERS,
 		...alwaysOnResponseStateProviderNames(runtime),
@@ -1294,11 +1326,27 @@ export function selectV5PlannerStateProviderNames(args: {
 	const providers = Array.isArray(args.runtime.providers)
 		? (args.runtime.providers as Provider[])
 		: [];
+	const realtimeVoiceTransport = isRealtimeVoiceTransport(args.message);
+	if (realtimeVoiceTransport) {
+		for (const provider of providers) {
+			if (providerRequiresOwnerExclusiveDisclosure(provider)) {
+				providerNames.delete(provider.name);
+			}
+		}
+	}
 	// Always-on response-state providers opt in via `alwaysInResponseState` and
 	// are composed regardless of the turn's selected contexts (like the core
 	// FACTS / CURRENT_TIME signals) — so a plugin's dynamic provider can reach
 	// Stage 1 without core naming it.
 	for (const name of alwaysOnResponseStateProviderNames(args.runtime)) {
+		const provider = providers.find((candidate) => candidate.name === name);
+		if (
+			realtimeVoiceTransport &&
+			provider &&
+			providerRequiresOwnerExclusiveDisclosure(provider)
+		) {
+			continue;
+		}
 		providerNames.add(name);
 	}
 	// filterProvidersByContextGate honors the FULL declared contextGate
@@ -1311,6 +1359,13 @@ export function selectV5PlannerStateProviderNames(args: {
 	)) {
 		const name = provider.name?.trim();
 		if (!name || provider.private) {
+			continue;
+		}
+		if (
+			realtimeVoiceTransport &&
+			providerRequiresOwnerExclusiveDisclosure(provider) &&
+			!providerHasPositiveContextRouting(provider)
+		) {
 			continue;
 		}
 		if (MODEL_CONTEXT_PROVIDER_EXCLUSION_SET.has(name.toUpperCase())) {
@@ -4347,11 +4402,16 @@ direct/private rules:
 - A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.
 - Crisis/legal/medical/self-harm/police/CPS: contexts=["simple"], replyText deferral only; no actions or conceal/evasion/testimony/contraband advice. Refer to lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline.
 - For tool/planning paths, replyText is only a brief ack ("On it."). Never refuse because tools may run after this stage.
-- Never invent omitted shouldRespond.
+{{directShouldRespondInstruction}}
 - contexts use available_contexts ids; unclear tool context => ["general"].
 
 Return one {{handleResponseToolName}} JSON object; no prose, markdown, or thinking.
 `;
+
+const AMBIENT_VOICE_SHOULD_RESPOND_INSTRUCTION = `- This is an open-mic voice turn. Decide shouldRespond with the same participation judgment used for ambient group conversation.
+- RESPOND when the speaker addresses you, clearly asks for your help, continues an exchange you are part of, or says something where your contribution is genuinely useful.
+- IGNORE when people are talking to each other, the utterance is background chatter or self-echo, or replying would only add noise.
+- STOP only for an explicit request to stop, disengage, or terminate the work.`;
 
 /**
  * Answer-free refusal stubs, matched against the WHOLE normalized reply after
@@ -4671,10 +4731,12 @@ function renderMessageHandlerInstructions(
 		directMessage?: boolean;
 		deferDirectReplySynthesis?: boolean;
 		groupTriage?: boolean;
+		ambientVoice?: boolean;
 		responseHandlerFields?: string;
 	},
 ): string {
-	// Three tiers: DM/private (compact, no shouldRespond), unaddressed
+	// Four compact profiles: DM/private (no shouldRespond), realtime open-mic
+	// voice (shouldRespond), unaddressed
 	// group-triage (compact + shouldRespond — most such turns end in IGNORE,
 	// so they must not pay the full ~16KB rule block), and the full template
 	// for addressed/respond-likely turns.
@@ -4690,6 +4752,9 @@ function renderMessageHandlerInstructions(
 		selectMessageHandlerTask(availableContexts),
 		baselineTemplate,
 	);
+	const directShouldRespondInstruction = options?.ambientVoice
+		? AMBIENT_VOICE_SHOULD_RESPOND_INSTRUCTION
+		: "- Never invent omitted shouldRespond.";
 	const rendered = composePrompt({
 		state: {
 			directMessage: options?.directMessage ? "true" : "",
@@ -4699,6 +4764,7 @@ function renderMessageHandlerInstructions(
 			directSimpleReplyQualityInstruction: options?.deferDirectReplySynthesis
 				? "Simple replyText is a compact factual plan for the answer, never the full prose and never a bare placeholder. Preserve exact literals the user explicitly requested."
 				: "Simple replyText must be natural and complete, not a placeholder, unless terse was requested.",
+			directShouldRespondInstruction,
 			availableContexts: formatAvailableContextsForPrompt(availableContexts, {
 				compact: compactTier,
 			}),
@@ -4706,12 +4772,22 @@ function renderMessageHandlerInstructions(
 		},
 		template: baseline,
 	}).trim();
+	// Optimized prompt artifacts may predate the ambient-voice placeholder.
+	// Append the contract when the selected artifact omitted it so the schema
+	// cannot expose shouldRespond without telling the model how to use it.
+	const renderedWithVoiceEngagement =
+		options?.ambientVoice === true &&
+		!rendered.includes(AMBIENT_VOICE_SHOULD_RESPOND_INSTRUCTION)
+			? [rendered, "", AMBIENT_VOICE_SHOULD_RESPOND_INSTRUCTION].join("\n")
+			: rendered;
 	const renderedWithSharedRules = compactTier
-		? [rendered, "", `- ${COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION}`].join(
-				"\n",
-			)
+		? [
+				renderedWithVoiceEngagement,
+				"",
+				`- ${COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
+			].join("\n")
 		: [
-				rendered,
+				renderedWithVoiceEngagement,
 				"",
 				"## Shared Response Quality Rules",
 				`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
@@ -4763,6 +4839,7 @@ function renderMessageHandlerModelInput(
 		directMessage?: boolean;
 		deferDirectReplySynthesis?: boolean;
 		groupTriage?: boolean;
+		ambientVoice?: boolean;
 		responseHandlerFields?: string;
 	},
 ): {
@@ -5083,6 +5160,7 @@ async function synthesizeCommittedDirectReply(args: {
 					messages: input.messages,
 					promptSegments: input.promptSegments,
 					stream: true,
+					streamCommittedReply: true,
 					streamSecurity: "required",
 					onStreamChunk: async (chunk) => stream.pushProviderChunk(chunk),
 					// The message-service committer is the only authority allowed to
@@ -5183,6 +5261,7 @@ export async function renderMessageHandlerStablePrefix(
 			text: "",
 			source: "voice-prewarm",
 			channelType: ChannelType.VOICE_DM,
+			metadata: { clientTransport: "realtime_voice" },
 		},
 	};
 	const senderRole = await resolveStage1SenderRole(runtime, syntheticMessage);
@@ -5212,7 +5291,7 @@ export async function renderMessageHandlerStablePrefix(
 	const instructions = renderMessageHandlerInstructions(
 		runtime,
 		availableContexts,
-		{ directMessage: true },
+		{ directMessage: true, ambientVoice: true },
 	);
 	return normalizePromptSegments([
 		...stableSegments,
@@ -7959,10 +8038,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
-		const realtimeVoiceCommittedStream =
-			args.message.content?.channelType === ChannelType.VOICE_DM &&
-			isRecord(args.message.content?.metadata) &&
-			args.message.content.metadata.clientTransport === "realtime_voice";
+		const realtimeVoiceCommittedStream = isRealtimeVoiceTransport(args.message);
 		const deferDirectReplySynthesis =
 			directMessageChannel &&
 			(args.message.content?.channelType !== ChannelType.VOICE_DM ||
@@ -8000,11 +8076,13 @@ export async function runV5MessageRuntimeStage1(args: {
 		};
 		const responseHandlerFields =
 			args.runtime.responseHandlerFieldRegistry.list();
-		// Group-triage turns keep the full field set (shouldRespond is the whole
-		// point) but render the compressed prompt slices; the schema is
-		// unaffected by `compact` so the HANDLE_RESPONSE contract is identical.
+		// Realtime open-mic voice keeps shouldRespond while retaining the compact
+		// direct field set; ordinary VOICE_DM remains deterministic. Group-triage
+		// keeps the full field set because sidecar extraction still applies there.
 		const responseHandlerFieldSelection = directMessageChannel
-			? buildDirectChannelResponseFieldSelection(responseHandlerFields)
+			? buildDirectChannelResponseFieldSelection(responseHandlerFields, {
+					includeShouldRespond: realtimeVoiceCommittedStream,
+				})
 			: groupTriageTurn
 				? { compact: true }
 				: undefined;
@@ -8031,6 +8109,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				directMessage: directMessageChannel,
 				deferDirectReplySynthesis,
 				groupTriage: groupTriageTurn,
+				ambientVoice: realtimeVoiceCommittedStream,
 				responseHandlerFields: responseHandlerFieldPrompt.rendered,
 			},
 		);
@@ -10079,6 +10158,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		if (
 			shouldSendPlannedText &&
 			deferDirectReplySynthesis &&
+			!ownerExclusiveDisclosureWasUsed(args.message) &&
 			!replyIsExactCanonicalActionText
 		) {
 			try {
@@ -12725,6 +12805,7 @@ export class DefaultMessageService implements IMessageService {
 									// structured output that would garble hasFirstSentence() and
 									// TTS.
 									if (
+										!isRealtimeVoiceTransport(message) &&
 										!firstSentenceSent &&
 										accumulated !== undefined &&
 										metadata?.visibleFormat !== "json" &&
@@ -13032,7 +13113,11 @@ export class DefaultMessageService implements IMessageService {
 						const result = await processingPromise;
 
 						// Voice: Handle the rest of the message
-						if (firstSentenceSent && result.responseContent?.text) {
+						if (
+							!isRealtimeVoiceTransport(message) &&
+							firstSentenceSent &&
+							result.responseContent?.text
+						) {
 							const fullText = result.responseContent.text;
 							const rest = fullText.replace(firstSentenceText, "").trim();
 							if (rest.length > 0) {

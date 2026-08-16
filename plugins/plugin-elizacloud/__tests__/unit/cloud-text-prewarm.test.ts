@@ -17,7 +17,7 @@ describe("local voice cloud text prewarm", () => {
 
     const first = prewarm({ useModel });
     const concurrent = prewarm({ useModel });
-    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(useModel).toHaveBeenCalledTimes(2);
     expect(useModel).toHaveBeenCalledWith("RESPONSE_HANDLER", {
       prompt: "ping",
       maxTokens: 32,
@@ -51,16 +51,27 @@ describe("local voice cloud text prewarm", () => {
       toolChoice: "required",
       providerOptions: { eliza: { thinking: "off" } },
     });
+    expect(useModel).toHaveBeenCalledWith("TEXT_LARGE", {
+      prompt: "Reply with exactly one word: ready.",
+      maxTokens: 32,
+      temperature: 0,
+      stream: true,
+      streamCommittedReply: true,
+      streamSecurity: "required",
+      voiceOutput: "internal",
+      onStreamChunk: expect.any(Function),
+      providerOptions: { eliza: { thinking: "off" } },
+    });
 
     release();
     await expect(first).resolves.toBe("warmed");
     await expect(concurrent).resolves.toBe("warmed");
     await expect(prewarm({ useModel })).resolves.toBe("already-warm");
-    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(useModel).toHaveBeenCalledTimes(2);
 
     now += 20_000;
     await expect(prewarm({ useModel })).resolves.toBe("warmed");
-    expect(useModel).toHaveBeenCalledTimes(2);
+    expect(useModel).toHaveBeenCalledTimes(4);
   });
 
   it("accepts a zero-output completion as a successful transport warmup", async () => {
@@ -73,7 +84,7 @@ describe("local voice cloud text prewarm", () => {
 
     await expect(prewarm({ useModel })).resolves.toBe("warmed");
     await expect(prewarm({ useModel })).resolves.toBe("already-warm");
-    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(useModel).toHaveBeenCalledTimes(2);
   });
 
   it("does not cache provider failures", async () => {
@@ -83,8 +94,12 @@ describe("local voice cloud text prewarm", () => {
       .mockResolvedValueOnce("ok");
     const prewarm = createCloudTextPrewarmer();
 
-    await expect(prewarm({ useModel })).rejects.toThrow("provider unavailable");
+    await expect(prewarm({ useModel })).rejects.toMatchObject({
+      name: "CloudTextPrewarmError",
+      lane: "response-handler",
+      causeClass: "Error",
+    });
     await expect(prewarm({ useModel })).resolves.toBe("warmed");
-    expect(useModel).toHaveBeenCalledTimes(2);
+    expect(useModel).toHaveBeenCalledTimes(4);
   });
 });

@@ -38,7 +38,10 @@ import {
   handleXRelayRoute,
   type XRelayRouteState,
 } from "./routes/x-relay-routes";
-import { prewarmCloudTextGateway } from "./routes/cloud-text-prewarm";
+import {
+  CloudTextPrewarmError,
+  prewarmCloudTextGateway,
+} from "./routes/cloud-text-prewarm";
 
 type AnyRuntime = Parameters<typeof handleCloudStatusRoutes>[0]["runtime"];
 
@@ -235,10 +238,44 @@ async function cloudTextPrewarmHandler(
       {
         src: "plugin-elizacloud",
         errorClass: error instanceof Error ? error.name : "UnknownError",
+        prewarmLane:
+          error instanceof CloudTextPrewarmError ? error.lane : "unknown",
+        causeClass:
+          error instanceof CloudTextPrewarmError
+            ? error.causeClass
+            : "UnknownError",
+        causeCode:
+          error instanceof CloudTextPrewarmError ? error.causeCode : undefined,
+        causeReason:
+          error instanceof CloudTextPrewarmError ? error.causeReason : undefined,
+        statusCode:
+          error instanceof CloudTextPrewarmError
+            ? error.statusCode
+            : undefined,
       },
       "Local voice stream prewarm did not complete",
     );
-    sendJson(httpRes, { error: "Provider prewarm failed" }, 503);
+    sendJson(
+      httpRes,
+      {
+        error: "Provider prewarm failed",
+        failedLane:
+          error instanceof CloudTextPrewarmError ? error.lane : "unknown",
+        causeClass:
+          error instanceof CloudTextPrewarmError
+            ? error.causeClass
+            : "UnknownError",
+        causeCode:
+          error instanceof CloudTextPrewarmError ? error.causeCode : undefined,
+        causeReason:
+          error instanceof CloudTextPrewarmError ? error.causeReason : undefined,
+        statusCode:
+          error instanceof CloudTextPrewarmError
+            ? error.statusCode
+            : undefined,
+      },
+      503,
+    );
   }
 }
 

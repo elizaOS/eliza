@@ -13,6 +13,7 @@ import {
   type CharacterInput,
   defaultCharacterSystemTemplate,
   mergeCharacterDefaults,
+  validateUuid,
 } from "@elizaos/core";
 import {
   getDefaultStylePreset,
@@ -39,6 +40,7 @@ import { projectConnectorSettings } from "./project-connector-settings.ts";
 /** @internal Exported for testing. */
 export function buildCharacterFromConfig(config: ElizaConfig): Character {
   const agentEntry = config.agents?.list?.[0];
+  const explicitAgentId = validateUuid(agentEntry?.id);
   const uiConfig = (config.ui ?? {}) as {
     assistant?: { name?: string };
     avatarIndex?: number;
@@ -292,6 +294,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   Object.assign(secrets, connectorProjection.secrets);
 
   return mergeCharacterDefaults({
+    ...(explicitAgentId ? { id: explicitAgentId } : {}),
     name,
     ...(agentEntry?.username ? { username: agentEntry.username } : {}),
     bio,

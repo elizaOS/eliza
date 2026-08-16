@@ -694,6 +694,15 @@ export interface GenerateTextParams {
 	 */
 	streamStructured?: boolean;
 	/**
+	 * Explicitly requests provider-native plaintext deltas for a reply whose
+	 * caller owns the irreversible presentation boundary. Unlike
+	 * {@link streamStructured}, this carries no response envelope or field events:
+	 * adapters must emit only assistant prose. Core's committed-reply synthesizer
+	 * sets this after routing, privacy, and output-hook prefix-stability gates have
+	 * passed; planner and Stage-1 control streams must never set it.
+	 */
+	streamCommittedReply?: boolean;
+	/**
 	 * Per-span sampler overrides for the {@link responseSkeleton}. Derived from
 	 * the skeleton's per-position kinds (every `enum` / `number` / `boolean` span
 	 * gets `temperature: 0, topK: 1`) so the model never "randomly" tips a

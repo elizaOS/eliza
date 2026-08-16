@@ -113,16 +113,16 @@ writeFakeCaptureWav(
 // Tuneable only for the opt-in live barge proof: bracket the real provider's
 // semantic-EOT/playout boundary without changing application behavior.
 const bargeGapMs = Number.parseInt(
-  // The first clip is ~1.72s. Four seconds of silence places the second clip
-  // inside the deliberately long seeded answer across the supported local
-  // model-latency envelope; the former 1.3s gap could finish the utterance
-  // before playout began and therefore did not actually exercise double-talk.
-  process.env.ELIZA_REALTIME_VOICE_BARGE_GAP_MS ?? "4000",
+  // The first clip is ~1.72s. Seven seconds of silence places the second clip
+  // inside the deliberately long seeded answer across the observed Gemma → GLM
+  // provider-latency envelope; shorter gaps can begin the second utterance
+  // before playout begins and therefore do not actually exercise double-talk.
+  process.env.ELIZA_REALTIME_VOICE_BARGE_GAP_MS ?? "7000",
   10,
 );
-if (!Number.isFinite(bargeGapMs) || bargeGapMs < 1_000 || bargeGapMs > 5_000) {
+if (!Number.isFinite(bargeGapMs) || bargeGapMs < 1_000 || bargeGapMs > 9_000) {
   throw new Error(
-    "ELIZA_REALTIME_VOICE_BARGE_GAP_MS must be an integer from 1000 to 5000",
+    "ELIZA_REALTIME_VOICE_BARGE_GAP_MS must be an integer from 1000 to 9000",
   );
 }
 const bargeGapBytes = Math.round(16_000 * 2 * (bargeGapMs / 1_000));

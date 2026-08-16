@@ -10,7 +10,12 @@ import { describe, expect, it } from "vitest";
 import { recentErrorsProvider } from "../providers/recent-errors";
 import type { Provider } from "../types/components";
 import type { AgentContext } from "../types/contexts";
-import type { IAgentRuntime, Memory, UUID } from "../types/index";
+import {
+	ChannelType,
+	type IAgentRuntime,
+	type Memory,
+	type UUID,
+} from "../types/index";
 import { selectV5PlannerStateProviderNames } from "./message";
 
 function provider(overrides: Partial<Provider> & { name: string }): Provider {
@@ -25,13 +30,26 @@ function makeRuntime(providers: Provider[]): IAgentRuntime {
 	return { providers } as unknown as IAgentRuntime;
 }
 
-function msg(): Memory {
+function msg(content: Record<string, unknown> = {}): Memory {
 	return {
 		id: "00000000-0000-0000-0000-0000000000b2" as UUID,
 		entityId: "00000000-0000-0000-0000-0000000000c2" as UUID,
 		roomId: "00000000-0000-0000-0000-0000000000d2" as UUID,
-		content: { text: "plan it" },
+		content: { text: "plan it", ...content },
 	} as unknown as Memory;
+}
+
+function selectForMessage(
+	providers: Provider[],
+	selectedContexts: AgentContext[],
+	message: Memory,
+): string[] {
+	return selectV5PlannerStateProviderNames({
+		runtime: makeRuntime(providers),
+		message,
+		selectedContexts,
+		userRoles: ["MEMBER"],
+	});
 }
 
 function select(
@@ -148,6 +166,63 @@ describe("selectV5PlannerStateProviderNames — declared contextGate honored (#1
 		expect(recentErrorsProvider.alwaysInResponseState).toBe(true);
 		expect(select([recentErrorsProvider], ["code"])).toContain("RECENT_ERRORS");
 		expect(select([recentErrorsProvider], [])).toContain("RECENT_ERRORS");
+	});
+});
+
+describe("selectV5PlannerStateProviderNames — realtime voice owner-private routing", () => {
+	const publicAlwaysOn = provider({
+		name: "PUBLIC_ALWAYS_ON",
+		alwaysInResponseState: true,
+	});
+	const ownerMemory = provider({
+		name: "OWNER_MEMORY",
+		alwaysInResponseState: true,
+		contexts: ["memory"],
+		contextGate: { anyOf: ["memory"] },
+		disclosureGate: { require: "owner_exclusive" },
+	});
+	const ownerUngated = provider({
+		name: "OWNER_UNGATED",
+		alwaysInResponseState: true,
+		disclosureGate: { require: "owner_exclusive" },
+	});
+	const realtimeVoice = msg({
+		channelType: ChannelType.VOICE_DM,
+		metadata: { clientTransport: "realtime_voice" },
+	});
+
+	it("keeps general open-mic planning public without dropping safe always-on context", () => {
+		const selected = selectForMessage(
+			[publicAlwaysOn, ownerMemory, ownerUngated],
+			["general"],
+			realtimeVoice,
+		);
+
+		expect(selected).toContain("PUBLIC_ALWAYS_ON");
+		expect(selected).not.toContain("OWNER_MEMORY");
+		expect(selected).not.toContain("OWNER_UNGATED");
+	});
+
+	it("re-adds an explicitly routed owner-private provider only for its selected context", () => {
+		const selected = selectForMessage(
+			[publicAlwaysOn, ownerMemory, ownerUngated],
+			["memory"],
+			realtimeVoice,
+		);
+
+		expect(selected).toContain("OWNER_MEMORY");
+		expect(selected).not.toContain("OWNER_UNGATED");
+	});
+
+	it("preserves legacy ordinary-DM always-on provider behavior", () => {
+		const selected = selectForMessage(
+			[publicAlwaysOn, ownerMemory, ownerUngated],
+			["general"],
+			msg({ channelType: ChannelType.DM }),
+		);
+
+		expect(selected).toContain("OWNER_MEMORY");
+		expect(selected).toContain("OWNER_UNGATED");
 	});
 });
 
