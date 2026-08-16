@@ -119,6 +119,38 @@ describe("runDeploy", () => {
     },
   );
 
+  it.each([
+    "0",
+    "-0",
+    "-1",
+    "1.5",
+    "2147483648",
+    "9999999999",
+    "abc",
+    "Infinity",
+    "NaN",
+    "1e309",
+  ])(
+    "rejects malformed poll timeout %s before any network call",
+    async (timeout) => {
+      process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+      process.env.ELIZAOS_DEPLOY_TIMEOUT_MS = timeout;
+      const fetchMock = vi.fn();
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const code = await runDeploy({ appId: "app-1" });
+
+      expect(code).toBe(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "ELIZAOS_DEPLOY_TIMEOUT_MS must be an integer from 1 through 2147483647",
+        ),
+      );
+    },
+  );
+
   // The accepted grammar follows Number()-compatible integer spellings, so
   // non-decimal forms must reach the timer with their resolved values.
   it.each([
@@ -173,24 +205,22 @@ describe("runDeploy", () => {
 
   // Prove configured, non-default values reach the real timer rather than only
   // exercising parsing in isolation. The matrix covers compatible spelling
-  // variants and the timer's maximum supported delay.
+  // variants below the shared timer-delay ceiling.
   it.each([
     ["", 5_000],
     ["01000", 1_000],
     ["1e3", 1_000],
     [" 1000 ", 1_000],
-    ["2147483647", 2_147_483_647],
   ])(
     "uses the exact configured poll interval for %s (%dms), not the 5s default",
     async (interval, expectedMs) => {
       process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
       process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test";
       process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS = interval;
-      // Set a timeout budget larger than every interval under test (including
-      // the max 2147483647ms) so this test's concern - the configured
-      // interval reaching the real timer unaltered - stays independent of
-      // pollDeploymentStatus's separate remaining-timeout-budget bound.
-      process.env.ELIZAOS_DEPLOY_TIMEOUT_MS = "9999999999";
+      // Timeout shares the timer-delay ceiling, so keep this budget at the
+      // maximum accepted integer. Remaining intervals in this matrix are
+      // smaller, so the configured interval still reaches setTimeout unaltered.
+      process.env.ELIZAOS_DEPLOY_TIMEOUT_MS = "2147483647";
       // The deploy POST response and the first status GET are two separate
       // calls; a third response is required so the poll loop observes a
       // non-terminal status at least once and actually calls sleep() before
@@ -239,6 +269,103 @@ describe("runDeploy", () => {
       }
     },
   );
+
+  it.each([
+    ["", 600_000],
+    ["1000", 1_000],
+    ["01000", 1_000],
+    ["1e3", 1_000],
+    [" 1000 ", 1_000],
+    ["0x3e8", 1_000],
+    ["0b1111101000", 1_000],
+    ["0o1750", 1_000],
+    ["2147483647", 2_147_483_647],
+  ])(
+    "uses the exact configured poll timeout for %s (%dms)",
+    async (timeout, expectedMs) => {
+      vi.useFakeTimers();
+      try {
+        process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+        process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test";
+        process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS = "2147483647";
+        if (timeout === "") {
+          delete process.env.ELIZAOS_DEPLOY_TIMEOUT_MS;
+        } else {
+          process.env.ELIZAOS_DEPLOY_TIMEOUT_MS = timeout;
+        }
+        const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+          if (typeof url === "string" && url.endsWith("/deploy")) {
+            return jsonResponse(
+              { success: true, deploymentId: "dep-1", status: "QUEUED" },
+              202,
+            );
+          }
+          return jsonResponse({
+            success: true,
+            deploymentId: "dep-1",
+            status: "BUILDING",
+          });
+        });
+        globalThis.fetch = fetchMock as unknown as typeof fetch;
+        vi.spyOn(console, "log").mockImplementation(() => {});
+        const errorSpy = vi
+          .spyOn(console, "error")
+          .mockImplementation(() => {});
+
+        const runPromise = runDeploy({ appId: "app-1" });
+        await vi.advanceTimersByTimeAsync(expectedMs + 1);
+        const code = await runPromise;
+
+        expect(code).toBe(1);
+        expect(errorSpy).toHaveBeenCalledWith(
+          expect.stringContaining(
+            `Deploy did not reach READY or ERROR within ${expectedMs}ms`,
+          ),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("treats a blank poll timeout as the 600000ms default", async () => {
+    vi.useFakeTimers();
+    try {
+      process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+      process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test";
+      process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS = "2147483647";
+      process.env.ELIZAOS_DEPLOY_TIMEOUT_MS = "   ";
+      const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+        if (typeof url === "string" && url.endsWith("/deploy")) {
+          return jsonResponse(
+            { success: true, deploymentId: "dep-1", status: "QUEUED" },
+            202,
+          );
+        }
+        return jsonResponse({
+          success: true,
+          deploymentId: "dep-1",
+          status: "BUILDING",
+        });
+      });
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const runPromise = runDeploy({ appId: "app-1" });
+      await vi.advanceTimersByTimeAsync(600_001);
+      const code = await runPromise;
+
+      expect(code).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Deploy did not reach READY or ERROR within 600000ms",
+        ),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   // A maximum timer interval must remain bounded by the shorter deployment
   // timeout because the deadline is checked only between sleeps.
