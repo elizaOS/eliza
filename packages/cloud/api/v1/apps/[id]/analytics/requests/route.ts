@@ -1,4 +1,9 @@
 /** Handles app request analytics views with shared date-range validation. */
+
+import {
+  parseClampedLimit,
+  parseClampedOffset,
+} from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { parseDateRangeParams } from "@/lib/api/date-range-params";
@@ -71,15 +76,8 @@ async function handleGET(
     const requestType = searchParams.get("request_type") || undefined;
     const source = searchParams.get("source") || undefined;
 
-    // Pagination validation with bounds to prevent DoS via large queries
-    const MAX_LIMIT = 100;
-    const rawLimit = Number.parseInt(searchParams.get("limit") || "50", 10);
-    const rawOffset = Number.parseInt(searchParams.get("offset") || "0", 10);
-    const limit = Math.min(
-      Math.max(Number.isNaN(rawLimit) ? 50 : rawLimit, 1),
-      MAX_LIMIT,
-    );
-    const offset = Math.max(Number.isNaN(rawOffset) ? 0 : rawOffset, 0);
+    const limit = parseClampedLimit(searchParams.get("limit"), 50, 100);
+    const offset = parseClampedOffset(searchParams.get("offset"), 0);
 
     switch (view) {
       case "logs": {
