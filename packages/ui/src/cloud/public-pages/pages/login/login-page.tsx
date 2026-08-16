@@ -6,12 +6,10 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import { isElizaManagedCloudUiHostname } from "@elizaos/shared/elizacloud";
 import { CheckCircle2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
-import { isAppModeHost } from "../../../app-mode/app-mode";
 import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
@@ -20,6 +18,7 @@ import {
   shouldAutoBridgeToSso,
 } from "../../../sso-bridge/sso-bridge";
 import { usePageTitle } from "../../lib/use-page-title";
+import { resolveLoginHostMode } from "./login-host-policy";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
@@ -249,9 +248,11 @@ function PublicLoginPage(): React.JSX.Element {
 }
 
 export default function LoginPage(): React.JSX.Element {
-  const managedCloudHost =
-    isAppModeHost() ||
-    (typeof window !== "undefined" &&
-      isElizaManagedCloudUiHostname(window.location.hostname));
-  return managedCloudHost ? <ManagedCloudLoginHandoff /> : <PublicLoginPage />;
+  const hostname =
+    typeof window === "undefined" ? "" : window.location.hostname;
+  return resolveLoginHostMode(hostname) === "sso-handoff" ? (
+    <ManagedCloudLoginHandoff />
+  ) : (
+    <PublicLoginPage />
+  );
 }

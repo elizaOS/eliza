@@ -4,7 +4,7 @@
  * Steward login when initiation is blocked, rejected, or never navigates.
  */
 // @vitest-environment jsdom
-// @vitest-environment-options {"url": "https://cloud.eliza.app/login?intent=launch"}
+// @vitest-environment-options {"url": "https://agent-1.cloud.eliza.app/login?intent=launch"}
 
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { StrictMode } from "react";
