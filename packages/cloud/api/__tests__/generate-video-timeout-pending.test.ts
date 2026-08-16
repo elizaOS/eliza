@@ -70,8 +70,10 @@ mock.module("@/lib/services/ai-pricing-definitions", () => ({
   getSupportedVideoModelDefinition: (model: string) =>
     model === MODEL
       ? {
+          modelId: MODEL,
           provider: "fal",
           billingSource: "fal",
+          defaultParameters: { durationSeconds: 8, audio: true },
         }
       : undefined,
   SUPPORTED_VIDEO_MODEL_IDS: [MODEL],
@@ -312,10 +314,16 @@ describe("generate-video — verified terminal failures still refund exactly onc
     expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
   });
 
-  test("pre-enqueue provider failure (no upstream job): reconciled once to 0", async () => {
+  test("definitive pre-enqueue rejection: reconciled once to 0", async () => {
     const ledger = makeLedgerReservation(100, COST);
     reserve.mockResolvedValue(ledger.reservation);
-    subscribe.mockRejectedValue(new Error("fal upstream 503"));
+    subscribe.mockRejectedValue(
+      new ApiError({
+        message: "invalid input",
+        status: 422,
+        body: undefined,
+      }),
+    );
 
     const res = await post();
 
