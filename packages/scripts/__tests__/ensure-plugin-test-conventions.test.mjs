@@ -7,7 +7,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +29,10 @@ const REPO_ROOT = path.resolve(path.dirname(SCRIPT), "..", "..");
 const {
   computeOrphanedPluginTestFiles,
   hasAutoDiscoveredDefaultConfig,
+  inspectPluginTestCoverage,
   isBunTestFile,
+  nativeTestFileIsRegistered,
+  resolveConfigIncludedFiles,
 } = await import(SCRIPT_URL.href);
 
 describe("computeOrphanedPluginTestFiles", () => {
@@ -185,12 +194,150 @@ describe("isBunTestFile", () => {
   });
 });
 
+describe("effective runner coverage", () => {
+  let dir;
+
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(tmpdir(), "eliza-guard-effective-coverage-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("subtracts a config's effective excludes from its includes", async () => {
+    const included = path.join(dir, "included.test.ts");
+    const excluded = path.join(dir, "excluded.test.ts");
+    writeFileSync(included, "export {};\n");
+    writeFileSync(excluded, "export {};\n");
+    const config = path.join(dir, "vitest.config.mjs");
+    writeFileSync(
+      config,
+      'export default { test: { include: ["**/*.test.ts"], exclude: ["excluded.test.ts"] } };\n',
+    );
+
+    expect(await resolveConfigIncludedFiles(config)).toEqual([included]);
+  });
+
+  test("does not treat a native test import as coverage without a runner", () => {
+    expect(
+      nativeTestFileIsRegistered(
+        "src/forgotten.test.ts",
+        { scripts: { test: "vitest run" } },
+        "plugins/plugin-fixture",
+      ),
+    ).toBe(false);
+  });
+
+  test("recognizes direct native runner roots and rejects sibling files", () => {
+    const packageJson = { scripts: { test: "bun test __tests__/unit" } };
+    expect(
+      nativeTestFileIsRegistered(
+        "__tests__/unit/covered.test.ts",
+        packageJson,
+        "plugins/plugin-fixture",
+      ),
+    ).toBe(true);
+    expect(
+      nativeTestFileIsRegistered(
+        "src/forgotten.test.ts",
+        packageJson,
+        "plugins/plugin-fixture",
+      ),
+    ).toBe(false);
+  });
+
+  test("a configless plugin test stays orphaned until a real default runner is registered", async () => {
+    const testFile = path.join(dir, "src", "forgotten.test.ts");
+    mkdirSync(path.dirname(testFile), { recursive: true });
+    writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ scripts: {} }),
+    );
+    writeFileSync(testFile, 'import { test } from "vitest";\n');
+
+    const before = await inspectPluginTestCoverage(dir);
+    expect(before.testFiles).toEqual(["src/forgotten.test.ts"]);
+    expect(before.coveredFiles.has("src/forgotten.test.ts")).toBe(false);
+
+    writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ scripts: { test: "vitest run" } }),
+    );
+    const after = await inspectPluginTestCoverage(dir);
+    expect(after.coveredFiles.has("src/forgotten.test.ts")).toBe(true);
+  });
+
+  test("an unconditional exclude remains orphaned in the integrated plugin scan", async () => {
+    writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ scripts: { test: "vitest run" } }),
+    );
+    writeFileSync(path.join(dir, "excluded.test.ts"), "export {};\n");
+    writeFileSync(
+      path.join(dir, "vitest.config.mjs"),
+      'export default { test: { include: ["**/*.test.ts"], exclude: ["excluded.test.ts"] } };\n',
+    );
+
+    const inspection = await inspectPluginTestCoverage(dir);
+    expect(inspection.coveredFiles.has("excluded.test.ts")).toBe(false);
+  });
+
+  test("does not count an unregistered named Vitest config", async () => {
+    writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ scripts: { test: "vitest run" } }),
+    );
+    writeFileSync(path.join(dir, "named-only.test.ts"), "export {};\n");
+    writeFileSync(
+      path.join(dir, "vitest.config.mjs"),
+      'export default { test: { include: ["src/**/*.test.ts"] } };\n',
+    );
+    writeFileSync(
+      path.join(dir, "vitest.audit.config.mjs"),
+      'export default { test: { include: ["named-only.test.ts"] } };\n',
+    );
+
+    const inspection = await inspectPluginTestCoverage(dir);
+    expect(inspection.coveredFiles.has("named-only.test.ts")).toBe(false);
+  });
+
+  test("counts a named Vitest config only after a package script registers it", async () => {
+    writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({
+        scripts: { audit: "vitest run --config vitest.audit.config.mjs" },
+      }),
+    );
+    writeFileSync(path.join(dir, "audited.test.ts"), "export {};\n");
+    writeFileSync(
+      path.join(dir, "vitest.audit.config.mjs"),
+      'export default { test: { include: ["audited.test.ts"] } };\n',
+    );
+
+    const inspection = await inspectPluginTestCoverage(dir);
+    expect(inspection.coveredFiles.has("audited.test.ts")).toBe(true);
+  });
+});
+
 describe("production orphan scan surface", () => {
-  test("inventories .mjs/.js vitest suites and plugins with no vitest config", () => {
+  test("inventories JS suites and applies config excludes", () => {
     const source = readFileSync(SCRIPT, "utf8");
     expect(source).toContain("**/*.test.{ts,tsx,mts,cts,js,mjs,cjs}");
     expect(source).toContain("node:test");
+    expect(source).toContain("...exclude");
     expect(source).not.toMatch(/if \(configPaths\.length === 0\) continue;/);
+  });
+
+  test("the library can be imported without launching the repository scan", () => {
+    const result = spawnSync(
+      process.execPath,
+      ["-e", `await import(${JSON.stringify(SCRIPT_URL.href)})`],
+      { cwd: REPO_ROOT, encoding: "utf8" },
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
   });
 });
 
@@ -214,5 +361,5 @@ describe("ensure-plugin-test-conventions.mjs (real subprocess)", () => {
       );
     }
     expect(result.status).toBe(0);
-  });
+  }, 30_000);
 });

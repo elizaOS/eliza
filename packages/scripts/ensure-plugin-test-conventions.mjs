@@ -19,9 +19,8 @@
  * 5. Orphaned test files: every on-disk plugin `*.test.*`/`*.spec.*` file
  *    (including `.mjs`/`.js` vitest suites) must be reachable by some
  *    vitest*.config.* include glob under the same plugin, or by Vitest's
- *    built-in default include when that plugin has no auto-discovered
- *    config, or be a documented, dated exception. `bun:test` / `node:test`
- *    files are out of scope.
+ *    registered Vitest or native-test runner after its effective excludes are
+ *    applied, or be a documented, dated exception.
  *
  * Usage:
  *   bun run ensure-plugin-test-conventions     # apply to all plugins
@@ -32,7 +31,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // tinyglobby is vitest's own glob engine; resolve it through vitest's module
 // chain so this check uses byte-for-byte the matcher vitest runs with, and so
@@ -44,6 +43,7 @@ const requireFromVitest = createRequire(
 const { glob } = requireFromVitest("tinyglobby");
 
 import { configDefaults } from "vitest/config";
+import { GUARDED_REAL_LIVE_SUITES } from "./lib/real-live-suites.mjs";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -233,7 +233,7 @@ function processPackageJson(filePath) {
   let pkg;
   try {
     pkg = JSON.parse(content);
-  } catch (e) {
+  } catch (_error) {
     console.warn("Skip (invalid JSON):", filePath);
     return { changed: false };
   }
@@ -283,54 +283,12 @@ function processPackageJson(filePath) {
 // ---------------------------------------------------------------------------
 // Orphaned plugin test file detector
 //
-// A plugin's on-disk test file only ever runs if some vitest*.config.* file
-// under that plugin's tree names it in its `include` glob. A config can
-// drift from the files it was written against -- a directory gets renamed, a
-// new suite lands next to an existing one instead of inside it, a suffix
-// convention changes -- and silently stop running a file forever. Vitest
-// exits 0 either way, so nothing signals the gap. This section resolves each
-// plugin's include coverage with the same glob engine vitest uses
-// (tinyglobby) and fails when an on-disk test file is not a candidate under
-// any of that plugin's configs.
-//
-// Coverage checks `include` only, not `include` minus `exclude`. Several
-// plugins (see VITEST_LANE in packages/scripts/run-all-tests.mjs) list a
-// live/real suite in `include` and then exclude it conditionally so the
-// default lane skips it while a `post-merge` run exercises it for real;
-// others (plugin-documents, plugin-form, plugin-inbox, plugin-relationships,
-// plugin-vision) list live/e2e suites in `include` and exclude them
-// unconditionally because a dedicated root config
-// (packages/scripts/vitest/e2e.config.ts) owns running them instead -- either
-// by explicit path in its specializedLiveE2EPaths, or, for plugin-vision,
-// implicitly via its generic `plugins/**/*.e2e.test.{ts,tsx}` include (proven
-// by `vitest list --config packages/scripts/vitest/e2e.config.ts`, not just
-// pattern-reading, before trusting that unconditional exclude as intentional
-// double-run prevention rather than a real gap). Both are deliberate,
-// code-reviewable routing decisions, not the "nobody's glob even reaches this
-// file" gap this guard exists to catch, so applying `exclude` here would
-// misreport dozens of intentionally-gated suites as orphans.
-//
-// Two more coverage sources beyond a plugin's own configs' `include`:
-//
-// 1. A plugin can have zero auto-discovered default config. Plain
-//    `vitest run` (a plugin's actual "test" script, e.g. plugin-browser) only
-//    ever finds `vitest.config.*`/`vite.config.*` at its cwd; a differently
-//    named file (`vitest.real.config.ts`, `vitest.audit.config.ts`, ...) is a
-//    named lane only used via an explicit `--config` flag and is never
-//    consulted for the default run. When a plugin has no auto-discovered
-//    default config, the guard falls back to Vitest's own built-in
-//    `configDefaults.include`, rooted at the plugin directory, matching what
-//    `vitest run` actually finds there.
-// 2. A file that imports its test primitives from `bun:test` is not a Vitest
-//    test at all -- it registers into Bun's own runner, not Vitest's, so no
-//    `include` glob was ever going to make it run under Vitest (see
-//    plugin-elizacloud/vitest.config.ts's `dist-packaging.test.ts` exclude
-//    comment for a documented instance of the same fact: "runs under `bun
-//    test` ... can never execute under vitest"). Such files -- e.g.
-//    plugin-local-inference/native's Makefile- and `bun test`-driven suites,
-//    kept out of that plugin's own `include` for the same reason -- are
-//    dropped from the on-disk candidate set instead of being misreported as
-//    Vitest orphans.
+// Coverage is positive execution reachability, not mere pattern membership:
+// Vitest include-minus-exclude is evaluated for registered package lanes,
+// dedicated repository E2E roots are unioned separately, and Bun/Node-native
+// suites count only when a package script or audited runner root reaches them.
+// This prevents an unconditional exclude, an unused named config, or a bare
+// `bun:test` import from manufacturing a healthy-looking coverage result.
 // ---------------------------------------------------------------------------
 
 const PLUGIN_TEST_FILE_INCLUDE = [
@@ -340,6 +298,22 @@ const PLUGIN_TEST_FILE_INCLUDE = [
 const PLUGIN_TEST_STRUCTURAL_IGNORE = ["**/node_modules/**", "**/dist/**"];
 const VITEST_CONFIG_GLOB = ["**/vitest*.config.{ts,mts,cts,js,mjs,cjs}"];
 const NON_VITEST_HARNESS_IMPORT_RE = /from\s+["'](?:bun:test|node:test)["']/;
+const REGISTERED_NATIVE_RUNNER_ROOTS = new Map([
+  [
+    "plugins/plugin-workflow",
+    [
+      "__tests__",
+      "package test invokes scripts/run-isolated-tests.mjs, whose recursive discovery root is __tests__",
+    ],
+  ],
+]);
+const REGISTERED_ROOT_VITEST_CONFIGS = [
+  "packages/scripts/vitest/unit.config.ts",
+  "packages/scripts/vitest/integration.config.ts",
+  "packages/scripts/vitest/e2e.config.ts",
+  "packages/scripts/vitest/live-e2e.config.ts",
+  "packages/scripts/vitest/real.config.ts",
+];
 
 /**
  * Vitest's own auto-discovered default config filenames -- mirrors
@@ -402,10 +376,9 @@ export function hasAutoDiscoveredDefaultConfig(pluginDir) {
 }
 
 /**
- * True when a file's own imports declare it a Bun-native or Node-native
- * test (`bun:test` / `node:test`) rather than a Vitest one -- see the
- * module header for why that makes it categorically out of scope for this
- * guard regardless of which directory it lives in.
+ * Classifies files that declare a Bun-native or Node-native test harness.
+ * Classification alone never counts as coverage; a registered native runner
+ * must still reach the file.
  */
 export function isBunTestFile(absPath) {
   return NON_VITEST_HARNESS_IMPORT_RE.test(readFileSync(absPath, "utf8"));
@@ -421,8 +394,25 @@ async function findOnDiskPluginTestFiles(pluginDir) {
   return matches.map((relPath) => join(pluginDir, relPath)).sort();
 }
 
-async function loadVitestConfig(configPath) {
-  const mod = await import(pathToFileURL(configPath).href);
+async function loadVitestConfig(configPath, lane = "default") {
+  const previousTestLane = process.env.TEST_LANE;
+  const previousVitestLane = process.env.VITEST_LANE;
+  if (lane === "post-merge") {
+    process.env.TEST_LANE = lane;
+    process.env.VITEST_LANE = lane;
+  } else {
+    delete process.env.TEST_LANE;
+    delete process.env.VITEST_LANE;
+  }
+  let mod;
+  try {
+    mod = await import(`${pathToFileURL(configPath).href}?orphan-lane=${lane}`);
+  } finally {
+    if (previousTestLane === undefined) delete process.env.TEST_LANE;
+    else process.env.TEST_LANE = previousTestLane;
+    if (previousVitestLane === undefined) delete process.env.VITEST_LANE;
+    else process.env.VITEST_LANE = previousVitestLane;
+  }
   let config = mod.default;
   if (typeof config === "function") {
     config = await config({ mode: "test", command: "serve" });
@@ -431,14 +421,19 @@ async function loadVitestConfig(configPath) {
 }
 
 /**
- * Resolves the absolute set of files a single vitest config's `include` glob
- * names, ignoring only structural noise. See the module header above for why
- * the config's own `exclude` is not applied here.
+ * Resolves the files a Vitest lane can actually collect: include minus its
+ * effective exclude list. The repository scan evaluates the post-merge
+ * superset because many package configs conditionally open live suites there.
  */
-async function resolveConfigIncludedFiles(configPath) {
-  const config = await loadVitestConfig(configPath);
+export async function resolveConfigIncludedFiles(
+  configPath,
+  lane = "default",
+  executionRoot = dirname(configPath),
+) {
+  const config = await loadVitestConfig(configPath, lane);
   const test = config.test ?? {};
   const include = test.include ?? configDefaults.include;
+  const exclude = test.exclude ?? configDefaults.exclude;
   // Vitest falls back to the top-level Vite `root` when `test.root` is not
   // set (several plugin configs, e.g. plugin-personal-assistant, only set
   // the top-level `root` and write `include` patterns relative to it) --
@@ -446,15 +441,174 @@ async function resolveConfigIncludedFiles(configPath) {
   // and misreport every file in that plugin as orphaned.
   const effectiveRoot = test.root ?? config.root;
   const cwd = effectiveRoot
-    ? resolve(dirname(configPath), effectiveRoot)
-    : dirname(configPath);
+    ? resolve(executionRoot, effectiveRoot)
+    : executionRoot;
   const matches = await glob(include, {
     cwd,
     dot: true,
-    ignore: PLUGIN_TEST_STRUCTURAL_IGNORE,
+    ignore: [...PLUGIN_TEST_STRUCTURAL_IGNORE, ...exclude],
     expandDirectories: false,
   });
   return matches.map((relPath) => resolve(cwd, relPath));
+}
+
+function readPluginPackage(pluginDir) {
+  return JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf8"));
+}
+
+function scriptCommands(packageJson) {
+  return Object.values(packageJson.scripts ?? {}).filter(
+    (value) => typeof value === "string",
+  );
+}
+
+function hasDefaultVitestRunner(packageJson) {
+  return scriptCommands(packageJson).some(
+    (command) =>
+      /(?:^|\s)vitest(?:\s+run)?(?:\s|$)/.test(command) &&
+      !command.includes("--config"),
+  );
+}
+
+function isRegisteredPluginConfig(configPath, pluginDir, packageJson) {
+  const relativePath = relative(pluginDir, configPath).split(sep).join("/");
+  const isDefault =
+    dirname(configPath) === pluginDir &&
+    VITEST_DEFAULT_CONFIG_FILENAMES.includes(relativePath);
+  if (isDefault && hasDefaultVitestRunner(packageJson)) return true;
+  return scriptCommands(packageJson).some(
+    (command) =>
+      command.includes(relativePath) ||
+      command.includes(configPath.split(sep).at(-1)),
+  );
+}
+
+function commandTargetCoversFile(target, relativeFile) {
+  const normalized = target.replace(/^['"]|['"]$/g, "").replace(/^\.\//, "");
+  if (!normalized || normalized.startsWith("-")) return false;
+  const wildcardIndex = normalized.search(/[!*?{[]/);
+  const prefix = (
+    wildcardIndex === -1 ? normalized : normalized.slice(0, wildcardIndex)
+  ).replace(/\/$/, "");
+  return (
+    relativeFile === normalized ||
+    (prefix && relativeFile.startsWith(`${prefix}/`))
+  );
+}
+
+export function nativeTestFileIsRegistered(
+  relativeFile,
+  packageJson,
+  pluginRelative,
+) {
+  const commands = scriptCommands(packageJson);
+  for (const command of commands) {
+    for (const match of command.matchAll(
+      /(?:bun\s+test|node\s+--test)([^;&|]*)/g,
+    )) {
+      const tokens = match[1].trim().split(/\s+/).filter(Boolean);
+      const targets = tokens.filter((token) => !token.startsWith("-"));
+      if (
+        targets.length === 0 ||
+        targets.some((target) => commandTargetCoversFile(target, relativeFile))
+      ) {
+        return true;
+      }
+    }
+  }
+  const registeredRoot = REGISTERED_NATIVE_RUNNER_ROOTS.get(pluginRelative);
+  return Boolean(
+    registeredRoot &&
+      (relativeFile === registeredRoot[0] ||
+        relativeFile.startsWith(`${registeredRoot[0]}/`)),
+  );
+}
+
+async function registeredRootVitestCoverage() {
+  const covered = new Set();
+  for (const relativeConfig of REGISTERED_ROOT_VITEST_CONFIGS) {
+    const configPath = join(ROOT, relativeConfig);
+    for (const file of await resolveConfigIncludedFiles(
+      configPath,
+      "post-merge",
+      ROOT,
+    )) {
+      if (file.startsWith(join(ROOT, "plugins") + sep)) {
+        covered.add(toRepoRelative(file));
+      }
+    }
+  }
+  const e2e = await import(
+    pathToFileURL(join(ROOT, "packages/scripts/vitest/e2e.config.ts")).href
+  );
+  for (const registry of [
+    e2e.heavyOnlyE2EPaths,
+    e2e.checkoutDependentE2EPaths,
+    e2e.specializedLiveE2EPaths,
+    e2e.credentialDependentE2EPaths,
+  ]) {
+    for (const file of registry ?? []) {
+      if (file.startsWith("plugins/")) covered.add(file);
+    }
+  }
+  return covered;
+}
+
+export async function inspectPluginTestCoverage(pluginDir) {
+  const packageJson = readPluginPackage(pluginDir);
+  const pluginRelative = toRepoRelative(pluginDir);
+  const testFiles = [];
+  const coveredFiles = new Set();
+  const configFailures = [];
+  const filesInPlugin = await findOnDiskPluginTestFiles(pluginDir);
+  for (const file of filesInPlugin) {
+    const relativeFile = relative(pluginDir, file).split(sep).join("/");
+    testFiles.push(relativeFile);
+    if (nativeTestFileIsRegistered(relativeFile, packageJson, pluginRelative)) {
+      coveredFiles.add(relativeFile);
+    }
+  }
+
+  const configPaths = (await findVitestConfigPaths(pluginDir)).filter((path) =>
+    isRegisteredPluginConfig(path, pluginDir, packageJson),
+  );
+  for (const configPath of configPaths) {
+    try {
+      const included = await resolveConfigIncludedFiles(
+        configPath,
+        "post-merge",
+        pluginDir,
+      );
+      for (const file of included) {
+        if (file.startsWith(pluginDir + sep)) {
+          coveredFiles.add(relative(pluginDir, file).split(sep).join("/"));
+        }
+      }
+    } catch (error) {
+      configFailures.push(
+        `${toRepoRelative(configPath)}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (
+    !hasAutoDiscoveredDefaultConfig(pluginDir) &&
+    hasDefaultVitestRunner(packageJson)
+  ) {
+    const fallbackMatches = await glob(configDefaults.include, {
+      cwd: pluginDir,
+      dot: true,
+      ignore: [...PLUGIN_TEST_STRUCTURAL_IGNORE, ...configDefaults.exclude],
+      expandDirectories: false,
+    });
+    for (const relativeFile of fallbackMatches) coveredFiles.add(relativeFile);
+  }
+
+  return {
+    testFiles: testFiles.sort(),
+    coveredFiles,
+    configFailures,
+  };
 }
 
 function toRepoRelative(absPath) {
@@ -505,40 +659,18 @@ export function computeOrphanedPluginTestFiles({
 async function checkOrphanedPluginTestFiles() {
   const pluginDirs = findPluginDirectories();
   const testFiles = [];
-  const coveredFiles = new Set();
+  const coveredFiles = await registeredRootVitestCoverage();
   const configFailures = [];
   for (const pluginDir of pluginDirs) {
-    const configPaths = await findVitestConfigPaths(pluginDir);
-    const filesInPlugin = await findOnDiskPluginTestFiles(pluginDir);
-    for (const file of filesInPlugin) {
-      if (isBunTestFile(file)) continue;
-      testFiles.push(toRepoRelative(file));
+    const pluginRelative = toRepoRelative(pluginDir);
+    const inspection = await inspectPluginTestCoverage(pluginDir);
+    for (const file of inspection.testFiles) {
+      testFiles.push(`${pluginRelative}/${file}`);
     }
-    for (const configPath of configPaths) {
-      try {
-        const included = await resolveConfigIncludedFiles(configPath);
-        for (const file of included) coveredFiles.add(toRepoRelative(file));
-      } catch (error) {
-        configFailures.push(
-          `${toRepoRelative(configPath)}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+    for (const file of inspection.coveredFiles) {
+      coveredFiles.add(`${pluginRelative}/${file}`);
     }
-    if (!hasAutoDiscoveredDefaultConfig(pluginDir)) {
-      // No `vitest.config.*`/`vite.config.*` at the plugin root: a plain
-      // `vitest run` there (the plugin's actual "test" script) finds no
-      // config and falls back to Vitest's built-in default include, rooted
-      // at the plugin directory -- add that as a coverage source too.
-      const fallbackMatches = await glob(configDefaults.include, {
-        cwd: pluginDir,
-        dot: true,
-        ignore: PLUGIN_TEST_STRUCTURAL_IGNORE,
-        expandDirectories: false,
-      });
-      for (const relPath of fallbackMatches) {
-        coveredFiles.add(toRepoRelative(resolve(pluginDir, relPath)));
-      }
-    }
+    configFailures.push(...inspection.configFailures);
   }
   if (configFailures.length > 0) {
     console.error(
@@ -550,13 +682,24 @@ async function checkOrphanedPluginTestFiles() {
   const { orphans } = computeOrphanedPluginTestFiles({
     testFiles: testFiles.sort(),
     coveredFiles,
-    exceptions: ORPHANED_PLUGIN_TEST_EXCEPTIONS,
+    exceptions: new Map([
+      ...ORPHANED_PLUGIN_TEST_EXCEPTIONS,
+      ...GUARDED_REAL_LIVE_SUITES.filter(
+        (entry) =>
+          entry.file.startsWith("plugins/") &&
+          entry.blocked &&
+          !coveredFiles.has(entry.file),
+      ).map((entry) => [
+        entry.file,
+        `Manifested config block: ${entry.blocked}`,
+      ]),
+    ]),
   });
   if (orphans.length > 0) {
     console.error(
-      `[ensure-plugin-test-conventions] ${orphans.length} orphaned plugin test file(s): no vitest config under the owning plugin includes them, so they never run.\n` +
+      `[ensure-plugin-test-conventions] ${orphans.length} orphaned plugin test file(s): no registered test lane reaches them after effective excludes.\n` +
         orphans.map((file) => `  - ${file}`).join("\n") +
-        "\nWiden the owning plugin's vitest.config.ts include glob so the file is discovered, or add a dated, reasoned entry to ORPHANED_PLUGIN_TEST_EXCEPTIONS in packages/scripts/ensure-plugin-test-conventions.mjs.",
+        "\nRegister the owning Vitest/native runner, remove the orphaning exclude, or add a dated, reasoned entry to ORPHANED_PLUGIN_TEST_EXCEPTIONS in packages/scripts/ensure-plugin-test-conventions.mjs.",
     );
     return false;
   }
@@ -589,7 +732,10 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+const scriptPath = fileURLToPath(import.meta.url);
+if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

@@ -77,6 +77,11 @@
     "reason": "prefix-matches all plugins/plugin-native-* dirs to mirror them to the legacy packages/native layout; not a per-plugin list"
   },
   {
+    "file": "packages/scripts/ensure-plugin-test-conventions.mjs",
+    "tokens": ["plugins/plugin-workflow"],
+    "reason": "systemic coupling: plugin-workflow's package test delegates recursive native-test discovery to run-isolated-tests.mjs, so the reachability guard records its audited __tests__ discovery root"
+  },
+  {
     "file": "packages/scripts/ensure-workspace-symlinks.mjs",
     "tokens": ["@elizaos/plugin-pdf"],
     "reason": "hoists @elizaos/plugin-pdf, a re-exported transitive dep bun's isolated install leaves nested, to top-level node_modules"
