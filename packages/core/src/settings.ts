@@ -478,13 +478,11 @@ export function encryptedCharacter(character: Character): Character {
 		encryptedChar.secrets = encryptObjectValues(encryptedChar.secrets, salt);
 	}
 
-	// Encrypt character.settings.secrets if it exists (API keys stored via settings.secrets leak plaintext otherwise)
+	// Both secret containers are persisted through this boundary, so neither may
+	// retain plaintext while the rest of the character remains readable.
 	if (encryptedChar.settings?.secrets) {
 		encryptedChar.settings.secrets = encryptObjectValues(
-			encryptedChar.settings.secrets as Record<
-				string,
-				string | number | boolean
-			>,
+			encryptedChar.settings.secrets,
 			salt,
 		);
 	}
@@ -521,13 +519,9 @@ export function decryptedCharacter(
 		decryptedChar.secrets = decryptObjectValues(decryptedChar.secrets, salt);
 	}
 
-	// Decrypt character.settings.secrets if it exists
 	if (decryptedChar.settings?.secrets) {
 		decryptedChar.settings.secrets = decryptObjectValues(
-			decryptedChar.settings.secrets as Record<
-				string,
-				string | number | boolean
-			>,
+			decryptedChar.settings.secrets,
 			salt,
 		);
 	}
