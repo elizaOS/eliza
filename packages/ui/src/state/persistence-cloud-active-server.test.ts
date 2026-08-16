@@ -12,6 +12,7 @@ import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "../api/direct-cloud-endpoints";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
+import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { ELIZA_CLOUD_CONTROL_PLANE_HOSTS } from "../utils/cloud-agent-base";
 import {
@@ -379,6 +380,39 @@ describe("Cloud active server persistence", () => {
       label: "On-device agent",
       apiBase: "eliza-local-agent://ipc",
     });
+  });
+
+  it("restores an explicit remote-mac loopback as a network backend", async () => {
+    const server = {
+      id: "remote:http://127.0.0.1:31337",
+      kind: "remote" as const,
+      label: "Mac agent",
+      apiBase: "http://127.0.0.1:31337",
+    };
+
+    expect(
+      reconcileMobileRestoredActiveServer({
+        platform: "ios",
+        mobileRuntimeMode: "remote-mac",
+        server,
+      }),
+    ).toBeUndefined();
+
+    localStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, "remote-mac");
+    const setBaseUrl = vi.fn();
+    const setToken = vi.fn();
+    const startLocalRuntime = vi.fn().mockResolvedValue(undefined);
+
+    await applyRestoredConnection({
+      restoredActiveServer: server,
+      clientRef: { setBaseUrl, setToken },
+      startLocalRuntime,
+    });
+
+    expect(setBaseUrl).toHaveBeenCalledWith("http://127.0.0.1:31337");
+    expect(setToken).toHaveBeenNthCalledWith(1, null);
+    expect(setToken).toHaveBeenNthCalledWith(2, null);
+    expect(startLocalRuntime).not.toHaveBeenCalled();
   });
 
   it("keeps the on-device agent record under cloud-hybrid (#16065 LP3 re-onboarded every cold launch)", () => {
