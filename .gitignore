@@ -352,6 +352,10 @@ tasks/
 !packages/training/data/
 !packages/training/data/final-eliza1-smoke/
 !packages/training/data/final-eliza1-smoke/**
+# corpus-tools synthetic X-archive fixture uses the official archive's
+# data/ layout; re-include it beneath the **/data/ rule.
+!packages/corpus-tools/fixtures/x-archive/data/
+!packages/corpus-tools/fixtures/x-archive/data/**
 **/.roo/
 **/.roomodes/
 **/.taskmaster/
