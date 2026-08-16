@@ -83,6 +83,7 @@ export class CapabilityError extends Error {
 
 export type FileReadTextParams = CapabilityEndpointSelection & {
 	path: string;
+	/** Positive safe-integer byte cap; omitted uses the router's default cap. */
 	maxBytes?: number;
 	traceSessionId?: string;
 };

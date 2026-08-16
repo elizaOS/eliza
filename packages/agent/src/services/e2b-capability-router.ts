@@ -63,6 +63,14 @@ const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000;
 const MAX_READ_BYTES = 5 * 1024 * 1024;
 const MAX_LIST_LIMIT = 1000;
+
+function truncateUtf8(text: string, maxBytes: number): string {
+  const prefix = Buffer.from(text, "utf8").subarray(0, maxBytes);
+  // Streaming decode omits an incomplete trailing code point instead of
+  // inserting U+FFFD, whose encoding could exceed the requested byte cap.
+  return new TextDecoder().decode(prefix, { stream: true });
+}
+
 /**
  * Default Eliza Cloud API base for the `eliza-cloud` sandbox provider. Exported
  * so the contract test asserts against this value instead of restating the host
@@ -588,6 +596,17 @@ export class E2BRemoteCapabilityRouterService
     params: FileReadTextParams,
   ): Promise<FileReadTextResult> {
     await this.requireAvailable("fs", "fs.readText");
+    if (
+      params.maxBytes !== undefined &&
+      (!Number.isSafeInteger(params.maxBytes) || params.maxBytes <= 0)
+    ) {
+      throw new CapabilityError({
+        code: "CAPABILITY_REQUEST_FAILED",
+        capability: "fs",
+        method: "fs.readText",
+        message: "fs.readText maxBytes must be a positive safe integer.",
+      });
+    }
     const sandbox = await this.getSandbox();
     const target = this.mapPath(params.path);
     const content = await sandbox.files.read(target, {
@@ -598,12 +617,10 @@ export class E2BRemoteCapabilityRouterService
       typeof content === "string"
         ? content
         : Buffer.from(content).toString("utf8");
-    const maxBytes = Math.max(0, params.maxBytes ?? MAX_READ_BYTES);
+    const maxBytes = params.maxBytes ?? MAX_READ_BYTES;
     const bytes = Buffer.byteLength(text, "utf8");
     if (maxBytes > 0 && bytes > maxBytes) {
-      const truncated = Buffer.from(text, "utf8")
-        .subarray(0, maxBytes)
-        .toString("utf8");
+      const truncated = truncateUtf8(text, maxBytes);
       return { path: target, text: truncated, size: bytes, truncated: true };
     }
     return { path: target, text, size: bytes, truncated: false };
