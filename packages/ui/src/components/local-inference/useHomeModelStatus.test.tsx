@@ -7,8 +7,9 @@
  * gate after deferred Cloud registration. Network seams are mocked in jsdom.
  */
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import type { UseRuntimeModeResult } from "../../hooks/useRuntimeMode";
 
 const runtimeModeMock = vi.hoisted(() => ({
@@ -40,6 +41,15 @@ const eventSourceMock = vi.hoisted(() => ({
 // Auth gate (#11084): the hook must stay dormant until the shared auth
 // snapshot reports an authenticated session. Mutable so tests can flip it.
 const authMock = vi.hoisted(() => ({ authenticated: true }));
+const mobileRuntimeModeMock = vi.hoisted(() => ({
+  value: null as
+    | "remote-mac"
+    | "cloud"
+    | "cloud-hybrid"
+    | "local"
+    | "tunnel-to-mobile"
+    | null,
+}));
 
 vi.mock("../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
@@ -47,6 +57,10 @@ vi.mock("../../hooks/useAuthStatus", () => ({
 
 vi.mock("../../hooks/useRuntimeMode", () => ({
   useRuntimeMode: () => runtimeModeMock.value,
+}));
+
+vi.mock("../../first-run/mobile-runtime-mode", () => ({
+  readPersistedMobileRuntimeMode: () => mobileRuntimeModeMock.value,
 }));
 
 vi.mock("../../api", () => ({
@@ -113,6 +127,7 @@ beforeEach(() => {
   clientMock.getLocalInferenceHub.mockResolvedValue(emptyHub);
   eventSourceMock.openEventSource.mockClear();
   authMock.authenticated = true;
+  mobileRuntimeModeMock.value = null;
   setRuntimeMode("local");
 });
 
@@ -136,6 +151,66 @@ describe("useHomeModelStatus", () => {
       expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
     },
   );
+
+  it.each(["remote-mac", "tunnel-to-mobile"] as const)(
+    "does not poll phone-local inference for %s placement on a local Mac server",
+    async (mobileRuntimeMode) => {
+      mobileRuntimeModeMock.value = mobileRuntimeMode;
+
+      const { result } = renderHook(() => useHomeModelStatus());
+
+      await waitFor(() => {
+        expect(result.current.kind).toBe("not-required");
+      });
+      expect(clientMock.getModelsConfig).not.toHaveBeenCalled();
+      expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
+      expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
+    },
+  );
+
+  it("stops phone-local readiness tracking when placement switches to remote Mac", async () => {
+    const { result } = renderHook(() => useHomeModelStatus());
+
+    await waitFor(() => {
+      expect(clientMock.getLocalInferenceHub).toHaveBeenCalledTimes(1);
+    });
+    const stream = eventSourceMock.openEventSource.mock.results[0]?.value;
+
+    act(() => {
+      mobileRuntimeModeMock.value = "remote-mac";
+      document.dispatchEvent(
+        new CustomEvent(MOBILE_RUNTIME_MODE_CHANGED_EVENT, {
+          detail: { mode: "remote-mac" },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.kind).toBe("not-required");
+    });
+    expect(stream?.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts phone-local readiness tracking when placement switches back to local", async () => {
+    mobileRuntimeModeMock.value = "remote-mac";
+    renderHook(() => useHomeModelStatus());
+
+    expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
+
+    act(() => {
+      mobileRuntimeModeMock.value = "local";
+      document.dispatchEvent(
+        new CustomEvent(MOBILE_RUNTIME_MODE_CHANGED_EVENT, {
+          detail: { mode: "local" },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(clientMock.getLocalInferenceHub).toHaveBeenCalledTimes(1);
+    });
+    expect(eventSourceMock.openEventSource).toHaveBeenCalledTimes(1);
+  });
 
   it("polls local inference for local runtime mode", async () => {
     renderHook(() => useHomeModelStatus());
