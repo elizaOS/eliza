@@ -23,6 +23,21 @@ describe("desktop brand config", () => {
     resetBrandConfigForTests();
   });
 
+  it("reads cloudOnly from a packaged brand file and defaults it off", () => {
+    expect(getBrandConfig().cloudOnly).toBe(false);
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brand-config-"));
+    const file = path.join(dir, "brand-config.json");
+    fs.writeFileSync(
+      file,
+      `${JSON.stringify({ appName: "Eliza", cloudOnly: true })}\n`,
+    );
+    process.env.ELIZA_BRAND_CONFIG_PATH = file;
+    resetBrandConfigForTests();
+
+    expect(getBrandConfig().cloudOnly).toBe(true);
+  });
+
   it("does not let the shared eliza namespace default override a packaged brand file", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brand-config-"));
     const file = path.join(dir, "brand-config.json");

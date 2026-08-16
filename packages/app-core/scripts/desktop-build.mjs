@@ -226,6 +226,19 @@ const buildVariant = resolveBuildVariant(
   getArgValue(args, "build-variant") ?? process.env.ELIZA_BUILD_VARIANT,
 );
 const buildEnv = getArgValue(args, "env") ?? process.env.BUILD_ENV ?? "";
+// Cloud-only consumer lane: package without the embedded agent runtime and
+// bake the cloud-only brand flag into the bundle. The flag is exported into
+// this process's env so every downstream consumer — the renderer build, the
+// Electrobun packaging step (shouldEmbedRuntimeBundle + brand-config), and
+// nested tool spawns that inherit process.env — sees one consistent signal.
+const cloudOnlyBuild =
+  getBooleanArg(args, "cloud-only") ||
+  ["1", "true", "yes", "on"].includes(
+    (process.env.ELIZA_DESKTOP_CLOUD_ONLY ?? "").trim().toLowerCase(),
+  );
+if (cloudOnlyBuild) {
+  process.env.ELIZA_DESKTOP_CLOUD_ONLY = "1";
+}
 const stageMacosReleaseApp = getBooleanArg(args, "stage-macos-release-app");
 // The macOS native-effects dylib build shells to `xcrun clang++` (Xcode CLT).
 // "Explicitly requested" decides whether missing native tooling is a hard
@@ -937,6 +950,12 @@ function desktopRendererBuildEnv() {
     VITE_APP_VARIANT: variant,
     ELIZA_BUILD_VARIANT: buildVariant,
   };
+  if (cloudOnlyBuild) {
+    // Cloud-only renderer builds resolve cloud-only branding at module-eval
+    // time via this Vite env (the packaged static-server inject also sets the
+    // window global, but Vite-served index.html never runs that inject).
+    env.VITE_ELIZA_DESKTOP_RUNTIME_MODE = "cloud";
+  }
   if (env.ELIZA_SKIP_LOCAL_UPSTREAMS !== "1") {
     env.ELIZA_FORCE_LOCAL_UPSTREAMS = "1";
   }
@@ -1020,6 +1039,15 @@ function assertRuntimeCopyDiskHeadroom() {
 }
 
 function copyRuntimeNodeModulesWithRetry() {
+  if (cloudOnlyBuild) {
+    // Cloud-only bundles ship no embedded runtime (shouldEmbedRuntimeBundle
+    // drops eliza-dist from the copy map), so staging the multi-GB
+    // node_modules tree would be wasted work and disk.
+    console.log(
+      "[desktop-build] Skipping runtime node_modules bundle (cloud-only build)",
+    );
+    return;
+  }
   assertRuntimeCopyDiskHeadroom();
 
   const maxAttempts = 2;
@@ -1348,7 +1376,10 @@ function stageDesktopBuild() {
   // Build + bundle the fused local-inference native lib so the packaged app
   // serves local AI out of the box. Gated (see stageDesktopFusedLib) so plain
   // dev builds stay fast; auto-built best-effort on CI release builds.
-  stageDesktopFusedLib();
+  // Cloud-only bundles run no local inference, so the lib is dead weight.
+  if (!cloudOnlyBuild) {
+    stageDesktopFusedLib();
+  }
 
   runBun([WRITE_BUILD_INFO_SCRIPT], {
     cwd: ROOT,
@@ -1757,6 +1788,11 @@ Options:
                                    "store" wires macOS App Sandbox entitlements
                                    and forces Cloud hosting at runtime; "direct"
                                    keeps current unsandboxed behavior.
+  --cloud-only                     Consumer cloud-only lane: skip the embedded
+                                   agent runtime + fused local-inference lib and
+                                   bake cloudOnly into brand-config.json so the
+                                   packaged shell runs against Eliza Cloud.
+                                   (env: ELIZA_DESKTOP_CLOUD_ONLY=1)
   --env <channel>                  Electrobun build env (e.g. canary, stable)
   --stage-macos-release-app        Stage a direct macOS .app + DMG from the Electrobun build output
   --exclude-optional-pack <name>   Exclude a manifest-classified optional capability pack during staging

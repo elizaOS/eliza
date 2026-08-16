@@ -41,6 +41,7 @@ import {
 } from "./brand-env-reads";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
+import { hydrateCloudOnlyEnv } from "./cloud-only-boot";
 import {
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
@@ -1825,6 +1826,24 @@ function injectApiBase(win: BrowserWindow): void {
     return;
   }
 
+  if (runtimeResolution.mode === "disabled") {
+    // Runtime-less consumer bundle: there is no embedded agent, so minting a
+    // local API token here would be worse than useless — the renderer's cloud
+    // resolver (getCloudAuthToken) falls back to the client REST token, so a
+    // fabricated local token masquerades as a Cloud credential, silently
+    // skips interactive sign-in, and 401s the join flow. Publish the (dead)
+    // loopback base with NO token so the sign-in flow runs for real.
+    apiBaseOwner.notifyChange(
+      win,
+      resolveInitialApiBase(
+        process.env as Record<string, string | undefined>,
+      ) ?? `http://127.0.0.1:${resolveDesktopApiPort(process.env)}`,
+      resolveApiToken(process.env) ?? "",
+    );
+    setAgentReady(true);
+    return;
+  }
+
   const agent = getAgentManager();
   const port = agent.getPort() ?? resolveDesktopApiPort(process.env);
   const apiToken = configureDesktopLocalApiAuth();
@@ -2492,6 +2511,16 @@ async function main(): Promise<void> {
   recordStartupPhase("env_loaded", {
     pid: process.pid,
   });
+  // Cloud-only consumer bundles bake `cloudOnly` into brand-config.json and
+  // ship no embedded runtime; promote that to the runtime env contract before
+  // the first runtime-mode resolution. Runs after env-file loading so an
+  // operator's explicit env always wins.
+  const cloudOnlyHydration = hydrateCloudOnlyEnv(BRAND.cloudOnly);
+  if (cloudOnlyHydration.applied.length > 0) {
+    console.log(
+      `[Env] cloud-only brand flag raised: ${cloudOnlyHydration.applied.join(", ")}`,
+    );
+  }
   // Start the static renderer server in parallel with the rest of pre-window
   // work — first paint needs the renderer URL, so kicking it off now overlaps
   // the server bind/port-scan with crash-prompt checks, WebGPU init, and bridge
