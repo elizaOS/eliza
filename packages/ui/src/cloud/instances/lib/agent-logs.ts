@@ -43,6 +43,8 @@ export class AgentLogsTimeoutError extends Error {
 
 const LOG_COLLECTION_FAILED_MESSAGE =
   "Log collection failed on the server. Try again in a moment.";
+const LOG_COLLECTION_TIMEOUT_MESSAGE =
+  "Log collection is taking longer than expected. Try again in a moment.";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -239,45 +241,69 @@ export async function loadAgentLogs({
   now = Date.now,
   wait = waitWithAbort,
 }: LoadAgentLogsOptions): Promise<AgentLogsResult> {
-  const query = new URLSearchParams({ tail: String(tail) });
-  const startResponse = await fetchImpl(
-    `/api/compat/agents/${encodeURIComponent(agentId)}/logs?${query}`,
-    { cache: "no-store", signal },
-  );
-  const startBody = await readJson(startResponse, "The log request");
-  if (!startResponse.ok) {
-    throw new AgentLogsProtocolError(
-      readHttpFailureMessage("request", startResponse.status),
-    );
-  }
-
-  const start = parseAgentLogsStart(startBody);
-  if (start.kind === "complete") return start.result;
-
   const deadline = now() + timeoutMs;
-  let intervalMs = start.intervalMs;
-  while (now() <= deadline) {
-    const response = await fetchImpl(
-      `/api/v1/jobs/${encodeURIComponent(start.jobId)}`,
-      { cache: "no-store", signal },
+  const timeoutError = new AgentLogsTimeoutError(
+    LOG_COLLECTION_TIMEOUT_MESSAGE,
+  );
+  const requestController = new AbortController();
+  const abortFromCaller = () => {
+    requestController.abort(
+      signal.reason ?? new DOMException("Aborted", "AbortError"),
     );
-    const body = await readJson(response, "The log job");
-    if (!response.ok) {
+  };
+  if (signal.aborted) abortFromCaller();
+  else signal.addEventListener("abort", abortFromCaller, { once: true });
+  const timeoutId = globalThis.setTimeout(() => {
+    requestController.abort(timeoutError);
+  }, timeoutMs);
+
+  try {
+    const requestSignal = requestController.signal;
+    const query = new URLSearchParams({ tail: String(tail) });
+    const startResponse = await fetchImpl(
+      `/api/compat/agents/${encodeURIComponent(agentId)}/logs?${query}`,
+      { cache: "no-store", signal: requestSignal },
+    );
+    const startBody = await readJson(startResponse, "The log request");
+    if (!startResponse.ok) {
       throw new AgentLogsProtocolError(
-        readHttpFailureMessage("job", response.status),
+        readHttpFailureMessage("request", startResponse.status),
       );
     }
 
-    const job = parseAgentLogsJob(body);
-    if (job.kind === "complete") return job.result;
-    if (job.kind === "failed") throw new AgentLogsProtocolError(job.message);
-    intervalMs = job.intervalMs;
+    const start = parseAgentLogsStart(startBody);
+    if (start.kind === "complete") return start.result;
 
-    if (now() + intervalMs > deadline) break;
-    await wait(intervalMs, signal);
+    let intervalMs = start.intervalMs;
+    while (now() <= deadline) {
+      const response = await fetchImpl(
+        `/api/v1/jobs/${encodeURIComponent(start.jobId)}`,
+        { cache: "no-store", signal: requestSignal },
+      );
+      const body = await readJson(response, "The log job");
+      if (!response.ok) {
+        throw new AgentLogsProtocolError(
+          readHttpFailureMessage("job", response.status),
+        );
+      }
+
+      const job = parseAgentLogsJob(body);
+      if (job.kind === "complete") return job.result;
+      if (job.kind === "failed") throw new AgentLogsProtocolError(job.message);
+      intervalMs = job.intervalMs;
+
+      if (now() + intervalMs > deadline) break;
+      await wait(intervalMs, requestSignal);
+    }
+
+    throw timeoutError;
+  } catch (error) {
+    if (requestController.signal.aborted && !signal.aborted) {
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+    signal.removeEventListener("abort", abortFromCaller);
   }
-
-  throw new AgentLogsTimeoutError(
-    "Log collection is taking longer than expected. Try again in a moment.",
-  );
 }
