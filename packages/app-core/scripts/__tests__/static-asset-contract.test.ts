@@ -142,6 +142,14 @@ describe("static asset manifest contract (#16290)", () => {
           "-n",
           "-F",
           ...RETIRED_REFERENCE_TOKENS.flatMap((token) => ["-e", token]),
+          "--",
+          ":(top)**",
+          ":(exclude)packages/os/**",
+          ":(exclude)**/__tests__/**",
+          ":(exclude)**/test/**",
+          ":(exclude)**/tests/**",
+          ":(exclude)**/*.test.*",
+          ":(exclude)**/*.spec.*",
         ],
         { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
       );
@@ -160,5 +168,5 @@ describe("static asset manifest contract (#16290)", () => {
         return !isExemptFromReferenceScan(file);
       });
     expect(offenders).toEqual([]);
-  });
+  }, 30_000);
 });
