@@ -183,6 +183,11 @@ function getRuntimeKind(
   if (
     agent.status === "running" ||
     agent.status === "provisioning" ||
+    // Both states are post-provision lifecycle outcomes: stopped agents were
+    // deliberately suspended, while disconnected agents lost contact after
+    // provisioning. Neither should read as an agent that was never set up.
+    agent.status === "stopped" ||
+    agent.status === "disconnected" ||
     // A deactivated (sleeping) agent released its container but is still an
     // established sandbox with a restorable backup — "Not provisioned" would
     // misread as never-set-up.
