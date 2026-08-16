@@ -1,4 +1,5 @@
 // Handles v1 cloud API v1 apps id promote analytics route traffic with route-local auth expectations.
+import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
 import { Hono } from "hono";
 import { nextJsonFromCaughtError } from "@/lib/api/errors";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
@@ -8,6 +9,8 @@ import { advertisingService } from "@/lib/services/advertising";
 import { appsService } from "@/lib/services/apps";
 import { conversionTrackingService } from "@/lib/services/conversion-tracking";
 import type { AppEnv } from "@/types/cloud-worker-env";
+
+const MAX_ANALYTICS_DAYS = 90;
 
 async function __hono_GET(
   request: Request,
@@ -26,7 +29,19 @@ async function __hono_GET(
     }
 
     const url = new URL(request.url);
-    const days = parseInt(url.searchParams.get("days") || "30", 10);
+    const rawDays = url.searchParams.get("days");
+    let days = 30;
+    if (rawDays !== null) {
+      const parsed = parsePositiveInteger(rawDays);
+      if (
+        parsed === undefined ||
+        rawDays !== String(parsed) ||
+        parsed > MAX_ANALYTICS_DAYS
+      ) {
+        return Response.json({ error: "Invalid days" }, { status: 400 });
+      }
+      days = parsed;
+    }
     const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
     const campaigns = await advertisingService.listCampaigns(
