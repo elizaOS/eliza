@@ -5,6 +5,8 @@
  *   - `compose_morning`  — `period: today` by default
  *   - `compose_evening`  — `period: today` by default
  *   - `compose_weekly`   — `period: this_week` by default
+ *   - `recalibrate`          — demote repeatedly ignored item classes (reversible)
+ *   - `reset_recalibration`  — restore demoted item classes
  *
  * Pulls from each domain (calendar feed, inbox triage, life-domain due items,
  * money recurring charges) per the `include` arg, then runs a single LLM
@@ -36,6 +38,8 @@ import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   buildBriefEditorialContract,
   type LifeOpsBriefItemEngagementSummary,
+  recalibrateBriefItemClasses,
+  selectRecalibrationCandidates,
 } from "../lifeops/briefing/editorial-judgment.js";
 import {
   BRIEF_NARRATIVE_INSTRUCTIONS,
@@ -61,12 +65,18 @@ export {
 
 const ACTION_NAME = "BRIEF";
 
-const SUBACTIONS = [
+const COMPOSE_SUBACTIONS = [
   "compose_morning",
   "compose_evening",
   "compose_weekly",
 ] as const;
 
+const CONTROL_SUBACTIONS = ["recalibrate", "reset_recalibration"] as const;
+
+const SUBACTIONS = [...COMPOSE_SUBACTIONS, ...CONTROL_SUBACTIONS] as const;
+
+type ComposeSubaction = (typeof COMPOSE_SUBACTIONS)[number];
+type ControlSubaction = (typeof CONTROL_SUBACTIONS)[number];
 type Subaction = (typeof SUBACTIONS)[number];
 type BriefOptimizationTask = "morning_brief" | "meeting_prep";
 
@@ -81,6 +91,7 @@ const SIMILE_NAMES: readonly string[] = [
   "MEETING_PREP",
   "PREBRIEF",
   "MEETING_DOSSIER",
+  "RECALIBRATE_BRIEF",
 ];
 
 const SIMILE_TO_SUBACTION: Readonly<Record<string, Subaction>> = {
@@ -88,16 +99,19 @@ const SIMILE_TO_SUBACTION: Readonly<Record<string, Subaction>> = {
   EVENING_BRIEF: "compose_evening",
   WEEKLY_BRIEF: "compose_weekly",
   DAILY_DIGEST: "compose_evening",
+  RECALIBRATE_BRIEF: "recalibrate",
 };
 
-const SUBACTION_TO_KIND: Readonly<Record<Subaction, LifeOpsBriefingKind>> = {
+const SUBACTION_TO_KIND: Readonly<
+  Record<ComposeSubaction, LifeOpsBriefingKind>
+> = {
   compose_morning: "morning",
   compose_evening: "evening",
   compose_weekly: "weekly",
 };
 
 const SUBACTION_TO_DEFAULT_PERIOD: Readonly<
-  Record<Subaction, LifeOpsBriefingPeriod>
+  Record<ComposeSubaction, LifeOpsBriefingPeriod>
 > = {
   compose_morning: "today",
   compose_evening: "today",
@@ -119,6 +133,8 @@ interface BriefActionParameters {
   include?: BriefIncludeFlags;
   format?: "narrative" | "json";
   optimizationTask?: BriefOptimizationTask | string;
+  /** Optional exact item class targeted by recalibrate / reset_recalibration. */
+  itemClass?: string;
 }
 
 const INTERNAL_URL = new URL("http://127.0.0.1/");
@@ -393,6 +409,47 @@ async function loadEngagementSummariesFromLifeOps(args: {
 }
 
 /**
+ * Persist one `rendered` impression per surfaced (non-omitted) editorial item.
+ * Called only after the callback delivery of the composed brief resolved, so a
+ * failed delivery never fabricates visibility. Returns the number of rows
+ * written so callers and tests can assert the ledger reflects the delivery.
+ */
+async function recordRenderedImpressionsInLifeOps(args: {
+  runtime: IAgentRuntime;
+  briefing: LifeOpsBriefing;
+}): Promise<number> {
+  const repository = new LifeOpsRepository(args.runtime);
+  const itemsById = new Map(
+    args.briefing.editorial.items.map((item) => [item.itemId, item]),
+  );
+  let recorded = 0;
+  for (const decision of args.briefing.editorial.decisions) {
+    if (decision.action === "omit") continue;
+    const item = itemsById.get(decision.itemId);
+    if (!item) continue;
+    await repository.recordBriefItemEngagement({
+      agentId: args.runtime.agentId,
+      briefingId: args.briefing.id,
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "rendered",
+      eventAt: args.briefing.generatedAt,
+      weight: 0,
+      metadata: {
+        briefingKind: args.briefing.kind,
+        period: args.briefing.period,
+        decision: decision.action,
+      },
+    });
+    recorded += 1;
+  }
+  return recorded;
+}
+
+/**
  * Composer hooks — overridable for tests. Defaults compose from LifeOps'
  * structural services: calendar feed, MESSAGE triage, overview reminders, and
  * recurring payments. Unavailable sources degrade to empty arrays.
@@ -422,6 +479,11 @@ export interface BriefComposers {
   loadEngagementSummaries: (args: {
     runtime: IAgentRuntime;
   }) => Promise<readonly LifeOpsBriefItemEngagementSummary[]>;
+  /** Ledger write for delivered brief items; runs only after callback delivery. */
+  recordRenderedImpressions: (args: {
+    runtime: IAgentRuntime;
+    briefing: LifeOpsBriefing;
+  }) => Promise<number>;
 }
 
 const defaultComposers: BriefComposers = {
@@ -431,6 +493,7 @@ const defaultComposers: BriefComposers = {
   loadMoney: loadMoneyFromPayments,
   loadCompletedToday: loadCompletedTodayFromService,
   loadEngagementSummaries: loadEngagementSummariesFromLifeOps,
+  recordRenderedImpressions: recordRenderedImpressionsInLifeOps,
 };
 
 let activeComposers: BriefComposers = defaultComposers;
@@ -494,7 +557,7 @@ function resolveIncludeFlags(input: BriefIncludeFlags | undefined): {
 
 function resolvePeriod(
   params: BriefActionParameters,
-  subaction: Subaction,
+  subaction: ComposeSubaction,
 ): LifeOpsBriefingPeriod {
   const candidate =
     typeof params.period === "string"
@@ -630,7 +693,7 @@ async function composeNarrative(args: {
 
 async function assembleBriefing(args: {
   runtime: IAgentRuntime;
-  subaction: Subaction;
+  subaction: ComposeSubaction;
   period: LifeOpsBriefingPeriod;
   include: ReturnType<typeof resolveIncludeFlags>;
   format: "narrative" | "json";
@@ -704,6 +767,149 @@ async function assembleBriefing(args: {
   return briefing;
 }
 
+function normalizeItemClassParam(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Owner-facing recalibration verbs over the engagement ledger.
+ *
+ * Both verbs summarize only rows that exist at the command instant
+ * (`untilIso = commandAt`), so a delayed or replayed command can never attach
+ * owner intent to impressions rendered after it was issued. Candidate
+ * filtering happens before any write: a targeted `itemClass` command touches
+ * exactly that class, and an untargeted `recalibrate` demotes only classes
+ * the owner has repeatedly seen and never acted on. Demotion is expressed as
+ * an explicit `demoted` marker row and reversed by a `kept` marker, so every
+ * decision is visible in the ledger and reversible from chat.
+ */
+async function handleRecalibration(args: {
+  runtime: IAgentRuntime;
+  subaction: ControlSubaction;
+  itemClass: string | null;
+}): Promise<{
+  text: string;
+  data: ActionResult["data"];
+}> {
+  const repository = new LifeOpsRepository(args.runtime);
+  const commandAt = new Date().toISOString();
+  const summaries = await repository.summarizeBriefItemEngagements(
+    args.runtime.agentId,
+    { untilIso: commandAt },
+  );
+
+  const writeMarker = async (
+    itemClass: string,
+    eventType: "demoted" | "kept",
+    metadata: Record<string, unknown>,
+  ): Promise<void> => {
+    const rows = await repository.listBriefItemEngagements(
+      args.runtime.agentId,
+      { itemClass, untilIso: commandAt },
+    );
+    const anchor = rows.at(-1);
+    if (!anchor) return;
+    await repository.recordBriefItemEngagement({
+      agentId: args.runtime.agentId,
+      briefingId: anchor.briefingId,
+      itemId: anchor.itemId,
+      source: anchor.source,
+      kind: anchor.kind,
+      sourceId: anchor.sourceId,
+      itemClass,
+      eventType,
+      eventAt: commandAt,
+      weight: eventType === "demoted" ? -1 : 1,
+      metadata,
+    });
+  };
+
+  if (args.subaction === "recalibrate") {
+    if (
+      args.itemClass &&
+      !summaries.some((summary) => summary.itemClass === args.itemClass)
+    ) {
+      return {
+        text: `I have no engagement history for "${args.itemClass}", so there is nothing to recalibrate for it.`,
+        data: {
+          subaction: args.subaction,
+          error: "NO_ENGAGEMENT_HISTORY",
+          itemClass: args.itemClass,
+        },
+      };
+    }
+    const candidates = selectRecalibrationCandidates(
+      summaries,
+      args.itemClass ? { itemClass: args.itemClass } : {},
+    );
+    for (const candidate of candidates) {
+      await writeMarker(candidate.itemClass, "demoted", {
+        verb: "recalibrate",
+        requestedItemClass: args.itemClass,
+        renderedCount: candidate.renderedCount,
+        ignoredCount: candidate.ignoredCount,
+        actedOnCount: candidate.actedOnCount,
+      });
+    }
+    const alreadyDemoted = recalibrateBriefItemClasses(summaries);
+    if (candidates.length === 0) {
+      const suffix =
+        alreadyDemoted.length > 0
+          ? ` Currently demoted: ${alreadyDemoted.join(", ")}.`
+          : "";
+      return {
+        text: `Nothing new to recalibrate — no brief item class has enough unacknowledged history yet.${suffix}`,
+        data: {
+          subaction: args.subaction,
+          demotedItemClasses: [],
+          alreadyDemotedItemClasses: alreadyDemoted,
+        },
+      };
+    }
+    const lines = candidates.map(
+      (candidate) =>
+        `- ${candidate.itemClass} (surfaced ${candidate.renderedCount + candidate.ignoredCount} times, acted on ${candidate.actedOnCount})`,
+    );
+    return {
+      text: [
+        "Recalibrated your brief. Demoting these item classes in upcoming briefs:",
+        ...lines,
+        'This is reversible: say "reset the brief recalibration" (optionally naming the item class) to restore any of them.',
+      ].join("\n"),
+      data: {
+        subaction: args.subaction,
+        demotedItemClasses: candidates.map((c) => c.itemClass),
+        alreadyDemotedItemClasses: alreadyDemoted,
+      },
+    };
+  }
+
+  const demotedNow = recalibrateBriefItemClasses(summaries);
+  const targets = args.itemClass
+    ? demotedNow.filter((itemClass) => itemClass === args.itemClass)
+    : demotedNow;
+  for (const itemClass of targets) {
+    await writeMarker(itemClass, "kept", {
+      verb: "reset_recalibration",
+      requestedItemClass: args.itemClass,
+    });
+  }
+  if (targets.length === 0) {
+    return {
+      text: args.itemClass
+        ? `"${args.itemClass}" is not currently demoted, so there is nothing to restore.`
+        : "No brief item classes are currently demoted, so there is nothing to restore.",
+      data: { subaction: args.subaction, restoredItemClasses: [] },
+    };
+  }
+  return {
+    text: `Restored ${targets.join(", ")} to normal ranking in upcoming briefs.`,
+    data: { subaction: args.subaction, restoredItemClasses: targets },
+  };
+}
+
 const examples: ActionExample[][] = [
   [
     { name: "{{name1}}", content: { text: "Give me my morning brief." } },
@@ -740,9 +946,9 @@ export const briefAction: Action & {
     "surface:internal",
   ],
   description:
-    "Compose owner LifeOpsBriefing: morning/evening/weekly; calendar feed, inbox triage, life due, money recurring charges. Subactions: compose_morning, compose_evening, compose_weekly.",
+    "Compose owner LifeOpsBriefing: morning/evening/weekly; calendar feed, inbox triage, life due, money recurring charges. Subactions: compose_morning, compose_evening, compose_weekly, recalibrate (demote repeatedly ignored brief item classes; reversible), reset_recalibration (restore demoted classes).",
   descriptionCompressed:
-    "BRIEF compose_morning|compose_evening|compose_weekly; LifeOpsBriefing",
+    "BRIEF compose_morning|compose_evening|compose_weekly|recalibrate|reset_recalibration; LifeOpsBriefing",
   routingHint:
     'briefing/digest ("morning brief", "evening summary", "this week", "daily digest") -> BRIEF; one-domain read -> CALENDAR.feed, MESSAGE.triage, etc.',
   contexts: ["briefing", "calendar", "inbox", "tasks", "finance"],
@@ -753,8 +959,14 @@ export const briefAction: Action & {
     {
       name: "action",
       description:
-        "Brief op: compose_morning | compose_evening | compose_weekly.",
+        "Brief op: compose_morning | compose_evening | compose_weekly | recalibrate | reset_recalibration.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
+    },
+    {
+      name: "itemClass",
+      description:
+        "recalibrate/reset_recalibration only: exact brief item class to target, e.g. inbox:newsletter-digest. Omit to apply to every qualifying class.",
+      schema: { type: "string" as const },
     },
     {
       name: "period",
@@ -797,8 +1009,29 @@ export const briefAction: Action & {
     if (!subaction) {
       return {
         success: false,
-        text: "Tell me which briefing to compose: compose_morning, compose_evening, or compose_weekly.",
+        text: "Tell me which briefing operation to run: compose_morning, compose_evening, compose_weekly, recalibrate, or reset_recalibration.",
         data: { error: "MISSING_SUBACTION" },
+      };
+    }
+
+    if (subaction === "recalibrate" || subaction === "reset_recalibration") {
+      const outcome = await handleRecalibration({
+        runtime,
+        subaction,
+        itemClass: normalizeItemClassParam(params.itemClass),
+      });
+      await callback?.({
+        text: outcome.text,
+        source: "action",
+        action: ACTION_NAME,
+      });
+      return {
+        success: true,
+        text: outcome.text,
+        userFacingText: outcome.text,
+        verifiedUserFacing: true,
+        turnComplete: true,
+        data: outcome.data,
       };
     }
 
@@ -830,6 +1063,24 @@ export const briefAction: Action & {
       source: "action",
       action: ACTION_NAME,
     });
+
+    // Rendered impressions are truthful only after the delivery call above
+    // resolved: no callback means nothing was shown, and a rejected callback
+    // propagates before this point, so a failed delivery never writes rows.
+    if (callback) {
+      try {
+        await activeComposers.recordRenderedImpressions({ runtime, briefing });
+      } catch (error) {
+        // error-policy:J7 the engagement ledger is a learning signal; failing
+        // to persist it must not retract an already-delivered brief. The
+        // failure stays observable through RECENT_ERRORS instead of a silent
+        // gap in the owner-preference history.
+        runtime.reportError("Brief.recordRenderedImpressions", error, {
+          briefingId: briefing.id,
+          briefingKind: briefing.kind,
+        });
+      }
+    }
 
     return {
       success: true,
