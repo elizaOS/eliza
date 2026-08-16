@@ -128,12 +128,12 @@ const DURATION_CONTINUATION_PATTERN = new RegExp(
 const HALF_CONTINUATION_PATTERN = /^\s*(?:and|plus)\s+(?:a\s+)?half\b/i;
 
 const IMMEDIATE_REVISION_PATTERN = new RegExp(
-  String.raw`^\s*[,;:\-]?\s*(?:actually|instead)\s+(?:make|set|change)(?:\s+(?:it|that))?\s+(?:(?:for|to|in)\s+)?(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\b`,
+  String.raw`^\s*[,.;:!?\-]?\s*(?:but\s+)?(?:actually|instead)\s+(?:make|set|change)(?:\s+(?:it|that))?\s+(?:(?:for|to|in)\s+)?(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\b`,
   "i",
 );
 
 const LATER_CANCELLATION_PATTERN =
-  /\b(?:actually\s+)?(?:do\s+not|don['’]?t|dont|never)(?:\s+ever)?\s+(?:please\s+)?(?:remind\s+me|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder)\b/i;
+  /^\s*(?:[,.;:!?-]\s*|(?:but|however)\s+)?(?:actually\s+)?(?:(?:do\s+not|don['’]?t|dont|never)(?:\s+ever)?\s+(?:please\s+)?(?:remind\s+me|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder)\b|never\s+mind\b|cancel(?:\s+(?:that|it|the\s+reminder))?\b)/i;
 
 function extendDuration(text: string, candidate: DelayCandidate): void {
   let cursor = candidate.end;
