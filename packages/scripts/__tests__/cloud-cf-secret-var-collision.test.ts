@@ -53,6 +53,9 @@ const PUBLISHED_WORKER_SECRETS: Array<{ name: string; envs: string[] }> = [
   { name: "STAGING_SESSION_EXCHANGE_ENABLED", envs: ["staging"] },
   // activate-personal-shared-telegram-edge.yml (staging-only protected cutover)
   { name: "PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED", envs: ["staging"] },
+  // self-hosted TEI embeddings sidecar bearer key (set out-of-band on the
+  // Worker; language-model.ts reads it — must never appear as a [vars] entry)
+  { name: "LOCAL_EMBEDDINGS_API_KEY", envs: ["staging"] },
 ];
 
 describe("Worker secret/var collision lint (CF error 10053 class)", () => {
