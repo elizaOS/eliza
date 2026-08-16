@@ -71,10 +71,6 @@ export function ElizaAgentTabs({ agentId, children }: ElizaAgentTabsProps) {
     activateTab(TABS[nextIndex], nextIndex);
   };
 
-  const activeIndex = TABS.indexOf(activeTab);
-  const activeTabId = `${instanceId}-tab-${activeIndex}`;
-  const activePanelId = `${instanceId}-panel-${activeIndex}`;
-
   return (
     <div className="space-y-6">
       <div
@@ -113,9 +109,20 @@ export function ElizaAgentTabs({ agentId, children }: ElizaAgentTabsProps) {
         ))}
       </div>
 
-      <div id={activePanelId} role="tabpanel" aria-labelledby={activeTabId}>
-        {panels[activeTab]}
-      </div>
+      {TABS.map((tab, index) => {
+        const isActive = activeTab === tab;
+        return (
+          <div
+            key={tab}
+            id={`${instanceId}-panel-${index}`}
+            role="tabpanel"
+            aria-labelledby={`${instanceId}-tab-${index}`}
+            hidden={!isActive}
+          >
+            {isActive ? panels[tab] : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
