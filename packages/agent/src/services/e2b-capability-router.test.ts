@@ -29,7 +29,10 @@ class FakeFiles {
   readonly readCalls: string[] = [];
   readonly writeCalls: Array<{ path: string; text: string }> = [];
 
-  constructor(private readonly entries: SandboxEntryInfo[] = []) {}
+  constructor(
+    private readonly entries: SandboxEntryInfo[] = [],
+    private readonly readText = "file text",
+  ) {}
 
   async list(path: string): Promise<SandboxEntryInfo[]> {
     this.listCalls.push(path);
@@ -50,7 +53,7 @@ class FakeFiles {
   ): Promise<string | Uint8Array> {
     this.readCalls.push(path);
     if (opts?.format === "bytes") return new TextEncoder().encode("file text");
-    return "file text";
+    return this.readText;
   }
 
   async write(
@@ -84,8 +87,8 @@ class FakeSandbox implements E2BSandboxClient {
   readonly commands = new FakeCommands();
   readonly kill = vi.fn(async () => {});
 
-  constructor(entries: SandboxEntryInfo[] = []) {
-    this.files = new FakeFiles(entries);
+  constructor(entries: SandboxEntryInfo[] = [], readText?: string) {
+    this.files = new FakeFiles(entries, readText);
   }
 }
 
@@ -614,6 +617,56 @@ describe("E2BRemoteCapabilityRouterService", () => {
     await expect(service.availability()).resolves.toMatchObject({
       available: true,
       capabilities: { fs: true, pty: true, git: true, model: false },
+    });
+  });
+
+  it.each([
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    Number.MAX_SAFE_INTEGER + 1,
+  ])("rejects an invalid fs.readText maxBytes value: %s", async (maxBytes) => {
+    const factory = new FakeFactory();
+    const service = new E2BRemoteCapabilityRouterService(
+      makeRuntime(),
+      makeConfig(),
+      factory,
+    );
+
+    await expect(
+      service.fs.readText({ path: "/repo/README.md", maxBytes }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_REQUEST_FAILED",
+      capability: "fs",
+      method: "fs.readText",
+      message: "fs.readText maxBytes must be a positive safe integer.",
+    });
+    expect(factory.configs).toHaveLength(0);
+  });
+
+  it("truncates at a complete UTF-8 code point within maxBytes", async () => {
+    const service = new E2BRemoteCapabilityRouterService(
+      makeRuntime(),
+      makeConfig(),
+      new FakeFactory(new FakeSandbox([], "éclair")),
+    );
+
+    await expect(
+      service.fs.readText({ path: "/repo/README.md", maxBytes: 1 }),
+    ).resolves.toMatchObject({
+      text: "",
+      size: 7,
+      truncated: true,
+    });
+    await expect(
+      service.fs.readText({ path: "/repo/README.md", maxBytes: 3 }),
+    ).resolves.toMatchObject({
+      text: "éc",
+      size: 7,
+      truncated: true,
     });
   });
 
