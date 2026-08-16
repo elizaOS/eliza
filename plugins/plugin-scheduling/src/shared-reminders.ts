@@ -19,6 +19,7 @@ import type {
 
 /** Dedicated runtimes route imported Shared reminders through Cloud's trusted gateway. */
 export const SHARED_CUTOVER_GATEWAY_CHANNEL = "shared_gateway_dm";
+export const SHARED_REMINDER_MAX_TEXT_LENGTH = 2000;
 
 export const SHARED_REMINDERS_EDGE_COMPATIBILITY = {
   target: "edge",
@@ -28,10 +29,65 @@ export const SHARED_REMINDERS_EDGE_COMPATIBILITY = {
   requiredSecrets: [],
 } as const;
 
-export interface SharedReminderDelivery {
-  platform: "telegram";
-  project: string;
-  chatId: string;
+export type SharedReminderDelivery =
+  | {
+      platform: "telegram";
+      project: string;
+      chatId: string;
+    }
+  | {
+      platform: "blooio";
+      project: string;
+      phoneNumber: string;
+    }
+  | {
+      platform: "discord";
+      discordUserId: string;
+    };
+
+/** Validates the server-owned private destination stored with a Shared reminder. */
+export function parseSharedReminderDelivery(
+  value: unknown,
+): SharedReminderDelivery | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const delivery = value as Record<string, unknown>;
+  if (
+    delivery.platform === "telegram" &&
+    typeof delivery.project === "string" &&
+    /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(delivery.project) &&
+    typeof delivery.chatId === "string" &&
+    /^-?\d{1,20}$/.test(delivery.chatId)
+  ) {
+    return {
+      platform: "telegram",
+      project: delivery.project,
+      chatId: delivery.chatId,
+    };
+  }
+  if (
+    delivery.platform === "blooio" &&
+    typeof delivery.project === "string" &&
+    /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(delivery.project) &&
+    typeof delivery.phoneNumber === "string" &&
+    /^\+[1-9]\d{6,14}$/.test(delivery.phoneNumber)
+  ) {
+    return {
+      platform: "blooio",
+      project: delivery.project,
+      phoneNumber: delivery.phoneNumber,
+    };
+  }
+  if (
+    delivery.platform === "discord" &&
+    typeof delivery.discordUserId === "string" &&
+    /^\d{1,32}$/.test(delivery.discordUserId)
+  ) {
+    return {
+      platform: "discord",
+      discordUserId: delivery.discordUserId,
+    };
+  }
+  return undefined;
 }
 
 export interface SharedRemindersEdgePluginOptions {
@@ -126,12 +182,8 @@ export function createSharedRemindersEdgeAction(
   options: SharedRemindersEdgePluginOptions,
 ): Action {
   const now = options.now ?? (() => new Date());
-  const delivery = {
-    platform: options.delivery.platform,
-    project: options.delivery.project.trim(),
-    chatId: options.delivery.chatId.trim(),
-  };
-  if (!delivery.project || !delivery.chatId) {
+  const delivery = parseSharedReminderDelivery(options.delivery);
+  if (!delivery) {
     throw new Error(
       "Shared reminders require a trusted current-DM destination",
     );
@@ -237,6 +289,12 @@ export function createSharedRemindersEdgeAction(
         const body = textParameter(input, "reminderText", "text", "body");
         if (!body)
           return await actionFailure("Reminder text is required.", callback);
+        if (body.length > SHARED_REMINDER_MAX_TEXT_LENGTH) {
+          return await actionFailure(
+            `Reminder text must be ${SHARED_REMINDER_MAX_TEXT_LENGTH} characters or fewer.`,
+            callback,
+          );
+        }
         const trigger = reminderTrigger(input, now());
         if (!trigger) {
           return await actionFailure(

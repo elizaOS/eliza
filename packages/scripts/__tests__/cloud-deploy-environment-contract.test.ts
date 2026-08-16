@@ -92,6 +92,7 @@ const requiredAuthWorkerSecretNames = [
   "STEWARD_REQUEST_SIGNING_SECRET",
   "STEWARD_PLATFORM_KEYS",
   "STEWARD_TENANT_API_KEY",
+  "GATEWAY_INTERNAL_SECRET",
 ] as const;
 
 describe("canonical cloud deployment environment contract", () => {
@@ -106,6 +107,23 @@ describe("canonical cloud deployment environment contract", () => {
 
     expect(staging).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
     expect(production).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
+  });
+
+  test("keeps Shared Discord reminder delivery bound across Worker deploys", () => {
+    const staging = cloudApiWranglerSource.slice(
+      cloudApiWranglerSource.indexOf("[env.staging.vars]"),
+      cloudApiWranglerSource.indexOf("[env.production.vars]"),
+    );
+    const production = cloudApiWranglerSource.slice(
+      cloudApiWranglerSource.indexOf("[env.production.vars]"),
+    );
+
+    expect(staging).toContain(
+      'ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://gateway-discord-staging-staging.up.railway.app"',
+    );
+    expect(production).toContain(
+      'ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://gateway-discord-production.up.railway.app"',
+    );
   });
 
   test("keeps the fixed SlopHub cutover behind a reviewed production plan", () => {

@@ -9,6 +9,7 @@ import type {
 } from "./scheduled-task/types.js";
 import {
   createSharedRemindersEdgePlugin,
+  parseSharedReminderDelivery,
   type SharedRemindersEdgePluginOptions,
 } from "./shared-reminders.js";
 
@@ -53,6 +54,42 @@ function harness(): {
 }
 
 describe("Shared reminders edge plugin", () => {
+  it("accepts only trusted private Telegram, Blooio, and Discord destinations", () => {
+    expect(
+      parseSharedReminderDelivery({
+        platform: "blooio",
+        project: "eliza-app",
+        phoneNumber: "+15551234567",
+      }),
+    ).toEqual({
+      platform: "blooio",
+      project: "eliza-app",
+      phoneNumber: "+15551234567",
+    });
+    expect(
+      parseSharedReminderDelivery({
+        platform: "discord",
+        discordUserId: "123456789012345678",
+      }),
+    ).toEqual({
+      platform: "discord",
+      discordUserId: "123456789012345678",
+    });
+    expect(
+      parseSharedReminderDelivery({
+        platform: "discord",
+        discordUserId: "guild:attacker",
+      }),
+    ).toBeUndefined();
+    expect(
+      parseSharedReminderDelivery({
+        platform: "blooio",
+        project: "eliza-app",
+        phoneNumber: "15551234567",
+      }),
+    ).toBeUndefined();
+  });
+
   it("creates one canonical task and pins delivery to the trusted current DM", async () => {
     const { options, schedule } = harness();
     const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
@@ -100,6 +137,26 @@ describe("Shared reminders edge plugin", () => {
       { id: "message-2" } as Memory,
       undefined,
       { parameters: { operation: "create", reminderText: "Call mom someday" } },
+    );
+
+    expect(result).toMatchObject({ success: false });
+    expect(schedule).not.toHaveBeenCalled();
+  });
+
+  it("rejects reminder text above the connector-safe limit", async () => {
+    const { options, schedule } = harness();
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+    const result = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "message-long" } as Memory,
+      undefined,
+      {
+        parameters: {
+          operation: "create",
+          reminderText: "x".repeat(2001),
+          inMinutes: 2,
+        },
+      },
     );
 
     expect(result).toMatchObject({ success: false });

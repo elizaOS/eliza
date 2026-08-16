@@ -23,6 +23,7 @@ import {
   createSchedulingSqlScheduledTaskLogStore,
   createSchedulingSqlScheduledTaskStore,
   listDueScheduledTaskRefs,
+  listRecoverableScheduledTaskRefs,
 } from "./store.js";
 import type { ScheduledTask } from "./types.js";
 
@@ -287,6 +288,68 @@ describe("scheduling SQL persistence", () => {
           firedAtIso: "2026-07-17T09:00:00.000Z",
         }),
       ).resolves.toEqual({ kind: "raced" });
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "leases only stale unsettled reminder claims for canonical recovery",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      await harness.pg.query(`
+        INSERT INTO app_scheduling.life_scheduled_tasks (
+          id, agent_id, kind, prompt_instructions, trigger_json, priority,
+          respects_global_pause, state_json, source, created_by, owner_visible,
+          metadata_json, next_fire_at, created_at, updated_at
+        ) VALUES
+          ('stale', 'agent-sql-persist', 'reminder', 'stale', '{"kind":"once","atIso":"2026-07-17T09:00:00.000Z"}', 'medium', TRUE, '{"status":"fired","firedAt":"2026-07-17T09:00:00.000Z","followupCount":0}', 'user_chat', 'owner', TRUE, '{"dispatchIdempotencyKey":"stable-occurrence"}', NULL, '2026-07-17T08:00:00.000Z', '2026-07-17T09:00:00.000Z'),
+          ('fresh', 'agent-sql-persist', 'reminder', 'fresh', '{"kind":"once","atIso":"2026-07-17T09:01:00.000Z"}', 'medium', TRUE, '{"status":"fired","firedAt":"2026-07-17T09:01:00.000Z","followupCount":0}', 'user_chat', 'owner', TRUE, '{"dispatchIdempotencyKey":"fresh-occurrence"}', NULL, '2026-07-17T08:00:00.000Z', '2026-07-17T09:01:30.000Z'),
+          ('settled', 'agent-sql-persist', 'reminder', 'settled', '{"kind":"once","atIso":"2026-07-17T08:59:00.000Z"}', 'medium', TRUE, '{"status":"fired","firedAt":"2026-07-17T08:59:00.000Z","followupCount":0}', 'user_chat', 'owner', TRUE, '{"lastDispatchResult":{"ok":true}}', NULL, '2026-07-17T08:00:00.000Z', '2026-07-17T08:59:00.000Z')
+      `);
+      const recoverable = await listRecoverableScheduledTaskRefs(
+        async (sql) =>
+          (await harness.pg.query<Record<string, unknown>>(sql)).rows,
+        { updatedBeforeIso: "2026-07-17T09:01:00.000Z" },
+      );
+      expect(recoverable).toEqual([
+        {
+          agentId: "agent-sql-persist",
+          taskId: "stale",
+          firedAtIso: "2026-07-17T09:00:00.000Z",
+        },
+      ]);
+
+      const dispatchKeys: unknown[] = [];
+      registerScheduledTaskRunnerDeps(harness.runtime, (runtime, agentId) => ({
+        store: createSchedulingSqlScheduledTaskStore({ runtime, agentId }),
+        logStore: createSchedulingSqlScheduledTaskLogStore({
+          runtime,
+          agentId,
+        }),
+        dispatcher: {
+          async dispatch(record): Promise<DispatchResult> {
+            dispatchKeys.push(record.metadata?.dispatchIdempotencyKey);
+            return { ok: true, messageId: "provider-receipt" };
+          },
+        },
+        ownerFacts: () => ({ timezone: "UTC" }),
+        globalPause: { current: async () => ({ active: false }) },
+        activity: { hasSignalSince: () => false },
+        subjectStore: { wasUpdatedSince: () => false },
+      }));
+      await startService(harness);
+      const runner = getScheduledTaskRunner(harness.runtime, {
+        agentId: harness.runtime.agentId,
+        now: () => new Date("2026-07-17T09:02:00.000Z"),
+      });
+      const staleRef = recoverable[0];
+      if (!staleRef) throw new Error("expected stale recovery candidate");
+      const outcome = await runner.fireWithResult("stale", {
+        recoverFiredAtIso: staleRef.firedAtIso,
+      });
+      expect(outcome.kind).toBe("fired");
+      expect(dispatchKeys).toEqual(["stable-occurrence"]);
     },
     SQL_PERSISTENCE_TEST_TIMEOUT_MS,
   );
