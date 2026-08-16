@@ -501,6 +501,95 @@ describe("Shared Eliza Workerd runtime", () => {
     ).toBe(true);
   });
 
+  test("projects durable history into RECENT_MESSAGES in chronological order", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({
+        id: "chatcmpl-shared-history-order",
+        object: "chat.completion",
+        created: 0,
+        model: "gemma-4-31b",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "shared-history-order-response",
+                  type: "function",
+                  function: {
+                    name: "HANDLE_RESPONSE",
+                    arguments: JSON.stringify({
+                      shouldRespond: "RESPOND",
+                      thought: "The transcript is chronological.",
+                      contexts: ["simple"],
+                      intents: [],
+                      candidateActionNames: [],
+                      replyText: "history received",
+                      replyEffectStatus: "none",
+                      facts: [],
+                      relationships: [],
+                      addressedTo: [],
+                    }),
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+        usage: { prompt_tokens: 40, completion_tokens: 10, total_tokens: 50 },
+      });
+    }) as typeof fetch;
+
+    const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+    await runSharedAgentTurn({
+      character: {
+        name: "Shared Eliza",
+        system: "You are Eliza.",
+        model: "gemma-4-31b",
+      },
+      history: [
+        {
+          id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+          role: "user",
+          content: "legacy chronology marker one",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000001",
+          role: "assistant",
+          content: "durable chronology marker two",
+          createdAt: Date.now() - 24 * 60 * 60_000,
+        },
+        {
+          id: "f0000000-0000-4000-8000-000000000003",
+          role: "user",
+          content: "legacy chronology marker three",
+        },
+      ],
+      message: "summarize the previous three messages",
+      execution: {
+        engine: "eliza-runtime",
+        agentKey: "personal:d6b81293-6440-4ec1-ae46-8fed715c1570",
+      },
+    });
+
+    expect(requests).toHaveLength(1);
+    const prompt = JSON.stringify(requests[0].messages);
+    const markers = [
+      "legacy chronology marker one",
+      "durable chronology marker two",
+      "legacy chronology marker three",
+      "summarize the previous three messages",
+    ];
+    const positions = markers.map((marker) => prompt.indexOf(marker));
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((left, right) => left - right));
+  });
+
   test("plans WEB_SEARCH and grounds the final reply in the free search result", async () => {
     const modelRequests: Array<Record<string, unknown>> = [];
     const searchRequests: Array<Record<string, unknown>> = [];

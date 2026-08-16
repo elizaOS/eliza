@@ -251,6 +251,46 @@ function runtimeMemoryId(message: SharedTurnMessage, index: number) {
   );
 }
 
+function projectedHistoryTimestamps(history: SharedTurnMessage[]): number[] {
+  const anchors: Array<{ index: number; timestamp: number }> = [];
+  for (const [index, message] of history.entries()) {
+    const timestamp = message.createdAt;
+    if (
+      typeof timestamp === "number" &&
+      Number.isFinite(timestamp) &&
+      timestamp > 0 &&
+      (anchors.length === 0 || timestamp > anchors[anchors.length - 1].timestamp)
+    ) {
+      anchors.push({ index, timestamp });
+    }
+  }
+  if (anchors.length === 0) {
+    const epoch = Date.now() - 5 * 60_000 - history.length;
+    return history.map((_, index) => epoch + index);
+  }
+
+  const timestamps = new Array<number>(history.length);
+  for (const anchor of anchors) timestamps[anchor.index] = anchor.timestamp;
+  const first = anchors[0];
+  for (let index = 0; index < first.index; index += 1) {
+    timestamps[index] = first.timestamp - (first.index - index);
+  }
+  for (let anchorIndex = 0; anchorIndex < anchors.length - 1; anchorIndex += 1) {
+    const left = anchors[anchorIndex];
+    const right = anchors[anchorIndex + 1];
+    const span = right.index - left.index;
+    for (let index = left.index + 1; index < right.index; index += 1) {
+      timestamps[index] =
+        left.timestamp + ((right.timestamp - left.timestamp) * (index - left.index)) / span;
+    }
+  }
+  const last = anchors.at(-1)!;
+  for (let index = last.index + 1; index < history.length; index += 1) {
+    timestamps[index] = last.timestamp + (index - last.index);
+  }
+  return timestamps;
+}
+
 async function executeSharedElizaRuntimeTurn(
   input: RunSharedAgentTurnInput & { agentKey: string; model: string },
   onStreamChunk?: (chunk: string) => void | Promise<void>,
@@ -391,10 +431,11 @@ async function executeSharedElizaRuntimeTurn(
       type: ChannelType.DM,
     });
     if (input.history.length > 0) {
+      const historyTimestamps = projectedHistoryTimestamps(input.history);
       await adapter.createMemories(
-        input.history.map((message, index) => ({
-          tableName: "messages",
-          memory: createMessageMemory({
+        input.history.map((message, index) => {
+          const createdAt = historyTimestamps[index];
+          const memory = createMessageMemory({
             id: runtimeMemoryId(message, index),
             entityId: message.role === "assistant" ? runtime.agentId : entityId,
             agentId: runtime.agentId,
@@ -404,8 +445,17 @@ async function executeSharedElizaRuntimeTurn(
               source: "shared-runtime",
               channelType: ChannelType.DM,
             },
-          }),
-        })),
+          });
+          memory.createdAt = createdAt;
+          if (!memory.metadata) {
+            throw new Error("Projected Shared message omitted canonical metadata");
+          }
+          memory.metadata.timestamp = createdAt;
+          return {
+            tableName: "messages",
+            memory,
+          };
+        }),
       );
     }
 
