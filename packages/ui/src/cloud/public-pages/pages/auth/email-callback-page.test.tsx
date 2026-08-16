@@ -23,7 +23,13 @@ const callbackState = vi.hoisted(() => ({
         email: string,
       ) => Promise<{ token: string; refreshToken?: string }>
     >(),
-  pendingReturnTo: null as string | null,
+  resend: vi.fn(),
+  publishComplete: vi.fn(),
+  isAuthenticated: false,
+}));
+
+const sessionSpies = vi.hoisted(() => ({
+  sync: vi.fn(),
 }));
 
 // Stub StewardAuthProvider with a marker that ALSO supplies the Steward context
@@ -41,7 +47,7 @@ vi.mock("../../../shell/StewardProvider", async () => {
       <div data-testid="steward-auth-provider">
         <LocalStewardAuthContext.Provider
           value={{
-            isAuthenticated: false,
+            isAuthenticated: callbackState.isAuthenticated,
             isLoading: false,
             user: null,
             session: null,
@@ -63,15 +69,20 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
 }));
 vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
 vi.mock("../../lib/steward-session", () => ({
-  syncStewardSessionCookie: vi.fn(),
+  syncStewardSessionCookie: sessionSpies.sync,
 }));
-vi.mock("../../lib/login-return-to", () => ({
-  defaultLoginReturnTo: () => "/join",
-  consumePendingOAuthReturnTo: () => {
-    const value = callbackState.pendingReturnTo;
-    callbackState.pendingReturnTo = null;
-    return value;
-  },
+vi.mock("../../lib/steward-email-login", () => ({
+  startStewardEmailLogin: callbackState.resend,
+}));
+vi.mock("../../lib/steward-email-login-complete", () => ({
+  publishStewardEmailLoginComplete: callbackState.publishComplete,
+}));
+vi.mock("../../../shell/steward-config", () => ({
+  configuredStewardTenantId: () => "elizacloud",
+  DEFAULT_STEWARD_TENANT_ID: "elizacloud",
+}));
+vi.mock("../../../shell/steward-url", () => ({
+  resolveBrowserStewardApiUrl: () => "https://api.example.test/steward",
 }));
 vi.mock("../../../../cloud-ui/components/auth/authorize-return", () => ({
   readStoredAppAuthorizeReturnTo: () => null,
@@ -85,13 +96,25 @@ vi.mock("../../../../cloud-ui/components/brand/brand-button", () => ({
   ),
 }));
 
+import { storePendingOAuthReturnTo } from "../../lib/login-return-to";
 import EmailCallbackPage, {
   resolveEmailCallbackDestination,
 } from "./email-callback-page";
 
 beforeEach(() => {
   callbackState.verifyEmailCallback.mockReset();
-  callbackState.pendingReturnTo = null;
+  callbackState.resend.mockReset();
+  callbackState.resend.mockResolvedValue({
+    expiresAt: Date.now() + 600_000,
+    challengeId: "fresh-challenge",
+    pollSecret: "fresh-secret",
+  });
+  callbackState.publishComplete.mockReset();
+  callbackState.isAuthenticated = false;
+  sessionSpies.sync.mockReset();
+  sessionSpies.sync.mockResolvedValue(undefined);
+  window.sessionStorage.clear();
+  window.localStorage.clear();
 });
 
 afterEach(() => {
@@ -189,6 +212,12 @@ describe("EmailCallbackPage", () => {
       ).toBeTruthy(),
     );
     expect(screen.queryByText("Invalid or expired magic link")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Resend sign-in email" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Back to login" }).getAttribute("href"),
+    ).toBe("/login");
 
     firstMount.unmount();
     render(
@@ -205,6 +234,146 @@ describe("EmailCallbackPage", () => {
     );
   });
 
+  it("resends an expired callback as a fresh challenge and shows the cooldown", async () => {
+    const user = userEvent.setup();
+    callbackState.verifyEmailCallback.mockRejectedValue(
+      new StewardApiError("expired", 410),
+    );
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/auth/callback/email?token=expired-token&email=person%40example.com",
+        ]}
+      >
+        <EmailCallbackPage />
+      </MemoryRouter>,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "Resend sign-in email" }),
+    );
+
+    await waitFor(() =>
+      expect(callbackState.resend).toHaveBeenCalledWith(
+        {
+          baseUrl: "https://api.example.test/steward",
+          tenantId: "elizacloud",
+        },
+        "person@example.com",
+      ),
+    );
+    expect(
+      await screen.findByText("A new sign-in email is on its way."),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: /Resend in 30s/ })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("publishes a token-free completion only after the shared cookie is synced", async () => {
+    storePendingOAuthReturnTo(
+      new URLSearchParams({ returnTo: "/get-started" }),
+    );
+    callbackState.verifyEmailCallback.mockResolvedValue({
+      token: "private-session-token",
+      refreshToken: "private-refresh-token",
+    });
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/auth/callback/email?token=one-time-token&email=person%40example.com",
+        ]}
+      >
+        <EmailCallbackPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(callbackState.publishComplete).toHaveBeenCalledWith(
+        "person@example.com",
+        "/get-started",
+      ),
+    );
+    expect(sessionSpies.sync).toHaveBeenCalledWith(
+      "private-session-token",
+      "private-refresh-token",
+    );
+    expect(sessionSpies.sync.mock.invocationCallOrder[0]).toBeLessThan(
+      callbackState.publishComplete.mock.invocationCallOrder[0],
+    );
+    expect(
+      JSON.stringify(callbackState.publishComplete.mock.calls),
+    ).not.toContain("private-session-token");
+  });
+
+  it("falls back safely when callback state contains a backslash authority", async () => {
+    const hostile = JSON.stringify({
+      returnTo: "/\\\\evil.example",
+      expiresAt: Date.now() + 60_000,
+    });
+    window.sessionStorage.setItem("eliza.login.oauth.returnTo", hostile);
+    window.localStorage.setItem("eliza.login.oauth.returnTo", hostile);
+    callbackState.verifyEmailCallback.mockResolvedValue({
+      token: "private-session-token",
+    });
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/auth/callback/email?token=one-time-token&email=person%40example.com",
+        ]}
+      >
+        <EmailCallbackPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(callbackState.publishComplete).toHaveBeenCalledWith(
+        "person@example.com",
+        "/join",
+      ),
+    );
+    expect(
+      window.sessionStorage.getItem("eliza.login.oauth.returnTo"),
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem("eliza.login.oauth.returnTo"),
+    ).toBeNull();
+  });
+
+  it("rejects a replayed callback without broadcasting when this tab already has a session", async () => {
+    callbackState.isAuthenticated = true;
+    callbackState.verifyEmailCallback.mockRejectedValue(
+      new StewardApiError("already used", 410),
+    );
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/auth/callback/email?token=replayed-token&email=person%40example.com",
+        ]}
+      >
+        <EmailCallbackPage />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText(
+        "That sign-in link expired or was already used. Please sign in again.",
+      ),
+    ).toBeTruthy();
+    expect(callbackState.verifyEmailCallback).toHaveBeenCalledWith(
+      "replayed-token",
+      "person@example.com",
+    );
+    expect(sessionSpies.sync).not.toHaveBeenCalled();
+    expect(callbackState.publishComplete).not.toHaveBeenCalled();
+  });
+
   it("restores a pending messaging continuation after magic-link verification", async () => {
     expect(resolveEmailCallbackDestination(null, "/get-started")).toBe(
       "/get-started",
@@ -219,7 +388,9 @@ describe("EmailCallbackPage", () => {
 
   it("continues to a same-origin return path without replacing the document", async () => {
     const user = userEvent.setup();
-    callbackState.pendingReturnTo = "/get-started";
+    storePendingOAuthReturnTo(
+      new URLSearchParams({ returnTo: "/get-started" }),
+    );
     callbackState.verifyEmailCallback.mockResolvedValue({
       token: "verified-token",
     });
