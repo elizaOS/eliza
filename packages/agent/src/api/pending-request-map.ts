@@ -1,11 +1,12 @@
 /**
- * PendingRequestMap — correlates async agent→view interact requests with their results.
+ * Correlates server-initiated requests with asynchronous frontend results.
  *
- * The server registers a pending request before broadcasting the WS message to
- * the frontend.  When the frontend sends back a `view:interact:result` message
- * the server calls `resolve()` which fulfils the waiting promise.  A timer
- * fires automatically after `timeoutMs` ms to avoid hanging the HTTP handler.
+ * The server registers before broadcasting a WebSocket message so a fast
+ * frontend response cannot outrun the waiter. Each request id owns one slot;
+ * registering it again rejects the displaced waiter before replacing it.
  */
+
+import { ElizaError } from "@elizaos/core";
 
 export interface ViewInteractResult {
   requestId: string;
@@ -31,12 +32,30 @@ export class PendingRequestMap {
   waitFor(requestId: string, timeoutMs: number): Promise<ViewInteractResult> {
     return new Promise<ViewInteractResult>((resolve, reject) => {
       const existing = this.map.get(requestId);
-      if (existing) clearTimeout(existing.timer);
+      if (existing) {
+        clearTimeout(existing.timer);
+        existing.reject(
+          new ElizaError(
+            `Pending request "${requestId}" was superseded by a newer waiter`,
+            {
+              code: "PENDING_REQUEST_SUPERSEDED",
+              context: { requestId },
+              severity: "ephemeral",
+            },
+          ),
+        );
+      }
       const timer = setTimeout(() => {
+        if (this.map.get(requestId)?.timer !== timer) return;
         this.map.delete(requestId);
         reject(
-          new Error(
-            `View interact request "${requestId}" timed out after ${timeoutMs}ms`,
+          new ElizaError(
+            `Pending request "${requestId}" timed out after ${timeoutMs}ms`,
+            {
+              code: "PENDING_REQUEST_TIMEOUT",
+              context: { requestId, timeoutMs },
+              severity: "ephemeral",
+            },
           ),
         );
       }, timeoutMs);
