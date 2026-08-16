@@ -121,7 +121,10 @@ export interface UseRealtimeVoiceSessionOptions {
   /**
    * How long a session may sit in connecting/ready (per stage: socket connect,
    * then server-ready → mic capture) before it is failed into a retryable
-   * `transport` error instead of hanging. Default 15s.
+   * `transport` error instead of hanging. Default 30s. The initial budget
+   * includes the sequential consent + mint control-plane requests before the
+   * socket exists, so it must tolerate ordinary cross-region latency without
+   * cancelling a valid mint at the response boundary.
    */
   readyTimeoutMs?: number;
   /** Live speaker attribution passthrough for the status bar. Optional. */
@@ -275,7 +278,7 @@ const LIVE_SESSION_PHASES: ReadonlySet<string> = new Set([
   "interrupted",
 ]);
 
-const DEFAULT_READY_TIMEOUT_MS = 15_000;
+const DEFAULT_READY_TIMEOUT_MS = 30_000;
 
 function normalizeVoiceIdentityId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";

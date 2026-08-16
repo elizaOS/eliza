@@ -24,7 +24,9 @@ test.describe("normal-chat realtime voice with real browser audio", () => {
   }, testInfo) => {
     test.setTimeout(180_000);
     const pageErrors: string[] = [];
+    const consoleMessages: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => consoleMessages.push(message.text()));
     // The developer can keep the same-origin preview open while this opt-in
     // proof runs. Prevent its tab-sync channel from switching this page away
     // from the isolated conversation; voice still uses the real WebSocket.
@@ -94,6 +96,7 @@ test.describe("normal-chat realtime voice with real browser audio", () => {
 
     await seedAppStorage(page, {
       "eliza:chat:activeConversationId": conversationId,
+      "eliza:voice:debug": "1",
     });
     // This test can run after other live smoke specs in the same browser
     // project. Make the isolated room selection unconditional at document
@@ -133,17 +136,31 @@ test.describe("normal-chat realtime voice with real browser audio", () => {
       // uplink after the first authoritative Ink final so the fixture cannot
       // barge into its own answer; silence packets continue so the normal hot
       // session and exact browser playout path remain exercised.
-      // The durable user bubble is the end-user proof of authoritative STT.
-      // HUD rows intentionally use a bounded ring and can evict stt_final if
-      // a fake-capture loop produces later diagnostics before this waiter runs.
+      // Mute from the content-free debug mark immediately after the first
+      // authoritative final. Waiting for the durable bubble before muting can
+      // let Chromium loop the WAV while persistence is still in flight and
+      // acoustically interrupt the very turn this test is trying to prove.
+      // HUD rows intentionally use a bounded ring, while console capture keeps
+      // the same content-free mark for the duration of the run.
       await expect
-        .poll(() => knownPhraseTurns.count(), { timeout: 90_000 })
-        .toBeGreaterThan(0);
+        .poll(
+          () =>
+            consoleMessages.some((message) =>
+              message.includes("[eliza][voice-capture] realtime:stt_final"),
+            ),
+          { timeout: 90_000 },
+        )
+        .toBe(true);
       const mute = page.getByRole("button", { name: "mute microphone" });
       await mute.click();
       await expect(
         page.getByRole("button", { name: "unmute microphone" }),
       ).toBeVisible({ timeout: 15_000 });
+      // The durable user bubble is the end-user proof that authoritative Ink
+      // text reached the selected runtime conversation.
+      await expect
+        .poll(() => knownPhraseTurns.count(), { timeout: 90_000 })
+        .toBeGreaterThan(0);
 
       const completedLine = page
         .getByTestId("voice-capture-hud-line")
