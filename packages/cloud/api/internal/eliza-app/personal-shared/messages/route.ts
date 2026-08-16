@@ -13,8 +13,10 @@ import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
 import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
+import { prewarmPersonalSharedAgentTurnCaches } from "@/lib/services/shared-runtime/prewarm-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import { sharedRestMessageSend } from "@/lib/services/shared-runtime/shared-rest-adapter";
+import { SharedRuntimeCacheWarmingError } from "@/lib/services/shared-runtime/shared-runtime-errors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
@@ -259,6 +261,7 @@ app.post("/", async (c) => {
     stage = "account_resolution";
     const accountStartedAt = performance.now();
     let account: { userId: string; organizationId: string };
+    let isNewPersonalAccount = false;
     let dedicated:
       | Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config">
       | null
@@ -275,6 +278,7 @@ app.post("/", async (c) => {
         organizationId: delivery.organizationId,
       };
       dedicated = delivery.dedicatedTarget;
+      isNewPersonalAccount = delivery.isNew;
     } else if (parsed.data.platform === "discord") {
       const delivery = await elizaAppUserService.resolvePersonalDelivery({
         platform: "discord",
@@ -288,6 +292,7 @@ app.post("/", async (c) => {
         organizationId: delivery.organizationId,
       };
       dedicated = delivery.dedicatedTarget;
+      isNewPersonalAccount = delivery.isNew;
     } else {
       const phoneAccount = await elizaAppUserService.findOrCreateByPhone(
         parsed.data.phoneNumber,
@@ -296,6 +301,7 @@ app.post("/", async (c) => {
         userId: phoneAccount.user.id,
         organizationId: phoneAccount.organization.id,
       };
+      isNewPersonalAccount = phoneAccount.isNew;
     }
     const accountMs = performance.now() - accountStartedAt;
     c.header("Server-Timing", `account;dur=${accountMs.toFixed(1)}`);
@@ -562,6 +568,12 @@ app.post("/", async (c) => {
       });
     }
     stage = "shared_runtime";
+    let prewarmMs: number | undefined;
+    if (isNewPersonalAccount) {
+      const prewarmStartedAt = performance.now();
+      await prewarmPersonalSharedAgentTurnCaches(agent, worker.namespace);
+      prewarmMs = performance.now() - prewarmStartedAt;
+    }
     const sharedStartedAt = performance.now();
     const result = await sharedRestMessageSend(
       agent,
@@ -582,9 +594,9 @@ app.post("/", async (c) => {
     );
     c.header(
       "Server-Timing",
-      `account;dur=${accountMs.toFixed(1)}, shared;dur=${(
-        performance.now() - sharedStartedAt
-      ).toFixed(1)}`,
+      `account;dur=${accountMs.toFixed(1)}, ${
+        prewarmMs === undefined ? "" : `prewarm;dur=${prewarmMs.toFixed(1)}, `
+      }shared;dur=${(performance.now() - sharedStartedAt).toFixed(1)}`,
     );
 
     return c.json({
@@ -612,6 +624,18 @@ app.post("/", async (c) => {
     // provider/SQL payloads in its logs.
     c.header(FAILURE_STAGE_HEADER, stage);
     c.header(FAILURE_NAME_HEADER, errorName);
+    if (error instanceof SharedRuntimeCacheWarmingError) {
+      return c.json(
+        {
+          success: false,
+          error: "Shared Eliza is warming. Retry this turn shortly.",
+          code: "service_unavailable",
+          retryable: true,
+        },
+        503,
+        { "Retry-After": "1" },
+      );
+    }
     return failureResponse(c, error);
   }
 });

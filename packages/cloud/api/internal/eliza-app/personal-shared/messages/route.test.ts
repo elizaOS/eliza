@@ -9,11 +9,12 @@ let activeTarget: {
   status: "running" | "sleeping" | "stopped";
   bridge_url?: string;
 } | null = null;
+let personalDeliveryIsNew = false;
 const resolvePersonalDelivery = mock(async () => ({
   userId: "00000000-0000-4000-8000-000000000002",
   organizationId: "00000000-0000-4000-8000-000000000001",
   dedicatedTarget: activeTarget,
-  isNew: false,
+  isNew: personalDeliveryIsNew,
   resolution: "single-query-repeat" as const,
 }));
 const findOrCreateByPhone = mock(async () => ({
@@ -22,6 +23,7 @@ const findOrCreateByPhone = mock(async () => ({
   isNew: true,
 }));
 const sharedRestMessageSend = mock(async () => ({ text: "hello from Eliza" }));
+const prewarmPersonalSharedAgentTurnCaches = mock(async () => undefined);
 const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
   loginUrl:
     "https://cloud-staging.eliza.app/get-started?onboardingSession=claim-token",
@@ -116,6 +118,9 @@ mock.module("@/lib/services/eliza-app", () => ({
 mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
   sharedRestMessageSend,
 }));
+mock.module("@/lib/services/shared-runtime/prewarm-shared-agent", () => ({
+  prewarmPersonalSharedAgentTurnCaches,
+}));
 mock.module("@/lib/services/eliza-app/onboarding-chat", () => ({
   runOnboardingChat,
 }));
@@ -198,9 +203,11 @@ describe("personal Shared messaging deliveries", () => {
   beforeEach(() => {
     findOrCreateByPhone.mockClear();
     activeTarget = null;
+    personalDeliveryIsNew = false;
     resolvePersonalDelivery.mockClear();
     findActivePersonalDedicatedTarget.mockClear();
     sharedRestMessageSend.mockClear();
+    prewarmPersonalSharedAgentTurnCaches.mockClear();
     runOnboardingChat.mockClear();
     bridge.mockClear();
     importCanonicalConversation.mockClear();
@@ -256,6 +263,45 @@ describe("personal Shared messaging deliveries", () => {
     );
   });
 
+  test("warms a newly auto-registered personal account before its first turn", async () => {
+    personalDeliveryIsNew = true;
+    const order: string[] = [];
+    prewarmPersonalSharedAgentTurnCaches.mockImplementationOnce(async () => {
+      order.push("prewarm");
+    });
+    sharedRestMessageSend.mockImplementationOnce(async () => {
+      order.push("turn");
+      return { text: "hello from Eliza" };
+    });
+
+    const response = await request({
+      ...valid,
+      telegramUserId: "99008152237",
+      chatId: "99008152237",
+      messageId: "QA815-LAT8-COLD",
+    });
+
+    expect(response.status).toBe(200);
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        user_id: "00000000-0000-4000-8000-000000000002",
+      }),
+      namespace,
+    );
+    expect(order).toEqual(["prewarm", "turn"]);
+    expect(response.headers.get("server-timing")).toMatch(
+      /^account;dur=\d+\.\d, prewarm;dur=\d+\.\d, shared;dur=\d+\.\d$/,
+    );
+  });
+
+  test("keeps established personal turns on the direct warm path", async () => {
+    const response = await request(valid);
+
+    expect(response.status).toBe(200);
+    expect(prewarmPersonalSharedAgentTurnCaches).not.toHaveBeenCalled();
+  });
+
   test("correlates a Shared failure without logging its sensitive message", async () => {
     const errorLog = mock(() => undefined);
     const originalError = logger.error;
@@ -291,6 +337,35 @@ describe("personal Shared messaging deliveries", () => {
     } finally {
       logger.error = originalError;
     }
+  });
+
+  test("preserves cache warming as a retryable 503 at the internal boundary", async () => {
+    const { SharedRuntimeCacheWarmingError } = await import(
+      "@/lib/services/shared-runtime/shared-runtime-errors"
+    );
+    const warming = new SharedRuntimeCacheWarmingError(
+      "private cold-gate detail",
+    );
+    sharedRestMessageSend.mockImplementationOnce(async () => {
+      throw warming;
+    });
+
+    const response = await request(valid);
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("1");
+    expect(response.headers.get("x-eliza-failure-stage")).toBe(
+      "shared_runtime",
+    );
+    expect(response.headers.get("x-eliza-failure-name")).toBe(
+      "SharedRuntimeCacheWarmingError",
+    );
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Shared Eliza is warming. Retry this turn shortly.",
+      code: "service_unavailable",
+      retryable: true,
+    });
   });
 
   test("redacts an unrecognized error name from headers and logs", async () => {

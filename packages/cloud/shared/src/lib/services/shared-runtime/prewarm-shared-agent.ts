@@ -30,11 +30,16 @@ import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { AppEnv, RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { calculateCost, getProviderFromModel, normalizeModelName } from "../../pricing";
 import { logger } from "../../utils/logger";
+import { warmInferenceAdmissionGate } from "../inference-admission-gate";
 import { warmInferenceAdmissionSnapshot } from "../inference-admission-snapshot";
-import { coordinateSharedHistory } from "./conversation-coordinator";
+import {
+  coordinateSharedConversationPrewarm,
+  coordinateSharedHistory,
+} from "./conversation-coordinator";
 import { seedSharedAgentScopeCache } from "./resolve-shared-agent";
 import { resolveSharedAgentTurnModel } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
+import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 
 export interface PrewarmSharedAgentOptions {
   /**
@@ -58,6 +63,28 @@ export interface PrewarmSharedAgentOptions {
   stewardUserId?: string;
 }
 
+interface PrewarmLeg {
+  leg: string;
+  run: Promise<unknown>;
+}
+
+async function settlePrewarmLegs(
+  agent: Pick<SharedRuntimeAgent, "id" | "organization_id">,
+  legs: PrewarmLeg[],
+): Promise<void> {
+  const results = await Promise.allSettled(legs.map(({ run }) => run));
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      logger.warn("[shared-runtime prewarm] leg failed; first turn falls back to warming 503s", {
+        agentId: agent.id,
+        organizationId: agent.organization_id,
+        leg: legs[index].leg,
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      });
+    }
+  });
+}
+
 /**
  * Hydrate every cache the cache-only shared first turn consults. Resolves when
  * all legs have settled; never rejects (failed legs are logged and the turn
@@ -67,7 +94,15 @@ export async function prewarmSharedAgentTurnCaches(
   agent: AgentSandbox,
   options: PrewarmSharedAgentOptions = {},
 ): Promise<void> {
-  const legs: Array<{ leg: string; run: Promise<unknown> }> = [];
+  const legs: PrewarmLeg[] = [];
+
+  // The admission snapshot carries policy, while the gate is the independent
+  // serialized authority that enforces it. Warming both avoids exchanging a
+  // cache miss for a cold Durable Object timeout on the first turn.
+  legs.push({
+    leg: "admission-gate",
+    run: warmInferenceAdmissionGate(agent.organization_id),
+  });
 
   // 1. Combined admission snapshot: org balance + rate-limit tier. The
   //    projection behind "Billing authorization is warming", "Inference
@@ -129,15 +164,29 @@ export async function prewarmSharedAgentTurnCaches(
     });
   }
 
-  const results = await Promise.allSettled(legs.map(({ run }) => run));
-  results.forEach((result, index) => {
-    if (result.status === "rejected") {
-      logger.warn("[shared-runtime prewarm] leg failed; first turn falls back to warming 503s", {
-        agentId: agent.id,
-        organizationId: agent.organization_id,
-        leg: legs[index].leg,
-        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
-      });
-    }
-  });
+  await settlePrewarmLegs(agent, legs);
+}
+
+/**
+ * Warm the two authorities a newly auto-registered personal agent needs.
+ * Unlike dashboard agent creation, first contact already carries the user's
+ * message, so the route awaits these concurrent legs before dispatching it.
+ */
+export async function prewarmPersonalSharedAgentTurnCaches(
+  agent: Pick<SharedRuntimeAgent, "id" | "organization_id">,
+  namespace: RuntimeDurableObjectNamespace,
+): Promise<void> {
+  await settlePrewarmLegs(agent, [
+    {
+      leg: "admission-gate",
+      run: warmInferenceAdmissionGate(agent.organization_id),
+    },
+    {
+      leg: "conversation-object",
+      run: coordinateSharedConversationPrewarm(agent.id, agent.id, {
+        namespace,
+        startEmpty: true,
+      }),
+    },
+  ]);
 }
