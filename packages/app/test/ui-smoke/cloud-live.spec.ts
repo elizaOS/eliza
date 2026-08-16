@@ -7,6 +7,7 @@
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { seedCloudLiveBrowserAuth } from "../cloud-live-browser-auth";
+import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
 import { assertOnboardingLiveness } from "../liveness-contract";
 import { openAppPath, seedAppStorage } from "./helpers";
 
@@ -97,6 +98,28 @@ test.describe("real cloud login + provisioning + chat", () => {
   test("provisions a real cloud agent from onboarding and chats with it", async ({
     page,
   }) => {
+    // #18076: prove which Cloud deployment this lane targets BEFORE any
+    // auth/provision/chat traffic. When the workflow pins an expected
+    // environment (staging/production), a defaulted or mismatched origin is a
+    // hard failure — never a silent fall-through to production.
+    const originContract = resolveCloudLiveOriginContract(process.env);
+    test.info().annotations.push(
+      { type: "cloud-api-origin", description: originContract.origin },
+      { type: "cloud-environment", description: originContract.environment },
+      {
+        // This lane always drives the renderer bundle built from the checked-out
+        // revision through the live stack; it does NOT drive a deployed Pages
+        // artifact. Recorded so run artifacts state what was exercised.
+        type: "renderer-source",
+        description: "locally built renderer bundle (not a deployed artifact)",
+      },
+    );
+    expect(
+      originContract.ok,
+      originContract.reason ??
+        `resolved Cloud API origin: ${originContract.origin}`,
+    ).toBe(true);
+
     expect(
       await seedCloudLiveBrowserAuth(page),
       "Cloud-live mode must hand its validated workflow bearer to the browser",

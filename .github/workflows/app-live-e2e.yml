@@ -26,6 +26,10 @@ on:
         description: "Also run the on-device Android local-chat smoke (boots an emulator + builds/installs the APK + stages a GGUF)."
         type: boolean
         default: false
+      run_cloud_staging:
+        description: "Also run the staging Cloud login+provision+chat lane (requires the staging Environment's ELIZAOS_CLOUD_API_KEY)."
+        type: boolean
+        default: false
 
 concurrency:
   group: app-live-e2e-${{ github.ref }}
@@ -229,11 +233,15 @@ jobs:
   # repository secret is configured; the spec remains safely skippable outside
   # this workflow so keyless PR lanes cannot spend Cloud credits.
   cloud-live:
-    name: cloud login + provision + chat (real Eliza Cloud)
+    name: cloud login + provision + chat (real Eliza Cloud, production)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     env:
       ELIZA_UI_SMOKE_CLOUD_LIVE: "1"
+      # The spec asserts the resolved API origin matches this environment
+      # before spending any Cloud credit (#18076), so a misconfigured base URL
+      # cannot silently retarget the production lane.
+      ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: production
       # Prefer the variable named for the runtime contract, but retain the
       # repository's established ELIZACLOUD_API_KEY as the canonical fallback.
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
@@ -297,6 +305,112 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: app-live-e2e-cloud
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # STAGING counterpart of cloud-live (#18076): the same real login +
+  # provisioning + chat path, pinned to the staging control plane. Kept a
+  # separate job so staging and production report as distinct results and
+  # artifacts. It is fail-closed by construction:
+  #   - the job-level ELIZAOS_CLOUD_BASE_URL pins the staging API origin and
+  #     the spec's origin contract (ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV=staging)
+  #     hard-fails on any resolution that is not that origin — it can never
+  #     fall back to production;
+  #   - the credential comes ONLY from the protected `staging` Environment's
+  #     ELIZAOS_CLOUD_API_KEY (a production key does not authenticate against
+  #     staging, and no repository-secret fallback is allowed here);
+  #   - a missing credential fails the job loudly before any setup/build work.
+  # Scheduled runs stay opt-in via ELIZA_CLOUD_STAGING_LIVE_READY until an
+  # owner has minted the staging-scoped key, so an unprovisioned nightly is a
+  # visible skip, not a misleading red or a green-by-skip.
+  # NOTE: this lane drives the renderer bundle built from the checked-out
+  # revision against the staging API; it does not exercise the deployed
+  # staging Pages artifact (recorded in the spec annotations + step summary).
+  cloud-live-staging:
+    name: cloud login + provision + chat (real Eliza Cloud, staging)
+    if: ${{ (github.event_name == 'schedule' && vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1') || (github.event_name == 'workflow_dispatch' && inputs.run_cloud_staging) }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    environment: staging
+    timeout-minutes: 45
+    env:
+      ELIZA_UI_SMOKE_CLOUD_LIVE: "1"
+      ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: staging
+      ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+      PGLITE_WASM_MODE: node
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - name: Require staging-scoped Cloud credential and origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          staging_key_without_whitespace="${ELIZAOS_CLOUD_API_KEY:-}"
+          staging_key_without_whitespace="${staging_key_without_whitespace//[[:space:]]/}"
+          if [[ -z "$staging_key_without_whitespace" ]]; then
+            echo "::error::The staging Cloud lane requires the staging Environment's ELIZAOS_CLOUD_API_KEY; refusing to run (and never falling back to the production key)."
+            exit 1
+          fi
+          unset staging_key_without_whitespace
+          if [[ "${ELIZAOS_CLOUD_BASE_URL:-}" != "https://api-staging.eliza.app" ]]; then
+            echo "::error::The staging Cloud lane must pin ELIZAOS_CLOUD_BASE_URL=https://api-staging.eliza.app; got '${ELIZAOS_CLOUD_BASE_URL:-}'."
+            exit 1
+          fi
+
+      - name: Free disk space for browser smoke
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
+          docker system prune -af || true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
+
+      - name: Generate shared i18n assets
+        run: bun run --cwd packages/shared build:i18n
+
+      - name: Build @elizaos/core + @elizaos/shared browser bundles
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+
+      - name: Build app renderer bundle
+        run: bun run --cwd packages/app build:web
+
+      - name: Run real STAGING cloud login + provision + chat
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium
+
+      - name: Record what this lane drove
+        if: ${{ always() }}
+        run: |
+          {
+            echo "## Staging Cloud live lane"
+            echo "- API origin: https://api-staging.eliza.app (asserted in-spec before auth/provision/chat)"
+            echo "- Renderer: locally built bundle from \`${GITHUB_SHA}\` driven through the live stack — NOT the deployed staging Pages artifact"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload cloud-live staging artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: app-live-e2e-cloud-staging
           path: |
             packages/app/playwright-report/
             packages/app/test-results/
@@ -438,7 +552,14 @@ jobs:
   # manual workflow_dispatch runs stay quiet to avoid noise.
   notify-on-failure:
     name: notify on red nightly
-    needs: [app-live-chat, walkthrough-live, cloud-live, desktop-packaged]
+    needs:
+      [
+        app-live-chat,
+        walkthrough-live,
+        cloud-live,
+        cloud-live-staging,
+        desktop-packaged,
+      ]
     if: ${{ always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure') }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     permissions:
@@ -451,6 +572,7 @@ jobs:
           R_CHAT: ${{ needs.app-live-chat.result }}
           R_WALK: ${{ needs.walkthrough-live.result }}
           R_CLOUD: ${{ needs.cloud-live.result }}
+          R_CLOUD_STAGING: ${{ needs.cloud-live-staging.result }}
           R_DESKTOP: ${{ needs.desktop-packaged.result }}
         with:
           github-token: ${{ github.token }}
@@ -462,7 +584,8 @@ jobs:
               "",
               `- app live chat: \`${process.env.R_CHAT}\``,
               `- full walkthrough: \`${process.env.R_WALK}\``,
-              `- cloud login+provision+chat: \`${process.env.R_CLOUD}\``,
+              `- cloud login+provision+chat (production): \`${process.env.R_CLOUD}\``,
+              `- cloud login+provision+chat (staging): \`${process.env.R_CLOUD_STAGING}\``,
               `- desktop packaged (build+boot+renderer): \`${process.env.R_DESKTOP}\``,
               "",
               `Run log + failure artifacts: ${process.env.RUN_URL}`,
