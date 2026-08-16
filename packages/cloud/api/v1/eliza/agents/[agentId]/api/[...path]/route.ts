@@ -22,6 +22,7 @@ import {
 } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestAgentEvents,
+  sharedRestAgentStart,
   sharedRestAuthMe,
   sharedRestCharacter,
   sharedRestCommands,
@@ -246,6 +247,12 @@ app.post("/", async (c) => {
   const path = shellPath(c);
   if (isWorkflowApiPath(path)) {
     return workflowUnavailable(c, r.agentId, r.agent.execution_tier);
+  }
+  // POST .../api/agent/start — the client's startup handshake.
+  // A shared agent runs in-Worker with no agent server to boot, so the "start"
+  // is a no-op that returns the running status the client expects.
+  if (path === "agent/start") {
+    return json(c, sharedRestAgentStart(r.agentName));
   }
   // Onboarding "submit" — a shared agent has no config to persist, so accept it
   // as a harmless no-op instead of 404'ing onboarding.

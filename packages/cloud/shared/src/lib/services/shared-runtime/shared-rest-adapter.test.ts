@@ -36,6 +36,7 @@ mock.module("./shared-runtime-chat", () => ({
 
 // Imported after the mock so the adapter binds to our stubbed service.
 const {
+  sharedRestAgentStart,
   sharedRestAuthMe,
   sharedRestCharacter,
   sharedRestConfig,
@@ -146,6 +147,28 @@ describe("shared-rest-adapter — startup shell surface", () => {
   test("first-run is always complete + cloud-provisioned (no onboarding)", () => {
     expect(sharedRestFirstRunStatus()).toEqual({ complete: true, cloudProvisioned: true });
     expect(sharedRestFirstRun()).toEqual({ complete: true, ok: true });
+  });
+
+  test("agent/start returns running status for shared agent", () => {
+    const result = sharedRestAgentStart("Nova");
+    expect(result).toEqual({
+      ok: true,
+      status: {
+        state: "running",
+        agentName: "Nova",
+        model: undefined,
+        uptime: 0,
+        startedAt: expect.any(Number),
+      },
+    });
+    // startedAt should be recent
+    expect(result.status.startedAt).toBeLessThanOrEqual(Date.now());
+    expect(result.status.startedAt).toBeGreaterThan(Date.now() - 1000);
+  });
+
+  test("agent/start falls back to Eliza when name is empty", () => {
+    const result = sharedRestAgentStart("");
+    expect(result.status.agentName).toBe("Eliza");
   });
 
   test("config declares no websocket + no streaming (client uses non-stream REST)", () => {
