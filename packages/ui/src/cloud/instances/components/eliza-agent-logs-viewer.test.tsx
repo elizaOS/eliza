@@ -135,6 +135,61 @@ describe("ElizaAgentLogsViewer", () => {
     expect(screen.queryByText("stale")).toBeNull();
   });
 
+  it("clears old logs before a refresh can fail", async () => {
+    const refresh = deferred<{ logs: string; notice: null }>();
+    loadAgentLogs
+      .mockResolvedValueOnce({ logs: "previous secret", notice: null })
+      .mockReturnValueOnce(refresh.promise);
+
+    render(
+      <ElizaAgentLogsViewer
+        agentId="agent-1"
+        agentName="Eliza"
+        status="running"
+      />,
+    );
+    await screen.findByText("previous secret");
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh logs" }));
+    await waitFor(() => expect(loadAgentLogs).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("lines").textContent).toBe("");
+
+    refresh.reject(new Error("Refresh failed"));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Refresh failed",
+    );
+    expect(screen.getByTestId("lines").textContent).toBe("");
+  });
+
+  it("never presents one agent's logs after the requested agent changes", async () => {
+    const nextAgent = deferred<{ logs: string; notice: null }>();
+    loadAgentLogs
+      .mockResolvedValueOnce({ logs: "agent one secret", notice: null })
+      .mockReturnValueOnce(nextAgent.promise);
+    const view = render(
+      <ElizaAgentLogsViewer
+        agentId="agent-1"
+        agentName="First"
+        status="running"
+      />,
+    );
+    await screen.findByText("agent one secret");
+
+    view.rerender(
+      <ElizaAgentLogsViewer
+        agentId="agent-2"
+        agentName="Second"
+        status="running"
+      />,
+    );
+    expect(screen.getByTestId("lines").textContent).toBe("");
+    await waitFor(() => expect(loadAgentLogs).toHaveBeenCalledTimes(2));
+
+    nextAgent.resolve({ logs: "agent two current", notice: null });
+    await screen.findByText("agent two current");
+    expect(screen.queryByText("agent one secret")).toBeNull();
+  });
+
   it("aborts in-flight work on unmount", async () => {
     const pending = deferred<{ logs: string; notice: null }>();
     loadAgentLogs.mockReturnValue(pending.promise);

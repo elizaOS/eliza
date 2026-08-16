@@ -17,6 +17,7 @@ interface ElizaAgentLogsViewerProps {
 }
 
 interface LogsState {
+  agentId: string;
   raw: string;
   lines: string[];
   loading: boolean;
@@ -76,6 +77,7 @@ export function ElizaAgentLogsViewer({
   showAdvancedHint = false,
 }: ElizaAgentLogsViewerProps) {
   const [logsState, setLogsState] = useState<LogsState>({
+    agentId,
     raw: "",
     lines: [],
     loading: true,
@@ -96,12 +98,15 @@ export function ElizaAgentLogsViewer({
     const controller = new AbortController();
     const generation = ++generationRef.current;
     activeRequestRef.current = { controller, generation };
-    setLogsState((prev) => ({
-      ...prev,
+    setLogsState({
+      agentId,
+      raw: "",
+      lines: [],
       loading: true,
       error: null,
       notice: null,
-    }));
+      fetchedAt: null,
+    });
 
     try {
       const result = await loadAgentLogs({
@@ -114,6 +119,7 @@ export function ElizaAgentLogsViewer({
       }
 
       setLogsState({
+        agentId,
         raw: result.logs,
         lines: splitLines(result.logs),
         loading: false,
@@ -129,12 +135,15 @@ export function ElizaAgentLogsViewer({
       ) {
         return;
       }
-      setLogsState((prev) => ({
-        ...prev,
+      setLogsState({
+        agentId,
+        raw: "",
+        lines: [],
         loading: false,
         error: error instanceof Error ? error.message : String(error),
         notice: null,
-      }));
+        fetchedAt: null,
+      });
     } finally {
       if (activeRequestRef.current?.generation === generation) {
         activeRequestRef.current = null;
@@ -150,26 +159,39 @@ export function ElizaAgentLogsViewer({
     };
   }, [fetchLogs]);
 
+  const visibleLogsState =
+    logsState.agentId === agentId
+      ? logsState
+      : {
+          agentId,
+          raw: "",
+          lines: [],
+          loading: true,
+          error: null,
+          notice: null,
+          fetchedAt: null,
+        };
+
   const filteredLines = useMemo(
     () =>
-      logsState.lines.filter(
+      visibleLogsState.lines.filter(
         (line) =>
           !searchQuery ||
           line.toLowerCase().includes(searchQuery.toLowerCase()),
       ),
-    [logsState.lines, searchQuery],
+    [visibleLogsState.lines, searchQuery],
   );
 
   const copyAllLogs = async () => {
-    if (!logsState.raw) return;
-    await navigator.clipboard.writeText(logsState.raw);
+    if (!visibleLogsState.raw) return;
+    await navigator.clipboard.writeText(visibleLogsState.raw);
     toast.success("Logs copied to clipboard");
   };
 
   const downloadLogs = () => {
-    if (!logsState.raw) return;
+    if (!visibleLogsState.raw) return;
 
-    const blob = new Blob([logsState.raw], { type: "text/plain" });
+    const blob = new Blob([visibleLogsState.raw], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -195,7 +217,7 @@ export function ElizaAgentLogsViewer({
           className: STATUS_BADGE_STYLES[status] ?? STATUS_BADGE_STYLES.stopped,
         },
       ]}
-      fetchedAt={logsState.fetchedAt}
+      fetchedAt={visibleLogsState.fetchedAt}
       lineCountControl={{
         value: tail,
         onChange: setTail,
@@ -221,14 +243,14 @@ export function ElizaAgentLogsViewer({
               <p className="text-sm text-white/70">{statusHint}</p>
             </div>
           )}
-          {logsState.notice && (
+          {visibleLogsState.notice && (
             <div
               className="flex items-start gap-3 border border-white/10 bg-black/30 p-4"
               role="status"
             >
               <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
               <p className="min-w-0 [overflow-wrap:anywhere] text-sm text-white/70">
-                {logsState.notice}
+                {visibleLogsState.notice}
               </p>
             </div>
           )}
@@ -239,11 +261,11 @@ export function ElizaAgentLogsViewer({
         onChange: setSearchQuery,
         placeholder: "Filter log lines...",
         resultLabel: searchQuery
-          ? `${filteredLines.length} / ${logsState.lines.length} lines`
+          ? `${filteredLines.length} / ${visibleLogsState.lines.length} lines`
           : null,
       }}
-      loading={logsState.loading}
-      error={logsState.error}
+      loading={visibleLogsState.loading}
+      error={visibleLogsState.error}
       errorTitle="Failed to fetch logs"
       onRetry={fetchLogs}
       emptyState={{
@@ -252,15 +274,17 @@ export function ElizaAgentLogsViewer({
           "If the agent is starting up, give it a moment and refresh again.",
       }}
       filteredEmptyState={{ title: "No logs match your filter" }}
-      isFilteredEmpty={logsState.lines.length > 0 && filteredLines.length === 0}
+      isFilteredEmpty={
+        visibleLogsState.lines.length > 0 && filteredLines.length === 0
+      }
       lines={filteredLines}
       lineClassName={getLineClass}
       heightClassName="h-[420px]"
       onRefresh={fetchLogs}
       onCopyAll={copyAllLogs}
       onDownload={downloadLogs}
-      copyDisabled={!logsState.raw}
-      downloadDisabled={!logsState.raw}
+      copyDisabled={!visibleLogsState.raw}
+      downloadDisabled={!visibleLogsState.raw}
     />
   );
 }
