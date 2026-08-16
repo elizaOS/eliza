@@ -38,12 +38,18 @@ const MAX_DESCRIPTION_LENGTH = 1024;
 const CONFIG_DIR_NAME = ".elizaos";
 const DEFAULT_AGENT_DIR = resolveStateDir();
 
-function validateName(name: string, parentDirName: string): string[] {
+function validateName(
+  name: string,
+  expectedName: string,
+  isSkillMd: boolean,
+): string[] {
   const errors: string[] = [];
 
-  if (name !== parentDirName) {
+  if (name !== expectedName) {
     errors.push(
-      `name "${name}" does not match parent directory "${parentDirName}"`,
+      isSkillMd
+        ? `name "${name}" does not match parent directory "${expectedName}"`
+        : `name "${name}" does not match filename slug "${expectedName}"`,
     );
   }
 
@@ -116,17 +122,22 @@ function loadSkillFromFile(
     });
     return { skill: null, diagnostics };
   }
+  const fileName = basename(filePath);
+  const isSkillMd = fileName.toLowerCase() === "skill.md";
   const skillDir = dirname(filePath);
   const parentDirName = basename(skillDir);
+  const expectedName = isSkillMd
+    ? parentDirName
+    : fileName.replace(/\.md$/i, "");
 
   const descErrors = validateDescription(frontmatter.description);
   for (const error of descErrors) {
     diagnostics.push({ type: "warning", message: error, path: filePath });
   }
 
-  const name = frontmatter.name || parentDirName;
+  const name = frontmatter.name || expectedName;
 
-  const nameErrors = validateName(name, parentDirName);
+  const nameErrors = validateName(name, expectedName, isSkillMd);
   for (const error of nameErrors) {
     diagnostics.push({ type: "warning", message: error, path: filePath });
   }
