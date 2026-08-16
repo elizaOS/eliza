@@ -269,6 +269,41 @@ function hasImageGenerationModel(runtime: IAgentRuntime): boolean {
 	return typeof runtime.getModel(ModelType.IMAGE) === "function";
 }
 
+function hasVideoGenerationModel(runtime: IAgentRuntime): boolean {
+	return typeof runtime.getModel(ModelType.VIDEO) === "function";
+}
+
+/** Direct VIDEO-model fallback, mirror of {@link fallbackGenerateImage}: a
+ * runtime with a registered VIDEO handler (e.g. Eliza Cloud's
+ * /generate-video) can serve video asks without the media-generation
+ * service — previously such runtimes falsely denied "no video generator"
+ * (the same self-belief class the image fallback fixed). */
+async function fallbackGenerateVideo(
+	runtime: IAgentRuntime,
+	request: MediaGenerationRequest,
+): Promise<MediaGenerationResponse> {
+	const videoResponse = (await runtime.useModel(ModelType.VIDEO, {
+		prompt: request.prompt,
+		...(request.imageUrl ? { imageUrl: request.imageUrl } : {}),
+		...(typeof request.duration === "number"
+			? { durationSeconds: request.duration }
+			: {}),
+		...(request.aspectRatio ? { aspectRatio: request.aspectRatio } : {}),
+	})) as { url?: string; videoUrl?: string } | string | undefined;
+	const videoUrl =
+		typeof videoResponse === "string"
+			? videoResponse
+			: (videoResponse?.videoUrl ?? videoResponse?.url);
+	if (!videoUrl) {
+		throw new Error("Video generation failed - no valid response received");
+	}
+	return {
+		mediaType: "video",
+		videoUrl,
+		url: videoUrl,
+	};
+}
+
 async function fallbackGenerateImage(
 	runtime: IAgentRuntime,
 	request: MediaGenerationRequest,
@@ -313,6 +348,10 @@ async function generateWithService(
 		return fallbackGenerateImage(runtime, request);
 	}
 
+	if (request.mediaType === "video" && hasVideoGenerationModel(runtime)) {
+		return fallbackGenerateVideo(runtime, request);
+	}
+
 	throw new Error(
 		service
 			? `${request.mediaType} generation is not configured.`
@@ -344,7 +383,8 @@ export const generateMediaAction = {
 		);
 		const canGenerate =
 			(service && (await service.canGenerateMedia(request))) ||
-			(request.mediaType === "image" && hasImageGenerationModel(runtime));
+			(request.mediaType === "image" && hasImageGenerationModel(runtime)) ||
+			(request.mediaType === "video" && hasVideoGenerationModel(runtime));
 		if (!canGenerate) {
 			logger.debug(
 				{
