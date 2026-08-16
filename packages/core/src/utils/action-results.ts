@@ -8,6 +8,7 @@
  * recent results (capped at `MAX_PROMPTED_ACTION_RESULTS`) into the prompt block.
  */
 import type { ActionResult, ProviderDataRecord } from "../types/components";
+import { tailWellFormed, truncateWellFormed } from "./well-formed";
 
 export const MAX_PROMPTED_ACTION_RESULTS = 8;
 export const MAX_ACTION_RESULT_TEXT_CHARS = 4000;
@@ -122,8 +123,9 @@ export function truncateMiddle(
 	available = Math.max(0, maxChars - marker.length);
 	headChars = Math.ceil(available / 2);
 	tailChars = Math.floor(available / 2);
-	const rendered = `${trimmed.slice(0, headChars)}${marker}${trimmed.slice(
-		trimmed.length - tailChars,
+	const rendered = `${truncateWellFormed(trimmed, headChars)}${marker}${tailWellFormed(
+		trimmed,
+		tailChars,
 	)}`;
 
 	return reference ? `${rendered}\n\nFull output: ${reference}` : rendered;
