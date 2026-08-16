@@ -147,7 +147,7 @@ describe("renderer interactive iOS composition", () => {
     );
     expect(iosBoot.setAccessoryBarVisible).toHaveBeenCalledOnce();
     expect(iosBoot.setAccessoryBarVisible).toHaveBeenCalledWith({
-      isVisible: false,
+      isVisible: true,
     });
 
     expect(main.isIOS).toBe(true);
