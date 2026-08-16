@@ -968,6 +968,46 @@ describe("cloud-api worker entrypoint", () => {
     );
   });
 
+  test("activates sender projection and inference timing only in staging", async () => {
+    const config = Bun.TOML.parse(
+      await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
+    ) as {
+      vars?: {
+        PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+        ELIZA_INFERENCE_TIMING?: string;
+      };
+      env?: {
+        staging?: {
+          vars?: {
+            PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+            ELIZA_INFERENCE_TIMING?: string;
+          };
+        };
+        production?: {
+          vars?: {
+            PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+            ELIZA_INFERENCE_TIMING?: string;
+          };
+        };
+      };
+    };
+
+    expect(config.vars?.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED).toBe(
+      "false",
+    );
+    expect(
+      config.env?.staging?.vars?.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED,
+    ).toBe("true");
+    expect(
+      config.env?.production?.vars?.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED,
+    ).toBe("false");
+    expect(config.vars?.ELIZA_INFERENCE_TIMING).toBeUndefined();
+    expect(config.env?.staging?.vars?.ELIZA_INFERENCE_TIMING).toBe("info");
+    expect(
+      config.env?.production?.vars?.ELIZA_INFERENCE_TIMING,
+    ).toBeUndefined();
+  });
+
   test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {
     type RateLimitBinding = {
       name?: string;

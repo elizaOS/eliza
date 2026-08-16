@@ -2,8 +2,8 @@
 // @vitest-environment jsdom
 
 /**
- * Exercises hosted OAuth popup navigation and PKCE failure cleanup with an
- * in-memory Steward provider boundary; no live browser or OAuth service runs.
+ * Exercises hosted OAuth current-document navigation and PKCE failure recovery
+ * with an in-memory Steward provider boundary; no live OAuth service runs.
  */
 
 import {
@@ -17,14 +17,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const oauthState = vi.hoisted(() => ({
-  popup: null as Window | null,
   pkceError: null as Error | null,
   storeVerifier: true,
-}));
-
-vi.mock("../../../../state/cloud-login-launch", () => ({
-  preOpenCloudLoginWindow: () => oauthState.popup,
-  canNavigateSameTabForBlockedPopup: () => true,
 }));
 
 vi.mock("@stwd/sdk", () => ({
@@ -39,8 +33,8 @@ vi.mock("@stwd/sdk", () => ({
         siwe: false,
         siws: false,
         google: true,
-        discord: false,
-        github: false,
+        discord: true,
+        github: true,
         twitter: false,
         oauth: ["google"],
       });
@@ -97,8 +91,8 @@ vi.mock("../../lib/steward-oauth-url", async () => {
       return { verifier: "verifier", challenge: "challenge" };
     },
     storeStewardPkceVerifier: () => oauthState.storeVerifier,
-    buildStewardOAuthAuthorizeUrl: () =>
-      "https://api.example.test/steward/auth/oauth/google/authorize",
+    buildStewardOAuthAuthorizeUrl: (provider: string) =>
+      `https://api.example.test/steward/auth/oauth/${provider}/authorize`,
   };
 });
 
@@ -112,18 +106,29 @@ function renderSection() {
   );
 }
 
-function makePopup() {
-  return {
-    closed: false,
-    location: { href: "" },
-    opener: window,
-    close: vi.fn(),
-  } as unknown as Window;
+const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
+  window,
+  "location",
+);
+
+function stubHostedLoginLocation(): void {
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: {
+      ...window.location,
+      hash: "",
+      hostname: "cloud.eliza.app",
+      href: "https://cloud.eliza.app/login",
+      origin: "https://cloud.eliza.app",
+      pathname: "/login",
+      search: "",
+    },
+  });
 }
 
 describe("StewardLoginSection OAuth launch", () => {
   beforeEach(() => {
-    oauthState.popup = makePopup();
+    stubHostedLoginLocation();
     oauthState.pkceError = null;
     oauthState.storeVerifier = true;
   });
@@ -131,27 +136,31 @@ describe("StewardLoginSection OAuth launch", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
-  });
-
-  it("navigates a pre-opened desktop popup after PKCE resolves", async () => {
-    renderSection();
-    const popup = oauthState.popup;
-    expect(popup).not.toBeNull();
-    if (!popup) {
-      throw new Error("Expected the OAuth popup to be pre-opened");
+    if (originalLocationDescriptor) {
+      Object.defineProperty(window, "location", originalLocationDescriptor);
     }
-
-    fireEvent.click(await screen.findByRole("button", { name: "Google" }));
-
-    await waitFor(() =>
-      expect((popup.location as Location).href).toContain(
-        "/steward/auth/oauth/google/authorize",
-      ),
-    );
-    expect(popup.opener).toBeNull();
   });
 
-  it("closes the popup when browser storage cannot save the verifier", async () => {
+  it.each(["Google", "Discord", "GitHub"])(
+    "navigates the current document for %s without opening a popup",
+    async (providerLabel) => {
+      const openSpy = vi.spyOn(window, "open");
+      renderSection();
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: providerLabel }),
+      );
+
+      await waitFor(() =>
+        expect(window.location.href).toBe(
+          `https://api.example.test/steward/auth/oauth/${providerLabel.toLowerCase()}/authorize`,
+        ),
+      );
+      expect(openSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps the form retryable when browser storage cannot save the verifier", async () => {
     oauthState.storeVerifier = false;
     renderSection();
 
@@ -160,10 +169,14 @@ describe("StewardLoginSection OAuth launch", () => {
     await waitFor(() =>
       expect(screen.getByText(/browser storage is unavailable/i)).toBeTruthy(),
     );
-    expect(oauthState.popup?.close).toHaveBeenCalledOnce();
+    expect(window.location.href).toBe("https://cloud.eliza.app/login");
+    expect(
+      (screen.getByRole("button", { name: "Google" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
   });
 
-  it("closes the popup when PKCE creation fails", async () => {
+  it("keeps the form retryable when PKCE creation fails", async () => {
     oauthState.pkceError = new Error("crypto unavailable");
     renderSection();
 
@@ -172,6 +185,10 @@ describe("StewardLoginSection OAuth launch", () => {
     await waitFor(() =>
       expect(screen.getByText("crypto unavailable")).toBeTruthy(),
     );
-    expect(oauthState.popup?.close).toHaveBeenCalledOnce();
+    expect(window.location.href).toBe("https://cloud.eliza.app/login");
+    expect(
+      (screen.getByRole("button", { name: "Google" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
   });
 });

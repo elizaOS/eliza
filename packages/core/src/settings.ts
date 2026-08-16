@@ -493,12 +493,12 @@ export function encryptedCharacter(character: Character): Character {
 /**
  * Decrypts sensitive data in a Character object
  * @param {Character} character - The character object with encrypted secrets
- * @param {IAgentRuntime} runtime - The runtime information needed for salt generation
+ * @param {IAgentRuntime} runtime - Retained for backward compatibility; salt resolution is process-scoped
  * @returns {Character} - A copy of the character with decrypted secrets
  */
 export function decryptedCharacter(
 	character: Character,
-	_runtime: IAgentRuntime,
+	_runtime?: IAgentRuntime,
 ): Character {
 	const decryptedChar: Character = {
 		...character,

@@ -23,6 +23,7 @@ import {
 	PseudonymSession,
 } from "../security/index.js";
 import {
+	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	messageHandlerFromFieldResult,
 	runV5MessageRuntimeStage1,
 } from "../services/message";
@@ -5398,6 +5399,104 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent).toBeNull();
 			expect(result.result.responseMessages).toEqual([]);
 		}
+	});
+
+	it("reconciles the owner reminder route without dropping a compound Stage-1 candidate", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["tasks", "messaging"],
+				candidateActionNames: ["TRIGGER_CREATE", "MESSAGE_SEND"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Create the owner reminder first.",
+				toolCalls: [
+					{
+						id: "owner-reminder-1",
+						name: "OWNER_REMINDERS",
+						args: {},
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The owner reminder route completed.",
+				messageToUser: "The reminder route completed.",
+			}),
+		]);
+		const ownerHandler = vi.fn(async () => ({
+			success: true,
+			text: "Reminder created.",
+		}));
+		runtime.actions = [
+			{
+				name: "OWNER_REMINDERS",
+				description: "Create owner reminders.",
+				contexts: ["tasks", "productivity"],
+				tags: [
+					"domain:reminders",
+					"capability:write",
+					"capability:schedule",
+					"effect:receipt-required",
+				],
+				roleGate: { minRole: "USER" },
+				validate: async () => true,
+				handler: ownerHandler,
+			},
+			{
+				name: "MESSAGE_SEND",
+				description: "Send an owner-approved message.",
+				contexts: ["messaging"],
+				validate: async () => true,
+				handler: async () => ({ success: true, text: "Message sent." }),
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.owner-reminder-authoritative",
+			actionNames: ["OWNER_REMINDERS"],
+			replacesActionNames: ["TRIGGER_CREATE"],
+			requiredActionTags: [
+				"domain:reminders",
+				"capability:write",
+				"capability:schedule",
+				"effect:receipt-required",
+			],
+			contexts: ["tasks", "productivity"],
+			matches: (text) => /\bremind\s+me\b/iu.test(text),
+		});
+		const directRouteEvaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(evaluator) =>
+				evaluator.name === "core.direct_registered_capability_request",
+		);
+		if (!directRouteEvaluator)
+			throw new Error("direct route evaluator missing");
+		runtime.responseHandlerEvaluators = [directRouteEvaluator];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Remind me to message Pat tomorrow, then send the update.",
+			}),
+			state: {
+				...makeState(),
+				values: {
+					availableContexts: "general, tasks, productivity, messaging",
+				},
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(result.messageHandler.plan.candidateActions).toEqual([
+			"MESSAGE_SEND",
+			"OWNER_REMINDERS",
+		]);
+		expect(result.messageHandler.plan.candidateActions).not.toContain(
+			"TRIGGER_CREATE",
+		);
+		expect(ownerHandler).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not treat a tasks-context CHOOSE_OPTION action as a recap reader", async () => {

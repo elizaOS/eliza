@@ -21,6 +21,7 @@ import {
   formatSlackUserMention,
   markdownToSlackMrkdwn,
   parseSlackMessagePermalink,
+  splitSlackText,
   stripSlackFormatting,
   truncateText,
 } from "./formatting.ts";
@@ -108,6 +109,29 @@ describe("stripSlackFormatting", () => {
 });
 
 describe("chunkSlackText", () => {
+  it("respects the limit when the break character lands exactly on the fence budget", () => {
+    // lastIndexOf is inclusive of its fromIndex, so a newline sitting exactly
+    // on hardLimit (maxChars - 4) used to push breakPoint one past it and
+    // spend the reserved "\n```" budget, emitting maxChars + 1.
+    const text = `\`\`\`\n${"a".repeat(3992)}\n${"b".repeat(500)}`;
+    const chunks = chunkSlackText(text, 4000);
+    expect(chunks.every((c) => c.length <= 4000)).toBe(true);
+  });
+
+  it("respects a small limit at the same boundary", () => {
+    const text = `\`\`\`\n${"a".repeat(92)}\n${"b".repeat(120)}`;
+    const chunks = chunkSlackText(text, 100);
+    expect(chunks.every((c) => c.length <= 100)).toBe(true);
+  });
+
+  it("holds the limit across a sweep of break positions", () => {
+    for (let pad = 3980; pad <= 3999; pad++) {
+      const text = `\`\`\`\n${"a".repeat(pad)}\n${"b".repeat(200)}`;
+      const chunks = chunkSlackText(text, 4000);
+      expect(chunks.every((c) => c.length <= 4000)).toBe(true);
+    }
+  });
+
   it("never emits a chunk over the limit, even when closing a split code block", () => {
     const text = `\`\`\`\n${"x".repeat(4200)}\n\`\`\``;
     const chunks = chunkSlackText(text, 4000);
@@ -129,6 +153,20 @@ describe("chunkSlackText", () => {
       expect((c.match(/```/g) || []).length % 2).toBe(0);
     }
   });
+});
+
+describe("splitSlackText", () => {
+  it.each(["\n", " "])(
+    "keeps the service send path within the cap at an exact %j boundary",
+    (boundary) => {
+      const text = `${"a".repeat(4000)}${boundary}${"b".repeat(100)}`;
+      const chunks = splitSlackText(text, 4000);
+
+      expect(chunks.map((chunk) => chunk.length)).toEqual([4000, 101]);
+      expect(chunks.every((chunk) => chunk.length <= 4000)).toBe(true);
+      expect(chunks.join("")).toBe(text);
+    },
+  );
 });
 
 describe("truncateText", () => {
