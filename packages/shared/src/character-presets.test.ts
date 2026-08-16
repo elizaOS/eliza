@@ -113,4 +113,32 @@ describe("default Eliza persona safety", () => {
       /Done\. 9am|Give me a minute|Three more minutes|I'll ping you/u,
     );
   });
+
+  it("treats brevity as a default that explicit depth requests override", () => {
+    expect(definition).toBeDefined();
+    expect(definition?.system).toContain("Short is a default, not a ceiling.");
+    expect(definition?.system).toContain(
+      "give them the depth they asked for and keep it for the rest of the conversation",
+    );
+    expect(definition?.system).toContain(
+      '"Tell me more" means more about what you were just talking about.',
+    );
+    expect(definition?.style.chat).toContain(
+      "an explicit ask for length or detail beats every brevity rule, honor it for the whole conversation",
+    );
+    expect(definition?.style.chat).toContain(
+      '"tell me more" is about the last thing discussed, answer it instead of asking which thing',
+    );
+  });
+
+  it("carries the depth-override rule into every language variant's resolved system", () => {
+    expect(definition).toBeDefined();
+    for (const language of Object.keys(definition?.variants ?? {})) {
+      const preset = resolveStylePresetById(
+        "eliza",
+        language as keyof NonNullable<typeof definition>["variants"],
+      );
+      expect(preset?.system).toContain("Short is a default, not a ceiling.");
+    }
+  });
 });
