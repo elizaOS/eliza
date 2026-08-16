@@ -2769,6 +2769,13 @@ async function collectV5PlannerCandidateActions(args: {
 		 * routing hint. Same index order as
 		 * `disclosureRejectedExplicitCandidates`. */
 		disclosureRejectedReasons: string[];
+		/** Normalized names of EXPLICIT stage-1 candidates rejected by a
+		 * NON-disclosure gate (role/context/private-action). A privacy denial
+		 * only proves a disclosure boundary; when the same turn also has a
+		 * non-disclosure rejection the request is compound, so the privacy
+		 * short-circuit must stand down and let the planner/recovery path answer
+		 * the non-disclosure limitation honestly (#20679). */
+		nonDisclosureRejectedExplicitCandidates: string[];
 	};
 }): Promise<Action[]> {
 	// The candidate surface starts from every runtime action and applies only the
@@ -2823,6 +2830,10 @@ async function collectV5PlannerCandidateActions(args: {
 					);
 					args.diagnostics?.disclosureRejectedReasons.push(
 						gateRejection.reason,
+					);
+				} else {
+					args.diagnostics?.nonDisclosureRejectedExplicitCandidates.push(
+						action.name,
 					);
 				}
 				args.runtime.logger.warn(
@@ -8307,6 +8318,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const candidateGateDiagnostics = {
 			disclosureRejectedExplicitCandidates: [] as string[],
 			disclosureRejectedReasons: [] as string[],
+			nonDisclosureRejectedExplicitCandidates: [] as string[],
 		};
 		const prePatchStageOneReply =
 			typeof messageHandler.plan.reply === "string" &&
@@ -8719,9 +8731,20 @@ export async function runV5MessageRuntimeStage1(args: {
 			);
 		const ungatedTriggerSiblingAvailable =
 			rejectedReminderish && collectedCandidateNames.has("TRIGGER");
+		// The privacy denial only proves an owner-exclusive disclosure boundary.
+		// A MIXED rejection set — one candidate denied by disclosure AND another
+		// explicit candidate denied by a role/context/private-action gate — is a
+		// compound request whose non-disclosure limitation the planner/recovery
+		// path must answer honestly. Short-circuit ONLY when the rejection set is
+		// purely disclosure-based; any non-disclosure rejection stands the privacy
+		// template down (#20679, refining #20660).
+		const onlyDisclosureRejections =
+			candidateGateDiagnostics.nonDisclosureRejectedExplicitCandidates
+				.length === 0;
 		if (
 			candidateGateDiagnostics.disclosureRejectedExplicitCandidates.length >
 				0 &&
+			onlyDisclosureRejections &&
 			!anyNamedStageOneCandidateSurvived &&
 			!ungatedTriggerSiblingAvailable
 		) {
