@@ -7134,7 +7134,7 @@
   "cloud.billingTab.amountHint": "输入您要添加的金额。最低：${{min}}，最高：${{max}}",
   "cloud.billingTab.card": "银行卡",
   "cloud.billingTab.crypto": "加密货币",
-  "cloud.billingTab.redirecting": "正在跳转…",
+  "cloud.billingTab.processing": "处理中…",
   "cloud.billingTab.payWithCrypto": "使用加密货币付款",
   "cloud.billingTab.buyCredits": "购买额度",
   "cloud.billingTab.willBeAdded": "${{amount}} 将添加到您的余额",

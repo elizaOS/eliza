@@ -7770,7 +7770,7 @@
   "cloud.billingTab.amountHint": "Enter the amount you want to add. Min: ${{min}}, Max: ${{max}}",
   "cloud.billingTab.card": "Card",
   "cloud.billingTab.crypto": "Crypto",
-  "cloud.billingTab.redirecting": "Redirecting...",
+  "cloud.billingTab.processing": "Processing…",
   "cloud.billingTab.payWithCrypto": "Pay with Crypto",
   "cloud.billingTab.buyCredits": "Buy credits",
   "cloud.billingTab.willBeAdded": "${{amount}} will be added to your balance",
