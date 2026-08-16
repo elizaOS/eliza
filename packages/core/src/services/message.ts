@@ -335,7 +335,7 @@ import {
 	hasFirstSentence,
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
-import { truncateWellFormed } from "../utils/well-formed";
+import { deepToWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
@@ -12141,19 +12141,25 @@ export class DefaultMessageService implements IMessageService {
 										: {}),
 									onToolCall: async (payload: StreamingToolCallPayload) => {
 										await opts.onStreamChunk?.(
-											JSON.stringify({ type: "tool_call", ...payload }),
+											JSON.stringify(
+												deepToWellFormedUnicode({ type: "tool_call", ...payload }),
+											),
 											responseId,
 										);
 									},
 									onToolResult: async (payload: StreamingToolResultPayload) => {
 										await opts.onStreamChunk?.(
-											JSON.stringify({ type: "tool_result", ...payload }),
+											JSON.stringify(
+												deepToWellFormedUnicode({ type: "tool_result", ...payload }),
+											),
 											responseId,
 										);
 									},
 									onEvaluation: async (payload: StreamingEvaluationPayload) => {
 										await opts.onStreamChunk?.(
-											JSON.stringify({ type: "evaluation", ...payload }),
+											JSON.stringify(
+												deepToWellFormedUnicode({ type: "evaluation", ...payload }),
+											),
 											responseId,
 										);
 									},
@@ -12161,7 +12167,12 @@ export class DefaultMessageService implements IMessageService {
 										payload: StreamingContextEventPayload,
 									) => {
 										await opts.onStreamChunk?.(
-											JSON.stringify({ type: "context_event", event: payload }),
+											JSON.stringify(
+												deepToWellFormedUnicode({
+													type: "context_event",
+													event: payload,
+												}),
+											),
 											responseId,
 										);
 									},
