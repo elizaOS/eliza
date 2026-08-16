@@ -163,7 +163,13 @@ function wallFor(match: CapabilityMatch): SharedCapabilityWall {
 function beginsSeparateClause(text: string, primary: CapabilityMatch, candidate: CapabilityMatch) {
   if (candidate.index < primary.end) return false;
   const between = text.slice(primary.end, candidate.index);
-  return /(?:[.!?;]\s*|,\s*|\b(?:and\s+)?then\b[\s\S]*)$/i.test(between);
+  if (/(?:[.!?;]\s*|,\s*|\b(?:and\s+)?then\b[\s\S]*)$/i.test(between)) return true;
+  if (!/\band\s*$/i.test(between)) return false;
+
+  // An infinitive after "remind me" is reminder content, even when that
+  // content coordinates several actions. A completed trigger followed by
+  // "and" starts a new command instead.
+  return primary.rule.capability !== "reminders" || !/\bto\b/i.test(between);
 }
 
 /**
@@ -178,23 +184,34 @@ export function resolveSharedCapabilityIntent(
   const text = (message ?? "").trim();
   if (!text || NON_EXECUTION_CONTEXT.test(text)) return null;
   const matches = RULES.flatMap((rule, priority) => {
-    const match = rule.pattern.exec(text);
-    return match
-      ? [{ rule, priority, index: match.index, end: match.index + match[0].length }]
-      : [];
+    const pattern = new RegExp(
+      rule.pattern.source,
+      rule.pattern.flags.includes("g") ? rule.pattern.flags : `${rule.pattern.flags}g`,
+    );
+    return Array.from(text.matchAll(pattern), (match) => ({
+      rule,
+      priority,
+      index: match.index,
+      end: match.index + match[0].length,
+    }));
   }).sort((left, right) => left.index - right.index || left.priority - right.priority);
   const primary = matches[0];
   if (!primary) return null;
   if (!isEnabled(primary, capabilities)) {
     return { kind: "blocked-primary", blocked: wallFor(primary) };
   }
-  const blockedSecondary = matches
+  const blockedMatches = matches
     .slice(1)
     .filter(
       (candidate) =>
         !isEnabled(candidate, capabilities) && beginsSeparateClause(text, primary, candidate),
-    )
-    .map(wallFor);
+    );
+  const blockedCapabilities = new Set<SharedDedicatedCapability>();
+  const blockedSecondary = blockedMatches.flatMap((match) => {
+    if (blockedCapabilities.has(match.rule.capability)) return [];
+    blockedCapabilities.add(match.rule.capability);
+    return [wallFor(match)];
+  });
   return {
     kind: "enabled-primary",
     primary: wallFor(primary),
