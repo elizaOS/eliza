@@ -61,3 +61,45 @@
          }
          catch (err) {
              throw new StewardApiError(`WebAuthn authentication cancelled or failed: ${err instanceof Error ? err.message : String(err)}`, 0);
+--- a/dist/client.d.ts
++++ b/dist/client.d.ts
+@@ -1421,5 +1421,15 @@
+     revokeTenantRequestSigningKey(tenantId: string, keyId: string): Promise<TenantRequestSigningKey>;
+     /** Get the aggregated dashboard for an agent (balance, spend, policies, recent tx, pending approvals). */
+     getAgentDashboard(agentId: string): Promise<AgentDashboardResponse>;
++    /** List the agent-scoped pending approval page. */
++    listPendingApprovals(agentId: string, opts?: {
++        limit?: number;
++        offset?: number;
++    }): Promise<Array<{
++        queueId: string;
++        status: string;
++        requestedAt: Date;
++        transaction: TxRecord;
++    }>>;
+     /** Get on-chain and realtime spend accounting for an agent. */
+     getAgentSpend(agentId: string): Promise<AgentSpendSummary>;
+--- a/dist/client.js
++++ b/dist/client.js
+@@ -2032,6 +2032,21 @@
+             throw new StewardApiError(response.error, response.status, response.data);
+         return response.data;
+     }
++    /** List the agent-scoped pending approval page. */
++    async listPendingApprovals(agentId, opts = {}) {
++        const params = new URLSearchParams();
++        if (opts.limit !== undefined)
++            params.set("limit", String(opts.limit));
++        if (opts.offset !== undefined)
++            params.set("offset", String(opts.offset));
++        const qs = params.toString();
++        const response = await this.request(`/vault/${encodeURIComponent(agentId)}/pending${qs ? `?${qs}` : ""}`);
++        if (!response.ok)
++            throw new StewardApiError(response.error, response.status, response.data);
++        if (!response.data || !Array.isArray(response.data.approvals))
++            throw new StewardApiError("Steward pending approvals response is invalid", 502, response.data);
++        return response.data.approvals;
++    }
+     /** Get on-chain and realtime spend accounting for an agent. */
+     async getAgentSpend(agentId) {
+         const response = await this.request(`/agents/${encodeURIComponent(agentId)}/spend`);

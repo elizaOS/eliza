@@ -54,7 +54,19 @@ type StewardClientMock = {
     typeof mock<(agentId: string, policies: unknown[]) => Promise<void>>
   >;
   getAgentDashboard: ReturnType<
-    typeof mock<(agentId: string) => Promise<{ recentTransactions: unknown[] }>>
+    typeof mock<
+      (
+        agentId: string,
+      ) => Promise<{ pendingApprovals: number; recentTransactions: unknown[] }>
+    >
+  >;
+  listPendingApprovals: ReturnType<
+    typeof mock<
+      (
+        agentId: string,
+        opts?: { limit?: number; offset?: number },
+      ) => Promise<unknown[]>
+    >
   >;
   listApprovals: ReturnType<
     typeof mock<(opts?: unknown) => Promise<Array<{ agentId?: string }>>>
@@ -83,7 +95,11 @@ const stewardClient: StewardClientMock = {
   })),
   getPolicies: mock(async () => []),
   setPolicies: mock(async () => undefined),
-  getAgentDashboard: mock(async () => ({ recentTransactions: [] })),
+  getAgentDashboard: mock(async () => ({
+    pendingApprovals: 0,
+    recentTransactions: [],
+  })),
+  listPendingApprovals: mock(async () => []),
   listApprovals: mock(async () => []),
   approveTransaction: mock(async () => ({})),
   denyTransaction: mock(async () => ({})),
@@ -145,14 +161,19 @@ afterEach(() => {
   }
 });
 
-function mockContext(body?: unknown) {
+function mockContext(
+  body?: unknown,
+  options: { query?: string; authorization?: string } = {},
+) {
   return {
     req: {
-      url: "http://test.local/api/wallet/addresses",
-      header: (name: string) =>
-        name.toLowerCase() === "content-type" && body
-          ? "application/json"
-          : undefined,
+      url: `http://test.local/api/wallet/addresses${options.query ?? ""}`,
+      header: (name: string) => {
+        const normalized = name.toLowerCase();
+        if (normalized === "content-type" && body) return "application/json";
+        if (normalized === "authorization") return options.authorization;
+        return undefined;
+      },
       text: async () => (body ? JSON.stringify(body) : ""),
     },
   } as never;
@@ -162,6 +183,7 @@ async function callWallet(
   path: string,
   method: "GET" | "POST" | "PUT" = "GET",
   body?: unknown,
+  options: { query?: string; authorization?: string } = {},
 ) {
   requireUserOrApiKeyWithOrg.mockResolvedValue({
     id: "user-1",
@@ -170,7 +192,7 @@ async function callWallet(
   getAgent.mockResolvedValue({ id: "sandbox-agent-1" });
   createStewardClient.mockResolvedValue(stewardClient);
   return routeModule.handleDirectWalletRequest(
-    mockContext(body),
+    mockContext(body, options),
     Promise.resolve({ agentId: "sandbox-agent-1", path: [path] }),
     method,
   );
@@ -267,5 +289,68 @@ describe("wallet proxy steward agent id resolution", () => {
     expect(response.status).toBe(404);
     expect(body).toEqual({ success: false, error: "Agent not found" });
     expect(createStewardClient).not.toHaveBeenCalled();
+  });
+
+  test("pages pending approvals at the scoped Steward boundary and uses its authoritative total", async () => {
+    dbRows.push({ stewardAgentId: "cloud-client-address" });
+    const approvals = [
+      {
+        queueId: "approval-2",
+        status: "pending",
+        transaction: { id: "tx-2" },
+      },
+      {
+        queueId: "approval-3",
+        status: "pending",
+        transaction: { id: "tx-3" },
+      },
+    ];
+    stewardClient.listPendingApprovals.mockResolvedValue(approvals);
+    stewardClient.getAgentDashboard.mockResolvedValue({
+      pendingApprovals: 7,
+      recentTransactions: [],
+    });
+
+    const response = await callWallet(
+      "steward-pending-approvals",
+      "GET",
+      undefined,
+      {
+        query: "?limit=2&offset=1",
+        authorization: "Bearer header.payload.signature",
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const responseBody = await response.json();
+    expect(responseBody).toEqual({
+      approvals,
+      total: 7,
+      offset: 1,
+      limit: 2,
+    });
+    expect(createStewardClient).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      bearerToken: "header.payload.signature",
+    });
+    expect(stewardClient.listPendingApprovals).toHaveBeenCalledWith(
+      "cloud-client-address",
+      { limit: 2, offset: 1 },
+    );
+    expect(stewardClient.getAgentDashboard).toHaveBeenCalledWith(
+      "cloud-client-address",
+    );
+    expect(stewardClient.listApprovals).not.toHaveBeenCalled();
+  });
+
+  test("does not fabricate a Steward session bearer for API-key requests", async () => {
+    dbRows.push({ stewardAgentId: "cloud-client-address" });
+
+    const response = await callWallet("steward-pending-approvals");
+
+    expect(response.status).toBe(200);
+    expect(createStewardClient).toHaveBeenCalledWith({
+      organizationId: "org-1",
+    });
   });
 });
