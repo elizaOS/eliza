@@ -1740,6 +1740,34 @@ export type ContinuationDialogueEntry = {
 	};
 };
 
+/**
+ * Identifies assistant text derived from a tool execution rather than ordinary
+ * dialogue. Planner context and continuation resolution share this predicate
+ * so either persisted provenance shape closes the completed-action replay path.
+ */
+export function isToolDerivedAssistantContent(
+	content: ContinuationDialogueEntry["content"],
+): boolean {
+	if (!content || typeof content !== "object") return false;
+	if (
+		Array.isArray(content.actionCallbackHistory) &&
+		content.actionCallbackHistory.length > 0
+	) {
+		return true;
+	}
+	if (!Array.isArray(content.actions)) return false;
+	return content.actions.some((action) => {
+		if (typeof action !== "string") return false;
+		const normalized = normalizeActionIdentifier(action);
+		return (
+			normalized.length > 0 &&
+			normalized !== "REPLY" &&
+			normalized !== "NONE" &&
+			normalized !== "IGNORE"
+		);
+	});
+}
+
 const CONTINUATION_LEAD_IN =
 	"(?:ok(?:ay)?|yes|yep|yeah|sure|alright|great|perfect)?[,.!]?\\s*(?:please\\s+)?";
 
@@ -1803,18 +1831,7 @@ function isContinuationDialogueArtifact(
 	const content = entry.content;
 	if (!content || typeof content !== "object") return true;
 	if (content.type === "action_result") return true;
-	if (
-		Array.isArray(content.actions) &&
-		content.actions.some(
-			(action) =>
-				typeof action === "string" &&
-				!["REPLY", "NONE", "IGNORE"].includes(
-					normalizeActionIdentifier(action),
-				),
-		)
-	) {
-		return true;
-	}
+	if (isToolDerivedAssistantContent(content)) return true;
 	if (
 		typeof content.source === "string" &&
 		content.source.includes("sub-agent")
@@ -1850,15 +1867,18 @@ function looksLikePendingAssistantTurn(text: string): boolean {
  * conservative: non-continuation turns resolve to nothing (topic switches are
  * untouched), approval turns additionally require the agent's latest visible
  * reply to still look pending (a question or a short ack without tool-result
- * callbacks), and the resolved text is the single nearest prior user request
- * — prior requests are never concatenated together or onto the current turn.
+ * callbacks), and the resolved text is the single nearest prior request from
+ * the current speaker — shared-room requests from other participants are never
+ * selected or concatenated onto the current turn.
  */
 export function resolveExplicitContinuationRequestText(
 	currentText: string,
 	recentMessages: ReadonlyArray<ContinuationDialogueEntry>,
 	agentId: string,
+	requesterEntityId: string,
 	currentMessageId?: string,
 ): string | null {
+	if (!requesterEntityId || requesterEntityId === agentId) return null;
 	const kind = classifyExplicitContinuationTurn(currentText);
 	if (!kind) return null;
 	const ordered = [...recentMessages]
@@ -1890,7 +1910,7 @@ export function resolveExplicitContinuationRequestText(
 
 	for (let index = ordered.length - 1; index >= 0; index--) {
 		const entry = ordered[index];
-		if (!entry || entry.entityId === agentId) continue;
+		if (!entry || entry.entityId !== requesterEntityId) continue;
 		if (isContinuationDialogueArtifact(entry)) continue;
 		const text = continuationEntryText(entry);
 		if (text.length === 0) continue;

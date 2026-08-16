@@ -1508,10 +1508,13 @@ describe("classifyExplicitContinuationTurn", () => {
 
 describe("resolveExplicitContinuationRequestText", () => {
 	const AGENT_ID = "00000000-0000-0000-0000-0000000000aa";
+	const USER_ID = "00000000-0000-0000-0000-0000000000bb";
+	const OTHER_USER_ID = "00000000-0000-0000-0000-0000000000cc";
 	const room = (
 		entries: Array<{
 			id: string;
 			agent?: boolean;
+			entity?: string;
 			text: string;
 			createdAt: number;
 			callbacks?: string[];
@@ -1520,7 +1523,7 @@ describe("resolveExplicitContinuationRequestText", () => {
 	) =>
 		entries.map((entry) => ({
 			id: entry.id,
-			entityId: entry.agent ? AGENT_ID : "00000000-0000-0000-0000-0000000000bb",
+			entityId: entry.agent ? AGENT_ID : (entry.entity ?? USER_ID),
 			createdAt: entry.createdAt,
 			content: {
 				text: entry.text,
@@ -1543,6 +1546,7 @@ describe("resolveExplicitContinuationRequestText", () => {
 				{ id: "m3", text: "finish my request", createdAt: 3 },
 			]),
 			AGENT_ID,
+			USER_ID,
 			"m3",
 		);
 		expect(resolved).toBe("track a 30 minute run for me");
@@ -1556,6 +1560,7 @@ describe("resolveExplicitContinuationRequestText", () => {
 				{ id: "m2", agent: true, text: "On it.", createdAt: 2 },
 			]),
 			AGENT_ID,
+			USER_ID,
 		);
 		expect(pending).toBe("run ls in my home directory");
 
@@ -1572,6 +1577,7 @@ describe("resolveExplicitContinuationRequestText", () => {
 				},
 			]),
 			AGENT_ID,
+			USER_ID,
 		);
 		expect(delivered).toBe(null);
 	});
@@ -1584,6 +1590,7 @@ describe("resolveExplicitContinuationRequestText", () => {
 				{ id: "m2", agent: true, text: "Done.", createdAt: 2 },
 			]),
 			AGENT_ID,
+			USER_ID,
 		);
 		expect(resolved).toBe(null);
 	});
@@ -1597,6 +1604,7 @@ describe("resolveExplicitContinuationRequestText", () => {
 				{ id: "m3", text: "delete the temporary file", createdAt: 3 },
 			]),
 			AGENT_ID,
+			USER_ID,
 		);
 		expect(resolved).toBe(null);
 	});
@@ -1615,6 +1623,7 @@ describe("resolveExplicitContinuationRequestText", () => {
 				},
 			]),
 			AGENT_ID,
+			USER_ID,
 		);
 		expect(resolved).toBe(null);
 	});
@@ -1625,10 +1634,16 @@ describe("resolveExplicitContinuationRequestText", () => {
 				"what's the weather in tokyo?",
 				room([{ id: "m1", text: "track a run", createdAt: 1 }]),
 				AGENT_ID,
+				USER_ID,
 			),
 		).toBe(null);
 		expect(
-			resolveExplicitContinuationRequestText("finish it", [], AGENT_ID),
+			resolveExplicitContinuationRequestText(
+				"finish it",
+				[],
+				AGENT_ID,
+				USER_ID,
+			),
 		).toBe(null);
 	});
 
@@ -1643,8 +1658,37 @@ describe("resolveExplicitContinuationRequestText", () => {
 				{ id: "m5", text: "finish it", createdAt: 5 },
 			]),
 			AGENT_ID,
+			USER_ID,
 			"m5",
 		);
 		expect(resolved).toBe("run df -h on the server");
+	});
+
+	it("never resolves another participant's request", () => {
+		const messages = room([
+			{
+				id: "m1",
+				entity: OTHER_USER_ID,
+				text: "delete my deployment",
+				createdAt: 1,
+			},
+			{ id: "m2", agent: true, text: "Should I delete it?", createdAt: 2 },
+		]);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"go ahead",
+				messages,
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe(null);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"go ahead",
+				messages,
+				AGENT_ID,
+				OTHER_USER_ID,
+			),
+		).toBe("delete my deployment");
 	});
 });

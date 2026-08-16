@@ -351,6 +351,7 @@ import {
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 	isShellDirectActionName,
+	isToolDerivedAssistantContent,
 	LEGACY_CODING_DELEGATION_ACTION_NAMES,
 	looksLikeBareLinkShare,
 	looksLikeLocalShellRequest,
@@ -2279,27 +2280,6 @@ const PLANNER_MAX_OWN_REPLY_TURNS = 4;
  * reply/none envelope). The planner context excludes these rows so a stale
  * tool-derived answer is never parroted in place of a fresh tool run.
  */
-function isToolDerivedAssistantContent(content: Memory["content"]): boolean {
-	if (!content || typeof content !== "object") return false;
-	const callbackHistory = (content as { actionCallbackHistory?: unknown })
-		.actionCallbackHistory;
-	if (Array.isArray(callbackHistory) && callbackHistory.length > 0) {
-		return true;
-	}
-	const actions = (content as { actions?: unknown }).actions;
-	if (!Array.isArray(actions)) return false;
-	return actions.some((action) => {
-		if (typeof action !== "string") return false;
-		const normalized = normalizeActionIdentifier(action);
-		return (
-			normalized.length > 0 &&
-			normalized !== "REPLY" &&
-			normalized !== "NONE" &&
-			normalized !== "IGNORE"
-		);
-	});
-}
-
 function appendPriorDialogueEvents(
 	events: ContextEvent[],
 	runtime: IAgentRuntime,
@@ -2615,6 +2595,7 @@ function resolveContinuationInferenceMessageText(
 		currentText,
 		recentMessages,
 		runtime.agentId,
+		message.entityId,
 		message.id,
 	);
 }
