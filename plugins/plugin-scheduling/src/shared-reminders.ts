@@ -247,13 +247,7 @@ export function createSharedRemindersEdgeAction(
       "SNOOZE_REMINDER",
       "DISMISS_REMINDER",
     ],
-    tags: [
-      "resource:scheduled-item",
-      "capability:read",
-      "capability:write",
-      "effect:idempotent",
-      "effect:receipt-required",
-    ],
+    tags: ["resource:scheduled-item", "capability:read", "capability:write"],
     contexts: ["reminders", "general"],
     roleGate: { minRole: "GUEST" },
     description:

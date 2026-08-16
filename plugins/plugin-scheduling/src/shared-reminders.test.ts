@@ -119,6 +119,8 @@ describe("Shared reminders edge plugin", () => {
     );
 
     expect(result?.success).toBe(true);
+    expect(action?.tags).not.toContain("effect:idempotent");
+    expect(action?.tags).not.toContain("effect:receipt-required");
     expect(scheduleWithResult).toHaveBeenCalledTimes(1);
     expect(scheduleWithResult.mock.calls[0]?.[0]).toMatchObject({
       kind: "reminder",
