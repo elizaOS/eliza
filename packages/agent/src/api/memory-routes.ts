@@ -394,7 +394,7 @@ async function fetchMemoriesFromTables(
   filtered = filtered.filter(hasBrowsableContent);
 
   const beforeTs = params.before;
-  if (beforeTs) {
+  if (beforeTs !== undefined) {
     return filtered.filter((m) => memoryCreatedAt(m) < beforeTs);
   }
   return filtered;
