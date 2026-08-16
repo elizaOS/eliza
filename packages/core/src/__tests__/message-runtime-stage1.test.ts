@@ -480,6 +480,59 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
+	it("keeps a MIXED disclosure+role rejection set on the planner path (#20679)", async () => {
+		// A compound request whose Stage-1 candidate set rejects one action on the
+		// owner-exclusive disclosure gate AND another on a role gate must NOT get
+		// the deterministic privacy template: the privacy denial only proves a
+		// disclosure boundary, and the non-disclosure limitation must reach the
+		// planner/recovery path so the turn answers it honestly. Refines #20660,
+		// which short-circuited whenever ANY disclosure rejection existed.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user asked for an owner read and a restricted action.",
+				contexts: ["general"],
+				candidateActionNames: ["OWNER_TODOS", "ADMIN_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Explain the role limitation for the non-private action.",
+				toolCalls: [],
+				messageToUser: "This action requires an administrator role.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "OWNER_TODOS",
+				disclosureGate: { require: "owner_exclusive" },
+			},
+			{
+				...makeMemorySearchAction("OWNER"),
+				name: "ADMIN_TASK",
+				contexts: ["general"],
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"This action requires an administrator role.",
+			);
+			// The privacy template must NOT have swallowed the compound turn.
+			expect(result.result.responseContent?.text).not.toMatch(
+				/that's private|owner's private info|private information in this conversation/i,
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
 	it("blocks a Stage-1 action envelope before the direct-reply route", async () => {
 		const actionEnvelope =
 			'{"action":"BROWSER","parameters":{"url":"https://example.com"},"status":"retry","toolCallId":"call-1"}';
@@ -5606,9 +5659,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		});
 
 		expect(result.kind).toBe("planned_reply");
+		// The direct-route reconciliation removes the granular TRIGGER_CREATE alias
+		// in favor of the authoritative OWNER_REMINDERS action, while deliberately
+		// retaining the canonical TRIGGER umbrella alias that legitimately serves
+		// in-channel triggers (see #20660's TRIGGER-sibling carve-out).
 		expect(result.messageHandler.plan.candidateActions).toEqual([
 			"MESSAGE_SEND",
 			"OWNER_REMINDERS",
+			"TRIGGER",
 		]);
 		expect(result.messageHandler.plan.candidateActions).not.toContain(
 			"TRIGGER_CREATE",
