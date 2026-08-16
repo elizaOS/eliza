@@ -250,6 +250,16 @@ export interface Bindings {
   ATLASCLOUD_BASE_URL?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
+  /**
+   * Base URL of the self-hosted TEI embeddings sidecar
+   * (packages/cloud/services/embeddings). Setting it routes the local
+   * `bge-small-en-v1.5` embedding id there; `/v1` suffix optional.
+   */
+  LOCAL_EMBEDDINGS_BASE_URL?: string;
+  /** Bearer token for the sidecar, only when its TEI `API_KEY` gate is set. */
+  LOCAL_EMBEDDINGS_API_KEY?: string;
+  /** "true" routes EVERY embedding id to the sidecar (aliases onto the local model). */
+  ELIZA_EMBEDDINGS_FORCE_LOCAL?: string;
   ANTHROPIC_API_KEY?: string;
   /**
    * Cloud-side HuggingFace token attached by the `/api/v1/hf-proxy/*` route so
