@@ -587,7 +587,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				}
 				entityIds.push(entity.id);
 			}
-		} else if (_params.entityIds?.length) {
+		} else if (!hasComponentQuery && _params.entityIds?.length) {
 			entityIds = [..._params.entityIds];
 		} else {
 			return [];
