@@ -41,6 +41,7 @@ import { EventType } from "../types/events";
 import type { ToolCall } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { State } from "../types/state";
+import { resolveActionEventWorldId } from "./action-event-world";
 import { actionGateFailure } from "./action-gate";
 import {
 	actionFailureResult as failureResult,
@@ -578,7 +579,15 @@ export async function executePlannedToolCall(
 
 	const messageId = executorCtx.message.id as UUID | undefined;
 	const roomId = executorCtx.message.roomId as UUID;
-	const worldId = (executorCtx.message.worldId ?? roomId) as UUID;
+	let actionEventWorldId: Promise<UUID> | undefined;
+	const getActionEventWorldId = () => {
+		actionEventWorldId ??= resolveActionEventWorldId(
+			runtime,
+			executorCtx.message,
+			"ExecutePlannedToolCall.resolveActionEventWorldId",
+		);
+		return actionEventWorldId;
+	};
 	const actionStartContent = {
 		text: `Executing action: ${action.name}`,
 		actions: [action.name],
@@ -586,6 +595,7 @@ export async function executePlannedToolCall(
 		source: executorCtx.message.content.source,
 	};
 	if (typeof runtime.emitEvent === "function") {
+		const worldId = await getActionEventWorldId();
 		await runtime
 			.emitEvent(EventType.ACTION_STARTED, {
 				runtime,
@@ -729,6 +739,7 @@ export async function executePlannedToolCall(
 	);
 
 	if (typeof runtime.emitEvent === "function") {
+		const worldId = await getActionEventWorldId();
 		await runtime
 			.emitEvent(EventType.ACTION_COMPLETED, {
 				runtime,

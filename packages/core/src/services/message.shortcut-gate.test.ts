@@ -59,6 +59,8 @@ function makeRuntime(opts: { actions?: Action[] } = {}) {
 		agentId: "00000000-0000-0000-0000-0000000000a1" as UUID,
 		actions: opts.actions ?? [echoAction()],
 		shortcutRegistry: registry,
+		getRoom: vi.fn(async () => null),
+		reportError: vi.fn(),
 		emitEvent,
 		useModel,
 		logger: { debug: () => {}, warn: () => {} },
@@ -465,6 +467,8 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			agentId: "00000000-0000-0000-0000-0000000000a1" as UUID,
 			actions: [compactAction],
 			shortcutRegistry: registry,
+			getRoom: vi.fn(async () => null),
+			reportError: vi.fn(),
 			emitEvent: vi.fn(async () => undefined),
 			// A streaming model that pushes intermediate ledger JSON into whatever
 			// streaming context is active during the call.
