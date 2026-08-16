@@ -198,3 +198,140 @@ describe("Worker secret inventory validation", () => {
     );
   });
 });
+
+import {
+  parseWranglerScriptName,
+  removeStalePlaintextBinding,
+} from "../ensure-worker-secret-absent.mjs";
+
+describe("parseWranglerScriptName", () => {
+  const toml = [
+    'name = "eliza-cloud-api"',
+    "[vars]",
+    'name = "decoy-inside-vars"',
+    "[env.staging]",
+    "[env.staging.vars]",
+    'name = "decoy-inside-env-vars"',
+    "[env.production]",
+    'name = "custom-production-script"',
+  ].join("\n");
+
+  test("applies the <name>-<env> convention when the env has no override", () => {
+    expect(parseWranglerScriptName(toml, "staging")).toBe(
+      "eliza-cloud-api-staging",
+    );
+  });
+
+  test("prefers an env-level name override", () => {
+    expect(parseWranglerScriptName(toml, "production")).toBe(
+      "custom-production-script",
+    );
+  });
+
+  test("returns the top-level name without an environment", () => {
+    expect(parseWranglerScriptName(toml, undefined)).toBe("eliza-cloud-api");
+  });
+
+  test("throws when no top-level name exists", () => {
+    expect(() => parseWranglerScriptName("[vars]\nA = \"b\"", "staging")).toThrow(
+      "wrangler.toml has no top-level name",
+    );
+  });
+});
+
+describe("removeStalePlaintextBinding", () => {
+  const base = {
+    name: "PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED",
+    scriptName: "eliza-cloud-api-staging",
+    accountId: "account-1",
+    apiToken: "token-1",
+  };
+
+  const settingsResponse = (bindings: unknown) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ result: { bindings } }),
+  });
+
+  test("reports already-absent without patching when no plain_text binding matches", async () => {
+    const calls: Array<{ url: string; method: string }> = [];
+    const result = await removeStalePlaintextBinding({
+      ...base,
+      fetchImpl: (async (url: string, init?: { method?: string }) => {
+        calls.push({ url, method: init?.method ?? "GET" });
+        return settingsResponse([
+          { name: "PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED", type: "secret_text" },
+          { name: "OTHER_VAR", type: "plain_text", text: "x" },
+        ]);
+      }) as typeof fetch,
+    });
+    expect(result).toBe("already-absent");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe("GET");
+  });
+
+  test("removes only the stale plain_text binding and round-trips the rest", async () => {
+    const patched: unknown[] = [];
+    let reads = 0;
+    const result = await removeStalePlaintextBinding({
+      ...base,
+      fetchImpl: (async (url: string, init?: { method?: string; body?: FormData }) => {
+        if ((init?.method ?? "GET") === "GET") {
+          reads += 1;
+          return settingsResponse(
+            reads === 1
+              ? [
+                  { name: "PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED", type: "plain_text", text: "false" },
+                  { name: "OTHER_SECRET", type: "secret_text" },
+                  { name: "OTHER_VAR", type: "plain_text", text: "x" },
+                ]
+              : [
+                  { name: "OTHER_SECRET", type: "secret_text" },
+                  { name: "OTHER_VAR", type: "plain_text", text: "x" },
+                ],
+          );
+        }
+        const settingsBlob = init?.body?.get("settings");
+        patched.push(JSON.parse(await (settingsBlob as Blob).text()));
+        return { ok: true, status: 200, json: async () => ({}) };
+      }) as typeof fetch,
+    });
+    expect(result).toBe("removed");
+    expect(patched).toEqual([
+      {
+        bindings: [
+          { name: "OTHER_SECRET", type: "secret_text" },
+          { name: "OTHER_VAR", type: "plain_text", text: "x" },
+        ],
+      },
+    ]);
+  });
+
+  test("fails closed when the binding survives the patch", async () => {
+    const bindings = [
+      { name: "PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED", type: "plain_text", text: "false" },
+    ];
+    await expect(
+      removeStalePlaintextBinding({
+        ...base,
+        fetchImpl: (async (_url: string, init?: { method?: string }) =>
+          (init?.method ?? "GET") === "GET"
+            ? settingsResponse(bindings)
+            : { ok: true, status: 200, json: async () => ({}) }) as typeof fetch,
+      }),
+    ).rejects.toThrow("still contain a plain_text binding");
+  });
+
+  test("fails closed on an unreadable settings surface", async () => {
+    await expect(
+      removeStalePlaintextBinding({
+        ...base,
+        fetchImpl: (async () => ({
+          ok: false,
+          status: 403,
+          json: async () => ({}),
+        })) as typeof fetch,
+      }),
+    ).rejects.toThrow("read failed with status 403");
+  });
+});
