@@ -7,6 +7,8 @@
  * that hole by running both implementations over one corpus and asserting
  * identical output, so any one-sided change fails here regardless of shape.
  */
+import { readFileSync } from "node:fs";
+
 import { sanitizeSpeechText as coreSanitize } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
@@ -26,6 +28,27 @@ const tagCorpus = hiddenBlockTags.flatMap((tag) => [
   `Visible. <${tag}>private payload</${tag}> Continue.`,
   `Visible. <${tag}>private payload`,
   `Visible. <${tag} private payload`,
+]);
+
+// Tags NEITHER implementation strips today. Both currently leak them the same
+// way, so parity holds — and the moment ONE side starts stripping such a tag,
+// its arms diverge and fail here. This is what catches a single-sided
+// EXTENSION for a tag no enumerated corpus could anticipate by name alone
+// (#20569 review): a representative battery of plausible future hidden-block
+// spellings, each in closed/unterminated/truncated-opener form.
+const unknownTagProbes = [
+  "summary",
+  "scratchpad",
+  "reflection",
+  "plan",
+  "hidden",
+  "internal",
+  "critique",
+  "draft",
+].flatMap((tag) => [
+  `Visible. <${tag}>maybe hidden</${tag}> Continue.`,
+  `Visible. <${tag}>maybe hidden`,
+  `Visible. <${tag} maybe hidden`,
 ]);
 
 const generalCorpus = [
@@ -49,10 +72,30 @@ const generalCorpus = [
 ];
 
 describe("spoken-text twin parity (#20562)", () => {
-  it.each([...tagCorpus, ...generalCorpus])(
+  it.each([...tagCorpus, ...unknownTagProbes, ...generalCorpus])(
     "core and shared sanitizers speak %j identically",
     (input) => {
       expect(sharedSanitize(input)).toBe(coreSanitize(input));
     },
   );
+
+  it("keeps the two hidden-block alternations textually identical at the source level", () => {
+    // Belt to the probes' suspenders: behavioral probes catch an extension
+    // whose tag appears in the corpus; this catches ANY tag-list edit on
+    // either side, by name, before a behavioral case exists for it. The two
+    // files are twins by contract (#20519) — their strip-pass alternations
+    // must not drift even in ways the current corpus cannot observe.
+    const read = (path: string) =>
+      readFileSync(new URL(path, import.meta.url), "utf8");
+    const alternations = (source: string) =>
+      [...source.matchAll(/<\\?\(\??:?(think[^)]*)\)/g)].map(
+        (match) => match[1],
+      );
+    const sharedSource = read("./spoken-text.ts");
+    const coreSource = read("../../core/src/spoken-text.ts");
+    const sharedAlternations = alternations(sharedSource);
+    const coreAlternations = alternations(coreSource);
+    expect(sharedAlternations.length).toBeGreaterThanOrEqual(2);
+    expect(sharedAlternations).toEqual(coreAlternations);
+  });
 });
