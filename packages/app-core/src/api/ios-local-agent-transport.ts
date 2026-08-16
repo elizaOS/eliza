@@ -221,6 +221,7 @@ function readRuntimeMode(): string | null {
 function shouldRequireFullBunRuntime(): boolean {
   const env = viteEnv();
   const runtimeMode = readRuntimeMode();
+  if (isRemoteMacRuntimeMode(runtimeMode)) return false;
   if (runtimeMode === "cloud" || runtimeMode === "cloud-hybrid") return false;
   const fullBunBuiltIn = isFullBunRuntimeBuiltIn();
   return (
@@ -232,6 +233,10 @@ function shouldRequireFullBunRuntime(): boolean {
         (isTruthyBuildFlag(env.PROD) && runtimeMode === "local") ||
         (isNativeIos() && !isDevBuild() && runtimeMode === "local")))
   );
+}
+
+function isRemoteMacRuntimeMode(mode: string | null): boolean {
+  return mode === "remote-mac";
 }
 
 function hasIosFullBunSmokeRequest(): boolean {
@@ -291,7 +296,7 @@ function isNativeIosCloudRuntime(): boolean {
 }
 
 function isPureRemoteRuntimeMode(mode: string | null): boolean {
-  return mode === "cloud";
+  return mode === "cloud" || isRemoteMacRuntimeMode(mode);
 }
 
 function usesStrictIosNetworkPolicy(): boolean {
@@ -407,6 +412,7 @@ function iosRuntimeHasOnDeviceAgent(): boolean {
 
 function canUseIosLocalAgentIpc(): boolean {
   if (!isNativeIos()) return false;
+  if (isRemoteMacRuntimeMode(readRuntimeMode())) return false;
   if (iosRuntimeHasOnDeviceAgent() || shouldRequireFullBunRuntime()) {
     return true;
   }
@@ -949,6 +955,9 @@ export async function handleIosLocalAgentNativeRequest(
   const method = (options.method ?? "GET").trim().toUpperCase();
   if (!/^[A-Z]{1,16}$/.test(method)) {
     throw new Error("Unsupported HTTP method");
+  }
+  if (isRemoteMacRuntimeMode(readRuntimeMode())) {
+    throw new TypeError("iOS remote-agent modes cannot use local-agent IPC");
   }
   if (
     isNativeIosCloudRuntime() &&

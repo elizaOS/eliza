@@ -260,6 +260,52 @@ describe("iOS local agent transport (ui copy)", () => {
     },
   );
 
+  it.each(["remote-mac"])(
+    "lets the explicit %s selection override a strict local-runtime build",
+    async (mode) => {
+      vi.stubEnv("VITE_ELIZA_IOS_ALLOW_SIMULATOR_LOOPBACK", "1");
+      vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_STRICT", "1");
+      capacitorState.pluginAvailable = true;
+      const start = vi.fn(async () => ({ ok: true }));
+      const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+      const call = vi.fn();
+      vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+        ElizaBunRuntime: { start, getStatus, call },
+      }));
+      const originalFetch = vi.fn(async () =>
+        Response.json({ source: "mac-runtime" }),
+      );
+      vi.stubGlobal("fetch", originalFetch);
+      vi.stubGlobal("localStorage", {
+        getItem: (key: string) =>
+          key === "eliza:mobile-runtime-mode" ? mode : null,
+      });
+
+      const {
+        handleIosLocalAgentNativeRequest,
+        installIosLocalAgentFetchBridge,
+      } = await import("./ios-local-agent-transport");
+      installIosLocalAgentFetchBridge();
+
+      const url = "http://127.0.0.1:31337/api/notifications?limit=100";
+      const response = await fetch(url);
+
+      await expect(response.json()).resolves.toEqual({
+        source: "mac-runtime",
+      });
+      expect(originalFetch).toHaveBeenCalledWith(url, undefined);
+      await expect(
+        handleIosLocalAgentNativeRequest({
+          method: "GET",
+          path: "/api/notifications?limit=100",
+        }),
+      ).rejects.toThrow("remote-agent modes cannot use local-agent IPC");
+      expect(start).not.toHaveBeenCalled();
+      expect(getStatus).not.toHaveBeenCalled();
+      expect(call).not.toHaveBeenCalled();
+    },
+  );
+
   it("retains port 31337 as the on-device agent in local mode", async () => {
     vi.stubGlobal("localStorage", {
       getItem: (key: string) =>
