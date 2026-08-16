@@ -123,7 +123,7 @@ describe("agent log protocol", () => {
     ).toThrow("stopped polling");
   });
 
-  it("surfaces terminal failure without treating diagnostic text as logs", async () => {
+  it("surfaces terminal failure without exposing infrastructure diagnostics", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -135,19 +135,26 @@ describe("agent log protocol", () => {
           data: {
             type: "agent_logs",
             status: "failed",
-            error: "Bridge log collection failed",
+            error:
+              "[docker-ssh] Command failed on 198.51.100.24: No such container agent-secret-id",
           },
         }),
       );
 
-    await expect(
-      loadAgentLogs({
-        agentId: "agent-1",
-        tail: 100,
-        signal: new AbortController().signal,
-        fetchImpl,
-      }),
-    ).rejects.toThrow("Bridge log collection failed");
+    const error = await loadAgentLogs({
+      agentId: "agent-1",
+      tail: 100,
+      signal: new AbortController().signal,
+      fetchImpl,
+    }).catch((failure: unknown) => failure);
+
+    expect(error).toBeInstanceOf(AgentLogsProtocolError);
+    expect((error as Error).message).toBe(
+      "Log collection failed on the server. Try again in a moment.",
+    );
+    expect((error as Error).message).not.toMatch(
+      /198\.51\.100\.24|agent-secret-id/,
+    );
   });
 
   it("rejects a completed job that still carries a job-level error", () => {
@@ -161,7 +168,10 @@ describe("agent log protocol", () => {
           result: { logs: "misleading" },
         },
       }),
-    ).toEqual({ kind: "failed", message: "Completion was not durable" });
+    ).toEqual({
+      kind: "failed",
+      message: "Log collection failed on the server. Try again in a moment.",
+    });
   });
 
   it("surfaces HTTP failures without accepting their data", async () => {
@@ -181,7 +191,7 @@ describe("agent log protocol", () => {
         signal: new AbortController().signal,
         fetchImpl,
       }),
-    ).rejects.toThrow("You cannot read this agent's logs.");
+    ).rejects.toThrow("You do not have permission to read this agent's logs.");
   });
 
   it("surfaces malformed JSON as a protocol failure", async () => {
