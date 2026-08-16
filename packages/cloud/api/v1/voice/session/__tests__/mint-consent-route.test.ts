@@ -6,12 +6,14 @@
 
 import { beforeAll, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import * as workerCoreStub from "../../../../src/stubs/elizaos-core";
 
 const fakeLogger = {
   logger: { error: mock(), info: mock(), warn: mock(), debug: mock() },
 };
 mock.module("@/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/core", () => ({
+  ...workerCoreStub,
   isSensitiveKeyName: () => false,
   redactLogArgs: (a: unknown) => a,
 }));
