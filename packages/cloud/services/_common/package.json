@@ -9,7 +9,11 @@
   "exports": {
     ".": "./src/index.ts",
     "./logger": "./src/logger.ts",
-    "./k8s-service-account": "./src/k8s-service-account.ts"
+    "./k8s-service-account": "./src/k8s-service-account.ts",
+    "./identity-link-code": "./src/identity-link-code.ts",
+    "./response-attempts": "./src/response-attempts.ts",
+    "./telegram-connector": "./src/telegram-connector.ts",
+    "./telegram-delivery": "./src/telegram-delivery.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

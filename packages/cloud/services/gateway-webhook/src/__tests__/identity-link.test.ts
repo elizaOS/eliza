@@ -5,7 +5,8 @@
  * errors. Deterministic — fetch and redis are injected fakes; no network.
  */
 import { describe, expect, test } from "bun:test";
-import { extractLinkCode, tryConfirmIdentityLink } from "../identity-link";
+import { extractIdentityLinkCode } from "@elizaos/cloud-services-common/identity-link-code";
+import { tryConfirmIdentityLink } from "../identity-link";
 
 function makeDeps(response: Response) {
   const delCalls: string[] = [];
@@ -30,16 +31,18 @@ function makeDeps(response: Response) {
   return { deps, delCalls, fetchCalls };
 }
 
-describe("extractLinkCode", () => {
+describe("extractIdentityLinkCode", () => {
   test("finds a prefixed code case-insensitively inside chat text", () => {
-    expect(extractLinkCode("here: link-7kq2m4xw thanks")).toBe("LINK-7KQ2M4XW");
-    expect(extractLinkCode("LINK-ABCDEFGH")).toBe("LINK-ABCDEFGH");
+    expect(extractIdentityLinkCode("here: link-7kq2m4xw thanks")).toBe(
+      "LINK-7KQ2M4XW",
+    );
+    expect(extractIdentityLinkCode("LINK-ABCDEFGH")).toBe("LINK-ABCDEFGH");
   });
 
   test("ignores ordinary onboarding messages and near-misses", () => {
-    expect(extractLinkCode("hello, I want an agent")).toBeNull();
-    expect(extractLinkCode("LINK-SHORT")).toBeNull();
-    expect(extractLinkCode(undefined)).toBeNull();
+    expect(extractIdentityLinkCode("hello, I want an agent")).toBeNull();
+    expect(extractIdentityLinkCode("LINK-SHORT")).toBeNull();
+    expect(extractIdentityLinkCode(undefined)).toBeNull();
   });
 });
 
