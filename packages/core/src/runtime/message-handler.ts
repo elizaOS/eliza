@@ -253,9 +253,28 @@ function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
 	return result;
 }
 
+/** Explicit media-generation request shape: a generation verb paired with a
+ * media-artifact noun within one clause. Self-contained mirror of
+ * GENERATE_MEDIA's own explicit-request detector — validate() and routing
+ * deliberately own their layers separately (#20174), but they must agree on
+ * what an explicit ask looks like. */
+const EXPLICIT_MEDIA_GENERATION_REQUEST_RE =
+	/\b(?:generate|make|draw|create|render|paint|produce|design)\b[^.!?]{0,64}\b(?:image|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif|video|animation|clip|music|song|audio|sound(?:\s?effect)?|sfx|voice(?:over)?|speech)s?\b/i;
+
+/** Capability-denial reply shape ("can't do that here — no video tools in
+ * this setup", "I don't have an image generator"). */
+const CAPABILITY_DENIAL_REPLY_RE =
+	/\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|capabilit|action|model|service|setup|environment)/i;
+
 export function routeMessageHandlerOutput(
 	output: V5MessageHandlerOutput,
-	options?: { addressedToOtherParticipant?: boolean },
+	options?: {
+		addressedToOtherParticipant?: boolean;
+		/** The user's own message text; enables request-shape promotions the
+		 * stage-1 output alone cannot justify. Optional for compatibility —
+		 * absent, the request-shape promotions simply do not run. */
+		messageText?: string;
+	},
 ): MessageHandlerRoute {
 	const processMessage = output.processMessage;
 	if (processMessage === "IGNORE") {
@@ -282,6 +301,38 @@ export function routeMessageHandlerOutput(
 
 	const allContexts = [...output.plan.contexts];
 	const requiresTool = output.plan.requiresTool === true;
+	// An explicit "generate a <media>" ask is answerable ONLY by the media
+	// action, yet two live failure shapes bypass it: (a) stage-1 parrots a
+	// stale capability denial from room history and ships it on the simple
+	// path ("no video generation tools in this setup" — false, the model is
+	// registered), and (b) planning routes to an adjacent surface (a workflow
+	// builder) because no candidate anchored the media action. Seeding
+	// GENERATE_MEDIA as a candidate fixes both: the candidate-append pass
+	// forces it onto the planner surface, and stage-1-named-tool enforcement
+	// makes the planner actually CALL it instead of acking. If the action is
+	// genuinely gated for this surface, the gate-rejection short-circuit
+	// still answers honestly — the layers compose.
+	const messageTextForRouting = options?.messageText ?? "";
+	const isExplicitMediaAsk = EXPLICIT_MEDIA_GENERATION_REQUEST_RE.test(
+		messageTextForRouting,
+	);
+	// Seeding is applied ONLY on routes that enter the planner: a simple-path
+	// clarify ("a picture of what exactly?") must stay a final reply, so the
+	// seed never by itself converts a simple turn into planning.
+	const seedMediaCandidate = (): void => {
+		if (!isExplicitMediaAsk) return;
+		if (
+			(output.plan.candidateActions ?? []).some(
+				(name) => String(name).trim().toUpperCase() === "GENERATE_MEDIA",
+			)
+		) {
+			return;
+		}
+		output.plan.candidateActions = [
+			...(output.plan.candidateActions ?? []),
+			"GENERATE_MEDIA",
+		];
+	};
 	const candidateActions = output.plan.candidateActions ?? [];
 	const hasCandidateActions = candidateActions.length > 0;
 
@@ -319,15 +370,32 @@ export function routeMessageHandlerOutput(
 		(requiresTool || candidateActionsRequestPlanning) &&
 		nonSimpleContexts.length === 0;
 	if (promotionRequested) {
+		seedMediaCandidate();
 		return {
 			type: "planning_needed",
 			output,
-			contexts: ["general"],
+			contexts: isExplicitMediaAsk ? ["media"] : ["general"],
 		};
 	}
 
 	if (nonSimpleContexts.length === 0) {
 		const reply = getMessageHandlerReply(output);
+		// A capability denial on the simple path for an explicit media ask is
+		// the history-poisoning shape: stage-1 repeats a stale "no video/image
+		// tools" precedent from room history without consulting the runtime
+		// (observed live: the same room that generated two images denied that
+		// GENERATE_MEDIA exists). Route to planning against the media context —
+		// if the capability is real the planner exercises it; if it is
+		// genuinely absent the planner surface proves it and the honest denial
+		// ships from ground truth instead of from memory.
+		if (isExplicitMediaAsk && CAPABILITY_DENIAL_REPLY_RE.test(reply)) {
+			seedMediaCandidate();
+			return {
+				type: "planning_needed",
+				output,
+				contexts: ["media"],
+			};
+		}
 		// A progress-shaped reply on the pure-simple path is a self-contradiction:
 		// "checking paris weather now" promises tool work, and the simple path
 		// runs no tools — shipping it as the WHOLE turn is the bare-ack class
@@ -358,6 +426,7 @@ export function routeMessageHandlerOutput(
 	}
 
 	// Mixed selection: drop the `simple` marker and plan against the rest.
+	seedMediaCandidate();
 	return {
 		type: "planning_needed",
 		output,

@@ -8340,6 +8340,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		const route = routeMessageHandlerOutput(messageHandler, {
 			addressedToOtherParticipant,
+			messageText: getUserMessageText(args.message) ?? "",
 		});
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
