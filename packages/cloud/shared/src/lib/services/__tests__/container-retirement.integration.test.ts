@@ -151,6 +151,28 @@ describe("atomic prior-container retirement", () => {
     expect((await databaseState(RUNNING_ID)).deleteJobIds).toEqual(state.deleteJobIds);
   });
 
+  test("the persisted delete job validates under the canonical codec with the selected row's id (#15821)", async () => {
+    await seedContainer(RUNNING_ID, "running");
+
+    const result = await retireContainerWithDeleteJob(RUNNING_ID, ORG_ID);
+    expect(result.outcome).toBe("retired");
+
+    const { isContainerDeleteJobData } = await import("../container-jobs-data");
+    const jobResult = await dbWrite.execute(
+      `SELECT data FROM jobs
+       WHERE type = 'container_delete' AND data->>'containerId' = '${RUNNING_ID}';`,
+    );
+    expect(jobResult.rows).toHaveLength(1);
+    const data = (jobResult.rows[0] as { data: unknown }).data;
+    // The producer serialized through containerDeleteJobDataToRecord, so the
+    // executor's canonical guard must accept the row without ever reaching the
+    // malformed-job recovery branch, and containerId must be the exact
+    // selected container row id.
+    expect(isContainerDeleteJobData(data)).toBe(true);
+    expect((data as { containerId: string }).containerId).toBe(RUNNING_ID);
+    expect((data as { organizationId: string }).organizationId).toBe(ORG_ID);
+  });
+
   test("a worker terminal transition cannot be overwritten by retry compensation", async () => {
     await seedContainer(TERMINAL_ID, "running");
     await retireContainerWithDeleteJob(TERMINAL_ID, ORG_ID);

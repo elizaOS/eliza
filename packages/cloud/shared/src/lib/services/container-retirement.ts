@@ -12,6 +12,7 @@ import { dbWrite } from "../../db/helpers";
 import { containers } from "../../db/schemas/containers";
 import { jobs } from "../../db/schemas/jobs";
 import { logger } from "../utils/logger";
+import { containerDeleteJobDataToRecord } from "./container-jobs-data";
 import { JOB_TYPES } from "./provisioning-job-types";
 
 const LIVE_JOB_STATUSES = ["pending", "in_progress"] as const;
@@ -98,7 +99,14 @@ async function retireLockedContainer(
       id: jobId,
       type: JOB_TYPES.CONTAINER_DELETE,
       organization_id: row.organizationId,
-      data: { containerId: row.id, organizationId: row.organizationId },
+      // Serialize through the canonical CONTAINER_DELETE codec so this
+      // producer can never persist a payload missing containerId (#15821) —
+      // the codec throws before the insert instead of enqueueing a malformed
+      // job for the executor's recovery branch to classify later.
+      data: containerDeleteJobDataToRecord({
+        containerId: row.id,
+        organizationId: row.organizationId,
+      }),
       data_storage: "inline",
     });
   }
