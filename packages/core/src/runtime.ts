@@ -1549,8 +1549,13 @@ export class AgentRuntime implements IAgentRuntime {
 		if (opts.conversationLength !== undefined) {
 			this.#conversationLength = opts.conversationLength;
 		} else if (opts.settings?.CONVERSATION_LENGTH) {
-			this.#conversationLength =
-				parseInt(String(opts.settings.CONVERSATION_LENGTH), 10) || 100;
+			const parsedConversationLength = parseInt(
+				String(opts.settings.CONVERSATION_LENGTH),
+				10,
+			);
+			this.#conversationLength = Number.isNaN(parsedConversationLength)
+				? 100
+				: parsedConversationLength;
 		} else {
 			this.#conversationLength =
 				getNumberEnv("CONVERSATION_LENGTH", 100) ?? 100;
