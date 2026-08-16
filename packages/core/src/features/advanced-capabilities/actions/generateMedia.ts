@@ -481,12 +481,18 @@ export const generateMediaAction = {
 							? "sound effect"
 							: "audio";
 		const responseText = `Generated ${label}`;
+		const caption = `here's your ${label}.`;
 		const responseContent = {
 			attachments: [attachment],
 			thought: `Generated ${label} based on: "${request.prompt}"`,
 			actions: ["GENERATE_MEDIA"],
-			// Attachment-only callback: the planner/evaluator composes user-facing text.
-			text: "",
+			// Caption rides WITH the attachment so connectors deliver ONE message
+			// (media + caption). The old attachment-only callback (text: "") plus
+			// a planner-composed follow-up shipped as TWO Discord messages — the
+			// image, then a trailing "your image." (owner-reported UX bug). The
+			// turn is marked terminal below, so this caption is the turn's whole
+			// user-facing text on every surface.
+			text: caption,
 			source: "media-generation",
 		};
 
@@ -508,12 +514,13 @@ export const generateMediaAction = {
 
 		return {
 			text: responseText,
-			userFacingText:
-				request.mediaType === "video"
-					? "Here's your video."
-					: request.mediaType === "image"
-						? "Here's your image."
-						: "Here's your audio.",
+			userFacingText: caption,
+			// The media + caption already delivered as one connector message via
+			// the callback above; a planner finish pass would only add a second,
+			// redundant text message ("your image.") after the attachment. End
+			// the chain in deliberate silence — a follow-up ask re-invokes
+			// normally on its own turn.
+			continueChain: false,
 			values: {
 				success: true,
 				mediaGenerated: true,
@@ -524,6 +531,9 @@ export const generateMediaAction = {
 			},
 			data: {
 				actionName: "GENERATE_MEDIA",
+				// Pairs with continueChain above: blanks the planner finish text so
+				// the delivered media+caption message stays the ONLY message.
+				suppressPlannerReply: true,
 				mediaType: request.mediaType,
 				audioKind: request.audioKind,
 				mediaUrl: url,
