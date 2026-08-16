@@ -3031,7 +3031,12 @@ describe("admin agent image rollout on primary PGlite", () => {
 
     await dbWrite
       .update(jobs)
-      .set({ started_at: new Date("2026-07-22T00:00:00.000Z") })
+      .set({
+        started_at: new Date("2026-07-22T00:00:00.000Z"),
+        // An uncommitted canary at the interruption bound must fail closed
+        // rather than recover forever (#17473).
+        execution_interruptions: 5,
+      })
       .where(eq(jobs.id, persisted.id));
     await expireExecutionLease(persisted.id);
     expect(
@@ -3040,14 +3045,14 @@ describe("admin agent image rollout on primary PGlite", () => {
           type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
           organizationId: seeded.targets[0]!.organizationId,
           startedBefore: new Date("2026-07-23T00:00:00.000Z"),
-          maxAttempts: 2,
         })
       ).retried,
     ).toBe(0);
     expect(await jobsRepository.findByIdForWrite(persisted.id)).toMatchObject({
       status: "failed",
-      attempts: 1,
-      error: expect.stringContaining("max attempts reached"),
+      attempts: 0,
+      execution_interruptions: 6,
+      error: expect.stringContaining("interruption bound reached"),
     });
   });
 
@@ -3731,8 +3736,11 @@ describe("admin agent image rollout on primary PGlite", () => {
     ).toBe(1);
     expect(await jobsRepository.findByIdForWrite(enqueued.job.id)).toMatchObject({
       status: "pending",
-      attempts: 1,
-      error: expect.stringContaining("recovered for retry"),
+      // Restart recovery spends the interruption budget, never an attempt
+      // (#17473).
+      attempts: 0,
+      execution_interruptions: 1,
+      error: expect.stringContaining("recovered for retry (interruption 1/5)"),
     });
     expect(
       await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
