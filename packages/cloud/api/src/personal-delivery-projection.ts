@@ -133,7 +133,9 @@ export async function resolvePersonalDeliveryProjection(
   fallback: PersonalDeliveryResolver,
 ): Promise<PersonalDeliveryResult> {
   const namespace = env.PERSONAL_DELIVERY_PROJECTIONS;
-  if (!namespace) return fallback.resolvePersonalDelivery(input);
+  if (!namespace || env.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED !== "true") {
+    return fallback.resolvePersonalDelivery(input);
+  }
 
   const response = await namespace
     .getByName(

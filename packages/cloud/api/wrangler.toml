@@ -179,6 +179,7 @@ new_sqlite_classes = ["PersonalDeliveryProjection"]
 # Local/default deployments retain the direct-model control unless explicitly opted in.
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "false"
+PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
@@ -447,6 +448,9 @@ __filename = '"/worker.js"'
 # Protected staging proves the genuine Workerd AgentRuntime before production promotion.
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "true"
+# Two-phase rollout: deploy invalidation writers as the rollback baseline
+# before a later reviewed release enables projection reads.
+PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 # Apps (Product 2): wire the real deploy trigger so POST /api/v1/apps/:id/deploy
 # enqueues an APP_DEPLOY job the provisioning-worker daemon runs (instead of the
 # legacy status-only stub). Staging only — the apps data plane (tenant DB +
@@ -706,6 +710,7 @@ __filename = '"/worker.js"'
 # Production uses the genuine Shared Workerd runtime for personal voice.
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "true"
+PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of

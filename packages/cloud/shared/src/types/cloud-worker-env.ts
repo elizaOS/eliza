@@ -100,6 +100,8 @@ export interface Bindings {
 
   /** One explicitly invalidated Shared account projection per connector sender. */
   PERSONAL_DELIVERY_PROJECTIONS?: RuntimeDurableObjectNamespace;
+  /** Two-phase rollout gate; readers activate only after invalidation writers are the rollback baseline. */
+  PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
 
   // ---- Cloudflare machine-local protective rate limits ----
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;

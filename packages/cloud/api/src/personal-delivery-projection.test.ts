@@ -244,6 +244,7 @@ describe("resolvePersonalDeliveryProjection", () => {
     const result = await resolvePersonalDeliveryProjection(
       {
         PERSONAL_DELIVERY_PROJECTIONS: { getByName },
+        PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
       } as unknown as AppEnv["Bindings"],
       TELEGRAM,
       { resolvePersonalDelivery },
@@ -252,6 +253,29 @@ describe("resolvePersonalDeliveryProjection", () => {
     expect(result.resolution).toBe("sender-projection-hit");
     expect(getByName).toHaveBeenCalledWith("telegram:123456");
     expect(resolvePersonalDelivery).not.toHaveBeenCalled();
+  });
+
+  test("keeps reads canonical until invalidation writers are the rollback baseline", async () => {
+    const getByName = mock(() => ({
+      fetch: async () =>
+        Response.json({
+          ...sharedResult(),
+          resolution: "sender-projection-hit",
+        }),
+    }));
+    const resolvePersonalDelivery = mock(async () => sharedResult());
+
+    const result = await resolvePersonalDeliveryProjection(
+      {
+        PERSONAL_DELIVERY_PROJECTIONS: { getByName },
+      } as unknown as AppEnv["Bindings"],
+      TELEGRAM,
+      { resolvePersonalDelivery },
+    );
+
+    expect(result).toEqual(sharedResult());
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
+    expect(getByName).not.toHaveBeenCalled();
   });
 
   test("fails closed when a bound projection returns malformed state", async () => {
@@ -265,6 +289,7 @@ describe("resolvePersonalDeliveryProjection", () => {
       resolvePersonalDeliveryProjection(
         {
           PERSONAL_DELIVERY_PROJECTIONS: namespace,
+          PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
         } as unknown as AppEnv["Bindings"],
         TELEGRAM,
         { resolvePersonalDelivery: async () => sharedResult() },
