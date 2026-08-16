@@ -28,8 +28,10 @@ const REPOSITORY_RE =
   /^[a-z0-9](?:[a-z0-9_.-]{0,99})\/[a-z0-9](?:[a-z0-9_.-]{0,99})$/i;
 const LOGIN_RE = /^[a-z0-9](?:[a-z0-9-]{0,38})?(?:\[bot\])?$/i;
 const LANE_RE = /^[a-z0-9][a-z0-9-]{1,48}$/i;
+// Accepts both marker generations: the legacy v1 footer and the signed v2
+// run receipt emitted by the published contribute-to-eliza skill.
 const ATTRIBUTION_MARKER_RE =
-  /^<!--\s*eliza-computer-attribution:v1\b[^\r\n]*-->\s*$/im;
+  /^<!--\s*(?:eliza-computer-attribution:v1|elizaos-contribution-attribution:v2)\b[^\r\n]*-->\s*$/im;
 
 function bodyHash(body) {
   return createHash("sha256")
