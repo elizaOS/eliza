@@ -1,10 +1,6 @@
 /**
- * @module notification-triage
- * @description Fetches unread GitHub notifications and returns them sorted
- * by a composite priority score derived from `reason`, subject type, and
- * the notifying repo's `pushed_at` freshness.
- *
- * Read-only — no confirmation gate.
+ * Fetches unread GitHub notifications and ranks them by reason, subject type,
+ * and repository freshness. The action is read-only and needs no confirmation.
  */
 
 import type {

@@ -2,6 +2,7 @@
  * Deterministic coverage for unread-notification pagination before priority
  * ranking, using a structural GitHub activity client with multiple pages.
  */
+import { logger } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubOctokitClient } from "../types.js";
 import { fetchAllUnreadNotifications } from "./notification-triage.js";
@@ -88,6 +89,7 @@ describe("fetchAllUnreadNotifications", () => {
   });
 
   it("stops after the page cap instead of looping on an always-full inbox", async () => {
+    const warning = vi.spyOn(logger, "warn").mockImplementation(() => {});
     const page = (start: number) =>
       Array.from({ length: 50 }, (_, index) => ({
         id: String(start + index),
@@ -106,5 +108,10 @@ describe("fetchAllUnreadNotifications", () => {
 
     expect(listNotificationsForAuthenticatedUser).toHaveBeenCalledTimes(20);
     expect(notifications).toHaveLength(1000);
+    expect(warning).toHaveBeenCalledWith(
+      { pages: 20, collected: 1000 },
+      "[GitHub:GITHUB_NOTIFICATION_TRIAGE] unread notifications truncated at page cap",
+    );
+    warning.mockRestore();
   });
 });
