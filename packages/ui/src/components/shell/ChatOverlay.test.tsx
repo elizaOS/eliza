@@ -253,6 +253,7 @@ describe("ChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-mic")).toHaveLength(1);
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
     expect(screen.queryByLabelText("send")).toBeNull();
+    expect(screen.queryByTestId("serving-provider-chip")).toBeNull();
   });
 
   it("swaps mic → send once the user types (ChatGPT-style)", () => {

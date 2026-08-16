@@ -28,6 +28,8 @@ const VOICE_ABORT_REASON = "voice-session-interrupt";
 const DEFAULT_RUNTIME_ABORT_TIMEOUT_MS = 2_000;
 const DEFAULT_RUNTIME_ABORT_RETRY_DELAY_MS = 20;
 const DEFAULT_RUNTIME_INGRESS_TIMEOUT_MS = 5_000;
+const DEFAULT_RUNTIME_PREWARM_TIMEOUT_MS = 8_000;
+const LOCAL_VOICE_PREWARM_PATH = "/api/cloud/inference/prewarm";
 
 export interface LocalRuntimeConversationFetchOptions {
   /** One hard deadline covers every pre-registration retry and response read. */
@@ -36,7 +38,13 @@ export interface LocalRuntimeConversationFetchOptions {
   abortRetryDelayMs?: number;
   /** Deadline for one immutable transcript-delivery attempt. */
   ingressTimeoutMs?: number;
+  /** Hard deadline for the optional provider warmup started at session ready. */
+  prewarmTimeoutMs?: number;
 }
+
+export type LocalRuntimeConversationFetch = typeof fetch & {
+  prewarm: () => Promise<void>;
+};
 
 export class LocalRuntimeConversationFetchError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -57,7 +65,7 @@ export function createLocalRuntimeConversationFetch(
   localRuntimeOrigin: string,
   fetchImpl: typeof fetch = fetch,
   options: LocalRuntimeConversationFetchOptions = {},
-): typeof fetch {
+): LocalRuntimeConversationFetch {
   const origin = resolveLoopbackOrigin(localRuntimeOrigin);
   const abortTimeoutMs = resolvePositiveIntegerOption(
     options.abortTimeoutMs,
@@ -74,6 +82,11 @@ export function createLocalRuntimeConversationFetch(
     DEFAULT_RUNTIME_INGRESS_TIMEOUT_MS,
     "ingressTimeoutMs",
   );
+  const prewarmTimeoutMs = resolvePositiveIntegerOption(
+    options.prewarmTimeoutMs,
+    DEFAULT_RUNTIME_PREWARM_TIMEOUT_MS,
+    "prewarmTimeoutMs",
+  );
   const roomIdByConversationId = new Map<string, string>();
   const pendingAbortByRequest = new Map<
     string,
@@ -87,6 +100,43 @@ export function createLocalRuntimeConversationFetch(
       task: Promise<void>;
     }
   >();
+  let activePrewarm: Promise<void> | null = null;
+
+  const prewarm = (): Promise<void> => {
+    if (activePrewarm) return activePrewarm;
+    activePrewarm = (async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(
+        () => controller.abort(new Error("local provider prewarm timed out")),
+        prewarmTimeoutMs,
+      );
+      try {
+        const response = await fetchImpl(
+          new URL(LOCAL_VOICE_PREWARM_PATH, origin),
+          {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "X-Eliza-Local-Voice-Prewarm": "1",
+            },
+            signal: controller.signal,
+          },
+        );
+        if (!response.ok) {
+          void response.body?.cancel().catch(() => undefined);
+          throw new LocalRuntimeConversationFetchError(
+            `local provider prewarm returned HTTP ${response.status}`,
+          );
+        }
+        void response.body?.cancel().catch(() => undefined);
+      } finally {
+        clearTimeout(timeout);
+      }
+    })().finally(() => {
+      activePrewarm = null;
+    });
+    return activePrewarm;
+  };
 
   const abortRequestKey = (roomId: string, clientMessageId: string): string =>
     JSON.stringify([roomId, clientMessageId]);
@@ -391,7 +441,7 @@ export function createLocalRuntimeConversationFetch(
     }
   };
 
-  return (async (
+  const bridge = (async (
     input: RequestInfo | URL,
     init?: RequestInit,
   ): Promise<Response> => {
@@ -467,6 +517,11 @@ export function createLocalRuntimeConversationFetch(
       }
     })();
     const deliveryPromise = (async () => {
+      // Session startup begins this one-token provider probe while the user is
+      // speaking. If it is still running at transcript commit, join only that
+      // already-bounded work so the real turn does not duplicate the gateway's
+      // sequential cache-warming ladder.
+      await activePrewarm?.catch(() => undefined);
       const resolvedRoomId = await roomPromise;
       await awaitPriorRuntimeAbort(resolvedRoomId, body.clientMessageId);
       streamAttempted = true;
@@ -600,7 +655,9 @@ export function createLocalRuntimeConversationFetch(
       exposedResponse,
       startAbortBarrier,
     );
-  }) as typeof fetch;
+  }) as LocalRuntimeConversationFetch;
+  bridge.prewarm = prewarm;
+  return bridge;
 }
 
 async function parseConversationList(

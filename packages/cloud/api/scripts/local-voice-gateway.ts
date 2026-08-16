@@ -133,6 +133,29 @@ async function main(): Promise<void> {
   ]);
 
   await harness.installHarnessSigningKey();
+  const localRuntimeFetch = createLocalRuntimeConversationFetch(
+    runtimeOrigin,
+    fetch,
+    // A genuinely cold Cloud admission path can legitimately outlive the
+    // per-session hint deadline while its bounded 503 retries hydrate caches.
+    // Gateway startup is the safe place to absorb that delay once.
+    { prewarmTimeoutMs: 30_000 },
+  );
+  // Pay the provider/admission cold-start before the gateway advertises
+  // readiness. Session.start() retains the same latency hint as a fallback,
+  // but the runtime-side coalescer makes that call content-free and immediate
+  // after this process-lifecycle warmup succeeds. This keeps the user's first
+  // committed utterance from queueing behind a background model request.
+  try {
+    await localRuntimeFetch.prewarm();
+    writeLog("info", "local voice inference prewarm complete");
+  } catch (error) {
+    // error-policy:J7 prewarm is latency-only; the real turn retains its typed
+    // provider retry/fallback path and the diagnostic stays content-free.
+    writeLog("warn", "local voice inference prewarm unavailable", {
+      errorClass: error instanceof Error ? error.name : "UnknownError",
+    });
+  }
   const server = await harness.startRealVoiceServer({
     cartesiaApiKey,
     cartesiaVoiceId,
@@ -142,7 +165,8 @@ async function main(): Promise<void> {
     userId: LOCAL_USER_ID,
     agentId,
     conversationId,
-    fetchImpl: createLocalRuntimeConversationFetch(runtimeOrigin),
+    fetchImpl: localRuntimeFetch,
+    prewarmElizaContext: localRuntimeFetch.prewarm,
     listenPort: gatewayPort,
     hooks: { log: writeLog },
   });

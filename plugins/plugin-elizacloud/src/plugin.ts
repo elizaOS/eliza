@@ -17,7 +17,7 @@
 
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import type { Plugin, Route } from "@elizaos/core";
+import type { IAgentRuntime, Plugin, Route } from "@elizaos/core";
 import { getRuntimeRouteHostContext } from "@elizaos/core";
 import type { ElizaConfig } from "./lib/config-like";
 import { sendJson } from "./lib/http";
@@ -38,6 +38,7 @@ import {
   handleXRelayRoute,
   type XRelayRouteState,
 } from "./routes/x-relay-routes";
+import { prewarmCloudTextGateway } from "./routes/cloud-text-prewarm";
 
 type AnyRuntime = Parameters<typeof handleCloudStatusRoutes>[0]["runtime"];
 
@@ -196,6 +197,51 @@ async function cloudSttHandler(req: unknown, res: unknown): Promise<void> {
   );
 }
 
+function isLoopbackAddress(value: string | undefined): boolean {
+  return (
+    value === "127.0.0.1" ||
+    value === "::1" ||
+    value === "::ffff:127.0.0.1"
+  );
+}
+
+async function cloudTextPrewarmHandler(
+  req: unknown,
+  res: unknown,
+  runtime: unknown,
+): Promise<void> {
+  const httpReq = req as http.IncomingMessage;
+  const httpRes = res as http.ServerResponse;
+  if (
+    !isLoopbackAddress(httpReq.socket.remoteAddress) ||
+    httpReq.headers["x-eliza-local-voice-prewarm"] !== "1"
+  ) {
+    sendJson(httpRes, { error: "Local voice prewarm is unavailable" }, 403);
+    return;
+  }
+  if (!runtime || typeof runtime !== "object") {
+    sendJson(httpRes, { error: "Runtime is unavailable" }, 503);
+    return;
+  }
+
+  try {
+    const state = await prewarmCloudTextGateway(runtime as IAgentRuntime);
+    sendJson(httpRes, { ok: true, state });
+  } catch (error) {
+    // The model handler owns provider diagnostics. This local control response
+    // stays content-free so provider payloads and credentials never cross the
+    // loopback boundary.
+    (runtime as IAgentRuntime).logger?.warn?.(
+      {
+        src: "plugin-elizacloud",
+        errorClass: error instanceof Error ? error.name : "UnknownError",
+      },
+      "Local voice stream prewarm did not complete",
+    );
+    sendJson(httpRes, { error: "Provider prewarm failed" }, 503);
+  }
+}
+
 const cloudRoutes: Route[] = [
   // Status surface (read-only). Note: server.ts may exempt this from auth on
   // cloud-provisioned containers BEFORE the plugin route system fires.
@@ -250,6 +296,14 @@ const cloudRoutes: Route[] = [
     modes: ["local", "cloud", "remote"],
     modeReason: "cloud STT proxy — no cloud account in local-only",
     handler: cloudSttHandler,
+  },
+  {
+    type: "POST",
+    path: "/api/cloud/inference/prewarm",
+    rawPath: true,
+    modes: ["local"],
+    modeReason: "loopback-only local voice provider prewarm",
+    handler: cloudTextPrewarmHandler,
   },
   ...(["GET", "POST", "PUT", "PATCH", "DELETE"] as const).map((type) => ({
     type,

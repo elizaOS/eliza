@@ -340,6 +340,8 @@ export interface RealServerConfig {
   hooks: RealServerHooks;
   /** Optional LLM transport adapter, used by the local-runtime evidence lane. */
   fetchImpl?: typeof fetch;
+  /** Optional session-start provider/context warmup for local live evidence. */
+  prewarmElizaContext?: () => Promise<void>;
   /** Loopback listen port. Omit to let the OS choose an ephemeral test port. */
   listenPort?: number;
   faultInjection?: "cartesia-stt-auth-fail";
@@ -551,6 +553,7 @@ export async function startRealVoiceServer(
           elizaAuthorization: config.elizaAuthorization,
           elizaModel,
           fetchImpl: config.fetchImpl,
+          prewarmElizaContext: config.prewarmElizaContext,
           usageStore,
           usageLimits,
           // Production parity (#16663): NO teardown revoke — production

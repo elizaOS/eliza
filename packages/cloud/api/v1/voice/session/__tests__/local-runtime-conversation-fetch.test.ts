@@ -51,6 +51,69 @@ function committedAbortStatus(
 }
 
 describe("local runtime conversation fetch", () => {
+  test("prewarms the loopback provider once and joins it before the real stream", async () => {
+    const calls: string[] = [];
+    let releasePrewarm!: () => void;
+    const prewarmGate = new Promise<void>((resolve) => {
+      releasePrewarm = resolve;
+    });
+    const downstream = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      calls.push(url.pathname);
+      if (url.pathname === "/api/cloud/inference/prewarm") {
+        await prewarmGate;
+        return Response.json({ ok: true });
+      }
+      if (url.pathname === "/api/conversations") {
+        return Response.json({
+          conversations: [{ id: CONVERSATION_ID, roomId: ROOM_ID }],
+        });
+      }
+      return new Response('event: done\ndata: {"text":"ok"}\n\n', {
+        status: 200,
+        headers: COMMITTED_STREAM_HEADERS,
+      });
+    }) as typeof fetch;
+    const bridge = createLocalRuntimeConversationFetch(
+      "http://127.0.0.1:31337",
+      downstream,
+    );
+
+    const firstPrewarm = bridge.prewarm();
+    const concurrentPrewarm = bridge.prewarm();
+    const stream = bridge(
+      `https://cloud.example/api/v1/eliza/agents/agent-a/api/conversations/${CONVERSATION_ID}/messages/stream`,
+      {
+        method: "POST",
+        headers: { "X-Eliza-Voice-Trace-Id": "trace-prewarm" },
+        body: JSON.stringify({
+          text: "hello after warmup",
+          clientMessageId: "voice:trace-prewarm",
+          channelType: VOICE_CHANNEL_TYPE,
+          metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+          streamProtocol: "delta-v2",
+          voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
+        }),
+      },
+    );
+
+    await Promise.resolve();
+    expect(
+      calls.filter((path) => path === "/api/cloud/inference/prewarm"),
+    ).toHaveLength(1);
+    expect(calls).not.toContain(
+      `/api/conversations/${CONVERSATION_ID}/messages/stream`,
+    );
+
+    releasePrewarm();
+    await expect(firstPrewarm).resolves.toBeUndefined();
+    await expect(concurrentPrewarm).resolves.toBeUndefined();
+    await expect(stream).resolves.toBeInstanceOf(Response);
+    expect(calls).toContain(
+      `/api/conversations/${CONVERSATION_ID}/messages/stream`,
+    );
+  });
+
   test("rewrites the cloud route to canonical local SSE without cloud credentials", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const downstream = (async (
