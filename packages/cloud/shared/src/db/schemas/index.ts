@@ -93,6 +93,7 @@ export * from "./retention-cohorts";
 export * from "./secrets";
 export * from "./seo";
 export * from "./service-pricing";
+export * from "./shared-agent-memories";
 export * from "./shared-runtime-history";
 export * from "./sso-bridge";
 export * from "./stripe-connect-accounts";
