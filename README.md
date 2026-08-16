@@ -39,9 +39,9 @@ bun install
 bun run dev
 ```
 
-`bun install` also prepares submodules, patches, and runtime artifacts. For a
-smaller development install that skips the large artifact bundle, use
-`bun run install:light`.
+`bun install` also prepares submodules and patches. The legacy archive
+artifact bundle is never pulled implicitly; fetch it deliberately with
+`bun run fetch:archive-artifacts` if you need those fixtures.
 
 Common repository commands:
 

@@ -99,10 +99,11 @@ export const CONCEPT_PRODUCT_IMAGES = {
   usbDrive: "/brand/concepts/concept_usbdrive_900.jpg",
 } as const;
 
+// Only the poster frame is source-owned (assets/background/); the loop videos
+// shipped exclusively in the retired eliza-archive overlay (#16290), so their
+// paths are gone rather than pointing at files no checkout can produce.
 export const CLOUD_BACKGROUND_ASSETS = {
   poster: "/brand/background/clouds_background.jpg",
-  source1080pMp4: "/brand/background/Clouds_Loop_HQ_1080p.mp4",
-  sourceMobile480pMp4: "/brand/background/Clouds_Loop_Mobile_480p.mp4",
 } as const;
 
 /**
