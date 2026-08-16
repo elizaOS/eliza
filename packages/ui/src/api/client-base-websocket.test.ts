@@ -624,8 +624,8 @@ describe("ElizaClient websocket connection policy", () => {
   // The Vite dev server injects a WS base computed from the page origin so
   // tunnels can proxy /ws. That injection is ambient: it must not pin
   // realtime to the dev origin when the user explicitly selected a remote
-  // HTTP(S) agent after boot. A genuinely separate injected WS host stays
-  // authoritative.
+  // HTTP(S) agent after boot. An injected host has no credential-audience
+  // binding, so an explicit runtime always owns both HTTP and realtime.
   function stubInjectedWsBase(value: string | undefined): void {
     if (value === undefined) {
       delete (window as { __ELIZA_WS_BASE__?: string }).__ELIZA_WS_BASE__;
@@ -650,7 +650,7 @@ describe("ElizaClient websocket connection policy", () => {
     stubInjectedWsBase(undefined);
   });
 
-  it("keeps a genuinely separate injected WS host authoritative over an explicit HTTP base", () => {
+  it("does not send an explicit runtime token to a separate injected WS host", () => {
     const createdUrls = stubWebSocket();
     // Page at the dev origin, but the injected WS base points at a real
     // separately-hosted realtime service on a different origin.
@@ -662,7 +662,8 @@ describe("ElizaClient websocket connection policy", () => {
     client.connectWs();
 
     expect(createdUrls).toHaveLength(1);
-    expect(createdUrls[0]).toContain("wss://realtime.example.test:4443/ws?");
+    expect(createdUrls[0]).toContain("ws://127.0.0.1:31337/ws?");
+    expect(createdUrls[0]).not.toContain("realtime.example.test");
     stubInjectedWsBase(undefined);
   });
 
