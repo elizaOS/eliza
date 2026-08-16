@@ -178,7 +178,7 @@ describe("ElizaClient websocket connection policy", () => {
     expect(createdUrls[0]).not.toContain("127.0.0.1:2653");
   });
 
-  it("preserves a genuine separate-host websocket override for an explicit runtime", () => {
+  it("never sends an explicit runtime token to a separate injected websocket host", () => {
     const createdUrls = stubWebSocket();
     stubWindowOrigin("https:", "app.example.test");
     Object.assign(window, {
@@ -189,7 +189,8 @@ describe("ElizaClient websocket connection policy", () => {
     client.connectWs();
 
     expect(createdUrls).toHaveLength(1);
-    expect(createdUrls[0]).toContain("wss://realtime.example.test/ws?");
+    expect(createdUrls[0]).toContain("wss://agent.example.test/ws?");
+    expect(createdUrls[0]).not.toContain("realtime.example.test");
   });
 
   it("retains the same-origin Vite websocket proxy when no runtime base is selected", () => {
@@ -523,6 +524,9 @@ describe("ElizaClient websocket connection policy", () => {
 
   it("repointBaseUrl installs the selected bearer before opening the replacement socket", () => {
     const instances = stubWebSocketWithInstances();
+    Object.assign(window, {
+      __ELIZA_WS_BASE__: "wss://stale-realtime.example.test",
+    });
     const client = new ElizaClient("https://old.example.test", "old-token");
     client.connectWs();
 
@@ -531,6 +535,7 @@ describe("ElizaClient websocket connection policy", () => {
     expect(instances).toHaveLength(2);
     const replacementUrl = new URL(instances[1].url);
     expect(replacementUrl.origin).toBe("wss://new.example.test");
+    expect(replacementUrl.origin).not.toBe("wss://stale-realtime.example.test");
     expect(replacementUrl.searchParams.get("token")).toBe("new-token");
     expect(replacementUrl.searchParams.get("token")).not.toBe("old-token");
     expect(client.getRestAuthToken()).toBe("new-token");
