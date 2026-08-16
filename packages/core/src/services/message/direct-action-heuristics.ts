@@ -930,6 +930,23 @@ function detectOwnerLifeReadDomain(
 	) {
 		return null;
 	}
+	// Money-spend questions are finance reads even without a possessive scope:
+	// "how much did i spend this month" / "what did i spend on groceries" /
+	// "how much have i spent" / "how much do i owe" all route to the finances
+	// reader (observed live: "how much did i spend this month" mis-routed to
+	// OWNER_GOALS and returned a life summary). Anchored to money-spend phrasing
+	// — "how much (did/have/do) i (spend|spent|pay|paid|owe)" or "what did i
+	// (spend|pay) on/for" — so "spend time with the kids" never matches.
+	if (
+		/\bhow much (?:did|have|do|does) (?:i|we) (?:spend|spent|pay|paid|owe)\b/iu.test(
+			normalized,
+		) ||
+		/\bwhat (?:did|have) (?:i|we) (?:spend|spent|pay|paid)\b(?:\s+(?:on|for)\b)?/iu.test(
+			normalized,
+		)
+	) {
+		return "finances";
+	}
 	const domains = ownerLifeReadDomainsInPossessiveScopes(normalized);
 	if (domains.size === 0) return null;
 	// Mutation shapes belong to the write detectors above (or the model);
