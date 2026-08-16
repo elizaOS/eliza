@@ -1280,3 +1280,73 @@ describe("FINISH with a progress-promise message coerces to CONTINUE", () => {
 		expect(result.decision).toBe("FINISH");
 	});
 });
+
+describe("fabricated marker invocations are rejected, real widgets pass", () => {
+	const finishWith = (messageToUser: string) =>
+		`{"success": true, "decision": "FINISH", "thought": "done.", "messageToUser": ${JSON.stringify(messageToUser)}}`;
+	const paramsWithTool = (json: string) => ({
+		runtime: { useModel: vi.fn(async () => json) },
+		context: {
+			id: "ctx",
+			staticPrefix: {
+				characterPrompt: { content: "agent_name: Eliza", stable: true },
+			},
+			events: [
+				{
+					id: "msg",
+					type: "message" as const,
+					message: {
+						role: "user" as const,
+						content: { text: "what documents do i have" },
+					},
+				},
+			],
+		},
+		trajectory: {
+			context: { id: "ctx" },
+			steps: [
+				{
+					toolCall: { name: "DOCUMENTS", args: {} },
+					result: { success: true, text: "{}" },
+				},
+			],
+			archivedSteps: [],
+			plannedQueue: [],
+			evaluatorOutputs: [],
+		},
+		effects: { copyToClipboard: vi.fn(), messageToUser: vi.fn() },
+	});
+
+	it("a fabricated [DOCUMENT_SEARCH] marker coerces to CONTINUE and does not ship (live leak)", async () => {
+		for (const answer of [
+			'checking documents context. [DOCUMENT_SEARCH] {"limit":20} [/DOCUMENT_SEARCH]',
+			'checking documents context. [ DOCUMENT_SEARCH ] {"limit":20,} [ / DOCUMENT_SEARCH ]',
+		]) {
+			const result = await runEvaluator(paramsWithTool(finishWith(answer)));
+			expect(result.decision).toBe("CONTINUE");
+			expect(result.messageToUser ?? "").not.toContain("DOCUMENT_SEARCH");
+		}
+	});
+
+	it("a real [CHECKLIST] widget block is NOT treated as an invocation", async () => {
+		const result = await runEvaluator(
+			paramsWithTool(
+				finishWith(
+					'here is your list:\n[CHECKLIST]\n{"title":"x","items":[{"content":"a","status":"pending"}]}\n[/CHECKLIST]',
+				),
+			),
+		);
+		expect(result.decision).toBe("FINISH");
+	});
+
+	it("literal bracket-tag documentation stays FINISH", async () => {
+		for (const answer of [
+			"Wrap the value in [SECTION]content[/SECTION].",
+			'Example:\n```text\n[DOCUMENT_SEARCH] {"limit":20} [/DOCUMENT_SEARCH]\n```',
+		]) {
+			const result = await runEvaluator(paramsWithTool(finishWith(answer)));
+			expect(result.decision).toBe("FINISH");
+			expect(result.messageToUser).toBe(answer);
+		}
+	});
+});
