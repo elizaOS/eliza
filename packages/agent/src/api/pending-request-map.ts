@@ -30,6 +30,8 @@ export class PendingRequestMap {
    */
   waitFor(requestId: string, timeoutMs: number): Promise<ViewInteractResult> {
     return new Promise<ViewInteractResult>((resolve, reject) => {
+      const existing = this.map.get(requestId);
+      if (existing) clearTimeout(existing.timer);
       const timer = setTimeout(() => {
         this.map.delete(requestId);
         reject(
