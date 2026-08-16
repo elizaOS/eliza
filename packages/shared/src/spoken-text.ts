@@ -14,11 +14,14 @@ function stripUrls(input: string): string {
 function stripThinkingAndMarkup(input: string): string {
   let text = input;
   text = text.replace(
-    /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?<\/\1>/gi,
+    /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
     " ",
   );
+  // A stream can end inside the opening tag itself ("Visible. <think"); the
+  // bare tag word must not be spoken. Twin of packages/core/src/spoken-text.ts
+  // (#20519) — change both together.
   text = text.replace(
-    /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*$/gi,
+    /<(?:think|analysis|reasoning|tool_calls?|tools?)\b[^>]*$/gi,
     " ",
   );
   text = text.replace(/```[\s\S]*?```/g, " ");

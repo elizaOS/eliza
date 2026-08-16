@@ -510,7 +510,8 @@ describe("explicit media-ask promotion", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
 				shouldRespond: "RESPOND",
-				replyText: "can't do that here. no video generation tools in this setup.",
+				replyText:
+					"can't do that here. no video generation tools in this setup.",
 				contexts: ["simple"],
 				candidateActionNames: [],
 			}),

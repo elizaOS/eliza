@@ -8632,11 +8632,16 @@ export async function runV5MessageRuntimeStage1(args: {
 			getMessageHandlerCandidateActions(messageHandler) ?? []
 		).some((name) => {
 			const candidateName = String(name);
-			const direct = resolveRuntimeAction(stageOneCandidateLookup, candidateName);
+			const direct = resolveRuntimeAction(
+				stageOneCandidateLookup,
+				candidateName,
+			);
 			const resolvedSet = direct
 				? [direct]
 				: parentAliasesForCandidateAction(candidateName)
-						.map((alias) => resolveRuntimeAction(stageOneCandidateLookup, alias))
+						.map((alias) =>
+							resolveRuntimeAction(stageOneCandidateLookup, alias),
+						)
 						.filter((action): action is Action => action !== undefined);
 			return resolvedSet.some((resolved) =>
 				collectedCandidateNames.has(normalizeActionIdentifier(resolved.name)),
@@ -8652,9 +8657,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const rejectedReminderish =
 			candidateGateDiagnostics.gateRejectedExplicitCandidates.some((name) => {
 				const normalized = normalizeActionIdentifier(name);
-				return (
-					normalized.includes("REMINDER") || normalized.includes("ALARM")
-				);
+				return normalized.includes("REMINDER") || normalized.includes("ALARM");
 			});
 		const ungatedTriggerSiblingAvailable =
 			rejectedReminderish && collectedCandidateNames.has("TRIGGER");

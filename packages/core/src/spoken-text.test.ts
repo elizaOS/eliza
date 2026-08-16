@@ -46,4 +46,13 @@ describe("sanitizeSpeechText", () => {
 			);
 		},
 	);
+
+	// Twin-pin with packages/shared/src/spoken-text.test.ts (#20519): repeated
+	// punctuation collapses BEFORE the spacing rules separate the repeats, so
+	// identical model output speaks identically on both surfaces.
+	it("removes non-speech directions and cleans repeated punctuation", () => {
+		expect(
+			sanitizeSpeechText("*whispers* Wait!!! (pause) Are you sure??"),
+		).toBe("Wait! Are you sure?");
+	});
 });
