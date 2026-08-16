@@ -16,9 +16,12 @@ function stripUrls(input: string): string {
 
 function stripThinkingAndMarkup(input: string): string {
 	let text = input;
-	text = text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, " ");
 	text = text.replace(
-		/<(analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?<\/\1>/gi,
+		/<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
+		" ",
+	);
+	text = text.replace(
+		/<(?:think|analysis|reasoning|tool_calls?|tools?)\b[^>]*$/gi,
 		" ",
 	);
 	text = text.replace(/```[\s\S]*?```/g, " ");
