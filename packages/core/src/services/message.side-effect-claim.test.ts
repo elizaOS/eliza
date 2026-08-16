@@ -962,6 +962,8 @@ describe("tasks context recap/status routing vocabulary", () => {
 
 describe("subjectless past-participle openers (Discord group-surface fabrication shape)", () => {
 	it.each([
+		'todo added: "polish the dc7 lens"',
+		"reminder set: 9am tomorrow.",
 		"Added todo: sand the dc5 shelf (no deadline, general task)",
 		"saved a note: the charger is in the kitchen drawer",
 		"Deleted the water the ficus reminder.",
@@ -973,6 +975,7 @@ describe("subjectless past-participle openers (Discord group-surface fabrication
 	it.each([
 		"Set a reminder on your phone so you don't forget the appointment",
 		"Added anything to your calendar lately?",
+		"the todo added by you last week covers it",
 	])("passes %p through (advice / mid-sentence / question)", (reply) => {
 		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
 	});

@@ -89,6 +89,14 @@ function sideEffectClaimSentenceIsQuestion(
 const SUBJECTLESS_PAST_SIDE_EFFECT_CLAIM_PATTERN =
 	/(?:^|[.!?]\s+)(?:added|created|saved|scheduled|booked|logged|deleted|removed|renamed|cancell?ed|arranged)\b/gi;
 
+// Noun-first passive headline claims — "todo added: polish the lens",
+// "note saved.", "reminder set: 9am" (live variant that evaded the verb-first
+// shape above: the model leads with the record noun). Requires the terminal
+// claim punctuation/colon so descriptive prose ("the todo added by you last
+// week…") passes through.
+const NOUN_FIRST_SIDE_EFFECT_CLAIM_PATTERN =
+	/(?:^|[.!?]\s+)(?:todos?|to[- ]dos?|notes?|reminders?|alarms?|tasks?|events?|appointments?|goals?|habits?)\s+(?:added|created|saved|scheduled|booked|logged|deleted|removed|renamed|cancell?ed|set|updated)\s*(?::|[.!…]|$)/gi;
+
 export function replyClaimsCompletedSideEffect(reply: string): boolean {
 	const text = reply.trim();
 	if (!text) return false;
@@ -97,6 +105,10 @@ export function replyClaimsCompletedSideEffect(reply: string): boolean {
 	for (const match of text.matchAll(
 		SUBJECTLESS_PAST_SIDE_EFFECT_CLAIM_PATTERN,
 	)) {
+		if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
+		return true;
+	}
+	for (const match of text.matchAll(NOUN_FIRST_SIDE_EFFECT_CLAIM_PATTERN)) {
 		if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
 		return true;
 	}
