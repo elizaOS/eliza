@@ -400,7 +400,6 @@ describe("Cloudflare Pages domain durability", () => {
       "www.elizacloud.ai",
       "docs.elizacloud.ai",
       "api.elizacloud.ai",
-      "blob.elizacloud.ai",
       "plugins.elizacloud.ai",
       "relay.elizacloud.ai",
       "x402.elizacloud.ai",
@@ -423,6 +422,19 @@ describe("Cloudflare Pages domain durability", () => {
     expect(variables).toContain('variable "legacy_redirect_wildcard_origins"');
     expect(variables).toContain('variable "legacy_redirect_certificate_packs"');
     expect(outputs).toContain('output "redirect_dns"');
+  });
+
+  test("relinquishes R2-owned legacy blob DNS without destroying live records", () => {
+    expect(main).not.toContain("legacy_blob = {");
+    expect(stagingExample).not.toContain('"pages/legacy_blob"');
+    expect(productionExample).not.toContain('"pages/legacy_blob"');
+    expect(readme).toContain("Cloudflare R2 owns");
+    expect(readme).toContain("`blob.elizacloud.ai`");
+    expect(readme).toContain("`blob-staging.elizacloud.ai`");
+    expect(readme).toContain("operators must leave both live records in R2");
+    expect(readme).toContain("`operation=state-rm`");
+    expect(readme).toContain('`cloudflare_dns_record.pages["legacy_blob"]`');
+    expect(workflow).toContain('terraform state rm "$STATE_ADDRESS"');
   });
 
   test("keeps real writes manual and verifies certificate plus routing after apply", () => {

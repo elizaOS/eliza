@@ -13,7 +13,6 @@ dns_record_import_ids = {
   "pages/legacy_www"       = "<record-id-for-www.elizacloud.ai>"
   "pages/legacy_docs"      = "<record-id-for-docs.elizacloud.ai>"
   "pages/legacy_api"       = "<record-id-for-api.elizacloud.ai>"
-  "pages/legacy_blob"      = "<record-id-for-blob.elizacloud.ai>"
   "pages/legacy_plugins"   = "<record-id-for-plugins.elizacloud.ai>"
   "pages/legacy_relay"     = "<record-id-for-relay.elizacloud.ai>"
   "pages/legacy_x402"      = "<record-id-for-x402.elizacloud.ai>"
