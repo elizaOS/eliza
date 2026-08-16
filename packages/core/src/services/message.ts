@@ -3052,7 +3052,9 @@ function getMessageHandlerCandidateActions(
  *  - not the owner (`owner_mismatch`) or role/context-gated → a permission-
  *    truthful decline with NO DM hint, because access, not surface, is missing.
  */
-export function privacyDenialReplyForReasons(reasons: readonly string[]): string {
+export function privacyDenialReplyForReasons(
+	reasons: readonly string[],
+): string {
 	const joined = reasons.join(" | ").toLowerCase();
 	const ownerOnWrongSurface =
 		/participant_mismatch|destination_not_private/.test(joined);
