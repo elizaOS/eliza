@@ -958,13 +958,14 @@ function buildCandidatePatterns(candidateActions: string[]): Array<{
 		}
 
 		if (candidateAction.includes("*")) {
-			patterns.push({
-				regex: new RegExp(
-					`^${escapeRegex(normalized).replace(/\\\*/g, ".*")}$`,
-				),
-				namespace: normalized.split("_")[0],
-				score: 0.8,
-			});
+			const wildcardRegex = wildcardCandidateRegex(candidateAction);
+			if (wildcardRegex) {
+				patterns.push({
+					regex: wildcardRegex,
+					namespace: normalized.split("_")[0],
+					score: 0.8,
+				});
+			}
 			continue;
 		}
 
@@ -1332,6 +1333,37 @@ function normalizeTextList(
 
 function escapeRegex(value: string): string {
 	return value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+}
+
+/**
+ * Translates a wildcard candidate hint ("GMAIL_*", "GMAIL_SEND*", "*_DRAFT")
+ * into a matcher over catalog-normalized action names. normalizeActionName
+ * strips the "*" itself, so each literal segment between wildcards is
+ * normalized with the real normalizer and only the star-adjacent separators
+ * the hint actually wrote are re-attached afterward: "GMAIL_*" compiles to
+ * ^GMAIL_.*$ (the children, not bare GMAIL or a GMAILSYNC sibling), while the
+ * separator-less "GMAIL_SEND*" compiles to ^GMAIL_SEND.*$ and keeps matching
+ * the exact name the glob is anchored to (#20467).
+ */
+function wildcardCandidateRegex(candidateAction: string): RegExp | null {
+	const rawSegments = String(candidateAction).replace(/\*+/g, "*").split("*");
+	const lastIndex = rawSegments.length - 1;
+	const parts = rawSegments.map((rawSegment, index) => {
+		const trimmed = rawSegment.trim();
+		const normalized = normalizeActionName(rawSegment);
+		if (!normalized) {
+			// A separator-only segment between wildcards ("A*_*B") still
+			// constrains the match; whitespace-only or absent segments do not.
+			return index > 0 && index < lastIndex && trimmed.length > 0 ? "_" : "";
+		}
+		const lead = index > 0 && /^[^A-Za-z0-9]/.test(trimmed) ? "_" : "";
+		const trail = index < lastIndex && /[^A-Za-z0-9]$/.test(trimmed) ? "_" : "";
+		return `${lead}${normalized}${trail}`;
+	});
+	if (parts.every((part) => part === "")) {
+		return null;
+	}
+	return new RegExp(`^${parts.map((part) => escapeRegex(part)).join(".*")}$`);
 }
 
 function clampScore(value: number): number {
