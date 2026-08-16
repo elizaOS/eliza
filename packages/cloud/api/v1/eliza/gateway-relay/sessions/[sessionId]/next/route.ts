@@ -2,8 +2,8 @@
  * GET /api/v1/eliza/gateway-relay/sessions/:sessionId/next
  *
  * Long-poll for the next bridge request envelope on this relay session.
- * Caps the wait at 25s so platform-level edge timeouts can never strand a
- * client waiting on a closed connection.
+ * Accepts only canonical millisecond values through 25s so platform-level
+ * edge timeouts can never strand a client waiting on a closed connection.
  */
 
 import { Hono } from "hono";
@@ -14,12 +14,17 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-function parseTimeoutMs(raw: string | undefined): number {
-  const parsed = raw ? Number.parseInt(raw, 10) : 25_000;
-  if (!Number.isFinite(parsed) || parsed <= 0) {
+function parseTimeoutMs(raw: string | undefined): number | null {
+  if (raw === undefined || raw === "") {
     return 25_000;
   }
-  return Math.min(parsed, 25_000);
+
+  if (!/^[1-9][0-9]*$/.test(raw)) {
+    return null;
+  }
+
+  const parsed = Number(raw);
+  return parsed <= 25_000 ? parsed : null;
 }
 
 app.get("/", async (c) => {
@@ -39,9 +44,20 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Forbidden" }, 403);
     }
 
+    const timeoutMs = parseTimeoutMs(c.req.query("timeoutMs"));
+    if (timeoutMs === null) {
+      return c.json(
+        {
+          success: false,
+          error: "timeoutMs must be a canonical integer from 1 to 25000",
+        },
+        400,
+      );
+    }
+
     const requestEnvelope = await agentGatewayRelayService.pollNextRequest(
       sessionId,
-      parseTimeoutMs(c.req.query("timeoutMs")),
+      timeoutMs,
     );
 
     return c.json({
