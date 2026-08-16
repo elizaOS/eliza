@@ -100,6 +100,8 @@ export interface NativeGlassAnchorOptions {
   enabled?: boolean;
   /** UIGlassEffect.isInteractive — mount-time only (see GlassSurfaceProps). */
   interactive?: boolean;
+  /** Appearance forwarded to the native material for this anchored surface. */
+  colorScheme?: "light" | "dark" | "system";
 }
 
 /**
@@ -126,7 +128,11 @@ export interface NativeGlassAnchorOptions {
  */
 export function useNativeGlassAnchor(
   ref: React.RefObject<HTMLElement | null>,
-  { enabled = true, interactive = false }: NativeGlassAnchorOptions = {},
+  {
+    enabled = true,
+    interactive = false,
+    colorScheme = "system",
+  }: NativeGlassAnchorOptions = {},
 ): GlassTier {
   const regionId = useId();
   const [available, setAvailable] = useState(false);
@@ -209,6 +215,7 @@ export function useNativeGlassAnchor(
             rect: rectOf(),
             cornerRadius: radius,
             interactive,
+            colorScheme,
           })
         ).attached;
       } catch {
@@ -244,7 +251,7 @@ export function useNativeGlassAnchor(
       unsubscribe?.();
       teardown();
     };
-  }, [wantNative, enabled, available, interactive, ref, regionId]);
+  }, [wantNative, enabled, available, interactive, colorScheme, ref, regionId]);
 
   return nativeLive && backdropActive ? "native" : cssGlassTier();
 }
