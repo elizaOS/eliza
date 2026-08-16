@@ -24,6 +24,9 @@ describe("owner reminder direct routing", () => {
     "I want to set a reminder for next Tuesday.",
     "I'd like to create a reminder for next Tuesday.",
     "Help me set a reminder for next Tuesday.",
+    "Remind me to call Pat when he appears online.",
+    "Remind me to call Pat after he appears online.",
+    "Remind me to call Pat tomorrow, and include the number in the reminder.",
   ])("routes explicit reminder creation: %s", (text) => {
     expect(looksLikeOwnerReminderCreateRequest(text)).toBe(true);
   });
@@ -68,6 +71,15 @@ describe("owner reminder direct routing", () => {
     "Remind me to call Pat tomorrow, said Alice.",
     "Remind me to call Pat tomorrow was written on the whiteboard.",
     "Remind me to call Pat tomorrow; disregard that request.",
+    "Remind me along with Alex to call Pat tomorrow.",
+    "Remind me together with Alex to call Pat tomorrow.",
+    "Remind me to call Pat tomorrow — those were Alice’s exact words.",
+    "Remind me to call Pat tomorrow appears on the whiteboard.",
+    "Remind me to call Pat tomorrow, actually ignore that request.",
+    "Remind me to call Pat tomorrow, forget it.",
+    "Remind me to call Pat tomorrow is sample syntax.",
+    "REMIND ME TO CALL PAT TOMORROW — THOSE WERE ALICE'S EXACT WORDS.",
+    "Remind me to call Pat tomorrow - actually withdraw this request.",
   ])("does not claim adjacent or read-only intent: %s", (text) => {
     expect(looksLikeOwnerReminderCreateRequest(text)).toBe(false);
   });
