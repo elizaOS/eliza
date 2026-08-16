@@ -18,7 +18,7 @@ const LEADING_DELAY_PATTERN = new RegExp(
 );
 
 const TRAILING_DELAY_PATTERN = new RegExp(
-  String.raw`\b(?:(?:please\s+)?remind\s+me\s+to|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder\s+(?:to|for))\s+[^.!?\n]{1,200}?\s+in\s+(${NUMBER_TOKEN})\s*${UNIT_TOKEN}(?=\s*(?:[.!?]|$))`,
+  String.raw`\b(?:(?:please\s+)?remind\s+me\s+to|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder\s+(?:to|for))\s+[^.!?\n]{1,200}?\s+in\s+(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\b`,
   "gi",
 );
 
@@ -26,7 +26,11 @@ const DECIMAL_TOKEN = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/;
 const META_PREFIX =
   /(?:for\s+example|e\.g\.|example|say|write|quote|phrase|wording|text)\s*[:;,-]?\s*$/i;
 const NEGATED_COMMAND_PREFIX =
-  /\b(?:do\s+not|don['’]?t|dont|never)\s+(?:please\s+)?$/i;
+  /\b(?:please\s+)?(?:i\s+)?(?:do\s+not|don['’]?t|dont|never)(?:\s+(?:ever|please|want(?:\s+you)?\s+to))*\s*$/i;
+const NEGATED_REMINDER_DELAY_PATTERN = new RegExp(
+  String.raw`\b(?:do\s+not|don['’]?t|dont|never)\s+(?:(?:ever|please)\s+)*(?:(?:want|need)(?:\s+you\s+to|\s+(?:a|the))?\s+)?(?:remind\s+me|(?:set|create|add)(?:\s+me)?\s+(?:a\s+)?reminder|(?:a\s+)?reminder)\b[^.!?\n]{0,100}?\bin\s+${NUMBER_TOKEN}\s*${UNIT_TOKEN}\b`,
+  "i",
+);
 
 const UNIT_MILLISECONDS = {
   second: 1_000,
@@ -60,9 +64,12 @@ export type ExplicitSharedReminderDelay =
 interface DelayCandidate {
   index: number;
   end: number;
-  rawNumber: string;
-  unit: keyof typeof UNIT_MILLISECONDS;
+  terms: Array<{
+    rawNumber: string;
+    unit: keyof typeof UNIT_MILLISECONDS;
+  }>;
   negated: boolean;
+  invalidComposition: boolean;
 }
 
 function maskQuotedText(text: string): string {
@@ -78,8 +85,87 @@ function candidateIsExample(text: string, index: number): boolean {
 
 function candidateIsNegated(text: string, index: number): boolean {
   return NEGATED_COMMAND_PREFIX.test(
-    text.slice(Math.max(0, index - 40), index),
+    text.slice(Math.max(0, index - 100), index),
   );
+}
+
+const DURATION_CONTINUATION_PATTERN = new RegExp(
+  String.raw`^\s*(?:(and|or|plus|,)\s+)?(in\s+)?(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\b`,
+  "i",
+);
+const HALF_CONTINUATION_PATTERN = /^\s*(?:and|plus)\s+(?:a\s+)?half\b/i;
+
+const REVISION_PATTERN = new RegExp(
+  String.raw`\b(?:actually|instead)\s+(?:make|set|change)(?:\s+(?:it|that))?\s+(?:(?:for|to|in)\s+)?(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\b`,
+  "gi",
+);
+
+function extendDuration(text: string, candidate: DelayCandidate): void {
+  let cursor = candidate.end;
+  while (true) {
+    const half = text.slice(cursor).match(HALF_CONTINUATION_PATTERN);
+    if (half) {
+      const previous = candidate.terms.at(-1);
+      if (!previous) {
+        candidate.invalidComposition = true;
+        break;
+      }
+      candidate.terms.push({ rawNumber: "0.5", unit: previous.unit });
+      candidate.end = cursor + half[0].length;
+      cursor = candidate.end;
+      continue;
+    }
+    const continuation = text
+      .slice(cursor)
+      .match(DURATION_CONTINUATION_PATTERN);
+    const connector = continuation?.[1]?.toLowerCase();
+    const repeatedIn = continuation?.[2];
+    const rawNumber = continuation?.[3];
+    const rawUnit = continuation?.[4]?.toLowerCase();
+    if (
+      !continuation ||
+      !rawNumber ||
+      !(rawUnit && rawUnit in UNIT_MILLISECONDS)
+    ) {
+      break;
+    }
+    candidate.end = cursor + continuation[0].length;
+    if (connector === "or" || repeatedIn) {
+      candidate.invalidComposition = true;
+    } else {
+      candidate.terms.push({
+        rawNumber,
+        unit: rawUnit as keyof typeof UNIT_MILLISECONDS,
+      });
+    }
+    cursor = candidate.end;
+  }
+}
+
+function applyLastRevision(text: string, candidate: DelayCandidate): void {
+  const tail = text.slice(candidate.end, candidate.end + 240);
+  REVISION_PATTERN.lastIndex = 0;
+  let revision: RegExpExecArray | undefined;
+  for (const match of tail.matchAll(REVISION_PATTERN)) revision = match;
+  const rawNumber = revision?.[1];
+  const rawUnit = revision?.[2]?.toLowerCase();
+  if (
+    !revision ||
+    revision.index === undefined ||
+    !rawNumber ||
+    !(rawUnit && rawUnit in UNIT_MILLISECONDS)
+  ) {
+    return;
+  }
+  candidate.terms = [
+    {
+      rawNumber,
+      unit: rawUnit as keyof typeof UNIT_MILLISECONDS,
+    },
+  ];
+  candidate.invalidComposition = false;
+  candidate.end += revision.index + revision[0].length;
+  extendDuration(text, candidate);
 }
 
 function collectCandidates(text: string): DelayCandidate[] {
@@ -104,47 +190,45 @@ function collectCandidates(text: string): DelayCandidate[] {
       candidates.push({
         index: match.index,
         end: match.index + match[0].length,
-        rawNumber,
-        unit: rawUnit as keyof typeof UNIT_MILLISECONDS,
+        terms: [
+          {
+            rawNumber,
+            unit: rawUnit as keyof typeof UNIT_MILLISECONDS,
+          },
+        ],
         negated: candidateIsNegated(text, match.index),
+        invalidComposition: false,
       });
     }
   }
-  const compoundPattern = new RegExp(
-    String.raw`^\s*(?:and|or|,)\s+(?:in\s+)?(${NUMBER_TOKEN})\s*${UNIT_TOKEN}\b`,
-    "i",
-  );
-  for (const candidate of [...candidates]) {
-    const compound = text.slice(candidate.end).match(compoundPattern);
-    const rawNumber = compound?.[1];
-    const rawUnit = compound?.[2]?.toLowerCase();
-    if (compound && rawNumber && rawUnit && rawUnit in UNIT_MILLISECONDS) {
-      candidates.push({
-        index: candidate.end + (compound.index ?? 0),
-        end: candidate.end + (compound.index ?? 0) + compound[0].length,
-        rawNumber,
-        unit: rawUnit as keyof typeof UNIT_MILLISECONDS,
-        negated: candidate.negated,
-      });
-    }
-  }
-  return candidates.sort((left, right) => left.index - right.index);
+  const ordered = candidates.sort((left, right) => left.index - right.index);
+  for (const candidate of ordered) extendDuration(text, candidate);
+  if (ordered.length === 1) applyLastRevision(text, ordered[0]);
+  return ordered;
 }
 
 function parseCandidate(candidate: DelayCandidate): number | undefined {
-  const normalizedNumber = candidate.rawNumber.toLowerCase();
-  const amount =
-    NUMBER_WORDS[normalizedNumber] !== undefined
-      ? NUMBER_WORDS[normalizedNumber]
-      : DECIMAL_TOKEN.test(normalizedNumber)
-        ? Number(normalizedNumber)
-        : Number.NaN;
-  const milliseconds = amount * UNIT_MILLISECONDS[candidate.unit];
-  return Number.isFinite(amount) &&
-    amount > 0 &&
-    Number.isSafeInteger(milliseconds)
-    ? milliseconds
-    : undefined;
+  let total = 0;
+  for (const term of candidate.terms) {
+    const normalizedNumber = term.rawNumber.toLowerCase();
+    const amount =
+      NUMBER_WORDS[normalizedNumber] !== undefined
+        ? NUMBER_WORDS[normalizedNumber]
+        : DECIMAL_TOKEN.test(normalizedNumber)
+          ? Number(normalizedNumber)
+          : Number.NaN;
+    const milliseconds = amount * UNIT_MILLISECONDS[term.unit];
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !Number.isSafeInteger(milliseconds) ||
+      !Number.isSafeInteger(total + milliseconds)
+    ) {
+      return undefined;
+    }
+    total += milliseconds;
+  }
+  return total > 0 ? total : undefined;
 }
 
 /**
@@ -155,7 +239,14 @@ export function resolveExplicitSharedReminderDelay(
   text: unknown,
 ): ExplicitSharedReminderDelay {
   if (typeof text !== "string" || !text.trim()) return { kind: "absent" };
-  const candidates = collectCandidates(maskQuotedText(text));
+  const commandText = maskQuotedText(text);
+  if (NEGATED_REMINDER_DELAY_PATTERN.test(commandText)) {
+    return {
+      kind: "invalid",
+      reason: "A negated reminder command cannot create a reminder.",
+    };
+  }
+  const candidates = collectCandidates(commandText);
   if (candidates.length === 0) return { kind: "absent" };
   if (candidates.length !== 1) {
     return {
@@ -167,6 +258,12 @@ export function resolveExplicitSharedReminderDelay(
     return {
       kind: "invalid",
       reason: "A negated reminder command cannot create a reminder.",
+    };
+  }
+  if (candidates[0].invalidComposition) {
+    return {
+      kind: "invalid",
+      reason: "Use one unambiguous relative delay for a reminder.",
     };
   }
 

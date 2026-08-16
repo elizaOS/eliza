@@ -58,7 +58,28 @@ afterEach(() => {
 });
 
 describe("Shared reminder relative-delay runtime authority", () => {
-  test("persists literal one minute even when the planner emits two", async () => {
+  test.each([
+    {
+      label: "persists literal one minute even when the planner emits two",
+      message: "Remind me in 1 minute: stand up and stretch.",
+      atIso: "2026-08-16T04:49:56.509Z",
+    },
+    {
+      label: "persists a compound duration as one exact delay",
+      message: "Remind me to stretch in 1 minute and 30 seconds.",
+      atIso: "2026-08-16T04:50:26.509Z",
+    },
+    {
+      label: "persists the final explicit duration revision",
+      message: "Remind me in 1 minute, actually make that 2 minutes.",
+      atIso: "2026-08-16T04:50:56.509Z",
+    },
+    {
+      label: "rejects a negated command before scheduler persistence",
+      message: "I do not want you to remind me in 1 minute.",
+      atIso: undefined,
+    },
+  ])("$label", async ({ message, atIso }) => {
     let modelCall = 0;
     globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
       JSON.parse(String(init?.body));
@@ -169,7 +190,7 @@ describe("Shared reminder relative-delay runtime authority", () => {
         model: "gemma-4-31b",
       },
       history: [],
-      message: "Remind me in 1 minute: stand up and stretch.",
+      message,
       messageIds: {
         user: "7d734b8f-1ac5-456a-8bf3-9cd61dd546ef",
         assistant: "83de2c02-ec48-48d6-a734-c665b27d23cf",
@@ -188,12 +209,15 @@ describe("Shared reminder relative-delay runtime authority", () => {
       },
     });
 
-    expect(modelCall).toBe(3);
-    expect(result.actionResults?.[0]?.success).toBe(true);
-    expect(scheduledInputs).toHaveLength(1);
-    expect(scheduledInputs[0]?.trigger).toEqual({
-      kind: "once",
-      atIso: "2026-08-16T04:49:56.509Z",
-    });
+    if (atIso === undefined) {
+      expect(modelCall).toBeGreaterThanOrEqual(3);
+      expect(result.actionResults?.[0]?.success).toBe(false);
+      expect(scheduledInputs).toHaveLength(0);
+    } else {
+      expect(modelCall).toBe(3);
+      expect(result.actionResults?.[0]?.success).toBe(true);
+      expect(scheduledInputs).toHaveLength(1);
+      expect(scheduledInputs[0]?.trigger).toEqual({ kind: "once", atIso });
+    }
   });
 });

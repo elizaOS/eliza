@@ -24,6 +24,12 @@ describe("explicit Shared reminder relative delay", () => {
     ["In an hour remind me to leave.", 3_600_000],
     ["Remind me to stretch in 1 minute.", 60_000],
     ["Set a reminder to call mom in two hours.", 7_200_000],
+    ["Remind me in 1 minute and 30 seconds.", 90_000],
+    ["Remind me in 1 hour plus 30 minutes.", 5_400_000],
+    ["Remind me in 1 hour and a half.", 5_400_000],
+    ["Remind me to stretch in 1 minute and 30 seconds.", 90_000],
+    ["Remind me in 1 minute 30 seconds to stretch.", 90_000],
+    ["Remind me in 1 minute, actually make that 2 minutes.", 120_000],
   ])("resolves %s", (text, milliseconds) => {
     expect(resolveExplicitSharedReminderDelay(text)).toEqual({
       kind: "resolved",
@@ -62,11 +68,24 @@ describe("explicit Shared reminder relative delay", () => {
     "Do not remind me in 1 minute.",
     "Don't remind me in 1 minute.",
     "Never remind me in 1 minute.",
+    "I do not want you to remind me in 1 minute.",
+    "I don’t want you to remind me in 1 minute.",
+    "Do not ever remind me in 1 minute.",
+    "I don’t want a reminder in 1 minute.",
+    "I do not need a reminder in 1 minute.",
   ])("fails closed for a negated reminder command: %s", (text) => {
     expect(resolveExplicitSharedReminderDelay(text)).toEqual({
       kind: "invalid",
       reason: "A negated reminder command cannot create a reminder.",
     });
+  });
+
+  it("does not confuse unrelated negative context with command negation", () => {
+    expect(
+      resolveExplicitSharedReminderDelay(
+        "I do not know why, but remind me in 1 minute.",
+      ),
+    ).toEqual({ kind: "resolved", milliseconds: 60_000 });
   });
 
   it("rejects multiple relative reminder directives", () => {
@@ -81,7 +100,6 @@ describe("explicit Shared reminder relative delay", () => {
   });
 
   it.each([
-    "Remind me in 1 minute and 30 seconds to stretch.",
     "Remind me in 1 minute and in 2 hours to stretch.",
     "Remind me in 1 minute or in 2 minutes to stretch.",
   ])(
@@ -93,65 +111,78 @@ describe("explicit Shared reminder relative delay", () => {
     },
   );
 
-  it("uses the authenticated utterance instead of a conflicting planner delay", async () => {
-    const scheduleWithResult = vi.fn(async (input: ScheduledTaskInput) => ({
-      task: {
-        taskId: "reminder-1",
-        ...input,
-        state: { status: "scheduled", followupCount: 0 },
-      } satisfies ScheduledTask,
-      commit: {
-        logId: "scheduled-log-1",
-        taskId: "reminder-1",
-        agentId: "personal:user-1",
-        occurredAtIso: NOW,
-        transition: "scheduled" as const,
-        rolledUp: false,
-      },
-      replayed: false,
-    }));
-    const runner: ScheduledTaskRunner = {
-      scheduleWithResult,
-      schedule: vi.fn(),
-      list: vi.fn(async () => []),
-      apply: vi.fn(),
-      pipeline: vi.fn(async () => []),
-    };
-    const [action] =
-      createSharedRemindersEdgePlugin({
-        runner,
-        agentId: "personal:user-1",
-        delivery: {
-          platform: "telegram",
-          project: "eliza-app",
-          chatId: "123456",
+  it.each([
+    ["Remind me in 1 minute: stretch.", "2026-08-16T04:49:56.509Z"],
+    [
+      "Remind me to stretch in 1 minute and 30 seconds.",
+      "2026-08-16T04:50:26.509Z",
+    ],
+    [
+      "Remind me in 1 minute, actually make that 2 minutes.",
+      "2026-08-16T04:50:56.509Z",
+    ],
+  ])(
+    "uses the authenticated utterance instead of a conflicting planner delay: %s",
+    async (messageText, atIso) => {
+      const scheduleWithResult = vi.fn(async (input: ScheduledTaskInput) => ({
+        task: {
+          taskId: "reminder-1",
+          ...input,
+          state: { status: "scheduled", followupCount: 0 },
+        } satisfies ScheduledTask,
+        commit: {
+          logId: "scheduled-log-1",
+          taskId: "reminder-1",
+          agentId: "personal:user-1",
+          occurredAtIso: NOW,
+          transition: "scheduled" as const,
+          rolledUp: false,
         },
-        now: () => new Date(NOW),
-      }).actions ?? [];
+        replayed: false,
+      }));
+      const runner: ScheduledTaskRunner = {
+        scheduleWithResult,
+        schedule: vi.fn(),
+        list: vi.fn(async () => []),
+        apply: vi.fn(),
+        pipeline: vi.fn(async () => []),
+      };
+      const [action] =
+        createSharedRemindersEdgePlugin({
+          runner,
+          agentId: "personal:user-1",
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            chatId: "123456",
+          },
+          now: () => new Date(NOW),
+        }).actions ?? [];
 
-    const result = await action?.handler(
-      {} as IAgentRuntime,
-      {
-        id: "message-1",
-        content: { text: "Remind me in 1 minute: stretch." },
-      } as Memory,
-      undefined,
-      {
-        parameters: {
-          operation: "create",
-          reminderText: "Stretch",
-          inMinutes: 2,
+      const result = await action?.handler(
+        {} as IAgentRuntime,
+        {
+          id: "message-1",
+          content: { text: messageText },
+        } as Memory,
+        undefined,
+        {
+          parameters: {
+            operation: "create",
+            reminderText: "Stretch",
+            inMinutes: 2,
+          },
         },
-      },
-    );
+      );
 
-    expect(result?.success).toBe(true);
-    expect(scheduleWithResult).toHaveBeenCalledOnce();
-    expect(scheduleWithResult.mock.calls[0]?.[0].trigger).toEqual({
-      kind: "once",
-      atIso: "2026-08-16T04:49:56.509Z",
-    });
-  });
+      expect(result?.success).toBe(true);
+      expect(scheduleWithResult).toHaveBeenCalledOnce();
+      expect(scheduleWithResult.mock.calls[0]?.[0].trigger).toEqual({
+        kind: "once",
+        atIso,
+      });
+    },
+  );
 
   it.each([
     [
@@ -159,6 +190,12 @@ describe("explicit Shared reminder relative delay", () => {
       "Remind me in 1 minute, then remind me in 2 minutes.",
     ],
     ["a negated command", "Do not remind me in 1 minute."],
+    ["a polite negated command", "I do not want you to remind me in 1 minute."],
+    [
+      "a curly-apostrophe negation",
+      "I don’t want you to remind me in 1 minute.",
+    ],
+    ["an ambiguous compound", "Remind me in 1 minute and in 2 hours."],
   ])("rejects %s before persistence", async (_label, text) => {
     const scheduleWithResult = vi.fn(async (_input: ScheduledTaskInput) => {
       throw new Error("Ambiguous reminder must not be scheduled");
