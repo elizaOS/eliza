@@ -1109,7 +1109,16 @@ async function resolveDefinitionForMutation(
   const normalizedOwnerText = normalizeTitle(ownerText);
   const explicitlyNamed = defs.filter((entry) => {
     const title = normalizeTitle(entry.definition.title);
-    return title.length > 0 && normalizedOwnerText.includes(title);
+    if (title.length === 0) return false;
+    const index = normalizedOwnerText.indexOf(title);
+    if (index < 0) return false;
+    // A title named inside a keep-style clause ("keep buy sandpaper",
+    // "don't delete X") is an exclusion, not a target — without this, the
+    // keep clause itself made the kept item an "explicitly named" candidate
+    // and forced a bogus disambiguation ask (or worse, on non-destructive
+    // ops, a wrong-target resolution).
+    const prefix = normalizedOwnerText.slice(Math.max(0, index - 32), index);
+    return !ENUMERATED_DELETE_KEEP_CUE_RE.test(prefix);
   });
   if (explicitlyNamed.length === 1) {
     return {
