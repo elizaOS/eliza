@@ -59,6 +59,7 @@ describe("Shared capability wall", () => {
     "remind me to email Bob",
     "remind me tomorrow to email Bob the itinerary",
     "remind me to email Bob and call Alice",
+    "remind me to email Bob and then call Alice",
   ])("keeps nested communication words inside an enabled reminder: %s", (message) => {
     expect(resolveSharedCapabilityIntent(message, { reminders: true })).toEqual({
       kind: "enabled-primary",
