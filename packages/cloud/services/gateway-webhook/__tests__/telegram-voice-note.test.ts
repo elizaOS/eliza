@@ -10,6 +10,7 @@ function update(voice: Record<string, unknown>) {
     update_id: 101,
     message: {
       message_id: 7,
+      date: 1_786_827_000,
       from: { id: 42, first_name: "Ada" },
       chat: { id: 42, type: "private" },
       voice,
@@ -34,6 +35,7 @@ describe("Telegram voice notes", () => {
     );
     expect(event).toMatchObject({
       messageId: "101",
+      providerSentAtMs: 1_786_827_000_000,
       text: "",
       voiceNote: {
         fileId: "voice-file-1",

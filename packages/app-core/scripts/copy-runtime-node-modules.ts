@@ -42,7 +42,7 @@ type QueueEntry = DependencyEntry & {
   requesterDestDir: string;
 };
 
-type ResolvedPackage = {
+export type ResolvedPackage = {
   packageJsonPath: string;
   sourceDir: string;
 };
@@ -2356,7 +2356,9 @@ function getRequiredRuntimeEntryPaths(pkgJsonPath: string): string[] {
   return [...entries].sort();
 }
 
-function workspacePackageNeedsRuntimeBuild(packageJsonPath: string): boolean {
+export function workspacePackageNeedsRuntimeBuild(
+  packageJsonPath: string,
+): boolean {
   for (const entryPath of getRequiredRuntimeEntryPaths(packageJsonPath)) {
     if (!runtimeManifestEntryExists(path.dirname(packageJsonPath), entryPath)) {
       return true;
@@ -2376,47 +2378,65 @@ function packageHasBuildScript(packageJsonPath: string): boolean {
   }
 }
 
+export function ensureResolvedWorkspaceRuntimeEntriesBuilt(
+  packageName: string,
+  candidate: ResolvedPackage,
+  built: Set<string> = new Set(),
+): void {
+  if (built.has(candidate.sourceDir)) return;
+  if (!isPackageCompatibleWithCurrentPlatform(candidate.packageJsonPath)) {
+    return;
+  }
+  if (!workspacePackageNeedsRuntimeBuild(candidate.packageJsonPath)) {
+    return;
+  }
+  if (!packageHasBuildScript(candidate.packageJsonPath)) {
+    throw new Error(
+      `[runtime-copy] ${packageName} workspace package is missing declared runtime entries and has no build script`,
+    );
+  }
+
+  console.log(
+    `[runtime-copy] building ${packageName} workspace runtime entries`,
+  );
+  execFileSync(resolveBunCommand(), ["run", "build"], {
+    cwd: candidate.sourceDir,
+    env: { ...process.env, FORCE_COLOR: "0" },
+    stdio: "inherit",
+  });
+
+  if (workspacePackageNeedsRuntimeBuild(candidate.packageJsonPath)) {
+    throw new Error(
+      `[runtime-copy] ${packageName} build completed without producing its declared runtime entries`,
+    );
+  }
+  built.add(candidate.sourceDir);
+}
+
 function ensureWorkspaceRuntimeEntriesBuilt(
   packageNames: Iterable<string>,
+  built: Set<string>,
 ): void {
   buildWorkspacePackageIndex();
-  const built = new Set<string>();
 
   for (const packageName of [...new Set(packageNames)].sort()) {
     if (!isPackageNameCompatibleWithCurrentPlatform(packageName)) continue;
-
     for (const candidate of workspacePackageIndex.get(packageName) ?? []) {
-      if (built.has(candidate.sourceDir)) continue;
-      if (!isPackageCompatibleWithCurrentPlatform(candidate.packageJsonPath)) {
-        continue;
-      }
-      if (!workspacePackageNeedsRuntimeBuild(candidate.packageJsonPath)) {
-        continue;
-      }
-      if (!packageHasBuildScript(candidate.packageJsonPath)) {
-        continue;
-      }
-
-      console.log(
-        `[runtime-copy] building ${packageName} workspace runtime entries`,
-      );
-      try {
-        execFileSync(resolveBunCommand(), ["run", "build"], {
-          cwd: candidate.sourceDir,
-          env: { ...process.env, FORCE_COLOR: "0" },
-          stdio: "inherit",
-        });
-      } catch (error) {
-        if (workspacePackageNeedsRuntimeBuild(candidate.packageJsonPath)) {
-          throw error;
-        }
-        console.warn(
-          `[runtime-copy] warning: ${packageName} build exited non-zero after producing required runtime entries; continuing`,
-        );
-      }
-      built.add(candidate.sourceDir);
+      ensureResolvedWorkspaceRuntimeEntriesBuilt(packageName, candidate, built);
     }
   }
+}
+
+function isIndexedWorkspacePackage(
+  packageName: string,
+  resolved: ResolvedPackage,
+): boolean {
+  buildWorkspacePackageIndex();
+  return (workspacePackageIndex.get(packageName) ?? []).some(
+    (candidate) =>
+      candidate.sourceDir === resolved.sourceDir ||
+      candidate.packageJsonPath === resolved.packageJsonPath,
+  );
 }
 
 // Post-copy assertion: missingAlwaysBundled catches resolve failures, but
@@ -2551,7 +2571,11 @@ function main(): void {
         return shouldBundle;
       }),
     );
-    ensureWorkspaceRuntimeEntriesBuilt([...alwaysBundled, ...discovered]);
+    const builtWorkspaceRuntimeEntries = new Set<string>();
+    ensureWorkspaceRuntimeEntriesBuilt(
+      [...alwaysBundled, ...discovered],
+      builtWorkspaceRuntimeEntries,
+    );
     const queue: QueueEntry[] = [...new Set([...alwaysBundled, ...discovered])]
       .sort()
       .map((name) => ({
@@ -2597,6 +2621,14 @@ function main(): void {
         continue;
       }
 
+      if (isIndexedWorkspacePackage(name, resolved)) {
+        ensureResolvedWorkspaceRuntimeEntriesBuilt(
+          name,
+          resolved,
+          builtWorkspaceRuntimeEntries,
+        );
+      }
+
       const resolvedVersion = getPackageVersion(resolved.packageJsonPath);
       const copyTargetNodeModules = selectCopyTargetNodeModules({
         name,
@@ -2614,6 +2646,14 @@ function main(): void {
         copiedNames.add(name);
         continue;
       }
+
+      // The initial scan only sees packages imported by the built entry tree.
+      // Hard dependencies discovered later while walking package manifests can
+      // also be workspace packages with no publishable dist yet. Build those
+      // before copying them; otherwise a clean desktop checkout can package
+      // source-only exports (for example plugin-wallet/diagnostic) and crash
+      // the embedded agent at boot.
+      ensureWorkspaceRuntimeEntriesBuilt([name]);
 
       if (
         !copyPackageDir(

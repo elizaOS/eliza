@@ -848,41 +848,16 @@ describe("runLifeOperationHandler clarification contract", () => {
       return "";
     });
 
-    const preview = await runLifeOperationHandler(
+    // A fresh, fully-explicit undated ask saves in ONE turn (nubs-directed
+    // contract change): the owner already stated the item AND its
+    // undatedness, so a preview would echo back exactly what they just said.
+    const result = await runLifeOperationHandler(
       runtime,
       makeMessage("Add buy milk as a todo with no due date."),
       undefined,
       {
         parameters: {
           action: "create",
-          intent: "Add buy milk as a todo with no due date.",
-          ownerSurface: "OWNER_TODOS",
-        },
-      } as HandlerOptions,
-    );
-
-    expect(preview).toMatchObject({
-      success: false,
-      data: {
-        deferred: true,
-        saved: false,
-        requiresConfirmation: true,
-        lifeDraft: { request: { reminderPlan: null } },
-      },
-    });
-    expect(serviceState.createCalls).toHaveLength(0);
-
-    const result = await runLifeOperationHandler(
-      runtime,
-      {
-        ...makeMessage("Yes, save that todo."),
-        id: "00000000-0000-0000-0000-000000000005",
-      } as Memory,
-      undefined,
-      {
-        parameters: {
-          action: "create",
-          confirmed: true,
           intent: "Add buy milk as a todo with no due date.",
           ownerSurface: "OWNER_TODOS",
         },
@@ -964,11 +939,10 @@ describe("runLifeOperationHandler clarification contract", () => {
         } as HandlerOptions,
       );
 
-      expect(result).toMatchObject({
-        success: false,
-        data: { deferred: true, saved: false, requiresConfirmation: true },
-      });
-      expect(serviceState.createCalls).toHaveLength(0);
+      expect(result.success).toBe(true);
+      expect(serviceState.createCalls).toEqual([
+        expect.objectContaining({ cadence: { kind: "unscheduled" } }),
+      ]);
     },
   );
 
@@ -1014,12 +988,12 @@ describe("runLifeOperationHandler clarification contract", () => {
 
     const preview = await runLifeOperationHandler(
       runtime,
-      makeMessage("Add buy milk with no due date."),
+      makeMessage("Add buy milk with no due date. Preview it first."),
       undefined,
       {
         parameters: {
           action: "create",
-          intent: "Add buy milk with no due date.",
+          intent: "Add buy milk with no due date. Preview it first.",
           ownerSurface: "OWNER_TODOS",
         },
       } as HandlerOptions,
@@ -1107,12 +1081,12 @@ describe("runLifeOperationHandler clarification contract", () => {
 
     const preview = await runLifeOperationHandler(
       runtime,
-      makeMessage("Add buy milk with no due date."),
+      makeMessage("Add buy milk with no due date. Preview it first."),
       undefined,
       {
         parameters: {
           action: "create",
-          intent: "Add buy milk with no due date.",
+          intent: "Add buy milk with no due date. Preview it first.",
           ownerSurface: "OWNER_TODOS",
         },
       } as HandlerOptions,
@@ -1367,8 +1341,8 @@ describe("runLifeOperationHandler clarification contract", () => {
 
     expect(result).toMatchObject({
       success: false,
-      text: clarification,
-      userFacingText: clarification,
+      text: "When should it happen?",
+      userFacingText: "When should it happen?",
       values: {
         success: false,
         error: "MISSING_DEFINITION_FIELD",

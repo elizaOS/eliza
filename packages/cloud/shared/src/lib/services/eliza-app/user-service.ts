@@ -12,7 +12,7 @@
  */
 
 import { organizationsRepository } from "../../../db/repositories/organizations";
-import { findReusableTelegramPersonalDelivery } from "../../../db/repositories/personal-shared-deliveries";
+import { findReusablePersonalDelivery } from "../../../db/repositories/personal-shared-deliveries";
 import { type UserWithOrganization, usersRepository } from "../../../db/repositories/users";
 import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
 import type { Organization } from "../../../db/schemas/organizations";
@@ -30,6 +30,7 @@ import { apiKeysService } from "../api-keys";
 import { readUpgradedFromAgentId } from "../eliza-agent-config";
 import { personalSharedAgentId } from "../shared-runtime/personal-shared-agent";
 import { redeemSignupCode } from "../signup-code";
+import { invalidateBoundPersonalDeliveryProjection } from "./personal-delivery-projection-contract";
 import type { TelegramAuthData } from "./telegram-auth";
 
 export interface FindOrCreateResult {
@@ -38,13 +39,33 @@ export interface FindOrCreateResult {
   isNew: boolean;
 }
 
-export interface TelegramPersonalDeliveryResult {
+export interface PersonalDeliveryResult {
   userId: string;
   organizationId: string;
   dedicatedTarget: Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config"> | null;
   isNew: boolean;
-  resolution: "single-query-repeat" | "exact-dedicated-fallback" | "locked-create-or-repair";
+  resolution:
+    | "sender-projection-hit"
+    | "single-query-repeat"
+    | "exact-dedicated-fallback"
+    | "locked-create-or-repair";
 }
+
+export type PersonalDeliveryInput =
+  | {
+      platform: "telegram";
+      telegramId: string;
+      username?: string;
+      firstName?: string;
+      displayName?: string;
+    }
+  | {
+      platform: "discord";
+      discordId: string;
+      username: string;
+      globalName?: string | null;
+      avatarUrl?: string | null;
+    };
 
 function generateSlugFromTelegram(username?: string, telegramId?: string): string {
   const base = username ? username.toLowerCase().replace(/[^a-z0-9]/g, "-") : `tg-${telegramId}`;
@@ -172,7 +193,8 @@ class ElizaAppUserService {
       params.firstName?.trim() ||
       params.username?.trim() ||
       "Eliza user";
-    const result = await usersRepository.findOrCreateTelegramPersonalAccount({
+    const result = await usersRepository.findOrCreateMessagingPersonalAccount({
+      platform: "telegram",
       telegramId,
       telegramUsername: params.username?.trim() || undefined,
       telegramFirstName: params.firstName?.trim() || undefined,
@@ -194,37 +216,60 @@ class ElizaAppUserService {
   }
 
   /**
-   * Resolves an established Telegram account and its active runtime in one
-   * read-only statement. Missing, stale, or conflicting projections retain the
-   * existing sender-locked convergence transaction as the only repair writer.
+   * Resolves an established trusted-messaging account and its active runtime
+   * in one read-only statement. Missing, stale, or conflicting projections
+   * retain one sender-locked convergence transaction as the only repair writer.
    */
-  async resolvePersonalDeliveryByTelegram(params: {
-    telegramId: string;
-    username?: string;
-    firstName?: string;
-    displayName?: string;
-  }): Promise<TelegramPersonalDeliveryResult> {
-    const telegramId = params.telegramId.trim();
-    if (!/^\d{1,20}$/.test(telegramId)) {
-      throw new Error("Trusted Telegram transport supplied an invalid sender id");
+  async resolvePersonalDelivery(params: PersonalDeliveryInput): Promise<PersonalDeliveryResult> {
+    const senderId =
+      params.platform === "telegram" ? params.telegramId.trim() : params.discordId.trim();
+    const idPattern = params.platform === "telegram" ? /^\d{1,20}$/ : /^\d{1,32}$/;
+    if (!idPattern.test(senderId)) {
+      throw new Error(`Trusted ${params.platform} transport supplied an invalid sender id`);
     }
     const username = params.username?.trim() || undefined;
-    const firstName = params.firstName?.trim() || undefined;
-    const displayName = params.displayName?.trim() || firstName || username || "Eliza user";
+    if (params.platform === "discord" && !username) {
+      throw new Error("Trusted Discord transport supplied an invalid username");
+    }
+    const firstName =
+      params.platform === "telegram" ? params.firstName?.trim() || undefined : undefined;
+    const globalName =
+      params.platform === "discord"
+        ? params.globalName === undefined
+          ? undefined
+          : params.globalName?.trim() || null
+        : undefined;
+    const avatarUrl = params.platform === "discord" ? params.avatarUrl : undefined;
+    const displayName =
+      (params.platform === "telegram" ? params.displayName?.trim() : globalName) ||
+      firstName ||
+      username ||
+      "Eliza user";
 
-    const reusable = await findReusableTelegramPersonalDelivery({
-      telegramId,
-      telegramUsername: username,
-      telegramFirstName: firstName,
-    });
+    const reusable = await findReusablePersonalDelivery(
+      params.platform === "telegram"
+        ? {
+            platform: "telegram",
+            telegramId: senderId,
+            telegramUsername: username,
+            telegramFirstName: firstName,
+          }
+        : {
+            platform: "discord",
+            discordId: senderId,
+            discordUsername: params.username.trim(),
+            discordGlobalName: globalName,
+            discordAvatarUrl: avatarUrl,
+          },
+    );
     if (reusable) {
       const personalAgentId = personalSharedAgentId({
         userId: reusable.userId,
         organizationId: reusable.organizationId,
       });
       const candidate = reusable.dedicatedCandidate;
-      let dedicatedTarget: TelegramPersonalDeliveryResult["dedicatedTarget"] = null;
-      let resolution: TelegramPersonalDeliveryResult["resolution"] = "single-query-repeat";
+      let dedicatedTarget: PersonalDeliveryResult["dedicatedTarget"] = null;
+      let resolution: PersonalDeliveryResult["resolution"] = "single-query-repeat";
       if (candidate) {
         if (readUpgradedFromAgentId(candidate.agent_config) === personalAgentId) {
           dedicatedTarget = isAuthoritativePersonalDedicatedTarget(candidate, personalAgentId)
@@ -238,10 +283,10 @@ class ElizaAppUserService {
           resolution = "exact-dedicated-fallback";
         }
       }
-      logger.info("[ElizaAppUserService] Reused Telegram personal account", {
+      logger.info(`[ElizaAppUserService] Reused ${params.platform} personal account`, {
         userId: reusable.userId,
         organizationId: reusable.organizationId,
-        telegramId,
+        platform: params.platform,
         resolution,
       });
       return {
@@ -253,14 +298,28 @@ class ElizaAppUserService {
       };
     }
 
-    const result = await usersRepository.findOrCreateTelegramPersonalAccount({
-      telegramId,
-      telegramUsername: username,
-      telegramFirstName: firstName,
-      displayName,
-      organizationName: `${displayName}'s Workspace`,
-      organizationSlug: generateSlugFromTelegram(username, telegramId),
-    });
+    const result = await usersRepository.findOrCreateMessagingPersonalAccount(
+      params.platform === "telegram"
+        ? {
+            platform: "telegram",
+            telegramId: senderId,
+            telegramUsername: username,
+            telegramFirstName: firstName,
+            displayName,
+            organizationName: `${displayName}'s Workspace`,
+            organizationSlug: generateSlugFromTelegram(username, senderId),
+          }
+        : {
+            platform: "discord",
+            discordId: senderId,
+            discordUsername: params.username.trim(),
+            discordGlobalName: globalName,
+            discordAvatarUrl: avatarUrl,
+            displayName,
+            organizationName: `${displayName}'s Workspace`,
+            organizationSlug: generateSlugFromDiscord(username, senderId),
+          },
+    );
     const personalAgentId = personalSharedAgentId({
       userId: result.user.id,
       organizationId: result.organization.id,
@@ -271,12 +330,12 @@ class ElizaAppUserService {
     );
     logger.info(
       result.isNew
-        ? "[ElizaAppUserService] Created Telegram personal account"
-        : "[ElizaAppUserService] Repaired Telegram personal account",
+        ? `[ElizaAppUserService] Created ${params.platform} personal account`
+        : `[ElizaAppUserService] Repaired ${params.platform} personal account`,
       {
         userId: result.user.id,
         organizationId: result.organization.id,
-        telegramId,
+        platform: params.platform,
         resolution: "locked-create-or-repair",
       },
     );
@@ -986,6 +1045,8 @@ class ElizaAppUserService {
       phone: `***${normalizedPhone.slice(-2)}`,
     });
 
+    await invalidateBoundPersonalDeliveryProjection("telegram", telegramId);
+
     return { success: true };
   }
 
@@ -1107,6 +1168,8 @@ class ElizaAppUserService {
       username: telegramData.username,
     });
 
+    await invalidateBoundPersonalDeliveryProjection("telegram", telegramId);
+
     return { success: true };
   }
 
@@ -1154,6 +1217,8 @@ class ElizaAppUserService {
       discordId,
       username,
     });
+
+    await invalidateBoundPersonalDeliveryProjection("discord", discordId);
 
     return { success: true };
   }

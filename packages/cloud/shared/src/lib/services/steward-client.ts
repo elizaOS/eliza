@@ -34,7 +34,9 @@ let hasWarnedMissingStewardTenantApiKey = false;
 
 let _client: { key: string; value: StewardClient } | null = null;
 
-export interface StewardClientOptions extends ResolveStewardTenantCredentialsOptions {}
+export interface StewardClientOptions extends ResolveStewardTenantCredentialsOptions {
+  bearerToken?: string;
+}
 
 export type StewardPhoneOwnershipErrorCode =
   | "invalid_phone"
@@ -115,6 +117,7 @@ export async function createStewardClient(
   return new StewardClient({
     baseUrl: resolveStewardHostUrl(),
     apiKey: credentials.apiKey,
+    bearerToken: options.bearerToken,
     tenantId: credentials.tenantId,
   });
 }

@@ -118,6 +118,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       elizaCloudConnected,
       cloudCallsDisabled: selection.cloudCallsDisabled,
       isCloudSelected: selection.isCloudSelected,
+      isCloudConfigured: selection.isCloudConfigured,
       resolvedSelectedId: selection.resolvedSelectedId,
       subscriptionStatus: bootstrap.subscriptionStatus,
       anthropicCliDetected: bootstrap.anthropicCliDetected,
@@ -305,7 +306,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         {visibleProviderPanelId === "__cloud__" ? (
           <CloudPanel
             cloudCallsDisabled={selection.cloudCallsDisabled}
-            isCloudSelected={selection.isCloudSelected}
+            isCloudSelected={selection.isCloudConfigured}
             routingModeSaving={selection.routingModeSaving}
             onSelectCloud={() => void selection.handleSelectCloud()}
             onSignIn={handleCloudSignIn}

@@ -205,7 +205,9 @@ describe("processDueScheduledTasks — production wiring", () => {
             ownerEntityId: ownerId,
             agentEntityId: runtime.agentId,
             participantEntityIds: [ownerId, runtime.agentId].sort(),
-            membershipVersion: [ownerId, runtime.agentId].sort().join("\u0000"),
+            membershipVersion: JSON.stringify(
+              [ownerId, runtime.agentId].sort(),
+            ),
           },
         },
       },

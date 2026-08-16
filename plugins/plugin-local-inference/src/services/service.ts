@@ -68,8 +68,7 @@ import {
 } from "./registry";
 import {
 	type RoutingPreferences,
-	readRoutingPreferences,
-	writeRoutingPreferences,
+	updateRoutingPreferences,
 } from "./routing-preferences";
 import type {
 	ActiveModelState,
@@ -116,29 +115,20 @@ function shouldRouteActivatedModelToLocal(
 }
 
 async function routeActivatedModelToLocalText(): Promise<void> {
-	const current = await readRoutingPreferences();
-	const next: RoutingPreferences = {
-		preferredProvider: { ...current.preferredProvider },
-		policy: { ...current.policy },
-	};
-	let changed = false;
-
-	for (const slot of ACTIVATED_TEXT_ROUTING_SLOTS) {
-		const provider = next.preferredProvider[slot];
-		if (!shouldRouteActivatedModelToLocal(provider)) continue;
-		if (provider !== LOCAL_INFERENCE_PROVIDER_ID) {
+	await updateRoutingPreferences((current) => {
+		const next: RoutingPreferences = {
+			preferredProvider: { ...current.preferredProvider },
+			policy: { ...current.policy },
+		};
+		for (const slot of ACTIVATED_TEXT_ROUTING_SLOTS) {
+			if (!shouldRouteActivatedModelToLocal(next.preferredProvider[slot])) {
+				continue;
+			}
 			next.preferredProvider[slot] = LOCAL_INFERENCE_PROVIDER_ID;
-			changed = true;
-		}
-		if (next.policy[slot] !== "manual") {
 			next.policy[slot] = "manual";
-			changed = true;
 		}
-	}
-
-	if (changed) {
-		await writeRoutingPreferences(next);
-	}
+		return next;
+	});
 }
 
 export class LocalInferenceService {

@@ -31,8 +31,8 @@ import {
   redirectToSsoBridge,
   shouldAutoBridgeToSso,
 } from "../sso-bridge/sso-bridge";
-import { appModeNavigation, decideAppModeRoute } from "./app-mode";
-import { personalEntryBindingId, usePersonalEntry } from "./use-personal-entry";
+import { decideAppModeRoute } from "./app-mode";
+import { usePersonalEntry } from "./use-personal-entry";
 
 function EntryNotice({
   label,
@@ -65,42 +65,13 @@ export function AppModeEntryRoute({
   // Rowless personal entry: with zero sandbox rows the personal Eliza is the
   // account's runtime, so entry resolves + persists its authoritative binding
   // instead of bouncing to /join (the /join → / → /join loop this fixes).
-  // The binding snapshot is taken once, before the resolver can overwrite it,
-  // so a repaired/created binding is distinguishable from a matching one.
   const rowlessEntry =
     ready &&
     authenticated &&
     !isCloudManagementPath &&
     agentsQuery.data !== undefined &&
     agentsQuery.data.length === 0;
-  const initialBindingIdRef = useRef<string | null | undefined>(undefined);
-  if (initialBindingIdRef.current === undefined) {
-    const persisted = loadPersistedActiveServer();
-    initialBindingIdRef.current =
-      persisted?.kind === "cloud" ? persisted.id : null;
-  }
   const personalEntry = usePersonalEntry(rowlessEntry);
-  // A binding the resolver just created or repaired must boot from a clean
-  // page load (the startup coordinator restores persisted connections at
-  // boot — same reason /join hard-navigates). Single-shot per mount; replaces
-  // with the current URL so deep links survive the reload.
-  const resolvedBindingId = personalEntry.data
-    ? personalEntryBindingId(personalEntry.data)
-    : null;
-  const bindingRepaired =
-    rowlessEntry &&
-    resolvedBindingId !== null &&
-    initialBindingIdRef.current !== resolvedBindingId &&
-    // Reload only helps when the repaired binding actually persisted; with
-    // storage unavailable a reload would recur forever, so entry renders the
-    // in-memory-configured client instead.
-    loadPersistedActiveServer()?.id === resolvedBindingId;
-  const rebootRef = useRef(false);
-  useEffect(() => {
-    if (!bindingRepaired || rebootRef.current) return;
-    rebootRef.current = true;
-    appModeNavigation.replace(`${location.pathname}${location.search}`);
-  }, [bindingRepaired, location]);
 
   // Unauthenticated visits may ride the cross-host SSO bridge instead of the
   // local login: when the domain-wide session marker says the auth origin
@@ -180,7 +151,7 @@ export function AppModeEntryRoute({
       if (personalEntry.isError) {
         return <Navigate to="/join" replace />;
       }
-      if (personalEntry.data === undefined || bindingRepaired) {
+      if (personalEntry.data === undefined) {
         return <EntryNotice label="Opening your Eliza" />;
       }
       return <>{appElement}</>;

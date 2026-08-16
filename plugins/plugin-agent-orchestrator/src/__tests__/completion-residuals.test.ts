@@ -538,13 +538,65 @@ describe("collectCompletionResiduals — spawn-time baseline + shared route work
     expect(residual?.items).toEqual(["?? run-output.ts"]);
   });
 
-  it("never exempts an untracked path via the baseline (spawn baseline is tracked-only)", async () => {
+  it("never exempts an untracked path via the tracked-dirty baseline", async () => {
     const { workdir } = makeRepo();
     writeFileSync(join(workdir, "untracked.ts"), "export {};\n");
     const result = await collectCompletionResiduals({
       workdir,
       repoExpected: true,
       baselineDirtyPaths: ["untracked.ts"],
+    });
+    expect(result.status).toBe("residuals");
+  });
+
+  it("does not count untracked paths already present at spawn (lived-in workdir)", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "pre-existing.txt"), "before spawn\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineUntrackedPaths: ["pre-existing.txt"],
+    });
+    expect(result.status).toBe("clean");
+    expect(result.residuals).toEqual([]);
+  });
+
+  it("still counts untracked paths that appear after spawn", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "pre-existing.txt"), "before spawn\n");
+    writeFileSync(join(workdir, "new-work.ts"), "export {};\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineUntrackedPaths: ["pre-existing.txt"],
+    });
+    expect(result.status).toBe("residuals");
+    const residual = result.residuals.find(
+      (row) => row.kind === "uncommitted_changes",
+    );
+    expect(residual?.items).toEqual(["?? new-work.ts"]);
+  });
+
+  it("exempts a wholly-untracked directory via its collapsed porcelain path", async () => {
+    const { workdir } = makeRepo();
+    mkdirSync(join(workdir, "notes"));
+    writeFileSync(join(workdir, "notes", "old.md"), "before spawn\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineUntrackedPaths: ["notes/"],
+    });
+    expect(result.status).toBe("clean");
+  });
+
+  it("still counts a baseline-untracked path the worker staged (no longer ??)", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "pre-existing.txt"), "before spawn\n");
+    git(workdir, "add", "pre-existing.txt");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineUntrackedPaths: ["pre-existing.txt"],
     });
     expect(result.status).toBe("residuals");
   });

@@ -708,8 +708,9 @@ export function residualsOrchestratorOwnedArtifacts(
 /** Spawn-time residuals context, parsed structurally from the reporting
  * session's metadata — every key is orchestrator-stamped at spawn
  * (`AcpService.spawnSession` / the TASKS spawn path), never worker-writable.
- * `codingBaselineDirty` (tracked files already dirty at spawn) becomes the
- * gate's pre-existing-churn baseline; a `workdirRouteId` on a NON-isolated
+ * `codingBaselineDirty` (tracked files already dirty at spawn) and
+ * `codingBaselineUntracked` (untracked paths already present at spawn) become
+ * the gate's pre-existing-churn baselines; a `workdirRouteId` on a NON-isolated
  * session marks a shared route-mapped app checkout
  * (`TASK_AGENT_WORKDIR_ROUTES`, e.g. agent-home) whose git state is shared
  * across tasks and must not block every completion there. Absent/foreign
@@ -717,11 +718,19 @@ export function residualsOrchestratorOwnedArtifacts(
  * direct unit coverage. */
 export function residualsSpawnBaseline(
   session: Pick<OrchestratorTaskSession, "metadata"> | undefined,
-): Pick<CompletionResidualsInput, "baselineDirtyPaths" | "sharedRouteWorkdir"> {
+): Pick<
+  CompletionResidualsInput,
+  "baselineDirtyPaths" | "baselineUntrackedPaths" | "sharedRouteWorkdir"
+> {
   const meta = session?.metadata;
   if (!isRecord(meta)) return {};
   const baselineDirtyPaths = Array.isArray(meta.codingBaselineDirty)
     ? meta.codingBaselineDirty.filter(
+        (path): path is string => typeof path === "string" && path.length > 0,
+      )
+    : [];
+  const baselineUntrackedPaths = Array.isArray(meta.codingBaselineUntracked)
+    ? meta.codingBaselineUntracked.filter(
         (path): path is string => typeof path === "string" && path.length > 0,
       )
     : [];
@@ -731,6 +740,7 @@ export function residualsSpawnBaseline(
     meta[ACP_METADATA_ISOLATED_WORKDIR] !== true;
   return {
     ...(baselineDirtyPaths.length > 0 ? { baselineDirtyPaths } : {}),
+    ...(baselineUntrackedPaths.length > 0 ? { baselineUntrackedPaths } : {}),
     ...(sharedRouteWorkdir ? { sharedRouteWorkdir: true } : {}),
   };
 }

@@ -22,6 +22,7 @@ import {
 import { createSecretBallotsService } from "@/lib/services/secret-ballots";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { parsePaginationParam } from "../pagination";
 
 const ParticipantSchema = z.object({
   identityId: z.string().min(1).max(256),
@@ -48,8 +49,6 @@ const StatusSchema = z.enum(["open", "tallied", "expired", "canceled"]);
 const ListQuerySchema = z.object({
   status: StatusSchema.optional(),
   agentId: z.string().min(1).max(256).optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional(),
-  offset: z.coerce.number().int().min(0).optional(),
 });
 
 const app = new Hono<AppEnv>();
@@ -109,11 +108,21 @@ app.post("/", async (c) => {
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    const limitResult = parsePaginationParam(c.req.query("limit"), "limit", 50);
+    if (!limitResult.ok) {
+      return c.json({ success: false, error: limitResult.error }, 400);
+    }
+    const offsetResult = parsePaginationParam(
+      c.req.query("offset"),
+      "offset",
+      0,
+    );
+    if (!offsetResult.ok) {
+      return c.json({ success: false, error: offsetResult.error }, 400);
+    }
     const parsed = ListQuerySchema.safeParse({
       status: c.req.query("status"),
       agentId: c.req.query("agentId"),
-      limit: c.req.query("limit"),
-      offset: c.req.query("offset"),
     });
     if (!parsed.success) {
       return c.json(
@@ -126,7 +135,11 @@ app.get("/", async (c) => {
       );
     }
     const service = buildService();
-    const ballots = await service.list(user.organization_id, parsed.data);
+    const ballots = await service.list(user.organization_id, {
+      ...parsed.data,
+      limit: limitResult.value,
+      offset: offsetResult.value,
+    });
     return c.json({ success: true, ballots });
   } catch (error) {
     logger.error("[SecretBallots API] Failed to list ballots", { error });

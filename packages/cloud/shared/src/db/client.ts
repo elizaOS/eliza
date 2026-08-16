@@ -223,6 +223,18 @@ export async function applyIdleSessionTimeouts(client: {
   }
 }
 
+/**
+ * Worker-runtime `maxUses` policy: 0 (unlimited within the pool's own
+ * lifetime) whenever the pool is request-scoped or local, 1 otherwise. See
+ * the call site comment for the latency consequence this encodes.
+ */
+export function resolveWorkerPoolMaxUses(args: {
+  isLocalTcp: boolean;
+  hasRequestScopedCache: boolean;
+}): number {
+  return args.isLocalTcp || args.hasRequestScopedCache ? 0 : 1;
+}
+
 function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
   const env = getCloudAwareEnv();
   const inWorkerRuntime = isCloudflareWorkerRuntime();
@@ -245,13 +257,25 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
 
   if (inWorkerRuntime) {
     options.max = parsePositiveInteger(env.LOCAL_PG_POOL_MAX, 1);
-    // Discard connections after a single query — Workers can't reliably
-    // share I/O across requests. EXCEPT against local PGlite: the PGlite
-    // socket bridge is fragile and creating a fresh TCP connection per
-    // query causes "Connection terminated unexpectedly" mid-stream. Local
-    // dev uses long-lived connections instead; the per-request isolation
-    // workers need only matters for shared remote pools.
-    options.maxUses = isLocalTcp ? 0 : 1;
+    // workerd forbids sharing I/O objects ACROSS requests, not reusing them
+    // within one. When the request-scoped db cache is active (dbCacheAls —
+    // bootstrap middleware enters it per fetch invocation), the pool itself
+    // lives and dies inside a single request, so its connection may serve
+    // every query of that request: one connect handshake per turn instead of
+    // one per query. maxUses=1 stays as the safety net only when no
+    // request-scoped cache is active (module-scope fallback, where a pooled
+    // connection COULD leak across requests) — there, discard after a single
+    // query. This mattered live (shared-agent latency, HQ #18309): the
+    // per-query reconnect multiplied the Worker→Hyperdrive connect RTT by the
+    // turn's query count, dominating the account stage on real traffic while
+    // same-colo synthetic probes hid it. EXCEPT against local PGlite: the
+    // PGlite socket bridge is fragile and a fresh TCP connection per query
+    // causes "Connection terminated unexpectedly" mid-stream; local dev uses
+    // long-lived connections either way.
+    options.maxUses = resolveWorkerPoolMaxUses({
+      isLocalTcp,
+      hasRequestScopedCache: hasDbCacheContext(),
+    });
     options.connectionTimeoutMillis = 30_000;
   }
 

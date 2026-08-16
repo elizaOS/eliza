@@ -398,10 +398,10 @@ describe("DesktopManager main window controls", () => {
     manager.enableBottomBarReanchor();
 
     await manager.setBottomBarExpanded({ expanded: true });
-    expect(window.setFrame).toHaveBeenLastCalledWith(100, 90, 900, 660);
+    expect(window.setFrame).toHaveBeenLastCalledWith(250, 50, 600, 700);
 
     await manager.setBottomBarExpanded({ expanded: false });
-    expect(window.setFrame).toHaveBeenLastCalledWith(100, 610, 900, 140);
+    expect(window.setFrame).toHaveBeenLastCalledWith(502, 694, 96, 56);
     await manager.dispose();
   });
 

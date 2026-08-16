@@ -216,11 +216,27 @@ describe("recentMessagesProvider", () => {
 				elizaSyntheticFailure: true,
 				chatFailureKind: "provider_issue",
 			}),
+			makeMemory(
+				"msg-6",
+				AGENT_ID,
+				"Capability unavailable.",
+				"client_chat",
+				6000,
+				{ failureKind: "missing_capability" },
+			),
+			makeMemory(
+				"msg-7",
+				AGENT_ID,
+				"Attempts exhausted.",
+				"client_chat",
+				7000,
+				{ failureKind: "planner_exhaustion" },
+			),
 		];
 
 		const result = await recentMessagesProvider.get(
 			makeRuntime(memories),
-			makeMemory("current", USER_ID, "next task", "client_chat", 6000),
+			makeMemory("current", USER_ID, "next task", "client_chat", 8000),
 			{ values: {}, data: {}, text: "" },
 		);
 
@@ -230,6 +246,8 @@ describe("recentMessagesProvider", () => {
 		expect(result.text).not.toContain("Agent: Sorry");
 		expect(result.text).not.toContain("Something went wrong");
 		expect(result.text).not.toContain("Retrying...");
+		expect(result.text).not.toContain("Capability unavailable.");
+		expect(result.text).not.toContain("Attempts exhausted.");
 	});
 
 	it("dedupes repeated assistant messages within one assistant run", async () => {

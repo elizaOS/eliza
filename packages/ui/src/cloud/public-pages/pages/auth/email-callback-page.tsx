@@ -7,7 +7,7 @@
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   clearStoredAppAuthorizeReturnTo,
   readStoredAppAuthorizeReturnTo,
@@ -106,6 +106,7 @@ export default function EmailCallbackPage() {
 
 function EmailCallbackContent() {
   const t = useCloudT();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const auth = useContext(LocalStewardAuthContext);
   const attemptedRef = useRef(false);
@@ -136,7 +137,6 @@ function EmailCallbackContent() {
       return;
     }
 
-    let redirectTimer: ReturnType<typeof setTimeout> | null = null;
     const finishSuccess = () => {
       const destination = resolveEmailCallbackDestination(
         returnTo,
@@ -145,16 +145,11 @@ function EmailCallbackContent() {
       successDestinationRef.current = destination;
       clearStoredAppAuthorizeReturnTo();
       setStatus("success");
-      redirectTimer = setTimeout(() => {
-        window.location.replace(destination);
-      }, 1500);
     };
 
     if (auth.isAuthenticated) {
       finishSuccess();
-      return () => {
-        if (redirectTimer) clearTimeout(redirectTimer);
-      };
+      return;
     }
 
     const token = searchParams.get("token");
@@ -190,11 +185,16 @@ function EmailCallbackContent() {
         setError(describeVerificationError(err, t));
       }
     })();
-
-    return () => {
-      if (redirectTimer) clearTimeout(redirectTimer);
-    };
   }, [auth, returnTo, searchParams, t]);
+
+  useEffect(() => {
+    if (status !== "success") return;
+    const destination = successDestinationRef.current ?? defaultLoginReturnTo();
+    const redirectTimer = setTimeout(() => {
+      navigate(destination, { replace: true });
+    }, 1500);
+    return () => clearTimeout(redirectTimer);
+  }, [navigate, status]);
 
   if (status === "error") {
     return (
@@ -234,9 +234,9 @@ function EmailCallbackContent() {
         <BrandButton
           className="mt-2"
           onClick={() =>
-            window.location.assign(
-              successDestinationRef.current ?? defaultLoginReturnTo(),
-            )
+            navigate(successDestinationRef.current ?? defaultLoginReturnTo(), {
+              replace: true,
+            })
           }
         >
           {t("cloud.emailCallback.continue", {

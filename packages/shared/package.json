@@ -83,6 +83,16 @@
       "import": "./dist/connector-account-catalog.js",
       "default": "./dist/connector-account-catalog.js"
     },
+    "./discord-dm-policy": {
+      "types": "./dist/discord-dm-policy.d.ts",
+      "eliza-source": {
+        "types": "./src/discord-dm-policy.ts",
+        "import": "./src/discord-dm-policy.ts",
+        "default": "./src/discord-dm-policy.ts"
+      },
+      "import": "./dist/discord-dm-policy.js",
+      "default": "./dist/discord-dm-policy.js"
+    },
     "./types": {
       "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js",
@@ -212,6 +222,16 @@
       },
       "import": "./dist/restart.js",
       "default": "./dist/restart.js"
+    },
+    "./host-execution-env": {
+      "types": "./dist/host-execution-env.d.ts",
+      "eliza-source": {
+        "types": "./src/host-execution-env.ts",
+        "import": "./src/host-execution-env.ts",
+        "default": "./src/host-execution-env.ts"
+      },
+      "import": "./dist/host-execution-env.js",
+      "default": "./dist/host-execution-env.js"
     },
     "./sandbox-registry": {
       "types": "./dist/sandbox-registry.d.ts",

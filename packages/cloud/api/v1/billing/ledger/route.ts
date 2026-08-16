@@ -13,6 +13,7 @@ import {
 import { activeBillingService } from "@/lib/services/active-billing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { parsePaginationParam } from "../../pagination";
 
 const app = new Hono<AppEnv>();
 
@@ -21,10 +22,13 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const rawLimit = Number(c.req.query("limit") ?? 50);
+    const limitResult = parsePaginationParam(c.req.query("limit"), "limit", 50);
+    if (!limitResult.ok) {
+      return c.json({ success: false, error: limitResult.error }, 400);
+    }
     const ledger = await activeBillingService.listLedger(
       user.organization_id,
-      Number.isFinite(rawLimit) ? rawLimit : 50,
+      limitResult.value,
     );
 
     return c.json({

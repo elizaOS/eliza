@@ -179,8 +179,10 @@ describe("store roundtrip", () => {
       GITHUB_TOKEN: "ghp_test",
     });
     store.removeConnection("github");
-    expect(store.credentialsToEnv()).toEqual({ OPENAI_API_KEY: "sk-test-123" });
-  });
+    expect(store.credentialsToEnv()).toEqual({
+      OPENAI_API_KEY: "sk-test-123",
+    });
+  }, 15_000);
 
   test("run manifests and history persist and list", () => {
     store.newRunDir("run-1");

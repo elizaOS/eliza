@@ -11,11 +11,10 @@ import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { generationsService } from "@/lib/services/generations";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { parsePaginationParam } from "../pagination";
 
 const galleryQuerySchema = z.object({
   type: z.enum(["image", "video"]).optional(),
-  limit: z.coerce.number().int().min(1).max(1000).default(100),
-  offset: z.coerce.number().int().min(0).default(0),
 });
 
 const app = new Hono<AppEnv>();
@@ -24,10 +23,26 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
+    const limitResult = parsePaginationParam(
+      c.req.query("limit"),
+      "limit",
+      100,
+    );
+    if (!limitResult.ok) {
+      return c.json({ error: limitResult.error }, 400);
+    }
+    const offsetResult = parsePaginationParam(
+      c.req.query("offset"),
+      "offset",
+      0,
+    );
+    if (!offsetResult.ok) {
+      return c.json({ error: offsetResult.error }, 400);
+    }
+    const limit = limitResult.value;
+    const offset = offsetResult.value;
     const parsedQuery = galleryQuerySchema.safeParse({
       type: c.req.query("type") || undefined,
-      limit: c.req.query("limit") || undefined,
-      offset: c.req.query("offset") || undefined,
     });
 
     if (!parsedQuery.success) {
@@ -37,9 +52,9 @@ app.get("/", async (c) => {
       );
     }
 
-    const { type, limit, offset } = parsedQuery.data;
+    const { type } = parsedQuery.data;
 
-    const fetchLimit = Math.min(limit + 1, 1001);
+    const fetchLimit = limit + 1;
     const allGenerations =
       await generationsService.listByOrganizationAndStatusSummary(
         user.organization_id,

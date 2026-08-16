@@ -12,14 +12,16 @@
  * in chat and a note written in the app are one record in one store. It adds
  * no storage, no second source of truth, and no new persistence path.
  */
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  State,
+import {
+  type Action,
+  type ActionResult,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  normalizeEffectReceipt,
+  type State,
+  stringToUuid,
 } from "@elizaos/core";
 
 import { getNotesService } from "./service.js";
@@ -83,12 +85,45 @@ function failure(text: string, code: string): ActionResult {
  * evaluator re-render the same answer as a second message.
  */
 function committed(text: string, data: Record<string, unknown>): ActionResult {
+  // Bind the mutation to an applied effect receipt so the reply-egress
+  // grounding contract (completed_side_effect claims require a committed
+  // receipt from this turn) can verify the claim instead of failing closed to
+  // the "couldn't verify" fallback on a real write. The store's *WithCommit
+  // family persists durably before returning; the note row id is the commit
+  // identifier ("durable transaction, row, or provider receipt identifier").
+  const op = typeof data.op === "string" ? data.op : "commit";
+  const noteId = typeof data.noteId === "string" ? data.noteId : undefined;
+  const observedAt = new Date().toISOString();
+  const effectReceipts = noteId
+    ? [
+        normalizeEffectReceipt({
+          receiptId: stringToUuid(`notes:${op}:${noteId}:${observedAt}`),
+          operation: `notes.note.${op}`,
+          resource: { kind: "notes.note", id: noteId },
+          artifacts: [],
+          idempotency: { key: null, replayed: false },
+          observedAt,
+          outcome: "applied",
+          commit: { kind: "durable", id: noteId, committedAt: observedAt },
+        }),
+      ]
+    : undefined;
   return {
     success: true,
     text,
     userFacingText: text,
     verifiedUserFacing: true,
     turnComplete: true,
+    ...(effectReceipts
+      ? {
+          effectReceipts,
+          // Bind the exact user-facing text to the committed receipt — the
+          // grounding resolvers only accept receipts named here.
+          userFacingEffectReceiptIds: effectReceipts.map(
+            (receipt) => receipt.receiptId,
+          ),
+        }
+      : {}),
     data: { actionName: "NOTES", ...data },
   };
 }

@@ -7,6 +7,7 @@ import type {
 } from "./adapters/types";
 import { reacquireAuthHeader } from "./auth";
 import { resolveConnectorAccountId } from "./connector-account";
+import { tryConfirmIdentityLink } from "./identity-link";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
 import {
@@ -29,6 +30,10 @@ const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
 const TELEGRAM_TYPING_REFRESH_MS = 4_000;
 const PERSONAL_SHARED_VOICE_TIMEOUT_MS = 90_000;
+const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
+const OPAQUE_TRACE_ID =
+  /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
+const ZERO_TRACE_ID = "0".repeat(32);
 
 class TelegramEgressAlreadyClaimedError extends Error {
   override readonly name = "TelegramEgressAlreadyClaimedError";
@@ -47,8 +52,26 @@ interface HandlerDeps {
 
 interface PersonalSharedDeliveryTiming {
   cloudMs: number;
+  cloudAttempts: number;
   egressMs: number;
   cloudServerTiming: string | null;
+}
+
+interface MessageTraceContext {
+  traceId: string;
+  gatewayReceivedAtMs: number;
+}
+
+function resolveTraceId(request: Request): string {
+  const supplied = request.headers.get(ELIZA_TRACE_ID_HEADER)?.trim();
+  if (
+    supplied &&
+    OPAQUE_TRACE_ID.test(supplied) &&
+    supplied.toLowerCase() !== ZERO_TRACE_ID
+  ) {
+    return supplied.toLowerCase();
+  }
+  return crypto.randomUUID();
 }
 
 export async function handleWebhook(
@@ -58,6 +81,10 @@ export async function handleWebhook(
   project: string,
   agentId?: string,
 ): Promise<Response> {
+  const trace: MessageTraceContext = {
+    traceId: resolveTraceId(request),
+    gatewayReceivedAtMs: Date.now(),
+  };
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
@@ -161,6 +188,7 @@ export async function handleWebhook(
         event,
         deps,
         project,
+        trace,
         agentId,
         async () => {
           // Write the no-replay barrier before the Bot API call. A crash or
@@ -221,13 +249,14 @@ export async function handleWebhook(
 
   // ── Async phase: identity → forward → reply (runs in background) ──
 
-  processMessage(adapter, config, event, deps, project, agentId).catch(
+  processMessage(adapter, config, event, deps, project, trace, agentId).catch(
     async (err) => {
       logger.error("Background message processing failed", {
         error: err instanceof Error ? err.message : String(err),
         project,
         platform: adapter.platform,
         messageId: event.messageId,
+        traceId: trace.traceId,
       });
       if (err instanceof PersonalSharedPreEgressError) {
         try {
@@ -273,6 +302,7 @@ async function processMessage(
   event: ChatEvent,
   deps: HandlerDeps,
   project: string,
+  trace: MessageTraceContext,
   explicitAgentId?: string,
   beforeEgress?: () => Promise<void>,
 ): Promise<void> {
@@ -281,6 +311,23 @@ async function processMessage(
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
+
+  // Link challenges are proof-bearing control messages, including when the
+  // handle currently resolves to a provisional onboarding account. Inspect
+  // them before every personal or agent route so no existing row can swallow
+  // the challenge as ordinary agent text.
+  const linkAttempt = await tryConfirmIdentityLink(
+    { redis, cloudBaseUrl, getAuthHeader },
+    adapter.platform,
+    event.senderId,
+    event.senderName,
+    event.text,
+  );
+  if (linkAttempt.handled && linkAttempt.reply) {
+    await beforeEgress?.();
+    await adapter.sendReply(config, event, linkAttempt.reply);
+    return;
+  }
 
   // The public eliza.app phone/Telegram endpoints are account transports, not
   // arbitrary agent webhooks. Always converge them through the same internal
@@ -296,13 +343,20 @@ async function processMessage(
         event,
         deps,
         project,
+        trace.traceId,
         beforeEgress,
       );
       logger.info("Personal Eliza connector message completed", {
         project,
         platform: adapter.platform,
         messageId: event.messageId,
+        traceId: trace.traceId,
+        providerToGatewayMs:
+          event.providerSentAtMs === undefined
+            ? null
+            : trace.gatewayReceivedAtMs - event.providerSentAtMs,
         cloudMs: timing.cloudMs,
+        cloudAttempts: timing.cloudAttempts,
         cloudServerTiming: timing.cloudServerTiming,
         egressMs: timing.egressMs,
         totalMs: Date.now() - startedAt,
@@ -340,6 +394,7 @@ async function processMessage(
       event,
       deps,
       project,
+      trace.traceId,
       beforeEgress,
     );
     return;
@@ -396,6 +451,7 @@ async function processMessage(
       event,
       deps,
       project,
+      trace.traceId,
       beforeEgress,
     );
     return;
@@ -548,6 +604,7 @@ async function sendUnlinkedReply(
   event: ChatEvent,
   deps: HandlerDeps,
   project: string,
+  traceId: string,
   beforeEgress?: () => Promise<void>,
 ): Promise<void> {
   if (
@@ -561,6 +618,7 @@ async function sendUnlinkedReply(
       event,
       deps,
       project,
+      traceId,
       beforeEgress,
     );
     return;
@@ -574,6 +632,7 @@ async function sendPersonalSharedReply(
   event: ChatEvent,
   deps: HandlerDeps,
   project: string,
+  traceId: string,
   beforeEgress?: () => Promise<void>,
 ): Promise<PersonalSharedDeliveryTiming> {
   const { cloudBaseUrl, getAuthHeader } = deps;
@@ -594,7 +653,11 @@ async function sendPersonalSharedReply(
   const postMessage = (authHeader: Record<string, string>) =>
     fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: {
+        "Content-Type": "application/json",
+        [ELIZA_TRACE_ID_HEADER]: traceId,
+        ...authHeader,
+      },
       body: JSON.stringify(
         adapter.platform === "telegram"
           ? {
@@ -609,6 +672,7 @@ async function sendPersonalSharedReply(
             }
           : {
               platform: adapter.platform,
+              project,
               phoneNumber: event.senderId,
               messageId: `${adapter.platform}:${project}:${event.messageId}`,
               message: event.text,
@@ -622,10 +686,30 @@ async function sendPersonalSharedReply(
   let authHeader: Record<string, string> = getAuthHeader();
   let response: Response | null = null;
   let lastTransportError: unknown;
+  let attemptsUsed = 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    attemptsUsed = attempt;
+    const attemptStartedAt = Date.now();
     try {
       response = await postMessage(authHeader);
       if (response.status === 401 && attempt < maxAttempts) {
+        logger.warn("Personal Shared Cloud attempt requires fresh auth", {
+          traceId,
+          project,
+          platform: adapter.platform,
+          messageId: event.messageId,
+          attempt,
+          maxAttempts,
+          durationMs: Date.now() - attemptStartedAt,
+          status: response.status,
+          retryable: true,
+          retryReason: "auth_refresh",
+          retryAfterSeconds: null,
+          retryDelayMs: 0,
+          cloudServerTiming: response.headers.get("Server-Timing"),
+          cloudFailureStage: response.headers.get("X-Eliza-Failure-Stage"),
+          cloudFailureName: response.headers.get("X-Eliza-Failure-Name"),
+        });
         authHeader = await reauth();
         continue;
       }
@@ -634,26 +718,70 @@ async function sendPersonalSharedReply(
         response.status === 425 ||
         response.status === 429 ||
         response.status >= 500;
-      if (response.ok || !retryable || attempt === maxAttempts) {
-        break;
+      const shouldRetry =
+        !response.ok && retryable && attempt < maxAttempts && !voiceNote;
+      const retryAfterSeconds = Number.parseInt(
+        response.headers.get("Retry-After") ?? "",
+        10,
+      );
+      const retryDelayMs = shouldRetry
+        ? Number.isFinite(retryAfterSeconds)
+          ? Math.min(
+              Math.max(retryAfterSeconds, 0) * 1_000,
+              PERSONAL_SHARED_RETRY_DELAY_CAP_MS,
+            )
+          : 200 * attempt
+        : null;
+      const attemptContext = {
+        traceId,
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        attempt,
+        maxAttempts,
+        durationMs: Date.now() - attemptStartedAt,
+        status: response.status,
+        retryable,
+        retryReason: shouldRetry ? "status" : null,
+        retryAfterSeconds: Number.isFinite(retryAfterSeconds)
+          ? retryAfterSeconds
+          : null,
+        retryDelayMs,
+        cloudServerTiming: response.headers.get("Server-Timing"),
+        cloudFailureStage: response.headers.get("X-Eliza-Failure-Stage"),
+        cloudFailureName: response.headers.get("X-Eliza-Failure-Name"),
+      };
+      if (response.ok) {
+        logger.info("Personal Shared Cloud attempt completed", attemptContext);
+      } else {
+        logger.warn("Personal Shared Cloud attempt failed", attemptContext);
       }
-      if (voiceNote) break;
+      if (!shouldRetry || retryDelayMs === null) break;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     } catch (error) {
       response = null;
       lastTransportError = error;
-      if (voiceNote || attempt === maxAttempts) break;
+      const shouldRetry = !voiceNote && attempt < maxAttempts;
+      const retryDelayMs = shouldRetry ? 200 * attempt : null;
+      logger.warn("Personal Shared Cloud attempt transport failed", {
+        traceId,
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        attempt,
+        maxAttempts,
+        durationMs: Date.now() - attemptStartedAt,
+        status: null,
+        retryable: shouldRetry,
+        retryReason: shouldRetry ? "transport" : null,
+        retryAfterSeconds: null,
+        retryDelayMs,
+        cloudServerTiming: null,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (!shouldRetry || retryDelayMs === null) break;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
-    const retryAfterSeconds = Number.parseInt(
-      response?.headers.get("Retry-After") ?? "",
-      10,
-    );
-    const retryDelayMs = Number.isFinite(retryAfterSeconds)
-      ? Math.min(
-          Math.max(retryAfterSeconds, 0) * 1_000,
-          PERSONAL_SHARED_RETRY_DELAY_CAP_MS,
-        )
-      : 200 * attempt;
-    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
   }
   if (!response) {
     throw new PersonalSharedPreEgressError(
@@ -688,13 +816,19 @@ async function sendPersonalSharedReply(
   // Empty is the agent's deliberate shouldRespond=no result. It is a
   // successful turn with no provider egress, not a malformed response.
   if (reply.length === 0) {
-    return { cloudMs, egressMs: 0, cloudServerTiming };
+    return {
+      cloudMs,
+      cloudAttempts: attemptsUsed,
+      egressMs: 0,
+      cloudServerTiming,
+    };
   }
   const egressStartedAt = Date.now();
   await beforeEgress?.();
   await adapter.sendReply(config, event, reply);
   return {
     cloudMs,
+    cloudAttempts: attemptsUsed,
     egressMs: Date.now() - egressStartedAt,
     cloudServerTiming,
   };

@@ -86,7 +86,21 @@ function canonicalParticipants(values: readonly string[]): string[] {
 }
 
 function membershipVersion(values: readonly string[]): string {
+  return JSON.stringify(canonicalParticipants(values));
+}
+
+function legacyMembershipVersion(values: readonly string[]): string {
   return canonicalParticipants(values).join("\u0000");
+}
+
+function matchesMembershipVersion(
+  values: readonly string[],
+  storedVersion: string,
+): boolean {
+  return (
+    membershipVersion(values) === storedVersion ||
+    legacyMembershipVersion(values) === storedVersion
+  );
 }
 
 /**
@@ -156,7 +170,7 @@ export async function bindScheduledTaskToInboundChat(
       ownerEntityId: audience.canonicalOwnerEntityId,
       agentEntityId: audience.agentEntityId,
       participantEntityIds: [...audience.participantEntityIds],
-      membershipVersion: audience.membershipVersion,
+      membershipVersion: membershipVersion(audience.participantEntityIds),
     },
   };
 }
@@ -238,7 +252,7 @@ export async function revalidateScheduledTaskChatDeliveryBinding(
       binding.audience.agentEntityId !== runtime.agentId ||
       current.length !== expected.length ||
       current.some((value, index) => value !== expected[index]) ||
-      membershipVersion(current) !== binding.audience.membershipVersion ||
+      !matchesMembershipVersion(current, binding.audience.membershipVersion) ||
       current.length !== 2 ||
       !current.includes(binding.audience.ownerEntityId) ||
       !current.includes(binding.audience.agentEntityId)

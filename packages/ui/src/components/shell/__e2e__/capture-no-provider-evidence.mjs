@@ -14,11 +14,15 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium } from "playwright";
+import {
+  stubElizaCore,
+  stubNodeBuiltins,
+} from "../../../testing/e2e-runner/esbuild-stubs.ts";
+import { FILE_FIXTURE_BOOTSTRAP } from "../../../testing/e2e-runner/fixture-bundle.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..", "..", "..", "..");
@@ -26,76 +30,6 @@ const evidenceDir = join(repoRoot, "test-results", "evidence");
 await mkdir(evidenceDir, { recursive: true });
 const outDir = join(here, "output");
 await mkdir(outDir, { recursive: true });
-
-// --- esbuild stubs (mirror run-chat-sheet-e2e.mjs) --------------------------
-const stubElizaCore = {
-  name: "stub-eliza-core",
-  setup(b) {
-    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
-      path: args.path,
-      namespace: "eliza-core-stub",
-    }));
-    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
-      contents: `
-        const noop = new Proxy(() => noop, { get: () => noop });
-        // The wake/provision path (client-cloud.ts) subclasses the real
-        // ElizaError; esbuild's ESM interop copies only this object's own keys,
-        // so a Proxy fallback would surface undefined here and break the
-        // subclass at evaluation time. Export a real class with core's shape so
-        // the fixture bundle exercises the same error type production does.
-        class ElizaError extends Error {
-          constructor(message, options = {}) {
-            super(
-              message,
-              options.cause !== undefined ? { cause: options.cause } : undefined,
-            );
-            this.name = "ElizaError";
-            this.code = options.code;
-            this.context = options.context;
-            this.severity = options.severity;
-            Object.setPrototypeOf(this, new.target.prototype);
-          }
-        }
-        module.exports = new Proxy(
-          {
-            ElizaError,
-            isElizaError: (v) => v instanceof ElizaError,
-            isViewVisible: () => true,
-            dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
-            findInteractionRegions: () => [],
-          },
-          { get: (t, p) => (p in t ? t[p] : noop) },
-        );
-      `,
-      loader: "js",
-    }));
-  },
-};
-const nodeBuiltins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]);
-const stubNodeBuiltins = {
-  name: "stub-node-builtins",
-  setup(b) {
-    b.onResolve({ filter: /.*/ }, (args) => {
-      const bare = args.path.replace(/^node:/, "").split("/")[0];
-      if (
-        args.path.startsWith("node:") ||
-        nodeBuiltins.has(args.path) ||
-        builtinModules.includes(bare)
-      ) {
-        return { path: args.path, namespace: "node-stub" };
-      }
-      return null;
-    });
-    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-      contents:
-        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-      loader: "js",
-    }));
-  },
-};
 
 const result = await build({
   entryPoints: [join(here, "chat-sheet-fixture.tsx")],
@@ -105,13 +39,13 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubElizaCore, stubNodeBuiltins],
+  plugins: [stubElizaCore(), stubNodeBuiltins()],
   write: false,
 });
 const js = result.outputFiles[0].text;
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>no-provider evidence</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
+<script>${FILE_FIXTURE_BOOTSTRAP}</script>
 <style>html,body{margin:0;height:100%;background:#0a0d16}</style>
 </head><body><div id="root"></div><script>${js}</script></body></html>`;
 const htmlPath = join(outDir, "no-provider.html");

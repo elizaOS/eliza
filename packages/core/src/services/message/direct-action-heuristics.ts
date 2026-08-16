@@ -7,6 +7,7 @@
  * simply yields no candidate. Also derives a concrete shell command or web-search
  * query from the message text.
  */
+import { isReservedNonToolActionName } from "../../action-names";
 import type { Action } from "../../types/components";
 
 export interface DirectActionInferenceHooks {
@@ -641,38 +642,83 @@ function findOwnerRoutinesActionName(
 	return findAvailableActionName(actions, OWNER_ROUTINES_ACTION_NAMES);
 }
 
-const SCHEDULED_ADMIN_ACTION_NAMES = [
-	"OWNER_REMINDERS",
-	"SCHEDULED_TASKS",
-	"REMINDERS",
-	"REMINDER",
-] as const;
+type ScheduledAdminDomain =
+	| "reminders"
+	| "alarms"
+	| "routines"
+	| "scheduled-tasks";
+
+const SCHEDULED_ADMIN_VERB_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze|skip|delete|remove|cancel|clear|(?:get\s+rid\s+of)|(?:stop\s+tracking))(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_ALARM_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])alarms?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_STRUCTURAL_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:check[- ]?ins?|follow[- ]?ups?)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_ROUTINE_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:routines?|habits?)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_RAW_TASK_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])scheduled\s+tasks?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_TASK_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])tasks?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_TEMPORAL_VERB_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_REMINDER_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])reminders?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+
+const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
+	ScheduledAdminDomain,
+	readonly string[]
+> = {
+	reminders: ["OWNER_REMINDERS", "REMINDERS", "REMINDER"],
+	alarms: ["OWNER_ALARMS", "ALARMS", "ALARM"],
+	routines: OWNER_ROUTINES_ACTION_NAMES,
+	"scheduled-tasks": ["SCHEDULED_TASKS"],
+};
 
 /**
- * Detects admin operations on an existing scheduled item ("snooze the water
- * the ficus reminder until 6pm sunday", "skip today's checkin",
- * "reschedule my dentist reminder"). Live miss (matrix F5,
- * tj-a793149be84b86): with no deterministic candidate the turn fell through
- * to the view/app overlap, routed to APP, and failed "could not find that
- * active item" without ever reaching the reminders surface. Same
- * owner-domain-evidence rule as the mutation legs: these verbs act on owner
- * data; navigation cannot satisfy them.
+ * Detects admin operations on an existing scheduled item and preserves the
+ * owning action boundary. Reminder, alarm, and routine definitions use their
+ * owner surfaces; structural check-ins, follow-ups, and raw scheduled tasks use
+ * SCHEDULED_TASKS. A bare "skip this task" remains ambiguous and yields no
+ * deterministic candidate.
  */
-function looksLikeScheduledItemAdminRequest(text: string): boolean {
+function detectScheduledItemAdminDomain(
+	text: string,
+): ScheduledAdminDomain | null {
 	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
-	if (!normalized) return false;
-	if (!/\b(?:snooze|reschedule|postpone|unsnooze|skip)\b/iu.test(normalized)) {
-		return false;
+	if (
+		!normalized ||
+		looksLikeActionExplanationRequest(normalized) ||
+		!SCHEDULED_ADMIN_VERB_PATTERN.test(normalized)
+	) {
+		return null;
 	}
-	return /\b(?:reminders?|tasks?|check[- ]?ins?|alarms?|follow[- ]?ups?)\b/iu.test(
-		normalized,
-	);
+	if (SCHEDULED_ADMIN_ALARM_PATTERN.test(normalized)) return "alarms";
+	if (SCHEDULED_ADMIN_STRUCTURAL_PATTERN.test(normalized)) {
+		return "scheduled-tasks";
+	}
+	if (SCHEDULED_ADMIN_ROUTINE_PATTERN.test(normalized)) return "routines";
+	if (SCHEDULED_ADMIN_RAW_TASK_PATTERN.test(normalized)) {
+		return "scheduled-tasks";
+	}
+	if (
+		SCHEDULED_ADMIN_TASK_PATTERN.test(normalized) &&
+		SCHEDULED_ADMIN_TEMPORAL_VERB_PATTERN.test(normalized)
+	) {
+		return "scheduled-tasks";
+	}
+	if (SCHEDULED_ADMIN_REMINDER_PATTERN.test(normalized)) return "reminders";
+	return null;
 }
 
 function findScheduledAdminActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	domain: ScheduledAdminDomain,
 ): string | undefined {
-	return findAvailableActionName(actions, SCHEDULED_ADMIN_ACTION_NAMES);
+	return findAvailableActionName(
+		actions,
+		SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN[domain],
+	);
 }
 
 const MEDIA_GENERATION_ACTION_NAMES = [
@@ -1020,12 +1066,15 @@ export function inferDirectCurrentRequestCandidateInference(
 		}
 		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}
-	// Scheduled-item admin verbs (snooze/reschedule/skip) are owner mutations
-	// on existing data; without a deterministic candidate they fall through to
-	// the view/app overlap and fail off-surface (matrix F5). Same
-	// no-candidate-on-missing-surface rule as the other mutation legs.
-	if (looksLikeScheduledItemAdminRequest(messageText)) {
-		const scheduledAdminAction = findScheduledAdminActionName(actions);
+	// Scheduled-item admin verbs are mutations on an existing owner record.
+	// Resolve the noun's owning surface first so a co-registered reminders
+	// umbrella cannot steal alarms, routines, check-ins, or raw scheduled tasks.
+	const scheduledAdminDomain = detectScheduledItemAdminDomain(messageText);
+	if (scheduledAdminDomain) {
+		const scheduledAdminAction = findScheduledAdminActionName(
+			actions,
+			scheduledAdminDomain,
+		);
 		if (scheduledAdminAction) {
 			return { names: [scheduledAdminAction], kind: "owner-scheduled-admin" };
 		}
@@ -1671,4 +1720,206 @@ export function inferWebSearchQueryFromMessageText(
 		.replace(/\s+/gu, " ");
 
 	return query.length > 0 ? query : messageText.trim();
+}
+
+/**
+ * Minimal structural view of a recent-message memory used by continuation
+ * resolution. Kept local so the heuristics module stays free of the full
+ * Memory type; callers pass provider-shaped rows (state RECENT_MESSAGES data).
+ */
+export type ContinuationDialogueEntry = {
+	id?: string;
+	entityId?: string;
+	createdAt?: number;
+	content?: {
+		text?: unknown;
+		type?: unknown;
+		source?: unknown;
+		actions?: unknown;
+		actionCallbackHistory?: unknown;
+		metadata?: unknown;
+	};
+};
+
+/**
+ * Identifies assistant text derived from a tool execution rather than ordinary
+ * dialogue. Planner context and continuation resolution share this predicate
+ * so either persisted provenance shape closes the completed-action replay path.
+ * Envelope membership comes from `isReservedNonToolActionName` so STOP stays
+ * a planner terminal, not a delivered tool, and new
+ * `NON_EXECUTABLE_RESPONSE_ACTION_NAMES` members cannot silently drift.
+ */
+export function isToolDerivedAssistantContent(
+	content: ContinuationDialogueEntry["content"],
+): boolean {
+	if (!content || typeof content !== "object") return false;
+	if (
+		Array.isArray(content.actionCallbackHistory) &&
+		content.actionCallbackHistory.length > 0
+	) {
+		return true;
+	}
+	if (!Array.isArray(content.actions)) return false;
+	return content.actions.some((action) => {
+		if (typeof action !== "string") return false;
+		const normalized = normalizeActionIdentifier(action);
+		return normalized.length > 0 && !isReservedNonToolActionName(normalized);
+	});
+}
+
+const CONTINUATION_LEAD_IN =
+	"(?:ok(?:ay)?|yes|yep|yeah|sure|alright|great|perfect)?[,.!]?\\s*(?:please\\s+)?";
+
+// Directive continuations explicitly tell the agent to keep working; they are
+// contentless by construction (no domain nouns survive the anchored match), so
+// substituting the resolved prior request for candidate inference cannot mask
+// a fresh ask.
+const CONTINUATION_DIRECTIVE_RE = new RegExp(
+	`^${CONTINUATION_LEAD_IN}(?:(?:finish|complete|continue|resume)(?:\\s+(?:up|it|that|this|(?:my|the|that|this)\\s+(?:request|task|work|job)|what\\s+you\\s+were\\s+doing|where\\s+you\\s+left\\s+off))?|go\\s+ahead|do\\s+it|proceed|keep\\s+going|carry\\s+on|make\\s+it\\s+so)(?:\\s+(?:please|then|now))?$`,
+	"iu",
+);
+
+// Approval continuations accept a pending question/preview ("that is good",
+// bare "yes"). They only resolve when the agent's latest visible turn still
+// looks pending — an ack or a question — so praise after a delivered result
+// does not re-trigger the finished request.
+const CONTINUATION_APPROVAL_RE = new RegExp(
+	`^${CONTINUATION_LEAD_IN}(?:yes|yep|yeah|(?:that|this|it)(?:'s|\\s+is)?\\s+(?:good|great|perfect|fine|right|correct)|(?:that|this|it)\\s+works|sounds\\s+good|looks\\s+good)(?:\\s*[,.!]?\\s*(?:please\\s+)?(?:go\\s+ahead|do\\s+it|proceed|finish(?:\\s+it)?|continue|thanks?|thank\\s+you))?$`,
+	"iu",
+);
+
+function normalizeContinuationText(text: string): string {
+	return text
+		.trim()
+		.replace(/[.!…]+$/u, "")
+		.replace(/\s+/gu, " ");
+}
+
+export type ExplicitContinuationKind = "directive" | "approval";
+
+/**
+ * Classifies a turn that carries no request of its own and only tells the
+ * agent to proceed with (or approves) earlier work. Anchored whole-message
+ * matches with a short length cap keep ordinary chat ("that is a good
+ * question", topic switches) out.
+ */
+export function classifyExplicitContinuationTurn(
+	text: string,
+): ExplicitContinuationKind | null {
+	const normalized = normalizeContinuationText(text);
+	if (normalized.length === 0 || normalized.length > 60) return null;
+	if (normalized.includes("?")) return null;
+	if (CONTINUATION_DIRECTIVE_RE.test(normalized)) return "directive";
+	if (CONTINUATION_APPROVAL_RE.test(normalized)) return "approval";
+	return null;
+}
+
+export function looksLikeExplicitContinuationTurn(text: string): boolean {
+	return classifyExplicitContinuationTurn(text) !== null;
+}
+
+function continuationEntryText(entry: ContinuationDialogueEntry): string {
+	return typeof entry.content?.text === "string"
+		? entry.content.text.trim()
+		: "";
+}
+
+function isContinuationDialogueArtifact(
+	entry: ContinuationDialogueEntry,
+): boolean {
+	const content = entry.content;
+	if (!content || typeof content !== "object") return true;
+	if (content.type === "action_result") return true;
+	if (isToolDerivedAssistantContent(content)) return true;
+	if (
+		typeof content.source === "string" &&
+		content.source.includes("sub-agent")
+	) {
+		return true;
+	}
+	const metadata = content.metadata;
+	if (
+		metadata &&
+		typeof metadata === "object" &&
+		(metadata as { subAgent?: unknown }).subAgent === true
+	) {
+		return true;
+	}
+	return false;
+}
+
+const CONTINUATION_LOOKBACK_ENTRIES = 12;
+const PENDING_ASSISTANT_TURN_MAX_CHARS = 160;
+
+function looksLikePendingAssistantTurn(text: string): boolean {
+	if (text.endsWith("?")) return true;
+	if (text.length > PENDING_ASSISTANT_TURN_MAX_CHARS) return false;
+	return /^(?:(?:ok(?:ay)?|sure|great)[,.!]?\s+)?(?:on it|working on it|ready (?:to proceed|when you are)|(?:i\s+(?:can|could|will)|i['’]ll)\b)/iu.test(
+		text,
+	);
+}
+
+/**
+ * Resolves an explicit continuation turn ("finish my request", "that is
+ * good") to the nearest prior user request so candidate inference can rerun
+ * on the request the user is actually referring to. Deterministic and
+ * conservative: non-continuation turns resolve to nothing (topic switches are
+ * untouched), approval turns additionally require the agent's latest visible
+ * reply to still look pending (a question or a short ack without tool-result
+ * callbacks), and the resolved text is the single nearest prior request from
+ * the current speaker — shared-room requests from other participants are never
+ * selected or concatenated onto the current turn.
+ */
+export function resolveExplicitContinuationRequestText(
+	currentText: string,
+	recentMessages: ReadonlyArray<ContinuationDialogueEntry>,
+	agentId: string,
+	requesterEntityId: string,
+	currentMessageId?: string,
+): string | null {
+	if (!requesterEntityId || requesterEntityId === agentId) return null;
+	const kind = classifyExplicitContinuationTurn(currentText);
+	if (!kind) return null;
+	const ordered = [...recentMessages]
+		.filter((entry) => {
+			if (!entry || typeof entry !== "object") return false;
+			if (currentMessageId && entry.id === currentMessageId) return false;
+			return continuationEntryText(entry).length > 0;
+		})
+		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+		.slice(-CONTINUATION_LOOKBACK_ENTRIES);
+
+	if (kind === "approval") {
+		// Approval must answer the immediately preceding visible assistant turn.
+		// Looking farther back can authorize a newer user request that the agent
+		// never previewed or asked permission to execute.
+		const lastAssistant = ordered.at(-1);
+		if (
+			!lastAssistant ||
+			lastAssistant.entityId !== agentId ||
+			isContinuationDialogueArtifact(lastAssistant)
+		) {
+			return null;
+		}
+		const callbacks = lastAssistant.content?.actionCallbackHistory;
+		if (Array.isArray(callbacks) && callbacks.length > 0) return null;
+		const lastText = continuationEntryText(lastAssistant);
+		if (!looksLikePendingAssistantTurn(lastText)) return null;
+	}
+
+	for (let index = ordered.length - 1; index >= 0; index--) {
+		const entry = ordered[index];
+		if (!entry || entry.entityId !== requesterEntityId) continue;
+		if (isContinuationDialogueArtifact(entry)) continue;
+		const text = continuationEntryText(entry);
+		if (text.length === 0) continue;
+		if (classifyExplicitContinuationTurn(text) !== null) continue;
+		if (
+			normalizeContinuationText(text) === normalizeContinuationText(currentText)
+		) {
+			continue;
+		}
+		return text;
+	}
+	return null;
 }

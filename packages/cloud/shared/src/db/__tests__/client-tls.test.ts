@@ -116,3 +116,29 @@ describe("applyIdleSessionTimeouts", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe("resolveWorkerPoolMaxUses", () => {
+  test("allows intra-request connection reuse when the request-scoped cache is active", async () => {
+    const { resolveWorkerPoolMaxUses, runWithDbCacheAsync } = await import("../client");
+    expect(resolveWorkerPoolMaxUses({ isLocalTcp: false, hasRequestScopedCache: true })).toBe(0);
+    // The real Worker path: bootstrap middleware enters the request scope, so
+    // a pool created during request handling reuses its connection per query.
+    await runWithDbCacheAsync(async () => {
+      const { hasDbCacheContext } = await import("../client");
+      expect(hasDbCacheContext()).toBe(true);
+      expect(
+        resolveWorkerPoolMaxUses({
+          isLocalTcp: false,
+          hasRequestScopedCache: hasDbCacheContext(),
+        }),
+      ).toBe(0);
+    });
+  });
+
+  test("keeps single-use connections when no request scope guards cross-request sharing", async () => {
+    const { resolveWorkerPoolMaxUses, hasDbCacheContext } = await import("../client");
+    expect(hasDbCacheContext()).toBe(false);
+    expect(resolveWorkerPoolMaxUses({ isLocalTcp: false, hasRequestScopedCache: false })).toBe(1);
+    expect(resolveWorkerPoolMaxUses({ isLocalTcp: true, hasRequestScopedCache: false })).toBe(0);
+  });
+});

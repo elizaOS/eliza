@@ -188,11 +188,30 @@ export function readDocumentMutationSnapshot(
 	if (metadata.addedBy !== undefined && !addedBy) return null;
 	const revision = readDocumentRevision(metadata);
 	if (revision === null) return null;
+	const ingestionAttemptId = readUuidMetadata(metadata, "ingestionAttemptId");
+	const ingestionState = metadata.ingestionState;
+	const hasIngestionLifecycle =
+		metadata.ingestionAttemptId !== undefined || ingestionState !== undefined;
+	if (
+		hasIngestionLifecycle &&
+		(!ingestionAttemptId ||
+			(ingestionState !== "pending" &&
+				ingestionState !== "ready" &&
+				ingestionState !== "failed"))
+	) {
+		return null;
+	}
 	return {
 		scope: scope as DocumentMutationSnapshot["scope"],
 		roomId: memory.roomId,
 		entityId: memory.entityId,
 		revision,
+		...(ingestionAttemptId ? { ingestionAttemptId } : {}),
+		...(hasIngestionLifecycle
+			? {
+					ingestionState: ingestionState as "pending" | "ready" | "failed",
+				}
+			: {}),
 		...(scopedToEntityId ? { scopedToEntityId } : {}),
 		...(addedBy ? { addedBy } : {}),
 	};
@@ -205,6 +224,12 @@ export function isDocumentVisibleToRequester(
 ): boolean {
 	const snapshot = readDocumentMutationSnapshot(memory);
 	if (!snapshot) return false;
+	if (
+		snapshot.ingestionState === "pending" ||
+		snapshot.ingestionState === "failed"
+	) {
+		return false;
+	}
 	if (documentRoleHasGlobalVisibility(params.requesterRole)) {
 		return true;
 	}
@@ -246,7 +271,9 @@ export function documentMutationSnapshotMatches(
 		actual.entityId === expected.entityId &&
 		actual.scopedToEntityId === expected.scopedToEntityId &&
 		actual.addedBy === expected.addedBy &&
-		actual.revision === expected.revision
+		actual.revision === expected.revision &&
+		actual.ingestionAttemptId === expected.ingestionAttemptId &&
+		actual.ingestionState === expected.ingestionState
 	);
 }
 

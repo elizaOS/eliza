@@ -53,6 +53,21 @@ node test/story-gate/run-story-gate.mjs --shard 1/4            # CI shard
 node test/story-gate/run-story-gate.mjs --grep button --no-a11y
 ```
 
+CI runs the catalog as eight deterministic shards. Each shard writes the same
+`report.json` contract plus its screenshots and frontend logs. The aggregate
+job reads `storybook-static/index.json`, requires all eight shard reports, and
+fails closed when a shard is missing, a story is duplicated, a story is missing
+from the union, or an unexpected story id appears. A shard's own failures are
+preserved in the aggregate report before the aggregate job exits non-zero.
+
+```bash
+node test/story-gate/merge-story-gate.mjs \
+  --catalog storybook-static/index.json \
+  --input test/story-gate/shards \
+  --out test/story-gate/output \
+  --shards 8
+```
+
 Useful flags: `--concurrency N`, `--limit N`, `--no-screenshots`, `--no-a11y`,
 `--update-baseline` (regenerate the console + a11y baselines after an
 intentional change).

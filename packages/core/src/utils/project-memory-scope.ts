@@ -27,6 +27,8 @@
  *     project world is a cross-project leak and throws, rather than silently
  *     returning another project's data. Legacy memories with no `worldId` are
  *     allowed through (they predate scoping and are global by definition).
+ *     Database adapters may represent that missing nullable column as either
+ *     `undefined` or `null`.
  *
  * Backward compatibility contract (verified by tests):
  *   - projectId omitted anywhere ⇒ zero behavior change (global semantics).
@@ -155,7 +157,7 @@ export function scopeMemoryFilterToProject<T extends WorldScopedFilter>(
  * store-layer callers).
  */
 export interface WorldScopedMemory {
-	worldId?: UUID;
+	worldId?: UUID | null;
 	[key: string]: unknown;
 }
 
@@ -197,8 +199,8 @@ export function scopeMemoryToProject<T extends WorldScopedMemory>(
  * cross-project leak and throws rather than being returned.
  *
  * - No `projectId` ⇒ returns the memories unchanged (unscoped read, no guard).
- * - Legacy memories (`worldId === undefined`) are allowed: they predate scoping
- *   and are global by definition; excluding them would break existing agents.
+ * - Legacy memories (`worldId == null`) are allowed: they predate scoping and
+ *   are global by definition; excluding them would break existing agents.
  * - A memory whose `worldId` equals the project world is allowed.
  * - Any other `worldId` throws.
  *
@@ -214,7 +216,7 @@ export function assertMemoriesInProject<T extends WorldScopedMemory>(
 	if (!projectId) return memories;
 	const worldId = projectWorldId(opts.agentId, projectId);
 	for (const memory of memories) {
-		if (memory.worldId === undefined) continue; // legacy global memory
+		if (memory.worldId == null) continue; // legacy global memory
 		if (memory.worldId !== worldId) {
 			throw projectMemoryScopeError(
 				`assertMemoriesInProject: retrieved memory in world ${memory.worldId} does not belong to active project world ${worldId}; refusing cross-project leak`,

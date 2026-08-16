@@ -30,6 +30,7 @@ import {
   parseDiscordConnectionDmPolicyState,
 } from "./dm-policy";
 import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
+import { tryConfirmDiscordIdentityLink } from "./identity-link";
 import { logger } from "./logger";
 import {
   createManagedGuildVoiceCloudBridge,
@@ -43,6 +44,7 @@ import {
 } from "./managed-message-egress";
 import {
   drainAndDeliverGreetings as drainAndDeliverPendingGreetings,
+  isKnownDiscordDirectMessageRejection,
   isTerminalDiscordDirectMessageError,
 } from "./proactive-greeting-delivery";
 import { createMockRedis, createNativeRedis } from "./redis-adapter";
@@ -477,6 +479,69 @@ export class GatewayManager {
       throw new Error("Discord install welcome queue is unavailable");
     }
     await this.installWelcomeQueue.enqueue(job);
+  }
+
+  /** Sends through the one leader-owned system bot and records the DM cursor. */
+  async deliverElizaAppDirectMessage(input: {
+    discordUserId: string;
+    text: string;
+    nonce: string;
+  }): Promise<
+    { accepted: false } | { accepted: true; providerMessageId: string }
+  > {
+    const client = this.elizaAppClient;
+    if (!this.isElizaAppLeader || !client?.isReady()) {
+      return { accepted: false };
+    }
+    let sent: Awaited<ReturnType<typeof client.users.send>>;
+    try {
+      sent = await client.users.send(input.discordUserId, {
+        content: input.text,
+        nonce: input.nonce,
+        enforceNonce: true,
+        allowedMentions: { parse: [] },
+      });
+    } catch (error) {
+      // error-policy:J1 Discord API rejections prove no message was accepted;
+      // network and response ambiguity still propagate to the receipt tombstone.
+      if (isKnownDiscordDirectMessageRejection(error))
+        return { accepted: false };
+      throw error;
+    }
+    try {
+      await this.trackElizaAppDm(sent.channelId, input.discordUserId, sent.id);
+    } catch (error) {
+      // error-policy:J4 polling cursor loss degrades reply ingestion only; the
+      // provider receipt remains authoritative for this outbound delivery.
+      logger.warn("Failed to persist Eliza App DM polling cursor", {
+        discordUserId: input.discordUserId,
+        providerMessageId: sent.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return { accepted: true, providerMessageId: sent.id };
+  }
+
+  async readElizaAppDeliveryReceipt(key: string): Promise<string | null> {
+    if (!this.redis)
+      throw new Error("Discord delivery receipt store unavailable");
+    return await this.redis.get<string>(key);
+  }
+
+  async claimOrWriteElizaAppDeliveryReceipt(
+    key: string,
+    value: string,
+    options: { ex: number; nx?: boolean },
+  ): Promise<unknown> {
+    if (!this.redis)
+      throw new Error("Discord delivery receipt store unavailable");
+    return await this.redis.set(key, value, options);
+  }
+
+  async deleteElizaAppDeliveryReceipt(key: string): Promise<unknown> {
+    if (!this.redis)
+      throw new Error("Discord delivery receipt store unavailable");
+    return await this.redis.del(key);
   }
 
   /**
@@ -2211,12 +2276,14 @@ export class GatewayManager {
           },
         ),
       sendDirectMessage: async (userId, content, deliveryNonce) => {
-        const sent = await client.users.send(userId, {
-          content,
+        const result = await this.deliverElizaAppDirectMessage({
+          discordUserId: userId,
+          text: content,
           nonce: deliveryNonce,
-          enforceNonce: true,
         });
-        await this.trackElizaAppDm(sent.channelId, userId, sent.id);
+        if (!result.accepted) {
+          throw new Error("Eliza App Discord bot is not the active leader");
+        }
       },
       isTerminalError: isTerminalDiscordDirectMessageError,
       refreshAuth: () => this.refreshToken(),
@@ -2388,6 +2455,34 @@ export class GatewayManager {
     }
     const trimmedContent = message.content.trim();
     if (!trimmedContent) return;
+    try {
+      const linkAttempt = await tryConfirmDiscordIdentityLink(
+        {
+          cloudBaseUrl: this.config.elizaCloudUrl,
+          getAuthHeader: () => this.getAuthHeader(),
+        },
+        {
+          text: trimmedContent,
+          discordUserId: message.author.id,
+          discordUsername: message.author.username,
+        },
+      );
+      if (linkAttempt.handled) {
+        await message.reply(linkAttempt.reply);
+        return;
+      }
+    } catch (error) {
+      // error-policy:J4 A recognizable link challenge must not become agent
+      // chat when Cloud is unavailable; expose a distinct retryable failure.
+      logger.warn("Discord identity-link confirmation unavailable", {
+        messageId: message.id,
+        error: sanitizeError(error),
+      });
+      await message.reply(
+        "I couldn't verify that link code right now. Please try sending it again in a moment.",
+      );
+      return;
+    }
     await this.routeManagedAgentMessage(message, trimmedContent);
   }
 

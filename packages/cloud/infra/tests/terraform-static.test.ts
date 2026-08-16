@@ -315,6 +315,8 @@ describe("Cloudflare Pages domain durability", () => {
     );
     expect(main).toContain('type                  = "advanced"');
     expect(main).toContain("prevent_destroy = true");
+    expect(main).not.toMatch(/^\s*cloudflare_branding\s*=/m);
+    expect(readme).toContain("Leave `cloudflare_branding` unset");
     expect(variables).toContain('variable "canonical_edge_wildcard_origins"');
     expect(variables).toContain('variable "canonical_edge_certificate_packs"');
     expect(imports).toContain(

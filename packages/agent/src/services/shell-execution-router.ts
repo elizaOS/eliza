@@ -26,6 +26,10 @@ import {
   type RuntimeExecutionMode,
   resolveRuntimeExecutionMode,
 } from "@elizaos/shared";
+import {
+  applyHostExecutionBaseline,
+  resolveHostExecutable,
+} from "@elizaos/shared/host-execution-env";
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
 import { isVfsUri, runVfsBuiltinShell } from "./vfs-builtin-shell.ts";
@@ -148,6 +152,10 @@ function sanitizeChildEnv(env: Record<string, string>): Record<string, string> {
   return out;
 }
 
+function hostChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return applyHostExecutionBaseline(sanitizeSpawnEnv(env));
+}
+
 async function runOnHost(req: ShellRequest): Promise<ShellResult> {
   const start = Date.now();
   return await new Promise<ShellResult>((resolve) => {
@@ -161,9 +169,20 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
     // trust boundary.
     const mergedEnv =
       req.env != null ? { ...process.env, ...req.env } : { ...process.env };
-    const child = spawn(req.command, req.args.slice(), {
+    const executable = resolveHostExecutable(req.command);
+    if (!executable) {
+      resolve({
+        exitCode: -1,
+        stdout: "",
+        stderr: `[shell-router] executable is outside the boot PATH authority or unavailable: ${req.command}`,
+        durationMs: Date.now() - start,
+        sandbox: "host",
+      });
+      return;
+    }
+    const child = spawn(executable, req.args.slice(), {
       cwd: req.cwd,
-      env: sanitizeChildEnv(mergedEnv as Record<string, string>),
+      env: hostChildEnv(mergedEnv),
       detached: useDetachedProcessGroup,
       stdio: ["ignore", "pipe", "pipe"],
     });

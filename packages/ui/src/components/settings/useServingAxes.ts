@@ -64,6 +64,11 @@ function useActiveChatSource(): {
 
   useEffect(() => {
     let disposed = false;
+    // The chip mounts on the chat overlay, which is rendered by surfaces and
+    // harnesses that stub the API client down to the calls they need. A
+    // missing method is "serving source unknown", not a crash that takes the
+    // whole composer with it.
+    if (typeof client.getModelsConfig !== "function") return;
     client
       .getModelsConfig()
       .then((response) => {
@@ -93,10 +98,15 @@ export function useServingAxes(args: {
   isCloudSelected: boolean;
   cloudCallsDisabled: boolean;
 }): ServingAxes {
+  // Optional-chained for the same reason the client call below is guarded:
+  // the chip mounts on the chat surfaces, whose harnesses seed only the store
+  // slice they exercise. A missing coordinator means "runtime target not
+  // known yet", which the resolver already handles, not a crash that takes
+  // the whole chat view down.
   const { firstRunRuntimeTarget, startupTarget } = useAppSelectorShallow(
     (s) => ({
       firstRunRuntimeTarget: s.firstRunRuntimeTarget,
-      startupTarget: s.startupCoordinator.target,
+      startupTarget: s.startupCoordinator?.target,
     }),
   );
   const { state: runtimeModeState } = useRuntimeMode();

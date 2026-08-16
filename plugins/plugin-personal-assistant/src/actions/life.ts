@@ -946,7 +946,7 @@ function resolveDefinitionInRecords(
   if (exactMatches.length > 1) {
     return {
       match: null,
-      ambiguousCandidates: exactMatches.map((entry) => entry.definition.title),
+      ambiguousCandidates: exactMatches.map(definitionDisambiguationLabel),
     };
   }
   const substringMatches = defs.filter((entry) =>
@@ -961,9 +961,7 @@ function resolveDefinitionInRecords(
   if (substringMatches.length > 1) {
     return {
       match: null,
-      ambiguousCandidates: substringMatches.map(
-        (entry) => entry.definition.title,
-      ),
+      ambiguousCandidates: substringMatches.map(definitionDisambiguationLabel),
     };
   }
   const targetTokens = new Set(tokenizeTitle(target));
@@ -995,7 +993,7 @@ function resolveDefinitionInRecords(
   if (bestMatches.length >= 1) {
     return {
       match: null,
-      ambiguousCandidates: bestMatches.map((entry) => entry.definition.title),
+      ambiguousCandidates: bestMatches.map(definitionDisambiguationLabel),
     };
   }
   return { match: null, ambiguousCandidates: [] };
@@ -1012,6 +1010,90 @@ async function resolveDefinition(
     domain ? e.definition.domain === domain : true,
   );
   return resolveDefinitionInRecords(defs, target, destructive);
+}
+
+/** "title — cadence" disambiguation label so identical-title duplicates are
+ * tellable-apart in a clarification list (live matrix F37: two "water the
+ * ficus" reminders rendered as two identical lines with no times — an
+ * unanswerable question). */
+function definitionDisambiguationLabel(entry: LifeOpsDefinitionRecord): string {
+  const when = summarizeCadence(entry.definition.cadence)?.trim();
+  return when && when.length > 0
+    ? `${entry.definition.title} — ${when}`
+    : entry.definition.title;
+}
+
+/** Resolve a duplicate-title tie by a clock hint in the owner's own words:
+ * each candidate's cadence summary contributes its clock tokens ("10am",
+ * "5:30 pm"), and the tie resolves only when EXACTLY ONE candidate's tokens
+ * appear in the owner text — zero or multiple hits keep the clarification
+ * ask (destructive ops never act on a guess). */
+function resolveDuplicateByTimeHint(
+  candidates: LifeOpsDefinitionRecord[],
+  ownerText: string,
+): LifeOpsDefinitionRecord | null {
+  const normalizedOwner = ownerText.toLowerCase().replace(/\s+/g, " ");
+  const hits = candidates.filter((entry) => {
+    const summary = summarizeCadence(entry.definition.cadence) ?? "";
+    const clockTokens =
+      summary.toLowerCase().match(/\d{1,2}(?::\d{2})?\s*(?:am|pm)/g) ?? [];
+    return clockTokens.some((token) => {
+      const variants = [token];
+      // "10:00 am" and the owner's "10am" are the same clock time — an
+      // on-the-hour summary also matches its bare-hour form.
+      const onTheHour = token.match(/^(\d{1,2}):00\s*(am|pm)$/);
+      if (onTheHour) variants.push(`${onTheHour[1]} ${onTheHour[2]}`);
+      return variants.some((variant) => {
+        const flexible = variant
+          .replace(/\s+/g, "\\s*")
+          .replace(/:/g, "[:. ]?");
+        return new RegExp(`\\b${flexible}\\b`).test(normalizedOwner);
+      });
+    });
+  });
+  return hits.length === 1 ? (hits.at(0) ?? null) : null;
+}
+
+/** Records whose DISTINCT titles the owner named verbatim in one enumerated
+ * delete ask ("delete these todos: A, B and C. keep D."). Destructive, so
+ * every guard fails toward the single-target clarify path: at least two
+ * DISTINCT titles must be verbatim-contained in the owner's own words; a
+ * contained title matching more than one stored record aborts entirely
+ * (duplicate titles keep the disambiguation ask); and a title preceded by a
+ * keep-style cue ("keep X", "except X", "leave X", "but not X", "don't
+ * delete X") is excluded from deletion rather than deleted by containment. */
+const ENUMERATED_DELETE_KEEP_CUE_RE =
+  /(?:\bkeep|\bexcept(?:\s+for)?|\bleave|\bbut\s+not|\bdon'?t\s+(?:delete|remove)|\bnot|\bspare)\s*(?:the\s+)?$/i;
+
+async function resolveEnumeratedDeleteTargets(
+  service: LifeOpsService,
+  ownerText: string,
+  domain?: LifeOpsDomain,
+): Promise<LifeOpsDefinitionRecord[]> {
+  const normalizedOwner = normalizeTitle(ownerText);
+  if (!normalizedOwner) return [];
+  const defs = (await service.listDefinitions()).filter((entry) =>
+    domain ? entry.definition.domain === domain : true,
+  );
+  const byTitle = new Map<string, LifeOpsDefinitionRecord[]>();
+  for (const entry of defs) {
+    const key = normalizeTitle(entry.definition.title);
+    if (!key) continue;
+    byTitle.set(key, [...(byTitle.get(key) ?? []), entry]);
+  }
+  const targets: LifeOpsDefinitionRecord[] = [];
+  for (const [key, records] of byTitle) {
+    // A very short title ("go", "gym") is contained in too much ordinary
+    // prose to serve as a deletion warrant on its own.
+    if (key.length < 4) continue;
+    const index = normalizedOwner.indexOf(key);
+    if (index < 0) continue;
+    if (records.length !== 1) return [];
+    const prefix = normalizedOwner.slice(Math.max(0, index - 32), index);
+    if (ENUMERATED_DELETE_KEEP_CUE_RE.test(prefix)) continue;
+    targets.push(records[0]);
+  }
+  return targets.length > 1 ? targets : [];
 }
 
 async function resolveDefinitionForMutation(
@@ -1036,11 +1118,13 @@ async function resolveDefinitionForMutation(
     };
   }
   if (explicitlyNamed.length > 1) {
+    const byTimeHint = resolveDuplicateByTimeHint(explicitlyNamed, ownerText);
+    if (byTimeHint) {
+      return { match: byTimeHint, ambiguousCandidates: [] };
+    }
     return {
       match: null,
-      ambiguousCandidates: explicitlyNamed.map(
-        (entry) => entry.definition.title,
-      ),
+      ambiguousCandidates: explicitlyNamed.map(definitionDisambiguationLabel),
     };
   }
 
@@ -1068,9 +1152,13 @@ async function resolveDefinitionForMutation(
     };
   }
   if (bestMatches.length >= 1) {
+    const byTimeHint = resolveDuplicateByTimeHint(bestMatches, ownerText);
+    if (byTimeHint) {
+      return { match: byTimeHint, ambiguousCandidates: [] };
+    }
     return {
       match: null,
-      ambiguousCandidates: bestMatches.map((entry) => entry.definition.title),
+      ambiguousCandidates: bestMatches.map(definitionDisambiguationLabel),
     };
   }
   return resolveDefinition(service, target, domain, destructive);
@@ -3074,15 +3162,33 @@ function shouldAdoptPlannerCadence(args: {
   return true;
 }
 
+/** Explicit deferred-consent request: the owner asked to SEE it before it is
+ * written ("preview it first", "do not save until I confirm", "don't save it
+ * yet", "ask me before"). A user-requested preview outranks every
+ * crisp-ask immediate-save exemption below. */
+const LIFE_TEXT_REQUESTS_PREVIEW_RE =
+  /\b(?:preview\b[^.!?]{0,40}\bfirst|(?:do not|don'?t)\s+(?:save|add|create|write)\b[^.!?]{0,40}\b(?:until|unless|before)\b|(?:until|unless|before)\s+i\s+(?:confirm|approve|say so)|(?:don'?t|do not)\s+(?:save|add|create|write)\s+(?:it\s+)?yet\b|ask\s+(?:me\s+)?(?:first|before))/i;
+
 function shouldRequireLifeCreateConfirmation(args: {
   confirmed: boolean;
   messageSource: string | undefined;
   requestKind?: NativeAppleReminderLikeKind | null;
   cadence?: LifeOpsCadence;
   multiStep?: boolean;
+  explicitUndated?: boolean;
+  previewRequested?: boolean;
 }): boolean {
   if (args.messageSource === "autonomy") {
     return false;
+  }
+  // An explicit "preview first / don't save until I confirm" in the owner's
+  // own words defeats BOTH immediate-save exemptions below AND the extracted
+  // `confirmed` flag itself: a future-consent clause means consent has NOT
+  // been given on THIS turn, even when the extractor (mis)reads the sentence
+  // as a confirmation. The follow-up turn's plain "yes, save it" carries no
+  // such clause and confirms normally.
+  if (args.previewRequested === true) {
+    return true;
   }
   // Crisp single dated asks save immediately (#16935); a multi-milestone ask
   // ("reminders for outline, rough draft, and final proofread") collapses into
@@ -3090,6 +3196,20 @@ function shouldRequireLifeCreateConfirmation(args: {
   // the two-phase preview even when extraction resolved a once cadence
   // (#16941 live finding: the exemption over-triggered and wrote pre-consent).
   if (args.requestKind && args.cadence?.kind === "once" && !args.multiStep) {
+    return false;
+  }
+  // #16935 symmetry for undated todos: when the owner's own words state both
+  // halves — the item AND that it has no date ("add a todo: X, no deadline") —
+  // a preview would ask them to confirm exactly what they just said. Scoped to
+  // an EXPLICIT textual no-date statement (the same canonical authority that
+  // guards the unscheduled-cadence wipe), single-step asks only, mirroring the
+  // #16941 over-trigger guard. An extraction-inferred unscheduled cadence
+  // without the explicit statement still previews.
+  if (
+    args.cadence?.kind === "unscheduled" &&
+    args.explicitUndated === true &&
+    !args.multiStep
+  ) {
     return false;
   }
   return !args.confirmed;
@@ -4438,10 +4558,10 @@ async function runLifeOperationHandlerInner(
       }
       const confirmsValidatedUndatedDraft =
         deferredDraftReuseMode === "confirm" &&
-        deferredDefinitionDraft?.request.cadence.kind === "unscheduled";
+        deferredDefinitionDraft?.request.cadence?.kind === "unscheduled";
       if (
         (editingDeferredDefinitionDraft &&
-          deferredDefinitionDraft.request.cadence.kind === "unscheduled" &&
+          deferredDefinitionDraft.request.cadence?.kind === "unscheduled" &&
           textContradictsExplicitUndatedTodo(currentText)) ||
         (cadence?.kind === "unscheduled" &&
           (ownerSurfaceActionName !== "OWNER_TODOS" ||
@@ -4529,6 +4649,41 @@ async function runLifeOperationHandlerInner(
             operation: "create_definition",
           },
         });
+        // Park the answered-so-far request so the owner's next turn (a date,
+        // or an explicit date-decline) can resume THIS create instead of
+        // starting over. Without the parked draft the decline answer had
+        // nothing to resume and persisted nothing (live matrix F32). Scoped
+        // to OWNER_TODOS: only the todos surface accepts the unscheduled
+        // cadence, so only its clarify is answerable by a decline. Never park
+        // on the contradicted-edit path — that branch just INVALIDATED the
+        // prior draft, and writing a fresh one here would clobber the
+        // invalidation and let a later bare confirmation resurrect the
+        // create the contradiction rejected.
+        const scheduleAwaitingDraft: DeferredLifeDraft | null =
+          !editingDeferredDefinitionDraft &&
+          ownerSurfaceActionName === "OWNER_TODOS" &&
+          title
+            ? {
+                awaitingField: "schedule",
+                createdAt: Date.now(),
+                intent,
+                operation: "create_definition",
+                sourceMessageId:
+                  typeof message.id === "string" ? message.id : undefined,
+                request: {
+                  kind: "task",
+                  metadata: definitionMetadata,
+                  title,
+                },
+              }
+            : null;
+        if (scheduleAwaitingDraft) {
+          await writeDeferredLifeDraftCache(
+            runtime,
+            message,
+            scheduleAwaitingDraft,
+          );
+        }
         return {
           success: false as const,
           text,
@@ -4544,6 +4699,9 @@ async function runLifeOperationHandlerInner(
             actionName: ownerSurfaceActionName,
             ...(editingDeferredDefinitionDraft
               ? { lifeDraftInvalidated: true }
+              : {}),
+            ...(scheduleAwaitingDraft
+              ? { lifeDraft: scheduleAwaitingDraft }
               : {}),
             missingField: "schedule",
             requiresConfirmation: true,
@@ -4581,7 +4739,7 @@ async function runLifeOperationHandlerInner(
                 multiStep: llmPlan?.multiStep === true,
               }),
             });
-      const definitionDraft: DeferredLifeDefinitionDraft = {
+      const definitionDraft = {
         intent,
         operation: "create_definition",
         createdAt: editingDeferredDefinitionDraft
@@ -4633,7 +4791,7 @@ async function runLifeOperationHandlerInner(
               | CreateLifeOpsDefinitionRequest["websiteAccess"]
               | undefined) ?? deferredDefinitionDraft?.request.websiteAccess,
         },
-      };
+      } satisfies DeferredLifeDefinitionDraft;
       if (
         shouldRequireLifeCreateConfirmation({
           confirmed: createConfirmed,
@@ -4644,6 +4802,14 @@ async function runLifeOperationHandlerInner(
           requestKind: timedRequestKind,
           cadence: definitionDraft.request.cadence,
           multiStep: llmPlan?.multiStep === true,
+          // Creates only: an EDIT that re-states undatedness keeps the
+          // two-phase preview (the #20182 draft-lifecycle contract) — the
+          // skip is for the owner's fresh "add a todo: X, no deadline" ask,
+          // where the preview would echo back exactly what they just said.
+          explicitUndated:
+            !editingDeferredDefinitionDraft &&
+            textStatesExplicitUndatedTodo(currentText),
+          previewRequested: LIFE_TEXT_REQUESTS_PREVIEW_RE.test(currentText),
         })
       ) {
         const draftLeadSteps = (
@@ -4652,7 +4818,7 @@ async function runLifeOperationHandlerInner(
           .map((step) => ({
             label: step.label,
             minutesBeforeDue: reminderStepMinutesBeforeDue(
-              definitionDraft.request.cadence,
+              leadShaped.cadence,
               step.offsetMinutes,
             ),
           }))
@@ -4666,7 +4832,7 @@ async function runLifeOperationHandlerInner(
                 )
                 .join(", ")}.`
             : "";
-        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(definitionDraft.request.cadence)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
+        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(leadShaped.cadence)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
         const previewText = await renderLifeActionReply({
           runtime,
           message,
@@ -4748,7 +4914,7 @@ async function runLifeOperationHandlerInner(
         title: definitionDraft.request.title,
         description: definitionDraft.request.description,
         originalIntent: definitionDraft.intent || definitionDraft.request.title,
-        cadence: definitionDraft.request.cadence,
+        cadence: leadShaped.cadence,
         timezone:
           normalizeLifeTimeZoneToken(definitionDraft.request.timezone) ??
           definitionDraft.request.timezone,
@@ -5035,6 +5201,9 @@ async function runLifeOperationHandlerInner(
             typeof message.content.source === "string"
               ? message.content.source
               : undefined,
+          previewRequested: LIFE_TEXT_REQUESTS_PREVIEW_RE.test(
+            messageText(message),
+          ),
         })
       ) {
         if (
@@ -5441,6 +5610,57 @@ async function runLifeOperationHandlerInner(
             actionName: ownerSurfaceActionName,
             noop: true,
             blockedReason: "broad_destructive_delete",
+          },
+        };
+      }
+      // Enumerated multi-target delete first: several DISTINCT verbatim-named
+      // items in one ask delete together (guards documented on the resolver;
+      // anything ambiguous falls through to the single-target path below).
+      const enumeratedTargets = await resolveEnumeratedDeleteTargets(
+        service,
+        messageText(message) || intent,
+        domain,
+      );
+      if (enumeratedTargets.length > 1) {
+        for (const entry of enumeratedTargets) {
+          await service.deleteDefinition(entry.definition.id);
+        }
+        const titles = enumeratedTargets.map(
+          (entry) => `"${entry.definition.title}"`,
+        );
+        const lastDeleted =
+          enumeratedTargets[enumeratedTargets.length - 1].definition;
+        const fallback = `Deleted ${enumeratedTargets.length} items: ${titles.join(", ")}.`;
+        return {
+          success: true,
+          text: await renderLifeActionReply({
+            runtime,
+            message,
+            state,
+            intent,
+            scenario: "deleted_definition",
+            fallback,
+            context: {
+              deleted: {
+                title: titles.join(", "),
+              },
+            },
+          }),
+          data: {
+            actionName: ownerSurfaceActionName,
+            // The receipt deriver reads `deleted` (single record, audit-backed
+            // commit proof); the full enumeration rides `deletedMany` so the
+            // canonical text stays bound to a real committed receipt.
+            deleted: {
+              kind: "definition",
+              id: lastDeleted.id,
+              title: lastDeleted.title,
+            },
+            deletedMany: enumeratedTargets.map((entry) => ({
+              kind: "definition",
+              id: entry.definition.id,
+              title: entry.definition.title,
+            })),
           },
         };
       }

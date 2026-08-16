@@ -8,9 +8,26 @@ import type {
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  coerceDeferredLifeDraft,
   type DeferredLifeDefinitionDraft,
   deferredOwnerTodoRoutingEvaluator,
+  isExplicitScheduleDecline,
 } from "./lifeops-deferred-draft.js";
+
+function awaitingScheduleDraft(): DeferredLifeDefinitionDraft {
+  return {
+    awaitingField: "schedule",
+    intent: "add a todo: buy sandpaper",
+    operation: "create_definition",
+    createdAt: Date.now(),
+    sourceMessageId: "clarify-message",
+    request: {
+      kind: "task",
+      metadata: { ownerSurface: "OWNER_TODOS" },
+      title: "buy sandpaper",
+    },
+  };
+}
 
 function pendingTodoDraft(): DeferredLifeDefinitionDraft {
   return {
@@ -157,5 +174,77 @@ describe("deferred owner-Todo routing", () => {
         context({ draft: reminderDraft }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("awaiting-schedule drafts (F32)", () => {
+  it("coerce accepts a cadence-less draft only with the awaiting-schedule marker", () => {
+    const parked = coerceDeferredLifeDraft(awaitingScheduleDraft());
+    expect(parked?.operation).toBe("create_definition");
+    expect(
+      parked?.operation === "create_definition"
+        ? parked.awaitingField
+        : undefined,
+    ).toBe("schedule");
+    const malformed = coerceDeferredLifeDraft({
+      ...awaitingScheduleDraft(),
+      awaitingField: undefined,
+    });
+    expect(malformed).toBeNull();
+  });
+
+  it("recognizes explicit date-declines and vetoes cancellations", () => {
+    for (const text of [
+      "no deadline, it's just a general todo",
+      "no due date",
+      "someday",
+      "just a plain todo",
+    ]) {
+      expect(isExplicitScheduleDecline(text)).toBe(true);
+    }
+    for (const text of [
+      "cancel",
+      "never mind, forget it",
+      "it's not a plain todo, make it daily",
+      "what's the weather",
+    ]) {
+      expect(isExplicitScheduleDecline(text)).toBe(false);
+    }
+  });
+
+  it("routes a date-decline answer back through OWNER_TODOS (live F32 shape)", async () => {
+    const input = context({
+      draft: awaitingScheduleDraft(),
+      replyEffectStatus: "non_applied",
+      text: "no deadline, it's just a general todo",
+    });
+    expect(await deferredOwnerTodoRoutingEvaluator.shouldRun(input)).toBe(true);
+    const patch = await deferredOwnerTodoRoutingEvaluator.evaluate(input);
+    expect(patch).toMatchObject({
+      requiresTool: true,
+      addCandidateActions: ["OWNER_TODOS"],
+    });
+  });
+
+  it("does not treat a decline as an answer without an awaiting-schedule draft", async () => {
+    const input = context({
+      draft: pendingTodoDraft(),
+      replyEffectStatus: "non_applied",
+      text: "no deadline, it's just a general todo",
+    });
+    expect(await deferredOwnerTodoRoutingEvaluator.shouldRun(input)).toBe(
+      false,
+    );
+  });
+
+  it("leaves ordinary chat alone while a draft awaits its schedule", async () => {
+    const input = context({
+      draft: awaitingScheduleDraft(),
+      replyEffectStatus: "non_applied",
+      text: "what's the weather like today?",
+    });
+    expect(await deferredOwnerTodoRoutingEvaluator.shouldRun(input)).toBe(
+      false,
+    );
   });
 });

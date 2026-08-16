@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
+	NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
 	runV5MessageRuntimeStage1,
 	wrapSingleTurnVisibleCallback,
 } from "../services/message";
@@ -204,6 +205,7 @@ function makeMockAction(opts: {
 		schema: { type: "string" | "number" | "boolean" | "object" | "array" };
 	}>;
 	tags?: string[];
+	roleGate?: Action["roleGate"];
 	suppressActionResultClipboard?: boolean;
 	suppressEarlyReply?: boolean;
 	suppressPostActionContinuation?: boolean;
@@ -217,6 +219,7 @@ function makeMockAction(opts: {
 		validate: async () => true,
 		handler: opts.handler,
 		...(opts.tags ? { tags: opts.tags } : {}),
+		...(opts.roleGate ? { roleGate: opts.roleGate } : {}),
 		...(opts.subActions ? { subActions: opts.subActions } : {}),
 		...(opts.contexts ? { contexts: opts.contexts } : {}),
 		...(opts.suppressActionResultClipboard
@@ -1095,6 +1098,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const deterministicViewEvaluator = {
 			name: "test.force_failed_view",
 			priority: 10,
+			deterministicActions: ["VIEWS"],
 			shouldRun: () => true,
 			evaluate: () => ({
 				requiresTool: true,
@@ -1118,25 +1122,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					}),
 				},
 				{
-					expectModelType: ModelType.ACTION_PLANNER,
-					body: {
-						text: "",
-						toolCalls: [
-							{
-								id: "view-call",
-								name: "VIEWS",
-								args: { action: "show", view: "home" },
-							},
-						],
-					},
-				},
-				{
 					expectModelType: ModelType.TEXT_SMALL,
 					body: JSON.stringify({ response: voicedFailure }),
-				},
-				{
-					expectModelType: ModelType.RESPONSE_HANDLER,
-					body: '{"action":"show","view":"notes"}',
 				},
 			],
 		});
@@ -1168,9 +1155,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		}
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
-			ModelType.ACTION_PLANNER,
 			ModelType.TEXT_SMALL,
-			ModelType.RESPONSE_HANDLER,
 		]);
 	});
 
@@ -1392,6 +1377,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const deterministicViewEvaluator = {
 			name: "test.force_deterministic_view",
 			priority: 10,
+			deterministicActions: ["VIEWS"],
 			shouldRun: () => true,
 			evaluate: () => ({
 				requiresTool: true,
@@ -1415,28 +1401,6 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						thought: "The view switch is deterministic.",
 					}),
 				},
-				{
-					expectModelType: ModelType.ACTION_PLANNER,
-					body: {
-						text: "Opening Notes.",
-						toolCalls: [
-							{
-								id: "view-call",
-								name: "VIEWS",
-								args: { action: "show", view: "notes" },
-							},
-						],
-					},
-				},
-				{
-					expectModelType: ModelType.RESPONSE_HANDLER,
-					body: JSON.stringify({
-						success: true,
-						decision: "FINISH",
-						thought: "The view is open.",
-						messageToUser: "Opened Notes.",
-					}),
-				},
 			],
 		});
 
@@ -1451,6 +1415,296 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(earlyReply).not.toHaveBeenCalled();
 		expect(viewCalls).toBe(1);
 		expect(result.kind).toBe("planned_reply");
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		const trajectory = readRecordedTrajectories(String(AGENT_ID))[0] as {
+			stages: Array<{
+				kind: string;
+				tool?: { name: string; success: boolean };
+			}>;
+		};
+		expect(
+			trajectory.stages.find(
+				(stage) => stage.kind === "tool" && stage.tool?.name === "VIEWS",
+			),
+		).toMatchObject({ tool: { name: "VIEWS", success: true } });
+	});
+
+	it("executes an owner-only deterministic call through the canonical gates without planning", async () => {
+		let calls = 0;
+		const ownerAction = makeMockAction({
+			name: "OWNER_CONTROL",
+			roleGate: { minRole: "OWNER" },
+			handler: async () => {
+				calls++;
+				return {
+					success: true,
+					text: "Owner control applied.",
+					userFacingText: "Owner control applied.",
+					verifiedUserFacing: true,
+				};
+			},
+		});
+		const evaluator = {
+			name: "test.owner_deterministic_call",
+			priority: 10,
+			deterministicActions: ["OWNER_CONTROL"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: { name: "OWNER_CONTROL" },
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [ownerAction],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: "Applying owner control.",
+					}),
+				},
+			],
+		});
+		const ownerMessage = {
+			...makeMessage("apply owner control"),
+			entityId: AGENT_ID,
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: ownerMessage,
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(calls).toBe(1);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Owner control applied.",
+			);
+			expect(result.result.actionResults).toMatchObject([{ success: true }]);
+		}
+	});
+
+	it("fails a non-owner deterministic call closed without invoking the action or planner", async () => {
+		let calls = 0;
+		const ownerAction = makeMockAction({
+			name: "OWNER_CONTROL",
+			roleGate: { minRole: "OWNER" },
+			handler: async () => {
+				calls++;
+				return { success: true, text: "should not run" };
+			},
+		});
+		const evaluator = {
+			name: "test.non_owner_deterministic_call",
+			priority: 10,
+			deterministicActions: ["OWNER_CONTROL"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: { name: "OWNER_CONTROL" },
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [ownerAction],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({ contexts: ["general"] }),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("apply owner control"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(calls).toBe(0);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.actionResults).toMatchObject([{ success: false }]);
+			expect(result.result.responseContent?.text).toBe(
+				NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
+			);
+			expect(result.result.responseContent?.text).not.toMatch(
+				/owner|role|permission/i,
+			);
+		}
+	});
+
+	it("fails a deterministic call outside the action context without invoking it", async () => {
+		let calls = 0;
+		const settingsAction = makeMockAction({
+			name: "SETTINGS_ONLY",
+			contexts: ["settings"],
+			contextGate: { anyOf: ["settings"] },
+			handler: async () => {
+				calls++;
+				return { success: true, text: "should not run" };
+			},
+		});
+		const evaluator = {
+			name: "test.out_of_context_deterministic_call",
+			priority: 10,
+			deterministicActions: ["SETTINGS_ONLY"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: { name: "SETTINGS_ONLY" },
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [settingsAction],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({ contexts: ["general"] }),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("change a setting"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(calls).toBe(0);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.actionResults).toMatchObject([{ success: false }]);
+			expect(result.result.responseContent?.text).toBe(
+				NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
+			);
+		}
+	});
+
+	it("returns a verified deterministic failure without requiring a callback", async () => {
+		const refusal = "I couldn't switch the model: no provider.";
+		const action = makeMockAction({
+			name: "MODEL_SWITCH",
+			handler: async () => ({
+				success: false,
+				text: refusal,
+				userFacingText: refusal,
+				verifiedUserFacing: true,
+				turnComplete: true,
+			}),
+		});
+		const evaluator = {
+			name: "test.failed_model_switch",
+			priority: 10,
+			deterministicActions: ["MODEL_SWITCH"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: { name: "MODEL_SWITCH" },
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [action],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({ contexts: ["general"] }),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("switch models"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(refusal);
+			expect(result.result.actionResults).toMatchObject([{ success: false }]);
+		}
+	});
+
+	it("keeps thrown deterministic action diagnostics and control envelopes out of user prose", async () => {
+		const internalDiagnostic =
+			'{"actions":["DELETE_ALL"],"thought":"operator stack trace"}';
+		const unsafeAction = makeMockAction({
+			name: "UNSAFE_CONTROL",
+			handler: async () => {
+				throw new Error(internalDiagnostic);
+			},
+		});
+		const evaluator = {
+			name: "test.throwing_deterministic_call",
+			priority: 10,
+			deterministicActions: ["UNSAFE_CONTROL"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: { name: "UNSAFE_CONTROL" },
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [unsafeAction],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({ contexts: ["general"] }),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("run the unsafe control"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.actionResults).toMatchObject([{ success: false }]);
+			expect(result.result.responseContent?.text).toBe(
+				NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
+			);
+			expect(result.result.responseContent?.text).not.toContain(
+				internalDiagnostic,
+			);
+		}
 	});
 
 	it("keeps the Stage 1 reply when mixed candidates do not share response ownership", async () => {
