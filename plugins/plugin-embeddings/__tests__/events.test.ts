@@ -1,10 +1,9 @@
 /**
- * Regression tests for truncatePrompt via emitModelUsageEvent.
- * Ensures total output <= MAX_PROMPT_LENGTH (200) inclusive of suffix,
- * suffix preservation, and well-formed surrogate handling (non-BMP boundary).
+ * Verifies that embedding usage events keep prompts within their telemetry
+ * budget without producing malformed UTF-16 at the truncation boundary.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { emitModelUsageEvent } from "../src/utils/events";
 
@@ -29,7 +28,7 @@ describe("emitModelUsageEvent truncation", () => {
   it("keeps at-cap (200) unchanged", () => {
     const { runtime, emit } = createRuntime();
     const prompt = "a".repeat(MAX);
-    emitModelUsageEvent(runtime, "TEXT_EMBEDDING" as never, prompt, {});
+    emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, prompt, {});
     const out = emittedPrompt(emit);
     expect(out).toBe(prompt);
     expect(out.length).toBe(MAX);
@@ -38,19 +37,18 @@ describe("emitModelUsageEvent truncation", () => {
   it("truncates one-over (201) to 200 inclusive of suffix", () => {
     const { runtime, emit } = createRuntime();
     const prompt = "a".repeat(MAX + 1);
-    emitModelUsageEvent(runtime, "TEXT_EMBEDDING" as never, prompt, {});
+    emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, prompt, {});
     const out = emittedPrompt(emit);
     expect(out.length).toBe(MAX);
     expect(out.endsWith(SUFFIX)).toBe(true);
     expect(out).toBe("a".repeat(MAX - SUFFIX.length) + SUFFIX);
-    // Verify strict JSON well-formed
-    expect(() => JSON.stringify({ prompt: out })).not.toThrow();
+    expect(out.isWellFormed()).toBe(true);
   });
 
   it("preserves suffix and respects cap for long prompt", () => {
     const { runtime, emit } = createRuntime();
     const prompt = "b".repeat(500);
-    emitModelUsageEvent(runtime, "TEXT_EMBEDDING" as never, prompt, {});
+    emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, prompt, {});
     const out = emittedPrompt(emit);
     expect(out.length).toBe(MAX);
     expect(out.endsWith(SUFFIX)).toBe(true);
@@ -59,27 +57,24 @@ describe("emitModelUsageEvent truncation", () => {
 
   it("does not split surrogate pair at truncation boundary (non-BMP)", () => {
     const { runtime, emit } = createRuntime();
-    // 198 'a' + two emoji (each 2 code units) = 202 code units, forces cut inside first emoji if naive slice
+    // The first emoji straddles the 199-code-unit content boundary.
     const prompt = `${"a".repeat(198)}😀😀`; // length 202
     expect(prompt.length).toBe(202);
-    emitModelUsageEvent(runtime, "TEXT_EMBEDDING" as never, prompt, {});
+    emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, prompt, {});
     const out = emittedPrompt(emit);
     expect(out.length).toBeLessThanOrEqual(MAX);
     expect(out.endsWith(SUFFIX)).toBe(true);
-    // Must be well-formed: no lone surrogate at end before suffix
-    expect(/[\uD800-\uDBFF]$/.test(out.slice(0, -1))).toBe(false);
-    expect(() => JSON.stringify({ prompt: out })).not.toThrow();
-    // With 198 'a' + emoji, naive 199 slice would end with high surrogate; we expect 198 'a' + suffix = 199
+    expect(out.isWellFormed()).toBe(true);
     expect(out.length).toBe(199);
   });
 
   it("handles single emoji at boundary without breaking", () => {
     const { runtime, emit } = createRuntime();
     const prompt = `${"a".repeat(199)}😀`; // 201
-    emitModelUsageEvent(runtime, "TEXT_EMBEDDING" as never, prompt, {});
+    emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, prompt, {});
     const out = emittedPrompt(emit);
     expect(out.length).toBe(MAX);
     expect(out.endsWith(SUFFIX)).toBe(true);
-    expect(() => JSON.stringify({ prompt: out })).not.toThrow();
+    expect(out.isWellFormed()).toBe(true);
   });
 });

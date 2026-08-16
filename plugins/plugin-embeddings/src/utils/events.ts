@@ -33,7 +33,7 @@ function truncatePrompt(prompt: string): string {
   }
   const suffix = "…";
   let truncated = prompt.slice(0, MAX_PROMPT_LENGTH - suffix.length);
-  // Avoid splitting a surrogate pair at the truncation boundary
+  // Avoid splitting a surrogate pair at the truncation boundary.
   if (/[\uD800-\uDBFF]$/.test(truncated)) {
     truncated = truncated.slice(0, -1);
   }
