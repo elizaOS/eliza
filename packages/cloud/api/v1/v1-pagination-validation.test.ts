@@ -1,4 +1,10 @@
+/**
+ * Direct production-parser coverage plus route 400 / pass-through tests for
+ * Cloud API v1 pagination. The four list routes must share one parser and
+ * reject invalid limit/offset before any service call.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { parsePaginationParam } from "./pagination";
 
 const authenticatedUser = {
   id: "user-1",
@@ -68,6 +74,53 @@ const invalidOffsetQueries = [
   ["trailing junk", "offset=12px", "12px"],
   ["unsafe integer", "offset=9007199254740992", "9007199254740992"],
 ] as const;
+
+describe("parsePaginationParam", () => {
+  it.each([
+    [undefined, "limit", 50, 50],
+    ["", "limit", 50, 50],
+    ["   ", "offset", 0, 0],
+    [" 37 ", "limit", 50, 37],
+    ["0", "offset", 0, 0],
+    ["500", "limit", 50, 500],
+    ["9007199254740991", "offset", 0, 9007199254740991],
+  ] as const)(
+    "accepts %s as %s defaulting %s",
+    (raw, parameter, defaultValue, expected) => {
+      expect(parsePaginationParam(raw, parameter, defaultValue)).toEqual({
+        ok: true,
+        value: expected,
+      });
+    },
+  );
+
+  it.each(["0", "-1", "+1", "1.5", "1e2", "007", "501", "12px"] as const)(
+    "rejects invalid limit %s",
+    (value) => {
+      const result = parsePaginationParam(value, "limit", 50);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toContain("limit");
+      expect(result.error).toContain(value);
+    },
+  );
+
+  it.each([
+    "-1",
+    "+1",
+    "1.5",
+    "1e2",
+    "007",
+    "12px",
+    "9007199254740992",
+  ] as const)("rejects invalid offset %s", (value) => {
+    const result = parsePaginationParam(value, "offset", 0);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("offset");
+    expect(result.error).toContain(value);
+  });
+});
 
 async function expectInvalid(
   route: { request: (input: string) => Response | Promise<Response> },
