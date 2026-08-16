@@ -4885,8 +4885,10 @@ export class AgentRuntime implements IAgentRuntime {
 				: (this.stateCache.get(message.id) ?? cachedPublicState ?? emptyObj);
 		const cachedState =
 			cachedCandidate === emptyObj ||
-			cachedCandidate.data.__trustedDeliveryAudienceCacheKey ===
-				audienceCacheKey
+			(cachedCandidate.data.__trustedDeliveryAudienceCacheKey ===
+				audienceCacheKey &&
+				(cachedCandidate.data as Record<string, unknown>).__roomId ===
+					message.roomId)
 				? cachedCandidate
 				: emptyObj;
 		const activeContexts = getActiveRoutingContextsForTurn(
@@ -5513,6 +5515,7 @@ export class AgentRuntime implements IAgentRuntime {
 			},
 			data: {
 				...cachedState.data,
+				__roomId: message.roomId,
 				__conversationSeed: conversationSeed,
 				__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 				providerOrder: providerOrderNames,
