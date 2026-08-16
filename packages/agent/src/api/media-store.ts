@@ -438,6 +438,10 @@ export function persistDataUrl(dataUrl: string): PersistedMedia | null {
     return null;
   }
   if (buffer.length === 0) return null;
+  // Bound data: URLs — unbounded base64 would otherwise decode into a heap-sized Buffer.
+  // Cap at the chat media limit order (15 MiB); larger payloads are treated as invalid.
+  const MAX_DATA_URL_BYTES = 15 * 1024 * 1024;
+  if (buffer.length > MAX_DATA_URL_BYTES) return null;
   return persistMediaBytes(buffer, mimeType);
 }
 
@@ -830,6 +834,24 @@ export function handleMediaRouteRequest(
   }
   if (range) {
     const length = range.end - range.start + 1;
+    // Avoid loading the full file for a tiny Range (e.g., bytes=0-0 on a 2 GB video) — read only the requested slice.
+    let body: Buffer;
+    try {
+      const fd = fs.openSync(resolved.filePath, "r");
+      try {
+        body = Buffer.alloc(length);
+        fs.readSync(fd, body, 0, length, range.start);
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch (err) {
+      // error-policy:J2 — unreadable slice is a real I/O failure, not a 404.
+      throw new ElizaError(`media range read failed for ${resolved.name}`, {
+        code: "MEDIA_STORE_READ_FAILED",
+        cause: err,
+        context: { name: resolved.name, range },
+      });
+    }
     return {
       status: 206,
       headers: {
@@ -837,9 +859,7 @@ export function handleMediaRouteRequest(
         "Content-Range": `bytes ${range.start}-${range.end}/${resolved.size}`,
         "Content-Length": String(length),
       },
-      body: fs
-        .readFileSync(resolved.filePath)
-        .subarray(range.start, range.end + 1),
+      body,
     };
   }
 
