@@ -4,38 +4,36 @@
  * Instances table while the count still read >0). Removal is tombstone-only.
  */
 
+import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import { describe, expect, it } from "vitest";
-import type { SandboxListAgent } from "../lib/use-sandbox-status-poll";
-import {
-  type ElizaAgentRow,
-  mergeAgentList,
-  retireExpiredTombstones,
-} from "./eliza-agents-table";
+import { mergeAgentList, retireExpiredTombstones } from "./eliza-agents-table";
 
-function row(id: string, status: string): ElizaAgentRow {
+function row(id: string, status: AgentListItemDto["status"]): AgentListItemDto {
   return {
     id,
-    agent_name: `agent-${id}`,
+    agentName: `agent-${id}`,
     status,
-    canonical_web_ui_url: null,
-    node_id: null,
-    container_name: null,
-    bridge_port: null,
-    web_ui_port: null,
-    headscale_ip: null,
-    docker_image: null,
-    execution_tier: undefined,
-    sandbox_id: null,
-    bridge_url: null,
-    error_message: null,
-    last_heartbeat_at: null,
-    created_at: "2026-07-04T00:00:00.000Z",
-    updated_at: "2026-07-04T00:00:00.000Z",
+    databaseStatus: "ready",
+    lastBackupAt: null,
+    lastHeartbeatAt: null,
+    errorMessage: null,
+    createdAt: "2026-07-04T00:00:00.000Z",
+    updatedAt: "2026-07-04T00:00:00.000Z",
+    token_address: null,
+    token_chain: null,
+    token_name: null,
+    token_ticker: null,
+    dockerImage: null,
+    executionTier: "dedicated-lazy",
+    webUiUrl: null,
   };
 }
 
-function apiAgent(id: string, status: string): SandboxListAgent {
-  return { id, agentName: `agent-${id}`, status } as SandboxListAgent;
+function apiAgent(
+  id: string,
+  status: AgentListItemDto["status"],
+): AgentListItemDto {
+  return row(id, status);
 }
 
 const NONE: ReadonlySet<string> = new Set();

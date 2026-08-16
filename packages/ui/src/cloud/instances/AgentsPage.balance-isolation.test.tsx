@@ -29,11 +29,9 @@ vi.mock("./components/eliza-agent-pricing-banner", () => ({
   ),
 }));
 vi.mock("./components/eliza-agents-table", () => ({
-  ElizaAgentsTable: ({
-    sandboxes,
-  }: {
-    sandboxes: Array<{ agent_name: string }>;
-  }) => <div>{sandboxes.map((sandbox) => sandbox.agent_name).join(", ")}</div>,
+  ElizaAgentsTable: ({ agents }: { agents: Array<{ agentName: string }> }) => (
+    <div>{agents.map((agent) => agent.agentName).join(", ")}</div>
+  ),
 }));
 vi.mock("./lib/data/eliza-agents", () => ({
   useAgents: () => ({
@@ -42,13 +40,19 @@ vi.mock("./lib/data/eliza-agents", () => ({
         id: "agent-1",
         agentName: "Persistent agent",
         status: "running",
-        webUiUrl: null,
-        dockerImage: null,
-        executionTier: "shared",
-        errorMessage: null,
+        databaseStatus: "ready",
+        lastBackupAt: null,
         lastHeartbeatAt: null,
+        errorMessage: null,
         createdAt: "2026-08-12T00:00:00.000Z",
         updatedAt: "2026-08-12T00:00:00.000Z",
+        token_address: null,
+        token_chain: null,
+        token_name: null,
+        token_ticker: null,
+        dockerImage: null,
+        executionTier: "shared",
+        webUiUrl: null,
       },
     ],
     error: null,
