@@ -463,6 +463,11 @@ PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "true"
 # The protected staging cutover owns PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED as
 # a secret binding. Named-environment vars do not inherit, so leaving only the
 # staging binding absent avoids a name collision while absence remains off.
+# Self-hosted embeddings sidecar (parity P1, packages/cloud/services/embeddings):
+# staging routes bge-small-en-v1.5 to the Railway TEI service. Non-secret URL,
+# so a plain var is correct — and the secret/var collision lint
+# (cloud-cf-secret-var-collision.test.ts) never lets this name become a secret.
+LOCAL_EMBEDDINGS_BASE_URL = "https://embeddings-staging-staging.up.railway.app"
 # Emit per-turn inference spans at info for the staging latency matrix without
 # changing production log volume or recording prompt content.
 ELIZA_INFERENCE_TIMING = "info"
