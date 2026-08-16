@@ -51,9 +51,27 @@ describe("searchKeylessWeb", () => {
 
 		expect(result).toEqual({
 			provider: "parallel",
-			text: `${"x".repeat(32)}\n[truncated]`,
+			text: `${"x".repeat(20)}\n[truncated]`,
 			truncated: true,
 		});
+		expect(result?.text).toHaveLength(32);
+	});
+
+	it("keeps tiny result budgets and Unicode truncation well formed", async () => {
+		const tiny = await searchKeylessWeb("tiny", {
+			fetchImpl: async () => mcp("long result"),
+			maxResultChars: 5,
+		});
+		expect(tiny?.text).toBe("\n[tru");
+		expect(tiny?.text).toHaveLength(5);
+
+		const unicode = await searchKeylessWeb("unicode", {
+			fetchImpl: async () => mcp(`${"x".repeat(19)}🤖${"y".repeat(20)}`),
+			maxResultChars: 32,
+		});
+		expect(unicode?.text).toBe(`${"x".repeat(19)}\n[truncated]`);
+		expect(unicode?.text).toHaveLength(31);
+		expect(unicode?.text?.isWellFormed()).toBe(true);
 	});
 
 	it("rejects oversized response bodies and returns no fabricated result", async () => {

@@ -5,6 +5,8 @@
  * exposing query text in logs or errors.
  */
 
+import { truncateWellFormed } from "../utils/well-formed";
+
 const PARALLEL_MCP_URL = "https://search.parallel.ai/mcp";
 const EXA_MCP_URL = "https://mcp.exa.ai/mcp";
 const DEFAULT_RESULT_COUNT = 6;
@@ -185,11 +187,15 @@ export async function searchKeylessWeb(
 
 	const maxResultChars = options.maxResultChars ?? DEFAULT_RESULT_CHARS;
 	const truncationSuffix = "\n[truncated]";
+	const retainedSuffix = truncateWellFormed(truncationSuffix, maxResultChars);
 	return {
 		provider,
 		text:
 			text.length > maxResultChars
-				? `${text.slice(0, maxResultChars - truncationSuffix.length)}${truncationSuffix}`
+				? `${truncateWellFormed(
+						text,
+						maxResultChars - retainedSuffix.length,
+					)}${retainedSuffix}`
 				: text,
 		truncated: text.length > maxResultChars,
 	};
