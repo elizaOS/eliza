@@ -39,7 +39,6 @@ on:
       - "packages/scripts/patch-nested-core-dist.mjs"
       - "packages/scripts/patch-punycode-deprecation.mjs"
       - "packages/scripts/run-turbo.mjs"
-      - "packages/scripts/sync-artifacts.mjs"
       - "packages/shared/**"
       - "packages/skills/**"
       - "packages/ui/**"

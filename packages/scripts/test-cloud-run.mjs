@@ -833,7 +833,7 @@ export function findMissingRoots(testRoots, existsFn) {
 
 // --- Clean-install preflight (#16187) ---
 //
-// A frozen `bun install` with ELIZA_SKIP_ARTIFACT_SYNC=1 leaves the tree with
+// A frozen `bun install --ignore-scripts` leaves the tree with
 // no built dist/ and no generated i18n keyword modules. The cloud suites
 // resolve `@elizaos/core` through its package.json `bun` export condition
 // (packages/core/dist/node/index.node.js) and import the gitignored keyword
