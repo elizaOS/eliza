@@ -691,6 +691,21 @@ test("github device login is a designed owner-setup state until a client id exis
   assert.equal(configured.available, true);
 });
 
+test("discord user OAuth is a one-click loopback flow gated on owner setup", () => {
+  const path = byId("discord.user-oauth");
+  assert.equal(path.oneClick.type, "discord-oauth");
+  assert.ok(path.optional.includes("DISCORD_USER_OAUTH_TOKEN"));
+  const missing = checkAvailability(path.availability, fakeCtx());
+  assert.equal(missing.available, false);
+  const configured = checkAvailability(
+    path.availability,
+    fakeCtx({
+      env: { DISCORD_CLIENT_ID: "app-id", DISCORD_CLIENT_SECRET: "app-secret" },
+    }),
+  );
+  assert.equal(configured.available, true);
+});
+
 // --- evaluation output safety ---------------------------------------------------------
 
 test("evaluateConnectorPaths emits env names and reasons, never env values", () => {

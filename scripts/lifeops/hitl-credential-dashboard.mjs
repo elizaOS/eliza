@@ -23,7 +23,8 @@
  *
  * Secrets never leave the machine and are never echoed: responses carry
  * last-4 masks only, probe details are redacted upstream, and one-click
- * acquisitions (gh CLI token, headless SIWE cloud login, signal-cli link)
+ * acquisitions (gh CLI token, GitHub device flow, Discord loopback OAuth,
+ * headless SIWE cloud login, signal-cli link)
  * run server-side and save without rendering the credential. Zero
  * dependencies: node:http on 127.0.0.1, first free port from 43117, with
  * same-origin JSON POSTs bound to a per-process session token so another local
@@ -60,6 +61,12 @@ import {
   redactSecrets,
   registerRedactionEnv,
 } from "./credential-probes.mjs";
+import {
+  completeDiscordOAuthCallback,
+  markDiscordFlowSaved,
+  pollDiscordOAuthLogin,
+  startDiscordOAuthLogin,
+} from "./discord-oauth-login.mjs";
 import { HOME_ENV_PATH, loadLayeredEnv, writeSecret } from "./env-layers.mjs";
 import {
   pollGitHubDeviceLogin,
@@ -579,6 +586,78 @@ async function handleGitHubDevicePoll(body) {
   };
 }
 
+const DISCORD_CALLBACK_PATH = "/oauth/discord/callback";
+
+function handleDiscordOAuthStart(body) {
+  const target = parseTarget(body);
+  const layered = loadLayeredEnv();
+  const clientId = layered.values.DISCORD_CLIENT_ID;
+  const clientSecret = layered.values.DISCORD_CLIENT_SECRET;
+  if (
+    typeof clientId !== "string" ||
+    clientId.trim().length === 0 ||
+    typeof clientSecret !== "string" ||
+    clientSecret.trim().length === 0
+  ) {
+    throw new HttpError(
+      409,
+      "Discord user OAuth needs owner setup: DISCORD_CLIENT_ID/DISCORD_CLIENT_SECRET are absent (register a Discord app with this dashboard's loopback redirect URI)",
+    );
+  }
+  return startDiscordOAuthLogin({
+    clientId,
+    redirectUri: `${dashboardOrigin}${DISCORD_CALLBACK_PATH}`,
+    target,
+  });
+}
+
+// The callback leg arrives as a top-level browser navigation from Discord, so
+// it cannot carry the session token; the flow's single-use CSRF state is the
+// authenticator, and the response never contains the token — persistence
+// happens server-side and the dashboard tab polls for the masked result.
+async function handleDiscordOAuthCallback(url, res) {
+  const layered = loadLayeredEnv();
+  const result = await completeDiscordOAuthCallback({
+    state: url.searchParams.get("state") ?? "",
+    code: url.searchParams.get("code") ?? "",
+    providerError: url.searchParams.get("error") ?? "",
+    clientSecret: layered.values.DISCORD_CLIENT_SECRET,
+  });
+  let title = "Discord login failed";
+  let note = result.detail ?? "";
+  if (result.outcome === "complete") {
+    const saved = persistEnvVar(
+      "DISCORD_USER_OAUTH_TOKEN",
+      result.token,
+      result.target,
+    );
+    markDiscordFlowSaved(result.flowId, saved);
+    title = "Discord login complete";
+    note = `Signed in as ${result.username}. Return to the dashboard tab — this page holds no credential.`;
+  } else if (result.outcome === "unknown-state") {
+    note =
+      "This sign-in link is unknown or expired. Restart it from the dashboard.";
+  } else if (result.outcome === "denied") {
+    title = "Discord login denied";
+  }
+  res.writeHead(result.outcome === "complete" ? 200 : 400, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  res.end(
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title>` +
+      `<style>body{margin:0;background:#101014;color:#e8e6e3;font:15px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh}main{max-width:26rem;padding:1rem;text-align:center}h1{font-size:1.1rem}</style>` +
+      `</head><body><main><h1>${title}</h1><p>${note}</p><p>You can close this tab.</p></main></body></html>`,
+  );
+}
+
+function handleDiscordOAuthPoll(body) {
+  if (typeof body?.flowId !== "string" || body.flowId.length === 0) {
+    throw new HttpError(400, "flowId is required");
+  }
+  return pollDiscordOAuthLogin({ flowId: body.flowId });
+}
+
 async function handleSiweLogin(body) {
   const target = parseTarget(body);
   const layered = loadLayeredEnv();
@@ -778,6 +857,24 @@ async function handle(req, res) {
     url.pathname === "/api/oneclick/github-device/poll"
   ) {
     sendJson(res, 200, await handleGitHubDevicePoll(await readJsonBody(req)));
+    return;
+  }
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/oneclick/discord-oauth/start"
+  ) {
+    sendJson(res, 200, handleDiscordOAuthStart(await readJsonBody(req)));
+    return;
+  }
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/oneclick/discord-oauth/poll"
+  ) {
+    sendJson(res, 200, handleDiscordOAuthPoll(await readJsonBody(req)));
+    return;
+  }
+  if (req.method === "GET" && url.pathname === DISCORD_CALLBACK_PATH) {
+    await handleDiscordOAuthCallback(url, res);
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/oneclick/siwe") {
@@ -1052,6 +1149,30 @@ const PAGE_HTML = `<!doctype html>
         }));
       });
       controls.push(device);
+    }
+    if (oc && oc.type === 'discord-oauth') {
+      var discord = el('button', null, 'Login with Discord');
+      discord.title = oc.detail;
+      function pollDiscord(flowId) {
+        return wait(2).then(function () {
+          return api('POST', '/api/oneclick/discord-oauth/poll', { flowId: flowId });
+        }).then(function (payload) {
+          if (payload.status === 'pending') return pollDiscord(flowId);
+          if (payload.status === 'complete') {
+            toast('Discord login complete (' + payload.username + '): saved ' + payload.key + ' = ' + payload.masked + ' → ' + payload.target, false);
+            return payload;
+          }
+          toast('Discord login ' + payload.status + (payload.detail ? ' — ' + payload.detail : ''), true);
+          return payload;
+        });
+      }
+      discord.addEventListener('click', function () {
+        busyRun(discord, 'waiting for Discord…', api('POST', '/api/oneclick/discord-oauth/start', { target: saveTarget() }).then(function (payload) {
+          window.open(payload.authorizeUrl, '_blank', 'noopener,noreferrer');
+          return pollDiscord(payload.flowId);
+        }));
+      });
+      controls.push(discord);
     }
     if (oc && oc.type === 'siwe') {
       var siwe = el('button', null, 'Login with Eliza Cloud');
