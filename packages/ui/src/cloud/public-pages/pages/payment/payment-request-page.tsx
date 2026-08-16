@@ -215,7 +215,16 @@ export default function PaymentRequestPage() {
         }
       }
     })();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      // Route replacement increments this again in the next effect. A plain
+      // unmount has no next effect, so invalidate the generation here as well
+      // to prevent an in-flight checkout revalidation from navigating after
+      // the user has already left this page.
+      if (loadGenerationRef.current === generation) {
+        loadGenerationRef.current += 1;
+      }
+    };
   }, [paymentRequestId, fetchPublicRequest]);
 
   // Re-evaluate eligibility exactly when the deadline passes so an open tab

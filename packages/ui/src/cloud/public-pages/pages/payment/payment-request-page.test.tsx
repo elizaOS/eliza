@@ -350,6 +350,41 @@ describe("PaymentRequestPage public DTO contract", () => {
     );
   });
 
+  it("does not navigate when checkout revalidation resolves after unmount", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign, href: "https://eliza.example/pay" });
+    const checkout = deferred<{
+      success: boolean;
+      paymentRequest: ReturnType<typeof publicPaymentRequest>;
+    }>();
+
+    apiMock
+      .mockResolvedValueOnce({
+        success: true,
+        paymentRequest: publicPaymentRequest(),
+      })
+      .mockReturnValueOnce(checkout.promise);
+
+    const { unmount } = render(<PaymentRequestPage />);
+    const button = await screen.findByRole("button", {
+      name: /pay with wallet/i,
+    });
+    fireEvent.click(button);
+    unmount();
+
+    await act(async () => {
+      checkout.resolve({
+        success: true,
+        paymentRequest: publicPaymentRequest({
+          hostedUrl: "https://example.com/checkout/must-not-open",
+        }),
+      });
+      await checkout.promise;
+    });
+
+    expect(assign).not.toHaveBeenCalled();
+  });
+
   it("blocks navigation when revalidation returns a malformed deadline", async () => {
     const assign = vi.fn();
     vi.stubGlobal("location", { assign, href: "https://eliza.example/pay" });
