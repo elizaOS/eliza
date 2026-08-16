@@ -24,6 +24,7 @@ function run() {
       elizaCloudConnected: false,
       cloudCallsDisabled: false,
       isCloudSelected: true,
+      isCloudConfigured: true,
       resolvedSelectedId: null,
       subscriptionStatus: [],
       anthropicCliDetected: false,

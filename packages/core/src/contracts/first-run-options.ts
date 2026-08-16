@@ -50,6 +50,10 @@ export interface CharacterFailureTemplates {
 	insufficientCreditsReply?: string;
 	/** No LLM provider plugin is registered at all. */
 	noModelProviderReply?: string;
+	/** A required capability is not registered in this runtime. */
+	missingCapabilityFailureReply?: string;
+	/** The planner exhausted its bounded attempts before completing the task. */
+	plannerExhaustionFailureReply?: string;
 	/** Provider is throttling; retrying shortly should succeed. */
 	rateLimitedReply?: string;
 	/** Any other failure once every model call has already failed. */

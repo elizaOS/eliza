@@ -7,12 +7,13 @@
  */
 import {
   createUniqueUuid,
+  ElizaError,
   type IAgentRuntime,
   logger,
   type Memory,
   ModelType,
 } from "@elizaos/core";
-import type { ClientBase } from "./base";
+import type { ClientBase, TwitterAccountSession } from "./base";
 import type { Client, Tweet } from "./client/index";
 import { SearchMode } from "./client/index";
 import { getRandomInterval } from "./environment";
@@ -71,11 +72,8 @@ function isDiscoveryTweet(tweet: Tweet): tweet is DiscoveryTweet {
   );
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export class TwitterDiscoveryClient {
+  private client: ClientBase;
   private twitterClient: Client;
   private runtime: IAgentRuntime;
   private accountId: string;
@@ -88,6 +86,7 @@ export class TwitterDiscoveryClient {
     runtime: IAgentRuntime,
     state: TwitterClientState,
   ) {
+    this.client = client;
     this.twitterClient = client.twitterClient;
     this.runtime = runtime;
     this.accountId = client.accountId;
@@ -238,7 +237,9 @@ export class TwitterDiscoveryClient {
       try {
         await this.runDiscoveryCycle();
       } catch (error) {
-        logger.error("Discovery cycle error:", errorMessage(error));
+        // error-policy:J7 the scheduler remains alive, while the failed cycle
+        // is surfaced to the agent and owner rather than recorded as success.
+        this.runtime.reportError("XDiscoveryClient.cycle", error);
       }
 
       // Run discovery every 20-40 minutes (with variance)
@@ -266,9 +267,16 @@ export class TwitterDiscoveryClient {
   }
 
   private async runDiscoveryCycle() {
+    return this.client.withAuthenticatedSession((session) =>
+      this.runDiscoveryCycleForSession(session),
+    );
+  }
+
+  private async runDiscoveryCycleForSession(session: TwitterAccountSession) {
     logger.info("Starting Twitter discovery cycle...");
 
     const discoveries = await this.discoverContent();
+    this.assertCurrentSession(session);
     const { tweets, accounts } = discoveries;
 
     logger.info(
@@ -276,10 +284,10 @@ export class TwitterDiscoveryClient {
     );
 
     // Process discovered accounts (follow high-quality ones)
-    const followedCount = await this.processAccounts(accounts);
+    const followedCount = await this.processAccounts(accounts, session);
 
     // Process discovered tweets (engage with relevant ones)
-    const engagementCount = await this.processTweets(tweets);
+    const engagementCount = await this.processTweets(tweets, session);
 
     logger.info(
       `Discovery cycle complete: ${followedCount} follows, ${engagementCount} engagements`,
@@ -303,7 +311,12 @@ export class TwitterDiscoveryClient {
         allAccounts.set(acc.user.id, acc);
       }
     } catch (error) {
-      logger.error("Failed to discover from topics:", errorMessage(error));
+      // error-policy:J2 A failed source cannot be represented as an empty
+      // successful cycle, so preserve the source and fail the scheduler run.
+      throw new ElizaError("X topic discovery failed", {
+        code: "X_DISCOVERY_READ_FAILED",
+        cause: error,
+      });
     }
 
     // 2. Discover from conversation threads
@@ -314,7 +327,11 @@ export class TwitterDiscoveryClient {
         allAccounts.set(acc.user.id, acc);
       }
     } catch (error) {
-      logger.error("Failed to discover from threads:", errorMessage(error));
+      // error-policy:J2 See the topic-source boundary above.
+      throw new ElizaError("X thread discovery failed", {
+        code: "X_DISCOVERY_READ_FAILED",
+        cause: error,
+      });
     }
 
     // 3. Discover from popular accounts in our topics
@@ -325,10 +342,11 @@ export class TwitterDiscoveryClient {
         allAccounts.set(acc.user.id, acc);
       }
     } catch (error) {
-      logger.error(
-        "Failed to discover from popular accounts:",
-        errorMessage(error),
-      );
+      // error-policy:J2 See the topic-source boundary above.
+      throw new ElizaError("X account discovery failed", {
+        code: "X_DISCOVERY_READ_FAILED",
+        cause: error,
+      });
     }
 
     // Sort by relevance score
@@ -445,7 +463,13 @@ export class TwitterDiscoveryClient {
           }
         }
       } catch (error) {
-        logger.error(`Failed to search topic ${topic}:`, errorMessage(error));
+        // error-policy:J2 Keep a provider failure distinct from a topic that
+        // legitimately produced no candidates.
+        throw new ElizaError(`X discovery search failed for topic ${topic}`, {
+          code: "X_DISCOVERY_READ_FAILED",
+          cause: error,
+          context: { topic },
+        });
       }
     }
 
@@ -503,7 +527,12 @@ export class TwitterDiscoveryClient {
         }
       }
     } catch (error) {
-      logger.error("Failed to discover threads:", errorMessage(error));
+      // error-policy:J2 Keep a provider failure distinct from an empty thread
+      // search result.
+      throw new ElizaError("X conversation discovery failed", {
+        code: "X_DISCOVERY_READ_FAILED",
+        cause: error,
+      });
     }
 
     return { tweets, accounts: Array.from(accounts.values()) };
@@ -564,9 +593,15 @@ export class TwitterDiscoveryClient {
           }
         }
       } catch (error) {
-        logger.error(
-          `Failed to discover popular accounts for ${topic}:`,
-          errorMessage(error),
+        // error-policy:J2 Keep a provider failure distinct from a topic with
+        // no qualifying accounts.
+        throw new ElizaError(
+          `X popular-account discovery failed for topic ${topic}`,
+          {
+            code: "X_DISCOVERY_READ_FAILED",
+            cause: error,
+            context: { topic },
+          },
         );
       }
     }
@@ -661,7 +696,10 @@ export class TwitterDiscoveryClient {
     };
   }
 
-  private async processAccounts(accounts: ScoredAccount[]): Promise<number> {
+  private async processAccounts(
+    accounts: ScoredAccount[],
+    session: TwitterAccountSession,
+  ): Promise<number> {
     let followedCount = 0;
 
     // Sort accounts by combined quality and relevance score
@@ -702,7 +740,7 @@ export class TwitterDiscoveryClient {
               `relevance: ${scoredAccount.relevanceScore.toFixed(2)})`,
           );
         } else {
-          // Follow the account
+          this.assertCurrentSession(session);
           await this.twitterClient.followUser(scoredAccount.user.id);
 
           logger.info(
@@ -720,9 +758,16 @@ export class TwitterDiscoveryClient {
         // Add a delay to avoid rate limits
         await this.delay(2000 + Math.random() * 3000);
       } catch (error) {
-        logger.error(
-          `Failed to follow @${scoredAccount.user.username}:`,
-          errorMessage(error),
+        if (this.isSessionRotation(error)) throw error;
+        // error-policy:J2 The cycle boundary owns reporting; aborting prevents
+        // a provider failure from being summarized as successful work.
+        throw new ElizaError(
+          `X discovery failed to follow @${scoredAccount.user.username}`,
+          {
+            code: "X_DISCOVERY_EFFECT_FAILED",
+            cause: error,
+            context: { userId: scoredAccount.user.id },
+          },
         );
       }
     }
@@ -730,7 +775,10 @@ export class TwitterDiscoveryClient {
     return followedCount;
   }
 
-  private async processTweets(tweets: ScoredTweet[]): Promise<number> {
+  private async processTweets(
+    tweets: ScoredTweet[],
+    session: TwitterAccountSession,
+  ): Promise<number> {
     let engagementCount = 0;
 
     for (const scoredTweet of tweets) {
@@ -759,6 +807,7 @@ export class TwitterDiscoveryClient {
                 `[DRY RUN] Would like tweet: ${scoredTweet.tweet.id} (score: ${scoredTweet.relevanceScore.toFixed(2)})`,
               );
             } else {
+              this.assertCurrentSession(session);
               await this.twitterClient.likeTweet(scoredTweet.tweet.id);
               logger.info(
                 `Liked tweet: ${scoredTweet.tweet.id} (score: ${scoredTweet.relevanceScore.toFixed(2)})`,
@@ -773,6 +822,7 @@ export class TwitterDiscoveryClient {
                 `[DRY RUN] Would reply to tweet ${scoredTweet.tweet.id} with: "${replyText}"`,
               );
             } else {
+              this.assertCurrentSession(session);
               await this.twitterClient.sendTweet(
                 replyText,
                 scoredTweet.tweet.id,
@@ -789,6 +839,7 @@ export class TwitterDiscoveryClient {
                 `[DRY RUN] Would quote tweet ${scoredTweet.tweet.id} with: "${quoteText}"`,
               );
             } else {
+              this.assertCurrentSession(session);
               await this.twitterClient.sendQuoteTweet(
                 quoteText,
                 scoredTweet.tweet.id,
@@ -810,6 +861,7 @@ export class TwitterDiscoveryClient {
         // Add delay to avoid rate limits
         await this.delay(3000 + Math.random() * 5000);
       } catch (error) {
+        if (this.isSessionRotation(error)) throw error;
         const message =
           error instanceof Error
             ? error.message
@@ -825,22 +877,41 @@ export class TwitterDiscoveryClient {
           // Still save to memory to avoid retrying
           await this.saveEngagementMemory(scoredTweet.tweet, "skip");
         } else if (message.includes("429")) {
-          logger.warn(
-            `Rate limit (429) hit while engaging with tweet ${scoredTweet.tweet.id}. ` +
-              `Pausing engagement cycle.`,
-          );
-          // Break out of the loop on rate limit
-          break;
+          // error-policy:J2 A rate-limited cycle is not a successful partial
+          // cycle; preserve the source error for retry policy at the boundary.
+          throw new ElizaError("X discovery was rate limited", {
+            code: "X_DISCOVERY_RATE_LIMITED",
+            cause: error,
+            context: { tweetId: scoredTweet.tweet.id },
+          });
         } else {
-          logger.error(
-            `Failed to engage with tweet ${scoredTweet.tweet.id}:`,
-            errorMessage(error),
-          );
+          // error-policy:J2 The cycle boundary owns reporting; aborting keeps
+          // a provider failure distinguishable from an ignored candidate.
+          throw new ElizaError("X discovery engagement failed", {
+            code: "X_DISCOVERY_EFFECT_FAILED",
+            cause: error,
+            context: { tweetId: scoredTweet.tweet.id },
+          });
         }
       }
     }
 
     return engagementCount;
+  }
+
+  private assertCurrentSession(session: TwitterAccountSession): void {
+    if (!this.client.isAuthenticatedSessionCurrent(session)) {
+      throw new ElizaError("X credentials rotated during discovery", {
+        code: "X_AUTH_SESSION_ROTATED",
+      });
+    }
+  }
+
+  private isSessionRotation(error: unknown): boolean {
+    return (
+      error instanceof ElizaError &&
+      ["X_AUTH_NOT_INITIALIZED", "X_AUTH_SESSION_ROTATED"].includes(error.code)
+    );
   }
 
   private async checkIfFollowing(userId: string): Promise<boolean> {
@@ -970,11 +1041,13 @@ Quote tweet:`;
         `[Discovery] Saved ${engagementType} memory for tweet ${tweet.id}`,
       );
     } catch (error) {
-      logger.error(
-        `[Discovery] Failed to save engagement memory:`,
-        errorMessage(error),
-      );
-      // Don't throw - just log the error
+      // error-policy:J7 The provider may already have accepted the engagement,
+      // so receipt loss is reported without replaying the external effect.
+      this.runtime.reportError("XDiscovery.engagementReceipt", error, {
+        accountId: this.accountId,
+        tweetId: tweet.id,
+        engagementType,
+      });
     }
   }
 
@@ -1012,11 +1085,12 @@ Quote tweet:`;
       await createMemorySafe(this.runtime, memory, "messages");
       logger.debug(`[Discovery] Saved follow memory for @${user.username}`);
     } catch (error) {
-      logger.error(
-        `[Discovery] Failed to save follow memory:`,
-        errorMessage(error),
-      );
-      // Don't throw - just log the error
+      // error-policy:J7 The provider may already have accepted the follow, so
+      // receipt loss is reported without replaying the external effect.
+      this.runtime.reportError("XDiscovery.followReceipt", error, {
+        accountId: this.accountId,
+        userId: user.id,
+      });
     }
   }
 

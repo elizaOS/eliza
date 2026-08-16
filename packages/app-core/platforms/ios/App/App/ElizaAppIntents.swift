@@ -1,3 +1,7 @@
+/**
+ Native App Intents expose Eliza actions to Siri, Spotlight, Shortcuts, and
+ supported hardware controls while preserving the app's canonical deep links.
+ */
 import AppIntents
 import Foundation
 import UIKit

@@ -40,7 +40,7 @@ import {
 } from "../../db/schemas/agent-sandboxes";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { jobs } from "../../db/schemas/jobs";
-import { imageRepo } from "../../db/utils/docker-image-ref";
+import { imageRepo, repinImageDigest } from "../../db/utils/docker-image-ref";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { ApiError } from "../api/cloud-worker-errors";
 import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
@@ -202,7 +202,7 @@ export interface CreateAgentParams {
  * agent — handing back a stopped/sleeping row would silently turn an
  * idempotent create into an implicit resume.
  */
-const QUOTA_COUNTED_STATUSES: AgentSandboxStatus[] = [
+export const QUOTA_COUNTED_STATUSES: AgentSandboxStatus[] = [
   "pending",
   "provisioning",
   "running",
@@ -9132,7 +9132,15 @@ export class ElizaSandboxService {
             bridge_port = ${blueMeta.bridgePort},
             web_ui_port = ${blueMeta.webUiPort},
             headscale_ip = ${blueMeta.headscaleIp ?? null},
-            docker_image = ${adminCanary ? adminCanary.targetImage : current.docker_image},
+            docker_image = ${
+              // A digest-pinned ref is re-pinned to the digest the row now
+              // actually runs, so docker_image and image_digest never become a
+              // mismatched pair (#18030). Tag/bare refs carry no digest text
+              // and are kept verbatim.
+              adminCanary
+                ? adminCanary.targetImage
+                : current.docker_image && repinImageDigest(current.docker_image, toDigest)
+            },
             image_digest = ${toDigest},
             previous_image_digest = ${fromDigest},
             previous_docker_image = ${
@@ -9644,7 +9652,15 @@ export class ElizaSandboxService {
             bridge_port = ${blueMeta.bridgePort},
             web_ui_port = ${blueMeta.webUiPort},
             headscale_ip = ${blueMeta.headscaleIp ?? null},
-            docker_image = ${adminCanary ? adminCanary.targetImage : current.docker_image},
+            docker_image = ${
+              // Downgrade-writeback pairing (#18030): re-pin a digest-pinned
+              // ref onto the digest being rolled back to; otherwise the row
+              // would advertise the abandoned digest in docker_image while
+              // image_digest records the rolled-back one.
+              adminCanary
+                ? adminCanary.targetImage
+                : current.docker_image && repinImageDigest(current.docker_image, toDigest)
+            },
             image_digest = ${toDigest},
             previous_image_digest = NULL,
             previous_docker_image = NULL,

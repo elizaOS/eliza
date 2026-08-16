@@ -22,7 +22,11 @@ import {
   resolveDeepLink,
   validateConnectorPaths,
 } from "./connector-paths.mjs";
-import { isSecretEnvName, PROBEABLE_PATH_IDS } from "./credential-probes.mjs";
+import {
+  DEFAULT_CLOUD_BASE,
+  isSecretEnvName,
+  PROBEABLE_PATH_IDS,
+} from "./credential-probes.mjs";
 
 /** Deterministic machine context; override per scenario. */
 function fakeCtx(overrides = {}) {
@@ -133,6 +137,17 @@ test("wired per-path probes have registry metadata and documented rows", () => {
       cells.every((cell) => cell.length > 0),
       `${pathId} has blanks`,
     );
+
+    if (pathId.startsWith("elizacloud.")) {
+      assert.ok(
+        byId(pathId).probeEndpoint.includes(DEFAULT_CLOUD_BASE),
+        `${pathId} registry must use the executable probe default`,
+      );
+      assert.ok(
+        cells[5].includes(DEFAULT_CLOUD_BASE),
+        `${pathId} catalog must use the executable probe default`,
+      );
+    }
   }
 });
 

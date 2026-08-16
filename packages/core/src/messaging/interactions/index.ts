@@ -9,6 +9,7 @@
  */
 
 export * from "./callback";
+export * from "./dashboard-markers";
 export * from "./layout";
 export * from "./normalize";
 export * from "./parse";

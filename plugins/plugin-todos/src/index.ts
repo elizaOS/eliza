@@ -5,21 +5,10 @@
  * schema, and views. Hard-depends on `@elizaos/plugin-sql`.
  */
 import type { Plugin } from "@elizaos/core";
-
-import { todoAction } from "./actions/todo.js";
-import * as dbSchema from "./db/index.js";
-import { currentTodosProvider } from "./providers/current-todos.js";
-import { TodosService } from "./service.js";
+import { todosRuntimePlugin } from "./plugin.js";
 
 export const todosPlugin: Plugin = {
-  name: "todos",
-  description:
-    "User-scoped persistent todos with CRUD. Single `TODO` umbrella action with action-based dispatch (write/create/update/complete/cancel/delete/list/clear). The currentTodosProvider surfaces the user's pending + in-progress todos to the planner each turn. Backed by a drizzle pgSchema('todos') table; requires @elizaos/plugin-sql.",
-  dependencies: ["@elizaos/plugin-sql"],
-  actions: [todoAction],
-  providers: [currentTodosProvider],
-  services: [TodosService],
-  schema: dbSchema,
+  ...todosRuntimePlugin,
   views: [
     {
       id: "todos",
@@ -40,10 +29,6 @@ export const todosPlugin: Plugin = {
       desktopTabEnabled: true,
     },
   ],
-  async dispose(runtime) {
-    const svc = runtime.getService<TodosService>(TodosService.serviceType);
-    await svc?.stop();
-  },
 };
 
 export default todosPlugin;
@@ -59,16 +44,35 @@ export {
 export { TodosView } from "./components/todos/TodosView.js";
 export {
   type TodoInsert,
+  type TodoMutationInsert,
+  type TodoMutationRow,
   type TodoRow,
+  todoMutationsTable,
   todosSchema,
   todosTable,
 } from "./db/schema.js";
+export { todosRuntimePlugin } from "./plugin.js";
 export { currentTodosProvider } from "./providers/current-todos.js";
 export {
   type CreateTodoInput,
+  createTodosSqlStore,
+  deserializeTodoMutationRecord,
   getTodosService,
+  importTodoMutationRecordsInTransaction,
+  serializeTodoMutationRecord,
+  type TodoCutoverState,
   type TodoFilter,
+  type TodoMutation,
+  type TodoMutationExecution,
+  type TodoMutationImportInput,
+  type TodoMutationImportResult,
+  type TodoMutationInput,
+  type TodoMutationRecord,
+  type TodoMutationRecordWire,
+  type TodoMutationResult,
   TodosService,
   type UpdateTodoInput,
 } from "./service.js";
+export { convergeTodoScopesInTransaction } from "./sql-store.js";
+export type { TodoScopeConvergenceInput } from "./store.js";
 export * from "./types.js";

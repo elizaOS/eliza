@@ -113,6 +113,7 @@
         "@elizaos/plugin-app-control": "workspace:*",
         "@elizaos/plugin-app-manager": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
+        "@elizaos/plugin-calendar": "workspace:*",
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
         "@elizaos/plugin-cloud-apps": "workspace:*",
         "@elizaos/plugin-coding-tools": "workspace:*",
@@ -185,6 +186,7 @@
         "@elizaos/plugin-documents": "workspace:*",
         "@elizaos/plugin-e2b-sandbox": "*",
         "@elizaos/plugin-inbox": "workspace:*",
+        "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-x402": "*",
       },
       "optionalPeers": [
@@ -192,6 +194,7 @@
         "@elizaos/plugin-documents",
         "@elizaos/plugin-e2b-sandbox",
         "@elizaos/plugin-inbox",
+        "@elizaos/plugin-todos",
         "@elizaos/plugin-x402",
       ],
     },
@@ -613,6 +616,7 @@
         "@discordjs/opus": "^0.10.0",
         "@discordjs/voice": "^0.19.2",
         "@elizaos/cloud-services-common": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@hono/node-server": "2.0.10",
         "@upstash/redis": "^1.37.0",
         "discord.js": "^14.26.4",
@@ -645,6 +649,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.7",
+        "@elizaos/cloud-shared": "workspace:*",
         "@types/hashring": "^3.2.5",
         "@types/node": "22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
@@ -691,6 +696,7 @@
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@fal-ai/client": "^1.10.1",
@@ -758,6 +764,7 @@
       },
       "dependencies": {
         "@elizaos/cloud-shared": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "hono": "4.13.1",
       },
       "devDependencies": {
@@ -3010,11 +3017,8 @@
       "name": "@elizaos/plugin-todos",
       "version": "2.0.3-beta.7",
       "dependencies": {
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
         "drizzle-orm": "0.45.2",
         "lucide-react": "^1.0.0",
       },
@@ -3032,6 +3036,7 @@
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/ui": "workspace:*",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
       },
@@ -3113,6 +3118,7 @@
         "@steerprotocol/sdk": "^3.0.7",
         "bignumber.js": "^11.0.0",
         "bs58": "^6.0.0",
+        "dotenv": "^17.2.3",
         "ethers": "^6.16.0",
         "lucide-react": "^1.0.0",
         "tweetnacl": "^1.0.3",

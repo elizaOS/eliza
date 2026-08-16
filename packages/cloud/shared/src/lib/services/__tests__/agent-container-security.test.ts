@@ -6,6 +6,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  agentCpuUnitsToDockerCpus,
+  buildAgentContainerCpuFlags,
   buildAgentContainerMemoryFlags,
   buildAgentContainerSecurityFlags,
 } from "../agent-container-security";
@@ -78,5 +80,40 @@ describe("buildAgentContainerMemoryFlags — per-agent OOM containment (staging 
     expect(buildAgentContainerMemoryFlags(undefined)).toEqual([]);
     expect(buildAgentContainerMemoryFlags(-512)).toEqual([]);
     expect(buildAgentContainerMemoryFlags(Number.NaN)).toEqual([]);
+  });
+});
+
+describe("buildAgentContainerCpuFlags — per-agent CPU containment for robot density (#18485)", () => {
+  test("emits a quoted --cpus quota for a positive limit", () => {
+    expect(buildAgentContainerCpuFlags(2)).toEqual(["--cpus '2'"]);
+  });
+
+  test("keeps fractional cores to two decimals — valid docker input, no float noise", () => {
+    expect(buildAgentContainerCpuFlags(1.5)).toEqual(["--cpus '1.5'"]);
+    expect(buildAgentContainerCpuFlags(0.333333)).toEqual(["--cpus '0.33'"]);
+  });
+
+  test("0 disables the quota entirely (no flags — the explicit opt-out)", () => {
+    expect(buildAgentContainerCpuFlags(0)).toEqual([]);
+  });
+
+  test("undefined / negative / NaN emit no flags rather than a garbage docker arg", () => {
+    expect(buildAgentContainerCpuFlags(undefined)).toEqual([]);
+    expect(buildAgentContainerCpuFlags(-1)).toEqual([]);
+    expect(buildAgentContainerCpuFlags(Number.NaN)).toEqual([]);
+  });
+});
+
+describe("agentCpuUnitsToDockerCpus", () => {
+  test("converts the persisted ECS-style unit contract before building Docker flags", () => {
+    expect(agentCpuUnitsToDockerCpus(512)).toBe(0.5);
+    expect(agentCpuUnitsToDockerCpus(1024)).toBe(1);
+    expect(buildAgentContainerCpuFlags(agentCpuUnitsToDockerCpus(2048))).toEqual(["--cpus '2'"]);
+  });
+
+  test("rejects invalid unit values", () => {
+    expect(agentCpuUnitsToDockerCpus(undefined)).toBeUndefined();
+    expect(agentCpuUnitsToDockerCpus(0)).toBeUndefined();
+    expect(agentCpuUnitsToDockerCpus(Number.NaN)).toBeUndefined();
   });
 });

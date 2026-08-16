@@ -62,7 +62,15 @@ export const factsAndRelationshipsSchema: JSONSchema = {
 	properties: {
 		facts: {
 			type: "array",
-			items: { type: "string" },
+			items: {
+				type: "object",
+				additionalProperties: false,
+				properties: {
+					subject: { type: "string" },
+					fact: { type: "string" },
+				},
+				required: ["subject", "fact"],
+			},
 		},
 		relationships: {
 			type: "array",
@@ -100,14 +108,23 @@ rules:
 - drop candidates that are speculative, agent-generated, or not stated by the user
 - drop credentials, API keys, passwords, raw tokens, and other secrets; never persist their values
 - drop synthetic summaries, compaction artifacts, generic chat filler, and one-off task requests
+- each kept fact is an object { subject, fact }: subject names WHO the fact is about
+- subject must be the speaker who stated the fact about themselves — use their name exactly as shown in recent_conversation or room_entities, preferring the UUID when room_entities shows one; use "user" ONLY when the fact is about the author of current_message
+- never attribute one speaker's fact to a different speaker; if the speaker cannot be identified, drop the fact
 - normalize entity names to match the names already used in existing relationships or room entities when possible (do not invent new aliases)
 - when an entity UUID is shown in room_entities, prefer that UUID for relationship subject/object; otherwise use the canonical display name
 - relationships use snake_case predicates ("works_with", "lives_in", "manages")
 - if every candidate is a duplicate, return empty arrays
 - thought is a one-line internal note about the dedup decision`;
 
+/** A validated fact paired with the speaker it belongs to. */
+export interface ExtractedFactWithSubject {
+	subject: string;
+	fact: string;
+}
+
 export interface FactsAndRelationshipsResult {
-	facts: string[];
+	facts: ExtractedFactWithSubject[];
 	relationships: MessageHandlerExtractedRelationship[];
 	thought: string;
 }
@@ -256,10 +273,24 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 
 	const userBlocks: string[] = [];
 
+	// Label each line with the actual speaker so the model can attribute facts
+	// to the right participant. Collapsing every human to "user" made facts
+	// stated by one speaker attributable to whoever spoke next in shared rooms.
+	const nameByEntityId = new Map<string, string>();
+	for (const entity of args.roomEntities) {
+		const name = entity.names.find((n) => n.trim().length > 0);
+		if (entity.id && name) nameByEntityId.set(entity.id, name);
+	}
+	const speakerLabel = (entityId: string): string =>
+		entityId === args.runtime.agentId
+			? "agent"
+			: entityId === args.message.entityId
+				? "user"
+				: (nameByEntityId.get(entityId) ?? "user");
 	const dialogueLines = args.priorDialogue
 		.filter((memory) => !isSyntheticMemory(memory))
 		.map((memory) => {
-			const role = memory.entityId === args.runtime.agentId ? "agent" : "user";
+			const role = speakerLabel(memory.entityId);
 			const text =
 				typeof memory.content.text === "string" ? memory.content.text : "";
 			return text ? `${role}: ${args.runtime.redactSecrets(text)}` : "";
@@ -526,7 +557,6 @@ export function parseFactsAndRelationshipsOutput(
 	}
 	if (
 		!Array.isArray(parsed.facts) ||
-		!parsed.facts.every((entry) => typeof entry === "string") ||
 		!Array.isArray(parsed.relationships) ||
 		typeof parsed.thought !== "string"
 	) {
@@ -535,7 +565,29 @@ export function parseFactsAndRelationshipsOutput(
 		});
 	}
 
-	const facts = parsed.facts.map((entry) => entry.trim()).filter(Boolean);
+	const facts = parsed.facts
+		.map((entry, index): ExtractedFactWithSubject => {
+			// Providers that ignore strict tool schemas occasionally emit the
+			// pre-attribution plain-string shape; those degrade to the current
+			// speaker ("user"), which matches the old behavior exactly.
+			if (typeof entry === "string") {
+				return { subject: "user", fact: entry.trim() };
+			}
+			if (!entry || typeof entry !== "object") {
+				throw new ElizaError("Facts model returned a malformed fact", {
+					code: "FACTS_MODEL_OUTPUT_SCHEMA_INVALID",
+					context: { factIndex: index },
+				});
+			}
+			const record = entry as Record<string, unknown>;
+			const fact = typeof record.fact === "string" ? record.fact.trim() : "";
+			const subject =
+				typeof record.subject === "string" && record.subject.trim()
+					? record.subject.trim()
+					: "user";
+			return { subject, fact };
+		})
+		.filter((entry) => entry.fact.length > 0);
 	const relationships = parsed.relationships.map(
 		(entry, index): MessageHandlerExtractedRelationship => {
 			if (!entry || typeof entry !== "object") {
@@ -574,7 +626,6 @@ function extractText(raw: unknown): string {
 				params?: unknown;
 			}>;
 		};
-		if (typeof r.text === "string" && r.text.trim()) return r.text;
 		const tool = r.toolCalls?.[0];
 		// Tool-call args land under different keys across model providers /
 		// SDK versions: AI SDK v5 + Cerebras gpt-oss-120b use `input`, older
@@ -590,6 +641,7 @@ function extractText(raw: unknown): string {
 		if (typeof toolArgs === "string") {
 			return toolArgs;
 		}
+		if (typeof r.text === "string" && r.text.trim()) return r.text;
 	}
 	return "";
 }
@@ -610,13 +662,24 @@ async function persistFactsAndRelationships(
 	let relationshipsWritten = 0;
 
 	if (parsed.facts.length > 0 && typeof runtime.createMemory === "function") {
-		for (const factText of parsed.facts) {
-			const sanitized = sanitizePersistedFact(runtime, factText);
+		for (const factEntry of parsed.facts) {
+			const sanitized = sanitizePersistedFact(runtime, factEntry.fact);
 			if (!sanitized) continue;
 			const keywords = buildFactKeywordsForStorage(sanitized);
+			// Facts belong to the speaker the model attributed them to, resolved
+			// through the same room-entity grounding relationships use. Stamping
+			// message.entityId unconditionally credited every extracted fact to
+			// the current speaker, crossing facts between users in shared rooms.
+			const factEntityId =
+				resolveRelationshipEntityId(
+					factEntry.subject,
+					roomEntities,
+					runtime,
+					message,
+				) ?? message.entityId;
 			await runtime.createMemory(
 				{
-					entityId: message.entityId,
+					entityId: factEntityId,
 					agentId: runtime.agentId,
 					roomId: message.roomId,
 					content: { text: sanitized, type: "fact" },

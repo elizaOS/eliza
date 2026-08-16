@@ -7,10 +7,11 @@
  * The wallet branch renders ONLY when the live `auth.getProviders()` flags
  * serve `siwe`/`siws` (the bounded port from `cloud-frontend@4056e0e868`).
  * These tests pin the gate in both directions:
- *  - flags on  → the "or sign in with a wallet" divider + per-chain intent
- *    buttons render (EVM for `siwe`, Solana for `siws`), WITHOUT loading the
+ *  - flags on  → the "Continue with a wallet" toggle renders collapsed; the
+ *    "or sign in with a wallet" divider + per-chain intent buttons appear only
+ *    after expanding (EVM for `siwe`, Solana for `siws`), WITHOUT loading the
  *    wallet libs (they lazy-mount on click).
- *  - flags off → no wallet UI at all (the pre-port behavior).
+ *  - flags off → no wallet UI at all (no toggle, no divider, no buttons).
  */
 
 import {
@@ -24,20 +25,6 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const providerFlags = vi.hoisted(() => ({ siwe: false, siws: false }));
-const oauthLaunch = vi.hoisted(() => ({
-  popup: null as Window | null,
-  sameTabAllowed: true,
-  navigate: vi.fn(),
-}));
-
-vi.mock("../../../../state/cloud-login-launch", () => ({
-  preOpenCloudLoginWindow: () => oauthLaunch.popup,
-  canNavigateSameTabForBlockedPopup: () => oauthLaunch.sameTabAllowed,
-}));
-
-vi.mock("../../../../utils/openExternalUrl", () => ({
-  navigatePreOpenedWindow: oauthLaunch.navigate,
-}));
 
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => false,
@@ -127,8 +114,6 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
   beforeEach(() => {
     providerFlags.siwe = false;
     providerFlags.siws = false;
-    oauthLaunch.popup = null;
-    oauthLaunch.sameTabAllowed = true;
   });
 
   afterEach(() => {
@@ -136,12 +121,22 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
     vi.clearAllMocks();
   });
 
-  it("renders the wallet divider + both chain intent buttons when siwe AND siws are served", async () => {
+  it("renders the wallet toggle collapsed, then the divider + both chain intent buttons when siwe AND siws are served and expanded", async () => {
     providerFlags.siwe = true;
     providerFlags.siws = true;
 
     await renderSection();
 
+    // The toggle renders collapsed — no wallet buttons visible yet.
+    const walletToggle = await screen.findByRole("button", {
+      name: /Continue with a wallet/i,
+    });
+    expect(walletToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Solana wallet/i })).toBeNull();
+
+    // Expanding reveals the divider and per-chain buttons.
+    fireEvent.click(walletToggle);
     await waitFor(() =>
       expect(screen.getByText("or sign in with a wallet")).toBeTruthy(),
     );
@@ -149,10 +144,16 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
     expect(screen.getByRole("button", { name: /Solana wallet/i })).toBeTruthy();
   });
 
-  it("renders only the served chain's button (siwe only → EVM, no Solana)", async () => {
+  it("renders only the served chain's button (siwe only → EVM, no Solana) after expanding", async () => {
     providerFlags.siwe = true;
 
     await renderSection();
+
+    // Expand the collapsed wallet disclosure first.
+    const walletToggle = await screen.findByRole("button", {
+      name: /Continue with a wallet/i,
+    });
+    fireEvent.click(walletToggle);
 
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /EVM wallet/i })).toBeTruthy(),
@@ -167,37 +168,11 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Google/i })).toBeTruthy(),
     );
+    expect(
+      screen.queryByRole("button", { name: /Continue with a wallet/i }),
+    ).toBeNull();
     expect(screen.queryByText("or sign in with a wallet")).toBeNull();
     expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Solana wallet/i })).toBeNull();
-  });
-
-  it("navigates a live OAuth popup through the shared opener-safe helper", async () => {
-    const popup = { closed: false } as Window;
-    oauthLaunch.popup = popup;
-    await renderSection();
-
-    fireEvent.click(await screen.findByRole("button", { name: /Google/i }));
-
-    await waitFor(() =>
-      expect(oauthLaunch.navigate).toHaveBeenCalledWith(
-        popup,
-        "https://auth.example.test/authorize",
-      ),
-    );
-  });
-
-  it("uses the platform browser bridge when native or desktop cannot pre-open a popup", async () => {
-    oauthLaunch.sameTabAllowed = false;
-    await renderSection();
-
-    fireEvent.click(await screen.findByRole("button", { name: /Google/i }));
-
-    await waitFor(() =>
-      expect(oauthLaunch.navigate).toHaveBeenCalledWith(
-        null,
-        "https://auth.example.test/authorize",
-      ),
-    );
   });
 });

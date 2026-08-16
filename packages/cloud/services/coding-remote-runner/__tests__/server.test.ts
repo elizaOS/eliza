@@ -49,6 +49,13 @@ function request(
 }
 
 describe("coding remote runner HTTP runner", () => {
+  it("keeps public liveness free of workspace and auth metadata", async () => {
+    const response = await handler()(request("/health", {}, false));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+  });
+
   it("requires bearer auth on the remote runner API", async () => {
     const response = await handler()(request("/v1/health", {}, false));
 

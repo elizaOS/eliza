@@ -23,6 +23,8 @@ import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
 import {
+  agentCpuUnitsToDockerCpus,
+  buildAgentContainerCpuFlags,
   buildAgentContainerMemoryFlags,
   buildAgentContainerSecurityFlags,
 } from "./agent-container-security";
@@ -174,6 +176,11 @@ const REPLACEMENT_ATTEMPT_LABEL = "ai.elizaos.replacement-attempt";
 const REPLACEMENT_VPN_SETTLE_OBSERVATIONS = 4;
 const REPLACEMENT_VPN_SETTLE_INTERVAL_MS = 750;
 const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30_000;
+// Converge window for an id-verified container whose attempt label drifted
+// from the fence record (#18032): the immutable Docker id plus a matching
+// deterministic name identify the fenced target beyond doubt, but a young
+// container is still retained in case a concurrent lifecycle op is mid-write.
+const REPLACEMENT_LABEL_MISMATCH_RETIRE_GRACE_MS = 60 * 60 * 1000;
 
 class ReplacementPlacementPersistenceError extends Error {
   constructor(cause: unknown) {
@@ -1493,6 +1500,16 @@ export class DockerSandboxProvider implements SandboxProvider {
         // env-tunable fleet default applies so a boot-looping agent can never
         // OOM-starve its co-tenants again (staging fleet incident 2026-08-05).
         ...buildAgentContainerMemoryFlags(containerMemoryMb),
+        // Per-container CPU quota (see buildAgentContainerCpuFlags, #18485):
+        // an explicit per-agent `container.cpu` wins; otherwise the
+        // env-tunable fleet default applies so robot-density placement stays
+        // safe — a busy-looping agent is throttled inside its own cgroup
+        // instead of starving every co-tenant on a shared robot box.
+        ...buildAgentContainerCpuFlags(
+          config.container?.cpu !== undefined
+            ? agentCpuUnitsToDockerCpus(config.container.cpu)
+            : containersEnv.agentContainerCpuLimit(),
+        ),
         // Escape-hardening (#12230/#12302): drop ALL kernel capabilities, forbid
         // privilege escalation, and bound the process count — then, under
         // headscale only, re-add exactly NET_ADMIN + /dev/net/tun for the VPN.
@@ -2210,7 +2227,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       node.host_key_fingerprint ?? undefined,
       node.ssh_user ?? DEFAULT_SSH_USERNAME,
     );
-    const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}`;
+    const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}|{{.Name}}|{{.Created}}`;
     // When Docker returned the create id before a later phase failed, inspect
     // that immutable object directly. A same-name replacement can never make
     // the old id look present or authorize deleting the newer occupant.
@@ -2240,14 +2257,16 @@ export class DockerSandboxProvider implements SandboxProvider {
         `[docker-sandbox] Cannot verify replacement identity for ${locator.containerName}: expected one inspect record`,
       );
     }
-    const separator = lines[0]!.indexOf("|");
-    if (separator <= 0) {
+    const fields = lines[0]!.split("|");
+    if (fields.length !== 4 || fields[0]!.trim().length === 0) {
       throw new Error(
         `[docker-sandbox] Cannot verify replacement identity for ${locator.containerName}: malformed inspect record`,
       );
     }
-    const containerId = lines[0]!.slice(0, separator).trim();
-    const attemptId = lines[0]!.slice(separator + 1).trim();
+    const containerId = fields[0]!.trim();
+    const attemptId = fields[1]!.trim();
+    const observedName = fields[2]!.trim().replace(/^\//, "");
+    const observedCreatedAt = Date.parse(fields[3]!.trim());
     if (!/^[a-f0-9]{12,64}$/i.test(containerId)) {
       throw new Error(
         `[docker-sandbox] Cannot verify replacement identity for ${locator.containerName}: invalid Docker id`,
@@ -2272,6 +2291,33 @@ export class DockerSandboxProvider implements SandboxProvider {
           },
         );
         return null;
+      }
+      // With an immutable id the inspect was addressed at the exact persisted
+      // object, so a label mismatch cannot be a name reuse — it is attempt-id
+      // drift between the fence row and the container's create-time label
+      // (#18032). Refusing forever wedges the agent out of every exclusive
+      // lifecycle job, so converge once identity is proven by the stronger
+      // signals: the id matches the fence record, the deterministic name
+      // matches, and the container is old enough that no concurrent
+      // replacement attempt can still be mid-write.
+      if (
+        dockerContainerIdsMatch(locator.containerId, containerId) &&
+        observedName === locator.containerName &&
+        Number.isFinite(observedCreatedAt) &&
+        this.now() - observedCreatedAt >= REPLACEMENT_LABEL_MISMATCH_RETIRE_GRACE_MS
+      ) {
+        logger.warn(
+          "[docker-sandbox] Replacement attempt label drifted from the fence record; converging via id+name identity past the grace window",
+          {
+            nodeId: locator.nodeId,
+            containerName: locator.containerName,
+            containerId,
+            expectedAttemptId: locator.replacementAttemptId,
+            observedAttemptId: attemptId || null,
+            containerAgeMs: this.now() - observedCreatedAt,
+          },
+        );
+        return containerId;
       }
       throw new Error(
         `[docker-sandbox] Replacement attempt label mismatch for ${locator.containerName}`,

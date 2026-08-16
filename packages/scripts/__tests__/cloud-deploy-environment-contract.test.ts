@@ -92,6 +92,7 @@ const requiredAuthWorkerSecretNames = [
   "STEWARD_REQUEST_SIGNING_SECRET",
   "STEWARD_PLATFORM_KEYS",
   "STEWARD_TENANT_API_KEY",
+  "GATEWAY_INTERNAL_SECRET",
 ] as const;
 
 describe("canonical cloud deployment environment contract", () => {
@@ -106,6 +107,23 @@ describe("canonical cloud deployment environment contract", () => {
 
     expect(staging).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
     expect(production).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
+  });
+
+  test("keeps Shared Discord reminder delivery bound across Worker deploys", () => {
+    const staging = cloudApiWranglerSource.slice(
+      cloudApiWranglerSource.indexOf("[env.staging.vars]"),
+      cloudApiWranglerSource.indexOf("[env.production.vars]"),
+    );
+    const production = cloudApiWranglerSource.slice(
+      cloudApiWranglerSource.indexOf("[env.production.vars]"),
+    );
+
+    expect(staging).toContain(
+      'ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://gateway-discord-staging-staging.up.railway.app"',
+    );
+    expect(production).toContain(
+      'ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://gateway-discord-production.up.railway.app"',
+    );
   });
 
   test("keeps the fixed SlopHub cutover behind a reviewed production plan", () => {
@@ -585,14 +603,18 @@ describe("canonical cloud deployment environment contract", () => {
     expect(preflight?.run).not.toContain('echo "$value"');
   });
 
-  test("publishes configured shared secrets and preserves absent Worker values", () => {
-    const publish = step(cloud, "deploy-api", "Publish Worker AI secrets");
+  test("queues configured shared secrets and preserves absent Worker values", () => {
+    const publish = step(
+      cloud,
+      "deploy-api",
+      "Prepare Worker secrets for atomic deploy",
+    );
     for (const name of cloudWorkerSecretNames) {
       expect(publish.env?.[name]).toContain("secrets.");
       expect(publish.run).toContain(`\n  ${name}\n`);
     }
     expect(publish.run).toContain("managed_worker_provisioning_secrets=(");
-    expect(publish.run).toContain('publish_secret "$name" || exit 1');
+    expect(publish.run).toContain('queue_secret "$name" || exit 1');
     expect(publish.run).toContain(
       'echo "::notice::$name is not configured; skipping"',
     );

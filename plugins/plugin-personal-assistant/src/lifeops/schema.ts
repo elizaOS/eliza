@@ -1758,7 +1758,11 @@ export const lifeBlockRules = appLifeopsPgSchema.table("life_block_rules", {
 export const lifeScheduledTasks = appLifeopsPgSchema.table(
   "life_scheduled_tasks",
   {
-    id: text("id").primaryKey(),
+    // The tenant-owned composite primary key (agent_id, id) is declared in the
+    // table config below and must match plugin-scheduling's migration
+    // (ensureTenantOwnedTaskPrimaryKey); a single-column PK here lets tests
+    // pass against a shape the migrated live table does not have.
+    id: text("id").notNull(),
     agentId: text("agent_id").notNull(),
     kind: text("kind").notNull(),
     promptInstructions: text("prompt_instructions").notNull(),
@@ -1796,6 +1800,7 @@ export const lifeScheduledTasks = appLifeopsPgSchema.table(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
+    primaryKey({ columns: [t.agentId, t.id] }),
     unique().on(t.agentId, t.idempotencyKey),
     index("idx_life_scheduled_tasks_agent_kind").on(t.agentId, t.kind),
     index("idx_life_scheduled_tasks_subject").on(

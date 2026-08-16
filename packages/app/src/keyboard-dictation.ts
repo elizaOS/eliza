@@ -191,7 +191,10 @@ export function startKeyboardDictationSession(
   function startLiveActivity(): void {
     if (typeof liveActivity.start !== "function") return;
     liveActivity
-      .start({ sessionTitle: "Keyboard dictation", phase: "recording" })
+      .start({
+        sessionTitleKind: "keyboard-dictation",
+        phase: "recording",
+      })
       .then(() => {
         liveActivityStarted = true;
       })

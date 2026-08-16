@@ -1,18 +1,81 @@
 /**
  * Derives the human-facing model/provider label the API surface reports for a
  * runtime. detectRuntimeModel resolves in priority order: the character/settings
- * model, the configured service-routing transport (direct / remote / cloud-proxy),
- * the config default model, a loaded provider plugin name, then an env provider
- * signal (API-key or base-URL presence, including ELIZA_LOCAL_LLAMA on AOSP).
+ * model, the configured service-routing transport (direct / remote /
+ * cloud-proxy — but only when the cloud plugin actually registered its
+ * chat-brain handler, so a cloud-proxy config without a signed-in account
+ * falls through to the local-provider / plugin-name / env-signal path that
+ * reflects the handler really serving requests, #20045), the config default
+ * model, a loaded provider plugin name, then an env provider signal (API-key
+ * or base-URL presence, including ELIZA_LOCAL_LLAMA on AOSP).
  * resolveProviderFromModel maps a model string to a provider display name.
  */
+
 import type { AgentRuntime } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import {
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
+
+/**
+ * The provider name the elizacloud plugin registers its chat-brain handlers
+ * under (`elizaOSCloudPlugin.name` in plugins/plugin-elizacloud/src/index.ts).
+ * Used by {@link hasCloudTextHandlerRegistered} to verify the configured
+ * cloud-proxy route actually has a registered handler before reporting
+ * "elizacloud" as the active model — when the user is not signed in, the
+ * plugin skips handler registration (ELIZAOS_CLOUD_USE_INFERENCE=false) and
+ * the runtime silently falls through to local inference, so reporting
+ * "elizacloud" from config alone is dishonest. See elizaOS/eliza#20045.
+ */
+const ELIZA_CLOUD_PROVIDER_NAME = "elizaOSCloud";
+
+/**
+ * The provider that served the most recent successful chat `useModel` call, or
+ * undefined before any call has completed. This is evidence rather than
+ * availability: a registered handler can still lose to an override or fail
+ * over to another provider, so when core knows who actually answered, that
+ * wins over every config- and registration-derived guess below.
+ *
+ * Fails closed to undefined — callers fall through to the configured route
+ * rather than fabricating a provider.
+ */
+export function lastServingTextProvider(
+  runtime: AgentRuntime,
+): string | undefined {
+  try {
+    return (
+      runtime.getLastResolvedModelProvider?.(ModelType.TEXT_LARGE) ??
+      runtime.getLastResolvedModelProvider?.(ModelType.TEXT_SMALL)
+    );
+  } catch {
+    // error-policy:J7 diagnostics must not kill the model-label resolver
+    return undefined;
+  }
+}
+
+/**
+ * True when a chat-brain text handler is registered under the elizacloud
+ * provider name. `detectRuntimeModel` uses this to decide whether the
+ * `cloud-proxy` config branch should report `elizacloud` or fall through to
+ * the local-provider / plugin-name / env-signal path that reflects the
+ * handler actually serving requests.
+ */
+export function hasCloudTextHandlerRegistered(runtime: AgentRuntime): boolean {
+  try {
+    const registrations = runtime.getModelRegistrations?.() ?? [];
+    return registrations.some(
+      (entry) =>
+        entry.modelType === ModelType.TEXT_SMALL &&
+        entry.provider === ELIZA_CLOUD_PROVIDER_NAME,
+    );
+  } catch {
+    // error-policy:J7 diagnostics must not kill the model-label resolver
+    return false;
+  }
+}
 
 const MODEL_PLACEHOLDERS = new Set(["", "n/a", "na", "unknown", "provided"]);
 
@@ -115,6 +178,14 @@ export function detectRuntimeModel(
 ): string | undefined {
   if (!runtime) return undefined;
 
+  // Who actually answered beats who was configured to. A character `model`
+  // pin is a request, not a receipt: with a cloud-proxy route and no live
+  // Cloud account the runtime falls through to another provider, and
+  // reporting the pin made /api/status claim "elizacloud" while local
+  // inference served every turn (elizaOS/eliza#20045 review).
+  const serving = lastServingTextProvider(runtime);
+  if (serving) return serving;
+
   const configured = readCharacterModel(runtime);
   if (configured) return configured;
 
@@ -142,7 +213,18 @@ export function detectRuntimeModel(
     );
   }
 
-  if (llmText?.transport === "cloud-proxy" && backend === "elizacloud") {
+  // Only report `elizacloud` from the cloud-proxy route when the cloud
+  // plugin actually registered its chat-brain handler. When the user is not
+  // signed in (no ELIZAOS_CLOUD_API_KEY), the host sets
+  // ELIZAOS_CLOUD_USE_INFERENCE=false and the plugin skips handler
+  // registration, so the runtime falls through to local inference. Reporting
+  // "elizacloud" from config alone hides that fallback and leaves /api/status
+  // disagreeing with the handler actually serving requests (#20045).
+  if (
+    llmText?.transport === "cloud-proxy" &&
+    backend === "elizacloud" &&
+    hasCloudTextHandlerRegistered(runtime)
+  ) {
     return (
       llmText.responseModel ??
       llmText.largeModel ??

@@ -242,6 +242,30 @@ export default defineConfig({
     ...baseConfig.resolve,
     preserveSymlinks: false,
     alias: [
+      // The real agent runtime loads audio-redaction services while this lane
+      // boots the OWNER/USER matrix. This specialized alias list replaces the
+      // base shared-source aliases, so keep these two package subpaths anchored
+      // to their source modules instead of requiring prebuilt shared/core dist.
+      {
+        find: /^@elizaos\/shared\/audio-redaction$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "shared",
+          "src",
+          "audio-redaction.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/shared\/audio-redaction-verify$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "shared",
+          "src",
+          "audio-redaction-verify.ts",
+        ),
+      },
       {
         find: /^@elizaos\/agent\/api\/connector-account-routes$/,
         replacement: path.join(
@@ -266,6 +290,16 @@ export default defineConfig({
           "core",
           "src",
           "index.node.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/core\/edge$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "core",
+          "src",
+          "index.edge.ts",
         ),
       },
       {

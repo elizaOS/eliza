@@ -121,6 +121,14 @@ class_name = "AnonymousChatGate"
 name = "ONBOARDING_SESSIONS"
 class_name = "OnboardingSessionCoordinator"
 
+[[durable_objects.bindings]]
+name = "TWITTER_OAUTH_REFRESH_COORDINATORS"
+class_name = "TwitterOAuthRefreshCoordinator"
+
+[[durable_objects.bindings]]
+name = "PERSONAL_DELIVERY_PROJECTIONS"
+class_name = "PersonalDeliveryProjection"
+
 [[migrations]]
 tag = "shared-runtime-conversations-v1"
 new_sqlite_classes = ["SharedRuntimeConversation"]
@@ -136,6 +144,14 @@ new_sqlite_classes = ["AnonymousChatGate"]
 [[migrations]]
 tag = "onboarding-session-coordinator-v1"
 new_sqlite_classes = ["OnboardingSessionCoordinator"]
+
+[[migrations]]
+tag = "twitter-oauth-refresh-coordinator-v1"
+new_sqlite_classes = ["TwitterOAuthRefreshCoordinator"]
+
+[[migrations]]
+tag = "personal-delivery-projection-v1"
+new_sqlite_classes = ["PersonalDeliveryProjection"]
 
 # General API limits and queues may use Railway Redis via REDIS_URL. Inference
 # routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
@@ -163,6 +179,7 @@ new_sqlite_classes = ["OnboardingSessionCoordinator"]
 # Local/default deployments retain the direct-model control unless explicitly opted in.
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "false"
+PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
@@ -431,6 +448,12 @@ __filename = '"/worker.js"'
 # Protected staging proves the genuine Workerd AgentRuntime before production promotion.
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "true"
+# Staging exercises the strongly invalidated sender projection while default
+# and production stay on canonical resolution until the live latency matrix passes.
+PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "true"
+# Emit per-turn inference spans at info for the staging latency matrix without
+# changing production log volume or recording prompt content.
+ELIZA_INFERENCE_TIMING = "info"
 # Apps (Product 2): wire the real deploy trigger so POST /api/v1/apps/:id/deploy
 # enqueues an APP_DEPLOY job the provisioning-worker daemon runs (instead of the
 # legacy status-only stub). Staging only — the apps data plane (tenant DB +
@@ -472,6 +495,9 @@ AGENT_ROUTER_ORIGIN_HOST = "eliza-staging-1.eliza.app"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://cloud-staging.eliza.app"
+# Shared reminder cron dispatches Discord occurrences to the stateful gateway;
+# keep the public destination committed so a Worker redeploy cannot remove it.
+ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://gateway-discord-staging-staging.up.railway.app"
 # Onboarding and billing links land in the hosted agent application's in-app
 # Cloud view. This host is distinct from staging.eliza.app, which owns the
 # public homepage and login entrypoint.
@@ -620,6 +646,14 @@ class_name = "AnonymousChatGate"
 name = "ONBOARDING_SESSIONS"
 class_name = "OnboardingSessionCoordinator"
 
+[[env.staging.durable_objects.bindings]]
+name = "TWITTER_OAUTH_REFRESH_COORDINATORS"
+class_name = "TwitterOAuthRefreshCoordinator"
+
+[[env.staging.durable_objects.bindings]]
+name = "PERSONAL_DELIVERY_PROJECTIONS"
+class_name = "PersonalDeliveryProjection"
+
 [[env.staging.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615311"
@@ -679,6 +713,7 @@ __filename = '"/worker.js"'
 # Production uses the genuine Shared Workerd runtime for personal voice.
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "true"
+PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
@@ -718,6 +753,7 @@ AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.eliza.app"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://cloud.eliza.app"
+ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://gateway-discord-production.up.railway.app"
 ELIZA_ONBOARDING_APP_URL = "https://cloud.eliza.app"
 ELIZA_ONBOARDING_LOGIN_APP_URL = "https://eliza.app"
 NEXT_PUBLIC_NETWORK = "base"
@@ -841,6 +877,14 @@ class_name = "AnonymousChatGate"
 [[env.production.durable_objects.bindings]]
 name = "ONBOARDING_SESSIONS"
 class_name = "OnboardingSessionCoordinator"
+
+[[env.production.durable_objects.bindings]]
+name = "TWITTER_OAUTH_REFRESH_COORDINATORS"
+class_name = "TwitterOAuthRefreshCoordinator"
+
+[[env.production.durable_objects.bindings]]
+name = "PERSONAL_DELIVERY_PROJECTIONS"
+class_name = "PersonalDeliveryProjection"
 
 [[env.production.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"

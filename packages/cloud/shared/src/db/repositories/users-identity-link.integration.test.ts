@@ -169,9 +169,10 @@ describe("UsersRepository.linkTelegramAndPhoneIdentity", () => {
   });
 });
 
-describe("UsersRepository.findOrCreateTelegramPersonalAccount", () => {
+describe("UsersRepository.findOrCreateMessagingPersonalAccount", () => {
   test("creates one $0 rowless account and reuses it on replay", async () => {
     const input = {
+      platform: "telegram" as const,
       telegramId: "714700001",
       telegramUsername: "elizaisnotabot_user",
       telegramFirstName: "Nubs",
@@ -180,8 +181,8 @@ describe("UsersRepository.findOrCreateTelegramPersonalAccount", () => {
       organizationSlug: "tg-714700001",
     };
 
-    const created = await usersRepository.findOrCreateTelegramPersonalAccount(input);
-    const replayed = await usersRepository.findOrCreateTelegramPersonalAccount({
+    const created = await usersRepository.findOrCreateMessagingPersonalAccount(input);
+    const replayed = await usersRepository.findOrCreateMessagingPersonalAccount({
       ...input,
       displayName: "Nubs Updated",
     });

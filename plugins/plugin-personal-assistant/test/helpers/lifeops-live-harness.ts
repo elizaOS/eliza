@@ -28,7 +28,6 @@ export const REPO_ROOT = path.resolve(
   "..",
   "..",
   "..",
-  "..",
 );
 const ENV_PATH = path.join(REPO_ROOT, ".env");
 const LIVE_HTTP_REQUEST_TIMEOUT_MS = 120_000;
@@ -217,10 +216,17 @@ function resolveCerebrasModelEnv(): Record<string, string> {
     smallModel;
 
   return {
+    CEREBRAS_MODEL: largeModel,
     OPENAI_SMALL_MODEL: smallModel,
     OPENAI_LARGE_MODEL: largeModel,
+    OPENAI_MEDIUM_MODEL: largeModel,
+    OPENAI_ACTION_PLANNER_MODEL: largeModel,
+    OPENAI_PLANNER_MODEL: largeModel,
     SMALL_MODEL: smallModel,
     LARGE_MODEL: largeModel,
+    MEDIUM_MODEL: largeModel,
+    ACTION_PLANNER_MODEL: largeModel,
+    PLANNER_MODEL: largeModel,
   };
 }
 
@@ -673,9 +679,11 @@ export async function startLifeOpsLiveRuntime(options?: {
             : {}),
           allow: [
             ...new Set(
-              [...basePluginsWithoutProviders, selectedProvider.plugin].filter(
-                (entry): entry is string => typeof entry === "string",
-              ),
+              [
+                ...basePluginsWithoutProviders,
+                "@elizaos/plugin-personal-assistant",
+                selectedProvider.plugin,
+              ].filter((entry): entry is string => typeof entry === "string"),
             ),
           ],
         },
@@ -720,6 +728,11 @@ export async function startLifeOpsLiveRuntime(options?: {
       PGLITE_DATA_DIR: pgliteDir,
       ELIZA_PORT: String(apiPort),
       ELIZA_API_PORT: String(apiPort),
+      // The child runs under NODE_ENV=test, where trajectory persistence is
+      // intentionally default-off. Live evidence needs the canonical operator
+      // opt-in so the assertions inspect the same durable rows the runtime UI
+      // and API expose instead of relying only on the provider wire capture.
+      ELIZA_TRAJECTORY_LOGGING: "1",
       ENABLE_AUTONOMY: "false",
       ELIZA_DISABLE_PROACTIVE_AGENT: "1",
       ALLOW_NO_DATABASE: "",
@@ -736,17 +749,43 @@ export async function startLifeOpsLiveRuntime(options?: {
   child.stderr.on("data", (chunk: string) => logs.push(chunk));
 
   const bootTimeoutMs = options?.bootTimeoutMs ?? LIVE_RUNTIME_BOOT_TIMEOUT_MS;
+  const bootDeadlineMs = Date.now() + bootTimeoutMs;
+  const remainingBootTimeMs = (): number =>
+    Math.max(1, bootDeadlineMs - Date.now());
 
   try {
-    await waitForJsonPredicate<{ ready?: boolean; runtime?: string }>(
+    const health = await waitForJsonPredicate<{
+      ready?: boolean;
+      runtime?: string;
+      deferredBoot?: {
+        settled?: boolean;
+        phases?: Record<string, "pending" | "complete" | "failed">;
+      };
+    }>(
       `http://127.0.0.1:${apiPort}/api/health`,
-      (value) => value.ready === true && value.runtime === "ok",
-      bootTimeoutMs,
+      (value) =>
+        value.ready === true &&
+        value.runtime === "ok" &&
+        value.deferredBoot?.settled === true,
+      remainingBootTimeMs(),
     );
+    if (!health.deferredBoot?.phases) {
+      throw new Error("Live runtime health omitted deferred boot phases");
+    }
+    const failedDeferredPhases = Object.entries(
+      health.deferredBoot.phases,
+    ).filter(([, status]) => status === "failed");
+    if (failedDeferredPhases.length > 0) {
+      throw new Error(
+        `Live runtime deferred boot failed: ${failedDeferredPhases
+          .map(([phase]) => phase)
+          .join(", ")}`,
+      );
+    }
     await waitForJsonPredicate<{ trajectories?: unknown[] }>(
       `http://127.0.0.1:${apiPort}/api/trajectories?limit=1`,
       (value) => Array.isArray(value.trajectories),
-      bootTimeoutMs,
+      remainingBootTimeMs(),
     );
     await waitForJsonPredicate<{
       occurrences?: unknown[];
@@ -757,9 +796,9 @@ export async function startLifeOpsLiveRuntime(options?: {
         Array.isArray(value.occurrences) &&
         !!value.summary &&
         typeof value.summary === "object",
-      bootTimeoutMs,
+      remainingBootTimeMs(),
     );
-    await waitForLiveRuntimeBootstrap(apiPort, bootTimeoutMs);
+    await waitForLiveRuntimeBootstrap(apiPort, remainingBootTimeMs());
   } catch (error) {
     const logTail = logs.join("").slice(-8_000);
     if (child.exitCode == null) {

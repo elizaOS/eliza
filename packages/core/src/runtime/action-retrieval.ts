@@ -179,6 +179,78 @@ const COMPRESS_MODE_TOP_K_CAP = 8;
 // arbitrate from the exposed descriptions (#9950).
 const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	ADD_GOAL: ["OWNER_GOALS"],
+	// Email-shaped candidates bind to the inbox triage umbrella. Stage-1
+	// routinely invents these exact names (matrix F21, caught live by the
+	// #20001 resolved-to-nothing observability: EMAIL and EMAIL_SEARCH bound
+	// to no runtime action and the candidate died silently pre-#20001).
+	EMAIL: ["MESSAGE", "INBOX"],
+	EMAILS: ["MESSAGE", "INBOX"],
+	EMAIL_SEARCH: ["MESSAGE", "INBOX"],
+	SEARCH_EMAILS: ["MESSAGE", "INBOX"],
+	READ_EMAIL: ["MESSAGE", "INBOX"],
+	CHECK_EMAIL: ["MESSAGE", "INBOX"],
+	CHECK_INBOX: ["MESSAGE", "INBOX"],
+	// Terminal-shaped candidates bind to the shell surface (same F21 batch:
+	// TERMINAL_COMMAND resolved to nothing).
+	TERMINAL_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	TERMINAL: ["SHELL", "TERMINAL_SHELL"],
+	RUN_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	// Todo-shaped candidates hint BOTH todo owners: the personal-assistant
+	// umbrella and plugin-todos' TODO parent. Deployments load one or the
+	// other; the resolver keeps whichever is registered. Without these the
+	// names Stage-1 actually emits ("add a todo: buy milk" → CREATE_TODO,
+	// "what todos do i have" → USER_TODOS_READ, live trajectories
+	// tj-060255231afe39 / tj-06105af841e1c1) resolve to nothing — the
+	// candidate narrow then dropped every todo tool and the planner
+	// improvised (replayed a stale OWNER_GOALS create; invented a VIEWS
+	// "get-todos" capability that errored). Same class as the habit/goal
+	// aliases above (#10722).
+	ADD_TODO: ["OWNER_TODOS", "TODO"],
+	CREATE_TODO: ["OWNER_TODOS", "TODO"],
+	TODO: ["OWNER_TODOS"],
+	TODOS: ["OWNER_TODOS", "TODO"],
+	TODO_ADD: ["OWNER_TODOS", "TODO"],
+	TODO_CREATE: ["OWNER_TODOS", "TODO"],
+	TODOS_CREATE: ["OWNER_TODOS", "TODO"],
+	NEW_TODO: ["OWNER_TODOS", "TODO"],
+	SAVE_TODO: ["OWNER_TODOS", "TODO"],
+	TODO_LIST: ["OWNER_TODOS", "TODO"],
+	LIST_TODOS: ["OWNER_TODOS", "TODO"],
+	GET_TODOS: ["OWNER_TODOS", "TODO"],
+	SHOW_TODOS: ["OWNER_TODOS", "TODO"],
+	READ_TODOS: ["OWNER_TODOS", "TODO"],
+	USER_TODOS_READ: ["OWNER_TODOS", "TODO"],
+	COMPLETE_TODO: ["OWNER_TODOS", "TODO"],
+	TODO_COMPLETE: ["OWNER_TODOS", "TODO"],
+	DELETE_TODO: ["OWNER_TODOS", "TODO"],
+	REMOVE_TODO: ["OWNER_TODOS", "TODO"],
+	// Canonical OWNER_* fallbacks for non-PA topologies: the stage-1 routing
+	// floor names these parents, and on deployments without
+	// @elizaos/plugin-personal-assistant the names resolve to nothing while
+	// modelCommittedToPlanning preserves the unregistered plan and forces an
+	// unavailable surface. These aliases only apply when the named parent is
+	// NOT registered (direct name resolution wins first), so PA deployments
+	// are untouched. Only capability-equivalent fallbacks are allowed: a plain
+	// todo remains a TODO, while scheduled owner surfaces can use TRIGGER. Goals
+	// intentionally fail closed when OWNER_GOALS is unavailable because neither
+	// a checklist item nor a raw trigger preserves the goal contract.
+	OWNER_TODOS: ["TODO"],
+	OWNER_REMINDERS: ["TRIGGER"],
+	OWNER_ALARMS: ["TRIGGER"],
+	OWNER_ROUTINES: ["TRIGGER"],
+	// Alarm-shaped candidates: same dual hint as reminders/habits — the
+	// owner umbrella plus the always-registered TRIGGER scheduler.
+	ADD_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+	SET_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+	CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+	ALARM_CREATE: ["OWNER_ALARMS", "TRIGGER"],
+	WAKE_ME_UP: ["OWNER_ALARMS", "TRIGGER"],
+	// Finance-shaped candidates: OWNER_FINANCES declares only one simile
+	// ("FINANCES"), so the common Stage-1 inventions need explicit hints.
+	FINANCE: ["OWNER_FINANCES"],
+	SPENDING: ["OWNER_FINANCES"],
+	SPENDING_SUMMARY: ["OWNER_FINANCES"],
+	EXPENSES: ["OWNER_FINANCES"],
 	// Habit/reminder-shaped candidates hint BOTH the owner-life umbrella and the
 	// always-registered TRIGGER scheduler. Stage-1 routinely invents these names
 	// ("can u help me to brush my teeth everyday" → SET_HABIT), and on
@@ -331,11 +403,19 @@ export function retrieveActions(
 		...candidateActions.filter((actionName) =>
 			catalogParentNames.has(normalizeActionName(actionName)),
 		),
-		...candidateActions.flatMap((actionName) =>
-			candidateNamespaceParentExists(input.catalog.parents, actionName)
+		...candidateActions.flatMap((actionName) => {
+			// A candidate that IS a registered catalog parent already contributed
+			// its exact hint above; its fallback aliases must not fire (the
+			// canonical OWNER_* rows exist only for topologies where the parent
+			// is absent).
+			if (catalogParentNames.has(normalizeActionName(actionName))) return [];
+			const explicitAliases =
+				explicitParentAliasesForCandidateAction(actionName);
+			if (explicitAliases.length > 0) return explicitAliases;
+			return candidateNamespaceParentExists(input.catalog.parents, actionName)
 				? []
-				: parentAliasesForCandidateAction(actionName),
-		),
+				: parentAliasesForCandidateAction(actionName);
+		}),
 		// Stage-1 routinely hints an action by one of its similes — the canonical
 		// documented example is candidateActions=["BASH"] for the SHELL parent
 		// (message-handler.ts). Similes feed the fuzzy search text but carry no
@@ -954,10 +1034,8 @@ function dedupeNormalizedStrings(values: string[] | undefined): string[] {
 
 export function parentAliasesForCandidateAction(actionName: string): string[] {
 	const normalized = normalizeActionName(actionName);
-	const explicit = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
-	if (explicit) {
-		return [...explicit];
-	}
+	const explicit = explicitParentAliasesForCandidateAction(normalized);
+	if (explicit.length > 0) return explicit;
 	// Permission/access management is SETTINGS (grant/revoke an app's fs/net
 	// namespace, OS permission requests, shell access) — never view navigation.
 	// Checked before the view/app surface heuristics because Stage-1 invents
@@ -981,6 +1059,11 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
 		aliases.push("APP");
 	}
 	return aliases;
+}
+
+function explicitParentAliasesForCandidateAction(actionName: string): string[] {
+	const normalized = normalizeActionName(actionName);
+	return [...(CANDIDATE_ACTION_PARENT_ALIASES[normalized] ?? [])];
 }
 
 const APP_SURFACE_TOKENS = new Set([
@@ -1148,10 +1231,11 @@ function resolveSimileParentHints(
 		parentBySimile.delete(normalized);
 	}
 	return candidateActions.flatMap((actionName) => {
-		if (parentNames.has(actionName)) {
+		const normalized = normalizeActionName(actionName);
+		if (!normalized || parentNames.has(normalized)) {
 			return [];
 		}
-		const parent = parentBySimile.get(actionName);
+		const parent = parentBySimile.get(normalized);
 		return parent ? [parent] : [];
 	});
 }
@@ -1204,18 +1288,34 @@ function shouldUseRecentConversationForActionSearch(
 	);
 }
 
+// App-surface control blocks ([FORM]/[CHOICE]/[FOLLOWUPS]/[TASK]/[CHECKLIST]
+// and single-line [CONFIG:…] markers) travel inline in delivered message text.
+// When a prior turn's reply carried one, its wire vocabulary ("navigate",
+// "apps", "open", "prompt", …) is UI plumbing, not user intent — left in the
+// retrieval window it floods keyword/bm25 scoring toward view/app actions and
+// can evict the stage-1 candidate entirely (live tj-f8bdfafb488900: a reminder
+// delete routed to CLOSE_ALL_VIEWS off a leaked [FOLLOWUPS] block). Strip the
+// blocks from the conversation window before tokenization; the current user
+// message is never stripped.
+const CONTROL_BLOCK_MARKER_RE =
+	/\[[ \t]*(?:FORM|CHOICE[^\]]*|FOLLOWUPS[^\]]*|TASK:[^\]]*|CHECKLIST)[ \t]*\][\s\S]*?\[[ \t]*\/[ \t]*(?:FORM|CHOICE|FOLLOWUPS|TASK|CHECKLIST)[ \t]*\]|\[CONFIG:[^\]]*\]/g;
+
+export function stripControlBlockMarkers(text: string): string {
+	return text.replace(CONTROL_BLOCK_MARKER_RE, " ");
+}
+
 function normalizeTextList(
 	value: string | readonly string[] | undefined,
 ): string[] {
 	if (typeof value === "string") {
-		return [value];
+		return [stripControlBlockMarkers(value).trim()].filter(Boolean);
 	}
 	if (!Array.isArray(value)) {
 		return [];
 	}
 	return value
 		.filter((entry): entry is string => typeof entry === "string")
-		.map((entry) => entry.trim())
+		.map((entry) => stripControlBlockMarkers(entry).trim())
 		.filter(Boolean);
 }
 

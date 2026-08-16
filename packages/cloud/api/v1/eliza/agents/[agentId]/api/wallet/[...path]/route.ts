@@ -1,11 +1,15 @@
-// Handles v1 cloud API v1 eliza agents agentid api wallet ...path route traffic with route-local auth expectations.
+/** Proxies an authenticated Cloud agent's supported wallet operations to its mapped Steward wallet. */
+import { ElizaError } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { dbWrite } from "@/db/helpers";
 import { agentServerWallets } from "@/db/schemas/agent-server-wallets";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  readSessionCredential,
+  requireUserOrApiKeyWithOrg,
+} from "@/lib/auth/workers-hono-auth";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { createStewardClient } from "@/lib/services/steward-client";
@@ -59,6 +63,7 @@ type StewardWalletClient = {
   getPolicies(agentId: string): Promise<StewardPolicyRule[]>;
   setPolicies(agentId: string, policies: StewardPolicyRule[]): Promise<void>;
   getAgentDashboard(agentId: string): Promise<{
+    pendingApprovals: number;
     recentTransactions: Array<{
       id: string;
       status: string;
@@ -67,11 +72,13 @@ type StewardWalletClient = {
       request?: JsonObject;
     }>;
   }>;
-  listApprovals(opts?: {
-    status?: string;
-    limit?: number;
-    offset?: number;
-  }): Promise<Array<{ agentId?: string } & JsonObject>>;
+  listPendingApprovals(
+    agentId: string,
+    opts?: {
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<unknown[]>;
   approveTransaction(
     txId: string,
     opts?: { comment?: string; approvedBy?: string },
@@ -231,6 +238,16 @@ function isJsonObject(value: unknown): value is JsonObject {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function assertPendingApprovalTotal(value: unknown): asserts value is number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new ElizaError("Steward returned an invalid pending approval total", {
+      code: "INVALID_STEWARD_PENDING_APPROVAL_TOTAL",
+      context: { value },
+      severity: "fatal",
+    });
+  }
+}
+
 function assertStewardWalletClient(
   value: unknown,
 ): asserts value is StewardClient {
@@ -245,7 +262,7 @@ function assertStewardWalletClient(
     "getPolicies",
     "setPolicies",
     "getAgentDashboard",
-    "listApprovals",
+    "listPendingApprovals",
     "approveTransaction",
     "denyTransaction",
   ] as const;
@@ -346,8 +363,10 @@ export async function handleDirectWalletRequest(
 
   let client: StewardClient;
   try {
+    const bearerToken = readSessionCredential(c);
     const stewardClient = await createStewardClient({
       organizationId: user.organization_id,
+      ...(bearerToken ? { bearerToken } : {}),
     });
     assertStewardWalletClient(stewardClient);
     client = stewardClient;
@@ -486,10 +505,17 @@ export async function handleDirectWalletRequest(
       0,
       Number.MAX_SAFE_INTEGER,
     );
-    const approvals = (
-      await client.listApprovals({ status: "pending", limit, offset })
-    ).filter((entry) => entry.agentId === stewardAgentId);
-    return json({ approvals, total: approvals.length, offset, limit });
+    const [approvals, dashboard] = await Promise.all([
+      client.listPendingApprovals(stewardAgentId, { limit, offset }),
+      client.getAgentDashboard(stewardAgentId),
+    ]);
+    assertPendingApprovalTotal(dashboard.pendingApprovals);
+    return json({
+      approvals,
+      total: dashboard.pendingApprovals,
+      offset,
+      limit,
+    });
   }
 
   if (method === "POST" && walletPath === "steward-approve-tx") {

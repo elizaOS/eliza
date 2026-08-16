@@ -42,6 +42,37 @@ export interface DueScheduledTaskRef {
   taskId: string;
 }
 
+export interface RecoverableScheduledTaskRef extends DueScheduledTaskRef {
+  firedAtIso: string;
+}
+
+/** Finds abandoned claims only after their bounded dispatch lease has expired. */
+export async function listRecoverableScheduledTaskRefs(
+  executeSql: SchedulingSqlExecutor,
+  options: { updatedBeforeIso: string; limit?: number },
+): Promise<RecoverableScheduledTaskRef[]> {
+  const limit = Math.min(Math.max(Math.trunc(options.limit ?? 100), 1), 500);
+  const rows = await executeSql(
+    `SELECT agent_id, id, state_json::jsonb ->> 'firedAt' AS fired_at
+       FROM ${TASK_TABLE}
+      WHERE kind = 'reminder'
+        AND transfer_status IS NULL
+        AND COALESCE(metadata_json::jsonb #>> '{sharedCutoverImport,status}', '') <> 'reserved'
+        AND next_fire_at IS NULL
+        AND state_json::jsonb ->> 'status' = 'fired'
+        AND COALESCE(state_json::jsonb ->> 'firedAt', '') <> ''
+        AND updated_at::timestamptz <= ${sqlQuote(options.updatedBeforeIso)}::timestamptz
+        AND COALESCE((metadata_json::jsonb #>> '{lastDispatchResult,ok}')::boolean, FALSE) = FALSE
+      ORDER BY updated_at ASC, agent_id ASC, id ASC
+      LIMIT ${sqlInteger(limit)}`,
+  );
+  return rows.map((row) => ({
+    agentId: toText(row.agent_id),
+    taskId: toText(row.id),
+    firedAtIso: toText(row.fired_at),
+  }));
+}
+
 export async function listDueScheduledTaskRefs(
   executeSql: SchedulingSqlExecutor,
   options: { dueAtIso: string; limit?: number },
@@ -274,7 +305,8 @@ export function createSchedulingSqlScheduledTaskStore(
           metadata_json = EXCLUDED.metadata_json,
           execution_profile = EXCLUDED.execution_profile,
           next_fire_at = EXCLUDED.next_fire_at,
-          updated_at = ${sqlQuote(now)}`,
+          updated_at = ${sqlQuote(now)}
+        WHERE ${TASK_TABLE}.transfer_status IS NULL`,
       );
     },
     async claimForFire(args: {
@@ -447,6 +479,7 @@ export function createSchedulingSqlScheduledTaskLogStore(
            FROM ${LOG_TABLE}
           WHERE agent_id = ${sqlQuote(agentId)}
             AND rolled_up = FALSE
+            AND transition <> 'scheduled'
             AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
       );
       if (rows.length === 0) return { rolledUp: 0, deletedRaw: 0 };
@@ -481,6 +514,7 @@ export function createSchedulingSqlScheduledTaskLogStore(
         `DELETE FROM ${LOG_TABLE}
           WHERE agent_id = ${sqlQuote(agentId)}
             AND rolled_up = FALSE
+            AND transition <> 'scheduled'
             AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
       );
       let counter = 0;

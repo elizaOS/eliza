@@ -185,6 +185,14 @@ function messageText(message: Memory): string {
   return typeof text === "string" ? text : "";
 }
 
+/** Explicit-confirmation cues for the destructive `disconnect` subaction.
+ * Mirrors the LifeOps confirmation-cue dialect (life.ts) so the assistant
+ * keeps one confirmation vocabulary: a bare "disconnect google" ask carries
+ * no cue and gets a question back; "yes" / "yes, disconnect it" /
+ * "disconnect google, I'm sure" carries one and executes. */
+const CONNECTOR_DISCONNECT_CONFIRM_RE =
+  /\b(?:yes|yep|yeah|confirm|confirmed|go ahead|do it|proceed|i'?m sure)\b/i;
+
 /**
  * Short plugin id for the setup card. Message connectors resolve through the
  * existing source mapping; registry-backed connectors use their kind directly
@@ -1622,6 +1630,29 @@ export const connectorAction: Action & {
           actionName: ACTION_NAME,
           error: "MISSING_ACTION",
           validSubactions: [...VALID_SUBACTIONS],
+        },
+      };
+    }
+    // F33: `disconnect` revokes a live grant — destructive and not instantly
+    // reversible (re-auth may need the owner's device). It previously executed
+    // on the FIRST ask with no gate (live matrix F33). Require an explicit
+    // confirmation cue in the owner's own message: the bare ask gets a
+    // question back; the follow-up ("yes" / "yes, disconnect it") re-invokes
+    // with the cue present and executes.
+    if (
+      subaction === "disconnect" &&
+      !CONNECTOR_DISCONNECT_CONFIRM_RE.test(messageText(message))
+    ) {
+      const connectorLabel = params.connector ?? "that connector";
+      return {
+        success: false,
+        text: `Disconnecting ${connectorLabel} revokes its access grant, and restoring it may require re-authenticating from your device. Confirm and I'll disconnect it.`,
+        data: {
+          actionName: ACTION_NAME,
+          connector: params.connector,
+          subaction,
+          requiresConfirmation: true,
+          awaitingUserInput: true,
         },
       };
     }

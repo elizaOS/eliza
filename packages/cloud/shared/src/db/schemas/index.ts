@@ -59,6 +59,7 @@ export * from "./eliza-room-characters";
 export * from "./entity-settings";
 export * from "./generations";
 export * from "./idempotency-keys";
+export * from "./identity-link-codes";
 export * from "./inference-pending-charges";
 export * from "./influencer-marketplace";
 export * from "./invoices";

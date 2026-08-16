@@ -381,6 +381,47 @@ function isRetryableAiSdkError(error: unknown): boolean {
   return status !== null && RETRYABLE_UPSTREAM_STATUSES.has(status);
 }
 
+function aiSdkErrorSearchText(error: unknown): string {
+  const unwrapped = RetryError.isInstance(error) ? error.lastError : error;
+  if (!APICallError.isInstance(unwrapped)) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return [
+    unwrapped.message,
+    unwrapped.responseBody,
+    unwrapped.data === undefined ? undefined : JSON.stringify(unwrapped.data),
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+}
+
+/** OpenRouter occasionally rejects a valid serialized model with this exact routing error. */
+function isTransientOpenRouterNoModelsError(error: unknown): boolean {
+  return (
+    aiSdkErrorStatus(error) === 400 && /\bno models provided\b/i.test(aiSdkErrorSearchText(error))
+  );
+}
+
+async function invokeOpenRouterFallback<T>(
+  model: string,
+  operation: "generate" | "stream",
+  invoke: () => PromiseLike<T>,
+): Promise<T> {
+  try {
+    return await invoke();
+  } catch (error) {
+    // error-policy:J1 OpenRouter's exact transient routing rejection is
+    // translated at the provider boundary into one immediate identical retry.
+    if (!isTransientOpenRouterNoModelsError(error)) throw error;
+    logger.warn(
+      "[OpenRouter] Transient no-models %s rejection for %s; retrying once (no backoff)",
+      operation,
+      model,
+    );
+    return await invoke();
+  }
+}
+
 /**
  * Wraps a native primary language model so that, on a retryable upstream error
  * (402/429/5xx), the request fails over to OpenRouter (BYOK) for the same model.
@@ -412,7 +453,9 @@ function withOpenRouterFallback(
           model,
           aiSdkErrorStatus(error),
         );
-        return await fallbackModel.doGenerate(params);
+        return await invokeOpenRouterFallback(model, "generate", () =>
+          fallbackModel.doGenerate(params),
+        );
       }
     },
     wrapStream: async ({ doStream, params }) => {
@@ -427,7 +470,9 @@ function withOpenRouterFallback(
           model,
           aiSdkErrorStatus(error),
         );
-        return await fallbackModel.doStream(params);
+        return await invokeOpenRouterFallback(model, "stream", () =>
+          fallbackModel.doStream(params),
+        );
       }
     },
   };
@@ -528,7 +573,9 @@ function withCerebrasInteractiveFailover(
           model,
           aiSdkErrorStatus(error),
         );
-        return await fallbackModel.doGenerate(params);
+        return await invokeOpenRouterFallback(model, "generate", () =>
+          fallbackModel.doGenerate(params),
+        );
       }
     },
     wrapStream: async ({ doStream, params }) => {
@@ -541,7 +588,9 @@ function withCerebrasInteractiveFailover(
           model,
           aiSdkErrorStatus(error),
         );
-        return await fallbackModel.doStream(params);
+        return await invokeOpenRouterFallback(model, "stream", () =>
+          fallbackModel.doStream(params),
+        );
       }
     },
   };

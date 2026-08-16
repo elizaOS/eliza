@@ -18,6 +18,7 @@
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { TrajectoryLimitExceeded } from "../runtime/limits";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { TurnControllerRegistry } from "../runtime/turn-controller";
 import { createMockRuntime } from "../testing/mock-runtime";
@@ -80,7 +81,11 @@ function makeState(): State {
 	return { values: {}, data: {}, text: "" };
 }
 
-function makeFailingRuntime(room: Room, failure: Error): IAgentRuntime {
+function makeFailingRuntime(
+	room: Room,
+	failure: Error,
+	templates: Record<string, string> = {},
+): IAgentRuntime {
 	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
 	for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
 		responseHandlerFieldRegistry.register(evaluator);
@@ -90,6 +95,7 @@ function makeFailingRuntime(room: Room, failure: Error): IAgentRuntime {
 		character: {
 			name: "Remilio",
 			bio: "test agent",
+			templates,
 		},
 		logger: {
 			debug: vi.fn(),
@@ -142,8 +148,13 @@ function makeRoom(type: ChannelType): Room {
 	} as Room;
 }
 
-async function runTurn(message: Memory, room: Room, failure: Error) {
-	const runtime = makeFailingRuntime(room, failure);
+async function runTurn(
+	message: Memory,
+	room: Room,
+	failure: Error,
+	templates: Record<string, string> = {},
+) {
+	const runtime = makeFailingRuntime(room, failure, templates);
 	const service = new DefaultMessageService();
 	const deliveries: Content[] = [];
 	const result = await service.handleMessage(
@@ -241,4 +252,141 @@ describe("connector turn failing on 402 credit exhaustion", () => {
 		expect(visibleTexts).toHaveLength(1);
 		expect(visibleTexts[0]).toBe(INSUFFICIENT_CREDITS_REPLY);
 	});
+
+	it.each([
+		{
+			label: "authentication failure",
+			failure: Object.assign(new Error("Invalid API key"), { status: 401 }),
+			failureKind: "provider_issue",
+			transient: false,
+		},
+		{
+			label: "provider throttling",
+			failure: Object.assign(new Error("Rate limit exceeded"), { status: 429 }),
+			failureKind: "rate_limited",
+			transient: true,
+		},
+	])(
+		"marks $label with accurate transient semantics",
+		async ({
+			failure,
+			failureKind,
+			transient,
+		}: {
+			failure: Error;
+			failureKind: string;
+			transient: boolean;
+		}) => {
+			const { deliveries } = await runTurn(
+				makeMessage(),
+				makeRoom(ChannelType.GROUP),
+				failure,
+			);
+			const reply = deliveries.find(
+				(content) => content.elizaSyntheticFailure === true,
+			);
+			expect(reply).toMatchObject({
+				failureKind,
+				transient,
+				doNotPersist: true,
+			});
+		},
+	);
+});
+
+describe("structured trajectory failure connector boundary", () => {
+	beforeEach(() => {
+		vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it.each([
+		{
+			kind: "required_tool_misses" as const,
+			failureKind: "planner_exhaustion",
+			transient: false,
+			text: /ran out of attempts/i,
+		},
+		{
+			kind: "unavailable_tool_calls" as const,
+			failureKind: "missing_capability",
+			transient: false,
+			text: /capability.*isn't available/i,
+		},
+	])(
+		"delivers $kind as $failureKind with accurate persistence metadata",
+		async ({
+			kind,
+			failureKind,
+			transient,
+			text,
+		}: {
+			kind: "required_tool_misses" | "unavailable_tool_calls";
+			failureKind: string;
+			transient: boolean;
+			text: RegExp;
+		}) => {
+			const failure = new TrajectoryLimitExceeded({
+				kind,
+				max: 3,
+				observed: 4,
+			});
+			const { runtime, deliveries } = await runTurn(
+				makeMessage(),
+				makeRoom(ChannelType.GROUP),
+				failure,
+			);
+
+			const reply = deliveries.find(
+				(content) => content.elizaSyntheticFailure === true,
+			);
+			expect(reply).toMatchObject({
+				failureKind,
+				transient,
+				doNotPersist: true,
+			});
+			expect(reply?.text).toMatch(text);
+			expect(runtime.reportError).toHaveBeenCalledWith(
+				"MessageService.v5Runtime",
+				failure,
+				expect.objectContaining({ roomId: ROOM }),
+			);
+		},
+	);
+
+	it.each([
+		[
+			"missingCapabilityFailureReply",
+			"unavailable_tool_calls",
+			"No puedo usar esa capacidad aquí.",
+		],
+		[
+			"plannerExhaustionFailureReply",
+			"required_tool_misses",
+			"No pude terminar a tiempo. Inténtalo de nuevo.",
+		],
+	] as const)(
+		"uses the character %s override for localization",
+		async (templateKey:
+			| "missingCapabilityFailureReply"
+			| "plannerExhaustionFailureReply", kind:
+			| "unavailable_tool_calls"
+			| "required_tool_misses", localizedReply: string) => {
+			const failure = new TrajectoryLimitExceeded({
+				kind,
+				max: 3,
+				observed: 4,
+			});
+			const { visibleTexts } = await runTurn(
+				makeMessage(),
+				makeRoom(ChannelType.GROUP),
+				failure,
+				{ [templateKey]: localizedReply },
+			);
+
+			expect(visibleTexts).toEqual([localizedReply]);
+		},
+	);
 });

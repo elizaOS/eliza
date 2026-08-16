@@ -10,13 +10,14 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const SERVICES_DIR = fileURLToPath(new URL("../..", import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL("../../../../..", import.meta.url));
 
 /**
  * Services whose Dockerfile still cannot resolve its workspace dependencies.
  * Listed rather than skipped: fixing one makes this list wrong and the test
  * says so, instead of an exemption quietly outliving the defect.
  */
-const DOCKERFILE_BROKEN = new Set(["agent-server"]);
+const DOCKERFILE_BROKEN = new Set<string>();
 
 /** Services still shipping a lockfile written before they gained a workspace dep. */
 const LOCKFILE_BLIND = new Set<string>();
@@ -24,6 +25,7 @@ const LOCKFILE_BLIND = new Set<string>();
 interface ServiceBuild {
   name: string;
   workspaceDeps: string[];
+  devWorkspaceDeps: string[];
   dockerfile: string;
 }
 
@@ -36,21 +38,33 @@ function servicesWithDockerfiles(): ServiceBuild[] {
 
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
       dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
     };
     const workspaceDeps = Object.entries(manifest.dependencies ?? {})
+      .filter(([, range]) => range.startsWith("workspace:"))
+      .map(([dep]) => dep);
+    const devWorkspaceDeps = Object.entries(manifest.devDependencies ?? {})
       .filter(([, range]) => range.startsWith("workspace:"))
       .map(([dep]) => dep);
 
     found.push({
       name,
       workspaceDeps,
+      devWorkspaceDeps,
       dockerfile: readFileSync(dockerfilePath, "utf8"),
     });
   }
   return found;
 }
 
-/** Maps a package name to the directory it lives in under services/. */
+/**
+ * Maps a package name to the repo-relative directory it lives in. Services
+ * resolve to their bare directory name (the Dockerfiles address them with the
+ * `packages/cloud/services/` prefix already asserted below); dependencies
+ * outside services/ resolve through the workspace roots that host them, so a
+ * service like agent-server that depends on `@elizaos/core` can be checked
+ * against `packages/core` in its Dockerfile.
+ */
 function directoryOf(dependency: string): string | null {
   for (const name of readdirSync(SERVICES_DIR)) {
     const manifestPath = `${SERVICES_DIR}/${name}/package.json`;
@@ -59,6 +73,18 @@ function directoryOf(dependency: string): string | null {
       name?: string;
     };
     if (manifest.name === dependency) return name;
+  }
+  for (const root of ["packages", "plugins", "packages/cloud"]) {
+    const rootPath = `${REPO_ROOT}/${root}`;
+    if (!existsSync(rootPath)) continue;
+    for (const name of readdirSync(rootPath)) {
+      const manifestPath = `${rootPath}/${name}/package.json`;
+      if (!existsSync(manifestPath)) continue;
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+        name?: string;
+      };
+      if (manifest.name === dependency) return `${root}/${name}`;
+    }
   }
   return null;
 }
@@ -110,6 +136,19 @@ describe("service Dockerfiles can resolve their workspace dependencies", () => {
       );
       expect(gateway?.dockerfile).toContain("packages/cloud/services/_common");
     }
+  });
+
+  test("gateway-webhook prunes build-only workspace links before production install", () => {
+    const gateway = services.find(
+      (service) => service.name === "gateway-webhook",
+    );
+    expect(gateway?.devWorkspaceDeps).toContain("@elizaos/cloud-shared");
+    const pruneAt = gateway?.dockerfile.indexOf(
+      "delete manifest.devDependencies",
+    );
+    const installAt = gateway?.dockerfile.indexOf("bun install --production");
+    expect(pruneAt).toBeGreaterThan(-1);
+    expect(installAt).toBeGreaterThan(pruneAt ?? Number.MAX_SAFE_INTEGER);
   });
 
   for (const service of services.filter((s) => s.workspaceDeps.length > 0)) {

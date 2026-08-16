@@ -4,9 +4,10 @@
  * coarse content type, unknown types degrade to a document, and accompanying
  * prose is sent alongside. Telegraf send calls are mocked.
  */
+import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { MessageManager } from "./messageManager";
+import { MediaType, MessageManager } from "./messageManager";
 
 // Outbound media coverage for the Telegram connector (#8876): when the agent
 // sends a message that carries `Media` attachments, each attachment must be
@@ -139,5 +140,47 @@ describe("Telegram connector outbound media", () => {
 
     expect(senders.sendPhoto).toHaveBeenCalledTimes(1);
     expect(senders.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes URL media through the active forum topic", async () => {
+    const { manager, ctx, senders } = setup();
+
+    await manager.sendMessageInChunks(
+      ctx,
+      {
+        text: "",
+        attachments: [
+          {
+            id: "img",
+            url: "https://cdn.example.com/cat.png",
+            contentType: "image",
+            description: "a cat",
+          },
+        ],
+      } as never,
+      undefined,
+      77,
+    );
+
+    expect(senders.sendPhoto).toHaveBeenCalledWith(
+      123,
+      "https://cdn.example.com/cat.png",
+      { caption: "a cat", message_thread_id: 77 },
+    );
+  });
+
+  it("routes local-file media through the active forum topic", async () => {
+    const { manager, ctx, senders } = setup();
+    const filePath = fileURLToPath(
+      new URL("./messageManager.ts", import.meta.url),
+    );
+
+    await manager.sendMedia(ctx, filePath, MediaType.DOCUMENT, "report", 88);
+
+    expect(senders.sendDocument).toHaveBeenCalledWith(
+      123,
+      { source: expect.anything() },
+      { caption: "report", message_thread_id: 88 },
+    );
   });
 });

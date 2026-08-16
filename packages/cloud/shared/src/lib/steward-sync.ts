@@ -26,6 +26,7 @@ import type { RuntimeDurableObjectNamespace } from "../types/cloud-worker-env";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters/characters";
 import { discordService } from "./services/discord";
+import { invalidateBoundPersonalDeliveryProjection } from "./services/eliza-app/personal-delivery-projection-contract";
 import { emailService } from "./services/email";
 import { invitesService } from "./services/invites";
 import { organizationsService } from "./services/organizations";
@@ -595,10 +596,23 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     }
   }
 
+  if (claimedTelegramUser?.telegram_id) {
+    await invalidateBoundPersonalDeliveryProjection("telegram", claimedTelegramUser.telegram_id);
+  }
+
+  // ── 1. Existing user by steward_user_id ──────────────────────────────
+  // The canonical subject is resolved before phone-account promotion:
+  // promotion claims only a synthetic `phone:<E.164>` account for a subject
+  // with no canonical row, so attempting it for an established user would
+  // misread the subject's own account as `steward_subject_owned_by_other_user`
+  // and 409 the first verified-phone session (#19365). An existing user links
+  // the unowned verified phone through the existing-user path below instead.
+  let user = claimedTelegramUser ?? (await usersService.getByStewardId(stewardUserId));
+
   // A signed inbound text creates a phone-only personal account before any
   // browser session exists. SMS login may claim only that exact synthetic
   // account. Stable user/org ids keep its Shared history attached.
-  if (verifiedPhone && !claimedTelegramUser) {
+  if (verifiedPhone && !user) {
     const promotion = await usersRepository.promotePhonePersonalAccountToSteward({
       phoneNumber: verifiedPhone,
       stewardUserId,
@@ -625,9 +639,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       throw new StewardPhoneAccountConflictError(promotion.status);
     }
   }
-
-  // ── 1. Existing user by steward_user_id ──────────────────────────────
-  let user = claimedTelegramUser ?? (await usersService.getByStewardId(stewardUserId));
 
   if (user) {
     // Telegram promotion updates canonical and projected ownership in one

@@ -14,7 +14,11 @@ Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` a
 | `navigate` | Navigate an existing tab to a URL |
 | `click` | Click a DOM element by CSS selector |
 | `type` | Type text into a selector |
+| `fill` / `clear` | Replace a form control's value or clear it |
 | `press` | Press a keyboard key |
+| `scroll` / `scroll_into` | Scroll by direction and pixels, or reveal a selector |
+| `hover` | Hover a DOM element by CSS selector |
+| `drag` | Drag a source selector to `targetSelector` |
 | `get` | Get a DOM value |
 | `state` | Return current tab state (URL, title) |
 | `snapshot` | Capture a DOM snapshot |

@@ -25,6 +25,7 @@ export {
   bundleFixture,
   type CompileTailwindThemeOptions,
   compileTailwindTheme,
+  FILE_FIXTURE_BOOTSTRAP,
   type FixtureHtmlOptions,
   type WriteFixturePageOptions,
   writeFixturePage,

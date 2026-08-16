@@ -9,8 +9,12 @@ type RedisSetOptions = { ex?: number; nx?: boolean };
 class MemoryRedis implements GatewayRedis {
   readonly store = new Map<string, string>();
   failCompletionWrite = false;
+  failGet = false;
+  failClaimWrite = false;
+  failDelete = false;
 
   async get<T = unknown>(key: string): Promise<T | null> {
+    if (this.failGet) throw new Error("receipt read unavailable");
     return (this.store.get(key) as T | undefined) ?? null;
   }
 
@@ -19,6 +23,7 @@ class MemoryRedis implements GatewayRedis {
     value: string,
     options: RedisSetOptions = {},
   ): Promise<unknown> {
+    if (this.failClaimWrite && options.nx) throw new Error("claim unavailable");
     if (options.nx && this.store.has(key)) return null;
     if (this.failCompletionWrite && value.includes('"state":"complete"')) {
       throw new Error("completion receipt unavailable");
@@ -28,6 +33,7 @@ class MemoryRedis implements GatewayRedis {
   }
 
   async del(key: string): Promise<unknown> {
+    if (this.failDelete) throw new Error("claim release unavailable");
     return this.store.delete(key) ? 1 : 0;
   }
 
@@ -46,12 +52,20 @@ class MemoryRedis implements GatewayRedis {
 
 const originalFetch = globalThis.fetch;
 const originalToken = process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN;
+const originalBlooioKey = process.env.ELIZA_APP_BLOOIO_API_KEY;
+const originalBlooioNumber = process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   if (originalToken === undefined)
     delete process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN;
   else process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = originalToken;
+  if (originalBlooioKey === undefined)
+    delete process.env.ELIZA_APP_BLOOIO_API_KEY;
+  else process.env.ELIZA_APP_BLOOIO_API_KEY = originalBlooioKey;
+  if (originalBlooioNumber === undefined)
+    delete process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER;
+  else process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = originalBlooioNumber;
   mock.restore();
 });
 
@@ -79,6 +93,48 @@ function dependencies(redis: GatewayRedis) {
 }
 
 describe("internal proactive delivery", () => {
+  test("reports Redis read and claim failures as retryable before egress", async () => {
+    const send = mock(async () => {
+      throw new Error("provider must not run");
+    });
+    globalThis.fetch = send as typeof fetch;
+    for (const failure of ["read", "claim"] as const) {
+      const redis = new MemoryRedis();
+      if (failure === "read") redis.failGet = true;
+      else redis.failClaimWrite = true;
+      const response = await deliverInternalMessage(
+        request(),
+        dependencies(redis),
+      );
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        retryable: true,
+        acceptance: "not_accepted",
+      });
+    }
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  test("does not mask an explicit provider rejection when claim release fails", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const redis = new MemoryRedis();
+    redis.failDelete = true;
+    globalThis.fetch = mock(async () =>
+      Response.json({ ok: false, error_code: 403, description: "blocked" }),
+    ) as typeof fetch;
+
+    const response = await deliverInternalMessage(
+      request(),
+      dependencies(redis),
+    );
+    expect(response.status).toBe(403);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    await expect(response.json()).resolves.toMatchObject({
+      acceptance: "not_accepted",
+      claimReleased: false,
+    });
+  });
+
   test("delivers once and replays the completed idempotency key", async () => {
     process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
     const redis = new MemoryRedis();
@@ -101,7 +157,7 @@ describe("internal proactive delivery", () => {
       replayed: false,
     });
     expect(replay.status).toBe(200);
-    await expect(replay.json()).resolves.toEqual({
+    await expect(replay.json()).resolves.toMatchObject({
       success: true,
       replayed: true,
       idempotencyKey: "task-1:2026-08-14T20:00:00.000Z",
@@ -114,6 +170,52 @@ describe("internal proactive delivery", () => {
         parse_mode: "Markdown",
       },
     ]);
+  });
+
+  test("delivers Blooio iMessage once with the provider idempotency key and receipt", async () => {
+    process.env.ELIZA_APP_BLOOIO_API_KEY = "blooio-test-key";
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550001111";
+    const redis = new MemoryRedis();
+    const requests: Request[] = [];
+    globalThis.fetch = mock(async (input, init) => {
+      requests.push(new Request(input, init));
+      return Response.json({ id: "blooio-message-1" });
+    }) as typeof fetch;
+    const delivery = request({
+      platform: "blooio",
+      phoneNumber: "+15551234567",
+    });
+
+    const first = await deliverInternalMessage(delivery, dependencies(redis));
+    const replay = await deliverInternalMessage(
+      request({
+        platform: "blooio",
+        phoneNumber: "+15551234567",
+      }),
+      dependencies(redis),
+    );
+
+    expect(first.status).toBe(200);
+    await expect(first.json()).resolves.toMatchObject({
+      success: true,
+      replayed: false,
+      providerMessageIds: ["blooio-message-1"],
+    });
+    await expect(replay.json()).resolves.toMatchObject({
+      success: true,
+      replayed: true,
+      providerMessageIds: ["blooio-message-1"],
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("https://api.blooio.com/v4/messages");
+    expect(requests[0]?.headers.get("Idempotency-Key")).toBe(
+      "gw-reply-task-1:2026-08-14T20:00:00.000Z",
+    );
+    await expect(requests[0]?.json()).resolves.toEqual({
+      to: "+15551234567",
+      from: "+15550001111",
+      text: "take a break",
+    });
   });
 
   test("rejects a concurrent duplicate while the first send owns delivery", async () => {
@@ -142,9 +244,10 @@ describe("internal proactive delivery", () => {
 
     expect(duplicate.status).toBe(202);
     await expect(duplicate.json()).resolves.toMatchObject({
-      success: true,
+      success: false,
       replayed: true,
       acceptanceUnknown: true,
+      acceptance: "unknown",
     });
     finishSend?.();
     expect((await firstPromise).status).toBe(200);
@@ -164,13 +267,13 @@ describe("internal proactive delivery", () => {
 
     expect(first.status).toBe(202);
     await expect(first.json()).resolves.toMatchObject({
-      success: true,
+      success: false,
       acceptanceUnknown: true,
       replayed: false,
     });
     expect(replay.status).toBe(202);
     await expect(replay.json()).resolves.toMatchObject({
-      success: true,
+      success: false,
       acceptanceUnknown: true,
       replayed: true,
     });
@@ -190,6 +293,31 @@ describe("internal proactive delivery", () => {
     expect(first.status).toBe(202);
     expect(replay.status).toBe(202);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("never reports a pre-existing indeterminate tombstone as accepted", async () => {
+    const redis = new MemoryRedis();
+    redis.store.set(
+      "internal-delivery:telegram:eliza-app:task-1:2026-08-14T20:00:00.000Z",
+      "indeterminate",
+    );
+    globalThis.fetch = mock(async () => {
+      throw new Error("must not resend an indeterminate delivery");
+    }) as typeof fetch;
+
+    const response = await deliverInternalMessage(
+      request(),
+      dependencies(redis),
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      acceptance: "unknown",
+      retryable: false,
+      acceptanceUnknown: true,
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   test("retries without Markdown only after Telegram explicitly rejects formatting", async () => {

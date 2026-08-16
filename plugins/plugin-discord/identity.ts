@@ -82,6 +82,30 @@ export function resolveDiscordRuntimeEntityId(
 	return createUniqueUuid(runtime, userId);
 }
 
+/**
+ * True when a resolved runtime entity id was substituted for this Discord user
+ * rather than derived from it — i.e. the user reached the canonical owner
+ * entity through the owner alias list.
+ *
+ * POLICY: the canonical owner entity's identity metadata is
+ * configuration-owned, never wire-derived. EVERY substituted resolution is
+ * suppressed from contributing display identity — webhooks, secondary alias
+ * accounts, AND the genuine application owner when `ELIZA_ADMIN_ENTITY_ID` is
+ * a configured UUID rather than that owner's own derived id. Suppressing the
+ * genuine owner here is deliberate: when several wire identities collapse
+ * onto one configured entity there is no principled winner, and
+ * last-writer-wins is exactly the corruption this predicate exists to stop.
+ * An owner whose canonical entity IS their derived id (no substitution) keeps
+ * contributing identity normally.
+ */
+export function isAliasedDiscordEntityId(
+	runtime: IAgentRuntime,
+	userId: string,
+	resolvedEntityId: string,
+): boolean {
+	return resolvedEntityId !== createUniqueUuid(runtime, userId);
+}
+
 export function extractDiscordOwnerUserIds(application: unknown): string[] {
 	const applicationRecord = asRecord(application);
 	if (!applicationRecord) {

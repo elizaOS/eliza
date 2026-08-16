@@ -57,6 +57,12 @@ different list. Add a new key, apply it, wait for `active`, verify TLS, and only
 then retire an older generation in a separate reviewed operation. Every pack is
 protected by `prevent_destroy`.
 
+Leave `cloudflare_branding` unset on these immutable resources. Cloudflare's
+order API treats omission as unbranded, while its read API may omit the
+resulting false value. Provider v5 marks an explicit false value as a
+replacement after import, so configuring it would create destructive drift
+without changing the live certificate.
+
 The live staging `*.staging.elizacloud.ai` pack remains at its original resource
 address and is imported separately. Deep legacy `sites` and `tunnel` wildcards
 use additive redirect certificate generations. Their DNS input is explicit so

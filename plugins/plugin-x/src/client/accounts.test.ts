@@ -138,11 +138,8 @@ describe("X account config", () => {
     });
   });
 
-  it("rejects the removed broker auth mode", () => {
+  it("accepts managed broker auth mode", () => {
     const runtime = createRuntime({ TWITTER_AUTH_MODE: "broker" });
-
-    expect(() => getTwitterAuthMode(runtime)).toThrow(
-      "Invalid TWITTER_AUTH_MODE=broker. Expected env|oauth.",
-    );
+    expect(getTwitterAuthMode(runtime)).toBe("broker");
   });
 });

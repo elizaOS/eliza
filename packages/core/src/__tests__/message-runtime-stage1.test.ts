@@ -23,6 +23,7 @@ import {
 	PseudonymSession,
 } from "../security/index.js";
 import {
+	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	messageHandlerFromFieldResult,
 	runV5MessageRuntimeStage1,
 } from "../services/message";
@@ -1283,7 +1284,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			}
 		).messages?.[0];
 		expect(String(systemMessage?.content ?? "")).toContain(
-			"goals -> tasks + OWNER_GOALS, never work threads",
+			"goals -> tasks + OWNER_GOALS",
+		);
+		expect(String(systemMessage?.content ?? "")).toContain(
+			"never work threads and never VIEWS",
 		);
 	});
 
@@ -1456,8 +1460,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent).not.toContain(longDescription);
 		// Compactness ceiling for the DM Stage-1 prompt. Any leaked context
 		// description (~2,500+ chars each) blows far past this; deliberate
-		// template rules only nudge it, so keep the ceiling tight.
-		expect(systemContent.length).toBeLessThan(3_800);
+		// template rules only nudge it, so keep the ceiling tight (currently
+		// ~4.3k rendered after the #19863 owner-life routing floor and the F15
+		// history-never-creates-a-capability grounding line).
+		expect(systemContent.length).toBeLessThan(4_450);
 	});
 
 	it("direct-channel prompt grounds capability denials in executable actions and requires fresh tool retries", async () => {
@@ -1496,6 +1502,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(systemContent).toContain(
 			"A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.",
+		);
+		// Inverse grounding (matrix F15, poisoned-room receipt): the room's
+		// history contained an old planner exchange asking for "your mom's
+		// number", and stage-1 parroted the implied SMS surface. History must
+		// never create a capability the surface list doesn't.
+		expect(systemContent).toContain("History never creates a capability");
+		expect(systemContent).toContain(
+			"never ask follow-up details for a surface you don't have",
 		);
 	});
 
@@ -4773,7 +4787,16 @@ describe("runV5MessageRuntimeStage1", () => {
 									agentId: "00000000-0000-0000-0000-000000000003" as UUID,
 									roomId: "00000000-0000-0000-0000-000000000004" as UUID,
 									createdAt: 2,
-									content: { text: staleAssistantAnswer },
+									// Tool-derived answers carry their producing action in
+									// content.actions (runtime persists) or
+									// actionCallbackHistory (route persists); the planner
+									// window excludes them by that structural marker, not by
+									// role (#17024), so ordinary assistant questions/previews
+									// stay visible for continuation resolution.
+									content: {
+										text: staleAssistantAnswer,
+										actions: ["CHECK_RUNTIME"],
+									},
 								},
 								currentMessage,
 							],
@@ -5385,6 +5408,104 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent).toBeNull();
 			expect(result.result.responseMessages).toEqual([]);
 		}
+	});
+
+	it("reconciles the owner reminder route without dropping a compound Stage-1 candidate", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["tasks", "messaging"],
+				candidateActionNames: ["TRIGGER_CREATE", "MESSAGE_SEND"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Create the owner reminder first.",
+				toolCalls: [
+					{
+						id: "owner-reminder-1",
+						name: "OWNER_REMINDERS",
+						args: {},
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The owner reminder route completed.",
+				messageToUser: "The reminder route completed.",
+			}),
+		]);
+		const ownerHandler = vi.fn(async () => ({
+			success: true,
+			text: "Reminder created.",
+		}));
+		runtime.actions = [
+			{
+				name: "OWNER_REMINDERS",
+				description: "Create owner reminders.",
+				contexts: ["tasks", "productivity"],
+				tags: [
+					"domain:reminders",
+					"capability:write",
+					"capability:schedule",
+					"effect:receipt-required",
+				],
+				roleGate: { minRole: "USER" },
+				validate: async () => true,
+				handler: ownerHandler,
+			},
+			{
+				name: "MESSAGE_SEND",
+				description: "Send an owner-approved message.",
+				contexts: ["messaging"],
+				validate: async () => true,
+				handler: async () => ({ success: true, text: "Message sent." }),
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.owner-reminder-authoritative",
+			actionNames: ["OWNER_REMINDERS"],
+			replacesActionNames: ["TRIGGER_CREATE"],
+			requiredActionTags: [
+				"domain:reminders",
+				"capability:write",
+				"capability:schedule",
+				"effect:receipt-required",
+			],
+			contexts: ["tasks", "productivity"],
+			matches: (text) => /\bremind\s+me\b/iu.test(text),
+		});
+		const directRouteEvaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(evaluator) =>
+				evaluator.name === "core.direct_registered_capability_request",
+		);
+		if (!directRouteEvaluator)
+			throw new Error("direct route evaluator missing");
+		runtime.responseHandlerEvaluators = [directRouteEvaluator];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Remind me to message Pat tomorrow, then send the update.",
+			}),
+			state: {
+				...makeState(),
+				values: {
+					availableContexts: "general, tasks, productivity, messaging",
+				},
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(result.messageHandler.plan.candidateActions).toEqual([
+			"MESSAGE_SEND",
+			"OWNER_REMINDERS",
+		]);
+		expect(result.messageHandler.plan.candidateActions).not.toContain(
+			"TRIGGER_CREATE",
+		);
+		expect(ownerHandler).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not treat a tasks-context CHOOSE_OPTION action as a recap reader", async () => {
@@ -6647,5 +6768,452 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 		}
 		const scopes = reportErrorCalls(runtime).map((call) => call[0]);
 		expect(scopes).toContain("MessageService.resolveAddressees");
+	});
+});
+
+describe("planner prior dialogue and continuation resolution (#17024)", () => {
+	const roomId = "00000000-0000-0000-0000-000000001111" as UUID;
+
+	function recentState(recentMessages: unknown[]): State {
+		return {
+			values: { availableContexts: "simple, general" },
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						text: "# Conversation Messages\nprovider text should not render",
+						data: { recentMessages },
+						providerName: "RECENT_MESSAGES",
+					},
+				},
+			},
+			text: "",
+		};
+	}
+
+	it("renders ordinary own replies in the planner context while excluding tool-derived ones", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "No tool needed in this fixture.",
+				toolCalls: [],
+				messageToUser: "Done.",
+			}),
+		]);
+		const agentId = runtime.agentId;
+		const state = recentState([
+			{
+				id: "00000000-0000-0000-0000-00000000dd01" as UUID,
+				entityId: "00000000-0000-0000-0000-00000000dd11" as UUID,
+				agentId,
+				roomId,
+				createdAt: 1,
+				content: { text: "whats the btc price", source: "discord" },
+				metadata: {
+					type: "message",
+					sender: { id: "discord-1gig", name: "1gig" },
+				},
+			},
+			{
+				id: "00000000-0000-0000-0000-00000000dd02" as UUID,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 2,
+				content: {
+					text: "Do you want that in USD or EUR?",
+					source: "discord",
+				},
+			},
+			{
+				id: "00000000-0000-0000-0000-00000000dd03" as UUID,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 3,
+				content: {
+					text: "BTC is around $63,000 right now.",
+					source: "discord",
+					actions: ["WEB_SEARCH"],
+				},
+			},
+			{
+				id: "00000000-0000-0000-0000-00000000dd04" as UUID,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 4,
+				content: {
+					text: "ETH is $3,000 right now.",
+					source: "discord",
+					actionCallbackHistory: ["ETH is $3,000 right now."],
+				},
+			},
+		]);
+		runtime.composeState = vi.fn(async () => state);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "in USD please" }),
+			state,
+			responseId: "00000000-0000-0000-0000-0000000000c1" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const calls = useModelCalls(runtime);
+		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerParams = calls[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerParams.messages?.[1]?.content ?? "";
+		// The ordinary own reply — the question a continuation refers to — is
+		// visible and role-tagged.
+		expect(plannerUserContent).toContain(
+			"prior_message:agent:\nTest Agent: Do you want that in USD or EUR?",
+		);
+		// Tool-derived own answers stay out of the planner window (stale-answer
+		// hazard): both the actions-marked and callback-history-marked rows.
+		expect(plannerUserContent).not.toContain("BTC is around $63,000");
+		expect(plannerUserContent).not.toContain("ETH is $3,000");
+		// The planner boundary instruction now covers own-reply staleness.
+		expect(plannerUserContent).toContain("treat every fact in them as stale");
+	});
+
+	it("resolves an explicit continuation turn to the prior user request for candidate inference", async () => {
+		const shellHandler = vi.fn(async () => ({
+			success: true,
+			text: "Filesystem usage: 42%",
+		}));
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Sure.",
+			}),
+			{
+				thought: "Run the pending disk-usage request.",
+				toolCalls: [
+					{
+						id: "shell-disk-usage",
+						name: "SHELL",
+						args: { command: "df -h" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Shell returned the disk usage.",
+				messageToUser: "Filesystem usage is at 42%.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "SHELL",
+				similes: [],
+				description: "Run a local shell command.",
+				parameters: [
+					{
+						name: "command",
+						description: "Command to run",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		const agentId = runtime.agentId;
+		const state = recentState([
+			{
+				id: "00000000-0000-0000-0000-00000000ee01" as UUID,
+				entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+				agentId,
+				roomId,
+				createdAt: 1,
+				content: {
+					text: "show me disk usage on this server",
+					source: "test",
+				},
+			},
+			{
+				id: "00000000-0000-0000-0000-00000000ee02" as UUID,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 2,
+				content: { text: "On it.", source: "test" },
+			},
+		]);
+		runtime.composeState = vi.fn(async () => state);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "finish my request" }),
+			state,
+			responseId: "00000000-0000-0000-0000-0000000000c2" as UUID,
+		});
+
+		// The contentless continuation turn resolved to the pending shell
+		// request, so the turn routes to the planner with the shell candidate
+		// and the shell action actually runs.
+		expect(result.kind).toBe("planned_reply");
+		expect(shellHandler).toHaveBeenCalledTimes(1);
+		const calls = useModelCalls(runtime);
+		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerParams = JSON.stringify(calls[1]?.[1] ?? {});
+		expect(plannerParams).toContain("SHELL");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Filesystem usage is at 42%.",
+			);
+		}
+	});
+
+	it("still resolves an approval continuation after a planner-terminal STOP ack (#20324 review)", async () => {
+		const shellHandler = vi.fn(async () => ({
+			success: true,
+			text: "Filesystem usage: 42%",
+		}));
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Sure.",
+			}),
+			{
+				thought: "Run the pending disk-usage request.",
+				toolCalls: [
+					{
+						id: "shell-disk-usage-stop",
+						name: "SHELL",
+						args: { command: "df -h" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Shell returned the disk usage.",
+				messageToUser: "Filesystem usage is at 42%.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "SHELL",
+				similes: [],
+				description: "Run a local shell command.",
+				parameters: [
+					{
+						name: "command",
+						description: "Command to run",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		const agentId = runtime.agentId;
+		const state = recentState([
+			{
+				id: "00000000-0000-0000-0000-00000000ee11" as UUID,
+				entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+				agentId,
+				roomId,
+				createdAt: 1,
+				content: {
+					text: "show me disk usage on this server",
+					source: "test",
+				},
+			},
+			{
+				id: "00000000-0000-0000-0000-00000000ee12" as UUID,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 2,
+				content: { text: "On it.", source: "test", actions: ["STOP"] },
+			},
+		]);
+		runtime.composeState = vi.fn(async () => state);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "that is good" }),
+			state,
+			responseId: "00000000-0000-0000-0000-0000000000c6" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(shellHandler).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not promote a non-continuation turn from prior history (topic-switch control)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "You're welcome!",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "SHELL",
+				similes: [],
+				description: "Run a local shell command.",
+				parameters: [],
+				examples: [],
+				validate: async () => true,
+				handler: vi.fn(async () => ({ success: true, text: "" })),
+			},
+		] as never;
+		const agentId = runtime.agentId;
+		const state = recentState([
+			{
+				id: "00000000-0000-0000-0000-00000000ee01" as UUID,
+				entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+				agentId,
+				roomId,
+				createdAt: 1,
+				content: {
+					text: "show me disk usage on this server",
+					source: "test",
+				},
+			},
+			{
+				id: "00000000-0000-0000-0000-00000000ee02" as UUID,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 2,
+				content: { text: "On it.", source: "test" },
+			},
+		]);
+		runtime.composeState = vi.fn(async () => state);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "thanks, you are great" }),
+			state,
+			responseId: "00000000-0000-0000-0000-0000000000c3" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
+	it("does not replay a completed action when the user praises its short reply", async () => {
+		const shellHandler = vi.fn(async () => ({ success: true, text: "" }));
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Thanks!",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "SHELL",
+				similes: [],
+				description: "Run a local shell command.",
+				parameters: [],
+				examples: [],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		const agentId = runtime.agentId;
+		const state = recentState([
+			{
+				id: "00000000-0000-0000-0000-00000000ef01" as UUID,
+				entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+				agentId,
+				roomId,
+				createdAt: 1,
+				content: {
+					text: "delete the temporary file with the shell",
+					source: "test",
+				},
+			},
+			{
+				id: "00000000-0000-0000-0000-00000000ef02" as UUID,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 2,
+				content: { text: "Done.", source: "test" },
+			},
+		]);
+		runtime.composeState = vi.fn(async () => state);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "that is great" }),
+			state,
+			responseId: "00000000-0000-0000-0000-0000000000c4" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
+	it("does not promote another participant's pending request", async () => {
+		const shellHandler = vi.fn(async () => ({ success: true, text: "" }));
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "What would you like me to do?",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "SHELL",
+				similes: [],
+				description: "Run a local shell command.",
+				parameters: [],
+				examples: [],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		const agentId = runtime.agentId;
+		const state = recentState([
+			{
+				id: "00000000-0000-0000-0000-00000000ff01" as UUID,
+				entityId: "00000000-0000-0000-0000-00000000ff11" as UUID,
+				agentId,
+				roomId,
+				createdAt: 1,
+				content: {
+					text: "show me disk usage on this server",
+					source: "test",
+				},
+			},
+			{
+				id: "00000000-0000-0000-0000-00000000ff02" as UUID,
+				entityId: agentId,
+				agentId,
+				roomId,
+				createdAt: 2,
+				content: { text: "Should I run it?", source: "test" },
+			},
+		]);
+		runtime.composeState = vi.fn(async () => state);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "go ahead" }),
+			state,
+			responseId: "00000000-0000-0000-0000-0000000000c5" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(1);
 	});
 });

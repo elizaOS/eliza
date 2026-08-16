@@ -2,7 +2,6 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { twitterAutomationService } from "@/lib/services/twitter-automation";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -30,6 +29,11 @@ const app = new Hono<AppEnv>();
  *       "expires_at": 1735689600
  *     }
  *
+ * OAuth 2.0 tokens are refreshed server-side before vending whenever the
+ * stored token is expired (or has no recorded expiry) and a refresh token is
+ * available, so the response always carries a live token plus its
+ * `expires_at` deadline when X reported one.
+ *
  * Auth: standard Cloud auth (Bearer JWT, eliza_* API key, or X-API-Key) — same
  * as every other v1 route. The authenticated user/org owns the X connection
  * being read.
@@ -37,55 +41,54 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const role =
-      c.req.query("connectionRole") === "owner" ? "owner" : ("agent" as const);
-
-    const creds = await twitterAutomationService.getCredentialsForAgent(
-      user.organization_id,
-      role,
-    );
-
-    if (!creds) {
+    // The owner connection is the user's PERSONAL X account. Vending it must
+    // be an explicit, well-formed request — never the fallthrough for a
+    // missing or mistyped parameter (the prior ternary mapped every
+    // non-"agent" value, including typos and absence, to "owner"). Missing
+    // defaults to the least-privileged agent connection; garbage is a 400,
+    // not a silent privilege escalation.
+    const requestedRole = c.req.query("connectionRole");
+    if (
+      requestedRole !== undefined &&
+      requestedRole !== "agent" &&
+      requestedRole !== "owner"
+    ) {
       return c.json(
         {
-          error: "no_x_connection",
-          message:
-            "No X (Twitter) connection found for this organization. Connect via the connectors page.",
-          connectionRole: role,
+          error: "invalid_connection_role",
+          message: 'connectionRole must be "agent" or "owner".',
         },
-        404,
+        400,
       );
     }
+    const role: "agent" | "owner" = requestedRole ?? "agent";
 
-    if (creds.TWITTER_AUTH_MODE === "oauth1a") {
-      return c.json({
-        auth_mode: "oauth1" as const,
-        consumer_key: creds.TWITTER_API_KEY,
-        consumer_secret: creds.TWITTER_API_SECRET_KEY,
-        access_token: creds.TWITTER_ACCESS_TOKEN,
-        access_token_secret: creds.TWITTER_ACCESS_TOKEN_SECRET,
-        ...(creds.TWITTER_USER_ID ? { user_id: creds.TWITTER_USER_ID } : {}),
-      });
+    const coordinator = c.env.TWITTER_OAUTH_REFRESH_COORDINATORS;
+    if (!coordinator) {
+      return c.json(
+        {
+          error: "x_credential_coordinator_unavailable",
+          message: "X credential coordinator is unavailable.",
+        },
+        503,
+      );
     }
-
-    if (creds.TWITTER_AUTH_MODE === "oauth2") {
-      return c.json({
-        auth_mode: "oauth2" as const,
-        access_token: creds.TWITTER_OAUTH_ACCESS_TOKEN,
-        ...(creds.TWITTER_OAUTH_SCOPE
-          ? { scopes: creds.TWITTER_OAUTH_SCOPE }
-          : {}),
-        ...(creds.TWITTER_USER_ID ? { user_id: creds.TWITTER_USER_ID } : {}),
+    const response = await coordinator
+      .getByName(`${user.organization_id}:${role}`)
+      .fetch("https://twitter-oauth.internal/credentials", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          organizationId: user.organization_id,
+          userId: user.id,
+          connectionRole: role,
+        }),
       });
-    }
-
-    return c.json(
-      {
-        error: "unsupported_auth_mode",
-        message: `Stored TWITTER_AUTH_MODE=${creds.TWITTER_AUTH_MODE} is not supported by the broker endpoint.`,
-      },
-      500,
-    );
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
   } catch (error) {
     return failureResponse(c, error);
   }

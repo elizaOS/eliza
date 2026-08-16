@@ -338,6 +338,7 @@
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-capacitor-bridge": "workspace:*",
     "@elizaos/plugin-cloud-apps": "workspace:*",
+    "@elizaos/plugin-calendar": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
     "@elizaos/plugin-commands": "workspace:*",
     "@elizaos/plugin-computeruse": "workspace:*",
@@ -387,6 +388,7 @@
     "@elizaos/plugin-calendar": "workspace:*",
     "@elizaos/plugin-documents": "workspace:*",
     "@elizaos/plugin-inbox": "workspace:*",
+    "@elizaos/plugin-todos": "workspace:*",
     "@elizaos/plugin-x402": "*"
   },
   "peerDependenciesMeta": {
@@ -400,6 +402,9 @@
       "optional": true
     },
     "@elizaos/plugin-inbox": {
+      "optional": true
+    },
+    "@elizaos/plugin-todos": {
       "optional": true
     },
     "@elizaos/plugin-x402": {

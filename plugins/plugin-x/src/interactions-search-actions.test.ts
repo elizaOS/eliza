@@ -21,6 +21,7 @@ function createRuntime(
   modelResponse: string,
   settings: Record<string, string> = {},
 ) {
+  const cache = new Map<string, unknown>();
   return asRuntime({
     agentId: "agent-1" as UUID,
     character: { name: "Agent", templates: {} },
@@ -30,11 +31,18 @@ function createRuntime(
     ensureConnection: vi.fn(async () => undefined),
     ensureRoomExists: vi.fn(async () => undefined),
     ensureWorldExists: vi.fn(async () => undefined),
-    getCache: vi.fn(async () => undefined),
-    setCache: vi.fn(async () => undefined),
+    updateWorld: vi.fn(async () => undefined),
+    cache,
+    getCache: vi.fn(async (key: string) => cache.get(key)),
+    setCache: vi.fn(async (key: string, value: unknown) => {
+      cache.set(key, value);
+      return true;
+    }),
+    deleteCache: vi.fn(async (key: string) => cache.delete(key)),
     getMemoryById: vi.fn(async () => null),
     getMemories: vi.fn(async () => []),
     getSetting: vi.fn((key: string) => settings[key]),
+    reportError: vi.fn(),
     useModel: vi.fn(async () => modelResponse),
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     messageService: {
@@ -50,16 +58,67 @@ interface TwitterClientMock {
   getTweetsV2: ReturnType<typeof vi.fn>;
 }
 
-function createClient(twitterClient: TwitterClientMock): ClientBase {
-  return {
+function createClient(
+  twitterClient: TwitterClientMock,
+  runtime: ReturnType<typeof createRuntime>,
+): ClientBase {
+  let lastCheckedTweetId: bigint | null = null;
+  const authenticatedProfile = {
+    id: "bot-user",
+    username: "bot",
+    screenName: "Bot",
+    bio: "",
+    nicknames: [],
+  };
+  const client = {
     accountId: "default",
-    lastCheckedTweetId: null,
+    runtime,
+    get lastCheckedTweetId() {
+      return lastCheckedTweetId;
+    },
+    set lastCheckedTweetId(value: bigint | null) {
+      lastCheckedTweetId = value;
+    },
     profile: { id: "bot-user", username: "bot" },
+    getAuthenticatedProfile: vi.fn(async () => authenticatedProfile),
+    withAuthenticatedSession: vi.fn(
+      async (
+        operation: (session: {
+          client: TwitterClientMock;
+          profile: typeof authenticatedProfile;
+          revision: number;
+        }) => Promise<unknown>,
+      ) =>
+        operation({
+          client: twitterClient,
+          profile: authenticatedProfile,
+          revision: 1,
+        }),
+    ),
+    getLatestCheckedTweetId: vi.fn(() => lastCheckedTweetId),
+    recordLatestCheckedTweetId: vi.fn((_profileId: string, id: bigint) => {
+      lastCheckedTweetId = id;
+    }),
+    cacheLatestCheckedTweetId: vi.fn(async () => undefined),
+    isAuthenticatedSessionCurrent: vi.fn(() => true),
+    identityCacheKey: vi.fn(
+      (profile: typeof authenticatedProfile, suffix: string) =>
+        `twitter/default/${profile.id}/${suffix}`,
+    ),
+    getIdentityCache: vi.fn(
+      (profile: typeof authenticatedProfile, suffix: string) =>
+        runtime.getCache(`twitter/default/${profile.id}/${suffix}`),
+    ),
+    setIdentityCache: vi.fn(
+      (profile: typeof authenticatedProfile, suffix: string, value: unknown) =>
+        runtime.setCache(`twitter/default/${profile.id}/${suffix}`, value),
+    ),
     twitterClient,
     requestQueue: { add: <T>(fn: () => Promise<T>) => fn() },
     fetchSearchTweets: vi.fn(),
     fetchHomeTimeline: vi.fn(async () => []),
-  } as unknown as ClientBase;
+  };
+  return client as unknown as ClientBase;
 }
 
 function tweet(overrides: Partial<Tweet> = {}): Tweet {
@@ -119,7 +178,7 @@ describe("Twitter search engagement actions", () => {
       TWITTER_TARGET_USERS: "alice",
     });
     const twitterClient = createTwitterClientMock();
-    const clientBase = createClient(twitterClient);
+    const clientBase = createClient(twitterClient, runtime);
     const client = new TwitterInteractionClient(
       clientBase,
       runtime,
@@ -131,6 +190,7 @@ describe("Twitter search engagement actions", () => {
     expect(twitterClient.likeTweet).toHaveBeenCalledWith("500");
     expect(twitterClient.retweet).toHaveBeenCalledWith("500");
     expect(twitterClient.sendQuoteTweet).not.toHaveBeenCalled();
+    expect(runtime.reportError).not.toHaveBeenCalled();
   });
 
   it("quote tweets a search-discovered tweet with generated commentary", async () => {
@@ -143,7 +203,7 @@ describe("Twitter search engagement actions", () => {
       .mockResolvedValueOnce("[QUOTE]")
       .mockResolvedValueOnce('{"post":"sharp take, agreed"}');
     const twitterClient = createTwitterClientMock();
-    const clientBase = createClient(twitterClient);
+    const clientBase = createClient(twitterClient, runtime);
     const client = new TwitterInteractionClient(
       clientBase,
       runtime,
@@ -158,6 +218,7 @@ describe("Twitter search engagement actions", () => {
     );
     expect(twitterClient.likeTweet).not.toHaveBeenCalled();
     expect(twitterClient.retweet).not.toHaveBeenCalled();
+    expect(runtime.reportError).not.toHaveBeenCalled();
   });
 
   it("takes no engagement action when the model selects none", async () => {
@@ -166,7 +227,7 @@ describe("Twitter search engagement actions", () => {
       TWITTER_TARGET_USERS: "alice",
     });
     const twitterClient = createTwitterClientMock();
-    const clientBase = createClient(twitterClient);
+    const clientBase = createClient(twitterClient, runtime);
     const client = new TwitterInteractionClient(
       clientBase,
       runtime,
@@ -178,6 +239,7 @@ describe("Twitter search engagement actions", () => {
     expect(twitterClient.likeTweet).not.toHaveBeenCalled();
     expect(twitterClient.retweet).not.toHaveBeenCalled();
     expect(twitterClient.sendQuoteTweet).not.toHaveBeenCalled();
+    expect(runtime.reportError).not.toHaveBeenCalled();
   });
 
   it("simulates like / retweet / quote in dry-run mode", async () => {
@@ -190,7 +252,7 @@ describe("Twitter search engagement actions", () => {
       .mockResolvedValueOnce("[LIKE]\n[RETWEET]\n[QUOTE]")
       .mockResolvedValueOnce('{"post":"sharp take, agreed"}');
     const twitterClient = createTwitterClientMock();
-    const clientBase = createClient(twitterClient);
+    const clientBase = createClient(twitterClient, runtime);
     const client = new TwitterInteractionClient(
       clientBase,
       runtime,
@@ -202,5 +264,39 @@ describe("Twitter search engagement actions", () => {
     expect(twitterClient.likeTweet).not.toHaveBeenCalled();
     expect(twitterClient.retweet).not.toHaveBeenCalled();
     expect(twitterClient.sendQuoteTweet).not.toHaveBeenCalled();
+    expect(runtime.reportError).not.toHaveBeenCalled();
+  });
+
+  it("does not act or mark a search result processed after the authenticated account rotates", async () => {
+    let resolveDecision!: (value: string) => void;
+    const decision = new Promise<string>((resolve) => {
+      resolveDecision = resolve;
+    });
+    const runtime = createRuntime("", {
+      TWITTER_ENABLE_REPLIES: "false",
+      TWITTER_TARGET_USERS: "alice",
+    });
+    runtime.useModel.mockImplementationOnce(() => decision);
+    const twitterClient = createTwitterClientMock();
+    const clientBase = createClient(twitterClient, runtime);
+    const current = vi.mocked(clientBase.isAuthenticatedSessionCurrent);
+    const client = new TwitterInteractionClient(
+      clientBase,
+      runtime,
+      {} as TwitterClientState,
+    );
+
+    const run = runTargetUserEngagement(client, clientBase, tweet());
+    await vi.waitFor(() => expect(runtime.useModel).toHaveBeenCalledOnce());
+    current.mockReturnValue(false);
+    resolveDecision("[LIKE]");
+    await run;
+
+    expect(twitterClient.likeTweet).not.toHaveBeenCalled();
+    expect(runtime.createMemory).not.toHaveBeenCalled();
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "XInteractionClient.handleInteractions",
+      expect.objectContaining({ code: "X_AUTH_SESSION_ROTATED" }),
+    );
   });
 });

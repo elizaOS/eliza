@@ -6,7 +6,7 @@
  * "missing", broadcasts a system-warning via WebSocket.
  */
 
-import { type AgentRuntime, ElizaError } from "@elizaos/core";
+import { type AgentRuntime, ElizaError, logger } from "@elizaos/core";
 
 export type ConnectorStatus = "ok" | "missing" | "unknown";
 
@@ -123,8 +123,28 @@ export class ConnectorHealthMonitor {
 
   start(): void {
     if (this.timer) return;
-    this.check();
-    this.timer = setInterval(() => this.check(), this.intervalMs);
+    // Fire-and-forget probing must never leak an unhandledRejection: a rejected
+    // cycle would otherwise trip the process crash guards as silent log noise
+    // (J7 — diagnostics must not kill the loop). check() already isolates each
+    // connector, so this .catch() only covers unexpected failures in its own
+    // bookkeeping.
+    void this.check().catch((error: unknown) => {
+      this.reportProbeCycleFailure(error);
+    });
+    this.timer = setInterval(() => {
+      void this.check().catch((error: unknown) => {
+        this.reportProbeCycleFailure(error);
+      });
+    }, this.intervalMs);
+  }
+
+  private reportProbeCycleFailure(error: unknown): void {
+    logger.warn(
+      `[ConnectorHealthMonitor] connector health cycle failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    this.runtime?.reportError?.("ConnectorHealthMonitor.check", error);
   }
 
   stop(): void {
@@ -168,10 +188,32 @@ export class ConnectorHealthMonitor {
     const service = this.runtime.getService(pluginName);
     if (service) {
       if (hasPollerHealthProbe(service)) {
-        const health = await service.getPollerHealth();
-        return health.ok === true && health.connected === true
-          ? "ok"
-          : "missing";
+        // getPollerHealth() is typed to return a value OR a Promise and, per the
+        // repo's fail-fast-inside policy, may throw/reject on an internal or
+        // network error. Isolate it here so an unavailable connector is reported
+        // "missing" (unavailable != healthy) rather than aborting the whole
+        // probe cycle or fabricating an "ok" DTO (J7 + the no-healthy-default
+        // rule).
+        try {
+          const health = await service.getPollerHealth();
+          return health.ok === true && health.connected === true
+            ? "ok"
+            : "missing";
+        } catch (error) {
+          // error-policy:J7 diagnostics must not kill the loop: a throwing
+          // poller probe is reported and the connector treated as missing.
+          logger.warn(
+            `[ConnectorHealthMonitor] ${name} poller health probe failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          this.runtime?.reportError?.(
+            "ConnectorHealthMonitor.probeConnector",
+            error,
+            { connector: name, plugin: pluginName },
+          );
+          return "missing";
+        }
       }
       return "ok";
     }
@@ -191,7 +233,26 @@ export class ConnectorHealthMonitor {
     const configured = this.getConfiguredConnectors();
 
     for (const name of configured) {
-      const newStatus = await this.probeConnector(name);
+      // Per-connector isolation (J7): a failure while probing one connector
+      // must not abort probing the rest, which would leave later connectors
+      // unrecorded and hand health-routes an empty map it relabels a
+      // fabricated-healthy "configured". probeConnector already isolates the
+      // poller probe; this guards any other unexpected throw (e.g. getService).
+      let newStatus: ConnectorStatus;
+      try {
+        newStatus = await this.probeConnector(name);
+      } catch (error) {
+        // error-policy:J7 diagnostics must not kill the loop.
+        logger.warn(
+          `[ConnectorHealthMonitor] ${name} probe failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        this.runtime?.reportError?.("ConnectorHealthMonitor.check", error, {
+          connector: name,
+        });
+        newStatus = "missing";
+      }
       const prevStatus = this.statuses.get(name);
 
       if (newStatus === "missing" && prevStatus !== "missing") {

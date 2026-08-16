@@ -13,6 +13,7 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
+import type { ExistingElizaInstallInfo } from "@elizaos/shared/types";
 import type { RPCSchema } from "electrobun/bun";
 import type {
   DatabaseBackupResult,
@@ -119,21 +120,10 @@ export interface NavigateBrowserWorkspaceTabRequest {
 }
 
 // -- Desktop --
-export type ExistingElizaInstallSource =
-  | "config-path-env"
-  | "state-dir-env"
-  | "default-state-dir"
-  | "legacy-dot-state-dir";
-
-export interface ExistingElizaInstallInfo {
-  detected: boolean;
-  stateDir: string;
-  configPath: string;
-  configExists: boolean;
-  stateDirExists: boolean;
-  hasStateEntries: boolean;
-  source: ExistingElizaInstallSource;
-}
+export type {
+  ExistingElizaInstallInfo,
+  ExistingElizaInstallSource,
+} from "@elizaos/shared/types";
 
 export interface StateDirMigrationResult {
   ok: boolean;
@@ -1450,6 +1440,10 @@ export type ElizaDesktopRPCSchema = {
       desktopSetWindowOptions: { params: WindowOptions; response: undefined };
       desktopGetWindowBounds: { params: undefined; response: WindowBounds };
       desktopSetWindowBounds: { params: WindowBounds; response: undefined };
+      desktopSetBottomBarExpanded: {
+        params: { expanded: boolean };
+        response: undefined;
+      };
       desktopMinimizeWindow: { params: undefined; response: undefined };
       desktopUnminimizeWindow: { params: undefined; response: undefined };
       desktopMaximizeWindow: { params: undefined; response: undefined };
@@ -2435,6 +2429,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:setWindowOptions": "desktopSetWindowOptions",
   "desktop:getWindowBounds": "desktopGetWindowBounds",
   "desktop:setWindowBounds": "desktopSetWindowBounds",
+  "desktop:setBottomBarExpanded": "desktopSetBottomBarExpanded",
   "desktop:minimizeWindow": "desktopMinimizeWindow",
   "desktop:unminimizeWindow": "desktopUnminimizeWindow",
   "desktop:maximizeWindow": "desktopMaximizeWindow",

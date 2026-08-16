@@ -21,7 +21,21 @@ export type ResolvedElizaCloudTopology = {
   linked: boolean;
   provider: "elizacloud" | null;
   runtime: "cloud" | "local";
+  /**
+   * Services the config routes to Cloud. This is declared *intent*: it stays
+   * true when the account is unlinked, because the routing entry says so.
+   */
   services: Record<ElizaCloudService, boolean>;
+  /**
+   * Services routed to Cloud that cannot actually be served because no Cloud
+   * credential is linked. This is the reconciliation between the two sources
+   * of truth that previously never met: config declares "use Cloud", while
+   * handler registration silently requires a key, so the runtime fell back
+   * without anything recording that it had (elizaOS/eliza#20045 R3/R4).
+   *
+   * Empty when the account is linked or when nothing routes to Cloud.
+   */
+  servicesUnreconciled: ElizaCloudService[];
   shouldLoadPlugin: boolean;
 };
 
@@ -106,15 +120,38 @@ export function resolveElizaCloudTopology(
   const cloudDeploymentSelected =
     deploymentTarget.runtime === "cloud" &&
     deploymentTarget.provider === "elizacloud";
+  const linked = isElizaCloudLinkedInConfig(config);
+  // A Cloud-routed service with no linked credential is configured but
+  // unservable: plugin-elizacloud skips handler registration and the runtime
+  // falls through to another provider. Naming that here gives the host and the
+  // status surfaces one place to read "declared Cloud, cannot serve" instead
+  // of each re-deriving it (or, as before, not noticing at all).
+  const servicesUnreconciled = linked
+    ? []
+    : (Object.entries(resolvedServices) as [ElizaCloudService, boolean][])
+        .filter(([, selected]) => selected)
+        .map(([service]) => service);
 
   return {
-    linked: isElizaCloudLinkedInConfig(config),
+    linked,
     provider: provider === "elizacloud" ? "elizacloud" : null,
     runtime,
     services: resolvedServices,
+    servicesUnreconciled,
     shouldLoadPlugin:
       cloudDeploymentSelected || Object.values(resolvedServices).some(Boolean),
   };
+}
+
+/**
+ * True when the config routes a service to Eliza Cloud that cannot be served
+ * because no credential is linked. The host logs this at startup so the
+ * silent fallback leaves a trace (#20045 R3).
+ */
+export function hasUnreconciledElizaCloudServices(
+  config: Record<string, unknown> | null | undefined,
+): boolean {
+  return resolveElizaCloudTopology(config).servicesUnreconciled.length > 0;
 }
 
 export function isElizaCloudServiceSelectedInConfig(

@@ -1,4 +1,4 @@
-// Persists discord connections records for cloud services through the shared DB boundary.
+/** Persists Discord connections and produces validated gateway assignment records. */
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getEncryptionService } from "../../lib/services/secrets/encryption";
 import { logger } from "../../lib/utils/logger";
@@ -7,7 +7,9 @@ import { sqlRows } from "../execute-helpers";
 import {
   DISCORD_DEFAULT_INTENTS,
   type DiscordConnection,
+  type DiscordConnectionDmPolicyState,
   discordConnections,
+  parseDiscordConnectionDmPolicyState,
 } from "../schemas/discord-connections";
 
 interface CreateConnectionInput {
@@ -26,6 +28,12 @@ interface DecryptedAssignment {
   botToken: string;
   intents: number;
   characterId: string | null;
+  /**
+   * Independently validated DM metadata. Missing metadata is valid/open;
+   * malformed DM fields remain explicit invalid state and fail closed in the
+   * gateway. Unrelated guild response fields cannot suppress DM enforcement.
+   */
+  dmPolicyState: DiscordConnectionDmPolicyState;
 }
 
 /** Valid connection status values (matches migration CHECK constraint) */
@@ -381,6 +389,7 @@ export const discordConnectionsRepository = {
             botToken,
             intents: conn.intents ?? DISCORD_DEFAULT_INTENTS,
             characterId: conn.character_id ?? null,
+            dmPolicyState: parseDiscordConnectionDmPolicyState(conn.metadata),
           };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);

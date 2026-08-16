@@ -546,6 +546,19 @@ describe("executeTriggerTask", () => {
     });
     expect(forced.status).toBe("success");
     expect(handle.dispatchCalls).toHaveLength(1);
+    expect(handle.updatedTasks.at(-1)?.patch.metadata).toMatchObject({
+      trigger: {
+        enabled: false,
+        lastStatus: "success",
+      },
+    });
+    expect(
+      (
+        handle.updatedTasks.at(-1)?.patch.metadata as
+          | { trigger?: { lastError?: string } }
+          | undefined
+      )?.trigger?.lastError,
+    ).toBeUndefined();
   });
 
   it("warns and skips a trigger whose kind is neither workflow nor prompt", async () => {

@@ -13,6 +13,7 @@ import {
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import { resolveContextWindow } from "../../lifeops/defaults.js";
+import { UNDATED_TODO_EXTRACTION_GUIDANCE } from "./undated-todo-intent.js";
 
 export const LIFE_OPERATION_VALUES = [
   "create",
@@ -177,6 +178,11 @@ const REPLY_ONLY_OPERATION_PLAN: ExtractedLifeOperationPlan = {
   shouldAct: false,
 };
 
+const UNDATED_TODO_OPERATION_GUIDANCE = [
+  UNDATED_TODO_EXTRACTION_GUIDANCE,
+  'When that explicit undated-Todo authority applies, use operation="create", set shouldAct=true, and do not list "schedule" as missing.',
+].join("\n");
+
 function promptText(value: string): string {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : "(empty)";
@@ -222,6 +228,8 @@ function buildRepairPrompt(args: {
     "  missing: list of missing fields from title, schedule, target, goal, phone_number, reminder_intensity, details",
     "",
     "Do not add prose, markdown, code fences, or any other format.",
+    "",
+    UNDATED_TODO_OPERATION_GUIDANCE,
     "",
     `Allowed operations: ${LIFE_OPERATION_VALUES.join(", ")}, or null`,
     `Current request: ${promptText(args.currentMessage)}`,
@@ -284,6 +292,7 @@ async function recoverCoreLifeOperationWithLlm(args: {
     "snooze is for deferring or postponing something to later.",
     "query_overview is for asking what is still left, active, or remaining today.",
     "Use null only when the request is casual chat or not a core LifeOps action.",
+    UNDATED_TODO_OPERATION_GUIDANCE,
     "",
     "Return ONLY a JSON object with exactly these fields:",
     "  operation: create, complete, snooze, query_overview, or null",
@@ -345,6 +354,7 @@ export async function extractLifeOperationWithLlm(args: {
     "Requests with concrete routine content and interpretable cadence are actionable even when some fields are implied.",
     "Treat requests like weekdays after lunch, during the day, every morning, tomorrow at 9, set an alarm for 7 am, and remind me about my Invisalign as specific enough to act on now.",
     "A deadline phrase on a reminder — 'by the 20th', 'before Friday', 'due on the 28th' — IS a schedule: never list schedule as missing for it. Default the nudge to a day or two before the deadline (or the morning it is due) rather than asking the owner for an exact time.",
+    UNDATED_TODO_OPERATION_GUIDANCE,
     "A goal horizon like this year, this month, by June, or before my trip does not create a routine cadence by itself.",
     "Use create with a goal-flavored intent for aspirations with a target or horizon unless the user explicitly asks for reminders, recurrence, or a routine schedule.",
     "",

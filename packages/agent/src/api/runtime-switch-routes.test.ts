@@ -85,11 +85,7 @@ async function flushUntil(predicate: () => boolean, tries = 50): Promise<void> {
 describe("POST /api/runtime/model-switch", () => {
   it("switches to cloud: flips both text slots and broadcasts shell:model-switch", async () => {
     const loop = fakeLoopback({
-      "POST /api/local-inference/routing/preferred": {
-        status: 200,
-        body: { preferences: {} },
-      },
-      "POST /api/local-inference/routing/policy": {
+      "POST /api/local-inference/routing/text": {
         status: 200,
         body: { preferences: {} },
       },
@@ -103,13 +99,14 @@ describe("POST /api/runtime/model-switch", () => {
 
     expect(await handleRuntimeSwitchRoutes(ctx)).toBe(true);
 
-    const preferredCalls = loop.calls.filter(
-      (c) => c.path === "/api/local-inference/routing/preferred",
+    const routingCalls = loop.calls.filter(
+      (c) => c.path === "/api/local-inference/routing/text",
     );
-    expect(preferredCalls).toHaveLength(2); // TEXT_SMALL + TEXT_LARGE
-    expect(preferredCalls.every((c) => c.body?.provider === "elizacloud")).toBe(
-      true,
-    );
+    expect(routingCalls).toEqual([
+      expect.objectContaining({
+        body: { provider: "elizacloud", policy: "manual" },
+      }),
+    ]);
 
     expect(broadcastWs).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -130,11 +127,7 @@ describe("POST /api/runtime/model-switch", () => {
         status: 200,
         body: { assignments: { TEXT_LARGE: "eliza-1-2b" } },
       },
-      "POST /api/local-inference/routing/preferred": {
-        status: 200,
-        body: { preferences: {} },
-      },
-      "POST /api/local-inference/routing/policy": {
+      "POST /api/local-inference/routing/text": {
         status: 200,
         body: { preferences: {} },
       },
@@ -161,6 +154,12 @@ describe("POST /api/runtime/model-switch", () => {
     expect(
       loop.calls.some((c) => c.path === "/api/local-inference/downloads"),
     ).toBe(false);
+    expect(loop.calls.map((call) => call.path)).toEqual([
+      "/api/local-inference/assignments",
+      "/api/local-inference/installed",
+      "/api/local-inference/active",
+      "/api/local-inference/routing/text",
+    ]);
     expect(broadcastWs).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "shell:model-switch",
@@ -181,11 +180,7 @@ describe("POST /api/runtime/model-switch", () => {
         status: 200,
         body: { assignments: {} },
       },
-      "POST /api/local-inference/routing/preferred": {
-        status: 200,
-        body: { preferences: {} },
-      },
-      "POST /api/local-inference/routing/policy": {
+      "POST /api/local-inference/routing/text": {
         status: 200,
         body: { preferences: {} },
       },
@@ -212,6 +207,12 @@ describe("POST /api/runtime/model-switch", () => {
     expect(
       loop.calls.some((c) => c.path === "/api/local-inference/active"),
     ).toBe(false);
+    expect(loop.calls.map((call) => call.path)).toEqual([
+      "/api/local-inference/assignments",
+      "/api/local-inference/installed",
+      "/api/local-inference/downloads",
+      "/api/local-inference/routing/text",
+    ]);
     expect(broadcastWs).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "shell:model-switch",
@@ -268,7 +269,7 @@ describe("POST /api/runtime/model-switch", () => {
 
   it("returns 502 when a local-inference route fails", async () => {
     const loop = fakeLoopback({
-      "POST /api/local-inference/routing/preferred": {
+      "POST /api/local-inference/routing/text": {
         status: 500,
         body: { error: "disk full" },
       },
@@ -284,6 +285,108 @@ describe("POST /api/runtime/model-switch", () => {
       expect.anything(),
       expect.stringContaining("Model switch failed"),
       502,
+    );
+  });
+
+  it("does not publish local routing when activation admission fails", async () => {
+    const loop = fakeLoopback({
+      "POST /api/local-inference/assignments": {
+        status: 200,
+        body: { assignments: { TEXT_LARGE: "eliza-1-2b" } },
+      },
+      "GET /api/local-inference/installed": {
+        status: 200,
+        body: { models: [{ id: "eliza-1-2b" }] },
+      },
+      "POST /api/local-inference/active": {
+        status: 200,
+        body: { status: "error", error: "candidate model rejected" },
+      },
+    });
+    const { ctx, error } = makeCtx(
+      "POST",
+      "/api/runtime/model-switch",
+      { target: "local", model: "eliza-1-2b" },
+      loop.fetch,
+    );
+
+    expect(await handleRuntimeSwitchRoutes(ctx)).toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining("Model switch failed"),
+      502,
+    );
+    expect(
+      loop.calls.some(
+        (call) => call.path === "/api/local-inference/routing/text",
+      ),
+    ).toBe(false);
+  });
+
+  it("serializes concurrent callers so text-slot routing cannot interleave", async () => {
+    const calls: Array<{ path: string; body: Body | null }> = [];
+    let releaseFirstRouting: (() => void) | undefined;
+    const firstRoutingBlocked = new Promise<void>((resolve) => {
+      releaseFirstRouting = resolve;
+    });
+    let routingCount = 0;
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      const path = new URL(String(url)).pathname;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Body) : null;
+      calls.push({ path, body });
+      if (path === "/api/local-inference/routing/text") {
+        routingCount += 1;
+        if (routingCount === 1) await firstRoutingBlocked;
+      }
+      if (path === "/api/local-inference/installed") {
+        return Response.json({ models: [] });
+      }
+      if (path === "/api/local-inference/downloads") {
+        return Response.json(
+          { job: { modelId: "eliza-1-2b" } },
+          { status: 202 },
+        );
+      }
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+    const cloud = makeCtx(
+      "POST",
+      "/api/runtime/model-switch",
+      { target: "cloud" },
+      fetchImpl,
+    );
+    const local = makeCtx(
+      "POST",
+      "/api/runtime/model-switch",
+      { target: "local", model: "eliza-1-2b" },
+      fetchImpl,
+    );
+
+    const cloudResult = handleRuntimeSwitchRoutes(cloud.ctx);
+    await flushUntil(() => routingCount === 1);
+    const localResult = handleRuntimeSwitchRoutes(local.ctx);
+    await flushUntil(() => calls.length > 1, 10);
+    expect(calls).toEqual([
+      {
+        path: "/api/local-inference/routing/text",
+        body: { provider: "elizacloud", policy: "manual" },
+      },
+    ]);
+
+    releaseFirstRouting?.();
+    await Promise.all([cloudResult, localResult]);
+    const routedProviders = calls
+      .filter((call) => call.path === "/api/local-inference/routing/text")
+      .map((call) => call.body?.provider);
+    expect(routedProviders).toEqual(["elizacloud", "eliza-local-inference"]);
+    expect(cloud.json).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ ok: true, target: "cloud" }),
+    );
+    expect(local.json).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ ok: true, target: "local" }),
     );
   });
 });

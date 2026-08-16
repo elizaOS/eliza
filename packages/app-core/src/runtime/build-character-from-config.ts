@@ -3,8 +3,9 @@
  * layers dashboard branding onto the built character. Normalizes message
  * examples and fills style, adjectives, topics, and post/message examples from
  * the matched bundled style preset (resolved by preset id, avatar index, then
- * name) — but only where both the agent-list entry and the built character
- * leave them unset, so explicit config always wins.
+ * name, falling back to the default preset unless the operator supplied a
+ * replacement system prompt) — but only where both the agent-list entry and
+ * the built character leave them unset, so explicit config always wins.
  */
 import { buildCharacterFromConfig as upstreamBuildCharacterFromConfig } from "@elizaos/agent";
 import {
@@ -35,7 +36,12 @@ function resolveAppPreset(
   if (matchedPreset) {
     return matchedPreset;
   }
-  return name ? undefined : getDefaultStylePreset(language);
+  // Mirror the upstream builder's inheritance rule (#17026): a custom name
+  // without a matching preset still inherits the default preset unless the
+  // operator supplied a replacement system prompt.
+  return config.agents?.list?.[0]?.system
+    ? undefined
+    : getDefaultStylePreset(language);
 }
 
 export function buildCharacterFromConfig(

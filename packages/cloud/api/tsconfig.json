@@ -49,8 +49,17 @@
       "@elizaos/plugin-cloud-apps/*": [
         "../../../plugins/plugin-cloud-apps/src/*"
       ],
+      "@elizaos/plugin-elizacloud": [
+        "../../../plugins/plugin-elizacloud/src/index.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../../plugins/plugin-elizacloud/src/*"
+      ],
       "@elizaos/plugin-scheduling/edge": [
         "../../../plugins/plugin-scheduling/src/edge.ts"
+      ],
+      "@elizaos/plugin-todos/edge": [
+        "../../../plugins/plugin-todos/src/edge.ts"
       ],
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-web-search/edge": [

@@ -4,8 +4,9 @@
  * Booting a real PGLite-backed AgentRuntime requires every workspace
  * `@elizaos/*` package to resolve to its TypeScript source (independent of
  * build order), plus the core and SQL subpath specials the runtime touches:
- * `@elizaos/core/testing`, `@elizaos/core/node`, `@elizaos/core/connectors`,
- * and `@elizaos/plugin-sql` (the node entry). Package exports that declare an
+ * `@elizaos/core/testing`, `@elizaos/core/node`, `@elizaos/core/edge`,
+ * `@elizaos/core/connectors`, and `@elizaos/plugin-sql` (the node entry).
+ * Package exports that declare an
  * exact `eliza-source` condition contribute their own source aliases, including
  * provider-owned endpoint diagnostics that otherwise require prebuilt dist.
  * Shared and per-plugin real-runtime configs need this, and so does
@@ -158,8 +159,8 @@ function collectWorkspacePackageDirs(root: string, maxDepth = 4): string[] {
 
 /**
  * Build the full alias list for a real-runtime consumer. Explicit entries
- * (`@elizaos/core/testing`, `@elizaos/core/node`, `@elizaos/core/connectors`,
- * `@elizaos/plugin-sql`) are
+ * (`@elizaos/core/testing`, `@elizaos/core/node`, `@elizaos/core/edge`,
+ * `@elizaos/core/connectors`, `@elizaos/plugin-sql`) are
  * placed first so they win over the generic per-package rules (Vite is
  * first-match).
  */
@@ -213,6 +214,10 @@ export function buildWorkspaceSourceAliases(
     {
       find: /^@elizaos\/core\/node$/,
       replacement: path.join(repoRoot, "packages/core/src/index.node.ts"),
+    },
+    {
+      find: /^@elizaos\/core\/edge$/,
+      replacement: path.join(repoRoot, "packages/core/src/index.edge.ts"),
     },
     {
       find: /^@elizaos\/core\/roles$/,

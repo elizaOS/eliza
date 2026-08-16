@@ -71,6 +71,12 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
+      # Cloud-backed fixtures load the compiled Workerd surface through
+      # @elizaos/core/edge; source-mode resolution intentionally does not bypass
+      # the edge substitutions and Node-builtin stripping performed here.
+      - name: Build core runtime contract
+        run: bun run build:core
+
       - name: Install Playwright Chromium
         run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
 

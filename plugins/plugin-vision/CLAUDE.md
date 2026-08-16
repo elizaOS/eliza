@@ -87,7 +87,7 @@ bun run --cwd plugins/plugin-vision dev
 | Key | Default | Purpose |
 |---|---:|---|
 | `CAMERA_NAME` | auto | Partial camera-name match |
-| `VISION_MODE` | `CAMERA` | `OFF`, `CAMERA`, `SCREEN`, or `BOTH` |
+| `VISION_MODE` | `OFF` | `OFF`, `CAMERA`, `SCREEN`, or `BOTH`; capture requires explicit activation |
 | `PIXEL_CHANGE_THRESHOLD` | `50` | Frame-change threshold |
 | `ENABLE_OBJECT_DETECTION` | `false` | Enable native YOLO |
 | `OBJECT_CONFIDENCE_THRESHOLD` | `0.5` | Object score threshold |
@@ -118,4 +118,3 @@ Host camera capture expects `imagesnap` on macOS, `fswebcam` on Linux, or `ffmpe
 ## Verification
 
 Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run the relevant build, typecheck, lint, and test lanes, then exercise the real camera, screen, OCR, detector, or mobile bridge changed. Review actual frames, recognized text, detections, logs, and failure states. A mocked detector or placeholder image is not end-to-end evidence.
-

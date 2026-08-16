@@ -479,7 +479,7 @@ describe("ChatOverlay first-run gating", () => {
     // The composer unlocks.
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
-    expect(input.placeholder).toBe("Ask Eliza");
+    expect(input.placeholder).toBe("Message Eliza");
 
     // A later re-render with onboarding still complete must NOT force another
     // detent change — the half-settle is a one-shot falling edge.
@@ -504,5 +504,22 @@ describe("ChatOverlay first-run gating", () => {
 
     rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
     expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
+  it("settles a remounted overlay when the parent retained the completion edge", () => {
+    const onHandled = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        firstRunOpen={false}
+        releaseFirstRunToHalf
+        onFirstRunReleaseHandled={onHandled}
+      />,
+    );
+
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(onHandled).toHaveBeenCalledTimes(1);
   });
 });

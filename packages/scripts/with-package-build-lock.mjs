@@ -3,11 +3,23 @@
  * Serializes builds that write a package's shared output directory. Lock
  * ownership is process-bound, stale takeover is quarantined before deletion,
  * and command failures release only the lock created by this wrapper.
+ *
+ * Every mutation of the canonical lock path — acquisition, stale takeover, and
+ * owner cleanup — happens while holding a per-lock mutex implemented as a
+ * loopback TCP listen. The kernel arbitrates that bind: it cannot be stolen by
+ * another process (there is no file to unlink or rename), it is released
+ * automatically when its holder dies (so a SIGKILLed takeover never leaves a
+ * stale guard to reclaim), and a paused-but-alive holder keeps it (so peers
+ * wait instead of misclassifying a stopped process as dead). This is what
+ * keeps a snapshot-validated takeover bound to the inode it validated: no
+ * contender can replace or acquire the canonical path between revalidation,
+ * the quarantine rename, and any restoration (#20265).
  */
 
 import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import net from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
 import { findWorkspaceRoot } from "./lib/repo-root.mjs";
@@ -15,6 +27,12 @@ import { findWorkspaceRoot } from "./lib/repo-root.mjs";
 const execFileAsync = promisify(execFile);
 const DEFAULT_STALE_AFTER_MS = 1_800_000;
 const WAIT_MAX_MS = 1_000;
+// 24000-32767 sits above the well-known range and below the default ephemeral
+// ranges of both Linux (32768+) and macOS/Windows (49152+), minimizing
+// collisions with transient client sockets.
+const MUTEX_PORT_BASE = 24_000;
+const MUTEX_PORT_SPAN = 8_768;
+const MUTEX_ACQUIRE_TIMEOUT_MS = 60_000;
 
 const [packageDirArg, separator, ...command] = process.argv.slice(2);
 
@@ -72,6 +90,97 @@ function parseStaleAfterMs(raw) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function fnv1a(value) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
+function parseMutexPort(raw) {
+  if (!/^[1-9]\d*$/u.test(raw)) {
+    throw new TypeError(
+      `ELIZA_PACKAGE_BUILD_LOCK_MUTEX_PORT must be a decimal port between 1024 and 65535; received ${JSON.stringify(raw)}`,
+    );
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1024 || value > 65_535) {
+    throw new TypeError(
+      `ELIZA_PACKAGE_BUILD_LOCK_MUTEX_PORT must be a decimal port between 1024 and 65535; received ${JSON.stringify(raw)}`,
+    );
+  }
+  return value;
+}
+
+let resolvedMutexPort = null;
+function resolveMutexPort() {
+  if (resolvedMutexPort === null) {
+    resolvedMutexPort =
+      process.env.ELIZA_PACKAGE_BUILD_LOCK_MUTEX_PORT !== undefined
+        ? parseMutexPort(process.env.ELIZA_PACKAGE_BUILD_LOCK_MUTEX_PORT)
+        : MUTEX_PORT_BASE + (fnv1a(lockPath) % MUTEX_PORT_SPAN);
+  }
+  return resolvedMutexPort;
+}
+
+function listenOnce(server, port) {
+  return new Promise((resolve, reject) => {
+    const onError = (error) => {
+      server.removeListener("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.removeListener("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen({ host: "127.0.0.1", port, exclusive: true });
+  });
+}
+
+/**
+ * Runs `mutate` while holding this lock's kernel-arbitrated mutex. Contention
+ * shows up as EADDRINUSE from a live (possibly paused) peer and is retried
+ * with backoff; anything else — including a persistently occupied port from an
+ * unrelated service — surfaces as an actionable failure rather than a silent
+ * unserialized mutation.
+ */
+async function withLockMutex(mutate) {
+  const mutexPort = resolveMutexPort();
+  const deadline = Date.now() + MUTEX_ACQUIRE_TIMEOUT_MS;
+  let waitMs = 25;
+  while (true) {
+    const server = net.createServer();
+    server.unref();
+    try {
+      await listenOnce(server, mutexPort);
+    } catch (error) {
+      server.close();
+      if (error?.code !== "EADDRINUSE" && error?.code !== "EACCES") {
+        throw error;
+      }
+      if (Date.now() >= deadline) {
+        // error-policy:J2 a saturated mutex port becomes an actionable typed failure.
+        throw new Error(
+          `Could not acquire the build-lock mutex on 127.0.0.1:${mutexPort} within ${MUTEX_ACQUIRE_TIMEOUT_MS}ms; if an unrelated service owns that port, set ELIZA_PACKAGE_BUILD_LOCK_MUTEX_PORT to a free port`,
+          { cause: error },
+        );
+      }
+      await sleep(waitMs);
+      waitMs = Math.min(waitMs * 1.5, WAIT_MAX_MS);
+      continue;
+    }
+    try {
+      return await mutate();
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  }
 }
 
 function parseMetadata(raw) {
@@ -171,23 +280,35 @@ async function restoreChangedLock(quarantinePath, movedSnapshot) {
 }
 
 async function quarantineAndRemove(snapshot, reason) {
-  const quarantinePath = `${lockPath}.${reason}-${process.pid}-${randomUUID()}`;
-  try {
-    await fs.rename(lockPath, quarantinePath);
-  } catch (error) {
-    // error-policy:J3 a peer removal invalidates this stale snapshot explicitly.
-    if (error?.code === "ENOENT") return false;
-    throw error;
-  }
+  return withLockMutex(async () => {
+    // Revalidate under the mutex: if a peer's takeover replaced the snapshot
+    // while this contender was waiting (or paused), the live replacement is
+    // seen HERE, before any mutation, and the takeover aborts without touching
+    // it. Between this check and the rename the canonical path is immutable:
+    // takeover and acquisition both require the mutex this transaction holds,
+    // and cleanup only runs in the live owner of the canonical content, which
+    // this stale snapshot does not have.
+    const current = await readLockSnapshot();
+    if (!sameSnapshot(snapshot, current)) return false;
 
-  const movedSnapshot = await readLockSnapshot(quarantinePath);
-  if (!sameSnapshot(snapshot, movedSnapshot)) {
-    await restoreChangedLock(quarantinePath, movedSnapshot);
-    return false;
-  }
+    const quarantinePath = `${lockPath}.${reason}-${process.pid}-${randomUUID()}`;
+    try {
+      await fs.rename(lockPath, quarantinePath);
+    } catch (error) {
+      // error-policy:J3 a peer removal invalidates this stale snapshot explicitly.
+      if (error?.code === "ENOENT") return false;
+      throw error;
+    }
 
-  await removePath(quarantinePath);
-  return true;
+    const movedSnapshot = await readLockSnapshot(quarantinePath);
+    if (!sameSnapshot(snapshot, movedSnapshot)) {
+      await restoreChangedLock(quarantinePath, movedSnapshot);
+      return false;
+    }
+
+    await removePath(quarantinePath);
+    return true;
+  });
 }
 
 async function removeStaleLock(staleAfterMs) {
@@ -206,24 +327,30 @@ async function removeStaleLock(staleAfterMs) {
 }
 
 async function writeOwnedLock() {
-  const handle = await fs.open(lockPath, "wx", 0o600);
-  try {
-    await handle.writeFile(
-      `${JSON.stringify(
-        {
-          pid: process.pid,
-          ownerId,
-          command,
-          createdAt: new Date().toISOString(),
-        },
-        null,
-        2,
-      )}\n`,
-    );
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
+  // Acquisition also holds the mutex so a fresh contender cannot slip into
+  // the brief window a mutex-holding takeover leaves the canonical path
+  // absent — that slip is what let a third contender in while a moved live
+  // owner still awaited restoration (#20265).
+  await withLockMutex(async () => {
+    const handle = await fs.open(lockPath, "wx", 0o600);
+    try {
+      await handle.writeFile(
+        `${JSON.stringify(
+          {
+            pid: process.pid,
+            ownerId,
+            command,
+            createdAt: new Date().toISOString(),
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  });
 }
 
 async function acquireLock(staleAfterMs) {

@@ -251,6 +251,75 @@ export function stringifyForDiagnostics(value: unknown): string {
 }
 
 /**
+ * Tag-name shape of an invented pseudo-tool tag: `_`-bearing OR ≥4 uppercase
+ * chars, case-sensitive, so quoted real acronyms (`<AI>`) stay prose. Single
+ * source of truth shared by the reply stripper below, the planner's embedded
+ * tool-call recovery, and the evaluator's user-facing-answer screen — the
+ * three must agree on what counts as tool markup, or text screened by one is
+ * silently laundered by another (matrix F38, tj-9129a432454364).
+ */
+export const PSEUDO_TOOL_TAG_NAME_SRC =
+	"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z][A-Z0-9]{3,}";
+
+const PSEUDO_TOOL_TAG_BLOCK_RE = new RegExp(
+	`<(${PSEUDO_TOOL_TAG_NAME_SRC})>[\\s\\S]*?</\\1>`,
+	"g",
+);
+const PSEUDO_TOOL_TAG_OPEN_TAIL_RE = new RegExp(
+	`<(?:${PSEUDO_TOOL_TAG_NAME_SRC})>[\\s\\S]*$`,
+	"g",
+);
+
+/**
+ * Detects tool-call-shaped markup a model emitted as reply text instead of a
+ * structured call: the native `<tool_call>` serialization or an invented
+ * `<UPPER_SNAKE>` pseudo-tag. Text matching this is a tool INTENT, never a
+ * user-facing answer — deliverers must either recover and dispatch the call
+ * or decline the text entirely; stripping the markup and shipping the
+ * surviving prose fabricates an effect claim ("saving note." with no note).
+ */
+export function containsToolCallShapedMarkup(text: string): boolean {
+	return (
+		/<\/?(?:tool_call|function_call|arg_key|arg_value)\b/i.test(text) ||
+		new RegExp(`<(?:${PSEUDO_TOOL_TAG_NAME_SRC})>`).test(text)
+	);
+}
+
+/**
+ * Recover the tool invocations a weak model serialized as
+ * `<ACTION_NAME>{json args}</ACTION_NAME>` pseudo-tags (live:
+ * `<NOTES_CREATE>{"title":…}</NOTES_CREATE>` beside "saving note." prose,
+ * tj-9129a432454364 stage 7 — stripped and never executed). Deliberately
+ * conservative: only `_`-bearing tag names with a parseable JSON-object body
+ * qualify, so an all-caps tag quoted in prose or wrapping non-JSON text never
+ * fabricates a call.
+ */
+export function parsePseudoTagToolInvocations(
+	text: string | undefined,
+): Array<{ name: string; params: Record<string, unknown> }> {
+	if (!text?.includes("<")) return [];
+	const calls: Array<{ name: string; params: Record<string, unknown> }> = [];
+	const blockRe =
+		/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)>\s*(\{[\s\S]*?\})\s*<\/\1>/g;
+	for (const match of text.matchAll(blockRe)) {
+		try {
+			const parsed: unknown = JSON.parse(match[2]);
+			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+				calls.push({
+					name: match[1],
+					params: parsed as Record<string, unknown>,
+				});
+			}
+		} catch {
+			// error-policy:J3 a non-JSON body is not a recoverable invocation; the
+			// reply stripper still removes the markup and the evaluator screen
+			// still declines the text, so nothing is fabricated either way.
+		}
+	}
+	return calls;
+}
+
+/**
  * Clean a model-produced reply field before it reaches the user. Removes
  * structural junk that weak models emit as plain text but which is never
  * user-facing content:
@@ -288,11 +357,8 @@ export function stripJsonStructuralJunkReply(value: string): string {
 		// never legitimate reply prose, so strip the paired block and any
 		// truncated-open tail. Case-SENSITIVE + `_`-bearing OR ≥4-char to avoid
 		// touching real acronyms a user might quote (`<AI>` stays).
-		.replace(
-			/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z][A-Z0-9]{3,})>[\s\S]*?<\/\1>/g,
-			"",
-		)
-		.replace(/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z][A-Z0-9]{3,})>[\s\S]*$/g, "")
+		.replace(PSEUDO_TOOL_TAG_BLOCK_RE, "")
+		.replace(PSEUDO_TOOL_TAG_OPEN_TAIL_RE, "")
 		.trim();
 	if (!cleaned) return "";
 	return /^[\s{}[\]":,]+$/.test(cleaned) ? "" : cleaned;

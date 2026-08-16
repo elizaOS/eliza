@@ -29,6 +29,7 @@ export const specializedLiveE2EPaths = [
   "plugins/plugin-personal-assistant/test/selfcontrol-desktop.live.e2e.test.ts",
   "plugins/plugin-personal-assistant/test/selfcontrol-dev.live.e2e.test.ts",
   "plugins/plugin-documents/test/documents-api.live.e2e.test.ts",
+  "plugins/plugin-form/test/form-plugin.live.e2e.test.ts",
   "packages/app-core/test/live-agent/action-invocation.live.e2e.test.ts",
   "packages/app-core/test/live-agent/agent-runtime.live.e2e.test.ts",
   "packages/app-core/test/live-agent/cloud-auth.live.e2e.test.ts",

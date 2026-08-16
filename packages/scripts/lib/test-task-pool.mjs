@@ -152,6 +152,22 @@ export function normalizeConcurrency(value) {
 }
 
 /**
+ * Resolve the CLI-over-environment concurrency contract before validation.
+ * Whitespace-only environment values are absent, while an explicitly empty
+ * CLI flag remains a usage error handled by the argument parser.
+ *
+ * @param {string | null | undefined} flagValue
+ * @param {string | undefined} envValue
+ * @returns {number}
+ */
+export function resolveConcurrency(flagValue, envValue) {
+  const input =
+    flagValue ??
+    (envValue === undefined || envValue.trim() === "" ? undefined : envValue);
+  return normalizeConcurrency(input);
+}
+
+/**
  * Parse a `TEST_SHARD` spec ("N/M", 1-indexed) into `{ index, total }`, or
  * `null` when absent or malformed. Pure (no warnings) so callers decide how to
  * surface an invalid spec.

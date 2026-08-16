@@ -622,6 +622,18 @@ export interface ActiveModelState {
    * "loading" is set while we're swapping models.
    */
   status: "idle" | "loading" | "ready" | "error";
+  /**
+   * Whether local inference is the routing target for chat, independent of
+   * whether a model is currently resident. `status` answers "is a model
+   * loaded?"; this answers "is local the path requests take?".
+   *
+   * They differ in the state that motivated this field: with cloud-proxy
+   * configured but no Cloud credential, local is the only provider that can
+   * serve, yet the model loads lazily — so the snapshot read `idle` while
+   * local was in fact the active path (elizaOS/eliza#20045 R5). Absent when
+   * the routing decision could not be read.
+   */
+  routed?: boolean;
   error?: string;
   /**
    * Effective KV-cache configuration the loader applied. Populated on

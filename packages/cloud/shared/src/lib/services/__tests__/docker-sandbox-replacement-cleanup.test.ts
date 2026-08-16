@@ -38,6 +38,12 @@ const CONTAINER_NAME = "agent-11111111-1111-4111-8111-111111111111";
 const ATTEMPT_ID = "33333333-3333-4333-8333-333333333333";
 const CONTAINER_ID = "a".repeat(64);
 const REGISTRATION_STARTED_AT = "2026-07-23T00:05:00.000Z";
+const CONTAINER_CREATED_AT = "2026-07-23T00:10:00.000000000Z";
+const CONTAINER_CREATED_AT_MS = Date.parse("2026-07-23T00:10:00.000Z");
+
+function inspectLine(id: string, attempt: string, name = CONTAINER_NAME): string {
+  return `${id}|${attempt}|/${name}|${CONTAINER_CREATED_AT}\n`;
+}
 
 function headscaleNode(id: string, name: string, createdAt: string): HeadscaleNode {
   return {
@@ -200,7 +206,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const findNode = stubNodeLookup();
     const { commands } = stubSsh(async (command) => {
       if (command.startsWith("docker inspect")) {
-        return `${CONTAINER_ID}|${ATTEMPT_ID}\n`;
+        return inspectLine(CONTAINER_ID, ATTEMPT_ID);
       }
       return "";
     });
@@ -226,11 +232,13 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(decrement).not.toHaveBeenCalled();
   });
 
-  test("refuses to touch a same-name occupant with a different attempt label", async () => {
+  test("refuses a same-name label mismatch inside the converge grace window", async () => {
     stubNodeLookup();
-    const { commands } = stubSsh(async () => `${CONTAINER_ID}|another-attempt\n`);
+    const { commands } = stubSsh(async () => inspectLine(CONTAINER_ID, "another-attempt"));
     const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
-    const provider = replacementProvider();
+    const provider = replacementProvider({
+      now: () => CONTAINER_CREATED_AT_MS + 30 * 60 * 1000,
+    });
 
     const error = await provider
       .stopOnSpecificNodeForReplacement(
@@ -251,10 +259,63 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(deleteVpn).not.toHaveBeenCalled();
   });
 
+  test("converges a same-name label mismatch past the grace window via id+name identity", async () => {
+    stubNodeLookup();
+    const { commands } = stubSsh(async (command) => {
+      if (command.startsWith("docker inspect")) {
+        return inspectLine(CONTAINER_ID, "another-attempt");
+      }
+      return "";
+    });
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+    const decrement = spyOn(dockerNodesRepository, "decrementAllocated").mockResolvedValue();
+    const provider = replacementProvider({
+      now: () => CONTAINER_CREATED_AT_MS + 2 * 60 * 60 * 1000,
+    });
+
+    await provider.stopOnSpecificNodeForReplacement(
+      NODE.node_id,
+      CONTAINER_NAME,
+      "vpn-node-converge",
+      replacementIdentity(),
+    );
+
+    expect(commands.slice(1)).toEqual([
+      `docker stop -t 10 '${CONTAINER_ID}'`,
+      `docker rm -f '${CONTAINER_ID}'`,
+    ]);
+    expect(deleteVpn).toHaveBeenCalledWith("vpn-node-converge");
+    expect(decrement).not.toHaveBeenCalled();
+  });
+
+  test("keeps failing closed past the grace window when the observed name differs", async () => {
+    stubNodeLookup();
+    const { commands } = stubSsh(async () =>
+      inspectLine(CONTAINER_ID, "another-attempt", "agent-someone-else"),
+    );
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+    const provider = replacementProvider({
+      now: () => CONTAINER_CREATED_AT_MS + 2 * 60 * 60 * 1000,
+    });
+
+    const error = await provider
+      .stopOnSpecificNodeForReplacement(
+        NODE.node_id,
+        CONTAINER_NAME,
+        "vpn-node-name-drift",
+        replacementIdentity(),
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+    expect(commands).toHaveLength(1);
+    expect(deleteVpn).not.toHaveBeenCalled();
+  });
+
   test("bounds an id-less stale fence when the name belongs to a newer attempt", async () => {
     stubNodeLookup();
     const newerContainerId = "b".repeat(64);
-    const { commands } = stubSsh(async () => `${newerContainerId}|newer-attempt\n`);
+    const { commands } = stubSsh(async () => inspectLine(newerContainerId, "newer-attempt"));
     const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
     const provider = replacementProvider();
 
@@ -277,7 +338,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
   test("refuses cleanup when Docker's inspected id differs from the persisted id", async () => {
     stubNodeLookup();
     const otherId = "b".repeat(64);
-    const { commands } = stubSsh(async () => `${otherId}|${ATTEMPT_ID}\n`);
+    const { commands } = stubSsh(async () => inspectLine(otherId, ATTEMPT_ID));
     const provider = replacementProvider();
 
     await expect(
@@ -317,7 +378,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     stubNodeLookup();
     const { commands } = stubSsh(async (command) => {
       if (command.startsWith("docker inspect")) {
-        return `${CONTAINER_ID}|${ATTEMPT_ID}\n`;
+        return inspectLine(CONTAINER_ID, ATTEMPT_ID);
       }
       if (command.startsWith("docker rm")) {
         throw new Error(

@@ -16,9 +16,11 @@
  * GuardedStreamScanner.findSafeCut} therefore holds back (a) a base window sized to
  * the longest known value/surrogate so a partial known value at the tail is never
  * emitted, and (b) any trailing region that matches an in-progress multi-token
- * secret/PII shape. Held text is released as soon as a following token proves the
- * shape complete, or at {@link GuardedStreamScanner.flush} (end of stream), whose
- * held-tail-drop-on-abort behaviour matches the old buffer exactly.
+ * secret/PII shape. An Authorization line is held from its field-name anchor to
+ * the line boundary because its RFC token/auth-param classification cannot be
+ * known from a partial chunk. Held text is released as soon as a following token
+ * proves the shape complete, or at {@link GuardedStreamScanner.flush} (end of
+ * stream), whose held-tail-drop-on-abort behaviour matches the old buffer exactly.
  *
  * Accepted semantic delta vs whole-buffer substitution: streaming cannot
  * retro-redact. A secret whose ONLY detectable form appears late in the reply
@@ -71,23 +73,17 @@ const OPENER_PATTERNS: readonly RegExp[] = [
 	// (so the buffer detector `"key"\s*:\s*"([^"]+)"` matches the emitted piece)
 	// rather than inside a multi-word value.
 	/"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*(?::\s*(?:"[^"]*(?:"[^\s]*)?)?)?$/i,
-	// Authorization Bearer/Basic header, token still arriving.
-	/(?:Authorization\s*[:=]\s*)?(?:Bearer|Basic)\s+[A-Za-z0-9._+/=-]*$/i,
-	// `Authorization` anchor held through the ENTIRE streaming header, from before
-	// the scheme discriminator arrives (`Authorization:`), across a partial scheme
-	// (`Authorization: B`), and through the value (`Authorization: Basic <b64>`).
-	// The `basic-auth-header` detector needs the `Authorization:` anchor to fire;
-	// without this hold `snapToWhitespace` releases `"Authorization: "` the moment it
-	// ends in a space — orphaning the later `"Basic <b64>"`, which has no anchor and
-	// is emitted in the clear. The scheme is optional and the value charclass is
-	// letter-inclusive, so a partial scheme is covered; a trailing whitespace ends
-	// the value and releases the whole header contiguously for detection. (redact.ts
-	// carries a standalone `\bBearer …` pattern, so Bearer survives without an
-	// anchor; Basic has none — hence the anchored hold rather than a Basic pattern.)
-	/\bAuthorization\s*[:=]?\s*(?:Bearer|Basic)?\s*[A-Za-z0-9._+/=-]*$/i,
 	// CLI credential flag, value still arriving.
 	/--(?:api[-_]?key|token|secret|password|passwd)(?:[=\s]+(?:["']?[^\s"']*)?)?$/i,
 ];
+
+// A partial line cannot distinguish token68 padding from RFC auth-param BWS.
+// Hold the field name (including whitespace before its delimiter) and every
+// byte after the delimiter until CR/LF or flush gives the shared detector the
+// complete credential. The alternative without a delimiter protects a chunk
+// ending at `Authorization ` without trapping ordinary following prose.
+const AUTHORIZATION_HEADER_TAIL =
+	/\b(?:Proxy-)?Authorization(?:[ \t]*(?::|=)[^\r\n]*|[ \t]*)$/i;
 
 /** Safety bound on the grouped-number left-walk; hitting it holds everything (safe). */
 const GROUPED_RUN_SCAN_LIMIT = 512;
@@ -400,14 +396,22 @@ export class GuardedStreamScanner {
 
 	/**
 	 * If the prefix ending at `cut` ends with an in-progress secret opener (`KEY=`,
-	 * JSON field, `Bearer`/`Basic`, CLI flag), hold from the opener start. The fast
-	 * path scans the bounded suffix; the long-token fallback extends left from the
-	 * current value token so a 512+ byte value cannot orphan its anchor before the
-	 * detector sees the complete assignment/header/flag.
+	 * JSON field, CLI flag), hold from the opener start. Authorization is handled
+	 * from the current line's true start before the bounded scan because auth-param
+	 * lists can exceed the suffix window and contain whitespace. The long-token
+	 * fallback extends left from other current values so a 512+ byte token cannot
+	 * orphan its anchor before the detector sees the complete assignment or flag.
 	 */
 	private openerTailStart(cut: number): number {
 		const p = this.pending;
 		const end = Math.min(cut, p.length);
+		const lineStart =
+			Math.max(p.lastIndexOf("\n", end - 1), p.lastIndexOf("\r", end - 1)) + 1;
+		const authorization = AUTHORIZATION_HEADER_TAIL.exec(
+			p.slice(lineStart, end),
+		);
+		if (authorization) return lineStart + authorization.index;
+
 		const matchStart = (base: number): number => {
 			const tail = p.slice(base, end);
 			let start = end;

@@ -363,6 +363,13 @@ describe("AutomationsFeed", () => {
     ).toBeNull();
     expect(screen.queryByRole("button", { name: /create/i })).toBeNull();
     expect(screen.queryByRole("button", { name: "New" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Workflows" }));
+    const workflowEmptyLabel = await screen.findByText("No workflows");
+    expect(workflowEmptyLabel.classList.contains("sr-only")).toBe(true);
+    expect(
+      screen.getByTestId("automations-empty-state").getAttribute("aria-label"),
+    ).toBe("No workflows");
   });
 
   it("renders an explicit unavailable state when the workflow service is disabled", async () => {

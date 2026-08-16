@@ -1251,6 +1251,15 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 */
 	redactSecrets(text: string): string;
 
+	/**
+	 * Locate configured-secret material across ordered diagnostic fragments.
+	 * Every runtime must fail closed through this contract without returning
+	 * configured secret values.
+	 */
+	locateConfiguredSecretFragmentTaint(
+		fragments: readonly import("../security/fragment-redaction").SecretFragment[],
+	): import("../security/fragment-redaction").SecretFragmentTaintProfile;
+
 	// ========================================================================
 	// Single-item convenience wrappers
 	//

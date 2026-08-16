@@ -120,6 +120,18 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Returns whether macOS is withholding screen pixels and key-window focus. */
+export function isMacConsoleSessionLocked(): boolean {
+  if (process.platform !== "darwin") return false;
+  const result = spawnSync("/usr/sbin/ioreg", ["-n", "Root", "-d1", "-a"], {
+    encoding: "utf8",
+  });
+  return (
+    result.status === 0 &&
+    /<key>IOConsoleLocked<\/key>\s*<true\/>/.test(result.stdout)
+  );
+}
+
 function resolveExecutableOnPath(binaryName: string): string | null {
   const pathValue = process.env.PATH || "";
   for (const dir of pathValue.split(path.delimiter)) {

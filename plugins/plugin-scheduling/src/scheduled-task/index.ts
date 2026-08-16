@@ -121,7 +121,9 @@ export {
   type GetScheduledTaskRunnerOptions,
   getScheduledTaskRunner,
   getScheduledTaskRunnerDeps,
+  registerScheduledTaskRunnerBootHook,
   registerScheduledTaskRunnerDeps,
+  type ScheduledTaskRunnerBootHook,
   type ScheduledTaskRunnerDepsBundle,
   type ScheduledTaskRunnerDepsProvider,
   ScheduledTaskRunnerService,
@@ -157,8 +159,10 @@ export {
   createSchedulingSqlScheduledTaskStore,
   type DueScheduledTaskRef,
   listDueScheduledTaskRefs,
+  listRecoverableScheduledTaskRefs,
   parseScheduledTaskLogRow,
   parseScheduledTaskRow,
+  type RecoverableScheduledTaskRef,
   type SchedulingSqlStoreOptions,
 } from "./store.js";
 export { OWNER_LOCAL_TZ, resolveTriggerTz } from "./trigger-tz.js";

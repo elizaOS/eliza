@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 11
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 167
+- **Registered runtime actions:** 168
 
 ## Actions
 
@@ -466,6 +466,7 @@ list. Regenerate this document after changing the registered action surface.
 - `PROXY_STATUS` — `plugins/plugin-anthropic-proxy/src/actions/proxy-status.action.ts`
 - `REDACT_TRANSCRIPT` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
 - `REGENERATE_APP_API_KEY` — `plugins/plugin-cloud-apps/src/actions/regenerate-app-api-key.ts`
+- `REMINDERS` — `plugins/plugin-scheduling/src/shared-reminders.ts`
 - `RESOLVE_REFERENT` — `plugins/plugin-personal-assistant/src/actions/resolve-referent.ts`
 - `RESOLVE_REQUEST` — `plugins/plugin-personal-assistant/src/actions/resolve-request.ts`
 - `RETRIEVE_CHILD_AGENT_RESULTS` — `packages/core/src/features/sub-agent-credentials/actions/retrieve-child-agent-results.ts`
@@ -510,7 +511,7 @@ list. Regenerate this document after changing the registered action surface.
 - `VOICE_CALL` — `plugins/plugin-personal-assistant/src/actions/voice-call.ts`
 - `WALLET` — `plugins/plugin-wallet/src/chains/wallet-action.ts`
 - `WEB_FETCH` — `plugins/plugin-coding-tools/src/actions/web-fetch.ts`
-- `WEB_SEARCH` — `plugins/plugin-coding-tools/src/actions/web-search.ts`
+- `WEB_SEARCH` — `plugins/plugin-coding-tools/src/actions/web-search.ts`, `plugins/plugin-web-search/src/edge.ts`
 - `WINDOW` — `plugins/plugin-computeruse/src/actions/window.ts`
 - `WITHDRAW_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/withdraw-app-earnings.ts`
 - `WORK_THREAD` — `plugins/plugin-personal-assistant/src/actions/work-thread.ts`

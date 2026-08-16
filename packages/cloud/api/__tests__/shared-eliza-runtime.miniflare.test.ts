@@ -17,6 +17,8 @@ describe("Shared Eliza runtime in Workerd", () => {
   const modelRequests: Array<Record<string, unknown>> = [];
   const outboundRequests: string[] = [];
   let searchPlannerRequests = 0;
+  let todoPlannerRequests = 0;
+  let reminderPlannerRequests = 0;
   const liveModelUrl = process.env.SHARED_ELIZA_LIVE_MODEL_URL?.replace(
     /\/+$/,
     "",
@@ -30,6 +32,202 @@ describe("Shared Eliza runtime in Workerd", () => {
       async fetch(request) {
         const body = (await request.json()) as Record<string, unknown>;
         modelRequests.push(body);
+        if (JSON.stringify(body).includes("add buy milk to my todo list")) {
+          todoPlannerRequests += 1;
+          if (todoPlannerRequests === 1) {
+            return Response.json({
+              id: "chatcmpl-workerd-todo-stage-one",
+              object: "chat.completion",
+              created: 0,
+              model: "shared-runtime-probe",
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: "assistant",
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: "workerd-todo-stage-one",
+                        type: "function",
+                        function: {
+                          name: "HANDLE_RESPONSE",
+                          arguments: JSON.stringify({
+                            shouldRespond: "RESPOND",
+                            thought: "The user asked to persist a Todo.",
+                            contexts: ["todos"],
+                            intents: [],
+                            candidateActionNames: ["TODO"],
+                            requiresTool: true,
+                            replyText: "",
+                            replyEffectStatus: "none",
+                            facts: [],
+                            relationships: [],
+                            addressedTo: [],
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+              usage: {
+                prompt_tokens: 30,
+                completion_tokens: 12,
+                total_tokens: 42,
+              },
+            });
+          }
+          return Response.json({
+            id: "chatcmpl-workerd-todo-action",
+            object: "chat.completion",
+            created: 0,
+            model: "shared-runtime-probe",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "workerd-todo-action",
+                      type: "function",
+                      function: {
+                        name: "TODO",
+                        arguments: JSON.stringify({
+                          action: "create",
+                          content: "Buy milk",
+                          activeForm: "Buying milk",
+                        }),
+                      },
+                    },
+                  ],
+                },
+                finish_reason: "tool_calls",
+              },
+            ],
+            usage: {
+              prompt_tokens: 40,
+              completion_tokens: 10,
+              total_tokens: 50,
+            },
+          });
+        }
+        if (
+          JSON.stringify(body).includes("remind me in two minutes to stretch")
+        ) {
+          reminderPlannerRequests += 1;
+          if (reminderPlannerRequests === 1) {
+            return Response.json({
+              id: "chatcmpl-workerd-reminder-stage-one",
+              object: "chat.completion",
+              created: 0,
+              model: "shared-runtime-probe",
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: "assistant",
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: "workerd-reminder-stage-one",
+                        type: "function",
+                        function: {
+                          name: "HANDLE_RESPONSE",
+                          arguments: JSON.stringify({
+                            shouldRespond: "RESPOND",
+                            thought: "The user asked for a durable reminder.",
+                            contexts: ["reminders"],
+                            intents: [],
+                            candidateActionNames: ["REMINDERS"],
+                            requiresTool: true,
+                            replyText: "",
+                            replyEffectStatus: "none",
+                            facts: [],
+                            relationships: [],
+                            addressedTo: [],
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+              usage: {
+                prompt_tokens: 30,
+                completion_tokens: 12,
+                total_tokens: 42,
+              },
+            });
+          }
+          if (reminderPlannerRequests === 2) {
+            return Response.json({
+              id: "chatcmpl-workerd-reminder-action",
+              object: "chat.completion",
+              created: 0,
+              model: "shared-runtime-probe",
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: "assistant",
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: "workerd-reminder-action",
+                        type: "function",
+                        function: {
+                          name: "REMINDERS",
+                          arguments: JSON.stringify({
+                            operation: "create",
+                            reminderText: "stretch",
+                            inMinutes: 2,
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+              usage: {
+                prompt_tokens: 40,
+                completion_tokens: 10,
+                total_tokens: 50,
+              },
+            });
+          }
+          return Response.json({
+            id: "chatcmpl-workerd-reminder-finish",
+            object: "chat.completion",
+            created: 0,
+            model: "shared-runtime-probe",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: JSON.stringify({
+                    success: true,
+                    decision: "FINISH",
+                    thought: "The reminder is stored.",
+                    messageToUser: "i'll remind you in two minutes",
+                  }),
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 50,
+              completion_tokens: 14,
+              total_tokens: 64,
+            },
+          });
+        }
         if (JSON.stringify(body).includes("latest ElizaOS release")) {
           searchPlannerRequests += 1;
           if (searchPlannerRequests === 1) {
@@ -218,6 +416,9 @@ describe("Shared Eliza runtime in Workerd", () => {
       new URL("../../../../", import.meta.url),
     );
     const coreEdgeArtifact = join(coreDirectory, "dist/edge/index.edge.js");
+    const todosEdgeSource = fileURLToPath(
+      new URL("../../../../plugins/plugin-todos/src/edge.ts", import.meta.url),
+    );
     const bundle = Bun.spawn({
       cmd: [
         process.execPath,
@@ -234,6 +435,9 @@ describe("Shared Eliza runtime in Workerd", () => {
               build.onResolve({ filter: /^@elizaos\\/core\\/edge$/ }, () => ({
                 path: process.env.ELIZA_CORE_EDGE_ARTIFACT,
               }));
+              build.onResolve({ filter: /^@elizaos\\/plugin-todos\\/edge$/ }, () => ({
+                path: process.env.ELIZA_TODOS_EDGE_SOURCE,
+              }));
             },
           }],
         });
@@ -249,6 +453,7 @@ describe("Shared Eliza runtime in Workerd", () => {
       env: {
         ...process.env,
         ELIZA_CORE_EDGE_ARTIFACT: coreEdgeArtifact,
+        ELIZA_TODOS_EDGE_SOURCE: todosEdgeSource,
         SHARED_ELIZA_ENTRY: entrypoint,
         SHARED_ELIZA_OUTPUT: outputPath,
       },
@@ -338,6 +543,112 @@ describe("Shared Eliza runtime in Workerd", () => {
         (tool) => tool.function?.name === "HANDLE_RESPONSE",
       ),
     ).toBe(true);
+  }, 120_000);
+
+  test("runs the genuine TODO action and returns its applied mutation inside Workerd", async () => {
+    const requestsBefore = modelRequests.length;
+    const response = await miniflare.dispatchFetch(
+      "https://runtime.test/todo-turn",
+    );
+    const body = await response.text();
+    expect(response.status, body).toBe(200);
+    const payload = JSON.parse(body) as {
+      result: {
+        reply: string;
+        degraded: boolean;
+        usage?: Record<string, number>;
+        actionResults?: Array<Record<string, unknown>>;
+      };
+      storedTodos: Array<Record<string, unknown>>;
+    };
+    expect(payload.result).toMatchObject({
+      reply: "Created: [ ] Buy milk",
+      degraded: false,
+      usage: {
+        promptTokens: 70,
+        completionTokens: 22,
+        totalTokens: 92,
+      },
+    });
+    expect(payload.result.actionResults).toHaveLength(1);
+    expect(payload.result.actionResults?.[0]).toMatchObject({
+      success: true,
+      text: "Created: [ ] Buy milk",
+      verifiedUserFacing: true,
+      effectReceipts: [
+        {
+          operation: "todos.create",
+          outcome: "applied",
+          resource: { kind: "todos.todo" },
+          commit: { kind: "durable" },
+        },
+      ],
+    });
+    expect(payload.storedTodos).toEqual([
+      expect.objectContaining({
+        agentId: "70000000-0000-5000-8000-000000000001",
+        entityId: "70000000-0000-5000-8000-000000000002",
+        content: "Buy milk",
+        activeForm: "Buying milk",
+        status: "pending",
+      }),
+    ]);
+    const todoRequests = modelRequests.slice(requestsBefore);
+    expect(todoRequests).toHaveLength(2);
+    const todoPlanTools = todoRequests[1]?.tools as
+      | Array<{ function?: { name?: string } }>
+      | undefined;
+    if (!todoPlanTools)
+      throw new Error("Todo planner request omitted its tools");
+    expect(todoPlanTools.some((tool) => tool.function?.name === "TODO")).toBe(
+      true,
+    );
+    expect(todoPlannerRequests).toBe(2);
+  }, 120_000);
+
+  test("runs the genuine REMINDERS action with a trusted Discord DM inside Workerd", async () => {
+    const requestsBefore = modelRequests.length;
+    const response = await miniflare.dispatchFetch(
+      "https://runtime.test/reminder-turn",
+    );
+    const body = await response.text();
+    expect(response.status, body).toBe(200);
+    const payload = JSON.parse(body) as {
+      result: {
+        reply: string;
+        degraded: boolean;
+        actionResults?: Array<Record<string, unknown>>;
+      };
+      scheduledTasks: Array<Record<string, unknown>>;
+    };
+    expect(payload.result).toMatchObject({
+      reply: "i'll remind you in two minutes",
+      degraded: false,
+    });
+    expect(payload.result.actionResults).toHaveLength(1);
+    expect(payload.result.actionResults?.[0]).toMatchObject({
+      verifiedUserFacing: true,
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "shared.reminder.create",
+          idempotency: { replayed: false },
+        },
+      ],
+    });
+    expect(payload.scheduledTasks).toHaveLength(1);
+    expect(payload.scheduledTasks[0]).toMatchObject({
+      kind: "reminder",
+      promptInstructions: "stretch",
+      output: { destination: "channel", target: "current_dm" },
+      metadata: {
+        delivery: {
+          platform: "discord",
+          discordUserId: "123456789012345678",
+        },
+      },
+    });
+    expect(modelRequests.length - requestsBefore).toBe(3);
   }, 120_000);
 
   test.skipIf(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH !== "1")(

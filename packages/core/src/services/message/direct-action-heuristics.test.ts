@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Action } from "../../types/components";
 import {
+	classifyExplicitContinuationTurn,
 	findAvailableActionName,
 	findCodingDelegationActionName,
 	findShellDirectActionName,
@@ -17,10 +18,12 @@ import {
 	inferDirectCurrentRequestCandidateActions,
 	inferDirectCurrentRequestCandidateInference,
 	isShellDirectActionName,
+	isToolDerivedAssistantContent,
 	linkShareOwnText,
 	looksLikeBareLinkShare,
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
+	resolveExplicitContinuationRequestText,
 } from "./direct-action-heuristics.ts";
 
 /** The exact processed-content shape Discord produces for a shared link with a
@@ -295,8 +298,18 @@ describe("looksLikeWebSearchRequest", () => {
 	});
 
 	it("respects an explicit do-not-browse negation", () => {
-		expect(looksLikeWebSearchRequest("don't browse the web for this")).toBe(
-			false,
+		for (const text of [
+			"don't browse the web for this",
+			"don’t ever search the web for this",
+			"never, under any circumstances, google this",
+		]) {
+			expect(looksLikeWebSearchRequest(text)).toBe(false);
+		}
+		expect(
+			looksLikeWebSearchRequest("never mind, search the web for elizaOS"),
+		).toBe(true);
+		expect(looksLikeWebSearchRequest("search the web without Google")).toBe(
+			true,
 		);
 	});
 });
@@ -593,6 +606,18 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		).toEqual({ names: ["VIEWS"], kind: "view-capability" });
 	});
 
+	it.each([
+		["dismiss the active view", "view-surface"],
+		["dismiss my settings", "view-capability"],
+	] as const)(
+		"preserves SS operation tokens for %s",
+		(message: string, kind: "view-surface" | "view-capability") => {
+			expect(
+				inferDirectCurrentRequestCandidateInference([viewsAction], message),
+			).toEqual({ names: ["VIEWS"], kind });
+		},
+	);
+
 	it("routes recurring-habit commitments to the owner routine surface, never VIEWS (#17028)", () => {
 		const routinesAction: Pick<Action, "name" | "similes" | "tags"> = {
 			name: "OWNER_ROUTINES",
@@ -632,6 +657,249 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 				"how many times a day should i do pushups",
 			),
 		).toEqual({ names: [], kind: null });
+	});
+
+	it("routes possessive owner-data reads to the owner reader, never VIEWS (read-side of fead478cfa)", () => {
+		const todosAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "OWNER_TODOS",
+			similes: ["TODOS", "TODO_LIST"],
+			tags: [],
+		};
+		const todosTaggedViews: Pick<Action, "name" | "similes" | "tags"> = {
+			...viewsAction,
+			tags: [...(viewsAction.tags ?? []), "todos"],
+		};
+		// The live hijack shape: a possessive read must select the reader.
+		for (const message of [
+			"list my personal todos",
+			"what are my todos",
+			"show my todo list",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[todosTaggedViews, todosAction],
+					message,
+				),
+			).toEqual({ names: ["OWNER_TODOS"], kind: "owner-reads" });
+		}
+		// Lean stacks resolve the standalone todo owner (one owner per deployment).
+		const pluginTodosAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "TODO",
+			similes: ["TODOS"],
+			tags: [],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[todosTaggedViews, pluginTodosAction],
+				"list my personal todos",
+			),
+		).toEqual({ names: ["TODO"], kind: "owner-reads" });
+		// Without any reader the read yields NO candidate — never the view
+		// catalog (that fallthrough was the live "Cannot invoke get-todos" turn).
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[todosTaggedViews],
+				"list my personal todos",
+			),
+		).toEqual({ names: [], kind: null });
+		// Surface-noun asks stay with the navigation legs.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[todosTaggedViews, todosAction],
+				"open my todos page",
+			).kind,
+		).not.toBe("owner-reads");
+		// Mutations and completions are not reads.
+		for (const message of [
+			"add a todo: buy milk",
+			"check off my todo buy milk",
+			"mark my first todo done",
+			"how should i organize my todos",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[todosTaggedViews, todosAction],
+					message,
+				).kind,
+			).not.toBe("owner-reads");
+		}
+	});
+
+	it("covers the other owner-read domains and leaves non-possessive asks alone", () => {
+		const readers: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "OWNER_TODOS", similes: [], tags: [] },
+			{ name: "OWNER_GOALS", similes: [], tags: [] },
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_ROUTINES", similes: [], tags: [] },
+			{ name: "OWNER_ALARMS", similes: [], tags: [] },
+			{ name: "OWNER_FINANCES", similes: [], tags: [] },
+		];
+		for (const [message, actionName] of [
+			["list my personal todos", "OWNER_TODOS"],
+			["review our shared goals", "OWNER_GOALS"],
+			["what are my reminders for today", "OWNER_REMINDERS"],
+			["show my habits", "OWNER_ROUTINES"],
+			["check my alarms", "OWNER_ALARMS"],
+			["go over my expenses this week", "OWNER_FINANCES"],
+		] as const) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ...readers],
+					message,
+				),
+			).toEqual({ names: [actionName], kind: "owner-reads" });
+		}
+
+		// Contextual nouns outside the possessive clause cannot steal the route.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"show my reminders about goal planning",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-reads" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"review my goals concerning reminder planning",
+			),
+		).toEqual({ names: ["OWNER_GOALS"], kind: "owner-reads" });
+		// The compound phrase names finance data, not the routines surface.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"what are my spending habits?",
+			),
+		).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+		for (const [message, actionName] of [
+			["show my reminders about today's bitcoin price", "OWNER_REMINDERS"],
+			["review my goals concerning the current stock market", "OWNER_GOALS"],
+			["show my todos about checking the latest weather", "OWNER_TODOS"],
+		] as const) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[
+						viewsAction,
+						...readers,
+						{ name: "WEB_SEARCH", similes: [], tags: [] },
+					],
+					message,
+				),
+			).toEqual({ names: [actionName], kind: "owner-reads" });
+		}
+
+		// Multiple requested owner domains must not be silently reduced by the
+		// fixed registry order; the planner can clarify or compose readers.
+		for (const message of [
+			"show my goals and reminders",
+			"show my reminders and goals",
+			"review my todos and our routines",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ...readers],
+					message,
+				),
+			).toEqual({ names: [], kind: null });
+		}
+
+		// Advice, negation, quotation, and metalinguistic examples mention owner
+		// nouns but do not request private records.
+		for (const message of [
+			"tell me how to organize my todos",
+			"give me advice on my finances",
+			"what are good ways to organize my finances?",
+			"what are effective ways to manage my todos?",
+			"tell me ways to organize my reminders",
+			"show me how i can organize my goals",
+			"what are the best methods for tracking my spending?",
+			"do not show my reminders",
+			"please don't ever show my reminders",
+			"dont show my reminders",
+			"don’t ever show my reminders",
+			"do not ever show my reminders",
+			"do not, under any circumstances, show my reminders",
+			"never again list my todos",
+			"never, ever list my todos",
+			"never please under any circumstances show my reminders",
+			"what happens when I say show my reminders",
+			'write a story where she says "show my goals"',
+			"explain the phrase show my routines",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ...readers],
+					message,
+				),
+			).toEqual({ names: [], kind: null });
+		}
+		// No possessive anchor → not an owner read (precision over recall).
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"list the reminders",
+			).kind,
+		).not.toBe("owner-reads");
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"what's on my todo list? i'd like to know",
+			),
+		).toEqual({ names: ["OWNER_TODOS"], kind: "owner-reads" });
+		for (const message of [
+			"search the web for ways to organize my finances",
+			"look up advice about my finances",
+			"google tips to manage my spending",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[
+						viewsAction,
+						...readers,
+						{ name: "WEB_SEARCH", similes: [], tags: [] },
+					],
+					message,
+				),
+			).toEqual({ names: ["WEB_SEARCH"], kind: "web" });
+		}
+		for (const message of [
+			"what are good ways to manage my current stock spending?",
+			"don't show my reminders about today's bitcoin price",
+			"show my goals and reminders about current stock prices",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[
+						viewsAction,
+						...readers,
+						{ name: "WEB_SEARCH", similes: [], tags: [] },
+					],
+					message,
+				),
+			).toEqual({ names: [], kind: null });
+		}
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"don't browse the web; show my reminders",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-reads" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[
+					viewsAction,
+					...readers,
+					{ name: "WEB_SEARCH", similes: [], tags: [] },
+				],
+				"don't show my reminders; search the web for today's bitcoin price",
+			),
+		).toEqual({ names: ["WEB_SEARCH"], kind: "web" });
+		// The existing settings capability contract is untouched.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction],
+				"show my settings",
+			),
+		).toEqual({ names: ["VIEWS"], kind: "view-capability" });
 	});
 
 	it("gives owner goal mutations precedence over the views goals tag (#17028)", () => {
@@ -926,5 +1194,544 @@ describe("cloud-apps surface request inference", () => {
 				"settings",
 			),
 		).toEqual(["VIEWS"]);
+	});
+});
+
+describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () => {
+	const viewsAction = {
+		name: "VIEWS",
+		similes: ["OPEN_VIEW"],
+		tags: ["views", "ui", "finances", "app"],
+	};
+
+	it("'what is my budget?' routes to the finances reader, never VIEWS (F3, tj-a5f72b6aa95253)", () => {
+		const finances = { name: "OWNER_FINANCES", similes: [], tags: [] };
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, finances],
+				"what is my budget?",
+			),
+		).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+		// No reader registered → no candidate, never the view catalog.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction],
+				"what is my budget?",
+			),
+		).toEqual({ names: [], kind: null });
+	});
+
+	it("routes scheduled-admin nouns to their owner with the full action set", () => {
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		const actions = [
+			viewsAction,
+			appAction,
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_ALARMS", similes: [], tags: [] },
+			{ name: "OWNER_ROUTINES", similes: [], tags: [] },
+			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+		];
+		const cases = [
+			[
+				"snooze the water the ficus reminder until 6pm sunday",
+				"OWNER_REMINDERS",
+			],
+			["reschedule my dentist reminder to friday", "OWNER_REMINDERS"],
+			["snooze my 6am alarm", "OWNER_ALARMS"],
+			["postpone my morning routine", "OWNER_ROUTINES"],
+			["skip today's check-in", "SCHEDULED_TASKS"],
+			["reschedule my follow-up", "SCHEDULED_TASKS"],
+			["delete check-in task st_checkin_123", "SCHEDULED_TASKS"],
+			["delete follow-up task st_followup_123", "SCHEDULED_TASKS"],
+			["reschedule the scheduled task", "SCHEDULED_TASKS"],
+			["delete scheduled task st_custom_123", "SCHEDULED_TASKS"],
+			["snooze the task until tomorrow", "SCHEDULED_TASKS"],
+		] as const;
+
+		for (const [message, expected] of cases) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(actions, message),
+			).toEqual({ names: [expected], kind: "owner-scheduled-admin" });
+		}
+	});
+
+	it("never falls back to reminders when the scheduled-admin owner is absent", () => {
+		const actions = [
+			viewsAction,
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_ROUTINES", similes: [], tags: [] },
+			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+		];
+		expect(
+			inferDirectCurrentRequestCandidateInference(actions, "snooze my alarm"),
+		).toEqual({ names: [], kind: null });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				actions.filter((action) => action.name !== "SCHEDULED_TASKS"),
+				"skip today's check-in",
+			),
+		).toEqual({ names: [], kind: null });
+	});
+
+	it("requires Unicode-complete admin verbs and nouns while allowing punctuation", () => {
+		const actions = [
+			{ name: "OWNER_ALARMS", similes: [], tags: [] },
+			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+		];
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				actions,
+				"snooze—my 6am alarm!",
+			),
+		).toEqual({ names: ["OWNER_ALARMS"], kind: "owner-scheduled-admin" });
+		for (const message of [
+			"skipé my alarm",
+			"snooze my alarmé",
+			"snooze my alarm計画",
+			"snooze my alarm\u0301",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(actions, message),
+			).toEqual({ names: [], kind: null });
+		}
+	});
+
+	it("keeps ambiguous task skips and nounless snooze requests unhinted", () => {
+		const actions = [
+			viewsAction,
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+		];
+		for (const message of ["skip this task", "i want to snooze for a bit"]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(actions, message),
+			).toEqual({ names: [], kind: null });
+		}
+	});
+
+	it("owner-item deletes hint the owning umbrella (F31, tj-f02205ae366226)", () => {
+		const reminders = { name: "OWNER_REMINDERS", similes: [], tags: [] };
+		const alarms = { name: "OWNER_ALARMS", similes: [], tags: [] };
+		const todos = { name: "OWNER_TODOS", similes: [], tags: [] };
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		const registered = [viewsAction, appAction, reminders, alarms, todos];
+		// The live F31 shapes: exact-name deletes that Stage-1 classified as
+		// simple chat, producing a fictional "can't delete reminders here — dm
+		// me" surface refusal with no tool exposed.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"delete the reminder named water the ficus",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"delete both water the ficus reminders",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"cancel the call marco reminder",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"remove my dentist alarm",
+			),
+		).toEqual({ names: ["OWNER_ALARMS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"delete the todo about sandpaper",
+			),
+		).toEqual({ names: ["OWNER_TODOS"], kind: "owner-scheduled-admin" });
+		// Delete verb with no owner surface registered: yield nothing, never
+		// the view/app overlap.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction],
+				"delete the reminder named water the ficus",
+			),
+		).toEqual({ names: [], kind: null });
+		// Surface-noun asks stay with navigation, and explanation requests stay
+		// chat.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"close the reminders tab",
+			).kind,
+		).not.toBe("owner-scheduled-admin");
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				registered,
+				"how do i delete a reminder",
+			).kind,
+		).not.toBe("owner-scheduled-admin");
+	});
+
+	it("work-thread lifecycle asks hint the work-thread surface (F27, tj-ee16a14fea597e)", () => {
+		const workThread = { name: "WORK_THREAD", similes: [], tags: [] };
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, workThread],
+				"start a work thread: plan the garage cleanout",
+			),
+		).toEqual({ names: ["WORK_THREAD"], kind: "owner-work-thread" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, workThread],
+				"resume the kitchen reno work thread",
+			),
+		).toEqual({ names: ["WORK_THREAD"], kind: "owner-work-thread" });
+		// No work-thread surface registered: yield nothing, never the view/app
+		// overlap.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction],
+				"start a work thread: plan the garage cleanout",
+			),
+		).toEqual({ names: [], kind: null });
+		// Explanations and bare mentions stay chat.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, workThread],
+				"what is a work thread",
+			).kind,
+		).not.toBe("owner-work-thread");
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, workThread],
+				"the work thread idea sounds nice",
+			).kind,
+		).not.toBe("owner-work-thread");
+	});
+	it("media-generation asks hint the generator (F35, tj-fcf8c1c21be91f)", () => {
+		const generateMedia = { name: "GENERATE_MEDIA", similes: [], tags: [] };
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, generateMedia],
+				"make me a pixel-art castle image, 64x64 retro game vibe",
+			),
+		).toEqual({ names: ["GENERATE_MEDIA"], kind: "media-generation" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, generateMedia],
+				"generate a picture of a lighthouse at dusk",
+			),
+		).toEqual({ names: ["GENERATE_MEDIA"], kind: "media-generation" });
+		// No generator registered: no candidate, honest chat answer allowed.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction],
+				"generate a picture of a lighthouse at dusk",
+			),
+		).toEqual({ names: [], kind: null });
+		// Generation verbs without a visual-artifact noun never match.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, generateMedia],
+				"create a todo: buy sandpaper",
+			).kind,
+		).not.toBe("media-generation");
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, generateMedia],
+				"draw up a plan for the garage",
+			).kind,
+		).not.toBe("media-generation");
+	});
+});
+describe("classifyExplicitContinuationTurn", () => {
+	it("classifies directive continuations", () => {
+		expect(classifyExplicitContinuationTurn("finish my request")).toBe(
+			"directive",
+		);
+		expect(classifyExplicitContinuationTurn("Finish it.")).toBe("directive");
+		expect(classifyExplicitContinuationTurn("continue")).toBe("directive");
+		expect(classifyExplicitContinuationTurn("ok, go ahead")).toBe("directive");
+		expect(classifyExplicitContinuationTurn("yes please do it")).toBe(
+			"directive",
+		);
+		expect(classifyExplicitContinuationTurn("keep going")).toBe("directive");
+	});
+
+	it("classifies approval continuations", () => {
+		expect(classifyExplicitContinuationTurn("that is good")).toBe("approval");
+		expect(classifyExplicitContinuationTurn("that's good, go ahead")).toBe(
+			"approval",
+		);
+		expect(classifyExplicitContinuationTurn("yes")).toBe("approval");
+		expect(classifyExplicitContinuationTurn("sounds good")).toBe("approval");
+		expect(classifyExplicitContinuationTurn("that works")).toBe("approval");
+	});
+
+	it("rejects ordinary chat, topic switches, and questions", () => {
+		expect(classifyExplicitContinuationTurn("that is a good question")).toBe(
+			null,
+		);
+		expect(
+			classifyExplicitContinuationTurn("how tall is the eiffel tower?"),
+		).toBe(null);
+		expect(
+			classifyExplicitContinuationTurn("finish my sandwich and tell me a joke"),
+		).toBe(null);
+		expect(classifyExplicitContinuationTurn("good morning")).toBe(null);
+		expect(classifyExplicitContinuationTurn("is that good?")).toBe(null);
+		expect(classifyExplicitContinuationTurn("")).toBe(null);
+		expect(
+			classifyExplicitContinuationTurn(
+				"that is good but now let's talk about the weather in tokyo instead",
+			),
+		).toBe(null);
+	});
+});
+
+describe("resolveExplicitContinuationRequestText", () => {
+	const AGENT_ID = "00000000-0000-0000-0000-0000000000aa";
+	const USER_ID = "00000000-0000-0000-0000-0000000000bb";
+	const OTHER_USER_ID = "00000000-0000-0000-0000-0000000000cc";
+	const room = (
+		entries: Array<{
+			id: string;
+			agent?: boolean;
+			entity?: string;
+			text: string;
+			createdAt: number;
+			callbacks?: string[];
+			actions?: string[];
+		}>,
+	) =>
+		entries.map((entry) => ({
+			id: entry.id,
+			entityId: entry.agent ? AGENT_ID : (entry.entity ?? USER_ID),
+			createdAt: entry.createdAt,
+			content: {
+				text: entry.text,
+				...(entry.callbacks ? { actionCallbackHistory: entry.callbacks } : {}),
+				...(entry.actions ? { actions: entry.actions } : {}),
+			},
+		}));
+
+	it("resolves a directive continuation to the nearest prior user request", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"finish my request",
+			room([
+				{ id: "m1", text: "track a 30 minute run for me", createdAt: 1 },
+				{
+					id: "m2",
+					agent: true,
+					text: "Want me to log it as cardio?",
+					createdAt: 2,
+				},
+				{ id: "m3", text: "finish my request", createdAt: 3 },
+			]),
+			AGENT_ID,
+			USER_ID,
+			"m3",
+		);
+		expect(resolved).toBe("track a 30 minute run for me");
+	});
+
+	it("resolves an approval turn only while the agent's last reply looks pending", () => {
+		const pending = resolveExplicitContinuationRequestText(
+			"that is good",
+			room([
+				{ id: "m1", text: "run ls in my home directory", createdAt: 1 },
+				{ id: "m2", agent: true, text: "On it.", createdAt: 2 },
+			]),
+			AGENT_ID,
+			USER_ID,
+		);
+		expect(pending).toBe("run ls in my home directory");
+
+		const delivered = resolveExplicitContinuationRequestText(
+			"that is good",
+			room([
+				{ id: "m1", text: "run ls in my home directory", createdAt: 1 },
+				{
+					id: "m2",
+					agent: true,
+					text: "Here are your files: a.txt b.txt",
+					createdAt: 2,
+					callbacks: ["Here are your files: a.txt b.txt"],
+				},
+			]),
+			AGENT_ID,
+			USER_ID,
+		);
+		expect(delivered).toBe(null);
+	});
+
+	it("does not treat a short completed reply as pending approval", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"that is great",
+			room([
+				{ id: "m1", text: "delete the temporary file", createdAt: 1 },
+				{ id: "m2", agent: true, text: "Done.", createdAt: 2 },
+			]),
+			AGENT_ID,
+			USER_ID,
+		);
+		expect(resolved).toBe(null);
+	});
+
+	it("does not approve a new user request against an older assistant turn", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"yes",
+			room([
+				{ id: "m1", text: "show my files", createdAt: 1 },
+				{ id: "m2", agent: true, text: "Want me to continue?", createdAt: 2 },
+				{ id: "m3", text: "delete the temporary file", createdAt: 3 },
+			]),
+			AGENT_ID,
+			USER_ID,
+		);
+		expect(resolved).toBe(null);
+	});
+
+	it("does not approve an assistant turn marked as tool-derived", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"sounds good",
+			room([
+				{ id: "m1", text: "show my files", createdAt: 1 },
+				{
+					id: "m2",
+					agent: true,
+					text: "On it.",
+					createdAt: 2,
+					actions: ["SHELL"],
+				},
+			]),
+			AGENT_ID,
+			USER_ID,
+		);
+		expect(resolved).toBe(null);
+	});
+
+	it("returns null for non-continuation turns and empty history", () => {
+		expect(
+			resolveExplicitContinuationRequestText(
+				"what's the weather in tokyo?",
+				room([{ id: "m1", text: "track a run", createdAt: 1 }]),
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe(null);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"finish it",
+				[],
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe(null);
+	});
+
+	it("skips prior continuation turns instead of chaining them", () => {
+		const resolved = resolveExplicitContinuationRequestText(
+			"finish it",
+			room([
+				{ id: "m1", text: "run df -h on the server", createdAt: 1 },
+				{ id: "m2", agent: true, text: "Should I run it now?", createdAt: 2 },
+				{ id: "m3", text: "go ahead", createdAt: 3 },
+				{ id: "m4", agent: true, text: "Working on it.", createdAt: 4 },
+				{ id: "m5", text: "finish it", createdAt: 5 },
+			]),
+			AGENT_ID,
+			USER_ID,
+			"m5",
+		);
+		expect(resolved).toBe("run df -h on the server");
+	});
+
+	it("never resolves another participant's request", () => {
+		const messages = room([
+			{
+				id: "m1",
+				entity: OTHER_USER_ID,
+				text: "delete my deployment",
+				createdAt: 1,
+			},
+			{ id: "m2", agent: true, text: "Should I delete it?", createdAt: 2 },
+		]);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"go ahead",
+				messages,
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe(null);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"go ahead",
+				messages,
+				AGENT_ID,
+				OTHER_USER_ID,
+			),
+		).toBe("delete my deployment");
+	});
+
+	it("does not treat planner-terminal STOP as a completed tool (#20324 review)", () => {
+		expect(isToolDerivedAssistantContent({ actions: ["STOP"] })).toBe(false);
+		expect(isToolDerivedAssistantContent({ actions: ["REPLY"] })).toBe(false);
+		expect(
+			isToolDerivedAssistantContent({ actions: ["DELETE_DEPLOYMENT"] }),
+		).toBe(true);
+		expect(
+			resolveExplicitContinuationRequestText(
+				"that is good",
+				room([
+					{ id: "m1", text: "run ls in my home directory", createdAt: 1 },
+					{
+						id: "m2",
+						agent: true,
+						text: "On it.",
+						createdAt: 2,
+						actions: ["STOP"],
+					},
+				]),
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe("run ls in my home directory");
+		expect(
+			resolveExplicitContinuationRequestText(
+				"that is good",
+				room([
+					{ id: "m1", text: "run ls in my home directory", createdAt: 1 },
+					{
+						id: "m2",
+						agent: true,
+						text: "Done.",
+						createdAt: 2,
+						actions: ["SHELL"],
+					},
+				]),
+				AGENT_ID,
+				USER_ID,
+			),
+		).toBe(null);
 	});
 });

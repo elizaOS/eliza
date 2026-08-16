@@ -1,193 +1,186 @@
 ---
 title: Rate Limits
-description: Understand rate limiting on elizaOS Cloud APIs and how to handle rate limit errors.
+description: Understand route protection and organization inference limits on elizaOS Cloud APIs.
 ---
 
-# Rate Limits
+elizaOS Cloud uses two independent rate-limit layers. A request can pass one
+layer and still be rejected by the other.
 
-elizaOS Cloud applies rate limits to ensure fair usage and platform stability.
+### Route protection
 
-## Overview
+Route protection controls bursts against individual API routes. It is not a
+single account-wide allowance, and it is not always keyed by API key. Depending
+on the route and runtime, its caller bucket can come from an API key,
+authenticated user, anonymous session, source IP, or shared public fallback.
+The route's configured preset or explicit limit is authoritative.
 
-Rate limits are applied per API key and vary by:
+### Organization inference admission
 
-- **Endpoint type**: Different limits for different APIs
-- **Time window**: Requests per minute or per 5 minutes
+Organization inference admission is a separate 60-second limit applied after
+authentication. It covers chat, embeddings, generative media, and the public
+agent MCP and A2A surfaces. API keys and sessions belonging to the same
+organization share this inference budget; creating another key does not create
+another budget. The organization's qualifying-credit tier and any explicit
+per-organization override determine the cap.
 
-## Default Limits
+## Organization inference tiers
 
-Rate limits are applied per API key. All users share the same default limits — credits and billing control cost.
+The current classifier totals the USD-denominated `amount` of credit
+transactions whose ledger `type` is `credit`. It excludes only transactions
+with one of these exact `metadata.type` values:
 
-| Endpoint         | Rate Limit | Preset   |
-| ---------------- | ---------- | -------- |
-| Chat Completions | 200/min    | RELAXED  |
-| Responses        | 200/min    | RELAXED  |
-| Embeddings       | 60/min     | STANDARD |
-| Image Generation | 60/min     | STANDARD |
-| Video Generation | 5/5min     | CRITICAL |
-| Knowledge Query  | 60/min     | STANDARD |
+- `initial_free_credits`
+- `wallet_signup`
+- `signup_code_bonus`
 
-### Enterprise
+Other labels are not automatically excluded. The tier is selected from this
+cumulative qualifying-credit total, not the organization's remaining balance.
+These are ledger thresholds, not subscription plans.
 
-Custom rate limits based on your needs. Contact sales.
+- **Free — $0 minimum:** Completions 60 RPM, Embeddings 100 RPM, Standard 30
+  RPM, Strict 5 RPM
+- **Paid — $5 minimum:** Completions 120 RPM, Embeddings 200 RPM, Standard 60
+  RPM, Strict 10 RPM
+- **Growth — $100 minimum:** Completions 300 RPM, Embeddings 600 RPM, Standard
+  120 RPM, Strict 30 RPM
 
-## Rate Limit Headers
+An approved per-organization override can replace one or more RPM values. When
+an override is present, the overridden values are authoritative even if the
+organization's qualifying-credit total would otherwise select a different
+value.
 
-Rate-limited responses include rate limit information. Some endpoints may also
-include these headers on successful responses:
+Endpoint classes currently map as follows:
 
-```
-X-RateLimit-Limit: 200
-X-RateLimit-Remaining: 185
-X-RateLimit-Reset: 2026-01-15T12:01:00.000Z
-X-RateLimit-Policy: redis
-```
+- **Completions:** `/api/v1/chat/completions`, `/api/v1/chat`,
+  `/api/v1/messages`, and Shared agent chat
+- **Embeddings:** `/api/v1/embeddings`
+- **Standard:** `/api/agents/{id}/mcp` and `/api/agents/{id}/a2a`
+- **Strict:** image, music, prompt, sound-effect, video, speech-to-text, and
+  text-to-speech generation
 
-| Header                  | Description                         |
-| ----------------------- | ----------------------------------- |
-| `X-RateLimit-Limit`     | Max requests in window              |
-| `X-RateLimit-Remaining` | Requests remaining                  |
-| `X-RateLimit-Reset`     | ISO timestamp when window resets    |
-| `X-RateLimit-Policy`    | Backend: `redis` or `in-memory`     |
+## Windows and resets
 
-## Handling Rate Limits
+Inference RPM limits use a 60-second window. On the Cloudflare Worker inference
+path, the Durable Object counter is keyed by organization and endpoint class,
+and uses fixed windows aligned to UTC minute boundaries. The returned reset
+time is the authority for the current request; do not derive it from a local
+request counter.
 
-### 429 Response
+Compatibility runtimes can enforce the same organization cap through Redis.
+Generic route protection can use Cloudflare's native limiter, Redis, or a local
+fallback according to the route and runtime, so its window semantics should not
+be inferred from the inference limiter.
 
-When rate limited, you'll receive:
+## Headers and error responses
+
+Do not assume every endpoint emits rate-limit headers. A limiter may attach
+them to successful or denied responses, but protocol adapters can translate the
+response into an OpenAI-, Anthropic-, or JSON-RPC-compatible envelope. Read the
+headers that are actually present on the response.
+
+When a route returns the shared native `429` response, its body is flat:
 
 ```json
 {
-  "error": {
-    "code": "RATE_LIMITED",
-    "message": "Too many requests",
-    "retryAfter": 42
-  }
+  "success": false,
+  "error": "Too many requests",
+  "code": "rate_limit_exceeded",
+  "message": "Rate limit exceeded. Maximum 60 requests per 60 seconds.",
+  "retryAfter": 42
 }
 ```
 
-### Retry Strategy
+The shared native response emits these headers:
 
-Implement exponential backoff:
+- `Retry-After`: seconds to wait before retrying
+- `X-RateLimit-Limit`: configured maximum for the window
+- `X-RateLimit-Remaining`: requests remaining in the current window
+- `X-RateLimit-Reset`: ISO 8601 timestamp when the current window resets
+- `X-RateLimit-Policy`: policy that produced this response, such as
+  `durable-object`, `redis`, or `in-memory`
 
-```javascript
-async function fetchWithRetry(url, options, maxRetries = 3) {
-  for (let i = 0; i < maxRetries; i++) {
-    const response = await fetch(url, options);
+The Worker inference path fails closed while the organization policy cache is
+warming or when the authoritative limiter is unavailable. Those cases return
+`503`, not `429`. Use `Retry-After` when the route emits it; warming responses
+do not all preserve the same headers or JSON envelope.
 
-    if (response.status === 429) {
-      const retryAfter = response.headers.get("Retry-After");
-      const waitTime = retryAfter
-        ? parseInt(retryAfter) * 1000
-        : Math.pow(2, i) * 1000;
+The native unavailable response is:
 
-      console.log(`Rate limited. Waiting ${waitTime}ms...`);
-      await new Promise((resolve) => setTimeout(resolve, waitTime));
-      continue;
-    }
-
-    return response;
-  }
-
-  throw new Error("Max retries exceeded");
+```json
+{
+  "success": false,
+  "error": "Rate limit unavailable",
+  "code": "rate_limit_unavailable",
+  "message": "The inference rate limiter is temporarily unavailable."
 }
 ```
 
-### Best Practices
+It includes `Retry-After: 1`, `Cache-Control: no-store`, and
+`X-RateLimit-Policy: durable-object`. A cold policy cache can instead be exposed
+as a protocol-specific warming error, such as `rate_limit_cache_warming`.
 
-1. **Monitor headers**: Track remaining requests
-2. **Implement backoff**: Wait before retrying
-3. **Queue requests**: Smooth out request spikes
-4. **Cache responses**: Reduce redundant calls
+## Retry safely
 
-## Request Queuing
+For `429`, wait for `Retry-After` when present. Otherwise use exponential
+backoff with jitter and cap the delay. The same approach is appropriate for a
+retryable rate-limiter `503`; do not retry authentication, validation, or
+insufficient-credit errors as though they were rate limits.
 
-For high-volume applications, implement a request queue:
+Queueing concurrent inference calls can reduce bursts, but a client-side queue
+does not replace the server's organization-level counter. Coordinate queues
+across workers if your application sends traffic from more than one process.
 
-```javascript
-class RequestQueue {
-  constructor(rateLimit = 60, windowMs = 60000) {
-    this.queue = [];
-    this.rateLimit = rateLimit;
-    this.windowMs = windowMs;
-    this.requestTimes = [];
-  }
+## Inspect configured caps
 
-  async add(request) {
-    return new Promise((resolve, reject) => {
-      this.queue.push({ request, resolve, reject });
-      this.process();
-    });
-  }
-
-  async process() {
-    if (this.queue.length === 0) return;
-
-    // Clean old request times
-    const now = Date.now();
-    this.requestTimes = this.requestTimes.filter(
-      (t) => now - t < this.windowMs,
-    );
-
-    // Check if we can make a request
-    if (this.requestTimes.length < this.rateLimit) {
-      const { request, resolve, reject } = this.queue.shift();
-      this.requestTimes.push(now);
-
-      try {
-        const result = await request();
-        resolve(result);
-      } catch (error) {
-        reject(error);
-      }
-
-      this.process();
-    } else {
-      // Wait until we can make another request
-      const waitTime = this.windowMs - (now - this.requestTimes[0]);
-      setTimeout(() => this.process(), waitTime);
-    }
-  }
-}
-```
-
-## Increasing Limits
-
-For specific use cases, contact support to request a custom limit increase.
-
-## Burst Limits
-
-The BURST preset (10 req/sec) is available for real-time features. Standard AI endpoints use per-minute windows only.
-
-## Monitoring Usage
-
-Track your API usage:
+Authenticated callers can read the organization's current limit snapshot:
 
 ```bash
-curl -X GET "https://api.eliza.app/api/quotas/usage" \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl "https://api.eliza.app/api/v1/billing/limits" \
+  -H "Authorization: Bearer $ELIZA_API_KEY"
 ```
+
+The `inferenceRateLimits` item reports only the configured completions and
+embeddings caps:
 
 ```json
 {
-  "period": "current_minute",
-  "usage": {
-    "chat": { "used": 45, "limit": 200 },
-    "embeddings": { "used": 12, "limit": 60 }
-  }
+  "source": "org-rate-limits",
+  "state": "available",
+  "completionsRpm": 120,
+  "embeddingsRpm": 200
 }
 ```
 
-## Next Steps
+This snapshot does not contain live usage, remaining requests, reset time, or
+the Standard and Strict caps. Its `state` describes whether the configured cap
+source was available; it is not a usage meter.
+
+## Source of truth
+
+- Tier thresholds, qualifying-credit classification, and overrides:
+  [`org-rate-limits.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/shared/src/lib/services/org-rate-limits.ts)
+- Shared denial responses and organization enforcement:
+  [`rate-limit.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/shared/src/lib/middleware/rate-limit.ts)
+- Fixed Worker inference windows:
+  [`inference-admission-gate.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/api/src/inference-admission-gate.ts)
+- Account-limit snapshot contract:
+  [`account-limits-snapshot.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/shared/src/lib/services/account-limits-snapshot.ts)
+- Contract coverage:
+  [`org-rate-limits-sources.test.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/shared/src/lib/services/org-rate-limits-sources.test.ts),
+  [`rate-limit-org-lease.test.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/shared/src/lib/middleware/rate-limit-org-lease.test.ts),
+  [`inference-admission-gate.test.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/api/__tests__/inference-admission-gate.test.ts), and
+  [`billing-limits-route.pglite.test.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/api/__tests__/billing-limits-route.pglite.test.ts)
+
+## Next steps
 
 <CardGroup>
   <CardGroup.Card title="Error Handling" href="/cloud/errors">
-    Handle API errors gracefully
+    Handle API errors and retries
   </CardGroup.Card>
   <CardGroup.Card title="API Reference" href="/cloud/api">
-    Complete API documentation
+    Browse Cloud API documentation
   </CardGroup.Card>
   <CardGroup.Card title="Billing" href="/cloud/billing">
-    Upgrade your plan
+    Manage credits and payments
   </CardGroup.Card>
 </CardGroup>

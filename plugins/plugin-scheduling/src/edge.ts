@@ -79,8 +79,10 @@ export {
   createSchedulingSqlScheduledTaskStore,
   type DueScheduledTaskRef,
   listDueScheduledTaskRefs,
+  listRecoverableScheduledTaskRefs,
   parseScheduledTaskLogRow,
   parseScheduledTaskRow,
+  type RecoverableScheduledTaskRef,
   type SchedulingSqlStoreOptions,
 } from "./scheduled-task/store.js";
 export {
@@ -121,6 +123,7 @@ export type {
   ScheduledTaskRef,
   ScheduledTaskResolvedContext,
   ScheduledTaskRunner,
+  ScheduledTaskScheduleResult,
   ScheduledTaskShouldFire,
   ScheduledTaskSource,
   ScheduledTaskState,
@@ -147,6 +150,9 @@ export {
 export {
   createSharedRemindersEdgeAction,
   createSharedRemindersEdgePlugin,
+  parseSharedReminderDelivery,
+  SHARED_CUTOVER_GATEWAY_CHANNEL,
+  SHARED_REMINDER_MAX_TEXT_LENGTH,
   SHARED_REMINDERS_EDGE_COMPATIBILITY,
   type SharedReminderDelivery,
   type SharedRemindersEdgePluginOptions,

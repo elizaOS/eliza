@@ -24,9 +24,12 @@
  *
  * `GET /api/models/config` reports the current effective value for every key
  * this route owns, with the source that won (`config.env` → `config.env.vars`
- * → `process.env`, mirroring the orchestrator's direct-section-first read).
+ * → `process.env`). `activeChat` names the serving provider only when the
+ * runtime actually registered that handler — cloud-proxy without a signed-in
+ * elizaOSCloud TEXT_SMALL handler omits the field (#20045).
  */
 import {
+  type AgentRuntime,
   ElizaError,
   logger,
   type RouteHelpers,
@@ -42,6 +45,7 @@ import {
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import type { RuntimeOperationManager } from "../runtime/operations/index.ts";
+import { hasCloudTextHandlerRegistered } from "./agent-model.ts";
 import {
   buildModelCatalog,
   CODING_MODEL_DEFAULTS,
@@ -66,7 +70,7 @@ export interface ModelConfigWriteBody {
 export interface ModelConfigRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json" | "readJsonBody"> {
-  state: { config: ElizaConfig };
+  state: { config: ElizaConfig; runtime?: AgentRuntime | null };
   saveElizaConfig: (config: ElizaConfig) => void;
   runtimeOperationManager: RuntimeOperationManager;
   /** Injectable catalog for tests; defaults to the live buildModelCatalog(). */
@@ -532,10 +536,14 @@ function resolveEffective(
 /**
  * The chat provider actually serving inference right now, resolved from the
  * canonical serviceRouting topology — the same signal the plugin-collector
- * uses to decide which model plugin loads. `endpoint` is the host that
- * answers, so operator surfaces (/model show, the settings panel) can name
- * what ACTUALLY serves instead of guessing from OPENAI_BASE_URL, which stays
- * pinned in the environment even when cloud-proxy routing makes it inert.
+ * uses to decide which model plugin loads. Cloud-proxy only reports
+ * `elizacloud` when the runtime has a registered elizaOSCloud TEXT_SMALL
+ * handler; a configured-but-unsigned-in cloud account falls through to
+ * local inference and must not advertise Cloud as the active brain
+ * (#20045). `endpoint` is the host that answers, so operator surfaces
+ * (/model show, the settings panel) can name what ACTUALLY serves instead
+ * of guessing from OPENAI_BASE_URL, which stays pinned in the environment
+ * even when cloud-proxy routing makes it inert.
  */
 export interface ActiveChatInfo {
   provider: string;
@@ -557,6 +565,7 @@ function hostOf(value: string | undefined): string | null {
 export function resolveActiveChat(
   config: ElizaConfig,
   processEnv: NodeJS.ProcessEnv,
+  runtime?: AgentRuntime | null,
 ): ActiveChatInfo | null {
   const routing = resolveServiceRoutingInConfig(
     config as Record<string, unknown>,
@@ -564,12 +573,17 @@ export function resolveActiveChat(
   const llmText = routing?.llmText;
   const backend =
     typeof llmText?.backend === "string" ? llmText.backend : undefined;
-  const provider =
-    llmText?.transport === "cloud-proxy" && backend === "elizacloud"
-      ? "elizacloud"
-      : llmText?.transport === "direct" && backend !== undefined
-        ? LLM_BACKEND_TO_CHAT_PROVIDER[backend]
+  const cloudProxyConfigured =
+    llmText?.transport === "cloud-proxy" && backend === "elizacloud";
+  let provider: string | undefined;
+  if (cloudProxyConfigured) {
+    provider =
+      runtime && hasCloudTextHandlerRegistered(runtime)
+        ? "elizacloud"
         : undefined;
+  } else if (llmText?.transport === "direct" && backend !== undefined) {
+    provider = LLM_BACKEND_TO_CHAT_PROVIDER[backend];
+  }
   const family =
     provider === "openai"
       ? "OPENAI"
@@ -672,7 +686,11 @@ export async function handleModelConfigRoutes(
   const processEnv = ctx.processEnv ?? process.env;
 
   if (method === "GET") {
-    const activeChat = resolveActiveChat(state.config, processEnv);
+    const activeChat = resolveActiveChat(
+      state.config,
+      processEnv,
+      state.runtime,
+    );
     json(res, {
       targets: buildEffectiveConfig(state.config, processEnv, activeChat),
       ...(activeChat ? { activeChat } : {}),
@@ -719,7 +737,7 @@ export async function handleModelConfigRoutes(
     const writes = resolveChatWrites(
       catalog,
       body,
-      resolveActiveChat(state.config, processEnv)?.provider,
+      resolveActiveChat(state.config, processEnv, state.runtime)?.provider,
     );
     const conflicts: string[] = [];
     const outcome = await ctx.runtimeOperationManager.start({
