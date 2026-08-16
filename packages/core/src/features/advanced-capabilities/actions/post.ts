@@ -27,6 +27,7 @@ import type {
 import { ChannelType } from "../../../types/index.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
 import { stringToUuid } from "../../../utils.ts";
+import { truncateWellFormed } from "../../../utils/well-formed.ts";
 import {
 	boolParam,
 	buildPostQueryContext,
@@ -204,7 +205,7 @@ function applyPostContentShaping(
 		maxLength > 0 &&
 		text.length > maxLength
 	) {
-		text = text.slice(0, Math.max(0, Math.floor(maxLength)));
+		text = truncateWellFormed(text, Math.max(0, Math.floor(maxLength)));
 	}
 	return text === content.text ? content : { ...content, text };
 }

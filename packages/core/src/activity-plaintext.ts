@@ -19,6 +19,7 @@ import type {
 	TrajectoryStepRecord,
 	TrajectorySummaryRecord,
 } from "./services/trajectory-types";
+import { truncateWellFormed } from "./utils/well-formed.ts";
 
 export interface ActivityPlaintextSummary {
 	eventType: string;
@@ -104,7 +105,7 @@ function readBoolean(value: unknown): boolean | undefined {
 function normalizePlaintext(value: string, maxLength: number): string {
 	const normalized = value.replace(/\s+/g, " ").trim();
 	return normalized.length > maxLength
-		? normalized.slice(0, Math.max(0, maxLength)).trimEnd()
+		? truncateWellFormed(normalized, maxLength).trimEnd()
 		: normalized;
 }
 

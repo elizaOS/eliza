@@ -13,6 +13,7 @@
  */
 import z from "zod";
 import { logger } from "../../../logger.ts";
+import { truncateWellFormed } from "../../../utils/well-formed.ts";
 import {
 	FORMALITY_VALUES,
 	MAX_DIRECTIVE_CHARS,
@@ -47,7 +48,7 @@ const AddDirectiveOpSchema = z.object({
 		.string()
 		.trim()
 		.min(1)
-		.transform((text) => text.slice(0, MAX_DIRECTIVE_CHARS)),
+		.transform((text) => truncateWellFormed(text, MAX_DIRECTIVE_CHARS)),
 	confidence: z.number().min(0).max(1),
 	evidence: z.string().optional(),
 });

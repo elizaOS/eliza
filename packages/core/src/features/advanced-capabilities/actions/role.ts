@@ -35,6 +35,7 @@ import type {
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
 import { asRecord } from "../../../utils/type-guards.ts";
+import { truncateWellFormed } from "../../../utils/well-formed.ts";
 
 const ROLE_OPS = ["assign", "revoke", "list"] as const;
 type RoleOp = (typeof ROLE_OPS)[number];
@@ -191,7 +192,7 @@ function normalizeAssignmentArray(raw: unknown): AssignmentJson[] {
 }
 
 function normalizeEntityLookupName(raw: string): string | null {
-	const safeRaw = raw.length > 1024 ? raw.slice(0, 1024) : raw;
+	const safeRaw = truncateWellFormed(raw, 1024);
 	const normalized = safeRaw
 		.trim()
 		.replace(/^@{1,1024}/, "")

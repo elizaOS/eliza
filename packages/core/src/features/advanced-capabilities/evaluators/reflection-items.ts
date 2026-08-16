@@ -47,6 +47,7 @@ import type {
 import { MemoryType } from "../../../types/memory.ts";
 import type { JsonValue } from "../../../types/primitives.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
+import { truncateWellFormed } from "../../../utils/well-formed.ts";
 import {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
@@ -446,7 +447,7 @@ const ENTITY_NAMES_RENDER_MAX_CHARS = 240;
 
 function boundRender(text: string, maxChars: number): string {
 	if (text.length <= maxChars) return text;
-	return `${text.slice(0, maxChars)}…[truncated]`;
+	return `${truncateWellFormed(text, maxChars)}…[truncated]`;
 }
 
 function boundReflectionEntities(params: {

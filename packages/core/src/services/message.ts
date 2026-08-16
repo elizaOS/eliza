@@ -513,7 +513,7 @@ function textContainsUserTag(text: string | undefined): boolean {
 		return false;
 	}
 
-	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	const safeText = truncateWellFormed(text, 10_000);
 	return /<@!?[^>]+>|@\w+/u.test(safeText);
 }
 
@@ -1878,7 +1878,7 @@ export function subAgentCompletionRelayBody(
 	if (!body) return undefined;
 	const maxLength = 1500;
 	return body.length > maxLength
-		? `${body.slice(0, maxLength).trimEnd()}…`
+		? `${truncateWellFormed(body, maxLength).trimEnd()}…`
 		: body;
 }
 
@@ -2220,7 +2220,7 @@ function cleanPriorDialogueSpeakerName(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const normalized = value.trim().split(/\s+/).join(" ");
 	if (!normalized) return undefined;
-	return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
+	return normalized.length > 80 ? `${truncateWellFormed(normalized, 77)}...` : normalized;
 }
 
 function senderIdentityName(value: unknown): string | undefined {
@@ -10252,7 +10252,7 @@ function isStopResponse(
 }
 
 function unwrapPlannerIdentifier(value: string): string {
-	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
+	const safe = truncateWellFormed(value, 10_000);
 	const trimmed = safe
 		.trim()
 		.replace(/^(?:[-*]|\d+[.)])\s+/, "")
