@@ -36,6 +36,20 @@ describe("createRateLimiter", () => {
     expect(() =>
       createRateLimiter({ windowMs: 1000, sweepIntervalMs: Number.NaN }),
     ).toThrow(RangeError);
+    expect(() =>
+      createRateLimiter({ windowMs: 1000, sweepIntervalMs: 2_147_483_648 }),
+    ).toThrow(RangeError);
+  });
+
+  it("caps the derived sweep interval at the maximum timer delay", () => {
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+
+    limiter = createRateLimiter({ windowMs: 2_147_483_647 });
+
+    expect(setIntervalSpy).toHaveBeenCalledWith(
+      expect.any(Function),
+      2_147_483_647,
+    );
   });
 
   it("allows initial action and blocks subsequent actions within windowMs", () => {
