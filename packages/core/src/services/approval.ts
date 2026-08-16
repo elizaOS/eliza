@@ -129,7 +129,7 @@ export const STANDARD_OPTIONS = {
  * Only an existing option whose `isCancel` is explicitly true is a cancel.
  * A missing name fail-closes as cancel. Names such as `ABORT` are not special.
  */
-export function isCancelApprovalOption(
+function isCancelApprovalOption(
 	options: readonly ApprovalOption[] | undefined,
 	selectedName: string,
 ): boolean {
