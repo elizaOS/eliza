@@ -303,6 +303,110 @@ for (const surface of SURFACES) {
 }
 
 for (const surface of SURFACES) {
+  test(`hosted OAuth leaves through the current login document without a popup (${surface.name})`, async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.skip(
+      TEST_AUTH_ENABLED,
+      "requires the real signed-out login surface, not the test-auth shell",
+    );
+    if (!baseURL) throw new Error("Playwright baseURL is required");
+    await page.setViewportSize(surface.viewport);
+    const documentRequests: string[] = [];
+    const failures: string[] = [];
+    const consoleMessages: Array<{ type: string; text: string }> = [];
+    let popupCount = 0;
+    let authorizeRequests = 0;
+
+    page.on("popup", () => {
+      popupCount += 1;
+    });
+    page.on("request", (request) => {
+      if (
+        request.isNavigationRequest() &&
+        request.frame() === page.mainFrame()
+      ) {
+        documentRequests.push(request.url());
+      }
+    });
+    page.on("pageerror", (error) => failures.push(error.message));
+    page.on("console", (message) => {
+      consoleMessages.push({ type: message.type(), text: message.text() });
+    });
+    page.on("requestfailed", (request) => {
+      failures.push(
+        `${request.method()} ${request.url()} ${request.failure()?.errorText ?? "unknown"}`,
+      );
+    });
+    await page.route("**/auth/providers", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(PROVIDERS),
+      });
+    });
+    await page.route("**/auth/oauth/google/authorize**", async (route) => {
+      authorizeRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: "<!doctype html><title>OAuth handoff</title><h1>OAuth handoff</h1>",
+      });
+    });
+
+    // Loopback is a browser trustworthy origin, so this reaches the real
+    // WebCrypto-backed PKCE boundary. The canonical-host HTTP proxy used by
+    // the handoff tests is intentionally not secure and cannot expose subtle.
+    await page.goto(new URL("/login?returnTo=%2F", baseURL).toString());
+    const google = page.getByRole("button", { name: "Google", exact: true });
+    await expect(google).toBeVisible();
+
+    await google.click();
+
+    await expect(
+      page.getByRole("heading", { name: "OAuth handoff" }),
+    ).toBeVisible();
+    expect(new URL(page.url()).pathname).toContain(
+      "/auth/oauth/google/authorize",
+    );
+    expect(popupCount).toBe(0);
+    expect(authorizeRequests).toBe(1);
+    expect(documentRequests.map((url) => new URL(url).pathname)).toEqual([
+      "/login",
+      expect.stringContaining("/auth/oauth/google/authorize"),
+    ]);
+    expect(failures).toEqual([]);
+    expect(
+      consoleMessages.filter((message) => message.type === "error"),
+    ).toEqual([]);
+
+    if (process.env.E2E_RECORD === "1") {
+      await page.screenshot({
+        path: testInfo.outputPath(`${surface.name}-oauth-current-document.png`),
+        fullPage: true,
+      });
+      await writeFile(
+        testInfo.outputPath(`${surface.name}-oauth-navigation.json`),
+        `${JSON.stringify(
+          {
+            head: process.env.GITHUB_SHA ?? "local-exact-head",
+            finalUrl: page.url(),
+            documentRequests,
+            popupCount,
+            authorizeRequests,
+            failures,
+            consoleMessages,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    }
+  });
+}
+
+for (const surface of SURFACES) {
   test(`email callback reaches chat without replacing the document (${surface.name})`, async ({
     page,
     baseURL,
