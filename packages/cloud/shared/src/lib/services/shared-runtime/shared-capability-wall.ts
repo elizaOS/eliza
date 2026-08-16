@@ -178,13 +178,17 @@ function matchesForRule(
 function beginsSeparateClause(text: string, primary: CapabilityMatch, candidate: CapabilityMatch) {
   if (candidate.index < primary.end) return false;
   const between = text.slice(primary.end, candidate.index);
-  if (/(?:[.!?;]\s*|,\s*|\b(?:and\s+)?then\b[\s\S]*)$/i.test(between)) return true;
+  const isReminderPayload = primary.rule.capability === "reminders" && /\bto\b/i.test(between);
+  if (/[.!?;,]\s*$/i.test(between)) return true;
+  if (/\b(?:and\s+)?then\b[\s\S]*$/i.test(between)) {
+    return !isReminderPayload || /[.!?;,]\s*(?:and\s+)?then\b[\s\S]*$/i.test(between);
+  }
   if (!/\band\s*$/i.test(between)) return false;
 
   // An infinitive after "remind me" is reminder content, even when that
   // content coordinates several actions. A completed trigger followed by
   // "and" starts a new command instead.
-  return primary.rule.capability !== "reminders" || !/\bto\b/i.test(between);
+  return !isReminderPayload;
 }
 
 /**
