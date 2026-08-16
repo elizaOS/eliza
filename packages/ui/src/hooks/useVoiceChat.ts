@@ -35,6 +35,7 @@ import {
   type TalkModeStateEvent,
   type TalkModeTranscriptEvent,
 } from "../bridge/native-plugins";
+import { useBranding } from "../config/branding";
 import { APP_PAUSE_EVENT } from "../events";
 import { resolveApiUrl } from "../utils";
 import { getElizaApiToken } from "../utils/eliza-globals";
@@ -392,12 +393,19 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     }
   });
 
+  // Cloud-only branding makes Eliza Cloud the only possible voice backend, so
+  // the resolver must not leave the provider unset while the async
+  // cloud-status poll (options.cloudConnected) is still warming — that window
+  // is what routed the first replies of a session to the robotic browser
+  // speechSynthesis voice on cloud-only consumer builds.
+  const { cloudOnly: brandingCloudOnly } = useBranding();
   const effectiveVoiceConfig = useMemo(
     () =>
       resolveEffectiveVoiceConfig(options.voiceConfig, {
         cloudConnected: options.cloudConnected,
+        cloudOnly: brandingCloudOnly === true,
       }),
-    [options.cloudConnected, options.voiceConfig],
+    [options.cloudConnected, options.voiceConfig, brandingCloudOnly],
   );
 
   const assistantTtsQuality = useMemo((): "enhanced" | "standard" => {

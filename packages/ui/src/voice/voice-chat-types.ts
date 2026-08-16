@@ -491,7 +491,13 @@ export function resolveEffectiveVoiceConfig(
       })
     | null
     | undefined,
-  options?: { cloudConnected?: boolean },
+  options?: {
+    cloudConnected?: boolean;
+    /** Cloud-only distribution (branding.cloudOnly): Eliza Cloud is the only
+     *  possible voice backend, so default to it without waiting on the async
+     *  cloud-status poll. */
+    cloudOnly?: boolean;
+  },
 ):
   | (VoiceConfig & {
       provider?: VoiceConfig["provider"] | "openai";
@@ -503,6 +509,19 @@ export function resolveEffectiveVoiceConfig(
     })
   | null {
   const cloudConnected = options?.cloudConnected === true;
+  // Cloud-only distribution (branding.cloudOnly): Eliza Cloud is the ONLY
+  // voice this build can ever use, so the provider must not wait on the async
+  // cloud-status poll that feeds `cloudConnected`. Without this, the first
+  // replies after a cold boot resolved NO provider (the status poll and the
+  // worker's auth cache were still warming), fell through processQueue's
+  // terminal default, and played in the browser's robotic speechSynthesis
+  // voice — sneaking past the #12253 fail-closed rule, which only guards
+  // failures AFTER a provider is chosen. Defaulting to `eliza-cloud` up front
+  // routes those first turns through speakElizaCloud, whose own retry +
+  // fail-closed handling produces either the real voice or a visible error —
+  // never a silent voice swap.
+  const cloudIsOnlyVoice = options?.cloudOnly === true;
+  const preferCloudVoice = cloudConnected || cloudIsOnlyVoice;
   const base = cloneVoiceConfig(config) ?? {};
   const rawProvider = base.provider as
     | VoiceConfig["provider"]
@@ -512,14 +531,15 @@ export function resolveEffectiveVoiceConfig(
   let provider: VoiceConfig["provider"] | undefined =
     (hasLegacyOpenAiProvider ? undefined : rawProvider) ??
     (base.elevenlabs ? "elevenlabs" : base.edge ? "edge" : undefined) ??
-    (cloudConnected ? "eliza-cloud" : undefined);
+    (preferCloudVoice ? "eliza-cloud" : undefined);
 
   if (
-    cloudConnected &&
+    preferCloudVoice &&
     (hasLegacyOpenAiProvider || provider === "robot-voice")
   ) {
     ttsDebug("voiceConfig:upgrade_provider_for_cloud", {
       fromProvider: hasLegacyOpenAiProvider ? "openai" : provider,
+      viaCloudOnlyBranding: cloudIsOnlyVoice && !cloudConnected,
     });
     provider = "eliza-cloud";
   }
@@ -541,7 +561,7 @@ export function resolveEffectiveVoiceConfig(
   // local/desktop defaults keep resolving through `pickDefaultVoiceProvider`.
   const resolvedAsr: VoiceConfig["asr"] | undefined = base.asr?.provider
     ? base.asr
-    : cloudConnected
+    : preferCloudVoice
       ? { ...(base.asr ?? {}), provider: "eliza-cloud" }
       : base.asr;
 
