@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { stringToUuid } from "@elizaos/core/edge";
 import type {
   InsertSharedAgentMemoryInput,
+  MergeSharedAgentMessageMemoryInput,
   SharedAgentMemoriesWriter,
 } from "../../../db/repositories/shared-agent-memories";
 import {
@@ -31,13 +32,24 @@ function scriptedWriter(behavior?: { failOn?: number }): {
   inserts: InsertSharedAgentMemoryInput[];
 } {
   const inserts: InsertSharedAgentMemoryInput[] = [];
+  const write = async (input: InsertSharedAgentMemoryInput) => {
+    inserts.push(input);
+    if (behavior?.failOn === inserts.length) {
+      throw new Error("scripted storage failure");
+    }
+    return { id: input.id ?? "generated-id", inserted: true };
+  };
   const writer = {
-    async insertMemory(input: InsertSharedAgentMemoryInput) {
-      inserts.push(input);
-      if (behavior?.failOn === inserts.length) {
-        throw new Error("scripted storage failure");
-      }
-      return { id: input.id ?? "generated-id", inserted: true };
+    insertMemory: write,
+    async mergeMessageMemory(input: MergeSharedAgentMessageMemoryInput) {
+      const { interrupted, ...memory } = input;
+      return await write({
+        ...memory,
+        content: {
+          ...memory.content,
+          ...(interrupted ? { interrupted: true } : {}),
+        },
+      });
     },
   } as SharedAgentMemoriesWriter;
   return { writer, inserts };
@@ -136,6 +148,38 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     expect(userRow?.content?.role).toBe("system");
     expect(assistantRow?.id).toBe(stringToUuid("another-transport-id"));
     expect(assistantRow?.content?.role).toBeUndefined();
+  });
+
+  test("mirrors interrupted history and omits an unseen empty assistant row", async () => {
+    const interrupted = scriptedWriter();
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      interrupted.writer,
+    );
+    await store.recordTurnPair({
+      userMessage: "tell me slowly",
+      assistantReply: "partial answer",
+      interrupted: true,
+    });
+    expect(interrupted.inserts[1]?.content).toEqual({
+      text: "partial answer",
+      source: "shared-runtime",
+      channelType: "DM",
+      interrupted: true,
+    });
+
+    const empty = scriptedWriter();
+    const emptyStore = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      empty.writer,
+    );
+    await emptyStore.recordTurnPair({
+      userMessage: "cancelled before output",
+      assistantReply: "   ",
+      interrupted: true,
+    });
+    expect(empty.inserts).toHaveLength(1);
+    expect(empty.inserts[0]?.content.text).toBe("cancelled before output");
   });
 
   test("omits row ids without transport ids and propagates storage failures", async () => {

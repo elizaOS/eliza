@@ -1,7 +1,7 @@
 /**
  * Tenant-scoped CQRS access to `shared_agent_memories`, the durable core-shape
  * memory rows written by container-free Shared runtimes. The writer owns
- * idempotent inserts; the reader owns room-recency listing and embedding
+ * idempotent inserts and monotonic message convergence; the reader owns room-recency listing and embedding
  * search. Every SQL predicate pins `organization_id` AND `user_id` — a row is
  * never reachable through this module from outside its owning tenant.
  *
@@ -52,6 +52,14 @@ export interface InsertSharedAgentMemoryResult {
   id: string;
   /** False when the same id already existed inside this tenant (a replay). */
   inserted: boolean;
+}
+
+export interface MergeSharedAgentMessageMemoryInput
+  extends Omit<InsertSharedAgentMemoryInput, "id"> {
+  /** Stable transport id shared by interrupted attempts and their retry. */
+  id: string;
+  /** Whether this row contains only the client-visible interrupted prefix. */
+  interrupted: boolean;
 }
 
 export type SharedAgentMemorySearchHit = SharedAgentMemoryRow & { distance: number };
@@ -145,6 +153,84 @@ export class SharedAgentMemoriesWriter {
         context: { organizationId: scope.organizationId },
       });
     }
+    const [existing] = await dbRead
+      .select({ id: sharedAgentMemories.id })
+      .from(sharedAgentMemories)
+      .where(and(...tenantPins(scope), eq(sharedAgentMemories.id, input.id)))
+      .limit(1);
+    if (!existing) {
+      throw new ElizaError("Shared agent memory id conflicts outside its tenant", {
+        code: SHARED_AGENT_MEMORY_ID_CONFLICT,
+        context: { organizationId: scope.organizationId, memoryId: input.id },
+      });
+    }
+    return { id: existing.id, inserted: false };
+  }
+
+  /**
+   * Atomically converges one stable assistant message across cancellation and
+   * retry. A complete reply outranks any interrupted prefix; between prefixes,
+   * only the longer visible text wins. Once complete, a row is immutable.
+   */
+  async mergeMessageMemory(
+    input: MergeSharedAgentMessageMemoryInput,
+  ): Promise<InsertSharedAgentMemoryResult> {
+    const scope = requiredScope(input.scope);
+    if (typeof input.type !== "string" || input.type.trim().length === 0) {
+      throw new ElizaError("Shared agent memory type is required", {
+        code: SHARED_AGENT_MEMORY_INVALID_INPUT,
+        context: { field: "type" },
+      });
+    }
+    const text = input.content.text;
+    if (typeof text !== "string" || text.trim().length === 0) {
+      throw new ElizaError("Shared agent message memory text is required", {
+        code: SHARED_AGENT_MEMORY_INVALID_INPUT,
+        context: { field: "content.text" },
+      });
+    }
+    if (input.embedding != null) assertEmbedding(input.embedding);
+    const content = { ...input.content };
+    delete content.interrupted;
+    if (input.interrupted) content.interrupted = true;
+
+    const [merged] = await dbWrite
+      .insert(sharedAgentMemories)
+      .values({
+        id: input.id,
+        organization_id: scope.organizationId,
+        user_id: scope.userId,
+        agent_id: scope.agentId,
+        entity_id: input.entityId ?? null,
+        room_id: input.roomId ?? null,
+        world_id: input.worldId ?? null,
+        type: input.type,
+        content: jsonbParam(content),
+        embedding: input.embedding ?? null,
+        embedding_model: input.embeddingModel ?? null,
+        ...(input.createdAt ? { created_at: input.createdAt } : {}),
+      })
+      .onConflictDoUpdate({
+        target: [sharedAgentMemories.id],
+        set: { content: jsonbParam(content) },
+        setWhere: sql`
+          ${sharedAgentMemories.organization_id} = ${scope.organizationId}
+          AND ${sharedAgentMemories.user_id} = ${scope.userId}
+          AND ${sharedAgentMemories.agent_id} = ${scope.agentId}
+          AND COALESCE(${sharedAgentMemories.content}->>'interrupted' = 'true', false)
+          AND (
+            ${input.interrupted} = false
+            OR length(COALESCE(${sql.raw("excluded.content")}->>'text', ''))
+              > length(COALESCE(${sharedAgentMemories.content}->>'text', ''))
+          )
+        `,
+      })
+      .returning({
+        id: sharedAgentMemories.id,
+        inserted: sql<boolean>`xmax = 0`,
+      });
+    if (merged) return merged;
+
     const [existing] = await dbRead
       .select({ id: sharedAgentMemories.id })
       .from(sharedAgentMemories)
