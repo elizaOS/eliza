@@ -19,6 +19,18 @@ import {
 	splitTranscriptList,
 } from "./response-field-transcript";
 
+/** Simple-path promotion trigger for progress-shaped acks. A deliberate
+ * SUBSET of planner-loop's PROGRESS_ONLY_REPLY_OPENERS_PATTERN: action-verb
+ * openers only — bare "I'll"/"I will" shapes are routinely legitimate final
+ * replies, and "let me know …" is the widget-reply-safe conversational close
+ * (same negative lookahead as WIDGET_REPLY_IN_FLIGHT_CLAIM). Paired with a
+ * length cap because an in-flight ack is by nature brief while a substantive
+ * answer that merely OPENS with a gerund runs long ("Checking accounts are
+ * bank accounts designed for …" must stay a final reply). */
+const SIMPLE_PATH_PROGRESS_ACK_RE =
+	/^(?:checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|on it\b|let me (?!know\b))/i;
+const SIMPLE_PATH_PROGRESS_ACK_MAX_LENGTH = 64;
+
 export type V5MessageHandlerOutput = MessageHandlerResult;
 
 export type MessageHandlerRoute =
@@ -315,9 +327,32 @@ export function routeMessageHandlerOutput(
 	}
 
 	if (nonSimpleContexts.length === 0) {
+		const reply = getMessageHandlerReply(output);
+		// A progress-shaped reply on the pure-simple path is a self-contradiction:
+		// "checking paris weather now" promises tool work, and the simple path
+		// runs no tools — shipping it as the WHOLE turn is the bare-ack class
+		// (nothing else ever happens). Stage 1 sometimes emits this shape with
+		// NEITHER requiresTool NOR candidateActions set (live: a two-tool
+		// "check the weather in paris and save a note" turn classified
+		// contexts=["simple"], reply="checking paris weather now", no promotion
+		// trigger fired, user got the ack and nothing else). The reply text
+		// itself is the reliable signal — promote to planning exactly like the
+		// candidateActions contradiction above. Narrow opener set only:
+		// "got it"/"okay" style acknowledgements are legitimate final replies
+		// (memory-store turns) and must not promote.
+		if (
+			reply.length <= SIMPLE_PATH_PROGRESS_ACK_MAX_LENGTH &&
+			SIMPLE_PATH_PROGRESS_ACK_RE.test(reply)
+		) {
+			return {
+				type: "planning_needed",
+				output,
+				contexts: ["general"],
+			};
+		}
 		return {
 			type: "final_reply",
-			reply: getMessageHandlerReply(output),
+			reply,
 			output,
 		};
 	}

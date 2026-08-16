@@ -2,7 +2,11 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { arch, platform } from "node:os";
-import { logger } from "@elizaos/core";
+import { logger, sanitizeSpawnEnv } from "@elizaos/core";
+import {
+  applyHostExecutionBaseline,
+  resolveHostExecutable,
+} from "@elizaos/shared/host-execution-env";
 
 export type SandboxEngineType = "docker" | "apple-container" | "auto";
 
@@ -46,6 +50,10 @@ type ExecCommandResult = {
   stdin?: string;
 };
 
+function hostEngineEnv(): NodeJS.ProcessEnv {
+  return applyHostExecutionBaseline(sanitizeSpawnEnv(process.env));
+}
+
 function appendMountArgs(
   args: string[],
   mounts: Array<{ host: string; container: string; readonly: boolean }>,
@@ -77,6 +85,7 @@ function listContainersFromBinary(binary: string, prefix: string): string[] {
         encoding: "utf-8",
         timeout: 10_000,
         stdio: ["ignore", "pipe", "ignore"],
+        env: hostEngineEnv(),
       },
     );
     return output
@@ -94,6 +103,7 @@ function checkHealthWithBinary(binary: string, id: string): Promise<boolean> {
       encoding: "utf-8",
       timeout: 5000,
       stdio: ["ignore", "pipe", "ignore"],
+      env: hostEngineEnv(),
     }).trim();
     return Promise.resolve(result === "healthy");
   } catch {
@@ -139,7 +149,10 @@ async function runExecInContainer(
   const { binary, args, timeoutMs, stdin } = opts;
   const start = Date.now();
   return new Promise<ContainerExecResult>((resolve) => {
-    const proc = spawn(binary, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const proc = spawn(binary, args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: hostEngineEnv(),
+    });
 
     let stdout = "";
     let stderr = "";
@@ -305,6 +318,15 @@ function parseContainerCommand(command: string): string[] {
   return args;
 }
 
+export function buildContainerExecArgs(opts: ContainerExecOptions): string[] {
+  const args = ["exec"];
+  if (opts.workdir) args.push("-w", opts.workdir);
+  if (opts.env) appendEnvArgs(args, opts.env);
+  const commandArgs = parseContainerCommand(opts.command);
+  args.push(opts.containerId, ...commandArgs);
+  return args;
+}
+
 export interface EngineInfo {
   type: SandboxEngineType;
   available: boolean;
@@ -332,9 +354,25 @@ export interface ISandboxEngine {
 export class DockerEngine implements ISandboxEngine {
   readonly engineType: SandboxEngineType = "docker";
 
+  private binary(): string | undefined {
+    return resolveHostExecutable("docker");
+  }
+
+  private requiredBinary(): string {
+    const binary = this.binary();
+    if (!binary) throw new Error("Docker executable unavailable");
+    return binary;
+  }
+
   isAvailable(): boolean {
     try {
-      execFileSync("docker", ["info"], { stdio: "ignore", timeout: 10000 });
+      const binary = this.binary();
+      if (!binary) return false;
+      execFileSync(binary, ["info"], {
+        stdio: "ignore",
+        timeout: 10000,
+        env: hostEngineEnv(),
+      });
       return true;
     } catch {
       return false;
@@ -344,9 +382,12 @@ export class DockerEngine implements ISandboxEngine {
   getInfo(): EngineInfo {
     let version = "unknown";
     try {
-      version = execFileSync("docker", ["--version"], {
+      const binary = this.binary();
+      if (!binary) throw new Error("Docker executable unavailable");
+      version = execFileSync(binary, ["--version"], {
         encoding: "utf-8",
         timeout: 5000,
+        env: hostEngineEnv(),
       }).trim();
     } catch {
       // ignore
@@ -392,9 +433,11 @@ export class DockerEngine implements ISandboxEngine {
 
     args.push(opts.image);
 
-    const output = execFileSync("docker", args, {
+    const binary = this.requiredBinary();
+    const output = execFileSync(binary, args, {
       encoding: "utf-8",
       timeout: 60000,
+      env: hostEngineEnv(),
     }).trim();
 
     return output.substring(0, 12);
@@ -403,15 +446,9 @@ export class DockerEngine implements ISandboxEngine {
   async execInContainer(
     opts: ContainerExecOptions,
   ): Promise<ContainerExecResult> {
-    const args = ["exec"];
-    if (opts.workdir) args.push("-w", opts.workdir);
-    if (opts.env) {
-      appendEnvArgs(args, opts.env);
-    }
-    const commandArgs = parseContainerCommand(opts.command);
-    args.push(opts.containerId, ...commandArgs);
+    const args = buildContainerExecArgs(opts);
     return runExecInContainer({
-      binary: "docker",
+      binary: this.requiredBinary(),
       args,
       timeoutMs: opts.timeoutMs,
       stdin: opts.stdin,
@@ -420,9 +457,10 @@ export class DockerEngine implements ISandboxEngine {
 
   async stopContainer(id: string): Promise<void> {
     try {
-      execFileSync("docker", ["stop", id], {
+      execFileSync(this.requiredBinary(), ["stop", id], {
         timeout: 15000,
         stdio: "ignore",
+        env: hostEngineEnv(),
       });
     } catch (error) {
       // error-policy:J6 teardown continues so callers can remove remaining resources.
@@ -432,9 +470,10 @@ export class DockerEngine implements ISandboxEngine {
 
   async removeContainer(id: string): Promise<void> {
     try {
-      execFileSync("docker", ["rm", "-f", id], {
+      execFileSync(this.requiredBinary(), ["rm", "-f", id], {
         timeout: 10000,
         stdio: "ignore",
+        env: hostEngineEnv(),
       });
     } catch (error) {
       // error-policy:J6 teardown continues so callers can remove remaining resources.
@@ -445,12 +484,13 @@ export class DockerEngine implements ISandboxEngine {
   isContainerRunning(id: string): boolean {
     try {
       const result = execFileSync(
-        "docker",
+        this.requiredBinary(),
         ["inspect", "-f", "{{.State.Running}}", id],
         {
           encoding: "utf-8",
           timeout: 5000,
           stdio: ["ignore", "pipe", "ignore"],
+          env: hostEngineEnv(),
         },
       ).trim();
       return result === "true";
@@ -461,9 +501,10 @@ export class DockerEngine implements ISandboxEngine {
 
   imageExists(image: string): boolean {
     try {
-      execFileSync("docker", ["image", "inspect", image], {
+      execFileSync(this.requiredBinary(), ["image", "inspect", image], {
         stdio: "ignore",
         timeout: 10000,
+        env: hostEngineEnv(),
       });
       return true;
     } catch {
@@ -472,26 +513,30 @@ export class DockerEngine implements ISandboxEngine {
   }
 
   async pullImage(image: string): Promise<void> {
-    execFileSync("docker", ["pull", image], {
+    execFileSync(this.requiredBinary(), ["pull", image], {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 300000,
+      env: hostEngineEnv(),
     });
   }
 
   listContainers(prefix: string): string[] {
-    return listContainersFromBinary("docker", prefix);
+    const binary = this.binary();
+    return binary ? listContainersFromBinary(binary, prefix) : [];
   }
 
   async healthCheck(id: string): Promise<boolean> {
-    return checkHealthWithBinary("docker", id);
+    const binary = this.binary();
+    return binary ? checkHealthWithBinary(binary, id) : false;
   }
 
   private getDockerContext(): string {
     try {
-      return execFileSync("docker", ["context", "show"], {
+      return execFileSync(this.requiredBinary(), ["context", "show"], {
         encoding: "utf-8",
         timeout: 5000,
         stdio: ["ignore", "pipe", "ignore"],
+        env: hostEngineEnv(),
       }).trim();
     } catch {
       return "default";
@@ -502,11 +547,24 @@ export class DockerEngine implements ISandboxEngine {
 export class AppleContainerEngine implements ISandboxEngine {
   readonly engineType: SandboxEngineType = "apple-container";
 
+  private binary(): string | undefined {
+    return resolveHostExecutable("container");
+  }
+
+  private requiredBinary(): string {
+    const binary = this.binary();
+    if (!binary) throw new Error("Apple Container executable unavailable");
+    return binary;
+  }
+
   isAvailable(): boolean {
     try {
-      execFileSync("container", ["--version"], {
+      const binary = this.binary();
+      if (!binary) return false;
+      execFileSync(binary, ["--version"], {
         stdio: "ignore",
         timeout: 5000,
+        env: hostEngineEnv(),
       });
       return true;
     } catch (error) {
@@ -514,9 +572,12 @@ export class AppleContainerEngine implements ISandboxEngine {
         return false;
       }
       try {
-        execFileSync("container", ["help"], {
+        const binary = this.binary();
+        if (!binary) return false;
+        execFileSync(binary, ["help"], {
           stdio: "ignore",
           timeout: 5000,
+          env: hostEngineEnv(),
         });
         return true;
       } catch {
@@ -528,9 +589,12 @@ export class AppleContainerEngine implements ISandboxEngine {
   getInfo(): EngineInfo {
     let version = "unknown";
     try {
-      version = execFileSync("container", ["--version"], {
+      const binary = this.binary();
+      if (!binary) throw new Error("Apple Container executable unavailable");
+      version = execFileSync(binary, ["--version"], {
         encoding: "utf-8",
         timeout: 5000,
+        env: hostEngineEnv(),
       }).trim();
     } catch {
       // ignore
@@ -561,9 +625,15 @@ export class AppleContainerEngine implements ISandboxEngine {
     // Spawn as a background process (non-blocking) instead of execSync.
     // Apple Container doesn't support `-d`; we use spawn with detached + unref.
     return new Promise<string>((resolve, reject) => {
-      const proc = spawn("container", args, {
+      const binary = this.binary();
+      if (!binary) {
+        reject(new Error("Apple Container executable unavailable"));
+        return;
+      }
+      const proc = spawn(binary, args, {
         stdio: ["pipe", "pipe", "pipe"],
         detached: true,
+        env: hostEngineEnv(),
       });
 
       // Collect initial output for error detection
@@ -602,12 +672,9 @@ export class AppleContainerEngine implements ISandboxEngine {
   async execInContainer(
     opts: ContainerExecOptions,
   ): Promise<ContainerExecResult> {
-    const args = ["exec"];
-    if (opts.workdir) args.push("-w", opts.workdir);
-    const commandArgs = parseContainerCommand(opts.command);
-    args.push(opts.containerId, ...commandArgs);
+    const args = buildContainerExecArgs(opts);
     return runExecInContainer({
-      binary: "container",
+      binary: this.requiredBinary(),
       args,
       timeoutMs: opts.timeoutMs,
       stdin: opts.stdin,
@@ -616,9 +683,10 @@ export class AppleContainerEngine implements ISandboxEngine {
 
   async stopContainer(id: string): Promise<void> {
     try {
-      execFileSync("container", ["stop", id], {
+      execFileSync(this.requiredBinary(), ["stop", id], {
         timeout: 15000,
         stdio: "ignore",
+        env: hostEngineEnv(),
       });
     } catch (error) {
       // error-policy:J6 teardown continues so callers can remove remaining resources.
@@ -632,9 +700,10 @@ export class AppleContainerEngine implements ISandboxEngine {
   async removeContainer(id: string): Promise<void> {
     // Apple Container uses --rm by default; explicit remove for safety
     try {
-      execFileSync("container", ["rm", id], {
+      execFileSync(this.requiredBinary(), ["rm", id], {
         timeout: 10000,
         stdio: "ignore",
+        env: hostEngineEnv(),
       });
     } catch (error) {
       // error-policy:J6 teardown continues so callers can remove remaining resources.
@@ -647,9 +716,10 @@ export class AppleContainerEngine implements ISandboxEngine {
 
   isContainerRunning(id: string): boolean {
     try {
-      execFileSync("container", ["inspect", id], {
+      execFileSync(this.requiredBinary(), ["inspect", id], {
         stdio: "ignore",
         timeout: 5000,
+        env: hostEngineEnv(),
       });
       return true;
     } catch {
@@ -659,9 +729,10 @@ export class AppleContainerEngine implements ISandboxEngine {
 
   imageExists(image: string): boolean {
     try {
-      execFileSync("container", ["image", "inspect", image], {
+      execFileSync(this.requiredBinary(), ["image", "inspect", image], {
         stdio: "ignore",
         timeout: 10000,
+        env: hostEngineEnv(),
       });
       return true;
     } catch {
@@ -670,18 +741,21 @@ export class AppleContainerEngine implements ISandboxEngine {
   }
 
   async pullImage(image: string): Promise<void> {
-    execFileSync("container", ["pull", image], {
+    execFileSync(this.requiredBinary(), ["pull", image], {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 300000,
+      env: hostEngineEnv(),
     });
   }
 
   listContainers(prefix: string): string[] {
-    return listContainersFromBinary("container", prefix);
+    const binary = this.binary();
+    return binary ? listContainersFromBinary(binary, prefix) : [];
   }
 
   async healthCheck(id: string): Promise<boolean> {
-    return checkHealthWithBinary("container", id);
+    const binary = this.binary();
+    return binary ? checkHealthWithBinary(binary, id) : false;
   }
 }
 

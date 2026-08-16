@@ -11,8 +11,8 @@
 import { StewardApiError } from "@stwd/sdk";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactNode } from "react";
-import { MemoryRouter } from "react-router-dom";
+import type { ComponentProps, ReactNode } from "react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const callbackState = vi.hoisted(() => ({
@@ -78,8 +78,10 @@ vi.mock("../../../../cloud-ui/components/auth/authorize-return", () => ({
   clearStoredAppAuthorizeReturnTo: () => {},
 }));
 vi.mock("../../../../cloud-ui/components/brand/brand-button", () => ({
-  BrandButton: ({ children }: { children: ReactNode }) => (
-    <button type="button">{children}</button>
+  BrandButton: ({ children, ...props }: ComponentProps<"button">) => (
+    <button type="button" {...props}>
+      {children}
+    </button>
   ),
 }));
 
@@ -95,6 +97,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  delete document.documentElement.dataset.emailCallbackDocument;
 });
 
 describe("EmailCallbackPage", () => {
@@ -212,6 +215,39 @@ describe("EmailCallbackPage", () => {
         "/get-started",
       ),
     ).toBe("/app-auth/authorize?id=1");
+  });
+
+  it("continues to a same-origin return path without replacing the document", async () => {
+    const user = userEvent.setup();
+    callbackState.pendingReturnTo = "/get-started";
+    callbackState.verifyEmailCallback.mockResolvedValue({
+      token: "verified-token",
+    });
+    document.documentElement.dataset.emailCallbackDocument = "survived";
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/auth/callback/email?token=navigation-token&email=navigation%40b.co",
+        ]}
+      >
+        <Routes>
+          <Route path="/auth/callback/email" element={<EmailCallbackPage />} />
+          <Route path="/get-started" element={<div>continued in place</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Continue to app authorization",
+      }),
+    );
+
+    expect(await screen.findByText("continued in place")).toBeTruthy();
+    expect(document.documentElement.dataset.emailCallbackDocument).toBe(
+      "survived",
+    );
   });
 
   it("rejects an incomplete callback and offers a safe keyboard-reachable recovery action", async () => {

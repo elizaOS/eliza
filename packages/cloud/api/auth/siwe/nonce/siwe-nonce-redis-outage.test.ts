@@ -191,10 +191,73 @@ describe("GET /api/auth/siwe/nonce — Redis failure boundary", () => {
     });
   });
 
-  test("malformed chainId falls back to mainnet (1) instead of erroring", async () => {
-    const res = await getNonce("?chainId=not-a-number");
+  test("canonical Base chainId 8453 binds the issued nonce to 8453", async () => {
+    const res = await getNonce("?chainId=8453");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { chainId: number };
+    expect(body.chainId).toBe(8453);
+    expect(stored.size).toBe(1);
+    const [storedValue] = stored.values();
+    expect(JSON.parse(storedValue)).toMatchObject({
+      uri: "https://staging.elizacloud.ai",
+      chainId: 8453,
+    });
+  });
+
+  test("JavaScript safe-integer max chainId binds that exact integer", async () => {
+    const res = await getNonce("?chainId=9007199254740991");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { chainId: number };
+    expect(body.chainId).toBe(Number.MAX_SAFE_INTEGER);
+    expect(stored.size).toBe(1);
+    const [storedValue] = stored.values();
+    expect(JSON.parse(storedValue)).toMatchObject({
+      chainId: Number.MAX_SAFE_INTEGER,
+    });
+  });
+
+  test("missing chainId defaults to mainnet and binds chain 1", async () => {
+    const res = await getNonce();
     expect(res.status).toBe(200);
     const body = (await res.json()) as { chainId: number };
     expect(body.chainId).toBe(1);
+    expect(stored.size).toBe(1);
+    const [storedValue] = stored.values();
+    expect(JSON.parse(storedValue)).toMatchObject({ chainId: 1 });
+  });
+
+  test("empty chainId defaults to mainnet and binds chain 1", async () => {
+    const res = await getNonce("?chainId=");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { chainId: number };
+    expect(body.chainId).toBe(1);
+    expect(stored.size).toBe(1);
+    const [storedValue] = stored.values();
+    expect(JSON.parse(storedValue)).toMatchObject({ chainId: 1 });
+  });
+
+  test.each([
+    ["not-a-number", "junk"],
+    ["1e4", "scientific notation"],
+    ["0x10", "hex"],
+    ["137abc", "trailing junk"],
+    ["-1", "signed"],
+    ["+1", "signed plus"],
+    ["0", "zero"],
+    ["080", "leading zero"],
+    ["1.5", "fractional"],
+    [" 1", "leading whitespace"],
+    ["1 ", "trailing whitespace"],
+    ["1 0", "internal whitespace"],
+    ["9007199254740992", "above JavaScript safe-integer max"],
+    ["9007199254740993", "unsafe integer that rounds"],
+  ] as const)("rejects %s (%s) with 400 and writes no nonce", async (value) => {
+    const res = await getNonce(`?chainId=${encodeURIComponent(value)}`);
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Invalid SIWE chainId",
+      code: "invalid_chain_id",
+    });
+    expect(stored.size).toBe(0);
   });
 });

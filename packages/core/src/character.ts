@@ -121,7 +121,7 @@ function normalizeDocumentItem(
 			item: {
 				case: "directory",
 				value: {
-					directory: item.directory,
+					path: item.directory,
 					shared: typeof item.shared === "boolean" ? item.shared : undefined,
 				},
 			},

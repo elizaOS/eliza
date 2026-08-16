@@ -11,6 +11,7 @@ import {
 	attestDeliveryAudienceFromCanonicalRoom,
 	disclosureGateFailure,
 	evaluateOwnerExclusiveDisclosure,
+	getTrustedDeliveryAudience,
 	OWNER_EXCLUSIVE_DISCLOSURE_GATE,
 	ownerExclusiveSuppressionNote,
 	registerRuntimeManagedInternalActor,
@@ -88,6 +89,17 @@ function message(overrides: Partial<Memory> = {}): Memory {
 }
 
 describe("trusted delivery audience", () => {
+	it("encodes canonical membership without PostgreSQL-forbidden NUL bytes", async () => {
+		const { runtime } = harness();
+		const turn = message();
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+		const audience = getTrustedDeliveryAudience(turn);
+
+		expect(audience?.membershipVersion).toBe(JSON.stringify([OWNER, AGENT]));
+		expect(audience?.membershipVersion).not.toContain("\u0000");
+		expect(() => JSON.parse(audience?.membershipVersion ?? "")).not.toThrow();
+	});
+
 	it("cannot be minted by body metadata or a JSON round trip", async () => {
 		const { runtime } = harness();
 		const original = message();

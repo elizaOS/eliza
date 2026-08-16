@@ -26,6 +26,7 @@ import type { RuntimeDurableObjectNamespace } from "../types/cloud-worker-env";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters/characters";
 import { discordService } from "./services/discord";
+import { invalidateBoundPersonalDeliveryProjection } from "./services/eliza-app/personal-delivery-projection-contract";
 import { emailService } from "./services/email";
 import { invitesService } from "./services/invites";
 import { organizationsService } from "./services/organizations";
@@ -593,6 +594,10 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         organization: promotion.organization,
       };
     }
+  }
+
+  if (claimedTelegramUser?.telegram_id) {
+    await invalidateBoundPersonalDeliveryProjection("telegram", claimedTelegramUser.telegram_id);
   }
 
   // ── 1. Existing user by steward_user_id ──────────────────────────────

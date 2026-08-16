@@ -100,6 +100,7 @@
     "@steerprotocol/sdk": "^3.0.7",
     "bignumber.js": "^11.0.0",
     "bs58": "^6.0.0",
+    "dotenv": "^17.2.3",
     "ethers": "^6.16.0",
     "tweetnacl": "^1.0.3",
     "uuid": "^11.1.0",

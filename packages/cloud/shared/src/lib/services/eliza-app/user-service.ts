@@ -30,6 +30,7 @@ import { apiKeysService } from "../api-keys";
 import { readUpgradedFromAgentId } from "../eliza-agent-config";
 import { personalSharedAgentId } from "../shared-runtime/personal-shared-agent";
 import { redeemSignupCode } from "../signup-code";
+import { invalidateBoundPersonalDeliveryProjection } from "./personal-delivery-projection-contract";
 import type { TelegramAuthData } from "./telegram-auth";
 
 export interface FindOrCreateResult {
@@ -43,8 +44,28 @@ export interface PersonalDeliveryResult {
   organizationId: string;
   dedicatedTarget: Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config"> | null;
   isNew: boolean;
-  resolution: "single-query-repeat" | "exact-dedicated-fallback" | "locked-create-or-repair";
+  resolution:
+    | "sender-projection-hit"
+    | "single-query-repeat"
+    | "exact-dedicated-fallback"
+    | "locked-create-or-repair";
 }
+
+export type PersonalDeliveryInput =
+  | {
+      platform: "telegram";
+      telegramId: string;
+      username?: string;
+      firstName?: string;
+      displayName?: string;
+    }
+  | {
+      platform: "discord";
+      discordId: string;
+      username: string;
+      globalName?: string | null;
+      avatarUrl?: string | null;
+    };
 
 function generateSlugFromTelegram(username?: string, telegramId?: string): string {
   const base = username ? username.toLowerCase().replace(/[^a-z0-9]/g, "-") : `tg-${telegramId}`;
@@ -199,23 +220,7 @@ class ElizaAppUserService {
    * in one read-only statement. Missing, stale, or conflicting projections
    * retain one sender-locked convergence transaction as the only repair writer.
    */
-  async resolvePersonalDelivery(
-    params:
-      | {
-          platform: "telegram";
-          telegramId: string;
-          username?: string;
-          firstName?: string;
-          displayName?: string;
-        }
-      | {
-          platform: "discord";
-          discordId: string;
-          username: string;
-          globalName?: string | null;
-          avatarUrl?: string | null;
-        },
-  ): Promise<PersonalDeliveryResult> {
+  async resolvePersonalDelivery(params: PersonalDeliveryInput): Promise<PersonalDeliveryResult> {
     const senderId =
       params.platform === "telegram" ? params.telegramId.trim() : params.discordId.trim();
     const idPattern = params.platform === "telegram" ? /^\d{1,20}$/ : /^\d{1,32}$/;
@@ -1040,6 +1045,8 @@ class ElizaAppUserService {
       phone: `***${normalizedPhone.slice(-2)}`,
     });
 
+    await invalidateBoundPersonalDeliveryProjection("telegram", telegramId);
+
     return { success: true };
   }
 
@@ -1161,6 +1168,8 @@ class ElizaAppUserService {
       username: telegramData.username,
     });
 
+    await invalidateBoundPersonalDeliveryProjection("telegram", telegramId);
+
     return { success: true };
   }
 
@@ -1208,6 +1217,8 @@ class ElizaAppUserService {
       discordId,
       username,
     });
+
+    await invalidateBoundPersonalDeliveryProjection("discord", discordId);
 
     return { success: true };
   }

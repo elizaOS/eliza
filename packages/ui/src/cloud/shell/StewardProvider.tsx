@@ -15,7 +15,13 @@ import { lazy, type ReactNode, Suspense, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { CloudRouteErrorBoundary } from "./CloudRouteErrorBoundary";
-import { isPlaceholderValue, readStoredToken } from "./StewardProviderShared";
+import {
+  clearStaleStewardSession,
+  isPlaceholderValue,
+  LocalStewardAuthContext,
+  type LocalStewardAuthValue,
+  readStoredToken,
+} from "./StewardProviderShared";
 import {
   configuredStewardTenantId,
   DEFAULT_STEWARD_TENANT_ID,
@@ -120,6 +126,36 @@ function StewardRuntimeLoading() {
   );
 }
 
+/** Deterministic auth context for renderer-only browser tests. */
+function PlaywrightStewardAuthProvider({
+  children,
+}: {
+  children: ReactNode;
+}): React.JSX.Element {
+  const token = readStoredToken();
+  const value: LocalStewardAuthValue = {
+    isAuthenticated: Boolean(token),
+    isLoading: false,
+    user: token ? { id: "playwright-test-user" } : null,
+    session: null,
+    signOut: clearStaleStewardSession,
+    getToken: () => token,
+    verifyEmailCallback: async () => {
+      if (!token) {
+        throw new Error(
+          "Playwright test auth requires a pre-seeded Steward token.",
+        );
+      }
+      return { token };
+    },
+  };
+  return (
+    <LocalStewardAuthContext.Provider value={value}>
+      {children}
+    </LocalStewardAuthContext.Provider>
+  );
+}
+
 function StewardConfigError() {
   return (
     <main
@@ -193,7 +229,9 @@ export function StewardAuthProvider({ children }: { children: ReactNode }) {
   }, [hasValidUrl, playwrightTestAuthEnabled]);
 
   if (playwrightTestAuthEnabled) {
-    return <>{children}</>;
+    return (
+      <PlaywrightStewardAuthProvider>{children}</PlaywrightStewardAuthProvider>
+    );
   }
 
   const needsStewardRuntime = shouldLoadStewardRuntime(location.pathname);

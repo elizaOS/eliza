@@ -10,6 +10,16 @@ import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
 const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
 
+export class BlooioApiResponseError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "BlooioApiResponseError";
+  }
+}
+
 const BlooioAttachmentSchema = z.union([
   z.string(),
   z.object({ url: z.string().url(), name: z.string().nullish() }).passthrough(),
@@ -113,6 +123,67 @@ function extractMediaUrls(
   return attachments
     .map((a) => (typeof a === "string" ? a : a.url))
     .filter((url) => isValidMediaUrl(url));
+}
+
+async function sendBlooioMessage(
+  config: WebhookConfig,
+  event: ChatEvent,
+  text: string,
+): Promise<string[]> {
+  if (!config.apiKey) throw new Error("Missing apiKey for Blooio reply");
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${config.apiKey}`,
+    "Content-Type": "application/json",
+    // This remains stable for both webhook replies and proactive reminder
+    // retries, so a lost provider response cannot double-text the user.
+    "Idempotency-Key": `gw-reply-${event.messageId}`,
+  };
+
+  const from = event.channelId ?? config.fromNumber;
+  const body: { to: string; text: string; from?: string } = {
+    to: event.senderId,
+    text,
+  };
+  if (from) body.from = from;
+
+  const response = await fetch(BLOOIO_V4_MESSAGES_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new BlooioApiResponseError(
+      response.status,
+      `Blooio send error (${response.status}): ${responseText}`,
+    );
+  }
+  if (!responseText) {
+    throw new Error("Blooio accepted delivery without a provider receipt");
+  }
+  let result: unknown;
+  try {
+    result = JSON.parse(responseText);
+  } catch {
+    // error-policy:J3 accepted provider responses must still expose a durable
+    // message receipt before the scheduler records the occurrence as fired.
+    throw new Error("Blooio accepted delivery without a valid JSON receipt");
+  }
+  if (!result || typeof result !== "object") {
+    throw new Error("Blooio accepted delivery without a provider receipt");
+  }
+  const record = result as Record<string, unknown>;
+  const id =
+    typeof record.id === "string"
+      ? record.id
+      : typeof record.message_id === "string"
+        ? record.message_id
+        : undefined;
+  if (!id?.trim()) {
+    throw new Error("Blooio accepted delivery without a provider receipt");
+  }
+  return [id.trim()];
 }
 
 // Blooio's documented verification contract rejects deliveries older than
@@ -267,35 +338,15 @@ export const blooioAdapter: PlatformAdapter = {
     event: ChatEvent,
     text: string,
   ): Promise<void> {
-    if (!config.apiKey) throw new Error("Missing apiKey for Blooio reply");
+    await sendBlooioMessage(config, event, text);
+  },
 
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json",
-      // The gateway dedup key guarantees at most one reply per inbound
-      // message, so the inbound messageId is a stable idempotency scope: a
-      // send that times out client-side after Blooio accepted it must not
-      // double-text the user when retried.
-      "Idempotency-Key": `gw-reply-${event.messageId}`,
-    };
-
-    const from = event.channelId ?? config.fromNumber;
-    const body: { to: string; text: string; from?: string } = {
-      to: event.senderId,
-      text,
-    };
-    if (from) body.from = from;
-
-    const response = await fetch(BLOOIO_V4_MESSAGES_URL, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Blooio send error (${response.status}): ${errorText}`);
+  async sendReplyWithReceipt(config, event, text) {
+    const providerMessageIds = await sendBlooioMessage(config, event, text);
+    if (providerMessageIds.length === 0) {
+      throw new Error("Blooio accepted delivery without a message receipt");
     }
+    return { providerMessageIds };
   },
 
   async sendTypingIndicator(

@@ -35,6 +35,7 @@ import { isThinStewardPublicPath } from "./steward/public-paths";
 export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
+export { PersonalDeliveryProjection } from "./personal-delivery-projection";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
 export { isThinStewardPublicPath } from "./steward/public-paths";
 export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordinator";

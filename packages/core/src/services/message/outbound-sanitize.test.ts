@@ -321,3 +321,72 @@ describe("sanitizeOutboundText — pass-through and idempotence", () => {
 		}
 	});
 });
+
+describe("model-invented [LINK:] pseudo-markers", () => {
+	it("degrades a labeled pseudo-link to a real markdown link", () => {
+		expect(
+			sanitizeOutboundText(
+				"news here. [LINK:https://example.com/a-story](IBM x OpenAI) more.",
+			),
+		).toBe("news here. [IBM x OpenAI](https://example.com/a-story) more.");
+	});
+
+	it("degrades a bare pseudo-link to its URL", () => {
+		expect(
+			sanitizeOutboundText("see [LINK:https://example.com/x] for details"),
+		).toBe("see https://example.com/x for details");
+	});
+
+	it("degrades marker names case-insensitively", () => {
+		expect(sanitizeOutboundText("[link:https://example.com/x](lower)")).toBe(
+			"[lower](https://example.com/x)",
+		);
+		expect(sanitizeOutboundText("[LiNk:https://example.com/y]")).toBe(
+			"https://example.com/y",
+		);
+	});
+
+	it("preserves balanced parentheses in labels and destinations", () => {
+		expect(
+			sanitizeOutboundText(
+				"[LINK:https://example.com/a_(b)](Release notes (August))",
+			),
+		).toBe("[Release notes (August)](https://example.com/a_\\(b\\))");
+	});
+
+	it("escapes label delimiters so they cannot replace the http destination", () => {
+		expect(
+			sanitizeOutboundText(
+				"[LINK:https://safe.example](x](javascript:alert(1)))",
+			),
+		).toBe("[x\\](javascript:alert(1))](https://safe.example)");
+	});
+
+	it("leaves malformed or non-http pseudo-links unchanged", () => {
+		for (const text of [
+			"[LINK:javascript:alert(1)](bad)",
+			"[LINK:https://example.com](unclosed",
+			"[LINK:not a url]",
+		]) {
+			expect(sanitizeOutboundText(text)).toBe(text);
+		}
+	});
+
+	it("degrades an empty-label pseudo-link to its URL", () => {
+		expect(sanitizeOutboundText("go [LINK:https://example.com/y]()")).toBe(
+			"go https://example.com/y",
+		);
+	});
+
+	it("leaves real markdown links and bracketed prose untouched", () => {
+		const text = "[a real link](https://example.com) and [LINKAGE:notes] stay";
+		expect(sanitizeOutboundText(text)).toBe(text);
+	});
+
+	it("is idempotent over pseudo-link degrades", () => {
+		const once = sanitizeOutboundText(
+			"[LINK:https://example.com/a](A) and [LINK:https://example.com/b]",
+		);
+		expect(sanitizeOutboundText(once)).toBe(once);
+	});
+});

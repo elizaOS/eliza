@@ -170,7 +170,7 @@ function discoverScenarioIds(dirRel, providerEnv) {
 
 /** Run one scenario id, capturing report + native jsonl + verdict. */
 function runScenario(dirRel, id, providerEnv) {
-  const itemDir = path.join(HARVEST_ROOT, "scenario", slug(dirRel), slug(id));
+  const itemDir = scenarioItemPath(HARVEST_ROOT, dirRel, id);
   mkdirSync(itemDir, { recursive: true });
   const reportPath = path.join(itemDir, "report.json");
   const runDir = path.join(itemDir, "run");
@@ -232,7 +232,7 @@ function runScenario(dirRel, id, providerEnv) {
       .filter((l) => l.trim()).length;
   }
   writeFileSync(
-    path.join(itemDir, "verdict.json"),
+    scenarioItemPath(HARVEST_ROOT, dirRel, id, "verdict.json"),
     JSON.stringify(verdict, null, 2),
   );
   return verdict;
@@ -240,6 +240,17 @@ function runScenario(dirRel, id, providerEnv) {
 
 function slug(s) {
   return s.replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+/** Resolve one scenario item's canonical harvest path and optional child. */
+export function scenarioItemPath(harvestRoot, dirRel, id, ...children) {
+  return path.join(
+    harvestRoot,
+    "scenario",
+    slug(dirRel),
+    slug(id),
+    ...children,
+  );
 }
 
 function main() {
@@ -283,13 +294,12 @@ function main() {
   for (let gi = 0; gi < allItems.length; gi += 1) {
     if (SHARD_N > 1 && gi % SHARD_N !== SHARD_I) continue; // not this shard
     if (LIMIT && ran >= LIMIT) break;
-    ran += 1;
     const { dir, id } = allItems[gi];
     if (RESUME) {
-      const doneMarker = path.join(
+      const doneMarker = scenarioItemPath(
         HARVEST_ROOT,
-        slug(dir),
-        slug(id),
+        dir,
+        id,
         "verdict.json",
       );
       if (existsSync(doneMarker)) {
@@ -297,6 +307,7 @@ function main() {
         continue;
       }
     }
+    ran += 1;
     if (DRY_RUN) {
       summary.items.push({ dir, id, gi, planned: true });
       console.log(`[dry-run] would harvest scenario ${dir} :: ${id}`);

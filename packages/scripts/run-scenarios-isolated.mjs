@@ -108,6 +108,15 @@ for (const id of ids) {
       env: process.env,
     },
   );
+  if (child.status !== 0) {
+    const cause =
+      child.status === null
+        ? `signal ${child.signal ?? "unknown"}`
+        : `exit ${child.status}`;
+    console.error(`[isolated] ${id} failed (${cause})`);
+    failed += 1;
+    continue;
+  }
   if (!fs.existsSync(tmpReport)) {
     console.error(`[isolated] ${id} produced no report (exit ${child.status})`);
     failed += 1;

@@ -40,12 +40,6 @@ import { DiscordIcon } from "../../../../cloud-ui/components/icons";
 import { Alert, AlertDescription } from "../../../../components/primitives";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
-import {
-  canNavigateSameTabForBlockedPopup,
-  preOpenCloudLoginWindow,
-} from "../../../../state/cloud-login-launch";
-import { navigatePreOpenedWindow } from "../../../../utils/openExternalUrl";
-import { isCloudAuthHandoffSurface } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   configuredStewardTenantId,
@@ -324,6 +318,94 @@ function describeEmailLoginError(error: unknown, fallback: string): string {
 let cachedStewardProviders: StewardProviders | null = null;
 let stewardProvidersPromise: Promise<StewardProviders> | null = null;
 
+// The provider set is effectively static per deployment, but each SPA load —
+// notably the post-OAuth return leg, a second full cold load — used to block
+// the option stack on a fresh discovery roundtrip ("Loading sign-in options…",
+// #18256). A per-tenant sessionStorage snapshot of the last successful
+// discovery lets repeat loads render the real options immediately; the live
+// fetch still runs and reconciles, so a config change corrects the form as
+// soon as discovery resolves.
+const PROVIDERS_SESSION_CACHE_PREFIX = "eliza.steward.providers.v1";
+
+function providersSessionCacheKey(): string {
+  return `${PROVIDERS_SESSION_CACHE_PREFIX}:${STEWARD_TENANT_ID}`;
+}
+
+function normalizeSessionCachedProviders(
+  value: unknown,
+): StewardProviders | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const passkey = record.passkey;
+  const email = record.email;
+  const siwe = record.siwe;
+  const siws = record.siws;
+  const google = record.google;
+  const discord = record.discord;
+  const github = record.github;
+  const twitter = record.twitter;
+  const oauth = record.oauth;
+  if (
+    typeof passkey !== "boolean" ||
+    typeof email !== "boolean" ||
+    typeof siwe !== "boolean" ||
+    typeof siws !== "boolean" ||
+    typeof google !== "boolean" ||
+    typeof discord !== "boolean" ||
+    typeof github !== "boolean" ||
+    typeof twitter !== "boolean" ||
+    !Array.isArray(oauth) ||
+    !oauth.every((provider) => typeof provider === "string") ||
+    (record.sms !== undefined && typeof record.sms !== "boolean")
+  ) {
+    return null;
+  }
+  return {
+    passkey,
+    email,
+    siwe,
+    siws,
+    google,
+    discord,
+    github,
+    twitter,
+    oauth,
+    ...(typeof record.sms === "boolean" ? { sms: record.sms } : {}),
+  };
+}
+
+function readSessionCachedProviders(): StewardProviders | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(providersSessionCacheKey());
+    if (!raw) return null;
+    return normalizeSessionCachedProviders(JSON.parse(raw) as unknown);
+  } catch (error) {
+    // error-policy:J3 a corrupt or inaccessible snapshot is explicitly "no
+    // cache" — the section falls back to the discovery skeleton, never to a
+    // fake-valid provider set.
+    void error;
+    return null;
+  }
+}
+
+function writeSessionCachedProviders(providers: StewardProviders): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(
+      providersSessionCacheKey(),
+      JSON.stringify(providers),
+    );
+  } catch (error) {
+    // error-policy:J6 the snapshot is a repeat-load accelerator only; when
+    // storage is unavailable (private mode, quota) the next load simply pays
+    // the discovery roundtrip again.
+    void error;
+  }
+}
+
 function loadStewardProviders(auth: {
   getProviders: () => Promise<StewardProviders>;
 }): Promise<StewardProviders> {
@@ -331,6 +413,7 @@ function loadStewardProviders(auth: {
   stewardProvidersPromise ??= auth.getProviders().then((loadedProviders) => {
     cachedStewardProviders = loadedProviders;
     stewardProvidersPromise = null;
+    writeSessionCachedProviders(loadedProviders);
     return loadedProviders;
   });
   return stewardProvidersPromise;
@@ -405,10 +488,16 @@ export default function StewardLoginSection() {
     PLAYWRIGHT_TEST_AUTH_ENABLED ? false : hasStewardOAuthCallbackInUrl(),
   );
   const [providersLoaded, setProvidersLoaded] = useState(
-    PLAYWRIGHT_TEST_AUTH_ENABLED || cachedStewardProviders !== null,
+    () =>
+      PLAYWRIGHT_TEST_AUTH_ENABLED ||
+      cachedStewardProviders !== null ||
+      readSessionCachedProviders() !== null,
   );
   const [providers, setProviders] = useState<StewardProviders>(
-    () => cachedStewardProviders ?? DEFAULT_PROVIDERS,
+    () =>
+      cachedStewardProviders ??
+      readSessionCachedProviders() ??
+      DEFAULT_PROVIDERS,
   );
   const [passkeyCapability, setPasskeyCapability] =
     useState<WebPasskeyCapability | null>(
@@ -425,20 +514,71 @@ export default function StewardLoginSection() {
     providers.passkey !== false && passkeyCapability?.usable === true;
 
   useEffect(() => {
+    const recoverOAuthIntentAfterHistoryRestore = (
+      event: PageTransitionEvent,
+    ) => {
+      if (!event.persisted) return;
+      setLoading((current) => {
+        if (
+          current === "google" ||
+          current === "discord" ||
+          current === "github"
+        ) {
+          return null;
+        }
+        return current;
+      });
+    };
+
+    // OAuth owns the current document, but browser Back may revive this React
+    // tree from the back/forward cache with its pre-navigation loading state.
+    // A fresh load already starts idle; only a persisted history restoration
+    // needs to release the provider lock (#20385).
+    window.addEventListener("pageshow", recoverOAuthIntentAfterHistoryRestore);
+    return () => {
+      window.removeEventListener(
+        "pageshow",
+        recoverOAuthIntentAfterHistoryRestore,
+      );
+    };
+  }, []);
+
+  useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) {
       setProvidersLoaded(true);
       return;
     }
+    // On the post-OAuth return leg the section shows only the terminal
+    // "completing sign-in" state and then redirects — the options never
+    // render, so a discovery fetch there is pure waste on the critical path
+    // (#18256). If the exchange fails, `completingCallback` clears and this
+    // effect re-runs, so the retry surface still gets live discovery.
+    if (completingCallback) return;
+    let cancelled = false;
     loadStewardProviders(auth)
-      .then(setProviders)
+      .then((loadedProviders) => {
+        if (!cancelled) setProviders(loadedProviders);
+      })
       .catch((providerError: unknown) => {
         stewardProvidersPromise = null;
-        setError(
-          getErrorMessage(providerError, "Steward provider discovery failed"),
-        );
+        if (cancelled) return;
+        // error-policy:J4 with a session-cached provider set already rendered,
+        // a failed background reconcile keeps the usable cached form instead
+        // of blasting an error over working sign-in options; a first-load
+        // failure (nothing rendered yet) still surfaces the error.
+        if (readSessionCachedProviders() === null) {
+          setError(
+            getErrorMessage(providerError, "Steward provider discovery failed"),
+          );
+        }
       })
-      .finally(() => setProvidersLoaded(true));
-  }, [auth]);
+      .finally(() => {
+        if (!cancelled) setProvidersLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth, completingCallback]);
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
@@ -926,19 +1066,11 @@ export default function StewardLoginSection() {
   }
 
   async function handleOAuth(provider: StewardOAuthProvider) {
-    // Open synchronously while the click still has user-gesture context. The
-    // PKCE challenge is asynchronous, so opening after it resolves is blocked
-    // by browsers. Touch-primary browsers intentionally return null here and
-    // continue in the current tab.
-    //
-    // When this /login is already the device-code handoff surface (named
-    // popup or opened from local first-run), never nest a second OAuth
-    // window — that left the Steward sign-in form stranded while auth
-    // finished elsewhere (#18001). Stay same-tab instead.
-    // Popup name matches CLOUD_LOGIN_POPUP_NAME ("eliza-cloud-auth") — keep
-    // the default argument so partial mocks of cloud-login-launch still work.
-    const alreadyHandoffSurface = isCloudAuthHandoffSurface();
-    const authWindow = alreadyHandoffSurface ? null : preOpenCloudLoginWindow();
+    // This component is the sole hosted /login surface. Keep OAuth in its
+    // current document so the callback returns to the same authority that
+    // owns loading/error state and consumes the one-time code. A sibling
+    // popup leaves this form permanently disabled when that window is closed,
+    // blocked, or completes without notifying its opener (#20334).
     setLoading(provider);
     setError(null);
     const host = window.location.hostname.toLowerCase();
@@ -949,7 +1081,6 @@ export default function StewardLoginSection() {
     try {
       const pkce = await createStewardPkcePair();
       if (!storeStewardPkceVerifier(pkce.verifier)) {
-        authWindow?.close();
         setError(
           "Could not start sign-in. Browser storage is unavailable. Enable cookies / site data and try again.",
         );
@@ -958,7 +1089,6 @@ export default function StewardLoginSection() {
       }
       codeChallenge = pkce.challenge;
     } catch (e: unknown) {
-      authWindow?.close();
       setError(getErrorMessage(e, "Could not start sign-in"));
       setLoading(null);
       return;
@@ -969,18 +1099,7 @@ export default function StewardLoginSection() {
       stewardTenantId: STEWARD_TENANT_ID,
       codeChallenge,
     });
-    if (alreadyHandoffSurface) {
-      // Stay in this tab so nested OAuth does not orphan the Steward form.
-      window.location.href = authorizeUrl;
-    } else if (authWindow && !authWindow.closed) {
-      navigatePreOpenedWindow(authWindow, authorizeUrl);
-    } else if (canNavigateSameTabForBlockedPopup()) {
-      // Plain web can safely preserve the sign-in round trip in this tab.
-      window.location.href = authorizeUrl;
-    } else {
-      // Native and desktop shells must retain their platform browser bridges.
-      navigatePreOpenedWindow(null, authorizeUrl);
-    }
+    window.location.href = authorizeUrl;
   }
 
   // First wallet click: mount the lazy wallet stack and remember which chain

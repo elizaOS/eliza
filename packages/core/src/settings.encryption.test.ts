@@ -4,16 +4,21 @@
  * an "elizaos:settings:v2" AAD. The properties pinned here are the ones a secret
  * store lives or dies by: an exact round-trip, semantic security (same plaintext
  * → different ciphertext), idempotent re-encryption, type pass-through, and —
- * critically — that a WRONG salt fails *safe* (returns the ciphertext, never a
- * garbled/partial plaintext).
+ * critically — that a WRONG salt fails *safe* with a typed error instead of
+ * returning ciphertext or garbled/partial plaintext as a usable value.
  */
-import { describe, expect, it } from "vitest";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	clearSaltCache,
+	decryptedCharacter,
 	decryptObjectValues,
 	decryptStringValue,
+	encryptedCharacter,
 	encryptObjectValues,
 	encryptStringValue,
 } from "./settings.ts";
+import type { Character } from "./types";
 
 const SALT = "salt-alpha";
 const SECRET = "sk-api-key-do-not-leak-1234567890";
@@ -70,5 +75,70 @@ describe("encryptObjectValues / decryptObjectValues", () => {
 		expect(enc.enabled).toBe(true);
 		expect(enc.blank).toBe(""); // empty string not encrypted
 		expect(decryptObjectValues(enc, SALT)).toEqual(obj);
+	});
+});
+
+describe("encryptedCharacter / decryptedCharacter", () => {
+	const previousSalt = process.env.SECRET_SALT;
+
+	beforeEach(() => {
+		process.env.SECRET_SALT = SALT;
+		clearSaltCache();
+	});
+
+	afterEach(() => {
+		if (previousSalt === undefined) delete process.env.SECRET_SALT;
+		else process.env.SECRET_SALT = previousSalt;
+		clearSaltCache();
+	});
+
+	it("encrypts both character secret containers without mutating the input", () => {
+		const character: Character = {
+			name: "Secret Keeper",
+			secrets: { OPENAI_API_KEY: SECRET },
+			settings: {
+				defaultTemperature: 0.4,
+				secrets: {
+					ANTHROPIC_API_KEY: "anthropic-secret",
+					enabled: true,
+					attempts: 3,
+				},
+			},
+		};
+
+		const encrypted = encryptedCharacter(character);
+
+		expect(encrypted.secrets?.OPENAI_API_KEY).not.toBe(SECRET);
+		expect(encrypted.secrets?.OPENAI_API_KEY).toMatch(/^v2:/);
+		expect(encrypted.settings?.secrets?.ANTHROPIC_API_KEY).not.toBe(
+			"anthropic-secret",
+		);
+		expect(encrypted.settings?.secrets?.ANTHROPIC_API_KEY).toMatch(/^v2:/);
+		expect(encrypted.settings?.secrets?.enabled).toBe(true);
+		expect(encrypted.settings?.secrets?.attempts).toBe(3);
+		expect(encrypted.settings?.defaultTemperature).toBe(0.4);
+		expect(character.secrets?.OPENAI_API_KEY).toBe(SECRET);
+		expect(character.settings?.secrets?.ANTHROPIC_API_KEY).toBe(
+			"anthropic-secret",
+		);
+
+		const decrypted = decryptedCharacter(encrypted);
+		expect(decrypted).toEqual(character);
+		expect(encrypted.settings?.secrets?.ANTHROPIC_API_KEY).toMatch(/^v2:/);
+	});
+
+	it("preserves characters that omit settings or nested secrets", () => {
+		const withoutSettings: Character = { name: "No Settings" };
+		const withoutNestedSecrets: Character = {
+			name: "Public Settings",
+			settings: { defaultTemperature: 0.2 },
+		};
+
+		expect(decryptedCharacter(encryptedCharacter(withoutSettings))).toEqual(
+			withoutSettings,
+		);
+		expect(
+			decryptedCharacter(encryptedCharacter(withoutNestedSecrets)),
+		).toEqual(withoutNestedSecrets);
 	});
 });

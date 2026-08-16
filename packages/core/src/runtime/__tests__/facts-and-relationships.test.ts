@@ -191,7 +191,9 @@ describe("parseFactsAndRelationshipsOutput", () => {
 				},
 			],
 		});
-		expect(result.facts).toEqual(["Alice lives in Paris"]);
+		expect(result.facts).toEqual([
+			{ subject: "user", fact: "Alice lives in Paris" },
+		]);
 	});
 
 	it("falls back to text when the tool call carries no usable args", () => {
@@ -199,7 +201,7 @@ describe("parseFactsAndRelationshipsOutput", () => {
 			text: '{"facts":["b"],"relationships":[],"thought":"t"}',
 			toolCalls: [{ type: "tool-call" }],
 		});
-		expect(result.facts).toEqual(["b"]);
+		expect(result.facts).toEqual([{ subject: "user", fact: "b" }]);
 	});
 
 	it("parses tool-call args under `args` and `params` keys too", () => {

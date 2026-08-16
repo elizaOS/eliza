@@ -2671,6 +2671,12 @@ async function collectV5PlannerCandidateActions(args: {
 	selectedContexts?: readonly AgentContext[];
 	candidateActions?: readonly string[];
 	userRoles?: readonly RoleGateRole[];
+	/** Out-param: normalized names of EXPLICIT stage-1 candidates whose
+	 * resolved action was rejected by the action gate (role/context/privacy).
+	 * Lets the planner entry distinguish "capability exists but is gated on
+	 * this surface" from ordinary no-match, and answer honestly instead of
+	 * planning against an unrelated retrieval surface. */
+	diagnostics?: { gateRejectedExplicitCandidates: string[] };
 }): Promise<Action[]> {
 	// The candidate surface starts from every runtime action and applies only the
 	// same execution gates the planner executor will enforce — it deliberately does
@@ -2718,6 +2724,7 @@ async function collectV5PlannerCandidateActions(args: {
 		});
 		if (gateFailure !== undefined) {
 			if (explicitCandidateName) {
+				args.diagnostics?.gateRejectedExplicitCandidates.push(action.name);
 				args.runtime.logger.warn(
 					{
 						src: "service:message",
@@ -3169,6 +3176,48 @@ function buildV5PlannerActionSurface(params: {
 		}
 	}
 
+	// Selected-context representation guarantee: stage-1 routed this turn to
+	// specific contexts, and a narrowed surface with ZERO callable actions for
+	// a selected context contradicts that routing — the planner then improvises
+	// with off-context tools (observed live: a web+notes composite surfaced
+	// WEB_FETCH/WEB_SEARCH only, so the "save a note" half of the ask was
+	// impossible and the turn ended on an in-flight claim with nothing saved).
+	// For each selected context with no exposed representative, expose the
+	// highest-ranked action that DECLARES the context; `params.actions` is the
+	// already gate-checked collection, so this can never expose a gated action.
+	for (const context of params.selectedContexts ?? []) {
+		const normalizedContext = String(context).trim().toLowerCase();
+		if (!normalizedContext || normalizedContext === "simple") continue;
+		const declaresContext = (action: Action): boolean =>
+			(action.contexts ?? []).some(
+				(declared) =>
+					String(declared).trim().toLowerCase() === normalizedContext,
+			);
+		const hasRepresentative = params.actions.some(
+			(action) =>
+				exposedActionNames.has(normalizeActionIdentifier(action.name)) &&
+				declaresContext(action),
+		);
+		if (hasRepresentative) continue;
+		const scoreByName = new Map(
+			retrieval.results.map((result) => [
+				normalizeActionIdentifier(result.name),
+				result.score,
+			]),
+		);
+		const best = params.actions
+			.filter(declaresContext)
+			.sort(
+				(a, b) =>
+					(scoreByName.get(normalizeActionIdentifier(b.name)) ?? 0) -
+					(scoreByName.get(normalizeActionIdentifier(a.name)) ?? 0),
+			)
+			.at(0);
+		if (best) {
+			exposedActionNames.add(normalizeActionIdentifier(best.name));
+		}
+	}
+
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
 	).length;
@@ -3598,6 +3647,18 @@ export interface EligibleDirectActionRoute {
 	action: Action;
 }
 
+function routeReplacesStage1Candidate(
+	rule: DirectActionRoutingRule,
+	candidateActions: readonly string[] | undefined,
+): boolean {
+	const replacements = rule.replacesActionNames ?? [];
+	if (replacements.length === 0 || !candidateActions?.length) return false;
+	const candidates = new Set(candidateActions.map(normalizeActionIdentifier));
+	return replacements.some((name) =>
+		candidates.has(normalizeActionIdentifier(name)),
+	);
+}
+
 /**
  * Resolve plugin-owned direct routes against the real execution surface for
  * this actor and turn. Context adjacency is deliberately insufficient:
@@ -3964,25 +4025,54 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 		{
 			name: "core.direct_registered_capability_request",
 			description:
-				"Promotes a plugin-declared current-turn intent only when a matching, capability-tagged action is executable for this actor.",
+				"Promotes or reconciles a plugin-declared current-turn intent only when a matching, capability-tagged action is executable for this actor.",
 			priority: 15,
 			shouldRun: ({ message, messageHandler, runtime }) => {
 				if (messageHandler.processMessage !== "RESPOND") return false;
-				if (messageHandler.plan.requiresTool === true) return false;
 				if (isSubAgentCompletionArtifact(message)) return false;
 				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
 					(context) => context !== SIMPLE_CONTEXT_ID,
 				);
-				if (nonSimpleContexts.length > 0) return false;
 				const text = getUserMessageText(message)?.trim() ?? "";
-				return (
-					text.length > 0 &&
-					getDirectActionRoutingRules(runtime).some((rule) =>
-						rule.matches(text),
-					)
+				if (text.length === 0) return false;
+				const matchingRules = getDirectActionRoutingRules(runtime).filter(
+					(rule) => rule.matches(text),
 				);
+				if (matchingRules.length === 0) return false;
+				// A plugin may reconcile an already-tool-bearing/non-simple plan only
+				// for the explicit fallback candidates it owns. All other plans keep
+				// their Stage-1 route, even when their text happens to match.
+				if (
+					messageHandler.plan.requiresTool === true ||
+					nonSimpleContexts.length > 0
+				) {
+					return matchingRules.some((rule) =>
+						routeReplacesStage1Candidate(
+							rule,
+							messageHandler.plan.candidateActions,
+						),
+					);
+				}
+				return true;
 			},
-			evaluate: async ({ message, state, runtime, userRoles }) => {
+			evaluate: async ({
+				message,
+				messageHandler,
+				state,
+				runtime,
+				userRoles,
+			}) => {
+				const text = getUserMessageText(message)?.trim() ?? "";
+				const declaredReplacementRules = new Set(
+					getDirectActionRoutingRules(runtime).filter(
+						(rule) =>
+							rule.matches(text) &&
+							routeReplacesStage1Candidate(
+								rule,
+								messageHandler.plan.candidateActions,
+							),
+					),
+				);
 				const routes = await resolveEligibleDirectActionRoutes({
 					runtime,
 					message,
@@ -3990,21 +4080,49 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					userRoles,
 				});
 				if (routes.length === 0) return undefined;
-				const candidateActions = uniqueActionNames(
-					routes.map(({ action }) => action.name),
+				// A declared owner keeps exclusive reconciliation authority even when
+				// its action is unavailable. Falling through to a second text-matching
+				// direct route could execute adjacent work now instead of preserving the
+				// original Stage-1 fallback.
+				const replacingRoutes =
+					declaredReplacementRules.size > 0
+						? routes.filter(({ rule }) => declaredReplacementRules.has(rule))
+						: [];
+				if (declaredReplacementRules.size > 0 && replacingRoutes.length === 0) {
+					return undefined;
+				}
+				const selectedRoutes =
+					replacingRoutes.length > 0 ? replacingRoutes : routes;
+				const replacedActionNames = new Set(
+					replacingRoutes.flatMap(({ rule }) =>
+						(rule.replacesActionNames ?? []).map(normalizeActionIdentifier),
+					),
 				);
+				const retainedStage1Candidates = (
+					messageHandler.plan.candidateActions ?? []
+				).filter(
+					(candidate) =>
+						!replacedActionNames.has(normalizeActionIdentifier(candidate)),
+				);
+				const candidateActions = uniqueActionNames([
+					...retainedStage1Candidates,
+					...selectedRoutes.map(({ action }) => action.name),
+				]);
 				const contexts = mergeAgentContexts(
-					...routes.map(({ rule }) => rule.contexts),
+					...selectedRoutes.map(({ rule }) => rule.contexts),
 				);
 				return {
 					requiresTool: true,
 					addContexts: contexts,
 					addCandidateActions: candidateActions,
+					...(replacingRoutes.length > 0
+						? { clearCandidateActions: true }
+						: {}),
 					// A deterministic read route must not emit Stage-1's speculative
 					// answer or a progress bubble before the real action responds.
 					clearReply: true,
 					debug: [
-						`current request matched executable direct route(s): ${routes.map(({ rule }) => rule.id).join(", ")} -> ${candidateActions.join(", ")}`,
+						`current request matched executable direct route(s): ${selectedRoutes.map(({ rule }) => rule.id).join(", ")} -> ${candidateActions.join(", ")}`,
 					],
 				};
 			},
@@ -4185,6 +4303,7 @@ direct/private rules:
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
 - Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
 - Never deny a capability when current_turn_boundary says a role-visible executable action can attempt it. available_contexts supplies routing domains but does not by itself prove a handler exists.
+- History never creates a capability: a surface with no matching context/action (SMS/texting, calls, unlisted connectors) is "not available here" even if earlier messages implied it; never ask follow-up details for a surface you don't have.
 - A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.
 - Crisis/legal/medical/self-harm/police/CPS: contexts=["simple"], replyText deferral only; no actions or conceal/evasion/testimony/contraband advice. Refer to lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline.
 - For tool/planning paths, replyText is only a brief ack ("On it."). Never refuse because tools may run after this stage.
@@ -8019,6 +8138,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		// NOTIFY and the turn ended answerless). Preserve the pre-patch reply so
 		// the planner loop's answer rescue and the answerless-final fallback can
 		// still deliver it.
+		const candidateGateDiagnostics = {
+			gateRejectedExplicitCandidates: [] as string[],
+		};
 		const prePatchStageOneReply =
 			typeof messageHandler.plan.reply === "string" &&
 			messageHandler.plan.reply.trim().length > 0
@@ -8363,7 +8485,90 @@ export async function runV5MessageRuntimeStage1(args: {
 					selectedContexts,
 					candidateActions: getMessageHandlerCandidateActions(messageHandler),
 					userRoles: [senderRole],
+					diagnostics: candidateGateDiagnostics,
 				});
+		// Surface-privacy short-circuit: stage-1 named a capability that EXISTS
+		// but is gated on this surface (role/privacy — e.g. owner-life actions in
+		// a public channel), and no named candidate survived into the collected
+		// set. Planning anyway hands the model an unrelated retrieval surface and
+		// it improvises around the missing capability — observed live on the
+		// Discord group channel: a "todos" ask got a WEB_SEARCH surface and
+		// shipped a fabricated "todo added" with zero writes, and a todos READ
+		// answered a false empty from the orchestrator task store. Answer with an
+		// honest surface denial instead. The phrasing confirms nothing about the
+		// data — only that the surface is private to another channel.
+		const collectedCandidateNames = new Set(
+			plannerCandidateActions.map((action) =>
+				normalizeActionIdentifier(action.name),
+			),
+		);
+		const stageOneCandidateLookup = buildRuntimeActionLookup(args.runtime);
+		const anyNamedStageOneCandidateSurvived = (
+			getMessageHandlerCandidateActions(messageHandler) ?? []
+		).some((name) => {
+			const resolved = resolveRuntimeAction(
+				stageOneCandidateLookup,
+				String(name),
+			);
+			return (
+				resolved !== undefined &&
+				collectedCandidateNames.has(normalizeActionIdentifier(resolved.name))
+			);
+		});
+		if (
+			candidateGateDiagnostics.gateRejectedExplicitCandidates.length > 0 &&
+			!anyNamedStageOneCandidateSurvived
+		) {
+			return {
+				kind: "direct_reply",
+				messageHandler,
+				result: createV5ReplyStrategyResult({
+					...args,
+					text: "that's a private surface — ask me in a DM and I'll handle it there.",
+					thought: messageHandler.thought,
+					agentVoiced: false,
+				}),
+			};
+		}
+		// Live-lookup unavailability short-circuit. The progress-ack promotion
+		// (routeMessageHandlerOutput, #20249) now routes "On it."-shaped turns
+		// into planning, which bypassed the direct-reply egress replacement that
+		// used to convert a live-lookup ask with NO registered web action into
+		// the honest decline. A planner round cannot conjure the missing
+		// capability — its best case is a model-authored decline and its worst
+		// case is a shell fallback — so decline deterministically here, exactly
+		// like the egress-side replacement. Scope: only turns whose planning
+		// round exists purely because of the promotion (stage-1's own plan
+		// selected no non-simple context). When stage-1 genuinely routed to a
+		// context, or a named candidate survived collection, the planner may
+		// hold a registered domain action that serves the ask without web
+		// search — those turns still plan.
+		const stageOneOwnNonSimpleContexts = (
+			messageHandler.plan.contexts ?? []
+		).filter((context) => {
+			const normalized = String(context).trim().toLowerCase();
+			return normalized.length > 0 && normalized !== SIMPLE_CONTEXT_ID;
+		});
+		if (
+			stageOneOwnNonSimpleContexts.length === 0 &&
+			!anyNamedStageOneCandidateSurvived &&
+			shouldReplaceUnavailableLiveLookupAck({
+				message: args.message,
+				actions: args.runtime.actions ?? [],
+				reply: prePatchStageOneReply ?? "",
+			})
+		) {
+			return {
+				kind: "direct_reply",
+				messageHandler,
+				result: createV5ReplyStrategyResult({
+					...args,
+					text: LIVE_LOOKUP_UNAVAILABLE_REPLY,
+					thought: messageHandler.thought,
+					agentVoiced: false,
+				}),
+			};
+		}
 		const localizedExamplesProvider = getLocalizedExamplesProvider(
 			args.runtime,
 		);

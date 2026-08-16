@@ -142,6 +142,99 @@ describe("parseArgs", () => {
     ).toThrow("ssh-port");
   });
 
+  it("rejects parseInt-coercible --ssh-port tokens instead of selecting another port", () => {
+    // Number.parseInt("1e4", 10) === 1, still inside 1..65535; dry-run then
+    // printed `root@127.0.0.1:1`. Trailing junk and leading zeros are the
+    // same class: the operator must get the port they typed, or an error.
+    for (const value of [
+      "1e4",
+      "1E4",
+      "8abc",
+      "010",
+      "22.0",
+      "0x10",
+      "65536",
+    ]) {
+      expect(() =>
+        parseArgs(
+          ["--host", "127.0.0.1", "--node-id", "n", "--ssh-port", value],
+          emptyEnv,
+        ),
+      ).toThrow(/ssh-port/);
+    }
+    expect(
+      parseArgs(
+        ["--host", "127.0.0.1", "--node-id", "n", "--ssh-port", "2222"],
+        emptyEnv,
+      ).sshPort,
+    ).toBe(2222);
+    expect(
+      parseArgs(
+        ["--host", "127.0.0.1", "--node-id", "n", "--ssh-port", "1"],
+        emptyEnv,
+      ).sshPort,
+    ).toBe(1);
+    expect(
+      parseArgs(
+        ["--host", "127.0.0.1", "--node-id", "n", "--ssh-port", "65535"],
+        emptyEnv,
+      ).sshPort,
+    ).toBe(65535);
+  });
+
+  it("rejects parseInt-coercible --capacity tokens instead of shrinking the slot count", () => {
+    // Number.parseInt("1e2", 10) === 1, so `--capacity 1e2` used to print
+    // `capacity=1` while `--capacity 100` correctly rejected as out of range.
+    for (const value of [
+      "1e2",
+      "1E2",
+      "8abc",
+      "010",
+      "4.5",
+      "0x10",
+      "0",
+      "65",
+    ]) {
+      expect(() =>
+        parseArgs(
+          ["--host", "127.0.0.1", "--node-id", "n", "--capacity", value],
+          emptyEnv,
+        ),
+      ).toThrow(/capacity/);
+    }
+    expect(
+      parseArgs(
+        ["--host", "127.0.0.1", "--node-id", "n", "--capacity", "1"],
+        emptyEnv,
+      ).capacity,
+    ).toBe(1);
+    expect(
+      parseArgs(
+        ["--host", "127.0.0.1", "--node-id", "n", "--capacity", "64"],
+        emptyEnv,
+      ).capacity,
+    ).toBe(64);
+  });
+
+  it("applies the same canonical integer gate to the env fallbacks", () => {
+    expect(() =>
+      parseArgs(["--host", "h", "--node-id", "n"], {
+        ONBOARD_NODE_SSH_PORT: "1e4",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/ssh-port/);
+    expect(() =>
+      parseArgs(["--host", "h", "--node-id", "n"], {
+        ONBOARD_NODE_CAPACITY: "1e2",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/capacity/);
+    expect(
+      parseArgs(["--host", "h", "--node-id", "n"], {
+        ONBOARD_NODE_SSH_PORT: "2200",
+        ONBOARD_NODE_CAPACITY: "16",
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({ sshPort: 2200, capacity: 16 });
+  });
+
   it("throws when a flag is missing its value", () => {
     expect(() => parseArgs(["--host", "--node-id", "n"], emptyEnv)).toThrow(
       "requires a value",

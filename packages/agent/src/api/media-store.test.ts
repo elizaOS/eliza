@@ -13,6 +13,7 @@ import type { ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
+import { MAX_CHAT_MEDIA_BASE64_BYTES } from "@elizaos/shared/chat-upload-limits";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 let stateDir: string;
@@ -41,6 +42,8 @@ const {
   readStoredMediaBytes,
   writeStoredMediaFile,
   deleteMediaFile,
+  resolveMediaStoreMaxBytes,
+  DEFAULT_MEDIA_STORE_MAX_BYTES,
 } = await import("./media-store.ts");
 
 function mediaPath(fileName: string): string {
@@ -68,6 +71,7 @@ function makeRes(): {
   });
   let headersSent = false;
   let writableEnded = false;
+  let destroyed = false;
   const closeHandlers: Record<string, (() => void)[]> = {};
   const res = {
     get headersSent() {
@@ -75,6 +79,9 @@ function makeRes(): {
     },
     get writableEnded() {
       return writableEnded;
+    },
+    get destroyed() {
+      return destroyed;
     },
     writeHead(s: number, h: Record<string, unknown>) {
       status = s;
@@ -113,6 +120,7 @@ function makeRes(): {
     },
     // test helper to trigger close
     __triggerClose() {
+      destroyed = true;
       for (const h of closeHandlers.close ?? []) h();
     },
   } as unknown as ServerResponse & { __triggerClose: () => void };
@@ -224,6 +232,17 @@ describe("media-store", () => {
 
   it("returns null for a non-data URL", () => {
     expect(persistDataUrl("https://example.com/x.png")).toBeNull();
+  });
+
+  it("rejects an oversized encoded payload before decoding", () => {
+    // Encoded length is over the chat cap, but these extra padding chars do
+    // not grow the decoded size — a post-decode-only check still accepts it.
+    const payload = "A".repeat(MAX_CHAT_MEDIA_BASE64_BYTES + 1);
+    const mediaDir = path.join(stateDir, "media");
+    fs.mkdirSync(mediaDir, { recursive: true });
+    const before = fs.readdirSync(mediaDir);
+    expect(persistDataUrl(`data:image/png;base64,${payload}`)).toBeNull();
+    expect(fs.readdirSync(mediaDir)).toEqual(before);
   });
 
   it("persists a base64 data URL with media-type parameters (RFC 2397)", () => {
@@ -474,6 +493,20 @@ describe("handleMediaRouteRequest (in-process / iOS path)", () => {
     expect((res.body as Buffer).equals(Buffer.from("2345"))).toBe(true);
   });
 
+  it("does not read the whole file to serve a tiny Range", () => {
+    const bytes = Buffer.from("0123456789");
+    const { url } = persistMediaBytes(bytes, "video/mp4");
+    const spy = vi.spyOn(fs, "readFileSync");
+    try {
+      const res = handleMediaRouteRequest(url, "GET", "bytes=0-0");
+      expect(res.status).toBe(206);
+      expect((res.body as Buffer).equals(Buffer.from("0"))).toBe(true);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("clamps an open-ended Range (bytes=N-) to the end of the file", () => {
     const bytes = Buffer.from("0123456789");
     const { url } = persistMediaBytes(bytes, "audio/mpeg");
@@ -695,6 +728,94 @@ describe("serveMediaFile stream fault handling (#20164)", () => {
     }
   });
 
+  it("does not start a full-file stream that opens after the client disconnects", () => {
+    const { url } = persistMediaBytes(Buffer.from("late-open"), "image/png");
+    const { res, get } = makeRes();
+    const fake = makeFakeStream();
+    const spy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
+    try {
+      serveMediaFile({ method: "GET", headers: {} } as never, res, url);
+      (res as unknown as { __triggerClose: () => void }).__triggerClose();
+      fake.emit("open");
+      expect(get().status).toBe(0);
+      expect(fake.destroy).toHaveBeenCalledTimes(1);
+      expect(fake.pipe).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("does not start a Range stream that opens after the client disconnects", () => {
+    const { url } = persistMediaBytes(Buffer.from("0123456789"), "audio/mpeg");
+    const { res, get } = makeRes();
+    const fake = makeFakeStream();
+    const spy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
+    try {
+      serveMediaFile(
+        { method: "GET", headers: { range: "bytes=0-3" } } as never,
+        res,
+        url,
+      );
+      (res as unknown as { __triggerClose: () => void }).__triggerClose();
+      fake.emit("open");
+      expect(get().status).toBe(0);
+      expect(fake.destroy).toHaveBeenCalledTimes(1);
+      expect(fake.pipe).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("consumes only the destroyed-response race from writeHead", () => {
+    const { url } = persistMediaBytes(Buffer.from("write-race"), "image/png");
+    const { res } = makeRes();
+    const fake = makeFakeStream();
+    const streamSpy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
+    const destroyedError = Object.assign(new Error("response destroyed"), {
+      code: "ERR_STREAM_DESTROYED",
+    });
+    const writeHeadSpy = vi.spyOn(res, "writeHead").mockImplementation(() => {
+      throw destroyedError;
+    });
+    try {
+      serveMediaFile({ method: "GET", headers: {} } as never, res, url);
+      expect(() => fake.emit("open")).not.toThrow();
+      expect(fake.destroy).toHaveBeenCalledTimes(1);
+      expect(fake.pipe).not.toHaveBeenCalled();
+    } finally {
+      writeHeadSpy.mockRestore();
+      streamSpy.mockRestore();
+    }
+  });
+
+  it("rethrows an unexpected writeHead failure", () => {
+    const { url } = persistMediaBytes(Buffer.from("write-fail"), "image/png");
+    const { res } = makeRes();
+    const fake = makeFakeStream();
+    const streamSpy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
+    const unexpectedError = new Error("unexpected write failure");
+    const writeHeadSpy = vi.spyOn(res, "writeHead").mockImplementation(() => {
+      throw unexpectedError;
+    });
+    try {
+      serveMediaFile({ method: "GET", headers: {} } as never, res, url);
+      expect(() => fake.emit("open")).toThrow(unexpectedError);
+      expect(fake.destroy).toHaveBeenCalledTimes(1);
+      expect(fake.pipe).not.toHaveBeenCalled();
+    } finally {
+      writeHeadSpy.mockRestore();
+      streamSpy.mockRestore();
+    }
+  });
+
   it("pipes full file successfully on open", () => {
     const { url } = persistMediaBytes(Buffer.from("ok-bytes"), "image/png");
     const { res, get } = makeRes();
@@ -907,4 +1028,63 @@ describe("deleteMediaFile fast-fail (#12265)", () => {
       }
     },
   );
+});
+
+describe("resolveMediaStoreMaxBytes", () => {
+  it("rejects scientific notation, junk, and non-canonical integers as the 2 GiB default", () => {
+    expect(resolveMediaStoreMaxBytes(undefined)).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("")).toBe(DEFAULT_MEDIA_STORE_MAX_BYTES);
+    expect(resolveMediaStoreMaxBytes("   ")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    // Number.parseInt("1e9", 10) === 1 would evict every attachment.
+    expect(resolveMediaStoreMaxBytes("1e9")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("1e3")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("8abc")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("0x10")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("010")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("0.4")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("-5")).toBe(DEFAULT_MEDIA_STORE_MAX_BYTES);
+    expect(resolveMediaStoreMaxBytes("abc")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+    expect(resolveMediaStoreMaxBytes("0")).toBe(DEFAULT_MEDIA_STORE_MAX_BYTES);
+    expect(resolveMediaStoreMaxBytes("9007199254740992")).toBe(
+      DEFAULT_MEDIA_STORE_MAX_BYTES,
+    );
+  });
+
+  it("accepts complete positive decimals, including a trimmed value", () => {
+    expect(resolveMediaStoreMaxBytes("1")).toBe(1);
+    expect(resolveMediaStoreMaxBytes("4096")).toBe(4096);
+    expect(resolveMediaStoreMaxBytes("2147483648")).toBe(2147483648);
+    expect(resolveMediaStoreMaxBytes(" 1048576 ")).toBe(1048576);
+  });
+
+  it("does not select a just-persisted attachment for eviction when MAX_BYTES is 1e9", () => {
+    const bytes = Buffer.from("scientific-notation-cap-must-not-evict");
+    const saved = persistMediaBytes(bytes, "image/png");
+    expect(fs.existsSync(mediaPath(saved.fileName))).toBe(true);
+    const cap = resolveMediaStoreMaxBytes("1e9");
+    expect(
+      selectMediaToEvict(
+        [{ name: saved.fileName, size: bytes.length, mtimeMs: 1 }],
+        cap,
+      ),
+    ).toEqual([]);
+  });
 });
