@@ -64,6 +64,7 @@ export interface HistoryServiceInternals {
 	messageManager: MessageManager | undefined;
 
 	resolveDiscordEntityId(userId: string): UUID;
+	isOwnerAliasedDiscordUser(userId: string): boolean;
 	getChannelType(channel: Channel): Promise<ChannelType>;
 	isGuildTextBasedChannel(
 		channel: Channel | null,
@@ -529,6 +530,18 @@ export async function ensureConnectionsForMessages(
 
 		const entities = Array.from(uniqueAuthors.entries()).map(
 			([authorId, message]) => {
+				const entityId = service.resolveDiscordEntityId(authorId);
+				// Owner-aliased authors (webhooks/alias accounts) resolve to the
+				// canonical owner entity; backfill must still create that entity so
+				// message rows link, but must not seed it with the alias's identity.
+				if (service.isOwnerAliasedDiscordUser(authorId)) {
+					return {
+						id: entityId,
+						names: [],
+						metadata: {},
+						agentId: service.runtime.agentId,
+					};
+				}
 				const userName = message.author.username;
 				const name =
 					(message.member &&
@@ -542,7 +555,7 @@ export async function ensureConnectionsForMessages(
 						: undefined) ??
 					userName;
 				return {
-					id: service.resolveDiscordEntityId(authorId),
+					id: entityId,
 					names: [userName, name].filter(
 						(n): n is string => typeof n === "string" && n.length > 0,
 					),

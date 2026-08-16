@@ -1,5 +1,10 @@
 /** Builds the container control-plane mock HTTP app: route handlers over the in-memory mock store. */
 import { chatSseFrame } from "@elizaos/cloud-shared/lib/services/chat-sse-frames";
+import {
+  parseSharedTodoCutoverSnapshot,
+  type SharedTodoCutoverSnapshot,
+  TodoCutoverContractError,
+} from "@elizaos/shared/todo-cutover";
 import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
@@ -1362,12 +1367,61 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       const messages = normalizeImportMessages(body.messages);
       const scheduledTasks = normalizeImportTasks(body.scheduledTasks);
       const cutoverToken =
-        typeof body.cutoverToken === "string" ? body.cutoverToken : "";
+        typeof body.cutoverToken === "string" &&
+        body.cutoverToken.trim().length > 0 &&
+        body.cutoverToken.length <= 512
+          ? body.cutoverToken.trim()
+          : "";
+      if (body.cutoverToken !== undefined && !cutoverToken) {
+        return c.json(
+          {
+            error:
+              "A cutover token must be a non-empty string of at most 512 characters",
+          },
+          400,
+        );
+      }
+      const hasTodoSnapshot = body.todoSnapshot !== undefined;
+      if (Boolean(cutoverToken) !== hasTodoSnapshot) {
+        return c.json(
+          {
+            error:
+              "Exact conversation import requires both a cutover token and Todo snapshot",
+          },
+          400,
+        );
+      }
       if (scheduledTasks.length > 0 && !cutoverToken) {
         return c.json(
           { error: "Scheduled task import requires a cutover token" },
           400,
         );
+      }
+      let todoSnapshot: SharedTodoCutoverSnapshot | undefined;
+      if (hasTodoSnapshot) {
+        try {
+          todoSnapshot = await parseSharedTodoCutoverSnapshot(
+            body.todoSnapshot,
+          );
+        } catch (error) {
+          // error-policy:J3 the mock transport mirrors Dedicated's explicit
+          // invalid-snapshot response instead of fabricating an empty import.
+          return c.json(
+            {
+              error:
+                error instanceof TodoCutoverContractError
+                  ? error.message
+                  : "Todo snapshot validation failed",
+            },
+            400,
+          );
+        }
+        if (todoSnapshot.sourceAgentId !== conversationId) {
+          return c.json(
+            { error: "Todo snapshot source does not match the conversation" },
+            400,
+          );
+        }
       }
       const result = store.importConversation(
         sandboxId,
@@ -1376,6 +1430,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         scheduledTasks,
         cutoverToken,
         body.activateScheduledTasks === true,
+        todoSnapshot,
       );
       return c.json(result);
     },

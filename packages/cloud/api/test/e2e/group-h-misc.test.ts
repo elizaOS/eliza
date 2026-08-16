@@ -554,6 +554,13 @@ const internalDiscordRoutes: Array<{
     path: "/api/internal/discord/eliza-app/messages",
     method: "POST",
     validBody: {
+      // Guild-path smoke: an unbound test guild resolves to a not_linked
+      // router result (200) with zero harness state. The former no-guild
+      // fixture now delegates to personal-Shared validation, which requires
+      // a NUMERIC Discord user id and a linked personal account — real
+      // account seeding, out of scope for this liveness smoke (the
+      // personal path has its own integration coverage).
+      guildId: "guild-1",
       channelId: "channel-1",
       messageId: "message-1",
       content: "hello",

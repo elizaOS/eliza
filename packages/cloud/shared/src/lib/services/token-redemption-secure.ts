@@ -1285,6 +1285,64 @@ export class SecureTokenRedemptionService {
   // ========================================
 
   /**
+   * Parses a non-negative SQL SUM/NUMERIC aggregate. String input must be a
+   * canonical PostgreSQL NUMERIC text shape — a plain integer or fixed-point
+   * decimal with no sign prefix, exponent, hexadecimal, whitespace padding,
+   * leading zero, leading dot, or trailing dot — so coercion-only shapes
+   * like `1e2` / `0x10` / `+1` / `" 100.00"` / `.5` / `01.0` fail closed
+   * instead of Number-coercing into plausible amounts (#19948). Numeric
+   * driver values stay accepted when finite and non-negative.
+   */
+  private parseFraudAggregate(value: unknown): number | null {
+    if (value === null || value === undefined) return null;
+    let raw: number;
+    if (typeof value === "number") {
+      raw = value;
+    } else {
+      if (typeof value !== "string") return null;
+      if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value)) return null;
+      raw = Number(value);
+    }
+    if (!Number.isFinite(raw) || raw < 0) return null;
+    return raw;
+  }
+
+  /**
+   * Parses a SQL `COUNT(*)` / `COUNT(DISTINCT …)` aggregate. A count can only
+   * ever be a canonical non-negative safe integer, so fractional (`0.5`),
+   * exponent (`1e2`), hexadecimal (`0x10`), sign-prefixed (`+1`),
+   * whitespace-padded (`" 1 "`), leading-zero, negative, non-finite, and
+   * unsafe-integer shapes are corrupt and fail closed to manual review
+   * instead of being Number-coerced into a plausible count (#19948).
+   */
+  private parseFraudCountAggregate(value: unknown): number | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "number") {
+      return Number.isSafeInteger(value) && value >= 0 ? value : null;
+    }
+    if (typeof value !== "string") return null;
+    if (!/^(?:0|[1-9][0-9]*)$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  }
+
+  /** Shared corrupt-aggregate outcome: flag for admin review, never skip silently. */
+  private corruptFraudAggregate(
+    field: string,
+    userId: string,
+  ): { flagged: boolean; warning: string; requiresReview: boolean } {
+    logger.error(
+      "[SecureRedemption] corrupt fraud-heuristic aggregate — flagging redemption for review",
+      { field, userId },
+    );
+    return {
+      flagged: true,
+      warning: `Flagged: fraud-heuristic data unavailable (corrupt ${field} aggregate) — manual review required`,
+      requiresReview: true,
+    };
+  }
+
+  /**
    * Check for potentially fraudulent redemption patterns.
    */
   private async checkFraudPatterns(
@@ -1306,8 +1364,15 @@ export class SecureTokenRedemptionService {
         AND created_at >= ${oneHourAgo}
       `);
 
-      const recentCount = Number((recentEarnings.rows[0] as { count: string })?.count || 0);
-      const recentTotal = Number((recentEarnings.rows[0] as { total: string })?.total || 0);
+      const recentCount = this.parseFraudCountAggregate(
+        (recentEarnings.rows[0] as { count: string })?.count,
+      );
+      const recentTotal = this.parseFraudAggregate(
+        (recentEarnings.rows[0] as { total: string })?.total,
+      );
+      if (recentCount === null || recentTotal === null) {
+        return this.corruptFraudAggregate("app_earnings_transactions(last hour)", userId);
+      }
 
       if (recentCount > 0 && recentTotal > (pointsAmount / 100) * 0.5) {
         return {
@@ -1333,8 +1398,16 @@ export class SecureTokenRedemptionService {
         AND status IN ('completed', 'approved', 'processing')
       `);
 
-      const earned = Number((totalEarned.rows[0] as { total: string })?.total || 0);
-      const redeemed = Number((totalRedeemed.rows[0] as { total: string })?.total || 0);
+      const earned = this.parseFraudAggregate((totalEarned.rows[0] as { total: string })?.total);
+      const redeemed = this.parseFraudAggregate(
+        (totalRedeemed.rows[0] as { total: string })?.total,
+      );
+      if (earned === null || redeemed === null) {
+        return this.corruptFraudAggregate(
+          "app_earnings_transactions/token_redemptions(lifetime totals)",
+          userId,
+        );
+      }
 
       if (earned > 0) {
         const redemptionRatio = (redeemed + pointsAmount / 100) / earned;
@@ -1358,9 +1431,12 @@ export class SecureTokenRedemptionService {
         AND status IN ('completed', 'approved', 'processing', 'pending')
       `);
 
-      const otherUsersCount = Number(
-        (sharedAddressCheck.rows[0] as { user_count: string })?.user_count || 0,
+      const otherUsersCount = this.parseFraudCountAggregate(
+        (sharedAddressCheck.rows[0] as { user_count: string })?.user_count,
       );
+      if (otherUsersCount === null) {
+        return this.corruptFraudAggregate("token_redemptions(shared payout address)", userId);
+      }
 
       if (otherUsersCount >= FRAUD_THRESHOLDS.SHARED_ADDRESS_MAX_USERS) {
         return {

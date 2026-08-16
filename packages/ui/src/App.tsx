@@ -26,6 +26,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -70,6 +71,7 @@ import {
 import { AppBackground } from "./backgrounds/AppBackground";
 import {
   invokeDesktopBridgeRequest,
+  invokeDesktopBridgeRequestWithTimeout,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
@@ -100,6 +102,7 @@ import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
+import { useChatOverlayWindowBounds } from "./components/shell/chat-overlay-window-bounds";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
@@ -312,6 +315,18 @@ function ChatOverlayShell() {
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
   const overlayOpen = controller?.isOpen ?? false;
+  const setActionNotice = useAppSelector((state) => state.setActionNotice);
+  const handleWindowBoundsFailure = useCallback((): void => {
+    if (overlayOpen) {
+      controller?.close();
+    }
+    setActionNotice(
+      "Desktop chat window resize failed. Close and reopen Eliza to retry.",
+      "error",
+      6_000,
+    );
+  }, [controller, overlayOpen, setActionNotice]);
+  useChatOverlayWindowBounds(overlayOpen, handleWindowBoundsFailure);
   // Escape collapses the overlay first — while it is open, AssistantOverlay's
   // own Escape handler closes it. Once already collapsed, Escape hides the
   // desktop window entirely (#12184) so the pill dismisses to the background
@@ -1777,6 +1792,8 @@ function SecretsManagerModalMount(): ReactNode {
 
 function ShellFoundationMount() {
   const controller = useShellControllerContext();
+  const hasController = controller !== null;
+  const shellIsOpen = controller?.isOpen ?? false;
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
   // Push-to-talk dictation on the ChatSurface mic drops its transcript into
@@ -1792,6 +1809,25 @@ function ShellFoundationMount() {
     });
     return () => controller.setDictationSink(null);
   }, [controller, setChatInput, chatInputRef]);
+
+  useEffect(() => {
+    if (!hasController) return undefined;
+    let cancelled = false;
+
+    void (async () => {
+      if (cancelled) return;
+      await invokeDesktopBridgeRequestWithTimeout<undefined>({
+        rpcMethod: "desktopSetBottomBarExpanded",
+        ipcChannel: "desktop:setBottomBarExpanded",
+        params: { expanded: shellIsOpen },
+        timeoutMs: 1_000,
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasController, shellIsOpen]);
   if (!controller) return null;
 
   return (
@@ -1826,7 +1862,13 @@ function ShellFoundationMount() {
  * including the /chat route's ambient home. Returns null until a controller
  * provider is present.
  */
-function ChatOverlayMount(): ReactNode {
+function ChatOverlayMount({
+  releaseFirstRunToHalf,
+  onFirstRunReleaseHandled,
+}: {
+  releaseFirstRunToHalf: boolean;
+  onFirstRunReleaseHandled: () => void;
+}): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
     useAppSelectorShallow((s) => ({
@@ -1855,6 +1897,8 @@ function ChatOverlayMount(): ReactNode {
       agentName={agentName}
       slash={slash}
       firstRunOpen={firstRunComplete === false}
+      releaseFirstRunToHalf={releaseFirstRunToHalf}
+      onFirstRunReleaseHandled={onFirstRunReleaseHandled}
     />
   );
 }
@@ -1995,6 +2039,20 @@ function AppContent() {
     startupCoordinator.phase,
     firstRunCloudProvisionedContainer,
   );
+  // Runtime-target adoption can remount the shell on the exact render where
+  // first-run completes. Retain that completion edge above the remount and let
+  // the next ChatOverlay acknowledge it after applying the HALF detent.
+  const firstRunWasIncompleteRef = useRef(firstRunComplete === false);
+  const firstRunReleasePendingRef = useRef(false);
+  if (firstRunComplete === false) {
+    firstRunWasIncompleteRef.current = true;
+  } else if (firstRunComplete === true && firstRunWasIncompleteRef.current) {
+    firstRunWasIncompleteRef.current = false;
+    firstRunReleasePendingRef.current = true;
+  }
+  const handleFirstRunReleaseHandled = useCallback(() => {
+    firstRunReleasePendingRef.current = false;
+  }, []);
 
   useEffect(() => {
     if (!isShellPaintableNow) return;
@@ -2081,6 +2139,40 @@ function AppContent() {
       (isAgentlessCloudOrigin &&
         firstRunOwnsLoginSurface(startupCoordinator.phase, firstRunComplete)),
   });
+  // The first-run chat must survive its completion edge. Completion starts an
+  // auth probe, but replacing the already-painted shell with StartupScreen
+  // remounts ChatOverlay and loses its FULL -> HALF transition state. Remember
+  // only a shell painted while first-run owned the login surface, and forget
+  // it as soon as that probe resolves so a later credential refetch still
+  // returns to the startup/auth boundary instead of exposing the shell.
+  const onboardingShellMountedRef = useRef(false);
+  const firstRunOwnsAuthSurface = firstRunOwnsLoginSurface(
+    startupCoordinator.phase,
+    firstRunComplete,
+  );
+  // Record during render as well as in the settle effect below: stored-session
+  // adoption can complete onboarding in the same commit that first paints the
+  // shell, and the completion-edge probe must already see the shell as mounted
+  // on that render — the effect alone would run one commit too late.
+  if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
+    onboardingShellMountedRef.current = true;
+  }
+  useEffect(() => {
+    if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
+      onboardingShellMountedRef.current = true;
+    } else if (authState.phase !== "loading") {
+      onboardingShellMountedRef.current = false;
+    }
+  }, [
+    authState.phase,
+    bootstrapGateHolds,
+    firstRunOwnsAuthSurface,
+    isShellPaintableNow,
+  ]);
+  const preserveMountedOnboardingShell =
+    onboardingShellMountedRef.current &&
+    firstRunComplete === true &&
+    authState.phase === "loading";
   // #15132: after a dedicated cloud agent's container upgrade the persisted
   // agent credential is stale (every agent-subdomain call 401s) while the cloud
   // session is still valid. Rather than dead-end at the agent's internal
@@ -2677,6 +2769,7 @@ function AppContent() {
         startupCoordinator.phase,
         firstRunComplete,
         authState.phase,
+        preserveMountedOnboardingShell,
       )
     ) {
       return (
@@ -2939,7 +3032,10 @@ function AppContent() {
           is pointer-events-none except its own composer/messages, so the view
           behind stays live.
         */}
-        <ChatOverlayMount />
+        <ChatOverlayMount
+          releaseFirstRunToHalf={firstRunReleasePendingRef.current}
+          onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
+        />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
             transcript the overlay renders and routes first-run picks to the

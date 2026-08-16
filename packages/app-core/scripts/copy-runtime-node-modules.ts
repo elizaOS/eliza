@@ -27,6 +27,14 @@ type Options = {
 type DependencyEntry = {
   name: string;
   spec: string | null;
+  /**
+   * True only for entries in the package's own `dependencies` — a hard
+   * requirement its code may import eagerly. Optional/peer entries are false.
+   * The plugin filter in the transitive walk uses this to keep dropping
+   * optional plugin *peers* (whose deep trees bloat the bundle) while never
+   * dropping a hard dependency out from under a package that is shipping.
+   */
+  required: boolean;
 };
 
 type QueueEntry = DependencyEntry & {
@@ -34,7 +42,7 @@ type QueueEntry = DependencyEntry & {
   requesterDestDir: string;
 };
 
-type ResolvedPackage = {
+export type ResolvedPackage = {
   packageJsonPath: string;
   sourceDir: string;
 };
@@ -114,6 +122,11 @@ const RUNTIME_COPY_PRUNED_DIR_NAMES = new Set([
   "test",
   "tests",
   "__tests__",
+  // Jest/Vitest image-snapshot fixtures. Never loaded at runtime, and their
+  // generated basenames blow the tar-safe path limits the Electrobun
+  // self-extractor enforces (e.g. @jimp/plugin-print snapshots at 175 chars).
+  "__image_snapshots__",
+  "__snapshots__",
 ]);
 const RUNTIME_COPY_PRUNED_FILE_EXTENSIONS = new Set([
   ".html",
@@ -195,6 +208,10 @@ function isRequiredRuntimeDocDirectory(entryPath: string): boolean {
   return (
     normalizedPath.endsWith("/yaml/dist/doc") ||
     normalizedPath.endsWith("/viem/_esm/actions/test") ||
+    // viem ships its CJS build alongside ESM; `_cjs/clients/decorators/test.js`
+    // requires `../../actions/test/*.js` at load, so pruning the CJS copy makes
+    // plugin-wallet fail to load and its routes 404.
+    normalizedPath.endsWith("/viem/_cjs/actions/test") ||
     normalizedPath.endsWith("/viem/actions/test")
   );
 }
@@ -2042,17 +2059,17 @@ export function getRuntimeDependencyEntries(
     peerDependencies?: Record<string, string>;
     peerDependenciesMeta?: Record<string, { optional?: boolean }>;
   }>(pkgPath);
-  const entries = new Map<string, string | null>();
+  const entries = new Map<string, { spec: string | null; required: boolean }>();
 
   for (const [name, spec] of Object.entries(pkg.dependencies ?? {})) {
     if (!DEP_SKIP.has(name)) {
-      entries.set(name, spec);
+      entries.set(name, { spec, required: true });
     }
   }
 
   for (const [name, spec] of Object.entries(pkg.optionalDependencies ?? {})) {
     if (!DEP_SKIP.has(name) && !entries.has(name)) {
-      entries.set(name, spec);
+      entries.set(name, { spec, required: false });
     }
   }
 
@@ -2066,12 +2083,16 @@ export function getRuntimeDependencyEntries(
       continue;
     }
 
-    entries.set(name, spec);
+    entries.set(name, { spec, required: false });
   }
 
   return [...entries.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([name, spec]) => ({ name, spec }));
+    .map(([name, value]) => ({
+      name,
+      spec: value.spec,
+      required: value.required,
+    }));
 }
 
 export function getRuntimeDependencies(pkgPath: string): string[] {
@@ -2335,7 +2356,9 @@ function getRequiredRuntimeEntryPaths(pkgJsonPath: string): string[] {
   return [...entries].sort();
 }
 
-function workspacePackageNeedsRuntimeBuild(packageJsonPath: string): boolean {
+export function workspacePackageNeedsRuntimeBuild(
+  packageJsonPath: string,
+): boolean {
   for (const entryPath of getRequiredRuntimeEntryPaths(packageJsonPath)) {
     if (!runtimeManifestEntryExists(path.dirname(packageJsonPath), entryPath)) {
       return true;
@@ -2355,47 +2378,65 @@ function packageHasBuildScript(packageJsonPath: string): boolean {
   }
 }
 
+export function ensureResolvedWorkspaceRuntimeEntriesBuilt(
+  packageName: string,
+  candidate: ResolvedPackage,
+  built: Set<string> = new Set(),
+): void {
+  if (built.has(candidate.sourceDir)) return;
+  if (!isPackageCompatibleWithCurrentPlatform(candidate.packageJsonPath)) {
+    return;
+  }
+  if (!workspacePackageNeedsRuntimeBuild(candidate.packageJsonPath)) {
+    return;
+  }
+  if (!packageHasBuildScript(candidate.packageJsonPath)) {
+    throw new Error(
+      `[runtime-copy] ${packageName} workspace package is missing declared runtime entries and has no build script`,
+    );
+  }
+
+  console.log(
+    `[runtime-copy] building ${packageName} workspace runtime entries`,
+  );
+  execFileSync(resolveBunCommand(), ["run", "build"], {
+    cwd: candidate.sourceDir,
+    env: { ...process.env, FORCE_COLOR: "0" },
+    stdio: "inherit",
+  });
+
+  if (workspacePackageNeedsRuntimeBuild(candidate.packageJsonPath)) {
+    throw new Error(
+      `[runtime-copy] ${packageName} build completed without producing its declared runtime entries`,
+    );
+  }
+  built.add(candidate.sourceDir);
+}
+
 function ensureWorkspaceRuntimeEntriesBuilt(
   packageNames: Iterable<string>,
+  built: Set<string>,
 ): void {
   buildWorkspacePackageIndex();
-  const built = new Set<string>();
 
   for (const packageName of [...new Set(packageNames)].sort()) {
     if (!isPackageNameCompatibleWithCurrentPlatform(packageName)) continue;
-
     for (const candidate of workspacePackageIndex.get(packageName) ?? []) {
-      if (built.has(candidate.sourceDir)) continue;
-      if (!isPackageCompatibleWithCurrentPlatform(candidate.packageJsonPath)) {
-        continue;
-      }
-      if (!workspacePackageNeedsRuntimeBuild(candidate.packageJsonPath)) {
-        continue;
-      }
-      if (!packageHasBuildScript(candidate.packageJsonPath)) {
-        continue;
-      }
-
-      console.log(
-        `[runtime-copy] building ${packageName} workspace runtime entries`,
-      );
-      try {
-        execFileSync(resolveBunCommand(), ["run", "build"], {
-          cwd: candidate.sourceDir,
-          env: { ...process.env, FORCE_COLOR: "0" },
-          stdio: "inherit",
-        });
-      } catch (error) {
-        if (workspacePackageNeedsRuntimeBuild(candidate.packageJsonPath)) {
-          throw error;
-        }
-        console.warn(
-          `[runtime-copy] warning: ${packageName} build exited non-zero after producing required runtime entries; continuing`,
-        );
-      }
-      built.add(candidate.sourceDir);
+      ensureResolvedWorkspaceRuntimeEntriesBuilt(packageName, candidate, built);
     }
   }
+}
+
+function isIndexedWorkspacePackage(
+  packageName: string,
+  resolved: ResolvedPackage,
+): boolean {
+  buildWorkspacePackageIndex();
+  return (workspacePackageIndex.get(packageName) ?? []).some(
+    (candidate) =>
+      candidate.sourceDir === resolved.sourceDir ||
+      candidate.packageJsonPath === resolved.packageJsonPath,
+  );
 }
 
 // Post-copy assertion: missingAlwaysBundled catches resolve failures, but
@@ -2530,12 +2571,17 @@ function main(): void {
         return shouldBundle;
       }),
     );
-    ensureWorkspaceRuntimeEntriesBuilt([...alwaysBundled, ...discovered]);
+    const builtWorkspaceRuntimeEntries = new Set<string>();
+    ensureWorkspaceRuntimeEntriesBuilt(
+      [...alwaysBundled, ...discovered],
+      builtWorkspaceRuntimeEntries,
+    );
     const queue: QueueEntry[] = [...new Set([...alwaysBundled, ...discovered])]
       .sort()
       .map((name) => ({
         name,
         spec: rootDependencySpecs.get(name) ?? null,
+        required: true,
         requesterDir: ROOT,
         requesterDestDir: targetDist,
       }));
@@ -2575,6 +2621,14 @@ function main(): void {
         continue;
       }
 
+      if (isIndexedWorkspacePackage(name, resolved)) {
+        ensureResolvedWorkspaceRuntimeEntriesBuilt(
+          name,
+          resolved,
+          builtWorkspaceRuntimeEntries,
+        );
+      }
+
       const resolvedVersion = getPackageVersion(resolved.packageJsonPath);
       const copyTargetNodeModules = selectCopyTargetNodeModules({
         name,
@@ -2592,6 +2646,14 @@ function main(): void {
         copiedNames.add(name);
         continue;
       }
+
+      // The initial scan only sees packages imported by the built entry tree.
+      // Hard dependencies discovered later while walking package manifests can
+      // also be workspace packages with no publishable dist yet. Build those
+      // before copying them; otherwise a clean desktop checkout can package
+      // source-only exports (for example plugin-wallet/diagnostic) and crash
+      // the embedded agent at boot.
+      ensureWorkspaceRuntimeEntriesBuilt([name]);
 
       if (
         !copyPackageDir(
@@ -2627,7 +2689,18 @@ function main(): void {
         // Without this, a peerDep on an optional plugin drags its entire
         // deep tree (e.g. @solana/codecs* nested 8 levels) into the bundle
         // and trips assertTarSafeRuntimePaths.
-        if (!shouldBundleDiscoveredPackage(dep.name, alwaysBundled)) {
+        //
+        // Scoped to non-required edges. A HARD dependency of a package that is
+        // itself shipping must ship too: its dependent may import it eagerly,
+        // and dropping it produces a packaged runtime that throws
+        // `Cannot find module` at boot instead of degrading. That is how
+        // `plugin-personal-assistant` shipped without `plugin-calendar` /
+        // `plugin-blocker` and failed the post-ready app-route tail, pinning
+        // health `startup.phase` at "degraded" so the desktop UI never mounted.
+        if (
+          !dep.required &&
+          !shouldBundleDiscoveredPackage(dep.name, alwaysBundled)
+        ) {
           filteredOptionalPlugins.add(dep.name);
           continue;
         }
@@ -2635,6 +2708,7 @@ function main(): void {
         queue.push({
           name: dep.name,
           spec: dep.spec,
+          required: dep.required,
           requesterDir: resolved.sourceDir,
           requesterDestDir: destination,
         });

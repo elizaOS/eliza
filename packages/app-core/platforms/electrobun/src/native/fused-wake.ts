@@ -18,25 +18,117 @@
  * self-contained in the main process.
  *
  * Inert + safe by default:
- *   - `start()` resolves the prebuilt `libwakeword` + three `hey-eliza` GGUFs;
- *     when they are not staged it returns `{ started: false }` and never spawns
- *     the mic (no model → no detection, no surprise mic access).
+ *   - `start()` resolves the wake-word module, then the prebuilt `libwakeword`
+ *     + three `hey-eliza` GGUFs; when either is unavailable it returns
+ *     `{ started: false, reason }` and never spawns the mic (no model → no
+ *     detection, no surprise mic access).
+ *   - `@elizaos/plugin-local-inference` is `external` to the shell bundle, so
+ *     its wake-word surface is imported lazily from the packaged runtime dist
+ *     inside `start()`. Importing it at module scope breaks desktop startup
+ *     outright — see {@link importVoiceWakeModule}.
  *   - the mic recorder can be overridden for deterministic capture via
  *     `ELIZA_FUSED_WAKE_MIC_PROGRAM` / `ELIZA_FUSED_WAKE_MIC_ARGV` (e.g. ffmpeg
  *     reading a known `hey-eliza` clip) — the on-device validation path.
  */
 
-import {
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import type {
   bridgeDetectorToFusedWake,
   DesktopMicSource,
   OpenWakeWordDetector,
   OpenWakeWordGgmlModel,
-  type PcmFrame,
+  PcmFrame,
   resolveWakeWordStandalonePaths,
 } from "@elizaos/plugin-local-inference/voice-wake";
 import type { SendToWebview } from "../types.js";
+import { resolveRuntimeDistPath } from "./agent";
 
 const SAMPLE_RATE = 16_000;
+
+/**
+ * The wake-word surface of `@elizaos/plugin-local-inference`, resolved lazily.
+ *
+ * `electrobun.config.ts` marks `@elizaos/plugin-local-inference` `external`, so
+ * the package is never bundled into the shell's `app/bun/index.js`. That file
+ * has no `node_modules` on its resolution path, so a *static* import of this
+ * subpath throws `Cannot find module` while the shell's composition root is
+ * still evaluating — killing startup before any window or tray exists. The
+ * plugin does ship in the packaged runtime dist, so it must be reached through
+ * that directory at call time instead. Mirrors `importPermissionProbersModule`
+ * in `./permissions`.
+ */
+interface VoiceWakeModule {
+  bridgeDetectorToFusedWake: typeof bridgeDetectorToFusedWake;
+  DesktopMicSource: typeof DesktopMicSource;
+  OpenWakeWordDetector: typeof OpenWakeWordDetector;
+  OpenWakeWordGgmlModel: typeof OpenWakeWordGgmlModel;
+  resolveWakeWordStandalonePaths: typeof resolveWakeWordStandalonePaths;
+}
+
+const VOICE_WAKE_EXPORTS = [
+  "bridgeDetectorToFusedWake",
+  "DesktopMicSource",
+  "OpenWakeWordDetector",
+  "OpenWakeWordGgmlModel",
+  "resolveWakeWordStandalonePaths",
+] as const satisfies readonly (keyof VoiceWakeModule)[];
+
+function parseVoiceWakeModule(value: unknown): VoiceWakeModule {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("voice-wake module did not export an object.");
+  }
+  const record = value as Record<string, unknown>;
+  for (const name of VOICE_WAKE_EXPORTS) {
+    if (typeof record[name] !== "function") {
+      throw new Error(`voice-wake module did not export ${name}.`);
+    }
+  }
+  return record as unknown as VoiceWakeModule;
+}
+
+let voiceWakeModulePromise: Promise<VoiceWakeModule> | null = null;
+
+async function importVoiceWakeModule(): Promise<VoiceWakeModule> {
+  const bundledVoiceWakePath = path.join(
+    resolveRuntimeDistPath(),
+    "node_modules",
+    "@elizaos",
+    "plugin-local-inference",
+    "dist",
+    "voice-wake.js",
+  );
+  if (existsSync(bundledVoiceWakePath)) {
+    return parseVoiceWakeModule(
+      await import(pathToFileURL(bundledVoiceWakePath).href),
+    );
+  }
+
+  try {
+    return parseVoiceWakeModule(
+      await import("@elizaos/plugin-local-inference/voice-wake"),
+    );
+  } catch (packageImportError) {
+    const cause =
+      packageImportError instanceof Error
+        ? packageImportError.message
+        : String(packageImportError);
+    throw new Error(
+      `Wake-word support is unavailable at ${bundledVoiceWakePath}; package import failed: ${cause}`,
+    );
+  }
+}
+
+function loadVoiceWakeModule(): Promise<VoiceWakeModule> {
+  voiceWakeModulePromise ??= importVoiceWakeModule().catch((err) => {
+    // A failed resolve must not poison every later attempt: a reinstall or a
+    // staged runtime dist can make the module available without a restart.
+    voiceWakeModulePromise = null;
+    throw err;
+  });
+  return voiceWakeModulePromise;
+}
 
 interface FusedWakeStartParams {
   /** Wake-phrase head name. Default `hey-eliza`. */
@@ -80,6 +172,25 @@ export class FusedWakeManager {
     if (this.listening) return { started: true };
 
     const head = params?.head?.trim() || "hey-eliza";
+
+    let voiceWake: VoiceWakeModule;
+    try {
+      voiceWake = await loadVoiceWakeModule();
+    } catch (err) {
+      // The renderer keeps its Swabble fallback; report why rather than
+      // claiming a listen that cannot happen.
+      return {
+        started: false,
+        reason: `wakeword-module-unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+    const {
+      bridgeDetectorToFusedWake,
+      OpenWakeWordDetector,
+      OpenWakeWordGgmlModel,
+      resolveWakeWordStandalonePaths,
+    } = voiceWake;
+
     const paths = resolveWakeWordStandalonePaths({ head });
     if (!paths) {
       // libwakeword + the three GGUFs are not staged on this install — stay
@@ -126,7 +237,7 @@ export class FusedWakeManager {
       }),
     });
 
-    const mic = this.createMicSource();
+    const mic = this.createMicSource(voiceWake.DesktopMicSource);
 
     // Re-buffer arbitrary mic frames into exact `frameSamples` (1280 = 80 ms @
     // 16 kHz) frames the detector expects — mirrors engine.feedWakeFrame.
@@ -193,7 +304,9 @@ export class FusedWakeManager {
    *   ELIZA_FUSED_WAKE_MIC_PROGRAM=ffmpeg
    *   ELIZA_FUSED_WAKE_MIC_ARGV='-hide_banner|-loglevel|error|-re|-f|f32le|-ar|16000|-ac|1|-i|/path/hey-eliza.f32|-ar|16000|-ac|1|-f|s16le|-'
    */
-  private createMicSource(): MicLike {
+  private createMicSource(
+    DesktopMicSource: VoiceWakeModule["DesktopMicSource"],
+  ): MicLike {
     const program = process.env.ELIZA_FUSED_WAKE_MIC_PROGRAM?.trim();
     const argvRaw = process.env.ELIZA_FUSED_WAKE_MIC_ARGV;
     if (program && argvRaw) {

@@ -7,9 +7,9 @@
  * handle (via the `{{twitterUserName}}` template variable) and no awareness of
  * its bio, display name, or nicknames at all.
  *
- * Reads the already-loaded profile from `XService.getActiveProfile()`; it never
- * triggers a network call and returns empty context when the X client has not
- * finished authenticating.
+ * Reads through `XService.refreshActiveProfile()` so managed credential rotation
+ * invalidates the profile before it enters prompt context. An unloaded account
+ * returns empty context; refresh failures remain observable.
  */
 
 import type {
@@ -55,7 +55,7 @@ export const xIdentityProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> => {
     const service = runtime.getService<XService>(X_SERVICE_TYPE);
-    const profile = service?.getActiveProfile() ?? null;
+    const profile = service ? await service.refreshActiveProfile() : null;
 
     if (!profile) {
       return {

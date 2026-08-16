@@ -1,5 +1,9 @@
-// Persists containers records for cloud services through the shared DB boundary.
+/**
+ * Persists Cloud container records and enforces organization-scoped admission,
+ * billing, lifecycle, and deployment-log boundaries.
+ */
 import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   and,
   desc,
@@ -10,7 +14,10 @@ import {
   notInArray,
   sql,
 } from "drizzle-orm";
-import { getMaxContainersForOrg } from "../../lib/constants/pricing";
+import {
+  type ContainerLimitResolution,
+  resolveMaxContainersForOrg,
+} from "../../lib/constants/pricing";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { hydrateTextField, offloadTextField } from "../../lib/storage/object-store";
 import { type Database, dbRead, dbWrite } from "../helpers";
@@ -35,10 +42,36 @@ export type ContainerStatus =
   | "deleted";
 
 export interface QuotaCheckResult {
+  /** Distinguishes an authoritative quota decision from an unreadable source. */
+  availability: "ready" | "unavailable";
   allowed: boolean;
   current: number;
   max: number;
   error?: string;
+}
+
+function resolveContainerLimitFromDatabaseSources(
+  creditBalance: string | number | null | undefined,
+  orgSettings: unknown,
+): ContainerLimitResolution {
+  let parsedBalance: number;
+  try {
+    parsedBalance = parseOrganizationCreditBalance(creditBalance, "credit_balance");
+  } catch (cause) {
+    // error-policy:J2 — retain the database-boundary diagnostic internally but
+    // expose a stable, source-classified quota failure to callers.
+    throw new ElizaError("Container quota credit balance is unavailable", {
+      code:
+        creditBalance === null || creditBalance === undefined || String(creditBalance).trim() === ""
+          ? "MISSING_CONTAINER_QUOTA_SOURCE"
+          : "INVALID_CONTAINER_QUOTA_SOURCE",
+      cause,
+      context: { source: "organizations.credit_balance" },
+      severity: "fatal",
+    });
+  }
+
+  return resolveMaxContainersForOrg(parsedBalance, orgSettings);
 }
 
 function hasDeploymentLogUpdate(data: Partial<NewContainer>): boolean {
@@ -312,6 +345,7 @@ export class ContainersRepository {
 
     if (!org) {
       return {
+        availability: "unavailable",
         allowed: false,
         current: 0,
         max: 0,
@@ -341,26 +375,32 @@ export class ContainersRepository {
     // getMaxContainersForOrg, mislabelling a paying org's quota. Fail closed:
     // an unreadable balance denies the pre-flight check with a diagnostic
     // error rather than fabricating a free-tier max.
-    let creditBalance: number;
+    let resolution: ContainerLimitResolution;
     try {
-      creditBalance = parseOrganizationCreditBalance(org.credit_balance, "credit_balance");
+      resolution = resolveContainerLimitFromDatabaseSources(org.credit_balance, config?.settings);
     } catch (error) {
+      // error-policy:J4 — only canonical missing/corrupt quota-source failures
+      // become an explicit unavailable result; unexpected defects still fail fast.
+      if (
+        !(error instanceof ElizaError) ||
+        !["MISSING_CONTAINER_QUOTA_SOURCE", "INVALID_CONTAINER_QUOTA_SOURCE"].includes(error.code)
+      ) {
+        throw error;
+      }
       return {
+        availability: "unavailable",
         allowed: false,
         current: count,
         max: 0,
-        error:
-          error instanceof Error ? error.message : "Unable to read organization credit_balance",
+        error: "Container quota source unavailable",
       };
     }
-    const maxContainers = getMaxContainersForOrg(
-      creditBalance,
-      config?.settings as Record<string, unknown> | undefined,
-    );
+    const maxContainers = resolution.limit;
 
     const allowed = count < maxContainers;
 
     return {
+      availability: "ready",
       allowed,
       current: count,
       max: maxContainers,
@@ -596,11 +636,10 @@ export class ContainersRepository {
       // migration artifact / manual DB edit cannot silently drop a paying org
       // into the FREE quota tier. The throw propagates out of the FOR UPDATE
       // transaction, rolling back atomically (no container row is created).
-      const creditBalance = parseOrganizationCreditBalance(org.credit_balance, "credit_balance");
-      const maxContainers = getMaxContainersForOrg(
-        creditBalance,
-        config?.settings as Record<string, unknown> | undefined,
-      );
+      const maxContainers = resolveContainerLimitFromDatabaseSources(
+        org.credit_balance,
+        config?.settings,
+      ).limit;
 
       // 4. Check quota
       if (count >= maxContainers) {

@@ -4,12 +4,15 @@
  * parameter and result envelopes. Consumed by planner-loop, the evaluator, and
  * the message handler that drives them.
  */
+import type { ActionFailureProvenance } from "../types/action-failure";
 import type { EvaluationResult } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
 import type {
 	ChatMessage,
 	GenerateTextResult,
+	ModelAttemptContext,
+	ModelRegistrationInfo,
 	PromptSegment,
 	TextGenerationModelType,
 	ToolChoice,
@@ -30,6 +33,12 @@ export interface PlannerToolCall {
 export type EvaluatorRoute = EvaluationResult["decision"];
 
 export interface EvaluatorRuntime {
+	/** True when useModel invokes prepareModelAttempt before every provider handler. */
+	supportsModelAttemptPreparation?: boolean;
+	/** Optional model registry access used to resolve evaluator context ceilings. */
+	getModelRegistrations?(): ModelRegistrationInfo[];
+	/** Optional setting access used by model registration metadata resolvers. */
+	getSetting?(key: string): string | boolean | number | null;
 	reportError?(
 		scope: string,
 		error: unknown,
@@ -45,6 +54,14 @@ export interface EvaluatorRuntime {
 			responseSchema?: unknown;
 			promptSegments?: PromptSegment[];
 			providerOptions?: Record<string, unknown>;
+			prepareModelAttempt?: (
+				attempt: ModelAttemptContext,
+				params: {
+					messages: ChatMessage[];
+					promptSegments?: PromptSegment[];
+					providerOptions?: Record<string, unknown>;
+				},
+			) => Promise<void> | void;
 		},
 		provider?: string,
 	): Promise<
@@ -167,6 +184,8 @@ export interface PlannerToolResult {
 	summary?: string;
 	data?: Record<string, unknown>;
 	error?: unknown;
+	/** Typed boundary provenance retained through planner retry exhaustion. */
+	failureProvenance?: ActionFailureProvenance;
 	/**
 	 * Action-owned completion signal that is honored only for a single executed
 	 * tool after the plan queue drains and the successful result carries verified

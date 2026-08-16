@@ -179,6 +179,22 @@ const COMPRESS_MODE_TOP_K_CAP = 8;
 // arbitrate from the exposed descriptions (#9950).
 const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	ADD_GOAL: ["OWNER_GOALS"],
+	// Email-shaped candidates bind to the inbox triage umbrella. Stage-1
+	// routinely invents these exact names (matrix F21, caught live by the
+	// #20001 resolved-to-nothing observability: EMAIL and EMAIL_SEARCH bound
+	// to no runtime action and the candidate died silently pre-#20001).
+	EMAIL: ["MESSAGE", "INBOX"],
+	EMAILS: ["MESSAGE", "INBOX"],
+	EMAIL_SEARCH: ["MESSAGE", "INBOX"],
+	SEARCH_EMAILS: ["MESSAGE", "INBOX"],
+	READ_EMAIL: ["MESSAGE", "INBOX"],
+	CHECK_EMAIL: ["MESSAGE", "INBOX"],
+	CHECK_INBOX: ["MESSAGE", "INBOX"],
+	// Terminal-shaped candidates bind to the shell surface (same F21 batch:
+	// TERMINAL_COMMAND resolved to nothing).
+	TERMINAL_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	TERMINAL: ["SHELL", "TERMINAL_SHELL"],
+	RUN_COMMAND: ["SHELL", "TERMINAL_SHELL"],
 	// Todo-shaped candidates hint BOTH todo owners: the personal-assistant
 	// umbrella and plugin-todos' TODO parent. Deployments load one or the
 	// other; the resolver keeps whichever is registered. Without these the
@@ -208,6 +224,20 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	TODO_COMPLETE: ["OWNER_TODOS", "TODO"],
 	DELETE_TODO: ["OWNER_TODOS", "TODO"],
 	REMOVE_TODO: ["OWNER_TODOS", "TODO"],
+	// Canonical OWNER_* fallbacks for non-PA topologies: the stage-1 routing
+	// floor names these parents, and on deployments without
+	// @elizaos/plugin-personal-assistant the names resolve to nothing while
+	// modelCommittedToPlanning preserves the unregistered plan and forces an
+	// unavailable surface. These aliases only apply when the named parent is
+	// NOT registered (direct name resolution wins first), so PA deployments
+	// are untouched. Only capability-equivalent fallbacks are allowed: a plain
+	// todo remains a TODO, while scheduled owner surfaces can use TRIGGER. Goals
+	// intentionally fail closed when OWNER_GOALS is unavailable because neither
+	// a checklist item nor a raw trigger preserves the goal contract.
+	OWNER_TODOS: ["TODO"],
+	OWNER_REMINDERS: ["TRIGGER"],
+	OWNER_ALARMS: ["TRIGGER"],
+	OWNER_ROUTINES: ["TRIGGER"],
 	// Alarm-shaped candidates: same dual hint as reminders/habits — the
 	// owner umbrella plus the always-registered TRIGGER scheduler.
 	ADD_ALARM: ["OWNER_ALARMS", "TRIGGER"],
@@ -374,6 +404,11 @@ export function retrieveActions(
 			catalogParentNames.has(normalizeActionName(actionName)),
 		),
 		...candidateActions.flatMap((actionName) => {
+			// A candidate that IS a registered catalog parent already contributed
+			// its exact hint above; its fallback aliases must not fire (the
+			// canonical OWNER_* rows exist only for topologies where the parent
+			// is absent).
+			if (catalogParentNames.has(normalizeActionName(actionName))) return [];
 			const explicitAliases =
 				explicitParentAliasesForCandidateAction(actionName);
 			if (explicitAliases.length > 0) return explicitAliases;
@@ -1196,10 +1231,11 @@ function resolveSimileParentHints(
 		parentBySimile.delete(normalized);
 	}
 	return candidateActions.flatMap((actionName) => {
-		if (parentNames.has(actionName)) {
+		const normalized = normalizeActionName(actionName);
+		if (!normalized || parentNames.has(normalized)) {
 			return [];
 		}
-		const parent = parentBySimile.get(actionName);
+		const parent = parentBySimile.get(normalized);
 		return parent ? [parent] : [];
 	});
 }
@@ -1252,18 +1288,34 @@ function shouldUseRecentConversationForActionSearch(
 	);
 }
 
+// App-surface control blocks ([FORM]/[CHOICE]/[FOLLOWUPS]/[TASK]/[CHECKLIST]
+// and single-line [CONFIG:…] markers) travel inline in delivered message text.
+// When a prior turn's reply carried one, its wire vocabulary ("navigate",
+// "apps", "open", "prompt", …) is UI plumbing, not user intent — left in the
+// retrieval window it floods keyword/bm25 scoring toward view/app actions and
+// can evict the stage-1 candidate entirely (live tj-f8bdfafb488900: a reminder
+// delete routed to CLOSE_ALL_VIEWS off a leaked [FOLLOWUPS] block). Strip the
+// blocks from the conversation window before tokenization; the current user
+// message is never stripped.
+const CONTROL_BLOCK_MARKER_RE =
+	/\[[ \t]*(?:FORM|CHOICE[^\]]*|FOLLOWUPS[^\]]*|TASK:[^\]]*|CHECKLIST)[ \t]*\][\s\S]*?\[[ \t]*\/[ \t]*(?:FORM|CHOICE|FOLLOWUPS|TASK|CHECKLIST)[ \t]*\]|\[CONFIG:[^\]]*\]/g;
+
+export function stripControlBlockMarkers(text: string): string {
+	return text.replace(CONTROL_BLOCK_MARKER_RE, " ");
+}
+
 function normalizeTextList(
 	value: string | readonly string[] | undefined,
 ): string[] {
 	if (typeof value === "string") {
-		return [value];
+		return [stripControlBlockMarkers(value).trim()].filter(Boolean);
 	}
 	if (!Array.isArray(value)) {
 		return [];
 	}
 	return value
 		.filter((entry): entry is string => typeof entry === "string")
-		.map((entry) => entry.trim())
+		.map((entry) => stripControlBlockMarkers(entry).trim())
 		.filter(Boolean);
 }
 

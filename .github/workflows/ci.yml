@@ -1,16 +1,11 @@
-# This workflow is the canonical required pull-request and branch-health
-# validation entry point. Specialized branch-scoped and path-scoped workflows
-# run alongside it for specific surfaces, but none replaces the stable
-# `CI / Required` status it publishes.
+# This workflow is the canonical develop branch-health validation entry point.
+# Pull requests intentionally do not run repository workflows; develop validates
+# the integrated tree after merge.
 name: CI
 
 on:
-  pull_request:
-    branches: [develop, main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   push:
-    branches: [develop, main]
-  merge_group:
+    branches: [develop]
   workflow_call:
   workflow_dispatch:
 
@@ -19,8 +14,8 @@ on:
 # branch health can never be read on demand. Give workflow_dispatch its own
 # run-scoped identity — the same shape test.yml already uses.
 concurrency:
-  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event.pull_request.number || github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 permissions:
   contents: read
@@ -33,13 +28,6 @@ env:
   NODE_OPTIONS: "--max-old-space-size=8192"
 
 jobs:
-  develop_pr:
-    name: Develop PR compatibility gate
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
-    uses: ./.github/workflows/develop-pr.yml
-    permissions:
-      contents: read
-
   changes:
     name: Classify changes
     uses: ./.github/workflows/classify-paths.yml
@@ -560,7 +548,6 @@ jobs:
     if: always()
     needs:
       [
-        develop_pr,
         changes,
         quality,
         tests,
@@ -576,10 +563,7 @@ jobs:
     steps:
       - name: Require every CI job to succeed
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
           RESULTS: >-
-            develop-pr=${{ needs.develop_pr.result }}
             changes=${{ needs.changes.result }}
             quality=${{ needs.quality.result }}
             tests-scripts=${{ needs.tests.result }}
@@ -595,14 +579,6 @@ jobs:
           for pair in $RESULTS; do
             name="${pair%%=*}"
             result="${pair#*=}"
-            if [ "$name" = "develop-pr" ] &&
-               { [ "$EVENT_NAME" != "pull_request" ] || [ "$BASE_REF" != "develop" ]; }; then
-              if [ "$result" != "skipped" ]; then
-                echo "::error::$pair (expected skipped outside a develop pull request)"
-                exit 1
-              fi
-              continue
-            fi
             if [ "$result" != "success" ]; then
               echo "::error::$pair"
               exit 1

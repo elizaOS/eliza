@@ -86,6 +86,10 @@ describe("Twilio SMS billing", () => {
     expect(resolveTwilioSmsCostPerSegment("not-a-number")).toBe(
       DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD,
     );
+    // A whitespace-only value must fall back, not resolve to $0/segment.
+    expect(resolveTwilioSmsCostPerSegment(" ")).toBe(DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD);
+    // Non-decimal literals must not be coerced (Number("0x10") === 16).
+    expect(resolveTwilioSmsCostPerSegment("0x10")).toBe(DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD);
   });
 
   test("rejects negative or non-finite SMS costs", () => {

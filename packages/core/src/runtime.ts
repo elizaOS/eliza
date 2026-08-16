@@ -222,6 +222,7 @@ import {
 	type MessageConnectorRegistration,
 	type MessageSearchHit,
 	type Metadata,
+	type ModelAttemptContext,
 	type ModelHandler,
 	type ModelParamsMap,
 	type ModelRegistrationInfo,
@@ -1207,6 +1208,8 @@ interface ResolvedModelRegistration {
 }
 
 export class AgentRuntime implements IAgentRuntime {
+	/** The runtime invokes request preparation before each resolved model handler. */
+	readonly supportsModelAttemptPreparation = true;
 	#conversationLength = 100;
 	readonly agentId: UUID;
 	readonly character: Character;
@@ -6735,6 +6738,7 @@ export class AgentRuntime implements IAgentRuntime {
 			// (line ~6578). Once assigned, all later reads reference the scope's
 			// live mutable object, not this placeholder.
 			let recordingStateRef: { recorded: boolean } = { recorded: false };
+			let attemptPreparationFailed = false;
 
 			try {
 				const binaryModels: string[] = [
@@ -6808,6 +6812,31 @@ export class AgentRuntime implements IAgentRuntime {
 							modelParamsRecord.user = this.character.name;
 						}
 					}
+				}
+				const prepareModelAttempt =
+					isPlainObject(modelParams) &&
+					typeof (modelParams as GenerateTextParams).prepareModelAttempt ===
+						"function"
+						? (modelParams as GenerateTextParams).prepareModelAttempt
+						: undefined;
+				if (prepareModelAttempt) {
+					const attempt: ModelAttemptContext = {
+						modelType: String(resolvedModelKey),
+						provider: resolvedModel.provider ?? "unknown",
+						...(resolvedModel.metadata
+							? { metadata: resolvedModel.metadata }
+							: {}),
+					};
+					try {
+						await prepareModelAttempt(
+							attempt,
+							modelParams as GenerateTextParams,
+						);
+					} catch (error) {
+						attemptPreparationFailed = true;
+						throw error;
+					}
+					delete (modelParams as GenerateTextParams).prepareModelAttempt;
 				}
 				let startTime =
 					typeof performance !== "undefined" &&
@@ -7644,6 +7673,41 @@ export class AgentRuntime implements IAgentRuntime {
 				);
 				return resultRef.current as R;
 			} catch (error) {
+				if (attemptPreparationFailed) {
+					recordInferenceSpan(
+						`model-preprocess:${String(modelType)}`,
+						Date.now() - preprocessingStartedAt,
+						{ ...attemptMeta, outcome: "error" },
+					);
+					if (
+						!(
+							error instanceof ElizaError &&
+							error.code === "EVALUATOR_INPUT_OVER_BUDGET"
+						)
+					) {
+						throw error;
+					}
+					// A preparation rejection is attempt-local: the hook refused THIS
+					// registration (e.g. its context window cannot fit the stable
+					// input) before its handler ran, so no provider failure happened
+					// and no failed-attempt trajectory entry is recorded. Registration
+					// order is fallback tier + priority, not descending window size,
+					// so a later registration may still fit — advance the chain and
+					// rethrow the typed error only when the caller pinned a provider
+					// or no candidate remains.
+					lastModelError = error;
+					const nextAfterPreparation = resolvedModels[resolvedIndex + 1];
+					if (requestedProvider !== undefined || !nextAfterPreparation) {
+						throw error;
+					}
+					this.logModelProviderFailover({
+						requestedModelKey,
+						failedModel: resolvedModel,
+						nextModel: nextAfterPreparation,
+						error,
+					});
+					continue;
+				}
 				// error-policy:J4 Provider failover is an explicit degraded path;
 				// the final provider failure is rethrown if no alternative succeeds.
 				if (handlerStartedAt === null) {

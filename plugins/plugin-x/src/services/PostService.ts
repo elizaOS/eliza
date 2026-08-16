@@ -3,9 +3,10 @@
  * covering create/get posts, mention retrieval, and like/retweet plus their
  * inverses through `ClientBase`. Backs the post connector handlers on `XService`.
  */
-import { createUniqueUuid, logger, type UUID } from "@elizaos/core";
-import type { ClientBase } from "../base";
+import { createUniqueUuid, ElizaError, logger, type UUID } from "@elizaos/core";
+import type { ClientBase, TwitterProfile } from "../base";
 import { SearchMode } from "../client";
+import { extractXWriteReceiptId } from "../utils/provider-receipt";
 import { getEpochMs } from "../utils/time";
 import type {
   CreatePostOptions,
@@ -21,171 +22,122 @@ export class TwitterPostService implements IPostService {
     return error instanceof Error ? error.message : String(error);
   }
 
-  private async safeParseJsonResponse(
-    result: unknown,
-  ): Promise<unknown | undefined> {
-    try {
-      const asRecord = (v: unknown): Record<string, unknown> =>
-        typeof v === "object" && v !== null
-          ? (v as Record<string, unknown>)
-          : {};
-      const recordResult = asRecord(result);
-
-      if (typeof recordResult.clone === "function") {
-        // If body is already used, clone() may throw; guard defensively.
-        if (recordResult.bodyUsed === true) return undefined;
-        const cloned = (recordResult.clone as () => unknown)();
-        const clonedRecord = asRecord(cloned);
-        if (typeof clonedRecord.json === "function") {
-          return await (clonedRecord.json as () => Promise<unknown>)();
-        }
-        return undefined;
+  async createPost(
+    options: CreatePostOptions,
+    authenticatedProfile?: TwitterProfile,
+  ): Promise<Post> {
+    return this.client.withAuthenticatedSession(async (session) => {
+      const { profile } = session;
+      if (authenticatedProfile && authenticatedProfile.id !== profile.id) {
+        throw new ElizaError(
+          "Authenticated X profile changed before the post was admitted",
+          { code: "X_AUTH_SESSION_ROTATED" },
+        );
       }
+      try {
+        // Handle media uploads if needed
+        const mediaIds: string[] = [];
 
-      // Non-Response shapes (e.g. our internal wrappers) may expose json()
-      // but do not consume streams.
-      if (typeof recordResult.json === "function") {
-        return await (recordResult.json as () => Promise<unknown>)();
-      }
-      return undefined;
-    } catch {
-      return undefined;
-    }
-  }
+        if (options.media && options.media.length > 0) {
+          logger.info(`Uploading ${options.media.length} media file(s)...`);
 
-  private extractRestId(result: unknown): string | undefined {
-    const r = result as {
-      rest_id?: unknown;
-      data?: {
-        create_tweet?: { tweet_results?: { result?: { rest_id?: unknown } } };
-        data?: {
-          create_tweet?: { tweet_results?: { result?: { rest_id?: unknown } } };
-        };
-      };
-    } | null;
-    const candidate =
-      r?.rest_id ??
-      r?.data?.create_tweet?.tweet_results?.result?.rest_id ??
-      r?.data?.data?.create_tweet?.tweet_results?.result?.rest_id;
-    return typeof candidate === "string" ? candidate : undefined;
-  }
+          for (const media of options.media) {
+            try {
+              // Upload media using Twitter API v1 (v2 doesn't support media upload yet)
+              const mediaId = await this.client.twitterClient.uploadMedia(
+                media.data,
+                {
+                  mimeType: media.type,
+                },
+              );
 
-  private async extractTweetId(result: unknown): Promise<string | undefined> {
-    const r = result as {
-      id?: unknown;
-      data?: { id?: unknown; data?: { id?: unknown } };
-      json?: unknown;
-    } | null;
-    const direct = r?.id ?? r?.data?.id ?? r?.data?.data?.id;
-    if (typeof direct === "string") return direct;
-    const restId = this.extractRestId(result);
-    if (restId) return restId;
-
-    if (r && typeof r.json === "function") {
-      const body = (await this.safeParseJsonResponse(result)) as {
-        id?: unknown;
-        data?: { id?: unknown; data?: { id?: unknown } };
-      } | null;
-      const viaBody = body?.id ?? body?.data?.id ?? body?.data?.data?.id;
-      if (typeof viaBody === "string") return viaBody;
-      return this.extractRestId(body);
-    }
-
-    return undefined;
-  }
-
-  async createPost(options: CreatePostOptions): Promise<Post> {
-    try {
-      // Handle media uploads if needed
-      const mediaIds: string[] = [];
-
-      if (options.media && options.media.length > 0) {
-        logger.info(`Uploading ${options.media.length} media file(s)...`);
-
-        for (const media of options.media) {
-          try {
-            // Upload media using Twitter API v1 (v2 doesn't support media upload yet)
-            const mediaId = await this.client.twitterClient.uploadMedia(
-              media.data,
-              {
-                mimeType: media.type,
-              },
-            );
-
-            mediaIds.push(mediaId);
-            logger.info(`Media uploaded successfully. Media ID: ${mediaId}`);
-          } catch (error) {
-            logger.error("Error uploading media:", this.errorDetail(error));
-            // Continue with other media files even if one fails
+              mediaIds.push(mediaId);
+              logger.info(`Media uploaded successfully. Media ID: ${mediaId}`);
+            } catch (error) {
+              // error-policy:J2 Publishing without every requested attachment
+              // would silently change an irreversible external effect.
+              throw new ElizaError("X media upload failed", {
+                code: "X_MEDIA_UPLOAD_FAILED",
+                cause: error,
+                context: { mimeType: media.type },
+              });
+            }
           }
+
+          logger.info(
+            `Successfully uploaded ${mediaIds.length}/${options.media.length} media file(s)`,
+          );
         }
 
-        logger.info(
-          `Successfully uploaded ${mediaIds.length}/${options.media.length} media file(s)`,
-        );
+        if (!this.client.isAuthenticatedSessionCurrent(session)) {
+          throw new ElizaError("X credentials rotated before post egress", {
+            code: "X_AUTH_SESSION_ROTATED",
+          });
+        }
+        const result =
+          mediaIds.length > 0
+            ? await this.client.twitterClient.sendTweet(
+                options.text,
+                options.inReplyTo,
+                options.media?.map((m) => ({
+                  data: m.data,
+                  mediaType: m.type,
+                })),
+                false, // hideLinkPreview
+                mediaIds, // Pass uploaded media IDs
+              )
+            : await this.client.twitterClient.sendTweet(
+                options.text,
+                options.inReplyTo,
+              );
+
+        const tweetId = await extractXWriteReceiptId(result);
+        if (!tweetId) {
+          logger.error(
+            `Twitter createPost: provider accepted the request without a usable receipt (reply=${options.inReplyTo ? "yes" : "no"}, textLength=${options.text.length})`,
+          );
+          throw new ElizaError(
+            "X accepted the post but returned no usable receipt; do not retry blindly",
+            {
+              code: "X_POST_RECEIPT_INDETERMINATE",
+              context: {
+                accountId: this.client.accountId,
+                providerAccepted: true,
+                retrySafe: false,
+              },
+            },
+          );
+        }
+
+        const post: Post = {
+          id: tweetId,
+          agentId: options.agentId,
+          roomId: options.roomId,
+          userId: profile.id,
+          username: profile.username,
+          text: options.text,
+          timestamp: Date.now(),
+          inReplyTo: options.inReplyTo,
+          quotedPostId: options.quotedPostId,
+          metrics: {
+            likes: 0,
+            reposts: 0,
+            replies: 0,
+            quotes: 0,
+            views: 0,
+          },
+          media: [],
+          metadata: {
+            raw: result,
+          },
+        };
+
+        return post;
+      } catch (error) {
+        logger.error("Error creating post:", this.errorDetail(error));
+        throw error;
       }
-
-      const result =
-        mediaIds.length > 0
-          ? await this.client.twitterClient.sendTweet(
-              options.text,
-              options.inReplyTo,
-              options.media?.map((m) => ({
-                data: m.data,
-                mediaType: m.type,
-              })),
-              false, // hideLinkPreview
-              mediaIds, // Pass uploaded media IDs
-            )
-          : await this.client.twitterClient.sendTweet(
-              options.text,
-              options.inReplyTo,
-            );
-
-      const tweetId = await this.extractTweetId(result);
-      if (!tweetId) {
-        const safeResult =
-          typeof result === "string"
-            ? result
-            : JSON.stringify(result, null, 2).slice(0, 8000);
-        logger.error(
-          `Twitter createPost: could not extract tweet id from API result ${JSON.stringify(
-            { inReplyTo: options.inReplyTo, textLength: options.text?.length },
-          )} ${safeResult}`,
-        );
-        throw new Error(
-          "Twitter createPost failed: could not extract tweet id from API response. See logs for raw response.",
-        );
-      }
-
-      const post: Post = {
-        id: tweetId,
-        agentId: options.agentId,
-        roomId: options.roomId,
-        userId: this.client.profile?.id || "",
-        username: this.client.profile?.username || "",
-        text: options.text,
-        timestamp: Date.now(),
-        inReplyTo: options.inReplyTo,
-        quotedPostId: options.quotedPostId,
-        metrics: {
-          likes: 0,
-          reposts: 0,
-          replies: 0,
-          quotes: 0,
-          views: 0,
-        },
-        media: [],
-        metadata: {
-          raw: result,
-        },
-      };
-
-      return post;
-    } catch (error) {
-      logger.error("Error creating post:", this.errorDetail(error));
-      throw error;
-    }
+    });
   }
 
   async deletePost(postId: string, _agentId: UUID): Promise<void> {
@@ -240,10 +192,10 @@ export class TwitterPostService implements IPostService {
 
       return post;
     } catch (error) {
-      // error-policy:J7 a post-fetch failure must surface to the agent rather than
-      // reading as "no such post"; degrade to null after reporting.
+      // error-policy:J7 Report the connector failure to the agent, then keep it
+      // distinct from the legitimate null returned for a missing post.
       this.client.runtime.reportError("XPostService.getPost", error);
-      return null;
+      throw error;
     }
   }
 
@@ -311,10 +263,10 @@ export class TwitterPostService implements IPostService {
 
       return posts;
     } catch (error) {
-      // error-policy:J7 a posts-fetch failure must surface to the agent rather than
-      // reading as an empty timeline; degrade to no posts after reporting.
+      // error-policy:J7 Report the connector failure to the agent, then keep it
+      // distinct from a legitimately empty timeline.
       this.client.runtime.reportError("XPostService.getPosts", error);
-      return [];
+      throw error;
     }
   }
 
@@ -341,65 +293,62 @@ export class TwitterPostService implements IPostService {
     options?: Partial<GetPostsOptions>,
   ): Promise<Post[]> {
     try {
-      const username = this.client.profile?.username;
-      if (!username) {
-        logger.error("No Twitter profile available");
-        return [];
-      }
+      return await this.client.withAuthenticatedSession(async ({ profile }) => {
+        const searchResult = await this.client.fetchSearchTweets(
+          `@${profile.username}`,
+          options?.limit || 20,
+          SearchMode.Latest,
+          options?.before,
+        );
 
-      const searchResult = await this.client.fetchSearchTweets(
-        `@${username}`,
-        options?.limit || 20,
-        SearchMode.Latest,
-        options?.before,
-      );
+        const posts: Post[] = searchResult.tweets.flatMap((tweet) => {
+          // Normalize once per row; rows without a usable identity or timestamp
+          // fail closed instead of surfacing as fresh mentions (#18965).
+          const timestamp = getEpochMs(tweet.timestamp);
+          if (typeof tweet.id !== "string" || timestamp === undefined)
+            return [];
+          const tweetId = tweet.id;
+          return [
+            {
+              id: tweetId,
+              agentId: agentId,
+              roomId: createUniqueUuid(
+                this.client.runtime,
+                tweet.conversationId || tweetId,
+              ),
+              userId: tweet.userId ?? "",
+              username: tweet.username ?? "",
+              text: tweet.text ?? "",
+              timestamp,
+              metrics: {
+                likes: tweet.likes || 0,
+                reposts: tweet.retweets || 0,
+                replies: tweet.replies || 0,
+                quotes: tweet.quotes || 0,
+                views: tweet.views || 0,
+              },
+              media:
+                tweet.photos?.map((photo) => ({
+                  type: "image" as const,
+                  url: photo.url,
+                  metadata: { id: photo.id },
+                })) || [],
+              metadata: {
+                conversationId: tweet.conversationId,
+                permanentUrl: tweet.permanentUrl,
+                isMention: true,
+              },
+            },
+          ];
+        });
 
-      const posts: Post[] = searchResult.tweets.flatMap((tweet) => {
-        // Normalize once per row; rows without a usable identity or timestamp
-        // fail closed instead of surfacing as fresh mentions (#18965).
-        const timestamp = getEpochMs(tweet.timestamp);
-        if (typeof tweet.id !== "string" || timestamp === undefined) return [];
-        const tweetId = tweet.id;
-        return [
-          {
-            id: tweetId,
-            agentId: agentId,
-            roomId: createUniqueUuid(
-              this.client.runtime,
-              tweet.conversationId || tweetId,
-            ),
-            userId: tweet.userId ?? "",
-            username: tweet.username ?? "",
-            text: tweet.text ?? "",
-            timestamp,
-            metrics: {
-              likes: tweet.likes || 0,
-              reposts: tweet.retweets || 0,
-              replies: tweet.replies || 0,
-              quotes: tweet.quotes || 0,
-              views: tweet.views || 0,
-            },
-            media:
-              tweet.photos?.map((photo) => ({
-                type: "image" as const,
-                url: photo.url,
-                metadata: { id: photo.id },
-              })) || [],
-            metadata: {
-              conversationId: tweet.conversationId,
-              permanentUrl: tweet.permanentUrl,
-              isMention: true,
-            },
-          },
-        ];
+        return posts;
       });
-
-      return posts;
     } catch (error) {
-      // error-policy:J7 a mentions-fetch failure must surface to the agent rather
-      // than reading as no mentions; degrade to an empty list after reporting.
+      // error-policy:J7 Report the connector failure to the agent, then keep it
+      // distinct from a legitimately empty mention list.
       this.client.runtime.reportError("XPostService.getMentions", error);
-      return [];
+      throw error;
     }
   }
 

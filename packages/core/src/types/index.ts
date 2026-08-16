@@ -16,6 +16,7 @@ export {
 	parseKeyValueXml, // audit:allowlist - retained for cloud/ XML evaluators; new prompts must use JSON
 } from "../utils";
 export * from "./access-context";
+export * from "./action-failure";
 export * from "./agent";
 // Channel configuration types for plugins
 export * from "./channel-config";

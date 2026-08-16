@@ -276,12 +276,12 @@ describe("job interruption catalog preflight", () => {
     expect(workflow).toContain(
       "timeout --foreground --signal=TERM --kill-after=5s 8m",
     );
-    expect(workflow).toContain("timeout-minutes: 35");
+    expect(workflow).toContain("timeout-minutes: 55");
     const deployStep = workflow.slice(
       workflow.indexOf("- name: Deploy and restart worker"),
       workflow.indexOf("- name: Health check"),
     );
-    expect(deployStep).toContain("command_timeout: 20m");
+    expect(deployStep).toContain("command_timeout: 40m");
     expect(workflow).toContain(
       "- 'packages/cloud/scripts/admin/preflight-job-execution-interruptions.ts'",
     );

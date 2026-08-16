@@ -30,6 +30,7 @@ import {
   enforceOrgRateLimit,
   OrgRateLimitCacheNotReadyError,
 } from "@/lib/middleware/rate-limit";
+import { recordCloudStreamMilestones } from "@/lib/observability/cloud-backend-observability";
 import {
   bindGatewayHandoffTelemetry,
   type GatewayHandoffTelemetry,
@@ -1399,7 +1400,7 @@ export async function handleChatCompletionsPOST(
                   code: "rate_limit_cache_warming",
                 },
               },
-              { status: 503 },
+              { status: 503, headers: { "Retry-After": "1" } },
             ),
           ),
         );
@@ -1607,7 +1608,7 @@ export async function handleChatCompletionsPOST(
                 code: "inference_dependency_cache_warming",
               },
             },
-            { status: 503 },
+            { status: 503, headers: { "Retry-After": "1" } },
           ),
         ),
       );
@@ -1968,6 +1969,7 @@ export async function handleChatCompletionsPOST(
           options.executionCtx,
           gatewayHandoffTelemetry,
           markProviderDispatched,
+          traceId,
         )
       : await handleNonStreamingRequest(
           model,
@@ -2343,6 +2345,23 @@ function passthroughErrorResponse(status: number, message: string): Response {
   );
 }
 
+/** Round to 2dp once so log/header/ring-buffer values agree (#16079). */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Bounded, sanitized echo of the provider's own request id (#16079). The value
+ * is provider-chosen (not fully trusted): keep only the same safe token
+ * characters Server-Timing descriptions allow and cap the length, so a
+ * hostile upstream header cannot smuggle content into logs or client-visible
+ * headers.
+ */
+function sanitizeProviderRequestId(value: string | null): string | undefined {
+  const sanitized = value?.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 64);
+  return sanitized ? sanitized : undefined;
+}
+
 /**
  * The pass-through streaming fast path (#15428): fetch the provider's
  * chat/completions directly with `stream: true` and return the response body
@@ -2395,6 +2414,8 @@ async function tryPassthroughStreamingRequest(params: {
   billingSource: PricingBillingSource;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   gatewayHandoffTelemetry?: GatewayHandoffTelemetry;
+  /** Shared correlation id (#16079): keys the milestone event to the trace. */
+  traceId: string;
 }): Promise<Response | null> {
   const { model, request, settleReservation } = params;
   if (!isPassthroughStreamingEnabled()) return null;
@@ -2459,6 +2480,12 @@ async function tryPassthroughStreamingRequest(params: {
   }
 
   let upstreamResponse: Response;
+  // #16079: the milestone origin is the provider fetch dispatch itself —
+  // assigned AFTER the dispatch-marker await (which can carry Durable Object
+  // acknowledgement latency) and immediately before fetch(), so every
+  // milestone below is attributable to the provider leg, not gateway
+  // preforward work (which the preforward snapshot already covers).
+  let upstreamFetchStartedAt = 0;
   const upstreamInit: RequestInit = {
     method: "POST",
     headers: {
@@ -2470,6 +2497,7 @@ async function tryPassthroughStreamingRequest(params: {
   };
   try {
     await params.markProviderDispatched?.();
+    upstreamFetchStartedAt = performance.now();
     upstreamResponse = await invokeAtGatewayHandoff(
       params.gatewayHandoffTelemetry,
       () => fetch(upstream.url, upstreamInit),
@@ -2545,6 +2573,15 @@ async function tryPassthroughStreamingRequest(params: {
       "upstream provider response was incomplete",
     );
   }
+  // #16079: freeze the provider-leg boundaries known before the pipe commits.
+  // The provider's own request id is echoed bounded-and-sanitized so the
+  // correlated trace can be joined to provider-side logs without leaking
+  // arbitrary upstream header content (same character policy as Server-Timing
+  // descriptions).
+  const upstreamHeadersMs = round2(performance.now() - upstreamFetchStartedAt);
+  const providerRequestId = sanitizeProviderRequestId(
+    upstreamResponse.headers.get("x-request-id"),
+  );
   const [clientBranch, meterBranch] = upstreamResponse.body.tee();
   const meterAbortController = new AbortController();
   const clientReader = clientBranch.getReader();
@@ -2580,7 +2617,28 @@ async function tryPassthroughStreamingRequest(params: {
     const tail = await readPassthroughStreamTail(
       meterBranch,
       meterAbortController.signal,
+      // #16079: milestones measured from the provider fetch dispatch.
+      { startedAt: upstreamFetchStartedAt },
     );
+    // Always-on correlated milestone record (#16079): the ring buffer is read
+    // back via the admin cloud-observability endpoint, so unlike logger.info
+    // it survives without VERBOSE_LOGGING. Bounded fields only.
+    recordCloudStreamMilestones({
+      traceId: params.traceId,
+      requestId: params.requestId,
+      path: "passthrough",
+      model,
+      ...(providerRequestId ? { providerRequestId } : {}),
+      upstreamHeadersMs,
+      firstEventMs: tail.milestones.firstEventMs,
+      firstReasoningMs: tail.milestones.firstReasoningMs,
+      firstContentMs: tail.milestones.firstContentMs,
+      completionMs: tail.milestones.completionMs,
+      // An in-stream SSE error frame is an upstream-reported failure: record
+      // it as not-completed rather than a healthy run (#16079).
+      aborted: tail.readError !== null || tail.sawErrorFrame,
+      createdAt: new Date().toISOString(),
+    });
     if (tail.usage) {
       // Success settle — the same chain, amounts, and record shapes as the SDK
       // path's onFinish, fed by the provider-reported usage frame.
@@ -2702,6 +2760,15 @@ async function tryPassthroughStreamingRequest(params: {
         // Observability marker: distinguishes the piped path in logs/latency
         // probes without touching the SSE payload bytes.
         "X-Eliza-Inference-Path": "passthrough",
+        // #16079: the provider leg's known boundaries travel on the response
+        // so browser/correlated callers can join them to the trace id. Mid-
+        // stream milestones cannot (headers are frozen once the 200 commits
+        // and the body must stay byte-identical) — those live in the
+        // always-on ring-buffer event keyed by the same trace id.
+        "Server-Timing": `upstream_headers;dur=${upstreamHeadersMs}`,
+        ...(providerRequestId
+          ? { "X-Eliza-Provider-Request-Id": providerRequestId }
+          : {}),
       },
     }),
   );
@@ -2740,6 +2807,8 @@ async function handleStreamingRequest(
   executionCtx?: { waitUntil(promise: Promise<unknown>): void },
   gatewayHandoffTelemetry?: GatewayHandoffTelemetry,
   markProviderDispatched?: () => Promise<void>,
+  /** Shared trace id (#16079) correlating the milestone event with the caller. */
+  traceId?: string,
 ) {
   // #15428 pass-through fast path: qualifying plain streamed chat against a
   // direct OpenAI-compatible upstream pipes the provider bytes straight
@@ -2775,6 +2844,7 @@ async function handleStreamingRequest(
       billingSource,
       executionCtx,
       gatewayHandoffTelemetry,
+      traceId: traceId ?? requestId,
     });
     if (passthroughResponse) return passthroughResponse;
   }

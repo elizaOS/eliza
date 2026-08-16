@@ -20,8 +20,10 @@ import {
   type TextStreamResult,
   type ToolChoice,
   type ToolDefinition,
+  type UUID,
 } from "@elizaos/core/edge";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
+import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import { webSearchEdgeAction, webSearchEdgePlugin } from "@elizaos/plugin-web-search/edge";
 import {
   generateText,
@@ -42,6 +44,10 @@ import type {
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { appendSharedTurn } from "./run-shared-agent-turn";
+import {
+  sharedRuntimeConversationRoomId,
+  sharedRuntimeWorldId,
+} from "./shared-runtime-storage-identity";
 
 type NativeTextModelResult = string & {
   text: string;
@@ -95,13 +101,15 @@ function sharedModelPlugin(
 
 function createRuntime(options: {
   agentKey: string;
+  agentId?: UUID;
   adapter: InMemoryDatabaseAdapter;
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
   reminderPlugin?: Plugin;
+  todoPlugin?: Plugin;
 }): AgentRuntime {
   return new AgentRuntime({
-    agentId: stringToUuid(options.agentKey),
+    agentId: options.agentId ?? stringToUuid(options.agentKey),
     character: {
       name: options.character.name,
       system: options.character.system,
@@ -117,6 +125,7 @@ function createRuntime(options: {
       options.modelPlugin,
       webSearchEdgePlugin,
       ...(options.reminderPlugin ? [options.reminderPlugin] : []),
+      ...(options.todoPlugin ? [options.todoPlugin] : []),
     ],
     logLevel: "error",
     actionPlanning: true,
@@ -342,12 +351,20 @@ async function executeSharedElizaRuntimeTurn(
         delivery: input.execution.reminders.delivery,
       })
     : undefined;
+  const todoPlugin = input.execution?.todos
+    ? createTodosEdgePlugin({ store: input.execution.todos.store })
+    : undefined;
+  const agentId = input.execution?.todos?.scope.agentId ?? stringToUuid(input.agentKey);
+  const entityId =
+    input.execution?.todos?.scope.entityId ?? stringToUuid(`${input.agentKey}:owner`);
   const runtime = createRuntime({
     agentKey: input.agentKey,
+    agentId,
     adapter,
     character: input.character,
     modelPlugin,
     reminderPlugin,
+    todoPlugin,
   });
 
   try {
@@ -361,12 +378,14 @@ async function executeSharedElizaRuntimeTurn(
     ) {
       throw new Error("Eliza Shared runtime initialized without its REMINDERS action");
     }
-    const entityId = stringToUuid(`${input.agentKey}:owner`);
-    const roomId = stringToUuid(`${input.agentKey}:conversation`);
+    if (input.execution?.todos && !runtime.actions.some((action) => action.name === "TODO")) {
+      throw new Error("Eliza Shared runtime initialized without its TODO action");
+    }
+    const roomId = sharedRuntimeConversationRoomId(input.agentKey);
     await runtime.ensureConnection({
       entityId,
       roomId,
-      worldId: stringToUuid(`${input.agentKey}:world`),
+      worldId: sharedRuntimeWorldId(input.agentKey),
       userName: "Shared user",
       source: "shared-runtime",
       type: ChannelType.DM,
@@ -406,6 +425,14 @@ async function executeSharedElizaRuntimeTurn(
           text: input.message.trim(),
           source: "shared-runtime",
           channelType: ChannelType.DM,
+          ...(input.originClientMessageId
+            ? {
+                chatIdempotency: {
+                  version: 1,
+                  clientMessageId: input.originClientMessageId,
+                },
+              }
+            : {}),
         },
       }),
       async (content) => {
@@ -420,7 +447,10 @@ async function executeSharedElizaRuntimeTurn(
         : undefined,
     );
     const reply = result?.responseContent?.text?.trim() || delivered.at(-1)?.trim() || "";
-    if (!result?.didRespond || !reply) {
+    // A verified action may own the response and deliver it through the
+    // callback with `agentVoiced`; core then correctly reports no second model
+    // response. The callback receipt is still an actual user-visible delivery.
+    if ((!result?.didRespond && delivered.length === 0) || !reply) {
       throw new Error("Eliza Shared runtime completed without a user-visible reply");
     }
     return {
@@ -435,6 +465,7 @@ async function executeSharedElizaRuntimeTurn(
       model: input.model,
       degraded: false,
       usage,
+      ...(result.actionResults?.length ? { actionResults: result.actionResults } : {}),
     };
   } finally {
     await runtime.stop();
@@ -504,7 +535,12 @@ export async function runSharedElizaRuntimeTurnStream(
         const remainingText = result.reply.slice(emittedText.length);
         if (remainingText) push({ type: "text-delta", text: remainingText });
       }
-      push({ type: "finish", text: result.reply, usage: result.usage });
+      push({
+        type: "finish",
+        text: result.reply,
+        usage: result.usage,
+        ...(result.actionResults?.length ? { actionResults: result.actionResults } : {}),
+      });
       terminal = true;
       signalQueue();
     })

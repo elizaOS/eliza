@@ -52,7 +52,7 @@ function makeRecord(): ScheduledTaskDispatchRecord {
           ownerEntityId: OWNER_ID,
           agentEntityId: AGENT_ID,
           participantEntityIds: [AGENT_ID, OWNER_ID],
-          membershipVersion: [AGENT_ID, OWNER_ID].sort().join("\u0000"),
+          membershipVersion: JSON.stringify([AGENT_ID, OWNER_ID].sort()),
         },
       },
     },

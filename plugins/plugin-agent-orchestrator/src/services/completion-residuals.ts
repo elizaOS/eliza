@@ -129,8 +129,19 @@ export interface CompletionResidualsInput {
    * `codingBaselineDirty`, captured by `AcpService.spawnSession` as
    * `git diff --name-only HEAD`). The uncommitted-changes leg subtracts them:
    * pre-existing churn was not produced by this run. Tracked modifications
-   * only — untracked paths are never baseline-exempt. */
+   * only — untracked exemptions come from `baselineUntrackedPaths`. */
   baselineDirtyPaths?: readonly string[];
+  /** Untracked paths already present when the reporting session spawned
+   * (session metadata `codingBaselineUntracked`, captured by
+   * `AcpService.spawnSession` from `git status --porcelain` `??` lines). A
+   * lived-in workdir (a home-dir cwd, a shared checkout) carries untracked
+   * files no sub-agent created; without this baseline they read as this run's
+   * leftover work and block every completion there forever. Only paths present
+   * at spawn are exempt — an untracked path that APPEARS after spawn is
+   * genuinely new work and still counts. Caveat: git collapses a
+   * wholly-untracked directory to one `dir/` line, so new files inside a
+   * directory that was already untracked at spawn ride its exemption. */
+  baselineUntrackedPaths?: readonly string[];
   /** True when the session ran in a SHARED, route-mapped app checkout
    * (`TASK_AGENT_WORKDIR_ROUTES`) rather than a task-provisioned workspace.
    * A shared checkout carries dirt and unpushed commits from before the run
@@ -209,8 +220,8 @@ function ownedArtifactsByPath(
 /** Whether a porcelain line names only paths that were ALREADY dirty when the
  * session spawned. The spawn baseline (`codingBaselineDirty`) records tracked
  * modifications only (`git diff --name-only HEAD`), so untracked (`??`) lines
- * never match — a path untracked at completion is genuinely new work. A rename
- * line is exempt only when BOTH sides were baseline-dirty. */
+ * never match — those are judged against the untracked baseline instead. A
+ * rename line is exempt only when BOTH sides were baseline-dirty. */
 function isBaselineDirtyLine(
   line: string,
   baselineDirtyPaths: ReadonlySet<string>,
@@ -220,6 +231,22 @@ function isBaselineDirtyLine(
   const paths = porcelainPaths(line);
   return (
     paths.length > 0 && paths.every((path) => baselineDirtyPaths.has(path))
+  );
+}
+
+/** Whether an untracked (`??`) porcelain line names only paths that were
+ * already untracked when the session spawned (see `baselineUntrackedPaths`).
+ * Non-`??` lines never match: a baseline-untracked path that became TRACKED
+ * dirty (the worker staged or committed over it) is this run's work. */
+function isBaselineUntrackedLine(
+  line: string,
+  baselineUntrackedPaths: ReadonlySet<string>,
+): boolean {
+  if (baselineUntrackedPaths.size === 0) return false;
+  if (!line.startsWith("?? ")) return false;
+  const paths = porcelainPaths(line);
+  return (
+    paths.length > 0 && paths.every((path) => baselineUntrackedPaths.has(path))
   );
 }
 
@@ -395,6 +422,11 @@ export async function collectCompletionResiduals(
         .map((path) => path.trim())
         .filter((path) => path.length > 0),
     );
+    const baselineUntrackedPaths = new Set(
+      (input.baselineUntrackedPaths ?? [])
+        .map((path) => path.trim())
+        .filter((path) => path.length > 0),
+    );
     const dirty = status.stdout
       .split("\n")
       .map((line) => line.trimEnd())
@@ -407,7 +439,8 @@ export async function collectCompletionResiduals(
             orchestratorOwnedArtifacts,
           ),
       )
-      .filter((line) => !isBaselineDirtyLine(line, baselineDirtyPaths));
+      .filter((line) => !isBaselineDirtyLine(line, baselineDirtyPaths))
+      .filter((line) => !isBaselineUntrackedLine(line, baselineUntrackedPaths));
     if (dirty.length > 0) {
       residuals.push({
         kind: "uncommitted_changes",

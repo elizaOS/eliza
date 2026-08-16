@@ -184,7 +184,7 @@ export function ChatSurface({
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t("chatsurface.inputPlaceholder", {
-            defaultValue: "Ask {{appName}}…",
+            defaultValue: "Message {{appName}}…",
           })}
           disabled={!canSend}
           aria-label={t("chatsurface.messageLabel", {

@@ -36,6 +36,18 @@ const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   "@elizaos/plugin-imessage",
   "@elizaos/ui",
   "@elizaos/plugin-documents",
+  // `viewEveryPlatform` plugins (MOBILE_VIEW_PLUGINS in ./core-plugins.ts).
+  // The runtime always loads these so their home tiles resolve, so a packaged
+  // build that omits them boots degraded, not lean: the plugins fail to
+  // resolve, `plugin-personal-assistant`'s lifeops routes throw on the missing
+  // `@elizaos/plugin-calendar`, and the post-ready app-route tail fails. That
+  // pins `/api/health` `startup.phase` at "degraded" forever, and the desktop
+  // shell's boot-progress gate (which requires phase "running") then never
+  // reports the runtime ready — the app renders no UI at all.
+  "@elizaos/plugin-task-coordinator",
+  "@elizaos/plugin-inbox",
+  "@elizaos/plugin-notes",
+  "@elizaos/plugin-calendar",
 ] as const;
 
 // Plugins excluded from the baseline release that can only be installed on a

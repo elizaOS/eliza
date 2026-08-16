@@ -131,8 +131,13 @@ describe("native transcript producer transport", () => {
     ["provider_issue", true],
     ["rate_limited", true],
     ["local_inference", true],
+    ["planner_exhaustion", true],
+    ["generation_timeout", true],
     ["no_provider", false],
     ["insufficient_credits", false],
+    ["missing_capability", false],
+    ["handler_error", false],
+    ["persistence_error", false],
   ] as const)("maps %s retryability truthfully", (failureKind, retryable) => {
     expect(isNativeChatFailureRetryable(failureKind)).toBe(retryable);
   });

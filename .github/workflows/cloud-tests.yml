@@ -5,31 +5,8 @@ name: Cloud Tests
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [develop, main]
-    paths:
-      - ".github/actions/cloud-setup-test-env/**"
-      - ".github/workflows/cloud-tests.yml"
-      - "packages/cloud/api/**"
-      - "packages/cloud/shared/**"
-      - "packages/cloud/sdk/**"
-      - "packages/cloud/services/**"
-      - "packages/cloud/routing/**"
-      - "packages/cloud/infra/**"
-      - "packages/cloud/scripts/**"
-      - "packages/scripts/test-cloud-run.mjs"
-      - "packages/scripts/test-cloud-run-helpers.mjs"
-      - "packages/scripts/__tests__/test-cloud-run.test.mjs"
-      - "packages/scripts/test-cloud-run-flush.self-test.mjs"
-      - "packages/scripts/test-cloud-run-helpers.self-test.mjs"
-      - "packages/scripts/test-cloud-run-preflight.self-test.mjs"
-      - "packages/scripts/test-cloud-run-watchdog.self-test.mjs"
-      - "package.json"
-      - "bun.lock"
-      - ".github/workflows/cloud-tests.yml"
-      - ".github/actions/cloud-setup-test-env/**"
   push:
-    branches: [develop, main]
+    branches: [develop]
     paths:
       - "packages/cloud/api/**"
       - "packages/cloud/shared/**"
@@ -38,6 +15,8 @@ on:
       - "packages/cloud/routing/**"
       - "packages/cloud/infra/**"
       - "packages/cloud/scripts/**"
+      - "packages/cloud/e2e/**"
+      - "packages/cloud/test-mocks/**"
       - "packages/scripts/test-cloud-run.mjs"
       - "packages/scripts/test-cloud-run-helpers.mjs"
       - "packages/scripts/__tests__/test-cloud-run.test.mjs"
@@ -50,17 +29,10 @@ on:
       - ".github/workflows/cloud-tests.yml"
       - ".github/actions/cloud-setup-test-env/**"
 
-# CI fan-out fix: the PR-scoped concurrency from #14069 fell back to
-# github.run_id on push, so every develop push got a unique group and
-# nothing ever superseded. A 37-merge wave queued thousands of push runs
-# and starved the self-hosted fleet. Fall back to github.ref (all develop
-# pushes share a group) and cancel superseded runs on push too. PR behavior
-# is unchanged (pull_request.number still wins the key); merge_group and
-# schedule events are not in the cancel set, so the merge queue and nightly
-# runs always complete.
+# All develop pushes share a stable group so stale work is superseded.
 concurrency:
-  group: cloud-tests-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+  group: cloud-tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
   DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
@@ -174,3 +146,52 @@ jobs:
           packages/cloud/shared/src/db/repositories/__tests__/agent-sandboxes-stuck-provisioning-lock.integration.test.ts
       - name: Run cloud e2e tests
         run: bun run test:cloud:e2e
+
+  # Full-stack Playwright lane (#18474). packages/cloud/e2e boots the real
+  # mock-backed cloud stack (PGlite TCP bridge, Hetzner mock, container
+  # control plane, cloud-api Worker, app frontend) and drives real flows.
+  # The complete suite takes ~12 minutes plus the linked-workspace build, so
+  # this per-push gate runs the explicit shared-to-dedicated funnel subset
+  # (onboarding -> handoff -> provisioning -> upgrade); the remaining specs run
+  # nightly in .github/workflows/monetized-loop-nightly.yml, which executes the
+  # full suite on a schedule. Failures propagate — no continue-on-error.
+  stack-e2e-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    needs: [lint-and-types]
+    env:
+      NODE_ENV: test
+      CI: "true"
+      CLOUD_E2E: "1"
+      MOCK_REDIS: "1"
+      MOCK_HETZNER_LATENCY: "0"
+      MOCK_HETZNER_ACTION_MS: "30"
+      CONTROL_PLANE_TICK_MS: "50"
+      DATABASE_URL: pglite://./.eliza-ci/.pgdata
+      HCLOUD_TOKEN: test-token
+      CONTAINER_CONTROL_PLANE_TOKEN: test-token
+      CRON_SECRET: test-cron-secret
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Install Playwright browsers
+        run: .github/scripts/install-playwright-browsers.sh chromium
+      - name: Run shared-to-dedicated funnel specs
+        run: >-
+          bun run cloud:e2e --
+          'app-client-onboarding\.spec\.ts$'
+          'app-client-handoff-success\.spec\.ts$'
+          '(^|/)provision\.spec\.ts$'
+          'onboarding-reprovision\.spec\.ts$'
+          'shared-to-dedicated-upgrade\.spec\.ts$'
+      - name: Upload Playwright evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-stack-e2e-${{ github.run_attempt }}
+          path: |
+            packages/cloud/e2e/test-results
+            packages/cloud/e2e/.logs
+          retention-days: 7
+          include-hidden-files: true
+          if-no-files-found: warn

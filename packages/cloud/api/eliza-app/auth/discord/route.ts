@@ -25,12 +25,16 @@ import {
   elizaAppUserService,
   type ValidatedSession,
 } from "@/lib/services/eliza-app";
+import { invalidatePersonalDeliveryProjection } from "@/lib/services/eliza-app/personal-delivery-projection-contract";
 import { logger } from "@/lib/utils/logger";
 import {
   isValidE164,
   normalizePhoneNumber,
 } from "@/lib/utils/phone-normalization";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type {
+  AppEnv,
+  RuntimeDurableObjectNamespace,
+} from "@/types/cloud-worker-env";
 
 /**
  * Optional E.164 phone number validation (after normalization)
@@ -74,7 +78,10 @@ const discordAuthSchema = z.object({
     .transform((s) => s?.trim() || undefined),
 });
 
-async function handleDiscordAuth(request: Request): Promise<Response> {
+async function handleDiscordAuth(
+  request: Request,
+  personalDeliveryProjections?: RuntimeDurableObjectNamespace,
+): Promise<Response> {
   // Parse and validate request body
   let body: unknown;
   try {
@@ -304,6 +311,12 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
     sessionBased: !!existingSession,
   });
 
+  await invalidatePersonalDeliveryProjection(
+    personalDeliveryProjections,
+    "discord",
+    discordUser.id,
+  );
+
   // Create session (new session includes discord identity)
   const session = await elizaAppSessionService.createSession(
     user.id,
@@ -347,7 +360,10 @@ const honoRouter = new Hono<AppEnv>();
 honoRouter.get("/", async () => __next_GET());
 honoRouter.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
-    return await handleDiscordAuth(c.req.raw);
+    return await handleDiscordAuth(
+      c.req.raw,
+      c.env.PERSONAL_DELIVERY_PROJECTIONS,
+    );
   } catch (error) {
     return failureResponse(c, error);
   }

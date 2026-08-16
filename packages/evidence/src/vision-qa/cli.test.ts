@@ -138,8 +138,9 @@ describe("runVisionQaCli ask", () => {
     fs.writeFileSync(
       contextFile,
       JSON.stringify({
-        color_fractions: { blue_fraction: 0.2 },
+        color_fractions: { blue_fraction: 0.2, future_metric: "allowed" },
         ocr_text: "x",
+        future_analyzer: { status: "unknown fields stay allowed" },
       }),
     );
     const { server, url } = await startStub();
@@ -174,6 +175,56 @@ describe("runVisionQaCli ask", () => {
       server.close();
     }
   });
+
+  it.each([
+    ["a null root", null],
+    ["a malformed known field", { ocr_text: 123 }],
+    [
+      "a malformed nested field",
+      {
+        change_vs_baseline: {
+          changed_fraction: 0.2,
+          changed_bbox_norm: [0, 0, "right", 1],
+        },
+      },
+    ],
+    [
+      "an out-of-range normalized box",
+      {
+        change_vs_baseline: {
+          changed_fraction: 0.2,
+          changed_bbox_norm: [-0.1, 0, 1.1, 1],
+        },
+      },
+    ],
+    [
+      "an inverted normalized box",
+      {
+        changeVsBaseline: {
+          changedFraction: 0.2,
+          changedBboxNorm: [0.8, 0.8, 0.2, 0.2],
+        },
+      },
+    ],
+  ])(
+    "rejects %s in --context with a typed usage error",
+    async (_name, value) => {
+      const contextFile = path.join(dir, "invalid-analysis.json");
+      fs.writeFileSync(contextFile, JSON.stringify(value));
+      const { io, err } = capture();
+
+      const code = await runVisionQaCli(
+        ["ask", imagePath, "--context", contextFile],
+        io,
+      );
+
+      expect(code).toBe(1);
+      expect(err.join("\n")).toContain("error [CLI_USAGE]");
+      expect(err.join("\n")).toContain(
+        `--context has an invalid analysis shape: ${contextFile}`,
+      );
+    },
+  );
 
   it("exits non-zero with usage when no image is given", async () => {
     const { io, err } = capture();

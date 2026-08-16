@@ -187,6 +187,28 @@ describe("createInMemoryScheduledTaskLogStore — rollupOlderThan", () => {
     ).toEqual({ rolledUp: 0, deletedRaw: 0 });
   });
 
+  it("retains scheduled creation receipts beyond the rollup window", async () => {
+    const store = createInMemoryScheduledTaskLogStore();
+    await store.append(
+      entry({
+        logId: "creation-receipt",
+        taskId: "t1",
+        occurredAtIso: "2026-01-01T00:00:00.000Z",
+        transition: "scheduled",
+      }),
+    );
+
+    expect(
+      await store.rollupOlderThan({
+        agentId: AGENT,
+        olderThanIso: "2026-02-01T00:00:00.000Z",
+      }),
+    ).toEqual({ rolledUp: 0, deletedRaw: 0 });
+    await expect(
+      store.list({ agentId: AGENT, taskId: "t1", excludeRollups: true }),
+    ).resolves.toMatchObject([{ logId: "creation-receipt" }]);
+  });
+
   it("does not re-roll already-rolled-up rows", async () => {
     const store = createInMemoryScheduledTaskLogStore();
     await store.append(

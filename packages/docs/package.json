@@ -13,5 +13,12 @@
     "format": "bunx @biomejs/biome format --write package.json docs.json test",
     "format:check": "bunx @biomejs/biome format package.json docs.json test"
   },
-  "private": true
+  "private": true,
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
 }

@@ -1,7 +1,12 @@
 /** Unit tests for the Twitter memory utilities: idempotent/retried memory writes, processed-tweet lookup fallback, and near-duplicate tweet detection; mocked runtime storage. */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMemorySafe, isDuplicateTweet, isTweetProcessed } from "./memory";
+import {
+  createMemorySafe,
+  ensureTwitterContext,
+  isDuplicateTweet,
+  isTweetProcessed,
+} from "./memory";
 
 function runtimeWithStorage(overrides: Partial<IAgentRuntime>): IAgentRuntime {
   return {
@@ -51,14 +56,52 @@ describe("Twitter memory utilities", () => {
     expect(createMemory).toHaveBeenCalledTimes(2);
   });
 
-  it("falls back to unprocessed when tweet lookup storage fails", async () => {
+  it("surfaces tweet lookup storage failures instead of permitting replay", async () => {
+    const storageFailure = new Error("storage unavailable");
     const runtime = runtimeWithStorage({
       getMemoryById: vi.fn(async () => {
-        throw new Error("storage unavailable");
+        throw storageFailure;
       }),
     });
 
-    await expect(isTweetProcessed(runtime, "tweet-1")).resolves.toBe(false);
+    await expect(isTweetProcessed(runtime, "tweet-1")).rejects.toBe(
+      storageFailure,
+    );
+  });
+
+  it("stores the canonical entity UUID as the Twitter world owner", async () => {
+    const ensureWorldExists = vi.fn(async () => undefined);
+    const updateWorld = vi.fn(async () => undefined);
+    const ensureRoomExists = vi.fn(async () => undefined);
+    const ensureConnection = vi.fn(async () => undefined);
+    const runtime = runtimeWithStorage({
+      ensureWorldExists,
+      updateWorld,
+      ensureRoomExists,
+      ensureConnection,
+    });
+
+    const context = await ensureTwitterContext(runtime, {
+      userId: "1830340867737178112",
+      username: "shaw",
+      conversationId: "2088482819127574885",
+    });
+
+    expect(ensureWorldExists).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          ownership: { ownerId: context.entityId },
+        }),
+      }),
+    );
+    expect(updateWorld).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          ownership: { ownerId: context.entityId },
+        }),
+      }),
+    );
+    expect(context.entityId).not.toBe("1830340867737178112");
   });
 
   it("detects duplicate tweets after trimming case and punctuation-like spacing", async () => {

@@ -3,6 +3,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { agentGatewayRouterService } from "@/lib/services/agent-gateway-router";
+import {
+  authorizeManagedDiscordGuildVoice,
+  runManagedDiscordGuildTextTurn,
+} from "@/lib/services/managed-discord-guild-voice";
+import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
@@ -37,7 +42,48 @@ app.post("/", async (c) => {
         content: body.content,
         sender: body.sender,
       });
-      return c.json(result);
+      if (result.handled || result.reason !== "not_linked") {
+        return c.json(result);
+      }
+
+      // An unbound guild belongs to the managed system bot, not a Dedicated
+      // agent. Only an already-linked canonical owner may use personal Shared
+      // Eliza here, and the public room is isolated from every private channel.
+      const identity = await authorizeManagedDiscordGuildVoice(body.sender.id);
+      if (!identity.allowed || !identity.userId || !identity.organizationId) {
+        return c.json(result);
+      }
+      const worker = resolveSharedRuntimeWorkerRequestContext(c);
+      if ("error" in worker) {
+        return c.json(
+          {
+            success: false,
+            error: worker.error,
+            code: worker.code,
+            retryable: worker.retryable,
+          },
+          worker.status,
+          { "Retry-After": "1" },
+        );
+      }
+      const shared = await runManagedDiscordGuildTextTurn(
+        {
+          discordUserId: body.sender.id,
+          discordUsername: body.sender.username,
+          displayName: body.sender.displayName,
+          guildId: body.guildId,
+          channelId: body.channelId,
+          messageId: body.messageId,
+          message: body.content,
+          userId: identity.userId,
+          organizationId: identity.organizationId,
+        },
+        {
+          namespace: worker.namespace,
+          executionCtx: worker.executionCtx,
+        },
+      );
+      return c.json({ handled: true, ...shared });
     }
 
     const response = await personalSharedMessagesApp.request(

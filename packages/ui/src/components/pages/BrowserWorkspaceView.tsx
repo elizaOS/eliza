@@ -2713,7 +2713,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })}
         data-testid="browser-workspace-address-input"
         disabled={busyAction !== null || selectedTabIsInternal}
-        className="col-span-2 h-11 min-w-[10rem] flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt sm:col-span-1"
+        className="col-span-2 h-11 min-w-[10rem] flex-1 rounded-full border-transparent bg-card/70 px-4 text-sm text-txt shadow-inset sm:col-span-1"
       />
       <BrowserNavButton
         agentId="go"

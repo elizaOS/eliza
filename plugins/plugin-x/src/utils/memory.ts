@@ -13,6 +13,7 @@ import {
   logger,
   type Memory,
   type UUID,
+  type World,
 } from "@elizaos/core";
 import type { Tweet as ClientTweet } from "../client";
 
@@ -45,6 +46,18 @@ type TwitterMetadataTweet = Pick<
   ClientTweet,
   "conversationId" | "id" | "name" | "userId" | "username"
 >;
+
+/**
+ * Persists a Twitter world on both modern upsert runtimes and older production
+ * runtimes where ensureWorldExists only creates missing rows.
+ */
+export async function reconcileTwitterWorld(
+  runtime: IAgentRuntime,
+  world: World,
+): Promise<void> {
+  await runtime.ensureWorldExists(world);
+  await runtime.updateWorld(world);
+}
 
 /**
  * `createdAt` must be an already-validated epoch-milliseconds value: callers
@@ -112,12 +125,12 @@ export async function ensureTwitterContext(
 
   try {
     // Ensure world exists
-    await runtime.ensureWorldExists({
+    await reconcileTwitterWorld(runtime, {
       id: worldId,
       name: `${username}'s Twitter`,
       agentId: runtime.agentId,
       metadata: {
-        ownership: { ownerId: userId },
+        ownership: { ownerId: entityId },
         ...(accountId ? { accountId } : {}),
         twitter: {
           ...(accountId ? { accountId } : {}),
@@ -216,41 +229,36 @@ export async function isTweetProcessed(
   runtime: IAgentRuntime,
   tweetId: string,
 ): Promise<boolean> {
-  try {
-    const memoryId = createUniqueUuid(runtime, tweetId);
-    const memory = await runtime.getMemoryById(memoryId);
-    return !!memory;
-  } catch (error) {
-    logger.debug(
-      `Error checking if tweet ${tweetId} is processed:`,
-      errorDetail(error),
-    );
-    return false;
-  }
+  const memoryId = createUniqueUuid(runtime, tweetId);
+  const memory = await runtime.getMemoryById(memoryId);
+  return !!memory;
 }
 
 /**
  * Gets recent tweets to check for duplicates
  */
+export type TwitterCacheIdentity =
+  | string
+  | { accountId: string; profileId: string };
+
+function recentTweetsCacheKey(identity: TwitterCacheIdentity): string {
+  return typeof identity === "string"
+    ? `twitter/${identity}/recentTweets`
+    : `twitter/${encodeURIComponent(identity.accountId)}/${identity.profileId}/recentTweets`;
+}
+
 export async function getRecentTweets(
   runtime: IAgentRuntime,
-  username: string,
+  identity: TwitterCacheIdentity,
   _count: number = 10,
 ): Promise<string[]> {
-  try {
-    const cacheKey = `twitter/${username}/recentTweets`;
-    const cached = await runtime.getCache<string[]>(cacheKey);
-
-    if (cached && Array.isArray(cached)) {
-      return cached;
-    }
-
-    // If no cache, return empty array
-    return [];
-  } catch (error) {
-    logger.debug("Error getting recent tweets from cache:", errorDetail(error));
-    return [];
+  const cached = await runtime.getCache<string[]>(
+    recentTweetsCacheKey(identity),
+  );
+  if (cached && Array.isArray(cached)) {
+    return cached;
   }
+  return [];
 }
 
 /**
@@ -258,24 +266,14 @@ export async function getRecentTweets(
  */
 export async function addToRecentTweets(
   runtime: IAgentRuntime,
-  username: string,
+  identity: TwitterCacheIdentity,
   tweetText: string,
   maxRecent: number = 10,
 ): Promise<void> {
-  try {
-    const cacheKey = `twitter/${username}/recentTweets`;
-    const recent = await getRecentTweets(runtime, username, maxRecent);
-
-    // Add new tweet to the beginning
-    recent.unshift(tweetText);
-
-    // Keep only the most recent tweets
-    const trimmed = recent.slice(0, maxRecent);
-
-    await runtime.setCache(cacheKey, trimmed);
-  } catch (error) {
-    logger.debug("Error updating recent tweets cache:", errorDetail(error));
-  }
+  const cacheKey = recentTweetsCacheKey(identity);
+  const recent = await getRecentTweets(runtime, identity, maxRecent);
+  recent.unshift(tweetText);
+  await runtime.setCache(cacheKey, recent.slice(0, maxRecent));
 }
 
 function normalizeTweetForDuplicateCheck(text: string): string {
@@ -306,46 +304,33 @@ function tweetTokenSimilarity(a: string, b: string): number {
  */
 export async function isDuplicateTweet(
   runtime: IAgentRuntime,
-  username: string,
+  identity: TwitterCacheIdentity,
   tweetText: string,
   similarityThreshold: number = 0.9,
 ): Promise<boolean> {
-  try {
-    const recentTweets = await getRecentTweets(runtime, username);
+  const recentTweets = await getRecentTweets(runtime, identity);
+  if (recentTweets.includes(tweetText)) {
+    return true;
+  }
 
-    // Exact match check
-    if (recentTweets.includes(tweetText)) {
+  const normalizedNew = normalizeTweetForDuplicateCheck(tweetText);
+  for (const recent of recentTweets) {
+    const normalizedRecent = normalizeTweetForDuplicateCheck(recent);
+    if (normalizedNew === normalizedRecent) {
       return true;
     }
-
-    const normalizedNew = normalizeTweetForDuplicateCheck(tweetText);
-    for (const recent of recentTweets) {
-      const normalizedRecent = normalizeTweetForDuplicateCheck(recent);
-
-      // Check if tweets are very similar (e.g., only differ by punctuation)
-      if (normalizedNew === normalizedRecent) {
-        return true;
-      }
-
-      // Check if one is a substring of the other (common with truncation)
-      if (
-        normalizedNew.includes(normalizedRecent) ||
-        normalizedRecent.includes(normalizedNew)
-      ) {
-        return true;
-      }
-
-      if (
-        tweetTokenSimilarity(normalizedNew, normalizedRecent) >=
-        similarityThreshold
-      ) {
-        return true;
-      }
+    if (
+      normalizedNew.includes(normalizedRecent) ||
+      normalizedRecent.includes(normalizedNew)
+    ) {
+      return true;
     }
-
-    return false;
-  } catch (error) {
-    logger.debug("Error checking for duplicate tweets:", errorDetail(error));
-    return false;
+    if (
+      tweetTokenSimilarity(normalizedNew, normalizedRecent) >=
+      similarityThreshold
+    ) {
+      return true;
+    }
   }
+  return false;
 }

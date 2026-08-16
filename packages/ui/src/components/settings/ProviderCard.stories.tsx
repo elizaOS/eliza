@@ -41,9 +41,11 @@ export const Active: Story = {
   },
 };
 
-export const Selected: Story = {
+export const SelectedNotServing: Story = {
   args: {
     selected: true,
+    current: false,
+    status: { tone: "warn", label: "Not signed in" },
   },
 };
 

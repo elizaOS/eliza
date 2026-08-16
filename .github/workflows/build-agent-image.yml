@@ -2,14 +2,14 @@ name: Build Agent Image
 
 # Single source of truth for the cloud-agent container image used by the
 # cloud sandbox provisioner. Two trigger surfaces:
-#   - push to develop/main → :develop / :stable + :latest, plus :sha-<short>
+#   - push to develop → :develop + :sha-<short>
 #   - workflow_dispatch → manual canonical reruns or digest-preserving demo promotion
 # The previous release-only workflow (image.yaml) duplicated this entire
 # pre-build sequence; it's been deleted in favor of this consolidated build.
 
 on:
   push:
-    branches: [develop, main]
+    branches: [develop]
     paths:
       - "bun.lock"
       - "bunfig.toml"
@@ -219,6 +219,7 @@ jobs:
             --filter=@elizaos/plugin-mcp \
             --filter=@elizaos/plugin-signal \
             --filter=@elizaos/plugin-telegram \
+            --filter=@elizaos/plugin-x \
             --filter=@elizaos/plugin-whatsapp \
             --filter=@elizaos/plugin-wallet \
             --filter=@elizaos/plugin-workflow

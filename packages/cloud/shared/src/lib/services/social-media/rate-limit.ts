@@ -1,4 +1,6 @@
-// Coordinates cloud service rate limit behavior behind route handlers.
+/**
+ * Coordinates cloud service rate-limit retries and typed exhaustion errors behind route handlers.
+ */
 import type { SocialPlatform } from "../../types/social-media";
 import { logger } from "../../utils/logger";
 
@@ -75,7 +77,7 @@ export async function withRetry<T>(
 
       if (isRateLimitResponse(response)) {
         const retryAfter = parseRetryAfter(response);
-        const waitMs = retryAfter || baseDelayMs * 2 ** attempt;
+        const waitMs = retryAfter ?? baseDelayMs * 2 ** attempt;
 
         if (attempt < maxRetries) {
           logger.warn(
@@ -84,7 +86,10 @@ export async function withRetry<T>(
           await sleep(waitMs);
           continue;
         }
-        throw createRateLimitError(platform, retryAfter ? retryAfter / 1000 : undefined);
+        throw createRateLimitError(
+          platform,
+          retryAfter !== undefined ? retryAfter / 1000 : undefined,
+        );
       }
 
       if (!response.ok) {

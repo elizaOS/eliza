@@ -3,6 +3,7 @@
 export type SharedDedicatedCapability =
   | "calendar"
   | "reminders"
+  | "todos"
   | "bookings"
   | "communications"
   | "purchases"
@@ -32,6 +33,13 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
       "Reminders need Dedicated. I can still help you plan it here, but Shared can't schedule or deliver reminders.",
   },
   {
+    capability: "todos",
+    label: "Todos",
+    pattern:
+      /\b(?:add|create|make|write|show|list|get|update|edit|complete|finish|cancel|delete|remove|clear)\b[\s\S]{0,48}\b(?:to[ -]?dos?|task\s+list|checklist|my\s+tasks?)\b/i,
+    reply: "Todos are unavailable on this chat path right now. I didn't save or change anything.",
+  },
+  {
     capability: "calendar",
     label: "Calendar",
     pattern:
@@ -53,7 +61,7 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     pattern:
       /\b(?:(?:can|could|would|will)\s+you\s+)?(?:(?:email|call|text|message|dm)\b(?!\s+(?:this|the|a|an)\s+(?:\w+\s+){0,2}(?:function|method|api|endpoint|class|variable|command)\b)|send\b[\s\S]{0,32}\b(?:email|text|message|dm)\b)/i,
     reply:
-      "Calling or messaging people needs Dedicated. I can draft it here, but Shared can't send email, texts, DMs, or place calls.",
+      "I can talk with you and reply through Eliza's connected voice and messaging channels. I can't initiate a separate call, email, text, or DM to another person from this session.",
   },
   {
     capability: "purchases",
@@ -113,13 +121,15 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
 
 export function resolveSharedCapabilityWall(
   message: string | undefined,
-  capabilities: { reminders?: boolean } = {},
+  capabilities: { reminders?: boolean; todos?: boolean } = {},
 ): SharedCapabilityWall | null {
   const text = (message ?? "").trim();
   if (!text || NON_EXECUTION_CONTEXT.test(text)) return null;
   const match = RULES.find(
     (rule) =>
-      !(rule.capability === "reminders" && capabilities.reminders) && rule.pattern.test(text),
+      !(rule.capability === "reminders" && capabilities.reminders) &&
+      !(rule.capability === "todos" && capabilities.todos) &&
+      rule.pattern.test(text),
   );
   return match ? { capability: match.capability, label: match.label, reply: match.reply } : null;
 }

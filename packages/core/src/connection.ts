@@ -40,6 +40,36 @@ export interface EnsureConnectionsResult {
 	createdRoomParticipants: number;
 }
 
+/**
+ * One-level-deep merge for entity metadata keyed by connection source. A
+ * top-level replace is how an owner-aliased author's fields used to overwrite
+ * the canonical owner entity's identity record: each per-source object must
+ * merge field-by-field, not swap wholesale, so a connection that omits a field
+ * preserves what a previous connection wrote.
+ */
+function mergeEntitySourceMetadata(
+	existing: Metadata,
+	incoming: Record<string, unknown>,
+): Metadata {
+	const merged: Record<string, unknown> = { ...existing };
+	for (const [key, value] of Object.entries(incoming)) {
+		const prior = merged[key];
+		if (
+			prior !== null &&
+			typeof prior === "object" &&
+			!Array.isArray(prior) &&
+			value !== null &&
+			typeof value === "object" &&
+			!Array.isArray(value)
+		) {
+			merged[key] = { ...prior, ...value };
+		} else {
+			merged[key] = value;
+		}
+	}
+	return merged as Metadata;
+}
+
 /** WHY: World is required for room hierarchy; derive a stable worldId from messageServerId when not provided. */
 function resolveWorldId(
 	worldId: UUID | undefined,
@@ -94,11 +124,21 @@ export async function ensureConnections(
 			continue;
 		}
 		ent.names = [...new Set([...ent.names, ...names])].filter(Boolean);
-		ent.metadata[source] = {
-			id: c.userId,
-			name: c.name,
-			userName: c.userName,
-		};
+		// A connection contributes identity fields; it does not own the entity's
+		// per-source identity record. Connectors that alias several platform
+		// identities onto one canonical entity (e.g. Discord owner aliases)
+		// deliberately omit these fields, and an omitted field must never blank
+		// or replace what an earlier, genuine connection recorded.
+		const sourceRecord: Record<string, JsonValue> = {};
+		if (c.userId !== undefined) sourceRecord.id = c.userId;
+		if (c.name !== undefined) sourceRecord.name = c.name;
+		if (c.userName !== undefined) sourceRecord.userName = c.userName;
+		if (Object.keys(sourceRecord).length > 0) {
+			ent.metadata[source] = {
+				...(ent.metadata[source] as Record<string, JsonValue> | undefined),
+				...sourceRecord,
+			};
+		}
 
 		const world: World = {
 			id: worldId,
@@ -155,9 +195,12 @@ export async function ensureConnections(
 		const names = existing
 			? [...new Set([...(existing.names || []), ...v.names])].filter(Boolean)
 			: v.names;
-		const metadata = (
-			existing ? { ...existing.metadata, ...v.metadata } : v.metadata
-		) as Metadata;
+		const metadata = existing
+			? mergeEntitySourceMetadata(
+					(existing.metadata ?? {}) as Metadata,
+					v.metadata,
+				)
+			: (v.metadata as Metadata);
 		entities.push({
 			id: v.entityId,
 			names,

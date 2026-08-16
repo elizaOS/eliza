@@ -49,6 +49,8 @@ export interface LiveAgentTestOptions {
   systemPrompt?: string;
   /** Plugins to load in addition to the provider plugin. Workspace path or bare specifier. */
   extraPlugins?: Array<string | { path: string; name?: string }>;
+  /** Effective sender role for authorization-sensitive live action tests. */
+  senderRole?: "OWNER" | "ADMIN" | "USER" | "GUEST";
 }
 
 export interface LiveAgentHarness {
@@ -103,7 +105,7 @@ const PROVIDER_CONFIG: Record<LiveProviderId, ProviderConfig> = {
     defaultRequiredEnv: ["OPENROUTER_API_KEY"],
   },
   ollama: {
-    pluginPath: "../../../../plugins/plugin-ollama/index.ts",
+    pluginPath: "../../../../plugins/plugin-zerollama/index.ts",
     bareSpecifier: "@elizaos/plugin-zerollama",
     pluginExportNames: ["ollamaPlugin", "default"],
     defaultRequiredEnv: ["OLLAMA_API_ENDPOINT"],
@@ -504,8 +506,24 @@ export async function buildLiveHarness(
   applyProviderSettings(runtime, provider);
   await runtime.initialize();
 
+  const userEntityId = randomUUID() as UUID;
   const worldId = randomUUID() as UUID;
-  await runtime.createWorld({ id: worldId, name: "live-world", agentId });
+  await runtime.createWorld({
+    id: worldId,
+    name: "live-world",
+    agentId,
+    ...(opts.senderRole
+      ? {
+          metadata: {
+            ...(opts.senderRole === "OWNER"
+              ? { ownership: { ownerId: userEntityId } }
+              : {}),
+            roles: { [userEntityId]: opts.senderRole },
+            roleSources: { [userEntityId]: "manual" },
+          },
+        }
+      : {}),
+  });
   const roomId = randomUUID() as UUID;
   await runtime.ensureRoomExists({
     id: roomId,
@@ -516,7 +534,6 @@ export async function buildLiveHarness(
   });
   await runtime.ensureParticipantInRoom(agentId, roomId);
 
-  const userEntityId = randomUUID() as UUID;
   await runtime.createEntity({
     id: userEntityId,
     names: ["LiveTester"],

@@ -45,11 +45,30 @@ function notFound(id: string): ElizaError {
 type NoteLookupSelector = "title" | "query";
 
 function normalizedLookup(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return value
+    .normalize("NFC")
+    .trim()
+    .toLowerCase()
+    .normalize("NFC")
+    .replace(/\s+/gu, " ");
+}
+
+function titleAppearsAsNamedPhrase(text: string, title: string): boolean {
+  const normalizedText = normalizedLookup(text);
+  const normalizedTitle = normalizedLookup(title);
+  if (!normalizedText || !normalizedTitle) return false;
+  const escapedTitle = normalizedTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `(?:^|[^\\p{L}\\p{N}\\p{M}])${escapedTitle}(?=$|[^\\p{L}\\p{N}\\p{M}])`,
+    "u",
+  ).test(normalizedText);
 }
 
 function lookupError(
-  code: "NOTES_NOT_FOUND" | "NOTES_AMBIGUOUS_NOTE",
+  code:
+    | "NOTES_NOT_FOUND"
+    | "NOTES_AMBIGUOUS_NOTE"
+    | "NOTES_DELETE_NAME_MISMATCH",
   selector: NoteLookupSelector,
   value: string,
   candidates: StickyNote[],
@@ -58,9 +77,11 @@ function lookupError(
   return new ElizaError(
     code === "NOTES_NOT_FOUND"
       ? `No sticky note matches "${target}".`
-      : `"${target}" matches multiple sticky notes: ${candidates
-          .map((note) => `${note.title} (${note.color})`)
-          .join(", ")}.`,
+      : code === "NOTES_DELETE_NAME_MISMATCH"
+        ? `The closest note is "${candidates[0]?.title ?? target}" — that isn't what you named, so nothing was deleted. Delete it?`
+        : `"${target}" matches multiple sticky notes: ${candidates
+            .map((note) => `${note.title} (${note.color})`)
+            .join(", ")}.`,
     {
       code,
       context: {
@@ -437,6 +458,7 @@ export class NotesService extends Service {
   async deleteNoteByLookupWithCommit(
     selector: NoteLookupSelector,
     value: string,
+    options?: { requireTitleInText?: string },
   ): Promise<{
     value: StickyNote;
     snapshot: NotesSnapshot;
@@ -452,6 +474,17 @@ export class NotesService extends Service {
           code: "NOTES_NOTE_RESOLUTION_FAILED",
           severity: "fatal",
         });
+      }
+      // Bind a planner-selected title to a complete phrase in the owner's
+      // current wording; substring collisions must not authorize deletion.
+      if (
+        typeof options?.requireTitleInText === "string" &&
+        options.requireTitleInText.trim().length > 0 &&
+        !titleAppearsAsNamedPhrase(options.requireTitleInText, existing.title)
+      ) {
+        throw lookupError("NOTES_DELETE_NAME_MISMATCH", selector, value, [
+          existing,
+        ]);
       }
       // Deleting "the note" deletes every byte-identical copy: duplicates are
       // one logical note, and leaving three identical survivors after "delete

@@ -16,7 +16,7 @@ import {
   type UUID,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import type { ClientBase } from "./base";
+import type { ClientBase, TwitterProfile } from "./base";
 import { getRandomInterval } from "./environment";
 import type { TwitterClientState } from "./types";
 import { getSetting } from "./utils/settings";
@@ -173,24 +173,35 @@ export class TwitterPostClient {
    * @returns {Promise<boolean>} true if tweet was posted successfully
    */
   async generateNewTweet(): Promise<boolean> {
-    return await withStandaloneTrajectory(
-      this.runtime,
-      {
-        source: "plugin-x:auto-post",
-        metadata: {
-          platform: "x",
-          kind: "public_post_generation",
-          username: this.client.profile?.username,
-        },
-      },
-      async () => {
-        setTrajectoryPurpose("background");
-        return await this.generateNewTweetInner();
-      },
-    );
+    try {
+      return await this.client.withAuthenticatedSession(async ({ profile }) =>
+        withStandaloneTrajectory(
+          this.runtime,
+          {
+            source: "plugin-x:auto-post",
+            metadata: {
+              platform: "x",
+              kind: "public_post_generation",
+              username: profile.username,
+            },
+          },
+          async () => {
+            setTrajectoryPurpose("background");
+            return await this.generateNewTweetInner(profile);
+          },
+        ),
+      );
+    } catch (error) {
+      // error-policy:J7 background post generation must report identity and
+      // trajectory failures without terminating the autonomous scheduler.
+      this.runtime.reportError("XPostClient.generateNewTweet", error);
+      return false;
+    }
   }
 
-  private async generateNewTweetInner(): Promise<boolean> {
+  private async generateNewTweetInner(
+    profile: TwitterProfile,
+  ): Promise<boolean> {
     logger.info("Attempting to generate new tweet...");
 
     // Prevent concurrent posting
@@ -203,21 +214,14 @@ export class TwitterPostClient {
 
     try {
       // Create the timeline room ID for storing the post
-      const userId = this.client.profile?.id;
-      if (!userId) {
-        logger.error("Cannot generate tweet: Twitter profile not available");
-        this.isPosting = false; // Reset flag
-        return false;
-      }
+      const userId = profile.id;
 
-      logger.info(
-        `Generating tweet for user: ${this.client.profile?.username} (${userId})`,
-      );
+      logger.info(`Generating tweet for user: ${profile.username} (${userId})`);
 
       // Create standardized world and room IDs
       const worldId = createUniqueUuid(this.runtime, userId) as UUID;
       const roomId = createUniqueUuid(this.runtime, `${userId}-home`) as UUID;
-      const username = this.client.profile?.username || "unknown";
+      const username = profile.username;
       let posted = false;
 
       const callback = createTwitterPostCallback({

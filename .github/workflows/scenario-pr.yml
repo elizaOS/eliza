@@ -1,8 +1,6 @@
-name: Scenario PR E2E
+name: Scenario E2E
 
-# Secret-free opt-in scenario runner smoke. The required zero-key PR gate
-# lives in test.yml; this workflow owns the additional scenario-heavy and
-# browser matrix coverage that is not already run by the required gate.
+# Scenario-heavy and browser matrix coverage for the integrated develop tree.
 
 on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
@@ -13,12 +11,6 @@ on:
         required: false
         type: string
         default: standalone
-  # Heavy family moved off per-PR push (#14051 Tier A): PR runs are opt-in via
-  # the `ci:full` label (job-level gate on `changes` below). Unlabeled PRs
-  # skip every job instantly and consume zero runners.
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
     branches: [develop]
   schedule:
@@ -26,13 +18,12 @@ on:
     - cron: "0 7 * * *"
   workflow_dispatch:
 
-# A reusable caller's scope separates it from the standalone ref domain. PRs
-# still supersede obsolete work; scheduled and exhaustive work always completes.
+# A reusable caller's scope separates it from the standalone ref domain.
 # A manual run also gets a run-scoped identity so an on-demand health read is
 # not parked behind — and then superseded by — the develop push queue.
 concurrency:
-  group: scenario-pr-e2e-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: scenario-e2e-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref }}
+  cancel-in-progress: false
 
 env:
   CI: "true"
@@ -93,6 +84,9 @@ jobs:
 
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Build core exports for real API harness
+        run: bun run --cwd packages/core build
 
       - name: Scenario runner unit coverage
         run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts src/__tests__/deterministic-action-coverage.test.ts
@@ -717,6 +711,9 @@ jobs:
 
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Build core exports for real API harness
+        run: bun run --cwd packages/core build
 
       - name: Install Playwright browsers (Chromium)
         run: .github/scripts/install-playwright-browsers.sh chromium

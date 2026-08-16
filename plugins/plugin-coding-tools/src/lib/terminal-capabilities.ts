@@ -5,9 +5,9 @@
  * the SHELL action and run-shell to decide what can execute and to produce
  * missing-tool messages.
  */
-import { accessSync, constants } from "node:fs";
 import path from "node:path";
 import { readAliasedEnv } from "@elizaos/shared";
+import { resolveHostExecutable } from "@elizaos/shared/host-execution-env";
 
 export const CODING_TOOL_NAMES = [
   "sh",
@@ -48,8 +48,6 @@ export interface TerminalSupport {
   message?: string;
 }
 
-const ANDROID_PATH_ENTRIES = ["/system/bin", "/system/xbin", "/vendor/bin"];
-
 export function isAndroidRuntime(): boolean {
   return (
     readAliasedEnv("ELIZA_PLATFORM")?.toLowerCase() === "android" ||
@@ -86,41 +84,10 @@ export function isAospTerminalRuntime(): boolean {
   return isAndroidRuntime() && isTruthyEnv(process.env.ELIZA_AOSP_BUILD);
 }
 
-function pathEntries(): string[] {
-  const entries = (process.env.PATH ?? "")
-    .split(path.delimiter)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  if (isAndroidRuntime()) {
-    for (const entry of ANDROID_PATH_ENTRIES) {
-      if (!entries.includes(entry)) entries.push(entry);
-    }
-  }
-  return entries;
-}
-
-function canExecute(filePath: string): boolean {
-  try {
-    accessSync(filePath, constants.X_OK);
-    return true;
-  } catch {
-    // error-policy:J3 existence/permission probe; an access failure means the
-    // path is absent or not executable — false is the expected-miss signal.
-    return false;
-  }
-}
-
 export function resolveExecutable(nameOrPath: string): string | undefined {
   const trimmed = nameOrPath.trim();
   if (!trimmed) return undefined;
-  if (trimmed.includes("/") || path.isAbsolute(trimmed)) {
-    return canExecute(trimmed) ? trimmed : undefined;
-  }
-  for (const entry of pathEntries()) {
-    const candidate = path.join(entry, trimmed);
-    if (canExecute(candidate)) return candidate;
-  }
-  return undefined;
+  return resolveHostExecutable(trimmed);
 }
 
 function firstExecutable(candidates: readonly string[]): string | undefined {
@@ -132,25 +99,6 @@ function firstExecutable(candidates: readonly string[]): string | undefined {
 }
 
 export function resolveHostShell(): ResolvedShell {
-  const explicitEntries = [
-    ["CODING_TOOLS_SHELL", process.env.CODING_TOOLS_SHELL] as const,
-    ["SHELL", process.env.SHELL] as const,
-  ];
-  for (const [key, raw] of explicitEntries) {
-    const value = raw?.trim();
-    if (!value) continue;
-    const resolved = resolveExecutable(value);
-    if (resolved) {
-      return {
-        command: resolved,
-        args: ["-c"],
-        available: true,
-        source:
-          key === "CODING_TOOLS_SHELL" ? "env:CODING_TOOLS_SHELL" : "env:SHELL",
-      };
-    }
-  }
-
   if (process.platform === "win32") {
     return {
       command: "powershell.exe",
@@ -179,8 +127,8 @@ export function resolveHostShell(): ResolvedShell {
     available: false,
     source: "fallback",
     warning: isAndroidRuntime()
-      ? "No executable POSIX shell was detected. Android direct/AOSP local-yolo builds must expose /system/bin/sh or set CODING_TOOLS_SHELL to an executable shell."
-      : "No executable shell was detected. Set SHELL or CODING_TOOLS_SHELL to an executable shell.",
+      ? "No boot-authorized POSIX shell was detected. Android direct/AOSP local-yolo builds must include /system/bin or another shell directory in the boot PATH."
+      : "No boot-authorized shell was detected. Ensure the boot PATH contains an executable shell.",
   };
 }
 

@@ -1,9 +1,7 @@
 /**
- * Renderer-level proof of the Steward JWT token-lifecycle: a session seeded
- * with a near-expiry JWT is silently renewed mid-suite so an authenticated
- * cloud connection never dies on `exp`. This is the contract-level expiry test
- * called for by issue #13691 ("Done when" #4) — it pins the refresh behavior
- * documented in packages/app/docs/TEST_AUTH.md rather than leaving it assumed.
+ * Renderer-level proof of the Steward JWT token lifecycle. It covers both a
+ * near-expiry readable token and a warm tab whose readable token disappeared
+ * while its HttpOnly cookie session remains authoritative.
  *
  * The real path under test lives in `useCloudState`'s token-lifecycle effect
  * (packages/ui/src/state/useCloudState.ts): while a stored Steward JWT is
@@ -12,10 +10,14 @@
  * back into localStorage via `writeStoredStewardToken`. The cloud API is faked
  * so the renderer drives the whole exchange.
  */
+
+import { STEWARD_SESSION_CHANGE_EVENT } from "@elizaos/shared/steward-session-client";
 import { expect, type Route, test } from "@playwright/test";
 import {
+  expectNoPageDiagnostics,
   installDefaultAppRoutes,
   openAppPath,
+  readLocalStorage,
   seedAppStorage,
 } from "./helpers";
 import {
@@ -130,4 +132,92 @@ test("cloud session survives a mid-suite JWT expiry by renewing the token", asyn
   await expect(page.getByText(/auth.*rejected|session expired/i)).toHaveCount(
     0,
   );
+});
+
+test("warm shared-cloud tab recovers its cookie-only session without dropping the binding", async ({
+  page,
+}) => {
+  const agentId = "19127000-0000-4000-8000-000000000001";
+  const apiBase = `https://api.eliza.app/api/v1/eliza/agents/${agentId}`;
+  const initialToken = createStewardSessionToken({
+    jwt: true,
+    subject: CLOUD_USER_ID,
+    userId: CLOUD_USER_ID,
+  });
+  const refreshedToken = createStewardSessionToken({
+    jwt: true,
+    subject: `${CLOUD_USER_ID}-refreshed`,
+    userId: CLOUD_USER_ID,
+  });
+  let refreshRequests = 0;
+
+  await page.route(STEWARD_REFRESH_ENDPOINT, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    refreshRequests += 1;
+    await fulfillJson(route, 200, { token: refreshedToken, expiresIn: 3_600 });
+  });
+  await installDefaultAppRoutes(page);
+  await seedAppStorage(page, {
+    [VOICE_PREFIX_DONE_STORAGE_KEY]: "1",
+    "eliza:mobile-runtime-mode": "cloud",
+    "elizaos:active-server": JSON.stringify({
+      id: `cloud:${agentId}`,
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase,
+      accessToken: "shared-agent-token",
+    }),
+    [STEWARD_SESSION_TOKEN_KEY]: initialToken,
+  });
+
+  await openAppPath(page, "/settings");
+  await expect
+    .poll(async () => {
+      const raw = await readLocalStorage(page, "elizaos:active-server");
+      return raw ? JSON.parse(raw) : null;
+    })
+    .toMatchObject({ id: `cloud:${agentId}`, apiBase });
+  await page
+    .context()
+    .addCookies([
+      { name: "steward-authed", value: "1", url: page.url(), sameSite: "Lax" },
+    ]);
+  await page.evaluate(
+    ({ eventName, tokenKey }) => {
+      localStorage.removeItem(tokenKey);
+      window.dispatchEvent(
+        new CustomEvent(eventName, { detail: { state: "present" } }),
+      );
+    },
+    {
+      eventName: STEWARD_SESSION_CHANGE_EVENT,
+      tokenKey: STEWARD_SESSION_TOKEN_KEY,
+    },
+  );
+  await expect
+    .poll(() => page.evaluate(() => document.cookie))
+    .toContain("steward-authed=1");
+
+  await expect.poll(() => refreshRequests).toBe(1);
+  await expect
+    .poll(() => readLocalStorage(page, STEWARD_SESSION_TOKEN_KEY))
+    .toBe(refreshedToken);
+  await expect
+    .poll(async () => {
+      const raw = await readLocalStorage(page, "elizaos:active-server");
+      return raw ? JSON.parse(raw) : null;
+    })
+    .toMatchObject({
+      id: `cloud:${agentId}`,
+      apiBase,
+      accessToken: "shared-agent-token",
+    });
+  await expect(page.getByTestId("settings-shell")).toBeVisible();
+  await expect(page.getByText(/auth.*rejected|session expired/i)).toHaveCount(
+    0,
+  );
+  await expectNoPageDiagnostics(page, "cookie-only warm shared-cloud auth");
 });

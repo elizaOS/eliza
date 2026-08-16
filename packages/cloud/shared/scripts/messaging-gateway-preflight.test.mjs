@@ -21,6 +21,7 @@ const SHARED_ENV = {
   CEREBRAS_API_KEY: "contract-value",
   ELIZA_APP_WEBHOOK_GATEWAY_URL: "https://gateway.example.invalid",
   ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "contract-value",
+  GATEWAY_INTERNAL_SECRET: "contract-value",
 };
 
 function runStrict(channels, env = {}) {
@@ -69,14 +70,14 @@ test("channel scoping does not require unrelated connector credentials", () => {
   assert.doesNotMatch(result.stdout, /telegram|whatsapp|imessage/i);
 });
 
-test("workflow separates fork-safe sentinels from trusted configuration", () => {
+test("workflow keeps trusted configuration checks manual and source tests on develop", () => {
   const workflow = readFileSync(WORKFLOW, "utf8");
 
-  assert.match(workflow, /Run fork-safe messaging gateway preflight/);
-  assert.match(workflow, /if: github\.event_name == 'pull_request'/);
-  assert.match(workflow, /ELIZA_APP_WEBHOOK_GATEWAY_URL: https:\/\/gateway\.example\.invalid/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /branches: \[develop\]/);
+  assert.doesNotMatch(workflow, /pull_request/);
   assert.match(workflow, /Enforce trusted messaging gateway configuration/);
-  assert.match(workflow, /if: github\.event_name != 'pull_request'/);
+  assert.match(workflow, /if: github\.event_name == 'workflow_dispatch'/);
   assert.match(
     workflow,
     /ELIZA_APP_WEBHOOK_GATEWAY_URL: \$\{\{ vars\.ELIZA_APP_WEBHOOK_GATEWAY_URL \}\}/,
@@ -85,4 +86,5 @@ test("workflow separates fork-safe sentinels from trusted configuration", () => 
     workflow,
     /ELIZA_APP_WEBHOOK_GATEWAY_URL: \$\{\{ secrets\.ELIZA_APP_WEBHOOK_GATEWAY_URL \}\}/,
   );
+  assert.match(workflow, /GATEWAY_INTERNAL_SECRET: \$\{\{ secrets\.GATEWAY_INTERNAL_SECRET \}\}/);
 });

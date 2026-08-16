@@ -7,6 +7,7 @@ import {
   deliverManagedReply,
   isRetryableRouteStatus,
   postManagedAgentMessageWithRetry,
+  withManagedTypingHeartbeat,
 } from "../src/managed-message-egress";
 
 const noSleep = async () => {};
@@ -220,6 +221,50 @@ describe("isRetryableRouteStatus", () => {
     expect(isRetryableRouteStatus(400)).toBe(false);
     expect(isRetryableRouteStatus(403)).toBe(false);
     expect(isRetryableRouteStatus(404)).toBe(false);
+  });
+});
+
+describe("withManagedTypingHeartbeat", () => {
+  test("refreshes typing until the turn settles and then stops", async () => {
+    let pulses = 0;
+    let release: (() => void) | undefined;
+    const turn = withManagedTypingHeartbeat(
+      {
+        sendTyping: async () => {
+          pulses += 1;
+        },
+        intervalMs: 5,
+      },
+      () =>
+        new Promise<string>((resolve) => {
+          release = () => resolve("done");
+        }),
+    );
+
+    await Bun.sleep(18);
+    expect(pulses).toBeGreaterThanOrEqual(2);
+    release?.();
+    await expect(turn).resolves.toBe("done");
+    const settledPulses = pulses;
+    await Bun.sleep(12);
+    expect(pulses).toBe(settledPulses);
+  });
+
+  test("a typing failure never prevents the managed turn", async () => {
+    const failures: string[] = [];
+    const result = await withManagedTypingHeartbeat(
+      {
+        sendTyping: async () => {
+          throw new Error("Missing Permissions");
+        },
+        onFailure: (error) => failures.push(error),
+        intervalMs: 5,
+      },
+      async () => "reply",
+    );
+
+    expect(result).toBe("reply");
+    expect(failures).toEqual(["Missing Permissions"]);
   });
 });
 

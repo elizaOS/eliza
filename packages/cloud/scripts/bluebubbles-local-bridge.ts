@@ -226,12 +226,13 @@ const cloudWebhookUrl =
     : "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles");
 const gatewaySecret = process.env.BLUEBUBBLES_GATEWAY_SECRET ?? "";
 const hasCloudGatewayCredential = Boolean(gatewayToken || gatewaySecret);
-const gatewayPhoneNumber = (
-  process.env.BLUEBUBBLES_GATEWAY_PHONE_NUMBER ?? "+14159611510"
-).trim();
+const gatewayPhoneNumber =
+  process.env.BLUEBUBBLES_GATEWAY_PHONE_NUMBER?.trim() ?? "";
 const gatewayPhoneLabel = (
   process.env.BLUEBUBBLES_GATEWAY_PHONE_LABEL ??
-  `Eliza Cloud Gateway (${gatewayPhoneNumber})`
+  (gatewayPhoneNumber
+    ? `Eliza Cloud Gateway (${gatewayPhoneNumber})`
+    : "Eliza Cloud Gateway")
 ).trim();
 const blueBubblesSendMethod = readSendMethod();
 const blueBubblesSendTimeoutMs = Number.parseInt(
@@ -268,13 +269,6 @@ const pendingReplyRetryLimit = Number.parseInt(
 const pendingRepliesPath =
   process.env.BLUEBUBBLES_PENDING_REPLIES_PATH ??
   join(process.cwd(), ".eliza-local/bluebubbles-pending-replies.json");
-const messagesDbPath =
-  process.env.BLUEBUBBLES_MESSAGES_DB_PATH ??
-  join(process.env.HOME ?? "", "Library/Messages/chat.db");
-const loopbackNormalizationEnabled =
-  process.env.BLUEBUBBLES_LOOPBACK_NORMALIZATION_ENABLED === "true";
-const configuredLoopbackSourceIdentity =
-  process.env.BLUEBUBBLES_LOOPBACK_SOURCE_IDENTITY?.trim() || null;
 const expectedBlueBubblesWebhookUrl = `http://127.0.0.1:${port}/webhooks/bluebubbles`;
 const processedMessageIds = new Set<string>();
 const recentInboundDeliveries: InboundDeliveryRecord[] = [];
@@ -476,95 +470,6 @@ async function gatewayTargetDecision(
     };
   }
   return { accepted: true };
-}
-
-function readMessageSourceIdentity(messageGuid: string): string | null {
-  try {
-    const db = new Database(messagesDbPath, { readonly: true });
-    try {
-      const row = db
-        .query<{ destination_caller_id: string | null }, [string]>(
-          "select destination_caller_id from message where guid = ? limit 1",
-        )
-        .get(messageGuid);
-      return row?.destination_caller_id?.trim() || null;
-    } finally {
-      db.close();
-    }
-  } catch (error) {
-    // error-policy:J4 Cross-number normalization is optional; ordinary inbound
-    // messages and the outbound loop guard remain safe when Messages DB access
-    // is unavailable under macOS privacy controls.
-    console.warn(
-      "[bluebubbles-local-bridge] unable to inspect Messages source identity",
-      {
-        messageGuid,
-        error: commandErrorMessage(error),
-      },
-    );
-    return null;
-  }
-}
-
-function normalizeGatewayLoopbackPayload(
-  payload: BlueBubblesPayload,
-): BlueBubblesPayload {
-  if (
-    !loopbackNormalizationEnabled ||
-    !payload.data.isFromMe ||
-    !payload.data.guid
-  ) {
-    return payload;
-  }
-
-  const recipient =
-    payload.data.handle?.address?.trim() ??
-    payload.data.chats?.[0]?.chatIdentifier?.trim();
-  if (
-    !recipient ||
-    normalizeMessagingAddress(recipient) !==
-      normalizeMessagingAddress(gatewayPhoneNumber)
-  ) {
-    return payload;
-  }
-
-  const sourceIdentity =
-    readMessageSourceIdentity(payload.data.guid) ??
-    configuredLoopbackSourceIdentity;
-  if (
-    !sourceIdentity ||
-    normalizeMessagingAddress(sourceIdentity) ===
-      normalizeMessagingAddress(gatewayPhoneNumber)
-  ) {
-    return payload;
-  }
-
-  const service = messageServiceFor(payload);
-  const firstChat = payload.data.chats?.[0];
-  return {
-    ...payload,
-    data: {
-      ...payload.data,
-      isFromMe: false,
-      handle: {
-        ...(payload.data.handle ?? {}),
-        address: sourceIdentity,
-      },
-      chats: [
-        {
-          ...(firstChat ?? {}),
-          guid: `${service};-;${sourceIdentity}`,
-          chatIdentifier: sourceIdentity,
-        },
-      ],
-      metadata: {
-        ...(payload.data.metadata ?? {}),
-        loopbackNormalized: true,
-        originalIsFromMe: true,
-        originalRecipient: recipient,
-      },
-    },
-  };
 }
 
 async function readSipStatus(): Promise<string> {
@@ -1141,10 +1046,6 @@ async function gatewayDiagnostics(): Promise<Record<string, unknown>> {
       outboundValidationPath,
       gatewayPhoneNumber,
       gatewayPhoneLabel,
-      loopbackNormalizationEnabled,
-      loopbackSourceIdentityConfigured: Boolean(
-        configuredLoopbackSourceIdentity,
-      ),
       pendingRepliesPath,
       pendingReplyCount: pendingReplies.length,
       pendingReplyRetry: {
@@ -1663,6 +1564,12 @@ async function handleWebhook(
     });
     return;
   }
+  if (!gatewayPhoneNumber) {
+    json(res, 500, {
+      error: "BLUEBUBBLES_GATEWAY_PHONE_NUMBER is required",
+    });
+    return;
+  }
   if (blueBubblesSendMethod !== "shortcuts" && !blueBubblesPassword) {
     json(res, 500, { error: "BlueBubbles password is not configured" });
     return;
@@ -1693,7 +1600,7 @@ async function handleWebhook(
         {
           messageGuid: messageId,
           targetIdentity: targetDecision.targetIdentity,
-          gatewayPhoneNumber,
+          expectedGatewayConfigured: true,
         },
       );
     }
@@ -1701,7 +1608,7 @@ async function handleWebhook(
     return;
   }
 
-  const payload = normalizeGatewayLoopbackPayload(rawPayload);
+  const payload = rawPayload;
 
   let reply: CloudReply;
   try {

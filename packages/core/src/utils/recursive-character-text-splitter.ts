@@ -134,7 +134,7 @@ export class RecursiveCharacterTextSplitter {
 		const sepForMerge = this.keepSeparator ? "" : separator;
 		for (const s of splits) {
 			const splitLength = await this.lengthFunction(s);
-			if (splitLength < this.chunkSize) {
+			if (splitLength <= this.chunkSize) {
 				goodSplits.push(s);
 			} else {
 				if (goodSplits.length) {

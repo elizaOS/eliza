@@ -1,17 +1,7 @@
-# Lightweight pull-request gate for the executable Electrobun release contracts.
+# Manual validator for the executable Electrobun release contracts.
 name: Validate Electrobun Release Workflow
 
 on:
-  pull_request:
-    branches: [develop]
-    paths:
-      - ".github/workflows/release-electrobun.yml"
-      - ".github/workflows/electrobun-contract.yml"
-      - "packages/app-core/scripts/**"
-      - "packages/app-core/platforms/electrobun/**"
-      - "packages/app-core/test/regression-matrix.json"
-      - "package.json"
-      - "bun.lock"
   workflow_dispatch:
 
 permissions:

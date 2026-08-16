@@ -41,6 +41,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  createSharedTodoCutoverSnapshot,
+  type SharedTodoCutoverSnapshot,
+} from "@elizaos/shared/todo-cutover";
+import {
   afterAll,
   afterEach,
   beforeAll,
@@ -328,6 +332,20 @@ async function runRoute(
         response.write(`error ${status}: ${message}`);
         response.end();
       },
+    ),
+    todoCutoverImporter: vi.fn(
+      async ({ snapshot }: { snapshot: SharedTodoCutoverSnapshot }) => ({
+        sourceTodoCount: snapshot.todos.length,
+        sourceTodoMutationCount: snapshot.mutations.length,
+        importedTodos: snapshot.todos.length,
+        repairedTodos: 0,
+        skippedTodos: 0,
+        removedStaleTodos: 0,
+        importedTodoMutations: snapshot.mutations.length,
+        skippedTodoMutations: 0,
+        sourceTodoDigest: snapshot.digest,
+        targetTodoDigest: snapshot.digest,
+      }),
     ),
   } as unknown as ConversationRouteContext;
 
@@ -1681,6 +1699,11 @@ describe("conversation handoff import — exact source identities", () => {
       importScheduledTask,
       activateScheduledTask,
     } = createHarness({ scheduling: true });
+    const todoSnapshot = await createSharedTodoCutoverSnapshot({
+      sourceAgentId: "personal:source",
+      todos: [],
+      mutations: [],
+    });
     const body = {
       messages: [
         {
@@ -1705,6 +1728,7 @@ describe("conversation handoff import — exact source identities", () => {
         },
       ],
       cutoverToken: "personal-cutover-token",
+      todoSnapshot,
     };
 
     const first = await runRoute(
@@ -1721,6 +1745,12 @@ describe("conversation handoff import — exact source identities", () => {
       importedScheduledTasks: 1,
       skippedScheduledTasks: 0,
       activatedScheduledTasks: 0,
+      sourceTodoCount: 0,
+      sourceTodoMutationCount: 0,
+      importedTodoMutations: 0,
+      skippedTodoMutations: 0,
+      sourceTodoDigest: todoSnapshot.digest,
+      targetTodoDigest: todoSnapshot.digest,
     });
 
     const replay = await runRoute(
@@ -1757,5 +1787,67 @@ describe("conversation handoff import — exact source identities", () => {
       sourceAgentId: "personal:source",
       cutoverToken: "personal-cutover-token",
     });
+  });
+
+  it("rejects an exact cutover token when the Todo snapshot is missing", async () => {
+    const { state, storedMemories } = createHarness({ scheduling: true });
+    const response = await runRoute(
+      "POST",
+      "/api/conversations/personal:source/import",
+      state,
+      {
+        messages: [{ sourceId: "shared-u1", role: "user", text: "hello" }],
+        cutoverToken: "personal-cutover-token",
+      },
+    );
+
+    expect(response.record.writes.join("")).toContain(
+      "error 400: A todoSnapshot is required",
+    );
+    expect(storedMemories).toHaveLength(0);
+  });
+
+  it("rejects tampered or cross-conversation Todo snapshots before any write", async () => {
+    const snapshot = await createSharedTodoCutoverSnapshot({
+      sourceAgentId: "personal:source",
+      todos: [],
+      mutations: [],
+    });
+    const tamperedHarness = createHarness({ scheduling: true });
+    const tampered = await runRoute(
+      "POST",
+      "/api/conversations/personal:source/import",
+      tamperedHarness.state,
+      {
+        messages: [{ sourceId: "shared-u1", role: "user", text: "hello" }],
+        cutoverToken: "personal-cutover-token",
+        todoSnapshot: { ...snapshot, digest: "0".repeat(64) },
+      },
+    );
+    expect(tampered.record.writes.join("")).toContain(
+      "error 400: Todo snapshot digest does not match its records",
+    );
+    expect(tamperedHarness.storedMemories).toHaveLength(0);
+
+    const wrongSourceSnapshot = await createSharedTodoCutoverSnapshot({
+      sourceAgentId: "personal:other",
+      todos: [],
+      mutations: [],
+    });
+    const wrongSourceHarness = createHarness({ scheduling: true });
+    const wrongSource = await runRoute(
+      "POST",
+      "/api/conversations/personal:source/import",
+      wrongSourceHarness.state,
+      {
+        messages: [{ sourceId: "shared-u1", role: "user", text: "hello" }],
+        cutoverToken: "personal-cutover-token",
+        todoSnapshot: wrongSourceSnapshot,
+      },
+    );
+    expect(wrongSource.record.writes.join("")).toContain(
+      "error 400: Todo snapshot source does not match the conversation",
+    );
+    expect(wrongSourceHarness.storedMemories).toHaveLength(0);
   });
 });

@@ -31,6 +31,7 @@ function makeService(overrides: Record<string, unknown> = {}) {
 			(id: string) =>
 				`00000000-0000-0000-0000-${id.slice(-12).padStart(12, "0")}`,
 		),
+		isOwnerAliasedDiscordUser: vi.fn(() => false),
 		getChannelType: vi.fn(async () => "GROUP"),
 		registerSlashCommands: vi.fn(),
 		refreshOwnerDiscordUserIds: vi.fn(),

@@ -15,6 +15,8 @@ let turnError: Error | null;
 let streamTurnError: Error | null;
 let turnCalls = 0;
 let lastTurnInput: Record<string, unknown> | undefined;
+const turnInputs: Record<string, unknown>[] = [];
+let lastStreamTurnInput: Record<string, unknown> | undefined;
 let streamTurnCalls = 0;
 let admissionError: Error | null;
 let billError: Error | null;
@@ -165,6 +167,7 @@ mock.module("./run-shared-agent-turn", () => ({
     turnCalls++;
     lastTurnRole = input.messageRole;
     lastTurnInput = input;
+    turnInputs.push(input);
     if (turnError) throw turnError;
     const history = Array.isArray(turn.history)
       ? turn.history.map((message, index) =>
@@ -177,12 +180,46 @@ mock.module("./run-shared-agent-turn", () => ({
       : turn.history;
     return { ...turn, history };
   },
-  runSharedAgentTurnStream: async (input: { abortSignal?: AbortSignal }) => {
+  runSharedAgentTurnStream: async (input: {
+    abortSignal?: AbortSignal;
+    [key: string]: unknown;
+  }) => {
     streamTurnCalls++;
+    lastStreamTurnInput = input;
     if (streamTurnError) throw streamTurnError;
     streamAbortSignal = input.abortSignal;
     return streamTurn;
   },
+}));
+
+const todoStore = { boundary: "canonical-shared-todo-store" };
+const expectedTodoScope = {
+  agentId: "10000000-0000-5000-8000-000000000001",
+  entityId: "10000000-0000-5000-8000-000000000002",
+};
+const expectedTodoExecution = {
+  scope: expectedTodoScope,
+  store: todoStore,
+};
+const expectedTodoActionResult = {
+  success: true,
+  text: "Created: [ ] Buy milk",
+  verifiedUserFacing: true,
+  effectReceipts: [
+    {
+      receiptId: "todos:create:todo-1:receipt-1",
+      operation: "todos.create",
+      outcome: "applied",
+    },
+  ],
+};
+const createSharedTodoStore = mock(() => todoStore);
+const sharedTodoStorageScope = mock(
+  (_input: { sourceAgentId: string; ownerId: string }) => expectedTodoScope,
+);
+mock.module("./shared-todos", () => ({
+  createSharedTodoStore,
+  sharedTodoStorageScope,
 }));
 
 class TestInferenceAdmissionDispatchMarkError extends Error {}
@@ -333,6 +370,8 @@ beforeEach(() => {
   streamTurnError = null;
   turnCalls = 0;
   lastTurnInput = undefined;
+  turnInputs.length = 0;
+  lastStreamTurnInput = undefined;
   streamTurnCalls = 0;
   characterReads = 0;
   loggerWarn.mockClear();
@@ -344,6 +383,8 @@ beforeEach(() => {
   billingGate = null;
   releaseBilling = () => {};
   streamAbortSignal = undefined;
+  createSharedTodoStore.mockClear();
+  sharedTodoStorageScope.mockClear();
   turn = {
     degraded: false,
     reply: "hello back",
@@ -469,8 +510,9 @@ describe("SharedRuntimeChatService", () => {
   test("passes the explicit AgentRuntime transition gate without changing identity", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
+    turn.actionResults = [expectedTodoActionResult];
 
-    await service.bridge(agent, rpc, {
+    const response = await service.bridge(agent, rpc, {
       ...h,
       funding: "platform",
       executionEngine: "eliza-runtime",
@@ -479,10 +521,49 @@ describe("SharedRuntimeChatService", () => {
     expect(lastTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      todos: expectedTodoExecution,
+    });
+    expect(sharedTodoStorageScope).toHaveBeenCalledWith({
+      sourceAgentId: agent.id,
+      ownerId: agent.user_id,
+    });
+    expect(response.result?.actionResults).toEqual([expectedTodoActionResult]);
+  });
+
+  test("keeps Todo-capable streaming on the same genuine AgentRuntime path", async () => {
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "Created: [ ] Buy milk" };
+        yield {
+          type: "finish",
+          text: "Created: [ ] Buy milk",
+          actionResults: [expectedTodoActionResult],
+        };
+      })(),
+    };
+    const response = await new SharedRuntimeChatService().stream(agent, rpc, {
+      ...harness(),
+      funding: "platform",
+      executionEngine: "eliza-runtime",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain(
+      JSON.stringify({ actionResults: [expectedTodoActionResult] }).slice(1, -1),
+    );
+    expect(lastStreamTurnInput?.execution).toEqual({
+      engine: "eliza-runtime",
+      agentKey: agent.id,
+      todos: expectedTodoExecution,
+    });
+    expect(sharedTodoStorageScope).toHaveBeenCalledWith({
+      sourceAgentId: agent.id,
+      ownerId: agent.user_id,
     });
   });
 
-  test("enables reminders only for platform-funded turns with trusted Telegram delivery", async () => {
+  test("enables reminders only for platform-funded turns with trusted private delivery", async () => {
     const service = new SharedRuntimeChatService();
     const trustedRpc = {
       ...rpc,
@@ -504,6 +585,7 @@ describe("SharedRuntimeChatService", () => {
     expect(lastTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      todos: expectedTodoExecution,
       reminders: {
         runner: expect.any(Object),
         delivery: {
@@ -522,7 +604,36 @@ describe("SharedRuntimeChatService", () => {
     expect(lastTurnInput?.execution).toEqual({
       engine: "eliza-runtime",
       agentKey: agent.id,
+      todos: expectedTodoExecution,
     });
+
+    for (const delivery of [
+      {
+        platform: "blooio",
+        project: "eliza-app",
+        phoneNumber: "+15551234567",
+      },
+      {
+        platform: "discord",
+        discordUserId: "123456789012345678",
+      },
+    ] as const) {
+      await service.bridge(
+        agent,
+        {
+          ...rpc,
+          params: { ...rpc.params, trustedDelivery: delivery },
+        },
+        {
+          ...harness(),
+          funding: "platform",
+          executionEngine: "eliza-runtime",
+        },
+      );
+      expect(lastTurnInput?.execution).toMatchObject({
+        reminders: { delivery },
+      });
+    }
   });
 
   test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {
@@ -1009,6 +1120,20 @@ describe("SharedRuntimeChatService", () => {
     params: { text: "hello", roomId: "room-1", clientMessageId: "client-key-1" },
   };
 
+  test("an unkeyed client may reuse a JSON-RPC id without reusing durable message identities", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    await service.bridge(agent, rpc, h);
+    await service.bridge(agent, rpc, h);
+
+    const first = turnInputs[0]?.messageIds as { user: string; assistant: string } | undefined;
+    const second = turnInputs[1]?.messageIds as { user: string; assistant: string } | undefined;
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(second).not.toEqual(first);
+  });
+
   test("a replayed clientMessageId admits, dispatches, and bills exactly once (#18045)", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
@@ -1022,6 +1147,7 @@ describe("SharedRuntimeChatService", () => {
     await Promise.all(h.background);
 
     expect(turnCalls).toBe(1);
+    expect(lastTurnInput?.originClientMessageId).toBe("client-key-1");
     expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
     expect(billCalls).toHaveLength(1);
     expect(settleCalls).toEqual([0.004]);
@@ -1093,6 +1219,7 @@ describe("SharedRuntimeChatService", () => {
     const secondBody = await second.text();
 
     expect(streamTurnCalls).toBe(1);
+    expect(lastStreamTurnInput?.originClientMessageId).toBe("client-key-1");
     expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
     const doneFrame = (body: string) => {
       const match = body.match(/event: done\ndata: (.*)\n/);

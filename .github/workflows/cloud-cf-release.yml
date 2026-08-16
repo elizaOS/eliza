@@ -80,11 +80,19 @@ jobs:
       - name: Run migrations
         env:
           DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          FORCE: ${{ inputs.force }}
         run: |
+          set -euo pipefail
           # The migrate entry imports @elizaos/core, whose i18n barrel pulls in the
           # gitignored generated keyword data. Source-mode (eliza-source) migrate
           # never builds core, so generate the file first (mirrors core's prebuild).
           node packages/shared/scripts/generate-keywords.mjs
+          source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$FORCE" = "true" ]; then
+            source_args+=(--force)
+          fi
+          node packages/cloud/scripts/canonical-deploy-source-guard.mjs "${source_args[@]}"
           bun run db:cloud:migrate
 
   # ---------------------------------------------------------------------------
@@ -94,8 +102,8 @@ jobs:
     name: Deploy API Worker
     # Scope the job to the same GitHub environment as migrate-db so its
     # production-environment secrets — notably STEWARD_PLATFORM_KEYS (#11461) —
-    # are visible to the publish-secrets step. Without this the un-scoped job
-    # only saw repo secrets, so `publish_secret` skipped the key and a redeploy
+    # are visible to the atomic secret-preparation step. Without this the un-scoped job
+    # only saw repo secrets, so secret preparation skipped the key and a redeploy
     # would silently recreate the #11461 tenant-isolation gap (#11937). Mirrors
     # the proven migrate-db declaration exactly (same protection semantics).
     environment: ${{ inputs.target_environment }}
@@ -393,23 +401,24 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          FORCE: ${{ inputs.force }}
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if output=$(bunx wrangler secret delete STAGING_SESSION_EXCHANGE_ENABLED --env staging 2>&1); then
-              echo "Staging session exchange is off before config validation or deploy."
-              exit 0
-            fi
-            if printf '%s' "$output" | grep -qi "not found"; then
-              echo "Staging session exchange was already off before cutover."
-              exit 0
-            fi
-            [ "$attempt" -lt 3 ] && sleep 10
-          done
-          echo "::error::Could not confirm staging session exchange is off before cutover"
-          exit 1
+          source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$FORCE" = "true" ]; then
+            source_args+=(--force)
+          fi
+          node "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.mjs" "${source_args[@]}"
+          if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+            STAGING_SESSION_EXCHANGE_ENABLED --env staging); then
+            echo "::error::Could not confirm staging session exchange is off before cutover"
+            exit 1
+          fi
+          echo "Staging session exchange is off before config validation or deploy ($result)."
 
-      - name: Publish Worker AI secrets
+      - name: Prepare Worker secrets for atomic deploy
+        id: worker-secrets
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
         env:
@@ -455,7 +464,7 @@ jobs:
           # deployed Worker always point at the same Whisper host. Without
           # this the Worker falls through to ElevenLabs, whose free-tier quota
           # block surfaces as a persistent 503 on STT (and 502 through the
-          # agent's /api/asr/cloud proxy). Published via publish_toggle_secret:
+          # agent's /api/asr/cloud proxy). Managed via queue_toggle_secret:
           # unset DELETES the Worker secret (presence toggles the route).
           WHISPER_STT_URL: ${{ vars.ELIZA_VOICE_WHISPER_STT_URL }}
           # Optional model pin for the hosted Whisper service (defaults to
@@ -471,7 +480,7 @@ jobs:
           CARTESIA_BATCH_STT_TIMEOUT_MS: ${{ vars.CARTESIA_BATCH_STT_TIMEOUT_MS }}
           # Ed25519 keypair for the signed voice-model catalog —
           # /v1/voice-models/catalog 503s while the signing key is unset
-          # (#13406). publish_secret no-ops with a notice while these are
+          # (#13406). queue_secret no-ops with a notice while these are
           # unset, so they publish on every redeploy once ops adds them.
           ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 }}
           ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 }}
@@ -511,7 +520,7 @@ jobs:
           STEWARD_REQUEST_SIGNING_SECRET: ${{ secrets.STEWARD_REQUEST_SIGNING_SECRET }}
           # Platform key the Worker forwards as X-Steward-Platform-Key so per-org
           # sandbox Steward tenants provision instead of collapsing onto the
-          # shared default tenant (#11461). publish_secret no-ops with a notice
+          # shared default tenant (#11461). queue_secret no-ops with a notice
           # while unset, so this is safe before ops adds the GH env secret and
           # keeps it published on every redeploy once they do.
           STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
@@ -520,9 +529,12 @@ jobs:
           OIDC_CLIENTS: ${{ secrets.OIDC_CLIENTS }}
           ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
           ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
+          GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          set -euo pipefail
+
           has_nonblank_value() {
             local value="${1:-}"
             [ -n "${value//[[:space:]]/}" ]
@@ -545,9 +557,9 @@ jobs:
             export VOICE_REALTIME_ELIZA_AUTHORIZATION
           fi
 
-          # Production provider and bridge values are managed Worker secrets,
-          # not GitHub secret material. keep_vars preserves them, and their
-          # binding names are verified against the live Worker before deploy.
+          # Production provider and bridge values remain managed Worker
+          # secrets. A protected-environment value may create or rotate one;
+          # a blank source preserves it, and names are verified after deploy.
 
           # Staging advertises realtime only when the repository variable
           # VOICE_REALTIME_WS_ENABLED is explicitly truthy. Refuse that opt-in
@@ -625,34 +637,10 @@ jobs:
             exit 1
           fi
 
-          if [ "$DEPLOY_ENVIRONMENT" = "production" ] && \
-             is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
-            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
-            printf '%s' "$secret_inventory" | node -e '
-              const fs = require("node:fs");
-              const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
-              const entries = Array.isArray(parsed)
-                ? parsed
-                : Array.isArray(parsed?.result)
-                  ? parsed.result
-                  : [];
-              const present = new Set(entries.map((entry) => entry?.name).filter(Boolean));
-              const required = [
-                "CARTESIA_API_KEY",
-                "VOICE_REALTIME_CARTESIA_VOICE_ID",
-                "VOICE_REALTIME_ELIZA_AUTHORIZATION",
-                "VOICE_REALTIME_ELIZA_ENDPOINT",
-              ];
-              const missing = required.filter((name) => !present.has(name));
-              if (missing.length > 0) {
-                console.error(`::error::Production realtime voice is missing managed Worker secret binding name(s): ${missing.join(" ")}`);
-                process.exit(1);
-              }
-              console.log(`Verified ${required.length} managed production voice secret binding names; values were not read.`);
-            '
-          fi
+          declare -a worker_secret_names=()
+          declare -A queued_worker_secret_names=()
 
-          publish_secret() {
+          queue_secret() {
             local name="$1"
             local value="${!name:-}"
             case "$name" in
@@ -688,62 +676,76 @@ jobs:
               echo "::notice::$name is not configured; skipping"
               return 0
             fi
-            for attempt in 1 2 3; do
-              if printf '%s' "$value" | bunx wrangler secret put "$name" ${{ steps.env.outputs.wrangler_args }}; then
-                return 0
-              fi
-              if [ "$attempt" -lt 3 ]; then
-                echo "::warning::wrangler secret put $name failed on attempt $attempt; retrying in 10s"
-                sleep 10
-              fi
-            done
-            echo "::error::wrangler secret put $name failed after 3 attempts"
-            return 1
+            if [ -z "${queued_worker_secret_names[$name]+configured}" ]; then
+              worker_secret_names+=("$name")
+              queued_worker_secret_names["$name"]=true
+            fi
+            return 0
           }
 
-          # Like publish_secret, but for values that act as ROUTING TOGGLES
+          verify_production_voice_secret_candidates() {
+            if [ "$DEPLOY_ENVIRONMENT" != "production" ] || \
+               ! is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
+              return 0
+            fi
+            local secret_inventory
+            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            printf '%s' "$secret_inventory" | node -e '
+              const fs = require("node:fs");
+              const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
+              const entries = Array.isArray(parsed)
+                ? parsed
+                : Array.isArray(parsed?.result)
+                  ? parsed.result
+                  : [];
+              const available = new Set(entries.map((entry) => entry?.name).filter(Boolean));
+              for (const name of process.argv.slice(1)) available.add(name);
+              const required = [
+                "CARTESIA_API_KEY",
+                "VOICE_REALTIME_CARTESIA_VOICE_ID",
+                "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+                "VOICE_REALTIME_ELIZA_ENDPOINT",
+              ];
+              const missing = required.filter((name) => !available.has(name));
+              if (missing.length > 0) {
+                console.error(`::error::Production realtime voice cannot be deployed; missing existing or configured Worker binding name(s): ${missing.join(" ")}`);
+                process.exit(1);
+              }
+              console.log(`Verified ${required.length} existing or configured production voice binding names; values were not read.`);
+            ' "${worker_secret_names[@]}"
+          }
+
+          # Like queue_secret, but for values that act as ROUTING TOGGLES
           # (code branches on presence, e.g. `env.WHISPER_STT_URL`). An unset
           # source must DELETE any previously published secret. A plain
           # skip would leave a stale toggle active on the Worker forever
           # (e.g. STT pinned to a dead Whisper host during an outage).
-          publish_toggle_secret() {
+          queue_toggle_secret() {
             local name="$1"
             local value="${!name:-}"
             if [ -n "$value" ]; then
-              publish_secret "$name"
+              queue_secret "$name"
               return $?
             fi
-            # Unset: delete so the Worker falls back to its default path.
-            # Wrangler auto-confirms the prompt in non-interactive CI.
-            # "Binding not found" is success (nothing was published). Any
-            # other failure must FAIL after retries: deploying with a stale
-            # routing toggle is exactly the outage this function prevents.
-            local out
-            for attempt in 1 2 3; do
-              if out=$(bunx wrangler secret delete "$name" ${{ steps.env.outputs.wrangler_args }} 2>&1); then
-                echo "::notice::$name is not configured; deleted any previously published value"
-                return 0
-              fi
-              if printf '%s' "$out" | grep -qi "not found"; then
-                echo "::notice::$name is not configured and not present on the Worker; nothing to do"
-                return 0
-              fi
-              if [ "$attempt" -lt 3 ]; then
-                echo "::warning::wrangler secret delete $name failed on attempt $attempt; retrying in 10s"
-                sleep 10
-              fi
-            done
-            echo "::error::$name is unset but deleting the stale Worker secret failed after 3 attempts: $out"
-            return 1
+            # Unset: use a names-only inventory before and after deletion so
+            # absence is success without depending on Wrangler error prose.
+            local result
+            if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+              --versions "$name" ${{ steps.env.outputs.wrangler_args }}); then
+              echo "::error::$name is unset but its absence could not be confirmed"
+              return 1
+            fi
+            echo "::notice::$name is not configured; Worker binding state: $result"
+            return 0
           }
 
-          # QA cutover is OFF-FIRST. Secret mutations update the currently
-          # served Worker immediately, so remove the activation bit before
-          # changing any version, signer, or allowlist. If any later config or
-          # code deploy fails, the served feature remains absent.
+          # Build the next Worker version with the QA activation bit absent.
+          # The served gate was already disabled above; version-aware updates
+          # now prepare the new config without deploying stale code between
+          # secret publication and the intentional code cutover.
           STAGING_SESSION_EXCHANGE_ENABLED=""
           export STAGING_SESSION_EXCHANGE_ENABLED
-          publish_toggle_secret STAGING_SESSION_EXCHANGE_ENABLED || exit 1
+          queue_toggle_secret STAGING_SESSION_EXCHANGE_ENABLED || exit 1
 
           staging_session_config_names=(
             STAGING_SESSION_EXCHANGE_VERSION
@@ -756,7 +758,7 @@ jobs:
           if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
              is_truthy "$STAGING_SESSION_EXCHANGE_DESIRED_ENABLED"; then
             for name in "${staging_session_config_names[@]}"; do
-              publish_toggle_secret "$name" || exit 1
+              queue_toggle_secret "$name" || exit 1
             done
           else
             # Disabled/non-staging environments retain no stale QA signer or
@@ -764,12 +766,12 @@ jobs:
             for name in "${staging_session_config_names[@]}"; do
               printf -v "$name" '%s' ""
               export "${name?}"
-              publish_toggle_secret "$name" || exit 1
+              queue_toggle_secret "$name" || exit 1
             done
           fi
 
-          # Publish only values explicitly configured in this protected GitHub
-          # environment. publish_secret intentionally skips blank values, which
+          # Queue only values explicitly configured in this protected GitHub
+          # environment. queue_secret intentionally skips blank values, which
           # preserves an existing Cloudflare binding that GitHub cannot recover.
           managed_worker_provisioning_secrets=(
             DATABASE_URL
@@ -779,7 +781,7 @@ jobs:
             TUNNEL_HOSTNAME_SIGNING_SECRET
           )
           for name in "${managed_worker_provisioning_secrets[@]}"; do
-            publish_secret "$name" || exit 1
+            queue_secret "$name" || exit 1
           done
 
           for name in \
@@ -808,14 +810,15 @@ jobs:
             STEWARD_TENANT_API_KEY \
             OIDC_SIGNING_JWKS \
             OIDC_CLIENTS \
+            GATEWAY_INTERNAL_SECRET \
             ELIZA_APP_WEBHOOK_GATEWAY_SECRET
           do
-            publish_secret "$name"
+            queue_secret "$name"
           done
 
           # Routing toggles: presence changes code paths, so unset must delete.
-          # A failed put must fail the step (never deploy with a half-applied
-          # toggle), matching the publish_secret loop's set -e behavior.
+          # A failed removal must fail the step. Configured toggle values join
+          # the exact Worker deploy rather than mutating an earlier version.
           for name in \
             CARTESIA_API_KEY \
             CARTESIA_VOICE_ID \
@@ -826,8 +829,24 @@ jobs:
             CARTESIA_BATCH_STT_TIMEOUT_MS \
             ELIZA_APP_WEBHOOK_GATEWAY_URL
           do
-            publish_toggle_secret "$name" || exit 1
+            queue_toggle_secret "$name" || exit 1
           done
+
+          # Preserve the production fail-closed boundary without mutating the
+          # active Worker: every required voice name must either already exist
+          # or be queued for the atomic version below.
+          verify_production_voice_secret_candidates || exit 1
+
+          # Wrangler deploy accepts this JSON additively: named values are
+          # committed in the same Worker version as the exact source, while
+          # omitted preserve-only bindings remain untouched. This also recovers
+          # when Cloudflare has an undeployed latest version, where standalone
+          # `wrangler secret put` refuses to proceed.
+          worker_secrets_file="$(node \
+            "$CHECKOUT_DIR/packages/cloud/scripts/worker-secrets-file.mjs" \
+            create "$RUNNER_TEMP" "${worker_secret_names[@]}")"
+          echo "secrets_file=$worker_secrets_file" >> "$GITHUB_OUTPUT"
+          echo "Prepared ${#worker_secret_names[@]} configured Worker bindings for the atomic deploy; values were not printed."
 
       - name: Deploy to Cloudflare Workers
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
@@ -844,15 +863,26 @@ jobs:
           FISH_AUDIO_MODEL: ${{ vars.FISH_AUDIO_MODEL || 's2.1-pro' }}
           FISH_AUDIO_SAMPLE_RATE: "16000"
           FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: ${{ vars.FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS || '1500' }}
+          WORKER_SECRETS_FILE: ${{ steps.worker-secrets.outputs.secrets_file }}
+          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          FORCE: ${{ inputs.force }}
         run: |
+          set -euo pipefail
           legacy_onboarding_secret_removed=false
+          source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$FORCE" = "true" ]; then
+            source_args+=(--force)
+          fi
+          recheck_canonical_source() {
+            node "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.mjs" "${source_args[@]}"
+          }
           restore_legacy_onboarding_secrets() {
             if [ "$legacy_onboarding_secret_removed" != "true" ]; then
               return
             fi
             echo "::warning::Worker deploy failed after retiring legacy onboarding URL secrets; restoring the staging value."
             for name in ELIZA_ONBOARDING_LOGIN_APP_URL ELIZA_APP_ONBOARDING_LOGIN_APP_URL; do
-              if ! printf '%s' "$STAGING_ONBOARDING_LOGIN_APP_URL" | bunx wrangler secret put "$name" --env staging; then
+              if ! printf '%s' "$STAGING_ONBOARDING_LOGIN_APP_URL" | bunx wrangler versions secret put "$name" --env staging; then
                 echo "::error::Failed to restore legacy staging binding $name; staging onboarding CTA configuration requires operator repair."
               fi
             done
@@ -860,25 +890,32 @@ jobs:
 
           delete_legacy_onboarding_secret() {
             local name="$1"
-            local output=""
-            for attempt in 1 2 3; do
-              if output=$(bunx wrangler secret delete "$name" --env staging 2>&1); then
-                legacy_onboarding_secret_removed=true
-                echo "Retired legacy staging secret binding $name."
-                return 0
-              fi
-              if printf '%s' "$output" | grep -qi "not found"; then
-                echo "Legacy staging secret binding $name is already absent."
-                return 0
-              fi
-              [ "$attempt" -lt 3 ] && sleep 10
-            done
-            printf '%s\n' "$output" >&2
-            echo "::error::Could not retire legacy staging secret binding $name."
-            return 1
+            local result
+            recheck_canonical_source
+            if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+              --versions "$name" --env staging); then
+              echo "::error::Could not retire legacy staging secret binding $name."
+              return 1
+            fi
+            if [ "$result" = "removed" ]; then
+              legacy_onboarding_secret_removed=true
+              echo "Retired legacy staging secret binding $name."
+            else
+              echo "Legacy staging secret binding $name is already absent."
+            fi
+            return 0
           }
 
-          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
+          if [ -z "${WORKER_SECRETS_FILE:-}" ] || [ ! -f "$WORKER_SECRETS_FILE" ] || [ -L "$WORKER_SECRETS_FILE" ]; then
+            echo "::error::Atomic Worker secrets file is missing or invalid."
+            exit 1
+          fi
+          if [ "$(stat -c '%a' "$WORKER_SECRETS_FILE")" != "600" ]; then
+            echo "::error::Atomic Worker secrets file does not have mode 600."
+            exit 1
+          fi
+
+          args=(${{ steps.env.outputs.wrangler_args }} --secrets-file "$WORKER_SECRETS_FILE" --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
             args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
           else
@@ -889,8 +926,16 @@ jobs:
             delete_legacy_onboarding_secret ELIZA_ONBOARDING_LOGIN_APP_URL
             delete_legacy_onboarding_secret ELIZA_APP_ONBOARDING_LOGIN_APP_URL
           fi
+          recheck_canonical_source
           bunx wrangler deploy "${args[@]}"
           trap - ERR
+
+      - name: Remove atomic Worker secrets file
+        if: ${{ always() && steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' }}
+        run: |
+          set -euo pipefail
+          node "$CHECKOUT_DIR/packages/cloud/scripts/worker-secrets-file.mjs" \
+            remove-all "$RUNNER_TEMP"
 
       - name: Verify required Worker secret binding names
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
@@ -898,6 +943,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          VOICE_REALTIME_WS_ENABLED: ${{ (steps.env.outputs.deploy_environment == 'production' || contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED)) && 'true' || 'false' }}
         run: |
           set -euo pipefail
           secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
@@ -924,7 +971,19 @@ jobs:
               "STEWARD_REQUEST_SIGNING_SECRET",
               "STEWARD_PLATFORM_KEYS",
               "STEWARD_TENANT_API_KEY",
+              "GATEWAY_INTERNAL_SECRET",
             ];
+            if (
+              process.env.DEPLOY_ENVIRONMENT === "production" &&
+              process.env.VOICE_REALTIME_WS_ENABLED === "true"
+            ) {
+              required.push(
+                "CARTESIA_API_KEY",
+                "VOICE_REALTIME_CARTESIA_VOICE_ID",
+                "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+                "VOICE_REALTIME_ELIZA_ENDPOINT",
+              );
+            }
             const missing = required.filter((name) => !present.has(name));
             if (missing.length > 0) {
               console.error(`::error::Missing required Worker secret binding name(s): ${missing.join(" ")}`);
@@ -1067,18 +1126,11 @@ jobs:
           expected_enabled="$STAGING_SESSION_EXCHANGE_DESIRED_ENABLED"
 
           rollback_gate() {
-            local output
-            for attempt in 1 2 3; do
-              if output=$(bunx wrangler secret delete STAGING_SESSION_EXCHANGE_ENABLED --env staging 2>&1); then
-                echo "Staging session exchange activation is off."
-                return 0
-              fi
-              if printf '%s' "$output" | grep -qi "not found"; then
-                echo "Staging session exchange activation was already off."
-                return 0
-              fi
-              [ "$attempt" -lt 3 ] && sleep 10
-            done
+            if node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+              STAGING_SESSION_EXCHANGE_ENABLED --env staging >/dev/null; then
+              echo "Staging session exchange activation is off."
+              return 0
+            fi
             return 1
           }
 
@@ -1664,8 +1716,18 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          EVENT_NAME: ${{ github.event_name }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          FORCE: ${{ inputs.force }}
         run: |
           set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+            if [ "$FORCE" = "true" ]; then
+              source_args+=(--force)
+            fi
+            node packages/cloud/scripts/canonical-deploy-source-guard.mjs "${source_args[@]}"
+          fi
           if output=$(bunx wrangler@4.100.0 pages project create eliza-app --production-branch=main 2>&1); then
             printf '%s\n' "$output"
             exit 0
@@ -1703,11 +1765,27 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PAGES_BRANCH: ${{ steps.pages.outputs.branch }}
           PAGES_PROJECT: eliza-app
+          EVENT_NAME: ${{ github.event_name }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          FORCE: ${{ inputs.force }}
         # Do NOT pass a positional `dist` argument: wrangler.toml already sets
         # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
         # ignore wrangler.toml — which silently drops the `functions/` upload.
         run: |
+          set -euo pipefail
+          source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$FORCE" = "true" ]; then
+            source_args+=(--force)
+          fi
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            recheck_canonical_source() {
+              node "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.mjs" "${source_args[@]}"
+            }
+          else
+            recheck_canonical_source() { :; }
+          fi
           for attempt in 1 2 3; do
+            recheck_canonical_source
             if bunx wrangler@4.100.0 pages deploy --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH"; then
               exit 0
             fi

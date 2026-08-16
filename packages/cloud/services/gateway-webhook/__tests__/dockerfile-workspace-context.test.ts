@@ -25,6 +25,7 @@ const LOCKFILE_BLIND = new Set<string>();
 interface ServiceBuild {
   name: string;
   workspaceDeps: string[];
+  devWorkspaceDeps: string[];
   dockerfile: string;
 }
 
@@ -37,14 +38,19 @@ function servicesWithDockerfiles(): ServiceBuild[] {
 
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
       dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
     };
     const workspaceDeps = Object.entries(manifest.dependencies ?? {})
+      .filter(([, range]) => range.startsWith("workspace:"))
+      .map(([dep]) => dep);
+    const devWorkspaceDeps = Object.entries(manifest.devDependencies ?? {})
       .filter(([, range]) => range.startsWith("workspace:"))
       .map(([dep]) => dep);
 
     found.push({
       name,
       workspaceDeps,
+      devWorkspaceDeps,
       dockerfile: readFileSync(dockerfilePath, "utf8"),
     });
   }
@@ -130,6 +136,19 @@ describe("service Dockerfiles can resolve their workspace dependencies", () => {
       );
       expect(gateway?.dockerfile).toContain("packages/cloud/services/_common");
     }
+  });
+
+  test("gateway-webhook prunes build-only workspace links before production install", () => {
+    const gateway = services.find(
+      (service) => service.name === "gateway-webhook",
+    );
+    expect(gateway?.devWorkspaceDeps).toContain("@elizaos/cloud-shared");
+    const pruneAt = gateway?.dockerfile.indexOf(
+      "delete manifest.devDependencies",
+    );
+    const installAt = gateway?.dockerfile.indexOf("bun install --production");
+    expect(pruneAt).toBeGreaterThan(-1);
+    expect(installAt).toBeGreaterThan(pruneAt ?? Number.MAX_SAFE_INTEGER);
   });
 
   for (const service of services.filter((s) => s.workspaceDeps.length > 0)) {

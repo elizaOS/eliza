@@ -135,12 +135,13 @@ const stubElizaCore = {
     }));
   },
 };
-// Swap ONLY the app-state barrel for the translator stub. The api barrel — the
-// network layer under test — stays real.
-const stubStateBarrel = {
-  name: "stub-state-barrel",
+// Swap only the app-state selectors for the translator stub. Account surfaces
+// import selectors from both the state barrel and its app-store module; the API
+// barrel — the network layer under test — stays real.
+const stubAppState = {
+  name: "stub-app-state",
   setup(b) {
-    b.onResolve({ filter: /^(\.\.\/)+state$/ }, () => ({
+    b.onResolve({ filter: /^(\.\.\/)+state(?:\/app-store)?$/ }, () => ({
       path: join(here, "accounts-fixture-state-stub.ts"),
     }));
   },
@@ -155,7 +156,7 @@ async function bundleFixture() {
     jsx: "automatic",
     loader: { ".tsx": "tsx", ".ts": "ts" },
     define: { "process.env.NODE_ENV": '"production"' },
-    plugins: [stubStateBarrel, stubElizaCore, stubNodeBuiltins],
+    plugins: [stubAppState, stubElizaCore, stubNodeBuiltins],
     write: false,
     absWorkingDir: repoRoot,
     logLevel: "silent",

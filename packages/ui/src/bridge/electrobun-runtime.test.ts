@@ -3,7 +3,10 @@
  * on-device host). Capacitor probe mocked, no real shell.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getBackendStartupTimeoutMs } from "./electrobun-runtime";
+import {
+  getBackendStartupTimeoutMs,
+  isElectrobunRuntime,
+} from "./electrobun-runtime";
 
 // `getBackendStartupTimeoutMs` returns 30s for web/cloud and 180s for any
 // build that hosts the on-device agent (Electrobun desktop, ElizaOS UA,
@@ -84,5 +87,43 @@ describe("getBackendStartupTimeoutMs — Capacitor native widening", () => {
     };
     setNavigatorUA("Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0");
     expect(getBackendStartupTimeoutMs()).toBe(30_000);
+  });
+});
+
+describe("isElectrobunRuntime", () => {
+  it("recognizes the callable request proxy injected by the packaged preload", () => {
+    const runtimeGlobal = globalThis as typeof globalThis & {
+      window?: Window;
+    };
+    const originalWindow = runtimeGlobal.window;
+    const runtimeWindow = {} as Window & {
+      __ELIZA_ELECTROBUN_RPC__?: unknown;
+      __electrobunWindowId?: number;
+      __electrobunWebviewId?: number;
+    };
+    Object.defineProperty(runtimeWindow, "__ELIZA_ELECTROBUN_RPC__", {
+      value: {
+        onMessage: () => undefined,
+        request: () => Promise.resolve(undefined),
+      },
+      configurable: true,
+    });
+    Object.defineProperty(runtimeGlobal, "window", {
+      value: runtimeWindow,
+      configurable: true,
+    });
+
+    try {
+      expect(isElectrobunRuntime()).toBe(true);
+    } finally {
+      if (originalWindow === undefined) {
+        Reflect.deleteProperty(runtimeGlobal, "window");
+      } else {
+        Object.defineProperty(runtimeGlobal, "window", {
+          value: originalWindow,
+          configurable: true,
+        });
+      }
+    }
   });
 });

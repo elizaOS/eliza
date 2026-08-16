@@ -40,6 +40,20 @@ describe("renderDiscordInteractions", () => {
 		expect(out.components[0]?.components[0]?.label).toBe("More");
 	});
 
+	it("strips dashboard-only config cards with and without native controls", () => {
+		const interactive = renderDiscordInteractions({
+			text: "Connect it. [CONFIG:google_calendars]\n[FOLLOWUPS]\nreply:yes=Yes\n[/FOLLOWUPS]",
+		} as Content);
+		expect(interactive.text).toBe("Connect it.");
+		expect(interactive.components).toHaveLength(1);
+
+		const plain = renderDiscordInteractions({
+			text: "Set up here: [CONFIG:@elizaos/plugin-gmail]",
+		} as Content);
+		expect(plain.text).toBe("Set up here:");
+		expect(plain.components).toEqual([]);
+	});
+
 	it("renders a choice block as a button action row and strips the marker", () => {
 		const content: Content = {
 			text: "Approve?\n[CHOICE:approve id=c1]\nyes=Yes, ship it\nno=Cancel\n[/CHOICE]",
@@ -92,6 +106,16 @@ describe("renderDiscordInteractions", () => {
 		expect(button?.style).toBe(5); // Link
 		expect(button?.url).toContain(id);
 		expect(button?.custom_id).toBe("");
+	});
+
+	it("strips dashboard-only markers from parsed fallback prose", () => {
+		const id = "abc12345-def6-7890-abcd-ef1234567890";
+		const out = renderDiscordInteractions({
+			text: `[TASK:${id}]Ship it [CONFIG:@elizaos/plugin-gmail][/TASK]`,
+		} as Content);
+		expect(out.text).toBe("Ship it");
+		expect(out.text).not.toContain("[CONFIG:");
+		expect(out.components).toHaveLength(0);
 	});
 
 	it("caps action rows at the Discord limit of 5", () => {

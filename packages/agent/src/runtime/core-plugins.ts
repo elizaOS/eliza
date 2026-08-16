@@ -282,7 +282,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-scheduling", // always-loaded ScheduledTask runtime primitive (runner host + REST surface + seed registry); personal-assistant enriches it when present
   "@elizaos/plugin-documents", // Knowledge CRUD/search routes required by the web and desktop Knowledge surface
   // Built-in runtime capabilities (no longer external plugins):
-  // - experience, todos, personality: advanced capabilities (advancedCapabilities: true)
+  // - experience, personality: advanced capabilities (advancedCapabilities: true)
   // - form: standalone @elizaos/plugin-form
   // - trust: core capability (enableTrust: true)
   // - secrets (SECRETS): core capability (enableSecretsManager: true)
@@ -307,6 +307,7 @@ export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
   "@elizaos/plugin-app-control", // VIEWS navigation in the app chat surface
   "@elizaos/plugin-notes", // managed Cloud Notes data and capabilities
+  "@elizaos/plugin-todos", // UI-free personal Todo action/provider on local PGlite
   "@elizaos/plugin-documents", // Knowledge CRUD/search routes exposed to hosted web clients
   // ScheduledTask primitive. Calendar is already always selected on lean-chat
   // via MOBILE_VIEW_PLUGINS (viewEveryPlatform) and declares a hard dependency
@@ -436,5 +437,5 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // "@elizaos/plugin-directives", // directive processing remains opt-in
   // "@elizaos/plugin-mcp", // MCP protocol support remains opt-in
   // @elizaos/plugin-scheduling is now an always-loaded CORE + MOBILE plugin.
-  // todos: now built-in as advanced capability (advancedCapabilities: true)
+  // todos: load the UI-free runtime through @elizaos/plugin-todos/plugin.
 ];

@@ -138,7 +138,12 @@ export interface ProcessScheduledTaskInboundMessageResult {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (!(error instanceof Error)) return String(error);
+  // Storage failures wrap the driver error in `cause`; without it the logged
+  // message stops at the truncated SQL preamble and hides the real reason.
+  const cause =
+    error.cause instanceof Error ? ` | cause: ${error.cause.message}` : "";
+  return `${error.message.split("\n")[0]}${cause}`;
 }
 
 function shouldRecordPendingPrompt(task: ScheduledTask): boolean {

@@ -1,10 +1,12 @@
-# LifeOps live owner/agent validation matrix (#8833)
+# LifeOps live owner and connector-agent validation matrix (#8833)
 
 The static LifeOps split (personal-assistant + per-domain plugins) is done and
 the 10 split views were audited `good` on desktop + mobile (see issue #8833
-comments). What remains is **live, account-backed validation** across the OWNER
-and AGENT sides, native devices, and OAuth/provider state — work that cannot be
-proven in unit tests because it depends on real credentials and devices.
+comments). What remains is **live, account-backed validation** across owner-side
+and agent-side connector grants, native devices, and OAuth/provider state — work
+that cannot be proven in unit tests because it depends on real credentials and
+devices. Runtime actor roles are OWNER/ADMIN/USER/GUEST; `agent` here names a
+connector grant side, not an actor role.
 
 This document is the durable QA matrix for that pass: the prerequisites, the
 exact states to exercise per connector, the expected behavior, and the
@@ -31,8 +33,8 @@ node scripts/lifeops/run-11632-live-lanes.mjs
 # 5. Capture the populated views: open the /lifeops-live-test view, then
 bun run --cwd packages/app audit:app    # desktop + mobile screenshots per view
 bun run test:e2e:record                 # recorded walkthrough for the PR video
-# 6. Drive each view/action below as OWNER, then repeat as a non-owner AGENT
-#    identity to confirm the permission matrix. Stage all artifacts under
+# 6. Drive each view/action below as OWNER, then repeat as a non-owner USER
+#    using the agent-side connector identity. Stage all artifacts under
 #    reports/lifeops-live-validation/<session>/ and attach them inline on the
 #    PR/issue per CONTRIBUTING.md.
 ```
@@ -49,7 +51,7 @@ default because it requires real credentials and devices.
 > inference endpoint) before a live session. This is the single most common
 > blocker — confirm a model round-trips before validating connectors.
 
-## OWNER vs AGENT permission matrix (run for every connector/action)
+## OWNER vs USER permission matrix (run for every connector/action)
 
 For each owner-only action surface, exercise and record evidence for:
 
@@ -57,7 +59,7 @@ For each owner-only action surface, exercise and record evidence for:
 |---|---|---|
 | 1 | Unauthenticated connector | Clear "not connected" affordance; no silent failure |
 | 2 | OWNER authenticated + authorized | Action succeeds; typed `DispatchResult` returned |
-| 3 | AGENT authenticated, not owner-authorized | Denied with a clear permission error (`roleGate`) |
+| 3 | USER authenticated, not owner-authorized | Denied with a clear permission error (`roleGate`) |
 | 4 | Expired / revoked grant | Explicit, recoverable re-auth prompt |
 | 5 | Missing required scope | Explicit scope error; no partial mutation |
 | 6 | Multiple grants (owner-side must win) | Owner-side grant selected for owner-only ops |
@@ -74,7 +76,7 @@ boolean or a swallowed error).
 
 Legend for **Result**: `pass` · `fail` · `blocked (no creds)` · `n/a`.
 
-| Connector | Owner actions | Env vars / prerequisites | Result (OWNER) | Result (AGENT) |
+| Connector | Owner actions | Env vars / prerequisites | Result (OWNER) | Result (agent-side connector) |
 |---|---|---|---|---|
 | Google Calendar | `CALENDAR` (list/create/update/delete/availability, conflict detect) | OWNER + AGENT Google accounts w/ Calendar scope; OAuth grant | | |
 | Gmail / Inbox | `INBOX` (read/search/label/archive; outbound draft→approval) | Gmail scope on same accounts; billing corpus for finances | | |

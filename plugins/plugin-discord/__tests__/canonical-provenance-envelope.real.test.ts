@@ -610,6 +610,7 @@ describe("canonical provenance envelope", () => {
 			runtime: runtime as unknown as HistoryServiceInternals["runtime"],
 			messageManager: undefined,
 			resolveDiscordEntityId: (userId: string) => id(`discord-${userId}`),
+			isOwnerAliasedDiscordUser: () => false,
 			getChannelType: async () => ChannelType.GROUP,
 			isGuildTextBasedChannel: (c): c is never => Boolean(c),
 		};

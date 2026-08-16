@@ -23,6 +23,36 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./edge": {
+      "types": "./dist/edge.d.ts",
+      "eliza-source": {
+        "types": "./src/edge.ts",
+        "import": "./src/edge.ts",
+        "default": "./src/edge.ts"
+      },
+      "bun": {
+        "types": "./dist/edge.d.ts",
+        "import": "./dist/edge.js",
+        "default": "./dist/edge.js"
+      },
+      "worker": {
+        "types": "./dist/edge.d.ts",
+        "import": "./dist/edge.js",
+        "default": "./dist/edge.js"
+      },
+      "import": "./dist/edge.js",
+      "default": "./dist/edge.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "eliza-source": {
+        "types": "./src/plugin.ts",
+        "import": "./src/plugin.ts",
+        "default": "./src/plugin.ts"
+      },
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",
@@ -51,16 +81,14 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -106,11 +134,13 @@
   },
   "eliza": {
     "platforms": [
-      "node"
+      "node",
+      "edge"
     ],
     "runtime": "node",
     "platformDetails": {
-      "node": "Default export (Node.js)"
+      "node": "Default export (Node.js)",
+      "edge": "./edge export with injected durable TodoStore"
     }
   }
 }

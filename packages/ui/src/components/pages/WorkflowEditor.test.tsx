@@ -174,7 +174,9 @@ describe("WorkflowEditor", () => {
 
   it("persists a new workflow before starting its first run", async () => {
     render(<WorkflowEditor />);
-    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    const runButton = screen.getByRole("button", { name: "Run" });
+    expect(runButton.className).toContain("hover:bg-accent/85");
+    fireEvent.click(runButton);
     await waitFor(() =>
       expect(api.createWorkflowDefinition).toHaveBeenCalledTimes(1),
     );

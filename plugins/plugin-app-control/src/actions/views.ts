@@ -3330,7 +3330,12 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								transcriptVisibility: "internal",
 							};
 						}
-						const params = paramsResolution.params;
+						let params = paramsResolution.params;
+						// Bind note-title deletion to the owner's current wording without
+						// widening unrelated capability schemas.
+						if (normalizeCapabilityKey(capability) === "delete note" && text) {
+							params = { ...params, ownerText: text };
+						}
 						const timeoutMs =
 							typeof actionOptions?.timeoutMs === "number" &&
 							actionOptions.timeoutMs > 0

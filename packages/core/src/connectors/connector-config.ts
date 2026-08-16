@@ -7,6 +7,41 @@
  * external plugins published to npm only need @elizaos/core.
  */
 
+/** Builds the secret-setting key for one account-scoped connector credential. */
+export function connectorAccountCredentialSettingKey(
+	provider: string,
+	accountId: string,
+	field: string,
+): string {
+	return [
+		"CONNECTOR",
+		encodeConnectorKeySegment(provider),
+		"ACCOUNT",
+		encodeConnectorKeySegment(accountId),
+		encodeConnectorKeySegment(field),
+	].join("|");
+}
+
+/** Builds the secret-setting key for an inherited connector credential. */
+export function connectorBaseCredentialSettingKey(
+	provider: string,
+	field: string,
+): string {
+	return [
+		"CONNECTOR",
+		encodeConnectorKeySegment(provider),
+		"BASE",
+		encodeConnectorKeySegment(field),
+	].join("|");
+}
+
+function encodeConnectorKeySegment(value: string): string {
+	// Length-prefixing preserves arbitrary account identifiers without the
+	// collisions caused by slug normalization (for example `support-east` and
+	// `support_east` must never resolve to the same credential).
+	return `${value.length}:${value}`;
+}
+
 /**
  * True when a connector configuration block is present and "configured
  * enough" for the connector plugin to do real work. The exact criteria are

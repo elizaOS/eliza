@@ -19,7 +19,20 @@ export const ERRORS = {
 };
 
 interface SignupCodesConfig {
-  codes?: Record<string, number>;
+  codes?: Record<string, unknown>;
+}
+
+/** Parse one configured grant without accepting numeric prefixes or non-finite values. */
+export function parseSignupCodeBonus(amount: unknown): number | null {
+  let parsed: number;
+  if (typeof amount === "number") {
+    parsed = amount;
+  } else {
+    const raw = String(amount).trim();
+    if (!/^\d+(?:\.\d+)?$/.test(raw)) return null;
+    parsed = Number(raw);
+  }
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 /** WHY default "{}": App must run when env is unset; no codes = feature disabled. */
@@ -41,12 +54,15 @@ function loadCodes(): Map<string, number> {
   for (const [code, amount] of Object.entries(codes)) {
     const normalized = code?.trim().toLowerCase();
     if (!normalized) continue;
-    const num = typeof amount === "number" ? amount : parseFloat(String(amount));
-    if (!isNaN(num) && num > 0) {
-      map.set(normalized, num);
-    }
+    const bonus = parseSignupCodeBonus(amount);
+    if (bonus !== null) map.set(normalized, bonus);
   }
   return map;
+}
+
+/** Clear the process cache so deterministic tests can reload environment input. */
+export function resetSignupCodesCacheForTests(): void {
+  cachedCodes = null;
 }
 
 /** WHY cache: Env is read once per process; no need to re-parse on every redeem. */

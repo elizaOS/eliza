@@ -69,6 +69,7 @@ const localPackages = [
   "eliza/plugins/plugin-native-activity-tracker",
   "eliza/plugins/plugin-sql",
   "eliza/plugins/plugin-telegram",
+  "eliza/plugins/plugin-x",
   "eliza/plugins/plugin-video",
   "eliza/plugins/plugin-wallet",
   "eliza/plugins/plugin-whatsapp",

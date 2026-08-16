@@ -16,6 +16,10 @@ import process from "node:process";
 import { promisify } from "node:util";
 import { sanitizeSpawnEnv } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
+import {
+  applyHostExecutionBaseline,
+  resolveHostExecutable,
+} from "@elizaos/shared/host-execution-env";
 
 // ============================================================================
 // Command Lanes
@@ -39,6 +43,10 @@ export type CommandLane = (typeof CommandLane)[keyof typeof CommandLane];
 // ============================================================================
 
 const execFileAsync = promisify(execFile);
+
+function hostSpawnEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return applyHostExecutionBaseline(sanitizeSpawnEnv(env));
+}
 
 /**
  * Resolves a command for Windows compatibility.
@@ -93,11 +101,17 @@ export async function runExec(
           maxBuffer: opts.maxBuffer,
           encoding: "utf8" as const,
         };
-  const { stdout, stderr } = await execFileAsync(
-    resolveCommand(command),
-    args,
-    options,
-  );
+  const requestedCommand = resolveCommand(command);
+  const executable = resolveHostExecutable(requestedCommand);
+  if (!executable) {
+    throw new Error(
+      `[shell] executable is outside the boot PATH authority or unavailable: ${requestedCommand}`,
+    );
+  }
+  const { stdout, stderr } = await execFileAsync(executable, args, {
+    ...options,
+    env: hostSpawnEnv(process.env),
+  });
   return { stdout, stderr };
 }
 
@@ -165,10 +179,7 @@ export async function runCommandWithTimeout(
   })();
 
   const merged = env ? { ...process.env, ...env } : { ...process.env };
-  const resolvedEnv = sanitizeSpawnEnv(merged) as Record<
-    string,
-    string | undefined
-  >;
+  const resolvedEnv = hostSpawnEnv(merged);
   if (shouldSuppressNpmFund) {
     if (resolvedEnv.NPM_CONFIG_FUND == null) {
       resolvedEnv.NPM_CONFIG_FUND = "false";
@@ -179,7 +190,14 @@ export async function runCommandWithTimeout(
   }
 
   const stdio = resolveCommandStdio({ hasInput, preferInherit: true });
-  const child = spawn(resolveCommand(argv[0]), argv.slice(1), {
+  const requestedCommand = resolveCommand(argv[0]);
+  const executable = resolveHostExecutable(requestedCommand);
+  if (!executable) {
+    throw new Error(
+      `[shell] executable is outside the boot PATH authority or unavailable: ${requestedCommand}`,
+    );
+  }
+  const child = spawn(executable, argv.slice(1), {
     stdio,
     cwd,
     env: resolvedEnv,

@@ -1,4 +1,7 @@
-// Defines cloud shared cloud backend observability behavior for backend service consumers.
+// Defines cloud shared cloud backend observability behavior for backend service
+// consumers: per-request and per-DB-call ring-buffer telemetry plus inference
+// stream milestone events (#16079), all read back through the admin
+// cloud-observability endpoint.
 import { AsyncLocalStorage } from "node:async_hooks";
 
 const MAX_EVENTS = 1_000;
@@ -34,6 +37,37 @@ export interface CloudDbTelemetry {
   createdAt: string;
 }
 
+/**
+ * One inference stream's milestone boundaries (#16079), correlated by the
+ * shared trace id. All `*Ms` values are elapsed from the provider fetch
+ * start; `null` means that boundary was never observed. Deliberately
+ * privacy-bounded: model, path kind, provider request id echo, and timings
+ * only — no prompts, outputs, token counts, or client identifiers.
+ */
+export interface CloudStreamMilestoneTelemetry {
+  traceId: string;
+  requestId?: string;
+  /** Gateway routing path that produced the stream (`passthrough` today). */
+  path: string;
+  model: string;
+  /** Bounded echo of the provider's own request id header, when present. */
+  providerRequestId?: string;
+  /** Upstream fetch start → upstream response headers, from the Worker. */
+  upstreamHeadersMs?: number;
+  firstEventMs: number | null;
+  firstReasoningMs: number | null;
+  firstContentMs: number | null;
+  completionMs: number | null;
+  /**
+   * Stream ended via client abort, read failure, or an in-stream provider
+   * error frame — observed during the stream or its teardown. NOT mutually
+   * exclusive with `completionMs`: a provider that emitted `[DONE]` before a
+   * client disconnect completed, and both facts are recorded (#16079).
+   */
+  aborted: boolean;
+  createdAt: string;
+}
+
 export interface CloudTelemetrySnapshot {
   generatedAt: string;
   thresholds: {
@@ -47,6 +81,8 @@ export interface CloudTelemetrySnapshot {
   slowDb: CloudDbTelemetry[];
   burstyRequests: CloudRequestTelemetry[];
   duplicateReadRequests: CloudRequestTelemetry[];
+  /** Inference stream milestones (#16079), newest first. */
+  streamMilestones: CloudStreamMilestoneTelemetry[];
 }
 
 interface RequestContext {
@@ -66,6 +102,7 @@ interface RequestContext {
 const requestAls = new AsyncLocalStorage<RequestContext>();
 const requests: CloudRequestTelemetry[] = [];
 const dbEvents: CloudDbTelemetry[] = [];
+const streamMilestones: CloudStreamMilestoneTelemetry[] = [];
 
 function numberEnv(name: string, fallback: number): number {
   const raw = typeof process !== "undefined" ? process.env?.[name] : undefined;
@@ -217,10 +254,23 @@ export function getCloudTelemetrySnapshot(limit = 200): CloudTelemetrySnapshot {
     slowDb: db.filter((r) => r.durationMs >= t.slowDbMs),
     burstyRequests: req.filter((r) => r.dbCalls >= t.dbBurstCount),
     duplicateReadRequests: req.filter((r) => r.duplicateDbReadCalls > 0),
+    streamMilestones: streamMilestones.slice(0, limit),
   };
+}
+
+/**
+ * Record one inference stream's milestone boundaries (#16079). Called from the
+ * gateway's off-response-path meter, so it must stay synchronous and cheap:
+ * the event is bounded, pre-shaped by the caller, and pushed to the same
+ * isolate ring buffer as request/db telemetry, where the admin
+ * cloud-observability endpoint reads it back.
+ */
+export function recordCloudStreamMilestones(event: CloudStreamMilestoneTelemetry): void {
+  pushBounded(streamMilestones, event);
 }
 
 export function clearCloudTelemetry(): void {
   requests.length = 0;
   dbEvents.length = 0;
+  streamMilestones.length = 0;
 }

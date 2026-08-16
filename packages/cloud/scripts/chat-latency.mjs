@@ -22,6 +22,7 @@ const SAFE_RESPONSE_HEADERS = [
   "x-eliza-trace-id",
   "x-eliza-preforward-ms",
   "x-eliza-inference-path",
+  "x-eliza-provider-request-id",
   "x-request-id",
 ];
 

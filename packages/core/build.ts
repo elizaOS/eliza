@@ -862,8 +862,14 @@ export async function buildBrowser(
 /**
  * Build for edge runtimes (Vercel Edge, Cloudflare Workers, Deno Deploy)
  */
+type EdgeBundleIo = {
+	readFile: (path: string, encoding: "utf8") => Promise<string>;
+	writeFile: (path: string, contents: string) => Promise<unknown>;
+};
+
 export async function buildEdge(
 	runnerFactory: typeof createBuildRunner = createBuildRunner,
+	edgeBundleIo?: EdgeBundleIo,
 ) {
 	console.log("⚡ Building for Edge...");
 	const startTime = Date.now();
@@ -907,7 +913,7 @@ export async function buildEdge(
 	// `createRequire(import.meta.url)` gets the same guard: workerd rejects
 	// non-file module URLs, and every __require target left in this bundle is
 	// a builtin.
-	const fsp = await import("node:fs/promises");
+	const fsp = edgeBundleIo ?? (await import("node:fs/promises"));
 	const edgeBundlePath = "dist/edge/index.edge.js";
 	let edgeBundle = await fsp.readFile(edgeBundlePath, "utf8");
 	const shimLine =
@@ -1056,6 +1062,7 @@ export async function buildAll(
 	options: {
 		runnerFactory?: typeof createBuildRunner;
 		generateDeclarations?: () => Promise<void>;
+		edgeBundleIo?: EdgeBundleIo;
 	} = {},
 ) {
 	console.log("🚀 Starting dual build process for @elizaos/core");
@@ -1068,7 +1075,7 @@ export async function buildAll(
 	await Promise.all([
 		buildNode(runnerFactory),
 		buildBrowser(runnerFactory),
-		buildEdge(runnerFactory),
+		buildEdge(runnerFactory, options.edgeBundleIo),
 		buildTesting(runnerFactory),
 	]);
 

@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { MAX_CAPTURE_DURATION_SECONDS } from "./lib/capture-output.mjs";
 import {
   captureIos,
   captureIosDevice,
@@ -14,9 +15,7 @@ import {
   erroredLanes,
   iosDeviceConnectionState,
   isLaneRequired,
-  MAX_NODE_TIMER_MS,
   parseArgs,
-  parsePositiveInteger,
   requiredLaneFailures,
   selectIosDevice,
 } from "./walkthrough-device-matrix.mjs";
@@ -104,7 +103,7 @@ describe("walkthrough device matrix required lanes", () => {
       "10junk",
       "NaN",
       "Infinity",
-      String(MAX_NODE_TIMER_MS + 1),
+      String(MAX_CAPTURE_DURATION_SECONDS + 1),
     ]) {
       assert.throws(() => parseArgs(["--duration", bad], {}), /--duration/);
     }
@@ -113,14 +112,38 @@ describe("walkthrough device matrix required lanes", () => {
       /--duration requires an integer/,
     );
   });
-});
 
-describe("parsePositiveInteger", () => {
-  it("accepts complete positive integers in range", () => {
-    assert.equal(parsePositiveInteger("1", "--duration"), 1);
+  // The matrix shares the capture entrypoints' canonical seconds bound so
+  // every accepted duration remains representable as a Node timer delay.
+  it("bounds --duration in seconds, not milliseconds", () => {
     assert.equal(
-      parsePositiveInteger(String(MAX_NODE_TIMER_MS), "--duration"),
-      MAX_NODE_TIMER_MS,
+      parseArgs(["--duration", String(MAX_CAPTURE_DURATION_SECONDS)], {})
+        .duration,
+      MAX_CAPTURE_DURATION_SECONDS,
+    );
+    // Each rejected value overflows Node's timer once converted to milliseconds.
+    for (const overflowing of [
+      String(MAX_CAPTURE_DURATION_SECONDS + 1),
+      "3000000",
+      "2147483647",
+    ]) {
+      assert.throws(
+        () => parseArgs(["--duration", overflowing], {}),
+        /--duration/,
+        `expected --duration ${overflowing} to be rejected`,
+      );
+      // Bind each fixture to the overflow relationship as well as rejection.
+      assert.ok(
+        Number(overflowing) * 1000 > 2_147_483_647,
+        `${overflowing}s must exceed the timer ceiling once converted to ms`,
+      );
+    }
+  });
+
+  it("reports the seconds bound in the --duration error text", () => {
+    assert.throws(
+      () => parseArgs(["--duration", "--platform"], {}),
+      new RegExp(`1 to ${MAX_CAPTURE_DURATION_SECONDS}\\b`),
     );
   });
 });

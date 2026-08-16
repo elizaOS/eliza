@@ -14,6 +14,7 @@ import {
 } from "@elizaos/shared/steward-session-client";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { authMe } from "../api/auth-client";
 import { clearStaleStewardSession } from "../cloud/shell/StewardProviderShared";
 import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import {
@@ -55,6 +56,13 @@ function jsonResponse(status: number, body: unknown): Response {
   } as unknown as Response;
 }
 
+function setStewardAuthedCookie(present: boolean): void {
+  // biome-ignore lint/suspicious/noDocumentCookie: jsdom has no Cookie Store API.
+  document.cookie = present
+    ? "steward-authed=1; Path=/"
+    : "steward-authed=; Max-Age=0; Path=/";
+}
+
 describe("primeAuthStatusProbe + activation reuse", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
   const realFetch = globalThis.fetch;
@@ -63,6 +71,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
     delete (window as Window & { __electrobunWindowId?: number })
       .__electrobunWindowId;
     localStorage.clear();
+    setStewardAuthedCookie(false);
     setBootConfig({ branding: {} });
     __resetAuthStatusForTests();
     setBootConfig({ branding: {} });
@@ -82,6 +91,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       await new Promise((resolve) => setImmediate(resolve));
     });
     globalThis.fetch = realFetch;
+    setStewardAuthedCookie(false);
     delete (window as Window & { __electrobunWindowId?: number })
       .__electrobunWindowId;
     vi.restoreAllMocks();
@@ -104,6 +114,160 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       }),
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("recovers a cookie-only Steward session before preserving the shared binding", async () => {
+    const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
+    const refreshedToken = makeJwt(3600);
+    setBootConfig({ branding: {}, apiBase });
+    savePersistedActiveServer({
+      id: "cloud:shared-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase,
+      accessToken: "shared-agent-token",
+    });
+    clearStoredStewardToken();
+    setStewardAuthedCookie(true);
+    fetchMock.mockResolvedValue(jsonResponse(200, { token: refreshedToken }));
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "/api/auth/steward-refresh",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      credentials: "include",
+    });
+    expect(localStorage.getItem("steward_session_token")).toBe(refreshedToken);
+    expect(loadPersistedActiveServer()).toMatchObject({
+      id: "cloud:shared-agent",
+      apiBase,
+      accessToken: "shared-agent-token",
+    });
+    expect(getBootConfig().apiBase).toBe(apiBase);
+  });
+
+  it("clears a cookie-only shared binding once after authoritative refresh rejection", async () => {
+    const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
+    setBootConfig({ branding: {}, apiBase });
+    savePersistedActiveServer({
+      id: "cloud:shared-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase,
+      accessToken: "stale-token-mirror",
+    });
+    clearStoredStewardToken();
+    setStewardAuthedCookie(true);
+    fetchMock.mockResolvedValue(jsonResponse(401, {}));
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+
+    await waitFor(() =>
+      expect(result.current.state).toMatchObject({
+        phase: "unauthenticated",
+        reason: "remote_auth_required",
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(loadPersistedActiveServer()).toBeNull();
+    expect(getBootConfig().apiBase).toBeUndefined();
+  });
+
+  it("preserves a cookie-only shared binding when refresh is temporarily unavailable", async () => {
+    const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
+    setBootConfig({ branding: {}, apiBase });
+    savePersistedActiveServer({
+      id: "cloud:shared-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase,
+      accessToken: "shared-agent-token",
+    });
+    clearStoredStewardToken();
+    setStewardAuthedCookie(true);
+    fetchMock.mockResolvedValue(jsonResponse(503, {}));
+
+    await expect(authMe()).resolves.toEqual({
+      ok: false,
+      status: 503,
+      reason: "cloud_unavailable",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(loadPersistedActiveServer()).toMatchObject({
+      id: "cloud:shared-agent",
+      apiBase,
+      accessToken: "shared-agent-token",
+    });
+    expect(getBootConfig().apiBase).toBe(apiBase);
+  });
+
+  // Regression for the review-found retry storm: the hook's 10×1s 503 retry
+  // budget exists for the local-agent boot race, and must not re-POST a
+  // throttling Steward refresh endpoint. Exactly one refresh request may
+  // leave the client before the hook settles on server_unavailable.
+  it.each([429, 503])(
+    "surfaces a persistent %d refresh as server_unavailable after exactly one POST",
+    async (status) => {
+      const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
+      setBootConfig({ branding: {}, apiBase });
+      savePersistedActiveServer({
+        id: "cloud:shared-agent",
+        kind: "cloud",
+        label: "Eliza Cloud",
+        apiBase,
+        accessToken: "shared-agent-token",
+      });
+      clearStoredStewardToken();
+      setStewardAuthedCookie(true);
+      fetchMock.mockResolvedValue(jsonResponse(status, {}));
+
+      const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+
+      await waitFor(() =>
+        expect(result.current.state.phase).toBe("server_unavailable"),
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(loadPersistedActiveServer()).toMatchObject({
+        id: "cloud:shared-agent",
+        apiBase,
+        accessToken: "shared-agent-token",
+      });
+    },
+  );
+
+  it("preserves a cookie-only shared binding when refresh answers a malformed 200", async () => {
+    const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
+    setBootConfig({ branding: {}, apiBase });
+    savePersistedActiveServer({
+      id: "cloud:shared-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase,
+      accessToken: "shared-agent-token",
+    });
+    clearStoredStewardToken();
+    setStewardAuthedCookie(true);
+    fetchMock.mockResolvedValue(jsonResponse(200, {}));
+
+    await expect(authMe()).resolves.toEqual({
+      ok: false,
+      status: 503,
+      reason: "cloud_unavailable",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(loadPersistedActiveServer()).toMatchObject({
+      id: "cloud:shared-agent",
+      apiBase,
+      accessToken: "shared-agent-token",
+    });
+    expect(getBootConfig().apiBase).toBe(apiBase);
   });
 
   it("preserves a native owner API-key session without a Steward JWT", async () => {

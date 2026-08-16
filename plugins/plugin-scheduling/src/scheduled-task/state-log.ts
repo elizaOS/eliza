@@ -3,9 +3,10 @@
  *
  * The runner writes one row per state transition. The user-visible
  * `GET /api/lifeops/scheduled-tasks/:id/history` endpoint reads from
- * this log. Default 90-day retention with a nightly rollup pass that
- * folds expired entries into a daily-summary row per task per
- * transition kind.
+ * this log. Default 90-day retention with a nightly rollup pass that folds
+ * expired entries into a daily-summary row per task per transition kind.
+ * The one `scheduled` creation receipt stays raw for the task's lifetime so
+ * idempotent request replay retains the same durable proof identity.
  */
 
 import type {
@@ -60,6 +61,7 @@ export function createInMemoryScheduledTaskLogStore(): ScheduledTaskLogStore {
         (r) =>
           r.agentId === agentId &&
           !r.rolledUp &&
+          r.transition !== "scheduled" &&
           r.occurredAtIso < olderThanIso,
       );
       if (expired.length === 0) {

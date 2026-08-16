@@ -36,6 +36,7 @@ import {
 	type DocumentListCursor,
 	type DocumentListQueryParams,
 	type DocumentListRequesterRole,
+	type DocumentMutationSnapshot,
 	type IAgentRuntime,
 	type Memory,
 	MemoryType,
@@ -137,6 +138,7 @@ const HYBRID_BM25_WEIGHT = 1 - HYBRID_VECTOR_WEIGHT;
 const DOCUMENTS_TABLE = "documents";
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 const PRE_DOCUMENTS_TABLE = "knowledge";
+const DOCUMENT_INGESTION_PENDING_TIMEOUT_MS = 5 * 60 * 1_000;
 const CHARACTER_DOCUMENT_EMBEDDING_WAIT_TIMEOUT_MS = 120_000;
 const CHARACTER_DOCUMENT_EMBEDDING_WAIT_INTERVAL_MS = 1_000;
 const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
@@ -909,22 +911,73 @@ export class DocumentService extends Service {
 			(existingDocument.metadata?.type === MemoryType.DOCUMENT ||
 				existingDocument.metadata?.type === MemoryType.CUSTOM)
 		) {
-			const fragmentCount = await this.getDocumentFragmentCount(contentBasedId);
-			if (fragmentCount === 0) {
+			const snapshot = readDocumentMutationSnapshot(existingDocument);
+			if (!snapshot) {
+				const metadata = existingDocument.metadata as
+					| Record<string, unknown>
+					| undefined;
+				if (
+					metadata?.ingestionAttemptId !== undefined ||
+					metadata?.ingestionState !== undefined
+				) {
+					throw new ElizaError(
+						"Stored document ingestion metadata is invalid",
+						{
+							code: "DOCUMENT_AUTHORIZATION_INVALID",
+							context: { documentId: contentBasedId },
+							severity: "fatal",
+						},
+					);
+				}
+				const legacyFragmentCount =
+					await this.getDocumentFragmentCount(contentBasedId);
+				if (legacyFragmentCount > 0) {
+					return {
+						clientDocumentId: contentBasedId,
+						storedDocumentMemoryId: existingDocument.id as UUID,
+						fragmentCount: legacyFragmentCount,
+					};
+				}
 				logger.warn(
-					`"${options.originalFilename}" already exists with 0 fragments; deleting stale document stub and reprocessing`,
+					`"${options.originalFilename}" has a legacy zero-fragment stub; deleting it before attempt-fenced reprocessing`,
 				);
 				await this.runtime.deleteMemory(contentBasedId);
-			} else {
-				logger.info(
-					`"${options.originalFilename}" already exists with ${fragmentCount} fragments - skipping`,
+			} else if (snapshot.ingestionState === "pending") {
+				if (!this.pendingIngestionHasExpired(existingDocument)) {
+					throw new ElizaError(
+						`Document ${contentBasedId} ingestion is already in progress`,
+						{
+							code: "DOCUMENT_INGESTION_IN_PROGRESS",
+							context: { documentId: contentBasedId },
+						},
+					);
+				}
+				logger.warn(
+					`"${options.originalFilename}" has an expired pending ingestion; deleting its exact snapshot and reprocessing`,
 				);
-
-				return {
+				await this.deleteDocumentSnapshotForIngestion(contentBasedId, snapshot);
+				return this.processDocument({
+					...options,
 					clientDocumentId: contentBasedId,
-					storedDocumentMemoryId: existingDocument.id as UUID,
-					fragmentCount,
-				};
+				});
+			} else {
+				const fragmentCount =
+					await this.getDocumentFragmentCount(contentBasedId);
+				if (snapshot.ingestionState !== "failed" && fragmentCount > 0) {
+					logger.info(
+						`"${options.originalFilename}" already exists with ${fragmentCount} fragments - skipping`,
+					);
+
+					return {
+						clientDocumentId: contentBasedId,
+						storedDocumentMemoryId: existingDocument.id as UUID,
+						fragmentCount,
+					};
+				}
+				logger.warn(
+					`"${options.originalFilename}" has an incomplete prior ingestion; deleting its exact snapshot and reprocessing`,
+				);
+				await this.deleteDocumentSnapshotForIngestion(contentBasedId, snapshot);
 			}
 		}
 
@@ -1089,6 +1142,7 @@ export class DocumentService extends Service {
 						: agentId;
 			const scopedEntityId =
 				documentScope === "global" ? undefined : targetEntityId;
+			const ingestionAttemptId = this.runtime.createRunId();
 			const scopedMetadata = {
 				...metadata,
 				scope: documentScope,
@@ -1097,6 +1151,8 @@ export class DocumentService extends Service {
 				addedByRole: addedByRole ?? "RUNTIME",
 				addedFrom: addedFrom ?? "runtime-internal",
 				addedAt: Date.now(),
+				ingestionAttemptId,
+				ingestionState: "pending" as const,
 			};
 
 			const documentMemory = createDocumentMemory({
@@ -1120,53 +1176,124 @@ export class DocumentService extends Service {
 				roomId: roomId || agentId,
 				entityId: targetEntityId,
 			};
-
-			let fragmentCount: number;
 			if (fragments !== undefined) {
 				memoryWithScope.content = {
 					...memoryWithScope.content,
 					text: this.runtime.redactSecrets(extractedText),
 				};
-				const fragmentMemories = await preparePreChunkedFragmentMemories({
-					runtime: this.runtime,
-					documentId: clientDocumentId,
-					fragments,
-					agentId,
-					roomId: roomId || agentId,
-					entityId: targetEntityId,
-					worldId: worldId || agentId,
-					documentTitle: originalFilename,
-					documentMetadata:
-						(documentMemory.metadata as Record<string, unknown>) ?? undefined,
-				});
-				await this.runtime.createMemories([
+			}
+
+			await this.runtime.createMemory(memoryWithScope, DOCUMENTS_TABLE);
+			const persistedDocument =
+				await this.runtime.getMemoryById(clientDocumentId);
+			const ingestionSnapshot = persistedDocument
+				? readDocumentMutationSnapshot(persistedDocument)
+				: null;
+			if (
+				!persistedDocument ||
+				!ingestionSnapshot ||
+				ingestionSnapshot.ingestionAttemptId !== ingestionAttemptId ||
+				ingestionSnapshot.ingestionState !== "pending"
+			) {
+				const existingFragmentCount =
+					await this.getDocumentFragmentCount(clientDocumentId);
+				if (
+					persistedDocument?.id &&
+					ingestionSnapshot &&
+					(ingestionSnapshot.ingestionState === "ready" ||
+						ingestionSnapshot.ingestionState === undefined) &&
+					existingFragmentCount > 0
+				) {
+					return {
+						clientDocumentId,
+						storedDocumentMemoryId: persistedDocument.id as UUID,
+						fragmentCount: existingFragmentCount,
+					};
+				}
+				throw new ElizaError(
+					`Document ${clientDocumentId} ingestion is owned by another attempt`,
 					{
-						memory: memoryWithScope,
-						tableName: DOCUMENTS_TABLE,
-						unique: false,
+						code: "DOCUMENT_INGESTION_IN_PROGRESS",
+						context: { clientDocumentId },
 					},
-					...fragmentMemories.map((memory) => ({
-						memory,
-						tableName: DOCUMENT_FRAGMENTS_TABLE,
-						unique: false,
-					})),
-				]);
-				fragmentCount = fragmentMemories.length;
-			} else {
-				await this.runtime.createMemory(memoryWithScope, DOCUMENTS_TABLE);
-				fragmentCount = await processFragmentsSynchronously({
-					runtime: this.runtime,
+				);
+			}
+
+			let fragmentCount: number;
+			try {
+				if (fragments !== undefined) {
+					const fragmentMemories = await preparePreChunkedFragmentMemories({
+						runtime: this.runtime,
+						documentId: clientDocumentId,
+						fragments,
+						agentId,
+						roomId: roomId || agentId,
+						entityId: targetEntityId,
+						worldId: worldId || agentId,
+						documentTitle: originalFilename,
+						documentMetadata:
+							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
+					});
+					await this.runtime.createMemories(
+						fragmentMemories.map((memory) => ({
+							memory,
+							tableName: DOCUMENT_FRAGMENTS_TABLE,
+							unique: false,
+						})),
+					);
+					fragmentCount = fragmentMemories.length;
+				} else {
+					fragmentCount = await processFragmentsSynchronously({
+						runtime: this.runtime,
+						documentId: clientDocumentId,
+						fullDocumentText: extractedText,
+						agentId,
+						contentType,
+						roomId: roomId || agentId,
+						entityId: targetEntityId,
+						worldId: worldId || agentId,
+						documentTitle: originalFilename,
+						documentMetadata:
+							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
+					});
+				}
+				if (fragmentCount === 0) {
+					throw new ElizaError(
+						`All fragments failed processing for ${originalFilename}`,
+						{
+							code: "DOCUMENT_EMBED_FAILED",
+							context: { originalFilename, contentType, clientDocumentId },
+						},
+					);
+				}
+
+				const completed = await this.runtime.adapter.compareAndSwapDocument({
+					...this.ingestionMutationContext(),
 					documentId: clientDocumentId,
-					fullDocumentText: extractedText,
-					agentId,
-					contentType,
-					roomId: roomId || agentId,
-					entityId: targetEntityId,
-					worldId: worldId || agentId,
-					documentTitle: originalFilename,
-					documentMetadata:
-						(documentMemory.metadata as Record<string, unknown>) ?? undefined,
+					expected: ingestionSnapshot,
+					replacement: {
+						...persistedDocument,
+						metadata: {
+							...(persistedDocument.metadata ?? {}),
+							ingestionState: "ready",
+						} as unknown as Metadata,
+					},
 				});
+				if (completed.status !== "updated") {
+					throw new ElizaError(
+						"Document ingestion ownership changed before completion",
+						{
+							code: "DOCUMENT_INGESTION_CONFLICT",
+							context: { clientDocumentId, status: completed.status },
+						},
+					);
+				}
+			} catch (fragmentError) {
+				await this.compensateFailedIngestion(
+					clientDocumentId,
+					ingestionAttemptId,
+				);
+				throw fragmentError;
 			}
 
 			logger.debug(
@@ -1189,19 +1316,134 @@ export class DocumentService extends Service {
 		}
 	}
 
+	private ingestionMutationContext() {
+		return {
+			agentId: this.runtime.agentId,
+			requesterEntityId: this.runtime.agentId,
+			requesterRoomIds: [] as UUID[],
+			requesterRole: "OWNER" as const,
+		};
+	}
+
+	private pendingIngestionHasExpired(document: Memory): boolean {
+		const addedAt = (document.metadata as DocumentMemoryMetadata | undefined)
+			?.addedAt;
+		return (
+			typeof addedAt === "number" &&
+			Number.isFinite(addedAt) &&
+			Date.now() - addedAt >= DOCUMENT_INGESTION_PENDING_TIMEOUT_MS
+		);
+	}
+
+	private async deleteDocumentSnapshotForIngestion(
+		documentId: UUID,
+		expected: DocumentMutationSnapshot,
+	): Promise<void> {
+		const deleted = await this.runtime.adapter.deleteDocumentWithSnapshot({
+			...this.ingestionMutationContext(),
+			documentId,
+			expected,
+		});
+		if (deleted.status !== "deleted") {
+			throw new ElizaError(
+				"Document ingestion snapshot changed before cleanup",
+				{
+					code: "DOCUMENT_INGESTION_CONFLICT",
+					context: { documentId, status: deleted.status },
+				},
+			);
+		}
+	}
+
+	/**
+	 * Persist a failed lifecycle marker before transactional cleanup. The marker
+	 * survives a cleanup outage, so retries never accept partial fragments as a
+	 * healthy document. Every write and delete is fenced by the attempt token.
+	 */
+	private async compensateFailedIngestion(
+		documentId: UUID,
+		ingestionAttemptId: UUID,
+	): Promise<void> {
+		try {
+			const current = await this.runtime.getMemoryById(documentId);
+			const pendingSnapshot = current
+				? readDocumentMutationSnapshot(current)
+				: null;
+			if (
+				!current ||
+				!pendingSnapshot ||
+				pendingSnapshot.ingestionAttemptId !== ingestionAttemptId ||
+				pendingSnapshot.ingestionState !== "pending"
+			) {
+				throw new ElizaError(
+					"Document ingestion ownership changed before compensation",
+					{
+						code: "DOCUMENT_INGESTION_CONFLICT",
+						context: { documentId },
+					},
+				);
+			}
+
+			const failed = await this.runtime.adapter.compareAndSwapDocument({
+				...this.ingestionMutationContext(),
+				documentId,
+				expected: pendingSnapshot,
+				replacement: {
+					...current,
+					metadata: {
+						...(current.metadata ?? {}),
+						ingestionState: "failed" as const,
+					} as unknown as Metadata,
+				},
+			});
+			if (failed.status !== "updated") {
+				throw new ElizaError(
+					"Document ingestion ownership changed while marking failure",
+					{
+						code: "DOCUMENT_INGESTION_CONFLICT",
+						context: { documentId, status: failed.status },
+					},
+				);
+			}
+			const failedSnapshot = readDocumentMutationSnapshot(failed.document);
+			if (
+				!failedSnapshot ||
+				failedSnapshot.ingestionAttemptId !== ingestionAttemptId ||
+				failedSnapshot.ingestionState !== "failed"
+			) {
+				throw new ElizaError("Failed document lifecycle snapshot is invalid", {
+					code: "DOCUMENT_INGESTION_CONFLICT",
+					context: { documentId },
+				});
+			}
+
+			await this.deleteDocumentSnapshotForIngestion(documentId, failedSnapshot);
+			logger.warn(
+				`DocumentService: rolled back failed ingestion ${ingestionAttemptId} for document ${documentId}`,
+			);
+		} catch (cleanupError) {
+			// error-policy:J7 Cleanup is best effort and must not mask the original
+			// extraction/embedding failure. A successfully persisted `failed` marker
+			// makes the next retry clean the exact snapshot before starting again.
+			this.runtime.reportError(
+				"DocumentService.compensateFailedIngestion",
+				cleanupError instanceof Error
+					? cleanupError
+					: new Error(String(cleanupError)),
+				{ documentId, ingestionAttemptId },
+			);
+		}
+	}
+
 	private async getDocumentFragmentCount(documentId: UUID): Promise<number> {
-		const fragments = await this.runtime.getMemories({
+		return this.runtime.countMemories({
 			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			agentId: this.runtime.agentId,
-			count: 10_000,
+			metadata: {
+				type: MemoryType.FRAGMENT,
+				documentId,
+			},
 		});
-
-		return fragments.filter(
-			(f) =>
-				f.metadata?.type === MemoryType.FRAGMENT &&
-				(f.metadata as DocumentFragmentMemoryMetadata | undefined)
-					?.documentId === documentId,
-		).length;
 	}
 
 	async checkExistingDocument(documentId: UUID): Promise<boolean> {
@@ -1214,12 +1456,24 @@ export class DocumentService extends Service {
 			existingDocument.metadata?.type === MemoryType.DOCUMENT ||
 			existingDocument.metadata?.type === MemoryType.CUSTOM
 		) {
-			const fragmentCount = await this.getDocumentFragmentCount(documentId);
-			if (fragmentCount === 0) {
+			const snapshot = readDocumentMutationSnapshot(existingDocument);
+			if (!snapshot) {
+				return false;
+			}
+			if (snapshot.ingestionState === "pending") {
+				if (!this.pendingIngestionHasExpired(existingDocument)) return true;
 				logger.warn(
-					`Document ${documentId} already exists with 0 fragments; deleting stale document stub and reprocessing`,
+					`Document ${documentId} has an expired pending ingestion; deleting its exact snapshot before retry`,
 				);
-				await this.runtime.deleteMemory(documentId);
+				await this.deleteDocumentSnapshotForIngestion(documentId, snapshot);
+				return false;
+			}
+			const fragmentCount = await this.getDocumentFragmentCount(documentId);
+			if (snapshot.ingestionState === "failed" || fragmentCount === 0) {
+				logger.warn(
+					`Document ${documentId} has an incomplete ingestion; deleting its exact snapshot before retry`,
+				);
+				await this.deleteDocumentSnapshotForIngestion(documentId, snapshot);
 				return false;
 			}
 		}

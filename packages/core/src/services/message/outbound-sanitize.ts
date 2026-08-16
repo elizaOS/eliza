@@ -75,6 +75,85 @@ const INLINE_CODE_RE = /(`+)[^`\n]+?\1(?!`)/g;
 // NUL-marker on the wire.
 const CODE_SENTINEL_PREFIX = "\x00CB";
 
+const PSEUDO_LINK_START_RE = /\[LINK:/gi;
+
+function isValidPseudoLinkUrl(url: string): boolean {
+	if (/\s/.test(url)) return false;
+	try {
+		const protocol = new URL(url).protocol;
+		return protocol === "http:" || protocol === "https:";
+	} catch {
+		// error-policy:J3 model-authored pseudo-link URLs fail closed.
+		return false;
+	}
+}
+
+function findBalancedLabelEnd(text: string, start: number): number | undefined {
+	let depth = 1;
+	for (let index = start; index < text.length; index++) {
+		if (text[index] === "\\") {
+			index++;
+			continue;
+		}
+		if (text[index] === "(") depth++;
+		if (text[index] !== ")") continue;
+		depth--;
+		if (depth === 0) return index;
+	}
+	return undefined;
+}
+
+function formatPseudoLink(url: string, label: string | undefined): string {
+	if (!label?.trim()) return url;
+	const safeLabel = label.trim().replace(/\\|\[|\]/g, "\\$&");
+	const safeDestination = url
+		.replace(/\\/g, "%5C")
+		.replace(/</g, "%3C")
+		.replace(/>/g, "%3E")
+		.replace(/[()]/g, "\\$&");
+	return `[${safeLabel}](${safeDestination})`;
+}
+
+/**
+ * Degrade model-invented `[LINK:<url>](label)` / `[LINK:<url>]` markers to
+ * ordinary Markdown without allowing label delimiters to change the link
+ * destination. Parentheses in labels are balanced because generated titles
+ * commonly contain them; malformed markers remain visible instead of being
+ * partially rewritten.
+ */
+function degradePseudoLinks(text: string): string {
+	let output = "";
+	let cursor = 0;
+	PSEUDO_LINK_START_RE.lastIndex = 0;
+	for (
+		let match = PSEUDO_LINK_START_RE.exec(text);
+		match;
+		match = PSEUDO_LINK_START_RE.exec(text)
+	) {
+		const markerStart = match.index;
+		const urlStart = PSEUDO_LINK_START_RE.lastIndex;
+		const urlEnd = text.indexOf("]", urlStart);
+		if (urlEnd < 0) break;
+		const url = text.slice(urlStart, urlEnd);
+		if (!isValidPseudoLinkUrl(url)) continue;
+
+		let markerEnd = urlEnd + 1;
+		let label: string | undefined;
+		if (text[markerEnd] === "(") {
+			const labelEnd = findBalancedLabelEnd(text, markerEnd + 1);
+			if (labelEnd === undefined) continue;
+			label = text.slice(markerEnd + 1, labelEnd);
+			markerEnd = labelEnd + 1;
+		}
+
+		output += text.slice(cursor, markerStart);
+		output += formatPseudoLink(url, label);
+		cursor = markerEnd;
+		PSEUDO_LINK_START_RE.lastIndex = markerEnd;
+	}
+	return cursor === 0 ? text : output + text.slice(cursor);
+}
+
 /**
  * Strip machine syntax from outbound agent text. Paired tags are removed with
  * their contents; an unclosed tag is removed to end-of-text (the live-observed
@@ -84,9 +163,10 @@ const CODE_SENTINEL_PREFIX = "\x00CB";
  * already-sanitized text is a no-op.
  */
 export function sanitizeOutboundText(text: string): string {
-	if (!text || !QUICK_TAG_RE.test(text)) {
+	if (!text || (!QUICK_TAG_RE.test(text) && !PSEUDO_LINK_START_RE.test(text))) {
 		return text;
 	}
+	PSEUDO_LINK_START_RE.lastIndex = 0;
 
 	const codeSpans: string[] = [];
 	const saveSpan = (match: string): string => {
@@ -99,6 +179,8 @@ export function sanitizeOutboundText(text: string): string {
 	processed = processed.replace(INLINE_CODE_RE, saveSpan);
 
 	processed = processed.replace(SELF_CLOSING_ARTIFACTS_RE, "");
+
+	processed = degradePseudoLinks(processed);
 
 	for (const tag of MACHINE_SYNTAX_TAGS) {
 		const paired = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "gi");

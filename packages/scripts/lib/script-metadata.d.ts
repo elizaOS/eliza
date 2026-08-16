@@ -58,6 +58,10 @@ export declare function resolveTestLaneDirs(
   opts?: WorkspaceDiscoveryOptions,
 ): string[];
 
+export declare function resolveTestLaneDeclarations(
+  opts?: WorkspaceDiscoveryOptions,
+): Map<string, unknown>;
+
 export declare function resolveBuildModelExceptions(
   opts?: WorkspaceDiscoveryOptions,
 ): {

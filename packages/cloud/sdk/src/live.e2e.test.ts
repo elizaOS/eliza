@@ -70,9 +70,10 @@ const profileWriteDescribe =
   liveEnabled && apiKey && profileWriteEnabled && destructiveEnabled
     ? describe
     : describe.skip;
-// Live public endpoints regularly cross Vitest's 5s default on hosted CI.
-// This is a timeout budget for real network work, not an artificial delay.
-const LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS = 15_000;
+// Live public endpoints regularly approach 15s during a staging rollout on
+// hosted CI. This remains a bounded timeout for real network work, not an
+// artificial delay or a soft-fail path.
+const LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS = 30_000;
 const openApiIt =
   apiKey || process.env.ELIZA_CLOUD_SDK_LIVE_OPENAPI === "1" ? it : it.skip;
 
@@ -179,13 +180,19 @@ liveDescribe("ElizaCloudClient real API e2e: pairing token exchange", () => {
 });
 
 authedDescribe("ElizaCloudClient real API e2e: API-key read paths", () => {
-  it("sets credentials after construction and gets the authenticated profile", async () => {
-    const client = new ElizaCloudClient({ baseUrl, apiBaseUrl });
-    client.setApiKey(apiKey);
-    client.setBearerToken(undefined);
+  it(
+    "sets credentials after construction and gets the authenticated profile",
+    async () => {
+      const client = new ElizaCloudClient({ baseUrl, apiBaseUrl });
+      client.setApiKey(apiKey);
+      client.setBearerToken(undefined);
 
-    await expect(client.getUser()).resolves.toMatchObject({ success: true });
-  });
+      await expect(client.getUser()).resolves.toMatchObject({ success: true });
+    },
+    // Same live endpoint budget as the baseline siblings (#19991): this is a
+    // real network read, and Vitest's 5s default flakes against the live API.
+    LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS,
+  );
 
   it(
     "gets credit balance and summary",
