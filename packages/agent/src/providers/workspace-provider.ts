@@ -57,7 +57,9 @@ async function getFiles(dir: string): Promise<WorkspaceInitFile[]> {
 /** @internal Exported for testing. */
 export function truncate(content: string, max: number): string {
   if (content.length <= max) return content;
-  return `${content.slice(0, max)}\n\n[... truncated at ${max.toLocaleString()} chars]`;
+  const suffix = `\n\n[... truncated at ${max.toLocaleString()} chars]`;
+  if (max <= suffix.length) return suffix.slice(0, max);
+  return `${content.slice(0, max - suffix.length)}${suffix}`;
 }
 
 /** @internal Exported for testing. */
