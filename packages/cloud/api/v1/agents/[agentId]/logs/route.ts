@@ -27,6 +27,22 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
+const DEFAULT_TAIL = 100;
+const MAX_TAIL = 5000;
+const CANONICAL_POSITIVE_INTEGER = /^[1-9]\d*$/;
+
+function parseTail(rawTail: string | undefined): number | null {
+  if (rawTail === undefined) {
+    return DEFAULT_TAIL;
+  }
+  if (!CANONICAL_POSITIVE_INTEGER.test(rawTail)) {
+    return null;
+  }
+
+  const tail = Number(rawTail);
+  return Number.isSafeInteger(tail) && tail <= MAX_TAIL ? tail : null;
+}
+
 app.get("/", async (c) => {
   try {
     await requireServiceKey(c);
@@ -37,11 +53,17 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
 
-    const rawTail = parseInt(c.req.query("tail") ?? "100", 10);
-    const tail = Math.max(
-      1,
-      Math.min(Number.isFinite(rawTail) ? rawTail : 100, 5000),
-    );
+    const tail = parseTail(c.req.query("tail"));
+    if (tail === null) {
+      // error-policy:J3 reject malformed request input instead of coercing or clamping it.
+      return c.json(
+        {
+          success: false,
+          error: `tail must be a whole number between 1 and ${MAX_TAIL}`,
+        },
+        400,
+      );
+    }
 
     const enqueueResult = await provisioningJobService.enqueueAgentLogsOnce({
       agentId,
