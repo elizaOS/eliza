@@ -2,8 +2,8 @@
  * Guards the Worker secret/var namespace: Cloudflare rejects `wrangler secret
  * put NAME` with error 10053 when the served Worker version already defines
  * NAME as a plain [vars] binding. This collision class caused two live
- * incidents (CARTESIA_API_KEY at launch; PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED
- * on the 2026-08-16 staging edge flip). Every workflow-published secret is
+ * incidents (CARTESIA_API_KEY at launch; the legacy Personal Shared Telegram
+ * edge flag on the 2026-08-16 staging flip). Every workflow-published secret is
  * enumerated here with the environments it targets; the test fails when
  * wrangler.toml defines the same name as a var for a targeted environment —
  * and when a new `secret put` appears in a workflow without a mapping entry.
@@ -52,7 +52,10 @@ const PUBLISHED_WORKER_SECRETS: Array<{ name: string; envs: string[] }> = [
   { name: "CARTESIA_API_KEY", envs: ["staging", "production"] },
   { name: "STAGING_SESSION_EXCHANGE_ENABLED", envs: ["staging"] },
   // activate-personal-shared-telegram-edge.yml (staging-only protected cutover)
-  { name: "PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED", envs: ["staging"] },
+  {
+    name: "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED",
+    envs: ["staging"],
+  },
 ];
 
 describe("Worker secret/var collision lint (CF error 10053 class)", () => {
@@ -108,16 +111,18 @@ describe("Worker secret/var collision lint (CF error 10053 class)", () => {
     expect([...unmapped].sort()).toEqual([]);
   });
 
-  test("prophylactic: the production edge flip requires removing the production var first", () => {
-    // The staging incident repeats verbatim on the production cutover unless
-    // [env.production.vars] drops PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED before
-    // any workflow publishes it as a production secret. This assertion is the
-    // tripwire: whoever extends the activation workflow to production must
-    // delete the var in the same change (this test's mapping gains
-    // "production" then, and the collision test above enforces the removal).
+  test("keeps production on the inert legacy off flag without defining the cutover binding", () => {
+    // `keep_vars` may retain the legacy plaintext binding in deployed versions.
+    // Runtime authorization reads only the fresh cutover name, so production
+    // keeps the legacy value explicitly off and must not define the new name.
     expect(
       vars.get("production")?.has("PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED") ??
         false,
     ).toBe(true);
+    expect(
+      vars
+        .get("production")
+        ?.has("PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED") ?? false,
+    ).toBe(false);
   });
 });
