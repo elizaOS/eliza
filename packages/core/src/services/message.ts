@@ -8631,9 +8631,26 @@ export async function runV5MessageRuntimeStage1(args: {
 				collectedCandidateNames.has(normalizeActionIdentifier(resolved.name))
 			);
 		});
+		// The privacy denial is only terminal when NO ungated sibling can serve
+		// the ask. Reminders have one: the agent-level TRIGGER action claims
+		// "remind me …" and legitimately works in group channels (observed live:
+		// in-channel triggers created and fired there for months; the denial
+		// regressed that the moment OWNER_REMINDERS got named as the candidate).
+		// When the rejected candidates are reminder/alarm-shaped and TRIGGER
+		// survived collection, let the turn plan — the trigger path serves it.
+		const rejectedReminderish =
+			candidateGateDiagnostics.gateRejectedExplicitCandidates.some((name) => {
+				const normalized = normalizeActionIdentifier(name);
+				return (
+					normalized.includes("REMINDER") || normalized.includes("ALARM")
+				);
+			});
+		const ungatedTriggerSiblingAvailable =
+			rejectedReminderish && collectedCandidateNames.has("TRIGGER");
 		if (
 			candidateGateDiagnostics.gateRejectedExplicitCandidates.length > 0 &&
-			!anyNamedStageOneCandidateSurvived
+			!anyNamedStageOneCandidateSurvived &&
+			!ungatedTriggerSiblingAvailable
 		) {
 			return {
 				kind: "direct_reply",
