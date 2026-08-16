@@ -1,6 +1,6 @@
 /** Runs a trusted messaging delivery through one rowless personal Shared turn. */
 
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
@@ -30,6 +30,25 @@ const MAX_TELEGRAM_VOICE_BASE64_LENGTH =
 const DEFAULT_WHISPER_MODEL = "Systran/faster-whisper-small";
 const FAILURE_STAGE_HEADER = "X-Eliza-Failure-Stage";
 const FAILURE_NAME_HEADER = "X-Eliza-Failure-Name";
+
+function appendStageTiming(
+  c: Context<AppEnv>,
+  name:
+    | "authentication"
+    | "validation"
+    | "worker_context"
+    | "account"
+    | "prewarm"
+    | "shared"
+    | "dedicated",
+  startedAt: number,
+): void {
+  c.header(
+    "Server-Timing",
+    `${name};dur=${(performance.now() - startedAt).toFixed(1)}`,
+    { append: true },
+  );
+}
 
 type DeliveryStage =
   | "authentication"
@@ -196,8 +215,10 @@ const app = new Hono<AppEnv>();
 app.post("/", async (c) => {
   let stage: DeliveryStage = "authentication";
   try {
+    const authStartedAt = performance.now();
     const auth = await requireInternalAuth(c);
     if (auth instanceof Response) return auth;
+    appendStageTiming(c, "authentication", authStartedAt);
     if (
       auth.service !== "webhook-gateway" &&
       auth.service !== "discord-gateway" &&
@@ -207,6 +228,7 @@ app.post("/", async (c) => {
     }
 
     stage = "validation";
+    const validationStartedAt = performance.now();
     let raw: unknown;
     try {
       raw = await c.req.json();
@@ -228,6 +250,7 @@ app.post("/", async (c) => {
         "validation_error",
       );
     }
+    appendStageTiming(c, "validation", validationStartedAt);
     let telegramVoiceBytes: Uint8Array | undefined;
     if (parsed.data.platform === "telegram" && parsed.data.voiceNote) {
       try {
@@ -244,6 +267,7 @@ app.post("/", async (c) => {
     }
 
     stage = "worker_context";
+    const workerContextStartedAt = performance.now();
     const worker = resolveSharedRuntimeWorkerRequestContext(c);
     if ("error" in worker) {
       return c.json(
@@ -257,6 +281,7 @@ app.post("/", async (c) => {
         { "Retry-After": "1" },
       );
     }
+    appendStageTiming(c, "worker_context", workerContextStartedAt);
 
     stage = "account_resolution";
     const accountStartedAt = performance.now();
@@ -304,7 +329,9 @@ app.post("/", async (c) => {
       isNewPersonalAccount = phoneAccount.isNew;
     }
     const accountMs = performance.now() - accountStartedAt;
-    c.header("Server-Timing", `account;dur=${accountMs.toFixed(1)}`);
+    c.header("Server-Timing", `account;dur=${accountMs.toFixed(1)}`, {
+      append: true,
+    });
     const agent = personalSharedAgent({
       userId: account.userId,
       organizationId: account.organizationId,
@@ -545,12 +572,7 @@ app.post("/", async (c) => {
           "service_unavailable",
         );
       }
-      c.header(
-        "Server-Timing",
-        `account;dur=${accountMs.toFixed(1)}, dedicated;dur=${(
-          performance.now() - dedicatedStartedAt
-        ).toFixed(1)}`,
-      );
+      appendStageTiming(c, "dedicated", dedicatedStartedAt);
       return c.json({
         success: true,
         data: {
@@ -592,12 +614,12 @@ app.post("/", async (c) => {
           }
         : undefined,
     );
-    c.header(
-      "Server-Timing",
-      `account;dur=${accountMs.toFixed(1)}, ${
-        prewarmMs === undefined ? "" : `prewarm;dur=${prewarmMs.toFixed(1)}, `
-      }shared;dur=${(performance.now() - sharedStartedAt).toFixed(1)}`,
-    );
+    if (prewarmMs !== undefined) {
+      c.header("Server-Timing", `prewarm;dur=${prewarmMs.toFixed(1)}`, {
+        append: true,
+      });
+    }
+    appendStageTiming(c, "shared", sharedStartedAt);
 
     return c.json({
       success: true,
