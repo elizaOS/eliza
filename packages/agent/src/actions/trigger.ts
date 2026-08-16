@@ -1160,6 +1160,13 @@ export const triggerAction: Action = {
   ): Promise<boolean> => {
     const params = readParams(options);
     const op = readString(params.action ?? params.subaction ?? params.op);
+    // Collection-time capability check runs with NO params (the planner has
+    // not emitted a call yet) — requiring `op` here silently dropped TRIGGER
+    // from every planner surface (observed live: a group-channel "remind me
+    // in 3 minutes" had no reminder tool because TRIGGER validate-rejected
+    // at collection). Available when uncalled; op validity is enforced when
+    // a concrete call arrives.
+    if (op === undefined && Object.keys(params).length === 0) return true;
     return op !== undefined && isTriggerOp(op);
   },
 

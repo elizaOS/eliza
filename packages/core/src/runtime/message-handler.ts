@@ -262,9 +262,17 @@ const EXPLICIT_MEDIA_GENERATION_REQUEST_RE =
 	/\b(?:generate|make|draw|create|render|paint|produce|design)\b[^.!?]{0,64}\b(?:image|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif|video|animation|clip|music|song|audio|sound(?:\s?effect)?|sfx|voice(?:over)?|speech)s?\b/i;
 
 /** Capability-denial reply shape ("can't do that here — no video tools in
- * this setup", "I don't have an image generator"). */
+ * this setup", "I don't have an image generator", "that's a private
+ * surface"). The private-surface arm exists because the denial text this
+ * runtime itself ships in group channels becomes room history that stage-1
+ * then parrots VERBATIM for asks an ungated sibling could serve (observed
+ * live: "remind me in 3 minutes" denied in one stage with empty contexts). */
 const CAPABILITY_DENIAL_REPLY_RE =
-	/\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|capabilit|action|model|service|setup|environment)/i;
+	/\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|capabilit|action|model|service|setup|environment)|private surface/i;
+
+/** Explicit reminder/alarm request shape — as unambiguous as an ask gets. */
+const EXPLICIT_REMINDER_REQUEST_RE =
+	/\bremind me\b|\bset (?:a |an )?(?:reminder|alarm)\b/i;
 
 export function routeMessageHandlerOutput(
 	output: V5MessageHandlerOutput,
@@ -319,19 +327,32 @@ export function routeMessageHandlerOutput(
 	// Seeding is applied ONLY on routes that enter the planner: a simple-path
 	// clarify ("a picture of what exactly?") must stay a final reply, so the
 	// seed never by itself converts a simple turn into planning.
-	const seedMediaCandidate = (): void => {
-		if (!isExplicitMediaAsk) return;
+	const isExplicitReminderAsk = EXPLICIT_REMINDER_REQUEST_RE.test(
+		messageTextForRouting,
+	);
+	const seedCandidate = (name: string): void => {
 		if (
 			(output.plan.candidateActions ?? []).some(
-				(name) => String(name).trim().toUpperCase() === "GENERATE_MEDIA",
+				(existing) => String(existing).trim().toUpperCase() === name,
 			)
 		) {
 			return;
 		}
 		output.plan.candidateActions = [
 			...(output.plan.candidateActions ?? []),
-			"GENERATE_MEDIA",
+			name,
 		];
+	};
+	const seedMediaCandidate = (): void => {
+		if (isExplicitMediaAsk) seedCandidate("GENERATE_MEDIA");
+		// Both reminder siblings ride together: the owner surface serves
+		// DM/api rooms, the ungated TRIGGER serves group channels — the
+		// gate-rejection stand-down downstream picks whichever this surface
+		// allows.
+		if (isExplicitReminderAsk) {
+			seedCandidate("OWNER_REMINDERS");
+			seedCandidate("TRIGGER");
+		}
 	};
 	const candidateActions = output.plan.candidateActions ?? [];
 	const hasCandidateActions = candidateActions.length > 0;
@@ -374,7 +395,11 @@ export function routeMessageHandlerOutput(
 		return {
 			type: "planning_needed",
 			output,
-			contexts: isExplicitMediaAsk ? ["media"] : ["general"],
+			contexts: isExplicitMediaAsk
+				? ["media"]
+				: isExplicitReminderAsk
+					? ["tasks"]
+					: ["general"],
 		};
 	}
 
@@ -388,12 +413,15 @@ export function routeMessageHandlerOutput(
 		// if the capability is real the planner exercises it; if it is
 		// genuinely absent the planner surface proves it and the honest denial
 		// ships from ground truth instead of from memory.
-		if (isExplicitMediaAsk && CAPABILITY_DENIAL_REPLY_RE.test(reply)) {
+		if (
+			(isExplicitMediaAsk || isExplicitReminderAsk) &&
+			CAPABILITY_DENIAL_REPLY_RE.test(reply)
+		) {
 			seedMediaCandidate();
 			return {
 				type: "planning_needed",
 				output,
-				contexts: ["media"],
+				contexts: isExplicitMediaAsk ? ["media"] : ["tasks"],
 			};
 		}
 		// A progress-shaped reply on the pure-simple path is a self-contradiction:
