@@ -327,6 +327,22 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	SEARCH_ONLINE: ["WEB_SEARCH"],
 	INTERNET_SEARCH: ["WEB_SEARCH"],
 	GOOGLE_SEARCH: ["WEB_SEARCH"],
+	// Document-read inventions resolve to the DOCUMENT umbrella. Stage-1 (and
+	// the evaluator) routinely invent DOCUMENT_SEARCH / LIST_DOCUMENTS for
+	// "what documents do i have"; without the alias the turn fell through to a
+	// raw DATABASE_QUERY guessing a `documents` table (which failed), observed
+	// live. The DOCUMENT similes are lowercase phrases that never match these
+	// UPPER_SNAKE inventions.
+	DOCUMENT_SEARCH: ["DOCUMENT"],
+	SEARCH_DOCUMENTS: ["DOCUMENT"],
+	SEARCH_DOCUMENT: ["DOCUMENT"],
+	LIST_DOCUMENTS: ["DOCUMENT"],
+	LIST_DOCUMENT: ["DOCUMENT"],
+	READ_DOCUMENT: ["DOCUMENT"],
+	READ_DOCUMENTS: ["DOCUMENT"],
+	DOCUMENTS: ["DOCUMENT"],
+	GET_DOCUMENTS: ["DOCUMENT"],
+	SHOW_DOCUMENTS: ["DOCUMENT"],
 	FIND_MESSAGES: ["MESSAGE"],
 	FIND_MESSAGE: ["MESSAGE"],
 	ARRANGE_VIEWS: ["VIEWS"],
