@@ -296,6 +296,26 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	TRIP_SAVINGS_PLAN: ["OWNER_GOALS"],
 	SEARCH_CHATS: ["MESSAGE"],
 	SEARCH_CHAT: ["MESSAGE"],
+	// OWNER_<VERB>_<NOUN> permutations: the registered owner umbrellas are
+	// noun-first (OWNER_TODOS, promoted OWNER_TODOS_DELETE), but Stage-1
+	// routinely inverts to verb-first ("actually delete it" one turn after a
+	// todo create emitted candidate OWNER_DELETE_TODO, live trajectory
+	// tj-85d166dc4710f0 — it resolved to nothing, the candidate narrow
+	// collapsed the surface to VIEWS, and the planner invented an undeclared
+	// "delete-todo" view capability). Same dual-owner hints as the noun-first
+	// entries above.
+	OWNER_ADD_TODO: ["OWNER_TODOS", "TODO"],
+	OWNER_CREATE_TODO: ["OWNER_TODOS", "TODO"],
+	OWNER_DELETE_TODO: ["OWNER_TODOS", "TODO"],
+	OWNER_COMPLETE_TODO: ["OWNER_TODOS", "TODO"],
+	OWNER_DELETE_GOAL: ["OWNER_GOALS"],
+	OWNER_CREATE_GOAL: ["OWNER_GOALS"],
+	OWNER_DELETE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	OWNER_CREATE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	OWNER_DELETE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+	OWNER_CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+	OWNER_DELETE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
+	OWNER_CREATE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
 	// Bare "SEARCH" is a routine Stage-1 invention for open-web asks ("latest
 	// merged PR on develop, search for it" emitted candidate SEARCH, live
 	// trajectory tj-df4f61ac001a27). It resolved to nothing, the candidate
