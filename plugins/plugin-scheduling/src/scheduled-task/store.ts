@@ -479,6 +479,7 @@ export function createSchedulingSqlScheduledTaskLogStore(
            FROM ${LOG_TABLE}
           WHERE agent_id = ${sqlQuote(agentId)}
             AND rolled_up = FALSE
+            AND transition <> 'scheduled'
             AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
       );
       if (rows.length === 0) return { rolledUp: 0, deletedRaw: 0 };
@@ -513,6 +514,7 @@ export function createSchedulingSqlScheduledTaskLogStore(
         `DELETE FROM ${LOG_TABLE}
           WHERE agent_id = ${sqlQuote(agentId)}
             AND rolled_up = FALSE
+            AND transition <> 'scheduled'
             AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
       );
       let counter = 0;

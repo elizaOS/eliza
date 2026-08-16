@@ -7,6 +7,7 @@
 import type {
   Action,
   ActionResult,
+  EffectReceipt,
   HandlerCallback,
   Memory,
   Plugin,
@@ -178,6 +179,54 @@ function taskSummary(task: ScheduledTask): string {
   return `${task.taskId}: ${task.output?.fallback?.body ?? task.promptInstructions} — ${when} [${task.state.status}]`;
 }
 
+function creationReceipt(args: {
+  task: ScheduledTask;
+  commit: { logId: string; occurredAtIso: string };
+  replayed: boolean;
+}): EffectReceipt {
+  const base = {
+    receiptId: `shared-reminder:create:${args.commit.logId}`,
+    operation: "shared.reminder.create",
+    resource: {
+      kind: "shared.reminder",
+      id: args.task.taskId,
+      version: args.commit.logId,
+    },
+    artifacts: [
+      {
+        kind: "shared.reminder.log",
+        id: args.commit.logId,
+        version: "scheduled",
+      },
+    ],
+    idempotency: {
+      key: args.task.idempotencyKey ?? null,
+      replayed: args.replayed,
+    },
+    observedAt: args.commit.occurredAtIso,
+  } as const;
+  return args.replayed
+    ? {
+        ...base,
+        outcome: "noop",
+        idempotency: {
+          key: args.task.idempotencyKey ?? null,
+          replayed: true,
+        },
+        reason:
+          "The persisted reminder already satisfies this idempotent request.",
+      }
+    : {
+        ...base,
+        outcome: "applied",
+        commit: {
+          kind: "durable",
+          id: args.commit.logId,
+          committedAt: args.commit.occurredAtIso,
+        },
+      };
+}
+
 export function createSharedRemindersEdgeAction(
   options: SharedRemindersEdgePluginOptions,
 ): Action {
@@ -302,7 +351,7 @@ export function createSharedRemindersEdgeAction(
             callback,
           );
         }
-        const task = await options.runner.schedule({
+        const scheduled = await options.runner.scheduleWithResult({
           kind: "reminder",
           promptInstructions: body,
           trigger,
@@ -324,12 +373,24 @@ export function createSharedRemindersEdgeAction(
           metadata: { delivery },
           executionProfile: "notify-only",
         });
-        const text = `Reminder set for ${taskSummary(task)}`;
+        const text = scheduled.replayed
+          ? `Reminder already set for ${taskSummary(scheduled.task)}`
+          : `Reminder set for ${taskSummary(scheduled.task)}`;
+        const receipt = creationReceipt(scheduled);
         await callback?.({ text });
         return {
           success: true,
           text,
-          data: { actionName: "REMINDERS", operation, task },
+          data: {
+            actionName: "REMINDERS",
+            operation,
+            task: scheduled.task,
+            replayed: scheduled.replayed,
+          },
+          verifiedUserFacing: true,
+          userFacingText: text,
+          effectReceipts: [receipt],
+          userFacingEffectReceiptIds: [receipt.receiptId],
         };
       }
 

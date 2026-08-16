@@ -13,12 +13,16 @@ import {
   migrateSchedulingTables,
   SchedulingMigrationService,
 } from "./migration.js";
-import type { ScheduledTaskDispatcher } from "./runner.js";
+import type {
+  ScheduledTaskDispatcher,
+  ScheduledTaskRunnerHandle,
+} from "./runner.js";
 import {
   getScheduledTaskRunner,
   registerScheduledTaskRunnerDeps,
   ScheduledTaskRunnerService,
 } from "./runner-service.js";
+import type { ScheduledTaskLogStore } from "./state-log.js";
 import {
   createSchedulingSqlScheduledTaskLogStore,
   createSchedulingSqlScheduledTaskStore,
@@ -82,6 +86,49 @@ async function startService(
   return service;
 }
 
+async function startSqlRunner(
+  harness: RuntimeHarness,
+  logStore: ScheduledTaskLogStore = createSchedulingSqlScheduledTaskLogStore({
+    runtime: harness.runtime,
+    agentId: harness.runtime.agentId,
+  }),
+): Promise<{
+  runner: ScheduledTaskRunnerHandle;
+  logStore: ScheduledTaskLogStore;
+}> {
+  registerScheduledTaskRunnerDeps(harness.runtime, (runtime, agentId) => ({
+    store: createSchedulingSqlScheduledTaskStore({ runtime, agentId }),
+    logStore,
+    dispatcher: { async dispatch() {} },
+    ownerFacts: () => ({ timezone: "UTC" }),
+    globalPause: { current: async () => ({ active: false }) },
+    activity: { hasSignalSince: () => false },
+    subjectStore: { wasUpdatedSince: () => false },
+  }));
+  await startService(harness);
+  return {
+    runner: getScheduledTaskRunner(harness.runtime, {
+      agentId: harness.runtime.agentId,
+      now: () => new Date("2026-08-16T03:00:00.000Z"),
+    }),
+    logStore,
+  };
+}
+
+function receiptReminderInput(idempotencyKey: string) {
+  return {
+    kind: "reminder" as const,
+    promptInstructions: "Stretch",
+    trigger: { kind: "once" as const, atIso: "2026-08-16T03:05:00.000Z" },
+    priority: "medium" as const,
+    idempotencyKey,
+    respectsGlobalPause: true,
+    source: "user_chat" as const,
+    createdBy: "test",
+    ownerVisible: true,
+  };
+}
+
 const SQL_PERSISTENCE_TEST_TIMEOUT_MS = 15_000;
 
 describe("scheduling SQL persistence", () => {
@@ -96,6 +143,112 @@ describe("scheduling SQL persistence", () => {
     const service = await SchedulingMigrationService.start(runtime);
     await expect(service.stop()).resolves.toBeUndefined();
   });
+
+  it(
+    "reconciles a stable creation receipt after the task commit outlives a log failure",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const durableLogStore = createSchedulingSqlScheduledTaskLogStore({
+        runtime: harness.runtime,
+        agentId: harness.runtime.agentId,
+      });
+      let failNextAppend = true;
+      const flakyLogStore: ScheduledTaskLogStore = {
+        ...durableLogStore,
+        async append(entry) {
+          if (failNextAppend) {
+            failNextAppend = false;
+            throw new Error("injected log append failure");
+          }
+          await durableLogStore.append(entry);
+        },
+      };
+      const { runner } = await startSqlRunner(harness, flakyLogStore);
+      const input = receiptReminderInput("receipt-after-log-failure");
+
+      await expect(runner.scheduleWithResult(input)).rejects.toThrow(
+        "injected log append failure",
+      );
+      const replay = await runner.scheduleWithResult(input);
+
+      expect(replay.replayed).toBe(true);
+      expect(replay.commit.logId).toMatch(/^stl_create_[a-f0-9]{64}$/);
+      expect(replay.task.metadata?.schedulingCreationReceipt).toMatchObject({
+        logId: replay.commit.logId,
+      });
+      const counts = await harness.pg.query<{ tasks: number; logs: number }>(`
+        SELECT
+          (SELECT COUNT(*)::int FROM app_scheduling.life_scheduled_tasks
+            WHERE agent_id = 'agent-sql-persist') AS tasks,
+          (SELECT COUNT(*)::int FROM app_scheduling.life_scheduled_task_log
+            WHERE agent_id = 'agent-sql-persist' AND transition = 'scheduled') AS logs
+      `);
+      expect(counts.rows[0]).toEqual({ tasks: 1, logs: 1 });
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "converges concurrent same-key creates on one task and one receipt",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const { runner } = await startSqlRunner(harness);
+      const input = receiptReminderInput("concurrent-receipt");
+
+      const results = await Promise.all([
+        runner.scheduleWithResult(input),
+        runner.scheduleWithResult(input),
+      ]);
+
+      expect(new Set(results.map((result) => result.task.taskId)).size).toBe(1);
+      expect(new Set(results.map((result) => result.commit.logId)).size).toBe(
+        1,
+      );
+      expect(results.map((result) => result.replayed).sort()).toEqual([
+        false,
+        true,
+      ]);
+      const counts = await harness.pg.query<{ tasks: number; logs: number }>(`
+        SELECT
+          (SELECT COUNT(*)::int FROM app_scheduling.life_scheduled_tasks
+            WHERE agent_id = 'agent-sql-persist') AS tasks,
+          (SELECT COUNT(*)::int FROM app_scheduling.life_scheduled_task_log
+            WHERE agent_id = 'agent-sql-persist' AND transition = 'scheduled') AS logs
+      `);
+      expect(counts.rows[0]).toEqual({ tasks: 1, logs: 1 });
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "retains the original receipt identity beyond the log rollup window",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const { runner, logStore } = await startSqlRunner(harness);
+      const input = receiptReminderInput("receipt-after-rollup");
+      const created = await runner.scheduleWithResult(input);
+
+      const rollup = await logStore.rollupOlderThan({
+        agentId: harness.runtime.agentId,
+        olderThanIso: "2026-08-17T00:00:00.000Z",
+      });
+      const replay = await runner.scheduleWithResult(input);
+
+      expect(rollup).toEqual({ rolledUp: 0, deletedRaw: 0 });
+      expect(replay.replayed).toBe(true);
+      expect(replay.commit.logId).toBe(created.commit.logId);
+      const raw = await logStore.list({
+        agentId: harness.runtime.agentId,
+        taskId: created.task.taskId,
+        excludeRollups: true,
+      });
+      expect(raw.map((entry) => entry.logId)).toEqual([created.commit.logId]);
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
 
   it(
     "copies legacy app_lifeops scheduled-task rows non-destructively",
