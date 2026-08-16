@@ -332,16 +332,24 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 				);
 			}
 			const rawLimit = url.searchParams.get("limit");
-			const requestedLimit = rawLimit === null ? Number.NaN : Number(rawLimit);
-			const limit = Number.isFinite(requestedLimit)
-				? Math.min(500, Math.max(1, Math.trunc(requestedLimit)))
-				: 50;
+			const limit = (() => {
+				const fallback = 50;
+				const max = 500;
+				if (rawLimit === null || rawLimit === "") return fallback;
+				if (!/^\d+$/.test(rawLimit)) return fallback;
+				const parsed = Number(rawLimit);
+				if (!Number.isSafeInteger(parsed) || parsed <= 0) return fallback;
+				return Math.min(parsed, max);
+			})();
 			const rawOffset = url.searchParams.get("offset");
-			const requestedOffset =
-				rawOffset === null ? Number.NaN : Number(rawOffset);
-			const offset = Number.isFinite(requestedOffset)
-				? Math.max(0, Math.trunc(requestedOffset))
-				: 0;
+			const offset = (() => {
+				const fallback = 0;
+				if (rawOffset === null || rawOffset === "") return fallback;
+				if (!/^\d+$/.test(rawOffset)) return fallback;
+				const parsed = Number(rawOffset);
+				if (!Number.isSafeInteger(parsed) || parsed < 0) return fallback;
+				return parsed;
+			})();
 			const result = await service.listTrajectories({
 				limit,
 				offset,

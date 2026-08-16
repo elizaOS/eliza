@@ -40,6 +40,7 @@ import {
   elizaSandboxService,
 } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
+import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { type Context, Hono } from "hono";
 
@@ -1296,7 +1297,7 @@ app.patch("/api/v1/containers/:id", (c) =>
 
 app.get("/api/v1/containers/:id/logs", (c) =>
   handle(c, async (auth) => {
-    const tail = Number(c.req.query("tail") ?? "200");
+    const tail = parseClampedLimit(c.req.query("tail"), 200, 1000);
     const logs = await client.tailLogs(
       c.req.param("id"),
       auth.organizationId,

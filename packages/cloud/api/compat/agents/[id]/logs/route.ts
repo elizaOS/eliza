@@ -18,6 +18,7 @@ import { envelope, errorEnvelope } from "@/lib/api/compat-envelope";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { parseClampedLimit } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireCompatAuth } from "../../../_lib/auth";
@@ -47,11 +48,7 @@ async function __hono_GET(
     }
 
     const url = new URL(request.url);
-    const rawTail = parseInt(url.searchParams.get("tail") ?? "100", 10);
-    const tail = Math.max(
-      1,
-      Math.min(Number.isFinite(rawTail) ? rawTail : 100, 5000),
-    );
+    const tail = parseClampedLimit(url.searchParams.get("tail"), 100, 5000);
 
     const enqueueResult = await provisioningJobService.enqueueAgentLogsOnce({
       agentId,

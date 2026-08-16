@@ -22,6 +22,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { parseClampedLimit } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -37,11 +38,7 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
 
-    const rawTail = parseInt(c.req.query("tail") ?? "100", 10);
-    const tail = Math.max(
-      1,
-      Math.min(Number.isFinite(rawTail) ? rawTail : 100, 5000),
-    );
+    const tail = parseClampedLimit(c.req.query("tail"), 100, 5000);
 
     const enqueueResult = await provisioningJobService.enqueueAgentLogsOnce({
       agentId,
