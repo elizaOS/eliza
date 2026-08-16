@@ -68,7 +68,10 @@ mock.module("../cache/redis-factory", () => ({
 
 mock.module("../utils/logger", () => ({
   logger: {
+    debug: mock(() => undefined),
+    error: mock(() => undefined),
     info: mock(() => undefined),
+    warn: mock(() => undefined),
   },
 }));
 
