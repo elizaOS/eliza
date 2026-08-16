@@ -99,7 +99,7 @@ async function defaultRunTurn(
   );
 }
 
-async function defaultConfirmIdentityLink(
+export async function defaultConfirmIdentityLink(
   body: Record<string, unknown>,
   traceId: string,
   env: AppEnv["Bindings"],
