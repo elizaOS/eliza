@@ -13,7 +13,7 @@ import {
 
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
 
-export interface DiscordConnectionDmMetadata extends DiscordDmPolicyMetadata {}
+export type DiscordConnectionDmMetadata = DiscordDmPolicyMetadata;
 
 export type DiscordConnectionDmPolicyState =
   | { status: "valid"; metadata: DiscordConnectionDmMetadata }

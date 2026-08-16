@@ -1,3 +1,5 @@
+/** Tests the canonical Discord DM authorization matrix without transport mocks. */
+
 import { describe, expect, test } from "vitest";
 import { isDiscordDmSenderAllowed } from "./discord-dm-policy";
 
