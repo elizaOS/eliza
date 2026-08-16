@@ -104,49 +104,7 @@ async function acquireToken(): Promise<void> {
 
 async function refreshToken(): Promise<void> {
   if (!config) throw new Error("Auth not initialized");
-
-  if (!accessToken) {
-    await acquireToken();
-    return;
-  }
-
-  logger.info("Refreshing JWT token", { podName: config.podName });
-
-  try {
-    const response = await fetchWithTimeout(
-      `${config.cloudUrl}/api/internal/auth/refresh`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-      },
-    );
-
-    if (!response.ok) {
-      logger.warn("Token refresh failed, acquiring new token", {
-        status: response.status,
-      });
-      await acquireToken();
-      return;
-    }
-
-    const data = (await response.json()) as TokenResponse;
-    accessToken = data.access_token;
-
-    logger.info("JWT token refreshed", {
-      podName: config.podName,
-      expiresIn: `${data.expires_in}s`,
-    });
-
-    scheduleRefresh(data.expires_in);
-  } catch (error) {
-    logger.error("Error refreshing token, attempting re-acquisition", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    await acquireToken();
-  }
+  await acquireToken();
 }
 
 function scheduleRefresh(expiresInSeconds: number): void {

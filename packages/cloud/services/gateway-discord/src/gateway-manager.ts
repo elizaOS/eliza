@@ -620,53 +620,7 @@ export class GatewayManager {
    * Refresh the JWT token before it expires.
    */
   private async refreshToken(): Promise<void> {
-    if (!this.accessToken) {
-      // No token to refresh, acquire new one
-      await this.acquireToken();
-      return;
-    }
-
-    logger.info("Refreshing JWT token", { podName: this.config.podName });
-
-    try {
-      const response = await fetchWithTimeout(
-        `${this.config.elizaCloudUrl}/api/internal/auth/refresh`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.accessToken}`,
-          },
-        },
-      );
-
-      if (!response.ok) {
-        // Token refresh failed, try to acquire new token
-        logger.warn("Token refresh failed, acquiring new token", {
-          status: response.status,
-        });
-        await this.acquireToken();
-        return;
-      }
-
-      const data = (await response.json()) as TokenResponse;
-      this.accessToken = data.access_token;
-      this.tokenExpiresAt = new Date(Date.now() + data.expires_in * 1000);
-
-      logger.info("JWT token refreshed", {
-        podName: this.config.podName,
-        expiresAt: this.tokenExpiresAt.toISOString(),
-      });
-
-      // Schedule next refresh
-      this.scheduleTokenRefresh(data.expires_in);
-    } catch (error) {
-      logger.error("Error refreshing token, attempting re-acquisition", {
-        error: sanitizeError(error),
-      });
-      // Retry with exponential backoff could be added here
-      await this.acquireToken();
-    }
+    await this.acquireToken();
   }
 
   /**
