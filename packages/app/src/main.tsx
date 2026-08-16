@@ -1931,10 +1931,9 @@ async function initializeKeyboard(): Promise<void> {
     if (isIOS) {
       await Keyboard.setResizeMode({ mode: KeyboardResize.None });
       await Keyboard.setScroll({ isDisabled: true });
-      // The chat sheet already owns keyboard dismissal through its drag/tap
-      // interactions. Keep WebKit's previous/next/Done accessory out of the
-      // app chrome instead of rendering a second floating toolbar below it.
-      await Keyboard.setAccessoryBarVisible({ isVisible: false });
+      // Preserve WebKit's navigation/dismissal accessory for every ordinary
+      // form. The chat composer suppresses it only while that field owns focus.
+      await Keyboard.setAccessoryBarVisible({ isVisible: true });
     }
 
     keyboardListenersRegistered = true;

@@ -7,7 +7,7 @@
  * jsdom test can drive deterministically:
  *
  *   - `initializeKeyboard()` — iOS WebView resize/scroll configuration keeps
- *     the native previous/next/Done accessory out of app-owned chat chrome.
+ *     the native previous/next/Done accessory available outside chat.
  *   - `initializeDeepLinks()` + `initializeAppLifecycle()` — early
  *     `appUrlOpen`/cold-launch capture plus `appStateChange` / `backButton`
  *     wiring. Asserts the events the module dispatches
@@ -199,7 +199,7 @@ afterEach(() => {
 });
 
 describe("createMobileLifecycle — keyboard", () => {
-  it("hides the iOS WebView accessory bar below the app-owned composer", async () => {
+  it("preserves the iOS WebView accessory bar for ordinary form fields", async () => {
     const lifecycle = createMobileLifecycle(
       makeContext({ isIOS: true, isAndroid: false }),
     );
@@ -208,7 +208,7 @@ describe("createMobileLifecycle — keyboard", () => {
 
     expect(keyboardMock.setAccessoryBarVisible).toHaveBeenCalledOnce();
     expect(keyboardMock.setAccessoryBarVisible).toHaveBeenCalledWith({
-      isVisible: false,
+      isVisible: true,
     });
   });
 });
