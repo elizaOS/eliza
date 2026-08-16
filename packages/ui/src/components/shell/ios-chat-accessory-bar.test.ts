@@ -19,14 +19,14 @@ describe("iOS chat accessory controller", () => {
       },
     );
     const reportError = vi.fn();
-    const setHidden = createChatAccessoryBarController({
+    const controller = createChatAccessoryBarController({
       enabled: true,
       loadKeyboard: async () => ({ setAccessoryBarVisible }),
       reportError,
     });
 
-    setHidden(true);
-    setHidden(false);
+    void controller.setChatComposerHidden(true);
+    void controller.setChatComposerHidden(false);
     await vi.waitFor(() =>
       expect(setAccessoryBarVisible).toHaveBeenCalledOnce(),
     );
@@ -40,6 +40,44 @@ describe("iOS chat accessory controller", () => {
         isVisible: true,
       }),
     );
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it("keeps a focused composer hidden when delayed boot settles, then restores on blur", async () => {
+    let releaseFocus: (() => void) | undefined;
+    const setAccessoryBarVisible = vi.fn(
+      ({ isVisible }: { isVisible: boolean }) => {
+        if (!isVisible && setAccessoryBarVisible.mock.calls.length === 1) {
+          return new Promise<void>((resolve) => {
+            releaseFocus = resolve;
+          });
+        }
+        return Promise.resolve();
+      },
+    );
+    const reportError = vi.fn();
+    const controller = createChatAccessoryBarController({
+      enabled: true,
+      loadKeyboard: async () => ({ setAccessoryBarVisible }),
+      reportError,
+    });
+
+    const focus = controller.setChatComposerHidden(true);
+    await vi.waitFor(() =>
+      expect(setAccessoryBarVisible).toHaveBeenCalledWith({ isVisible: false }),
+    );
+    const boot = controller.initializeBaseline();
+
+    releaseFocus?.();
+    await Promise.all([boot, focus]);
+    expect(setAccessoryBarVisible).toHaveBeenLastCalledWith({
+      isVisible: false,
+    });
+
+    await controller.setChatComposerHidden(false);
+    expect(setAccessoryBarVisible).toHaveBeenLastCalledWith({
+      isVisible: true,
+    });
     expect(reportError).not.toHaveBeenCalled();
   });
 });
