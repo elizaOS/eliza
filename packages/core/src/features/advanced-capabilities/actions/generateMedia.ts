@@ -265,6 +265,41 @@ function titleFor(
 	return `${prefix}_${timestamp}.${extensionFor(url, request.mediaType)}`;
 }
 
+// error-policy:J1 Media generation is an action boundary and returns an
+// explicit unsuccessful result.
+function mediaGenerationFailure(
+	runtime: IAgentRuntime,
+	request: MediaGenerationRequest,
+	error: unknown,
+): ActionResult {
+	const errorMessage = error instanceof Error ? error.message : String(error);
+	logger.error(
+		{
+			src: "plugin:advanced-capabilities:action:generate_media",
+			agentId: runtime.agentId,
+			mediaType: request.mediaType,
+			error: errorMessage,
+		},
+		"Media generation failed",
+	);
+	return {
+		text: `Media generation failed: ${errorMessage}`,
+		values: {
+			success: false,
+			error: "MEDIA_GENERATION_FAILED",
+			mediaType: request.mediaType,
+			prompt: request.prompt,
+		},
+		data: {
+			actionName: "GENERATE_MEDIA",
+			mediaType: request.mediaType,
+			prompt: request.prompt,
+			error: errorMessage,
+		},
+		success: false,
+	};
+}
+
 function hasImageGenerationModel(runtime: IAgentRuntime): boolean {
 	return typeof runtime.getModel(ModelType.IMAGE) === "function";
 }
@@ -282,13 +317,15 @@ async function fallbackGenerateVideo(
 	runtime: IAgentRuntime,
 	request: MediaGenerationRequest,
 ): Promise<MediaGenerationResponse> {
+	// Duration and aspect ratio are deliberately NOT forwarded: providers
+	// hard-reject out-of-range or mistyped values (fal veo3 422s on
+	// durationSeconds outside its fixed clip length AND on "16:9" arriving in
+	// its resolution field — both observed live), and a default-shaped video
+	// beats a failed request for the whole ask. The bare prompt (+ optional
+	// reference image) is the proven-working request shape.
 	const videoResponse = (await runtime.useModel(ModelType.VIDEO, {
 		prompt: request.prompt,
 		...(request.imageUrl ? { imageUrl: request.imageUrl } : {}),
-		...(typeof request.duration === "number"
-			? { durationSeconds: request.duration }
-			: {}),
-		...(request.aspectRatio ? { aspectRatio: request.aspectRatio } : {}),
 	})) as { url?: string; videoUrl?: string } | string | undefined;
 	const videoUrl =
 		typeof videoResponse === "string"
@@ -449,36 +486,44 @@ export const generateMediaAction = {
 				"GENERATE_MEDIA handler invoking media service",
 			);
 			result = await generateWithService(runtime, request);
-		} catch (error) {
-			// error-policy:J1 Media generation is an action boundary and returns
-			// an explicit unsuccessful result.
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
-			logger.error(
-				{
-					src: "plugin:advanced-capabilities:action:generate_media",
-					agentId: runtime.agentId,
-					mediaType: request.mediaType,
-					error: errorMessage,
-				},
-				"Media generation failed",
-			);
-			return {
-				text: `Media generation failed: ${errorMessage}`,
-				values: {
-					success: false,
-					error: "MEDIA_GENERATION_FAILED",
-					mediaType: request.mediaType,
-					prompt: request.prompt,
-				},
-				data: {
-					actionName: "GENERATE_MEDIA",
-					mediaType: request.mediaType,
-					prompt: request.prompt,
-					error: errorMessage,
-				},
-				success: false,
-			};
+		} catch (firstError) {
+			// Provider param constraints (fal veo3 422s on durationSeconds and on
+			// aspect-ratio-as-resolution — observed live) fail the WHOLE ask over
+			// planner-supplied extras the user never insisted on. Retry once with
+			// the bare proven shape (prompt + optional reference image) before
+			// giving up: a default-shaped result beats a failed request. The
+			// rejected attempt is not billed.
+			const hadShapingExtras =
+				request.duration !== undefined ||
+				request.aspectRatio !== undefined ||
+				request.size !== undefined ||
+				request.seed !== undefined;
+			if (hadShapingExtras) {
+				logger.warn(
+					{
+						src: "plugin:advanced-capabilities:action:generate_media",
+						agentId: runtime.agentId,
+						mediaType: request.mediaType,
+						error:
+							firstError instanceof Error
+								? firstError.message
+								: String(firstError),
+					},
+					"Media generation failed with shaping extras; retrying with the bare prompt shape",
+				);
+				try {
+					result = await generateWithService(runtime, {
+						mediaType: request.mediaType,
+						prompt: request.prompt,
+						audioKind: request.audioKind,
+						imageUrl: request.imageUrl,
+					});
+				} catch (retryError) {
+					return mediaGenerationFailure(runtime, request, retryError);
+				}
+			} else {
+				return mediaGenerationFailure(runtime, request, firstError);
+			}
 		}
 
 		const url = resultUrl(result);
