@@ -10,47 +10,49 @@
  * action, and the deactivate confirm dialog's billing-transparency copy.
  */
 
+import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { currentElizaAppOrigin } from "../../../utils/cloud-agent-base";
-import {
-  deriveAgentRow,
-  type ElizaAgentRow,
-  ElizaAgentsTable,
-} from "./eliza-agents-table";
+import { deriveAgentRow, ElizaAgentsTable } from "./eliza-agents-table";
 
 vi.mock("../lib/i18n", () => ({
   useT: () => (_key: string, options?: { defaultValue?: string }) =>
     options?.defaultValue ?? _key,
 }));
 
-function row(overrides: Partial<ElizaAgentRow>): ElizaAgentRow {
+function row(overrides: Partial<AgentListItemDto>): AgentListItemDto {
   return {
     id: "00000000-1111-2222-3333-444444444444",
-    agent_name: "Ada",
+    agentName: "Ada",
     status: "running",
-    canonical_web_ui_url: "https://agent.example",
-    node_id: null,
-    container_name: null,
-    bridge_port: null,
-    web_ui_port: null,
-    headscale_ip: null,
-    docker_image: null,
-    execution_tier: "dedicated-lazy",
-    sandbox_id: "sb-1",
-    bridge_url: null,
-    error_message: null,
-    last_heartbeat_at: null,
-    created_at: "2026-07-04T00:00:00.000Z",
-    updated_at: "2026-07-04T00:00:00.000Z",
+    databaseStatus: "ready",
+    lastBackupAt: null,
+    lastHeartbeatAt: null,
+    errorMessage: null,
+    createdAt: "2026-07-04T00:00:00.000Z",
+    updatedAt: "2026-07-04T00:00:00.000Z",
+    token_address: null,
+    token_chain: null,
+    token_name: null,
+    token_ticker: null,
+    dockerImage: null,
+    executionTier: "dedicated-lazy",
+    webUiUrl: "https://agent.example",
     ...overrides,
   };
 }
 
 function derive(
-  overrides: Partial<ElizaAgentRow>,
+  overrides: Partial<AgentListItemDto>,
   {
     active = false,
     actionInProgress = null,
@@ -94,31 +96,26 @@ describe("ElizaAgentsTable per-row view model", () => {
 
   it("resolves docker-backed, shared, sandbox, and unprovisioned runtime kinds", () => {
     expect(
-      derive({ node_id: "node-7", docker_image: "eliza:1" }).runtimeKind,
+      derive({ executionTier: "custom", dockerImage: "eliza:1" }).runtimeKind,
     ).toBe("managed");
-    expect(derive({ execution_tier: "shared" }).runtimeKind).toBe("shared");
-    expect(
-      derive({ status: "provisioning", sandbox_id: null }).runtimeKind,
-    ).toBe("sandbox");
+    expect(derive({ executionTier: "shared" }).runtimeKind).toBe("shared");
+    expect(derive({ status: "provisioning" }).runtimeKind).toBe("sandbox");
     expect(
       derive({
         status: "pending",
-        sandbox_id: null,
-        canonical_web_ui_url: null,
+        webUiUrl: null,
       }).runtimeKind,
     ).toBe("notProvisioned");
-    // Deactivation releases the container (sandbox_id cleared) but the agent
-    // remains an established sandbox — never "Not provisioned".
-    expect(derive({ status: "sleeping", sandbox_id: null }).runtimeKind).toBe(
-      "sandbox",
-    );
+    // The backend status remains the authority after deactivation; the list
+    // endpoint does not publish a sandbox id.
+    expect(derive({ status: "sleeping" }).runtimeKind).toBe("sandbox");
   });
 
   it("hides standalone Web UI for shared rows even when the API returns a URL", () => {
     const vm = derive({
       status: "running",
-      execution_tier: "shared",
-      canonical_web_ui_url: "https://agent.example",
+      executionTier: "shared",
+      webUiUrl: "https://agent.example",
     });
 
     expect(vm.hasStandaloneWebUi).toBe(false);
@@ -154,7 +151,7 @@ describe("ElizaAgentsTable per-row view model", () => {
     // Shared-runtime agents have no dedicated compute to free.
     const runningShared = derive({
       status: "running",
-      execution_tier: "shared",
+      executionTier: "shared",
     });
     expect(runningShared.canSleep).toBe(false);
 
@@ -187,8 +184,8 @@ describe("ElizaAgentsTable per-row view model", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ElizaAgentsTable
-          sandboxes={[
-            row({ status: "sleeping", canonical_web_ui_url: null }),
+          agents={[
+            row({ status: "sleeping", webUiUrl: null }),
             row({
               id: "00000000-1111-2222-3333-555555555555",
               status: "stopped",
@@ -225,7 +222,7 @@ describe("ElizaAgentsTable per-row view model", () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <ElizaAgentsTable sandboxes={[row({ status: "running" })]} />
+        <ElizaAgentsTable agents={[row({ status: "running" })]} />
       </QueryClientProvider>,
     );
 
@@ -250,6 +247,44 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
+  it("reconciles same-id authoritative field updates for an inactive row", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    const initial = row({ status: "stopped", agentName: "Ada" });
+    const updated = row({
+      status: "error",
+      agentName: "Grace",
+      errorMessage: "Runtime image unavailable",
+      updatedAt: "2026-07-04T00:01:00.000Z",
+    });
+
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ElizaAgentsTable agents={[initial]} />
+      </QueryClientProvider>,
+    );
+    expect(screen.getAllByText("Ada").length).toBeGreaterThanOrEqual(1);
+
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ElizaAgentsTable agents={[updated]} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("Ada")).toBeNull();
+      expect(screen.getAllByText("Grace").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("error").length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText("Runtime image unavailable").length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   it("keeps the empty Agents page connected to the Eliza app create flow", () => {
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -260,7 +295,7 @@ describe("ElizaAgentsTable per-row view model", () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <ElizaAgentsTable sandboxes={[]} />
+        <ElizaAgentsTable agents={[]} />
       </QueryClientProvider>,
     );
 
