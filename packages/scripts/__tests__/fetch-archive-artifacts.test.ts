@@ -1,9 +1,11 @@
 /**
  * Guards the opt-in archive artifact fetch contract through the real CLI
  * process: the root install lifecycle must never invoke an archive pull,
- * the script must refuse lifecycle hooks and fail closed on download
- * problems, and extraction must never overwrite git-tracked files. Uses a
- * real git fixture repository and a real local HTTP server — no mocks.
+ * the script must refuse lifecycle hooks and fail closed on download,
+ * digest, and unsafe-member problems, extraction must never overwrite
+ * git-tracked files, and every failure path must sweep the temp archive.
+ * Uses a real git fixture repository, a real local HTTP server, and
+ * hand-built tar bundles for adversarial member names — no mocks.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
@@ -11,6 +13,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   utimesSync,
@@ -36,6 +39,82 @@ function makeTempDirectory(prefix: string): string {
   const directory = mkdtempSync(path.join(tmpdir(), prefix));
   tempDirectories.push(directory);
   return directory;
+}
+
+function leakedTempArchives(temp: string): string[] {
+  return readdirSync(temp).filter((entry) =>
+    /^eliza-artifacts-\d+\.tar\.gz$/.test(entry),
+  );
+}
+
+/**
+ * Builds a gzipped POSIX ustar archive by hand so member names tar itself
+ * refuses to create (option-like, `..` traversal) can be exercised.
+ */
+function buildTarGz(entries: Array<{ name: string; content: string }>) {
+  const blocks: Buffer[] = [];
+  for (const entry of entries) {
+    const data = Buffer.from(entry.content, "utf8");
+    const header = Buffer.alloc(512);
+    header.write(entry.name, 0, 100, "utf8");
+    header.write("0000644\0", 100, 8, "utf8");
+    header.write("0000000\0", 108, 8, "utf8");
+    header.write("0000000\0", 116, 8, "utf8");
+    header.write(`${data.length.toString(8).padStart(11, "0")}\0`, 124, 12);
+    header.write("00000000000\0", 136, 12, "utf8");
+    header.fill(" ", 148, 156);
+    header.write("0", 156, 1, "utf8");
+    header.write("ustar\0", 257, 6, "utf8");
+    header.write("00", 263, 2, "utf8");
+    let checksum = 0;
+    for (const byte of header) checksum += byte;
+    header.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148, 8);
+    const padding = (512 - (data.length % 512)) % 512;
+    blocks.push(header, data, Buffer.alloc(padding));
+  }
+  blocks.push(Buffer.alloc(1024));
+  return Buffer.from(Bun.gzipSync(Buffer.concat(blocks)));
+}
+
+async function runScriptAgainstServer(options: {
+  root: string;
+  temp: string;
+  bundle: Buffer | Uint8Array;
+  sha256: string;
+}) {
+  const server = Bun.serve({
+    port: 0,
+    fetch: () => new Response(options.bundle as BodyInit),
+  });
+  try {
+    // A synchronous spawn would block this process's event loop and
+    // deadlock against the in-process Bun.serve fixture, so the child is
+    // awaited asynchronously.
+    const env: Record<string, string> = {
+      ...(process.env as Record<string, string>),
+      ELIZA_ARCHIVE_ROOT: options.root,
+      ELIZA_ARCHIVE_URL: `http://127.0.0.1:${server.port}/bundle-${randomUUID()}.tar.gz`,
+      ELIZA_ARCHIVE_SHA256: options.sha256,
+      ELIZA_ARCHIVE_MAX_ATTEMPTS: "1",
+      TEMP: options.temp,
+      TMP: options.temp,
+      TMPDIR: options.temp,
+    };
+    delete env.npm_lifecycle_event;
+    const child = Bun.spawn([process.execPath, SCRIPT], {
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [status, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    return { status, stdout, stderr };
+  } finally {
+    server.stop(true);
+  }
 }
 
 function runScript(env: Record<string, string | undefined>) {
@@ -104,6 +183,51 @@ describe("fetch-archive-artifacts CLI", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("could not download the artifact bundle");
     expect(existsSync(path.join(root, ".eliza-artifacts-version"))).toBe(false);
+    expect(leakedTempArchives(temp)).toEqual([]);
+  });
+
+  test("fails closed on sha256 mismatch and sweeps the temp archive", async () => {
+    const root = makeTempDirectory("archive-fetch-digest-");
+    const temp = makeTempDirectory("archive-fetch-digest-tmp-");
+    const bundle = buildTarGz([{ name: "untracked.bin", content: "bytes\n" }]);
+    const result = await runScriptAgainstServer({
+      root,
+      temp,
+      bundle,
+      sha256: "0".repeat(64),
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("sha256 mismatch");
+    expect(existsSync(path.join(root, ".eliza-artifacts-version"))).toBe(false);
+    // The digest failure must reach the boundary `finally`; an exit inside
+    // the flow would leave the downloaded bundle behind in the temp dir.
+    expect(leakedTempArchives(temp)).toEqual([]);
+  });
+
+  test("rejects option-like and traversal archive members without extracting", async () => {
+    const root = makeTempDirectory("archive-fetch-unsafe-");
+    const temp = makeTempDirectory("archive-fetch-unsafe-tmp-");
+    const bundle = buildTarGz([
+      { name: "--checkpoint-action=exec=touch pwned.txt", content: "evil\n" },
+      { name: "../escape.txt", content: "evil\n" },
+      { name: "safe.txt", content: "benign\n" },
+    ]);
+    const digest = createHash("sha256").update(bundle).digest("hex");
+    const result = await runScriptAgainstServer({
+      root,
+      temp,
+      bundle,
+      sha256: digest,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("unsafe paths");
+    // Nothing may be extracted when any member is unsafe — including the
+    // benign member and anything an option-injected tar action could create.
+    expect(existsSync(path.join(root, "safe.txt"))).toBe(false);
+    expect(existsSync(path.join(root, "pwned.txt"))).toBe(false);
+    expect(existsSync(path.resolve(root, "..", "escape.txt"))).toBe(false);
+    expect(existsSync(path.join(root, ".eliza-artifacts-version"))).toBe(false);
+    expect(leakedTempArchives(temp)).toEqual([]);
   });
 
   test("extracts only untracked members and never overwrites tracked files", async () => {
@@ -138,50 +262,24 @@ describe("fetch-archive-artifacts CLI", () => {
     const bundleBytes = readFileSync(bundle);
     const digest = createHash("sha256").update(bundleBytes).digest("hex");
 
-    const server = Bun.serve({
-      port: 0,
-      fetch: () => new Response(bundleBytes),
+    const result = await runScriptAgainstServer({
+      root,
+      temp,
+      bundle: bundleBytes,
+      sha256: digest,
     });
-    try {
-      // A synchronous spawn would block this process's event loop and
-      // deadlock against the in-process Bun.serve fixture, so the child is
-      // awaited asynchronously here.
-      const env: Record<string, string> = {
-        ...(process.env as Record<string, string>),
-        ELIZA_ARCHIVE_ROOT: root,
-        ELIZA_ARCHIVE_URL: `http://127.0.0.1:${server.port}/bundle-${randomUUID()}.tar.gz`,
-        ELIZA_ARCHIVE_SHA256: digest,
-        ELIZA_ARCHIVE_MAX_ATTEMPTS: "1",
-        TEMP: temp,
-        TMP: temp,
-        TMPDIR: temp,
-      };
-      delete env.npm_lifecycle_event;
-      const child = Bun.spawn([process.execPath, SCRIPT], {
-        env,
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [status, stderrText] = await Promise.all([
-        child.exited,
-        new Response(child.stderr).text(),
-      ]);
-      expect(status).toBe(0);
-      expect(stderrText).toContain(
-        "skipping 1 archive member(s) that would overwrite git-tracked files",
-      );
-      expect(readFileSync(path.join(root, "tracked.txt"), "utf8")).toBe(
-        "checkout content\n",
-      );
-      expect(readFileSync(path.join(root, "untracked.bin"), "utf8")).toBe(
-        "fresh fixture bytes\n",
-      );
-      expect(existsSync(path.join(root, ".eliza-artifacts-version"))).toBe(
-        true,
-      );
-    } finally {
-      server.stop(true);
-    }
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain(
+      "skipping 1 archive member(s) that would overwrite git-tracked files",
+    );
+    expect(readFileSync(path.join(root, "tracked.txt"), "utf8")).toBe(
+      "checkout content\n",
+    );
+    expect(readFileSync(path.join(root, "untracked.bin"), "utf8")).toBe(
+      "fresh fixture bytes\n",
+    );
+    expect(existsSync(path.join(root, ".eliza-artifacts-version"))).toBe(true);
+    expect(leakedTempArchives(temp)).toEqual([]);
   });
 
   test("removes only aged matching archives from the temp directory", () => {
