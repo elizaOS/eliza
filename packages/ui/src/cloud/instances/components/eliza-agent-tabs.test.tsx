@@ -24,7 +24,7 @@ import { ElizaAgentTabs } from "./eliza-agent-tabs";
 describe("ElizaAgentTabs", () => {
   afterEach(() => cleanup());
 
-  it("links the selected tab to the active panel", () => {
+  it("gives every tab a persistent linked panel and reveals only the selected panel", () => {
     render(
       <ElizaAgentTabs agentId="agent-1">
         <p>Overview content</p>
@@ -33,15 +33,22 @@ describe("ElizaAgentTabs", () => {
 
     const tablist = screen.getByRole("tablist", { name: "Agents" });
     const tabs = screen.getAllByRole("tab");
-    const panel = screen.getByRole("tabpanel");
+    const panels = screen.getAllByRole("tabpanel", { hidden: true });
     expect(tablist.contains(tabs[0] ?? null)).toBe(true);
     expect(tabs).toHaveLength(4);
+    expect(panels).toHaveLength(4);
     expect(tabs[0]?.getAttribute("aria-selected")).toBe("true");
     expect(tabs[0]?.getAttribute("tabindex")).toBe("0");
     expect(tabs[1]?.getAttribute("tabindex")).toBe("-1");
-    expect(tabs[0]?.getAttribute("aria-controls")).toBe(panel.id);
-    expect(panel.getAttribute("aria-labelledby")).toBe(tabs[0]?.id);
+    tabs.forEach((tab, index) => {
+      const panelId = tab.getAttribute("aria-controls");
+      const panel = panelId ? document.getElementById(panelId) : null;
+      expect(panel).toBe(panels[index]);
+      expect(panel?.getAttribute("aria-labelledby")).toBe(tab.id);
+      expect(panel?.hidden).toBe(index !== 0);
+    });
     expect(screen.getByText("Overview content")).toBeTruthy();
+    expect(screen.queryByText("Wallet content")).toBeNull();
   });
 
   it("selects and focuses tabs with click, arrows, Home, and End", () => {
@@ -58,6 +65,14 @@ describe("ElizaAgentTabs", () => {
 
     fireEvent.click(wallet);
     expect(wallet.getAttribute("aria-selected")).toBe("true");
+    expect(
+      document.getElementById(overview.getAttribute("aria-controls") ?? "")
+        ?.hidden,
+    ).toBe(true);
+    expect(
+      document.getElementById(wallet.getAttribute("aria-controls") ?? "")
+        ?.hidden,
+    ).toBe(false);
     expect(screen.getByText("Wallet content")).toBeTruthy();
 
     wallet.focus();

@@ -242,18 +242,11 @@ describe("agent log protocol", () => {
     ).rejects.toBeInstanceOf(AgentLogsTimeoutError);
   });
 
-  it("aborts a hung enqueue request when the operation deadline expires", async () => {
+  it("bounds a non-cooperative hung enqueue request by the operation deadline", async () => {
     vi.useFakeTimers();
-    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(
-      async (_url, init) =>
-        await new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener(
-            "abort",
-            () => reject(init.signal?.reason),
-            { once: true },
-          );
-        }),
-    );
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => await new Promise<Response>(() => {}));
 
     const promise = loadAgentLogs({
       agentId: "agent-1",
@@ -272,20 +265,40 @@ describe("agent log protocol", () => {
     vi.useRealTimers();
   });
 
+  it("bounds a non-cooperative hung poll request by the same operation deadline", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, data: { jobId: "job-1" } }),
+      )
+      .mockImplementationOnce(
+        async () => await new Promise<Response>(() => {}),
+      );
+
+    const promise = loadAgentLogs({
+      agentId: "agent-1",
+      tail: 100,
+      signal: new AbortController().signal,
+      fetchImpl,
+      timeoutMs: 1_000,
+    });
+    const rejection = expect(promise).rejects.toBeInstanceOf(
+      AgentLogsTimeoutError,
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await rejection;
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[1]?.[1]?.signal?.aborted).toBe(true);
+    vi.useRealTimers();
+  });
+
   it("passes the abort signal through every request", async () => {
     const controller = new AbortController();
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockImplementation(async (_url, init) => {
-        await new Promise<void>((_resolve, reject) => {
-          init?.signal?.addEventListener(
-            "abort",
-            () => reject(init.signal?.reason),
-            { once: true },
-          );
-        });
-        throw new Error("unreachable");
-      });
+      .mockImplementation(async () => await new Promise<Response>(() => {}));
 
     const promise = loadAgentLogs({
       agentId: "agent-1",
