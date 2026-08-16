@@ -8386,34 +8386,77 @@ export async function runV5MessageRuntimeStage1(args: {
 		// answered a false empty from the orchestrator task store. Answer with an
 		// honest surface denial instead. The phrasing confirms nothing about the
 		// data — only that the surface is private to another channel.
-		if (candidateGateDiagnostics.gateRejectedExplicitCandidates.length > 0) {
-			const collectedNames = new Set(
-				plannerCandidateActions.map((action) =>
-					normalizeActionIdentifier(action.name),
-				),
+		const collectedCandidateNames = new Set(
+			plannerCandidateActions.map((action) =>
+				normalizeActionIdentifier(action.name),
+			),
+		);
+		const stageOneCandidateLookup = buildRuntimeActionLookup(args.runtime);
+		const anyNamedStageOneCandidateSurvived = (
+			getMessageHandlerCandidateActions(messageHandler) ?? []
+		).some((name) => {
+			const resolved = resolveRuntimeAction(
+				stageOneCandidateLookup,
+				String(name),
 			);
-			const candidateLookup = buildRuntimeActionLookup(args.runtime);
-			const anyNamedCandidateSurvived = (
-				getMessageHandlerCandidateActions(messageHandler) ?? []
-			).some((name) => {
-				const resolved = resolveRuntimeAction(candidateLookup, String(name));
-				return (
-					resolved !== undefined &&
-					collectedNames.has(normalizeActionIdentifier(resolved.name))
-				);
-			});
-			if (!anyNamedCandidateSurvived) {
-				return {
-					kind: "direct_reply",
-					messageHandler,
-					result: createV5ReplyStrategyResult({
-						...args,
-						text: "that's a private surface — ask me in a DM and I'll handle it there.",
-						thought: messageHandler.thought,
-						agentVoiced: false,
-					}),
-				};
-			}
+			return (
+				resolved !== undefined &&
+				collectedCandidateNames.has(normalizeActionIdentifier(resolved.name))
+			);
+		});
+		if (
+			candidateGateDiagnostics.gateRejectedExplicitCandidates.length > 0 &&
+			!anyNamedStageOneCandidateSurvived
+		) {
+			return {
+				kind: "direct_reply",
+				messageHandler,
+				result: createV5ReplyStrategyResult({
+					...args,
+					text: "that's a private surface — ask me in a DM and I'll handle it there.",
+					thought: messageHandler.thought,
+					agentVoiced: false,
+				}),
+			};
+		}
+		// Live-lookup unavailability short-circuit. The progress-ack promotion
+		// (routeMessageHandlerOutput, #20249) now routes "On it."-shaped turns
+		// into planning, which bypassed the direct-reply egress replacement that
+		// used to convert a live-lookup ask with NO registered web action into
+		// the honest decline. A planner round cannot conjure the missing
+		// capability — its best case is a model-authored decline and its worst
+		// case is a shell fallback — so decline deterministically here, exactly
+		// like the egress-side replacement. Scope: only turns whose planning
+		// round exists purely because of the promotion (stage-1's own plan
+		// selected no non-simple context). When stage-1 genuinely routed to a
+		// context, or a named candidate survived collection, the planner may
+		// hold a registered domain action that serves the ask without web
+		// search — those turns still plan.
+		const stageOneOwnNonSimpleContexts = (
+			messageHandler.plan.contexts ?? []
+		).filter((context) => {
+			const normalized = String(context).trim().toLowerCase();
+			return normalized.length > 0 && normalized !== SIMPLE_CONTEXT_ID;
+		});
+		if (
+			stageOneOwnNonSimpleContexts.length === 0 &&
+			!anyNamedStageOneCandidateSurvived &&
+			shouldReplaceUnavailableLiveLookupAck({
+				message: args.message,
+				actions: args.runtime.actions ?? [],
+				reply: prePatchStageOneReply ?? "",
+			})
+		) {
+			return {
+				kind: "direct_reply",
+				messageHandler,
+				result: createV5ReplyStrategyResult({
+					...args,
+					text: LIVE_LOOKUP_UNAVAILABLE_REPLY,
+					thought: messageHandler.thought,
+					agentVoiced: false,
+				}),
+			};
 		}
 		const localizedExamplesProvider = getLocalizedExamplesProvider(
 			args.runtime,
