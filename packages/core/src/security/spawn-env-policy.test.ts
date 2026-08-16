@@ -109,6 +109,20 @@ describe("isBlockedSpawnEnvKey (loader/interpreter hijack keys)", () => {
 	});
 });
 
+/** sanitizeSpawnEnv always restores the boot-time PATH/HOME/SHELL. */
+function withBootBaseline(
+	expected: Record<string, string>,
+): Record<string, string> {
+	const out = { ...expected };
+	for (const key of ["PATH", "HOME", "SHELL"] as const) {
+		const value = process.env[key];
+		if (typeof value === "string" && value.length > 0) {
+			out[key] = value;
+		}
+	}
+	return out;
+}
+
 describe("sanitizeSpawnEnv", () => {
 	it("drops all injection-primitive keys but keeps benign keys", () => {
 		const out = sanitizeSpawnEnv({
@@ -127,12 +141,14 @@ describe("sanitizeSpawnEnv", () => {
 			NODE_ENV: "production",
 			GIT_AUTHOR_NAME: "test",
 		});
-		expect(out).toEqual({
-			MY_APP_SETTING: "ok",
-			LANG: "en_US.UTF-8",
-			NODE_ENV: "production",
-			GIT_AUTHOR_NAME: "test",
-		});
+		expect(out).toEqual(
+			withBootBaseline({
+				MY_APP_SETTING: "ok",
+				LANG: "en_US.UTF-8",
+				NODE_ENV: "production",
+				GIT_AUTHOR_NAME: "test",
+			}),
+		);
 	});
 
 	it("drops equivalent JVM and Git injection primitives added in review", () => {
@@ -145,7 +161,7 @@ describe("sanitizeSpawnEnv", () => {
 			GIT_CONFIG_VALUE_0: "/tmp/evil-cmd",
 			SAFE_KEY: "ok",
 		});
-		expect(out).toEqual({ SAFE_KEY: "ok" });
+		expect(out).toEqual(withBootBaseline({ SAFE_KEY: "ok" }));
 	});
 
 	it("drops git config-file and spawned-helper primitives, keeps benign git keys", () => {
@@ -162,11 +178,34 @@ describe("sanitizeSpawnEnv", () => {
 			PYTHON_VERSION: "3.13",
 			SAFE_KEY: "ok",
 		});
-		expect(out).toEqual({
-			GIT_AUTHOR_NAME: "test",
-			GIT_CONFIGURATION: "not-a-primitive",
-			PYTHON_VERSION: "3.13",
-			SAFE_KEY: "ok",
-		});
+		expect(out).toEqual(
+			withBootBaseline({
+				GIT_AUTHOR_NAME: "test",
+				GIT_CONFIGURATION: "not-a-primitive",
+				PYTHON_VERSION: "3.13",
+				SAFE_KEY: "ok",
+			}),
+		);
+	});
+});
+
+describe("boot-baseline exec env restore", () => {
+	it("discards a poisoned request-time PATH but restores the boot-time value", () => {
+		const out = sanitizeSpawnEnv({ PATH: "/evil/bin", FOO: "bar" });
+		expect(out.PATH).toBe(process.env.PATH);
+		expect(out.PATH).not.toBe("/evil/bin");
+		expect(out.FOO).toBe("bar");
+	});
+
+	it("children always get PATH/HOME even when the input env omits them", () => {
+		const out = sanitizeSpawnEnv({ ONLY: "this" });
+		expect(out.PATH).toBe(process.env.PATH);
+		expect(out.HOME).toBe(process.env.HOME);
+	});
+
+	it("other blocked keys stay stripped with no restore", () => {
+		const out = sanitizeSpawnEnv({ LD_PRELOAD: "/evil.so", NODE_OPTIONS: "-r evil" });
+		expect(out.LD_PRELOAD).toBeUndefined();
+		expect(out.NODE_OPTIONS).toBeUndefined();
 	});
 });
