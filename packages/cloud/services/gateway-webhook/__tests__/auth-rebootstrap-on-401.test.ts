@@ -207,4 +207,36 @@ describe("reacquireAuthHeader is single-flight", () => {
 
     shutdownAuth();
   });
+
+  test("scheduled renewal re-bootstraps and never calls the bearer refresh route", async () => {
+    const paths: string[] = [];
+    globalThis.fetch = mock(async (input: unknown) => {
+      paths.push(new URL(String(input)).pathname);
+      return new Response(
+        JSON.stringify({
+          access_token: `tok-${paths.length}`,
+          token_type: "Bearer",
+          expires_in: 0.05,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const { initAuth, shutdownAuth } = await import("../src/auth");
+    try {
+      await initAuth({
+        cloudUrl: "https://api.test",
+        bootstrapSecret: "bootstrap",
+        podName: "test-pod",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 70));
+    } finally {
+      shutdownAuth();
+    }
+
+    expect(paths.length).toBeGreaterThanOrEqual(2);
+    expect(paths.every((path) => path === "/api/internal/auth/token")).toBe(
+      true,
+    );
+  });
 });
