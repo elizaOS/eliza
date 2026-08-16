@@ -3,8 +3,9 @@
  * `approvalTaskToPendingAction` projection: pending user actions are merged
  * newest-first and de-duplicated across the approval queue, the ApprovalService
  * task rows, and the pending-prompts service, and missing services yield empty
- * arrays. Runs against a mock runtime and a real ApprovalService backed by an
- * in-memory task store — no live model or HTTP.
+ * arrays. The untrusted `limit` query is fail-closed. Runs against a mock
+ * runtime and a real ApprovalService backed by an in-memory task store — no
+ * live model or HTTP.
  */
 import type http from "node:http";
 import type { PendingUserAction, Task, UUID } from "@elizaos/core";
@@ -367,6 +368,73 @@ describe("handleApprovalRoute", () => {
       approvals: [],
       pending: [],
       pendingUserActions: [],
+    });
+  });
+
+  it.each([
+    "1e3",
+    "50abc",
+    "0x10",
+    "50.5",
+    "abc",
+    "-1",
+    "1_000",
+    "+5",
+    " 5",
+    "5 ",
+    "0",
+    "Infinity",
+    "NaN",
+    "01",
+  ])("rejects malformed limit %j with 400", async (raw) => {
+    const { runtime, queueList } = runtimeWithApprovals({});
+    const helpers = makeHelpers();
+
+    const handled = await handleApprovalRoute(
+      req(`/api/approvals?limit=${encodeURIComponent(raw)}`),
+      res,
+      "/api/approvals",
+      "GET",
+      { runtime },
+      helpers,
+    );
+
+    expect(handled).toBe(true);
+    expect(helpers.error).toHaveBeenCalledWith(
+      res,
+      "limit must be a positive integer",
+      400,
+    );
+    expect(helpers.json).not.toHaveBeenCalled();
+    expect(queueList).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [undefined, 50],
+    ["5", 5],
+    ["500", 500],
+    ["501", 500],
+  ] as const)("accepts limit %j as %s", async (raw, expected) => {
+    const { runtime, queueList } = runtimeWithApprovals({});
+    const helpers = makeHelpers();
+    const url =
+      raw === undefined ? "/api/approvals" : `/api/approvals?limit=${raw}`;
+
+    await handleApprovalRoute(
+      req(url),
+      res,
+      "/api/approvals",
+      "GET",
+      { runtime },
+      helpers,
+    );
+
+    expect(helpers.error).not.toHaveBeenCalled();
+    expect(queueList).toHaveBeenCalledWith({
+      subjectUserId: null,
+      state: "pending",
+      action: null,
+      limit: expected,
     });
   });
 });
