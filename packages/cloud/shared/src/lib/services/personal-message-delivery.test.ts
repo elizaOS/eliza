@@ -9,6 +9,16 @@ const findActivePersonalDedicatedTarget = mock(async () => dedicatedTarget);
 const preparePersonalDedicatedDelivery = mock(async () => ({ state: "ready" as const }));
 const sharedRestMessageSend = mock(async () => ({ text: "Shared reply", agentName: "Eliza" }));
 const bridge = mock(async () => ({ result: { text: "Dedicated reply" } }));
+const coordinateSharedHistory = mock(async () => [] as Array<Record<string, unknown>>);
+const importCanonicalConversation = mock(
+  async () =>
+    null as null | {
+      complete: true;
+      sourceMessageCount: number;
+      inserted: number;
+      skipped: number;
+    },
+);
 
 mock.module("./agent-tier-upgrade-target", () => ({ findActivePersonalDedicatedTarget }));
 mock.module("./personal-dedicated-delivery", () => ({ preparePersonalDedicatedDelivery }));
@@ -20,12 +30,12 @@ mock.module("./shared-runtime/personal-shared-agent", () => ({
 }));
 mock.module("./shared-runtime/shared-rest-adapter", () => ({ sharedRestMessageSend }));
 mock.module("./shared-runtime/conversation-coordinator", () => ({
-  coordinateSharedHistory: mock(async () => []),
+  coordinateSharedHistory,
 }));
 mock.module("./eliza-sandbox", () => ({
   elizaSandboxService: {
     bridge,
-    importCanonicalConversation: mock(async () => null),
+    importCanonicalConversation,
   },
 }));
 
@@ -50,6 +60,8 @@ describe("deliverPersonalTextMessage", () => {
     dedicatedTarget = null;
     sharedRestMessageSend.mockClear();
     bridge.mockClear();
+    coordinateSharedHistory.mockClear();
+    importCanonicalConversation.mockClear();
   });
 
   test("uses the rowless personal Shared runtime when no Dedicated target exists", async () => {
@@ -83,5 +95,66 @@ describe("deliverPersonalTextMessage", () => {
     });
     expect(bridge).toHaveBeenCalledTimes(1);
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("preserves bounded grounding when repairing a Dedicated conversation", async () => {
+    dedicatedTarget = {
+      id: "dedicated-agent",
+      status: "running",
+      bridge_url: "https://dedicated.example.test",
+    };
+    bridge
+      .mockImplementationOnce(async () => ({
+        error: { message: "Bridge returned HTTP 404" },
+      }))
+      .mockImplementationOnce(async () => ({ result: { text: "Repaired reply" } }));
+    coordinateSharedHistory.mockResolvedValueOnce([
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "Current answer",
+        createdAt: 123,
+        grounding: {
+          kind: "web_search",
+          query: "current release",
+          provider: "parallel",
+          text: "released today",
+          observedAt: 122,
+          truncated: false,
+        },
+      },
+    ]);
+    importCanonicalConversation.mockResolvedValueOnce({
+      complete: true,
+      sourceMessageCount: 1,
+      inserted: 1,
+      skipped: 0,
+    });
+
+    const result = await deliverPersonalTextMessage(base);
+
+    expect(result).toMatchObject({ success: true, reply: "Repaired reply" });
+    expect(importCanonicalConversation).toHaveBeenCalledWith(
+      "dedicated-agent",
+      "personal-org",
+      "personal-shared-agent",
+      [
+        {
+          sourceId: "assistant-1",
+          role: "assistant",
+          text: "Current answer",
+          timestamp: 123,
+          grounding: {
+            kind: "web_search",
+            query: "current release",
+            provider: "parallel",
+            text: "released today",
+            observedAt: 122,
+            truncated: false,
+          },
+        },
+      ],
+    );
+    expect(bridge).toHaveBeenCalledTimes(2);
   });
 });

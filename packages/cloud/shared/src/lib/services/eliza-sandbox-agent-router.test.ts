@@ -221,7 +221,7 @@ describe("ElizaSandboxService Worker agent-router fetch", () => {
       });
       return Response.json({
         conversationId: "personal:user-1",
-        inserted: 1,
+        inserted: 2,
         skipped: 0,
       });
     });
@@ -236,13 +236,27 @@ describe("ElizaSandboxService Worker agent-router fetch", () => {
         () =>
           service().importCanonicalConversation(sandbox.id, "org-1", "personal:user-1", [
             { sourceId: "source-1", role: "user", text: "hello", timestamp: 123 },
+            {
+              sourceId: "source-2",
+              role: "assistant",
+              text: "current answer",
+              timestamp: 124,
+              grounding: {
+                kind: "web_search",
+                query: "current release",
+                provider: "parallel",
+                text: "released today",
+                observedAt: 123,
+                truncated: false,
+              },
+            },
           ]),
       );
 
       expect(receipt).toEqual({
         complete: true,
-        sourceMessageCount: 1,
-        inserted: 1,
+        sourceMessageCount: 2,
+        inserted: 2,
         skipped: 0,
       });
       expect(requests).toHaveLength(1);
@@ -253,7 +267,23 @@ describe("ElizaSandboxService Worker agent-router fetch", () => {
       expect(requests[0]?.headers.get("x-server-token")).toBe("server-secret");
       expect(requests[0]?.headers.get("x-forwarded-host")).toBe(`${sandbox.id}.elizacloud.ai`);
       expect(JSON.parse(requests[0]!.body)).toEqual({
-        messages: [{ sourceId: "source-1", role: "user", text: "hello", timestamp: 123 }],
+        messages: [
+          { sourceId: "source-1", role: "user", text: "hello", timestamp: 123 },
+          {
+            sourceId: "source-2",
+            role: "assistant",
+            text: "current answer",
+            timestamp: 124,
+            grounding: {
+              kind: "web_search",
+              query: "current release",
+              provider: "parallel",
+              text: "released today",
+              observedAt: 123,
+              truncated: false,
+            },
+          },
+        ],
       });
     } finally {
       findRunning.mockRestore();
