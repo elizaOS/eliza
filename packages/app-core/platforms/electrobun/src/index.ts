@@ -1826,6 +1826,24 @@ function injectApiBase(win: BrowserWindow): void {
     return;
   }
 
+  if (runtimeResolution.mode === "disabled") {
+    // Runtime-less consumer bundle: there is no embedded agent, so minting a
+    // local API token here would be worse than useless — the renderer's cloud
+    // resolver (getCloudAuthToken) falls back to the client REST token, so a
+    // fabricated local token masquerades as a Cloud credential, silently
+    // skips interactive sign-in, and 401s the join flow. Publish the (dead)
+    // loopback base with NO token so the sign-in flow runs for real.
+    apiBaseOwner.notifyChange(
+      win,
+      resolveInitialApiBase(
+        process.env as Record<string, string | undefined>,
+      ) ?? `http://127.0.0.1:${resolveDesktopApiPort(process.env)}`,
+      resolveApiToken(process.env) ?? "",
+    );
+    setAgentReady(true);
+    return;
+  }
+
   const agent = getAgentManager();
   const port = agent.getPort() ?? resolveDesktopApiPort(process.env);
   const apiToken = configureDesktopLocalApiAuth();
