@@ -34,7 +34,8 @@ const FOCUSABLE_SELECTOR =
  *   - On close: restores focus to the previously focused element.
  *
  * Animation is a single CSS keyframe (defined in base.css as
- * `@keyframes shell-overlay-in`) on enter; respects
+ * `@keyframes shell-overlay-in`, or the `shell-overlay-in-anchored`
+ * variant selected by the chat-overlay shell override) on enter; respects
  * `prefers-reduced-motion` via Tailwind's `motion-safe:` prefix.
  */
 export function AssistantOverlay({

@@ -17,7 +17,16 @@ import * as React from "react";
 const CHAT_OVERLAY_SHELL_CLASS = "eliza-chat-overlay-shell";
 
 export function useChatOverlayShell(): boolean {
-  const [isChatOverlayShell, setIsChatOverlayShell] = React.useState(false);
+  // Initialize synchronously from the live class list: the shell mode is
+  // installed on documentElement before React mounts (main.tsx shell wiring),
+  // so a false-first-then-sync effect would misclassify the first render and
+  // flash the viewport-centring utilities for one paint when the overlay
+  // mounts already-open (#20063 round-2 review finding 1).
+  const [isChatOverlayShell, setIsChatOverlayShell] = React.useState(() =>
+    typeof document === "undefined"
+      ? false
+      : document.documentElement.classList.contains(CHAT_OVERLAY_SHELL_CLASS),
+  );
 
   React.useEffect(() => {
     if (typeof document === "undefined") return;

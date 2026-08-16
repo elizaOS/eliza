@@ -268,6 +268,7 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
       panelBottom: number;
       panelLeft: number;
       panelRight: number;
+      panelWidth: number;
       pillTop: number;
       viewportWidth: number;
       viewportHeight: number;
@@ -280,15 +281,63 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
       }
       const rect = panel.getBoundingClientRect();
       return {
-        panelTop: Math.round(rect.top),
-        panelBottom: Math.round(rect.bottom),
-        panelLeft: Math.round(rect.left),
-        panelRight: Math.round(rect.right),
+        // Raw (unrounded) edges: rounding before midpoint math permits up to
+        // 0.5px error per edge and hides subpixel overflow (round-2 finding 3).
+        panelTop: rect.top,
+        panelBottom: rect.bottom,
+        panelLeft: rect.left,
+        panelRight: rect.right,
+        panelWidth: rect.width,
         pillTop: Math.round(pill.getBoundingClientRect().top),
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
       };
     })()`);
+
+    // Mid-entry centering probe (#20063 round-2 finding 2): the settle loop
+    // below waits out the 220ms entry animation, so resting-state assertions
+    // alone would pass even if the animation replaced the centering transform
+    // (the round-1 bug). Pause the entry animation deterministically at its
+    // midpoint and assert the panel is horizontally centered THERE, where the
+    // round-1 bug would place it off-center by ~half its width.
+    {
+      const midEntry = await harness.eval(`(() => {
+        const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
+        if (!(panel instanceof HTMLElement)) throw new Error('panel missing');
+        const cs = getComputedStyle(panel);
+        if (cs.animationName !== 'shell-overlay-in-anchored') {
+          // prefers-reduced-motion or animation already finished: nothing to
+          // probe mid-flight; the settled assertions below still apply.
+          return { skipped: true, reason: cs.animationName };
+        }
+        panel.style.animationPlayState = 'paused';
+        panel.style.animationDelay = '-110ms'; // seek to midpoint of 220ms
+        const rect = panel.getBoundingClientRect();
+        return {
+          skipped: false,
+          animationName: cs.animationName,
+          left: rect.left,
+          width: rect.width,
+          viewportWidth: window.innerWidth,
+        };
+      })()`);
+      if (!midEntry.skipped) {
+        expect(midEntry.animationName).toBe("shell-overlay-in-anchored");
+        const midOffset = Math.abs(
+          midEntry.left + midEntry.width / 2 - midEntry.viewportWidth / 2,
+        );
+        expect(midOffset).toBeLessThanOrEqual(4);
+      }
+      await harness.eval(
+        `(() => {
+          const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
+          if (panel instanceof HTMLElement) {
+            panel.style.animationPlayState = '';
+            panel.style.animationDelay = '';
+          }
+        })()`,
+      );
+    }
 
     // The panel enters via a 220ms translate animation (motion-safe). Measuring
     // mid-slide reports the panel displaced up to 8% of its height below its
@@ -327,17 +376,18 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     // Bottom containment checked directly against the viewport, not inferred
     // through pillTop alone (#20063 review finding 2): the panel must stop
     // short of the resting bar zone.
-    expect(expandedGeometry.viewportHeight - expandedGeometry.panelBottom)
-      .toBeGreaterThanOrEqual(8);
-    // Horizontal centering (#20063 review finding 1): the panel's midpoint
-    // must match the viewport's midpoint — the entry animation previously
-    // replaced the centering transform for its full 220ms duration, flying
-    // the panel in off-center before snapping back.
+    expect(
+      expandedGeometry.viewportHeight - expandedGeometry.panelBottom,
+    ).toBeGreaterThanOrEqual(8);
+    // Horizontal centering at rest (#20063 round-1 finding 1): the panel's
+    // midpoint must match the viewport's midpoint. Midpoint from left+width/2
+    // on raw (unrounded) edges avoids the double-rounding error (round-2
+    // finding 3).
     const panelMidpoint =
-      (expandedGeometry.panelLeft + expandedGeometry.panelRight) / 2;
-    expect(Math.abs(panelMidpoint - expandedGeometry.viewportWidth / 2)).toBeLessThanOrEqual(
-      4,
-    );
+      expandedGeometry.panelLeft + expandedGeometry.panelWidth / 2;
+    expect(
+      Math.abs(panelMidpoint - expandedGeometry.viewportWidth / 2),
+    ).toBeLessThanOrEqual(4);
 
     await harness.eval(
       `document.querySelector('[aria-label="Close assistant"]')?.click()`,
