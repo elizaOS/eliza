@@ -239,4 +239,44 @@ describe("reacquireAuthHeader is single-flight", () => {
       true,
     );
   });
+
+  test("scheduled renewal retries bootstrap after a transient failure", async () => {
+    let bootstraps = 0;
+    globalThis.fetch = mock(async () => {
+      bootstraps += 1;
+      if (bootstraps === 2) {
+        return new Response("temporarily unavailable", { status: 503 });
+      }
+      return new Response(
+        JSON.stringify({
+          access_token: `tok-${bootstraps}`,
+          token_type: "Bearer",
+          expires_in: bootstraps === 1 ? 0.01 : 60,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const { initAuth, shutdownAuth } = await import("../src/auth");
+    try {
+      await initAuth({
+        cloudUrl: "https://api.test",
+        bootstrapSecret: "bootstrap",
+        podName: "test-pod",
+      });
+      await waitFor(() => bootstraps === 3);
+    } finally {
+      shutdownAuth();
+    }
+
+    expect(bootstraps).toBe(3);
+  });
 });
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("Timed out waiting for retry");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}

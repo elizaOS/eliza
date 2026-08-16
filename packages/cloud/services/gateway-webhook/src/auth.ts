@@ -3,6 +3,7 @@ import { logger } from "./logger";
 
 const HTTP_TIMEOUT_MS = 10_000;
 const TOKEN_REFRESH_PERCENTAGE = 0.8;
+const TOKEN_REFRESH_RETRY_MS = 1_000;
 
 interface TokenResponse {
   access_token: string;
@@ -83,13 +84,31 @@ function scheduleRefresh(expiresInSeconds: number): void {
   if (refreshTimeout) clearTimeout(refreshTimeout);
 
   const refreshInMs = expiresInSeconds * 1000 * TOKEN_REFRESH_PERCENTAGE;
-  refreshTimeout = setTimeout(() => {
+  const timeout = setTimeout(() => {
+    // error-policy:J1 The timer boundary converts renewal failure into a paced retry.
     refreshToken().catch((error) => {
       logger.error("Token refresh failed", {
         error: error instanceof Error ? error.message : String(error),
       });
+      if (refreshTimeout === timeout) scheduleRefreshRetry();
     });
   }, refreshInMs);
+  refreshTimeout = timeout;
+}
+
+function scheduleRefreshRetry(): void {
+  if (refreshTimeout) clearTimeout(refreshTimeout);
+
+  const timeout = setTimeout(() => {
+    // error-policy:J1 The timer boundary retains the paced retry until recovery.
+    refreshToken().catch((error) => {
+      logger.error("Token refresh retry failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (refreshTimeout === timeout) scheduleRefreshRetry();
+    });
+  }, TOKEN_REFRESH_RETRY_MS);
+  refreshTimeout = timeout;
 }
 
 export async function initAuth(authConfig: AuthConfig): Promise<void> {
