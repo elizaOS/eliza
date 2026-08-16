@@ -81,8 +81,8 @@ const PROCESS_DOTS = [
  * always-visible surface, so it carries all ambient status):
  *   booting     — dim pulsing handle ("waking up").
  *   idle        — solid white handle ("here, ready").
- *   listening   — dark chip, red hot-mic ring, live waveform bars.
- *   processing  — dark chip, pulsing dots, no red ring — mic closed,
+ *   listening   — dark chip, live waveform bars ("mic is hot").
+ *   processing  — dark chip, pulsing dots — mic closed,
  *                 transcription in flight ("heard you, working on it").
  *   responding  — warm accent glow; `speaking` sharpens it while the reply
  *                 is audibly playing (thinking vs speaking read differently).
@@ -244,16 +244,14 @@ export function HomePill({
           "transition-[width,height,opacity,transform,background-color,box-shadow] duration-200",
           // Listening/processing mirror the studied Wispr Flow bar: the capsule
           // GROWS into a dark rounded chip — legible from across the room.
-          // Listening carries live bars + a red hot-mic ring; processing keeps
-          // the dark chip (continuity: "still your utterance") but swaps the
-          // bars for pulsing dots and drops the red ring — the mic is CLOSED.
-          // Other phases stay the slim white handle.
+          // Listening carries live bars; processing keeps the dark chip
+          // (continuity: "still your utterance") but swaps the bars for
+          // pulsing dots — the mic is CLOSED. Other phases stay the slim
+          // white handle.
           chipExpanded
             ? "h-7 w-20 gap-[3px] bg-neutral-900/95"
             : "h-2.5 w-12 gap-[3px] bg-white/95 group-hover:w-14",
-          phase === "listening" &&
-            "shadow-[0_0_0_1.5px_rgba(239,68,68,0.9),0_4px_16px_rgba(0,0,0,0.35)]",
-          phase === "processing" && "shadow-[0_4px_16px_rgba(0,0,0,0.35)]",
+          chipExpanded && "shadow-[0_4px_16px_rgba(0,0,0,0.35)]",
           !chipExpanded &&
             (phase === "responding"
               ? speaking

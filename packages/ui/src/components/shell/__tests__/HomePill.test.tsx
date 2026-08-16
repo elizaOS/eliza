@@ -91,14 +91,15 @@ describe("HomePill", () => {
     );
   });
 
-  it("grows into a dark red-ringed chip with waveform bars while listening", () => {
+  it("grows into a dark chip with waveform bars while listening", () => {
     render(<HomePill phase="listening" onOpen={() => {}} onClose={() => {}} />);
     const mark = screen.getByTestId("shell-home-pill-mark");
-    // Wispr-style listening chip: larger dark capsule + red hot-mic ring.
+    // Wispr-style listening chip: larger dark capsule, no colored ring — the
+    // live bars alone carry the "mic is hot" signal.
     expect(mark.className).toContain("bg-neutral-900/95");
     expect(mark.className).toContain("h-7");
     expect(mark.className).toContain("w-20");
-    expect(mark.className).toContain("239,68,68");
+    expect(mark.className).not.toContain("239,68,68");
     expect(mark.className).not.toContain("bg-white/95");
     const bars = screen.getAllByTestId("shell-home-pill-wave-bar");
     expect(bars).toHaveLength(9);
@@ -132,7 +133,7 @@ describe("HomePill", () => {
     }
   });
 
-  it("keeps the dark chip with pulsing dots (no red ring) while processing", () => {
+  it("keeps the dark chip with pulsing dots while processing", () => {
     render(
       <HomePill phase="processing" onOpen={() => {}} onClose={() => {}} />,
     );

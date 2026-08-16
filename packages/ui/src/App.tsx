@@ -1817,7 +1817,7 @@ function ShellFoundationMount() {
   // Global push-to-talk hotkey (#20483): the OS shortcut is trigger-only (no
   // key-up event reaches the renderer), so the hotkey drives the SAME ptt
   // capture as the pill's hold, in toggle form — first press opens the mic
-  // (ping + red chip on the pill), second press stops and sends (tick). No
+  // (ping + listening chip on the pill), second press stops and sends (tick). No
   // window is summoned and no focus is taken; the pill alone shows the state.
   const controllerRef = useRef(controller);
   controllerRef.current = controller;
