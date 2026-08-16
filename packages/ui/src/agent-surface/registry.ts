@@ -82,6 +82,13 @@ export class ViewAgentRegistry {
   private readonly listeners = new Set<() => void>();
   private version = 0;
   private highlight = false;
+  // When false the store still advances its version on mutation but never
+  // notifies subscribers. Set false by `seal()` the moment the owning provider
+  // tree begins tearing down (see `retainViewRegistry`), so a descendant
+  // `useAgentElement` unmount that mutates the store during React's
+  // deleted-tree passive cleanup cannot force a re-render on a subscriber
+  // (`AgentElementOverlay`/reporter) already committed for deletion (#20728).
+  private notifying = true;
 
   constructor(viewId: string, viewType: AgentViewType) {
     this.viewId = viewId;
@@ -133,9 +140,39 @@ export class ViewAgentRegistry {
     this.bump();
   }
 
+  /**
+   * Stop notifying `useSyncExternalStore` subscribers. React runs a deleted
+   * subtree's passive cleanups parent-first, so the owning provider's teardown
+   * (its `retainViewRegistry` disposer) seals the registry *before* any
+   * descendant `useAgentElement` disposer's `delete`/`bump` runs — turning
+   * those teardown mutations into internal-state updates that never reach a
+   * subscriber committed for deletion (#20728). The version still advances so a
+   * late introspection read stays consistent.
+   */
+  seal(): void {
+    this.notifying = false;
+  }
+
+  /**
+   * Re-enable notifications when the same instance is retained again. React
+   * Strict Mode replays effects (cleanup → mount) on the identical registry, so
+   * a fresh retainer means the owning tree is live and subscribers are valid.
+   */
+  unseal(): void {
+    this.notifying = true;
+  }
+
+  /** Whether the registry currently forwards mutations to subscribers. */
+  isNotifying(): boolean {
+    return this.notifying;
+  }
+
   private bump(): void {
     this.version += 1;
-    for (const listener of this.listeners) listener();
+    if (!this.notifying) return;
+    // Snapshot listeners so a subscriber that unsubscribes while being notified
+    // cannot corrupt the live iteration.
+    for (const listener of [...this.listeners]) listener();
   }
 
   // ── introspection ─────────────────────────────────────────────────────────
@@ -350,6 +387,9 @@ export function retainViewRegistry(registry: ViewAgentRegistry): () => void {
     registry,
     (viewRegistryMountCounts.get(registry) ?? 0) + 1,
   );
+  // A live retainer means the owning tree is mounted; clear any seal left by a
+  // prior teardown of this same instance (Strict Mode effect replay).
+  registry.unseal();
 
   let retained = true;
   return () => {
@@ -363,6 +403,11 @@ export function retainViewRegistry(registry: ViewAgentRegistry): () => void {
     }
 
     viewRegistryMountCounts.delete(registry);
+    // Last provider retainer released: the owning tree is tearing down. Seal now
+    // — before descendant `useAgentElement` disposers mutate the store during
+    // the same deleted-tree passive phase — so no `bump()` reaches a subscriber
+    // committed for deletion (#20728).
+    registry.seal();
     if (viewRegistries.get(registryKey) === registry) {
       viewRegistries.delete(registryKey);
     }

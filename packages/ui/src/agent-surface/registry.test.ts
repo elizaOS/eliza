@@ -12,6 +12,7 @@ import {
   getOrCreateViewRegistry,
   getViewRegistry,
   removeViewRegistry,
+  retainViewRegistry,
   ViewAgentRegistry,
 } from "./registry";
 import type { AgentElementSnapshot, AgentSurfaceSnapshot } from "./types";
@@ -202,6 +203,72 @@ describe("ViewAgentRegistry", () => {
     expect(listener).toHaveBeenCalledTimes(2);
     registry.setHighlight(true); // no-op, same state
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  // #20728: React runs a deleted subtree's passive cleanups parent-first, so the
+  // owning provider's `retainViewRegistry` disposer seals the registry *before*
+  // any descendant `useAgentElement` disposer's delete/bump. Once sealed, a
+  // teardown mutation must advance internal state WITHOUT notifying a subscriber
+  // (the overlay's `useSyncExternalStore`) that is already committed for deletion
+  // — otherwise `forceStoreRerender` fires on an unmounting fiber (React #185).
+  it("stops notifying subscribers once the last provider retainer is released", () => {
+    const registry = getOrCreateViewRegistry("test-view", "gui");
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    const release = retainViewRegistry(registry);
+    expect(registry.isNotifying()).toBe(true);
+
+    // A live registration still notifies the subscriber.
+    const unregister = registry.register(
+      { id: "live", label: "Live" },
+      () => null,
+    );
+    expect(listener).toHaveBeenCalledTimes(1);
+    const versionAfterRegister = registry.getVersion();
+
+    // Provider teardown (parent cleanup) runs first and seals the registry.
+    release();
+    expect(registry.isNotifying()).toBe(false);
+
+    // Descendant `useAgentElement` cleanup then mutates the store: the element is
+    // removed and the version still advances, but the subscriber is NOT notified.
+    unregister();
+    expect(registry.size()).toBe(0);
+    expect(registry.getVersion()).toBe(versionAfterRegister + 1);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    // Highlight/touch mutations during teardown are likewise silent.
+    registry.setHighlight(true);
+    registry.touch();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps notifying while an overlapping provider retainer remains, and re-enables on re-retain (Strict Mode replay)", () => {
+    const registry = getOrCreateViewRegistry("test-view", "gui");
+    const listener = vi.fn();
+    registry.subscribe(listener);
+
+    const releaseA = retainViewRegistry(registry);
+    const releaseB = retainViewRegistry(registry);
+
+    // One of two overlapping providers unmounts: registry stays active.
+    releaseA();
+    expect(registry.isNotifying()).toBe(true);
+    registry.touch();
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    // Last provider unmounts: sealed.
+    releaseB();
+    expect(registry.isNotifying()).toBe(false);
+
+    // Strict Mode replays effects on the identical instance: re-retaining the
+    // same registry unseals it so live subscribers resume receiving updates.
+    const releaseReplay = retainViewRegistry(registry);
+    expect(registry.isNotifying()).toBe(true);
+    registry.touch();
+    expect(listener).toHaveBeenCalledTimes(2);
+    releaseReplay();
   });
 });
 
