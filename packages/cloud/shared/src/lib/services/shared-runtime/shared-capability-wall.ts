@@ -51,7 +51,7 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     capability: "calendar",
     label: "Calendar",
     pattern:
-      /\b(?:add|create|book|schedule|cancel|delete|move|reschedule|check|show|list|open)\b[\s\S]{0,36}\b(?:calendar|events?|appointments?|meetings?)\b/i,
+      /\b(?:(?:add|create|book|schedule|cancel|delete|move|reschedule)\b[\s\S]{0,36}\b(?:calendar|events?|appointments?|meetings?)|(?:check|show|list|open)\b\s+(?:me\s+)?(?:(?:my|our|the|upcoming|next|today(?:'s)?|tomorrow(?:'s)?)\s+){0,2}(?:calendar|events?|appointments?|meetings?))\b/i,
     reply:
       "Calendar actions need Dedicated. I can help plan the event here, but Shared can't read or change your calendar.",
   },
@@ -67,7 +67,7 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     capability: "communications",
     label: "Calls and messages",
     pattern:
-      /\b(?:(?:can|could|would|will)\s+you\s+)?(?:(?:email|call|text|message|dm)\b(?!\s+(?:this|the|a|an)\s+(?:\w+\s+){0,2}(?:function|method|api|endpoint|class|variable|command)\b)|send\b[\s\S]{0,32}\b(?:email|text|message|dm)\b)/i,
+      /(?:(?<=^|[.!?;,]\s*|\b(?:and\s+)?then\s+|\band\s+|\bto\s+|\bplease\s+|\b(?:can|could|would|will)\s+you\s+)(?:email|call|text|message|dm)\s+(?!(?:this|the|a|an)\s+(?:\w+\s+){0,2}(?:function|method|api|endpoint|class|variable|command)\b)|\bsend\b[\s\S]{0,32}\b(?:email|text|message|dm)\b)/i,
     reply:
       "I can talk with you and reply through Eliza's connected voice and messaging channels. I can't initiate a separate call, email, text, or DM to another person from this session.",
   },
