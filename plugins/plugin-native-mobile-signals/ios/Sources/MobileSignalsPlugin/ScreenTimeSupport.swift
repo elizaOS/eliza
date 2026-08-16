@@ -134,7 +134,7 @@ enum ScreenTimeSupport {
             }
             return "DeviceActivity monitor extension is not bundled with the app."
         }
-        return nil
+        return ScreenTimeCapabilityPolicy.unavailableReason
     }
 
     private static func inspectBundledExtensions() -> ExtensionInspection {
