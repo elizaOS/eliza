@@ -6,14 +6,14 @@
  * the in-worker versus dedicated route choice.
  */
 
+import {
+  type DiscordDmPolicyMetadata,
+  isDiscordDmSenderAllowed,
+} from "@elizaos/shared/discord-dm-policy";
+
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
 
-export interface DiscordConnectionDmMetadata {
-  dmPolicy?: "open" | "disabled" | "allowlist" | "pairing";
-  ownerDiscordUserId?: string;
-  ownerDiscordUserIds?: string[];
-  dmAllowFrom?: string[];
-}
+export type DiscordConnectionDmMetadata = DiscordDmPolicyMetadata;
 
 export type DiscordConnectionDmPolicyState =
   | { status: "valid"; metadata: DiscordConnectionDmMetadata }
@@ -101,14 +101,5 @@ export function isDmSenderAllowed(
   authorId: string,
 ): boolean {
   if (state?.status !== "valid") return false;
-  const metadata = state.metadata;
-  const dmPolicy = metadata.dmPolicy ?? "open";
-  if (dmPolicy === "open") return true;
-  if (dmPolicy === "disabled") return false;
-  const allowed = new Set<string>(metadata.ownerDiscordUserIds ?? []);
-  if (metadata.ownerDiscordUserId) allowed.add(metadata.ownerDiscordUserId);
-  if (dmPolicy === "allowlist") {
-    for (const id of metadata.dmAllowFrom ?? []) allowed.add(id);
-  }
-  return allowed.has(authorId);
+  return isDiscordDmSenderAllowed(state.metadata, authorId);
 }

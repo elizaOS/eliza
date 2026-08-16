@@ -2,11 +2,11 @@
 # Multi-tenant Discord gateway for Eliza Cloud
 #
 # BUILD CONTEXT IS THE REPOSITORY ROOT, not this directory. The service depends
-# on the `@elizaos/cloud-services-common` workspace package, and `workspace:*`
+# on the `@elizaos/cloud-services-common` and `@elizaos/shared` workspace packages, and `workspace:*`
 # cannot resolve from a context that contains only this package — which is why
 # every build since that dependency landed failed and the deployed image stayed
 # frozen. Matching the gateway-webhook pattern (#17841), the deps stage writes a
-# pruned workspace root containing just this service and the one package it
+# pruned workspace root containing just this service and the packages it
 # needs, so `bun install` resolves the workspace link without installing the
 # whole monorepo.
 #
@@ -26,26 +26,31 @@ WORKDIR /app
 
 ARG SERVICE_DIR=packages/cloud/services/gateway-discord
 ARG COMMON_DIR=packages/cloud/services/_common
+ARG SHARED_DIR=packages/shared
 
 # Install dependencies
 FROM base AS deps
 ARG SERVICE_DIR
 ARG COMMON_DIR
+ARG SHARED_DIR
 RUN apk add --no-cache python3 make g++ pkgconf opus-dev
 COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
 COPY ${COMMON_DIR}/package.json ${COMMON_DIR}/
-RUN printf '{"name":"gateway-discord-build","private":true,"workspaces":["packages/cloud/services/*"]}\n' > package.json \
+COPY ${SHARED_DIR}/package.json ${SHARED_DIR}/
+RUN printf '{"name":"gateway-discord-build","private":true,"workspaces":["packages/shared","packages/cloud/services/*"]}\n' > package.json \
     && bun install --production
 
 # Build stage
 FROM deps AS builder
 ARG SERVICE_DIR
 ARG COMMON_DIR
+ARG SHARED_DIR
 COPY ${COMMON_DIR}/src ${COMMON_DIR}/src
+COPY ${SHARED_DIR}/src ${SHARED_DIR}/src
 COPY ${SERVICE_DIR}/tsconfig.json ${SERVICE_DIR}/
 COPY ${SERVICE_DIR}/src ${SERVICE_DIR}/src
 WORKDIR /app/${SERVICE_DIR}
-RUN bun build src/index.ts --outdir dist --target node \
+RUN bun build src/index.ts --outdir dist --target node --conditions eliza-source \
     --external zlib-sync \
     --external @discordjs/voice \
     --external @discordjs/opus \
