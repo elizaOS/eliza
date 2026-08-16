@@ -4,7 +4,8 @@
 /**
  * Post-login destination resolution: explicit returnTo always wins; every
  * host defaults to the /join drop-into-chat flow. Apex /join performs a
- * trusted handoff to the paired app host. Protocol-relative values are rejected.
+ * trusted handoff to the paired app host. Cross-origin authority forms are
+ * rejected through the same sanitizer used by persisted callback state.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -59,9 +60,10 @@ describe("login return-to resolution", () => {
     expect(resolveLoginReturnTo(params("/settings"))).toBe("/settings");
   });
 
-  it("rejects protocol-relative and external values", () => {
+  it("rejects protocol-relative, backslash-authority, and external values", () => {
     setHostname("elizacloud.ai");
     expect(resolveLoginReturnTo(params("//evil.example"))).toBe("/join");
+    expect(resolveLoginReturnTo(params("/\\\\evil.example"))).toBe("/join");
     expect(resolveLoginReturnTo(params("https://evil.example"))).toBe("/join");
   });
 
@@ -80,5 +82,22 @@ describe("login return-to resolution", () => {
   it("never persists an external login destination", () => {
     storePendingOAuthReturnTo(params("https://evil.example/get-started"));
     expect(consumePendingOAuthReturnTo()).toBeNull();
+  });
+
+  it("rejects hostile destinations already persisted in either browser store", () => {
+    const stored = JSON.stringify({
+      returnTo: "/\\\\evil.example",
+      expiresAt: Date.now() + 60_000,
+    });
+    window.sessionStorage.setItem("eliza.login.oauth.returnTo", stored);
+    window.localStorage.setItem("eliza.login.oauth.returnTo", stored);
+
+    expect(consumePendingOAuthReturnTo()).toBeNull();
+    expect(
+      window.sessionStorage.getItem("eliza.login.oauth.returnTo"),
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem("eliza.login.oauth.returnTo"),
+    ).toBeNull();
   });
 });
