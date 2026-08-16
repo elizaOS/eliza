@@ -1760,3 +1760,41 @@ describe("noun-modified budget stays a conversational fact, not a finance read",
 		}
 	});
 });
+
+describe("money-spend questions route to the finances reader (non-possessive)", () => {
+	const finances = { name: "OWNER_FINANCES", similes: [], tags: [] };
+
+	it("'how much did i spend this month' → OWNER_FINANCES (live goals-misroute fix)", () => {
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[finances],
+				"how much did i spend this month",
+			),
+		).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+	});
+
+	it("spend/pay/owe phrasings all route to finances", () => {
+		for (const text of [
+			"how much have i spent",
+			"how much do i owe",
+			"what did i spend on groceries",
+			"what did i pay for the car",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference([finances], text),
+			).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+		}
+	});
+
+	it("non-money 'spend' phrasings do not route to finances", () => {
+		for (const text of [
+			"i want to spend time with the kids",
+			"how should i budget my spending please give advice",
+			"how much time did i spend coding",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference([finances], text).names,
+			).not.toContain("OWNER_FINANCES");
+		}
+	});
+});
