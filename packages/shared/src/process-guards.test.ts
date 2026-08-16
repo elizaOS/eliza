@@ -156,4 +156,15 @@ describe("shouldIgnoreUnhandledRejection", () => {
       ),
     ).toBe(false);
   });
+
+  it("preserves provider credit classification for string rejection reasons", () => {
+    const creditReason = "AI_APICallError: payment required";
+
+    expect(shouldIgnoreUnhandledRejection(creditReason)).toBe(true);
+    expect(
+      shouldIgnoreUnhandledRejection(
+        new AggregateError([creditReason], "All provider attempts failed"),
+      ),
+    ).toBe(true);
+  });
 });

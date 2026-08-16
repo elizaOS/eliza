@@ -28,8 +28,11 @@ export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
   const pending: unknown[] = [reason];
   while (pending.length > 0) {
     const current = pending.pop();
-    if (!current || typeof current !== "object" || seen.has(current)) continue;
-    seen.add(current);
+    const isObject = current !== null && typeof current === "object";
+    if (isObject) {
+      if (seen.has(current)) continue;
+      seen.add(current);
+    }
 
     const formatted = formatUncaughtError(current);
     const isProviderError =
@@ -39,10 +42,14 @@ export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
     if (isProviderError) {
       if (hasInsufficientCreditsSignal(formatted)) return true;
 
-      const statusCode = (current as { statusCode?: number }).statusCode;
+      const statusCode = isObject
+        ? (current as { statusCode?: number }).statusCode
+        : undefined;
       if (statusCode === 402) return true;
 
-      const responseBody = (current as { responseBody?: unknown }).responseBody;
+      const responseBody = isObject
+        ? (current as { responseBody?: unknown }).responseBody
+        : undefined;
       if (
         typeof responseBody === "string" &&
         hasInsufficientCreditsSignal(responseBody)
@@ -50,6 +57,8 @@ export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
         return true;
       }
     }
+
+    if (!isObject) continue;
 
     const errors = (current as { errors?: unknown }).errors;
     if (Array.isArray(errors)) {
