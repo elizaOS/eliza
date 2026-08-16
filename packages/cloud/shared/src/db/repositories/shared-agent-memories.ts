@@ -169,8 +169,9 @@ export class SharedAgentMemoriesWriter {
 
   /**
    * Atomically converges one stable assistant message across cancellation and
-   * retry. A complete reply outranks any interrupted prefix; between prefixes,
-   * only the longer visible text wins. Once complete, a row is immutable.
+   * retry. The latest complete retry is authoritative; between interrupted
+   * prefixes, only the longer visible text wins. Interrupted text can never
+   * downgrade a complete reply.
    */
   async mergeMessageMemory(
     input: MergeSharedAgentMessageMemoryInput,
@@ -217,11 +218,13 @@ export class SharedAgentMemoriesWriter {
           ${sharedAgentMemories.organization_id} = ${scope.organizationId}
           AND ${sharedAgentMemories.user_id} = ${scope.userId}
           AND ${sharedAgentMemories.agent_id} = ${scope.agentId}
-          AND COALESCE(${sharedAgentMemories.content}->>'interrupted' = 'true', false)
           AND (
             ${input.interrupted} = false
-            OR length(COALESCE(${sql.raw("excluded.content")}->>'text', ''))
-              > length(COALESCE(${sharedAgentMemories.content}->>'text', ''))
+            OR (
+              COALESCE(${sharedAgentMemories.content}->>'interrupted' = 'true', false)
+              AND length(COALESCE(${sql.raw("excluded.content")}->>'text', ''))
+                > length(COALESCE(${sharedAgentMemories.content}->>'text', ''))
+            )
           )
         `,
       })

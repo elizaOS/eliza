@@ -181,7 +181,7 @@ describe("SharedAgentMemoriesWriter.mergeMessageMemory (real PGlite)", () => {
     });
   });
 
-  test("keeps the longest interrupted prefix and never downgrades complete", async () => {
+  test("keeps the longest interrupted prefix and lets a later complete retry converge", async () => {
     await sharedAgentMemoriesWriter.mergeMessageMemory(message("part", true));
     await sharedAgentMemoriesWriter.mergeMessageMemory(message("partial response", true));
     await sharedAgentMemoriesWriter.mergeMessageMemory(message("tiny", true));
@@ -199,6 +199,14 @@ describe("SharedAgentMemoriesWriter.mergeMessageMemory (real PGlite)", () => {
     [row] = await sharedAgentMemoriesReader.listRecentByRoom(scopeA, ROOM_A, 10);
     expect(row?.content).toEqual({
       text: "complete response",
+      source: "shared-runtime",
+      channelType: "DM",
+    });
+
+    await sharedAgentMemoriesWriter.mergeMessageMemory(message("retry terminal response", false));
+    [row] = await sharedAgentMemoriesReader.listRecentByRoom(scopeA, ROOM_A, 10);
+    expect(row?.content).toEqual({
+      text: "retry terminal response",
       source: "shared-runtime",
       channelType: "DM",
     });
