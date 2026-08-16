@@ -191,6 +191,9 @@ function beginsSeparateClause(text: string, primary: CapabilityMatch, candidate:
     return !isReminderPayload || /[.!?;,]\s*(?:and\s+)?then\b[\s\S]*$/i.test(between);
   }
   if (!/\band\s*$/i.test(between)) return false;
+  // An infinitive after "remind me" is reminder content, even when that
+  // content coordinates several actions. A completed trigger followed by
+  // "and" starts a new command instead.
   return !isReminderPayload;
 }
 
