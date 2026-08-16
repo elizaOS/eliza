@@ -20,6 +20,12 @@ import {
 import { contentSafetyService } from "@/lib/services/content-safety";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
+import {
+  checkGenerativeProviderHealth,
+  classifyGenerativeFailure,
+  recordGenerativeFailure,
+  recordGenerativeSuccess,
+} from "@/lib/services/generative-provider-health";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
@@ -194,6 +200,30 @@ app.post("/", async (c) => {
       );
     }
 
+    // Fail fast while the upstream is known-degraded (#18436): repeated
+    // timeouts/5xx open a per provider+model breaker, and while it is open we
+    // refuse before content safety, pricing, or the credit hold — no billable
+    // work is admitted toward an upstream that is currently hanging.
+    const providerHealthKey = `music:${provider}:${request.model}`;
+    const providerHealth = checkGenerativeProviderHealth(providerHealthKey);
+    if (providerHealth.degraded) {
+      c.header("Retry-After", String(providerHealth.retryAfterSeconds));
+      return jsonError(
+        c,
+        503,
+        "Music generation is backed up right now; the upstream provider is not responding. Try again shortly.",
+        "service_unavailable",
+        {
+          provider,
+          model: request.model,
+          retryAfterSeconds: providerHealth.retryAfterSeconds,
+          ...(providerHealth.lastFailureKind
+            ? { lastFailureKind: providerHealth.lastFailureKind }
+            : {}),
+        },
+      );
+    }
+
     const durationSeconds =
       definition.durationControl === "supported"
         ? (request.durationSeconds ??
@@ -264,8 +294,9 @@ app.post("/", async (c) => {
     }
 
     await admission.markProviderDispatched?.();
-    const generated = await getAudioProvider(definition.billingSource).generate(
-      {
+    let generated: GeneratedAudio;
+    try {
+      generated = await getAudioProvider(definition.billingSource).generate({
         kind: "music",
         model: request.model,
         prompt: request.prompt,
@@ -292,8 +323,17 @@ app.post("/", async (c) => {
           SUNO_API_KEY: envString(c.env, "SUNO_API_KEY"),
           SUNO_BASE_URL: envString(c.env, "SUNO_BASE_URL"),
         },
-      },
-    );
+      });
+    } catch (error) {
+      // error-policy:J2 breaker accounting for the health gate above, then the
+      // unchanged error proceeds to the route boundary (refund + failureResponse).
+      recordGenerativeFailure(
+        providerHealthKey,
+        classifyGenerativeFailure(error),
+      );
+      throw error;
+    }
+    recordGenerativeSuccess(providerHealthKey);
 
     const music = await storeGeneratedAudio(
       c.env,
