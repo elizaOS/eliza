@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   measureTurn,
+  mintLocalMeasurementSession,
   parseArgs,
   summarize,
 } from "./voice-warm-turn-measure.mjs";
@@ -30,6 +31,26 @@ describe("voice warm-turn argument contract", () => {
     );
   });
 
+  test("accepts a credential-free loopback mode with explicit HTTP origins", () => {
+    const localArgs = [
+      "--local-origin",
+      "http://127.0.0.1:32338",
+      "--runtime-origin",
+      "http://127.0.0.1:2138",
+      "--pcm",
+      "speech.pcm",
+    ];
+    expect(parseArgs(localArgs, {})).toMatchObject({
+      localTurnsPerSession: 8,
+    });
+    expect(() =>
+      parseArgs(localArgs.with(1, "ws://127.0.0.1:32338"), {}),
+    ).toThrow("http:// or https://");
+    expect(() =>
+      parseArgs([...localArgs, "--local-turns-per-session", "11"], {}),
+    ).toThrow("from 1 to 10");
+  });
+
   test("rejects zero and non-integer turn timeouts", () => {
     expect(() =>
       parseArgs([...requiredArgs, "--turn-timeout-ms", "0"], {}),
@@ -37,6 +58,57 @@ describe("voice warm-turn argument contract", () => {
     expect(() =>
       parseArgs([...requiredArgs, "--turn-timeout-ms", "1.5"], {}),
     ).toThrow("positive integer");
+  });
+});
+
+describe("local voice warm-turn session isolation", () => {
+  test("creates a fresh conversation and keeps the scoped token in memory", async () => {
+    const calls = [];
+    const fetchImpl = async (input, init) => {
+      const url = new URL(input);
+      calls.push({ url, init });
+      if (url.pathname === "/api/conversations") {
+        return Response.json({
+          conversation: { id: "11111111-1111-4111-8111-111111111111" },
+        });
+      }
+      if (url.pathname.endsWith("/consent")) {
+        return Response.json({ consentNonce: "one-time-consent" });
+      }
+      return Response.json({
+        wsUrl: "ws://127.0.0.1:32338/api/v1/voice/session/ws?sessionId=local",
+        token: "short-lived-token",
+      });
+    };
+
+    await expect(
+      mintLocalMeasurementSession(
+        {
+          localOrigin: "http://127.0.0.1:32338",
+          runtimeOrigin: "http://127.0.0.1:2138",
+          turnIndex: 7,
+        },
+        fetchImpl,
+      ),
+    ).resolves.toEqual({
+      wsUrl: "ws://127.0.0.1:32338/api/v1/voice/session/ws?sessionId=local",
+      token: "short-lived-token",
+    });
+    expect(calls.map(({ url }) => url.pathname)).toEqual([
+      "/api/conversations",
+      "/api/v1/voice/session/consent",
+      "/api/v1/voice/session",
+    ]);
+    const createBody = JSON.parse(calls[0].init.body);
+    expect(createBody).toMatchObject({
+      metadata: { scope: "general" },
+    });
+    const mintBody = JSON.parse(calls[2].init.body);
+    expect(mintBody).toEqual({
+      conversationId: "11111111-1111-4111-8111-111111111111",
+      consentNonce: "one-time-consent",
+      transport: "websocket",
+    });
   });
 });
 
@@ -66,6 +138,15 @@ describe("voice warm-turn measurements", () => {
     socket.dispatchEvent(
       new MessageEvent("message", {
         data: JSON.stringify({ t: "llm_first_text" }),
+      }),
+    );
+    socket.dispatchEvent(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          t: "assistant_output",
+          displayMarkdown: "hello",
+          speechText: "hello",
+        }),
       }),
     );
     socket.dispatchEvent(

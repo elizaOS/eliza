@@ -203,6 +203,10 @@ export interface VoiceSessionPlayback {
   /** Whether playout is provisionally silent without consuming queued audio. */
   readonly paused: boolean;
   readonly backend: "audioworklet" | "scriptprocessor";
+  /** Milliseconds of real audio samples consumed for the current response. */
+  readonly playedAudioMs: number;
+  /** Reset the response-scoped playout clock before accepting its first PCM. */
+  beginResponse(): void;
   /** Push a pcm16 frame and return its monotonic playout sequence. */
   enqueue(bytes: Uint8Array): number | null;
   /** Provisionally silence playback while retaining the queue. Idempotent. */
@@ -286,6 +290,8 @@ export async function createVoiceSessionPlayback(
   let lastFlushSequence = 0;
   let lastStartedSequence = 0;
   let lastDrainedSequence = 0;
+  let playedSamples = 0;
+  let playbackResponseEpoch = 0;
   const nextActivitySequence = (): number => {
     activitySequence += 1;
     latestActivitySequence = activitySequence;
@@ -338,8 +344,23 @@ export async function createVoiceSessionPlayback(
       throwIfPlaybackCancelled(signal);
       node.port.onmessage = (event) => {
         const d = event.data as
-          | { type?: string; sequence?: unknown }
+          | {
+              type?: string;
+              sequence?: unknown;
+              playedSamples?: unknown;
+              responseEpoch?: unknown;
+            }
           | undefined;
+        if (
+          d?.type === "progress" &&
+          d.responseEpoch === playbackResponseEpoch &&
+          typeof d.playedSamples === "number" &&
+          Number.isSafeInteger(d.playedSamples) &&
+          d.playedSamples >= playedSamples
+        ) {
+          playedSamples = d.playedSamples;
+          return;
+        }
         if (
           d?.type === "started" &&
           typeof d.sequence === "number" &&
@@ -402,6 +423,7 @@ export async function createVoiceSessionPlayback(
             }
             ch[i] = frame.samples[jsReadOffset];
             jsReadOffset += 1;
+            playedSamples += 1;
           }
         }
         for (let c = 1; c < outBuf.numberOfChannels; c += 1) {
@@ -630,6 +652,20 @@ export async function createVoiceSessionPlayback(
     },
     get backend() {
       return backend;
+    },
+    get playedAudioMs() {
+      return Math.round((playedSamples / ctx.sampleRate) * 1000);
+    },
+    beginResponse() {
+      if (stopped) return;
+      playedSamples = 0;
+      playbackResponseEpoch += 1;
+      if (backend === "audioworklet" && workletNode) {
+        workletNode.port.postMessage({
+          type: "begin_response",
+          responseEpoch: playbackResponseEpoch,
+        });
+      }
     },
     enqueue(bytes: Uint8Array) {
       if (stopped) return null;

@@ -44,6 +44,7 @@ import {
 import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
 import {
   CartesiaSonicTtsAdapter,
+  type CartesiaSonicWordTimestamp,
   type CartesiaWebSocketFactory,
   VOICE_TTS_MAX_BUFFER_DELAY_MS,
 } from "@/lib/services/cartesia-sonic-tts";
@@ -135,8 +136,13 @@ const SEMANTIC_EOT_MERGE_WINDOW_MS = 900;
 /** A provider turn that resumed but never finalized cannot hold memory forever. */
 const SEMANTIC_EOT_MAX_HOLD_MS = 5_000;
 const SEMANTIC_EOT_ACTIVE_RECHECK_MS = 100;
-/** Specific tool/action progress may speak, but normal thinking stays quiet. */
-const VOICE_PROGRESS_SPOKEN_THRESHOLD_MS = 2_500;
+/**
+ * Do not leave a conversational turn acoustically dead while the two-stage
+ * Eliza response path is still working. Cartesia is prewarmed in parallel, so
+ * crossing this deadline may immediately synthesize one short, truthful
+ * acknowledgement without delaying or fabricating the eventual answer.
+ */
+const VOICE_PROGRESS_SPOKEN_THRESHOLD_MS = 900;
 const VOICE_PROGRESS_MAX_SPOKEN_UPDATES = 1;
 /** Bound incremental display traffic while keeping the normal chat visibly live. */
 const VOICE_DISPLAY_MAX_CHARS = 32_768;
@@ -152,6 +158,26 @@ const SPOKEN_STOP_COMMAND_RE =
   /^(?:(?:ok(?:ay)?|please),?\s+)?(?:stop(?:\s+(?:(?:talking|speaking)(?:\s+now)?|now))?|be\s+quiet|cancel|never\s*mind|that(?:['’]s| is)\s+enough)$/u;
 const BARE_INTERROGATIVE_RE =
   /^(?:what|who|whom|whose|where|when|why|how|which)$/iu;
+const VOICE_BACKCHANNELS = new Set([
+  "ah",
+  "aha",
+  "alright",
+  "got it",
+  "ha",
+  "haha",
+  "mhm",
+  "mm",
+  "mm hm",
+  "mm hmm",
+  "okay",
+  "ok",
+  "right",
+  "sure",
+  "uh huh",
+  "yeah",
+  "yep",
+  "yes",
+]);
 
 // Cartesia's server buffers streamed transcript for up to 3000ms by default
 // before starting synthesis, which measured ~2.7s of the speaking_start gap on
@@ -174,6 +200,17 @@ export function isSpokenStopCommand(transcript: string): boolean {
     .replace(/[.!?,;:\u2026]+$/gu, "")
     .replace(/\s+/gu, " ");
   return SPOKEN_STOP_COMMAND_RE.test(normalized);
+}
+
+/** Short listener acknowledgements should not seize an active voice turn. */
+export function isVoiceBackchannel(transcript: string): boolean {
+  const normalized = transcript
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/gu, " ");
+  return VOICE_BACKCHANNELS.has(normalized);
 }
 
 function shouldHoldSemanticFinal(transcript: string): boolean {
@@ -234,9 +271,30 @@ function progressForStatus(status: ChatTurnStatus): {
   spokenCandidate: string;
 } | null {
   switch (status.kind) {
-    case "thinking":
-    case "waking":
-    case "evaluating":
+    case "thinking": {
+      const text = "Yeah, one sec.";
+      return {
+        phase: status.kind,
+        displayMarkdown: text,
+        spokenCandidate: text,
+      };
+    }
+    case "waking": {
+      const text = "Just a sec, I'm getting ready.";
+      return {
+        phase: status.kind,
+        displayMarkdown: text,
+        spokenCandidate: text,
+      };
+    }
+    case "evaluating": {
+      const text = "Let me think for a second.";
+      return {
+        phase: status.kind,
+        displayMarkdown: text,
+        spokenCandidate: text,
+      };
+    }
     case "streaming":
       return null;
     case "running_action": {
@@ -348,6 +406,17 @@ type SessionState =
   | "interrupted"
   | "closed";
 
+interface VoiceInterruptionContext {
+  readonly traceId: string;
+  readonly playedAudioMs: number;
+  readonly heardText?: string;
+}
+
+interface VoiceSessionInterruptionAbortReason extends VoiceInterruptionContext {
+  readonly code: "VOICE_SESSION_INTERRUPTION";
+  readonly kind: "acoustic" | "explicit";
+}
+
 export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   readonly sessionId: string;
   readonly jti: string;
@@ -371,6 +440,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private readonly cartesiaAdapter: CartesiaSonicTtsAdapter;
   private readonly fishAudioAdapter: FishAudioTtsAdapter | null = null;
   private ttsStream: RealtimeTtsStream | null = null;
+  private currentTtsWordTimings: CartesiaSonicWordTimestamp[] = [];
+  private currentPlayoutCheckpoint: VoiceInterruptionContext | null = null;
 
   private state: SessionState = "ready";
   private started = false;
@@ -383,6 +454,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   /** Active response protected from a browser/local false acoustic start. */
   private protectedResponseTraceId: string | null = null;
   private protectedProvisionalUplinkBytes = 0;
+  private backchannelNotified = false;
   private pendingSttPartial: { text: string; traceId: string } | null = null;
   private lastSttPartialText = "";
   private lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
@@ -658,9 +730,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 
   /** Explicit UI barge-in (contract §7.2). */
-  bargeIn(): void {
+  bargeIn(context?: { traceId: string; playedAudioMs: number }): void {
     this.clearPendingSemanticEot();
-    this.interrupt("explicit");
+    this.interrupt("explicit", context);
+  }
+
+  /** Cache the browser's paused-at-onset playout clock for Ink-confirmed speech. */
+  playoutCheckpoint(context: { traceId: string; playedAudioMs: number }): void {
+    const lease = this.turnAuthority.currentLease;
+    if (!lease || lease.traceId !== context.traceId) return;
+    this.currentPlayoutCheckpoint = context;
   }
 
   /** Client `bye`: complete the session cleanly. */
@@ -721,6 +800,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       case "start-of-turn": {
         this.resetSttPartialDelivery();
         this.activeSttTurn = true;
+        this.backchannelNotified = false;
         this.clearProtectedResponseAccounting();
         if (this.config.acousticInterruptPolicy === "semantic_start") {
           // Telephony has no local provisional playback gate, so Ink's semantic
@@ -748,6 +828,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           event.transcript &&
           SPOKEN_TRANSCRIPT_RE.test(event.transcript)
         ) {
+          if (
+            this.protectedResponseTraceId &&
+            isVoiceBackchannel(event.transcript)
+          ) {
+            if (!this.backchannelNotified) {
+              this.send({
+                t: "backchannel",
+                traceId: this.protectedResponseTraceId,
+              });
+              this.backchannelNotified = true;
+            }
+            break;
+          }
+          this.backchannelNotified = false;
           this.interruptForConfirmedSpeech(event.transcript);
           this.updatePendingSemanticContinuation(event.transcript);
           this.queueSttPartial(this.semanticTranscript(event.transcript));
@@ -755,6 +849,19 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
       case "eager-end-of-turn": {
+        if (
+          this.protectedResponseTraceId &&
+          isVoiceBackchannel(event.transcript)
+        ) {
+          if (!this.backchannelNotified) {
+            this.send({
+              t: "backchannel",
+              traceId: this.protectedResponseTraceId,
+            });
+            this.backchannelNotified = true;
+          }
+          break;
+        }
         if (
           this.protectedResponseTraceId &&
           !SPOKEN_TRANSCRIPT_RE.test(event.transcript)
@@ -775,6 +882,18 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         const providerTranscript = event.transcript ?? "";
         this.activeSttTurn = false;
         this.resetSttPartialDelivery();
+        if (
+          this.protectedResponseTraceId &&
+          isVoiceBackchannel(providerTranscript)
+        ) {
+          const responseTraceId = this.protectedResponseTraceId;
+          this.discardProtectedFalseStartAccounting();
+          if (!this.backchannelNotified) {
+            this.send({ t: "backchannel", traceId: responseTraceId });
+          }
+          this.backchannelNotified = false;
+          break;
+        }
         if (
           this.pendingSemanticEot &&
           !SPOKEN_TRANSCRIPT_RE.test(providerTranscript)
@@ -1167,18 +1286,67 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     traceId: string,
     callbacks: RealtimeTtsStreamCallbacks,
   ): RealtimeTtsStream {
+    this.currentTtsWordTimings = [];
+    this.currentPlayoutCheckpoint = null;
+    const timedCallbacks: RealtimeTtsStreamCallbacks = {
+      ...callbacks,
+      onWordTimestamps: (event) => {
+        this.recordTtsWordTimestamps(traceId, event.words);
+        callbacks.onWordTimestamps?.(event);
+      },
+    };
     const createCartesia = () =>
       this.cartesiaAdapter.createStream(
         { traceId, maxBufferDelayMs: VOICE_TTS_MAX_BUFFER_DELAY_MS },
-        callbacks,
+        timedCallbacks,
       );
     if (!this.fishAudioAdapter) return createCartesia();
     return new FishPrimaryRealtimeTtsStream({
       traceId,
       fishAudioAdapter: this.fishAudioAdapter,
       createCartesia,
-      callbacks,
+      callbacks: timedCallbacks,
     });
+  }
+
+  private recordTtsWordTimestamps(
+    traceId: string,
+    incoming: readonly CartesiaSonicWordTimestamp[],
+  ): void {
+    if (traceId !== this.currentTraceId || incoming.length === 0) return;
+    const current = this.currentTtsWordTimings;
+    const first = incoming[0];
+    if (!first) return;
+    // Cartesia may publish either cumulative context timestamps or phrase-local
+    // timestamps. Replace on a cumulative replay; otherwise offset a local
+    // phrase behind the already-known context without duplicating words.
+    if (
+      current.length > 0 &&
+      first.startMs === current[0]?.startMs &&
+      first.word === current[0]?.word
+    ) {
+      this.currentTtsWordTimings = incoming.slice(0, 10_000);
+      return;
+    }
+    const currentEnd = current.at(-1)?.endMs ?? 0;
+    const offset = first.startMs < currentEnd ? currentEnd : 0;
+    const appended = incoming.map((word) => ({
+      ...word,
+      startMs: word.startMs + offset,
+      endMs: word.endMs + offset,
+    }));
+    this.currentTtsWordTimings = [...current, ...appended].slice(0, 10_000);
+  }
+
+  private heardTextAt(playedAudioMs: number): string | undefined {
+    const heardWords = this.currentTtsWordTimings
+      .filter((word) => word.endMs <= playedAudioMs + 15)
+      .map((word) => word.word);
+    if (heardWords.length === 0) return undefined;
+    return heardWords
+      .join(" ")
+      .replace(/\s+([,.;:!?])/gu, "$1")
+      .slice(0, 2_000);
   }
 
   private async runResponseTurn(
@@ -1197,6 +1365,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.turnAuthority.markModelStarted(lease);
 
     let tts: RealtimeTtsStream | null = null;
+    let ttsGeneration = 0;
+    let terminalTtsGeneration: number | null = null;
     let canonicalDisplayText = "";
     let lastDisplaySnapshot = "";
     let committedSpeechSourceEnd = 0;
@@ -1242,6 +1412,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     };
     const ensureTts = (): RealtimeTtsStream => {
       if (tts) return tts;
+      const generation = ++ttsGeneration;
+      let callbackStream: RealtimeTtsStream | null = null;
+      const releaseNonterminalStream = (): void => {
+        if (tts === callbackStream) tts = null;
+        if (this.ttsStream === callbackStream) this.ttsStream = null;
+      };
       const callbacks: RealtimeTtsStreamCallbacks = {
         onFirstAudio: () => {
           if (!this.turnAuthority.markSpeakingStarted(lease)) return;
@@ -1271,11 +1447,33 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         },
         onComplete: () => {
           if (!this.turnAuthority.isCurrent(lease)) return;
+          if (terminalTtsGeneration !== generation) {
+            // A truthful progress preamble intentionally leaves its Cartesia
+            // context open for the eventual answer. The live provider can
+            // close that idle context before a long model/tool turn finishes;
+            // this is a phrase-context completion, not response settlement.
+            // Release only that stream so the final answer can open a fresh
+            // cancellable context under the same response lease.
+            releaseNonterminalStream();
+            return;
+          }
           this.send({ t: "speaking_end", traceId });
           this.finishTurn(lease, "spoken");
         },
         onProviderError: (err) => {
           if (!this.turnAuthority.isCurrent(lease)) return;
+          if (terminalTtsGeneration !== generation) {
+            // A speculative/progress context failure must not abort a still-
+            // healthy model turn. The terminal answer gets one fresh provider
+            // context; its own failure retains the normal explicit error path.
+            releaseNonterminalStream();
+            logger.warn("[voice-session] nonterminal TTS context failed", {
+              traceId,
+              errorClass: "TtsProviderError",
+              code: err.code ?? "tts_error",
+            });
+            return;
+          }
           this.send({
             t: "error",
             code: err.code ?? "tts_error",
@@ -1290,9 +1488,15 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           this.finishTurn(lease, "error");
         },
       };
-      tts = this.createTtsStream(traceId, callbacks);
-      this.ttsStream = tts;
-      return tts;
+      callbackStream = this.createTtsStream(traceId, callbacks);
+      tts = callbackStream;
+      this.ttsStream = callbackStream;
+      return callbackStream;
+    };
+    const sendTerminalTtsPhrase = (text: string): void => {
+      const stream = ensureTts();
+      terminalTtsGeneration = ttsGeneration;
+      stream.sendPhrase({ text, continueContext: false });
     };
 
     const progressOwner = {
@@ -1680,10 +1884,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             // over-budget terminal display suffix without leaking it to TTS.
             this.turnTtsChars += retainedCommittedTtsText.length;
             this.send({ t: "trace_mark", name: "tts_requested", traceId });
-            ensureTts().sendPhrase({
-              text: retainedCommittedTtsText,
-              continueContext: false,
-            });
+            sendTerminalTtsPhrase(retainedCommittedTtsText);
             retainedCommittedTtsText = "";
             return;
           }
@@ -1727,10 +1928,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         }
         this.turnTtsChars += safeSpeechText.length;
         this.send({ t: "trace_mark", name: "tts_requested", traceId });
-        ensureTts().sendPhrase({
-          text: safeSpeechText,
-          continueContext: false,
-        });
+        sendTerminalTtsPhrase(safeSpeechText);
         return;
       }
     } catch (error) {
@@ -1784,10 +1982,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // let provider completion drain it before the spoken terminal.
         try {
           this.send({ t: "trace_mark", name: "tts_requested", traceId });
-          ensureTts().sendPhrase({
-            text: retainedCommittedTtsText,
-            continueContext: false,
-          });
+          sendTerminalTtsPhrase(retainedCommittedTtsText);
           this.turnTtsChars += retainedCommittedTtsText.length;
           retainedCommittedTtsText = "";
           return;
@@ -1857,7 +2052,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
    * current response lease and is synchronous up to the point of emitting
    * `interrupted`, so no post-cancel audio can leak to the client.
    */
-  private interrupt(reason: "acoustic" | "explicit"): void {
+  private interrupt(
+    reason: "acoustic" | "explicit",
+    context?: VoiceInterruptionContext,
+  ): void {
     const lease = this.turnAuthority.currentLease;
     const revoked =
       reason === "acoustic"
@@ -1865,6 +2063,24 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         : this.turnAuthority.explicitInterrupt();
     if (!lease || revoked !== lease) return; // no response work to cancel.
     const { traceId } = lease;
+    const effectiveContext =
+      context ?? this.currentPlayoutCheckpoint ?? undefined;
+    const heardText = effectiveContext
+      ? this.heardTextAt(effectiveContext.playedAudioMs)
+      : undefined;
+    // A stale/replayed browser checkpoint must never become context for the
+    // current turn. The interrupt itself remains valid for older clients.
+    const interruption =
+      effectiveContext?.traceId === traceId
+        ? ({
+            code: "VOICE_SESSION_INTERRUPTION",
+            kind: reason,
+            traceId,
+            playedAudioMs: effectiveContext.playedAudioMs,
+            ...(heardText ? { heardText } : {}),
+          } satisfies VoiceSessionInterruptionAbortReason)
+        : undefined;
+    this.currentPlayoutCheckpoint = null;
 
     // 1. The reducer published the revoked response FIRST, so every racing
     //    callback fails its exact lease check before provider cancellation.
@@ -1876,7 +2092,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     }
     // 3. Abort the Eliza SSE fetch — cancels the upstream provider stream.
     if (this.llmAbort) {
-      this.llmAbort.abort();
+      this.llmAbort.abort(interruption);
       this.llmAbort = null;
     }
     // 4. Report the interrupted turn's usage (STT accrued + TTS chars emitted so
@@ -2074,6 +2290,9 @@ interface RealtimeTtsStreamCallbacks {
   readonly onAudioFrame?: (event: { readonly bytes: Uint8Array }) => void;
   readonly onComplete?: (event: { readonly frameCount: number }) => void;
   readonly onProviderError?: (event: { readonly code?: string }) => void;
+  readonly onWordTimestamps?: (event: {
+    readonly words: readonly CartesiaSonicWordTimestamp[];
+  }) => void;
 }
 
 interface RealtimeTtsStream {

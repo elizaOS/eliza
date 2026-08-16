@@ -1,8 +1,10 @@
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 
-// Coalesce closely spaced sessions while still refreshing after a long idle;
-// the Cloud streaming admission cache can cool while a dev gateway remains up.
-const DEFAULT_PREWARM_COOLDOWN_MS = 60_000;
+// Coalesce a burst of closely spaced session starts, but keep this lease much
+// shorter than the upstream streaming-admission cache. A long-lived local
+// gateway can otherwise report `already-warm` after the upstream lane cooled,
+// leaving the user's first real turn to pay the 503 warmup backoff.
+const DEFAULT_PREWARM_COOLDOWN_MS = 5_000;
 
 export type CloudTextPrewarmResult = "warmed" | "already-warm";
 export type CloudTextPrewarmLane = "response-handler" | "committed-reply";

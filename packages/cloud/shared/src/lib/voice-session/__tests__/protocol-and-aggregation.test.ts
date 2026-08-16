@@ -101,6 +101,52 @@ describe("protocol framing", () => {
     if (r.ok) expect(r.value.t).toBe("end_audio");
   });
 
+  test("accepts a bounded trace-scoped playout checkpoint on barge-in", () => {
+    const r = parseClientControlFrame(
+      JSON.stringify({
+        t: "barge_in",
+        traceId: "session:turn:3",
+        playedAudioMs: 1_237,
+      }),
+    );
+    expect(r).toEqual({
+      ok: true,
+      value: {
+        t: "barge_in",
+        traceId: "session:turn:3",
+        playedAudioMs: 1_237,
+      },
+    });
+    expect(
+      parseClientControlFrame(
+        JSON.stringify({
+          t: "playout_checkpoint",
+          traceId: "session:turn:3",
+          playedAudioMs: 1_237,
+        }),
+      ),
+    ).toEqual({
+      ok: true,
+      value: {
+        t: "playout_checkpoint",
+        traceId: "session:turn:3",
+        playedAudioMs: 1_237,
+      },
+    });
+  });
+
+  test("rejects partial, negative, fractional, and unbounded barge checkpoints", () => {
+    for (const frame of [
+      { t: "barge_in", traceId: "trace" },
+      { t: "barge_in", playedAudioMs: 1 },
+      { t: "barge_in", traceId: "trace", playedAudioMs: -1 },
+      { t: "barge_in", traceId: "trace", playedAudioMs: 1.5 },
+      { t: "barge_in", traceId: "trace", playedAudioMs: 3_600_001 },
+    ]) {
+      expect(parseClientControlFrame(JSON.stringify(frame)).ok).toBe(false);
+    }
+  });
+
   test("validateAudioFrame enforces the size ceiling and non-empty", () => {
     expect(validateAudioFrame(2560).ok).toBe(true);
     expect(validateAudioFrame(0).ok).toBe(false);
@@ -191,6 +237,20 @@ describe("protocol framing", () => {
     ).toEqual({
       t: "trace_mark",
       name: "speakable_text_ready",
+      traceId: "trace-1",
+    });
+  });
+
+  test("serializes a content-free listener backchannel acknowledgement", () => {
+    expect(
+      JSON.parse(
+        serializeServerFrame({
+          t: "backchannel",
+          traceId: "trace-1",
+        }),
+      ),
+    ).toEqual({
+      t: "backchannel",
       traceId: "trace-1",
     });
   });

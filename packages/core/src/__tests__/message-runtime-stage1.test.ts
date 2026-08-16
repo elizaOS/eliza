@@ -3272,6 +3272,62 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(userContent?.endsWith(currentMessage)).toBe(true);
 	});
 
+	it("renders exact heard-prefix context for an interrupted prior voice reply", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "I will continue from the interruption.",
+				extra: { requiresTool: false },
+			}),
+		]);
+		const state: State = {
+			values: { availableContexts: "simple, general" },
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						providerName: "RECENT_MESSAGES",
+						data: {
+							recentMessages: [
+								{
+									id: "00000000-0000-0000-0000-00000000b001" as UUID,
+									entityId: runtime.agentId,
+									agentId: runtime.agentId,
+									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
+									createdAt: 1,
+									content: {
+										text: "The displayed answer continued beyond this point.",
+										interrupted: true,
+										playedAudioMs: 487,
+										heardText: "The displayed answer",
+									},
+								},
+							],
+						},
+					},
+				},
+			},
+			text: "",
+		};
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Continue from where I cut in." }),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const userContent = params.messages?.[1]?.content ?? "";
+		expect(userContent).toContain("prior_voice_interruption:");
+		expect(userContent).toContain('"playedAudioMs":487');
+		expect(userContent).toContain('"heardText":"The displayed answer"');
+		expect(userContent).toContain(
+			"do not assume any later displayed suffix was heard",
+		);
+	});
+
 	it("renders CURRENT_TIME in Stage 1 for every turn, regardless of phrasing", async () => {
 		// Live incident (tj-a82f2bfeaf021c): a regex gate only re-included
 		// CURRENT_TIME for messages matching a "time question" pattern, so

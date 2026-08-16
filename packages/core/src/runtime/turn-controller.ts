@@ -31,12 +31,21 @@
  *     on exit (success, error, or abort).
  */
 
+export interface TurnInterruptionContext {
+	readonly traceId: string;
+	readonly playedAudioMs: number;
+	/** Bounded provider-aligned words the listener actually heard, when known. */
+	readonly heardText?: string;
+}
+
 export class TurnAbortedError extends Error {
 	readonly code = "TURN_ABORTED";
 	readonly reason: string;
-	constructor(reason: string) {
+	readonly interruption?: TurnInterruptionContext;
+	constructor(reason: string, interruption?: TurnInterruptionContext) {
 		super(`Turn aborted: ${reason}`);
 		this.reason = reason;
+		this.interruption = interruption;
 	}
 }
 
@@ -107,6 +116,7 @@ interface ActiveRequestAdmission {
 
 interface RequestAbortTombstone {
 	reason: string;
+	interruption?: TurnInterruptionContext;
 	expiresAt: number;
 	lifecycle: RequestAdmissionLifecycle;
 }
@@ -204,7 +214,9 @@ export class TurnControllerRegistry {
 
 		if (tombstone) {
 			this.requestAbortTombstones.delete(key);
-			controller.abort(new TurnAbortedError(tombstone.reason));
+			controller.abort(
+				new TurnAbortedError(tombstone.reason, tombstone.interruption),
+			);
 		}
 
 		let finished = false;
@@ -247,6 +259,7 @@ export class TurnControllerRegistry {
 		roomId: string,
 		clientMessageId: string,
 		reason: string,
+		interruption?: TurnInterruptionContext,
 	): TurnRequestAbortResult {
 		if (!roomId || !clientMessageId) {
 			throw new TypeError("roomId and clientMessageId are required");
@@ -257,7 +270,7 @@ export class TurnControllerRegistry {
 		if (admission) {
 			const aborted = !admission.controller.signal.aborted;
 			if (aborted) {
-				admission.controller.abort(new TurnAbortedError(reason));
+				admission.controller.abort(new TurnAbortedError(reason, interruption));
 			}
 			return this.requestAbortResult({
 				requestAborted: aborted,
@@ -311,6 +324,7 @@ export class TurnControllerRegistry {
 		const lifecycle = this.createRequestLifecycle();
 		this.requestAbortTombstones.set(key, {
 			reason,
+			...(interruption ? { interruption } : {}),
 			expiresAt: this.requestAdmissionNow() + this.requestAbortTombstoneTtlMs,
 			lifecycle,
 		});

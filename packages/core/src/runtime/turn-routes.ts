@@ -28,6 +28,7 @@
  */
 
 import type { Route } from "../types/plugin";
+import type { TurnInterruptionContext } from "./turn-controller";
 
 const TURN_ABORT_SETTLEMENT_TIMEOUT_MS = 750;
 const MAX_CLIENT_MESSAGE_ID_LENGTH = 128;
@@ -39,6 +40,35 @@ function normalizeClientMessageId(value: unknown): string | null {
 		normalized.length <= MAX_CLIENT_MESSAGE_ID_LENGTH
 		? normalized
 		: null;
+}
+
+function normalizeVoiceInterruption(
+	value: unknown,
+): TurnInterruptionContext | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const candidate = value as Record<string, unknown>;
+	if (
+		typeof candidate.traceId !== "string" ||
+		candidate.traceId.length === 0 ||
+		candidate.traceId.length > 256 ||
+		typeof candidate.playedAudioMs !== "number" ||
+		!Number.isSafeInteger(candidate.playedAudioMs) ||
+		candidate.playedAudioMs < 0 ||
+		candidate.playedAudioMs > 3_600_000
+	) {
+		return undefined;
+	}
+	const heardText =
+		typeof candidate.heardText === "string" &&
+		candidate.heardText.length > 0 &&
+		candidate.heardText.length <= 2_000
+			? candidate.heardText
+			: undefined;
+	return {
+		traceId: candidate.traceId,
+		playedAudioMs: candidate.playedAudioMs,
+		...(heardText ? { heardText } : {}),
+	};
 }
 
 async function waitForSettlementBounded(
@@ -80,6 +110,16 @@ const TURN_ABORT_ROUTE: Route = {
 				? body.reason
 				: "external_request";
 		const clientMessageId = normalizeClientMessageId(body.clientMessageId);
+		const voiceInterruption = normalizeVoiceInterruption(
+			body.voiceInterruption,
+		);
+		if (
+			body.voiceInterruption !== undefined &&
+			voiceInterruption === undefined
+		) {
+			res.status(400).json({ error: "voiceInterruption is invalid" });
+			return;
+		}
 		if (body.clientMessageId !== undefined && clientMessageId === null) {
 			res.status(400).json({
 				error:
@@ -92,6 +132,7 @@ const TURN_ABORT_ROUTE: Route = {
 				roomId,
 				clientMessageId,
 				reason,
+				voiceInterruption,
 			);
 			const requestSettled = exact.requestArmRejected
 				? false

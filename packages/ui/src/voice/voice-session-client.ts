@@ -612,7 +612,22 @@ export function createVoiceSessionClient(
     ) {
       return;
     }
+    const traceId = state.traceId;
     applyAuthorityEffects(turnAuthority.beginProvisionalSpeech(atMs));
+    // This is metadata only: it never cancels server work. Publish at the
+    // provisional onset where playback paused, so a later Ink confirmation has
+    // the exact audible cut even if provider transcript arrives very quickly.
+    if (traceId) {
+      sendControl(
+        {
+          t: "playout_checkpoint",
+          traceId,
+          playedAudioMs: currentPlayback.playedAudioMs,
+        },
+        turnAuthority.currentSessionLease(),
+      );
+      mark("playout_checkpoint_sent", traceId, atMs);
+    }
   };
 
   const emitError = (error: Error): void => {
@@ -895,6 +910,13 @@ export function createVoiceSessionClient(
         pendingAcousticSpeechEndedAtMs = atMs;
         authorityTransition = turnAuthority.acceptTentativeEot(atMs);
         break;
+      case "backchannel":
+        if (!turnAuthority.acceptsResponseControlTrace(event.traceId)) {
+          mark("not_reached(stale_control)", event.traceId);
+          return;
+        }
+        rejectCurrentProvisionalSpeech(atMs);
+        break;
       case "stt_final":
         authorityTransition = turnAuthority.commitTranscript(
           event.text,
@@ -965,6 +987,11 @@ export function createVoiceSessionClient(
         authorityTransition,
         "traceId" in event ? (event.traceId ?? state.traceId) : state.traceId,
       );
+      if (event.t === "speaking_start") {
+        // Reset before the first binary frame is accepted. The playout clock is
+        // response-scoped and later travels with an exact trace-scoped barge.
+        playback?.beginResponse();
+      }
       if (event.t === "stt_final" && SPOKEN_TRANSCRIPT_RE.test(event.text)) {
         // The accepted commit is the only boundary that may legitimately
         // reuse a wire trace. It also ends ownership of any prior display that
@@ -1015,6 +1042,9 @@ export function createVoiceSessionClient(
         // wait for. The reducer owns the emptiness predicate (trim-aligned
         // with the server's dispatch gate); this checks only its verdict.
         if (state.phase === "complete") setState(loopToListening(state));
+        break;
+      case "backchannel":
+        mark("backchannel", event.traceId);
         break;
       case "llm_first_text":
         mark("llm_first_text", event.traceId);
@@ -1756,12 +1786,18 @@ export function createVoiceSessionClient(
       if (disposed) return;
       // Flush local audible output IMMEDIATELY — do NOT wait for the server
       // `interrupted` event. Then optimistically fold state and notify server.
+      const interruptedTraceId = state.traceId;
+      const playedAudioMs = playback?.playedAudioMs ?? 0;
       const interrupted = turnAuthority.explicitInterrupt(now());
       if (!interrupted.accepted) return;
       applyAuthorityEffects(interrupted);
       setState(applyClientAction(state, { type: "client/local_barge_in" }));
-      sendControl({ t: "barge_in" }, turnAuthority.currentSessionLease());
-      mark("barge_in_sent", state.traceId);
+      if (!interruptedTraceId) return;
+      sendControl(
+        { t: "barge_in", traceId: interruptedTraceId, playedAudioMs },
+        turnAuthority.currentSessionLease(),
+      );
+      mark("barge_in_sent", interruptedTraceId);
     },
 
     get microphoneMuted() {

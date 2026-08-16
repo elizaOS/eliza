@@ -432,7 +432,13 @@ describe("local runtime conversation fetch", () => {
 
     const firstController = new AbortController();
     const firstResponse = await request("turn-1", firstController.signal);
-    firstController.abort(new DOMException("barge in", "AbortError"));
+    firstController.abort({
+      code: "VOICE_SESSION_INTERRUPTION",
+      kind: "explicit",
+      traceId: "turn-1",
+      playedAudioMs: 487,
+      heardText: "I got as far as this",
+    });
     await abortRequested;
 
     let replacementStarted = false;
@@ -469,6 +475,11 @@ describe("local runtime conversation fetch", () => {
     expect(JSON.parse(String(abortCall?.init?.body))).toEqual({
       reason: "voice-session-interrupt",
       clientMessageId: "voice:turn-1",
+      voiceInterruption: {
+        traceId: "turn-1",
+        playedAudioMs: 487,
+        heardText: "I got as far as this",
+      },
     });
     await replacement.body?.cancel();
   });

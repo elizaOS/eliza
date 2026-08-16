@@ -57,6 +57,16 @@ export interface ClientAudioMetaFrame {
 
 export interface ClientBargeInFrame {
   t: "barge_in";
+  /** Exact response whose browser playout was interrupted. */
+  traceId: string;
+  /** Response-scoped audible PCM clock, rounded to whole milliseconds. */
+  playedAudioMs: number;
+}
+
+export interface ClientPlayoutCheckpointFrame {
+  t: "playout_checkpoint";
+  traceId: string;
+  playedAudioMs: number;
 }
 
 export interface ClientByeFrame {
@@ -67,6 +77,7 @@ export type ClientControlFrame =
   | ClientHelloFrame
   | ClientAudioMetaFrame
   | ClientBargeInFrame
+  | ClientPlayoutCheckpointFrame
   | ClientByeFrame;
 
 // ── Server -> client control / state events ────────────────────────────
@@ -85,6 +96,12 @@ export interface ServerSttPartialEvent {
 
 export interface ServerSttEagerEotEvent {
   t: "stt_eager_eot";
+  traceId: string;
+}
+
+/** Content-free acknowledgement: resume paused playout without a response. */
+export interface ServerBackchannelEvent {
+  t: "backchannel";
   traceId: string;
 }
 
@@ -205,6 +222,7 @@ export type ServerControlFrame =
   | ServerReadyEvent
   | ServerSttPartialEvent
   | ServerSttEagerEotEvent
+  | ServerBackchannelEvent
   | ServerSttFinalEvent
   | ServerLlmFirstTextEvent
   | ServerTraceMarkEvent
@@ -281,6 +299,7 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
       return text !== null && traceId ? { t, text, traceId } : null;
     }
     case "stt_eager_eot":
+    case "backchannel":
     case "llm_first_text":
     case "speaking_start":
     case "speaking_end":
@@ -441,6 +460,7 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
   "ready",
   "stt_partial",
   "stt_eager_eot",
+  "backchannel",
   "stt_final",
   "llm_first_text",
   "trace_mark",

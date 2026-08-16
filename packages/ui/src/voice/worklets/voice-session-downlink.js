@@ -8,6 +8,9 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
     this.hadAudio = false;
     this.paused = false;
     this.latestSequence = 0;
+    this.playedSamples = 0;
+    this.lastReportedPlayedSamples = 0;
+    this.responseEpoch = 0;
     this.port.onmessage = (event) => {
       const data = event.data;
       if (!data) return;
@@ -33,6 +36,12 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
         this.paused = true;
       } else if (data.type === "resume") {
         this.paused = false;
+      } else if (data.type === "begin_response") {
+        this.playedSamples = 0;
+        this.lastReportedPlayedSamples = 0;
+        this.responseEpoch = Number.isSafeInteger(data.responseEpoch)
+          ? data.responseEpoch
+          : this.responseEpoch + 1;
       }
     };
   }
@@ -75,10 +84,21 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
         }
         firstChannel[i] = frame.pcm[this.readOffset];
         this.readOffset += 1;
+        this.playedSamples += 1;
       }
     }
     for (let channelIndex = 1; channelIndex < output.length; channelIndex += 1) {
       output[channelIndex].set(firstChannel);
+    }
+    // Report every two 128-sample render quanta (about 5.3 ms at 48 kHz). The
+    // main thread snapshots the latest monotonic clock synchronously on barge.
+    if (this.playedSamples - this.lastReportedPlayedSamples >= 256) {
+      this.lastReportedPlayedSamples = this.playedSamples;
+      this.port.postMessage({
+        type: "progress",
+        playedSamples: this.playedSamples,
+        responseEpoch: this.responseEpoch,
+      });
     }
     return true;
   }

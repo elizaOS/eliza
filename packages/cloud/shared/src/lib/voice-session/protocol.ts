@@ -50,6 +50,15 @@ export interface ClientAudioMetaFrame {
 
 export interface ClientBargeInFrame {
   t: "barge_in";
+  /** Added compatibly to protocol v1; omitted by older clients. */
+  traceId?: string;
+  playedAudioMs?: number;
+}
+
+export interface ClientPlayoutCheckpointFrame {
+  t: "playout_checkpoint";
+  traceId: string;
+  playedAudioMs: number;
 }
 
 export interface ClientByeFrame {
@@ -73,6 +82,7 @@ export type ClientControlFrame =
   | ClientHelloFrame
   | ClientAudioMetaFrame
   | ClientBargeInFrame
+  | ClientPlayoutCheckpointFrame
   | ClientByeFrame
   | ClientEndAudioFrame;
 
@@ -91,6 +101,7 @@ export type ServerControlFrame =
   | { t: "ready"; sessionId: string; traceId: string }
   | { t: "stt_partial"; text: string; traceId: string }
   | { t: "stt_eager_eot"; traceId: string }
+  | { t: "backchannel"; traceId: string }
   | { t: "stt_final"; text: string; traceId: string }
   | { t: "llm_first_text"; traceId: string }
   | { t: "trace_mark"; name: VoiceRuntimeTraceMark; traceId: string }
@@ -177,7 +188,9 @@ export function parseClientControlFrame(raw: unknown): ProtocolParseResult<Clien
     case "audio_meta":
       return parseAudioMeta(parsed);
     case "barge_in":
-      return { ok: true, value: { t: "barge_in" } };
+      return parseBargeIn(parsed);
+    case "playout_checkpoint":
+      return parsePlayoutCheckpoint(parsed);
     case "bye":
       return { ok: true, value: { t: "bye" } };
     case "end_audio":
@@ -185,6 +198,55 @@ export function parseClientControlFrame(raw: unknown): ProtocolParseResult<Clien
     default:
       return fail("control_unknown_type", `unsupported control frame type: ${parsed.t}`);
   }
+}
+
+function parsePlayoutCheckpoint(
+  value: Record<string, unknown>,
+): ProtocolParseResult<ClientPlayoutCheckpointFrame> {
+  const parsed = parseRequiredPlayoutCheckpoint(value);
+  return parsed.ok ? { ok: true, value: { t: "playout_checkpoint", ...parsed.value } } : parsed;
+}
+
+function parseRequiredPlayoutCheckpoint(
+  value: Record<string, unknown>,
+): ProtocolParseResult<{ traceId: string; playedAudioMs: number }> {
+  if (
+    typeof value.traceId !== "string" ||
+    value.traceId.length === 0 ||
+    value.traceId.length > 256
+  ) {
+    return fail("control_invalid_barge_trace", "playout traceId must be 1..256 characters");
+  }
+  if (
+    typeof value.playedAudioMs !== "number" ||
+    !Number.isSafeInteger(value.playedAudioMs) ||
+    value.playedAudioMs < 0 ||
+    value.playedAudioMs > 3_600_000
+  ) {
+    return fail(
+      "control_invalid_playout_clock",
+      "playedAudioMs must be a whole number from 0..3600000",
+    );
+  }
+  return {
+    ok: true,
+    value: { traceId: value.traceId, playedAudioMs: value.playedAudioMs },
+  };
+}
+
+function parseBargeIn(value: Record<string, unknown>): ProtocolParseResult<ClientBargeInFrame> {
+  if (value.traceId === undefined && value.playedAudioMs === undefined) {
+    return { ok: true, value: { t: "barge_in" } };
+  }
+  const parsed = parseRequiredPlayoutCheckpoint(value);
+  if (!parsed.ok) return parsed;
+  return {
+    ok: true,
+    value: {
+      t: "barge_in",
+      ...parsed.value,
+    },
+  };
 }
 
 function parseHello(v: Record<string, unknown>): ProtocolParseResult<ClientHelloFrame> {

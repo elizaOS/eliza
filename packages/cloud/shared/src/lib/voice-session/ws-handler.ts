@@ -50,7 +50,8 @@ export interface VoiceSessionDownlink {
 export interface VoiceSessionLike {
   start(): void;
   pushUplinkAudio(bytes: Uint8Array): void;
-  bargeIn(): void;
+  bargeIn(context?: { traceId: string; playedAudioMs: number }): void;
+  playoutCheckpoint?(context: { traceId: string; playedAudioMs: number }): void;
   bye(): void;
   sever(reason: "client_disconnect" | "error"): void;
   /**
@@ -235,7 +236,17 @@ export function attachVoiceWsHandler(socket: ServerWebSocketLike, deps: VoiceWsH
         // switch is a documented seam. Accept the meta as a no-op for pcm16.
         return;
       case "barge_in":
-        session.bargeIn();
+        session.bargeIn(
+          frame.traceId !== undefined && frame.playedAudioMs !== undefined
+            ? { traceId: frame.traceId, playedAudioMs: frame.playedAudioMs }
+            : undefined,
+        );
+        return;
+      case "playout_checkpoint":
+        session.playoutCheckpoint?.({
+          traceId: frame.traceId,
+          playedAudioMs: frame.playedAudioMs,
+        });
         return;
       case "end_audio":
         // Uplink-complete advisory. Phase-1 finalization is Ink semantic EOT,

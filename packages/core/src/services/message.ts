@@ -2564,6 +2564,42 @@ function appendPriorDialogueEvents(
 				},
 			},
 		});
+		if (isOwnReply && memory.content?.interrupted === true) {
+			const playedAudioMs =
+				typeof memory.content.playedAudioMs === "number" &&
+				Number.isSafeInteger(memory.content.playedAudioMs) &&
+				memory.content.playedAudioMs >= 0 &&
+				memory.content.playedAudioMs <= 3_600_000
+					? memory.content.playedAudioMs
+					: undefined;
+			const heardText =
+				typeof memory.content.heardText === "string" &&
+				memory.content.heardText.length > 0 &&
+				memory.content.heardText.length <= 2_000
+					? memory.content.heardText
+					: undefined;
+			events.push({
+				id: `history:${memory.id}:voice-interruption`,
+				type: "segment",
+				source: "prior-dialogue",
+				createdAt: memory.createdAt,
+				segment: {
+					id: `history:${memory.id}:voice-interruption`,
+					label: "prior_voice_interruption",
+					content: JSON.stringify({
+						meaning:
+							"The listener interrupted this assistant reply. Treat only heardText as definitely audible; do not assume any later displayed suffix was heard.",
+						...(playedAudioMs === undefined ? {} : { playedAudioMs }),
+						...(heardText ? { heardText } : {}),
+					}),
+					stable: false,
+					metadata: {
+						roomId: memory.roomId,
+						entityId: memory.entityId,
+					},
+				},
+			});
+		}
 	}
 }
 
@@ -4576,7 +4612,7 @@ Return one {{handleResponseToolName}} JSON object; no prose, markdown, or thinki
 
 const AMBIENT_VOICE_SHOULD_RESPOND_INSTRUCTION = `- This is an open-mic voice turn. Decide shouldRespond with the same participation judgment used for ambient group conversation.
 - RESPOND when the speaker addresses you, clearly asks for your help, continues an exchange you are part of, or says something where your contribution is genuinely useful.
-- IGNORE when people are talking to each other, the utterance is background chatter or self-echo, or replying would only add noise.
+- IGNORE when people are talking to each other, the utterance is background chatter or self-echo, or replying would only add noise. A short listener backchannel such as "mhm", "uh-huh", "yeah", "right", or "okay" while you are speaking acknowledges the current answer; do not seize a new turn unless it grows into a correction, question, or request.
 - STOP only for an explicit request to stop, disengage, or terminate the work.`;
 
 /**

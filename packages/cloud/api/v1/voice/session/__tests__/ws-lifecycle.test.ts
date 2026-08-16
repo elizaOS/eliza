@@ -46,6 +46,7 @@ import type { CartesiaInkWebSocket } from "../../stt/providers/cartesia-ink";
 import {
   type AcousticInterruptPolicy,
   isSpokenStopCommand,
+  isVoiceBackchannel,
   VoiceSession,
 } from "../lib/session";
 
@@ -177,6 +178,14 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
       data: JSON.stringify({
         type: "chunk",
         data: Buffer.from(bytes).toString("base64"),
+      }),
+    });
+  }
+  emitWordTimestamps(words: string[], start: number[], end: number[]) {
+    this.fire("message", {
+      data: JSON.stringify({
+        type: "timestamps",
+        word_timestamps: { words, start, end },
       }),
     });
   }
@@ -326,7 +335,7 @@ class FakeClientSocket {
 
 function makeSseFetch(
   deltas: string[],
-  opts?: { hang?: boolean; onAbort?: () => void },
+  opts?: { hang?: boolean; onAbort?: (reason: unknown) => void },
 ): typeof fetch {
   return (async (_url: string, init?: RequestInit) => {
     const signal = init?.signal ?? undefined;
@@ -346,7 +355,7 @@ function makeSseFetch(
           await new Promise<void>((resolve) => {
             if (signal) {
               signal.addEventListener("abort", () => {
-                opts.onAbort?.();
+                opts.onAbort?.(signal.reason);
                 resolve();
               });
             }
@@ -713,6 +722,29 @@ describe("voice-session WS lifecycle", () => {
       "unstoppable",
     ]) {
       expect(isSpokenStopCommand(ordinaryTurn)).toBe(false);
+    }
+  });
+
+  test("backchannel classifier holds acknowledgements but releases takeovers", () => {
+    for (const acknowledgement of [
+      "mhm",
+      "mm-hmm",
+      "uh huh",
+      "Yeah.",
+      "right",
+      "okay",
+      "got it",
+    ]) {
+      expect(isVoiceBackchannel(acknowledgement)).toBe(true);
+    }
+    for (const takeover of [
+      "no",
+      "wait",
+      "yeah but stop",
+      "right, what about tomorrow",
+      "okay open notes",
+    ]) {
+      expect(isVoiceBackchannel(takeover)).toBe(false);
     }
   });
 
@@ -2341,7 +2373,7 @@ describe("voice-session WS lifecycle", () => {
     });
   });
 
-  test("normal thinking stays silent instead of speaking a canned progress line", async () => {
+  test("slow normal thinking speaks one truthful acknowledgement before the answer", async () => {
     const controlled = makeControlledCanonicalChunkFetch();
     const client = new FakeClientSocket();
     await connectSession({
@@ -2358,13 +2390,213 @@ describe("voice-session WS lifecycle", () => {
     await flush();
 
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
-    expect(client.controlTypes()).not.toContain("assistant_progress");
-    expect(cartesia.sentText()).toBe("");
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "assistant_progress",
+        text: "Yeah, one sec.",
+      }),
+    );
+    expect(cartesia.sentText()).toBe("Yeah, one sec.");
 
-    controlled.enqueueChunk("A direct answer without filler.");
+    controlled.enqueueChunk("A direct answer after the acknowledgement.");
     controlled.finish();
     await flush();
+    const progress = client.controlFrames.filter(
+      (frame) => frame.t === "assistant_progress",
+    );
+    expect(progress).toHaveLength(1);
+    const synthesisRequests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => typeof entry.transcript === "string");
+    expect(synthesisRequests).toEqual([
+      expect.objectContaining({
+        transcript: "Yeah, one sec.",
+        continue: true,
+      }),
+      expect.objectContaining({
+        transcript: "A direct answer after the acknowledgement.",
+        continue: false,
+      }),
+    ]);
+  });
+
+  test("an idle progress context completing cannot settle the still-running model turn", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+      voiceProgressSpokenThresholdMs: 10,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "give me a genuinely slow answer");
+    await controlled.ready;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await flush();
+
+    const progressContext = FakeCartesiaSocket.instances.at(-1)!;
+    expect(progressContext.sentText()).toBe("Yeah, one sec.");
+    progressContext.emitDone();
+    await flush();
+
+    expect(client.controlTypes()).not.toContain("usage");
+    expect(client.controlTypes()).not.toContain("turn_end");
+
+    controlled.enqueueChunk("The complete answer arrived after the long wait.");
+    controlled.finish();
+    await flush();
+    await flush();
+
+    const finalContext = FakeCartesiaSocket.instances.at(-1)!;
+    expect(finalContext).not.toBe(progressContext);
+    expect(finalContext.sentText()).toBe(
+      "The complete answer arrived after the long wait.",
+    );
+    finalContext.emitDone();
+    await flush();
+
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "turn_end", outcome: "spoken" }),
+    );
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "usage",
+        ttsChars:
+          "Yeah, one sec.".length +
+          "The complete answer arrived after the long wait.".length,
+      }),
+    );
+  });
+
+  test("a normal answer that is ready before the acknowledgement deadline speaks directly", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+      voiceProgressSpokenThresholdMs: 1_000,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "answer right away");
+    await controlled.ready;
+    controlled.enqueueChunk("The answer is ready now.");
+    controlled.finish();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     expect(client.controlTypes()).not.toContain("assistant_progress");
+    expect(cartesia.sentText()).toBe("The answer is ready now.");
+  });
+
+  test("barge-in cancels a slow-turn acknowledgement and suppresses every late answer frame", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+      voiceProgressSpokenThresholdMs: 10,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "take your time on this");
+    await controlled.ready;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe("Yeah, one sec.");
+    const framesBeforeInterrupt = client.controlFrames.length;
+
+    client.clientSend(JSON.stringify({ t: "barge_in" }));
+    await flush();
+    expect(cartesia.closed).toBe(true);
+    expect(client.controlFrames.slice(framesBeforeInterrupt)).toContainEqual(
+      expect.objectContaining({ t: "interrupted" }),
+    );
+
+    // The canonical stream can race with cancellation, but no late bytes may
+    // reopen display or synthesis ownership after the interrupt barrier.
+    try {
+      controlled.enqueueChunk("This answer arrived too late.");
+      controlled.finish();
+    } catch {
+      // Cancellation is also allowed to close the controlled stream first.
+    }
+    await flush();
+    await flush();
+
+    expect(cartesia.sentText()).toBe("Yeah, one sec.");
+    expect(
+      client.controlFrames
+        .slice(framesBeforeInterrupt)
+        .some(
+          (frame) =>
+            frame.t === "assistant_output" ||
+            frame.t === "assistant_display" ||
+            frame.t === "assistant_progress",
+        ),
+    ).toBe(false);
+  });
+
+  test("Ink-confirmed acoustic barge-in carries the browser playout checkpoint and heard words", async () => {
+    let abortedReason: unknown;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch([], {
+        hang: true,
+        onAbort: (reason) => {
+          abortedReason = reason;
+        },
+      }),
+      voiceProgressSpokenThresholdMs: 10,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "give me a slow answer");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await flush();
+
+    const progress = client.controlFrames.find(
+      (frame) => frame.t === "assistant_progress",
+    );
+    if (progress?.t !== "assistant_progress") {
+      throw new Error("expected progress frame");
+    }
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    cartesia.emitWordTimestamps(
+      ["Yeah,", "one", "sec."],
+      [0, 0.31, 0.51],
+      [0.28, 0.48, 0.75],
+    );
+
+    client.clientSend(
+      JSON.stringify({
+        t: "playout_checkpoint",
+        traceId: progress.traceId,
+        playedAudioMs: 500,
+      }),
+    );
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.update", "actually wait");
+    await flush();
+
+    expect(abortedReason).toEqual({
+      code: "VOICE_SESSION_INTERRUPTION",
+      kind: "acoustic",
+      traceId: progress.traceId,
+      playedAudioMs: 500,
+      heardText: "Yeah, one",
+    });
   });
 
   test("a slow canonical turn speaks one captioned progress preamble before the final answer", async () => {
@@ -2942,6 +3174,86 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlFrames).toContainEqual(
       expect.objectContaining({ t: "turn_end", outcome: "spoken" }),
     );
+  });
+
+  test("a short listener backchannel resumes the active answer without cancelling or creating a turn", async () => {
+    let aborted = false;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(
+        ["The active answer keeps its response ownership."],
+        {
+          onAbort: () => {
+            aborted = true;
+          },
+        },
+      ),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "Tell me more.");
+    await flush();
+    await flush();
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const responseTrace = client.controlFrames.find(
+      (frame) => frame.t === "speaking_start",
+    )?.traceId;
+    expect(responseTrace).toBeDefined();
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.update", "mhm");
+    ink.emitTurn("turn.eager_end", "mhm");
+    ink.emitTurn("turn.end", "mhm");
+    await flush();
+
+    expect(aborted).toBe(false);
+    expect(cartesia.closed).toBe(false);
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "backchannel"),
+    ).toEqual([{ t: "backchannel", traceId: responseTrace }]);
+    expect(
+      client.controlFrames.filter(
+        (frame) => frame.t === "stt_final" && frame.text === "mhm",
+      ),
+    ).toHaveLength(0);
+
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlFrames).toContainEqual({
+      t: "turn_end",
+      outcome: "spoken",
+      traceId: responseTrace,
+    });
+  });
+
+  test("a backchannel prefix that grows into a takeover interrupts exactly once", async () => {
+    let aborts = 0;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["This answer is still active."], {
+        hang: true,
+        onAbort: () => {
+          aborts += 1;
+        },
+      }),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "Start the answer.");
+    await flush();
+    await flush();
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.update", "yeah");
+    ink.emitTurn("turn.update", "yeah but wait");
+    await flush();
+
+    expect(aborts).toBe(1);
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "interrupted"),
+    ).toHaveLength(1);
   });
 
   test("discarded protected false starts do not leak STT accounting into the response or next turn", async () => {

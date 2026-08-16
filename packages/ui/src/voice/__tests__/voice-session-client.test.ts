@@ -795,8 +795,10 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     await client.unlockPlayback();
     sock.emitControl({ t: "speaking_start", traceId: "T1" });
     // Fill the playback queue with audible audio.
-    sock.emitAudio(floatSpeaking(200));
+    sock.emitAudio(floatSpeaking(3_200));
     expect(client.state.phase).toBe("speaking");
+    const audiblePrefix = playbackScriptNodeOf(pbCtx).render(1_600);
+    expect(audiblePrefix.some((value) => value !== 0)).toBe(true);
 
     // Barge-in: local flush happens NOW, and the barge_in control is sent,
     // WITHOUT any server interrupted event yet.
@@ -807,7 +809,11 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     const outPreAck = playbackScriptNodeOf(pbCtx).render(100);
     expect(outPreAck.every((v) => v === 0)).toBe(true);
     // barge_in control frame was sent to the server.
-    expect(sock.sentControls().some((c) => c.t === "barge_in")).toBe(true);
+    expect(sock.sentControls()).toContainEqual({
+      t: "barge_in",
+      traceId: "T1",
+      playedAudioMs: 100,
+    });
 
     // Now the server's authoritative interrupted arrives → reconcile (idempotent).
     sock.emitControl({ t: "interrupted", reason: "explicit", traceId: "T1" });
@@ -848,7 +854,11 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
         traceId: "trace-manual-barge",
       }),
     );
-    expect(socket.sentControls()).toContainEqual({ t: "barge_in" });
+    expect(socket.sentControls()).toContainEqual({
+      t: "barge_in",
+      traceId: "trace-manual-barge",
+      playedAudioMs: 0,
+    });
     await client.stop();
   });
 
@@ -1228,6 +1238,60 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     await client.stop();
   });
 
+  it("resumes paused audio when the server classifies listener speech as a backchannel", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micCtx = new FakeMicAudioContext(16_000);
+    const pbCtx = new FakePlaybackAudioContext(16_000);
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "backchannel",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => micCtx,
+      createPlaybackAudioContext: () => pbCtx,
+      onTraceMark: (mark) => marks.push(mark),
+    });
+    await client.start();
+    await flush();
+    const socket = ws.last();
+    socket.emitOpen();
+    socket.emitControl({
+      t: "ready",
+      sessionId: "session-backchannel",
+      traceId: "trace-ready",
+    });
+    await flush();
+    await client.unlockPlayback();
+    socket.emitControl({
+      t: "speaking_start",
+      traceId: "trace-backchannel",
+    });
+    socket.emitAudio(floatSpeaking(3_200));
+    micCtx.scriptNode?.feed(new Float32Array(4096).fill(0.1));
+    expect(
+      playbackScriptNodeOf(pbCtx)
+        .render(100)
+        .every((value) => value === 0),
+    ).toBe(true);
+
+    socket.emitControl({ t: "backchannel", traceId: "trace-backchannel" });
+    const resumed = playbackScriptNodeOf(pbCtx).render(400);
+    expect(resumed.some((value) => value !== 0)).toBe(true);
+    expect(client.state.phase).toBe("speaking");
+    expect(marks).toContainEqual(
+      expect.objectContaining({
+        name: "backchannel",
+        traceId: "trace-backchannel",
+      }),
+    );
+    expect(marks.some((mark) => mark.name === "output_retracted")).toBe(false);
+    await client.stop();
+  });
+
   it("confirms sustained local speech before a slower provider partial", async () => {
     const mint = makeMintFetch();
     const ws = makeWsFactory();
@@ -1269,6 +1333,11 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     expect(sock.sentControls().some((frame) => frame.t === "barge_in")).toBe(
       false,
     );
+    expect(sock.sentControls()).toContainEqual({
+      t: "playout_checkpoint",
+      traceId: "T-local",
+      playedAudioMs: 0,
+    });
     await client.stop();
   });
 

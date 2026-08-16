@@ -125,12 +125,25 @@ export interface CartesiaSonicCancelledEvent {
   readonly reason?: string;
 }
 
+export interface CartesiaSonicWordTimestamp {
+  readonly word: string;
+  readonly startMs: number;
+  readonly endMs: number;
+}
+
+export interface CartesiaSonicWordTimestampsEvent {
+  readonly contextId: string;
+  readonly traceId?: string;
+  readonly words: readonly CartesiaSonicWordTimestamp[];
+}
+
 export interface CartesiaSonicStreamCallbacks {
   readonly onFirstAudio?: (event: CartesiaSonicFirstAudioEvent) => void;
   readonly onAudioFrame?: (event: CartesiaSonicAudioFrameEvent) => void;
   readonly onComplete?: (event: CartesiaSonicCompleteEvent) => void;
   readonly onProviderError?: (event: CartesiaSonicProviderErrorEvent) => void;
   readonly onCancelled?: (event: CartesiaSonicCancelledEvent) => void;
+  readonly onWordTimestamps?: (event: CartesiaSonicWordTimestampsEvent) => void;
 }
 
 export interface CartesiaWebSocketFactoryOptions {
@@ -176,6 +189,7 @@ interface CartesiaGenerationRequest {
   readonly max_buffer_delay_ms?: number;
   readonly flush?: boolean;
   readonly duration?: number;
+  readonly add_timestamps: true;
 }
 
 type CartesiaIncomingMessage =
@@ -218,6 +232,11 @@ type CartesiaIncomingMessage =
       readonly done?: false;
       readonly status_code?: number;
       readonly context_id?: string;
+      readonly word_timestamps?: {
+        readonly words?: readonly unknown[];
+        readonly start?: readonly unknown[];
+        readonly end?: readonly unknown[];
+      };
     };
 
 export class CartesiaSonicTtsError extends Error {
@@ -442,6 +461,7 @@ export class CartesiaSonicTtsStream {
       max_buffer_delay_ms: phrase.maxBufferDelayMs ?? this.input.maxBufferDelayMs,
       flush: phrase.flush,
       duration: phrase.duration,
+      add_timestamps: true,
     };
     this.sendOrQueue(JSON.stringify(removeUndefinedFields(payload)));
   }
@@ -605,7 +625,54 @@ export class CartesiaSonicTtsStream {
     }
     if (message.type === "error") {
       this.handleProviderError(message);
+      return;
     }
+    if (message.type === "timestamps") {
+      this.handleTimestamps(message);
+    }
+  }
+
+  private handleTimestamps(
+    message: Extract<CartesiaIncomingMessage, { type: "timestamps" | "phoneme_timestamps" }>,
+  ): void {
+    const timestamps = message.word_timestamps;
+    if (!timestamps) return;
+    const words = timestamps.words ?? [];
+    const starts = timestamps.start ?? [];
+    const ends = timestamps.end ?? [];
+    if (words.length !== starts.length || words.length !== ends.length || words.length > 10_000) {
+      return;
+    }
+    const normalized: CartesiaSonicWordTimestamp[] = [];
+    for (let index = 0; index < words.length; index += 1) {
+      const word = words[index];
+      const start = starts[index];
+      const end = ends[index];
+      if (
+        typeof word !== "string" ||
+        word.length === 0 ||
+        word.length > 256 ||
+        typeof start !== "number" ||
+        typeof end !== "number" ||
+        !Number.isFinite(start) ||
+        !Number.isFinite(end) ||
+        start < 0 ||
+        end < start ||
+        end > 3_600
+      ) {
+        return;
+      }
+      normalized.push({
+        word,
+        startMs: Math.round(start * 1_000),
+        endMs: Math.round(end * 1_000),
+      });
+    }
+    this.input.callbacks.onWordTimestamps?.({
+      contextId: message.context_id ?? this.contextId,
+      traceId: this.traceId,
+      words: normalized,
+    });
   }
 
   private handleChunk(message: Extract<CartesiaIncomingMessage, { type: "chunk" }>): void {

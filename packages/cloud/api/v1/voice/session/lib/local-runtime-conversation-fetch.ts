@@ -31,6 +31,42 @@ const DEFAULT_RUNTIME_INGRESS_TIMEOUT_MS = 5_000;
 const DEFAULT_RUNTIME_PREWARM_TIMEOUT_MS = 8_000;
 const LOCAL_VOICE_PREWARM_PATH = "/api/cloud/inference/prewarm";
 
+interface LocalVoiceInterruptionContext {
+  readonly traceId: string;
+  readonly playedAudioMs: number;
+  readonly heardText?: string;
+}
+
+function normalizeVoiceInterruptionReason(
+  reason: unknown,
+): LocalVoiceInterruptionContext | undefined {
+  if (!reason || typeof reason !== "object") return undefined;
+  const value = reason as Record<string, unknown>;
+  if (
+    value.code !== "VOICE_SESSION_INTERRUPTION" ||
+    typeof value.traceId !== "string" ||
+    value.traceId.length === 0 ||
+    value.traceId.length > 256 ||
+    typeof value.playedAudioMs !== "number" ||
+    !Number.isSafeInteger(value.playedAudioMs) ||
+    value.playedAudioMs < 0 ||
+    value.playedAudioMs > 3_600_000
+  ) {
+    return undefined;
+  }
+  const heardText =
+    typeof value.heardText === "string" &&
+    value.heardText.length > 0 &&
+    value.heardText.length <= 2_000
+      ? value.heardText
+      : undefined;
+  return {
+    traceId: value.traceId,
+    playedAudioMs: value.playedAudioMs,
+    ...(heardText ? { heardText } : {}),
+  };
+}
+
 export interface LocalRuntimeConversationFetchOptions {
   /** One hard deadline covers every pre-registration retry and response read. */
   abortTimeoutMs?: number;
@@ -180,6 +216,7 @@ export function createLocalRuntimeConversationFetch(
   const dispatchRuntimeAbort = async (
     roomId: string,
     clientMessageId: string,
+    voiceInterruption?: LocalVoiceInterruptionContext,
   ): Promise<void> => {
     const target = new URL(
       `/api/turns/${encodeURIComponent(roomId)}/abort`,
@@ -210,6 +247,7 @@ export function createLocalRuntimeConversationFetch(
             body: JSON.stringify({
               reason: VOICE_ABORT_REASON,
               clientMessageId,
+              ...(voiceInterruption ? { voiceInterruption } : {}),
             }),
             signal: controller.signal,
           });
@@ -286,12 +324,17 @@ export function createLocalRuntimeConversationFetch(
   const startRuntimeAbort = (
     roomId: string,
     clientMessageId: string,
+    voiceInterruption?: LocalVoiceInterruptionContext,
   ): Promise<void> => {
     const key = abortRequestKey(roomId, clientMessageId);
     const existing = pendingAbortByRequest.get(key);
     if (existing) return existing.task;
 
-    const pending = dispatchRuntimeAbort(roomId, clientMessageId);
+    const pending = dispatchRuntimeAbort(
+      roomId,
+      clientMessageId,
+      voiceInterruption,
+    );
     pendingAbortByRequest.set(key, {
       roomId,
       clientMessageId,
@@ -493,6 +536,7 @@ export function createLocalRuntimeConversationFetch(
     let responseExposed = false;
     let streamAttempted = false;
     let abortBarrier: Promise<void> | null = null;
+    let voiceInterruption: LocalVoiceInterruptionContext | undefined;
     const roomPromise = (async () => {
       await awaitPriorIngressBarrier(conversationId, body.clientMessageId);
       const controller = new AbortController();
@@ -535,6 +579,7 @@ export function createLocalRuntimeConversationFetch(
         const exactAbort = startRuntimeAbort(
           resolvedRoomId,
           body.clientMessageId,
+          voiceInterruption,
         );
 
         let committedResponse: Response | null = null;
@@ -595,6 +640,9 @@ export function createLocalRuntimeConversationFetch(
 
     let rejectCallerAbort: ((reason: unknown) => void) | null = null;
     const onAbort = () => {
+      voiceInterruption ??= normalizeVoiceInterruptionReason(
+        callerSignal?.reason,
+      );
       void startAbortBarrier().catch(() => undefined);
       rejectCallerAbort?.(
         callerSignal?.reason ??

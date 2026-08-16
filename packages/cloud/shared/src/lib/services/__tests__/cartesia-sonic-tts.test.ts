@@ -272,6 +272,7 @@ describe("CartesiaSonicTtsAdapter", () => {
       continue: true,
       max_buffer_delay_ms: 80,
       flush: true,
+      add_timestamps: true,
     });
   });
 
@@ -330,6 +331,40 @@ describe("CartesiaSonicTtsAdapter", () => {
     ]);
     expect(metrics).toContain("cartesia_tts_first_audio");
     expect(metrics.filter((name) => name === "cartesia_tts_audio_frame")).toHaveLength(2);
+  });
+
+  test("requests and validates provider word timestamps for interruption alignment", () => {
+    const { adapter, socket } = makeHarness();
+    const received: Array<{
+      word: string;
+      startMs: number;
+      endMs: number;
+    }> = [];
+    const stream = adapter.createStream(
+      { contextId: "ctx-1", traceId: "trace-1" },
+      { onWordTimestamps: (event) => received.push(...event.words) },
+    );
+    socket().emitOpen();
+    stream.sendPhrase({ text: "Hello there.", continueContext: false });
+    expect(JSON.parse(socket().sent[0])).toMatchObject({
+      add_timestamps: true,
+    });
+
+    socket().emitMessage(
+      JSON.stringify({
+        type: "timestamps",
+        context_id: "ctx-1",
+        word_timestamps: {
+          words: ["Hello", "there."],
+          start: [0, 0.31],
+          end: [0.28, 0.62],
+        },
+      }),
+    );
+    expect(received).toEqual([
+      { word: "Hello", startMs: 0, endMs: 280 },
+      { word: "there.", startMs: 310, endMs: 620 },
+    ]);
   });
 
   test("rejects opened and emits one provider error when the socket closes before opening", async () => {

@@ -271,6 +271,41 @@ describe("TurnControllerRegistry", () => {
 			newer.finish();
 		});
 
+		it("preserves bounded voice interruption context through active and pre-registration aborts", () => {
+			const registry = new TurnControllerRegistry();
+			const interruption = {
+				traceId: "session:turn:4",
+				playedAudioMs: 487,
+				heardText: "I heard this far",
+			} as const;
+
+			const active = registry.registerRequestAdmission(ROOM_A, "active-voice");
+			registry.abortRequestAdmission(
+				ROOM_A,
+				"active-voice",
+				"voice-session-interrupt",
+				interruption,
+			);
+			expect(active.signal.reason).toMatchObject({
+				code: "TURN_ABORTED",
+				interruption,
+			});
+			active.finish();
+
+			registry.abortRequestAdmission(
+				ROOM_A,
+				"future-voice",
+				"voice-session-interrupt",
+				interruption,
+			);
+			const future = registry.registerRequestAdmission(ROOM_A, "future-voice");
+			expect(future.signal.reason).toMatchObject({
+				code: "TURN_ABORTED",
+				interruption,
+			});
+			future.finish();
+		});
+
 		it("fails closed at tombstone capacity and expires pending barriers", async () => {
 			let now = 1_000;
 			const registry = new TurnControllerRegistry({

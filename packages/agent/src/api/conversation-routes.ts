@@ -707,6 +707,54 @@ function isTurnAbortError(err: unknown): boolean {
   );
 }
 
+interface VoiceInterruptionContext {
+  readonly traceId: string;
+  readonly playedAudioMs: number;
+  readonly heardText?: string;
+}
+
+function voiceInterruptionContextForAbort(
+  err: unknown,
+): VoiceInterruptionContext | undefined {
+  if (!(err instanceof Error)) return undefined;
+  const value = (err as Error & { interruption?: unknown }).interruption;
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.traceId !== "string" ||
+    candidate.traceId.length === 0 ||
+    candidate.traceId.length > 256 ||
+    typeof candidate.playedAudioMs !== "number" ||
+    !Number.isSafeInteger(candidate.playedAudioMs) ||
+    candidate.playedAudioMs < 0 ||
+    candidate.playedAudioMs > 3_600_000
+  ) {
+    return undefined;
+  }
+  const heardText =
+    typeof candidate.heardText === "string" &&
+    candidate.heardText.length > 0 &&
+    candidate.heardText.length <= 2_000
+      ? candidate.heardText
+      : undefined;
+  return {
+    traceId: candidate.traceId,
+    playedAudioMs: candidate.playedAudioMs,
+    ...(heardText ? { heardText } : {}),
+  };
+}
+
+function interruptedContentFields(
+  interruption: VoiceInterruptionContext | undefined,
+): Record<string, unknown> {
+  if (!interruption) return {};
+  return {
+    interruptionTraceId: interruption.traceId,
+    playedAudioMs: interruption.playedAudioMs,
+    ...(interruption.heardText ? { heardText: interruption.heardText } : {}),
+  };
+}
+
 function isResponseSupersessionAbort(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const reason = (err as Error & { reason?: unknown }).reason;
@@ -4843,7 +4891,9 @@ export async function handleConversationRoutes(
         ) => {
           for (const segment of segments) writeSse(res, { ...segment });
         };
-        const persistCommittedSpeech = async (): Promise<boolean> => {
+        const persistCommittedSpeech = async (
+          interruption?: VoiceInterruptionContext,
+        ): Promise<boolean> => {
           const text = speechSegmenter?.committedSourceText ?? "";
           if (!text) return false;
           if (!runtimeTurnLease) {
@@ -4858,7 +4908,13 @@ export async function handleConversationRoutes(
           const persisted = await persistAssistantConversationMemory(
             runtime,
             conv.roomId,
-            { text, inReplyTo: messageToStore.id, interrupted: true },
+            {
+              text,
+              inReplyTo: messageToStore.id,
+              interrupted: true,
+              interruptionReason: "voice_barge_in",
+              ...interruptedContentFields(interruption),
+            },
             channelType,
             turnStartedAt,
             routeOwnedId,
@@ -4874,7 +4930,9 @@ export async function handleConversationRoutes(
           await settleTurnReservation(outcome);
           return true;
         };
-        const persistInterruptedModelPrefix = async (): Promise<boolean> => {
+        const persistInterruptedModelPrefix = async (
+          interruption?: VoiceInterruptionContext,
+        ): Promise<boolean> => {
           const text = committedVisibleModelText;
           if (!text) return false;
           if (!runtimeTurnLease) {
@@ -4931,6 +4989,8 @@ export async function handleConversationRoutes(
               text,
               inReplyTo: userMessageId,
               interrupted: true,
+              interruptionReason: "voice_barge_in",
+              ...interruptedContentFields(interruption),
               source: MESSAGE_SOURCE_CLIENT_CHAT,
               channelType,
               ...(preserveUserRequestedFormat
@@ -4958,6 +5018,8 @@ export async function handleConversationRoutes(
                 text,
                 inReplyTo: userMessageId,
                 interrupted: true,
+                interruptionReason: "voice_barge_in",
+                ...interruptedContentFields(interruption),
                 ...(preserveUserRequestedFormat
                   ? { preserveUserRequestedFormat: true }
                   : {}),
@@ -5301,6 +5363,8 @@ export async function handleConversationRoutes(
               });
             }
           } else if (isTurnAbortError(terminalError)) {
+            const voiceInterruption =
+              voiceInterruptionContextForAbort(terminalError);
             logger.info(
               { conversationId: conv.id, roomId: conv.roomId },
               "[ConversationStream] generation aborted",
@@ -5319,7 +5383,7 @@ export async function handleConversationRoutes(
                 releaseTurnReservation();
               } else if (
                 exactVoiceClientMessageId &&
-                (await persistInterruptedModelPrefix())
+                (await persistInterruptedModelPrefix(voiceInterruption))
               ) {
                 logger.info(
                   {
@@ -5331,7 +5395,7 @@ export async function handleConversationRoutes(
                 );
               } else if (
                 exactVoiceClientMessageId &&
-                (await persistCommittedSpeech())
+                (await persistCommittedSpeech(voiceInterruption))
               ) {
                 logger.info(
                   {

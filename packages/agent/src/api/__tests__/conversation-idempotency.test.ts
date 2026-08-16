@@ -1279,6 +1279,11 @@ describe("conversation-route chat idempotency wiring", () => {
         throw Object.assign(new Error("Turn aborted: confirmed_speech"), {
           name: "TurnAbortedError",
           code: "TURN_ABORTED",
+          interruption: {
+            traceId: "session:turn:7",
+            playedAudioMs: 487,
+            heardText: "This complete sentence",
+          },
         });
       },
     );
@@ -1308,6 +1313,10 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(assistantMemories[0]?.content).toMatchObject({
       text: visiblePrefix,
       interrupted: true,
+      interruptionReason: "voice_barge_in",
+      interruptionTraceId: "session:turn:7",
+      playedAudioMs: 487,
+      heardText: "This complete sentence",
     });
     const assistantId = assistantMemories[0]?.id;
     expect(assistantId).toBeDefined();

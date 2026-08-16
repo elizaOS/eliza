@@ -3,6 +3,23 @@ import { describe, expect, it, vi } from "vitest";
 import { createCloudTextPrewarmer } from "../../src/routes/cloud-text-prewarm";
 
 describe("local voice cloud text prewarm", () => {
+  it("refreshes the default warm lease at five seconds", async () => {
+    let now = 1_000;
+    const useModel = vi.fn(async () => "ok");
+    const prewarm = createCloudTextPrewarmer({ now: () => now });
+
+    await expect(prewarm({ useModel })).resolves.toBe("warmed");
+    expect(useModel).toHaveBeenCalledTimes(2);
+
+    now += 4_999;
+    await expect(prewarm({ useModel })).resolves.toBe("already-warm");
+    expect(useModel).toHaveBeenCalledTimes(2);
+
+    now += 1;
+    await expect(prewarm({ useModel })).resolves.toBe("warmed");
+    expect(useModel).toHaveBeenCalledTimes(4);
+  });
+
   it("coalesces concurrent probes and skips another probe inside the cooldown", async () => {
     let now = 1_000;
     let release!: () => void;

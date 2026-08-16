@@ -6,7 +6,9 @@
 
 const DEFAULT_RUNTIME_ORIGIN = "http://127.0.0.1:31337";
 const DEFAULT_GATEWAY_PORT = 31_338;
-const DEFAULT_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
+// Keep the zero-config local gateway aligned with the repo-root character used
+// by this dev stack. Operators can still override it explicitly per process.
+const DEFAULT_CARTESIA_VOICE_ID = "b9c387c8-2583-4b89-9a8e-be6699e38a23";
 const LOCAL_ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const LOCAL_USER_ID = "20000000-0000-4000-8000-000000000002";
 const UUID_PATTERN =

@@ -154,6 +154,10 @@ export function applyServerEvent(
       // Speculative EOT — the server MAY begin prep. No committed turn yet, no
       // phase jump; keep whatever transcribing/listening phase we're in.
       return { ...state, traceId: event.traceId };
+    case "backchannel":
+      // The assistant keeps its current response; only provisional local
+      // speech/playout state changes in the client authority adapter.
+      return { ...state, traceId: event.traceId };
     case "stt_final":
       // An EMPTY final is not a request-dispatch edge: the server commits the
       // turn but never dispatches the LLM leg (noise-triggered StartOfTurn +
