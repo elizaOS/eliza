@@ -133,13 +133,28 @@ const todoStore: TodoStore = {
   },
 };
 const reminderRunner = {
-  async schedule(input: Record<string, unknown>) {
+  async scheduleWithResult(input: Record<string, unknown>) {
     scheduledInputs.push(input);
-    return {
+    const task = {
       taskId: "shared-reminder-1",
       ...input,
-      state: { status: "scheduled", followupCount: 0 },
+      state: { status: "scheduled" as const, followupCount: 0 },
     };
+    return {
+      task,
+      commit: {
+        logId: "shared-reminder-log-1",
+        taskId: task.taskId,
+        agentId: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
+        occurredAtIso: "2026-08-15T00:00:00.000Z",
+        transition: "scheduled" as const,
+        rolledUp: false,
+      },
+      replayed: false,
+    };
+  },
+  async schedule(input: Record<string, unknown>) {
+    return (await this.scheduleWithResult(input)).task;
   },
   async list() {
     return [];
@@ -791,7 +806,21 @@ describe("Shared Eliza Workerd runtime", () => {
         },
       },
     });
-    expect(modelRequests).toHaveLength(4);
+    expect(modelRequests).toHaveLength(3);
+    expect(result.actionResults?.[0]).toMatchObject({
+      verifiedUserFacing: true,
+      effectReceipts: [
+        {
+          receiptId: "shared-reminder:create:shared-reminder-log-1",
+          outcome: "applied",
+          operation: "shared.reminder.create",
+          idempotency: {
+            key: "shared-reminder:7d734b8f-1ac5-456a-8bf3-9cd61dd546ef:create",
+            replayed: false,
+          },
+        },
+      ],
+    });
     expect(
       (modelRequests[1].tools as Array<{ function?: { name?: string } }>).some(
         (tool) => tool.function?.name === "REMINDERS",

@@ -251,6 +251,21 @@ describe("project-memory-scope: (c) legacy unscoped memories still work (backwar
 		});
 		expect(kept.map((r) => r.id)).toEqual(["legacy"]);
 	});
+
+	it("database null worldId passes the scoped guard as a legacy memory", () => {
+		const legacyFromDatabase = {
+			id: "legacy-null",
+			text: "nullable column returned null",
+			worldId: null,
+		};
+
+		const kept = assertMemoriesInProject([legacyFromDatabase], {
+			agentId: AGENT_A,
+			projectId: PROJECT_A,
+		});
+
+		expect(kept).toEqual([legacyFromDatabase]);
+	});
 });
 
 describe("project-memory-scope: (d) filter normalization consistent with #13948", () => {

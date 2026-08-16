@@ -12,6 +12,7 @@ import {
 } from "../../state/persistence";
 import { AppModeEntryRoute } from "./AppModeEntryRoute";
 import { type AppModeAgent, appModeNavigation } from "./app-mode";
+import { publishPersonalEntryHandoff } from "./use-personal-entry";
 
 function base64url(value: unknown): string {
   return btoa(JSON.stringify(value))
@@ -34,8 +35,10 @@ function stewardToken(): string {
   ].join(".");
 }
 
-function signIn(): void {
-  localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken());
+function signIn(): string {
+  const token = stewardToken();
+  localStorage.setItem(STEWARD_TOKEN_KEY, token);
+  return token;
 }
 
 function bindCloudAgent(id = "agent-1"): void {
@@ -340,6 +343,48 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
       apiBase: `https://api.eliza.app/api/v1/eliza/agents/${encodeURIComponent(id)}`,
     });
   }
+
+  it("consumes the session-bound /join result without resolving the same personal identity twice", async () => {
+    const authToken = signIn();
+    bindPersonal();
+    publishPersonalEntryHandoff(authToken, {
+      personalElizaId: PERSONAL_ID,
+      agentId: PERSONAL_ID,
+      activeAgentId: "00000000-0000-4000-8000-000000000002",
+      agentName: "Eliza",
+      apiBase: "https://api.eliza.app",
+      runtime: "shared",
+    });
+    stubNetwork({ agents: agentsOk([]), personal: personalOk() });
+    renderEntry();
+
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    expect(
+      fetchLog.filter((line) => line.includes("/api/v1/eliza/personal")),
+    ).toEqual([]);
+    expect(assignedUrls).toEqual([]);
+  });
+
+  it("discards a /join handoff from a different Steward session", async () => {
+    signIn();
+    bindPersonal();
+    publishPersonalEntryHandoff("different-session-token", {
+      personalElizaId: PERSONAL_ID,
+      agentId: PERSONAL_ID,
+      activeAgentId: "00000000-0000-4000-8000-000000000002",
+      agentName: "Eliza",
+      apiBase: "https://api.eliza.app",
+      runtime: "shared",
+    });
+    stubNetwork({ agents: agentsOk([]), personal: personalOk() });
+    renderEntry();
+
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    expect(
+      fetchLog.filter((line) => line.includes("/api/v1/eliza/personal")),
+    ).toHaveLength(1);
+    expect(assignedUrls).toEqual([]);
+  });
 
   it("clean account with a matching personal binding → chat, no /join bounce, no reload (the #19360 loop)", async () => {
     signIn();

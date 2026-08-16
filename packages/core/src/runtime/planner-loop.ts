@@ -69,6 +69,7 @@ import { runEvaluator } from "./evaluator";
 import {
 	extractJsonObjects,
 	parseJsonObject,
+	parsePseudoTagToolInvocations,
 	stringifyForModel,
 	stripJsonStructuralJunkReply,
 } from "./json-output";
@@ -394,6 +395,41 @@ async function runPlannerLoopIterations(
 	const requireNonTerminalToolCall =
 		(params.requireNonTerminalToolCall === true || codingMode) &&
 		hasExposedNonTerminalTool(params.tools);
+	// A PRESENT but terminal-only surface (REPLY/IGNORE/STOP and nothing else)
+	// means every stage-1 candidate failed to resolve to a runnable action —
+	// the turn has zero capability. Running a planner round anyway hands a
+	// fresh model call the chance to improvise around the missing capability:
+	// observed live ("send a text to my mom"), stage-1 drafted an honest
+	// "no phone/sms access configured" decline and the terminal-only round
+	// replaced it with "need your mom's phone number or iMessage handle" — an
+	// ask implying a surface this runtime does not have. When stage-1 already
+	// produced an answer-shaped reply, ship it and skip the round entirely
+	// (grounded decline + one model call saved). An undefined/empty tools
+	// param stays on the normal path — that is the deliberate no-actions-gated
+	// planning mode, not a failed resolution — and an ack-shaped stage-1 draft
+	// falls through so the loop can still produce a real answer.
+	if (
+		params.tools !== undefined &&
+		params.tools.length > 0 &&
+		!hasExposedNonTerminalTool(params.tools)
+	) {
+		const stageOneDecline = userSafeCapturedAnswerCandidate(
+			params.stageOneReplyText,
+		);
+		if (stageOneDecline !== undefined) {
+			return {
+				status: "finished",
+				trajectory: {
+					context: plannerContext,
+					steps: [],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+				finalMessage: stageOneDecline,
+			};
+		}
+	}
 	// Stage 1's own answer for this turn, shape-guarded once up front. Consulted
 	// only when the required-tool gate exhausts without a captured refusal — the
 	// ground-truth answer Stage 1 already produced beats the caller's generic
@@ -3310,11 +3346,27 @@ function parseNativeMarkupToolCalls(
 
 /**
  * Recover tool calls a weak model emitted as text — JSON objects first, then
- * the native `<tool_call>` markup — when no structured call was parsed.
+ * the native `<tool_call>` markup, then `<ACTION_NAME>{json}</ACTION_NAME>`
+ * pseudo-tags — when no structured call was parsed. The pseudo-tag dialect
+ * puts the action name in the TAG and only the args in the JSON body, so
+ * neither earlier parser can see it (matrix F38, tj-9129a432454364: a
+ * `<NOTES_CREATE>{…}</NOTES_CREATE>` was stripped from the reply and never
+ * executed).
  */
 function recoverEmbeddedToolCalls(text: string): PlannerToolCall[] {
 	const fromJson = parseEmbeddedToolCalls(text);
-	return fromJson.length > 0 ? fromJson : parseNativeMarkupToolCalls(text);
+	if (fromJson.length > 0) return fromJson;
+	const fromNativeMarkup = parseNativeMarkupToolCalls(text);
+	if (fromNativeMarkup.length > 0) return fromNativeMarkup;
+	const calls: PlannerToolCall[] = [];
+	for (const invocation of parsePseudoTagToolInvocations(text)) {
+		const call = normalizeToolCall({
+			action: invocation.name,
+			parameters: invocation.params,
+		});
+		if (call) calls.push(call);
+	}
+	return calls;
 }
 
 /**
@@ -5360,6 +5412,19 @@ function userSafeFailureReport(
 	if (isUnsafeUserVisibleText(candidate)) return undefined;
 	if (isToolMetaNarration(candidate)) return undefined;
 	if (isEchoOfPlannerFacingToolText(candidate, trajectory)) return undefined;
+	// The failure synthesis is the turn's LAST model call — no further tool
+	// work happens — so a diagnosis that instead promises imminent action is a
+	// false claim on the egress leg the in-flight ban did not cover (matrix
+	// F40: forced failure-aware synthesis shipped "calling web search now" as
+	// the final turn text). Progress-shaped openers are screened with the
+	// shared opener vocabulary rather than PROGRESS_ONLY_ANSWER_REJECT: its
+	// final-answer-only extensions ("Okay", "got it") open legitimate failure
+	// diagnoses, and rejecting those would regress #17948's
+	// model-diagnosis-over-generic-fallback contract.
+	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+		return undefined;
+	}
+	if (PROGRESS_ONLY_OPENER_RE.test(candidate)) return undefined;
 	return candidate;
 }
 
@@ -5536,7 +5601,15 @@ function userSafeRefusalCandidate(
 // would be a cycle. The two consumers deliberately extend it differently —
 // see PROGRESS_ONLY_ANSWER_REJECT below.
 export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN =
-	"checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|let me|i(?:'|’)ll|i will";
+	"calling|checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|let me|i(?:'|’)ll|i will";
+
+// Bare opener screen (no final-answer-only extensions) for text where a
+// progress-shaped opener is disqualifying but "Okay, …" openings are
+// legitimate — the failure-report egress (matrix F40).
+const PROGRESS_ONLY_OPENER_RE = new RegExp(
+	`^(?:${PROGRESS_ONLY_REPLY_OPENERS_PATTERN})\\b`,
+	"i",
+);
 
 // Progress/ack-shaped openers that must never be surfaced as a final answer
 // from the required-tool exhaustion path: once the loop gives up, no further

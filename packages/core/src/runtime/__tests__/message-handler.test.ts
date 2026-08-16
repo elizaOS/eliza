@@ -238,6 +238,38 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
+	it("promotes a short progress-shaped ack on the pure-simple path to planning", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "checking paris weather now",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+		expect(parsed).not.toBeNull();
+		if (!parsed) return;
+		const route = routeMessageHandlerOutput(parsed);
+		expect(route.type).toBe("planning_needed");
+		if (route.type === "planning_needed") {
+			expect(route.contexts).toEqual(["general"]);
+		}
+	});
+
+	it("keeps a conversational let-me-know close as a final reply", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "let me know if you need anything else",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+		expect(parsed).not.toBeNull();
+		if (!parsed) return;
+		expect(routeMessageHandlerOutput(parsed).type).toBe("final_reply");
+	});
+
 	it("does not force planning for explanatory gerunds that are substantive answers", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({

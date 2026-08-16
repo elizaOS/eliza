@@ -1460,9 +1460,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		// Compactness ceiling for the DM Stage-1 prompt. Any leaked context
 		// description (~2,500+ chars each) blows far past this; deliberate
 		// template rules only nudge it, so keep the ceiling tight (currently
-		// ~4.1k rendered after the #19863 owner-life routing floor named every
-		// umbrella).
-		expect(systemContent.length).toBeLessThan(4_300);
+		// ~4.3k rendered after the #19863 owner-life routing floor and the F15
+		// history-never-creates-a-capability grounding line).
+		expect(systemContent.length).toBeLessThan(4_450);
 	});
 
 	it("direct-channel prompt grounds capability denials in executable actions and requires fresh tool retries", async () => {
@@ -1501,6 +1501,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(systemContent).toContain(
 			"A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.",
+		);
+		// Inverse grounding (matrix F15, poisoned-room receipt): the room's
+		// history contained an old planner exchange asking for "your mom's
+		// number", and stage-1 parroted the implied SMS surface. History must
+		// never create a capability the surface list doesn't.
+		expect(systemContent).toContain("History never creates a capability");
+		expect(systemContent).toContain(
+			"never ask follow-up details for a surface you don't have",
 		);
 	});
 

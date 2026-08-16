@@ -61,6 +61,25 @@ export function isTerminalDiscordDirectMessageError(error: unknown): boolean {
   return status === 400 || status === 403 || status === 404;
 }
 
+/** True when Discord returned an explicit client rejection before acceptance. */
+export function isKnownDiscordDirectMessageRejection(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  const raw =
+    record.rawError && typeof record.rawError === "object"
+      ? (record.rawError as Record<string, unknown>)
+      : undefined;
+  const code = typeof record.code === "number" ? record.code : raw?.code;
+  const status =
+    typeof record.status === "number"
+      ? record.status
+      : typeof record.statusCode === "number"
+        ? record.statusCode
+        : undefined;
+  if (typeof status === "number") return status >= 400 && status < 500;
+  return code === 50007 || code === 10013;
+}
+
 /**
  * Leases pending greetings and sends each with a stable provider nonce.
  *

@@ -267,22 +267,31 @@ describe("MEMORY op:search identity-cluster expansion", () => {
 });
 
 describe("MEMORY uuid validation", () => {
-  it("publishes UUID-only schemas for every model-supplied database id", () => {
-    for (const name of ["entityId", "roomId", "memoryId"]) {
+  it("publishes a UUID-only schema for the destructive memoryId and pattern-free schemas for search filters", () => {
+    // memoryId targets a destructive op, so the schema pattern hard-fails a
+    // mangled id at the validate-tool-args boundary. entityId/roomId are
+    // search *filters*: their patterns were removed (matrix F16,
+    // tj-b0c123243cb39e) so a planner-mangled UUID reaches the handler's
+    // per-op policy instead of failing the whole call.
+    const memoryId = memoryAction.parameters?.find(
+      (candidate) => candidate.name === "memoryId",
+    );
+    expect(memoryId?.schema.pattern).toBeDefined();
+    const pattern = new RegExp(memoryId?.schema.pattern ?? "");
+    expect(pattern.test(ROOM_ID)).toBe(true);
+    expect(pattern.test("general")).toBe(false);
+    for (const name of ["entityId", "roomId"]) {
       const parameter = memoryAction.parameters?.find(
         (candidate) => candidate.name === name,
       );
-      expect(parameter?.schema.pattern).toBeDefined();
-      const pattern = new RegExp(parameter?.schema.pattern ?? "");
-      expect(pattern.test(ROOM_ID)).toBe(true);
-      expect(pattern.test("chat")).toBe(false);
-      expect(pattern.test("general")).toBe(false);
+      expect(parameter?.schema.pattern).toBeUndefined();
     }
   });
 
-  it('handles roomId "general" without running the query or leaking SQL', async () => {
+  it('search ignores roomId "general" with a note, without running the id-filtered query or leaking SQL', async () => {
     // The mock getMemories throws a drizzle-style error (raw SQL included)
-    // for any non-uuid id, so a passing test proves the query never ran.
+    // for any non-uuid id, so a passing test proves the invalid id was
+    // dropped before any query ran with it.
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "nubs plays guitar", entityId: USER_ID });
 
@@ -291,25 +300,38 @@ describe("MEMORY uuid validation", () => {
       roomId: "general",
     });
 
-    expect(result.success).toBe(false);
-    expect((result.data as { error: string }).error).toBe(
-      "MEMORY_INVALID_UUID",
-    );
-    expect(result.text).toContain('roomId "general"');
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('ignored invalid roomId "general"');
     expect(result.text?.toLowerCase()).not.toContain("failed query");
     expect(result.text?.toLowerCase()).not.toContain("select");
   });
 
-  it("handles a partial-uuid entityId on search cleanly", async () => {
+  it("search ignores a mangled dropped-character roomId and still finds rows (matrix F16)", async () => {
+    // Live shape: GLM copied the context roomId and dropped a hex char
+    // (seven-character first segment). The unusable filter is ignored —
+    // searching all rooms is a superset of the intended scope.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "paris weather note", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      roomId: "b9db237-57f1-0d75-ae29-d0988d883b78",
+      query: "paris weather",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("ignored invalid roomId");
+    expect(result.text).toContain("paris weather note");
+  });
+
+  it("search ignores a partial-uuid entityId with a note", async () => {
     const { runtime } = makeRuntime();
     const result = await runAction(runtime, makeMessage(), {
       action: "search",
       entityId: "0b8db237",
     });
-    expect(result.success).toBe(false);
-    expect((result.data as { error: string }).error).toBe(
-      "MEMORY_INVALID_UUID",
-    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('ignored invalid entityId "0b8db237"');
     expect(result.text?.toLowerCase()).not.toContain("failed query");
   });
 

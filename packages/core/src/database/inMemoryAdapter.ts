@@ -587,7 +587,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				}
 				entityIds.push(entity.id);
 			}
-		} else if (_params.entityIds?.length) {
+		} else if (!hasComponentQuery && _params.entityIds?.length) {
 			entityIds = [..._params.entityIds];
 		} else {
 			return [];
@@ -878,9 +878,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (!documentMutationSnapshotMatches(existing, params.expected)) {
 			return { status: "conflict" };
 		}
-		if (!isDocumentVisibleToRequester(existing, params)) {
-			return { status: "not_found" };
-		}
 		if (!canRequesterMutateDocument(existing, params)) {
 			return { status: "forbidden" };
 		}
@@ -902,9 +899,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}
 		if (!documentMutationSnapshotMatches(existing, params.expected)) {
 			return { status: "conflict" };
-		}
-		if (!isDocumentVisibleToRequester(existing, params)) {
-			return { status: "not_found" };
 		}
 		if (!canRequesterMutateDocument(existing, params)) {
 			return { status: "forbidden" };
@@ -956,6 +950,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}
 		if (params.agentId) {
 			all = all.filter((memory) => memory.agentId === params.agentId);
+		}
+		if (params.entityId) {
+			all = all.filter((memory) => memory.entityId === params.entityId);
 		}
 		if (params.unique) {
 			all = all.filter((memory) => memory.unique);

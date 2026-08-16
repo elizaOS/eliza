@@ -232,6 +232,10 @@ function validDocumentAuthorizationMetadata(metadata: SQLWrapper): SQL {
       OR ${metadata}->>'scopedToEntityId' ~* ${DOCUMENT_UUID_PATTERN}
     )
     AND ${validDocumentRevision(metadata)}
+    AND (
+      NOT (${metadata} ? 'ingestionState')
+      OR ${metadata}->>'ingestionState' = 'ready'
+    )
   )`;
 }
 
@@ -3950,6 +3954,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
       if (params.unique) {
         conditions.push(eq(memoryTable.unique, true));
+      }
+      if (params.metadata && Object.keys(params.metadata).length > 0) {
+        conditions.push(sql`${memoryTable.metadata} @> ${JSON.stringify(params.metadata)}::jsonb`);
       }
 
       const result = await this.db

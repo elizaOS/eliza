@@ -8,6 +8,7 @@
 
 import crypto from "node:crypto";
 import { DELTA_STREAM_PROTOCOL } from "@elizaos/shared";
+import { parseSharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import {
   InsufficientCreditsError as InsufficientCreditsApiError,
@@ -165,21 +166,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
 }
 
 function trustedReminderDelivery(params: Record<string, unknown>) {
-  const delivery = record(params.trustedDelivery);
-  if (
-    delivery?.platform !== "telegram" ||
-    typeof delivery.project !== "string" ||
-    !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(delivery.project) ||
-    typeof delivery.chatId !== "string" ||
-    !/^-?\d{1,20}$/.test(delivery.chatId)
-  ) {
-    return undefined;
-  }
-  return {
-    platform: "telegram" as const,
-    project: delivery.project,
-    chatId: delivery.chatId,
-  };
+  return parseSharedReminderDelivery(params.trustedDelivery);
 }
 
 function sharedElizaRuntimeExecution(

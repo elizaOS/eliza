@@ -19,6 +19,10 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
+import {
+  MAX_CHAT_MEDIA_BASE64_BYTES,
+  MAX_CHAT_MEDIA_RAW_BYTES,
+} from "@elizaos/shared/chat-upload-limits";
 import { resolveStateDir } from "../config/paths.ts";
 import { generateThumbnailBytes } from "./media-thumbnail.ts";
 
@@ -192,16 +196,34 @@ function extForMime(mimeType: string): string {
 // Size-capped eviction
 // ---------------------------------------------------------------------------
 
-const DEFAULT_MAX_STORE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
+export const DEFAULT_MEDIA_STORE_MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 const EVICT_INTERVAL_MS = 30_000;
 let lastEvictAt = 0;
 
+/** Complete positive decimal: reject `1e9`, `8abc`, hex, leading zeros, fractions. */
+const CANONICAL_POSITIVE_DECIMAL = /^[1-9]\d*$/;
+
+/**
+ * Resolve `ELIZA_MEDIA_STORE_MAX_BYTES`. Unset/empty/invalid tokens keep the
+ * 2 GiB default so a silent `Number.parseInt("1e9") === 1` cannot evict the
+ * store down to a 1-byte cap.
+ */
+export function resolveMediaStoreMaxBytes(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_MEDIA_STORE_MAX_BYTES;
+  const trimmed = raw.trim();
+  if (trimmed === "") return DEFAULT_MEDIA_STORE_MAX_BYTES;
+  if (!CANONICAL_POSITIVE_DECIMAL.test(trimmed)) {
+    return DEFAULT_MEDIA_STORE_MAX_BYTES;
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    return DEFAULT_MEDIA_STORE_MAX_BYTES;
+  }
+  return parsed;
+}
+
 function maxStoreBytes(): number {
-  const raw = process.env.ELIZA_MEDIA_STORE_MAX_BYTES;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0
-    ? parsed
-    : DEFAULT_MAX_STORE_BYTES;
+  return resolveMediaStoreMaxBytes(process.env.ELIZA_MEDIA_STORE_MAX_BYTES);
 }
 
 export interface MediaFileStat {
@@ -405,6 +427,10 @@ export function persistDataUrl(dataUrl: string): PersistedMedia | null {
   if (!match) return null;
   const header = match[1] ?? "";
   const payload = match[2] ?? "";
+  // Bound the encoded payload before decode. Buffer.from / decodeURIComponent
+  // of an unbounded data: URL is the heap DoS; a post-decode byte check still
+  // materializes the Buffer. Share the chat attachment encoded cap.
+  if (payload.length > MAX_CHAT_MEDIA_BASE64_BYTES) return null;
   const tokens = header.split(";");
   const mimeType = (tokens.shift() ?? "").trim() || "application/octet-stream";
   const isBase64 = tokens.some((token) => token.trim() === "base64");
@@ -420,6 +446,7 @@ export function persistDataUrl(dataUrl: string): PersistedMedia | null {
     return null;
   }
   if (buffer.length === 0) return null;
+  if (buffer.length > MAX_CHAT_MEDIA_RAW_BYTES) return null;
   return persistMediaBytes(buffer, mimeType);
 }
 
@@ -812,6 +839,24 @@ export function handleMediaRouteRequest(
   }
   if (range) {
     const length = range.end - range.start + 1;
+    // Avoid loading the full file for a tiny Range (e.g., bytes=0-0 on a 2 GB video) — read only the requested slice.
+    let body: Buffer;
+    try {
+      const fd = fs.openSync(resolved.filePath, "r");
+      try {
+        body = Buffer.alloc(length);
+        fs.readSync(fd, body, 0, length, range.start);
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch (err) {
+      // error-policy:J2 — unreadable slice is a real I/O failure, not a 404.
+      throw new ElizaError(`media range read failed for ${resolved.name}`, {
+        code: "MEDIA_STORE_READ_FAILED",
+        cause: err,
+        context: { name: resolved.name, range },
+      });
+    }
     return {
       status: 206,
       headers: {
@@ -819,9 +864,7 @@ export function handleMediaRouteRequest(
         "Content-Range": `bytes ${range.start}-${range.end}/${resolved.size}`,
         "Content-Length": String(length),
       },
-      body: fs
-        .readFileSync(resolved.filePath)
-        .subarray(range.start, range.end + 1),
+      body,
     };
   }
 
@@ -888,12 +931,21 @@ export function serveMediaFile(
     });
     res.once("close", () => stream.destroy());
     stream.once("open", () => {
-      if (res.headersSent || res.writableEnded) return;
-      res.writeHead(206, {
-        ...baseHeaders,
-        "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
-        "Content-Length": range.end - range.start + 1,
-      });
+      if (res.destroyed || res.headersSent || res.writableEnded) return;
+      try {
+        res.writeHead(206, {
+          ...baseHeaders,
+          "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
+          "Content-Length": range.end - range.start + 1,
+        });
+      } catch (error) {
+        stream.destroy();
+        // error-policy:J1 A client can close between the state check and the
+        // transport write; only that expected HTTP boundary race is consumed.
+        if ((error as NodeJS.ErrnoException).code === "ERR_STREAM_DESTROYED")
+          return;
+        throw error;
+      }
       stream.pipe(res);
     });
     return true;
@@ -917,8 +969,17 @@ export function serveMediaFile(
     });
     res.once("close", () => stream.destroy());
     stream.once("open", () => {
-      if (res.headersSent || res.writableEnded) return;
-      res.writeHead(200, { ...baseHeaders, "Content-Length": size });
+      if (res.destroyed || res.headersSent || res.writableEnded) return;
+      try {
+        res.writeHead(200, { ...baseHeaders, "Content-Length": size });
+      } catch (error) {
+        stream.destroy();
+        // error-policy:J1 A client can close between the state check and the
+        // transport write; only that expected HTTP boundary race is consumed.
+        if ((error as NodeJS.ErrnoException).code === "ERR_STREAM_DESTROYED")
+          return;
+        throw error;
+      }
       stream.pipe(res);
     });
   }

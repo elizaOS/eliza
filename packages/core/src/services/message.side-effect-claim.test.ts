@@ -959,3 +959,24 @@ describe("tasks context recap/status routing vocabulary", () => {
 		expect(tasksLine).toMatch(/what did I get done today/i);
 	});
 });
+
+describe("subjectless past-participle openers (Discord group-surface fabrication shape)", () => {
+	it.each([
+		'todo added: "polish the dc7 lens"',
+		"reminder set: 9am tomorrow.",
+		"Added todo: sand the dc5 shelf (no deadline, general task)",
+		"saved a note: the charger is in the kitchen drawer",
+		"Deleted the water the ficus reminder.",
+		"Scheduled task for friday. anything else?",
+	])("flags %p as a completed side-effect claim", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+	});
+
+	it.each([
+		"Set a reminder on your phone so you don't forget the appointment",
+		"Added anything to your calendar lately?",
+		"the todo added by you last week covers it",
+	])("passes %p through (advice / mid-sentence / question)", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+});

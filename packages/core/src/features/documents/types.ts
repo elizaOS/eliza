@@ -227,6 +227,8 @@ export interface DocumentMemoryMetadata
 	addedByRole?: DocumentAddedByRole;
 	addedFrom?: DocumentAddedFrom;
 	addedAt?: number;
+	ingestionAttemptId?: UUID;
+	ingestionState?: "pending" | "ready" | "failed";
 	title?: string;
 	filename?: string;
 	originalFilename?: string;

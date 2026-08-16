@@ -7,8 +7,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	containsToolCallShapedMarkup,
 	extractJsonObjects,
 	parseJsonObject,
+	parsePseudoTagToolInvocations,
 	repairJsonStringEscapes,
 	stripJsonStructuralJunkReply,
 } from "../json-output";
@@ -146,5 +148,68 @@ describe("stripJsonStructuralJunkReply — leaked pseudo-tool markup", () => {
 		expect(
 			stripJsonStructuralJunkReply("the <AI> label means artificial"),
 		).toBe("the <AI> label means artificial");
+	});
+});
+
+describe("parsePseudoTagToolInvocations — F38 strip-and-send recovery (tj-9129a432454364)", () => {
+	it("recovers the live stage-7 invocation with its JSON args", () => {
+		const calls = parsePseudoTagToolInvocations(
+			'temp is 35°C. saving note.\n\n<NOTES_CREATE>\n{"title": "b50 paris wx", "content": "Paris temperature: 35°C"}\n</NOTES_CREATE>',
+		);
+		expect(calls).toEqual([
+			{
+				name: "NOTES_CREATE",
+				params: { title: "b50 paris wx", content: "Paris temperature: 35°C" },
+			},
+		]);
+	});
+
+	it("recovers multiple invocations in one reply", () => {
+		const calls = parsePseudoTagToolInvocations(
+			'<NOTES_CREATE>{"title":"a"}</NOTES_CREATE> then <TODOS_CREATE>{"title":"b"}</TODOS_CREATE>',
+		);
+		expect(calls.map((c) => c.name)).toEqual(["NOTES_CREATE", "TODOS_CREATE"]);
+	});
+
+	it("does not fabricate a call from a non-JSON body", () => {
+		expect(
+			parsePseudoTagToolInvocations(
+				"<BROWSE_PAGE>the eliza repo</BROWSE_PAGE>",
+			),
+		).toEqual([]);
+	});
+
+	it("does not fabricate a call from an underscore-less tag or a JSON array body", () => {
+		expect(parsePseudoTagToolInvocations('<HTML>{"a":1}</HTML>')).toEqual([]);
+		expect(
+			parsePseudoTagToolInvocations("<NOTES_CREATE>[1,2]</NOTES_CREATE>"),
+		).toEqual([]);
+	});
+});
+
+describe("containsToolCallShapedMarkup", () => {
+	it("detects native markup, pseudo-tags, and truncated-open forms", () => {
+		expect(
+			containsToolCallShapedMarkup(
+				"<tool_call>WEB_FETCH<arg_key>url</arg_key>",
+			),
+		).toBe(true);
+		expect(
+			containsToolCallShapedMarkup(
+				'saving note. <NOTES_CREATE>{"t":1}</NOTES_CREATE>',
+			),
+		).toBe(true);
+		expect(containsToolCallShapedMarkup("<BROWSE_PAGE><url>x</url>")).toBe(
+			true,
+		);
+	});
+
+	it("leaves ordinary prose and short quoted acronyms alone", () => {
+		expect(
+			containsToolCallShapedMarkup("the <AI> label means artificial"),
+		).toBe(false);
+		expect(containsToolCallShapedMarkup("plain answer, 35°C in paris")).toBe(
+			false,
+		);
 	});
 });

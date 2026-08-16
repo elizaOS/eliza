@@ -1,6 +1,6 @@
 /**
  * Tests `InMemoryDatabaseAdapter.queryEntities` — agent-scoped, component-aware
- * entity scans with limit/offset paging. Runs against the real in-memory adapter.
+ * entity scans, intersections, and limit/offset paging against the real adapter.
  */
 import { describe, expect, it } from "vitest";
 import type { Component, Entity, UUID } from "../types";
@@ -64,5 +64,29 @@ describe("InMemoryDatabaseAdapter queryEntities", () => {
 		expect(firstPage.map((item) => item.id)).toEqual([entityOne]);
 		expect(firstPage[0].components).toHaveLength(1);
 		expect(secondPage.map((item) => item.id)).toEqual([entityTwo]);
+	});
+
+	it("intersects explicit entity ids with component filters", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		await adapter.createEntities([entity(entityOne), entity(entityTwo)]);
+		await adapter.createComponents([component(entityOne)]);
+
+		const noMatch = await adapter.queryEntities({
+			entityIds: [entityTwo],
+			componentType: "form_session:room",
+		});
+		const partialMatch = await adapter.queryEntities({
+			entityIds: [entityOne, entityTwo],
+			componentType: "form_session:room",
+		});
+		const idsOnly = await adapter.queryEntities({ entityIds: [entityTwo] });
+
+		expect(noMatch).toEqual([]);
+		expect(partialMatch.map((item) => item.id)).toEqual([entityOne]);
+		expect(partialMatch[0].components?.map((item) => item.type)).toEqual([
+			"form_session:room",
+		]);
+		expect(idsOnly.map((item) => item.id)).toEqual([entityTwo]);
 	});
 });

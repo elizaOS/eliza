@@ -124,6 +124,8 @@ export interface DocumentMutationSnapshot {
 	scopedToEntityId?: UUID;
 	addedBy?: UUID;
 	revision: number;
+	ingestionAttemptId?: UUID;
+	ingestionState?: "pending" | "ready" | "failed";
 }
 
 /** Compare-and-swap document replacement under canonical mutation policy. */

@@ -57,6 +57,12 @@ describe("App standalone chat-overlay wiring", () => {
     // the ambient /chat route.
     expect(APP_TSX).toContain("Chat overlay");
     expect(APP_TSX).toContain("<ChatOverlayMount");
+    expect(APP_TSX).toContain(
+      "releaseFirstRunToHalf={firstRunReleasePendingRef.current}",
+    );
+    expect(APP_TSX).toContain(
+      "onFirstRunReleaseHandled={handleFirstRunReleaseHandled}",
+    );
   });
 
   it("seeds in-chat onboarding in the chat-overlay branch (the default desktop bottom-bar surface)", () => {

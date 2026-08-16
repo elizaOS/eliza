@@ -2,6 +2,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { resolvePersonalDeliveryProjection } from "@/api-app/personal-delivery-projection";
 import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
@@ -112,6 +113,10 @@ const sharedMessageSchema = z.discriminatedUnion("platform", [
   }),
   z.object({
     platform: z.enum(["twilio", "blooio"]),
+    project: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9][a-z0-9_-]{0,63}$/i),
     phoneNumber: z
       .string()
       .trim()
@@ -259,34 +264,45 @@ app.post("/", async (c) => {
     stage = "account_resolution";
     const accountStartedAt = performance.now();
     let account: { userId: string; organizationId: string };
+    let accountResolution = "phone-query";
     let dedicated:
       | Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config">
       | null
       | undefined;
     if (parsed.data.platform === "telegram") {
-      const delivery = await elizaAppUserService.resolvePersonalDelivery({
-        platform: "telegram",
-        telegramId: parsed.data.telegramUserId,
-        username: parsed.data.telegramUsername,
-        displayName: parsed.data.displayName,
-      });
+      const delivery = await resolvePersonalDeliveryProjection(
+        c.env,
+        {
+          platform: "telegram",
+          telegramId: parsed.data.telegramUserId,
+          username: parsed.data.telegramUsername,
+          displayName: parsed.data.displayName,
+        },
+        elizaAppUserService,
+      );
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
       };
+      accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
     } else if (parsed.data.platform === "discord") {
-      const delivery = await elizaAppUserService.resolvePersonalDelivery({
-        platform: "discord",
-        discordId: parsed.data.discordUserId,
-        username: parsed.data.discordUsername,
-        globalName: parsed.data.displayName,
-        avatarUrl: parsed.data.avatarUrl,
-      });
+      const delivery = await resolvePersonalDeliveryProjection(
+        c.env,
+        {
+          platform: "discord",
+          discordId: parsed.data.discordUserId,
+          username: parsed.data.discordUsername,
+          globalName: parsed.data.displayName,
+          avatarUrl: parsed.data.avatarUrl,
+        },
+        elizaAppUserService,
+      );
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
       };
+      accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
     } else {
       const phoneAccount = await elizaAppUserService.findOrCreateByPhone(
@@ -298,7 +314,8 @@ app.post("/", async (c) => {
       };
     }
     const accountMs = performance.now() - accountStartedAt;
-    c.header("Server-Timing", `account;dur=${accountMs.toFixed(1)}`);
+    const accountTiming = `account;dur=${accountMs.toFixed(1)};desc="${accountResolution}"`;
+    c.header("Server-Timing", accountTiming);
     const agent = personalSharedAgent({
       userId: account.userId,
       organizationId: account.organizationId,
@@ -541,7 +558,7 @@ app.post("/", async (c) => {
       }
       c.header(
         "Server-Timing",
-        `account;dur=${accountMs.toFixed(1)}, dedicated;dur=${(
+        `${accountTiming}, dedicated;dur=${(
           performance.now() - dedicatedStartedAt
         ).toFixed(1)}`,
       );
@@ -563,6 +580,25 @@ app.post("/", async (c) => {
     }
     stage = "shared_runtime";
     const sharedStartedAt = performance.now();
+    const trustedDelivery =
+      parsed.data.platform === "telegram"
+        ? {
+            platform: "telegram" as const,
+            project: parsed.data.project,
+            chatId: parsed.data.chatId,
+          }
+        : parsed.data.platform === "blooio"
+          ? {
+              platform: "blooio" as const,
+              project: parsed.data.project,
+              phoneNumber: parsed.data.phoneNumber,
+            }
+          : parsed.data.platform === "discord"
+            ? {
+                platform: "discord" as const,
+                discordUserId: parsed.data.discordUserId,
+              }
+            : undefined;
     const result = await sharedRestMessageSend(
       agent,
       agent.id,
@@ -572,17 +608,11 @@ app.post("/", async (c) => {
       worker.namespace,
       parsed.data.messageId,
       "platform",
-      parsed.data.platform === "telegram"
-        ? {
-            platform: "telegram",
-            project: parsed.data.project,
-            chatId: parsed.data.chatId,
-          }
-        : undefined,
+      trustedDelivery,
     );
     c.header(
       "Server-Timing",
-      `account;dur=${accountMs.toFixed(1)}, shared;dur=${(
+      `${accountTiming}, shared;dur=${(
         performance.now() - sharedStartedAt
       ).toFixed(1)}`,
     );

@@ -189,6 +189,7 @@ const valid = {
 
 const validPhone = {
   platform: "blooio",
+  project: "eliza-app",
   phoneNumber: "+15551234567",
   messageId: "blooio:eliza:message-42",
   message: "hello from Messages",
@@ -231,7 +232,7 @@ describe("personal Shared messaging deliveries", () => {
     });
     expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
     expect(response.headers.get("server-timing")).toMatch(
-      /^account;dur=\d+\.\d, shared;dur=\d+\.\d$/,
+      /^account;dur=\d+\.\d;desc="single-query-repeat", shared;dur=\d+\.\d$/,
     );
     expect(body.data.identity.id).toMatch(/^personal:/);
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
@@ -485,7 +486,11 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
       "blooio:eliza:message-42",
       "platform",
-      undefined,
+      {
+        platform: "blooio",
+        project: "eliza-app",
+        phoneNumber: "+15551234567",
+      },
     );
   });
 
@@ -522,7 +527,10 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
       "discord:message-42",
       "platform",
-      undefined,
+      {
+        platform: "discord",
+        discordUserId: "123456789012345678",
+      },
     );
   });
 
@@ -549,7 +557,7 @@ describe("personal Shared messaging deliveries", () => {
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
     expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
     expect(response.headers.get("server-timing")).toMatch(
-      /^account;dur=\d+\.\d, dedicated;dur=\d+\.\d$/,
+      /^account;dur=\d+\.\d;desc="single-query-repeat", dedicated;dur=\d+\.\d$/,
     );
     expect(bridge).toHaveBeenCalledWith(
       "00000000-0000-4000-8000-000000000020",

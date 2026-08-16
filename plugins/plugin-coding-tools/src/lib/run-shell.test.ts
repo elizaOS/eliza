@@ -5,6 +5,7 @@ import {
   type IAgentRuntime,
   UnavailableCapabilityRouter,
 } from "@elizaos/core";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runShell } from "./run-shell.js";
 
@@ -14,6 +15,9 @@ const ENV_KEYS = [
   "ELIZA_RUNTIME_MODE",
   "RUNTIME_MODE",
   "LOCAL_RUNTIME_MODE",
+  "PATH",
+  "HOME",
+  "SHELL",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -25,6 +29,7 @@ beforeEach(() => {
     process,
     "platform",
   );
+  captureHostExecutionBaseline();
 });
 
 afterEach(() => {
@@ -174,5 +179,26 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
       sandbox: "docker",
       timedOut: false,
     });
+  });
+});
+
+describe("plugin-coding-tools host execution authority", () => {
+  it("uses the captured PATH without forwarding mutable PATH, HOME, or SHELL", async () => {
+    const bootPath = process.env.PATH;
+    process.env.ELIZA_RUNTIME_MODE = "local-yolo";
+    process.env.PATH = "/tmp/runtime-bin";
+    process.env.HOME = "/tmp/runtime-home";
+    process.env.SHELL = "/tmp/runtime-shell";
+
+    const result = await runShell({ getService: () => null } as IAgentRuntime, {
+      command: "printf '%s' \"$PATH|$HOME|$SHELL\"",
+      cwd: process.cwd(),
+      timeoutMs: 10_000,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.split("|")[0]).toBe(bootPath);
+    expect(result.stdout).not.toContain("/tmp/runtime-home");
+    expect(result.stdout).not.toContain("/tmp/runtime-shell");
   });
 });

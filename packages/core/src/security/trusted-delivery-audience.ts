@@ -272,7 +272,7 @@ function canonicalParticipants(participants: readonly UUID[]): UUID[] {
 }
 
 function membershipVersion(participants: readonly UUID[]): string {
-	return canonicalParticipants(participants).join("\u0000");
+	return JSON.stringify(canonicalParticipants(participants));
 }
 
 function sameParticipants(

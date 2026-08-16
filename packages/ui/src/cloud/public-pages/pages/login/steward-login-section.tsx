@@ -324,6 +324,94 @@ function describeEmailLoginError(error: unknown, fallback: string): string {
 let cachedStewardProviders: StewardProviders | null = null;
 let stewardProvidersPromise: Promise<StewardProviders> | null = null;
 
+// The provider set is effectively static per deployment, but each SPA load —
+// notably the post-OAuth return leg, a second full cold load — used to block
+// the option stack on a fresh discovery roundtrip ("Loading sign-in options…",
+// #18256). A per-tenant sessionStorage snapshot of the last successful
+// discovery lets repeat loads render the real options immediately; the live
+// fetch still runs and reconciles, so a config change corrects the form as
+// soon as discovery resolves.
+const PROVIDERS_SESSION_CACHE_PREFIX = "eliza.steward.providers.v1";
+
+function providersSessionCacheKey(): string {
+  return `${PROVIDERS_SESSION_CACHE_PREFIX}:${STEWARD_TENANT_ID}`;
+}
+
+function normalizeSessionCachedProviders(
+  value: unknown,
+): StewardProviders | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const passkey = record.passkey;
+  const email = record.email;
+  const siwe = record.siwe;
+  const siws = record.siws;
+  const google = record.google;
+  const discord = record.discord;
+  const github = record.github;
+  const twitter = record.twitter;
+  const oauth = record.oauth;
+  if (
+    typeof passkey !== "boolean" ||
+    typeof email !== "boolean" ||
+    typeof siwe !== "boolean" ||
+    typeof siws !== "boolean" ||
+    typeof google !== "boolean" ||
+    typeof discord !== "boolean" ||
+    typeof github !== "boolean" ||
+    typeof twitter !== "boolean" ||
+    !Array.isArray(oauth) ||
+    !oauth.every((provider) => typeof provider === "string") ||
+    (record.sms !== undefined && typeof record.sms !== "boolean")
+  ) {
+    return null;
+  }
+  return {
+    passkey,
+    email,
+    siwe,
+    siws,
+    google,
+    discord,
+    github,
+    twitter,
+    oauth,
+    ...(typeof record.sms === "boolean" ? { sms: record.sms } : {}),
+  };
+}
+
+function readSessionCachedProviders(): StewardProviders | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(providersSessionCacheKey());
+    if (!raw) return null;
+    return normalizeSessionCachedProviders(JSON.parse(raw) as unknown);
+  } catch (error) {
+    // error-policy:J3 a corrupt or inaccessible snapshot is explicitly "no
+    // cache" — the section falls back to the discovery skeleton, never to a
+    // fake-valid provider set.
+    void error;
+    return null;
+  }
+}
+
+function writeSessionCachedProviders(providers: StewardProviders): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(
+      providersSessionCacheKey(),
+      JSON.stringify(providers),
+    );
+  } catch (error) {
+    // error-policy:J6 the snapshot is a repeat-load accelerator only; when
+    // storage is unavailable (private mode, quota) the next load simply pays
+    // the discovery roundtrip again.
+    void error;
+  }
+}
+
 function loadStewardProviders(auth: {
   getProviders: () => Promise<StewardProviders>;
 }): Promise<StewardProviders> {
@@ -331,6 +419,7 @@ function loadStewardProviders(auth: {
   stewardProvidersPromise ??= auth.getProviders().then((loadedProviders) => {
     cachedStewardProviders = loadedProviders;
     stewardProvidersPromise = null;
+    writeSessionCachedProviders(loadedProviders);
     return loadedProviders;
   });
   return stewardProvidersPromise;
@@ -405,10 +494,16 @@ export default function StewardLoginSection() {
     PLAYWRIGHT_TEST_AUTH_ENABLED ? false : hasStewardOAuthCallbackInUrl(),
   );
   const [providersLoaded, setProvidersLoaded] = useState(
-    PLAYWRIGHT_TEST_AUTH_ENABLED || cachedStewardProviders !== null,
+    () =>
+      PLAYWRIGHT_TEST_AUTH_ENABLED ||
+      cachedStewardProviders !== null ||
+      readSessionCachedProviders() !== null,
   );
   const [providers, setProviders] = useState<StewardProviders>(
-    () => cachedStewardProviders ?? DEFAULT_PROVIDERS,
+    () =>
+      cachedStewardProviders ??
+      readSessionCachedProviders() ??
+      DEFAULT_PROVIDERS,
   );
   const [passkeyCapability, setPasskeyCapability] =
     useState<WebPasskeyCapability | null>(
@@ -429,16 +524,37 @@ export default function StewardLoginSection() {
       setProvidersLoaded(true);
       return;
     }
+    // On the post-OAuth return leg the section shows only the terminal
+    // "completing sign-in" state and then redirects — the options never
+    // render, so a discovery fetch there is pure waste on the critical path
+    // (#18256). If the exchange fails, `completingCallback` clears and this
+    // effect re-runs, so the retry surface still gets live discovery.
+    if (completingCallback) return;
+    let cancelled = false;
     loadStewardProviders(auth)
-      .then(setProviders)
+      .then((loadedProviders) => {
+        if (!cancelled) setProviders(loadedProviders);
+      })
       .catch((providerError: unknown) => {
         stewardProvidersPromise = null;
-        setError(
-          getErrorMessage(providerError, "Steward provider discovery failed"),
-        );
+        if (cancelled) return;
+        // error-policy:J4 with a session-cached provider set already rendered,
+        // a failed background reconcile keeps the usable cached form instead
+        // of blasting an error over working sign-in options; a first-load
+        // failure (nothing rendered yet) still surfaces the error.
+        if (readSessionCachedProviders() === null) {
+          setError(
+            getErrorMessage(providerError, "Steward provider discovery failed"),
+          );
+        }
       })
-      .finally(() => setProvidersLoaded(true));
-  }, [auth]);
+      .finally(() => {
+        if (!cancelled) setProvidersLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth, completingCallback]);
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;

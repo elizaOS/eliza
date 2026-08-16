@@ -23,6 +23,12 @@ on:
         default: plan
         type: choice
         options: [plan, apply, state-rm]
+      plan_scope:
+        description: Resource scope saved into a pages-domains plan
+        required: true
+        default: full
+        type: choice
+        options: [full, canonical-edge-additive]
       state_address:
         description: Exact address for state-rm; ignored otherwise
         required: false
@@ -93,6 +99,7 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
       TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY: ${{ vars.TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY }}
+      TERRAFORM_PLAN_SCOPE: ${{ inputs.plan_scope }}
       TF_VAR_environment: ${{ inputs.environment }}
       TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
@@ -232,6 +239,7 @@ jobs:
             component: process.env.EXPECTED_COMPONENT,
             environment: process.env.EXPECTED_ENVIRONMENT,
             operation: "plan",
+            planScope: process.env.TERRAFORM_PLAN_SCOPE,
             runId: process.env.EXPECTED_RUN_ID,
             runAttempt: process.env.EXPECTED_RUN_ATTEMPT,
             sourceRef: `refs/heads/${process.env.EXPECTED_ENVIRONMENT === "production" ? "main" : "develop"}`,
@@ -289,6 +297,11 @@ jobs:
           STATE_ADDRESS: ${{ inputs.state_address }}
         run: |
           set -euo pipefail
+          if [ "$TERRAFORM_PLAN_SCOPE" != "full" ]; then
+            [ "${{ inputs.component }}" = "pages-domains" ] || { echo "::error::Scoped plans are supported only for pages-domains"; exit 1; }
+            [ "$TERRAFORM_PLAN_SCOPE" = "canonical-edge-additive" ] || { echo "::error::Unsupported Terraform plan scope"; exit 1; }
+            [ "$OPERATION" != "state-rm" ] || { echo "::error::state-rm does not accept a plan scope"; exit 1; }
+          fi
           [ -n "$AWS_ACCESS_KEY_ID" ] || { echo "::error::R2_STATE_ACCESS_KEY_ID is required"; exit 1; }
           [ -n "$AWS_SECRET_ACCESS_KEY" ] || { echo "::error::R2_STATE_SECRET_ACCESS_KEY is required"; exit 1; }
           if [ "${{ inputs.component }}" = "prod-ops" ]; then
@@ -387,7 +400,35 @@ jobs:
       - name: Plan
         if: inputs.operation == 'plan'
         working-directory: ${{ steps.root.outputs.directory }}
-        run: terraform plan -no-color -input=false -out=selected.tfplan
+        shell: bash
+        run: |
+          set -euo pipefail
+          plan_args=(-no-color -input=false -out=selected.tfplan)
+          if [ "$TERRAFORM_PLAN_SCOPE" = "canonical-edge-additive" ]; then
+            if [ "${{ inputs.environment }}" = "production" ]; then
+              site_wildcard="*.sites.eliza.app"
+            else
+              site_wildcard="*.sites-staging.eliza.app"
+            fi
+            mapfile -t new_pack_keys < <(
+              jq -r 'to_entries[] | select((.value.id // "") == "") | .key' \
+                <<< "$TF_VAR_canonical_edge_certificate_packs"
+            )
+            [ "${#new_pack_keys[@]}" -gt 0 ] || { echo "::error::Canonical-edge scope requires at least one additive certificate generation"; exit 1; }
+            for key in "${new_pack_keys[@]}"; do
+              plan_args+=("-target=cloudflare_certificate_pack.canonical_edge[\"$key\"]")
+            done
+            while IFS= read -r origin; do
+              plan_args+=("-target=cloudflare_dns_record.canonical_edge_wildcard[\"$site_wildcard|$origin\"]")
+            done < <(jq -r '.[]' <<< "$TF_VAR_canonical_edge_wildcard_origins")
+          fi
+          terraform plan "${plan_args[@]}"
+          if [ "$TERRAFORM_PLAN_SCOPE" = "canonical-edge-additive" ]; then
+            reviewed_plan="$RUNNER_TEMP/canonical-edge-reviewed-plan.json"
+            terraform show -json selected.tfplan > "$reviewed_plan"
+            node "$GITHUB_WORKSPACE/packages/scripts/validate-terraform-canonical-edge-additive-plan.mjs" \
+              "$reviewed_plan" "${{ inputs.environment }}"
+          fi
 
       - name: Package reviewed plan
         if: inputs.operation == 'plan'
@@ -404,12 +445,13 @@ jobs:
             --arg component "$COMPONENT" \
             --arg environment "$TARGET_ENVIRONMENT" \
             --arg operation "plan" \
+            --arg planScope "$TERRAFORM_PLAN_SCOPE" \
             --arg runId "$GITHUB_RUN_ID" \
             --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
             --arg sourceRef "$GITHUB_REF" \
             --arg sourceSha "$GITHUB_SHA" \
             --arg planSha256 "$plan_digest" \
-            '{component:$component,environment:$environment,operation:$operation,runId:$runId,runAttempt:$runAttempt,sourceRef:$sourceRef,sourceSha:$sourceSha,planSha256:$planSha256}' \
+            '{component:$component,environment:$environment,operation:$operation,planScope:$planScope,runId:$runId,runAttempt:$runAttempt,sourceRef:$sourceRef,sourceSha:$sourceSha,planSha256:$planSha256}' \
             > "$artifact_dir/plan-metadata.json"
           node "$GITHUB_WORKSPACE/packages/scripts/terraform-plan-envelope.mjs" \
             encrypt \
@@ -436,6 +478,7 @@ jobs:
         run: |
           {
             echo "### Protected Terraform plan"
+            echo "- Scope: $TERRAFORM_PLAN_SCOPE"
             echo "- Run id: $GITHUB_RUN_ID"
             echo "- Run attempt: $GITHUB_RUN_ATTEMPT"
             echo "- Artifact id: $ARTIFACT_ID"
@@ -449,6 +492,9 @@ jobs:
         working-directory: ${{ steps.root.outputs.directory }}
         shell: bash
         run: |
+          if [ -f "$RUNNER_TEMP/canonical-edge-reviewed-plan.json" ]; then
+            shred -u "$RUNNER_TEMP/canonical-edge-reviewed-plan.json"
+          fi
           if [ -f selected.tfplan ]; then
             shred -u selected.tfplan
           fi
@@ -474,13 +520,26 @@ jobs:
             exit 1
           fi
 
+      - name: Validate additive canonical edge plan
+        if: inputs.component == 'pages-domains' && inputs.operation == 'apply' && inputs.plan_scope == 'canonical-edge-additive'
+        working-directory: ${{ steps.root.outputs.directory }}
+        shell: bash
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          reviewed_plan="$RUNNER_TEMP/canonical-edge-reviewed-plan.json"
+          terraform show -json selected.tfplan > "$reviewed_plan"
+          node "$GITHUB_WORKSPACE/packages/scripts/validate-terraform-canonical-edge-additive-plan.mjs" \
+            "$reviewed_plan" "$TARGET_ENVIRONMENT"
+
       - name: Apply reviewed plan
         if: inputs.operation == 'apply'
         working-directory: ${{ steps.root.outputs.directory }}
         run: terraform apply -no-color -input=false selected.tfplan
 
-      - name: Verify Pages domain and certificate state
-        if: inputs.component == 'pages-domains' && inputs.operation == 'apply'
+      - name: Verify full Pages domain and certificate state
+        if: inputs.component == 'pages-domains' && inputs.operation == 'apply' && inputs.plan_scope == 'full'
         working-directory: ${{ steps.root.outputs.directory }}
         run: |
           terraform output -json pages_domains > "$RUNNER_TEMP/pages-domains.json"
@@ -557,9 +616,89 @@ jobs:
             "$RUNNER_TEMP/redirect-dns.json" \
             "$RUNNER_TEMP/legacy-certificate-packs.json"
 
+      - name: Verify additive canonical edge state
+        if: inputs.component == 'pages-domains' && inputs.operation == 'apply' && inputs.plan_scope == 'canonical-edge-additive'
+        working-directory: ${{ steps.root.outputs.directory }}
+        shell: bash
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          reviewed_plan="$RUNNER_TEMP/canonical-edge-reviewed-plan.json"
+          mapfile -t refresh_targets < <(
+            node - "$reviewed_plan" <<'NODE'
+          const fs = require("node:fs");
+          const plan = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const siteWildcard = process.env.TARGET_ENVIRONMENT === "production"
+            ? "*.sites.eliza.app"
+            : "*.sites-staging.eliza.app";
+          const prefixes = [
+            "cloudflare_certificate_pack.canonical_edge[",
+            `cloudflare_dns_record.canonical_edge_wildcard[\"${siteWildcard}|`,
+          ];
+          for (const resource of plan.resource_changes ?? []) {
+            if (resource.mode === "managed" && prefixes.some((prefix) => resource.address.startsWith(prefix))) {
+              console.log(resource.address);
+            }
+          }
+          NODE
+          )
+          [ "${#refresh_targets[@]}" -gt 0 ] || { echo "::error::Reviewed plan has no canonical-edge refresh targets"; exit 1; }
+          refresh_args=(-no-color -input=false)
+          for address in "${refresh_targets[@]}"; do
+            refresh_args+=("-target=$address")
+          done
+          for attempt in $(seq 1 60); do
+            terraform refresh "${refresh_args[@]}" >/dev/null
+            terraform output -json canonical_edge > "$RUNNER_TEMP/canonical-edge.json"
+            if node - "$reviewed_plan" "$RUNNER_TEMP/canonical-edge.json" <<'NODE'
+          const fs = require("node:fs");
+          const plan = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const canonical = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+          const decodeKey = (address, prefix) => JSON.parse(address.slice(prefix.length, -1));
+          const siteWildcard = process.env.TARGET_ENVIRONMENT === "production"
+            ? "*.sites.eliza.app"
+            : "*.sites-staging.eliza.app";
+          const packPrefix = "cloudflare_certificate_pack.canonical_edge[";
+          const dnsPrefix = "cloudflare_dns_record.canonical_edge_wildcard[";
+          const scopedDnsPrefix = `${dnsPrefix}\"${siteWildcard}|`;
+          const packKeys = [];
+          const dnsKeys = [];
+          for (const resource of plan.resource_changes ?? []) {
+            if (resource.mode !== "managed") continue;
+            if (resource.address.startsWith(packPrefix)) packKeys.push(decodeKey(resource.address, packPrefix));
+            if (resource.address.startsWith(scopedDnsPrefix)) dnsKeys.push(decodeKey(resource.address, dnsPrefix));
+          }
+          if (packKeys.length === 0 || dnsKeys.length === 0) process.exit(1);
+          if (dnsKeys.some((key) => !canonical.dns_records?.[key]?.id || canonical.dns_records[key].proxied !== true)) process.exit(1);
+          if (packKeys.some((key) => canonical.certificate_packs?.[key]?.status !== "active")) process.exit(1);
+          NODE
+            then
+              exit 0
+            fi
+            if [ "$attempt" = "60" ]; then
+              echo "::error::Canonical wildcard DNS or certificate packs did not become active"
+              exit 1
+            fi
+            sleep 10
+          done
+
       - name: Verify staging agent wildcard TLS
         if: inputs.component == 'pages-domains' && inputs.operation == 'apply' && inputs.environment == 'staging'
         run: curl --silent --show-error --output /dev/null https://terraform-probe.cloud-staging.eliza.app/api/health
+
+      - name: Verify canonical wildcard TLS
+        if: inputs.component == 'pages-domains' && inputs.operation == 'apply' && inputs.plan_scope == 'canonical-edge-additive'
+        shell: bash
+        env:
+          AGENT_PROBE: ${{ inputs.environment == 'production' && 'terraform-probe.cloud.eliza.app' || 'terraform-probe.cloud-staging.eliza.app' }}
+          SITE_PROBE: ${{ inputs.environment == 'production' && 'terraform-probe.sites.eliza.app' || 'terraform-probe.sites-staging.eliza.app' }}
+        run: |
+          set -euo pipefail
+          for host in "$AGENT_PROBE" "$SITE_PROBE"; do
+            curl --silent --show-error --connect-timeout 10 --max-time 20 \
+              --output /dev/null "https://$host/"
+          done
 
       - name: Verify live environment routing
         if: inputs.component == 'pages-domains' && inputs.operation == 'apply'
@@ -577,6 +716,9 @@ jobs:
         working-directory: ${{ steps.root.outputs.directory }}
         shell: bash
         run: |
+          if [ -f "$RUNNER_TEMP/canonical-edge-reviewed-plan.json" ]; then
+            shred -u "$RUNNER_TEMP/canonical-edge-reviewed-plan.json"
+          fi
           if [ -f selected.tfplan ]; then
             shred -u selected.tfplan
           fi
