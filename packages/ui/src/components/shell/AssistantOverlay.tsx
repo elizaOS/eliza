@@ -52,7 +52,10 @@ export function AssistantOverlay({
     open ??
     (phase === "summoned" || phase === "listening" || phase === "responding");
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
-  const glassTier = useNativeGlassAnchor(dialogRef);
+  const glassTier = useNativeGlassAnchor(dialogRef, {
+    colorScheme: "dark",
+    tintColor: "#16090DD9",
+  });
   const previousFocusRef = React.useRef<HTMLElement | null>(null);
 
   // Manage Escape, focus trap, initial focus, and focus return as a single

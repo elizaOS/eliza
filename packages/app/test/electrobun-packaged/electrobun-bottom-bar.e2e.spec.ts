@@ -359,31 +359,35 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
       expandedGeometry.pillTop - expandedGeometry.panelBottom,
     ).toBeGreaterThanOrEqual(8);
 
-    const sendResult = await harness.eval<{
-      sent: boolean;
+    const inputResult = await harness.eval<{
+      updated: boolean;
       error?: string;
     }>(`(() => {
       const input = document.querySelector('[data-testid="shell-chat-surface"] input');
       if (!(input instanceof HTMLInputElement)) {
-        return { sent: false, error: 'chat composer input not found' };
+        return { updated: false, error: 'chat composer input not found' };
       }
       const setter = Object.getOwnPropertyDescriptor(
         window.HTMLInputElement.prototype,
         'value',
       )?.set;
-      if (!setter) return { sent: false, error: 'native value setter missing' };
+      if (!setter) return { updated: false, error: 'native value setter missing' };
       setter.call(input, 'show the packaged reminder');
       input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'Enter',
-        code: 'Enter',
-        keyCode: 13,
-        bubbles: true,
-        cancelable: true,
-      }));
-      return { sent: true };
+      return { updated: true };
     })()`);
-    expect(sendResult).toEqual({ sent: true });
+    expect(inputResult).toEqual({ updated: true });
+    await expect
+      .poll(() =>
+        harness.eval(`(() => {
+          const send = document.querySelector('button[aria-label="Send message"]');
+          return send instanceof HTMLButtonElement && !send.disabled;
+        })()`),
+      )
+      .toBe(true);
+    await harness.eval(
+      `document.querySelector('button[aria-label="Send message"]')?.click()`,
+    );
 
     await expect
       .poll(() =>
