@@ -18,7 +18,8 @@
 import { computeNextCronRunAtMs } from "@elizaos/core/edge";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
-import { InvalidLocalTimeError, resolveLocalHHMMToIso } from "./local-time.js";
+import { windowOccurrenceKey } from "./due.js";
+import { resolveLocalHHMMToIso } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
   OwnerFactsView,
@@ -54,88 +55,10 @@ function isRepresentableMs(ms: number): boolean {
   return Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS;
 }
 
-const DAY_MS = 24 * 60 * MINUTE_MS;
-
-function localPartsForWindow(date: Date, timeZone: string) {
-  try {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-    const parts = formatter.formatToParts(date);
-    const read = (type: string): number =>
-      Number(parts.find((p) => p.type === type)?.value ?? 0);
-    return {
-      year: read("year"),
-      month: read("month"),
-      day: read("day"),
-      hour: read("hour") % 24,
-      minute: read("minute"),
-    };
-  } catch (error) {
-    if (error instanceof InvalidLocalTimeError) throw error;
-    throw new InvalidLocalTimeError("invalid_time_zone", undefined, timeZone);
-  }
-}
-
-function localDateKeyForWindow(date: Date, timeZone: string): string {
-  const p = localPartsForWindow(date, timeZone);
-  return `${String(p.year).padStart(4, "0")}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
-}
-
-function windowBoundsForKey(
-  windowKey: string,
-  ownerFacts: OwnerFactsView,
-): Array<{ name: string; start: number; end: number }> {
-  const { morningStart, morningEnd, eveningStart, eveningEnd } =
-    resolveOwnerWindowBoundsMinutes(ownerFacts);
-  const map: Record<string, Array<{ name: string; start: number; end: number }>> = {
-    morning: [{ name: "morning", start: morningStart, end: morningEnd }],
-    afternoon: [{ name: "afternoon", start: morningEnd, end: eveningStart }],
-    evening: [{ name: "evening", start: eveningStart, end: eveningEnd }],
-    night: [
-      { name: "night", start: eveningEnd, end: 24 * 60 },
-      { name: "night", start: 0, end: morningStart },
-    ],
-    morning_or_night: [
-      { name: "morning", start: morningStart, end: morningEnd },
-      { name: "night", start: eveningEnd, end: 24 * 60 },
-      { name: "night", start: 0, end: morningStart },
-    ],
-    morning_or_evening: [
-      { name: "morning", start: morningStart, end: morningEnd },
-      { name: "evening", start: eveningStart, end: eveningEnd },
-    ],
-  };
-  return map[windowKey] ?? [];
-}
-
-function windowOccurrenceKeyForFireAt(
-  at: Date,
-  timeZone: string,
-  windowKey: string,
-  ownerFacts: OwnerFactsView,
-): string | null {
-  const p = localPartsForWindow(at, timeZone);
-  const atMinutes = p.hour * 60 + p.minute;
-  const windows = windowBoundsForKey(windowKey, ownerFacts);
-  const active = windows.find((w) => atMinutes >= w.start && atMinutes < w.end);
-  if (!active) return null;
-  const isAfterMidnightTail =
-    active.start === 0 && windows.some((w) => w.name === active.name && w.end === 24 * 60);
-  const anchor = isAfterMidnightTail ? new Date(at.getTime() - DAY_MS) : at;
-  return `${localDateKeyForWindow(anchor, timeZone)}:${windowKey}:${active.name}`;
-}
-
 function nextWindowStartIso(
   windowKey: string,
   context: ComputeNextFireAtContext,
-  task?: Pick<ScheduledTask, "state" | "metadata">,
+  task: Pick<ScheduledTask, "state" | "metadata">,
 ): string | null {
   const facts = context.ownerFacts;
   const timeZone = facts.timezone ?? "UTC";
@@ -153,7 +76,7 @@ function nextWindowStartIso(
       candidateMinutes = [eveningStart];
       break;
     case "night":
-      candidateMinutes = [eveningEnd, 0];
+      candidateMinutes = [eveningEnd];
       break;
     case "morning_or_night":
       candidateMinutes = [morningStart, eveningEnd];
@@ -166,6 +89,22 @@ function nextWindowStartIso(
   }
   const candidateTimes = candidateMinutes.map(formatLocalHHMM);
   const nowMs = context.now.getTime();
+
+  // An active occurrence is always the next candidate, even when a composite
+  // window has another start later today. Reuse the authoritative due helper
+  // so the index and due evaluation agree on midnight-spanning occurrences.
+  const fireKey = windowOccurrenceKey(context.now, timeZone, windowKey, facts);
+  if (fireKey !== null) {
+    const firedAtMs = parseIsoMs(task.state.firedAt);
+    const alreadyFired =
+      task.metadata?.lastWindowFireKey === fireKey ||
+      (task.state.status !== "scheduled" &&
+        firedAtMs !== null &&
+        windowOccurrenceKey(new Date(firedAtMs), timeZone, windowKey, facts) ===
+          fireKey);
+    if (!alreadyFired) return context.now.toISOString();
+  }
+
   const today = candidateTimes
     .map((hhmm) => resolveLocalHHMMToIso(context.now, hhmm, timeZone, 0))
     .map((iso) => parseIsoMs(iso))
@@ -173,38 +112,6 @@ function nextWindowStartIso(
     .sort((left, right) => left - right);
   const future = today.find((ms) => ms >= nowMs);
   if (future !== undefined) return new Date(future).toISOString();
-
-  // No future start today — if we are currently inside the window and the
-  // task has not yet fired in this occurrence, return `now` for immediate
-  // execution instead of deferring to tomorrow (e.g. morning 06:00-11:00
-  // created at 07:00, where 06:00 < now, so today has no future).
-  // Limit to single-start windows (morning/afternoon/evening) to avoid
-  // conflicting with DST-skipped midnight handling for night windows
-  // (see Santiago test: night at 23:30 should index at 01:00 after gap, not now).
-  const isSingleStartWindow =
-    windowKey === "morning" || windowKey === "afternoon" || windowKey === "evening";
-  if (isSingleStartWindow) {
-    if (task) {
-      const fireKey = windowOccurrenceKeyForFireAt(context.now, timeZone, windowKey, facts);
-      if (fireKey !== null) {
-        const alreadyFired =
-          (typeof task.metadata?.lastWindowFireKey === "string" &&
-            task.metadata.lastWindowFireKey === fireKey) ||
-          (() => {
-            const firedAtMs = parseIsoMs(task.state.firedAt);
-            if (firedAtMs === null) return false;
-            return (
-              windowOccurrenceKeyForFireAt(new Date(firedAtMs), timeZone, windowKey, facts) ===
-              fireKey
-            );
-          })();
-        if (!alreadyFired) return context.now.toISOString();
-      }
-    } else {
-      const fireKey = windowOccurrenceKeyForFireAt(context.now, timeZone, windowKey, facts);
-      if (fireKey !== null) return context.now.toISOString();
-    }
-  }
 
   const tomorrow = candidateTimes
     .map((hhmm) => resolveLocalHHMMToIso(context.now, hhmm, timeZone, 1))
