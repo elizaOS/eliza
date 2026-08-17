@@ -11,6 +11,7 @@
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
+import { initializeIosKeyboardAccessoryBar } from "@elizaos/ui/components/shell/ios-chat-accessory-bar";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
@@ -172,9 +173,9 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       if (ctx.isIOS) {
         await Keyboard.setResizeMode({ mode: KeyboardResize.None });
         await Keyboard.setScroll({ isDisabled: true });
-        // The app already provides its own chat controls; Capacitor's optional
-        // previous/next/done strip is redundant on the iPhone keyboard.
-        await Keyboard.setAccessoryBarVisible({ isVisible: false });
+        // Preserve the navigation/dismissal accessory for ordinary forms. The
+        // chat composer suppresses it only while that field owns focus.
+        await initializeIosKeyboardAccessoryBar();
       }
 
       keyboardListenersRegistered = true;

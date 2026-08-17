@@ -3,9 +3,12 @@
 
 /**
  * Coverage for `src/mobile-lifecycle.ts` — the idempotent Capacitor lifecycle
- * wiring (`createMobileLifecycle`). Exercises the two device-free seams a
+ * wiring (`createMobileLifecycle`). Exercises the three device-free seams a
  * jsdom test can drive deterministically:
  *
+ *   - `initializeKeyboard()` — iOS delegates WebView-global accessory
+ *     ownership to the focus-aware chat controller while retaining height
+ *     lifecycle events.
  *   - `initializeDeepLinks()` + `initializeAppLifecycle()` — early
  *     `appUrlOpen`/cold-launch capture plus `appStateChange` / `backButton`
  *     wiring. Asserts the events the module dispatches
@@ -99,7 +102,6 @@ const { keyboardListeners, keyboardMock } = vi.hoisted(() => {
     keyboardMock: {
       setResizeMode: vi.fn(async () => undefined),
       setScroll: vi.fn(async () => undefined),
-      setAccessoryBarVisible: vi.fn(async () => undefined),
       addListener: vi.fn(
         (eventName: string, handler: CapacitorEventHandler) => {
           const handlers = keyboardListeners.get(eventName) ?? [];
@@ -112,8 +114,13 @@ const { keyboardListeners, keyboardMock } = vi.hoisted(() => {
   };
 });
 
+const initializeAccessoryBar = vi.hoisted(() => vi.fn(async () => undefined));
+
 vi.mock("@capacitor/app", () => ({ App: capacitorAppMock }));
 vi.mock("@capacitor/network", () => ({ Network: networkMock }));
+vi.mock("@elizaos/ui/components/shell/ios-chat-accessory-bar", () => ({
+  initializeIosKeyboardAccessoryBar: initializeAccessoryBar,
+}));
 // `mobile-lifecycle.ts` imports these statically; only the app lifecycle and
 // network paths are exercised here, so the keyboard module just needs to load.
 vi.mock("@capacitor/keyboard", () => ({
@@ -233,7 +240,7 @@ describe("createMobileLifecycle — app lifecycle", () => {
     expect(mainSrc).not.toContain("async function initializeKeyboard()");
   });
 
-  it("keeps the iPhone software keyboard but disables its redundant accessory strip", async () => {
+  it("keeps keyboard height events and delegates iOS accessory ownership", async () => {
     const lifecycle = createMobileLifecycle(
       makeContext({ isIOS: true, isAndroid: false }),
     );
@@ -242,9 +249,7 @@ describe("createMobileLifecycle — app lifecycle", () => {
 
     expect(keyboardMock.setResizeMode).toHaveBeenCalledWith({ mode: "none" });
     expect(keyboardMock.setScroll).toHaveBeenCalledWith({ isDisabled: true });
-    expect(keyboardMock.setAccessoryBarVisible).toHaveBeenCalledWith({
-      isVisible: false,
-    });
+    expect(initializeAccessoryBar).toHaveBeenCalledOnce();
 
     for (const handler of keyboardListeners.get("keyboardWillShow") ?? []) {
       handler({ keyboardHeight: 321 });
@@ -270,7 +275,7 @@ describe("createMobileLifecycle — app lifecycle", () => {
 
     expect(keyboardMock.setResizeMode).not.toHaveBeenCalled();
     expect(keyboardMock.setScroll).not.toHaveBeenCalled();
-    expect(keyboardMock.setAccessoryBarVisible).not.toHaveBeenCalled();
+    expect(initializeAccessoryBar).not.toHaveBeenCalled();
   });
 
   it("dispatches APP_RESUME_EVENT when the app becomes active", async () => {
