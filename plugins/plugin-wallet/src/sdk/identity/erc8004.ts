@@ -621,7 +621,7 @@ export async function resolveAgentURI(
 ): Promise<AgentRegistrationFile> {
   if (uri.startsWith("data:")) return parseDataURI(uri);
   if (uri.startsWith("https://") || uri.startsWith("http://")) {
-    const response = await fetch(uri);
+    const response = await fetch(uri, { signal: AbortSignal.timeout(8_000) });
     if (!response.ok)
       throw new Error(`resolveAgentURI: HTTP ${response.status} for ${uri}`);
     return response.json();
