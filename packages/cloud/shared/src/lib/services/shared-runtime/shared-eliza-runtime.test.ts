@@ -366,6 +366,10 @@ describe("Shared Eliza Workerd runtime", () => {
     const iterator = result.parts?.[Symbol.asyncIterator]();
     if (!iterator || !result.cancel) throw new Error("Expected a cancellable runtime stream");
     const nextPart = iterator.next();
+    // error-policy:J5 the same rejection is asserted via expect(...).rejects
+    // below; this early observer only prevents the abort's same-tick rejection
+    // from surfacing as an unhandled error on slower runners.
+    nextPart.catch(() => {});
     const providerSignal = await providerStarted.promise;
 
     await result.cancel("confirmed caller speech");
