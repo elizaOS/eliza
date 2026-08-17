@@ -208,10 +208,13 @@ function respondServiceUnavailable(
   return true;
 }
 
-function parseLimit(raw: string | null): number | undefined {
-  if (!raw) return undefined;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+function parseLimit(raw: string | null): number | null | undefined {
+  if (raw === null || raw === "") return undefined;
+  // Strict decimal digits only. Number.parseInt("1e2", 10) === 1 would
+  // silently under-read the notification-center page as 1 row.
+  if (!/^[1-9]\d*$/.test(raw)) return null;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
   return Math.min(parsed, 500);
 }
 
@@ -286,10 +289,15 @@ export async function handleNotificationRoute(
   // ── GET /api/notifications ────────────────────────────────────────
   if (method === "GET" && pathname === "/api/notifications") {
     const url = new URL(req.url ?? pathname, "http://localhost");
+    const limit = parseLimit(url.searchParams.get("limit"));
+    if (limit === null) {
+      helpers.error(res, "limit must be a positive integer", 400);
+      return true;
+    }
     const notifications = service.list({
       unreadOnly: url.searchParams.get("unreadOnly") === "true",
       category: parseCategory(url.searchParams.get("category")),
-      limit: parseLimit(url.searchParams.get("limit")),
+      limit,
     });
     helpers.json(res, {
       notifications,
