@@ -15,7 +15,7 @@ vi.mock("@elizaos/core", () => ({
 import { imessageDataRoutes } from "./data-routes.ts";
 
 const messagesRoute = imessageDataRoutes.find(
-  (route) => route.type === "GET" && route.path === "/api/imessage/messages",
+  (route) => route.type === "GET" && route.path === "/api/imessage/messages"
 );
 
 if (!messagesRoute?.handler) {
@@ -77,11 +77,7 @@ async function getMessages(url: string, queries: MessageQuery[]): Promise<Captur
       };
     },
   } as unknown as IAgentRuntime;
-  await messagesRoute.handler?.(
-    { url, method: "GET" } as RouteRequest,
-    mockRes(captured),
-    runtime,
-  );
+  await messagesRoute.handler?.({ url, method: "GET" } as RouteRequest, mockRes(captured), runtime);
   return captured;
 }
 
@@ -107,13 +103,13 @@ describe("GET /api/imessage/messages limit query", () => {
     expect(queries).toEqual([{ chatId: undefined, limit: 500 }]);
   });
 
-  it.each(["1e2", "12px", "007", "0", "abc", "-1", "50abc"])(
+  it.each(["1e2", "12px", "007", "0", "abc", "-1", "50abc", " 10", "10 ", " "])(
     "rejects prefix-coerced limit=%s with 400 before the service",
     async (limit) => {
       const queries: MessageQuery[] = [];
       const captured = await getMessages(
         `/api/imessage/messages?limit=${encodeURIComponent(limit)}`,
-        queries,
+        queries
       );
       expect(captured.status).toBe(400);
       expect(captured.body).toEqual({
@@ -123,6 +119,6 @@ describe("GET /api/imessage/messages limit query", () => {
         },
       });
       expect(queries).toEqual([]);
-    },
+    }
   );
 });

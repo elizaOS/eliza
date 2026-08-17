@@ -149,14 +149,13 @@ const MAX_MESSAGES_LIMIT = 500;
  * silently return one iMessage instead of rejecting the token.
  */
 function parseMessagesLimit(raw: string | null): number | null {
-  if (raw === null || raw.trim() === "") {
+  if (raw === null || raw === "") {
     return DEFAULT_MESSAGES_LIMIT;
   }
-  const trimmed = raw.trim();
-  if (!/^[1-9]\d*$/.test(trimmed)) {
+  if (!/^[1-9]\d*$/.test(raw)) {
     return null;
   }
-  return Math.min(Number.parseInt(trimmed, 10), MAX_MESSAGES_LIMIT);
+  return Math.min(Number.parseInt(raw, 10), MAX_MESSAGES_LIMIT);
 }
 
 // ── GET /api/imessage/messages?limit=N ──────────────────────────────
@@ -173,9 +172,7 @@ async function handleMessages(
   const url = new URL(req.url ?? "/api/imessage/messages", "http://localhost");
   const limit = parseMessagesLimit(url.searchParams.get("limit"));
   if (limit === null) {
-    res
-      .status(400)
-      .json(buildSetupError("bad_request", "limit must be a positive integer"));
+    res.status(400).json(buildSetupError("bad_request", "limit must be a positive integer"));
     return;
   }
   const chatId = url.searchParams.get("chatId")?.trim() || undefined;
