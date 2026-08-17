@@ -171,11 +171,10 @@ export function isHandleAllowed(
 	}
 
 	if (policy === "pairing" || policy === "allowlist") {
-		if (allowList.length === 0 && policy === "pairing") {
-			// Pairing mode with empty allow list allows first contact
-			return true;
-		}
-
+		// "pairing" has no connector-local handshake, so it must fail closed
+		// here: an empty allow list means "no statically approved senders", not
+		// "allow first contact". Unpaired first contact is gated by the service
+		// through the core PairingService code handshake.
 		const normalizedHandle = normalizeHandle(handle);
 		return allowList.some(
 			(allowed) => normalizeHandle(allowed) === normalizedHandle,
