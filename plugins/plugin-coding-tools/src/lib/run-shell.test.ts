@@ -2,9 +2,11 @@
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -53,6 +55,10 @@ const ENV_KEYS = [
   "HOME",
   "SHELL",
   "CODING_TOOLS_WORKSPACE_ROOTS",
+  "ACP_GIT_BASELINE_SHA",
+  "ACP_GIT_INDEX_FILE",
+  "ACP_REAL_GIT",
+  "GIT_INDEX_FILE",
   "ELIZA_TEST_API_KEY",
   "LC_SECRET",
 ] as const;
@@ -278,6 +284,102 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
       timedOut: false,
     });
   });
+
+  itWithBubblewrap(
+    "keeps the ACP git wrapper on its isolated index without recursive self-invocation",
+    async () => {
+      process.env.ELIZA_RUNTIME_MODE = "local-safe";
+      const fixture = mkdtempSync(join(tmpdir(), "eliza-bwrap-acp-git-"));
+      const workspace = join(fixture, "workspace");
+      const sessionRoot = join(fixture, "session-git-index");
+      const wrapperDir = join(sessionRoot, "bin");
+      const wrapper = join(wrapperDir, "git");
+      const indexFile = join(sessionRoot, "index");
+      const wrapperMarker = join(sessionRoot, "index.wrapper-used");
+      const discoveredGit = spawnSync("sh", ["-c", "command -v git"], {
+        encoding: "utf8",
+      }).stdout.trim();
+      const realGit = realpathSync(discoveredGit);
+      mkdirSync(workspace, { recursive: true });
+      mkdirSync(wrapperDir, { recursive: true });
+      spawnSync(realGit, ["init", workspace], { stdio: "ignore" });
+      spawnSync(realGit, ["-C", workspace, "config", "user.name", "Test"], {
+        stdio: "ignore",
+      });
+      spawnSync(
+        realGit,
+        ["-C", workspace, "config", "user.email", "test@example.com"],
+        { stdio: "ignore" },
+      );
+      writeFileSync(join(workspace, "base.txt"), "base\n", "utf8");
+      spawnSync(realGit, ["-C", workspace, "add", "base.txt"], {
+        stdio: "ignore",
+      });
+      spawnSync(realGit, ["-C", workspace, "commit", "-m", "base"], {
+        stdio: "ignore",
+      });
+      copyFileSync(join(workspace, ".git", "index"), indexFile);
+      writeFileSync(join(workspace, "host-only.txt"), "host index\n", "utf8");
+      spawnSync(realGit, ["-C", workspace, "add", "host-only.txt"], {
+        stdio: "ignore",
+      });
+      writeFileSync(
+        wrapper,
+        [
+          "#!/bin/sh",
+          `: "\${ACP_REAL_GIT:?}"`,
+          `: "\${ACP_GIT_INDEX_FILE:?}"`,
+          'test "$GIT_INDEX_FILE" = "$ACP_GIT_INDEX_FILE" || exit 91',
+          'printf used > "$ACP_GIT_INDEX_FILE.wrapper-used"',
+          'exec "$ACP_REAL_GIT" "$@"',
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+      chmodSync(wrapper, 0o755);
+      const baseline = spawnSync(
+        realGit,
+        ["-C", workspace, "rev-parse", "HEAD"],
+        {
+          encoding: "utf8",
+        },
+      ).stdout.trim();
+      process.env.CODING_TOOLS_WORKSPACE_ROOTS = workspace;
+      process.env.ACP_GIT_INDEX_FILE = indexFile;
+      process.env.GIT_INDEX_FILE = indexFile;
+      process.env.ACP_REAL_GIT = realGit;
+      process.env.ACP_GIT_BASELINE_SHA = baseline;
+      process.env.PATH = `${wrapperDir}:${savedEnv.PATH ?? ""}`;
+      const runtime = {
+        getSetting: (key: string) => process.env[key],
+        getService: () => null,
+      } as unknown as IAgentRuntime;
+
+      try {
+        const result = await runShell(runtime, {
+          command: [
+            `test ! -e ${quoteShellArg(sessionRoot)}`,
+            'test "$ACP_GIT_INDEX_FILE" = /run/eliza-acp-git/index',
+            "git rev-parse HEAD",
+            "git status --short host-only.txt",
+          ].join("; "),
+          cwd: workspace,
+          timeoutMs: 5_000,
+        });
+
+        expect(result, JSON.stringify(result)).toMatchObject({
+          exitCode: 0,
+          sandbox: "bubblewrap",
+          timedOut: false,
+        });
+        expect(result.stdout).toContain(baseline);
+        expect(result.stdout).toContain("?? host-only.txt");
+        expect(readFileSync(wrapperMarker, "utf8")).toBe("used");
+      } finally {
+        rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+  );
 
   itWithBubblewrap(
     "confines real Linux commands to an arbitrary configured workspace across relative, absolute, and symlink paths",

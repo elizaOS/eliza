@@ -206,6 +206,17 @@ interface NpmToolchainMount {
   packageRoot: string;
 }
 
+interface AcpGitToolchainMount {
+  hostRoot: string;
+  sandboxRoot: string;
+  wrapperDir: string;
+  env: Record<string, string>;
+}
+
+function invalidAcpGitConfiguration(reason: string): never {
+  throw new Error(`local-safe ACP git configuration is invalid: ${reason}`);
+}
+
 const UNSAFE_MUTABLE_WORKSPACE_ROOTS = [
   "/",
   "/boot",
@@ -490,6 +501,139 @@ function appendNpmToolchainMount(
   }
 }
 
+/**
+ * Preserve the orchestrator's per-session Git index inside local-safe.
+ *
+ * The ACP parent prepends a generated `git` wrapper to PATH and supplies a
+ * private index plus the absolute real Git binary. Stripping those non-secret
+ * control variables while retaining the wrapper makes the wrapper recursively
+ * invoke itself. Passing PATH through without the private index instead lets
+ * model-authored `git add` mutate the operator's shared repository index.
+ *
+ * Treat the complete, correlated tuple as one narrow mount authority. Partial
+ * or malformed tuples fail closed; no generic ACP_* environment is forwarded.
+ */
+function resolveAcpGitToolchainMount(): AcpGitToolchainMount | undefined {
+  const indexFile = process.env.ACP_GIT_INDEX_FILE;
+  const activeIndexFile = process.env.GIT_INDEX_FILE;
+  const realGitValue = process.env.ACP_REAL_GIT;
+  const baseline = process.env.ACP_GIT_BASELINE_SHA;
+  const firstPathEntry = process.env.PATH?.split(importPath.delimiter)[0];
+  const hasAnyAcpGitState = [
+    indexFile,
+    activeIndexFile,
+    realGitValue,
+    baseline,
+  ].some((value) => value !== undefined);
+  if (!hasAnyAcpGitState) return undefined;
+
+  if (!indexFile || !importPath.isAbsolute(indexFile)) {
+    invalidAcpGitConfiguration("ACP_GIT_INDEX_FILE must be an absolute path");
+  }
+  if (activeIndexFile !== indexFile) {
+    invalidAcpGitConfiguration("GIT_INDEX_FILE must match ACP_GIT_INDEX_FILE");
+  }
+  if (!realGitValue || !importPath.isAbsolute(realGitValue)) {
+    invalidAcpGitConfiguration("ACP_REAL_GIT must be an absolute path");
+  }
+  if (
+    baseline !== undefined &&
+    !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu.test(baseline)
+  ) {
+    invalidAcpGitConfiguration(
+      "ACP_GIT_BASELINE_SHA must be a full Git object id",
+    );
+  }
+  if (!firstPathEntry || !importPath.isAbsolute(firstPathEntry)) {
+    invalidAcpGitConfiguration("the ACP git wrapper directory must lead PATH");
+  }
+
+  try {
+    const root = realpathSync(importPath.dirname(indexFile));
+    const canonicalIndex = realpathSync(indexFile);
+    const wrapperDir = realpathSync(firstPathEntry);
+    const wrapper = realpathSync(importPath.join(wrapperDir, "git"));
+    const realGit = realpathSync(realGitValue);
+    if (canonicalIndex !== importPath.join(root, "index")) {
+      invalidAcpGitConfiguration(
+        "the private index must be named index at the session root",
+      );
+    }
+    if (wrapperDir !== importPath.join(root, "bin")) {
+      invalidAcpGitConfiguration(
+        "the git wrapper must be the session root's bin directory",
+      );
+    }
+    if (wrapper !== importPath.join(wrapperDir, "git")) {
+      invalidAcpGitConfiguration("the git wrapper must not traverse a symlink");
+    }
+    const rootStat = statSync(root);
+    const indexStat = statSync(canonicalIndex);
+    const wrapperStat = statSync(wrapper);
+    if (
+      !rootStat.isDirectory() ||
+      !indexStat.isFile() ||
+      !wrapperStat.isFile()
+    ) {
+      invalidAcpGitConfiguration(
+        "the session root, index, or wrapper has the wrong file type",
+      );
+    }
+    accessSync(wrapper, fsConstants.X_OK);
+    accessSync(realGit, fsConstants.X_OK);
+    if (
+      !BUBBLEWRAP_READ_ONLY_SYSTEM_PATHS.some((systemRoot) =>
+        isPathInside(realGit, systemRoot),
+      ) ||
+      !isRootOwnedAndNotGroupOrWorldWritable(realGit)
+    ) {
+      invalidAcpGitConfiguration(
+        "ACP_REAL_GIT is not a trusted system executable",
+      );
+    }
+
+    const sandboxRoot = "/run/eliza-acp-git";
+    return {
+      hostRoot: root,
+      sandboxRoot,
+      wrapperDir: importPath.join(sandboxRoot, "bin"),
+      env: {
+        ACP_GIT_INDEX_FILE: importPath.join(sandboxRoot, "index"),
+        ACP_REAL_GIT: realGit,
+        GIT_INDEX_FILE: importPath.join(sandboxRoot, "index"),
+        ...(baseline ? { ACP_GIT_BASELINE_SHA: baseline } : {}),
+      },
+    };
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith("local-safe ACP git configuration is invalid:")
+    ) {
+      throw error;
+    }
+    invalidAcpGitConfiguration(
+      "the session wrapper, index, or real Git binary is unavailable",
+    );
+  }
+}
+
+function appendAcpGitToolchainMount(
+  args: string[],
+  createdDirectories: Set<string>,
+  mount: AcpGitToolchainMount,
+): void {
+  appendDestinationParents(args, mount.sandboxRoot, createdDirectories);
+  args.push("--dir", mount.sandboxRoot);
+  args.push("--bind", mount.hostRoot, mount.sandboxRoot);
+  // The private index and its lock file remain writable, but the generated
+  // wrapper itself is immutable to model-authored commands.
+  args.push(
+    "--ro-bind",
+    importPath.join(mount.hostRoot, "bin"),
+    mount.wrapperDir,
+  );
+}
+
 function appendTrustedReadOnlyPath(
   args: string[],
   source: string,
@@ -536,6 +680,7 @@ async function runInBubblewrap(
     "eliza-sandbox",
   ];
   const createdDirectories = new Set<string>();
+  const acpGit = resolveAcpGitToolchainMount();
   for (const source of BUBBLEWRAP_READ_ONLY_SYSTEM_PATHS) {
     if (existsSync(source)) args.push("--ro-bind", source, source);
   }
@@ -556,6 +701,9 @@ async function runInBubblewrap(
     shell.command,
     createdDirectories,
   );
+  if (acpGit) {
+    appendAcpGitToolchainMount(args, createdDirectories, acpGit);
+  }
   for (const command of BUBBLEWRAP_TOOLCHAIN_COMMANDS) {
     const executable = resolveHostExecutable(command);
     if (executable) {
@@ -580,6 +728,16 @@ async function runInBubblewrap(
   // /run scratch mounts are separate child mounts, so they remain writable.
   args.push("--remount-ro", "/");
   const childEnv = bubblewrapSpawnEnv(process.env);
+  if (acpGit) {
+    Object.assign(childEnv, acpGit.env);
+    const baselinePath = childEnv.PATH;
+    childEnv.PATH = [
+      acpGit.wrapperDir,
+      ...(baselinePath ?? "")
+        .split(importPath.delimiter)
+        .filter((entry) => entry && entry !== acpGit.wrapperDir),
+    ].join(importPath.delimiter);
+  }
   for (const [key, value] of Object.entries(childEnv)) {
     if (value !== undefined) args.push("--setenv", key, value);
   }
