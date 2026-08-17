@@ -54,6 +54,7 @@ describe("createTask default acceptance criteria", () => {
     // Static coding template — deterministic without a model.
     expect(task.acceptanceCriteria).toContain("typecheck passes");
     expect(task.acceptanceCriteria).toContain("tests pass");
+    expect(task.metadata.acceptanceCriteriaOrigin).toBe("generated");
   });
 
   it("derives a view-create criteria set from the goal text", async () => {
@@ -90,6 +91,7 @@ describe("createTask default acceptance criteria", () => {
       acceptanceCriteria: supplied,
     });
     expect(task.acceptanceCriteria).toEqual(supplied);
+    expect(task.metadata.acceptanceCriteriaOrigin).toBe("caller");
   });
 
   it("leaves criteria empty when the flag is off", async () => {

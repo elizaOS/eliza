@@ -123,16 +123,22 @@ export function stripInventedArtifactCriteria(
 }
 
 /** Criterion classifiers, shared vocabulary with the correction builder. */
-const URL_CRITERION_RE =
-  /\b(url|endpoint|deploy|live|reachable|http|served|serves|api)\b/i;
+const URL_LIVENESS_CRITERION_RE =
+  /\b(?:url|endpoint|site|deployment target)\b.*\b(?:returns?\s+(?:http\s+)?2\d\d|reachable|responds?\s+successfully|is\s+live)\b|\b(?:reachable|live)\b.*\b(?:url|endpoint|site)\b/i;
 const FILE_CRITERION_RE =
   /\b(file|page|artifact|deliverable)\b.*\b(exists|created|written|present)\b|\b(create[sd]?|write[sn]?)\b.*\b(file|page)\b/i;
-const DIFF_CRITERION_RE = /\bdiff\b|\bchange(?:set)?\b.*\bsummar/i;
+const DIFF_CRITERION_RE =
+  /^\s*(?:the\s+)?(?:change|changes|changeset|diff)\s+(?:is|are)\s+(?:summarized|captured|present)(?:\s+in\s+(?:the\s+)?diff)?[.!]?\s*$/i;
 const TEST_CRITERION_RE =
-  /\b(test|spec|coverage|unit|e2e|integration|vitest|jest)s?\b/i;
-const BUILD_CRITERION_RE = /\b(build|compile|typecheck|tsc)\b/i;
-const LINT_CRITERION_RE = /\b(lint|biome|eslint|format)\b/i;
+  /^\s*(?:all\s+)?(?:(?:unit|integration|e2e|end-to-end|regression)\s+)?(?:tests?|specs?|test\s+files?|test\s+suites?)\s+(?:pass(?:es|ed|ing)?|succeed(?:s|ed)?|are\s+green)(?:\s+without\s+(?:failures?|errors?))?[.!]?\s*$/i;
+const BUILD_CRITERION_RE =
+  /^\s*(?:the\s+)?(?:build|compile|compilation|typecheck|type-check|tsc)\s+(?:pass(?:es|ed|ing)?|succeed(?:s|ed)?|is\s+green|completes?\s+without\s+errors?)[.!]?\s*$/i;
+const LINT_CRITERION_RE =
+  /^\s*(?:the\s+)?(?:lint|biome|eslint|format(?:ting)?)\s+(?:pass(?:es|ed|ing)?|succeed(?:s|ed)?|is\s+green|reports?\s+no\s+errors?)[.!]?\s*$/i;
 const SCREENSHOT_CRITERION_RE = /\b(screenshot|screen\s*capture)\b/i;
+const COMPOSITE_CRITERION_RE = /\b(?:and|or|plus)\b|[;&]/i;
+const CONTENT_OR_BEHAVIOR_RE =
+  /\b(?:contain|display|show|render|correct|expected|requested|match|functional|behavio(?:u)?r|response\s+body|json|schema|clock|animation|interaction)\b/i;
 const EXPLICIT_HTTP_URL_RE = /https?:\/\/[^\s`"'<>]+/gi;
 
 function normalizeExplicitHttpUrl(value: string): string | undefined {
@@ -208,8 +214,7 @@ function fileCriterionBasis(
   const hit = facts.ledgerVerifiedFiles.find((file) => {
     const lower = file.toLowerCase();
     return tokens.some(
-      (token) =>
-        lower === token || lower.endsWith(`/${token}`) || lower.includes(token),
+      (token) => lower === token || lower.endsWith(`/${token}`),
     );
   });
   return hit ? `ledger-verified write: ${hit}` : undefined;
@@ -228,7 +233,16 @@ export function deterministicCriterionCheck(
   if (SCREENSHOT_CRITERION_RE.test(criterion)) {
     return { criterion, status: "undetermined" };
   }
-  if (URL_CRITERION_RE.test(criterion)) {
+  // One deterministic fact can satisfy only a single-fact evidence assertion.
+  // A reachable URL proves liveness, not its content or behavior, and a green
+  // existing test run does not prove that a requested new test was added.
+  if (COMPOSITE_CRITERION_RE.test(criterion)) {
+    return { criterion, status: "undetermined" };
+  }
+  if (
+    URL_LIVENESS_CRITERION_RE.test(criterion) &&
+    !CONTENT_OR_BEHAVIOR_RE.test(criterion)
+  ) {
     const basis = urlCriterionBasis(criterion, facts);
     return basis
       ? { criterion, status: "met", basis }
@@ -262,7 +276,10 @@ export function deterministicCriterionCheck(
         }
       : { criterion, status: "undetermined" };
   }
-  if (FILE_CRITERION_RE.test(criterion)) {
+  if (
+    FILE_CRITERION_RE.test(criterion) &&
+    !CONTENT_OR_BEHAVIOR_RE.test(criterion)
+  ) {
     const basis = fileCriterionBasis(criterion, facts);
     return basis
       ? { criterion, status: "met", basis }

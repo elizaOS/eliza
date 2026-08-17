@@ -125,6 +125,24 @@ describe("deterministicLedgerVerdict", () => {
     expect(verdict.undetermined).toEqual(["tests pass"]);
   });
 
+  test("does not promote behavioral or composite criteria from unrelated facts", () => {
+    const verdict = deterministicLedgerVerdict(
+      [
+        "the live URL renders the expected clock content",
+        "add tests covering the retry race",
+        "build a page showing the clock",
+        "the deliverable file exists and contains the requested animation",
+      ],
+      {
+        ...quickAppFacts,
+        greenChecks: { test: true, build: true, lint: true },
+      },
+    );
+    expect(verdict.allMet).toBe(false);
+    expect(verdict.met).toEqual([]);
+    expect(verdict.undetermined).toHaveLength(4);
+  });
+
   test("green mined output satisfies test/build/lint criteria", () => {
     const verdict = deterministicLedgerVerdict(
       ["tests pass", "typecheck passes", "lint passes"],
