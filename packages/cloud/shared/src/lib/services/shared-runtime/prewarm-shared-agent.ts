@@ -106,6 +106,10 @@ export async function prewarmSharedAgentTurnCaches(
     leg: "admission-gate",
     run: warmInferenceAdmissionGate(agent.organization_id),
   });
+  legs.push({
+    leg: "rate-limit-gate",
+    run: warmInferenceRateLimitGate(agent.organization_id),
+  });
 
   // 1. Combined admission snapshot: org balance + rate-limit tier. The
   //    projection behind "Billing authorization is warming", "Inference
