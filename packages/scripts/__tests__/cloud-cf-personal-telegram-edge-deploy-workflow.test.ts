@@ -133,10 +133,9 @@ function validateProductionApproval(
   }
 }
 
-function verifyGatewayProof(options: {
-  activeDeploymentId?: string;
-  receiptSourceSha?: string;
-} = {}): ReturnType<typeof Bun.spawnSync> {
+function verifyGatewayProof(
+  options: { activeDeploymentId?: string; receiptSourceSha?: string } = {},
+): ReturnType<typeof Bun.spawnSync> {
   const fixtureRoot = mkdtempSync(join(tmpdir(), "edge-gateway-proof-"));
   const binRoot = join(fixtureRoot, "bin");
   const receiptPath = join(fixtureRoot, "gateway-webhook-deployment.json");
@@ -309,7 +308,8 @@ printf '200'`,
           ...process.env,
           DESIRED_ENABLED: "true",
           EDGE_SECRET_NAME: "PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED",
-          EXPECTED_GATEWAY_DEPLOYMENT_ID: "11111111-1111-4111-8111-111111111111",
+          EXPECTED_GATEWAY_DEPLOYMENT_ID:
+            "11111111-1111-4111-8111-111111111111",
           EXPECTED_GATEWAY_SERVICE_NAME: "gateway-webhook-stg",
           EXPECTED_SOURCE_SHA: "a".repeat(40),
           GITHUB_WORKSPACE: fileURLToPath(repoRoot),
@@ -374,9 +374,7 @@ describe("Personal Shared Telegram edge deploy", () => {
     expect(job?.env?.EXPECTED_GATEWAY_SERVICE_NAME).toBe(
       "${{ inputs.environment == 'production' && 'gateway-webhook' || 'gateway-webhook-stg' }}",
     );
-    expect(job?.env?.RAILWAY_PROJECT_ID).toBe(
-      "${{ vars.RAILWAY_PROJECT_ID }}",
-    );
+    expect(job?.env?.RAILWAY_PROJECT_ID).toBe("${{ vars.RAILWAY_PROJECT_ID }}");
     expect(job?.env?.RAILWAY_ENVIRONMENT_ID).toBe(
       "${{ vars.RAILWAY_ENVIRONMENT_ID }}",
     );
@@ -421,7 +419,9 @@ describe("Personal Shared Telegram edge deploy", () => {
   });
 
   test("requires a NubsCarson production approval bound to source and desired state", () => {
-    const validation = step("Validate protected target and production approval");
+    const validation = step(
+      "Validate protected target and production approval",
+    );
     expect(validation.run).toContain(
       "^https://github\\.com/elizaOS/eliza/(issues|pull)/[0-9]+#issuecomment-([0-9]+)$",
     );
@@ -436,9 +436,9 @@ describe("Personal Shared Telegram edge deploy", () => {
     const approval =
       "[production-telegram-edge] APPROVE source=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa enabled=true";
     expect(validateProductionApproval("NubsCarson", approval).exitCode).toBe(0);
-    expect(validateProductionApproval("someone-else", approval).exitCode).not.toBe(
-      0,
-    );
+    expect(
+      validateProductionApproval("someone-else", approval).exitCode,
+    ).not.toBe(0);
     expect(
       validateProductionApproval(
         "NubsCarson",
