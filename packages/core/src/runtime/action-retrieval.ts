@@ -195,6 +195,15 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	TERMINAL_COMMAND: ["SHELL", "TERMINAL_SHELL"],
 	TERMINAL: ["SHELL", "TERMINAL_SHELL"],
 	RUN_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	// "write X and run it" asks: stage-1 invents EXEC/EXECUTE spellings the
+	// simile table does not carry; unresolved, the planner ran toolless and
+	// answered with unexecuted code (live 2026-08-17: a "run this python
+	// one-liner" ask returned the code, never the output).
+	EXEC_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	EXECUTE_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	EXEC: ["SHELL", "TERMINAL_SHELL"],
+	RUN_SCRIPT: ["SHELL", "TERMINAL_SHELL"],
+	RUN_PYTHON: ["SHELL", "TERMINAL_SHELL"],
 	// Todo-shaped candidates hint BOTH todo owners: the personal-assistant
 	// umbrella and plugin-todos' TODO parent. Deployments load one or the
 	// other; the resolver keeps whichever is registered. Without these the
