@@ -12,6 +12,7 @@ import type { NewUserCharacter } from "@/db/repositories";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { isCategoryId } from "@/lib/constants/character-categories";
 import { charactersService } from "@/lib/services/characters/characters";
 import { discordService } from "@/lib/services/discord";
 import type { ElizaCharacter } from "@/lib/types";
@@ -27,7 +28,15 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
 
     const search = c.req.query("search") || undefined;
-    const category = c.req.query("category") as CategoryId | undefined;
+    const rawCategory = c.req.query("category");
+    if (
+      rawCategory !== undefined &&
+      rawCategory !== "" &&
+      !isCategoryId(rawCategory)
+    ) {
+      return c.json({ error: "Invalid category" }, 400);
+    }
+    const category: CategoryId | undefined = rawCategory || undefined;
     // Catalog-sort identity, not leftover database-rows page tax. Unknown
     // sortBy used to fall through the repository switch onto popularity_score
     // while the route advertised a newest default. Unknown order silently
