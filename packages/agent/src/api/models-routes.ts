@@ -71,7 +71,9 @@ export async function handleModelsRoutes(
     json(res, { error: "catalogOnly must be a boolean" }, 400);
     return true;
   }
-  const refreshParsed = parseOptionalBooleanQuery(url.searchParams.get("refresh"));
+  const refreshParsed = parseOptionalBooleanQuery(
+    url.searchParams.get("refresh"),
+  );
   if (!refreshParsed.ok) {
     json(res, { error: "refresh must be a boolean" }, 400);
     return true;
