@@ -1832,7 +1832,8 @@ function ShellFoundationMount() {
       const shell = controllerRef.current;
       if (!shell) return;
       if (shell.authGate.gated) {
-        shell.requestSignIn();
+        if (shell.authGate.phase === "needs-auth") shell.requestSignIn();
+        else shell.startRecording("ptt");
         return;
       }
       if (shell.recording) {
@@ -1865,7 +1866,8 @@ function ShellFoundationMount() {
       if (detail.held) {
         if (fnHoldActiveRef.current || shell.recording) return;
         if (shell.authGate.gated) {
-          shell.requestSignIn();
+          if (shell.authGate.phase === "needs-auth") shell.requestSignIn();
+          else shell.startRecording("ptt");
           return;
         }
         fnHoldActiveRef.current = true;
@@ -1916,7 +1918,11 @@ function ShellFoundationMount() {
         onClose={controller.close}
         onHoldStart={() => {
           if (controller.authGate.gated) {
-            controller.requestSignIn();
+            if (controller.authGate.phase === "needs-auth") {
+              controller.requestSignIn();
+            } else {
+              controller.startRecording("ptt");
+            }
             return;
           }
           // Audible mic-open ping BEFORE capture spins up: the cue is the
@@ -2825,6 +2831,7 @@ function AppContent() {
           <FirstRunConductorMount />
           <ModelStatusConductorMount />
           <BootRecoveryConductorMount />
+          <ShellOverlays actionNotice={actionNotice} />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>

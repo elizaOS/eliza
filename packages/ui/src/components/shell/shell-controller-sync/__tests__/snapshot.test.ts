@@ -1,7 +1,11 @@
 /** Snapshot projection + coalescing equality. */
 import { describe, expect, it } from "vitest";
 import type { ShellMessage } from "../../shell-state";
-import { deriveShellControllerSnapshot, snapshotsEqual } from "../snapshot";
+import {
+  deriveShellControllerSnapshot,
+  parseShellControllerSnapshot,
+  snapshotsEqual,
+} from "../snapshot";
 import { baseSnapshot, makeFakeShellController } from "./fixtures";
 
 describe("deriveShellControllerSnapshot", () => {
@@ -22,6 +26,18 @@ describe("deriveShellControllerSnapshot", () => {
       hasNext: false,
       activeId: null,
       index: -1,
+    });
+  });
+});
+
+describe("parseShellControllerSnapshot", () => {
+  it("accepts the unavailable auth-recovery phase across desktop windows", () => {
+    const snapshot = baseSnapshot({
+      authGate: { gated: true, phase: "unavailable" },
+    });
+    expect(parseShellControllerSnapshot(snapshot)?.authGate).toEqual({
+      gated: true,
+      phase: "unavailable",
     });
   });
 });
