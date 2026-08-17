@@ -657,3 +657,17 @@ describe("createMobileLifecycle — network listener", () => {
     expect(networkListeners.get("networkStatusChange")?.length).toBe(1);
   });
 });
+
+describe("createMobileLifecycle — keyboard initialization", () => {
+  it("configures iOS keyboard to disable the redundant accessory bar", async () => {
+    const { Keyboard } = await import("@capacitor/keyboard");
+    const ctx = makeContext({ isIOS: true });
+    const lifecycle = createMobileLifecycle(ctx);
+
+    await lifecycle.initializeKeyboard();
+
+    expect(Keyboard.setAccessoryBarVisible).toHaveBeenCalledWith({
+      isVisible: false,
+    });
+  });
+});

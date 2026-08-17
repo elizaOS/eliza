@@ -1933,7 +1933,7 @@ async function initializeKeyboard(): Promise<void> {
     if (isIOS) {
       await Keyboard.setResizeMode({ mode: KeyboardResize.None });
       await Keyboard.setScroll({ isDisabled: true });
-      await Keyboard.setAccessoryBarVisible({ isVisible: true });
+      await Keyboard.setAccessoryBarVisible({ isVisible: false });
     }
 
     keyboardListenersRegistered = true;
