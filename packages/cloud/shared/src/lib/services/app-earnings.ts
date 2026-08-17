@@ -2,11 +2,13 @@
  * Service for managing app earnings and revenue tracking.
  */
 
+import { ElizaError } from "@elizaos/core";
 import {
   type AppEarningsTransaction,
   appEarningsRepository,
   type NewAppEarningsTransaction,
 } from "../../db/repositories/app-earnings";
+import { parseEarningsNumber } from "../../db/repositories/app-earnings-numeric";
 import { appsRepository } from "../../db/repositories/apps";
 import { isUniqueConstraintError } from "../utils/db-errors";
 import { logger } from "../utils/logger";
@@ -46,13 +48,25 @@ export class AppEarningsService {
     }
 
     return {
-      totalLifetimeEarnings: Number(earnings.total_lifetime_earnings),
-      totalInferenceEarnings: Number(earnings.total_inference_earnings),
-      totalPurchaseEarnings: Number(earnings.total_purchase_earnings),
-      pendingBalance: Number(earnings.pending_balance),
-      withdrawableBalance: Number(earnings.withdrawable_balance),
-      totalWithdrawn: Number(earnings.total_withdrawn),
-      payoutThreshold: Number(earnings.payout_threshold),
+      totalLifetimeEarnings: parseEarningsNumber(
+        earnings.total_lifetime_earnings,
+        "total_lifetime_earnings",
+      ),
+      totalInferenceEarnings: parseEarningsNumber(
+        earnings.total_inference_earnings,
+        "total_inference_earnings",
+      ),
+      totalPurchaseEarnings: parseEarningsNumber(
+        earnings.total_purchase_earnings,
+        "total_purchase_earnings",
+      ),
+      pendingBalance: parseEarningsNumber(earnings.pending_balance, "pending_balance"),
+      withdrawableBalance: parseEarningsNumber(
+        earnings.withdrawable_balance,
+        "withdrawable_balance",
+      ),
+      totalWithdrawn: parseEarningsNumber(earnings.total_withdrawn, "total_withdrawn"),
+      payoutThreshold: parseEarningsNumber(earnings.payout_threshold, "payout_threshold"),
     };
   }
 
@@ -167,8 +181,13 @@ export class AppEarningsService {
   }
 
   async updatePayoutThreshold(appId: string, threshold: number): Promise<void> {
-    if (threshold < 1) {
-      throw new Error("Payout threshold must be at least $1.00");
+    // NaN and Infinity bypass a comparison-only guard and PostgreSQL NUMERIC
+    // accepts both, so validate finiteness before writing the threshold.
+    if (!Number.isFinite(threshold) || threshold < 1) {
+      throw new ElizaError("Payout threshold must be a finite amount of at least $1.00", {
+        code: "APP_EARNINGS_PAYOUT_THRESHOLD_INVALID",
+        context: { appId, threshold },
+      });
     }
 
     await appEarningsRepository.updatePayoutThreshold(appId, threshold);
@@ -193,6 +212,15 @@ export class AppEarningsService {
     amount: number,
     idempotencyKey?: string,
   ): Promise<{ success: boolean; message: string; transactionId?: string }> {
+    // NaN bypasses the repository's comparison guards and would poison the
+    // NUMERIC transaction history, so reject invalid amounts before any write.
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return {
+        success: false,
+        message: "Withdrawal amount must be a positive, finite number",
+      };
+    }
+
     // Idempotent fast path: return the prior transaction if this key already ran.
     if (idempotencyKey) {
       const existing = await appEarningsRepository.findTransactionByIdempotencyKeyOnPrimary(
@@ -319,7 +347,7 @@ export class AppEarningsService {
     });
     return {
       success: true,
-      message: `$${Math.abs(Number(existing.amount)).toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
+      message: `$${Math.abs(parseEarningsNumber(existing.amount, "withdrawal_amount")).toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
       transactionId: existing.id,
     };
   }
