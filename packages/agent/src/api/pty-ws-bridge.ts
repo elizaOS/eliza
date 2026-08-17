@@ -30,6 +30,9 @@ export const MAX_PTY_INPUT_MESSAGE_LENGTH = 4096;
 /** Grace window before a disconnected client's PTY sessions are stopped. */
 export const DEFAULT_PTY_DISCONNECT_GRACE_MS = 30_000;
 
+/** Node timer ceiling. Larger values schedule at ~1ms and reap immediately. */
+export const MAX_PTY_DISCONNECT_GRACE_MS = 2_147_483_647;
+
 /**
  * Parses `ELIZA_PTY_WS_DISCONNECT_GRACE_MS`-style overrides. Empty/absent or
  * unparseable/negative values fall back to the default; `0` is honored as
@@ -38,7 +41,9 @@ export const DEFAULT_PTY_DISCONNECT_GRACE_MS = 30_000;
  * Only a canonical non-negative decimal integer is accepted. Prefix-coercing
  * spellings (`1e4`, `12px`, `007`) must not become a 1–12ms reap window —
  * `Number.parseInt("1e4", 10) === 1` would kill the dashboard terminal on the
- * first phone-lock blip the grace was added to survive.
+ * first phone-lock blip the grace was added to survive. Values above the Node
+ * timer ceiling (`2_147_483_647`) also keep the default: `setTimeout` would
+ * otherwise schedule them at approximately 1ms.
  */
 export function resolvePtyDisconnectGraceMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") {
@@ -52,7 +57,11 @@ export function resolvePtyDisconnectGraceMs(raw: string | undefined): number {
     return DEFAULT_PTY_DISCONNECT_GRACE_MS;
   }
   const parsed = Number(trimmed);
-  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 1 ||
+    parsed > MAX_PTY_DISCONNECT_GRACE_MS
+  ) {
     return DEFAULT_PTY_DISCONNECT_GRACE_MS;
   }
   return parsed;
