@@ -28,13 +28,23 @@ function voiceRow(cloneType: "instant" | "professional") {
   };
 }
 
-const listByOrganization = mock(async () => ({
-  voices: [voiceRow("instant"), voiceRow("professional")],
-  total: 2,
-  limit: 50,
-  offset: 0,
-  hasMore: false,
-}));
+const listByOrganization = mock(
+  async (
+    _organizationId: string,
+    _options: {
+      includeInactive?: boolean;
+      cloneType?: "instant" | "professional";
+      limit?: number;
+      offset?: number;
+    },
+  ) => ({
+    voices: [voiceRow("instant"), voiceRow("professional")],
+    total: 2,
+    limit: 50,
+    offset: 0,
+    hasMore: false,
+  }),
+);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg: async () => ({

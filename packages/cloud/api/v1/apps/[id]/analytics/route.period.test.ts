@@ -20,7 +20,14 @@ const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
 const getById = mock(async (id: string) =>
   id === APP_ID ? { id: APP_ID, organization_id: ORG_A } : null,
 );
-const getAnalytics = mock(async () => []);
+const getAnalytics = mock(
+  async (
+    _appId: string,
+    _periodType: "hourly" | "daily" | "monthly",
+    _startDate: Date,
+    _endDate: Date,
+  ) => [],
+);
 const getTotalStats = mock(async () => ({
   totalRequests: 0,
   totalUsers: 0,
