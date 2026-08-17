@@ -18,8 +18,31 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const rawMaxResults = c.req.query("maxResults");
-    const connectionRole =
-      c.req.query("connectionRole") === "agent" ? "agent" : "owner";
+    // Role identity leftover after x/feed (#21130) / x/status (#20945).
+    // The prior ternary mapped every non-"agent" token — including AGENT,
+    // owner-typos, and 1e2 — onto the personal owner X DM digest.
+    // Missing/empty still defaults to owner (this route's documented
+    // default). Garbage 400s before getXDmDigest. maxResults parser
+    // stays untouched.
+    const requestedRoleValues = c.req.queries("connectionRole") ?? [];
+    const requestedRole = requestedRoleValues[0];
+    if (
+      requestedRoleValues.length > 1 ||
+      (requestedRole !== undefined &&
+        requestedRole !== "" &&
+        requestedRole !== "agent" &&
+        requestedRole !== "owner")
+    ) {
+      return c.json(
+        {
+          error: "invalid_connection_role",
+          message:
+            'connectionRole must be specified at most once as "agent" or "owner".',
+        },
+        400,
+      );
+    }
+    const connectionRole = requestedRole === "agent" ? "agent" : "owner";
     const hasMaxResults = Boolean(rawMaxResults?.trim());
     const maxResults = hasMaxResults
       ? parsePositiveInteger(rawMaxResults)
