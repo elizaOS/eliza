@@ -1,4 +1,4 @@
-/** Applies the real 0228–0229 catalogue migrations to legacy rows in PGlite. */
+/** Applies the real 0218–0229 catalogue migrations to legacy rows in PGlite. */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -6,13 +6,13 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 
 const MIGRATION_TAGS = [
-  "0228_agent_backup_catalog_columns",
-  "0229_agent_backup_catalog_legacy_backfill",
-  "0225_agent_backup_catalog_authority",
-  "0226_agent_backup_catalog_ownership_fks",
-  "0227_agent_backup_catalog_identity_checks",
-  "0228_agent_backup_catalog_runtime_checks",
-  "0229_agent_backup_catalog_manifest_v2_check",
+  "0218_agent_backup_catalog_columns",
+  "0219_agent_backup_catalog_legacy_backfill",
+  "0220_agent_backup_catalog_authority",
+  "0221_agent_backup_catalog_ownership_fks",
+  "0222_agent_backup_catalog_identity_checks",
+  "0223_agent_backup_catalog_runtime_checks",
+  "0224_agent_backup_catalog_manifest_v2_check",
   "0225_agent_backup_catalog_indexes",
   "0226_agent_backup_objects",
   "0227_agent_backup_gc_outbox",
@@ -79,7 +79,7 @@ afterAll(async () => {
   await database.close();
 });
 
-describe("0228–0229 agent backup catalogue migrations", () => {
+describe("0218–0229 agent backup catalogue migrations", () => {
   test("backfills durable identity and installs exact-object authority", async () => {
     await applyMigrations();
 
