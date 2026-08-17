@@ -26,7 +26,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { v4 } from "uuid";
-import { parseClampedInteger } from "@elizaos/shared";
 import { createPerfTrace } from "../../../../utils/perf-trace";
 import { invalidateActionValidationCache } from "../../providers/actions";
 import {
@@ -68,6 +67,7 @@ import {
   resolveShouldRespondStepModel,
   withScopedTextModel,
 } from "./model-resolution";
+import { resolveNativePlannerLimits } from "./native-planner-limits";
 import { getRetryDelay, parseStructuredModelObject, withRetry } from "./retry";
 import {
   EMPTY_STATE,
@@ -530,17 +530,11 @@ export class CloudBootstrapMessageService implements IMessageService {
       runtime.character.system = "Select and execute actions to fulfill user requests.";
     }
 
-    const maxIterations =
-      options?.maxNativePlannerIterations ??
-      parseClampedInteger(String(runtime.getSetting("NATIVE_PLANNER_MAX_ITERATIONS") ?? "6"), {
-        min: 1,
-        max: 20,
-        fallback: 6,
-      });
-    const maxConsecutiveFailures = parseClampedInteger(
-      String(runtime.getSetting("NATIVE_PLANNER_MAX_CONSECUTIVE_FAILURES") ?? "2"),
-      { min: 1, max: 10, fallback: 2 },
-    );
+    const { maxIterations, maxConsecutiveFailures, maxParseRetries, maxSummaryRetries } =
+      resolveNativePlannerLimits(
+        (name) => runtime.getSetting(name),
+        options?.maxNativePlannerIterations,
+      );
     let iterationCount = 0;
     let consecutiveFailures = 0;
     let incompleteReason: string | null = null;
@@ -668,12 +662,8 @@ export class CloudBootstrapMessageService implements IMessageService {
         logger.info(`[LLM:nativePlanner] User Prompt:\n${prompt}`);
         logger.info("==============================================");
 
-        // PERF: Reduced from 5 to 3 retries. Each retry adds 1-4s with exponential backoff.
-        // 3 balances latency (~6-12s max) vs. reliability for complex native-planner queries
-        // where LLMs occasionally produce malformed JSON. Override via NATIVE_PLANNER_PARSE_RETRIES.
-        const maxParseRetries = parseInt(
-          String(runtime.getSetting("NATIVE_PLANNER_PARSE_RETRIES") ?? "2"),
-        );
+        // Each retry adds model latency, so the request-scoped resolver bounds
+        // operator tuning before this loop begins.
         let stepResultRaw = "";
         let parsedStep: ValidatedNativePlannerDecision | null = null;
 
@@ -1097,9 +1087,6 @@ export class CloudBootstrapMessageService implements IMessageService {
       logger.info(`[LLM:nativeResponse] User Prompt:\n${summaryPrompt}`);
       logger.info("==============================================");
 
-      const maxSummaryRetries = parseInt(
-        String(runtime.getSetting("NATIVE_RESPONSE_PARSE_RETRIES") ?? "2"),
-      );
       let finalOutput = "";
       let summary: Record<string, unknown> | null = null;
 
