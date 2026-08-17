@@ -142,6 +142,7 @@ import {
 import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
 import {
   mergeIosInfoPlist,
+  readIosApnsBuildFlag,
   removePbxListEntries,
   replaceIosAppGroupPlaceholders,
 } from "./mobile/ios-plist.mjs";
@@ -3691,6 +3692,7 @@ function overlayIos() {
     const nextPlist = mergeIosInfoPlist(plist, {
       appName: APP.appName,
       urlScheme: APP.urlScheme,
+      apnsEnabled: readIosApnsBuildFlag(process.env.VITE_ELIZA_APNS_ENABLED),
     });
     if (nextPlist.changed) {
       plist = nextPlist.content;

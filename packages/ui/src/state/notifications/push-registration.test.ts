@@ -266,6 +266,7 @@ describe("isRemotePushTransportEnabled", () => {
     expect(isRemotePushTransportEnabled("ios", undefined)).toBe(false);
     expect(isRemotePushTransportEnabled("ios", "0")).toBe(false);
     expect(isRemotePushTransportEnabled("ios", "true")).toBe(false);
+    expect(isRemotePushTransportEnabled("ios", " 1 ")).toBe(false);
     expect(isRemotePushTransportEnabled("ios", "1")).toBe(true);
   });
 

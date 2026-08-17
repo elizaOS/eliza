@@ -60,6 +60,13 @@ describe("replaceOrInsertPlistString", () => {
     const out = replaceOrInsertPlistString(PLIST, "CFBundleName", "A & B");
     expect(out).toContain("<string>A &amp; B</string>");
   });
+
+  it("rejects an existing key with a non-string plist value", () => {
+    const malformed = PLIST.replace("<string>Eliza</string>", "<false/>");
+    expect(() =>
+      replaceOrInsertPlistString(malformed, "CFBundleName", "Eliza"),
+    ).toThrow(/CFBundleName must be a string/);
+  });
 });
 
 describe("ensurePlistArrayStrings", () => {
