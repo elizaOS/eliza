@@ -667,6 +667,62 @@ test("retry sends only unsettled devices and never logs an APNs token URL", asyn
   ]);
 });
 
+test("partial-failure ledger prunes hashes through repeated token rotation", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  const mutateToken = async (
+    operation: "push-register" | "push-unregister",
+    token: string,
+  ) => {
+    await (
+      await pushOperation(object, {
+        operation,
+        ...(operation === "push-register" ? { platform: "ios" } : {}),
+        token,
+      })
+    ).arrayBuffer();
+  };
+  const dispatch = async () => {
+    await (
+      await pushOperation(object, {
+        operation: "push-dispatch",
+        message: {
+          title: "Reminder",
+          collapseKey: "rotation-occurrence",
+        },
+      })
+    ).arrayBuffer();
+    await Promise.all(background.splice(0));
+  };
+  await mutateToken("push-register", "always-failing-token");
+  apnsOutcomes.set("always-failing-token", new Error("offline"));
+
+  let previousRotatedToken: string | undefined;
+  for (let index = 0; index < 40; index++) {
+    if (previousRotatedToken) {
+      await mutateToken("push-unregister", previousRotatedToken);
+    }
+    const rotatedToken = `rotated-token-${index}`;
+    await mutateToken("push-register", rotatedToken);
+    await dispatch();
+    previousRotatedToken = rotatedToken;
+  }
+
+  const ledger = data.get("mobile-push-delivery-ledger") as Record<
+    string,
+    { status: string; acceptedTokens: string[] }
+  >;
+  const entry = Object.values(ledger)[0];
+  expect(entry?.status).toBe("retryable");
+  expect(entry?.acceptedTokens).toHaveLength(1);
+  expect(entry?.acceptedTokens[0]?.length).toBe(64);
+  expect(entry?.acceptedTokens.length).toBeLessThanOrEqual(32);
+});
+
 test("prewarm joins cold hydration without writing a conversation turn", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;

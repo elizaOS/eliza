@@ -612,6 +612,7 @@ export class SharedRuntimeConversation {
     const recordTokenIds = await Promise.all(
       records.map((record) => mobilePushLedgerDigest(record.token)),
     );
+    const currentTokenIds = new Set(recordTokenIds);
     if (message.collapseKey) {
       ledgerId = await mobilePushLedgerDigest(message.collapseKey);
       const claim = await this.mutateMobilePushDeliveryLedger((ledger) => {
@@ -622,7 +623,13 @@ export class SharedRuntimeConversation {
           (existing?.status === "pending" &&
             now - existing.updatedAt < MOBILE_PUSH_PENDING_RETRY_MS);
         if (suppress) return { suppress: true, acceptedTokenIds: [] };
-        const previouslyAccepted = existing?.acceptedTokens ?? [];
+        const previouslyAccepted = [
+          ...new Set(
+            (existing?.acceptedTokens ?? []).filter((tokenId) =>
+              currentTokenIds.has(tokenId),
+            ),
+          ),
+        ].slice(-MAX_MOBILE_PUSH_TOKENS);
         ledger[ledgerId!] = {
           status: "pending",
           acceptedTokens: previouslyAccepted,
@@ -660,6 +667,13 @@ export class SharedRuntimeConversation {
     }
     await this.unregisterMobilePushTokens(staleTokens);
     if (ledgerId) {
+      const registeredTokenIds = new Set(
+        await Promise.all(
+          (await this.mobilePushTokens())
+            .filter((record) => record.platform === "ios")
+            .map((record) => mobilePushLedgerDigest(record.token)),
+        ),
+      );
       await this.mutateMobilePushDeliveryLedger((ledger) => {
         const currentAccepted = ledger[ledgerId!]?.acceptedTokens ?? [];
         ledger[ledgerId!] = {
@@ -667,9 +681,9 @@ export class SharedRuntimeConversation {
             transportFailures + providerRejections === 0
               ? "accepted"
               : "retryable",
-          acceptedTokens: [
-            ...new Set([...currentAccepted, ...settledTokenIds]),
-          ],
+          acceptedTokens: [...new Set([...currentAccepted, ...settledTokenIds])]
+            .filter((tokenId) => registeredTokenIds.has(tokenId))
+            .slice(-MAX_MOBILE_PUSH_TOKENS),
           updatedAt: Date.now(),
         };
       });
