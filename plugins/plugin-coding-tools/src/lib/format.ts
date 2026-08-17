@@ -152,8 +152,9 @@ export function truncate(
   max: number,
 ): { text: string; truncated: boolean } {
   if (s.length <= max) return { text: s, truncated: false };
+  const suffix = `\n…[truncated, ${s.length - max} more chars]`;
   return {
-    text: `${s.slice(0, max)}\n…[truncated, ${s.length - max} more chars]`,
+    text: `${s.slice(0, max - suffix.length)}${suffix}`,
     truncated: true,
   };
 }
