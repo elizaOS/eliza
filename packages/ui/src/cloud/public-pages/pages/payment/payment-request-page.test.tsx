@@ -350,6 +350,37 @@ describe("PaymentRequestPage public DTO contract", () => {
     );
   });
 
+  it("blocks navigation and shows an error when the hosted URL is not http(s)", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign, href: "https://eliza.example/pay" });
+
+    apiMock
+      .mockResolvedValueOnce({
+        success: true,
+        paymentRequest: publicPaymentRequest(),
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        paymentRequest: publicPaymentRequest({
+          hostedUrl: "javascript:alert(document.cookie)",
+        }),
+      });
+
+    render(<PaymentRequestPage />);
+
+    const button = await screen.findByRole("button", {
+      name: /pay with wallet/i,
+    });
+    fireEvent.click(button);
+
+    expect(
+      await screen.findByText(
+        "This payment request's checkout URL is not valid.",
+      ),
+    ).toBeTruthy();
+    expect(assign).not.toHaveBeenCalled();
+  });
+
   it("does not navigate when checkout revalidation resolves after unmount", async () => {
     const assign = vi.fn();
     vi.stubGlobal("location", { assign, href: "https://eliza.example/pay" });
