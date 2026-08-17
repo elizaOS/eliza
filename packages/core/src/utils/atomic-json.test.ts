@@ -7,7 +7,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	readJsonFile,
 	readJsonFileSync,
@@ -23,6 +23,7 @@ describe("atomic-json", () => {
 	});
 
 	afterEach(async () => {
+		vi.restoreAllMocks();
 		await fsp.rm(tempDir, { recursive: true, force: true });
 	});
 
@@ -101,20 +102,19 @@ describe("atomic-json", () => {
 	});
 
 	describe("concurrency and validation", () => {
-		it("handles multiple concurrent writes to separate files without collision", async () => {
-			const writes = Array.from({ length: 20 }, (_, i) => {
-				const file = path.join(tempDir, `concurrent-${i}.json`);
-				return writeJsonAtomic(file, { index: i, timestamp: Date.now() });
-			});
+		it("handles concurrent same-target writes in the same millisecond", async () => {
+			vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+			const target = path.join(tempDir, "concurrent.json");
+			const writes = Array.from({ length: 20 }, (_, index) =>
+				writeJsonAtomic(target, { index }),
+			);
 
 			await Promise.all(writes);
 
-			for (let i = 0; i < 20; i++) {
-				const readBack = await readJsonFile<{ index: number }>(
-					path.join(tempDir, `concurrent-${i}.json`),
-				);
-				expect(readBack?.index).toBe(i);
-			}
+			const readBack = await readJsonFile<{ index: number }>(target);
+			expect(readBack?.index).toBeGreaterThanOrEqual(0);
+			expect(readBack?.index).toBeLessThan(20);
+			expect((await fsp.readdir(tempDir)).sort()).toEqual(["concurrent.json"]);
 		});
 
 		it("rejects non-string or empty file paths", async () => {
