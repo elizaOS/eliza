@@ -37,7 +37,6 @@ jobs:
     concurrency:
       group: cloud-cf-release-v6-${{ inputs.environment }}
       cancel-in-progress: false
-      queue: max
     env:
       TARGET_ENVIRONMENT: ${{ inputs.environment }}
       DEPLOY_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
