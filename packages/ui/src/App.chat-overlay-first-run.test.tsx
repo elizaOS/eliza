@@ -23,7 +23,7 @@
  */
 
 import { act, cleanup, render, waitFor } from "@testing-library/react";
-import type * as React from "react";
+import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const appState = vi.hoisted(() => ({
@@ -52,6 +52,7 @@ const overlayHarness = vi.hoisted(() => ({
   sizeClass: undefined as
     | ((sizeClass: "resting" | "input" | "sheet") => void)
     | undefined,
+  reportedSizeClass: "input" as "resting" | "input" | "sheet",
 }));
 
 const shellControllerMock = vi.hoisted(() => ({
@@ -115,6 +116,9 @@ vi.mock("./components/shell/ChatOverlay", () => ({
   }) => {
     overlayHarness.materialSize = props.onWindowMaterialSizeChange;
     overlayHarness.sizeClass = props.onWindowSizeClassChange;
+    React.useLayoutEffect(() => {
+      props.onWindowSizeClassChange?.(overlayHarness.reportedSizeClass);
+    }, [props.onWindowSizeClassChange]);
     return <div data-testid="chat-overlay" />;
   },
 }));
@@ -245,7 +249,10 @@ vi.mock("./components/shell/ShellControllerContext", () => ({
 }));
 
 vi.mock("./components/shell/ShellControllerContext.hooks", () => ({
-  useShellControllerContext: () => shellControllerMock,
+  // A provider value may be reconstructed while its action callbacks remain
+  // stable. Presentation effects must depend on those callbacks, not object
+  // identity, or unrelated state changes can close an active voice session.
+  useShellControllerContext: () => ({ ...shellControllerMock }),
 }));
 
 vi.mock("./hooks/useRole", () => ({
@@ -347,7 +354,10 @@ describe("App chat-overlay first-run composition", () => {
     desktopBridgeMock.request.mockClear();
     overlayHarness.materialSize = undefined;
     overlayHarness.sizeClass = undefined;
+    overlayHarness.reportedSizeClass = "input";
     shellControllerMock.isOpen = false;
+    shellControllerMock.open.mockClear();
+    shellControllerMock.close.mockClear();
     shellControllerMock.open.mockImplementation(() => {
       shellControllerMock.isOpen = true;
     });
@@ -359,6 +369,23 @@ describe("App chat-overlay first-run composition", () => {
   afterEach(() => {
     cleanup();
     window.history.replaceState(null, "", "/");
+  });
+
+  it("does not replay an unchanged presentation edge when controller identity changes", () => {
+    window.history.replaceState(null, "", "/");
+    appState.firstRunComplete = true;
+    appState.startupPhase = "ready";
+    appState.authPhase = "authenticated";
+    const shell = render(<App />);
+
+    expect(shellControllerMock.close).toHaveBeenCalledTimes(1);
+    shell.rerender(<App />);
+    expect(shellControllerMock.close).toHaveBeenCalledTimes(1);
+
+    act(() => overlayHarness.sizeClass?.("sheet"));
+    expect(shellControllerMock.open).toHaveBeenCalledTimes(1);
+    act(() => overlayHarness.sizeClass?.("input"));
+    expect(shellControllerMock.close).toHaveBeenCalledTimes(2);
   });
 
   it("mounts the first-run conductor inside the chat-overlay branch while first-run is incomplete", () => {
