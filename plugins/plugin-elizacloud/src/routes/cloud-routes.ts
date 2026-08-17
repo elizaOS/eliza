@@ -90,12 +90,18 @@ async function readRouteJsonBody(
   res: http.ServerResponse,
 ): Promise<Record<string, unknown> | null> {
   const preParsed = (req as http.IncomingMessage & { body?: unknown }).body;
-  if (
-    preParsed &&
-    typeof preParsed === "object" &&
-    !Array.isArray(preParsed)
-  ) {
-    return preParsed as Record<string, unknown>;
+  if (preParsed !== undefined) {
+    if (
+      preParsed !== null &&
+      typeof preParsed === "object" &&
+      !Array.isArray(preParsed)
+    ) {
+      return preParsed as Record<string, unknown>;
+    }
+    // error-policy:J3 untrusted-input sanitizing — middleware-parsed arrays,
+    // primitives, and null are invalid persist objects just like raw JSON.
+    sendJson(res, { ok: false, error: "Invalid JSON body" }, 400);
+    return null;
   }
 
   const chunks: Buffer[] = [];

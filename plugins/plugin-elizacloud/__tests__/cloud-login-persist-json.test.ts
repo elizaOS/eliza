@@ -138,6 +138,27 @@ describe("POST /api/cloud/login/persist JSON body", () => {
     expect(res.jsonBody()).toEqual({ ok: false, error: "apiKey is required" });
   });
 
+  it.each([
+    ["array", []],
+    ["primitive", "apiKey"],
+    ["null", null],
+  ] as const)("returns 400 for a pre-parsed %s body", async (_label, body) => {
+    const res = responseSink();
+    const handled = await handleCloudRoute(
+      requestWithParsedBody(body),
+      res,
+      "/api/cloud/login/persist",
+      "POST",
+      persistState()
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(res.jsonBody()).toEqual({
+      ok: false,
+      error: "Invalid JSON body",
+    });
+  });
+
   it("keeps persistence failures as 500 after a valid object body", async () => {
     const result = await persistRaw(
       JSON.stringify({ apiKey: "eliza_valid_looking_key" }),
