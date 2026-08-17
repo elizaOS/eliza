@@ -104,7 +104,7 @@ describe("deterministicLedgerVerdict", () => {
   test("the live quick-app incident shape passes deterministically", () => {
     const verdict = deterministicLedgerVerdict(
       [
-        "the live URL returns HTTP 200",
+        "the deployed app is reachable at its public URL",
         "the deliverable file exists in the workdir",
         "the change is summarized in the diff",
       ],
@@ -118,11 +118,52 @@ describe("deterministicLedgerVerdict", () => {
 
   test("an unsatisfied check criterion stays undetermined and blocks allMet", () => {
     const verdict = deterministicLedgerVerdict(
-      ["the live URL returns HTTP 200", "tests pass"],
+      ["the deployed app is reachable at its public URL", "tests pass"],
       quickAppFacts,
     );
     expect(verdict.allMet).toBe(false);
     expect(verdict.undetermined).toEqual(["tests pass"]);
+  });
+
+  test("behavioral URL criteria stay undetermined on reachability alone (#21002)", () => {
+    // A probe answering cannot prove HTTP status, auth, error, content, or
+    // method behavior — so each of these must NOT auto-pass from a verified
+    // URL, even when the criterion contains URL/API vocabulary.
+    const behavioral = [
+      "the API returns 401 for an invalid token",
+      "the endpoint responds with HTTP 200",
+      "the deployed URL requires authentication",
+      "a GET request to the endpoint returns JSON",
+      "the API rejects a malformed request body with an error",
+    ];
+    for (const criterion of behavioral) {
+      const verdict = deterministicLedgerVerdict([criterion], quickAppFacts);
+      expect(verdict.allMet).toBe(false);
+      expect(verdict.undetermined).toEqual([criterion]);
+      expect(verdict.results[0]?.basis).toBeUndefined();
+    }
+  });
+
+  test("a named+verified URL still cannot prove behavior (#21002)", () => {
+    // Even when the exact probed URL is named, reachability does not prove the
+    // asserted 401 response — the criterion must defer to model judgment.
+    const verdict = deterministicLedgerVerdict(
+      [
+        "https://nubilio.org/apps/canon-clock/ returns HTTP 401 for a bad token",
+      ],
+      quickAppFacts,
+    );
+    expect(verdict.allMet).toBe(false);
+    expect(verdict.undetermined).toHaveLength(1);
+  });
+
+  test("a plain reachability criterion still passes with any verified URL (#21002)", () => {
+    const verdict = deterministicLedgerVerdict(
+      ["the deployed app is reachable and serves at a public URL"],
+      quickAppFacts,
+    );
+    expect(verdict.allMet).toBe(true);
+    expect(verdict.results[0]?.basis).toContain("nubilio.org");
   });
 
   test("green mined output satisfies test/build/lint criteria", () => {
@@ -152,12 +193,17 @@ describe("deterministicLedgerVerdict", () => {
     expect(verdict.allMet).toBe(false);
   });
 
-  test("a criterion naming a specific URL must match the probed URL", () => {
+  test("an unrelated verified URL does not satisfy a demanded explicit URL", () => {
+    // The demanded URL was never probed; a different verified URL must not
+    // stand in for it even for a plain reachability assertion (#21002).
     const verdict = deterministicLedgerVerdict(
-      ["https://nubilio.org/apps/other/ returns HTTP 200"],
+      ["https://nubilio.org/apps/other/ is reachable"],
       quickAppFacts,
     );
     expect(verdict.allMet).toBe(false);
+    expect(verdict.undetermined).toEqual([
+      "https://nubilio.org/apps/other/ is reachable",
+    ]);
   });
 
   test("empty criteria never auto-pass", () => {
@@ -167,11 +213,13 @@ describe("deterministicLedgerVerdict", () => {
   test("renders met bases and undetermined markers", () => {
     const rendered = renderDeterministicVerdict(
       deterministicLedgerVerdict(
-        ["the live URL returns HTTP 200", "tests pass"],
+        ["the deployed app is reachable at its public URL", "tests pass"],
         quickAppFacts,
       ),
     );
-    expect(rendered).toContain("MET: the live URL returns HTTP 200");
+    expect(rendered).toContain(
+      "MET: the deployed app is reachable at its public URL",
+    );
     expect(rendered).toContain("undetermined (needs judgment): tests pass");
   });
 });

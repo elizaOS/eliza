@@ -135,6 +135,22 @@ const LINT_CRITERION_RE = /\b(lint|biome|eslint|format)\b/i;
 const SCREENSHOT_CRITERION_RE = /\b(screenshot|screen\s*capture)\b/i;
 const EXPLICIT_HTTP_URL_RE = /https?:\/\/[^\s`"'<>]+/gi;
 
+/**
+ * Detects when a URL/API criterion asserts endpoint BEHAVIOR — an HTTP status,
+ * a response body/content shape, authentication/authorization, an error
+ * response, or a specific HTTP method — rather than mere reachability (#21002).
+ * Router probes only prove that *a* URL answered; they cannot prove *how* it
+ * answered. A behavioral assertion therefore can never be satisfied by
+ * reachability evidence alone, even when a matching URL is named and verified,
+ * so it must fall through to model judgment instead of auto-passing.
+ *
+ * Kept deliberately conservative: the vocabulary is chosen to leave plain
+ * "is reachable / serves / deployed at a public URL" phrasings untouched, and
+ * over-matching only ever removes a false auto-pass (never creates one).
+ */
+const BEHAVIORAL_URL_RE =
+  /\b(status|returns?|respond(?:s|ing)?|response|body|content|payload|json|header|auth|authenticated|authentication|authoriz(?:e|ed|ation)|token|login|logged|unauthorized|forbidden|error|errors|fails?|failure|reject(?:s|ed)?|invalid|redirects?|GET|POST|PUT|DELETE|PATCH)\b|\b[1-5]\d\d\b/i;
+
 function normalizeExplicitHttpUrl(value: string): string | undefined {
   const candidate = value.replace(/[),.;!?]+$/, "");
   try {
@@ -229,6 +245,13 @@ export function deterministicCriterionCheck(
     return { criterion, status: "undetermined" };
   }
   if (URL_CRITERION_RE.test(criterion)) {
+    // Reachability evidence (a probed URL answered) cannot prove endpoint
+    // behavior. A behavioral assertion — HTTP status, response content, auth,
+    // an error response, or an HTTP method — stays undetermined and defers to
+    // model judgment even when a matching URL was named and verified (#21002).
+    if (BEHAVIORAL_URL_RE.test(criterion)) {
+      return { criterion, status: "undetermined" };
+    }
     const basis = urlCriterionBasis(criterion, facts);
     return basis
       ? { criterion, status: "met", basis }
