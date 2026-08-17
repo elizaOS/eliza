@@ -870,7 +870,7 @@ function compactJson(value: unknown): string | undefined {
     }
     const limit = 2000;
     return serialized.length > limit
-      ? `${serialized.slice(0, limit)}…`
+      ? `${serialized.slice(0, limit - 1)}…`
       : serialized;
   } catch {
     // error-policy:J3 untrusted-input sanitizing — an unserializable diagnostic
