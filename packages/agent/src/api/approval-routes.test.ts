@@ -3,7 +3,7 @@
  * `approvalTaskToPendingAction` projection: pending user actions are merged
  * newest-first and de-duplicated across the approval queue, the ApprovalService
  * task rows, and the pending-prompts service, and missing services yield empty
- * arrays. The untrusted `limit` query is fail-closed. Runs against a mock
+ * arrays. The untrusted `limit` and `state` queries are fail-closed. Runs against a mock
  * runtime and a real ApprovalService backed by an in-memory task store — no
  * live model or HTTP.
  */
@@ -25,6 +25,7 @@ import { PENDING_PROMPTS_SERVICE } from "../services/pending-prompts/service.ts"
 import {
   approvalTaskToPendingAction,
   handleApprovalRoute,
+  parseApprovalState,
 } from "./approval-routes.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
@@ -436,5 +437,83 @@ describe("handleApprovalRoute", () => {
       action: null,
       limit: expected,
     });
+  });
+
+  it.each(["DONE", "PENDING", "complete", "open", "ALL", "pending "])(
+    "rejects unknown state %j with 400 before listing",
+    async (raw) => {
+      const { runtime, queueList } = runtimeWithApprovals({});
+      const helpers = makeHelpers();
+
+      const handled = await handleApprovalRoute(
+        req(`/api/approvals?state=${encodeURIComponent(raw)}`),
+        res,
+        "/api/approvals",
+        "GET",
+        { runtime },
+        helpers,
+      );
+
+      expect(handled).toBe(true);
+      expect(helpers.error).toHaveBeenCalledWith(
+        res,
+        "state must be one of: all, pending, approved, executing, retryable, reconciliation_required, done, rejected, expired",
+        400,
+      );
+      expect(helpers.json).not.toHaveBeenCalled();
+      expect(queueList).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [undefined, "pending"],
+    ["pending", "pending"],
+    ["done", "done"],
+    ["approved", "approved"],
+    ["all", null],
+  ] as const)("accepts state %j as %s", async (raw, expected) => {
+    const { runtime, queueList } = runtimeWithApprovals({});
+    const helpers = makeHelpers();
+    const url =
+      raw === undefined ? "/api/approvals" : `/api/approvals?state=${raw}`;
+
+    await handleApprovalRoute(
+      req(url),
+      res,
+      "/api/approvals",
+      "GET",
+      { runtime },
+      helpers,
+    );
+
+    expect(helpers.error).not.toHaveBeenCalled();
+    expect(queueList).toHaveBeenCalledWith({
+      subjectUserId: null,
+      state: expected,
+      action: null,
+      limit: 50,
+    });
+  });
+});
+
+describe("parseApprovalState", () => {
+  it("omitted and empty keep the pending default", () => {
+    expect(parseApprovalState(null)).toEqual({ ok: true, state: "pending" });
+    expect(parseApprovalState("")).toEqual({ ok: true, state: "pending" });
+  });
+
+  it("accepts all and the lifecycle identities", () => {
+    expect(parseApprovalState("all")).toEqual({ ok: true, state: null });
+    expect(parseApprovalState("done")).toEqual({ ok: true, state: "done" });
+    expect(parseApprovalState("rejected")).toEqual({
+      ok: true,
+      state: "rejected",
+    });
+  });
+
+  it("rejects unknown tokens instead of returning pending", () => {
+    expect(parseApprovalState("DONE").ok).toBe(false);
+    expect(parseApprovalState("complete").ok).toBe(false);
+    expect(parseApprovalState("ALL").ok).toBe(false);
   });
 });
