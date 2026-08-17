@@ -6,8 +6,15 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import type { VertexModelRegistryService } from "@/lib/services/vertex-model-registry";
 
-const listVisibleAssignments = mock(async () => [{ id: "asg-1" }]);
+type ListVisibleAssignmentsArgs = Parameters<
+  VertexModelRegistryService["listVisibleAssignments"]
+>;
+
+const listVisibleAssignments = mock(
+  async (..._args: ListVisibleAssignmentsArgs) => [{ id: "asg-1" }],
+);
 
 mock.module("@/lib/auth", () => ({
   requireAuthOrApiKeyWithOrg: async () => ({
@@ -40,10 +47,8 @@ describe("GET /api/training/vertex/assignments scope identity", () => {
       const body = (await response.json()) as { assignments: { id: string }[] };
       expect(body.assignments).toEqual([{ id: "asg-1" }]);
       expect(listVisibleAssignments).toHaveBeenCalledTimes(1);
-      const filter = listVisibleAssignments.mock.calls[0][1] as {
-        scope?: string;
-      };
-      expect(filter.scope).toBeUndefined();
+      const filter = listVisibleAssignments.mock.calls[0]?.[1];
+      expect(filter?.scope).toBeUndefined();
     },
   );
 
@@ -53,10 +58,8 @@ describe("GET /api/training/vertex/assignments scope identity", () => {
       const response = await app.request(`/?scope=${token}`);
       expect(response.status).toBe(200);
       expect(listVisibleAssignments).toHaveBeenCalledTimes(1);
-      const filter = listVisibleAssignments.mock.calls[0][1] as {
-        scope?: string;
-      };
-      expect(filter.scope).toBe(token);
+      const filter = listVisibleAssignments.mock.calls[0]?.[1];
+      expect(filter?.scope).toBe(token);
     },
   );
 
