@@ -70,6 +70,21 @@ export class UnionFind<T> {
 		return grouped;
 	}
 
+	/** True if `left` and `right` share the same root. */
+	connected(left: T, right: T): boolean {
+		return this.find(left) === this.find(right);
+	}
+
+	/** Number of registered nodes. */
+	get size(): number {
+		return this.parent.size;
+	}
+
+	/** Drop all registered nodes. */
+	clear(): void {
+		this.parent.clear();
+	}
+
 	/** Return the members of the component containing `value`. */
 	componentOf(value: T): T[] {
 		if (!this.parent.has(value)) {
