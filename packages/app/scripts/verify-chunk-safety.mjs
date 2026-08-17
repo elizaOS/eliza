@@ -228,6 +228,36 @@ if (entryClosure) {
   );
 }
 
+// The marketing homepage lazy-loads its WebGL background after useful content
+// renders. React Three Fiber and wallet providers both consume the local
+// useSyncExternalStore shim; without an explicit neutral chunk assignment,
+// Rollup can fold that shared shim into vendor-crypto and make the decorative
+// shader fetch the entire wallet graph. Keep crypto off this visual-only path.
+const shaderChunks = files.filter((file) =>
+  /^ShaderBackground-[^.]+\.js$/.test(file),
+);
+const shaderCryptoImports = shaderChunks.filter((file) =>
+  /from["']\.\/vendor-crypto-[^"']+\.js["']/.test(
+    readFileSync(path.join(distAssets, file), "utf8"),
+  ),
+);
+if (shaderCryptoImports.length > 0) {
+  console.error(
+    "[verify-chunk-safety] FAIL: the marketing shader statically imports vendor-crypto:",
+  );
+  for (const file of shaderCryptoImports) console.error(`  - ${file}`);
+  console.error(
+    "\nPin shared browser shims to runtime-shims so the decorative homepage\n" +
+      "background never downloads wallet/crypto code.",
+  );
+  process.exit(1);
+}
+if (shaderChunks.length > 0) {
+  console.log(
+    `[verify-chunk-safety] OK: ${shaderChunks.length} marketing shader chunk(s) do not import vendor-crypto.`,
+  );
+}
+
 // ── Web SPA base regression guard ──
 // build:web sets ELIZA_WEB_ABSOLUTE_BASE=1 → Vite base "/". A relative base
 // ("./assets/…") boots fine at depth-1 routes (/, /login) but 404s its bundle

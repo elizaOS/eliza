@@ -43,6 +43,28 @@ const ShaderBackground = lazy(
   () => import("@/components/ShaderBackground/ShaderBackground"),
 );
 
+function DeferredShaderBackground(): React.JSX.Element | null {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => setReady(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== 0) window.cancelAnimationFrame(secondFrame);
+    };
+  }, []);
+
+  if (!ready) return null;
+  return (
+    <Suspense fallback={null}>
+      <ShaderBackground />
+    </Suspense>
+  );
+}
+
 type DemoCard = LandingDemoCard;
 type DemoStep = LandingDemoStep;
 
@@ -691,9 +713,7 @@ export default function LandingPage() {
           });
   return (
     <div className="landing-page theme-app">
-      <Suspense fallback={null}>
-        <ShaderBackground />
-      </Suspense>
+      <DeferredShaderBackground />
       <div aria-hidden="true" className="landing-grain" />
       <header className="landing-header">
         <a

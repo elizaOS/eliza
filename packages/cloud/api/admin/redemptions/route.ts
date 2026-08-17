@@ -28,6 +28,28 @@ const AdminActionSchema = z.object({
   reason: z.string().max(1000).optional(),
 });
 
+const ADMIN_REDEMPTION_STATUSES: TokenRedemptionStatus[] = [
+  "pending",
+  "approved",
+  "processing",
+  "completed",
+  "failed",
+  "rejected",
+  "expired",
+];
+
+function parseAdminRedemptionStatusFilter(
+  raw: string | undefined,
+): TokenRedemptionStatus[] | null {
+  const statusFilter = raw || "pending";
+  if (statusFilter === "all") return ADMIN_REDEMPTION_STATUSES;
+  if (statusFilter === "review") return ["pending"];
+  if ((ADMIN_REDEMPTION_STATUSES as readonly string[]).includes(statusFilter)) {
+    return [statusFilter as TokenRedemptionStatus];
+  }
+  return null;
+}
+
 const app = new Hono<AppEnv>();
 
 app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
@@ -35,28 +57,20 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     const { user: adminUser } = await requireAdmin(c);
 
     const statusFilter = c.req.query("status") || "pending";
+    const statusArray = parseAdminRedemptionStatusFilter(c.req.query("status"));
+    if (statusArray === null) {
+      return c.json(
+        {
+          success: false,
+          error: `Invalid status: ${statusFilter}. Must be one of: pending, approved, processing, completed, failed, rejected, expired, all, review`,
+        },
+        400,
+      );
+    }
     const networkFilter = c.req.query("network") || "all";
     const searchQuery = c.req.query("search")?.trim().toLowerCase() || "";
     const limitParam = c.req.query("limit");
     const limit = parseClampedLimit(limitParam, 50);
-
-    const allowedStatuses: TokenRedemptionStatus[] = [
-      "pending",
-      "approved",
-      "processing",
-      "completed",
-      "failed",
-      "rejected",
-      "expired",
-    ];
-    const statusArray: TokenRedemptionStatus[] =
-      statusFilter === "all"
-        ? allowedStatuses
-        : statusFilter === "review"
-          ? ["pending"]
-          : allowedStatuses.includes(statusFilter as TokenRedemptionStatus)
-            ? [statusFilter as TokenRedemptionStatus]
-            : ["pending"];
 
     const [allRedemptions, counts] = await Promise.all([
       tokenRedemptionsRepository.listForAdmin(statusArray, limit),

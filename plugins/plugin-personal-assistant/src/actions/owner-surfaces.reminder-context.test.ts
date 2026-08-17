@@ -27,7 +27,9 @@ vi.mock("./lib/scheduling-handler.js", () => ({
   runSchedulingNegotiationHandler: vi.fn(),
 }));
 vi.mock("./money.js", () => ({
+  MONEY_CONTEXTS: [],
   MONEY_PARAMETERS: [],
+  MONEY_TAGS: [],
   OWNER_FINANCE_SIMILES: [],
   runMoneyHandler: vi.fn(),
 }));

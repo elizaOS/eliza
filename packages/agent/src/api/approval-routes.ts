@@ -125,12 +125,26 @@ function parseLimit(raw: string | null): number | null {
   return Math.min(parsed, 500);
 }
 
-function parseState(raw: string | null): ApprovalRequestState | null {
-  if (!raw) return "pending";
-  if (raw === "all") return null;
-  return APPROVAL_STATES.includes(raw as ApprovalRequestState)
-    ? (raw as ApprovalRequestState)
-    : "pending";
+/**
+ * Parse the approvals `state` query. Omitted/empty keeps the pending default.
+ * `all` means no state filter. A known lifecycle state selects that queue.
+ * Any other token used to fall through to pending, so `state=DONE` or
+ * `state=complete` silently listed pending work.
+ */
+export function parseApprovalState(
+  raw: string | null,
+):
+  | { ok: true; state: ApprovalRequestState | null }
+  | { ok: false; message: string } {
+  if (raw === null || raw === "") return { ok: true, state: "pending" };
+  if (raw === "all") return { ok: true, state: null };
+  if (APPROVAL_STATES.includes(raw as ApprovalRequestState)) {
+    return { ok: true, state: raw as ApprovalRequestState };
+  }
+  return {
+    ok: false,
+    message: `state must be one of: all, ${APPROVAL_STATES.join(", ")}`,
+  };
 }
 
 function getAgentApprovalQueue(
@@ -327,9 +341,14 @@ export async function handleApprovalRoute(
     helpers.error(res, "limit must be a positive integer", 400);
     return true;
   }
+  const parsedState = parseApprovalState(url.searchParams.get("state"));
+  if (!parsedState.ok) {
+    helpers.error(res, parsedState.message, 400);
+    return true;
+  }
   const filter: ApprovalListFilter = {
     subjectUserId: null,
-    state: parseState(url.searchParams.get("state")),
+    state: parsedState.state,
     action: null,
     limit,
   };

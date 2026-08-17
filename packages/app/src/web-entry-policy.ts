@@ -61,6 +61,22 @@ export function isHostedPublicPath(pathname: string): boolean {
   );
 }
 
+/** Whether the URL can use the marketing-only root without the auth router. */
+export function shouldUseMarketingHomeEntry(
+  input: WebEntryDecisionInput,
+): boolean {
+  if (
+    !input.webShellEnabled ||
+    input.chatHarnessEnabled ||
+    input.desktopShell ||
+    normalizePathname(input.pathname) !== "/"
+  ) {
+    return false;
+  }
+  const role = classifyElizaHostname(input.hostname).role;
+  return role === "marketing" || role === "legacy-marketing";
+}
+
 /** Decide which renderer entry may execute before any application modules load. */
 export function shouldUsePublicWebEntry(input: WebEntryDecisionInput): boolean {
   if (
@@ -73,6 +89,5 @@ export function shouldUsePublicWebEntry(input: WebEntryDecisionInput): boolean {
   if (isHostedPublicPath(input.pathname)) return true;
   if (normalizePathname(input.pathname) !== "/") return false;
   if (input.forceApexConsole) return true;
-  const role = classifyElizaHostname(input.hostname).role;
-  return role === "marketing" || role === "legacy-marketing";
+  return shouldUseMarketingHomeEntry(input);
 }

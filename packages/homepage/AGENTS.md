@@ -8,8 +8,9 @@ root and deployable artifact for both `eliza.app` and `cloud.eliza.app`.
 ## Purpose / role
 
 This package owns the public landing/download components, their assets, and
-focused source and visual regression tests. `packages/app/src/main.tsx` imports
-the approved `embedded-home` and `embedded-downloads` entrypoints, and
+focused source and visual regression tests. The app renderer selector imports
+the approved `embedded-home` root through its lightweight marketing entry and
+the remaining public shell imports `embedded-downloads`; then
 `packages/app/scripts/sync-homepage-assets.mjs` materializes the required public
 files into the unified app build. The older route harness remains test-only so
 its component coverage and reviewed visual baselines stay available; it is not

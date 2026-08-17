@@ -224,7 +224,11 @@ describe("Shared reminder relative-delay runtime authority", () => {
       expect(result.actionResults?.[0]?.success).toBe(false);
       expect(scheduledInputs).toHaveLength(0);
     } else {
-      expect(modelCall).toBe(3);
+      // Two model calls, not three: the REMINDERS action returns a verified
+      // user-facing confirmation (`verifiedUserFacing: true`), and the planner
+      // loop finishes deterministically by echoing that verbatim text instead
+      // of spending a third model call on the completion evaluator.
+      expect(modelCall).toBe(2);
       expect(result.actionResults?.[0]?.success).toBe(true);
       expect(scheduledInputs).toHaveLength(1);
       expect(scheduledInputs[0]?.trigger).toEqual({ kind: "once", atIso });

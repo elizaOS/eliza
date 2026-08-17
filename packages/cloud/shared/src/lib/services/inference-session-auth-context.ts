@@ -142,6 +142,7 @@ function toResolution(
 
 async function enforceStrongSessionBoundary(
   decision: InferenceSessionAuthDecision,
+  stewardUserId: string,
   issuedAt: number,
   source: "cache" | "origin",
 ): Promise<InferenceSessionAuthResolution> {
@@ -151,12 +152,13 @@ async function enforceStrongSessionBoundary(
     await assertInferenceCredentialActive(resolved.ctx.orgId, {
       kind: "steward_session",
       userId: resolved.ctx.userId,
+      stewardUserId,
       issuedAt,
     });
     return resolved;
   } catch (error) {
     if (error instanceof InferenceCredentialRevokedError) {
-      return error.reason === "session_revoked"
+      return error.reason === "session_revoked" || error.reason === "session_binding_revoked"
         ? { kind: "rejected", status: 401 }
         : { kind: "suspended", userId: resolved.ctx.userId };
     }
@@ -277,6 +279,7 @@ export async function resolveInferenceSessionAuthContext(
         stewardUserId: claims.userId,
         admission: await loadInferenceAdmissionSnapshot(user.organization_id),
       },
+      claims.userId,
       claims.issuedAt,
       "origin",
     );
@@ -312,7 +315,7 @@ export async function resolveInferenceSessionAuthContext(
           });
         options.executionCtx.waitUntil(refresh);
       }
-      return await enforceStrongSessionBoundary(cached, claims.issuedAt, "cache");
+      return await enforceStrongSessionBoundary(cached, claims.userId, claims.issuedAt, "cache");
     }
   }
 
@@ -352,7 +355,12 @@ export async function resolveInferenceSessionAuthContext(
     },
     options.useAuthCache === true,
   );
-  const resolved = await enforceStrongSessionBoundary(decision, claims.issuedAt, "origin");
+  const resolved = await enforceStrongSessionBoundary(
+    decision,
+    claims.userId,
+    claims.issuedAt,
+    "origin",
+  );
   if (resolved.kind === "rejected") {
     if (resolved.status === 401) throw AuthenticationError();
     throw ForbiddenError();

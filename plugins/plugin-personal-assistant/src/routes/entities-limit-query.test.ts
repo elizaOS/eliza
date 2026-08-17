@@ -1,7 +1,6 @@
 /**
- * GET /api/lifeops/entities?limit= must reject prefix-coerced tokens before
- * EntityStore.list. Malformed limits used to be dropped, so the knowledge
- * graph dumped every entity.
+ * Deterministic HTTP route coverage verifies that entity-list limits are
+ * canonical positive integers before the knowledge-graph store is queried.
  */
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
@@ -131,6 +130,9 @@ describe("GET /api/lifeops/entities limit query", () => {
     "abc",
     "-1",
     "50abc",
+    " 2",
+    "2 ",
+    " ",
     "9007199254740992",
   ])("rejects limit=%s with 400 before store.list", async (limit) => {
     const { ctx, res } = buildCtx(`?limit=${encodeURIComponent(limit)}`);

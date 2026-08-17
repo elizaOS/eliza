@@ -336,6 +336,14 @@ export async function handleWorkbenchVfsRoutes(
   }
 }
 
+function parseWorkbenchFileEncoding(
+  raw: string | null,
+): "utf-8" | "base64" | null {
+  if (raw === null || raw === "") return "utf-8";
+  if (raw === "utf-8" || raw === "base64") return raw;
+  return null;
+}
+
 async function handleFiles(
   ctx: WorkbenchRouteContext,
   vfs: VirtualFilesystemService,
@@ -357,8 +365,13 @@ async function handleFile(
   }
 
   if (method === "GET") {
-    const encoding =
-      url.searchParams.get("encoding") === "base64" ? "base64" : "utf-8";
+    const encoding = parseWorkbenchFileEncoding(
+      url.searchParams.get("encoding"),
+    );
+    if (encoding === null) {
+      error(res, "encoding must be utf-8 or base64", 400);
+      return;
+    }
     if (encoding === "base64") {
       const bytes = await vfs.readFileBytes(queryPath ?? "");
       json(res, {

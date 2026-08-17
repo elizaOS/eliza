@@ -45,6 +45,7 @@ const EXPORT_LIMITS = {
   MAX_ROWS_WARNING: 50_000,
 } as const;
 const SUPPORTED_FORMATS = new Set(["csv", "json", "excel", "xlsx"]);
+const SUPPORTED_TYPES = new Set(["timeseries", "users", "providers", "models"]);
 
 const app = new Hono<AppEnv>();
 
@@ -102,6 +103,14 @@ app.get("/", async (c) => {
     }
     const granularity = granularityParam as TimeGranularity;
     const dataType = c.req.query("type") || "timeseries";
+    if (!SUPPORTED_TYPES.has(dataType)) {
+      return c.json(
+        {
+          error: `Invalid type: ${dataType}. Must be one of: timeseries, users, providers, models`,
+        },
+        400,
+      );
+    }
     const includeMetadata = c.req.query("includeMetadata") === "true";
 
     const exportOptions: ExportOptions = {

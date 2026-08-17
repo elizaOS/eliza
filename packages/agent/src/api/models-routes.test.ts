@@ -76,6 +76,53 @@ describe("handleModelsRoutes catalog field", () => {
     expect(ctx.getOrFetchProvider).not.toHaveBeenCalled();
   });
 
+  it("accepts the refresh=true boolean identity for catalogOnly", async () => {
+    const { ctx, json } = makeCtx("/api/models?catalogOnly=true");
+    await expect(handleModelsRoutes(ctx as never)).resolves.toBe(true);
+    expect(json).toHaveBeenCalledWith(ctx.res, {
+      providers: {},
+      catalog: fakeCatalog,
+    });
+    expect(ctx.getOrFetchAllProviders).not.toHaveBeenCalled();
+    expect(ctx.getOrFetchProvider).not.toHaveBeenCalled();
+  });
+
+  it("accepts the catalogOnly=1 boolean identity for refresh", async () => {
+    const unlinkFile = vi.fn();
+    const { ctx, json } = makeCtx("/api/models?provider=openai&refresh=1");
+    ctx.unlinkFile = unlinkFile;
+    await expect(handleModelsRoutes(ctx as never)).resolves.toBe(true);
+    expect(unlinkFile).toHaveBeenCalledWith("/tmp/openai.json");
+    expect(ctx.getOrFetchProvider).toHaveBeenCalledWith("openai", true);
+    expect(json).toHaveBeenCalledWith(ctx.res, {
+      provider: "openai",
+      models: [{ id: "m1" }],
+      catalog: fakeCatalog,
+    });
+  });
+
+  it("rejects non-boolean catalogOnly and refresh before any provider fetch", async () => {
+    for (const query of [
+      "catalogOnly=truee",
+      "catalogOnly=1e2",
+      "catalogOnly=yesplease",
+      "refresh=truee",
+      "refresh=1e2",
+      "refresh=12px",
+      "catalogOnly=1&refresh=1e2",
+    ]) {
+      const { ctx, json } = makeCtx(`/api/models?${query}`);
+      await expect(handleModelsRoutes(ctx as never)).resolves.toBe(true);
+      expect(json, query).toHaveBeenCalledWith(
+        ctx.res,
+        { error: expect.stringMatching(/must be a boolean/) },
+        400,
+      );
+      expect(ctx.getOrFetchAllProviders, query).not.toHaveBeenCalled();
+      expect(ctx.getOrFetchProvider, query).not.toHaveBeenCalled();
+    }
+  });
+
   it("declines non-matching routes", async () => {
     const { ctx } = makeCtx("/api/models");
     ctx.pathname = "/api/models/config";
