@@ -225,13 +225,14 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
       if (!existing) {
         throw new Error(`commitApply: task ${task.taskId} not found`);
       }
-      const receipts = existing.metadata?.schedulingApplyReceipts;
-      if (
-        receipts !== null &&
-        typeof receipts === "object" &&
-        !Array.isArray(receipts) &&
-        receiptKey in receipts
-      ) {
+      const storedReceipts = existing.metadata?.schedulingApplyReceipts;
+      const receiptMarkers =
+        storedReceipts !== null &&
+        typeof storedReceipts === "object" &&
+        !Array.isArray(storedReceipts)
+          ? (storedReceipts as Record<string, unknown>)
+          : {};
+      if (Object.hasOwn(receiptMarkers, receiptKey)) {
         const replayedCommit = applyCommits.get(commit.logId);
         if (!replayedCommit) {
           throw new Error(
@@ -244,11 +245,22 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
           commit: structuredClone(replayedCommit),
         };
       }
-      map.set(task.taskId, structuredClone(task));
+      // The caller proposal may predate another distinct-key commit. Its task
+      // mutation remains authoritative, but receipt identity is monotonic and
+      // must merge from the current stored row just like the SQL adapter does.
+      const committedTask = structuredClone(task);
+      committedTask.metadata = {
+        ...(committedTask.metadata ?? {}),
+        schedulingApplyReceipts: {
+          ...receiptMarkers,
+          [receiptKey]: true,
+        },
+      };
+      map.set(task.taskId, committedTask);
       applyCommits.set(commit.logId, structuredClone(commit));
       return {
         kind: "applied",
-        task: structuredClone(task),
+        task: structuredClone(committedTask),
         commit: structuredClone(commit),
       };
     },
