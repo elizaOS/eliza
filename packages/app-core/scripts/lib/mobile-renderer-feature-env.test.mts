@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   mobileRendererRequiresFreshBuild,
+  mobileRendererUnstampedFeatureProblem,
   resolveMobileRendererFeatureEnv,
 } from "./mobile-renderer-feature-env.mjs";
 
@@ -67,5 +68,27 @@ describe("mobileRendererRequiresFreshBuild", () => {
     for (const platform of ["android", "android-cloud", "ios-overlay"]) {
       expect(mobileRendererRequiresFreshBuild({ platform })).toBe(false);
     }
+  });
+});
+
+describe("mobileRendererUnstampedFeatureProblem", () => {
+  it("requires explicit risk acknowledgement only for features absent from the stamp", () => {
+    expect(
+      mobileRendererUnstampedFeatureProblem({ platform: "ios-local" }),
+    ).toContain("runtime chooser");
+    expect(
+      mobileRendererUnstampedFeatureProblem({
+        platform: "android-cloud-debug",
+      }),
+    ).toContain("realtime voice flags");
+    for (const platform of ["ios", "ios-overlay", "android", "android-cloud"]) {
+      expect(mobileRendererUnstampedFeatureProblem({ platform })).toBeNull();
+    }
+  });
+
+  it("rejects a missing platform", () => {
+    expect(() => mobileRendererUnstampedFeatureProblem()).toThrow(
+      /platform is required/,
+    );
   });
 });

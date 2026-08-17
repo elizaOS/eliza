@@ -103,6 +103,7 @@ import {
 } from "./lib/mobile-lane-stamp.mjs";
 import {
   mobileRendererRequiresFreshBuild,
+  mobileRendererUnstampedFeatureProblem,
   resolveMobileRendererFeatureEnv,
 } from "./lib/mobile-renderer-feature-env.mjs";
 import {
@@ -1189,8 +1190,13 @@ async function buildWeb(platform) {
     // forced with ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1.
     const allowStale =
       process.env.ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE === "1";
-    if (status.problems.length > 0) {
-      const detail = formatMobileWebDistProblems(status.problems);
+    const reuseProblems = [...status.problems];
+    const unstampedFeatureProblem = mobileRendererUnstampedFeatureProblem({
+      platform,
+    });
+    if (unstampedFeatureProblem) reuseProblems.push(unstampedFeatureProblem);
+    if (reuseProblems.length > 0) {
+      const detail = formatMobileWebDistProblems(reuseProblems);
       if (!allowStale) {
         throw new Error(
           `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD=1 refused — the existing web build is stale or mismatched:\n${detail}\n` +
