@@ -161,6 +161,30 @@ app.post("/", async (c) => {
   try {
     const identity = await requireServiceKey(c);
 
+    // Service-create wait identity, leftover tax after agent-provision
+    // sync (#21136) and agent-resume sync (#21099). sync=TRUE used to
+    // silently stay async (202 job) instead of the blocking 201 fallback.
+    const syncValues = c.req.queries("sync") ?? [];
+    const requestedSync = syncValues[0];
+    if (
+      syncValues.length > 1 ||
+      (requestedSync != null &&
+        requestedSync !== "" &&
+        requestedSync !== "true" &&
+        requestedSync !== "false")
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "Invalid sync",
+          message:
+            'sync must be specified at most once as "true" or "false".',
+        },
+        400,
+      );
+    }
+    const sync = requestedSync === "true";
+
     const body = await c.req.json().catch(() => null);
     if (!body) throw ValidationError("Invalid JSON body");
 
@@ -172,7 +196,6 @@ app.post("/", async (c) => {
     }
 
     const p = parsed.data;
-    const sync = c.req.query("sync") === "true";
     const agentName = p.character?.name || p.tokenName;
     const characterConfig = recordFromUnknown(p.character?.config);
     const waifuAgentId = stringFromRecord(characterConfig, "waifuAgentId");
