@@ -35,6 +35,20 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/**
+ * Canonical positive integer for untrusted /api/dev query tunables.
+ * Number("1e2") === 100 used to become a real maxLines / maxBytes / limit.
+ */
+export function parseDevPositiveInt(
+  raw: string | null,
+): number | "omit" | "invalid" {
+  if (raw === null || raw === "") return "omit";
+  if (!/^[1-9]\d*$/.test(raw)) return "invalid";
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return "invalid";
+  return parsed;
+}
+
 function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
   const body = asRecord(log.body);
   const metadata = asRecord(body?.metadata);
@@ -278,13 +292,19 @@ export async function handleDevCompatRoutes(
       });
       return true;
     }
-    const maxLinesRaw = url.searchParams.get("maxLines");
-    const maxBytesRaw = url.searchParams.get("maxBytes");
-    const maxLines = maxLinesRaw ? Number(maxLinesRaw) : undefined;
-    const maxBytes = maxBytesRaw ? Number(maxBytesRaw) : undefined;
+    const maxLines = parseDevPositiveInt(url.searchParams.get("maxLines"));
+    const maxBytes = parseDevPositiveInt(url.searchParams.get("maxBytes"));
+    if (maxLines === "invalid" || maxBytes === "invalid") {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "maxLines and maxBytes must be canonical positive integers",
+      );
+      return true;
+    }
     const result = readDevConsoleLogTail(logPath, {
-      maxLines: Number.isFinite(maxLines) ? maxLines : undefined,
-      maxBytes: Number.isFinite(maxBytes) ? maxBytes : undefined,
+      maxLines: maxLines === "omit" ? undefined : maxLines,
+      maxBytes: maxBytes === "omit" ? undefined : maxBytes,
     });
     if (result.ok === false) {
       sendJsonResponse(res, 404, { error: result.error });
@@ -311,16 +331,21 @@ export async function handleDevCompatRoutes(
     if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
-    const limitRaw = url.searchParams.get("limit");
-    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const limit = parseDevPositiveInt(url.searchParams.get("limit"));
+    if (limit === "invalid") {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "limit must be a canonical positive integer",
+      );
+      return true;
+    }
     const { buildVoiceLatencyDevPayload } = await import(
       "@elizaos/plugin-local-inference/services"
     );
     const payload = buildVoiceLatencyDevPayload(
       undefined,
-      Number.isFinite(limit) && (limit as number) > 0
-        ? (limit as number)
-        : undefined,
+      limit === "omit" ? undefined : limit,
     );
     sendJsonResponse(res, 200, payload);
     return true;
@@ -341,16 +366,21 @@ export async function handleDevCompatRoutes(
     if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
-    const limitRaw = url.searchParams.get("limit");
-    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const limit = parseDevPositiveInt(url.searchParams.get("limit"));
+    if (limit === "invalid") {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "limit must be a canonical positive integer",
+      );
+      return true;
+    }
     const { buildDeviceResourceMetricsDevPayload } = await import(
       "@elizaos/plugin-local-inference/services"
     );
     const payload = buildDeviceResourceMetricsDevPayload(
       undefined,
-      Number.isFinite(limit) && (limit as number) > 0
-        ? (limit as number)
-        : undefined,
+      limit === "omit" ? undefined : limit,
     );
     sendJsonResponse(res, 200, payload);
     return true;
@@ -369,8 +399,15 @@ export async function handleDevCompatRoutes(
     if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
-    const limitRaw = url.searchParams.get("limit");
-    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const limit = parseDevPositiveInt(url.searchParams.get("limit"));
+    if (limit === "invalid") {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "limit must be a canonical positive integer",
+      );
+      return true;
+    }
     const { buildInferenceTimingDevPayload } = await import("@elizaos/core");
     const persistedTurns = state.current
       ? (
@@ -385,9 +422,7 @@ export async function handleDevCompatRoutes(
           )
       : [];
     const payload = buildInferenceTimingDevPayload(
-      Number.isFinite(limit) && (limit as number) > 0
-        ? (limit as number)
-        : undefined,
+      limit === "omit" ? undefined : limit,
       persistedTurns,
     );
     sendJsonResponse(res, 200, payload);
