@@ -16,16 +16,26 @@
  * - Objects become `key: value` fragments
  * - Scalars are stringified
  */
-export function flattenTextValues(
+export function flattenTextValues(value: unknown): string[] {
+	return flattenTextValuesWithAncestors(value, new WeakSet());
+}
+
+function flattenTextValuesWithAncestors(
 	value: unknown,
-	seen: WeakSet<object> = new WeakSet(),
+	ancestors: WeakSet<object>,
 ): string[] {
 	if (Array.isArray(value)) {
-		if (seen.has(value)) {
+		if (ancestors.has(value)) {
 			return [];
 		}
-		seen.add(value);
-		return value.flatMap((item) => flattenTextValues(item, seen));
+		ancestors.add(value);
+		try {
+			return value.flatMap((item) =>
+				flattenTextValuesWithAncestors(item, ancestors),
+			);
+		} finally {
+			ancestors.delete(value);
+		}
 	}
 
 	if (value == null) {
@@ -38,16 +48,23 @@ export function flattenTextValues(
 	}
 
 	if (typeof value === "object") {
-		if (seen.has(value)) {
+		if (ancestors.has(value)) {
 			return [];
 		}
-		seen.add(value);
-		return Object.entries(value as Record<string, unknown>).flatMap(
-			([key, inner]) => {
-				const innerText = flattenTextValues(inner, seen).join(", ");
-				return innerText ? [`${key}: ${innerText}`] : [];
-			},
-		);
+		ancestors.add(value);
+		try {
+			return Object.entries(value as Record<string, unknown>).flatMap(
+				([key, inner]) => {
+					const innerText = flattenTextValuesWithAncestors(
+						inner,
+						ancestors,
+					).join(", ");
+					return innerText ? [`${key}: ${innerText}`] : [];
+				},
+			);
+		} finally {
+			ancestors.delete(value);
+		}
 	}
 
 	return [String(value)];

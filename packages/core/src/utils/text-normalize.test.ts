@@ -104,6 +104,15 @@ describe("flattenTextValues", () => {
 			circularArr.push(circularArr);
 			expect(flattenTextValues(circularArr)).toEqual(["first"]);
 		});
+
+		it("preserves repeated references that are not cycles", () => {
+			const shared = { value: "kept" };
+
+			expect(flattenTextValues({ first: shared, second: shared })).toEqual([
+				"first: value: kept",
+				"second: value: kept",
+			]);
+		});
 	});
 
 	describe("non-plain objects have no enumerable own entries and are dropped", () => {
