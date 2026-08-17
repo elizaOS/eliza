@@ -52,6 +52,10 @@ function normalizeSpeakerName(
   options: NormalizeCharacterMessageExamplesOptions,
 ): string {
   const fallbackMissingSpeaker = options.fallbackMissingSpeaker ?? true;
+  const safeAgentName =
+    typeof fallbackAgentName === "string" && fallbackAgentName.trim()
+      ? fallbackAgentName.trim()
+      : "Agent";
 
   if (typeof rawName === "string" && rawName.trim()) {
     const trimmed = rawName.trim();
@@ -64,7 +68,7 @@ function normalizeSpeakerName(
       normalized === "model" ||
       normalized === "{{agentname}}"
     ) {
-      return fallbackAgentName;
+      return safeAgentName;
     }
 
     if (
@@ -79,7 +83,7 @@ function normalizeSpeakerName(
     return trimmed;
   }
 
-  return fallbackMissingSpeaker ? fallbackAgentName : "";
+  return fallbackMissingSpeaker ? safeAgentName : "";
 }
 
 function normalizeConversation(
@@ -147,6 +151,10 @@ export function normalizeCharacterMessageExamples(
   fallbackAgentName = "Agent",
   options: NormalizeCharacterMessageExamplesOptions = {},
 ): MessageExampleGroup[] {
+  const safeAgentName =
+    typeof fallbackAgentName === "string" && fallbackAgentName.trim()
+      ? fallbackAgentName.trim()
+      : "Agent";
   let parsed = input;
 
   if (typeof input === "string") {
@@ -183,6 +191,6 @@ export function normalizeCharacterMessageExamples(
         : [source];
 
   return groups
-    .map((group) => normalizeConversation(group, fallbackAgentName, options))
+    .map((group) => normalizeConversation(group, safeAgentName, options))
     .filter((group): group is MessageExampleGroup => Boolean(group));
 }
