@@ -387,7 +387,7 @@ export async function captureChangeSet(
     if (diff.length > MAX_DIFF_CHARS) break;
   }
   const overLength = diff.length > MAX_DIFF_CHARS;
-  if (overLength) diff = `${diff.slice(0, MAX_DIFF_CHARS)}\n… [diff truncated]`;
+  if (overLength) diff = `${diff.slice(0, MAX_DIFF_CHARS - 19)}\n… [diff truncated]`;
 
   return {
     changedFiles,
@@ -439,7 +439,7 @@ function captureToolPathOnlyChangeSet(
   }
 
   const overLength = diff.length > MAX_DIFF_CHARS;
-  if (overLength) diff = `${diff.slice(0, MAX_DIFF_CHARS)}\n… [diff truncated]`;
+  if (overLength) diff = `${diff.slice(0, MAX_DIFF_CHARS - 19)}\n… [diff truncated]`;
 
   return {
     changedFiles,
