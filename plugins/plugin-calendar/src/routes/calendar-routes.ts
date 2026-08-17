@@ -113,6 +113,39 @@ export interface CalendarRouteDeps {
   mutationGateway: CalendarOwnerMutationGateway;
 }
 
+class CalendarForceSyncError extends Error {
+  constructor(message = "Invalid forceSync") {
+    super(message);
+    this.name = "CalendarForceSyncError";
+  }
+}
+
+/**
+ * GET /api/lifeops/calendar/feed `forceSync` is refresh-now identity,
+ * leftover tax after LifeOps inbox flags (#20930). Stock develop accepted
+ * `1` / `TRUE` as force-sync via case-folded boolean identities, so a
+ * non-exact token changed the live connector pull instead of a 400.
+ * Missing / empty still means no force-sync. includeHiddenCalendars stays
+ * untouched.
+ */
+function parseForceSyncQuery(searchParams: URLSearchParams): boolean | undefined {
+  const requested = searchParams.getAll("forceSync");
+  if (requested.length > 1) {
+    throw new CalendarForceSyncError();
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return undefined;
+  }
+  if (raw === "true") {
+    return true;
+  }
+  if (raw === "false") {
+    return false;
+  }
+  throw new CalendarForceSyncError();
+}
+
 /**
  * Handle a calendar route. Resolves to `true` when the request matched a
  * calendar path (and was served/short-circuited), or `false` when no calendar
@@ -146,6 +179,16 @@ export async function handleCalendarRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/calendar/feed") {
     if (deps.rateLimit("google_api_read")) return true;
+    let forceSync: boolean | undefined;
+    try {
+      forceSync = parseForceSyncQuery(q);
+    } catch (forceSyncError) {
+      if (forceSyncError instanceof CalendarForceSyncError) {
+        deps.json({ error: forceSyncError.message }, 400);
+        return true;
+      }
+      throw forceSyncError;
+    }
     return deps.runRoute(async (service) => {
       const request: GetLifeOpsCalendarFeedRequest = {
         mode: deps.parseConnectorMode(q.get("mode")),
@@ -158,7 +201,7 @@ export async function handleCalendarRoutes(
         timeMin: q.get("timeMin") ?? undefined,
         timeMax: q.get("timeMax") ?? undefined,
         timeZone: q.get("timeZone") ?? undefined,
-        forceSync: deps.parseBoolean(q.get("forceSync"), "forceSync"),
+        forceSync,
         grantId: q.get("grantId") ?? undefined,
       };
       deps.json(await service.getCalendarFeed(url, request));
