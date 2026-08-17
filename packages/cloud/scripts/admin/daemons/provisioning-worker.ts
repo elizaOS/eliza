@@ -210,10 +210,10 @@ function parsePositiveInt(
     }
     return parsed;
   }
-  // parseInt("1e4", 10) === 1 would silently set a 1ms poll loop.
-  // Prefix-numeric tokens fail closed. Non-numeric garbage still falls back
-  // so documented "nope"/"soon" knobs keep their default.
-  if (/^[-+0-9]/.test(value)) {
+  // Preserve the old parser's boundary: anything it could prefix-coerce,
+  // including after leading whitespace, must now fail closed. Fully
+  // non-numeric "nope"/"soon" values retain their documented fallback.
+  if (!Number.isNaN(Number.parseInt(value, 10))) {
     throw new Error(
       `${label} must be a canonical positive integer (received ${JSON.stringify(value)})`,
     );
