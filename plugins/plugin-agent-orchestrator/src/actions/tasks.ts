@@ -605,7 +605,15 @@ function buildSwarmRoomMetadata(
   add(taskRoomId, "task");
   add(worktreeRoomId, "worktree");
   return {
-    originRoomId: message.roomId,
+    // Chained spawns must keep the USER'S room as origin. A synthetic
+    // task_complete inbound runs its planner turn inside the minted TASK room;
+    // stamping message.roomId there made the follow-up session's completions
+    // deliver into a room no connector can map (live 2026-08-17: "Could not
+    // resolve Discord channel ID for room 0314…" — the user saw silence). The
+    // router stamps the true origin on its synthetic inbounds; inherit it.
+    originRoomId:
+      pickRoutingString(params, content, metadata, "originRoomId") ??
+      message.roomId,
     taskRoomId,
     ...(worktreeRoomId ? { worktreeRoomId } : {}),
     swarmRooms: [...roomMap.values()],
