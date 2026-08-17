@@ -66,7 +66,16 @@ describe("GET /api/v1/admin/containers/ingress-map format identity", () => {
       expect(response.status).toBe(200);
       const body = (await response.json()) as {
         success: boolean;
-        data: { entries: Array<{ host: string; upstream: string }> };
+        data: {
+          entries: Array<{
+            host: string;
+            upstream: string;
+            containerId: string;
+            containerName: string;
+            organizationId: string;
+            status: string;
+          }>;
+        };
       };
       expect(body.success).toBe(true);
       expect(body.data.entries).toEqual([
