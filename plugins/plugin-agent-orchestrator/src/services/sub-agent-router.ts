@@ -65,6 +65,7 @@ import {
 import {
   createRouterLoopState,
   type RouterLoopState,
+  requestVoiceKeyForMeta,
   routerLoopTransition,
 } from "./router-loop-guard.js";
 import {
@@ -734,6 +735,94 @@ export class SubAgentRouter extends Service {
   /** The configured per-session round-trip cap (the runaway-loop force-stop limit). */
   getRoundTripCap(): number {
     return this.loopState.roundTripCap;
+  }
+
+  // ---- request-voice ledger ------------------------------------------------
+  // ONE user coding request (stable requestKey, across sessions AND respawns)
+  // gets at most one spawn ack and one user-facing terminal, with a single
+  // sanctioned provisional-result → parked supersede. The task service and
+  // coordinator consume these STRUCTURALLY via
+  // runtime.getService("ACPX_SUB_AGENT_ROUTER") + per-method typeof checks and
+  // fail open when the router is absent — the ledger can only ever REMOVE
+  // messages, never introduce a silent-drop mode of its own.
+
+  /**
+   * Claim the single spawn-ack slot for `requestKey`. True ⇒ this caller may
+   * post the ack; false ⇒ an ack already went out for this request.
+   */
+  claimRequestAck(requestKey: string, sessionId: string): boolean {
+    const t = routerLoopTransition(this.loopState, {
+      type: "claim_request_ack",
+      requestKey,
+      sessionId,
+    });
+    this.loopState = t.state;
+    return t.decision.kind === "ack_granted";
+  }
+
+  /**
+   * Claim the single user-facing terminal slot for `requestKey`. `granted`
+   * false ⇒ suppress the post (`holderKind` says what already holds the
+   * voice); `superseded` true ⇒ a sanctioned correction replaced the holder
+   * (park notice over a provisional result, or a genuine result over the
+   * failure narration that invited the retry).
+   */
+  claimRequestTerminal(
+    requestKey: string,
+    sessionId: string,
+    kind: "result" | "parked" | "failure",
+    provisional: boolean,
+  ): { granted: boolean; superseded?: boolean; holderKind?: string } {
+    const t = routerLoopTransition(this.loopState, {
+      type: "claim_request_terminal",
+      requestKey,
+      sessionId,
+      kind,
+      provisional,
+    });
+    this.loopState = t.state;
+    switch (t.decision.kind) {
+      case "terminal_granted":
+        return { granted: true };
+      case "terminal_granted_supersede":
+        return { granted: true, superseded: true };
+      case "terminal_denied":
+        return { granted: false, holderKind: t.decision.holderKind };
+      default:
+        // Unreachable: the two claim events only produce the three decisions
+        // above. Fail open (post) rather than invent a new silent-drop mode.
+        return { granted: true };
+    }
+  }
+
+  /** Whether `requestKey`'s terminal slot is settled (nothing may post after it). */
+  isRequestTerminalFinalized(requestKey: string): boolean {
+    return (
+      this.loopState.requestVoice.get(requestKey)?.terminal?.finalized === true
+    );
+  }
+
+  /**
+   * A NEW spawn was admitted for `requestKey` (verify-driven or planner-driven
+   * retry, via the TASKS spawn paths). Clears a `failure` terminal held by an
+   * earlier generation so the retry regains the request's voice — without this
+   * the error narration that INVITED the retry kept the key finalized: the
+   * retry's progress and questions were muted and its genuine completion was
+   * terminal_denied (live defect). Result/parked holders and the ack slot are
+   * untouched. True ⇒ a failure terminal was cleared.
+   */
+  noteRespawnAdmitted(requestKey: string): boolean {
+    const t = routerLoopTransition(this.loopState, {
+      type: "respawn_admitted",
+      requestKey,
+    });
+    this.loopState = t.state;
+    return t.decision.kind === "voice_reset";
+  }
+
+  /** Thin re-export of the canonical request-key ladder (router-loop-guard.ts). */
+  requestKeyForMeta(meta: Record<string, unknown> | undefined): string | null {
+    return requestVoiceKeyForMeta(meta);
   }
 
   /**
@@ -1581,6 +1670,80 @@ export class SubAgentRouter extends Service {
         return;
       }
     }
+    // Request-voice terminal claim: ONE user-facing terminal per user coding
+    // request, across sessions AND respawns. Broader than the per-lineage
+    // claim above — a task-service respawn mints a new session and a new
+    // lineage, so each generation's re-engage completion passed the lineage
+    // claim and relayed (~12 messages for one request, live defect). Placed
+    // BEFORE the verified-URL handling so a denial also suppresses the OS
+    // notification and screenshot delivery downstream. requestKey null ⇒ no
+    // stable per-request id ⇒ fail open (no gating).
+    const routingKind = routingKindForEvent(event, data, capExceeded);
+    const requestKey = requestVoiceKeyForMeta(
+      session.metadata as Record<string, unknown> | undefined,
+    );
+    if (routingKind === QUESTION_FOR_TASK_CREATOR) {
+      // Questions never claim the terminal slot — but a session still asking
+      // after its request reached a FINAL terminal (parked/failed) is noise:
+      // the user was already told the request is over. A merely-provisional
+      // result does not gag questions.
+      if (requestKey && this.isRequestTerminalFinalized(requestKey)) {
+        this.log(
+          "info",
+          "suppressing sub-agent question after finalized request terminal",
+          { sessionId, event, requestKey },
+        );
+        rollbackRoundTrip();
+        return;
+      }
+    } else {
+      // Failure conditions FIRST: when capExceeded/stateLostExhausted forced a
+      // terminal narration, that narration is what posts (baseText above) even
+      // if the underlying event was a task_complete — claim it as the failure
+      // it reads as, not a supersedable provisional result.
+      const terminalKind: "result" | "failure" | null =
+        capExceeded || stateLostExhausted || event === "error"
+          ? "failure"
+          : event === "task_complete"
+            ? "result"
+            : null;
+      if (terminalKind && requestKey) {
+        // task_complete claims provisional ALWAYS: whether verification will
+        // re-engage is unknowable here (router vs task-service event-bridge
+        // subscriber order is unspecified), and provisionality is consumed
+        // only by the one sanctioned parked supersede.
+        const claim = this.claimRequestTerminal(
+          requestKey,
+          sessionId,
+          terminalKind,
+          terminalKind === "result",
+        );
+        if (!claim.granted) {
+          this.log(
+            "info",
+            "suppressing duplicate request terminal; request voice already held",
+            {
+              sessionId,
+              event,
+              requestKey,
+              terminalKind,
+              holderKind: claim.holderKind,
+            },
+          );
+          if (event === "task_complete") {
+            this.captureOriginResultForCompletion(
+              origin,
+              session,
+              text,
+              deliverable,
+              deadUrls,
+            );
+          }
+          rollbackRoundTrip();
+          return;
+        }
+      }
+    }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
       // A built app was fire-and-forget before this: the verified live URL
@@ -1675,7 +1838,6 @@ export class SubAgentRouter extends Service {
         );
       }
     }
-    const routingKind = routingKindForEvent(event, data, capExceeded);
     const targets = swarmTargetsForRouting(origin, routingKind);
     // User-facing leg of a blocked sub-agent's question: with per-task GROUP
     // rooms on by default the task room maps to no live connector channel, so
@@ -1812,6 +1974,12 @@ export class SubAgentRouter extends Service {
             // (dashboard/web) transports. (#8875)
             ...(origin.spawnRootMessageId
               ? { spawnRootMessageId: origin.spawnRootMessageId }
+              : {}),
+            // Re-stamp the fan-out part so a respawn of this lane inherits its
+            // predecessor's request-voice key instead of minting a new one
+            // (respawn-shares-key per lane; see requestVoiceKeyForMeta).
+            ...(origin.requestVoicePart
+              ? { requestVoicePart: origin.requestVoicePart }
               : {}),
             ...(origin.source ? { originSource: origin.source } : {}),
             ...(sessionRouteId ? { workdirRouteId: sessionRouteId } : {}),
@@ -1951,37 +2119,29 @@ export class SubAgentRouter extends Service {
     sessionId: string,
   ): Promise<string | null> {
     try {
+      // Resolve via the task service's per-SESSION mapping (store.findSession),
+      // not listTasks().latestSessionId: a verify-driven respawn creates a
+      // second session and moves latestSessionId to it, so the ORIGINAL
+      // session's re-engage completions resolved no task and relayed anyway
+      // (the stated live insufficiency of this gate).
       const tasks = this.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as
         | {
-            listTasks?: (filter?: Record<string, unknown>) => Promise<
-              Array<{
-                id: string;
-                status: string;
-                latestSessionId: string | null;
-              }>
-            >;
-            getTask?: (id: string) => Promise<{
-              task: {
-                status: string;
-                metadata?: Record<string, unknown>;
-              };
+            getTaskForSession?: (sessionId: string) => Promise<{
+              status: string;
+              metadata?: Record<string, unknown>;
             } | null>;
           }
         | undefined;
-      if (!tasks?.listTasks || !tasks.getTask) return null;
-      const row = (await tasks.listTasks({})).find(
-        (t) => t.latestSessionId === sessionId,
-      );
-      if (!row) return null;
-      const doc = await tasks.getTask(row.id);
-      if (!doc) return null;
-      const attempts = Number(doc.task.metadata?.autoVerifyAttempts) || 0;
-      if (doc.task.status === "validating" && attempts >= 1) {
+      if (typeof tasks?.getTaskForSession !== "function") return null;
+      const task = await tasks.getTaskForSession(sessionId);
+      if (!task) return null;
+      const attempts = Number(task.metadata?.autoVerifyAttempts) || 0;
+      if (task.status === "validating" && attempts >= 1) {
         return `re-engage response (attempt ${attempts}, task validating)`;
       }
       if (
-        doc.task.status === "waiting_on_user" &&
-        doc.task.metadata?.verifyEscalationNotifiedAt
+        task.status === "waiting_on_user" &&
+        task.metadata?.verifyEscalationNotifiedAt
       ) {
         return "task already parked and escalation notice delivered";
       }
@@ -2061,7 +2221,8 @@ export class SubAgentRouter extends Service {
             inReplyTo: originReplyTarget,
           }
         : { ...response, source: "sub_agent_complete" };
-      const deliverySource = (await this.resolveDeliverySource(origin)) ?? source;
+      const deliverySource =
+        (await this.resolveDeliverySource(origin)) ?? source;
       const delivered = await sendToTarget(
         {
           source: deliverySource,
@@ -2902,6 +3063,11 @@ interface OriginInfo {
   /** Stable per-request root id for the per-origin spawn cap; present on every
    * transport (connector message id, else the origin user message id). (#8875) */
   spawnRootMessageId?: string;
+  /** Fan-out part suffix for the request-voice key (`requestVoiceKeyForMeta`):
+   * minted once per lane/part on a deliberate multi-part create and inherited
+   * verbatim by every respawn of that lane, so parallel lanes own distinct
+   * voice slots while a respawn still shares its predecessor's key. */
+  requestVoicePart?: string;
   label: string;
   source?: string;
 }
@@ -2967,6 +3133,7 @@ export function readOrigin(session: SessionInfo): OriginInfo | null {
     parentMessageId: pickUuid(meta.messageId),
     parentConnectorMessageId: pickPlainString(meta.originConnectorMessageId),
     spawnRootMessageId: spawnRootIdFromMeta(meta),
+    requestVoicePart: pickPlainString(meta.requestVoicePart),
     label: pickLabel(meta) ?? session.name ?? session.id,
     source: typeof meta.source === "string" ? meta.source : undefined,
   };

@@ -76,7 +76,12 @@ describe("TaskWatchdogService.runOnce (#8901)", () => {
     expect(sendToSession).toHaveBeenCalledTimes(1);
   });
 
-  it("clears the prod flag when a session recovers, so a later stall re-grills", async () => {
+  it("does NOT re-grill after recovery — the prod memo lasts the session's lifetime (nag-loop regression)", async () => {
+    // The old recover-then-regrill contract was the 4-minute nag loop: the
+    // grill's own reply reset lastActivity ("recovery"), recovery cleared the
+    // memo, and the same session was grilled forever. The memo now persists
+    // until the session id leaves the list (see task-watchdog-nag-loop.test.ts
+    // for the full cycle pins).
     const sendToSession = vi.fn(async () => ({}));
     let activity = NOW - 200_000; // stalled
     const acp = {
@@ -89,13 +94,13 @@ describe("TaskWatchdogService.runOnce (#8901)", () => {
     await svc.runOnce(NOW); // prod #1
     expect(sendToSession).toHaveBeenCalledTimes(1);
 
-    activity = NOW; // recovered
+    activity = NOW; // "recovered" (in the live loop this was the grill's own reply)
     await svc.runOnce(NOW + 1_000);
     expect(svc.getStalledSessionIds()).toEqual([]);
 
     activity = NOW - 200_000; // stalls again
     await svc.runOnce(NOW + 2_000);
-    expect(sendToSession).toHaveBeenCalledTimes(2); // re-grilled
+    expect(sendToSession).toHaveBeenCalledTimes(1); // one grill per lifetime
   });
 });
 

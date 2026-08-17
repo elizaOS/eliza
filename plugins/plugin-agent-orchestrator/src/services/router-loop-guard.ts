@@ -44,6 +44,31 @@ export const DEFAULT_STATE_LOST_RESPAWN_CAP = stateLostRespawnCapFor(
 );
 
 /**
+ * Per-request voice ledger entry: which session posted the single spawn ack
+ * for this user request, and which session holds its single user-facing
+ * terminal. `finalized` distinguishes a provisional result (a `task_complete`
+ * claimed before verification settles — supersedable exactly once by a park
+ * notice) from a settled terminal.
+ *
+ * Finality is not absolute for a `failure` holder: its narration explicitly
+ * invites the planner to retry ("spawn a fresh session"), so a later GENUINE
+ * `result` supersedes it (`claim_request_terminal`), and an admitted respawn
+ * for the same request clears it outright (`respawn_admitted`) so the new
+ * generation regains the request's voice. Without those two escapes a
+ * transient error permanently gagged the key and the invited retry's real
+ * success was eaten (live defect).
+ */
+export interface RequestVoiceEntry {
+  readonly ackSessionId?: string;
+  readonly terminal?: {
+    readonly holderSessionId: string;
+    readonly kind: "result" | "parked" | "failure";
+    readonly provisional: boolean;
+    readonly finalized: boolean;
+  };
+}
+
+/**
  * The complete loop-guard state. Every field is treated as immutable: the
  * reducer never mutates the input, it returns a fresh state with copied
  * collections.
@@ -61,6 +86,16 @@ export interface RouterLoopState {
   readonly stateLostCapNotified: ReadonlySet<string>;
   /** Completion lineage key → the first session that claimed its post slot. */
   readonly completionFirstPostedSession: ReadonlyMap<string, string>;
+  /**
+   * Request key (stable per USER coding request, across sessions AND
+   * respawns — see `requestVoiceKeyForMeta`) → its voice ledger entry. The
+   * lineage/completion slots above are per session generation; a task-service
+   * respawn mints a new session and a new lineage, so every generation's
+   * completion passed those guards and relayed. This slot is the broader
+   * invariant: ≤1 ack and ≤1 terminal per request, one sanctioned
+   * provisional-result → parked supersede.
+   */
+  readonly requestVoice: ReadonlyMap<string, RequestVoiceEntry>;
 }
 
 /** One incoming loop-guard signal, derived from a classified ACP event. */
@@ -88,7 +123,31 @@ export type RouterLoopEvent =
    */
   | { type: "rollback_round_trip"; sessionId: string; expectedCount: number }
   /** Claim the post slot for a completion lineage, for `sessionId`. */
-  | { type: "claim_completion"; completionKey: string; sessionId: string };
+  | { type: "claim_completion"; completionKey: string; sessionId: string }
+  /** Claim the single spawn-ack slot for a user request, for `sessionId`. */
+  | { type: "claim_request_ack"; requestKey: string; sessionId: string }
+  /**
+   * Claim the single user-facing terminal slot for a user request. A
+   * `provisional` claim (a `task_complete` before verification settles) may be
+   * superseded exactly once by a `parked` claim; everything else is
+   * first-writer-wins.
+   */
+  | {
+      type: "claim_request_terminal";
+      requestKey: string;
+      sessionId: string;
+      kind: "result" | "parked" | "failure";
+      provisional: boolean;
+    }
+  /**
+   * A NEW spawn was admitted for this request (verify-driven or planner-driven
+   * retry). A `failure` terminal held by an earlier generation is cleared so
+   * the retry regains the request's voice — its progress/questions un-mute and
+   * its eventual terminal claims a fresh slot. `result`/`parked` holders are
+   * untouched (the request genuinely concluded), as is the ack slot (one spawn
+   * ack per request stands across every generation).
+   */
+  | { type: "respawn_admitted"; requestKey: string };
 
 /** What the service should do for a given event. */
 export type RouterLoopDecision =
@@ -113,7 +172,19 @@ export type RouterLoopDecision =
   /** This session holds the completion slot (newly, or a same-session re-claim): post. */
   | { kind: "claimed" }
   /** A different session already holds the slot: suppress this duplicate. */
-  | { kind: "already_claimed" };
+  | { kind: "already_claimed" }
+  /** The request's ack slot was free and is now held by this session: post the ack. */
+  | { kind: "ack_granted" }
+  /** An ack already posted for this request: suppress this duplicate ack. */
+  | { kind: "ack_already_posted" }
+  /** The request's terminal slot was free and is now held by this session: post. */
+  | { kind: "terminal_granted" }
+  /** A sanctioned supersede (provisional result → park, or failure → genuine result): post. */
+  | { kind: "terminal_granted_supersede" }
+  /** A terminal already holds this request's voice: suppress (holderKind for logging). */
+  | { kind: "terminal_denied"; holderKind: "result" | "parked" | "failure" }
+  /** An admitted respawn cleared the request's failure terminal: the voice is live again. */
+  | { kind: "voice_reset" };
 
 export interface RouterLoopTransition {
   readonly state: RouterLoopState;
@@ -138,7 +209,58 @@ export function createRouterLoopState(opts?: {
     stateLostRespawnCounts: new Map(),
     stateLostCapNotified: new Set(),
     completionFirstPostedSession: new Map(),
+    requestVoice: new Map(),
   };
+}
+
+const UUID_KEY_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function pickKeyString(value: unknown): string | undefined {
+  return typeof value === "string" ? value.trim() || undefined : undefined;
+}
+
+/** Separator between the request-root base key and a fan-out part suffix.
+ * NUL cannot appear in message ids, uuids, or minted part labels, so composed
+ * keys can never collide with a bare base key (same trick as the per-origin
+ * cap's `spawnOriginKeyFor`). */
+const REQUEST_VOICE_PART_SEP = "\0";
+
+/**
+ * The canonical request-voice key ladder, read from a session's (or task's)
+ * metadata. The BASE mirrors `spawnRootIdFromMeta` (sub-agent-router.ts) —
+ * `spawnRootMessageId ?? originConnectorMessageId ?? messageId(uuid)` — plus a
+ * `task:<taskId>` fallback so task-service-spawned sessions (no connector
+ * message at all) and `notifyVerifyEscalation`'s task-level projection resolve
+ * the SAME key. Returns null when nothing stable exists; callers must fail
+ * open (no gating) on null.
+ *
+ * `requestVoicePart` scopes the key WITHIN one user request: a deliberate
+ * multi-part fan-out (lane plan with several lanes, a multi-part TASKS create)
+ * stamps a distinct part per lane/part at spawn time, so genuinely parallel
+ * lanes each own their own ack/terminal slot instead of the first lane's
+ * terminal gagging the rest. The part is INHERITED verbatim by every respawn
+ * of the same logical lane (task-metadata carry, router synthetic-inbound
+ * re-stamp), never re-minted, so respawn-shares-key still holds per lane.
+ * Sessions without a part (single-task requests, pre-stamp sessions) keep the
+ * bare base key — the original ledger behavior.
+ */
+export function requestVoiceKeyForMeta(
+  meta: Record<string, unknown> | undefined,
+): string | null {
+  if (!meta) return null;
+  const direct =
+    pickKeyString(meta.spawnRootMessageId) ??
+    pickKeyString(meta.originConnectorMessageId);
+  const messageId = pickKeyString(meta.messageId);
+  const taskId = pickKeyString(meta.taskId);
+  const base =
+    direct ??
+    (messageId && UUID_KEY_RE.test(messageId) ? messageId : undefined) ??
+    (taskId ? `task:${taskId}` : undefined);
+  if (!base) return null;
+  const part = pickKeyString(meta.requestVoicePart);
+  return part ? `${base}${REQUEST_VOICE_PART_SEP}${part}` : base;
 }
 
 /** Copy a map, set a key, and FIFO-evict down to the bound. */
@@ -332,6 +454,112 @@ export function routerLoopTransition(
       return {
         state: { ...state, completionFirstPostedSession },
         decision: { kind: "claimed" },
+      };
+    }
+
+    case "claim_request_ack": {
+      // Synchronous CAS like claim_completion: no await between get and set,
+      // so the TOCTOU window is closed by construction.
+      const entry = state.requestVoice.get(event.requestKey);
+      if (entry?.ackSessionId !== undefined) {
+        return { state, decision: { kind: "ack_already_posted" } };
+      }
+      const requestVoice = setBounded(state.requestVoice, event.requestKey, {
+        ...entry,
+        ackSessionId: event.sessionId,
+      });
+      return {
+        state: { ...state, requestVoice },
+        decision: { kind: "ack_granted" },
+      };
+    }
+
+    case "claim_request_terminal": {
+      const entry = state.requestVoice.get(event.requestKey);
+      const held = entry?.terminal;
+      if (held === undefined) {
+        // Empty slot: first terminal wins. A provisional claim (task_complete
+        // before verification settles) stays supersedable; anything else is
+        // final immediately.
+        const requestVoice = setBounded(state.requestVoice, event.requestKey, {
+          ...entry,
+          terminal: {
+            holderSessionId: event.sessionId,
+            kind: event.kind,
+            provisional: event.provisional,
+            finalized: !event.provisional,
+          },
+        });
+        return {
+          state: { ...state, requestVoice },
+          decision: { kind: "terminal_granted" },
+        };
+      }
+      if (held.provisional && !held.finalized && event.kind === "parked") {
+        // The ONE sanctioned correction: a provisional result is superseded by
+        // the honest park notice, exactly once — the slot finalizes here so a
+        // second park (respawn doubled the task) is denied.
+        const requestVoice = setBounded(state.requestVoice, event.requestKey, {
+          ...entry,
+          terminal: {
+            holderSessionId: event.sessionId,
+            kind: "parked",
+            provisional: event.provisional,
+            finalized: true,
+          },
+        });
+        return {
+          state: { ...state, requestVoice },
+          decision: { kind: "terminal_granted_supersede" },
+        };
+      }
+      if (held.kind === "failure" && event.kind === "result") {
+        // A failure narration invites the planner to retry, so its finality
+        // binds only against duplicate failures and redundant parks — never
+        // against the GENUINE success it asked for. Without this supersede the
+        // invited retry's task_complete was terminal_denied and the user was
+        // left with the stale error (live defect). The new holder is the
+        // standard supersedable-provisional result when `provisional`, so the
+        // one sanctioned parked correction above still applies to it.
+        const requestVoice = setBounded(state.requestVoice, event.requestKey, {
+          ...entry,
+          terminal: {
+            holderSessionId: event.sessionId,
+            kind: "result",
+            provisional: event.provisional,
+            finalized: !event.provisional,
+          },
+        });
+        return {
+          state: { ...state, requestVoice },
+          decision: { kind: "terminal_granted_supersede" },
+        };
+      }
+      return {
+        state,
+        decision: { kind: "terminal_denied", holderKind: held.kind },
+      };
+    }
+
+    case "respawn_admitted": {
+      const entry = state.requestVoice.get(event.requestKey);
+      if (entry?.terminal?.kind !== "failure") {
+        // Nothing to revive: empty slot, or a result/parked terminal that an
+        // admitted respawn must not disturb (the request genuinely concluded).
+        return { state, decision: { kind: "noop" } };
+      }
+      // Drop ONLY the failure terminal. The ack slot survives — the request
+      // was ack'd once and the retry must not re-ack — and the fresh slot
+      // means the retry's terminal claims `terminal_granted` normally, with
+      // every downstream `finalized` gate (progress mute, question gate)
+      // released for the new generation.
+      const { terminal: _cleared, ...rest } = entry;
+      const requestVoice = setBounded(state.requestVoice, event.requestKey, {
+        ...rest,
+      });
+      return {
+        state: { ...state, requestVoice },
+        decision: { kind: "voice_reset" },
       };
     }
 

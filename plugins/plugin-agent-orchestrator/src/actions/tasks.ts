@@ -34,6 +34,7 @@ import {
   detectTaskType,
   type OrchestratorTaskType,
 } from "../services/acceptance-criteria.js";
+import { markSessionAdministrativelyStopped } from "../services/admin-stop-marker.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
 import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
 import {
@@ -47,6 +48,7 @@ import { OrchestratorTaskService } from "../services/orchestrator-task-service.j
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
 import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
+import { requestVoiceKeyForMeta } from "../services/router-loop-guard.js";
 import {
   runDurableTask,
   type SmithersDurableRunLink,
@@ -73,6 +75,7 @@ import type {
 } from "../services/workspace-service.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import {
+  awaitCodingSupervisionBound,
   callbackText,
   contentRecord,
   emitSessionEvent,
@@ -475,6 +478,85 @@ export function spawnOriginKeyFor(
   return root ? `${root}\0${agentType}` : undefined;
 }
 
+/**
+ * Boot-race spawn refusal: after a restart the coordinator can sit "ACP stream
+ * not bound" while spawns black-hole (no session created, action reports ok,
+ * and core's effect-receipt guard rewrites the reply into "no authoritative
+ * commit receipt"). Returning this truthful failure — with NO spawnSession
+ * call made — keeps the receipt honest.
+ */
+function supervisionUnavailableResult(reason: string): ActionResult {
+  return {
+    success: false,
+    error: "CODING_SUPERVISION_UNAVAILABLE",
+    text: "The coding-agent supervisor is still starting up after a restart, so I couldn't launch this build — nothing is running. Try again in a moment.",
+    continueChain: false,
+    data: { reason },
+  };
+}
+
+/**
+ * Structurally claim the per-request ack slot on the SubAgentRouter so the
+ * progress hook's spawn ack for a respawned successor session is denied (the
+ * verify-driven respawn already ack'd this user request once). Cross-lane
+ * contract: reach the router API ONLY via typeof guards and fail open — an
+ * absent router or missing method means no gating, i.e. today's behavior.
+ */
+function claimRouterRequestAck(
+  runtime: IAgentRuntime,
+  requestKey: string | undefined,
+  sessionId: string | undefined,
+): void {
+  if (!requestKey || !sessionId) return;
+  const router = runtime.getService?.("ACPX_SUB_AGENT_ROUTER") as
+    | { claimRequestAck?: (key: string, sessionId: string) => unknown }
+    | null
+    | undefined;
+  if (!router || typeof router.claimRequestAck !== "function") return;
+  try {
+    router.claimRequestAck(requestKey, sessionId);
+  } catch (error) {
+    // error-policy:J6 ack-claim bookkeeping is best-effort suppression state;
+    // failure degrades to today's duplicate-ack behavior, never to a lost spawn.
+    logger(runtime).warn(
+      `[TASKS] claimRequestAck failed for ${requestKey}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+/**
+ * An admitted respawn revives the request's voice on the router ledger: a
+ * `failure` terminal held by an earlier generation is cleared so the retry's
+ * progress/questions un-mute and its genuine completion is relayed instead of
+ * terminal_denied (the failure narration itself invited this retry — live
+ * defect: the invited retry succeeded invisibly). Same cross-lane contract as
+ * `claimRouterRequestAck`: typeof-guarded, fail open.
+ */
+function reviveRouterRequestVoice(
+  runtime: IAgentRuntime,
+  requestKey: string | undefined,
+): void {
+  if (!requestKey) return;
+  const router = runtime.getService?.("ACPX_SUB_AGENT_ROUTER") as
+    | { noteRespawnAdmitted?: (key: string) => unknown }
+    | null
+    | undefined;
+  if (!router || typeof router.noteRespawnAdmitted !== "function") return;
+  try {
+    router.noteRespawnAdmitted(requestKey);
+  } catch (error) {
+    // error-policy:J6 voice-revive bookkeeping is best-effort ledger state;
+    // failure degrades to the pre-revive gagging, never to a lost spawn.
+    logger(runtime).warn(
+      `[TASKS] noteRespawnAdmitted failed for ${requestKey}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
 function pickRoutingString(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -846,6 +928,17 @@ async function runCreateLegacy(
     );
   }
 
+  // Boot-race gate (before ANY side effect — no durable task, no session): a
+  // coordinator stuck unbound after a restart black-holes spawns, so refuse
+  // honestly instead of letting the effect-receipt guard invent the reply.
+  const supervision = await awaitCodingSupervisionBound(runtime);
+  if (!supervision.ok) {
+    logger(runtime).warn(
+      `[TASKS:create] refusing spawn — coding supervision unavailable: ${supervision.reason}`,
+    );
+    return supervisionUnavailableResult(supervision.reason);
+  }
+
   const text = requestText(message);
   // Genuine user request for workdir-route matching — see runSpawnAgent and
   // resolveOriginatingRequestText. Keeps routing planner-independent.
@@ -906,6 +999,19 @@ async function runCreateLegacy(
     message,
     content,
   );
+  // The stable per-request root id (see spawnRootIdFor). Stamped into BOTH the
+  // session metadata and the durable task metadata so respawn keys and the
+  // park-notice dedupe keep matching across task records for one user request.
+  const spawnRootMessageId = spawnRootIdFor(message, content);
+  // Fan-out part suffix for the request-voice key. Inherited when present
+  // (lane-minted via runLanePlan's params.metadata, or router-re-stamped on a
+  // synthetic respawn inbound) so a respawn keeps its predecessor's exact key;
+  // a fresh MULTI-part create mints per-part below instead.
+  const inheritedVoicePart = plainString(extraMetadata.requestVoicePart);
+  // Router-stamped synthetic inbound (sub-agent-router stamps
+  // content.metadata.subAgent=true on every internally-routed re-spawn); a
+  // fresh user request never carries it and always has a new message id.
+  const syntheticRespawnInbound = extraMetadata.subAgent === true;
   // Resolve ONE distinct task room for this whole create call so every
   // sub-agent spawned for this task shares it (swarm collaboration); a
   // different task (a separate call) mints a different room. An explicit
@@ -1032,6 +1138,15 @@ async function runCreateLegacy(
           ...(typeof content.source === "string" && content.source
             ? { source: content.source }
             : {}),
+          // The per-request root id keeps the task-service respawn key and the
+          // park-notice dedupe matched across task records (see spawnRootIdFor).
+          ...(spawnRootMessageId ? { spawnRootMessageId } : {}),
+          // Durable copy of the fan-out part: the task-service respawn path
+          // and notifyVerifyEscalation read it back so this lane's respawns
+          // and park notice key on the SAME per-lane voice slot.
+          ...(inheritedVoicePart
+            ? { requestVoicePart: inheritedVoicePart }
+            : {}),
           ...(objectValue(extraMetadata.lane)
             ? { waveId: extraMetadata.waveId, lane: extraMetadata.lane }
             : {}),
@@ -1083,6 +1198,15 @@ async function runCreateLegacy(
       const task = parsed.task;
       const agentType = parsed.agentType as AgentType;
       const label = baseLabel ?? labelFrom(task, index);
+      // Request-voice part for THIS session. A deliberate multi-part fan-out
+      // (one create call, several parts) mints a per-part suffix so each
+      // genuinely parallel part owns its own terminal slot — the first part's
+      // completion must not gag the siblings' genuine results. An inherited
+      // part (lane launch or respawn inbound) always wins so respawns keep
+      // sharing their predecessor's key. Single-part creates stay unsuffixed
+      // (the original ledger behavior: retries/cascades share one voice).
+      const partVoicePart =
+        inheritedVoicePart ?? (tasks.length > 1 ? `part:${index}` : undefined);
       // A matching workdir route outranks a planner-guessed workdir; a
       // scaffold-aware caller opts out with lockWorkdir — see runSpawnAgent.
       const {
@@ -1132,6 +1256,14 @@ async function runCreateLegacy(
         metadata: {
           ...extraMetadata,
           ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
+          // Persist the stable root id so SubAgentRouter re-stamps it onto the
+          // next synthetic re-spawn inbound (same contract as the spawn_agent
+          // path — the per-origin cap and request-voice keys stay anchored to
+          // ONE user request across the whole loop). (#8875)
+          ...(spawnRootMessageId ? { spawnRootMessageId } : {}),
+          // Per-part voice scope (see partVoicePart above); the router reads
+          // it via requestVoiceKeyForMeta and re-stamps it onto respawns.
+          ...(partVoicePart ? { requestVoicePart: partVoicePart } : {}),
           requestedType: baseAgentType,
           messageId: message.id,
           roomId: swarmRoomMetadata.taskRoomId,
@@ -1154,6 +1286,24 @@ async function runCreateLegacy(
           ...(durableRun ? smithersDurableRunMetadata(durableRun) : {}),
         },
       });
+
+      // Post-spawn liveness receipt: a spawn that "returned" but has no live
+      // session record (or one already terminal at birth) is a black-holed
+      // launch — fail this part loudly before any prompt is sent, so the
+      // action reports a truthful failure instead of the optimistic ack.
+      const live = await Promise.resolve(service.getSession(session.sessionId));
+      if (!live || TERMINAL_SESSION_STATUSES.has(String(live.status))) {
+        throw new ElizaError(
+          "the coding sub-agent session did not come up; nothing is running",
+          {
+            code: "CODING_SESSION_DID_NOT_START",
+            context: {
+              sessionId: session.sessionId,
+              status: live ? String(live.status) : "missing",
+            },
+          },
+        );
+      }
 
       // Link the already-durable ACP record to its task before the first
       // prompt. If this write fails on the Smithers path, do not execute: boot
@@ -1188,6 +1338,14 @@ async function runCreateLegacy(
         } catch (error) {
           if (durableRun) {
             try {
+              // Administrative rollback, not a crash: mark it so the terminal
+              // relay does not post "stopped before completion" for a session
+              // the orchestrator itself tore down before any work started.
+              await markSessionAdministrativelyStopped(
+                service,
+                session.sessionId,
+                "spawn_rollback",
+              );
               await service.stopSession(session.sessionId);
             } catch (stopError) {
               // error-policy:J6 the attachment failure remains authoritative;
@@ -1333,6 +1491,34 @@ async function runCreateLegacy(
     ? `\n\n[TASK:${threadId}]${taskTitle}[/TASK]`
     : "";
   const proseText = `Created task agent${results.length > 1 ? "s" : ""}.${widgetBlock}`;
+
+  // Respawn-ack suppression: an internally-routed re-spawn (verify-driven
+  // successor) must not post a second "Created task agent(s)." ack for the
+  // same user request. The text stays planner-only, and the request-voice ack
+  // slot is claimed for the successor session so the progress hook's ack is
+  // denied too (fail-open when the router lacks the API).
+  if (syntheticRespawnInbound) {
+    // The composed voice key (root + inherited fan-out part) via the SAME
+    // ladder the router uses, so a lane respawn claims/revives ITS lane's
+    // slot, not the whole request's.
+    const respawnVoiceKey =
+      requestVoiceKeyForMeta({
+        ...(spawnRootMessageId ? { spawnRootMessageId } : {}),
+        ...(inheritedVoicePart ? { requestVoicePart: inheritedVoicePart } : {}),
+      }) ?? undefined;
+    claimRouterRequestAck(runtime, respawnVoiceKey, sessions[0]?.sessionId);
+    reviveRouterRequestVoice(runtime, respawnVoiceKey);
+    return {
+      success: true,
+      text: proseText,
+      data: {
+        agents: results,
+        taskId: threadId,
+        suppressActionResultClipboard: true,
+      },
+    };
+  }
+
   await callbackText(callback, proseText);
 
   // The creation ack is the complete answer to a single-operation turn:
@@ -1500,6 +1686,20 @@ async function runLanePlan(
   const pending = new Map(
     plan.lanes.map((lane, index) => [lane.id, { lane, index }]),
   );
+  // Per-lane request-voice part: a multi-lane fan-out from ONE user message
+  // must give each lane its own terminal slot (the first lane's completion
+  // must not gag the others). Minted ONCE here and inherited verbatim by
+  // every respawn of the lane (task-metadata carry + router re-stamp), never
+  // re-minted — so an inbound that already carries a part (a respawned create
+  // routed back through the planner) keeps its predecessor's key even if the
+  // fresh plan would assign different lane ids. waveId disambiguates two
+  // separate lane plans spawned from the same request root.
+  const inheritedLanePart = plainString(
+    objectValue(content.metadata)?.requestVoicePart,
+  );
+  const laneVoicePart = (lane: { id: string }): string | undefined =>
+    inheritedLanePart ??
+    (plan.lanes.length > 1 ? `lane:${plan.waveId}:${lane.id}` : undefined);
   const completed = new Set<string>();
   const failed = new Set<string>();
   const results = new Array<ActionResult>(plan.lanes.length);
@@ -1555,6 +1755,9 @@ async function runLanePlan(
           metadata: {
             ...(objectValue(params.metadata) ?? {}),
             ...laneMetadata(plan, lane),
+            ...(laneVoicePart(lane)
+              ? { requestVoicePart: laneVoicePart(lane) }
+              : {}),
           },
         },
         laneExecutionContent(content),
@@ -2023,6 +2226,18 @@ async function runSpawnAgent(
       }
     }
 
+    // Boot-race gate (before the spawn slot wait and before spawnSession): a
+    // coordinator stuck unbound after a restart black-holes spawns, so refuse
+    // honestly — nothing is running — instead of letting the effect-receipt
+    // guard invent the reply.
+    const supervision = await awaitCodingSupervisionBound(runtime);
+    if (!supervision.ok) {
+      logger(runtime).warn(
+        `[TASKS:spawn_agent] refusing spawn — coding supervision unavailable: ${supervision.reason}`,
+      );
+      return supervisionUnavailableResult(supervision.reason);
+    }
+
     // Concurrency gate: serialise spawns past a small ceiling so parallel
     // coding sub-agents don't stampede the model provider into rate-limited,
     // tool-call-skipping degradation. See waitForSpawnSlot.
@@ -2074,6 +2289,49 @@ async function runSpawnAgent(
       })}`,
     );
 
+    // Post-spawn liveness receipt: spawnSession returning is not proof the
+    // session came up — a residual black-hole (boot race, transport fault)
+    // leaves no live record or one already terminal at birth. Fail loudly
+    // instead of returning the optimistic pending-status text, regardless of
+    // root cause. Counted against the per-origin cap above so a broken
+    // supervisor can't drive an unbounded respawn loop.
+    const liveSession = await Promise.resolve(
+      service.getSession(session.sessionId),
+    );
+    if (
+      !liveSession ||
+      TERMINAL_SESSION_STATUSES.has(String(liveSession.status))
+    ) {
+      const liveStatus = liveSession ? String(liveSession.status) : "missing";
+      logger(runtime).error(
+        `[TASKS:spawn_agent] session ${session.sessionId} did not come up (status=${liveStatus}); reporting spawn failure`,
+      );
+      return {
+        success: false,
+        error: "CODING_SESSION_DID_NOT_START",
+        text: "The coding sub-agent session did not come up; nothing is running. Try again in a moment.",
+        continueChain: false,
+        data: { sessionId: session.sessionId, status: liveStatus },
+      };
+    }
+
+    // Verify-driven respawn (router-stamped synthetic inbound): the original
+    // request was already ack'd once — claim the request-voice ack slot for
+    // the successor session so the progress hook's ack is denied. The action
+    // text below is already planner-facing, so no further suppression needed.
+    // The key composes root + inherited fan-out part via the router's ladder,
+    // so a lane respawn claims/revives ITS lane's slot only.
+    if (extraMetadata.subAgent === true) {
+      const spawnVoicePart = plainString(extraMetadata.requestVoicePart);
+      const respawnVoiceKey =
+        requestVoiceKeyForMeta({
+          ...(spawnRootMessageId ? { spawnRootMessageId } : {}),
+          ...(spawnVoicePart ? { requestVoicePart: spawnVoicePart } : {}),
+        }) ?? undefined;
+      claimRouterRequestAck(runtime, respawnVoiceKey, session.sessionId);
+      reviveRouterRequestVoice(runtime, respawnVoiceKey);
+    }
+
     // Durable restart owner for the fire-and-forget spawn path. Without a
     // task record a runtime restart orphans the live session SILENTLY: the
     // sub-agent's work may finish on disk, but the "result will arrive as a
@@ -2114,6 +2372,20 @@ async function runSpawnAgent(
             ...(resolvedTaskRoomId ? { taskRoomId: resolvedTaskRoomId } : {}),
             metadata: {
               ...(resolvedSpawnSource ? { source: resolvedSpawnSource } : {}),
+              // Durable copy of the per-request root id: without it the
+              // task-service respawn key degrades to task:<taskId> and the
+              // park-notice dedupe loses cross-task-record matching.
+              ...(spawnRootMessageId ? { spawnRootMessageId } : {}),
+              // Durable copy of the fan-out part (when this spawn is a lane
+              // respawn) so this task's respawns and park notice stay keyed
+              // to the SAME per-lane voice slot.
+              ...(plainString(extraMetadata.requestVoicePart)
+                ? {
+                    requestVoicePart: plainString(
+                      extraMetadata.requestVoicePart,
+                    ),
+                  }
+                : {}),
               spawnPath: "spawn_agent",
             },
           });
@@ -2358,7 +2630,17 @@ async function runStopAgent(
 
     if (all) {
       await Promise.all(
-        sessions.map((session) => service.stopSession(session.id)),
+        sessions.map(async (session) => {
+          // Mark BEFORE stopping so the terminal relay sees the stamp when the
+          // stopped event lands — the action's own confirmation below is the
+          // single manual-stop notice.
+          await markSessionAdministrativelyStopped(
+            service,
+            session.id,
+            "user_stop",
+          );
+          await service.stopSession(session.id);
+        }),
       );
       if (state)
         (
@@ -2408,6 +2690,10 @@ async function runStopAgent(
       };
     }
 
+    // Mark BEFORE stopping (see the all-sessions branch): the action's
+    // verified "Stopped the task agent." is the single manual-stop notice; a
+    // coordinator-synthesized "stopped before completion" would be a duplicate.
+    await markSessionAdministrativelyStopped(service, target.id, "user_stop");
     await service.stopSession(target.id);
     if (
       (state as { codingSession?: { id?: string } } | undefined)?.codingSession
@@ -2530,6 +2816,13 @@ async function runCancel(
     if (all) {
       const stoppedSessions: string[] = [];
       for (const session of sessions) {
+        // Mark BEFORE cancelling so the terminal relay suppresses its own
+        // stop notice — the cancel confirmation below is the single notice.
+        await markSessionAdministrativelyStopped(
+          service,
+          session.id,
+          "user_cancel",
+        );
         await (service.cancelSession?.(session.id) ??
           service.stopSession(session.id));
         stoppedSessions.push(session.id);
@@ -2570,6 +2863,8 @@ async function runCancel(
       );
     }
 
+    // Mark BEFORE cancelling (see the all-sessions branch above).
+    await markSessionAdministrativelyStopped(service, target.id, "user_cancel");
     await (service.cancelSession?.(target.id) ??
       service.stopSession(target.id));
     const id = threadId ?? target.id;
@@ -2827,9 +3122,7 @@ function taskMatchesSearch(task: TaskThreadDto, search: string): boolean {
   // reads as "no task exists" against a store that plainly holds it (observed
   // live). Every whitespace token present somewhere in the haystack matches.
   const tokens = needle.split(/\s+/).filter((token) => token.length > 0);
-  return (
-    tokens.length > 1 && tokens.every((token) => haystack.includes(token))
-  );
+  return tokens.length > 1 && tokens.every((token) => haystack.includes(token));
 }
 
 function sessionMatchesHistoryFilters(
@@ -3451,6 +3744,13 @@ async function runControl(
 
   let responseText = "";
   if (action === "stop") {
+    // Mark BEFORE stopping: the control confirmation below is the single
+    // manual-stop notice for this administrative stop.
+    await markSessionAdministrativelyStopped(
+      service,
+      target.session.id,
+      "user_stop",
+    );
     await service.stopSession(target.session.id);
     responseText = "Stopped the coding task.";
   } else {
@@ -4823,7 +5123,15 @@ async function settleTasksOperation(args: {
   // "No active task agents. Use TASKS { action: \"create\" }..." to chat).
   const plannerOnlyRead =
     TASKS_READ_ONLY_OPERATIONS.has(args.operation) ||
-    isIssueReadOperation(args.operation, args.params, args.content);
+    isIssueReadOperation(args.operation, args.params, args.content) ||
+    // Respawn-ack suppression: a create driven by a router-stamped synthetic
+    // sub-agent inbound (verify-driven respawn) is internal loop traffic — its
+    // "Created task agent(s)." ack must NOT become the verified user-facing
+    // reply for a request that was already ack'd once. The text stays visible
+    // to the planner; genuine fresh user creates keep the visible ack.
+    (args.operation === "create" &&
+      (args.content.source === MESSAGE_SOURCE_SUB_AGENT ||
+        objectValue(args.content.metadata)?.subAgent === true));
   const { receipt, outcomeUnknown } = tasksEffectReceipt(args);
   const {
     userFacingText: _readUserFacingText,

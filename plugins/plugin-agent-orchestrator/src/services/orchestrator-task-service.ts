@@ -50,6 +50,7 @@ import {
   shouldRequireGoalContract,
 } from "./acceptance-criteria.js";
 import { ACP_METADATA_ISOLATED_WORKDIR, AcpService } from "./acp-service.js";
+import { markSessionAdministrativelyStopped } from "./admin-stop-marker.js";
 import {
   type AdmissionRecord,
   orderQueue,
@@ -189,6 +190,7 @@ import {
   resolveTaskSpawnWorkdir,
 } from "./project-binding.js";
 import { extractPullRequestLink } from "./pull-request-link.js";
+import { requestVoiceKeyForMeta } from "./router-loop-guard.js";
 import {
   readSmithersDurableRunLink,
   runDurableTask,
@@ -557,6 +559,50 @@ function isAdmissionRecord(value: unknown): value is AdmissionRecord {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** Non-empty plain string or undefined. Mirrors the router's metadata reads so
+ * the request-voice key carried through task metadata is shape-compatible. */
+function pickPlainString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : undefined;
+}
+
+/**
+ * Sub-agent-router serviceType, mirrored as a literal (not imported from
+ * sub-agent-router.ts) so this module keeps no dependency edge on the router
+ * module. Kept in sync with `SubAgentRouter.serviceType`.
+ */
+const SUB_AGENT_ROUTER_SERVICE_TYPE = "ACPX_SUB_AGENT_ROUTER";
+
+/**
+ * Structural view of the router's request-voice ledger. Resolved via
+ * `runtime.getService` and typeof-guarded per method so this service compiles
+ * and behaves identically whether or not the router (or its ledger API) is
+ * present — absence always fails OPEN to today's behavior.
+ */
+type RequestVoiceLedgerRouter = {
+  claimRequestTerminal?: (
+    key: string,
+    sessionId: string,
+    kind: string,
+    provisional: boolean,
+  ) => unknown;
+};
+
+/**
+ * Interpret a `claimRequestTerminal` result. Only an EXPLICIT denial
+ * suppresses the park notice; every other shape (granted, superseded, or an
+ * unrecognized return) sends as today so a ledger drift can only ever cost the
+ * dedupe, never silence the notice.
+ */
+function terminalClaimDenied(result: unknown): boolean {
+  if (result === false || result === "denied") return true;
+  if (isRecord(result)) {
+    return result.granted === false && result.superseded !== true;
+  }
+  return false;
 }
 
 /**
@@ -3161,7 +3207,12 @@ export class OrchestratorTaskService extends Service {
    */
   private async notifyVerifyEscalation(
     taskId: string,
-    details: { attempts: number; summary: string; missing: string[] },
+    details: {
+      attempts: number;
+      summary: string;
+      missing: string[];
+      sessionId?: string;
+    },
   ): Promise<void> {
     try {
       const doc = await this.store.getTask(taskId);
@@ -3177,12 +3228,72 @@ export class OrchestratorTaskService extends Service {
         }
       ).sendMessageToTarget;
       if (typeof send !== "function") return;
+      // Request-level dedupe: a verify-driven respawn can double the TASK
+      // record for one user request lineage, so the once-per-task
+      // verifyEscalationNotifiedAt stamp alone still allowed two park notices.
+      // Claim the request's terminal slot on the router's voice ledger, keyed
+      // by the SAME canonical ladder the router keys its session terminal
+      // claims with (requestVoiceKeyForMeta: spawnRootMessageId ??
+      // originConnectorMessageId ?? messageId ?? task:<id>, plus the fan-out
+      // part suffix). The parking session's OWN metadata is preferred — it is
+      // exactly what the router keyed that session's claims on, so the park
+      // supersedes its provisional result and lane-scoped parts resolve; the
+      // task-level projection covers restart parks whose session is already
+      // gone. Denied → a sibling task already parked this request lineage:
+      // stamp (so this task never re-tries) but do not send. Router
+      // absent/disabled/no method → send as today (fail-open; the per-task
+      // stamp remains the durable backstop).
+      let suppressed = false;
+      const router = this.runtime.getService?.(
+        SUB_AGENT_ROUTER_SERVICE_TYPE,
+      ) as RequestVoiceLedgerRouter | null;
+      if (typeof router?.claimRequestTerminal === "function") {
+        let sessionVoiceMeta: Record<string, unknown> | undefined;
+        if (details.sessionId) {
+          try {
+            const live = await this.acp()?.getSession(details.sessionId);
+            sessionVoiceMeta = live?.metadata as
+              | Record<string, unknown>
+              | undefined;
+          } catch {
+            // error-policy:J4 session metadata lookup failure degrades to the
+            // task-level key projection below (today's behavior).
+            sessionVoiceMeta = undefined;
+          }
+        }
+        const requestKey =
+          requestVoiceKeyForMeta({
+            ...(doc.task.metadata ?? {}),
+            ...(sessionVoiceMeta ?? {}),
+            taskId,
+          }) ?? `task:${taskId}`;
+        try {
+          suppressed = terminalClaimDenied(
+            router.claimRequestTerminal(
+              requestKey,
+              details.sessionId ?? taskId,
+              "parked",
+              false,
+            ),
+          );
+        } catch (claimErr) {
+          // error-policy:J4 ledger claim failure degrades to sending the
+          // notice (fail-open) — the dedupe is lost, never the notice.
+          this.log("warn", "verify-escalation ledger claim failed", {
+            taskId,
+            error:
+              claimErr instanceof Error ? claimErr.message : String(claimErr),
+          });
+          suppressed = false;
+        }
+      }
       await this.store.updateTask(taskId, {
         metadata: {
           ...doc.task.metadata,
           verifyEscalationNotifiedAt: nowIso(),
         },
       });
+      if (suppressed) return;
       const text = composeVerifyEscalationNotice(doc.task.title, details);
       await send(
         { source: origin.source, roomId: origin.roomId as UUID },
@@ -4241,6 +4352,14 @@ export class OrchestratorTaskService extends Service {
         createdAt: nowIso(),
       });
       await this.advanceTaskStatus(taskId, "awaiting_user");
+      // Stamp the park time as durable task metadata. The forwarder's
+      // waiting_on_user gate discriminates VERIFY parks (drop forwards; the
+      // worker is done listening) from question/login parks (keep forwarding
+      // so the user's answer reaches the blocked session) on this stamp —
+      // verifyEscalationNotifiedAt alone is unreliable because
+      // notifyVerifyEscalation early-returns before stamping when the task
+      // has no origin room or no send handler.
+      await this.stampVerifyParkedAt(taskId);
       // The park must be VISIBLE: the completion relay already promised the
       // user "I'll flag if verification fails" — parking silently breaks that
       // promise and strands the task (live: canon-clock sat waiting_on_user
@@ -4251,6 +4370,7 @@ export class OrchestratorTaskService extends Service {
         attempts: attempt,
         summary,
         missing,
+        sessionId,
       });
       this.emitChange(taskId);
       return;
@@ -4327,8 +4447,35 @@ export class OrchestratorTaskService extends Service {
         createdAt: nowIso(),
       });
       await this.advanceTaskStatus(taskId, "awaiting_user");
+      // Same forwarder discriminator as the at-cap park above: this branch
+      // parks too (the corrective send failed), so it must carry the stamp.
+      await this.stampVerifyParkedAt(taskId);
     }
     this.emitChange(taskId);
+  }
+
+  /** Merge `verifyParkedAt` into the task metadata (re-read then write, same
+   * pattern as the attempt-counter persist above, so concurrent metadata
+   * writes in this pass are preserved). Best-effort: a failed stamp costs the
+   * forwarder gate's discriminator, never the park itself. */
+  private async stampVerifyParkedAt(taskId: string): Promise<void> {
+    try {
+      const doc = await this.store.getTask(taskId);
+      if (!doc) return;
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...doc.task.metadata,
+          verifyParkedAt: nowIso(),
+        },
+      });
+    } catch (err) {
+      // error-policy:J6 best-effort park-time stamp; the park (status write)
+      // already stands and the forwarder fails open without the stamp.
+      this.log("warn", "verifyParkedAt stamp failed", {
+        taskId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**
@@ -5199,6 +5346,28 @@ export class OrchestratorTaskService extends Service {
           // Carried so a child this sub-agent spawns can compute its own depth
           // (parent depth + 1) and the nesting guard above can enforce the cap.
           nestingDepth,
+          // Carry the originating request's voice key onto EVERY (re)spawn for
+          // this task — verify re-engage fresh workers and queue-head dispatch
+          // included — so the router's request-level ack/terminal ledger sees
+          // one key per user request across the whole session lineage. Stamped
+          // into task metadata at create time; absent for pre-stamp tasks
+          // (degraded mode: per-session dedupe only).
+          ...(pickPlainString(doc.task.metadata?.spawnRootMessageId)
+            ? {
+                spawnRootMessageId: pickPlainString(
+                  doc.task.metadata?.spawnRootMessageId,
+                ),
+              }
+            : {}),
+          // Carry the fan-out part with it: a lane task's respawns must keep
+          // claiming the SAME per-lane voice slot, never the whole request's.
+          ...(pickPlainString(doc.task.metadata?.requestVoicePart)
+            ? {
+                requestVoicePart: pickPlainString(
+                  doc.task.metadata?.requestVoicePart,
+                ),
+              }
+            : {}),
         },
       });
     } catch (err) {
@@ -5837,9 +6006,9 @@ export class OrchestratorTaskService extends Service {
     const active = doc.sessions.filter(
       (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
     );
-    if (active.length === 0) return;
     const acp = this.acp();
     if (!acp) {
+      if (active.length === 0) return;
       await Promise.all(
         active.map((session) =>
           this.store.updateSession(session.sessionId, {
@@ -5852,9 +6021,48 @@ export class OrchestratorTaskService extends Service {
         "ACP service unavailable; cannot stop active sessions",
       );
     }
+    // ACP-truth widening: the event bridge marks the task-side row
+    // `completed` on task_complete while the keepAliveAfterComplete ACP
+    // session sits `ready` — so a task-row-only scan skipped the stop and the
+    // session survived archive/delete still room-bound, absorbing later live
+    // room messages under the dead task's label (the contamination survivor).
+    // Also stop any of this task's sessions that are still LIVE at the ACP
+    // layer, even when the row is already terminal.
+    let liveAcpSessionIds: ReadonlySet<string> = new Set<string>();
+    try {
+      const acpSessions = await Promise.resolve(acp.listSessions());
+      liveAcpSessionIds = new Set(
+        acpSessions
+          .filter((s) => !TERMINAL_SESSION_STATUSES.has(s.status))
+          .map((s) => s.id),
+      );
+    } catch (err) {
+      // error-policy:J4 listSessions unavailable degrades to the task-row-only
+      // scan (today's behavior) — never blocks the lifecycle stop.
+      this.log("warn", "stopActiveSessions listSessions failed", {
+        taskId: doc.task.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    const toStop = doc.sessions.filter(
+      (s) =>
+        !TERMINAL_TASK_SESSION_STATUSES.has(s.status) ||
+        liveAcpSessionIds.has(s.sessionId),
+    );
+    if (toStop.length === 0) return;
     const failures: Array<{ sessionId: string; error: string }> = [];
     await Promise.all(
-      active.map(async (session) => {
+      toStop.map(async (session) => {
+        // Mark the stop as administrative BEFORE stopping, so the swarm
+        // coordinator's `stopped` synthesis recognizes it as lifecycle
+        // plumbing and does not post "stopped before completion" for a stop
+        // the lifecycle itself caused.
+        await markSessionAdministrativelyStopped(
+          acp,
+          session.sessionId,
+          "task_lifecycle",
+          (msg) => this.log("warn", msg, { taskId: doc.task.id }),
+        );
         try {
           await acp.stopSession(session.sessionId);
         } catch (err) {
@@ -5862,15 +6070,22 @@ export class OrchestratorTaskService extends Service {
           // structured RecoveryConflictError afterward when any session failed.
           const error = err instanceof Error ? err.message : String(err);
           failures.push({ sessionId: session.sessionId, error });
-          await this.store.updateSession(session.sessionId, {
-            status: "stop_failed",
-          });
+          if (!TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
+            await this.store.updateSession(session.sessionId, {
+              status: "stop_failed",
+            });
+          }
           return;
         }
-        await this.store.updateSession(session.sessionId, {
-          status: "stopped",
-          stoppedAt: Date.now(),
-        });
+        // A row already terminal on the task side (`completed` — delivered)
+        // keeps its status: rewriting it to `stopped` would erase the
+        // delivered outcome the UI shows.
+        if (!TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
+          await this.store.updateSession(session.sessionId, {
+            status: "stopped",
+            stoppedAt: Date.now(),
+          });
+        }
       }),
     );
     if (failures.length > 0) {

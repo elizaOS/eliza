@@ -253,6 +253,11 @@ describe("orchestrator correctness (#9960)", () => {
 
   // --- Scenario 4: concurrent multi-task isolation (2 tasks, 2 accounts, 2 sessions) ---
   it("keeps two concurrent tasks isolated with independent round-trip accounting", async () => {
+    // Layer under test: per-session round-trip isolation. The sessions carry
+    // no stable request id (no messageId), so the request-voice ledger fails
+    // open and the cap notice still posts after A's completion — with a stable
+    // id the ledger deliberately suppresses it (covered in
+    // sub-agent-router.test.ts's request-voice block).
     const a = makeSession({
       id: "aaaaaaa1-89ab-cdef-0123-456789abcdef",
       agentType: "claude", // stand-in for account A
@@ -261,7 +266,6 @@ describe("orchestrator correctness (#9960)", () => {
         roomId: "a0000000-2222-3333-4444-555555555555",
         worldId: WORLD,
         userId: USER,
-        messageId: "a1111111-8888-7777-6666-555555555555",
         source: "telegram",
       },
     });

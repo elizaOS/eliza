@@ -994,7 +994,33 @@ function formatToolCallForHuman(tc: AcpToolCall | undefined): string {
  * all plugin.init() complete). The fire-and-forget chain in init() schedules
  * us for after that promise settles.
  */
-function registerProgressHook(runtime: IAgentRuntime): () => void {
+/**
+ * Structural view of the sub-agent router's request-voice ledger. Resolved
+ * lazily via `runtime.getService` and typeof-guarded per method: every gate
+ * that consults it fails OPEN to today's behavior when the router is absent,
+ * disabled, or predates the ledger API — the ledger can only ever REMOVE
+ * messages, never introduce a new silent-drop mode.
+ */
+type RequestVoiceLedgerRouter = {
+  requestKeyForMeta?: (
+    meta: Record<string, unknown>,
+  ) => string | null | undefined;
+  claimRequestAck?: (key: string, sessionId: string) => unknown;
+  isRequestTerminalFinalized?: (key: string) => boolean;
+};
+
+/** Only an EXPLICIT denial suppresses; unknown shapes fail open (post). */
+function ackClaimDenied(result: unknown): boolean {
+  if (result === false || result === "denied") return true;
+  if (isRecord(result)) {
+    return result.granted === false && result.superseded !== true;
+  }
+  return false;
+}
+
+// Exported for unit tests (spawn-ack.test.ts drives the real hook against a
+// fake runtime/ACP); not part of the plugin's public API contract.
+export function registerProgressHook(runtime: IAgentRuntime): () => void {
   const acp = runtime.getService<AcpService>(AcpService.serviceType);
   runtime.logger?.debug?.(
     { src: "@elizaos/plugin-agent-orchestrator" },
@@ -1157,6 +1183,25 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // lookback reliably attributes the reply to this spawn without catching an
   // unrelated earlier chat reply.
   const PLANNER_ACK_LOOKBACK_MS = 8000;
+  // Lazily resolve the router's request-voice ledger per use — the router can
+  // register after this hook, and a stale null capture would disable the
+  // request-level gates for the process lifetime.
+  const getVoiceRouter = (): RequestVoiceLedgerRouter | null =>
+    (runtime.getService(
+      SubAgentRouter.serviceType,
+    ) as RequestVoiceLedgerRouter | null) ?? null;
+  // sessionId → request voice key, filled in the session-event hook where the
+  // session metadata is available, so emitProgress (which only receives the
+  // sessionId) can consult the router's terminal-finalized ledger. Bounded
+  // like the other per-session maps.
+  const sessionRequestKeys = new Map<string, string>();
+  const recordSessionRequestKey = (sessionId: string, key: string): void => {
+    sessionRequestKeys.set(sessionId, key);
+    if (sessionRequestKeys.size > 512) {
+      const oldest = sessionRequestKeys.keys().next().value;
+      if (oldest !== undefined) sessionRequestKeys.delete(oldest);
+    }
+  };
 
   // Cross-platform outgoing-message middleware. When the planner-loop's REPLY
   // action (or any other plugin) calls `runtime.sendMessageToTarget` for a
@@ -1533,6 +1578,22 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     rawText: string,
     label?: string,
   ): Promise<void> {
+    // Terminal-finalized mute: once the user request this session serves has
+    // reached its finalized terminal (parked or failed), a session grinding on
+    // must not keep posting. emitProgress is the single funnel for the
+    // heartbeat, the narration flush, the ⚠️ error post, and the ⏸️ blocked
+    // post — this one check silences all four. Fail-open when the router or
+    // its ledger method is absent.
+    const requestKey = sessionRequestKeys.get(sessionId);
+    if (requestKey) {
+      const voiceRouter = getVoiceRouter();
+      if (
+        typeof voiceRouter?.isRequestTerminalFinalized === "function" &&
+        voiceRouter.isRequestTerminalFinalized(requestKey) === true
+      ) {
+        return;
+      }
+    }
     if (progressPolicy.mode === "silent") return;
     const text = sanitizePlannerText(rawText);
     const state = progressBySession.get(sessionId);
@@ -2027,6 +2088,25 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           typeof meta.label === "string" && meta.label.trim().length > 0
             ? meta.label
             : `sub-agent ${sessionId.slice(0, 8)}`;
+        // Resolve the request voice key for this session (router canon:
+        // spawnRootMessageId ?? originConnectorMessageId ?? messageId ??
+        // task:<taskId>) and record it so emitProgress can consult the
+        // terminal-finalized ledger. Structural + fail-open: no router or no
+        // method simply leaves the request-level gates inert.
+        const voiceRouter = getVoiceRouter();
+        let requestVoiceKey: string | undefined;
+        if (typeof voiceRouter?.requestKeyForMeta === "function") {
+          try {
+            requestVoiceKey = voiceRouter.requestKeyForMeta(meta) ?? undefined;
+          } catch {
+            // error-policy:J4 ledger key resolution failure degrades to the
+            // per-session guards (today's behavior); never blocks the event.
+            requestVoiceKey = undefined;
+          }
+        }
+        if (requestVoiceKey) {
+          recordSessionRequestKey(sessionId, requestVoiceKey);
+        }
         const isTerminalEvent =
           evName === "stopped" ||
           evName === "error" ||
@@ -2085,7 +2165,43 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             createdAtMs,
             PLANNER_ACK_LOOKBACK_MS,
           );
+          // Request-level ack gate: one ack per USER REQUEST, not per session.
+          // A task-service respawn / state-lost failover successor carries the
+          // same request key on a fresh sessionId — the per-session guards
+          // never see it and the 60s room window has long expired, so each
+          // successor posted another spawn ack. Claim the request's ack slot
+          // on the router ledger; denial means this request already acked.
+          // Fail-open: no router / no method / claim throw → allowed.
+          const claimRequestAck = (): boolean => {
+            if (
+              !requestVoiceKey ||
+              typeof voiceRouter?.claimRequestAck !== "function"
+            ) {
+              return true;
+            }
+            try {
+              return !ackClaimDenied(
+                voiceRouter.claimRequestAck(requestVoiceKey, sessionId),
+              );
+            } catch {
+              // error-policy:J4 ledger claim failure degrades to acking
+              // (today's behavior) — the dedupe is lost, never the ack.
+              return true;
+            }
+          };
           if (plannerAlreadyAcked) {
+            ackedSessions.add(sessionId);
+            if (ackedSessions.size > 512) {
+              const oldest = ackedSessions.values().next().value;
+              if (oldest !== undefined) ackedSessions.delete(oldest);
+            }
+            // The planner's own reply IS this request's ack — claim the slot
+            // so respawn successors of a planner-acked spawn stay silent too.
+            claimRequestAck();
+          } else if (!claimRequestAck()) {
+            // A sibling/predecessor session already acked this request.
+            // Mirror the planner-acked branch: mark the session acked so
+            // trailing events and the heartbeat stay off the first-post path.
             ackedSessions.add(sessionId);
             if (ackedSessions.size > 512) {
               const oldest = ackedSessions.values().next().value;
@@ -2341,6 +2457,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     threadCacheByKey.clear();
     mainMessageCacheByKey.clear();
     lastPostByKey.clear();
+    sessionRequestKeys.clear();
     if (restoreSend) {
       try {
         restoreSend();

@@ -423,6 +423,104 @@ export async function waitForSpawnSlot(
   );
 }
 
+/**
+ * Observable ACP bind state published by SwarmCoordinatorService.acpBindState.
+ * Read structurally (no class import) so this module never depends on the
+ * coordinator's concrete type and test doubles without the getter pass as
+ * "nothing to gate".
+ */
+type CoordinatorBindState = {
+  status: "pending" | "bound" | "unbound";
+  reason: string | null;
+};
+
+function readCoordinatorBindState(
+  runtime: IAgentRuntime,
+): CoordinatorBindState | undefined {
+  // Serves the same string as SwarmCoordinatorService.serviceType
+  // (SWARM_COORDINATOR_SERVICE_TYPE in @elizaos/core).
+  const coordinator = runtime.getService?.("SWARM_COORDINATOR") as
+    | { acpBindState?: unknown }
+    | null
+    | undefined;
+  const bind = coordinator?.acpBindState;
+  if (bind === null || bind === undefined || typeof bind !== "object") {
+    return undefined;
+  }
+  const status = (bind as { status?: unknown }).status;
+  if (status !== "pending" && status !== "bound" && status !== "unbound") {
+    return undefined;
+  }
+  const reason = (bind as { reason?: unknown }).reason;
+  return { status, reason: typeof reason === "string" ? reason : null };
+}
+
+function spawnBindWaitMs(runtime: IAgentRuntime): number {
+  const raw =
+    (typeof runtime.getSetting === "function"
+      ? (runtime.getSetting("ELIZA_ORCHESTRATOR_SPAWN_BIND_WAIT_MS") as
+          | string
+          | undefined)
+      : undefined) ?? process.env.ELIZA_ORCHESTRATOR_SPAWN_BIND_WAIT_MS;
+  const parsed = raw === undefined ? Number.NaN : Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15_000;
+}
+
+/**
+ * Gate a coding-agent spawn on the swarm coordinator's ACP event stream being
+ * bound. After a restart the coordinator can sit "ACP stream not bound
+ * (status=pending)" while TASKS_SPAWN_AGENT black-holes — the action reports
+ * ok, no session is supervised, and core's effect-receipt guard rewrites the
+ * optimistic reply into a confusing "no authoritative commit receipt" line.
+ * Callers refuse the spawn honestly on `{ ok: false }` instead.
+ *
+ * Pure read of existing observable state (SwarmCoordinatorService.acpBindState,
+ * maintained for coordinator-wiring's readiness probe): no coordinator or no
+ * observable bind state means nothing to gate (the router subscribes to
+ * AcpService directly) and the gate passes. `pending` polls every 250ms up to
+ * the timeout (ELIZA_ORCHESTRATOR_SPAWN_BIND_WAIT_MS, default 15s, unref'd
+ * timers); `unbound` fails immediately with the recorded reason.
+ */
+export async function awaitCodingSupervisionBound(
+  runtime: IAgentRuntime,
+  timeoutMs?: number,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const evaluate = ():
+    | { ok: true }
+    | { ok: false; reason: string }
+    | undefined => {
+    const bind = readCoordinatorBindState(runtime);
+    if (!bind || bind.status === "bound") return { ok: true };
+    if (bind.status === "unbound") {
+      return {
+        ok: false,
+        reason: bind.reason ?? "ACP stream not bound (status=unbound)",
+      };
+    }
+    return undefined; // pending — keep waiting
+  };
+
+  const first = evaluate();
+  if (first) return first;
+  const waitMs = timeoutMs ?? spawnBindWaitMs(runtime);
+  const startedAt = Date.now();
+  const pollMs = 250;
+  for (;;) {
+    const remaining = waitMs - (Date.now() - startedAt);
+    if (remaining <= 0) break;
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, Math.min(pollMs, remaining));
+      timer.unref?.();
+    });
+    const next = evaluate();
+    if (next) return next;
+  }
+  return {
+    ok: false,
+    reason: `ACP stream not bound (status=pending) after ${waitMs}ms`,
+  };
+}
+
 export async function callbackText(
   callback: HandlerCallback | undefined,
   text: string,
