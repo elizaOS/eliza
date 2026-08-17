@@ -8,7 +8,15 @@ export function getCookieValueFromHeader(header: string | null, name: string): s
   for (const segment of segments) {
     const trimmed = segment.trim();
     if (!trimmed.startsWith(`${name}=`)) continue;
-    return decodeURIComponent(trimmed.slice(name.length + 1).trimStart());
+    const raw = trimmed.slice(name.length + 1).trimStart();
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — a cookie value with
+      // `%` / `%2` / `%ZZ` throws URIError. Malformed encoding is an
+      // absent cookie, not a request crash on auth/admission paths.
+      return undefined;
+    }
   }
   return undefined;
 }
