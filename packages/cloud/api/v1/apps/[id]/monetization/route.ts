@@ -116,7 +116,17 @@ async function __hono_PUT(
       );
     }
 
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not the route-wide 500 used for service failures.
+      return Response.json(
+        { success: false, error: "Invalid JSON in request body" },
+        { status: 400 },
+      );
+    }
     const validationResult = UpdateMonetizationSchema.safeParse(body);
 
     if (!validationResult.success) {
