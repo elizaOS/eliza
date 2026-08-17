@@ -63,11 +63,10 @@ __tests__/                         Bun tests for paths, ABI, handlers, and polic
   process-wide interactive/background priority lane. Recoverable local
   unavailability may route to the next registered cloud handler; aborts and
   unclassified failures propagate.
-- `TEXT_EMBEDDING` uses the bundle's embedding region when explicitly enabled.
-  The current disabled path returns `disabledAospEmbeddingVector()` for
-  compatibility. This conflicts with the root no-fabricated-data policy: do not
-  copy or extend that behavior, and replace it with an observable unavailable
-  failure when this boundary is changed.
+- `TEXT_EMBEDDING` registers only when explicitly enabled and is pinned to the
+  exact reviewed BGE-small-en-v1.5 GGUF (384 dimensions, mean pooling, L2
+  normalization, canonical fingerprint metadata). Disabled means unregistered;
+  never fabricate a compatibility zero vector.
 - `TEXT_TO_SPEECH` and `TRANSCRIPTION` use the fused voice/ASR symbols and real
   bundle assets. Capability or asset failure must be visible; it must not be
   reported as an empty successful result.

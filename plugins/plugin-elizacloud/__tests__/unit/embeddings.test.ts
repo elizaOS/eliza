@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import { CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Control the Cloud API client the embeddings handlers use. requestRaw is the
@@ -15,30 +15,34 @@ vi.mock("../../src/utils/events", () => ({ emitModelUsageEvent }));
 const { handleTextEmbedding, handleBatchTextEmbedding, embeddingBackoffMs, EMBED_BACKOFF_CAP_MS } =
   await import("../../src/models/embeddings");
 
-const DIM = 1536;
+const DIM = 384;
 
 function makeRuntime(dimension = DIM): IAgentRuntime {
   return {
     getSetting: (key: string) => {
-      if (key === "ELIZAOS_CLOUD_EMBEDDING_MODEL") return "text-embedding-3-small";
+      if (key === "ELIZAOS_CLOUD_EMBEDDING_MODEL") return "BAAI/bge-small-en-v1.5";
       if (key === "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS") return String(dimension);
       return undefined;
     },
   } as unknown as IAgentRuntime;
 }
 
-function embeddingResponse(vectors: number[][]): Response {
+function embeddingResponse(
+  vectors: number[][],
+  model: string | null = "BAAI/bge-small-en-v1.5"
+): Response {
   return new Response(
     JSON.stringify({
       data: vectors.map((embedding, index) => ({ embedding, index })),
+      ...(model === null ? {} : { model }),
       usage: { prompt_tokens: 3, total_tokens: 3 },
     }),
     { status: 200, headers: { "Content-Type": "application/json" } }
   );
 }
 
-function vec(seed: number): number[] {
-  return Array.from({ length: DIM }, (_, i) => (i === 0 ? seed : 0));
+function vec(_seed: number): number[] {
+  return Array.from({ length: DIM }, (_, i) => (i === 0 ? 1 : 0));
 }
 
 beforeEach(() => {
@@ -68,7 +72,26 @@ describe("handleTextEmbedding init + validation", () => {
   });
 
   it("throws on empty text instead of returning a marker vector", async () => {
-    await expect(handleTextEmbedding(makeRuntime(), "   ")).rejects.toThrow(/empty text/);
+    await expect(handleTextEmbedding(makeRuntime(), "   ")).rejects.toThrow(/cannot be blank/);
+    expect(requestRaw).not.toHaveBeenCalled();
+  });
+
+  it("enforces the canonical input boundary without truncating or repairing", async () => {
+    const exact = "x".repeat(CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS);
+    requestRaw.mockResolvedValueOnce(embeddingResponse([vec(1)]));
+
+    await handleTextEmbedding(makeRuntime(), exact);
+
+    expect(requestRaw.mock.calls[0]?.[2]?.json).toMatchObject({
+      input: [exact],
+    });
+    requestRaw.mockClear();
+    await expect(handleTextEmbedding(makeRuntime(), `${exact}x`)).rejects.toThrow(
+      /maximum is 510/i
+    );
+    await expect(handleTextEmbedding(makeRuntime(), "bad \uD83D input")).rejects.toThrow(
+      /well-formed Unicode/i
+    );
     expect(requestRaw).not.toHaveBeenCalled();
   });
 
@@ -86,6 +109,15 @@ describe("handleTextEmbedding init + validation", () => {
       expect.objectContaining({ signal: controller.signal })
     );
   });
+
+  it("rejects explicit response model mismatches and omitted identity", async () => {
+    requestRaw
+      .mockResolvedValueOnce(embeddingResponse([vec(1)], "text-embedding-3-small"))
+      .mockResolvedValueOnce(embeddingResponse([vec(1)], null));
+
+    await expect(handleTextEmbedding(makeRuntime(), "first")).rejects.toThrow(/model mismatch/i);
+    await expect(handleTextEmbedding(makeRuntime(), "second")).rejects.toThrow(/model mismatch/i);
+  });
 });
 
 describe("handleBatchTextEmbedding no-marker-on-failure", () => {
@@ -97,7 +129,7 @@ describe("handleBatchTextEmbedding no-marker-on-failure", () => {
 
   it("throws (no marker vectors) when a text is empty", async () => {
     await expect(handleBatchTextEmbedding(makeRuntime(), ["ok", ""])).rejects.toThrow(
-      /empty text at index 1/
+      /input at index 1/
     );
     expect(requestRaw).not.toHaveBeenCalled();
   });
@@ -127,7 +159,7 @@ describe("handleBatchTextEmbedding no-marker-on-failure", () => {
 
   it("throws on an invalid response structure instead of writing markers", async () => {
     requestRaw.mockResolvedValueOnce(
-      new Response(JSON.stringify({ not: "data" }), {
+      new Response(JSON.stringify({ model: "BAAI/bge-small-en-v1.5", not: "data" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -304,10 +336,10 @@ describe("handleBatchTextEmbedding dimension + count integrity (#8769)", () => {
     expect(opts.json?.dimensions).toBe(384);
   });
 
-  it("throws on a width mismatch (server returns 1536 for a 384-configured agent) and bills nothing", async () => {
-    requestRaw.mockResolvedValueOnce(embeddingResponse([vec(0.5)])); // vec() is DIM(1536)-wide
+  it("throws on a width mismatch and bills nothing", async () => {
+    requestRaw.mockResolvedValueOnce(embeddingResponse([new Array(385).fill(0.1)]));
     await expect(handleBatchTextEmbedding(makeRuntime(384), ["a"])).rejects.toThrow(
-      /dimension mismatch: model returned 1536d but agent is configured for 384d/
+      /dimension mismatch: model returned 385d but agent is configured for 384d/
     );
     expect(emitModelUsageEvent).not.toHaveBeenCalled();
   });
@@ -327,6 +359,7 @@ describe("handleBatchTextEmbedding dimension + count integrity (#8769)", () => {
     requestRaw.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
+          model: "BAAI/bge-small-en-v1.5",
           data: [{ embedding: vec(0.2), index: 5 }],
           usage: { prompt_tokens: 1, total_tokens: 1 },
         }),
@@ -335,6 +368,26 @@ describe("handleBatchTextEmbedding dimension + count integrity (#8769)", () => {
     );
     await expect(handleBatchTextEmbedding(makeRuntime(), ["a"])).rejects.toThrow(
       /response index out of range/
+    );
+    expect(emitModelUsageEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate in-range response indices instead of returning a sparse batch", async () => {
+    requestRaw.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          model: "BAAI/bge-small-en-v1.5",
+          data: [
+            { embedding: vec(0.2), index: 0 },
+            { embedding: vec(0.3), index: 0 },
+          ],
+          usage: { prompt_tokens: 2, total_tokens: 2 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    await expect(handleBatchTextEmbedding(makeRuntime(), ["a", "b"])).rejects.toThrow(
+      /duplicate response index/
     );
     expect(emitModelUsageEvent).not.toHaveBeenCalled();
   });

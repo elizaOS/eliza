@@ -113,10 +113,10 @@ Get an API key from
 | `ELIZAOS_CLOUD_MEGA_MODEL` | Mega model override | `MEGA_MODEL` or large model |
 | `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | Response handler model override | small model |
 | `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | Action planner model override | large model |
-| `ELIZAOS_CLOUD_EMBEDDING_MODEL` | Embedding model | `text-embedding-3-small` |
+| `ELIZAOS_CLOUD_EMBEDDING_MODEL` | Embedding model | `BAAI/bge-small-en-v1.5` |
 | `ELIZAOS_CLOUD_EMBEDDING_URL` | Optional custom embedding API base URL | unset |
 | `ELIZAOS_CLOUD_EMBEDDING_API_KEY` | Optional custom embedding API key | `ELIZAOS_CLOUD_API_KEY` |
-| `ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS` | Embedding vector size | `1536` |
+| `ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS` | Embedding vector size | `384` |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL` | Vision model used for image descriptions | `gpt-5.4-mini` |
 | `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS` | Max image-description response tokens | `8192` |
 | `ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL` | Image generation model override | `google/nano-banana-2/text-to-image` |
@@ -207,6 +207,10 @@ bun run --cwd packages/cloud/sdk test
 ## Publishing
 
 This plugin is published to npm as `@elizaos/plugin-elizacloud`. Publishing requires a compatible `@elizaos/cloud-sdk` release because the plugin depends on it directly.
+
+The embeddings route is part of the canonical BGE-small/384/mean/L2 trust
+boundary. A successful response must echo the exact requested model in its
+`model` field; omission or mismatch is rejected before any vector is stored.
 
 ## License
 

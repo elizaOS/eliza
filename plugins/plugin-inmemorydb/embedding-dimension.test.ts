@@ -61,6 +61,77 @@ describe("clearEmbeddingsOutsideActiveDimension", () => {
     expect(results.map((result) => result.id)).toEqual([freshId]);
     expect(await adapter.clearEmbeddingsOutsideActiveDimension()).toEqual([]);
   });
+
+  it("reclaims same-width vectors when the semantic-space fingerprint changes", async () => {
+    await adapter.ensureEmbeddingDimension(384);
+    const legacy = memory(vector(384), "legacy GTE vector");
+    const [legacyId] = await adapter.createMemories([{ memory: legacy, tableName: "memories" }]);
+
+    const migrated = await adapter.reconcileEmbeddingSpace("BAAI/bge-small-en-v1.5:384:mean:l2:v1");
+    expect(migrated.changed).toBe(true);
+    expect(migrated.previousFingerprint).toBeUndefined();
+    expect(migrated.staleMemoryIds).toEqual([legacyId]);
+    expect((await adapter.getMemoriesByIds([legacyId]))[0]?.embedding).toBeUndefined();
+
+    const fresh = memory(vector(384), "canonical BGE vector");
+    const [freshId] = await adapter.createMemories([{ memory: fresh, tableName: "memories" }]);
+    expect(
+      await adapter.reconcileEmbeddingSpace("BAAI/bge-small-en-v1.5:384:mean:l2:v1")
+    ).toMatchObject({ changed: false, staleMemoryIds: [] });
+    expect((await adapter.getMemoriesByIds([freshId]))[0]?.embedding).toHaveLength(384);
+
+    const nextSpace = await adapter.reconcileEmbeddingSpace(
+      "BAAI/bge-small-en-v1.5:384:mean:l2:v2"
+    );
+    expect(nextSpace.previousFingerprint).toBe("BAAI/bge-small-en-v1.5:384:mean:l2:v1");
+    expect(nextSpace.staleMemoryIds).toEqual([freshId]);
+  });
+
+  it("invalidates a vector when its source text changes without a replacement", async () => {
+    await adapter.ensureEmbeddingDimension(384);
+    const original = memory(vector(384), "canonical source");
+    const [memoryId] = await adapter.createMemories([{ memory: original, tableName: "memories" }]);
+
+    await adapter.updateMemories([{ id: memoryId, content: { text: "updated canonical source" } }]);
+
+    expect((await adapter.getMemoriesByIds([memoryId]))[0]?.embedding).toBeUndefined();
+    expect(
+      await adapter.searchMemories({
+        tableName: "memories",
+        embedding: vector(384),
+        match_threshold: 0,
+        limit: 10,
+      })
+    ).toEqual([]);
+  });
+
+  it("invalidates a vector on an embedding-less upsert with changed text", async () => {
+    await adapter.ensureEmbeddingDimension(384);
+    const original = memory(vector(384), "canonical source");
+    const [memoryId] = await adapter.createMemories([{ memory: original, tableName: "memories" }]);
+    const { embedding: _embedding, ...withoutEmbedding } = original;
+
+    await adapter.upsertMemories([
+      {
+        memory: {
+          ...withoutEmbedding,
+          id: memoryId,
+          content: { text: "upserted canonical source" },
+        },
+        tableName: "memories",
+      },
+    ]);
+
+    expect((await adapter.getMemoriesByIds([memoryId]))[0]?.embedding).toBeUndefined();
+    expect(
+      await adapter.searchMemories({
+        tableName: "memories",
+        embedding: vector(384),
+        match_threshold: 0,
+        limit: 10,
+      })
+    ).toEqual([]);
+  });
 });
 
 describe("room deletion embedding cleanup", () => {

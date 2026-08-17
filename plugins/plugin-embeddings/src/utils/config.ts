@@ -11,7 +11,13 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, resolveSetting } from "@elizaos/core";
+import {
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_MODEL,
+  CANONICAL_EMBEDDING_POOLING,
+  logger,
+  resolveSetting,
+} from "@elizaos/core";
 
 /**
  * Runtime config first, then `process.env`, then the supplied default.
@@ -93,7 +99,11 @@ export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
 }
 
 export function getEmbeddingModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "EMBEDDING_MODEL") ?? "text-embedding-3-small";
+  return getSetting(runtime, "EMBEDDING_MODEL") ?? CANONICAL_EMBEDDING_MODEL;
+}
+
+export function getEmbeddingPooling(runtime: IAgentRuntime): string {
+  return getSetting(runtime, "EMBEDDING_POOLING") ?? CANONICAL_EMBEDDING_POOLING;
 }
 
 export function getEmbeddingFallbackBaseURL(runtime: IAgentRuntime): string | undefined {
@@ -111,7 +121,7 @@ export function getEmbeddingFallbackModel(runtime: IAgentRuntime): string {
 }
 
 export function getEmbeddingDimensions(runtime: IAgentRuntime): number {
-  return getNumericSetting(runtime, "EMBEDDING_DIMENSIONS", 1536);
+  return getNumericSetting(runtime, "EMBEDDING_DIMENSIONS", CANONICAL_EMBEDDING_DIMENSION);
 }
 
 /**
@@ -157,8 +167,6 @@ export function logResolvedConfig(runtime: IAgentRuntime): void {
   const baseURL = getEmbeddingBaseURL(runtime);
   const fallbackBaseURL = getEmbeddingFallbackBaseURL(runtime);
   logger.info(
-    `[Embeddings] model=${getEmbeddingModel(runtime)} dimensions=${getEmbeddingDimensions(
-      runtime
-    )} endpoint=${baseURL ?? "(unset)"} fallback=${fallbackBaseURL ?? "(unset)"}`
+    `[Embeddings] model=${getEmbeddingModel(runtime)} dimensions=${getEmbeddingDimensions(runtime)} pooling=${getEmbeddingPooling(runtime)} normalization=l2 endpoint=${baseURL ?? "(unset)"} fallback=${fallbackBaseURL ?? "(unset)"}`
   );
 }

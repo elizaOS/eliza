@@ -474,7 +474,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
 	}
 
 	// ── Step 4: wire inference delegation if device-bridge enabled ────────────
-	// Registers TEXT_SMALL/TEXT_LARGE/TEXT_EMBEDDING handlers (registerModel) on
+	// Registers TEXT_SMALL/TEXT_LARGE handlers (registerModel) on
 	// the runtime. When ELIZA_BIONIC_HOST_DELEGATED=1 (dynamic-Vulkan fused lib
 	// staged), the TEXT generate handler routes to the in-process bionic GPU
 	// host over an abstract UDS instead of the device-bridge WebSocket — see

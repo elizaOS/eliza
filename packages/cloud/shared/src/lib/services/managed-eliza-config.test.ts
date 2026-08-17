@@ -173,7 +173,7 @@ describe("managed Eliza environment", () => {
     );
   });
 
-  test("honors an explicit per-agent embedding URL override", async () => {
+  test("heals a per-agent embedding URL override to the platform endpoint", async () => {
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
@@ -186,7 +186,7 @@ describe("managed Eliza environment", () => {
     });
 
     expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_URL).toBe(
-      "https://custom.example.com/api/v1",
+      result.environmentVars.ELIZAOS_CLOUD_BASE_URL,
     );
   });
 
@@ -250,11 +250,7 @@ describe("managed Eliza environment", () => {
     expect(result.environmentVars.ELIZA_AGENT_LOCAL_STATE).toBe("1");
   });
 
-  test("fresh provisions default to local 384-d embeddings and agree on the width (#8769 discipline)", async () => {
-    // 2026-08-16 platform default: fresh agents run local gte-small (384-d)
-    // instead of paid cloud text-embedding-3-small. Both dimension hints must
-    // still agree with the handler's real output or the boot probe snaps the
-    // storage column to a width the handler won't match (#8769).
+  test("fresh provisions pin the immutable canonical BGE sidecar contract", async () => {
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
@@ -264,11 +260,16 @@ describe("managed Eliza environment", () => {
     });
 
     expect(result.environmentVars.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
+    expect(result.environmentVars.EMBEDDING_BASE_URL).toBe("http://eliza-embedding-sidecar:80/v1");
+    expect(result.environmentVars.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
+    expect(result.environmentVars.EMBEDDING_POOLING).toBe("mean");
+    expect(result.environmentVars.EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.environmentVars.EMBEDDING_DIMENSION).toBe("384");
+    expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
     expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
   });
 
-  test("honors explicit per-agent embedding-dimension overrides", async () => {
+  test("heals incompatible same-width/model and dimension overrides", async () => {
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
@@ -276,13 +277,23 @@ describe("managed Eliza environment", () => {
       userId: "user-1",
       agentSandboxId: "cloud-agent-1",
       existingEnv: {
+        EMBEDDING_BASE_URL: "https://legacy-gte.example/v1",
+        EMBEDDING_MODEL: "thenlper/gte-small",
+        EMBEDDING_POOLING: "cls",
+        EMBEDDING_DIMENSIONS: "768",
         EMBEDDING_DIMENSION: "768",
+        ELIZAOS_CLOUD_EMBEDDING_MODEL: "text-embedding-3-small",
         ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: "768",
       },
     });
 
-    expect(result.environmentVars.EMBEDDING_DIMENSION).toBe("768");
-    expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("768");
+    expect(result.environmentVars.EMBEDDING_BASE_URL).toBe("http://eliza-embedding-sidecar:80/v1");
+    expect(result.environmentVars.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
+    expect(result.environmentVars.EMBEDDING_POOLING).toBe("mean");
+    expect(result.environmentVars.EMBEDDING_DIMENSIONS).toBe("384");
+    expect(result.environmentVars.EMBEDDING_DIMENSION).toBe("384");
+    expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
+    expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
   });
 });
 
@@ -295,28 +306,43 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     delete process.env.NEXT_PUBLIC_API_URL;
   });
 
-  test("empty env (fresh provision) defaults to local-primary 384-d embeddings", async () => {
+  test("empty env defaults to the canonical local sidecar", async () => {
     const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
 
     const result = applyManagedAgentInferenceEnvDefaults({});
 
     expect(Object.keys(result).sort()).toEqual([
+      "ELIZAOS_CLOUD_EMBEDDING_API_KEY",
       "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS",
+      "ELIZAOS_CLOUD_EMBEDDING_MODEL",
       "ELIZAOS_CLOUD_EMBEDDING_URL",
       "ELIZAOS_CLOUD_LARGE_MODEL",
       "ELIZAOS_CLOUD_SMALL_MODEL",
       "ELIZAOS_CLOUD_USE_EMBEDDINGS",
+      "EMBEDDING_API_KEY",
+      "EMBEDDING_BASE_URL",
       "EMBEDDING_DIMENSION",
+      "EMBEDDING_DIMENSIONS",
+      "EMBEDDING_FALLBACK_API_KEY",
+      "EMBEDDING_FALLBACK_BASE_URL",
+      "EMBEDDING_FALLBACK_MODEL",
+      "EMBEDDING_MODEL",
+      "EMBEDDING_POOLING",
     ]);
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
+    expect(result.EMBEDDING_BASE_URL).toBe("http://eliza-embedding-sidecar:80/v1");
+    expect(result.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
+    expect(result.EMBEDDING_POOLING).toBe("mean");
+    expect(result.EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.EMBEDDING_DIMENSION).toBe("384");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_URL).toBeTruthy();
     expect(result.ELIZAOS_CLOUD_SMALL_MODEL).toBeTruthy();
     expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBeTruthy();
   });
 
-  test("a previously provisioned agent (cloud key present) keeps the 1536-d cloud default — no #9911 heal", async () => {
+  test("an existing cloud-routed agent converges from 1536 to canonical BGE/384", async () => {
     const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
 
     const result = applyManagedAgentInferenceEnvDefaults({
@@ -324,8 +350,11 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     });
 
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
-    expect(result.EMBEDDING_DIMENSION).toBe("1536");
-    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
+    expect(result.EMBEDDING_BASE_URL).toBe("");
+    expect(result.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
+    expect(result.EMBEDDING_DIMENSION).toBe("384");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
   });
 
   test("a fresh provision can explicitly opt back into cloud embeddings", async () => {
@@ -336,11 +365,12 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     });
 
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
-    expect(result.EMBEDDING_DIMENSION).toBe("1536");
-    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
+    expect(result.EMBEDDING_BASE_URL).toBe("");
+    expect(result.EMBEDDING_DIMENSION).toBe("384");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
   });
 
-  test("local-primary embedding opt-in yields cloud embeddings and uses 384-dim hints", async () => {
+  test("legacy local-primary opt-in is translated to the node sidecar", async () => {
     const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
 
     const result = applyManagedAgentInferenceEnvDefaults({
@@ -349,11 +379,11 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     });
 
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
+    expect(result.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBe("0");
+    expect(result.EMBEDDING_BASE_URL).toBe("http://eliza-embedding-sidecar:80/v1");
     expect(result.EMBEDDING_DIMENSION).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
-    // Keep the fallback URL available for rollback/mobile/no-model paths; the
-    // use-embeddings flag is what prevents cloud from registering primary.
-    expect(result.ELIZAOS_CLOUD_EMBEDDING_URL).toBeTruthy();
+    expect(result.EMBEDDING_FALLBACK_BASE_URL).toBe("");
   });
 
   test("explicit cloud-embedding pin wins over local-primary opt-in", async () => {
@@ -365,34 +395,47 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     });
 
     expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
-    expect(result.EMBEDDING_DIMENSION).toBe("1536");
-    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
+    expect(result.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBe("0");
+    expect(result.EMBEDDING_BASE_URL).toBe("");
+    expect(result.EMBEDDING_DIMENSION).toBe("384");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
   });
 
-  test("preserves explicit per-agent overrides", async () => {
+  test("heals embedding overrides while preserving text-model overrides", async () => {
     const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
 
     const result = applyManagedAgentInferenceEnvDefaults({
+      EMBEDDING_BASE_URL: "https://legacy-gte.example/v1",
+      EMBEDDING_MODEL: "thenlper/gte-small",
+      EMBEDDING_POOLING: "cls",
+      EMBEDDING_DIMENSIONS: "768",
       EMBEDDING_DIMENSION: "768",
+      EMBEDDING_FALLBACK_BASE_URL: "https://fallback-gte.example/v1",
+      ELIZAOS_CLOUD_EMBEDDING_MODEL: "text-embedding-3-small",
       ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: "768",
       ELIZAOS_CLOUD_EMBEDDING_URL: "https://custom.example.com/api/v1",
       ELIZAOS_CLOUD_SMALL_MODEL: "custom-small",
       ELIZAOS_CLOUD_LARGE_MODEL: "custom-large",
     });
 
-    expect(result.EMBEDDING_DIMENSION).toBe("768");
-    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("768");
-    expect(result.ELIZAOS_CLOUD_EMBEDDING_URL).toBe("https://custom.example.com/api/v1");
+    expect(result.EMBEDDING_BASE_URL).toBe("http://eliza-embedding-sidecar:80/v1");
+    expect(result.EMBEDDING_FALLBACK_BASE_URL).toBe("");
+    expect(result.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
+    expect(result.EMBEDDING_POOLING).toBe("mean");
+    expect(result.EMBEDDING_DIMENSIONS).toBe("384");
+    expect(result.EMBEDDING_DIMENSION).toBe("384");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_URL).toBe("https://cloud.eliza.app/api/v1");
     expect(result.ELIZAOS_CLOUD_SMALL_MODEL).toBe("custom-small");
     expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBe("custom-large");
   });
 
-  test("spreading the helper heals a stale upgrade env that lacks EMBEDDING_DIMENSION", async () => {
+  test("spreading the helper heals a stale upgrade env into the canonical space", async () => {
     // Mirrors the blue/green fleet-upgrade path (eliza-sandbox.ts): an agent
-    // provisioned BEFORE the dimension pin landed carries a stale env with no
-    // EMBEDDING_DIMENSION. Spreading the helper on top backfills "1536" (so the
-    // 1536-d cloud vectors stop landing in a dim_384 column) while preserving the
-    // agent's other env verbatim.
+    // provisioned before the canonical fingerprint landed carries stale cloud
+    // defaults. Spreading the helper on top pins BGE/384/mean; runtime startup
+    // then reclaims and re-embeds incompatible vectors.
     const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
 
     const staleUpgradeEnv: Record<string, string> = {
@@ -410,8 +453,12 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     };
 
     // The inference defaults are backfilled...
-    expect(healed.EMBEDDING_DIMENSION).toBe("1536");
-    expect(healed.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
+    expect(healed.EMBEDDING_BASE_URL).toBe("");
+    expect(healed.EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
+    expect(healed.EMBEDDING_POOLING).toBe("mean");
+    expect(healed.EMBEDDING_DIMENSION).toBe("384");
+    expect(healed.ELIZAOS_CLOUD_EMBEDDING_MODEL).toBe("BAAI/bge-small-en-v1.5");
+    expect(healed.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
     expect(healed.ELIZAOS_CLOUD_EMBEDDING_URL).toBeTruthy();
     expect(healed.ELIZAOS_CLOUD_SMALL_MODEL).toBeTruthy();
     expect(healed.ELIZAOS_CLOUD_LARGE_MODEL).toBeTruthy();

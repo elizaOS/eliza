@@ -3,13 +3,15 @@
  * (RAG) pipeline. `generateText` dispatches to Anthropic / OpenAI / OpenRouter /
  * Google (with ephemeral prompt-caching paths for Claude and Gemini on
  * OpenRouter), and `generateTextEmbedding` / `generateTextEmbeddingsBatch`
- * produce embeddings via those providers or the runtime's local model. Every
- * call resolves provider/model/key config from {@link validateModelConfig} and
- * is wrapped in trajectory logging. The Vercel `ai` SDK and provider packages
- * are imported lazily so this module — reachable from `@elizaos/core`'s browser
- * entry — never pulls the SDK into the frontend bundle.
+ * produce semantic embeddings exclusively through the runtime's canonical
+ * `TEXT_EMBEDDING` route. Text calls still resolve provider/model/key config
+ * from {@link validateModelConfig} and are wrapped in trajectory logging. The
+ * Vercel `ai` SDK and provider packages are imported lazily so this module —
+ * reachable from `@elizaos/core`'s browser entry — never pulls the SDK into the
+ * frontend bundle.
  */
-import type { EmbeddingModel, ModelMessage } from "ai";
+import type { ModelMessage } from "ai";
+import { normalizeCanonicalEmbedding } from "../../constants/embeddings.ts";
 import { logger } from "../../logger";
 import {
 	logActiveTrajectoryLlmCall,
@@ -19,7 +21,6 @@ import { type IAgentRuntime, ModelType } from "../../types";
 import { BatchProcessor } from "../../utils/batch-queue";
 
 type AIModel = Parameters<typeof aiGenerateText>[0]["model"];
-type AIEmbeddingModel = EmbeddingModel;
 
 interface TextGenerationResult {
 	text: string;
@@ -43,7 +44,7 @@ function importAiProvider<T>(specifier: string): Promise<T> {
 }
 
 /**
- * Lazily load the `ai` package's runtime functions (`generateText`, `embed`).
+ * Lazily load the `ai` package's text-generation runtime.
  *
  * WHY lazy: this module is reachable from `@elizaos/core`'s browser entry (via
  * `features/documents`), so a static `import { generateText, embed } from "ai"`
@@ -59,7 +60,6 @@ function importAiProvider<T>(specifier: string): Promise<T> {
 // while the actual module loads lazily at runtime.
 type AiModule = typeof import("ai");
 type AiGenerateText = AiModule["generateText"];
-type AiEmbed = AiModule["embed"];
 let aiCorePromise: Promise<AiModule> | null = null;
 function loadAiCore(): Promise<AiModule> {
 	aiCorePromise ??= importAiProvider<AiModule>("ai");
@@ -75,9 +75,6 @@ function aiGenerateText(
 		m.generateText(...args),
 	) as ReturnType<AiGenerateText>;
 }
-function embed(...args: Parameters<AiEmbed>): ReturnType<AiEmbed> {
-	return loadAiCore().then((m) => m.embed(...args)) as ReturnType<AiEmbed>;
-}
 
 type CreateAnthropic = (settings: {
 	apiKey: string;
@@ -86,13 +83,9 @@ type CreateAnthropic = (settings: {
 
 type CreateOpenAI = (settings: { apiKey: string; baseURL?: string }) => {
 	chat: (modelName: string) => AIModel;
-	embedding: (modelName: string) => AIEmbeddingModel;
 };
 
-type GoogleProvider = {
-	(modelName: string): AIModel;
-	textEmbeddingModel(modelName: string): AIEmbeddingModel;
-};
+type GoogleProvider = (modelName: string) => AIModel;
 
 type CreateOpenRouter = (settings: { apiKey: string; baseURL?: string }) => {
 	chat: (modelName: string) => AIModel;
@@ -169,29 +162,17 @@ export async function generateTextEmbedding(
 	runtime: IAgentRuntime,
 	text: string,
 ): Promise<{ embedding: number[] }> {
-	const config = validateModelConfig(runtime);
-	const dimensions = config.EMBEDDING_DIMENSION;
-
 	try {
-		if (config.EMBEDDING_PROVIDER === "local") {
-			return generateLocalEmbedding(runtime, text);
-		} else if (config.EMBEDDING_PROVIDER === "openai") {
-			return generateOpenAIEmbedding(text, config, dimensions);
-		} else if (config.EMBEDDING_PROVIDER === "google") {
-			return generateGoogleEmbedding(text, config);
-		}
-
-		throw new Error(
-			`Unsupported embedding provider: ${config.EMBEDDING_PROVIDER}`,
-		);
+		return generateCanonicalRuntimeEmbedding(runtime, text);
 	} catch (error) {
-		// error-policy:J2 Log provider context and preserve the embedding failure.
-		logger.error({ error }, `${config.EMBEDDING_PROVIDER} embedding error`);
+		// error-policy:J2 Preserve the canonical runtime-route failure with
+		// documents context; never bypass it with a second provider client.
+		logger.error({ error }, "Canonical runtime embedding error");
 		throw error;
 	}
 }
 
-async function generateLocalEmbedding(
+async function generateCanonicalRuntimeEmbedding(
 	runtime: IAgentRuntime,
 	text: string,
 ): Promise<{ embedding: number[] }> {
@@ -201,11 +182,11 @@ async function generateLocalEmbedding(
 
 	if (!Array.isArray(embedding)) {
 		throw new Error(
-			"Local embedding model returned an invalid embedding payload",
+			"Canonical runtime embedding model returned an invalid payload",
 		);
 	}
 
-	return { embedding };
+	return { embedding: normalizeCanonicalEmbedding(embedding) };
 }
 
 export async function generateTextEmbeddingsBatch(
@@ -290,77 +271,6 @@ export async function generateTextEmbeddingsBatch(
 	}
 
 	return results;
-}
-
-async function generateOpenAIEmbedding(
-	text: string,
-	config: ModelConfig,
-	dimensions: number,
-): Promise<{ embedding: number[] }> {
-	const { createOpenAI } = await importAiProvider<{
-		createOpenAI: CreateOpenAI;
-	}>("@ai-sdk/openai");
-	const openai = createOpenAI({
-		apiKey: config.OPENAI_API_KEY ?? "",
-		baseURL: config.OPENAI_BASE_URL,
-	});
-
-	const modelInstance = openai.embedding(config.TEXT_EMBEDDING_MODEL);
-
-	const embedOptions: {
-		model: ReturnType<typeof openai.embedding>;
-		value: string;
-		dimensions?: number;
-	} = {
-		model: modelInstance,
-		value: text,
-	};
-
-	if (
-		dimensions &&
-		["text-embedding-3-small", "text-embedding-3-large"].includes(
-			config.TEXT_EMBEDDING_MODEL,
-		)
-	) {
-		embedOptions.dimensions = dimensions;
-	}
-
-	const { embedding, usage } = await embed(embedOptions);
-
-	const totalTokens = (usage as { totalTokens?: number })?.totalTokens;
-	logger.debug(
-		`OpenAI embedding ${config.TEXT_EMBEDDING_MODEL}${embedOptions.dimensions ? ` (${embedOptions.dimensions}D)` : ""}: ${totalTokens || 0} tokens`,
-	);
-
-	return { embedding };
-}
-
-async function generateGoogleEmbedding(
-	text: string,
-	config: ModelConfig,
-): Promise<{ embedding: number[] }> {
-	const { google: googleProvider } = await importAiProvider<{
-		google: GoogleProvider;
-	}>("@ai-sdk/google");
-	if (config.GOOGLE_API_KEY) {
-		process.env.GOOGLE_GENERATIVE_AI_API_KEY = config.GOOGLE_API_KEY;
-	}
-
-	const modelInstance = googleProvider.textEmbeddingModel(
-		config.TEXT_EMBEDDING_MODEL,
-	);
-
-	const { embedding, usage } = await embed({
-		model: modelInstance,
-		value: text,
-	});
-
-	const totalTokens = (usage as { totalTokens?: number })?.totalTokens;
-	logger.debug(
-		`Google embedding ${config.TEXT_EMBEDDING_MODEL}: ${totalTokens || 0} tokens`,
-	);
-
-	return { embedding };
 }
 
 export async function generateText(

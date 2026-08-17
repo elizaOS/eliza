@@ -5,6 +5,7 @@
  * ordinary JSON requested by a user remains visible.
  */
 import { isPlainObject } from "../utils/type-guards";
+import { classifyCompactUserVisibleControlDialect } from "./user-visible-control-dialect";
 
 const MAX_REPLY_ENVELOPE_DEPTH = 8;
 const TOOL_ACTION_NAME = /^(?:functions\.)?[A-Z][A-Z0-9_.:-]*$/;
@@ -144,6 +145,15 @@ function inspectString(
 		return {
 			kind: "control",
 			envelope: malformedEnvelope,
+			malformed: true,
+			fieldPath,
+		};
+	}
+	const compactEnvelope = classifyCompactUserVisibleControlDialect(candidate);
+	if (compactEnvelope) {
+		return {
+			kind: "control",
+			envelope: compactEnvelope,
 			malformed: true,
 			fieldPath,
 		};

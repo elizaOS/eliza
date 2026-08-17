@@ -708,10 +708,19 @@ describe("generateChatResponse token streaming", () => {
         thought: "Opened the Notes view successfully.",
       },
     });
+    const internalContextPayload = JSON.stringify({
+      type: "context_event",
+      event: {
+        id: "context-1",
+        type: "planner",
+        source: "sub-planner",
+      },
+    });
     const service: MessageService = {
       async handleMessage(_runtime, _message, _callback, options) {
         await options?.onStreamChunk?.(internalToolPayload);
         await options?.onStreamChunk?.(internalEvaluationPayload);
+        await options?.onStreamChunk?.(internalContextPayload);
         return {
           didRespond: true,
           responseContent: { text: "Navigated to Notes (gui)." },
@@ -1908,6 +1917,21 @@ describe("normalizeChatResponseText", () => {
     expect(normalizeChatResponseText("Plain chat reply.", [])).toBe(
       "Plain chat reply.",
     );
+  });
+
+  it("redacts retired runtime-failure diagnostics when durable history is replayed", () => {
+    const leakedDiagnostic =
+      'Repeated runtime failure "UNCLASSIFIED" from [MessageService.v5Runtime]: Unauthorized {"entityId":"internal-room","providerError":{"responseBodyExcerpt":"SYNTHETIC-PII-555-12-3456","url":"https://provider.invalid/v1/chat"}}';
+
+    const normalized = normalizeChatResponseText(leakedDiagnostic, []);
+
+    expect(normalized).toBe(
+      "I hit the same internal problem several times in a short window. " +
+        "The details are available in diagnostics, and I have kept them out of this chat.",
+    );
+    expect(normalized).not.toContain("SYNTHETIC-PII");
+    expect(normalized).not.toContain("internal-room");
+    expect(normalized).not.toContain("provider.invalid");
   });
 
   it("marks synthetic failure replies so they do not become prompt context", () => {

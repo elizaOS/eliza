@@ -11,7 +11,7 @@
  */
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger, ModelType } from "@elizaos/core";
-import { generateText } from "ai";
+import { generateText, streamText } from "ai";
 import { createZaiClient, type ZaiFetch } from "../providers";
 import { createModelName, type ModelName, type ModelSize, type ProviderOptions } from "../types";
 import {
@@ -135,6 +135,7 @@ async function generateTextWithModel(
     metadata: agentName ? { agentName } : undefined,
   };
 
+  const signal = params.signal;
   const generateParams = {
     model: zai(modelName),
     prompt: resolved.prompt,
@@ -145,8 +146,86 @@ async function generateTextWithModel(
     presencePenalty: resolved.presencePenalty,
     experimental_telemetry: telemetryConfig,
     topP: resolved.topP,
+    ...(signal ? { abortSignal: signal } : {}),
     ...(typeof resolved.maxTokens === "number" ? { maxTokens: resolved.maxTokens } : {}),
   };
+
+  if (params.stream === true && typeof params.onStreamChunk === "function") {
+    signal?.throwIfAborted();
+    let capturedError: unknown;
+    let finishError: unknown;
+    const result = streamText({
+      ...generateParams,
+      onError: ({ error }: { error: unknown }) => {
+        capturedError = error;
+      },
+    } as Parameters<typeof streamText>[0]);
+
+    // Companion promises may reject before the async iterator finishes. Attach
+    // observers immediately, then rethrow the authoritative finish failure once
+    // transport cleanup has completed.
+    const textPromise = Promise.resolve(result.text).catch((error) => {
+      // error-policy:J5 the SDK text aggregate reports the same provider
+      // failure as textStream/onError; retain it as a fallback when an adapter
+      // does not invoke onError.
+      capturedError ??= error;
+      return undefined;
+    });
+    const finishReasonPromise = Promise.resolve(result.finishReason).catch((error) => {
+      // error-policy:J5 `finishError` is observed and rethrown below after the
+      // text iterator completes its cleanup.
+      finishError = error;
+      return undefined;
+    });
+    const usagePromise = Promise.resolve(result.usage).catch(() => {
+      // error-policy:J7 usage is diagnostic and must not discard an otherwise
+      // successful reply. Keep the failure observable without logging a
+      // potentially sensitive provider payload.
+      logger.warn(`[z.ai] ${modelType} stream usage metadata was unavailable`);
+      runtime.reportError(
+        "zai.stream-usage",
+        new ElizaError(`[z.ai] ${modelType} stream usage metadata was unavailable`, {
+          code: "MODEL_USAGE_UNAVAILABLE",
+          context: { modelType, modelName },
+        }),
+        { modelType, modelName }
+      );
+      return undefined;
+    });
+
+    let text = "";
+    for await (const chunk of result.textStream) {
+      signal?.throwIfAborted();
+      text += chunk;
+      await params.onStreamChunk(chunk);
+      signal?.throwIfAborted();
+    }
+    signal?.throwIfAborted();
+    const [, finishReason, usage] = await Promise.all([
+      textPromise,
+      finishReasonPromise,
+      usagePromise,
+    ]);
+    signal?.throwIfAborted();
+    if (capturedError !== undefined) throw capturedError;
+    if (finishError !== undefined) throw finishError;
+
+    if (text.length === 0) {
+      throw new ElizaError(
+        `[z.ai] ${modelType} returned an empty completion${
+          finishReason ? ` (finishReason: ${finishReason})` : ""
+        }`,
+        {
+          code: "MODEL_EMPTY_COMPLETION",
+          context: { modelType, modelName, finishReason },
+        }
+      );
+    }
+    if (usage) {
+      emitModelUsageEvent(runtime, modelType, usage);
+    }
+    return text;
+  }
 
   const { text, usage, finishReason } = await generateText(
     generateParams as Parameters<typeof generateText>[0]

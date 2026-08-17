@@ -96,9 +96,16 @@
       },
       "EMBEDDING_MODEL": {
         "type": "string",
-        "description": "Embedding model identifier sent as the request `model` field.",
+        "description": "Canonical BAAI/bge-small-en-v1.5 model identifier; other models fail closed.",
         "required": false,
-        "default": "text-embedding-3-small",
+        "default": "BAAI/bge-small-en-v1.5",
+        "sensitive": false
+      },
+      "EMBEDDING_POOLING": {
+        "type": "string",
+        "description": "Canonical pooling mode. Must remain mean.",
+        "required": false,
+        "default": "mean",
         "sensitive": false
       },
       "EMBEDDING_FALLBACK_BASE_URL": {
@@ -121,9 +128,9 @@
       },
       "EMBEDDING_DIMENSIONS": {
         "type": "string",
-        "description": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database — changing it invalidates stored vectors.",
+        "description": "Canonical BGE-small vector width. Values other than 384 fail closed.",
         "required": false,
-        "default": "1536",
+        "default": "384",
         "sensitive": false
       },
       "EMBEDDING_BROWSER_URL": {

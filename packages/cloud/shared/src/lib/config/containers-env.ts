@@ -10,6 +10,12 @@
  */
 
 import * as fs from "node:fs";
+import {
+  assertCanonicalEmbeddingConfig,
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_MODEL,
+  CANONICAL_EMBEDDING_POOLING,
+} from "@elizaos/core/edge";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
 /**
@@ -128,17 +134,22 @@ export const containersEnv = {
   },
 
   /**
-   * Model the embedding sidecar serves. gte-small is the platform's local
-   * embedding standard (384-dim, ~50ms on node CPU) — the same model the
-   * on-device `plugin-local-inference` path uses, so a per-agent cutover to the
-   * sidecar never changes vector width.
+   * Model the embedding sidecar serves. The managed fleet has one canonical
+   * vector space: BGE-small, 384 dimensions, mean pooling, and L2-normalized
+   * output. A stale GTE (or any other) operator override fails closed instead
+   * of letting a same-width incompatible model silently poison memory search.
    */
   embeddingSidecarModelId(): string {
     const env = getCloudAwareEnv();
-    return (
+    const configured =
       pick(env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID, env.ELIZA_EMBEDDING_SIDECAR_MODEL_ID) ??
-      "thenlper/gte-small"
+      CANONICAL_EMBEDDING_MODEL;
+    assertCanonicalEmbeddingConfig(
+      configured,
+      CANONICAL_EMBEDDING_DIMENSION,
+      CANONICAL_EMBEDDING_POOLING,
     );
+    return CANONICAL_EMBEDDING_MODEL;
   },
 
   /**

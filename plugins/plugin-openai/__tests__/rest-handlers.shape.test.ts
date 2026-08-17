@@ -3,8 +3,14 @@
  * generation/description): assert request construction and response parsing
  * against a mocked runtime and fetch, no network.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+  CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+  type IAgentRuntime,
+  ModelType,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { openaiPlugin } from "../index";
 import { handleTextToSpeech } from "../models/audio";
 import { handleTextEmbedding } from "../models/embedding";
 import { handleImageDescription, handleImageGeneration } from "../models/image";
@@ -18,6 +24,7 @@ function createRuntime(settings: Record<string, string> = {}) {
     getSetting: vi.fn((key: string) => {
       const values: Record<string, string> = {
         OPENAI_API_KEY: "test-key",
+        OPENAI_EMBEDDING_URL: "https://embeddings.example/v1",
         ...settings,
       };
       return values[key];
@@ -41,6 +48,12 @@ afterEach(() => {
 });
 
 describe("OpenAI REST handler request shapes", () => {
+  it("attests its runtime embedding handler to the canonical semantic space", () => {
+    expect(openaiPlugin.modelMetadata?.[ModelType.TEXT_EMBEDDING]).toEqual({
+      embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+    });
+  });
+
   it("rejects malformed embedding params before calling the provider", async () => {
     const fetchMock = vi.fn();
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
@@ -56,7 +69,20 @@ describe("OpenAI REST handler request shapes", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
     await expect(handleTextEmbedding(createRuntime(), " \n\t ")).rejects.toThrow(
-      "Cannot generate embedding for empty text"
+      "Canonical embedding input cannot be blank"
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects over-limit and ill-formed canonical input before fetch", async () => {
+    const fetchMock = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "x".repeat(CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS + 1))
+    ).rejects.toThrow(/maximum is 510/i);
+    await expect(handleTextEmbedding(createRuntime(), "bad \uD83D input")).rejects.toThrow(
+      /well-formed Unicode/i
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -68,7 +94,7 @@ describe("OpenAI REST handler request shapes", () => {
           JSON.stringify({
             object: "list",
             data: [{ object: "embedding", embedding: new Array(384).fill(0.1), index: 0 }],
-            model: "text-embedding-3-small",
+            model: "BAAI/bge-small-en-v1.5",
             usage: { prompt_tokens: 4, total_tokens: 4 },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
@@ -91,9 +117,10 @@ describe("OpenAI REST handler request shapes", () => {
       unknown
     >;
     expect(requestBody).toMatchObject({
-      model: "text-embedding-3-small",
+      model: "BAAI/bge-small-en-v1.5",
       input: "hello",
       dimensions: 384,
+      pooling: "mean",
     });
   });
 
@@ -104,8 +131,8 @@ describe("OpenAI REST handler request shapes", () => {
           new Response(
             JSON.stringify({
               object: "list",
-              data: [{ object: "embedding", embedding: new Array(1536).fill(0.1), index: 0 }],
-              model: "text-embedding-3-small",
+              data: [{ object: "embedding", embedding: new Array(385).fill(0.1), index: 0 }],
+              model: "BAAI/bge-small-en-v1.5",
               usage: { prompt_tokens: 4, total_tokens: 4 },
             }),
             { status: 200, headers: { "Content-Type": "application/json" } }
@@ -118,11 +145,42 @@ describe("OpenAI REST handler request shapes", () => {
     ).rejects.toThrow("Embedding dimension mismatch");
   });
 
+  it("rejects explicit response model mismatches and omitted identity", async () => {
+    const response = (model: string | undefined) =>
+      new Response(
+        JSON.stringify({
+          object: "list",
+          data: [
+            {
+              object: "embedding",
+              embedding: new Array(384).fill(0).map((_, index) => (index === 0 ? 1 : 0)),
+              index: 0,
+            },
+          ],
+          ...(model === undefined ? {} : { model }),
+          usage: { prompt_tokens: 4, total_tokens: 4 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response("text-embedding-3-small"))
+      .mockResolvedValueOnce(response(undefined));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await expect(handleTextEmbedding(createRuntime(), "first")).rejects.toThrow(
+      /embedding model mismatch/i
+    );
+    await expect(handleTextEmbedding(createRuntime(), "second")).rejects.toThrow(
+      /embedding model mismatch/i
+    );
+  });
+
   it("fails clearly when provider embedding response is missing the data array", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(
       vi.fn(
         async () =>
-          new Response(JSON.stringify({ object: "list", model: "text-embedding-3-small" }), {
+          new Response(JSON.stringify({ object: "list", model: "BAAI/bge-small-en-v1.5" }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           })
@@ -152,7 +210,7 @@ describe("OpenAI REST handler request shapes", () => {
 
     await expect(
       handleTextEmbedding(createRuntime({ OPENAI_EMBEDDING_DIMENSIONS: "999" }), "hello")
-    ).rejects.toThrow("Invalid embedding dimension: 999");
+    ).rejects.toThrow("Embedding dimension mismatch: got 999");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

@@ -6,6 +6,7 @@
 import { configureLocalEmbeddingPlugin, loadElizaConfig } from "@elizaos/agent";
 import {
   type AgentRuntime,
+  CANONICAL_EMBEDDING_DIMENSION,
   isTruthyEnvValue,
   logger,
   ModelType,
@@ -68,9 +69,9 @@ export function startDeferredLocalEmbeddingWarmup(
   return true;
 }
 
-/** Sets the SQL provisioning width without overriding an explicit model width. */
+/** Pins SQL provisioning to the one first-party semantic-vector width. */
 export function ensureDefaultEmbeddingDimension(): void {
-  process.env.EMBEDDING_DIMENSION ??= "384";
+  process.env.EMBEDDING_DIMENSION = String(CANONICAL_EMBEDDING_DIMENSION);
 }
 
 async function warmupEmbeddingModel(
@@ -106,32 +107,8 @@ async function warmupEmbeddingModelImpl(
 
   const preset = localInference.detectEmbeddingPreset();
   const modelsDir = process.env.MODELS_DIR ?? localInference.DEFAULT_MODELS_DIR;
-  let model = process.env.LOCAL_EMBEDDING_MODEL?.trim() || preset.model;
-  let modelRepo =
-    process.env.LOCAL_EMBEDDING_MODEL_REPO?.trim() || preset.modelRepo;
-
-  if (
-    !localInference.isEmbeddingWarmupReuseDisabled() &&
-    !localInference.embeddingGgufFilePresent(modelsDir, model)
-  ) {
-    const reuse =
-      localInference.findExistingEmbeddingModelForWarmupReuse(modelsDir);
-    if (reuse) {
-      logger.info(
-        `[eliza] Embedding warmup: configured file "${model}" not found in MODELS_DIR — reusing existing ${reuse.model} to avoid a large re-download. ` +
-          "Set LOCAL_EMBEDDING_MODEL or ELIZA_EMBEDDING_WARMUP_NO_REUSE=1 to force the configured model.",
-      );
-      process.env.LOCAL_EMBEDDING_MODEL = reuse.model;
-      process.env.LOCAL_EMBEDDING_MODEL_REPO = reuse.modelRepo;
-      process.env.LOCAL_EMBEDDING_DIMENSIONS = String(reuse.dimensions);
-      process.env.LOCAL_EMBEDDING_CONTEXT_SIZE = String(reuse.contextSize);
-      process.env.LOCAL_EMBEDDING_GPU_LAYERS = reuse.gpuLayers;
-      process.env.LOCAL_EMBEDDING_USE_MMAP =
-        reuse.gpuLayers === "auto" ? "false" : "true";
-      model = reuse.model;
-      modelRepo = reuse.modelRepo;
-    }
-  }
+  const model = preset.model;
+  const modelRepo = preset.modelRepo;
 
   logger.info(
     `[eliza] Local embedding warmup: ${model} (hardware tier preset: ${preset.label}). ` +

@@ -7,6 +7,10 @@
  * layer is a pure no-op when disabled.
  */
 import { describe, expect, it, vi } from "vitest";
+import {
+	CANONICAL_EMBEDDING_DIMENSION,
+	CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+} from "../../constants/embeddings";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
@@ -273,9 +277,15 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 			ModelType.TEXT_EMBEDDING,
 			async (_rt, params: { text: string }) => {
 				seenText = params.text;
-				return [0.1, 0.2];
+				const embedding = new Array(384).fill(0);
+				embedding[0] = 1;
+				return embedding;
 			},
 			"test",
+			0,
+			{
+				embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+			},
 		);
 
 		await runtime.useModel(ModelType.TEXT_EMBEDDING, {
@@ -284,6 +294,40 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 
 		// Embeddings must stay stable turn-to-turn, so the real text is embedded.
 		expect(seenText).toContain("Dana Whitfield");
+	});
+
+	it("does NOT swap TEXT_EMBEDDING_BATCH inputs (keeps batch vectors stable)", async () => {
+		const runtime = makeRuntime(true);
+		injectNerService(runtime, [{ kind: "person", value: "Dana Whitfield" }]);
+		let seenTexts: string[] = [];
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING_BATCH,
+			async (_rt, params: { texts: string[] }) => {
+				seenTexts = [...params.texts];
+				return params.texts.map(() => {
+					const embedding = new Array(CANONICAL_EMBEDDING_DIMENSION).fill(0);
+					embedding[0] = 1;
+					return embedding;
+				});
+			},
+			"test",
+			0,
+			{
+				embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+			},
+		);
+
+		await runtime.useModel(ModelType.TEXT_EMBEDDING_BATCH, {
+			texts: [
+				"Dana Whitfield asked about the renewal.",
+				"Dana Whitfield requested a follow-up.",
+			],
+		});
+
+		expect(seenTexts).toEqual([
+			"Dana Whitfield asked about the renewal.",
+			"Dana Whitfield requested a follow-up.",
+		]);
 	});
 
 	it("surfaces a configured NER recognizer failure", async () => {

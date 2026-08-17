@@ -6,6 +6,7 @@
  * adapter registers noop handlers — no live model.
  */
 import { describe, expect, it, vi } from "vitest";
+import { CANONICAL_EMBEDDING_SPACE_FINGERPRINT } from "../../constants/embeddings";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime, NoModelProviderConfiguredError } from "../../runtime";
 import {
@@ -76,7 +77,15 @@ describe("AgentRuntime model-registration observability", () => {
 			displayModel: "model-a",
 		});
 		runtime.registerModel(ModelType.TEXT_LARGE, noopHandler, "provider-b", 10);
-		runtime.registerModel(ModelType.TEXT_EMBEDDING, noopHandler, "provider-a");
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			noopHandler,
+			"provider-a",
+			0,
+			{
+				embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+			},
+		);
 
 		const regs = runtime.getModelRegistrations();
 
@@ -167,6 +176,9 @@ describe("AgentRuntime model-registration observability", () => {
 			embeddingHandler,
 			"openai",
 			100,
+			{
+				embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+			},
 		);
 
 		await expect(
@@ -185,7 +197,11 @@ describe("AgentRuntime model-registration observability", () => {
 			ELIZA_CANONICAL_EMBEDDINGS_ENABLED: "true",
 		});
 		const textHandler = vi.fn(async () => "wrong-owner");
-		const embeddingHandler = vi.fn(async () => new Array(384).fill(0));
+		const embeddingHandler = vi.fn(async () => {
+			const embedding = new Array(384).fill(0);
+			embedding[0] = 1;
+			return embedding;
+		});
 
 		runtime.registerModel(ModelType.TEXT_SMALL, textHandler, "openai", 100);
 		runtime.registerModel(
@@ -193,6 +209,9 @@ describe("AgentRuntime model-registration observability", () => {
 			embeddingHandler,
 			"openai",
 			100,
+			{
+				embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+			},
 		);
 
 		expect(runtime.getModel(ModelType.TEXT_SMALL)).toBeUndefined();

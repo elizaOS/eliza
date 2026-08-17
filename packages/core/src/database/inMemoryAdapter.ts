@@ -36,6 +36,7 @@ import type {
 	DocumentListQueryParams,
 	DocumentListQueryResult,
 	DocumentMutationResult,
+	EmbeddingSpaceReconciliation,
 	EntitiesForRoomsResult,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
@@ -511,6 +512,40 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		// In-memory vectors are not schema-bound to a fixed-width column, so there
 		// is no stale-dimension row to reclaim.
 		return [];
+	}
+
+	async reconcileEmbeddingSpace(
+		activeFingerprint: string,
+	): Promise<EmbeddingSpaceReconciliation> {
+		const cacheKey = "embedding-space-fingerprint:v1";
+		const previousFingerprint = this.cache.get(cacheKey);
+		if (previousFingerprint === activeFingerprint) {
+			return {
+				activeFingerprint,
+				previousFingerprint,
+				changed: false,
+				staleMemoryIds: [],
+			};
+		}
+
+		const staleMemoryIds: UUID[] = [];
+		for (const memory of this.memoriesById.values()) {
+			if (!Array.isArray(memory.embedding) || memory.embedding.length === 0) {
+				continue;
+			}
+			const { embedding: _embedding, ...withoutEmbedding } = memory;
+			await this.updateMemories([
+				{ ...withoutEmbedding, id: memory.id as UUID, embedding: undefined },
+			]);
+			staleMemoryIds.push(memory.id as UUID);
+		}
+		this.cache.set(cacheKey, activeFingerprint);
+		return {
+			activeFingerprint,
+			...(previousFingerprint ? { previousFingerprint } : {}),
+			changed: true,
+			staleMemoryIds,
+		};
 	}
 
 	async transaction<T>(
@@ -1251,7 +1286,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				// compatible with callers that don't check return values.
 				continue;
 			}
-			const merged: Memory = { ...existing, ...memory };
+			let merged: Memory = { ...existing, ...memory };
+			const incomingText = memory.content?.text;
+			const contentTextChanged =
+				memory.content !== undefined && incomingText !== existing.content.text;
+			const hasFreshEmbedding =
+				Array.isArray(memory.embedding) && memory.embedding.length > 0;
+			const explicitlyClearsEmbedding =
+				Object.hasOwn(memory, "embedding") && !hasFreshEmbedding;
+			if (
+				explicitlyClearsEmbedding ||
+				(contentTextChanged && !hasFreshEmbedding)
+			) {
+				const { embedding: _embedding, ...withoutEmbedding } = merged;
+				merged = withoutEmbedding as Memory;
+			}
 			this.memoriesById.set(String(memory.id), merged);
 			// Update reference in memoriesByRoom to keep consistency
 			const oldRoomId = existing.roomId;

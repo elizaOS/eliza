@@ -359,13 +359,13 @@ export const MODEL_SPECS = {
 		tokenizer: { name: "elizaos/eliza-1", type: "eliza1" },
 	},
 	embedding: {
-		name: "gte-small_fp16.gguf",
-		repo: "ChristianAzinn/gte-small-gguf",
-		size: "64 MB",
-		quantization: "fp16 GGUF",
+		name: "bge-small-en-v1.5-q4_k_m.gguf",
+		repo: "CompendiumLabs/bge-small-en-v1.5-gguf",
+		size: "24 MB",
+		quantization: "Q4_K_M GGUF",
 		contextSize: 512,
 		dimensions: 384,
-		tokenizer: { name: "ChristianAzinn/gte-small-gguf", type: "bert" },
+		tokenizer: { name: "BAAI/bge-small-en-v1.5", type: "bert" },
 	},
 } as const satisfies {
 	small: ModelSpec;

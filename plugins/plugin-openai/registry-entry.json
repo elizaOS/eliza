@@ -80,10 +80,10 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text-embedding-3-small",
+      "default": "BAAI/bge-small-en-v1.5",
       "label": "Embedding Model",
       "help": "Identifier of the model to use for generating text embeddings.",
-      "placeholder": "e.g., text-embedding-3-small",
+      "placeholder": "e.g., BAAI/bge-small-en-v1.5",
       "advanced": false
     },
     "OPENAI_EMBEDDING_URL": {
@@ -106,7 +106,7 @@
       "type": "number",
       "required": false,
       "sensitive": false,
-      "default": "1536",
+      "default": "384",
       "label": "Embedding Dimensions",
       "help": "Number of dimensions for the returned embedding vectors.",
       "advanced": false

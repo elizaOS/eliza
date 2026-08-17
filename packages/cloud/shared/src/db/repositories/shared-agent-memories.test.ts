@@ -155,6 +155,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding", () => {
         scope,
         [0.25, 0.5, 0.25],
         7,
+        "BAAI/bge-small-en-v1.5:384:mean:l2:v1",
       );
       expect(result).toEqual(hits as never);
       expect(capturedWindow).toBe(SHARED_AGENT_MEMORY_SEARCH_WINDOW);
@@ -162,8 +163,10 @@ describe("SharedAgentMemoriesReader.searchByEmbedding", () => {
       expectTenantPins(capturedInnerWhere);
       const rendered = renderedWhere(capturedInnerWhere);
       expect(rendered.sql).toContain("embedding");
+      expect(rendered.sql).toContain("embedding_model");
       expect(rendered.sql).toContain("cardinality");
       expect(rendered.params).toContain(3);
+      expect(rendered.params).toContain("BAAI/bge-small-en-v1.5:384:mean:l2:v1");
       const order = new PgDialect().sqlToQuery(capturedOuterOrder as SQL);
       expect(order.sql).toContain("distance");
       expect(order.sql).toContain("asc");
@@ -181,6 +184,9 @@ describe("SharedAgentMemoriesReader.searchByEmbedding", () => {
     );
     await expect(reader.searchByEmbedding(scope, new Array(5000).fill(0.1), 5)).rejects.toThrow(
       "finite vector",
+    );
+    await expect(reader.searchByEmbedding(scope, [0.5], 5, "   ")).rejects.toThrow(
+      "embedding model is required",
     );
   });
 });
@@ -306,5 +312,104 @@ describe("SharedAgentMemoriesWriter.insertMemory", () => {
         content: { text: "untyped" },
       }),
     ).rejects.toThrow("type is required");
+  });
+});
+
+describe("SharedAgentMemoriesWriter.mergeMessageMemory", () => {
+  test("updates content and its embedding pair in one conflict statement", async () => {
+    const capturedSets: Array<Record<string, unknown>> = [];
+    const returningFn = mock(() => Promise.resolve([{ id: MEMORY_ID, inserted: false }]));
+    const onConflictFn = mock((config: { set: Record<string, unknown> }) => {
+      capturedSets.push(config.set);
+      return { returning: returningFn };
+    });
+    const valuesFn = mock(() => ({ onConflictDoUpdate: onConflictFn }));
+    const insertFn = mock(() => ({ values: valuesFn }));
+    const dbWriteMock = new Proxy(realClient.dbWrite as unknown as Record<PropertyKey, unknown>, {
+      get(target, prop, receiver) {
+        if (prop === "insert") return insertFn;
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    mock.module("../client", () => ({ ...realClient, dbWrite: dbWriteMock }));
+    try {
+      const { SharedAgentMemoriesWriter } = await import("./shared-agent-memories");
+      const writer = new SharedAgentMemoriesWriter();
+      const base = {
+        id: MEMORY_ID,
+        scope,
+        roomId: ROOM_A,
+        type: "messages",
+        content: { text: "replacement" },
+        interrupted: false,
+      };
+
+      await writer.mergeMessageMemory(base);
+      await writer.mergeMessageMemory({
+        ...base,
+        embedding: [0.6, 0.8],
+        embeddingModel: " canonical-space ",
+      });
+
+      const clearSet = capturedSets[0];
+      const replaceSet = capturedSets[1];
+      expect(clearSet).toBeDefined();
+      expect(replaceSet).toBeDefined();
+      const renderedEmbedding = new PgDialect().sqlToQuery(clearSet?.embedding as SQL);
+      const renderedModel = new PgDialect().sqlToQuery(clearSet?.embedding_model as SQL);
+      expect(renderedEmbedding.sql.toLowerCase()).toContain("is distinct from");
+      expect(renderedEmbedding.sql).toContain("embedding");
+      expect(renderedModel.sql.toLowerCase()).toContain("is distinct from");
+      expect(renderedModel.sql).toContain("embedding_model");
+      expect(replaceSet?.embedding).toEqual([0.6, 0.8]);
+      expect(replaceSet?.embedding_model).toBe("canonical-space");
+    } finally {
+      mock.module("../client", () => realClient);
+    }
+  });
+});
+
+describe("SharedAgentMemoriesWriter.setMemoryEmbedding", () => {
+  test("updates vector and fingerprint atomically under every tenant pin", async () => {
+    let capturedSet: Record<string, unknown> | undefined;
+    let capturedWhere: SQL | undefined;
+    const returningFn = mock(() => Promise.resolve([{ id: MEMORY_ID }]));
+    const whereFn = mock((clause: SQL) => {
+      capturedWhere = clause;
+      return { returning: returningFn };
+    });
+    const setFn = mock((values: Record<string, unknown>) => {
+      capturedSet = values;
+      return { where: whereFn };
+    });
+    const updateFn = mock(() => ({ set: setFn }));
+    const dbWriteMock = new Proxy(realClient.dbWrite as unknown as Record<PropertyKey, unknown>, {
+      get(target, prop, receiver) {
+        if (prop === "update") return updateFn;
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    mock.module("../client", () => ({ ...realClient, dbWrite: dbWriteMock }));
+    try {
+      const { SharedAgentMemoriesWriter } = await import("./shared-agent-memories");
+      await new SharedAgentMemoriesWriter().setMemoryEmbedding({
+        id: MEMORY_ID,
+        scope,
+        contentText: "remember this",
+        embedding: [0.6, 0.8],
+        embeddingModel: "BAAI/bge-small-en-v1.5:384:mean:l2:v1",
+      });
+
+      expect(capturedSet).toEqual({
+        embedding: [0.6, 0.8],
+        embedding_model: "BAAI/bge-small-en-v1.5:384:mean:l2:v1",
+      });
+      expectTenantPins(capturedWhere);
+      const rendered = renderedWhere(capturedWhere);
+      expect(rendered.params).toContain(MEMORY_ID);
+      expect(rendered.params).toContain("remember this");
+    } finally {
+      mock.module("../client", () => realClient);
+    }
   });
 });

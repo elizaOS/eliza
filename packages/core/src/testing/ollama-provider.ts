@@ -10,7 +10,6 @@ import type {
 	GenerateTextParams,
 	IAgentRuntime,
 	ModelTypeName,
-	TextEmbeddingParams,
 } from "../types";
 import { ModelType } from "../types";
 
@@ -21,7 +20,6 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const DEFAULT_MODELS = {
 	text_small: process.env.OLLAMA_SMALL_MODEL || "eliza-1-2b",
 	text_large: process.env.OLLAMA_LARGE_MODEL || "eliza-1-9b",
-	embedding: process.env.OLLAMA_EMBEDDING_MODEL || "eliza-1-2b",
 } as const;
 
 /**
@@ -36,14 +34,6 @@ const ollamaTagsResponseSchema = z.object({
  */
 const ollamaGenerateResponseSchema = z.object({
 	response: z.string(),
-});
-
-/**
- * Schema for Ollama /api/embed response
- */
-const ollamaEmbedResponseSchema = z.object({
-	embeddings: z.array(z.array(z.number())).optional(),
-	embedding: z.array(z.number()).optional(),
 });
 
 /**
@@ -143,52 +133,6 @@ async function generateTextWithOllama(
 }
 
 /**
- * Generate embeddings using Ollama
- */
-async function generateEmbeddingWithOllama(
-	model: string,
-	text: string,
-): Promise<number[]> {
-	const response = await fetch(`${OLLAMA_URL}/api/embed`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({
-			model,
-			input: text,
-		}),
-	});
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		throw new Error(
-			`Ollama embedding request failed: ${response.status} ${errorText}`,
-		);
-	}
-
-	const rawData: unknown = await response.json();
-	const parseResult = ollamaEmbedResponseSchema.safeParse(rawData);
-
-	if (!parseResult.success) {
-		const zodError = parseResult.error as {
-			issues?: Array<{ message: string }>;
-			toString: () => string;
-		};
-		throw new Error(
-			`Invalid Ollama embedding response: ${zodError.issues?.map((i: { message: string }) => i.message).join(", ") || zodError.toString() || "Validation failed"}`,
-		);
-	}
-
-	const parseResultDataEmbeddings = parseResult.data.embeddings;
-	const parseResultDataEmbedding = parseResult.data.embedding;
-	const embeddings = parseResultDataEmbeddings?.[0] ?? parseResultDataEmbedding;
-	if (!embeddings) {
-		throw new Error("No embeddings returned from Ollama");
-	}
-
-	return embeddings;
-}
-
-/**
  * Handle TEXT_SMALL model requests
  */
 async function handleTextSmall(
@@ -243,42 +187,14 @@ async function handleTextLarge(
 }
 
 /**
- * Handle TEXT_EMBEDDING model requests
- */
-async function handleTextEmbedding(
-	_runtime: IAgentRuntime,
-	params: TextEmbeddingParams | string | null,
-): Promise<number[]> {
-	logger.debug(
-		{ src: "ollama", model: DEFAULT_MODELS.embedding },
-		"TEXT_EMBEDDING request",
-	);
-
-	const text =
-		typeof params === "string"
-			? params
-			: params === null
-				? "test_dimension"
-				: params.text;
-	return generateEmbeddingWithOllama(
-		DEFAULT_MODELS.embedding,
-		text || "test_dimension",
-	);
-}
-
-/**
  * Union type of all model parameter types for Ollama handlers
  */
-type OllamaModelParams =
-	| GenerateTextParams
-	| TextEmbeddingParams
-	| string
-	| null;
+type OllamaModelParams = GenerateTextParams | string;
 
 /**
  * Union type of all model result types for Ollama handlers
  */
-type OllamaModelResult = string | number[];
+type OllamaModelResult = string;
 
 /**
  * Model handler function type
@@ -297,6 +213,5 @@ export function createOllamaModelHandlers(): Partial<
 	return {
 		[ModelType.TEXT_SMALL]: handleTextSmall as ModelHandlerFn,
 		[ModelType.TEXT_LARGE]: handleTextLarge as ModelHandlerFn,
-		[ModelType.TEXT_EMBEDDING]: handleTextEmbedding as ModelHandlerFn,
 	};
 }

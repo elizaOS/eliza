@@ -6,6 +6,7 @@
 
 import {
 	AgentRuntime,
+	CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
 	ModelType,
 	type Service,
 	type ServiceClass,
@@ -133,6 +134,7 @@ interface Registration {
 	provider: string;
 	priority?: number;
 	handler: unknown;
+	metadata?: { embeddingSpaceFingerprint?: string };
 }
 
 function makeRuntime(): {
@@ -169,12 +171,14 @@ function makeRuntime(): {
 				_handler: unknown,
 				provider: string,
 				priority?: number,
+				metadata?: { embeddingSpaceFingerprint?: string },
 			) => {
 				registrations.push({
 					modelType,
 					provider,
 					priority,
 					handler: _handler,
+					metadata,
 				});
 			},
 		),
@@ -210,6 +214,12 @@ beforeEach(() => {
 	delete process.env.ELIZA_BIONIC_HOST_DELEGATED;
 	delete process.env.ELIZA_BIONIC_INFERENCE_SOCK;
 	delete process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
+	delete process.env.LOCAL_EMBEDDING_MODEL;
+	delete process.env.LOCAL_EMBEDDING_MODEL_REPO;
+	delete process.env.LOCAL_EMBEDDING_DIMENSIONS;
+	delete process.env.LOCAL_EMBEDDING_CONTEXT_SIZE;
+	delete process.env.ELIZA_EMBED_POOLING;
+	delete process.env.ELIZA_EMBED_BUNDLE_ROOT;
 	engineState.available.mockResolvedValue(true);
 	engineState.currentModelPath.mockReturnValue(null);
 	engineState.hasLoadedModel.mockReturnValue(false);
@@ -224,6 +234,49 @@ beforeEach(() => {
 	vi.mocked(resolveLocalInferenceLoadArgs).mockImplementation(
 		async (target) => target,
 	);
+});
+
+describe("canonical desktop embedding attestation", () => {
+	it("does not let a generic embed-capable loader bypass artifact attestation", async () => {
+		process.env.LOCAL_EMBEDDING_MODEL = "gte-small_fp16.gguf";
+		process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
+		const { registrations, runtime } = makeRuntime();
+		const arbitraryLoader = {
+			currentModelPath: vi.fn(() => null),
+			embed: vi.fn(async () => ({
+				embedding: Array.from({ length: 384 }, (_, index) =>
+					index === 0 ? 1 : 0,
+				),
+			})),
+			loadModel: vi.fn(async () => undefined),
+			unloadModel: vi.fn(async () => undefined),
+		};
+		vi.mocked(runtime.getService).mockImplementation((serviceType) =>
+			serviceType === "localInferenceLoader" ? arbitraryLoader : null,
+		);
+
+		await ensureLocalInferenceHandler(runtime);
+
+		expect(
+			registrations.some(
+				(entry) => entry.modelType === ModelType.TEXT_EMBEDDING,
+			),
+		).toBe(false);
+		expect(arbitraryLoader.embed).not.toHaveBeenCalled();
+	});
+
+	it("refuses to attest an unverified fused bundle override", async () => {
+		process.env.ELIZA_EMBED_BUNDLE_ROOT = "/tmp/noncanonical-embedding-bundle";
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+
+		expect(
+			registrations.some(
+				(entry) => entry.modelType === ModelType.TEXT_EMBEDDING,
+			),
+		).toBe(false);
+	});
 });
 
 describe("ensureLocalInferenceHandler", () => {
@@ -290,6 +343,9 @@ describe("ensureLocalInferenceHandler", () => {
 					modelType: ModelType.TEXT_EMBEDDING,
 					provider: "eliza-local-inference",
 					priority: 0,
+					metadata: {
+						embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+					},
 				}),
 				expect.objectContaining({
 					modelType: ModelType.TEXT_TO_SPEECH,
@@ -374,7 +430,7 @@ describe("ensureLocalInferenceHandler", () => {
 		expect(engineState.available).not.toHaveBeenCalled();
 	});
 
-	it("registers desktop gte-small embeddings when no generative backend is available", async () => {
+	it("registers desktop BGE-small embeddings when no generative backend is available", async () => {
 		engineState.available.mockResolvedValue(false);
 		const { registrations, runtime } = makeRuntime();
 

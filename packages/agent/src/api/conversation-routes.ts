@@ -949,7 +949,36 @@ async function resolvePersistedAssistantTurn(
     return { kind: "durable", id: generatedTurn.id as UUID, text };
   }
 
-  const content = buildPersistedAssistantContent(text, result, userMessageId);
+  let content = buildPersistedAssistantContent(text, result, userMessageId);
+  // Core marks generated provider/runtime failure prose transient so it never
+  // becomes model prompt context. Conversation history has a separate durable
+  // presentation contract: an explicitly synthetic safe failure must remain
+  // paired with its user turn after reload. Persist that narrow class while
+  // removing only the generic memory-skip controls; recentMessages excludes it
+  // by the retained synthetic-failure marker.
+  const contentMetadata =
+    content.metadata &&
+    typeof content.metadata === "object" &&
+    !Array.isArray(content.metadata)
+      ? (content.metadata as Record<string, unknown>)
+      : null;
+  if (
+    content.elizaSyntheticFailure === true ||
+    contentMetadata?.elizaSyntheticFailure === true
+  ) {
+    const durableContent = { ...content } as Content & Record<string, unknown>;
+    delete durableContent.doNotPersist;
+    delete durableContent.skipMemory;
+    delete durableContent.transient;
+    if (contentMetadata) {
+      const durableMetadata = { ...contentMetadata };
+      delete durableMetadata.doNotPersist;
+      delete durableMetadata.skipMemory;
+      delete durableMetadata.transient;
+      durableContent.metadata = durableMetadata as Content;
+    }
+    content = durableContent;
+  }
   if (
     shouldSkipResponseMemoryPersistence({
       content,

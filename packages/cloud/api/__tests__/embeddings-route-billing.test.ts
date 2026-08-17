@@ -19,6 +19,10 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+  CANONICAL_EMBEDDING_MODEL,
+} from "@elizaos/core/edge";
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit";
 // Spread the real modules: bun's `mock.module` replaces the registry entry
@@ -37,6 +41,13 @@ const API_KEY_ID = "00000000-0000-4000-8000-0000000000cc";
 
 // A deterministic, recognizable vector so we can assert byte-equality.
 const EMBEDDING = [0.0125, -0.5, 0.333333, 1, -1, 0];
+
+function canonicalEmbedding(a = 3, b = 4): number[] {
+  const vector = new Array<number>(384).fill(0);
+  vector[0] = a;
+  vector[1] = b;
+  return vector;
+}
 
 // --- Auth: validates the key ONCE and exposes apiKeyId on the context. -------
 const requireUserOrApiKeyWithOrg = mock();
@@ -67,12 +78,18 @@ mock.module("@/lib/services/inference-auth-context", () => ({
 
 // Provider config: pretend an embedding provider is configured and hand back a
 // dummy model object (the embed mock ignores it).
+const hasTextEmbeddingProviderConfigured = mock(() => true);
+const getTextEmbeddingModel = mock(() => ({}) as never);
+const resolveEmbeddingProviderSource = mock((model?: string) =>
+  model === "BAAI/bge-small-en-v1.5" ? "selfhosted" : "openai",
+);
+const resolvePassthroughEmbeddingsUpstream = mock(() => null);
 mock.module("@/lib/providers/language-model", () => ({
-  hasTextEmbeddingProviderConfigured: () => true,
-  getTextEmbeddingModel: () => ({}) as never,
-  resolveEmbeddingProviderSource: () => "openai",
+  hasTextEmbeddingProviderConfigured,
+  getTextEmbeddingModel,
+  resolveEmbeddingProviderSource,
   getAiProviderConfigurationError: () => "AI services are not configured",
-  resolvePassthroughEmbeddingsUpstream: () => null,
+  resolvePassthroughEmbeddingsUpstream,
 }));
 
 // Billing surface.
@@ -155,7 +172,11 @@ function makeExecutionCtx() {
   };
 }
 
-function post(body: unknown, ctx?: ExecutionContext) {
+function post(
+  body: unknown,
+  ctx?: ExecutionContext,
+  env: Record<string, unknown> = {},
+) {
   return embeddingsRoute.request(
     "/",
     {
@@ -166,7 +187,7 @@ function post(body: unknown, ctx?: ExecutionContext) {
       },
       body: JSON.stringify(body),
     },
-    {},
+    env,
     ctx,
   );
 }
@@ -181,6 +202,17 @@ beforeEach(() => {
   usageCreate.mockReset();
   embed.mockReset();
   embedMany.mockReset();
+  hasTextEmbeddingProviderConfigured.mockReset();
+  getTextEmbeddingModel.mockReset();
+  resolveEmbeddingProviderSource.mockReset();
+  resolvePassthroughEmbeddingsUpstream.mockReset();
+
+  hasTextEmbeddingProviderConfigured.mockReturnValue(true);
+  getTextEmbeddingModel.mockReturnValue({} as never);
+  resolveEmbeddingProviderSource.mockImplementation((model?: string) =>
+    model === "BAAI/bge-small-en-v1.5" ? "selfhosted" : "openai",
+  );
+  resolvePassthroughEmbeddingsUpstream.mockReturnValue(null);
 
   // Auth helper validates the key once and surfaces its id on the context —
   // exactly as the real requireUserOrApiKeyWithOrg does.
@@ -232,6 +264,229 @@ beforeEach(() => {
 type AppCtx = { set: (k: string, v: unknown) => void };
 
 describe("POST /api/v1/embeddings — deferred billing", () => {
+  test.each([[[42]], [["ok", 42]], [[null]], [[{}]], [[""]], [["   "]]])(
+    "returns 400 for a malformed or blank input array: %j",
+    async (input) => {
+      const res = await post({ model: CANONICAL_EMBEDDING_MODEL, input });
+      const body = (await res.json()) as {
+        error?: { param?: string; code?: string };
+      };
+
+      expect(res.status).toBe(400);
+      expect(body.error).toMatchObject({
+        param: "input",
+        code: "invalid_value",
+      });
+      expect(reserveCredits).not.toHaveBeenCalled();
+      expect(embed).not.toHaveBeenCalled();
+      expect(embedMany).not.toHaveBeenCalled();
+    },
+  );
+
+  test("returns 400 for canonical over-limit or ill-formed input without billing", async () => {
+    const overLimit = await post({
+      model: CANONICAL_EMBEDDING_MODEL,
+      input: "x".repeat(CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS + 1),
+    });
+    const illFormed = await post({
+      model: CANONICAL_EMBEDDING_MODEL,
+      input: "bad \uD83D input",
+    });
+
+    expect(overLimit.status).toBe(400);
+    expect(illFormed.status).toBe(400);
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+    expect(embedMany).not.toHaveBeenCalled();
+  });
+
+  test("threads the managed canonical identity through route provider resolution", async () => {
+    const managedModel = CANONICAL_EMBEDDING_MODEL;
+    const { ctx, scheduled } = makeExecutionCtx();
+    embed.mockResolvedValueOnce({
+      embedding: canonicalEmbedding(),
+      usage: { tokens: 5 },
+    });
+
+    const res = await post({ model: managedModel, input: "hi" }, ctx);
+
+    expect(res.status).toBe(200);
+    expect(hasTextEmbeddingProviderConfigured).toHaveBeenCalledWith(
+      managedModel,
+    );
+    expect(resolveEmbeddingProviderSource).toHaveBeenCalledWith(managedModel);
+    expect(
+      resolveEmbeddingProviderSource.mock.calls.every(
+        ([model]) => model === managedModel,
+      ),
+    ).toBe(true);
+    expect(getTextEmbeddingModel).toHaveBeenCalledWith(managedModel);
+    expect(resolvePassthroughEmbeddingsUpstream).not.toHaveBeenCalled();
+    await Promise.all(scheduled);
+  });
+
+  test("uses native Workers AI for canonical BGE without waiting on OpenAI or TEI", async () => {
+    const raw = new Array(384).fill(0);
+    raw[0] = 3;
+    raw[1] = 4;
+    const aiRun = mock(
+      async (
+        _model: string,
+        _input: { text: string[]; pooling: string },
+        _options?: { tags?: string[] },
+      ) => ({
+        data: [raw],
+        shape: [1, 384],
+        pooling: "mean",
+      }),
+    );
+    const { ctx, scheduled } = makeExecutionCtx();
+
+    const res = await post(
+      {
+        model: CANONICAL_EMBEDDING_MODEL,
+        input: "hi",
+        dimensions: 384,
+        pooling: "mean",
+      },
+      ctx,
+      { AI: { run: aiRun } },
+    );
+    const body = (await res.json()) as {
+      data: Array<{ embedding: number[] }>;
+      model: string;
+    };
+
+    expect(res.status).toBe(200);
+    expect(aiRun).toHaveBeenCalledTimes(1);
+    expect(aiRun.mock.calls[0]?.[0]).toBe("@cf/baai/bge-small-en-v1.5");
+    expect(aiRun.mock.calls[0]?.[1]).toEqual({ text: ["hi"], pooling: "mean" });
+    expect(aiRun.mock.calls[0]?.[2]?.tags).toEqual(["eliza:cloud-embeddings"]);
+    expect(body.model).toBe(CANONICAL_EMBEDDING_MODEL);
+    expect(body.data[0]?.embedding[0]).toBeCloseTo(0.6);
+    expect(body.data[0]?.embedding[1]).toBeCloseTo(0.8);
+    expect(getTextEmbeddingModel).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+    expect(embedMany).not.toHaveBeenCalled();
+    await Promise.all(scheduled);
+  });
+
+  test("fails closed on malformed native vectors instead of fabricating a response", async () => {
+    const aiRun = mock(async () => ({
+      data: [[0.1, 0.2, 0.3]],
+      shape: [1, 3],
+      pooling: "mean",
+    }));
+    const { ctx, scheduled } = makeExecutionCtx();
+
+    const res = await post(
+      { model: CANONICAL_EMBEDDING_MODEL, input: "hi" },
+      ctx,
+      { AI: { run: aiRun } },
+    );
+    const body = (await res.json()) as {
+      data?: unknown;
+      error?: { code?: string };
+    };
+
+    expect(res.status).toBe(503);
+    expect(body.data).toBeUndefined();
+    expect(body.error?.code).toBe("provider_error");
+    expect(getTextEmbeddingModel).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+    await Promise.all(scheduled);
+  });
+
+  test("normalizes canonical sidecar single and batch SDK vectors", async () => {
+    embed.mockResolvedValueOnce({
+      embedding: canonicalEmbedding(3, 4),
+      usage: { tokens: 5 },
+    });
+    embedMany.mockResolvedValueOnce({
+      embeddings: [canonicalEmbedding(3, 4), canonicalEmbedding(5, 12)],
+      usage: { tokens: 10 },
+    });
+    const singleExecution = makeExecutionCtx();
+    const batchExecution = makeExecutionCtx();
+
+    const singleResponse = await post(
+      { model: CANONICAL_EMBEDDING_MODEL, input: "single" },
+      singleExecution.ctx,
+    );
+    const batchResponse = await post(
+      { model: CANONICAL_EMBEDDING_MODEL, input: ["one", "two"] },
+      batchExecution.ctx,
+    );
+    const singleBody = (await singleResponse.json()) as {
+      data: Array<{ embedding: number[] }>;
+    };
+    const batchBody = (await batchResponse.json()) as {
+      data: Array<{ embedding: number[] }>;
+    };
+
+    expect(singleResponse.status).toBe(200);
+    expect(singleBody.data[0]?.embedding[0]).toBeCloseTo(0.6);
+    expect(singleBody.data[0]?.embedding[1]).toBeCloseTo(0.8);
+    expect(batchResponse.status).toBe(200);
+    expect(batchBody.data).toHaveLength(2);
+    expect(batchBody.data[0]?.embedding[0]).toBeCloseTo(0.6);
+    expect(batchBody.data[0]?.embedding[1]).toBeCloseTo(0.8);
+    expect(batchBody.data[1]?.embedding[0]).toBeCloseTo(5 / 13);
+    expect(batchBody.data[1]?.embedding[1]).toBeCloseTo(12 / 13);
+    await Promise.all([
+      ...singleExecution.scheduled,
+      ...batchExecution.scheduled,
+    ]);
+  });
+
+  test.each([
+    ["wrong-width", [0.1, 0.2, 0.3]],
+    ["non-finite", Object.assign(canonicalEmbedding(), { 2: Number.NaN })],
+    ["zero-norm", new Array(384).fill(0)],
+  ])(
+    "rejects a %s canonical sidecar SDK vector before billing",
+    async (_name, vector) => {
+      embed.mockResolvedValueOnce({ embedding: vector, usage: { tokens: 5 } });
+      const { ctx, scheduled } = makeExecutionCtx();
+
+      const response = await post(
+        { model: CANONICAL_EMBEDDING_MODEL, input: "invalid" },
+        ctx,
+      );
+      const body = (await response.json()) as {
+        error?: { code?: string };
+      };
+
+      expect(response.status).toBe(503);
+      expect(body.error?.code).toBe("provider_error");
+      expect(billUsage).not.toHaveBeenCalled();
+      expect(usageCreate).not.toHaveBeenCalled();
+      await Promise.all(scheduled);
+    },
+  );
+
+  test("rejects a canonical sidecar batch vector-count mismatch before billing", async () => {
+    embedMany.mockResolvedValueOnce({
+      embeddings: [canonicalEmbedding()],
+      usage: { tokens: 10 },
+    });
+    const { ctx, scheduled } = makeExecutionCtx();
+
+    const response = await post(
+      { model: CANONICAL_EMBEDDING_MODEL, input: ["one", "two"] },
+      ctx,
+    );
+    const body = (await response.json()) as {
+      error?: { code?: string };
+    };
+
+    expect(response.status).toBe(503);
+    expect(body.error?.code).toBe("provider_error");
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(usageCreate).not.toHaveBeenCalled();
+    await Promise.all(scheduled);
+  });
+
   test("billUsage is scheduled via waitUntil, not awaited before the response", async () => {
     // Gate billUsage on a manual signal so we can prove the response returns
     // BEFORE billing completes. If the route awaited billUsage inline, the

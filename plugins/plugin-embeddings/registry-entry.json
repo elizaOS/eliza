@@ -1,7 +1,7 @@
 {
   "id": "embeddings",
   "name": "Embeddings",
-  "description": "Provider-agnostic (bring-your-own) TEXT_EMBEDDING provider. Point EMBEDDING_BASE_URL / EMBEDDING_API_KEY at any OpenAI-compatible /embeddings endpoint (a personal OpenAI key, Eliza Cloud, Voyage, Together, or a local TEI/Infinity/vLLM/LM Studio server) to get real memory/RAG embeddings independently of the chat brain. Registers ONLY the embedding slot — no text/image/audio handlers.",
+  "description": "Canonical BAAI/bge-small-en-v1.5 TEXT_EMBEDDING provider. The endpoint must return 384-dimensional mean-pooled vectors; results are L2-normalized and mismatches fail closed.",
   "npmName": "@elizaos/plugin-embeddings",
   "version": "2.0.0-beta.0",
   "source": "bundled",
@@ -28,11 +28,20 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text-embedding-3-small",
+      "default": "BAAI/bge-small-en-v1.5",
       "label": "Embedding Model",
       "help": "Embedding model identifier sent as the request `model` field.",
-      "placeholder": "e.g., text-embedding-3-small",
+      "placeholder": "e.g., BAAI/bge-small-en-v1.5",
       "advanced": false
+    },
+    "EMBEDDING_POOLING": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "mean",
+      "label": "Embedding Pooling",
+      "help": "Canonical pooling mode. Values other than mean fail closed.",
+      "advanced": true
     },
     "EMBEDDING_FALLBACK_BASE_URL": {
       "type": "url",
@@ -57,16 +66,16 @@
       "sensitive": false,
       "label": "Embedding Fallback Model",
       "help": "Fallback embedding model identifier. Defaults to EMBEDDING_MODEL when unset. The fallback result must still match EMBEDDING_DIMENSIONS.",
-      "placeholder": "e.g., text-embedding-3-small",
+      "placeholder": "e.g., BAAI/bge-small-en-v1.5",
       "advanced": true
     },
     "EMBEDDING_DIMENSIONS": {
       "type": "number",
       "required": false,
       "sensitive": false,
-      "default": "1536",
+      "default": "384",
       "label": "Embedding Dimensions",
-      "help": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database — changing it invalidates stored vectors.",
+      "help": "Canonical BGE-small vector width. Values other than 384 fail closed.",
       "advanced": false
     },
     "EMBEDDING_BROWSER_URL": {

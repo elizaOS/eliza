@@ -17,6 +17,12 @@
 import { existsSync, statSync } from "node:fs";
 import { filterByAccessContext } from "../../access-control/filter";
 import {
+	CANONICAL_EMBEDDING_DIMENSION,
+	CANONICAL_EMBEDDING_MODEL,
+	normalizeCanonicalEmbedding,
+	prepareCanonicalEmbeddingInput,
+} from "../../constants/embeddings.ts";
+import {
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_MAX_LIMIT,
 	DOCUMENT_LIST_MAX_OFFSET,
@@ -56,6 +62,7 @@ import {
 	hasDocumentEmbeddingModel,
 	preparePreChunkedFragmentMemories,
 	processFragmentsSynchronously,
+	splitDocumentTextForCanonicalEmbedding,
 } from "./document-processor.ts";
 import { embedRecallQuery } from "./recall-embed.ts";
 import type {
@@ -372,16 +379,8 @@ function getCharacterDocumentSources(runtime: IAgentRuntime): string[] {
 		.filter((item): item is string => item !== null && item.trim().length > 0);
 }
 
-function describeEmbeddingConfig(config: {
-	EMBEDDING_PROVIDER?: string;
-	TEXT_EMBEDDING_MODEL: string;
-	EMBEDDING_DIMENSION?: number;
-}): string {
-	const dimensionLabel =
-		typeof config.EMBEDDING_DIMENSION === "number"
-			? `${config.EMBEDDING_DIMENSION}D`
-			: "default dimensions";
-	return `${config.EMBEDDING_PROVIDER || "auto"} embeddings with ${config.TEXT_EMBEDDING_MODEL} (${dimensionLabel})`;
+function describeEmbeddingConfig(): string {
+	return `runtime TEXT_EMBEDDING with ${CANONICAL_EMBEDDING_MODEL} (${CANONICAL_EMBEDDING_DIMENSION}D, provider-attested)`;
 }
 
 export class DocumentService extends Service {
@@ -451,12 +450,12 @@ export class DocumentService extends Service {
 
 		if (ctxEnabled) {
 			logger.info(
-				`Contextual documents enabled: ${describeEmbeddingConfig(validatedConfig)}, ${validatedConfig.TEXT_PROVIDER} text generation`,
+				`Contextual documents enabled: ${describeEmbeddingConfig()}, ${validatedConfig.TEXT_PROVIDER} text generation`,
 			);
 			logger.info(`Text model: ${validatedConfig.TEXT_MODEL}`);
 		} else if (hasConfiguredDocuments) {
 			logger.debug(
-				`Documents service running in embedding-only mode with ${describeEmbeddingConfig(validatedConfig)}`,
+				`Documents service running in embedding-only mode with ${describeEmbeddingConfig()}`,
 			);
 			logger.debug(
 				"To enable contextual enrichment: Set CTX_DOCUMENTS_ENABLED=true and configure TEXT_PROVIDER/TEXT_MODEL",
@@ -2435,30 +2434,28 @@ export class DocumentService extends Service {
 						"[DocumentService] document fragment missing text; cannot batch-embed",
 					);
 				}
-				return text;
+				return prepareCanonicalEmbeddingInput(text);
 			});
-			vectors = await this.runtime.useModel(ModelType.TEXT_EMBEDDING_BATCH, {
-				texts,
-			});
-			if (!Array.isArray(vectors) || vectors.length !== fragments.length) {
+			const batchOutput = await this.runtime.useModel(
+				ModelType.TEXT_EMBEDDING_BATCH,
+				{
+					texts,
+				},
+			);
+			if (
+				!Array.isArray(batchOutput) ||
+				batchOutput.length !== fragments.length
+			) {
 				// A count/shape mismatch can't be mapped back to fragments safely.
 				throw new Error(
 					`TEXT_EMBEDDING_BATCH returned ${
-						Array.isArray(vectors) ? vectors.length : "a non-array"
+						Array.isArray(batchOutput) ? batchOutput.length : "a non-array"
 					} vectors for ${fragments.length} fragments`,
 				);
 			}
-			// An empty inner vector is a failed generation, not a real embedding;
-			// persisting it would silently mark the fragment "embedded" with no
-			// vector (a recall gap) — the same case services/embedding.ts refuses in
-			// persistEmbedding. Treat it as a batch failure and fall back to serial.
-			if (
-				vectors.some((vector) => !Array.isArray(vector) || vector.length === 0)
-			) {
-				throw new Error(
-					"TEXT_EMBEDDING_BATCH returned an empty vector for at least one fragment",
-				);
-			}
+			vectors = batchOutput.map((vector) =>
+				normalizeCanonicalEmbedding(vector),
+			);
 		} catch (error) {
 			// error-policy:J4 Batch embedding has an explicit serial fallback;
 			// report the degraded path before retrying each fragment.
@@ -2545,7 +2542,9 @@ export class DocumentService extends Service {
 		}
 
 		const text = document.content.text;
-		const chunks = await splitChunks(text, targetTokens, overlap);
+		const chunks = hasDocumentEmbeddingModel(this.runtime)
+			? splitDocumentTextForCanonicalEmbedding(text, targetTokens, overlap)
+			: await splitChunks(text, targetTokens, overlap);
 
 		return chunks.map((chunk, index) => {
 			const fragmentIdContent = `${document.id}-fragment-${index}-${Date.now()}`;

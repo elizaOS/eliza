@@ -17,11 +17,12 @@
  * - `getSetting()` resolves per-agent config and DELIBERATELY never reads
  *   `process.env` — in a multi-tenant process that would leak a host secret into
  *   every agent; hosts fold dotenv into the constructor `settings` map instead.
- * - Embedding width is pinned to whichever TEXT_EMBEDDING provider answered the
- *   boot dimension probe; a later embedding from a different provider can emit a
- *   width the SQL adapter silently drops (#8769). If every provider fails the
- *   probe, `initialize()` catches `EmbeddingDimensionProbeError` non-fatally and
- *   disables embedding generation instead of crashing boot.
+ * - Semantic embedding handlers are eligible only when they attest the exact
+ *   canonical vector-space fingerprint. Real outputs are centrally validated
+ *   and L2-normalized; the boot probe accepts only an exact-width finite marker.
+ *   If every provider fails the probe, `initialize()` catches
+ *   `EmbeddingDimensionProbeError` non-fatally and disables embedding generation
+ *   instead of crashing boot.
  * - Without a database adapter, `initialize()` falls back to the in-memory
  *   adapter only when `ALLOW_NO_DATABASE` is set.
  */
@@ -33,6 +34,12 @@ import {
 } from "./action-docs";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
+import {
+	CANONICAL_EMBEDDING_DIMENSION,
+	CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+	normalizeCanonicalEmbedding,
+	prepareCanonicalEmbeddingInput,
+} from "./constants/embeddings";
 import { deriveKnownSecrets } from "./constants/secrets";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { ElizaError, type ReportedError, toElizaError } from "./errors";
@@ -1211,6 +1218,186 @@ interface ResolvedModelRegistration {
 	metadata?: ModelRegistrationMetadata;
 	modelKey: string;
 	provider: string;
+}
+
+const CANONICAL_EMBEDDING_MODEL_TYPES = new Set<string>([
+	ModelType.TEXT_EMBEDDING,
+	ModelType.TEXT_EMBEDDING_BATCH,
+]);
+
+function isCanonicalEmbeddingRegistration(
+	modelKey: string,
+	metadata: ModelRegistrationMetadata | undefined,
+): boolean {
+	return (
+		!CANONICAL_EMBEDDING_MODEL_TYPES.has(modelKey) ||
+		metadata?.embeddingSpaceFingerprint ===
+			CANONICAL_EMBEDDING_SPACE_FINGERPRINT
+	);
+}
+
+function prepareRuntimeEmbeddingInput(
+	modelType: string,
+	input: unknown,
+	index?: number,
+): string {
+	try {
+		return prepareCanonicalEmbeddingInput(input);
+	} catch (cause) {
+		const detail = cause instanceof Error ? cause.message : String(cause);
+		throw new ElizaError(
+			`${modelType} request has invalid canonical embedding input${index === undefined ? "" : ` at index ${index}`}: ${detail}`,
+			{
+				code: "EMBEDDING_MODEL_INPUT_INVALID",
+				cause,
+				context: {
+					modelType,
+					...(index === undefined ? {} : { index }),
+					detail,
+				},
+				severity: "fatal",
+			},
+		);
+	}
+}
+
+function prepareCanonicalEmbeddingModelParams(
+	modelType: string,
+	params: unknown,
+): unknown {
+	if (modelType === ModelType.TEXT_EMBEDDING) {
+		if (params === null) return null;
+		if (typeof params === "string") {
+			return prepareRuntimeEmbeddingInput(modelType, params);
+		}
+		if (!isPlainObject(params)) {
+			return prepareRuntimeEmbeddingInput(modelType, params);
+		}
+		return {
+			...params,
+			text: prepareRuntimeEmbeddingInput(modelType, params.text),
+		};
+	}
+
+	if (modelType !== ModelType.TEXT_EMBEDDING_BATCH) return params;
+	if (!isPlainObject(params) || !Array.isArray(params.texts)) {
+		return prepareRuntimeEmbeddingInput(modelType, undefined);
+	}
+	const texts = new Array<string>(params.texts.length);
+	for (let index = 0; index < params.texts.length; index += 1) {
+		texts[index] = prepareRuntimeEmbeddingInput(
+			modelType,
+			Object.hasOwn(params.texts, index) ? params.texts[index] : undefined,
+			index,
+		);
+	}
+	return { ...params, texts };
+}
+
+function invalidEmbeddingOutput(
+	modelType: string,
+	provider: string,
+	detail: string,
+): ElizaError {
+	return new ElizaError(
+		`${modelType} provider "${provider}" returned an invalid canonical embedding: ${detail}`,
+		{
+			code: "EMBEDDING_MODEL_OUTPUT_INVALID",
+			context: { modelType, provider, detail },
+			severity: "fatal",
+		},
+	);
+}
+
+function normalizeCanonicalEmbeddingOutput(args: {
+	modelType: string;
+	params: unknown;
+	provider: string;
+	result: unknown;
+}): number[] | number[][] {
+	const { modelType, params, provider, result } = args;
+	if (modelType === ModelType.TEXT_EMBEDDING) {
+		if (!Array.isArray(result)) {
+			throw invalidEmbeddingOutput(
+				modelType,
+				provider,
+				"expected a number array",
+			);
+		}
+		if (params === null) {
+			const validProbe =
+				result.length === CANONICAL_EMBEDDING_DIMENSION &&
+				result.every(
+					(value) => typeof value === "number" && Number.isFinite(value),
+				);
+			if (!validProbe) {
+				throw invalidEmbeddingOutput(
+					modelType,
+					provider,
+					`null boot probe must return exactly ${CANONICAL_EMBEDDING_DIMENSION} finite numeric marker values`,
+				);
+			}
+			return [...result] as number[];
+		}
+		try {
+			return normalizeCanonicalEmbedding(result as number[]);
+		} catch (error) {
+			throw invalidEmbeddingOutput(
+				modelType,
+				provider,
+				error instanceof Error ? error.message : String(error),
+			);
+		}
+	}
+
+	if (modelType !== ModelType.TEXT_EMBEDDING_BATCH) {
+		throw invalidEmbeddingOutput(modelType, provider, "unsupported model type");
+	}
+	const texts =
+		isPlainObject(params) && Array.isArray(params.texts) ? params.texts : null;
+	if (!texts?.every((text) => typeof text === "string")) {
+		throw invalidEmbeddingOutput(
+			modelType,
+			provider,
+			"request must contain a string[] texts field",
+		);
+	}
+	if (!Array.isArray(result) || result.length !== texts.length) {
+		throw invalidEmbeddingOutput(
+			modelType,
+			provider,
+			`expected ${texts.length} vectors, received ${Array.isArray(result) ? result.length : "a non-array"}`,
+		);
+	}
+
+	const normalized = new Array<number[]>(texts.length);
+	for (let index = 0; index < texts.length; index += 1) {
+		if (!Object.hasOwn(result, index)) {
+			throw invalidEmbeddingOutput(
+				modelType,
+				provider,
+				`vector ${index} is missing from the batch response`,
+			);
+		}
+		const vector = result[index];
+		if (!Array.isArray(vector)) {
+			throw invalidEmbeddingOutput(
+				modelType,
+				provider,
+				`vector ${index} is not a number array`,
+			);
+		}
+		try {
+			normalized[index] = normalizeCanonicalEmbedding(vector as number[]);
+		} catch (error) {
+			throw invalidEmbeddingOutput(
+				modelType,
+				provider,
+				`vector ${index}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+	return normalized;
 }
 
 export class AgentRuntime implements IAgentRuntime {
@@ -3258,9 +3445,12 @@ export class AgentRuntime implements IAgentRuntime {
 
 		const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
 		if (!embeddingModel) {
+			this.disableEmbeddingGeneration(
+				"No eligible canonical TEXT_EMBEDDING model is registered",
+			);
 			this.logger.warn(
 				{ src: "agent", agentId: this.agentId },
-				"No TEXT_EMBEDDING model registered, skipping embedding setup",
+				"No eligible canonical TEXT_EMBEDDING model registered; semantic embedding generation/search remains disabled",
 			);
 		} else {
 			try {
@@ -6008,6 +6198,19 @@ export class AgentRuntime implements IAgentRuntime {
 		metadata?: ModelRegistrationMetadata,
 	): void {
 		const modelKey = String(modelType);
+		if (!isCanonicalEmbeddingRegistration(modelKey, metadata)) {
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					modelType: modelKey,
+					provider,
+					declaredFingerprint: metadata?.embeddingSpaceFingerprint,
+					requiredFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+				},
+				"Embedding model registration is ineligible: missing or incompatible semantic-space fingerprint",
+			);
+		}
 		if (this.isCanonicalModelCapabilityDisabled(modelKey)) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, modelType: modelKey, provider },
@@ -6160,13 +6363,17 @@ export class AgentRuntime implements IAgentRuntime {
 				continue;
 			}
 
+			const eligibleRegistrations = models.filter((model) =>
+				isCanonicalEmbeddingRegistration(candidateKey, model.metadata),
+			);
 			const modelWithProvider =
-				provider && models.find((model) => model.provider === provider);
+				provider &&
+				eligibleRegistrations.find((model) => model.provider === provider);
 			const candidateModels = provider
 				? modelWithProvider
 					? [modelWithProvider]
 					: []
-				: models;
+				: eligibleRegistrations;
 
 			for (const resolvedModel of candidateModels) {
 				if (candidateKey !== requestedModelKey) {
@@ -6521,6 +6728,11 @@ export class AgentRuntime implements IAgentRuntime {
 		provider?: string,
 	): Promise<R> {
 		const useModelStartedAt = Date.now();
+		params = prepareCanonicalEmbeddingModelParams(
+			String(modelType),
+			params,
+		) as ModelParamsMap[T];
+		this.assertSemanticEmbeddingSpaceReady(String(modelType), params);
 		this.assertCanonicalModelCapabilityEnabled(String(modelType));
 		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
 			? captureModelLookupCaller()
@@ -6741,14 +6953,16 @@ export class AgentRuntime implements IAgentRuntime {
 					ModelType.AUDIO,
 					ModelType.VIDEO,
 				];
-				// PII swap skips binary-input modalities (nothing to swap) and TEXT_EMBEDDING
-				// (a random per-turn surrogate would destabilize embeddings), but — unlike
-				// the secret gate — swaps IMAGE prompts, whose text can carry real names.
+				// PII swap skips binary-input modalities (nothing to swap) and semantic
+				// embedding calls (a random per-turn surrogate would destabilize single
+				// and batch vectors), but — unlike the secret gate — swaps IMAGE prompts,
+				// whose text can carry real names.
 				const PII_SWAP_SKIP_MODELS: string[] = [
 					ModelType.TRANSCRIPTION,
 					ModelType.AUDIO,
 					ModelType.VIDEO,
 					ModelType.TEXT_EMBEDDING,
+					ModelType.TEXT_EMBEDDING_BATCH,
 				];
 				let modelParams: ModelParamsMap[T];
 				const paramsClone = isPlainObject(params)
@@ -6879,11 +7093,33 @@ export class AgentRuntime implements IAgentRuntime {
 					shouldStream &&
 					paramsAsStreaming?.streamStructured === true &&
 					structuredStreamFields.length === 0;
-				const downstreamChunk = (chunk: string, accumulated?: string): void => {
-					void (async () => {
-						if (paramsChunk) await paramsChunk(chunk, msgId, accumulated);
-						if (ctxChunk) await ctxChunk(chunk, msgId, accumulated);
-					})();
+				const downstreamChunk = async (
+					chunk: string,
+					accumulated?: string,
+				): Promise<void> => {
+					if (paramsChunk) await paramsChunk(chunk, msgId, accumulated);
+					if (ctxChunk) await ctxChunk(chunk, msgId, accumulated);
+				};
+				let structuredDelivery = Promise.resolve();
+				let structuredDeliveryFailed = false;
+				let structuredDeliveryFailure: unknown;
+				const enqueueStructuredDelivery = (
+					chunk: string,
+					accumulated?: string,
+				): void => {
+					structuredDelivery = structuredDelivery.then(async () => {
+						if (structuredDeliveryFailed) return;
+						try {
+							await downstreamChunk(chunk, accumulated);
+						} catch (error) {
+							structuredDeliveryFailed = true;
+							structuredDeliveryFailure = error;
+						}
+					});
+				};
+				const awaitStructuredDelivery = async (): Promise<void> => {
+					await structuredDelivery;
+					if (structuredDeliveryFailed) throw structuredDeliveryFailure;
 				};
 				const structuredExtractor =
 					structuredStreamFields.length > 0 &&
@@ -6893,11 +7129,16 @@ export class AgentRuntime implements IAgentRuntime {
 								streamFields: structuredStreamFields,
 								unordered: true,
 								onChunk: (chunk, _field, accumulated) =>
-									downstreamChunk(chunk, accumulated),
+									enqueueStructuredDelivery(chunk, accumulated),
 								...(abortSignal ? { abortSignal } : {}),
 							})
 						: undefined;
 				let handlerDeliveredStream = false;
+				let returnedStreamOwnsDelivery = false;
+				let handlerIngressOpen = true;
+				let handlerIngress = Promise.resolve();
+				let handlerIngressFailed = false;
+				let handlerIngressFailure: unknown;
 				let streamedText = "";
 				let secretSwapSession: SecretSwapSession | null = null;
 				let guardScanner: GuardedStreamScanner | null = null;
@@ -7010,11 +7251,47 @@ export class AgentRuntime implements IAgentRuntime {
 					shouldStream &&
 					resolvedAcceptsHandlerStream &&
 					(paramsChunk || ctxChunk || structuredExtractor)
-						? async (chunk) => {
+						? (chunk) => {
+								// Some adapters both invoke the handler callback and return a
+								// TextStreamResult backed by the same provider stream. Once the
+								// runtime starts pulling that result, its iterator is the sole
+								// delivery source; content-based dedupe would corrupt legitimate
+								// repeated tokens.
+								if (!handlerIngressOpen || returnedStreamOwnsDelivery) {
+									return Promise.resolve();
+								}
 								handlerDeliveredStream = true;
-								await deliverModelStreamChunk(chunk);
+								const delivery = handlerIngress.then(async () => {
+									if (handlerIngressFailed || returnedStreamOwnsDelivery)
+										return;
+									try {
+										await deliverModelStreamChunk(chunk);
+									} catch (error) {
+										handlerIngressFailed = true;
+										handlerIngressFailure = error;
+										throw error;
+									}
+								});
+								// Keep the shared chain observed even when a provider intentionally
+								// fires callbacks without awaiting their returned promises. The
+								// individual callback still rejects for providers that do await it.
+								handlerIngress = delivery.catch(() => undefined);
+								return delivery;
 							}
 						: undefined;
+				const settleHandlerIngress = async (): Promise<void> => {
+					// Close only after every callback already enqueued by the handler has
+					// settled. Re-checking the chain protects callbacks that were fired
+					// concurrently just before the handler returned.
+					while (true) {
+						const observed = handlerIngress;
+						await observed;
+						if (observed !== handlerIngress) continue;
+						handlerIngressOpen = false;
+						break;
+					}
+					if (handlerIngressFailed) throw handlerIngressFailure;
+				};
 
 				if (isPlainObject(modelParams) && paramsAsStreaming) {
 					paramsAsStreaming.stream = shouldStream;
@@ -7251,6 +7528,7 @@ export class AgentRuntime implements IAgentRuntime {
 					await runWithModelCallRecordingScope(() =>
 						handler(this, modelParams as Record<string, JsonValue | object>),
 					);
+				await settleHandlerIngress();
 				// Expose the mutable recording state to the catch block so it can
 				// suppress a failure entry when the provider already logged this
 				// call before throwing (#17532).
@@ -7271,8 +7549,14 @@ export class AgentRuntime implements IAgentRuntime {
 				if (
 					shouldStream &&
 					(paramsChunk || ctxChunk) &&
+					!handlerDeliveredStream &&
 					isTextStreamResult(rawResponse)
 				) {
+					// No callback byte arrived before the handler returned, so the
+					// TextStreamResult owns delivery. Set this before the first pull:
+					// a callback fired from inside the generator must not echo the same
+					// provider delta into the visible stream.
+					returnedStreamOwnsDelivery = true;
 					// Consume the provider stream inside the recording scope, mirroring
 					// the pass-through TextStreamResult wrapper below. Async generators
 					// do not inherit AsyncLocalStorage context from their creation, and
@@ -7308,6 +7592,7 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 					await flushGuardedStream();
 					structuredExtractor?.flush();
+					await awaitStructuredDelivery();
 
 					const trajStreamEnd = getTrajectoryContext();
 					await this.invokePipelineHooks(
@@ -7452,9 +7737,39 @@ export class AgentRuntime implements IAgentRuntime {
 					return resultRef.current as R;
 				}
 
+				if (handlerDeliveredStream && isTextStreamResult(rawResponse)) {
+					// Callback delivery already committed the authoritative bytes. Do
+					// not pull a duplicate returned stream; collapse it to the callback
+					// text while preserving native tool/usage metadata when present.
+					const streamRaw = rawResponse as {
+						toolCalls?: unknown;
+						finishReason?: unknown;
+						usage?: unknown;
+						providerMetadata?: unknown;
+					};
+					if ("toolCalls" in streamRaw) {
+						resultRef.current = {
+							text: streamedText,
+							toolCalls: await Promise.resolve(streamRaw.toolCalls),
+							finishReason:
+								"finishReason" in streamRaw
+									? await Promise.resolve(streamRaw.finishReason)
+									: undefined,
+							usage:
+								"usage" in streamRaw
+									? await Promise.resolve(streamRaw.usage)
+									: undefined,
+							providerMetadata: streamRaw.providerMetadata,
+						};
+					} else {
+						resultRef.current = streamedText;
+					}
+				}
+
 				if (handlerDeliveredStream) {
 					await flushGuardedStream();
 					structuredExtractor?.flush();
+					await awaitStructuredDelivery();
 					const trajStreamEnd = getTrajectoryContext();
 					await this.invokePipelineHooks(
 						"model_stream_end",
@@ -7503,6 +7818,14 @@ export class AgentRuntime implements IAgentRuntime {
 				resultRef.current =
 					piiSwapSession?.substituteInValue(resultRef.current) ??
 					resultRef.current;
+				if (CANONICAL_EMBEDDING_MODEL_TYPES.has(requestedModelKey)) {
+					resultRef.current = normalizeCanonicalEmbeddingOutput({
+						modelType: requestedModelKey,
+						params: modelParams,
+						provider: resolvedModel.provider,
+						result: resultRef.current,
+					});
+				}
 
 				// Record the provider that actually served this call so callers
 				// that can't see the internal resolution (message.ts stage
@@ -10459,15 +10782,43 @@ ${section_end}`;
 	}
 
 	/**
-	 * True while embedding generation is disabled because every registered
-	 * TEXT_EMBEDDING provider failed the dimension probe. While true, memory
-	 * writes persist without vectors (recall over new memories is degraded)
-	 * rather than emitting vectors the SQL adapter would silently drop against
-	 * a default-sized column. Cleared by the next successful
-	 * {@link ensureEmbeddingDimension} (e.g. the deferred boot re-probe).
+	 * True while the canonical semantic embedding space is unavailable. This
+	 * covers probe failure, missing/failing fingerprint reconciliation, and the
+	 * reconciliation window itself. While true, writes persist without vectors
+	 * and semantic generation/search fail closed; only the exact null boot probe
+	 * may call TEXT_EMBEDDING so a deferred re-probe can recover the runtime.
 	 */
 	isEmbeddingGenerationDisabled(): boolean {
 		return this.embeddingGenerationDisabledReason !== null;
+	}
+
+	private assertSemanticEmbeddingSpaceReady(
+		modelType: string,
+		params: unknown,
+	): void {
+		if (!CANONICAL_EMBEDDING_MODEL_TYPES.has(modelType)) {
+			return;
+		}
+		// Recovery needs to measure the provider before the database space can be
+		// reconciled. This is the only semantic-model call allowed while disabled;
+		// its finite exact-width marker is never persisted or used for retrieval.
+		if (modelType === ModelType.TEXT_EMBEDDING && params === null) {
+			return;
+		}
+		if (this.embeddingGenerationDisabledReason === null) {
+			return;
+		}
+		throw new ElizaError(
+			`Canonical semantic embedding space is unavailable: ${this.embeddingGenerationDisabledReason}`,
+			{
+				code: "EMBEDDING_SPACE_UNAVAILABLE",
+				context: {
+					modelType,
+					reason: this.embeddingGenerationDisabledReason,
+				},
+				severity: "ephemeral",
+			},
+		);
 	}
 
 	private disableEmbeddingGeneration(reason: string): void {
@@ -10512,6 +10863,13 @@ ${section_end}`;
 				"Database adapter not initialized before ensureEmbeddingDimension",
 			);
 		}
+		// Keep real generation and every semantic query closed from the first
+		// probe byte through dimension cleanup. The null marker probe bypasses this
+		// state explicitly; a successful fingerprint reconciliation is the only
+		// path that re-opens semantic operations.
+		this.disableEmbeddingGeneration(
+			"Canonical semantic embedding-space reconciliation is in progress",
+		);
 		const canonicalProviderSetting = this.getSetting(
 			"ELIZA_EMBEDDING_PROVIDER",
 		);
@@ -10573,8 +10931,8 @@ ${section_end}`;
 		// Probe every eligible TEXT_EMBEDDING provider in the same priority order
 		// useModel resolves them. An explicit local policy limits eligibility to
 		// on-device handlers; it never falls through to a remote provider. The
-		// probe passes null; handlers return a
-		// zero-filled vector of their real output width. A provider that cannot
+		// probe passes null; handlers return a finite marker vector of their real
+		// output width. A provider that cannot
 		// answer the null probe cannot produce usable vectors either, so ANY
 		// probe failure — not just a rate limit — advances to the next
 		// registration. First success wins: it sizes the adapter's vector column
@@ -10642,17 +11000,33 @@ ${section_end}`;
 
 			await this.adapter.ensureEmbeddingDimension(embedding.length);
 			this.pinnedEmbeddingProvider = registration.provider;
-			this.enableEmbeddingGeneration();
-			// Reclaim any vectors left in a different dimension column — e.g. cloud
-			// 1536-dim embeddings after this agent switched to on-device gte-small
-			// (384-dim) — which a same-width search can never match again, then
-			// re-embed those memories at the active width. The clear is one quick
-			// DELETE (a no-op once the store holds only active-dimension vectors);
-			// the re-embed drains through the embedding queue in the background so
-			// boot is never blocked on it.
+			const reconcileEmbeddingSpace = this.adapter.reconcileEmbeddingSpace;
+			if (typeof reconcileEmbeddingSpace !== "function") {
+				const reason =
+					"Database adapter does not implement semantic embedding-space fingerprint reconciliation";
+				this.disableEmbeddingGeneration(reason);
+				this.logger.warn(
+					{ src: "agent", agentId: this.agentId },
+					`${reason}; semantic embedding generation/search stays disabled to prevent same-width vector-space mixing`,
+				);
+				return;
+			}
+
+			// Width alone is insufficient: legacy GTE-small and canonical BGE-small
+			// are both 384-dimensional but occupy incompatible semantic spaces.
+			// Reconcile the persisted fingerprint first, then clear other widths.
+			// Memory rows survive both operations and are re-embedded asynchronously.
 			try {
-				const staleMemoryIds =
+				const space = await reconcileEmbeddingSpace.call(
+					this.adapter,
+					CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+				);
+				const staleDimensionMemoryIds =
 					await this.adapter.clearEmbeddingsOutsideActiveDimension();
+				const staleMemoryIds = Array.from(
+					new Set([...space.staleMemoryIds, ...staleDimensionMemoryIds]),
+				);
+				this.enableEmbeddingGeneration();
 				if (staleMemoryIds.length > 0) {
 					this.logger.info(
 						{
@@ -10660,16 +11034,21 @@ ${section_end}`;
 							agentId: this.agentId,
 							count: staleMemoryIds.length,
 							dimension: embedding.length,
+							spaceChanged: space.changed,
+							previousFingerprint: space.previousFingerprint,
 						},
-						"Reclaimed stale-dimension embeddings; re-embedding at active width",
+						"Reclaimed incompatible embeddings; re-embedding in the canonical vector space",
 					);
 					void this.reembedMemoriesByIds(staleMemoryIds);
 				}
 			} catch (error) {
-				// error-policy:J7 stale embedding reconciliation is best-effort maintenance; report and keep booting.
-				this.reportError("AgentRuntime.embeddingDimensionReconcile", error, {
+				const reason = `Embedding-space reconciliation failed: ${error instanceof Error ? error.message : String(error)}`;
+				this.disableEmbeddingGeneration(reason);
+				// error-policy:J7 boot continues without semantic embeddings; the failure is reported and no incompatible vector is generated or queried.
+				this.reportError("AgentRuntime.embeddingSpaceReconcile", error, {
 					agentId: this.agentId,
 				});
+				return;
 			}
 			this.logger.debug(
 				{
@@ -10691,7 +11070,7 @@ ${section_end}`;
 		if (allFailuresBenign) {
 			this.logger.warn(
 				{ src: "agent", agentId: this.agentId },
-				"No backing TEXT_EMBEDDING provider registered, skipping embedding setup",
+				"No backing TEXT_EMBEDDING provider registered; semantic embedding generation/search remains disabled",
 			);
 			return;
 		}
@@ -11304,8 +11683,26 @@ ${section_end}`;
 		tableName: string;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
+		this.assertSemanticEmbeddingSpaceReady(ModelType.TEXT_EMBEDDING, {
+			text: params.query ?? "semantic-memory-search",
+		});
+		let embedding: number[];
+		try {
+			embedding = normalizeCanonicalEmbedding(params.embedding);
+		} catch (error) {
+			throw new ElizaError(
+				"Semantic memory search received an invalid embedding",
+				{
+					code: "EMBEDDING_QUERY_INVALID",
+					cause: error,
+					context: { tableName: params.tableName },
+					severity: "fatal",
+				},
+			);
+		}
 		const memories = await this.adapter.searchMemories({
 			...params,
+			embedding,
 			tableName: params.tableName,
 		});
 		if (params.query) {
@@ -12189,6 +12586,18 @@ ${section_end}`;
 	): Promise<boolean> {
 		await this.adapter.updateMemories([memory]);
 		this.roomMessagesMemo.invalidate();
+		if (
+			memory.content &&
+			typeof memory.content === "object" &&
+			Object.hasOwn(memory.content, "text")
+		) {
+			// SQL only returns the canonical vector when its exact source_text
+			// matches the just-persisted memory text. A changed text therefore comes
+			// back embedding-less and is requeued immediately; an unchanged text
+			// retains its vector and queueEmbeddingGeneration safely no-ops.
+			const persisted = await this.getMemoryById(memory.id);
+			if (persisted) await this.queueEmbeddingGeneration(persisted, "low");
+		}
 		return true; // Successfully updated if no error thrown
 	}
 

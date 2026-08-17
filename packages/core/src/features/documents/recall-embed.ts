@@ -59,6 +59,7 @@
  * (fail-open), with no silent middle ground.
  */
 
+import { normalizeCanonicalEmbedding } from "../../constants/embeddings.ts";
 import { toElizaError } from "../../errors";
 import { recordInferenceSpan } from "../../inference-timing";
 import { getStreamingContext } from "../../streaming-context";
@@ -287,7 +288,7 @@ export async function embedRecallQuery(
 					text: queryText,
 					...(signal ? { signal } : {}),
 				}) as Promise<number[]>,
-			);
+			).then((vector) => normalizeCanonicalEmbedding(vector));
 		} catch (error) {
 			if (signal?.aborted) {
 				throw signal.reason ?? error;
@@ -318,10 +319,7 @@ export async function embedRecallQuery(
 	}
 
 	try {
-		const vector = await pending;
-		// A handler that resolved to a non-array (e.g. undefined) failed to embed;
-		// report that as the fail-open null, not a garbage value.
-		return Array.isArray(vector) ? vector : null;
+		return await pending;
 	} catch (error) {
 		if (signal?.aborted) {
 			throw signal.reason ?? error;

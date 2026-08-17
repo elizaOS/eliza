@@ -1,9 +1,14 @@
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import {
+  assertCanonicalEmbeddingConfig,
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_MODEL,
+  CANONICAL_EMBEDDING_POOLING,
   logger,
   ModelType,
+  normalizeCanonicalEmbedding,
+  prepareCanonicalEmbeddingInput,
   timeInferenceSpan,
-  VECTOR_DIMS,
 } from "@elizaos/core";
 import { getSetting } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
@@ -91,18 +96,21 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
   const embeddingModelName = getSetting(
     runtime,
     "ELIZAOS_CLOUD_EMBEDDING_MODEL",
-    "text-embedding-3-small"
-  );
+    CANONICAL_EMBEDDING_MODEL
+  ) ?? CANONICAL_EMBEDDING_MODEL;
   const embeddingDimension = Number.parseInt(
-    getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") || "1536",
+    getSetting(
+      runtime,
+      "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS",
+      String(CANONICAL_EMBEDDING_DIMENSION)
+    ) || String(CANONICAL_EMBEDDING_DIMENSION),
     10
-  ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
-
-  if (!Object.values(VECTOR_DIMS).includes(embeddingDimension)) {
-    const errorMsg = `Invalid embedding dimension: ${embeddingDimension}. Must be one of: ${Object.values(VECTOR_DIMS).join(", ")}`;
-    logger.error(errorMsg);
-    throw new Error(errorMsg);
-  }
+  );
+  assertCanonicalEmbeddingConfig(
+    embeddingModelName,
+    embeddingDimension,
+    CANONICAL_EMBEDDING_POOLING
+  );
 
   return { embeddingModelName, embeddingDimension };
 }
@@ -137,11 +145,15 @@ export async function handleTextEmbedding(
     return createInitProbeVector(embeddingDimension);
   }
 
-  let text: string;
+  let rawText: unknown;
   if (typeof params === "string") {
-    text = params;
-  } else if (typeof params === "object" && params.text) {
-    text = params.text;
+    rawText = params;
+  } else if (
+    typeof params === "object" &&
+    params !== null &&
+    typeof params.text === "string"
+  ) {
+    rawText = params.text;
   } else {
     // A malformed request is a programming error, not a recoverable runtime
     // state. Throw instead of returning a marker vector that would silently
@@ -149,9 +161,7 @@ export async function handleTextEmbedding(
     throw new Error("Invalid input format for embedding: expected string or { text: string }");
   }
 
-  if (!text.trim()) {
-    throw new Error("Cannot generate embedding for empty text");
-  }
+  const text = prepareCanonicalEmbeddingInput(rawText);
 
   const results = await handleBatchTextEmbedding(runtime, [text], signal);
   return results[0];
@@ -170,22 +180,30 @@ export async function handleBatchTextEmbedding(
   signal?: AbortSignal
 ): Promise<number[][]> {
   const { embeddingModelName, embeddingDimension } = getEmbeddingConfig(runtime);
-  const client = createCloudApiClient(runtime, true);
 
-  if (!texts || texts.length === 0) {
+  if (!Array.isArray(texts)) {
+    throw new TypeError("Canonical embedding batch input must be a string array");
+  }
+  if (texts.length === 0) {
     return [];
   }
 
-  // Every text must be non-empty: an empty input cannot produce a meaningful
-  // vector, and a marker/zero vector would silently corrupt the store. Surface
-  // the bad input to the caller (Commandment 8) instead of papering over it.
+  const client = createCloudApiClient(runtime, true);
+
+  // Validate every text against the same core BGE boundary before the first
+  // batch is dispatched. The helper trims but never truncates or repairs input.
   const validTexts: { text: string; originalIndex: number }[] = [];
   for (let i = 0; i < texts.length; i++) {
-    const text = texts[i]?.trim();
-    if (!text) {
-      throw new Error(`Cannot generate embedding for empty text at index ${i}`);
+    try {
+      validTexts.push({
+        text: prepareCanonicalEmbeddingInput(texts[i]),
+        originalIndex: i,
+      });
+    } catch (cause) {
+      throw new Error(`Invalid canonical embedding input at index ${i}`, {
+        cause,
+      });
     }
-    validTexts.push({ text, originalIndex: i });
   }
 
   const results: number[][] = new Array(texts.length);
@@ -227,12 +245,9 @@ export async function handleBatchTextEmbedding(
               json: {
                 model: embeddingModelName,
                 input: batchTexts,
-                // Pin the output width to the agent's configured dimension
-                // (text-embedding-3-* honor `dimensions`). Without it the
-                // gateway returns the model's native width — e.g. 1536 for a
-                // 384-configured agent — which the store then silently drops as
-                // a dimension mismatch (#8769). Asking for the exact width makes
-                // the contract explicit and the width-check below authoritative.
+                pooling: CANONICAL_EMBEDDING_POOLING,
+                // Pin width and pooling to the canonical BGE vector space. The
+                // response is validated and L2-normalized before persistence.
                 dimensions: embeddingDimension,
               },
               timeoutMs: EMBED_REQUEST_TIMEOUT_MS,
@@ -331,8 +346,15 @@ export async function handleBatchTextEmbedding(
 
       const data = (await response.json()) as {
         data?: Array<{ embedding: number[]; index: number }>;
+        model?: string;
         usage?: { prompt_tokens: number; total_tokens: number };
       };
+
+      if (data.model !== embeddingModelName) {
+        throw new Error(
+          `[BatchEmbeddings] model mismatch: endpoint returned ${JSON.stringify(data.model)}, expected ${JSON.stringify(embeddingModelName)}`
+        );
+      }
 
       if (!data?.data || !Array.isArray(data.data)) {
         throw new Error("[BatchEmbeddings] API returned invalid response structure");
@@ -348,6 +370,7 @@ export async function handleBatchTextEmbedding(
         );
       }
 
+      const seenResponseIndexes = new Set<number>();
       for (const item of data.data) {
         // The response `index` addresses this batch slice. A malformed/duplicated
         // or cross-batch (absolute) index would make `batch[item.index]` undefined
@@ -359,6 +382,12 @@ export async function handleBatchTextEmbedding(
             `[BatchEmbeddings] response index out of range: ${String(item.index)} (batch size ${batch.length})`
           );
         }
+        if (seenResponseIndexes.has(item.index)) {
+          throw new Error(
+            `[BatchEmbeddings] duplicate response index: ${item.index}`
+          );
+        }
+        seenResponseIndexes.add(item.index);
         // Width must match the configured dimension exactly. A wrong width is the
         // root of the "Skipping embedding insert: dimension mismatch" (#8769)
         // silent drop downstream — surface it here so the router can fall through.
@@ -369,7 +398,7 @@ export async function handleBatchTextEmbedding(
             }d but agent is configured for ${embeddingDimension}d`
           );
         }
-        results[slot.originalIndex] = item.embedding;
+        results[slot.originalIndex] = normalizeCanonicalEmbedding(item.embedding);
       }
 
       if (data.usage) {

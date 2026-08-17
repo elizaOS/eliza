@@ -15,7 +15,7 @@ The plugin owns service lifecycle; its bootstrap registers model handlers direct
 | Export | Description |
 |---|---|
 | `mobileDeviceBridgePlugin` | Registers the canonical `MobileDeviceBridgeService`; the pre-initialize bootstrap installs this same plugin so later plugin registration remains idempotent. |
-| `ensureMobileDeviceBridgeInferenceHandlers(runtime)` | Registers the canonical `MobileDeviceBridgeService` before initialization, then registers `TEXT_SMALL`, `TEXT_LARGE`, and `TEXT_EMBEDDING` handlers only after a bionic host or real device can serve them. Android path only (iOS uses native IPC). Gated by `ELIZA_DEVICE_BRIDGE_ENABLED=1`. |
+| `ensureMobileDeviceBridgeInferenceHandlers(runtime)` | Registers the canonical `MobileDeviceBridgeService` before initialization, then registers `TEXT_SMALL` and `TEXT_LARGE` handlers only after a bionic host or real device can serve them. Android path only (iOS uses native IPC). Gated by `ELIZA_DEVICE_BRIDGE_ENABLED=1`. Semantic embeddings stay unregistered because this transport cannot attest canonical mean-pooled BGE-small. |
 | `attachMobileDeviceBridgeToServer(httpServer)` | Attaches the canonical singleton's WebSocket upgrade handler at `/api/local-inference/device-bridge` to an existing Node `http.Server`. The server close boundary removes the hook, closes clients, cancels pending calls, and clears heartbeat timers; runtime stop releases only that runtime's subscription. |
 | `getMobileDeviceBridgeStatus()` | Returns `MobileDeviceBridgeStatus`: enabled, connected devices, loaded model path, pending request counts. |
 | `loadMobileDeviceBridgeModel(modelPath, modelId?)` | Imperatively load a GGUF into the connected Android device. |
@@ -43,7 +43,7 @@ src/
   mobile-device-bridge-bootstrap.ts  MobileDeviceBridge class + ensureMobileDeviceBridgeInferenceHandlers
                                       Model path resolution: env vars → registry → manifest.json → first .gguf
                                       Auto-download from elizaos/eliza-1 on HuggingFace (respects ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD)
-                                      Recommended models: eliza-1-4b (TEXT_SMALL + TEXT_LARGE), eliza-1-embedding (TEXT_EMBEDDING)
+                                      Recommended model: eliza-1-4b (TEXT_SMALL + TEXT_LARGE)
   android/
     bridge.ts                       Android CLI entry: env setup, fs shim install, startEliza({ serverOnly: true }), device-bridge wiring
   ios/
@@ -105,11 +105,8 @@ bun run --cwd plugins/plugin-capacitor-bridge clean           # rm -rf dist .tur
 | Var | Description |
 |---|---|
 | `ELIZA_LOCAL_CHAT_MODEL_PATH` | Absolute path to a GGUF for chat slots (TEXT_SMALL / TEXT_LARGE). |
-| `ELIZA_LOCAL_EMBEDDING_MODEL_PATH` | Absolute path to a GGUF for TEXT_EMBEDDING. |
-| `ELIZA_LOCAL_MODEL_PATH` | Fallback path used when neither slot-specific var is set. |
+| `ELIZA_LOCAL_MODEL_PATH` | Fallback path used when the chat-specific var is unset. |
 | `ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD` | Set to `1` to disable auto-download from HuggingFace. |
-| `ELIZA_LOCAL_EMBEDDING_DIMENSIONS` | Override embedding vector size (default: model-id lookup or 1024). |
-| `TEXT_EMBEDDING_DIMENSIONS` | Fallback for embedding dimension override. |
 
 ### Timeouts
 All timeout vars accept a canonical decimal integer from 1 through 2147483647 (the max

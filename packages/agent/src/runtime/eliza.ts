@@ -133,6 +133,9 @@ import {
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,
   addLogListener,
+  CANONICAL_EMBEDDING_DIMENSION,
+  CANONICAL_EMBEDDING_MODEL,
+  CANONICAL_EMBEDDING_POOLING,
   ChannelType,
   type Component,
   createBasicCapabilitiesPlugin,
@@ -954,34 +957,9 @@ export async function configureLocalEmbeddingPlugin(
       `[eliza] Local embedding hardware probe failed; using sync preset fallback: ${formatError(err)}`,
     );
   }
-  const SQL_COMPATIBLE_EMBEDDING_DIMENSIONS = new Set([
-    384, 512, 768, 1024, 1536, 2048, 3072,
-  ]);
-
-  const normalizeEmbeddingDimensions = (
-    rawValue: string | undefined,
-  ): string | undefined => {
-    if (!rawValue) return undefined;
-    const parsed = Number.parseInt(rawValue, 10);
-    if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
-    return SQL_COMPATIBLE_EMBEDDING_DIMENSIONS.has(parsed)
-      ? String(parsed)
-      : "384";
-  };
-
   const embeddingConfig = config?.embedding;
   const configuredModel = embeddingConfig?.model?.trim();
   const configuredRepo = embeddingConfig?.modelRepo?.trim();
-  const configuredDimensions = normalizeEmbeddingDimensions(
-    typeof embeddingConfig?.dimensions === "number" &&
-      Number.isInteger(embeddingConfig.dimensions) &&
-      embeddingConfig.dimensions > 0
-      ? String(embeddingConfig.dimensions)
-      : undefined,
-  );
-  const detectedDimensions = normalizeEmbeddingDimensions(
-    String(detectedPreset.dimensions),
-  );
   const configuredContextSize =
     typeof embeddingConfig?.contextSize === "number" &&
     Number.isInteger(embeddingConfig.contextSize) &&
@@ -1000,36 +978,48 @@ export async function configureLocalEmbeddingPlugin(
     return undefined;
   })();
 
-  const setEnvFromConfig = (key: string, value: string | undefined): void => {
-    if (!value) return;
-    process.env[key] = value;
+  const ignoredIdentityOverrides = {
+    model:
+      configuredModel && configuredModel !== detectedPreset.model
+        ? configuredModel
+        : undefined,
+    modelRepo:
+      configuredRepo && configuredRepo !== detectedPreset.modelRepo
+        ? configuredRepo
+        : undefined,
+    dimensions:
+      embeddingConfig?.dimensions !== undefined &&
+      embeddingConfig.dimensions !== CANONICAL_EMBEDDING_DIMENSION
+        ? embeddingConfig.dimensions
+        : undefined,
+    contextSize:
+      configuredContextSize !== undefined &&
+      configuredContextSize !== String(detectedPreset.contextSize)
+        ? configuredContextSize
+        : undefined,
   };
-
-  // Apply Eliza's hardware-adaptive preset selection. Hard-coding the standard
-  // preset here forces slower first-run downloads on Windows and low-spec
-  // machines.
-  setEnvIfMissing(
-    "LOCAL_EMBEDDING_MODEL",
-    configuredModel || detectedPreset.model,
-  );
-  if (configuredRepo) {
-    setEnvFromConfig("LOCAL_EMBEDDING_MODEL_REPO", configuredRepo);
-  } else if (!configuredModel) {
-    setEnvIfMissing("LOCAL_EMBEDDING_MODEL_REPO", detectedPreset.modelRepo);
-  }
-  if (configuredDimensions) {
-    setEnvFromConfig("LOCAL_EMBEDDING_DIMENSIONS", configuredDimensions);
-  } else if (!configuredModel) {
-    setEnvIfMissing("LOCAL_EMBEDDING_DIMENSIONS", detectedDimensions);
-  }
-  if (configuredContextSize) {
-    setEnvFromConfig("LOCAL_EMBEDDING_CONTEXT_SIZE", configuredContextSize);
-  } else if (!configuredModel) {
-    setEnvIfMissing(
-      "LOCAL_EMBEDDING_CONTEXT_SIZE",
-      String(detectedPreset.contextSize),
+  if (
+    Object.values(ignoredIdentityOverrides).some((value) => value !== undefined)
+  ) {
+    logger.warn(
+      { ignoredIdentityOverrides },
+      "[eliza] Ignoring noncanonical local embedding identity overrides; semantic vectors are pinned to BGE-small-en-v1.5/384/mean/L2",
     );
   }
+
+  // Model identity, width, pooling, and normalization define one semantic
+  // space. Replace stale process/config values rather than accepting a
+  // same-width GTE artifact. Hardware may still choose CPU vs accelerator
+  // layers; it may not choose a different vector space.
+  process.env.LOCAL_EMBEDDING_MODEL = detectedPreset.model;
+  process.env.LOCAL_EMBEDDING_MODEL_REPO = detectedPreset.modelRepo;
+  process.env.LOCAL_EMBEDDING_DIMENSIONS = String(
+    CANONICAL_EMBEDDING_DIMENSION,
+  );
+  process.env.LOCAL_EMBEDDING_CONTEXT_SIZE = String(detectedPreset.contextSize);
+  process.env.TEXT_EMBEDDING_MODEL = CANONICAL_EMBEDDING_MODEL;
+  process.env.EMBEDDING_DIMENSION = String(CANONICAL_EMBEDDING_DIMENSION);
+  process.env.ELIZA_EMBED_POOLING = CANONICAL_EMBEDDING_POOLING;
 
   if (configuredGpuLayers) {
     process.env.LOCAL_EMBEDDING_GPU_LAYERS = configuredGpuLayers;
@@ -1084,10 +1074,10 @@ export async function configureLocalEmbeddingPlugin(
  * Root cause it addresses (#16630 follow-up): configureLocalEmbeddingPlugin()
  * is otherwise only reached via warmEmbeddingModel(), which startEmbeddingWarmup()
  * fires fire-and-forget AFTER the deferred embedding-dimension probe. During that
- * window EMBEDDING_PROVIDER is unset, so a remote TEXT_EMBEDDING handler (e.g.
- * Google text-embedding-004) wins the probe, 404s on an incompatible API
- * version, and the runtime never fails back to the local model — breaking
- * memory embedding writes and bundled-document seeding.
+ * window EMBEDDING_PROVIDER is unset, so local ownership is ambiguous during
+ * the probe and the runtime may reach no eligible provider. Pinning the
+ * canonical local identity early keeps memory and bundled-document writes in
+ * the same BGE-small semantic space.
  *
  * Guard: shouldUseLocalEmbeddingModel() returns false when local embeddings are
  * disabled or Eliza Cloud embeddings are explicitly configured, so this is a
@@ -2324,19 +2314,11 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     topology.services.tts || isCloudContainer,
   );
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_MEDIA", topology.services.media);
-  // On-device gte-small (384-dim) is the UNIVERSAL default embedder wherever the
-  // agent runs — desktop, mobile, local, and cloud agents alike. It embeds the
-  // always-on recall hot path in ~10ms vs ~1.4s for a Cloud round-trip, so
-  // routing embeddings to Cloud silently made every reply ~1.4s slower. Cloud
-  // embeddings are now strictly OPT-IN: only an explicit
-  // `ELIZAOS_CLOUD_USE_EMBEDDINGS=true` hands the TEXT_EMBEDDING slot to Cloud
-  // — e.g. a dedicated cloud agent whose memory store is already provisioned at
-  // the cloud 1536-dim width. A fresh store provisions at gte-small's 384-dim
-  // width from first write; an existing 1536-dim store that switches degrades
-  // semantic recall to lexical/BM25 (fail-open, never a dropped memory) until
-  // re-embedded. BYO embedding endpoints need the explicit "false" policy
-  // because plugin-elizacloud registers cloud embedding handlers when the flag
-  // is unset.
+  // BGE-small-en-v1.5/384/mean/L2 is the universal semantic space. Desktop
+  // defaults to the in-process canonical model to avoid a network round trip;
+  // Cloud embeddings remain opt-in and must attest the exact same space. BYO
+  // endpoints need the explicit "false" policy because plugin-elizacloud
+  // registers its canonical cloud handlers when the flag is unset.
   const hasByoEmbeddingProvider = hasExplicitEmbeddingProviderConfig(config);
   const hasCanonicalRouting = Object.hasOwn(config, "serviceRouting");
   const embeddingRoute = serviceRouting?.embeddings;
@@ -2363,11 +2345,10 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
   } else {
     // The app host owns embedding policy. Leaving this unset delegates the
-    // choice to plugin-elizacloud, whose standalone default is to register its
-    // 1536-dim OpenAI-backed handler. That made a connected Cloud account
-    // silently replace the app's local gte-small path and retry /embeddings
-    // over the network. Keep the plugin's cloud capability available, but make
-    // local 384-dim embeddings the explicit app default.
+    // choice to plugin-elizacloud, whose standalone default registers its
+    // canonical remote handler. Keep that cloud capability available, but make
+    // the lower-latency in-process canonical BGE handler the explicit app
+    // default.
     process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
   }
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_RPC", topology.services.rpc);
@@ -5325,8 +5306,8 @@ export async function startEliza(
   // Prefetch the local TEXT_EMBEDDING GGUF in the background so the first
   // chat/memory request doesn't stall on a multi-second model download. The
   // chat/inference provider is separate from embeddings (vector memory / RAG):
-  // API-based model plugins do not implement TEXT_EMBEDDING, so the local model
-  // is the default embedding backend unless Eliza Cloud embeddings are active.
+  // Chat-brain model plugins are not semantic-embedding fallbacks, so the local
+  // canonical model is the default unless canonical Cloud embeddings are active.
   // This only ensures the file is present on disk — the GGUF is loaded into
   // memory lazily on first use — and runs entirely after the readiness gate so
   // it can never block or crash boot.
@@ -5347,8 +5328,6 @@ export async function startEliza(
       shouldWarmupLocalEmbeddingModel,
       detectEmbeddingPreset,
       embeddingGgufFilePresent,
-      findExistingEmbeddingModelForWarmupReuse,
-      isEmbeddingWarmupReuseDisabled,
       ensureModel,
       DEFAULT_MODELS_DIR,
     } = await import(
@@ -5370,28 +5349,8 @@ export async function startEliza(
 
     const preset = detectEmbeddingPreset();
     const modelsDir = process.env.MODELS_DIR?.trim() || DEFAULT_MODELS_DIR;
-    let model = process.env.LOCAL_EMBEDDING_MODEL?.trim() || preset.model;
-    let modelRepo =
-      process.env.LOCAL_EMBEDDING_MODEL_REPO?.trim() || preset.modelRepo;
-
-    if (
-      !isEmbeddingWarmupReuseDisabled() &&
-      !embeddingGgufFilePresent(modelsDir, model)
-    ) {
-      const reuse = findExistingEmbeddingModelForWarmupReuse(modelsDir);
-      if (reuse) {
-        logger.info(
-          `[eliza] Embedding warmup: configured file "${model}" not found in MODELS_DIR — reusing existing ${reuse.model} to avoid a large re-download.`,
-        );
-        process.env.LOCAL_EMBEDDING_MODEL = reuse.model;
-        process.env.LOCAL_EMBEDDING_MODEL_REPO = reuse.modelRepo;
-        process.env.LOCAL_EMBEDDING_DIMENSIONS = String(reuse.dimensions);
-        process.env.LOCAL_EMBEDDING_CONTEXT_SIZE = String(reuse.contextSize);
-        process.env.LOCAL_EMBEDDING_GPU_LAYERS = reuse.gpuLayers;
-        model = reuse.model;
-        modelRepo = reuse.modelRepo;
-      }
-    }
+    const model = preset.model;
+    const modelRepo = preset.modelRepo;
 
     if (embeddingGgufFilePresent(modelsDir, model)) {
       return;
@@ -5783,16 +5742,11 @@ export async function startEliza(
     // policy, usually from an action rename after the operator wrote the policy).
     warnOnUnmatchedActionRolePolicyKeys(runtime.actions ?? []);
     await registerConversationProximityProvider();
-    // Probe the embedding dimension BEFORE seeding bundled documents (#8769).
-    // The deferred plugin waves above register the cloud TEXT_EMBEDDING handler
-    // (plugin-elizacloud, 1536-dim); the probe in runtime.initialize() ran ~38s
-    // earlier, before that handler existed, so the SQL adapter kept its
-    // hardcoded dim384 default. seedBundledDocumentsIfEnabled() embeds its docs
-    // at 1536 via the cloud handler, so if the column is still dim384 every
-    // bundled-doc vector is dropped on a "dimension mismatch with configured
-    // column (dim384)" and the agent boots with no recall memory. Snapping the
-    // column to dim1536 here — after the handler is registered, before the seed
-    // writes — lets those embeddings (and all later memory) persist.
+    // Reconcile embedding storage BEFORE seeding bundled documents (#8769).
+    // Deferred plugin waves register provider-attested TEXT_EMBEDDING handlers;
+    // the earlier runtime.initialize() probe can run before those handlers
+    // exist. Re-run here after registration and before any seed vector is
+    // written so width and semantic-space reconciliation are authoritative.
     // ensureEmbeddingDimension() is public, idempotent, and self-guarding (it
     // no-ops when no TEXT_EMBEDDING handler is registered, e.g. cloud-proxied
     // agents), so this is safe on every boot path.
@@ -5802,12 +5756,10 @@ export async function startEliza(
     // — which owns configureLocalEmbeddingPlugin() today — is started as
     // runtime-owned deferred work AFTER this block, so without
     // this early call the probe (and the bundled-document seed right below it)
-    // runs while EMBEDDING_PROVIDER is unset. A remote provider (e.g. Google
-    // text-embedding-004) then wins the probe and 404s, permanently choosing
-    // the remote route and dropping local-primary. Configuring the env here is
-    // idempotent (setEnvIfMissing) and gated on shouldWarmupLocalEmbeddingModel
-    // so it never forces local env when local embeddings are disabled or Eliza
-    // Cloud embeddings are explicitly configured.
+    // runs while EMBEDDING_PROVIDER is unset. Configure the canonical local
+    // identity here so provider ownership is stable during both the probe and
+    // seed. The helper is gated so it never forces local ownership when local
+    // embeddings are disabled or canonical Cloud embeddings are explicit.
     abortSignal.throwIfAborted();
     await configureLocalEmbeddingEnvEarlyIfNeeded(config);
     try {

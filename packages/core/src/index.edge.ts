@@ -24,6 +24,18 @@ export * from "./connectors/account-manager";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
 export {
+	assertCanonicalEmbeddingConfig,
+	CANONICAL_EMBEDDING_DIMENSION,
+	CANONICAL_EMBEDDING_GGUF_FILENAME,
+	CANONICAL_EMBEDDING_GGUF_REPO,
+	CANONICAL_EMBEDDING_GGUF_SHA256,
+	CANONICAL_EMBEDDING_GGUF_SIZE_BYTES,
+	CANONICAL_EMBEDDING_MAX_CONTEXT_TOKENS,
+	CANONICAL_EMBEDDING_MAX_INPUT_CODE_UNITS,
+	CANONICAL_EMBEDDING_MODEL,
+	CANONICAL_EMBEDDING_NORMALIZATION,
+	CANONICAL_EMBEDDING_POOLING,
+	CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
 	CANONICAL_SECRET_KEYS,
 	type CanonicalSecretKey,
 	CHANNEL_OPTIONAL_SECRETS,
@@ -34,6 +46,8 @@ export {
 	isCanonicalSecretKey,
 	isSecretKeyAlias,
 	LOCAL_MODEL_PROVIDERS,
+	normalizeCanonicalEmbedding,
+	prepareCanonicalEmbeddingInput,
 } from "./constants";
 export * from "./contracts/computer-use";
 export * from "./database";

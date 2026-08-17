@@ -230,8 +230,8 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 
 | Var | Default |
 |---|---|
-| `ELIZAOS_CLOUD_EMBEDDING_MODEL` | `text-embedding-3-small` |
-| `ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS` | `1536` |
+| `ELIZAOS_CLOUD_EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` |
+| `ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS` | `384` |
 | `ELIZAOS_CLOUD_EMBEDDING_URL` | unset (uses base URL) |
 | `ELIZAOS_CLOUD_EMBEDDING_API_KEY` | falls back to `ELIZAOS_CLOUD_API_KEY` |
 

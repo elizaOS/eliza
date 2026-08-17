@@ -5,7 +5,7 @@ OpenAI model-provider plugin for [elizaOS](https://github.com/elizaos/eliza). Ad
 ## What this plugin does
 
 - **Text generation** — multiple tiers (nano, small, medium, large, mega), plus dedicated response-handler and action-planner slots. Supports streaming and structured JSON output.
-- **Text embeddings** — `text-embedding-3-small` by default; dimension configurable.
+- **Text embeddings** — canonical `BAAI/bge-small-en-v1.5`, 384 dimensions, mean pooling, and L2 normalization through an explicit embedding endpoint. The response must echo that exact model identity; omission or mismatch fails closed.
 - **Image generation** — DALL-E 3 by default (`dall-e-3`).
 - **Image description** — vision model analyzes an image URL and returns `{ title, description }`.
 - **Audio transcription** — speech-to-text (`gpt-5-mini-transcribe` by default); accepts `Buffer`, `Blob`, `File`, or a URL.
@@ -66,10 +66,10 @@ Set these as environment variables or in your character's `settings` object.
 
 | Variable | Default | Description |
 |---|---|---|
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
+| `OPENAI_EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Embedding model |
 | `OPENAI_EMBEDDING_URL` | `OPENAI_BASE_URL` | Separate endpoint for embeddings |
 | `OPENAI_EMBEDDING_API_KEY` | `OPENAI_API_KEY` | Separate key for embeddings |
-| `OPENAI_EMBEDDING_DIMENSIONS` | `1536` | Vector dimensions (must match model) |
+| `OPENAI_EMBEDDING_DIMENSIONS` | `384` | Vector dimensions (must match model) |
 
 ### Image generation and description
 
@@ -205,7 +205,7 @@ Then set `OPENAI_BROWSER_BASE_URL=http://localhost:3000/openai`.
 
 ## Cerebras compatibility
 
-Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` and the plugin automatically adapts: structured output uses `json_object` mode, `reasoning_effort` defaults to `"low"` for reasoning-capable models (to prevent empty responses), and `CEREBRAS_API_KEY` is accepted as an alias for `OPENAI_API_KEY`. Embeddings fall back to a deterministic local hash when no explicit embedding URL is set, since Cerebras does not provide an embeddings endpoint.
+Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` and the plugin automatically adapts text generation. Cerebras does not provide embeddings, so set a separate `OPENAI_EMBEDDING_URL` serving the canonical BGE model; the plugin refuses synthetic fallback vectors.
 
 ## EvoLink compatibility
 

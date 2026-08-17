@@ -5,11 +5,14 @@
  * per-item fallback. Runs against a mock runtime with stubbed embedding models.
  */
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { canonicalTestEmbedding } from "../testing/canonical-embedding";
+import { EventType } from "../types/events";
 import { ModelType } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 import { EmbeddingGenerationService } from "./embedding";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
+const v = canonicalTestEmbedding;
 
 interface RuntimeMockOpts {
 	batch: boolean;
@@ -21,11 +24,11 @@ interface RuntimeMockOpts {
 function makeRuntime(opts: RuntimeMockOpts): IAgentRuntime {
 	const models: Record<string, unknown> = {
 		[ModelType.TEXT_EMBEDDING]:
-			opts.embedHandler ?? (() => Promise.resolve([0.1])),
+			opts.embedHandler ?? (() => Promise.resolve(v(1))),
 	};
 	if (opts.batch) {
 		models[ModelType.TEXT_EMBEDDING_BATCH] =
-			opts.batchHandler ?? (() => Promise.resolve([[0.1]]));
+			opts.batchHandler ?? (() => Promise.resolve([v(1)]));
 	}
 	const noop = () => {};
 	return {
@@ -44,8 +47,9 @@ function makeRuntime(opts: RuntimeMockOpts): IAgentRuntime {
 		},
 		updateMemory: opts.updateMemory ?? (async () => {}),
 		log: async () => {},
-		emitEvent: async () => {},
+		emitEvent: vi.fn(async () => {}),
 		registerEvent: vi.fn(),
+		unregisterEvent: vi.fn(),
 		registerTaskWorker: vi.fn(),
 		getTasksByName: async () => [],
 		getTask: async () => null,
@@ -70,6 +74,7 @@ describe("EmbeddingGenerationService drain config", () => {
 	const previousFastShutdown = process.env.ELIZA_FAST_SHUTDOWN;
 
 	afterEach(() => {
+		vi.useRealTimers();
 		if (previousFastShutdown === undefined) {
 			delete process.env.ELIZA_FAST_SHUTDOWN;
 		} else {
@@ -94,7 +99,7 @@ describe("EmbeddingGenerationService drain config", () => {
 
 	test("initializes successfully when only TEXT_EMBEDDING_BATCH is registered", async () => {
 		const models: Record<string, unknown> = {
-			[ModelType.TEXT_EMBEDDING_BATCH]: async () => [[0.1]],
+			[ModelType.TEXT_EMBEDDING_BATCH]: async () => [v(1)],
 		};
 		const runtime = {
 			...makeRuntime({ batch: false }),
@@ -105,15 +110,13 @@ describe("EmbeddingGenerationService drain config", () => {
 			runtime,
 		)) as EmbeddingGenerationService;
 
-		// biome-ignore lint/suspicious/noExplicitAny: inspect private isDisabled state
-		expect((service as any).isDisabled).toBe(false);
 		// biome-ignore lint/suspicious/noExplicitAny: inspect private queue state
 		expect((service as any).batchQueue).toBeTruthy();
 
 		await service.stop();
 	});
 
-	test("disables itself when neither TEXT_EMBEDDING nor TEXT_EMBEDDING_BATCH is registered", async () => {
+	test("subscribes and waits when no embedding model is registered yet", async () => {
 		const runtime = {
 			...makeRuntime({ batch: false }),
 			getModel: () => undefined,
@@ -123,10 +126,160 @@ describe("EmbeddingGenerationService drain config", () => {
 			runtime,
 		)) as EmbeddingGenerationService;
 
-		// biome-ignore lint/suspicious/noExplicitAny: inspect private isDisabled state
-		expect((service as any).isDisabled).toBe(true);
 		// biome-ignore lint/suspicious/noExplicitAny: inspect private queue state
 		expect((service as any).batchQueue).toBeNull();
+		expect(runtime.registerEvent).toHaveBeenCalledWith(
+			EventType.EMBEDDING_GENERATION_REQUESTED,
+			expect.any(Function),
+		);
+		expect(runtime.registerEvent).toHaveBeenCalledWith(
+			EventType.MODEL_REGISTERED,
+			expect.any(Function),
+		);
+
+		await service.stop();
+	});
+
+	test("stop cancels the bounded readiness wake before a late model can start work", async () => {
+		vi.useFakeTimers();
+		const updateMemory = vi.fn(async () => {});
+		const base = makeRuntime({ batch: false, updateMemory });
+		const runtime = {
+			...base,
+			getModel: () => undefined,
+		} as unknown as IAgentRuntime;
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+
+		// biome-ignore lint/suspicious/noExplicitAny: exercise the retained pre-model lifecycle
+		await (service as any).handleEmbeddingRequest(
+			makeItem("stop-before-model", "must not outlive the service"),
+		);
+		expect(vi.getTimerCount()).toBe(1);
+
+		await service.stop();
+		expect(vi.getTimerCount()).toBe(0);
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(runtime.createTask).not.toHaveBeenCalled();
+		expect(updateMemory).not.toHaveBeenCalled();
+	});
+
+	test("retains pre-model requests and starts one drain after concurrent late registrations", async () => {
+		vi.useFakeTimers();
+		const handlers = new Map<
+			string,
+			(payload: Record<string, unknown>) => Promise<void>
+		>();
+		const models = new Map<string, (params: unknown) => Promise<unknown>>();
+		const updateMemory = vi.fn(async () => {});
+		const base = makeRuntime({ batch: false, updateMemory });
+		const runtime = {
+			...base,
+			getModel: (type: string) => models.get(type),
+			useModel: (type: string, params: unknown) => {
+				const handler = models.get(type);
+				if (!handler) throw new Error(`No handler for ${type}`);
+				return handler(params);
+			},
+			registerEvent: vi.fn(
+				(
+					event: string,
+					handler: (payload: Record<string, unknown>) => Promise<void>,
+				) => {
+					handlers.set(event, handler);
+				},
+			),
+			unregisterEvent: vi.fn(),
+			createTask: vi.fn(async () => AGENT_ID),
+		} as unknown as IAgentRuntime;
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+		const request = handlers.get(EventType.EMBEDDING_GENERATION_REQUESTED);
+		const registered = handlers.get(EventType.MODEL_REGISTERED);
+		expect(request).toBeDefined();
+		expect(registered).toBeDefined();
+
+		await request?.({
+			runtime,
+			memory: makeItem("late-a", "queued before model").memory,
+		});
+		// biome-ignore lint/suspicious/noExplicitAny: inspect retained warmup backlog
+		expect((service as any).pendingRequests.size).toBe(1);
+		expect(service.getQueueSize()).toBe(0);
+
+		const embed = vi.fn(async () => v(7));
+		models.set(ModelType.TEXT_EMBEDDING, embed);
+		await Promise.all([
+			registered?.({
+				runtime,
+				modelType: ModelType.TEXT_EMBEDDING,
+				provider: "late-local",
+				priority: 100,
+			}),
+			registered?.({
+				runtime,
+				modelType: ModelType.TEXT_EMBEDDING,
+				provider: "late-local",
+				priority: 100,
+			}),
+		]);
+		expect(runtime.createTask).toHaveBeenCalledTimes(1);
+		expect(service.getQueueSize()).toBe(0);
+
+		// No follow-up request is required: the bounded readiness wake owns the
+		// retained item and drains it once the late model is eligible.
+		await vi.advanceTimersByTimeAsync(100);
+		expect(embed).toHaveBeenCalledTimes(1);
+		expect(updateMemory.mock.calls.map(([value]) => value.id)).toEqual([
+			"late-a",
+		]);
+		// biome-ignore lint/suspicious/noExplicitAny: backlog drained after eligibility
+		expect((service as any).pendingRequests.size).toBe(0);
+		await service.stop();
+	});
+
+	test("re-pends a reconciliation-gated request and succeeds without a follow-up event", async () => {
+		vi.useFakeTimers();
+		let semanticSpaceReady = false;
+		const updates: string[] = [];
+		const runtime = makeRuntime({
+			batch: false,
+			embedHandler: async () => {
+				if (!semanticSpaceReady) {
+					throw Object.assign(new Error("embedding space still reconciling"), {
+						code: "EMBEDDING_SPACE_UNAVAILABLE",
+					});
+				}
+				return v(8);
+			},
+			updateMemory: async ({ id }) => {
+				updates.push(id);
+			},
+		});
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+
+		// biome-ignore lint/suspicious/noExplicitAny: drive the subscribed request path
+		await (service as any).handleEmbeddingRequest(
+			makeItem("gated-a", "wait for reconciliation"),
+		);
+		// biome-ignore lint/suspicious/noExplicitAny: deterministically drive one drain tick
+		await (service as any).batchQueue.drain();
+		expect(updates).toEqual([]);
+		// biome-ignore lint/suspicious/noExplicitAny: unavailable work is retained, not failed away
+		expect((service as any).pendingRequests.size).toBe(1);
+		expect(runtime.emitEvent).not.toHaveBeenCalledWith(
+			EventType.EMBEDDING_GENERATION_FAILED,
+			expect.anything(),
+		);
+
+		semanticSpaceReady = true;
+		await vi.advanceTimersByTimeAsync(100);
+		expect(updates).toEqual(["gated-a"]);
+		await service.stop();
 	});
 
 	test("without a batch handler: tight 100ms per-item drain, no processBatch", async () => {
@@ -194,7 +347,7 @@ describe("EmbeddingGenerationService drain config", () => {
 describe("EmbeddingGenerationService processBatch", () => {
 	test("single-item generation retries an empty vector but preserves idempotency", async () => {
 		const written: { id: string; embedding: number[] }[] = [];
-		const embedHandler = vi.fn(async () => [0.2, 0.4]);
+		const embedHandler = vi.fn(async () => v(2));
 		const runtime = makeRuntime({
 			batch: false,
 			embedHandler,
@@ -219,7 +372,7 @@ describe("EmbeddingGenerationService processBatch", () => {
 		await (service as any).generateEmbedding(existing);
 
 		expect(embedHandler).toHaveBeenCalledTimes(1);
-		expect(written).toEqual([{ id: "id-empty-vector", embedding: [0.2, 0.4] }]);
+		expect(written).toEqual([{ id: "id-empty-vector", embedding: v(2) }]);
 		await service.stop();
 	});
 
@@ -232,7 +385,7 @@ describe("EmbeddingGenerationService processBatch", () => {
 			batchHandler: async ({ texts }) => {
 				batchCalls++;
 				lastTexts = texts;
-				return texts.map((_, i) => [i, i + 1]);
+				return texts.map((_, i) => v(i + 1));
 			},
 			updateMemory: async ({ id, embedding }) => {
 				written.push({ id, embedding });
@@ -254,8 +407,8 @@ describe("EmbeddingGenerationService processBatch", () => {
 		expect(outcomes.every((o) => o.success)).toBe(true);
 		// Per-id write-back: each memory got its own vector.
 		expect(written).toEqual([
-			{ id: "id-a", embedding: [0, 1] },
-			{ id: "id-b", embedding: [1, 2] },
+			{ id: "id-a", embedding: v(1) },
+			{ id: "id-b", embedding: v(2) },
 		]);
 
 		await service.stop();
@@ -272,7 +425,7 @@ describe("EmbeddingGenerationService processBatch", () => {
 			batch: true,
 			batchHandler: async ({ texts }) => {
 				lastTexts = texts;
-				return texts.map((_, i) => [i, i + 1]);
+				return texts.map((_, i) => v(i + 1));
 			},
 			updateMemory: async () => {},
 		});
@@ -302,7 +455,7 @@ describe("EmbeddingGenerationService processBatch", () => {
 			batch: true,
 			// Middle item comes back as an empty vector (malformed/partial batch).
 			batchHandler: async ({ texts }) =>
-				texts.map((_, i) => (i === 1 ? [] : [i, i + 1])),
+				texts.map((_, i) => (i === 1 ? [] : v(i + 1))),
 			updateMemory: async ({ id, embedding }) => {
 				written.push({ id, embedding });
 			},
@@ -342,7 +495,7 @@ describe("EmbeddingGenerationService processBatch", () => {
 			batchHandler: async ({ texts }) => {
 				batchCalls++;
 				lastTexts = texts;
-				return texts.map(() => [0.5]);
+				return texts.map(() => v(5));
 			},
 			updateMemory: async ({ id }) => {
 				written.push(id);
@@ -429,7 +582,7 @@ describe("EmbeddingGenerationService processBatch", () => {
 	test("a single id's write-back failure is isolated to that item, not the batch", async () => {
 		const runtime = makeRuntime({
 			batch: true,
-			batchHandler: async ({ texts }) => texts.map(() => [0.3]),
+			batchHandler: async ({ texts }) => texts.map(() => v(3)),
 			updateMemory: async ({ id }) => {
 				if (id === "id-b") {
 					throw new Error("db write failed for b");

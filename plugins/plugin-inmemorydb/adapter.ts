@@ -353,6 +353,48 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return reclaimed;
   }
 
+  async reconcileEmbeddingSpace(activeFingerprint: string): Promise<{
+    activeFingerprint: string;
+    previousFingerprint?: string;
+    changed: boolean;
+    staleMemoryIds: UUID[];
+  }> {
+    const cacheKey = `embedding-space-fingerprint:${String(this.agentId)}`;
+    const previousFingerprint = (await this.getCaches<string>([cacheKey])).get(cacheKey);
+    if (previousFingerprint === activeFingerprint) {
+      return {
+        activeFingerprint,
+        previousFingerprint,
+        changed: false,
+        staleMemoryIds: [],
+      };
+    }
+
+    const embeddedMemories = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (memory) =>
+        memory.agentId === this.agentId &&
+        Array.isArray(memory.embedding) &&
+        memory.embedding.length > 0
+    );
+    const staleMemoryIds: UUID[] = [];
+    for (const memory of embeddedMemories) {
+      const id = memory.id as UUID | undefined;
+      if (!id) continue;
+      const { embedding: _embedding, ...withoutEmbedding } = memory;
+      await this.storage.set(COLLECTIONS.MEMORIES, id, withoutEmbedding);
+      await this.vectorIndex.remove(id);
+      staleMemoryIds.push(id);
+    }
+    await this.setCaches([{ key: cacheKey, value: activeFingerprint }]);
+    return {
+      activeFingerprint,
+      ...(previousFingerprint ? { previousFingerprint } : {}),
+      changed: true,
+      staleMemoryIds,
+    };
+  }
+
   // ── Entity CRUD ───────────────────────────────────────────────────────
 
   async createEntities(entities: Entity[]): Promise<UUID[]> {
@@ -1003,7 +1045,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     for (const memory of memories) {
       const existing = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, memory.id);
       if (!existing) continue;
-      const updated: StoredMemory = {
+      let updated: StoredMemory = {
         ...existing,
         ...memory,
         metadata: {
@@ -1011,9 +1053,25 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
           ...(memory.metadata ?? {}),
         } as MemoryMetadata,
       };
+      const contentTextChanged =
+        memory.content !== undefined && memory.content.text !== existing.content.text;
+      const freshEmbedding =
+        Array.isArray(memory.embedding) && memory.embedding.length > 0
+          ? memory.embedding
+          : undefined;
+      const hasFreshEmbedding = freshEmbedding !== undefined;
+      const explicitlyClearsEmbedding = Object.hasOwn(memory, "embedding") && !hasFreshEmbedding;
+      const clearsEmbedding =
+        explicitlyClearsEmbedding || (contentTextChanged && !hasFreshEmbedding);
+      if (clearsEmbedding) {
+        const { embedding: _embedding, ...withoutEmbedding } = updated;
+        updated = withoutEmbedding as StoredMemory;
+      }
       await this.storage.set(COLLECTIONS.MEMORIES, memory.id, updated);
-      if (memory.embedding && memory.embedding.length > 0) {
-        await this.vectorIndex.add(memory.id, memory.embedding);
+      if (freshEmbedding) {
+        await this.vectorIndex.add(memory.id, freshEmbedding);
+      } else if (clearsEmbedding) {
+        await this.vectorIndex.remove(memory.id);
       }
     }
   }
@@ -1028,7 +1086,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         continue;
       }
       const existing = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, memory.id);
-      const stored: StoredMemory = {
+      let stored: StoredMemory = {
         ...(existing ?? {}),
         ...memory,
         tableName,
@@ -1039,9 +1097,24 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
           ...(memory.metadata ?? {}),
         } as MemoryMetadata,
       };
+      const contentTextChanged = existing !== null && memory.content.text !== existing.content.text;
+      const freshEmbedding =
+        Array.isArray(memory.embedding) && memory.embedding.length > 0
+          ? memory.embedding
+          : undefined;
+      const hasFreshEmbedding = freshEmbedding !== undefined;
+      const clearsEmbedding = Object.hasOwn(memory, "embedding")
+        ? !hasFreshEmbedding
+        : contentTextChanged;
+      if (clearsEmbedding) {
+        const { embedding: _embedding, ...withoutEmbedding } = stored;
+        stored = withoutEmbedding as StoredMemory;
+      }
       await this.storage.set(COLLECTIONS.MEMORIES, memory.id, stored);
-      if (memory.embedding && memory.embedding.length > 0) {
-        await this.vectorIndex.add(memory.id, memory.embedding);
+      if (freshEmbedding) {
+        await this.vectorIndex.add(memory.id, freshEmbedding);
+      } else if (clearsEmbedding) {
+        await this.vectorIndex.remove(memory.id);
       }
     }
   }

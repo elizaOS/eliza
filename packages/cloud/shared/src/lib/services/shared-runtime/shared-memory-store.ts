@@ -59,15 +59,18 @@ function memoryRowId(transportId: string): string {
 }
 
 /**
- * Write-side embedder config: batch-embeds a turn pair's texts in ONE sidecar
+ * Write-side embedder config: batch-embeds a turn pair's texts in ONE provider
  * call so recall's `isNotNull(embedding)` window actually fills. Injected by
  * the caller only while recall is enabled; absent means rows land without
- * vectors (tables-only mode stays free of sidecar traffic).
+ * vectors (tables-only mode stays free of embedding traffic). `model` is the
+ * complete vector-space fingerprint, not only the upstream model name.
  */
 export interface SharedMemoryEmbedConfig {
   embedTexts: (texts: string[]) => Promise<number[][]>;
   model: string;
 }
+
+export type SharedMemoryEmbeddingScheduler = (work: Promise<void>) => void;
 
 export class SharedMemoryStore {
   constructor(
@@ -75,6 +78,7 @@ export class SharedMemoryStore {
     private readonly writer: SharedAgentMemoriesWriter = sharedAgentMemoriesWriter,
     private readonly reader: SharedAgentMemoriesReader = sharedAgentMemoriesReader,
     private readonly embed?: SharedMemoryEmbedConfig,
+    private readonly deferEmbedding?: SharedMemoryEmbeddingScheduler,
   ) {}
 
   /**
@@ -95,6 +99,7 @@ export class SharedMemoryStore {
       },
       embedding,
       limit,
+      this.embed?.model,
     );
   }
 
@@ -114,15 +119,16 @@ export class SharedMemoryStore {
       agentId,
     };
     const landedAt = Date.now();
-    // One batched sidecar round-trip for both texts; an embedding failure
-    // degrades to vector-less rows (recall coverage shrinks) but never loses
-    // the memory write itself.
+    const assistantReply = pair.assistantReply.trim();
+    const embeddingTexts = [pair.userMessage, ...(assistantReply ? [assistantReply] : [])];
+    // Without a Worker scheduler, retain the durable non-Worker contract and
+    // resolve vectors before the insert. Under waitUntil, rows land first and
+    // enrichment runs after the response so provider latency cannot hold the
+    // terminal frame.
     let vectors: number[][] | undefined;
-    if (this.embed) {
+    if (this.embed && !this.deferEmbedding) {
       try {
-        vectors = await this.embed.embedTexts(
-          [pair.userMessage, pair.assistantReply.trim() || pair.userMessage].map((text) => text),
-        );
+        vectors = await this.embed.embedTexts(embeddingTexts);
       } catch (error) {
         // error-policy:J4 embedding is an enhancement on the durable write;
         // its loss is visible (rows without vectors never match recall).
@@ -137,7 +143,7 @@ export class SharedMemoryStore {
       vectors?.[index] && this.embed
         ? { embedding: vectors[index], embeddingModel: this.embed.model }
         : {};
-    await this.writer.insertMemory({
+    const userWrite = await this.writer.insertMemory({
       ...(pair.messageIds ? { id: memoryRowId(pair.messageIds.user) } : {}),
       scope,
       entityId,
@@ -153,8 +159,13 @@ export class SharedMemoryStore {
       ...embeddingFields(0),
       createdAt: new Date(landedAt),
     });
-    const assistantReply = pair.assistantReply.trim();
-    if (!assistantReply) return;
+    let assistantMemoryId: string | undefined;
+    if (!assistantReply) {
+      if (this.embed && this.deferEmbedding) {
+        this.scheduleEmbeddingEnrichment(scope, [userWrite.id], embeddingTexts);
+      }
+      return;
+    }
     const assistant = {
       scope,
       // The assistant speaks as the agent itself, mirroring the runtime's
@@ -171,22 +182,66 @@ export class SharedMemoryStore {
       createdAt: new Date(landedAt + 1),
     };
     if (pair.messageIds) {
-      await this.writer.mergeMessageMemory({
+      const assistantWrite = await this.writer.mergeMessageMemory({
         ...assistant,
         ...embeddingFields(1),
         id: memoryRowId(pair.messageIds.assistant),
         interrupted: pair.interrupted === true,
       });
-      return;
+      assistantMemoryId = assistantWrite.id;
+    } else {
+      const assistantWrite = await this.writer.insertMemory({
+        ...assistant,
+        ...embeddingFields(1),
+        content: {
+          ...assistant.content,
+          ...(pair.interrupted ? { interrupted: true } : {}),
+        },
+      });
+      assistantMemoryId = assistantWrite.id;
     }
-    await this.writer.insertMemory({
-      ...assistant,
-      ...embeddingFields(1),
-      content: {
-        ...assistant.content,
-        ...(pair.interrupted ? { interrupted: true } : {}),
-      },
-    });
+    if (this.embed && this.deferEmbedding) {
+      this.scheduleEmbeddingEnrichment(scope, [userWrite.id, assistantMemoryId], embeddingTexts);
+    }
+  }
+
+  private scheduleEmbeddingEnrichment(
+    scope: { organizationId: string; userId: string; agentId: string },
+    memoryIds: string[],
+    texts: string[],
+  ): void {
+    if (!this.embed || !this.deferEmbedding) return;
+    const embed = this.embed;
+    const work = (async () => {
+      try {
+        const embeddings = await embed.embedTexts(texts);
+        if (embeddings.length !== memoryIds.length) {
+          throw new Error(
+            `embedding count mismatch: received ${embeddings.length}, expected ${memoryIds.length}`,
+          );
+        }
+        await Promise.all(
+          memoryIds.map((id, index) =>
+            this.writer.setMemoryEmbedding({
+              id,
+              scope,
+              contentText: texts[index] ?? "",
+              embedding: embeddings[index] ?? [],
+              embeddingModel: embed.model,
+            }),
+          ),
+        );
+      } catch (error) {
+        // error-policy:J4 transcript durability is already complete. Keep the
+        // row vectorless and surface the loss; never fabricate or mislabel it.
+        logger.warn(
+          `[SharedMemoryStore] deferred embedding enrichment failed; rows remain vectorless: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    })();
+    this.deferEmbedding(work);
   }
 }
 
@@ -194,8 +249,15 @@ export class SharedMemoryStore {
 export function createSharedMemoryStore(
   scope: SharedMemoryStoreScope,
   embed?: SharedMemoryEmbedConfig,
+  deferEmbedding?: SharedMemoryEmbeddingScheduler,
 ): SharedMemoryStore | null {
   return sharedMemoryTablesEnabled()
-    ? new SharedMemoryStore(scope, sharedAgentMemoriesWriter, sharedAgentMemoriesReader, embed)
+    ? new SharedMemoryStore(
+        scope,
+        sharedAgentMemoriesWriter,
+        sharedAgentMemoriesReader,
+        embed,
+        deferEmbedding,
+      )
     : null;
 }

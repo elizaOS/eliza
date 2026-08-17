@@ -43,13 +43,19 @@ export function modelProviderFailureDetails(
 }
 
 /**
- * True when `error` is the local provider's expected embedding-unavailable
- * state that should fail open to keyword recall without diagnostic escalation.
+ * True when `error` is an expected embedding-unavailable state that should
+ * fail open to keyword recall without diagnostic escalation. In addition to
+ * the provider-owned local capability state, the runtime's fingerprint gate is
+ * expected after a failed/missing database reconciliation and is diagnosed at
+ * that boundary rather than once per recall attempt.
  */
 export function isExpectedLocalEmbeddingUnavailability(
 	error: unknown,
 ): boolean {
 	const details = modelProviderFailureDetails(error);
+	if (details.code === "EMBEDDING_SPACE_UNAVAILABLE") {
+		return true;
+	}
 	return (
 		details.code === "LOCAL_INFERENCE_UNAVAILABLE" &&
 		details.modelType === ModelType.TEXT_EMBEDDING &&

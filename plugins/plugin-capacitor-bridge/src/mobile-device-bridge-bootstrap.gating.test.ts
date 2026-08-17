@@ -78,5 +78,8 @@ describe("ensureMobileDeviceBridgeInferenceHandlers — dead-bridge gating (#112
 		expect(registered).toBe(true);
 		// TEXT_SMALL + TEXT_LARGE at minimum register through the served path.
 		expect(runtime.registerModel).toHaveBeenCalled();
+		expect(
+			runtime.registerModel.mock.calls.map(([modelType]) => modelType),
+		).not.toContain("TEXT_EMBEDDING");
 	});
 });

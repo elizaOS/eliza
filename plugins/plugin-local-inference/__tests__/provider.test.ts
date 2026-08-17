@@ -3,7 +3,7 @@
  * `LocalInferenceUnavailableError` contract: which model types register and how
  * handlers behave when no backend service is present. Uses a mock runtime.
  */
-import { ModelType } from "@elizaos/core";
+import { CANONICAL_EMBEDDING_DIMENSION, ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	createLocalInferenceModelHandlers,
@@ -22,6 +22,13 @@ function runtimeWithService(
 			name === "localInferenceLoader" ? service : null,
 		),
 	};
+}
+
+function canonicalUnitVector(): number[] {
+	return Array.from(
+		{ length: CANONICAL_EMBEDDING_DIMENSION },
+		(_, index) => (index === 0 ? 1 : 0),
+	);
 }
 
 afterEach(() => {
@@ -95,7 +102,8 @@ describe("local inference provider", () => {
 	});
 
 	it("delegates embeddings without returning fake vectors for warmup probes", async () => {
-		const embed = vi.fn(async () => ({ embedding: [0.1, 0.2, 0.3] }));
+		const expected = canonicalUnitVector();
+		const embed = vi.fn(async () => ({ embedding: expected }));
 		const runtime = runtimeWithService({ embed });
 		const handlers = createLocalInferenceModelHandlers();
 
@@ -110,7 +118,7 @@ describe("local inference provider", () => {
 			handlers[ModelType.TEXT_EMBEDDING]?.(runtime as never, {
 				text: "embed me",
 			} as never),
-		).resolves.toEqual([0.1, 0.2, 0.3]);
+		).resolves.toEqual(expected);
 		expect(embed).toHaveBeenCalledWith({ input: "embed me" });
 	});
 

@@ -2,7 +2,7 @@
  * Resolves and validates the model configuration for the documents (RAG)
  * pipeline. `validateModelConfig` reads embedding- and text-provider settings
  * from `runtime.getSetting` (falling back to `process.env`), infers local-vs-
- * OpenAI embedding defaults, folds in the vendor-neutral model gateway, and
+ * legacy embedding display/rate-limit settings, folds in the vendor-neutral model gateway, and
  * parses the result through `ModelConfigSchema`, raising a descriptive error
  * when a required provider key is absent. `getProviderRateLimits` derives the
  * concurrency / requests-per-minute / tokens-per-minute envelope the ingestion
@@ -166,7 +166,7 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			TOKENS_PER_MINUTE: getNumericSetting("TOKENS_PER_MINUTE", "1000000"),
 			BATCH_DELAY_MS: getNumericSetting("BATCH_DELAY_MS", "100"),
 		});
-		validateConfigRequirements(config, assumePluginOpenAI);
+		validateConfigRequirements(config);
 		return config;
 	} catch (error) {
 		// error-policy:J2 Translate schema diagnostics into configuration context;
@@ -181,36 +181,11 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 	}
 }
 
-function validateConfigRequirements(
-	config: ModelConfig,
-	assumePluginOpenAI: boolean,
-): void {
-	const embeddingProvider = config.EMBEDDING_PROVIDER;
-
-	if (embeddingProvider === "local") {
-		return;
-	}
-	if (embeddingProvider === "openai" && !config.OPENAI_API_KEY) {
-		throw new Error(
-			'OPENAI_API_KEY is required when EMBEDDING_PROVIDER is set to "openai"',
-		);
-	}
-	if (embeddingProvider === "google" && !config.GOOGLE_API_KEY) {
-		throw new Error(
-			'GOOGLE_API_KEY is required when EMBEDDING_PROVIDER is set to "google"',
-		);
-	}
-
-	if (
-		assumePluginOpenAI &&
-		config.OPENAI_API_KEY &&
-		!config.TEXT_EMBEDDING_MODEL
-	) {
-		throw new Error(
-			"OPENAI_EMBEDDING_MODEL is required when using plugin-openai configuration",
-		);
-	}
-
+function validateConfigRequirements(config: ModelConfig): void {
+	// Embedding credentials are deliberately not validated here: document
+	// vectors always route through runtime TEXT_EMBEDDING, whose canonical
+	// provider owns availability/auth checks. Direct OpenAI/Google embedding
+	// clients are not an allowed fallback. Text enrichment remains independent.
 	if (config.CTX_DOCUMENTS_ENABLED) {
 		if (config.TEXT_PROVIDER === "openai" && !config.OPENAI_API_KEY) {
 			throw new Error(

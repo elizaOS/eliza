@@ -49,7 +49,6 @@
       "capabilities": [
         "text-large",
         "text-small",
-        "embedding",
         "text-to-speech",
         "transcription"
       ]
@@ -126,13 +125,6 @@
         "description": "Name or tag of the large-sized Ollama model to use for text and object generation.",
         "required": false,
         "default": "eliza-1-4b",
-        "sensitive": false
-      },
-      "OLLAMA_EMBEDDING_MODEL": {
-        "type": "string",
-        "description": "Name or tag of the Ollama model used to generate text embeddings.",
-        "required": false,
-        "default": "eliza-1-2b",
         "sensitive": false
       },
       "OLLAMA_DISABLE_STRUCTURED_OUTPUT": {

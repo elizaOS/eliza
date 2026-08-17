@@ -77,11 +77,12 @@ All read via `getSetting(runtime, key)` (runtime/character config first, then `p
 |---|---|---|---|
 | `EMBEDDING_BASE_URL` | one-of* | — | Base URL of an OpenAI-compatible `/embeddings` endpoint. No default — unset throws. |
 | `EMBEDDING_API_KEY` | one-of* | — | Bearer token for the endpoint. Omit for local servers needing no auth. |
-| `EMBEDDING_MODEL` | no | `text-embedding-3-small` | Model id sent as the request `model` field. |
+| `EMBEDDING_MODEL` | no | `BAAI/bge-small-en-v1.5` | Model id sent as the request `model` field. |
+| `EMBEDDING_POOLING` | no | `mean` | Canonical pooling mode; other values fail closed. |
 | `EMBEDDING_FALLBACK_BASE_URL` | no | — | Optional fallback OpenAI-compatible `/embeddings` base URL. Used once after a primary network/HTTP/shape failure. Does not activate the plugin by itself. |
 | `EMBEDDING_FALLBACK_API_KEY` | no | — | Bearer token for the fallback endpoint. Omit for fallback servers needing no auth. |
 | `EMBEDDING_FALLBACK_MODEL` | no | `EMBEDDING_MODEL` | Model id sent to the fallback endpoint. Its returned vectors must still match `EMBEDDING_DIMENSIONS`. |
-| `EMBEDDING_DIMENSIONS` | no | `1536` | Vector width. When explicitly set, sent as the request `dimensions` field. |
+| `EMBEDDING_DIMENSIONS` | no | `384` | Vector width. When explicitly set, sent as the request `dimensions` field. |
 | `EMBEDDING_BROWSER_URL` | no | — | Browser-only server-side proxy URL. In a browser build the `Authorization` header is sent **only** when this is set, keeping the key server-side. |
 
 \* Setting **either** `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` is what activates the plugin. For real (non-probe) embedding calls a `EMBEDDING_BASE_URL` is required or the handler throws.
@@ -89,17 +90,11 @@ Fallback-only settings are inert until the primary plugin opt-in and primary bas
 
 ### Supported dimensions
 
-`EMBEDDING_DIMENSIONS` must be one of the elizaOS `VECTOR_DIMS` (imported from `@elizaos/core`):
-
-```
-384, 512, 768, 1024, 1536, 2048, 3072
-```
-
-An unsupported value throws at boot and on every call.
+`EMBEDDING_DIMENSIONS` must be exactly `384`; the model must be `BAAI/bge-small-en-v1.5` and pooling must be `mean`. Returned vectors are validated and L2-normalized. Any mismatch throws at boot and on every call.
 
 ### Dimension-switch caveat
 
-The embedding dimension is part of the database vector schema. Changing `EMBEDDING_DIMENSIONS` (or the model's native width) invalidates existing vectors until the database adapter reclaims old-width embeddings and re-embeds those memories at the active width. SQL adapters do this through `clearEmbeddingsOutsideActiveDimension()` during runtime boot; custom stores need an equivalent path before searches are trustworthy after a switch.
+Dimension-only cleanup cannot distinguish legacy GTE-small/384 vectors from BGE-small/384. Stores must persist and filter by `CANONICAL_EMBEDDING_SPACE_FINGERPRINT`, clearing and re-embedding rows with any other fingerprint before semantic search is enabled.
 
 ## How to extend
 

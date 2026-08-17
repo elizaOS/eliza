@@ -116,6 +116,11 @@ export const zaiPlugin: Plugin = {
     },
   },
 
+  modelMetadata: {
+    [ModelType.TEXT_SMALL]: { streamable: true },
+    [ModelType.TEXT_LARGE]: { streamable: true },
+  },
+
   tests: pluginTests as TestSuite[],
 };
 

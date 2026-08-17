@@ -50,7 +50,7 @@ describe("installRouterHandler", () => {
 });
 
 // Guards the chat-latency fix: the always-on recall provider embedded every user
-// message through Cloud (~1.4s) instead of the warmed on-device gte-small
+// message through Cloud (~1.4s) instead of the warmed on-device BGE-small
 // (~10ms), because the router dropped the local embedder whenever no local *text*
 // LLM was loaded — the cloud/cerebras chat brain + on-device embeddings config.
 // Embedder availability must not be gated on the text brain. The TEXT_EMBEDDING
@@ -74,7 +74,7 @@ describe("filterUnavailableLocalInference — TEXT_EMBEDDING stays on-device", (
 		delete process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS;
 	});
 
-	it("keeps the gte-small candidate under prefer-local when no local text LLM is loaded", async () => {
+	it("keeps the BGE-small candidate under prefer-local when no local text LLM is loaded", async () => {
 		delete process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS;
 		const result = await filterUnavailableLocalInference(
 			"TEXT_EMBEDDING",

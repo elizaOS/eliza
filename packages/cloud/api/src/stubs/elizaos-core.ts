@@ -18,6 +18,61 @@ function throwingExport(name: string): (...args: unknown[]) => never {
   return () => unavailable(name);
 }
 
+// Worker-safe mirror of core's pure canonical embedding contract. The API
+// bundle aliases `@elizaos/core` to this shim, while plugin-elizacloud validates
+// and normalizes vectors inside Workerd; these exports must therefore remain
+// byte-for-byte compatible with packages/core/src/constants/embeddings.ts.
+export const CANONICAL_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5" as const;
+export const CANONICAL_EMBEDDING_DIMENSION = 384 as const;
+export const CANONICAL_EMBEDDING_POOLING = "mean" as const;
+export const CANONICAL_EMBEDDING_NORMALIZATION = "l2" as const;
+export const CANONICAL_EMBEDDING_SPACE_FINGERPRINT =
+  "BAAI/bge-small-en-v1.5:384:mean:l2:v1" as const;
+
+export function assertCanonicalEmbeddingConfig(
+  model: string,
+  dimension: number,
+  pooling: string = CANONICAL_EMBEDDING_POOLING,
+): void {
+  if (model.trim() !== CANONICAL_EMBEDDING_MODEL) {
+    throw new Error(
+      `Embedding model mismatch: got "${model}", expected "${CANONICAL_EMBEDDING_MODEL}". Refusing to mix incompatible vector spaces.`,
+    );
+  }
+  if (dimension !== CANONICAL_EMBEDDING_DIMENSION) {
+    throw new Error(
+      `Embedding dimension mismatch: got ${dimension}, expected ${CANONICAL_EMBEDDING_DIMENSION}. Refusing to mix incompatible vector widths.`,
+    );
+  }
+  if (pooling.trim().toLowerCase() !== CANONICAL_EMBEDDING_POOLING) {
+    throw new Error(
+      `Embedding pooling mismatch: got "${pooling}", expected "${CANONICAL_EMBEDDING_POOLING}". Refusing to mix incompatible vector spaces.`,
+    );
+  }
+}
+
+export function normalizeCanonicalEmbedding(
+  vector: readonly number[],
+): number[] {
+  if (vector.length !== CANONICAL_EMBEDDING_DIMENSION) {
+    throw new Error(
+      `Embedding dimension mismatch: got ${vector.length}, expected ${CANONICAL_EMBEDDING_DIMENSION}.`,
+    );
+  }
+  let squaredNorm = 0;
+  for (const value of vector) {
+    if (!Number.isFinite(value)) {
+      throw new Error("Embedding contains a non-finite value.");
+    }
+    squaredNorm += value * value;
+  }
+  const norm = Math.sqrt(squaredNorm);
+  if (!Number.isFinite(norm) || norm <= Number.EPSILON) {
+    throw new Error("Embedding has a zero or invalid L2 norm.");
+  }
+  return vector.map((value) => value / norm);
+}
+
 function readEnvValue(
   env: Record<string, string | undefined>,
   keys: readonly string[],

@@ -37,7 +37,6 @@ import type {
   IAgentRuntime,
   Plugin,
   ProcessEnvLike,
-  TextEmbeddingParams,
   TextStreamResult,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
@@ -48,7 +47,6 @@ const _globalThis = globalThis as typeof globalThis & {
 _globalThis.AI_SDK_LOG_WARNINGS ??= false;
 
 import { handleTextToSpeech, handleTranscription } from "./models/audio";
-import { handleTextEmbedding } from "./models/embedding";
 import {
   handleActionPlanner,
   handleResponseHandler,
@@ -129,7 +127,7 @@ const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as string;
 export const ollamaPlugin: Plugin = {
   name: "zerollama",
   description:
-    "Zerollama/Ollama plugin for local LLM inference — text, embeddings, TTS, and ASR via the Ollama-compatible API with native zerollama optimizations",
+    "Zerollama/Ollama plugin for local LLM inference — text, TTS, and ASR via the Ollama-compatible API with native zerollama optimizations",
   autoEnable: {
     envKeys: ["OLLAMA_BASE_URL", "OLLAMA_API_ENDPOINT", "OLLAMA_API_URL"],
   },
@@ -223,13 +221,6 @@ export const ollamaPlugin: Plugin = {
   },
 
   models: {
-    [ModelType.TEXT_EMBEDDING]: async (
-      runtime: IAgentRuntime,
-      params: TextEmbeddingParams | string | null
-    ): Promise<number[]> => {
-      return handleTextEmbedding(runtime, params);
-    },
-
     [TEXT_NANO_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
@@ -312,22 +303,6 @@ export const ollamaPlugin: Plugin = {
               // as the test result; it must not throw out of the test harness.
               logger.error({ error }, "Error in ollama_test_url_validation");
               runtime.reportError("plugin-zerollama.test.url-validation", error);
-            }
-          },
-        },
-        {
-          name: "ollama_test_text_embedding",
-          fn: async (runtime: IAgentRuntime) => {
-            try {
-              const runModel = runtime.useModel.bind(runtime);
-              const embedding = await runModel(ModelType.TEXT_EMBEDDING, {
-                text: "Hello, world!",
-              });
-              logger.log({ embedding }, "Generated embedding");
-            } catch (error) {
-              // error-policy:J7 plugin self-test diagnostic — logged as the test result.
-              logger.error({ error }, "Error in test_text_embedding");
-              runtime.reportError("plugin-zerollama.test.text-embedding", error);
             }
           },
         },

@@ -24,6 +24,8 @@
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
+	CANONICAL_EMBEDDING_DIMENSION,
+	CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
 	fetchRemoteMedia,
 	type GenerateTextParams,
 	getInferencePriorityGate,
@@ -33,7 +35,9 @@ import {
 	inferenceRamClassFromEnv,
 	logger,
 	type MobileDeviceBridgeService,
+	type ModelRegistrationMetadata,
 	ModelType,
+	normalizeCanonicalEmbedding,
 	renderMessageHandlerStablePrefix,
 	resolveBackgroundInferenceBudget,
 	ServiceType,
@@ -90,7 +94,10 @@ import {
 	selectEmbeddingPresetFromHardware,
 } from "./embedding-presets";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
-import { resolveFusedEmbeddingBundleRoot } from "./fused-embedding-bundle";
+import {
+	assertCanonicalFusedEmbeddingOverride,
+	resolveFusedEmbeddingBundleRoot,
+} from "./fused-embedding-bundle";
 
 type GenerateTextHandler = (
 	runtime: IAgentRuntime,
@@ -144,7 +151,7 @@ type RuntimeWithModelRegistration = AgentRuntime & {
 		handler: LocalModelHandler,
 		provider: string,
 		priority?: number,
-		metadata?: { local?: boolean; streamable?: boolean },
+		metadata?: ModelRegistrationMetadata,
 	) => void;
 };
 
@@ -623,28 +630,28 @@ function extractEmbeddingText(
 	return params.text;
 }
 
-/**
- * Build the TEXT_EMBEDDING handler. Mirrors `makeHandler` for generate:
- * routes through the loader's `embed` if available, otherwise throws so
- * the runtime falls back to a non-local provider rather than serving a
- * silent zero-vector (Commandment 8: don't hide broken pipelines).
- */
-function makeEmbeddingHandler(): EmbeddingHandler {
-	return async (runtime, params) => {
-		const loader = getLoader(runtime);
-		if (!loader?.embed) {
+function validateLocalEmbeddingResult(
+	params: TextEmbeddingParams | string | null,
+	embedding: ArrayLike<number>,
+): number[] {
+	const vector = Array.from(embedding);
+	// Runtime boot uses null as a width probe; providers may intentionally return
+	// a zero marker for that call. Real semantic vectors must satisfy the full
+	// canonical finite/nonzero/L2 contract.
+	if (params === null) {
+		if (vector.length !== CANONICAL_EMBEDDING_DIMENSION) {
 			throw new Error(
-				"[local-inference] Active loader does not implement embed; falling through to next provider",
+				`[local-inference] Embedding probe returned ${vector.length} dimensions; expected ${CANONICAL_EMBEDDING_DIMENSION}`,
 			);
 		}
-		// Embeddings in this runtime are not slot-aware — there's a single
-		// active model. Make sure the user's TEXT_EMBEDDING assignment, if
-		// any, is loaded before we hit the loader.
-		await ensureAssignedModelLoaded(loader, "TEXT_EMBEDDING");
-		const text = extractEmbeddingText(params);
-		const result = await loader.embed({ input: text });
-		return result.embedding;
-	};
+		if (!vector.every((value) => Number.isFinite(value))) {
+			throw new Error(
+				"[local-inference] Embedding probe returned non-finite marker values",
+			);
+		}
+		return vector;
+	}
+	return normalizeCanonicalEmbedding(vector);
 }
 
 interface DesktopEmbeddingConfig {
@@ -654,10 +661,51 @@ interface DesktopEmbeddingConfig {
 	gpuLayers: number;
 }
 
+function assertCanonicalDesktopEmbeddingEnvironment(): void {
+	const preset = EMBEDDING_PRESETS.performance;
+	const expectations: ReadonlyArray<
+		readonly [key: string, actual: string | undefined, expected: string]
+	> = [
+		["LOCAL_EMBEDDING_MODEL", process.env.LOCAL_EMBEDDING_MODEL, preset.model],
+		[
+			"LOCAL_EMBEDDING_MODEL_REPO",
+			process.env.LOCAL_EMBEDDING_MODEL_REPO,
+			preset.modelRepo,
+		],
+		[
+			"LOCAL_EMBEDDING_DIMENSIONS",
+			process.env.LOCAL_EMBEDDING_DIMENSIONS,
+			String(CANONICAL_EMBEDDING_DIMENSION),
+		],
+		[
+			"LOCAL_EMBEDDING_CONTEXT_SIZE",
+			process.env.LOCAL_EMBEDDING_CONTEXT_SIZE,
+			String(preset.contextSize),
+		],
+		["ELIZA_EMBED_POOLING", process.env.ELIZA_EMBED_POOLING, "mean"],
+	];
+	for (const [key, raw, expected] of expectations) {
+		const actual = raw?.trim();
+		if (actual && actual !== expected) {
+			throw new Error(`${key} must equal ${expected}; received ${actual}`);
+		}
+	}
+
+	const override = process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim();
+	if (override) {
+		assertCanonicalFusedEmbeddingOverride(
+			override,
+			preset.model,
+			preset.expectedSizeBytes,
+			preset.sha256,
+		);
+	}
+}
+
 /**
  * Resolve the desktop embedding model + load params from the same
  * `LOCAL_EMBEDDING_*` env that `configureLocalEmbeddingPlugin` and the boot
- * warmup set, falling back to the compact gte-small preset.
+ * warmup set, falling back to the compact canonical BGE-small preset.
  */
 function resolveDesktopEmbeddingConfig(
 	hardware?: Awaited<ReturnType<typeof probeHardware>>,
@@ -666,10 +714,9 @@ function resolveDesktopEmbeddingConfig(
 		? selectEmbeddingPresetFromHardware(hardware)
 		: EMBEDDING_PRESETS.performance;
 	const modelsDir = process.env.MODELS_DIR?.trim() || DEFAULT_MODELS_DIR;
-	const model = process.env.LOCAL_EMBEDDING_MODEL?.trim() || preset.model;
-	const ctxEnv = Number(process.env.LOCAL_EMBEDDING_CONTEXT_SIZE);
-	const contextSize =
-		Number.isFinite(ctxEnv) && ctxEnv > 0 ? ctxEnv : preset.contextSize;
+	assertCanonicalDesktopEmbeddingEnvironment();
+	const model = preset.model;
+	const contextSize = preset.contextSize;
 	const gpuLayersEnv = process.env.LOCAL_EMBEDDING_GPU_LAYERS?.trim();
 	const gpuLayersNum = Number(gpuLayersEnv);
 	// "999 = all layers on GPU" per llama.cpp; the desktop adapter clamps to
@@ -734,7 +781,7 @@ function installFusedEmbeddingExitCleanup(): void {
 
 // A null resolution is retried on the next embed rather than cached for the
 // process lifetime — the boot dimension-probe can call getFusedEmbeddingHandle
-// before the gte-small GGUF / fused lib finishes staging, and caching that miss
+// before the BGE-small GGUF / fused lib finishes staging, and caching that miss
 // would pin embeddings to the cloud fallback forever. But bound the retry to this
 // window after the first failure so a host that genuinely cannot serve on-device
 // embeddings (no fused lib) stops re-probing every embed and quietly stays on the
@@ -763,6 +810,8 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 				bundleRoot = resolveFusedEmbeddingBundleRoot({
 					...cfg,
 					override: process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim(),
+					expectedSizeBytes: EMBEDDING_PRESETS.performance.expectedSizeBytes,
+					sha256: EMBEDDING_PRESETS.performance.sha256,
 				});
 			} catch (error) {
 				// error-policy:J4 a failed local artifact stage is an explicit
@@ -826,10 +875,10 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 		}
 		return null;
 	}
-	// gte-small / BERT bi-encoders use MEAN pooling; a decoder-as-embedder
-	// (`--pooling last`) is selected via ELIZA_EMBED_POOLING=last.
-	const pooling =
-		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase() === "last" ? 3 : 1;
+	// BGE-small's canonical vector space is mean-pooled. Pooling variants are
+	// incompatible even at the same width, so this provider deliberately does
+	// not accept a runtime override here.
+	const pooling = 1;
 	return {
 		embed: (text: string) => handle.embed({ ctx: handle.ctx, text, pooling }),
 	};
@@ -837,7 +886,7 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 
 /**
  * Desktop TEXT_EMBEDDING handler over the FUSED `libelizainference`
- * (`eliza_inference_embed`, ABI v9). The dedicated embedding GGUF (gte-small,
+ * (`eliza_inference_embed`, ABI v9). The dedicated embedding GGUF (BGE-small,
  * 384-dim — an exact match for plugin-sql's dim384 column) is staged as the
  * sole entry of an isolated fused embed bundle (see
  * `resolveFusedEmbeddingBundleRoot`)
@@ -874,7 +923,7 @@ function makeFusedEmbeddingHandler(): EmbeddingHandler {
 					`to the next embedding provider.`,
 			);
 		}
-		return Array.from(fused.embed(text));
+		return validateLocalEmbeddingResult(params, fused.embed(text));
 	};
 }
 
@@ -1594,7 +1643,7 @@ export async function ensureLocalInferenceHandler(
 	}
 
 	// Text/voice availability and embedding availability are independent on
-	// desktop. gte-small uses the dedicated fused embedding entry point and can
+	// desktop. BGE-small uses the dedicated fused embedding entry point and can
 	// be present even when no generative model/backend is active. The old
 	// process-wide preflight returned here and therefore never registered the
 	// perfectly usable local 384-dim embedder; the runtime then pinned Eliza
@@ -1671,29 +1720,41 @@ export async function ensureLocalInferenceHandler(
 	}
 
 	// Register TEXT_EMBEDDING separately — the runtime contract returns
-	// `number[]` instead of `string`, so it can't share `makeHandler`.
-	//   - AOSP / device-bridge loaders expose `embed()` on the
-	//     `localInferenceLoader` service → route through that.
-	//   - Desktop has no `localInferenceLoader`; it serves embeddings through
-	//     the fused `libelizainference` (`eliza_inference_embed`) over the
-	//     dedicated gte-small GGUF staged as an isolated embed bundle. libllama
-	//     is retired — there is no capacitor/libllama embedding fallback.
-	// Neither path registers a handler that would serve a silent zero-vector:
-	// both throw when there's nothing real to call, so the runtime falls
-	// through to the operator-configured provider (Commandment 8).
-	const loaderForEmbed = (
-		runtime as { getService?: (name: string) => unknown }
-	).getService?.("localInferenceLoader") as
-		| { embed?: unknown }
-		| null
-		| undefined;
+	// `number[]` instead of `string`, so it cannot share `makeHandler`.
+	//
+	// AOSP owns and registers its independently hash-verified BGE handler before
+	// the early return above. Generic localInferenceLoader services (including
+	// Capacitor and bionic-host loaders) are intentionally ineligible here: an
+	// `embed()` method and a 384-wide result do not attest model identity,
+	// pooling, or normalization. Only the desktop fused path below can prove the
+	// exact canonical artifact before attaching canonical-space metadata.
 	const embeddingHandler = isLocalEmbeddingDisabledByEnv()
 		? null
-		: loaderForEmbed && typeof loaderForEmbed.embed === "function"
-			? makeEmbeddingHandler()
-			: provider === LOCAL_INFERENCE_PROVIDER
-				? makeFusedEmbeddingHandler()
-				: null;
+		: provider === LOCAL_INFERENCE_PROVIDER
+			? (() => {
+					try {
+						assertCanonicalDesktopEmbeddingEnvironment();
+						const cfg = resolveDesktopEmbeddingConfig();
+						// Hash an already-present source before attaching canonical metadata.
+						// A first-run missing artifact remains a dormant handler; the same
+						// size+digest check runs again immediately before native load after
+						// the deferred downloader finishes.
+						resolveFusedEmbeddingBundleRoot({
+							...cfg,
+							override: process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim(),
+							expectedSizeBytes:
+								EMBEDDING_PRESETS.performance.expectedSizeBytes,
+							sha256: EMBEDDING_PRESETS.performance.sha256,
+						});
+						return makeFusedEmbeddingHandler();
+					} catch (error) {
+						logger.warn(
+							`[local-inference] Refusing to register a falsely-attested desktop embedding handler: ${error instanceof Error ? error.message : String(error)}`,
+						);
+						return null;
+					}
+				})()
+			: null;
 	if (embeddingHandler) {
 		try {
 			runtimeWithRegistration.registerModel(
@@ -1701,6 +1762,9 @@ export async function ensureLocalInferenceHandler(
 				embeddingHandler,
 				provider,
 				LOCAL_INFERENCE_PRIORITY,
+				{
+					embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+				},
 			);
 			logger.info(
 				`[local-inference] Registered ${provider} embedding handler for TEXT_EMBEDDING at priority ${LOCAL_INFERENCE_PRIORITY}`,

@@ -11,11 +11,16 @@
 import { describe, expect, test, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
+import {
+	canonicalEmbeddingRegistrationMetadata,
+	canonicalTestEmbedding,
+} from "../../testing/canonical-embedding";
 import { EventType, ModelType } from "../../types";
 import { aliasRecallQuery, embedRecallQuery } from "./recall-embed.ts";
 
 const MSG_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const MSG_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+const v = canonicalTestEmbedding;
 
 interface RuntimeMockOpts {
 	embed: (params: { text: string; signal?: AbortSignal }) => Promise<number[]>;
@@ -58,6 +63,7 @@ function makeRuntime(opts: RuntimeMockOpts): {
 		},
 		"embedding-api-test",
 		100,
+		canonicalEmbeddingRegistrationMetadata,
 	);
 	return { runtime, calls };
 }
@@ -65,25 +71,25 @@ function makeRuntime(opts: RuntimeMockOpts): {
 describe("embedRecallQuery — resolve / fail-open", () => {
 	test("returns the vector when the embed resolves", async () => {
 		const { runtime } = makeRuntime({
-			embed: async () => [0.1, 0.2, 0.3],
+			embed: async () => v(1),
 		});
 		const vec = await embedRecallQuery(runtime, "hello world");
-		expect(vec).toEqual([0.1, 0.2, 0.3]);
+		expect(vec).toEqual(v(1));
 	});
 
 	test("awaits the full embed — a slow-but-resolving embed returns its real vector (no app-level race truncates it to a silent BM25 fallback)", async () => {
 		const { runtime } = makeRuntime({
 			embed: () =>
 				new Promise((resolve) => {
-					setTimeout(() => resolve([1, 2, 3]), 50);
+					setTimeout(() => resolve(v(2)), 50);
 				}),
 		});
 		// Recall richness is preserved: the vector is returned, not degraded to
 		// keyword-only by an arbitrary timeout. A hung request is bounded by the
 		// embedding model handler's own request timeout (which rejects → catch).
-		await expect(embedRecallQuery(runtime, "slow query")).resolves.toEqual([
-			1, 2, 3,
-		]);
+		await expect(embedRecallQuery(runtime, "slow query")).resolves.toEqual(
+			v(2),
+		);
 	});
 
 	test("an embed error fails open (returns null), never throwing onto the reply path", async () => {
@@ -308,7 +314,7 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 describe("embedRecallQuery — per-turn cache + dedupe (item 2)", () => {
 	test("repeated normalized text within a turn hits the cache (one embed call)", async () => {
 		const { runtime, calls } = makeRuntime({
-			embed: async () => [0.5],
+			embed: async () => v(5),
 		});
 
 		const a = await embedRecallQuery(runtime, "What is the Refund Policy?");
@@ -318,8 +324,8 @@ describe("embedRecallQuery — per-turn cache + dedupe (item 2)", () => {
 			"  what is the   refund policy? ",
 		);
 
-		expect(a).toEqual([0.5]);
-		expect(b).toEqual([0.5]);
+		expect(a).toEqual(v(5));
+		expect(b).toEqual(v(5));
 		expect(calls.count).toBe(1);
 	});
 
@@ -338,10 +344,10 @@ describe("embedRecallQuery — per-turn cache + dedupe (item 2)", () => {
 		// Both started before either resolved → exactly one underlying call.
 		expect(calls.count).toBe(1);
 
-		resolveEmbed?.([7, 8, 9]);
+		resolveEmbed?.(v(7));
 		const [r1, r2] = await Promise.all([p1, p2]);
-		expect(r1).toEqual([7, 8, 9]);
-		expect(r2).toEqual([7, 8, 9]);
+		expect(r1).toEqual(v(7));
+		expect(r2).toEqual(v(7));
 		expect(calls.count).toBe(1);
 	});
 
@@ -364,7 +370,7 @@ describe("embedRecallQuery — per-turn cache + dedupe (item 2)", () => {
 		await yieldMacrotask();
 		expect(calls.count).toBe(1);
 
-		resolveEmbed?.([0.4, 0.5, 0.6]);
+		resolveEmbed?.(v(4));
 		const [docVec, expVec] = await Promise.all([
 			documentRecall,
 			experienceRecall,
@@ -375,16 +381,16 @@ describe("embedRecallQuery — per-turn cache + dedupe (item 2)", () => {
 			"  WHAT IS THE SLA? ",
 		);
 
-		expect(docVec).toEqual([0.4, 0.5, 0.6]);
-		expect(expVec).toEqual([0.4, 0.5, 0.6]);
-		expect(relevantConversations).toEqual([0.4, 0.5, 0.6]);
+		expect(docVec).toEqual(v(4));
+		expect(expVec).toEqual(v(4));
+		expect(relevantConversations).toEqual(v(4));
 		// One round-trip served all three providers for the turn.
 		expect(calls.count).toBe(1);
 	});
 
 	test("a new turn (different runId) does NOT reuse the prior turn's cache", async () => {
 		const { runtime, calls } = makeRuntime({
-			embed: async () => [0.1],
+			embed: async () => v(1),
 		});
 
 		await embedRecallQuery(runtime, "shared query");
@@ -421,15 +427,15 @@ const yieldMacrotask = (): Promise<void> =>
 
 describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253)", () => {
 	test("pre-run embed caches by messageId, the in-run prefetch adopts it, and later runId-only callers share the slot — one embed for the whole turn", async () => {
-		const { runtime, calls, startRun } = makeControllableRuntime(async () => [
-			0.9,
-		]);
+		const { runtime, calls, startRun } = makeControllableRuntime(async () =>
+			v(9),
+		);
 
 		// 1) Pre-run augmentation: AgentRuntime lazily creates a transient run id.
 		const preRun = await embedRecallQuery(runtime, "same text", {
 			messageId: MSG_A,
 		});
-		expect(preRun).toEqual([0.9]);
+		expect(preRun).toEqual(v(9));
 		expect(calls.count).toBe(1);
 
 		// 2) In-run TTFT prefetch: same messageId, now with a live run → adopts the
@@ -438,13 +444,13 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		const prefetch = await embedRecallQuery(runtime, "same text", {
 			messageId: MSG_A,
 		});
-		expect(prefetch).toEqual([0.9]);
+		expect(prefetch).toEqual(v(9));
 		expect(calls.count).toBe(1);
 
 		// 3) Compose-time recall caller (relevant-conversations / document recall):
 		//    runId only, no messageId. The adopted slot now carries RUN_A → hit.
 		const composeTime = await embedRecallQuery(runtime, "same text");
-		expect(composeTime).toEqual([0.9]);
+		expect(composeTime).toEqual(v(9));
 		expect(calls.count).toBe(1);
 	});
 
@@ -455,7 +461,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		// the in-run prefetch would miss R_AUG's slot and re-embed. Model exactly
 		// that id transition (no throwing — the real runtime never throws here).
 		const { runtime, calls } = makeRuntime({
-			embed: async () => [0.7],
+			embed: async () => v(7),
 		});
 
 		// Augmentation embeds under the transient R_AUG, keyed by messageId.
@@ -475,9 +481,9 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 	});
 
 	test("adoption does not leak across turns: a new turn (different runId + messageId) re-embeds", async () => {
-		const { runtime, calls, startRun } = makeControllableRuntime(async () => [
-			0.1,
-		]);
+		const { runtime, calls, startRun } = makeControllableRuntime(async () =>
+			v(1),
+		);
 		await embedRecallQuery(runtime, "text one", { messageId: MSG_A });
 		startRun();
 		await embedRecallQuery(runtime, "text one", { messageId: MSG_A });
@@ -490,9 +496,9 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 	});
 
 	test("a runId-only caller never adopts a pre-run slot without a messageId match (no mis-promotion)", async () => {
-		const { runtime, calls, startRun } = makeControllableRuntime(async () => [
-			0.3,
-		]);
+		const { runtime, calls, startRun } = makeControllableRuntime(async () =>
+			v(3),
+		);
 		// Pre-run cache under {runId:"", messageId: MSG_A}.
 		await embedRecallQuery(runtime, "query", { messageId: MSG_A });
 		expect(calls.count).toBe(1);
@@ -510,7 +516,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 			if (shouldFail) {
 				throw new Error("embeddings endpoint 500");
 			}
-			return [0.4];
+			return v(4);
 		});
 		const preRun = await embedRecallQuery(runtime, "query", {
 			messageId: MSG_A,
@@ -528,14 +534,14 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		const inRun = await embedRecallQuery(runtime, "query", {
 			messageId: MSG_A,
 		});
-		expect(inRun).toEqual([0.4]);
+		expect(inRun).toEqual(v(4));
 		expect(calls.count).toBe(2);
 	});
 
 	test("aliasRecallQuery maps a rewritten prompt onto a RESOLVED clean-prompt vector — the in-run envelope caller issues zero new embeds", async () => {
-		const { runtime, calls, startRun } = makeControllableRuntime(async () => [
-			0.6, 0.7,
-		]);
+		const { runtime, calls, startRun } = makeControllableRuntime(async () =>
+			v(6),
+		);
 
 		// Pre-run document augmentation embeds the clean user prompt…
 		const clean = await embedRecallQuery(
@@ -545,7 +551,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 				messageId: MSG_A,
 			},
 		);
-		expect(clean).toEqual([0.6, 0.7]);
+		expect(clean).toEqual(v(6));
 		expect(calls.count).toBe(1);
 
 		// …then rewrites the message into the contextual-documents envelope and
@@ -564,9 +570,9 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		const inRun = await embedRecallQuery(runtime, envelope, {
 			messageId: MSG_A,
 		});
-		expect(inRun).toEqual([0.6, 0.7]);
+		expect(inRun).toEqual(v(6));
 		const composeTime = await embedRecallQuery(runtime, envelope);
-		expect(composeTime).toEqual([0.6, 0.7]);
+		expect(composeTime).toEqual(v(6));
 		expect(calls.count).toBe(1);
 	});
 
@@ -604,22 +610,22 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		);
 		expect(calls.count).toBe(1);
 
-		resolveEmbed?.([0.8]);
-		await expect(warm).resolves.toEqual([0.8]);
-		await expect(inRun).resolves.toEqual([0.8]);
+		resolveEmbed?.(v(8));
+		await expect(warm).resolves.toEqual(v(8));
+		await expect(inRun).resolves.toEqual(v(8));
 		expect(calls.count).toBe(1);
 
 		// Once resolved, later envelope callers hit the result cache.
 		await expect(
 			embedRecallQuery(runtime, "envelope wrapping the clean prompt"),
-		).resolves.toEqual([0.8]);
+		).resolves.toEqual(v(8));
 		expect(calls.count).toBe(1);
 	});
 
 	test("aliasRecallQuery is a safe no-op when the source was never embedded — the alias-text caller embeds directly (fail-open unchanged)", async () => {
-		const { runtime, calls, startRun } = makeControllableRuntime(async () => [
-			0.2,
-		]);
+		const { runtime, calls, startRun } = makeControllableRuntime(async () =>
+			v(2),
+		);
 		aliasRecallQuery(runtime, {
 			messageId: MSG_A,
 			sourceText: "never embedded",
@@ -629,7 +635,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		const vec = await embedRecallQuery(runtime, "envelope text", {
 			messageId: MSG_A,
 		});
-		expect(vec).toEqual([0.2]);
+		expect(vec).toEqual(v(2));
 		expect(calls.count).toBe(1);
 	});
 
@@ -639,7 +645,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 			if (shouldFail) {
 				throw new Error("embeddings endpoint 500");
 			}
-			return [0.9];
+			return v(9);
 		});
 
 		const warm = embedRecallQuery(runtime, "clean prompt", {
@@ -665,14 +671,14 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		shouldFail = false;
 		await expect(
 			embedRecallQuery(runtime, "envelope text", { messageId: MSG_A }),
-		).resolves.toEqual([0.9]);
+		).resolves.toEqual(v(9));
 		expect(calls.count).toBe(2);
 	});
 
 	test("aliasRecallQuery no-ops on identical normalized texts", async () => {
-		const { runtime, calls, startRun } = makeControllableRuntime(async () => [
-			0.5,
-		]);
+		const { runtime, calls, startRun } = makeControllableRuntime(async () =>
+			v(5),
+		);
 		await embedRecallQuery(runtime, "same text", { messageId: MSG_A });
 		expect(calls.count).toBe(1);
 
@@ -708,10 +714,10 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		});
 		expect(calls.count).toBe(1);
 
-		resolveEmbed?.([1, 1, 1]);
+		resolveEmbed?.(v(11));
 		const [a, b] = await Promise.all([preRun, prefetch]);
-		expect(a).toEqual([1, 1, 1]);
-		expect(b).toEqual([1, 1, 1]);
+		expect(a).toEqual(v(11));
+		expect(b).toEqual(v(11));
 		expect(calls.count).toBe(1);
 	});
 
@@ -745,11 +751,11 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		});
 		expect(calls.count).toBe(2);
 
-		resolvers.get("first room")?.([0.1]);
-		resolvers.get("other room")?.([0.2]);
-		await expect(firstWarm).resolves.toEqual([0.1]);
-		await expect(adoptedFirst).resolves.toEqual([0.1]);
-		await expect(otherTurn).resolves.toEqual([0.2]);
+		resolvers.get("first room")?.(v(1));
+		resolvers.get("other room")?.(v(2));
+		await expect(firstWarm).resolves.toEqual(v(1));
+		await expect(adoptedFirst).resolves.toEqual(v(1));
+		await expect(otherTurn).resolves.toEqual(v(2));
 		expect(calls.count).toBe(2);
 	});
 });

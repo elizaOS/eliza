@@ -1,4 +1,4 @@
-import { ModelType } from "@elizaos/core";
+import { CANONICAL_EMBEDDING_SPACE_FINGERPRINT, ModelType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { embeddingsPlugin } from "../../plugin-embeddings/src/index.ts";
 import { elizaOSCloudPlugin, registerCloudEmbeddingModels } from "../src/index.ts";
@@ -7,6 +7,7 @@ type RegisteredModel = {
   modelType: string;
   provider: string;
   priority: number;
+  embeddingSpaceFingerprint?: string;
 };
 
 function createRuntime() {
@@ -16,8 +17,14 @@ function createRuntime() {
     getSetting(key: string) {
       return process.env[key];
     },
-    registerModel(modelType: string, _handler: unknown, provider: string, priority = 0) {
-      registered.push({ modelType, provider, priority });
+    registerModel(
+      modelType: string,
+      _handler: unknown,
+      provider: string,
+      priority = 0,
+      metadata?: { embeddingSpaceFingerprint?: string }
+    ) {
+      registered.push({ modelType, provider, priority, ...metadata });
       registered.sort((a, b) => b.priority - a.priority);
     },
   };
@@ -85,5 +92,19 @@ describe("Eliza Cloud embedding routing", () => {
 
     expect(topProvider(runtime, ModelType.TEXT_EMBEDDING)).toBe(elizaOSCloudPlugin.name);
     expect(topProvider(runtime, ModelType.TEXT_EMBEDDING_BATCH)).toBe(elizaOSCloudPlugin.name);
+    expect(
+      runtime.registered.filter((entry) => entry.provider === elizaOSCloudPlugin.name)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          modelType: ModelType.TEXT_EMBEDDING,
+          embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+        }),
+        expect.objectContaining({
+          modelType: ModelType.TEXT_EMBEDDING_BATCH,
+          embeddingSpaceFingerprint: CANONICAL_EMBEDDING_SPACE_FINGERPRINT,
+        }),
+      ])
+    );
   });
 });

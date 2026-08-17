@@ -85,6 +85,11 @@ crons = [
 # Bindings
 # -----------------------------------------------------------------------------
 
+# Native Workers AI inference for Shared semantic recall. Wrangler environment
+# configs do not inherit this binding, so staging and production repeat it.
+[ai]
+binding = "AI"
+
 # R2 — primary blob/media storage. Use env.BLOB.put/get/etc.
 [[r2_buckets]]
 binding = "BLOB"
@@ -467,6 +472,9 @@ routes = [
 __dirname = '"/"'
 __filename = '"/worker.js"'
 
+[env.staging.ai]
+binding = "AI"
+
 [env.staging.vars]
 # Protected staging proves the genuine Workerd AgentRuntime before production promotion.
 NODE_ENV = "production"
@@ -480,13 +488,12 @@ PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "true"
 # Emit per-turn inference spans at info for the staging latency matrix without
 # changing production log volume or recording prompt content.
 ELIZA_INFERENCE_TIMING = "info"
-# Self-hosted TEI embeddings sidecar (packages/cloud/services/embeddings,
-# bge-small-en-v1.5, 384 dims). The sidecar requires a bearer credential —
-# LOCAL_EMBEDDINGS_API_KEY is published as a Worker secret by cloud-cf-release
-# and must never appear in a [vars] block.
+# Legacy generic `/api/v1/embeddings` sidecar; Shared recall no longer reads
+# this URL and instead uses the native `AI` binding above. The sidecar's bearer
+# credential is published as a Worker secret and must never enter [vars].
 LOCAL_EMBEDDINGS_BASE_URL = "https://embeddings-staging-staging.up.railway.app"
 # Parity wave 2 (staging-only prove-out): durable tenant memory rows for every
-# Shared turn, plus flag-gated semantic recall over them via the sidecar.
+# Shared turn, plus flag-gated semantic recall over them via Workers AI.
 # Reversible: delete both lines to return to byte-identical pre-parity turns.
 SHARED_MEMORY_TABLES_ENABLED = "true"
 SHARED_RECALL_ENABLED = "true"
@@ -750,6 +757,9 @@ routes = [
 [env.production.define]
 __dirname = '"/"'
 __filename = '"/worker.js"'
+
+[env.production.ai]
+binding = "AI"
 
 [env.production.vars]
 # Production uses the genuine Shared Workerd runtime for personal voice.

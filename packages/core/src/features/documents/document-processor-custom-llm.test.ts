@@ -11,6 +11,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { canonicalTestEmbedding } from "../../testing/canonical-embedding";
 import { createMockRuntime, MOCK_AGENT_ID } from "../../testing/mock-runtime";
 import type { IAgentRuntime, Memory, UUID } from "../../types";
 import { ModelType } from "../../types";
@@ -21,6 +22,7 @@ const DOCUMENT_TEXT =
 	"Refund requests are processed within five business days of approval.";
 const PROVIDER_CONTEXT = "context-from-direct-provider";
 const RUNTIME_MODEL_CONTEXT = "context-from-runtime-model";
+const TEST_EMBEDDING = canonicalTestEmbedding();
 
 const SETTING_KEYS = [
 	"CTX_DOCUMENTS_ENABLED",
@@ -103,11 +105,11 @@ function makeHarness(settings: Record<string, string>): Harness {
 		getServicesByType: () => [],
 		getModel: (type: string) =>
 			type === ModelType.TEXT_EMBEDDING
-				? async () => [0.1, 0.2, 0.3]
+				? async () => TEST_EMBEDDING
 				: undefined,
 		useModel: (async (type: string) => {
 			if (type === ModelType.TEXT_EMBEDDING) {
-				return [0.1, 0.2, 0.3];
+				return TEST_EMBEDDING;
 			}
 			if (type === ModelType.TEXT_LARGE) {
 				runtimeModelCalls += 1;

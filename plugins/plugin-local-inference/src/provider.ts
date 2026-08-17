@@ -28,6 +28,7 @@ import {
 	inferenceRamClassFromEnv,
 	logger,
 	ModelType,
+	normalizeCanonicalEmbedding,
 	type PiiScrubParams,
 	type PiiScrubResult,
 	type Plugin,
@@ -406,7 +407,7 @@ function normalizeEmbeddingResult(
 			"[local-inference] TEXT_EMBEDDING backend returned an invalid embedding",
 		);
 	}
-	return embedding;
+	return normalizeCanonicalEmbedding(embedding);
 }
 
 function normalizeAudioBytes(

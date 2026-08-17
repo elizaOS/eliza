@@ -268,26 +268,19 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getUsageProvider(runtime)).toBe("openai");
   });
 
-  it("uses a deterministic local embedding fallback in Cerebras mode without an embedding endpoint", async () => {
+  it("refuses synthetic embeddings in Cerebras mode without a canonical endpoint", async () => {
     const runtime = buildRuntime({
       OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
       CEREBRAS_API_KEY: "csk-cerebras-fake",
-      OPENAI_EMBEDDING_DIMENSIONS: "1536",
+      OPENAI_EMBEDDING_DIMENSIONS: "384",
     });
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(new Error("remote embeddings should not be called"));
 
-    const first = await handleTextEmbedding(runtime, {
-      text: "remember the launch code",
-    });
-    const second = await handleTextEmbedding(runtime, {
-      text: "remember the launch code",
-    });
-
+    await expect(
+      handleTextEmbedding(runtime, { text: "remember the launch code" })
+    ).rejects.toThrow(/OPENAI_EMBEDDING_URL.*required/i);
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(first).toHaveLength(1536);
-    expect(first).toEqual(second);
-    expect(first.some((value) => value !== 0)).toBe(true);
   });
 });

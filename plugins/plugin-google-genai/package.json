@@ -48,7 +48,6 @@
         "text-large",
         "text-small",
         "tool-use",
-        "embedding",
         "image-description"
       ]
     }
@@ -97,13 +96,6 @@
         "description": "API key for Google Generative AI (Gemini) obtained from Google AI Studio.",
         "required": true,
         "sensitive": true
-      },
-      "GOOGLE_EMBEDDING_MODEL": {
-        "type": "string",
-        "description": "Overrides the default text embedding model used by Google Generative AI.",
-        "required": false,
-        "default": "text-embedding-004",
-        "sensitive": false
       },
       "GOOGLE_IMAGE_MODEL": {
         "type": "string",

@@ -32,7 +32,7 @@ function mockEmbeddingsResponse(vectors: number[][]): Response {
     json: async () => ({
       object: "list",
       data: vectors.map((embedding, index) => ({ object: "embedding", embedding, index })),
-      model: "text-embedding-3-small",
+      model: "BAAI/bge-small-en-v1.5",
       usage: { prompt_tokens: 1, total_tokens: 1 },
     }),
     text: async () => "",
@@ -54,7 +54,7 @@ describe("plugin-embeddings boot warm-up", () => {
   it("fires exactly one warm-up embedding against the configured endpoint on init", async () => {
     vi.spyOn(logger, "info").mockImplementation(() => undefined);
     const debugSpy = vi.spyOn(logger, "debug").mockImplementation(() => undefined);
-    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(768)]));
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(384)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
     await expect(
@@ -63,7 +63,7 @@ describe("plugin-embeddings boot warm-up", () => {
         createRuntime({
           EMBEDDING_BASE_URL: "https://warm.example/v1",
           EMBEDDING_API_KEY: "warm-key",
-          EMBEDDING_DIMENSIONS: "768",
+          EMBEDDING_DIMENSIONS: "384",
         })
       )
     ).resolves.toBeUndefined();
@@ -82,7 +82,7 @@ describe("plugin-embeddings boot warm-up", () => {
   it("does not fire a warm-up when no base URL is configured (API-key-only opt-in)", async () => {
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
     vi.spyOn(logger, "info").mockImplementation(() => undefined);
-    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(1536)]));
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(384)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
     await expect(

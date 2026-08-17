@@ -618,12 +618,9 @@ export function collectPluginNames(
       "@elizaos/plugin-cli-inference",
       "cloud container default (inert unless ELIZA_CHAT_VIA_CLI selects a backend)",
     );
-    // Cloud containers drop local inference unless the on-device signal is
-    // explicitly set: they have no GPU, the on-device gte-small embedder runs
-    // 1.5–98s per batch on contended container CPU, and its 384-dim vectors
-    // mismatch the cloud's 1536-dim TEXT_EMBEDDING — dropping every memory
-    // insert (see LEAN_CHAT_EXCLUDED_PLUGINS, which already encodes this for
-    // lean chat). The cloud embedding handler serves TEXT_EMBEDDING instead.
+    // Cloud containers drop local inference unless explicitly requested: they
+    // have no local GPU, while the managed endpoint serves the same attested
+    // BGE-small semantic space without an in-container model cold start.
     if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") {
       pluginsToLoad.delete("@elizaos/plugin-local-inference");
     }
@@ -939,22 +936,14 @@ export function collectPluginNames(
   if (leanChat) {
     // OPT-IN local-primary embeddings for lean-chat cloud agents.
     //
-    // #8762 excluded @elizaos/plugin-local-inference from lean-chat entirely
-    // because on a cloud container the on-device gte-small GGUF (a) ran
-    // 1.5-98s/batch on the contended CPU and (b) emitted 384-dim vectors into
-    // a 1536-dim column, dropping every insert. That was the right default at
-    // the time. But local gte-small is now measured at 17-48ms/embed on the
-    // live VPS, 10-20x faster than the cloud OpenAI round-trip (~250ms), so
-    // for a cloud agent whose store is re-provisioned at gte-small's 384-dim
-    // width, local-primary is a strict win on the always-on recall hot path.
+    // Keep an operator opt-in for running canonical BGE-small in-process when
+    // measured local CPU latency beats the managed endpoint. Both paths attest
+    // the same model/width/pooling/normalization space, so this is now purely a
+    // placement and latency choice rather than a vector-compatibility choice.
     //
-    // Gated behind ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS (default OFF): a hot flip
-    // for EXISTING 1536-dim agents would degrade recall until re-embedded
-    // (#9911 failure class), so this stays opt-in and rolls out per-agent with
-    // a backfill. When the flag is set, keep plugin-local-inference loaded so
-    // it can win the TEXT_EMBEDDING registration, and signal the cloud plugin
-    // to yield the slot (ELIZAOS_CLOUD_USE_EMBEDDINGS=false unless the operator
-    // explicitly pinned it true) so the two providers don't both register.
+    // Gated behind ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS (default OFF). When set,
+    // keep plugin-local-inference loaded and signal the cloud plugin to yield
+    // the slot (unless explicitly pinned true) so placement is deterministic.
     const localEmbeddingsOptIn =
       readAliasedEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS") === "1" &&
       process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !== "true";

@@ -10,6 +10,7 @@ import crypto from "node:crypto";
 import { parseSharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import { sharedTurnTracesRepository } from "../../../db/repositories/shared-turn-traces";
+import type { RuntimeWorkersAiBinding } from "../../../types/cloud-worker-env";
 import {
   InsufficientCreditsError as InsufficientCreditsApiError,
   RateLimitError,
@@ -19,6 +20,7 @@ import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheTTL } from "../../cache/keys";
 import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
 import { getProviderFromModel } from "../../pricing";
+import { getCloudAwareEnv, getCloudBinding } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import { settleOffResponsePath } from "../../utils/settle-off-response-path";
 import {
@@ -60,11 +62,12 @@ import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
 import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory-store";
 import {
-  buildSharedRecallContext,
-  embedTextsViaSidecar,
-  embedTextViaSidecar,
+  embedTextsViaWorkersAi,
+  embedTextViaWorkersAi,
+  renderSharedRecallContext,
   SHARED_RECALL_DEFAULT_TOP_K,
   SHARED_RECALL_EMBEDDING_MODEL,
+  type SharedRecallRow,
 } from "./shared-recall";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
@@ -83,6 +86,10 @@ const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
 const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
+type SharedRecallWarmCacheEntry = { queryHash: string; rows: SharedRecallRow[] };
+const sharedRecallRowsCache = new InMemoryLRUCache<SharedRecallWarmCacheEntry>(256, 5 * 60_000);
+const sharedRecallWarmInFlight = new Set<string>();
+const sharedRecallWarmSequence = new Map<string, number>();
 
 function elapsedTurnMs(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 10) / 10;
@@ -274,13 +281,12 @@ function sharedElizaRuntimeExecution(
  * uuids reuse the Todo scope so memory rows line up with the runtime's
  * projected identities.
  */
-function sharedTurnMemoryStore(agent: SharedRuntimeAgent) {
-  const embedBase = process.env.LOCAL_EMBEDDINGS_BASE_URL;
+function sharedTurnMemoryStore(agent: SharedRuntimeAgent, executionCtx?: BridgeExecutionContext) {
+  const ai = getCloudBinding<RuntimeWorkersAiBinding>("AI");
   const embed =
-    sharedRecallEnabled() && embedBase
+    sharedRecallEnabled(ai) && ai
       ? {
-          embedTexts: (texts: string[]) =>
-            embedTextsViaSidecar(embedBase, process.env.LOCAL_EMBEDDINGS_API_KEY, texts),
+          embedTexts: (texts: string[]) => embedTextsViaWorkersAi(ai, texts),
           model: SHARED_RECALL_EMBEDDING_MODEL,
         }
       : undefined;
@@ -295,67 +301,111 @@ function sharedTurnMemoryStore(agent: SharedRuntimeAgent) {
       }),
     },
     embed,
+    executionCtx ? (work) => executionCtx.waitUntil(work) : undefined,
   );
 }
 
 /**
  * P3 rollout gate: semantic recall exists only while this is exactly "true"
- * AND the sidecar base URL is configured. Off (the default) leaves every turn
- * byte-identical to the pre-recall path.
+ * AND the native Workers AI binding is available. Off (the default) leaves
+ * every turn byte-identical to the pre-recall path.
  */
-function sharedRecallEnabled(): boolean {
-  return (
-    process.env.SHARED_RECALL_ENABLED === "true" && Boolean(process.env.LOCAL_EMBEDDINGS_BASE_URL)
-  );
+function sharedRecallEnabled(ai: RuntimeWorkersAiBinding | undefined): boolean {
+  return getCloudAwareEnv().SHARED_RECALL_ENABLED === "true" && Boolean(ai);
 }
 
 /**
- * Compose the recall block for one turn, or undefined when recall contributes
- * nothing. Recall is an enhancement: a typed embed/search failure is warned
- * and the turn proceeds without it rather than failing a healthy reply.
- * `hadKeywordHit` is pinned false for the rollout phase — the lexical-salience
- * signal is not yet surfaced from the history store, so flag-on turns pay one
- * sidecar embed each; the short-circuit lands when that signal is plumbed.
+ * Conversation cache key. Tenant, owner, agent, and room scope prevent
+ * cross-context reuse; raw prompt text never enters a key or cache value.
  */
-async function sharedTurnRecallContext(
+function sharedRecallScopeKey(agent: SharedRuntimeAgent, channelId: string): string {
+  return crypto
+    .createHash("sha256")
+    .update([agent.organization_id, agent.user_id, agent.id, channelId].join("\u0000"))
+    .digest("hex");
+}
+
+function sharedRecallQueryHash(queryText: string): string {
+  return crypto.createHash("sha256").update(queryText.trim().toLowerCase()).digest("hex");
+}
+
+/**
+ * Cache-only prompt enrichment. No embedding, Postgres, or other asynchronous
+ * work is allowed here: a cache miss must reach provider dispatch immediately.
+ */
+function cachedSharedTurnRecallContext(
+  agent: SharedRuntimeAgent,
+  channelId: string,
   store: SharedMemoryStore | null,
   queryText: string,
   history: SharedTurnMessage[],
-): Promise<string | undefined> {
-  if (!store || !sharedRecallEnabled()) return undefined;
-  const embedBase = process.env.LOCAL_EMBEDDINGS_BASE_URL;
-  if (!embedBase) return undefined;
-  try {
-    const block = await buildSharedRecallContext({
-      flagEnabled: true,
-      hadKeywordHit: false,
-      queryText,
-      history,
-      embed: (text) => embedTextViaSidecar(embedBase, process.env.LOCAL_EMBEDDINGS_API_KEY, text),
-      storeSearch: async (vector) => {
-        const hits = await store.searchByEmbedding(vector, SHARED_RECALL_DEFAULT_TOP_K);
-        return hits.map((hit) => ({
-          id: hit.id,
-          role: hit.entity_id === hit.agent_id ? ("assistant" as const) : ("user" as const),
-          content:
-            typeof (hit.content as { text?: unknown })?.text === "string"
-              ? (hit.content as { text: string }).text
-              : "",
-          createdAt: hit.created_at ? new Date(hit.created_at).getTime() : undefined,
-        }));
-      },
-    });
-    return block ?? undefined;
-  } catch (error) {
-    // error-policy:J4 recall loss degrades to a recall-free turn; the warn is
-    // the visible signal and the reply itself stays healthy.
-    logger.warn(
-      `[shared-runtime-chat] semantic recall unavailable this turn: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return undefined;
-  }
+): string | undefined {
+  const ai = getCloudBinding<RuntimeWorkersAiBinding>("AI");
+  if (!store || !sharedRecallEnabled(ai) || !ai) return undefined;
+  const cached = sharedRecallRowsCache.get(sharedRecallScopeKey(agent, channelId));
+  if (cached === null) return undefined;
+  return renderSharedRecallContext({ rows: cached.rows, history }) ?? undefined;
+}
+
+function sharedRecallRowsFromHits(
+  hits: Awaited<ReturnType<SharedMemoryStore["searchByEmbedding"]>>,
+): SharedRecallRow[] {
+  return hits.map((hit) => ({
+    id: hit.id,
+    role: hit.entity_id === hit.agent_id ? ("assistant" as const) : ("user" as const),
+    content:
+      typeof (hit.content as { text?: unknown })?.text === "string"
+        ? (hit.content as { text: string }).text
+        : "",
+    createdAt: hit.created_at ? new Date(hit.created_at).getTime() : undefined,
+  }));
+}
+
+/**
+ * Warm semantic recall from this utterance strictly off the current response
+ * path. The latest completed rows enrich the next turn in the room (one-turn
+ * lag), while a query hash prevents duplicate refreshes without retaining raw
+ * prompt text. A sequence guard stops slow older warmups overwriting newer ones.
+ */
+function warmSharedTurnRecallOffPath(
+  executionCtx: BridgeExecutionContext | undefined,
+  agent: SharedRuntimeAgent,
+  channelId: string,
+  store: SharedMemoryStore | null,
+  queryText: string,
+): void {
+  const ai = getCloudBinding<RuntimeWorkersAiBinding>("AI");
+  if (!store || !sharedRecallEnabled(ai) || !ai || !queryText.trim()) return;
+  const scopeKey = sharedRecallScopeKey(agent, channelId);
+  const queryHash = sharedRecallQueryHash(queryText);
+  const cached = sharedRecallRowsCache.get(scopeKey);
+  if (cached?.queryHash === queryHash) return;
+  const inFlightKey = `${scopeKey}:${queryHash}`;
+  if (sharedRecallWarmInFlight.has(inFlightKey)) return;
+  const sequence = (sharedRecallWarmSequence.get(scopeKey) ?? 0) + 1;
+  sharedRecallWarmSequence.set(scopeKey, sequence);
+  sharedRecallWarmInFlight.add(inFlightKey);
+  void settleOffResponsePath(executionCtx, async () => {
+    try {
+      const vector = await embedTextViaWorkersAi(ai, queryText);
+      const hits = await store.searchByEmbedding(vector, SHARED_RECALL_DEFAULT_TOP_K);
+      if (sharedRecallWarmSequence.get(scopeKey) === sequence) {
+        sharedRecallRowsCache.set(scopeKey, {
+          queryHash,
+          rows: sharedRecallRowsFromHits(hits),
+        });
+      }
+    } catch (error) {
+      // error-policy:J4 recall is optional and cannot fail the landed reply.
+      logger.warn(
+        `[shared-runtime-chat] semantic recall warmup failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    } finally {
+      sharedRecallWarmInFlight.delete(inFlightKey);
+    }
+  });
 }
 
 function stableUuid(raw: string): string {
@@ -974,8 +1024,8 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
-    const memoryStore = sharedTurnMemoryStore(agent);
-    const recallContext = await sharedTurnRecallContext(memoryStore, text, history);
+    const memoryStore = sharedTurnMemoryStore(agent, options.executionCtx);
+    const recallContext = cachedSharedTurnRecallContext(agent, roomId, memoryStore, text, history);
     const turnStartedAtEpochMs = Date.now();
     let turn: RunSharedAgentTurnResult;
     try {
@@ -1006,6 +1056,8 @@ export class SharedRuntimeChatService {
       );
       throw error;
     }
+
+    warmSharedTurnRecallOffPath(options.executionCtx, agent, roomId, memoryStore, text);
 
     recordTurnTraceOffPath(
       options.executionCtx,
@@ -1168,8 +1220,14 @@ export class SharedRuntimeChatService {
     const detachRequestAbort = () =>
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
-    const streamMemoryStore = sharedTurnMemoryStore(agent);
-    const streamRecallContext = await sharedTurnRecallContext(streamMemoryStore, text, history);
+    const streamMemoryStore = sharedTurnMemoryStore(agent, options.executionCtx);
+    const streamRecallContext = cachedSharedTurnRecallContext(
+      agent,
+      roomId,
+      streamMemoryStore,
+      text,
+      history,
+    );
     const streamTurnStartedAtEpochMs = Date.now();
     const providerSetupStartedAt = performance.now();
     try {
@@ -1201,6 +1259,7 @@ export class SharedRuntimeChatService {
       );
       throw error;
     }
+    warmSharedTurnRecallOffPath(options.executionCtx, agent, roomId, streamMemoryStore, text);
     timings.turn_provider_setup = elapsedTurnMs(providerSetupStartedAt);
     if (turn.degraded) {
       detachRequestAbort();
