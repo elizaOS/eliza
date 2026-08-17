@@ -11,11 +11,11 @@
  * mid-hold, or sliding the pointer more than {@link SLIDE_CANCEL_PX} off the
  * pill before releasing.
  *
- * On a cloud-only build the `needs-auth` phase replaces both gestures with a
- * labeled chip that launches Cloud sign-in. Hold is not armed there.
+ * On a cloud-only build the `needs-auth` phase keeps the same neutral resting
+ * affordance; activating it launches Cloud sign-in. Hold is not armed there.
  */
 
-import { LoaderCircle, LogIn } from "lucide-react";
+import { AudioWaveform, Plus } from "lucide-react";
 import * as React from "react";
 
 import { useBranding } from "../../config/branding";
@@ -42,6 +42,9 @@ export interface HomePillProps {
   /** True while Cloud sign-in is in flight from this pill. Pulses the
    *  `needs-auth` chip so the wait is visible. */
   signingIn?: boolean;
+  /** Reports the idle pill's shallow composer-preview hover state. Desktop
+   *  uses this to widen the transparent native hit area before painting it. */
+  onPreviewHoverChange?: (hovered: boolean) => void;
 }
 
 /** How long the pointer must stay down before a press becomes a hold. Above
@@ -88,7 +91,7 @@ const PROCESS_DOTS = [
  * Each shell phase reads distinctly at a glance (the capsule is the only
  * always-visible surface, so it carries all ambient status):
  *   booting     — dim pulsing handle ("waking up").
- *   needs-auth  — orange labeled action ("Sign in with {appName} Cloud").
+ *   needs-auth  — same neutral handle and hover preview as idle.
  *   idle        — solid white handle ("here, ready").
  *   listening   — dark chip, live waveform bars ("mic is hot").
  *   processing  — dark chip, pulsing dots — mic closed,
@@ -107,6 +110,7 @@ export function HomePill({
   onHoldCancel,
   speaking = false,
   signingIn = false,
+  onPreviewHoverChange,
 }: HomePillProps): React.JSX.Element {
   const { appName } = useBranding();
   const needsAuth = phase === "needs-auth";
@@ -115,6 +119,23 @@ export function HomePill({
   // the overlay closed, and treating it as open would flash the label/pressed
   // state during every hold (#20483).
   const isOpen = phase === "summoned" || phase === "responding";
+  const previewEligible = phase === "idle" || needsAuth;
+  const [previewHovered, setPreviewHovered] = React.useState(false);
+
+  const setPreviewHover = React.useCallback(
+    (hovered: boolean) => {
+      const next = previewEligible && hovered;
+      setPreviewHovered(next);
+      onPreviewHoverChange?.(next);
+    },
+    [onPreviewHoverChange, previewEligible],
+  );
+
+  React.useEffect(() => {
+    if (previewEligible || !previewHovered) return;
+    setPreviewHovered(false);
+    onPreviewHoverChange?.(false);
+  }, [onPreviewHoverChange, previewEligible, previewHovered]);
 
   const holdTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdActiveRef = React.useRef(false);
@@ -218,8 +239,7 @@ export function HomePill({
   }, [isOpen, onOpen, onClose]);
 
   const signInLabel = `Sign in with ${appName} Cloud`;
-  const chipExpanded =
-    phase === "listening" || phase === "processing" || needsAuth;
+  const chipExpanded = phase === "listening" || phase === "processing";
   const label = needsAuth
     ? signingIn
       ? `Signing in to ${appName} Cloud`
@@ -247,11 +267,13 @@ export function HomePill({
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
+      onMouseEnter={() => setPreviewHover(true)}
+      onMouseLeave={() => setPreviewHover(false)}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
         "group pointer-events-auto relative mb-2 flex items-center justify-center rounded-full bg-transparent p-0",
-        needsAuth ? "h-12 w-[18rem]" : "h-8 w-16",
-        "transition-transform duration-200 hover:bg-transparent",
+        previewHovered ? "h-20 w-[36rem]" : "h-8 w-16",
+        "transition-[width,height,transform] duration-200 hover:bg-transparent motion-reduce:transition-none",
         needsAuth ? "active:scale-[0.96]" : "active:scale-95",
         "focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
       )}
@@ -262,18 +284,18 @@ export function HomePill({
         className={cn(
           "flex items-center justify-center rounded-full",
           "transition-[width,height,opacity,transform,background-color,box-shadow] duration-200",
-          // Listening/processing/needs-auth grow the capsule into a dark chip.
-          // Listening carries live bars; processing swaps them for dots;
-          // needs-auth fills the chip with the sign-in label.
-          needsAuth
-            ? "h-11 w-full gap-2 bg-[#FF5800] px-5 group-hover:bg-[#D94B00]"
+          // Listening/processing grow the capsule into a dark status chip.
+          // Logged-out and idle states share the neutral handle/hover preview.
+          previewHovered
+            ? "h-16 w-full justify-start overflow-hidden border border-white/55 bg-[linear-gradient(180deg,rgba(38,39,40,0.98),rgba(18,19,21,0.98))] px-6"
             : chipExpanded
               ? "h-7 w-20 gap-[3px] bg-neutral-900/95"
               : "h-2.5 w-12 gap-[3px] bg-white/95 group-hover:w-14",
-          needsAuth
-            ? "shadow-[0_8px_24px_rgba(255,88,0,0.42),0_0_0_1px_rgba(255,255,255,0.18)]"
+          previewHovered
+            ? "shadow-[0_14px_36px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.12)]"
             : chipExpanded && "shadow-[0_4px_16px_rgba(0,0,0,0.35)]",
           !chipExpanded &&
+            !previewHovered &&
             (phase === "responding"
               ? speaking
                 ? // Speaking: stronger, tighter warm glow than thinking — the
@@ -288,29 +310,29 @@ export function HomePill({
             "animate-pulse opacity-90 motion-reduce:animate-none",
         )}
       >
-        {needsAuth && (
+        {previewHovered && (
           <>
-            {signingIn ? (
-              <LoaderCircle
-                aria-hidden="true"
-                data-testid="shell-home-pill-sign-in-spinner"
-                className="size-4 shrink-0 animate-spin text-white motion-reduce:animate-none"
-                strokeWidth={2}
-              />
-            ) : (
-              <LogIn
-                aria-hidden="true"
-                data-testid="shell-home-pill-sign-in-icon"
-                className="size-4 shrink-0 text-white"
-                strokeWidth={2}
-              />
-            )}
+            <Plus
+              aria-hidden="true"
+              data-testid="shell-home-pill-preview-plus"
+              className="size-7 shrink-0 text-white"
+              strokeWidth={2}
+            />
             <span
-              data-testid="shell-home-pill-sign-in"
-              className="whitespace-nowrap text-sm font-semibold leading-none text-white"
+              data-testid="shell-home-pill-preview-label"
+              className="ml-6 whitespace-nowrap text-lg font-normal leading-none text-white/85"
             >
-              {signInLabel}
+              Message {appName}
             </span>
+            <span className="absolute inset-x-0 top-4 flex justify-center">
+              <span className="h-2 w-12 rounded-full bg-white/95" />
+            </span>
+            <AudioWaveform
+              aria-hidden="true"
+              data-testid="shell-home-pill-preview-waveform"
+              className="ml-auto size-7 shrink-0 text-white"
+              strokeWidth={2}
+            />
           </>
         )}
         {phase === "listening" &&

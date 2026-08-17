@@ -1542,9 +1542,10 @@ X-GNOME-Autostart-enabled=true
   async setBottomBarExpanded(options: {
     expanded: boolean;
     chip?: boolean;
+    hovered?: boolean;
   }): Promise<void> {
     // Record desired presentation before consulting transient native state. A
-    // missing window/display must not lose a 96↔240↔600 transition.
+    // missing window/display must not lose a rest↔hover↔auth↔panel transition.
     this.bottomBarSize = resolveBottomBarFrameSize(options);
     this.bottomBarFrameDirty = true;
     if (!this.bottomBarReanchorEnabled) return;

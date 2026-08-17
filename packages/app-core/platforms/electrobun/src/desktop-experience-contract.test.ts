@@ -42,16 +42,18 @@ describe("desktop experience contract — chat-first launch", () => {
     expect(tagged).toContain("shellMode=chat-overlay");
   });
 
-  it("presents the default window as a transparent, frameless bottom bar (macOS)", () => {
-    const presentation = resolveDesktopShellWindowPresentation(
-      {},
-      [],
-      "darwin",
-    );
-    expect(presentation.mode).toBe("bottom-bar");
-    expect(presentation.titleBarStyle).toBe("hidden");
-    expect(presentation.transparent).toBe(true);
-    expect(presentation.nativeShadow).toBe(false);
+  it("presents the default window as a transparent, frameless bottom bar on every desktop", () => {
+    for (const platform of ["darwin", "win32", "linux"] as const) {
+      const presentation = resolveDesktopShellWindowPresentation(
+        {},
+        [],
+        platform,
+      );
+      expect(presentation.mode).toBe("bottom-bar");
+      expect(presentation.titleBarStyle).toBe("hidden");
+      expect(presentation.transparent).toBe(true);
+      expect(presentation.nativeShadow).toBe(false);
+    }
   });
 
   it("keeps the full dashboard window opaque on macOS — transparency is the pill only (#12184)", () => {

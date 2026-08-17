@@ -357,7 +357,7 @@ function ChatOverlayShell() {
         data-testid="chat-overlay-shell"
         className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
       >
-        <ShellFoundationMount />
+        <ShellFoundationMount useWebChatPanel />
       </div>
     </>
   );
@@ -1798,11 +1798,16 @@ function SecretsManagerModalMount(): ReactNode {
   );
 }
 
-function ShellFoundationMount() {
+function ShellFoundationMount({
+  useWebChatPanel = false,
+}: {
+  /** Desktop opens the same draggable chat surface as web, not a separate drawer. */
+  useWebChatPanel?: boolean;
+} = {}) {
   const controller = useShellControllerContext();
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
-  const shellNeedsAuth = controller?.phase === "needs-auth";
+  const [shellPreviewHovered, setShellPreviewHovered] = useState(false);
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
   // Push-to-talk dictation on the ChatSurface mic drops its transcript into
@@ -1811,13 +1816,13 @@ function ShellFoundationMount() {
   // are mutually exclusive App surfaces, so the controller's single sink slot
   // is never contended.
   useEffect(() => {
-    if (!controller) return undefined;
+    if (!controller || useWebChatPanel) return undefined;
     controller.setDictationSink((text) => {
       const current = chatInputRef?.current ?? "";
       setChatInput(current ? `${current} ${text}` : text);
     });
     return () => controller.setDictationSink(null);
-  }, [controller, setChatInput, chatInputRef]);
+  }, [controller, setChatInput, chatInputRef, useWebChatPanel]);
 
   // Global push-to-talk hotkey (#20483): the OS shortcut is trigger-only (no
   // key-up event reaches the renderer), so the hotkey drives the SAME ptt
@@ -1897,7 +1902,10 @@ function ShellFoundationMount() {
       await invokeDesktopBridgeRequestWithTimeout<undefined>({
         rpcMethod: "desktopSetBottomBarExpanded",
         ipcChannel: "desktop:setBottomBarExpanded",
-        params: { expanded: shellIsOpen, chip: shellNeedsAuth },
+        params: {
+          expanded: shellIsOpen,
+          hovered: useWebChatPanel && shellPreviewHovered,
+        },
         timeoutMs: 1_000,
       });
     })();
@@ -1905,8 +1913,24 @@ function ShellFoundationMount() {
     return () => {
       cancelled = true;
     };
-  }, [hasController, shellIsOpen, shellNeedsAuth]);
+  }, [hasController, shellIsOpen, shellPreviewHovered, useWebChatPanel]);
+  const closeWebChatWhenPilled = useCallback(
+    (pilled: boolean) => {
+      if (pilled) controller?.close();
+    },
+    [controller],
+  );
   if (!controller) return null;
+
+  if (useWebChatPanel && shellIsOpen) {
+    return (
+      <ChatOverlayMount
+        releaseFirstRunToHalf={false}
+        onFirstRunReleaseHandled={() => {}}
+        onPilledChange={closeWebChatWhenPilled}
+      />
+    );
+  }
 
   return (
     <>
@@ -1936,32 +1960,37 @@ function ShellFoundationMount() {
           controller.stopRecording();
         }}
         onHoldCancel={controller.cancelRecording}
+        onPreviewHoverChange={
+          useWebChatPanel ? setShellPreviewHovered : undefined
+        }
       />
-      <AssistantOverlay
-        phase={controller.phase}
-        onClose={controller.close}
-        open={controller.isOpen}
-      >
-        <div className="flex h-full min-h-0 flex-col">
-          <div className="flex min-h-6 shrink-0 items-center justify-end pr-8">
-            <ServingProviderChip className="pointer-events-none text-muted-strong" />
+      {!useWebChatPanel ? (
+        <AssistantOverlay
+          phase={controller.phase}
+          onClose={controller.close}
+          open={controller.isOpen}
+        >
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="flex min-h-6 shrink-0 items-center justify-end pr-8">
+              <ServingProviderChip className="pointer-events-none text-muted-strong" />
+            </div>
+            <div className="min-h-0 flex-1">
+              <ChatSurface
+                messages={controller.messages}
+                onSend={controller.send}
+                canSend={controller.canSend}
+                greeting={greetingForTimeOfDay()}
+                recording={controller.recording}
+                onToggleRecording={controller.toggleRecording}
+                onDictateStart={() => controller.startRecording("dictate")}
+                onDictateEnd={controller.stopRecording}
+                onVision={controller.captureVision}
+                visionActive={controller.visionCapturing}
+              />
+            </div>
           </div>
-          <div className="min-h-0 flex-1">
-            <ChatSurface
-              messages={controller.messages}
-              onSend={controller.send}
-              canSend={controller.canSend}
-              greeting={greetingForTimeOfDay()}
-              recording={controller.recording}
-              onToggleRecording={controller.toggleRecording}
-              onDictateStart={() => controller.startRecording("dictate")}
-              onDictateEnd={controller.stopRecording}
-              onVision={controller.captureVision}
-              visionActive={controller.visionCapturing}
-            />
-          </div>
-        </div>
-      </AssistantOverlay>
+        </AssistantOverlay>
+      ) : null}
     </>
   );
 }
@@ -1976,9 +2005,11 @@ function ShellFoundationMount() {
 function ChatOverlayMount({
   releaseFirstRunToHalf,
   onFirstRunReleaseHandled,
+  onPilledChange,
 }: {
   releaseFirstRunToHalf: boolean;
   onFirstRunReleaseHandled: () => void;
+  onPilledChange?: (pilled: boolean) => void;
 }): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
@@ -2010,6 +2041,7 @@ function ChatOverlayMount({
       firstRunOpen={firstRunComplete === false}
       releaseFirstRunToHalf={releaseFirstRunToHalf}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
+      onPilledChange={onPilledChange}
     />
   );
 }
