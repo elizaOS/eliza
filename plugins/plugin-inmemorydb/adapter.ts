@@ -61,6 +61,7 @@ import {
   rankMessageSearch,
   type Task,
   type UUID,
+  validateQueryEntitiesPagination,
   type World,
   withinCreatedAtWindow,
 } from "@elizaos/core";
@@ -462,6 +463,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     includeAllComponents?: boolean;
     entityContext?: UUID;
   }): Promise<Entity[]> {
+    validateQueryEntitiesPagination(params);
+
     const hasComponentQuery =
       params.componentType !== undefined ||
       params.componentDataFilter !== undefined ||

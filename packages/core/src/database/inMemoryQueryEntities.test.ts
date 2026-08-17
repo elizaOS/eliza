@@ -39,6 +39,23 @@ function component(
 }
 
 describe("InMemoryDatabaseAdapter queryEntities", () => {
+	it.each([
+		["offset", -1],
+		["offset", 1.5],
+		["limit", Number.NaN],
+		["limit", Number.POSITIVE_INFINITY],
+	] as const)(
+		"rejects invalid %s pagination value %s",
+		async (field, value) => {
+			const adapter = new InMemoryDatabaseAdapter();
+			await expect(
+				adapter.queryEntities({ entityIds: [entityOne], [field]: value }),
+			).rejects.toThrow(
+				`queryEntities ${field} must be a non-negative safe integer`,
+			);
+		},
+	);
+
 	it("supports bounded agent-scoped scans with components", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		await adapter.initialize();

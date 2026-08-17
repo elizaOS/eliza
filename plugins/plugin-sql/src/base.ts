@@ -80,6 +80,7 @@ import {
   validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams,
   validateDocumentRequesterContext,
+  validateQueryEntitiesPagination,
   type World,
 } from "@elizaos/core";
 
@@ -6175,6 +6176,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     includeAllComponents?: boolean;
     entityContext?: UUID;
   }): Promise<Entity[]> {
+    validateQueryEntitiesPagination(params);
     return this.withDatabase(async () => {
       const conditions: SQL[] = [];
       const hasComponentQuery =

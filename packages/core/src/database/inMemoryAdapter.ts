@@ -13,7 +13,7 @@
  * containment all mirror the SQL adapters. Persistence is process-local and
  * lost on restart.
  */
-import { DatabaseAdapter } from "../database";
+import { DatabaseAdapter, validateQueryEntitiesPagination } from "../database";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
 import type {
 	AccessContext,
@@ -531,6 +531,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		includeAllComponents?: boolean;
 		entityContext?: UUID;
 	}): Promise<Entity[]> {
+		validateQueryEntitiesPagination(_params);
 		const matchedComponentsByEntity = new Map<string, Component[]>();
 		const hasComponentQuery =
 			_params.componentType !== undefined ||

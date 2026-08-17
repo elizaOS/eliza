@@ -101,6 +101,17 @@ describe("queryEntities intersection contract", () => {
     await cleanup();
   });
 
+  it.each([
+    ["offset", -1],
+    ["offset", 1.5],
+    ["limit", Number.NaN],
+    ["limit", Number.POSITIVE_INFINITY],
+  ] as const)("rejects invalid %s pagination value %s", async (field, value) => {
+    await expect(adapter.queryEntities({ entityIds: [entityOne], [field]: value })).rejects.toThrow(
+      `queryEntities ${field} must be a non-negative safe integer`
+    );
+  });
+
   it("intersects explicit IDs with component, data, world, agent, and paging filters", async () => {
     const noMatch = await adapter.queryEntities({
       entityIds: [entityThree],
