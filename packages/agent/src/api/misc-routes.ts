@@ -336,7 +336,14 @@ export async function handleMiscRoutes(
     if (rawEvent === null) return true;
     const agentEventMatch = pathname.match(/^\/api\/agents\/([^/]+)\/event$/);
     if (agentEventMatch) {
-      const routeAgentId = decodeURIComponent(agentEventMatch[1] ?? "").trim();
+      let routeAgentId: string;
+      try {
+        routeAgentId = decodeURIComponent(agentEventMatch[1] ?? "").trim();
+      } catch {
+        // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+        json(res, { error: "Invalid agent id" }, 400);
+        return true;
+      }
       if (state.runtime?.agentId && state.runtime.agentId !== routeAgentId) {
         json(res, { error: "Agent not found" }, 404);
         return true;
@@ -722,7 +729,14 @@ export async function handleMiscRoutes(
   );
 
   if (method === "POST" && customActionTestMatch) {
-    const actionId = decodeURIComponent(customActionTestMatch[1]);
+    let actionId: string;
+    try {
+      actionId = decodeURIComponent(customActionTestMatch[1]);
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      error(res, "Invalid action id encoding", 400);
+      return true;
+    }
     const rawTest = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawTest === null) return true;
     const parsedTest = PostCustomActionTestRequestSchema.safeParse(rawTest);
@@ -780,7 +794,14 @@ export async function handleMiscRoutes(
   }
 
   if (method === "PUT" && customActionMatch) {
-    const actionId = decodeURIComponent(customActionMatch[1]);
+    let actionId: string;
+    try {
+      actionId = decodeURIComponent(customActionMatch[1]);
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      error(res, "Invalid action id encoding", 400);
+      return true;
+    }
     const rawUpdate = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawUpdate === null) return true;
     const parsedUpdate = PutCustomActionRequestSchema.safeParse(rawUpdate);
@@ -844,7 +865,14 @@ export async function handleMiscRoutes(
   }
 
   if (method === "DELETE" && customActionMatch) {
-    const actionId = decodeURIComponent(customActionMatch[1]);
+    let actionId: string;
+    try {
+      actionId = decodeURIComponent(customActionMatch[1]);
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      error(res, "Invalid action id encoding", 400);
+      return true;
+    }
 
     const config = loadElizaConfig();
     const actions = config.customActions ?? [];
