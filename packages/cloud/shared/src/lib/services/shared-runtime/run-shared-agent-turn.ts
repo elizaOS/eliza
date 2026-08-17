@@ -20,7 +20,13 @@
  *  - route only shared-eligible agents here (see `agent-tier.ts`)
  */
 
-import { type ActionResult, replaceNameTokens, type UUID } from "@elizaos/core/edge";
+import {
+  type ActionResult,
+  type MediaGenerationRequest,
+  type MediaGenerationResponse,
+  replaceNameTokens,
+  type UUID,
+} from "@elizaos/core/edge";
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
 import { generateText, streamText } from "ai";
@@ -60,6 +66,14 @@ export interface SharedAgentCharacter {
   bio?: string[];
   /** Optional model id override; otherwise the shared default is used. */
   model?: string;
+}
+
+/** Server-authenticated media authority injected into an ephemeral Shared runtime. */
+export interface SharedMediaGenerationPort {
+  canGenerateMedia(
+    request: Pick<MediaGenerationRequest, "mediaType" | "audioKind">,
+  ): boolean | Promise<boolean>;
+  generateMedia(request: MediaGenerationRequest): Promise<MediaGenerationResponse>;
 }
 
 export interface RunSharedAgentTurnInput {
@@ -105,6 +119,12 @@ export interface RunSharedAgentTurnInput {
   execution?: {
     engine: "eliza-runtime";
     agentKey: string;
+    /**
+     * Server-only attestation that the hosting boundary resolved this turn to an
+     * authenticated Personal Shared tenant/account. Transport payload fields
+     * must never populate this grant.
+     */
+    authenticatedPersonalSharedUser?: true;
     todos?: {
       scope: { agentId: UUID; entityId: UUID };
       store: TodoStore;
@@ -116,6 +136,8 @@ export interface RunSharedAgentTurnInput {
     mobilePush?: {
       dispatch: (message: MobilePushMessage) => Promise<void>;
     };
+    /** Present only when the server has a configured, billable Cloud image authority. */
+    media?: SharedMediaGenerationPort;
   };
 }
 
@@ -249,7 +271,7 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  */
 function buildSystemPrompt(
   character: SharedAgentCharacter,
-  capabilities: { reminders: boolean; todos: boolean },
+  capabilities: { reminders: boolean; todos: boolean; media: boolean },
   recallContext?: string,
 ): string {
   const parts: string[] = [];
@@ -273,6 +295,9 @@ function buildSystemPrompt(
       (capabilities.todos
         ? "- TODO can create, list, update, complete, cancel, and delete this account's persistent checklist.\n"
         : "- Persistent todos are unavailable on this chat path.\n") +
+      (capabilities.media
+        ? "- GENERATE_MEDIA can create one organization-credit-funded image and return its public artifact URL.\n"
+        : "- Image generation is unavailable on this chat path.\n") +
       "- You have no connected accounts, calendar, calling, arbitrary messaging, purchasing, notes store, shell, filesystem, browser control, or code execution in this runtime.\n" +
       "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything unless a registered action returned a successful result for that exact effect.\n" +
       "- When an ambiguous follow-up asks you to execute a prior external action, state that the action needs Dedicated and offer the useful planning or drafting help you can provide here.",
@@ -450,6 +475,7 @@ export async function runSharedAgentTurn(
           {
             reminders: remindersEnabled,
             todos: todosEnabled,
+            media: Boolean(input.execution.media),
           },
           input.recallContext,
         ),
@@ -470,6 +496,7 @@ export async function runSharedAgentTurn(
       {
         reminders: remindersEnabled,
         todos: todosEnabled,
+        media: false,
       },
       input.recallContext,
     );
@@ -587,6 +614,7 @@ export async function runSharedAgentTurnStream(
             {
               reminders: remindersEnabled,
               todos: todosEnabled,
+              media: Boolean(input.execution.media),
             },
             input.recallContext,
           ),
@@ -605,6 +633,7 @@ export async function runSharedAgentTurnStream(
       {
         reminders: remindersEnabled,
         todos: todosEnabled,
+        media: false,
       },
       input.recallContext,
     );

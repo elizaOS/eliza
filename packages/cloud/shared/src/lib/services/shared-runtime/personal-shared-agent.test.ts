@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  isCanonicalPersonalSharedAgent,
   isPersonalSharedAgentId,
   personalDedicatedAgentApiBase,
   personalSharedAgent,
@@ -41,6 +42,20 @@ describe("personalSharedAgent", () => {
       execution_tier: "shared",
       agent_config: { character: { name: "Eliza", source: "cloud" } },
     });
+  });
+
+  test("grants USER authority only to the exact account-derived Shared identity", () => {
+    const canonical = personalSharedAgent(account);
+    expect(isCanonicalPersonalSharedAgent(canonical)).toBe(true);
+    expect(
+      isCanonicalPersonalSharedAgent({
+        ...canonical,
+        id: "personal:00000000-0000-5000-8000-000000000099",
+      }),
+    ).toBe(false);
+    expect(isCanonicalPersonalSharedAgent({ ...canonical, execution_tier: "dedicated" })).toBe(
+      false,
+    );
   });
 
   test("uses canonical production routing and only the explicit local loopback fallback", () => {

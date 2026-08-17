@@ -635,6 +635,8 @@ export const generateMediaAction = {
 		return {
 			text: responseText,
 			userFacingText: caption,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			// The media + caption already delivered as one connector message via
 			// the callback above; a planner finish pass would only add a second,
 			// redundant text message ("your image.") after the attachment. End
@@ -668,6 +670,7 @@ export const generateMediaAction = {
 				mimeType: result.mimeType ?? defaultMimeType(request.mediaType),
 				provider: result.provider,
 				prompt: request.prompt,
+				attachments: [attachment],
 			},
 			success: true,
 		};

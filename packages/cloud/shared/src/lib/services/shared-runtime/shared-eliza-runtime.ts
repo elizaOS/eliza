@@ -13,8 +13,12 @@ import {
   ChannelType,
   createMessageMemory,
   type GenerateTextParams,
+  generateMediaAction,
   type IAgentRuntime,
+  IMediaGenerationService,
   InMemoryDatabaseAdapter,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  type MediaGenerationRequest,
   ModelType,
   NOTIFICATION_STREAM,
   NotificationService,
@@ -48,6 +52,7 @@ import type {
   RunSharedAgentTurnStreamResult,
   SharedAgentTurnStreamPart,
   SharedAgentTurnUsage,
+  SharedMediaGenerationPort,
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { appendSharedTurn } from "./run-shared-agent-turn";
@@ -165,12 +170,42 @@ function sharedModelPlugin(
   };
 }
 
+function sharedMediaPlugin(media: SharedMediaGenerationPort): Plugin {
+  class SharedMediaGenerationService extends IMediaGenerationService {
+    static override readonly serviceType = ServiceType.MEDIA_GENERATION;
+
+    static override async start(runtime: IAgentRuntime): Promise<SharedMediaGenerationService> {
+      return new SharedMediaGenerationService(runtime);
+    }
+
+    override canGenerateMedia(
+      request: Pick<MediaGenerationRequest, "mediaType" | "audioKind">,
+    ): boolean | Promise<boolean> {
+      return media.canGenerateMedia(request);
+    }
+
+    override async generateMedia(request: MediaGenerationRequest) {
+      return await media.generateMedia(request);
+    }
+
+    override async stop(): Promise<void> {}
+  }
+
+  return {
+    name: "shared-cloud-media",
+    description: "Server-authenticated Cloud media generation for the Shared Workerd runtime.",
+    actions: [generateMediaAction],
+    services: [SharedMediaGenerationService],
+  };
+}
+
 function createRuntime(options: {
   agentKey: string;
   agentId?: UUID;
   adapter: InMemoryDatabaseAdapter;
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
+  mediaPlugin?: Plugin;
   reminderPlugin?: Plugin;
   todoPlugin?: Plugin;
 }): AgentRuntime {
@@ -190,6 +225,7 @@ function createRuntime(options: {
     plugins: [
       options.modelPlugin,
       webSearchEdgePlugin,
+      ...(options.mediaPlugin ? [options.mediaPlugin] : []),
       ...(options.reminderPlugin ? [options.reminderPlugin] : []),
       ...(options.todoPlugin ? [options.todoPlugin] : []),
     ],
@@ -400,6 +436,18 @@ async function executeSharedElizaRuntimeTurn(
     };
     if (onStreamChunk && params.stream === true) {
       const result = streamText(generation);
+      const text = Promise.resolve(result.text);
+      const toolCalls = Promise.resolve(result.toolCalls);
+      const finishReason = Promise.resolve(result.finishReason);
+      const totalUsage = Promise.resolve(result.totalUsage);
+      // error-policy:J5 aborting the provider stream rejects every pending AI
+      // SDK result promise. AgentRuntime observes the textStream rejection as
+      // the turn failure; these handlers prevent the sibling promises from
+      // surfacing the same cancellation reason as unhandled rejections.
+      void text.catch(() => {});
+      void toolCalls.catch(() => {});
+      void finishReason.catch(() => {});
+      void totalUsage.catch(() => {});
       const textStream = (async function* (): AsyncIterable<string> {
         if (params.streamStructured === true) {
           for await (const part of result.fullStream) {
@@ -418,32 +466,27 @@ async function executeSharedElizaRuntimeTurn(
         }
         for await (const chunk of result.textStream) yield chunk;
       })();
-      const streamUsage = Promise.resolve(result.totalUsage).then((value) => {
+      const streamUsage = totalUsage.then((value) => {
         const normalized = normalizeUsage(value);
         usage = addUsage(usage, normalized);
         return normalized;
       });
-      const streamText_ = Promise.resolve(result.text);
-      const streamToolCalls = Promise.resolve(result.toolCalls).then((calls) =>
+      const normalizedToolCalls = toolCalls.then((calls) =>
         calls.map((call) => ({
           id: call.toolCallId,
           name: call.toolName,
           arguments: call.input,
         })),
       );
-      const streamFinishReason = Promise.resolve(result.finishReason);
-      // error-policy:J5 a barge-in abandons the turn, rejecting these four
-      // result promises with the cancellation reason while no consumer is
-      // left to await them; textStream remains the observed failure channel,
-      // so mark the abandoned promises handled here.
-      for (const settled of [streamText_, streamToolCalls, streamFinishReason, streamUsage]) {
-        void settled.catch(() => {});
-      }
+      // error-policy:J5 the derived promises reject independently from their
+      // observed AI SDK sources when a provider stream is cancelled.
+      void streamUsage.catch(() => {});
+      void normalizedToolCalls.catch(() => {});
       return {
         textStream,
-        text: streamText_,
-        toolCalls: streamToolCalls,
-        finishReason: streamFinishReason,
+        text,
+        toolCalls: normalizedToolCalls,
+        finishReason,
         usage: streamUsage,
         providerMetadata: { modelName: input.model },
       } as TextStreamResult;
@@ -479,6 +522,7 @@ async function executeSharedElizaRuntimeTurn(
   const todoPlugin = input.execution?.todos
     ? createTodosEdgePlugin({ store: input.execution.todos.store })
     : undefined;
+  const mediaPlugin = input.execution?.media ? sharedMediaPlugin(input.execution.media) : undefined;
   const agentId = input.execution?.todos?.scope.agentId ?? stringToUuid(input.agentKey);
   const entityId =
     input.execution?.todos?.scope.entityId ?? stringToUuid(`${input.agentKey}:owner`);
@@ -488,12 +532,16 @@ async function executeSharedElizaRuntimeTurn(
     adapter,
     character: input.character,
     modelPlugin,
+    mediaPlugin,
     reminderPlugin,
     todoPlugin,
   });
 
   try {
     await runtime.initialize({ skipMigrations: true });
+    if (input.execution?.media) {
+      await runtime.getServiceLoadPromise(ServiceType.MEDIA_GENERATION);
+    }
     const pushDispatches: Promise<void>[] = [];
     const mobilePushDispatch = input.execution?.mobilePush?.dispatch;
     const [eventBus, notificationService] = mobilePushDispatch
@@ -526,6 +574,12 @@ async function executeSharedElizaRuntimeTurn(
     if (input.execution?.todos && !runtime.actions.some((action) => action.name === "TODO")) {
       throw new Error("Eliza Shared runtime initialized without its TODO action");
     }
+    if (
+      input.execution?.media &&
+      !runtime.actions.some((action) => action.name === generateMediaAction.name)
+    ) {
+      throw new Error("Eliza Shared runtime initialized without its GENERATE_MEDIA action");
+    }
     const roomId = sharedRuntimeConversationRoomId(input.agentKey);
     await runtime.ensureConnection({
       entityId,
@@ -534,6 +588,14 @@ async function executeSharedElizaRuntimeTurn(
       userName: "Shared user",
       source: "shared-runtime",
       type: ChannelType.DM,
+      ...(input.execution?.authenticatedPersonalSharedUser
+        ? {
+            metadata: {
+              roles: { [entityId]: "USER" },
+              roleSources: { [entityId]: "manual" },
+            },
+          }
+        : {}),
     });
     if (input.history.length > 0) {
       const historyTimestamps = projectedHistoryTimestamps(input.history);
@@ -578,7 +640,12 @@ async function executeSharedElizaRuntimeTurn(
         roomId,
         content: {
           text: input.message.trim(),
-          source: "shared-runtime",
+          // Only the server-owned execution attestation may translate a Shared
+          // turn to authenticated client-chat provenance. Connector payloads and
+          // direct runtime callers remain on the fail-closed Shared source.
+          source: input.execution?.authenticatedPersonalSharedUser
+            ? MESSAGE_SOURCE_CLIENT_CHAT
+            : "shared-runtime",
           channelType: ChannelType.DM,
           ...(input.originClientMessageId
             ? {
@@ -591,7 +658,14 @@ async function executeSharedElizaRuntimeTurn(
         },
       }),
       async (content) => {
-        if (content.text?.trim()) delivered.push(content.text.trim());
+        const text = content.text?.trim();
+        const attachmentUrls = (content.attachments ?? []).flatMap((attachment) =>
+          typeof attachment.url === "string" && attachment.url.trim()
+            ? [attachment.url.trim()]
+            : [],
+        );
+        const channelSafeContent = [text, ...attachmentUrls].filter(Boolean).join("\n");
+        if (channelSafeContent) delivered.push(channelSafeContent);
         return [];
       },
       input.abortSignal || onStreamChunk
@@ -613,7 +687,7 @@ async function executeSharedElizaRuntimeTurn(
         });
       }
     }
-    const reply = result?.responseContent?.text?.trim() || delivered.at(-1)?.trim() || "";
+    const reply = delivered.at(-1)?.trim() || result?.responseContent?.text?.trim() || "";
     // A verified action may own the response and deliver it through the
     // callback with `agentVoiced`; core then correctly reports no second model
     // response. The callback receipt is still an actual user-visible delivery.
