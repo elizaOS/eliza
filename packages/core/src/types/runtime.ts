@@ -1160,6 +1160,9 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 
 	stop(options?: RuntimeStopOptions): Promise<void>;
 
+	/** True when the embedding probe proved no registered provider can emit vectors. */
+	isEmbeddingGenerationDisabled(): boolean;
+
 	addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 
 	/**

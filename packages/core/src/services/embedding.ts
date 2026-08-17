@@ -157,13 +157,17 @@ export class EmbeddingGenerationService extends Service {
 	private async handleEmbeddingRequest(
 		payload: EmbeddingGenerationPayload,
 	): Promise<void> {
-		if (this.isDisabled || !this.batchQueue) {
+		if (
+			this.isDisabled ||
+			!this.batchQueue ||
+			this.runtime.isEmbeddingGenerationDisabled()
+		) {
 			this.runtime.logger.debug(
 				{
 					src: "plugin:basic-capabilities:service:embedding",
 					agentId: this.runtime.agentId,
 				},
-				"Service is disabled or queue missing, skipping embedding request",
+				"Service, queue, or runtime embedding provider is unavailable; skipping embedding request",
 			);
 			return;
 		}
@@ -202,6 +206,13 @@ export class EmbeddingGenerationService extends Service {
 
 	private async generateEmbedding(item: EmbeddingQueueItem): Promise<void> {
 		const { memory } = item;
+		// The provider can become unavailable after this item was queued (for
+		// example, a deferred dimension re-probe runs before the next drain). Treat
+		// the explicit runtime latch as a successful degraded no-op so the generic
+		// queue does not retry a capability absence already proven by the probe.
+		if (this.runtime.isEmbeddingGenerationDisabled()) {
+			return;
+		}
 
 		const memoryContent = memory.content;
 		// Trim-check to match the embedding model contract: backends reject
@@ -330,6 +341,10 @@ export class EmbeddingGenerationService extends Service {
 	private async generateEmbeddingsBatch(
 		items: EmbeddingQueueItem[],
 	): Promise<BatchItemOutcome<EmbeddingQueueItem>[]> {
+		if (this.runtime.isEmbeddingGenerationDisabled()) {
+			return items.map((item) => ({ item, success: true, retryCount: 0 }));
+		}
+
 		// Partition: only items that actually need an embed go in the batch call.
 		const toEmbed: { item: EmbeddingQueueItem; text: string }[] = [];
 		const skipped: EmbeddingQueueItem[] = [];

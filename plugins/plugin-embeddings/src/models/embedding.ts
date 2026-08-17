@@ -18,6 +18,7 @@ import {
   getEmbeddingFallbackBaseURL,
   getEmbeddingFallbackModel,
   getEmbeddingModel,
+  getEmbeddingPooling,
   getEndpointAuthHeader,
   getSetting,
 } from "../utils/config";
@@ -67,9 +68,14 @@ function extractSignal(params: TextEmbeddingParams | string | null): AbortSignal
  * we omit the `dimensions` request field entirely so the endpoint returns its
  * model-native width (some servers reject an unsupported `dimensions` value).
  */
-function hasExplicitDimensions(runtime: IAgentRuntime): boolean {
+function shouldRequestDimensions(runtime: IAgentRuntime, model: string): boolean {
   const value = getSetting(runtime, "EMBEDDING_DIMENSIONS");
-  return typeof value === "string" && value.trim().length > 0;
+  if (typeof value !== "string" || value.trim().length === 0) return false;
+  // Workers AI models have a fixed native width. Its documented
+  // OpenAI-compatible request selects the @cf model but does not advertise a
+  // `dimensions` override; keep the configured width for response validation
+  // without sending an unnecessary provider-specific field.
+  return !model.trim().startsWith("@cf/");
 }
 
 function requireBaseURL(runtime: IAgentRuntime): string {
@@ -183,6 +189,7 @@ async function requestEmbeddingsFromEndpoint(
   signal?: AbortSignal
 ): Promise<number[][]> {
   const url = `${endpoint.baseURL}/embeddings`;
+  const pooling = getEmbeddingPooling(runtime);
 
   logger.debug(`[Embeddings] POST ${url} model=${endpoint.model} role=${endpoint.role}`);
 
@@ -196,7 +203,10 @@ async function requestEmbeddingsFromEndpoint(
     body: JSON.stringify({
       model: endpoint.model,
       input,
-      ...(hasExplicitDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
+      ...(shouldRequestDimensions(runtime, endpoint.model)
+        ? { dimensions: embeddingDimension }
+        : {}),
+      ...(pooling ? { pooling } : {}),
     }),
     ...(signal ? { signal } : {}),
   });

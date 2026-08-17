@@ -1,6 +1,17 @@
 // Provides shared support logic for the Code example.
 import "dotenv/config";
-import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
+import {
+  AgentRuntime,
+  type Character,
+  logger,
+  type Plugin,
+} from "@elizaos/core";
+import {
+  CODING_EMBEDDING_CONTRACT,
+  codingEmbeddingUnavailablePlugin,
+  configureCodingEmbeddingEnv,
+  withoutEmbeddingModels,
+} from "./coding-embedding-config.js";
 import {
   applyOpencodeProviderEnv,
   resolveModelProvider,
@@ -97,10 +108,34 @@ export async function initializeAgent(
     throw new Error("OPENAI_API_KEY is required (ELIZA_CODE_PROVIDER=openai).");
   }
 
-  const providerPlugin =
+  const embeddingConfiguration = configureCodingEmbeddingEnv(process.env);
+
+  const rawProviderPlugin =
     provider === "anthropic"
       ? (await import("@elizaos/plugin-anthropic")).default
       : (await import("@elizaos/plugin-openai")).default;
+  const providerPlugin = withoutEmbeddingModels(rawProviderPlugin);
+
+  const embeddingPlugin = embeddingConfiguration.enabled
+    ? (await import("@elizaos/plugin-embeddings")).default
+    : codingEmbeddingUnavailablePlugin;
+  if (embeddingConfiguration.enabled) {
+    logger.info(
+      `[ElizaCode] Semantic embeddings enabled: model=${CODING_EMBEDDING_CONTRACT.model} ` +
+        `dimensions=${CODING_EMBEDDING_CONTRACT.dimensions} ` +
+        `pooling=${CODING_EMBEDDING_CONTRACT.pooling}`,
+    );
+  } else {
+    logger.warn(
+      {
+        reason: embeddingConfiguration.reason,
+        ...(embeddingConfiguration.reason === "incompatible_contract"
+          ? { setting: embeddingConfiguration.setting }
+          : {}),
+      },
+      "[ElizaCode] Semantic embeddings disabled; the chat-provider embedding slot is suppressed so fabricated/hash vectors cannot enter memory",
+    );
+  }
 
   if (!process.env.CODING_TOOLS_WORKSPACE_ROOTS) {
     process.env.CODING_TOOLS_WORKSPACE_ROOTS = process.cwd();
@@ -120,7 +155,12 @@ export async function initializeAgent(
       import("@elizaos/plugin-coding-tools"),
     ]);
 
-  const plugins: Plugin[] = [sqlPlugin, providerPlugin, codingToolsPlugin];
+  const plugins: Plugin[] = [
+    sqlPlugin,
+    providerPlugin,
+    embeddingPlugin,
+    codingToolsPlugin,
+  ];
 
   // The full agent also loads mcp + goals + (optionally) the orchestrator. A
   // headless coding sub-agent (codingOnly) skips them — it just reads/writes/runs.

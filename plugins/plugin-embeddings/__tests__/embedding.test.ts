@@ -203,6 +203,38 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     expect(body.dimensions).toBe(512);
   });
 
+  it("sends the canonical Workers AI BGE model, width, and explicit CLS pooling", async () => {
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(384)]));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await handleTextEmbedding(
+      createRuntime({
+        EMBEDDING_MODEL: "@cf/baai/bge-small-en-v1.5",
+        EMBEDDING_DIMENSIONS: "384",
+        EMBEDDING_POOLING: "cls",
+      }),
+      { text: "semantic contract" }
+    );
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body).toMatchObject({
+      model: "@cf/baai/bge-small-en-v1.5",
+      input: "semantic contract",
+      pooling: "cls",
+    });
+    expect(body).not.toHaveProperty("dimensions");
+  });
+
+  it("omits pooling for providers without an explicit pooling contract", async () => {
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(1536)]));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await handleTextEmbedding(createRuntime(), { text: "generic provider" });
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body).not.toHaveProperty("pooling");
+  });
+
   it("throws on a dimension mismatch (never returns the wrong-width vector)", async () => {
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(768)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);

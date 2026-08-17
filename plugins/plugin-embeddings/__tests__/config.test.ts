@@ -10,6 +10,7 @@ import {
   getEmbeddingFallbackBaseURL,
   getEmbeddingFallbackModel,
   getEmbeddingModel,
+  getEmbeddingPooling,
   hasEmbeddingConfig,
 } from "../src/utils/config";
 
@@ -78,6 +79,15 @@ describe("plugin-embeddings config", () => {
   it("defaults dimensions to 1536", () => {
     expect(getEmbeddingDimensions(makeRuntime())).toBe(1536);
     expect(getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "768" }))).toBe(768);
+  });
+
+  it("resolves only an explicit mean or CLS pooling contract", () => {
+    expect(getEmbeddingPooling(makeRuntime())).toBeUndefined();
+    expect(getEmbeddingPooling(makeRuntime({ EMBEDDING_POOLING: " CLS " }))).toBe("cls");
+    expect(getEmbeddingPooling(makeRuntime({ EMBEDDING_POOLING: "mean" }))).toBe("mean");
+    expect(() => getEmbeddingPooling(makeRuntime({ EMBEDDING_POOLING: "last" }))).toThrow(
+      /EMBEDDING_POOLING.*mean.*cls/i
+    );
   });
 
   it("hasEmbeddingConfig is true when EITHER url or key is set", () => {
