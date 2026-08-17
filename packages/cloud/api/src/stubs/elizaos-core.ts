@@ -923,6 +923,61 @@ export async function readRequestBodyBuffer(
   return body;
 }
 
+/**
+ * Worker-safe port of core's `readResponseWithLimit`: reads a response body
+ * under a hard byte cap, cancelling the stream as soon as the running total
+ * exceeds maxBytes so a missing or lying Content-Length can never force an
+ * unbounded allocation.
+ */
+export async function readResponseWithLimit(
+  res: Response,
+  maxBytes: number,
+): Promise<Buffer> {
+  const body = res.body;
+  if (!body) {
+    const fallback = Buffer.from(await res.arrayBuffer());
+    if (fallback.length > maxBytes) {
+      throw new Error(
+        `Failed to fetch media from ${res.url || "response"}: payload exceeds maxBytes ${maxBytes}`,
+      );
+    }
+    return fallback;
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value.length) {
+        total += value.length;
+        if (total > maxBytes) {
+          try {
+            await reader.cancel();
+          } catch {
+            // error-policy:J6 cancellation is best-effort after the limit failure
+          }
+          throw new Error(
+            `Failed to fetch media from ${res.url || "response"}: payload exceeds maxBytes ${maxBytes}`,
+          );
+        }
+        chunks.push(value);
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // error-policy:J6 stream lock release is best-effort teardown
+    }
+  }
+  return Buffer.concat(
+    chunks.map((chunk) => Buffer.from(chunk)),
+    total,
+  );
+}
+
 export async function readRequestBody(
   request: Request,
   options: { maxBytes?: number; encoding?: BufferEncoding } = {},
