@@ -100,6 +100,7 @@ import { getFusedWakeManager } from "./native/fused-wake";
 import { getGatewayDiscovery } from "./native/gateway";
 import { getGpuWindowManager } from "./native/gpu-window";
 import { getLocationManager } from "./native/location";
+import { writeClipboardText } from "./native/mac-window-effects";
 import { getMusicPlayerManager } from "./native/music-player";
 import { getPermissionManager } from "./native/permissions";
 import type { AllPermissionsState } from "./native/permissions-shared";
@@ -781,6 +782,9 @@ export function buildBunRpcHandlers({
     desktopSetBottomBarSize: async (
       params: Parameters<typeof desktop.setBottomBarSize>[0],
     ) => desktop.setBottomBarSize(params),
+    desktopSetBottomBarInteractiveSize: async (
+      params: Parameters<typeof desktop.setBottomBarInteractiveSize>[0],
+    ) => desktop.setBottomBarInteractiveSize(params),
     desktopMinimizeWindow: async () => desktop.minimizeWindow(),
     desktopUnminimizeWindow: async () => desktop.unminimizeWindow(),
     desktopMaximizeWindow: async () => desktop.maximizeWindow(),
@@ -991,7 +995,15 @@ export function buildBunRpcHandlers({
     // ---- Desktop: Clipboard ----
     desktopWriteToClipboard: async (
       params: Parameters<typeof desktop.writeToClipboard>[0],
-    ) => desktop.writeToClipboard(params),
+    ) => {
+      if (process.platform === "darwin" && typeof params.text === "string") {
+        if (!writeClipboardText(params.text)) {
+          throw new Error("macOS system pasteboard rejected the text write");
+        }
+        return;
+      }
+      await desktop.writeToClipboard(params);
+    },
     desktopReadFromClipboard: async () => desktop.readFromClipboard(),
     desktopClearClipboard: async () => desktop.clearClipboard(),
     desktopClipboardAvailableFormats: async () =>

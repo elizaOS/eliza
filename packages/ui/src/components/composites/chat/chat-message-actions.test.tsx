@@ -22,6 +22,25 @@ describe("ChatMessageActions copy", () => {
     expect(onCopy).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps glass controls compact but gives them usable pointer hit targets", () => {
+    render(
+      <ChatMessageActions
+        appearance="glass-row"
+        canReply
+        onReply={vi.fn()}
+        onCopy={vi.fn()}
+      />,
+    );
+
+    for (const name of ["Reply", "Copy"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button.className).toContain("h-7");
+      expect(button.className).toContain("w-7");
+      expect(button.className).toContain("pointer-coarse:h-11");
+      expect(button.className).toContain("pointer-coarse:w-11");
+    }
+  });
+
   it("reflects the copied state in the button label", () => {
     render(
       <ChatMessageActions appearance="glass-row" copied onCopy={vi.fn()} />,

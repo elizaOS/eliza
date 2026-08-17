@@ -69,6 +69,12 @@ export interface PullGestureOptions {
   /** Cancel touch pointerdown's compatibility mouse/click sequence. Use on
    *  gesture-owned controls whose tap callback moves the hit target. */
   preventTouchCompatibilityEvents?: boolean;
+  /**
+   * Coordinate space used to integrate pointer travel. Detached native windows
+   * resize and move underneath a held pointer, so their client coordinates are
+   * discontinuous; screen coordinates remain stable across that frame change.
+   */
+  coordinateSpace?: "client" | "screen";
   /** Minimum vertical travel (px) to count as a pull. Default 56. */
   distanceThreshold?: number;
   /** Minimum vertical speed (px/ms) to count as a flick. Default 0.5. */
@@ -117,6 +123,7 @@ export function usePullGesture(
     onCancel,
     swipeEnabled = true,
     preventTouchCompatibilityEvents = false,
+    coordinateSpace = "client",
     distanceThreshold = DEFAULT_PULL_DISTANCE,
     velocityThreshold = DEFAULT_PULL_VELOCITY,
     distanceThresholdX = DEFAULT_SWIPE_DISTANCE,
@@ -175,6 +182,13 @@ export function usePullGesture(
       ? event.timeStamp
       : performance.now();
   }, []);
+  const eventPoint = React.useCallback(
+    (event: React.PointerEvent): { x: number; y: number } =>
+      coordinateSpace === "screen"
+        ? { x: event.screenX, y: event.screenY }
+        : { x: event.clientX, y: event.clientY },
+    [coordinateSpace],
+  );
 
   const onPointerDown = React.useCallback(
     (event: React.PointerEvent) => {
@@ -191,6 +205,7 @@ export function usePullGesture(
       if (preventTouchCompatibilityEvents && event.pointerType === "touch") {
         event.preventDefault();
       }
+      const point = eventPoint(event);
       // A press that reaches here is the primary pointer (a secondary touch
       // finger returned above), so it is the ONLY pointer down and it begins a
       // fresh gesture. Any `start` still held is therefore stale and must be
@@ -206,13 +221,13 @@ export function usePullGesture(
       // pointerId 1, so it matched the dead `start` and the fresh press was
       // rejected outright — no seed, no capture, drives nothing.
       start.current = {
-        x: event.clientX,
-        y: event.clientY,
+        x: point.x,
+        y: point.y,
         t: eventTime(event),
         pointerId: event.pointerId,
       };
       axis.current = null;
-      last.current = { x: event.clientX, y: event.clientY, t: start.current.t };
+      last.current = { x: point.x, y: point.y, t: start.current.t };
       previous.current = null;
       onStart?.();
       // Pure horizontal swipe surfaces defer capture until axis commit so native
@@ -233,6 +248,7 @@ export function usePullGesture(
       onStart,
       eventTime,
       preventTouchCompatibilityEvents,
+      eventPoint,
     ],
   );
 
@@ -240,14 +256,15 @@ export function usePullGesture(
     (event: React.PointerEvent) => {
       const s = start.current;
       if (!s || s.pointerId !== event.pointerId) return;
+      const point = eventPoint(event);
       previous.current = last.current;
       last.current = {
-        x: event.clientX,
-        y: event.clientY,
+        x: point.x,
+        y: point.y,
         t: eventTime(event),
       };
-      const dy = s.y - event.clientY; // up positive
-      const dx = s.x - event.clientX; // left positive
+      const dy = s.y - point.y; // up positive
+      const dx = s.x - point.x; // left positive
 
       if (axis.current === null) {
         // Same widened cone as resolveSwipe (#10715): when this binding can
@@ -300,6 +317,7 @@ export function usePullGesture(
       scheduleDrag,
       drag,
       eventTime,
+      eventPoint,
     ],
   );
 
@@ -307,6 +325,7 @@ export function usePullGesture(
     (event: React.PointerEvent) => {
       const s = start.current;
       if (!s || s.pointerId !== event.pointerId) return;
+      const point = eventPoint(event);
       // Apply the latest coalesced drag before deciding the release. Consumers
       // read that live value to choose the nearest detent, and the canceled rAF
       // cannot replay stale motion after the settle below.
@@ -319,8 +338,8 @@ export function usePullGesture(
       last.current = null;
       previous.current = null;
 
-      const eventDeltaUp = s.y - event.clientY; // up positive
-      const eventDeltaLeft = s.x - event.clientX; // left positive
+      const eventDeltaUp = s.y - point.y; // up positive
+      const eventDeltaLeft = s.x - point.x; // left positive
       const lastDeltaUp = lastSample ? s.y - lastSample.y : eventDeltaUp;
       const lastDeltaLeft = lastSample ? s.x - lastSample.x : eventDeltaLeft;
       const eventTravel = Math.hypot(eventDeltaLeft, eventDeltaUp);
@@ -450,6 +469,7 @@ export function usePullGesture(
       distanceThresholdX,
       velocityThresholdX,
       eventTime,
+      eventPoint,
     ],
   );
 

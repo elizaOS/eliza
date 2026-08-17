@@ -1,8 +1,8 @@
 /**
  * Loads the native macOS bridge used by the Electrobun host for window effects,
- * security-scoped files, onboarding notifications, and permission APIs. Calls
- * execute in the signed app process so macOS binds protected resources to the
- * same bundle identity shown to the user.
+ * system services, security-scoped files, onboarding notifications, and
+ * permission APIs. Calls execute in the signed app process so macOS binds
+ * protected resources to the same bundle identity shown to the user.
  */
 import { CString, dlopen, FFIType, type Pointer, ptr } from "bun:ffi";
 import { join } from "node:path";
@@ -15,9 +15,16 @@ import { resolveNativeLibraryCandidate } from "../../../../src/platform/native-l
  * so we declare the expected signature explicitly.
  */
 type MacEffectsSymbols = {
+  elizaClipboardWriteText(value: Pointer): boolean;
+  configureWindowTitlebar(ptr: Pointer): boolean;
   enableWindowVibrancy(ptr: Pointer): boolean;
   setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
   setWindowTrafficLightsPosition(ptr: Pointer, x: number, y: number): boolean;
+  setWindowInteractiveMaterialSize(
+    ptr: Pointer,
+    width: number,
+    height: number,
+  ): boolean;
   setNativeWindowDragRegion(ptr: Pointer, x: number, height: number): boolean;
   disableWindowBackForwardNavigationGestures(ptr: Pointer): boolean;
   orderOutWindow(ptr: Pointer): boolean;
@@ -75,12 +82,21 @@ function loadLib(): MacEffectsLib {
     // Cast to MacEffectsLib: bun:ffi does not infer symbol signatures from
     // FFIType descriptors at the TypeScript level.
     return dlopen(dylibPath, {
+      elizaClipboardWriteText: {
+        args: [FFIType.ptr],
+        returns: FFIType.bool,
+      },
+      configureWindowTitlebar: { args: [FFIType.ptr], returns: FFIType.bool },
       enableWindowVibrancy: { args: [FFIType.ptr], returns: FFIType.bool },
       setWindowShadowEnabled: {
         args: [FFIType.ptr, FFIType.bool],
         returns: FFIType.bool,
       },
       setWindowTrafficLightsPosition: {
+        args: [FFIType.ptr, FFIType.f64, FFIType.f64],
+        returns: FFIType.bool,
+      },
+      setWindowInteractiveMaterialSize: {
         args: [FFIType.ptr, FFIType.f64, FFIType.f64],
         returns: FFIType.bool,
       },
@@ -167,6 +183,23 @@ export function enableVibrancy(ptr: Pointer): boolean {
   return getLib()?.symbols.enableWindowVibrancy(ptr) ?? false;
 }
 
+/** Write text through the signed host so AppKit owns the system pasteboard. */
+export function writeClipboardText(value: string): boolean {
+  const lib = getLib();
+  if (!lib) return false;
+  const buffer = cStringBuffer(value);
+  return lib.symbols.elizaClipboardWriteText(ptr(buffer));
+}
+
+/**
+ * Merge the native macOS titlebar into the application surface while keeping
+ * the real traffic-light controls. Electrobun supplies FullSizeContentView;
+ * this pins AppKit's transparent/hidden-title half of that contract.
+ */
+export function configureTitlebar(ptr: Pointer): boolean {
+  return getLib()?.symbols.configureWindowTitlebar(ptr) ?? false;
+}
+
 export function setWindowShadow(ptr: Pointer, enabled: boolean): boolean {
   return getLib()?.symbols.setWindowShadowEnabled(ptr, enabled) ?? false;
 }
@@ -177,6 +210,21 @@ export function setTrafficLightsPosition(
   y: number,
 ): boolean {
   return getLib()?.symbols.setWindowTrafficLightsPosition(ptr, x, y) ?? false;
+}
+
+/**
+ * Limit a transparent native window's mouse ownership to its bottom-centered
+ * rendered material without shrinking the stable animation envelope.
+ */
+export function setWindowInteractiveMaterialSize(
+  ptr: Pointer,
+  width: number,
+  height: number,
+): boolean {
+  return (
+    getLib()?.symbols.setWindowInteractiveMaterialSize(ptr, width, height) ??
+    false
+  );
 }
 
 /**

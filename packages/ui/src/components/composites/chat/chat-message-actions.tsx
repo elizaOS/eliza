@@ -100,9 +100,9 @@ function MessageActionButton({
         onClick();
       }}
       className={cn(
-        "keyboard-focus-emphasis bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:text-white active:scale-95 max-md:h-8 max-md:w-8 pointer-coarse:h-8 pointer-coarse:w-8",
+        "keyboard-focus-emphasis bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:text-white active:scale-95 max-md:h-8 max-md:w-8 pointer-coarse:h-11 pointer-coarse:w-11",
         bare
-          ? "h-5 w-5 rounded-none hover:bg-transparent active:bg-transparent"
+          ? "h-7 w-7 rounded-none hover:bg-transparent active:bg-transparent"
           : "h-6 w-6 rounded-lg transition-[background-color,color,transform] hover:bg-white/10 active:bg-white/10",
         active &&
           (bare ? "text-white" : "bg-white/10 text-white hover:bg-white/15"),

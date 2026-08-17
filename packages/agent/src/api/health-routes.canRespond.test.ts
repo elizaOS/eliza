@@ -11,11 +11,22 @@ import { computeCanRespond } from "./health-routes";
  * stuck the chat composer on "waking up").
  */
 function makeRuntime(opts: { hasTextHandler: boolean }): AgentRuntime {
+  const registrations = opts.hasTextHandler
+    ? [
+        {
+          modelType: ModelType.TEXT_LARGE,
+          provider: "test-provider",
+          priority: 0,
+          registrationOrder: 1,
+        },
+      ]
+    : [];
   return {
     getModel: (key: string) =>
       opts.hasTextHandler && key === ModelType.TEXT_LARGE
         ? () => undefined
         : undefined,
+    getModelRegistrations: () => registrations,
   } as unknown as AgentRuntime;
 }
 
@@ -40,5 +51,45 @@ describe("computeCanRespond", () => {
     expect(
       computeCanRespond(makeRuntime({ hasTextHandler: true }), "running"),
     ).toBe(true);
+  });
+
+  it("is false when the only text registration is a routing proxy", () => {
+    const runtime = {
+      getModel: () => () => undefined,
+      getModelRegistrations: () => [
+        {
+          modelType: ModelType.TEXT_SMALL,
+          provider: "test-router",
+          priority: Number.MAX_SAFE_INTEGER,
+          registrationOrder: 1,
+          metadata: { routingProxy: true },
+        },
+      ],
+    } as unknown as AgentRuntime;
+
+    expect(computeCanRespond(runtime, "running")).toBe(false);
+  });
+
+  it("is true when a routing proxy has a concrete text candidate", () => {
+    const runtime = {
+      getModel: () => () => undefined,
+      getModelRegistrations: () => [
+        {
+          modelType: ModelType.TEXT_SMALL,
+          provider: "test-router",
+          priority: Number.MAX_SAFE_INTEGER,
+          registrationOrder: 1,
+          metadata: { routingProxy: true },
+        },
+        {
+          modelType: ModelType.TEXT_SMALL,
+          provider: "test-provider",
+          priority: 0,
+          registrationOrder: 2,
+        },
+      ],
+    } as unknown as AgentRuntime;
+
+    expect(computeCanRespond(runtime, "running")).toBe(true);
   });
 });

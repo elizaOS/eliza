@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type BoundsStore,
   buildAppWindowRendererUrl,
+  buildSurfaceWindowRendererUrl,
   type CreateManagedWindowOptions,
   type ManagedWindowFrame,
   type ManagedWindowLike,
@@ -74,10 +75,12 @@ function createFixture(
   options: {
     boundsStore?: BoundsStore;
     resolveRendererUrl?: () => Promise<string>;
+    titleBarStyle?: CreateManagedWindowOptions["titleBarStyle"];
   } = {},
 ) {
   const created: FakeManagedWindow[] = [];
   const registryChanged = vi.fn();
+  const dashboardVisibilityChanged = vi.fn();
   const focused = vi.fn();
   const wired = vi.fn();
   const injected = vi.fn();
@@ -95,9 +98,19 @@ function createFixture(
     injectApiBase: injected,
     onWindowFocused: focused,
     onRegistryChanged: registryChanged,
+    onDashboardVisibilityChanged: dashboardVisibilityChanged,
+    titleBarStyle: options.titleBarStyle,
     boundsStore: options.boundsStore,
   });
-  return { created, focused, injected, manager, registryChanged, wired };
+  return {
+    created,
+    dashboardVisibilityChanged,
+    focused,
+    injected,
+    manager,
+    registryChanged,
+    wired,
+  };
 }
 
 describe("SurfaceWindowManager app windows", () => {
@@ -119,6 +132,70 @@ describe("SurfaceWindowManager app windows", () => {
     ).toBe(
       "http://127.0.0.1:5173/?boot=1&appWindow=1#/apps/remote-ledger?mode=edit#row-7",
     );
+  });
+
+  it("gives the full Workspace exclusive ownership of chat until it closes", async () => {
+    expect(
+      buildSurfaceWindowRendererUrl(
+        "http://127.0.0.1:5173/?boot=1#old",
+        "dashboard",
+      ),
+    ).toBe("http://127.0.0.1:5173/?shellMode=full");
+
+    const fixture = createFixture();
+    const first = await fixture.manager.openSurfaceWindow("dashboard");
+    const second = await fixture.manager.openSurfaceWindow("dashboard");
+
+    expect(second).toEqual(first);
+    expect(fixture.created).toHaveLength(1);
+    expect(fixture.created[0]?.options).toMatchObject({
+      title: "elizaOS Workspace",
+      url: "http://127.0.0.1:5173/?shellMode=full",
+      transparent: false,
+      frame: { x: 120, y: 80, width: 1440, height: 960 },
+    });
+    expect(fixture.created[0]?.focus).toHaveBeenCalledTimes(1);
+    expect(fixture.dashboardVisibilityChanged).toHaveBeenCalledTimes(1);
+    expect(fixture.dashboardVisibilityChanged).toHaveBeenLastCalledWith(true);
+
+    fixture.created[0]?.emit("close");
+
+    expect(fixture.dashboardVisibilityChanged).toHaveBeenCalledTimes(2);
+    expect(fixture.dashboardVisibilityChanged).toHaveBeenLastCalledWith(false);
+    expect(fixture.manager.listWindows("dashboard")).toEqual([]);
+  });
+
+  it("lets macOS managed windows merge native chrome into the app surface", async () => {
+    const fixture = createFixture({ titleBarStyle: "hiddenInset" });
+
+    await fixture.manager.openSurfaceWindow("dashboard");
+    await fixture.manager.openSettingsWindow("voice");
+
+    expect(
+      fixture.created.map((window) => window.options.titleBarStyle),
+    ).toEqual(["hiddenInset", "hiddenInset"]);
+    expect(fixture.created.every((window) => !window.options.transparent)).toBe(
+      true,
+    );
+  });
+
+  it("restores the detached chat surface if Workspace creation fails", async () => {
+    const dashboardVisibilityChanged = vi.fn();
+    const manager = new SurfaceWindowManager({
+      createWindow: () => {
+        throw new Error("native window creation failed");
+      },
+      resolveRendererUrl: async () => "http://127.0.0.1:5173/",
+      readPreload: () => "// preload",
+      wireRpc: vi.fn(),
+      injectApiBase: vi.fn(),
+      onDashboardVisibilityChanged: dashboardVisibilityChanged,
+    });
+
+    await expect(manager.openSurfaceWindow("dashboard")).rejects.toThrow(
+      "native window creation failed",
+    );
+    expect(dashboardVisibilityChanged.mock.calls).toEqual([[true], [false]]);
   });
 
   it("opens settings as a singleton, focuses the existing window, and encodes tab hints", async () => {

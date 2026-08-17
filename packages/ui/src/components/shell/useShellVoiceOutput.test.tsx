@@ -14,6 +14,11 @@ const hoisted = vi.hoisted(() => ({
   voiceChatOptions: null as Record<string, unknown> | null,
   cfg: {
     isSpeaking: false,
+    ttsError: null as {
+      engine: "local-inference";
+      message: string;
+      atMs: number;
+    } | null,
     voiceBootstrapTick: 1,
     // Full voice config the useVoiceConfig mock returns; tests vary `asr` to
     // check the hook surfaces the resolved ASR provider for the capture path.
@@ -42,6 +47,7 @@ vi.mock("../../hooks/useVoiceChat", () => ({
       speak: hoisted.speak,
       voiceUnlockedGeneration: 0,
       assistantTtsQuality: "standard",
+      ttsError: hoisted.cfg.ttsError,
     };
   },
 }));
@@ -105,6 +111,7 @@ beforeEach(() => {
   hoisted.speak.mockClear();
   hoisted.stopSpeaking.mockClear();
   hoisted.cfg.isSpeaking = false;
+  hoisted.cfg.ttsError = null;
   hoisted.cfg.voiceBootstrapTick = 1;
   hoisted.cfg.voiceConfig = { provider: "local-inference" };
   hoisted.voiceChatOptions = null;
@@ -113,6 +120,18 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("useShellVoiceOutput", () => {
+  it("surfaces the configured TTS failure to the shell", () => {
+    hoisted.cfg.ttsError = {
+      engine: "local-inference",
+      message: "TTS request failed with 502",
+      atMs: 1,
+    };
+
+    const { result } = render(BASE);
+
+    expect(result.current.ttsError).toEqual(hoisted.cfg.ttsError);
+  });
+
   it("routes manual shell playback through the realtime Cartesia gateway", () => {
     const { result } = render({ ...BASE, realtimeVoiceEnabled: true });
 

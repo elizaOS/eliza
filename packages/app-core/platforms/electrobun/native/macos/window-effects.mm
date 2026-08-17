@@ -1,7 +1,8 @@
 /**
- * Implements the native macOS window, permission, and display bridge used by
- * the Electrobun host process. Permission requests report configuration errors
- * separately from user decisions so the renderer never presents a false denial.
+ * Implements the native macOS window, system-service, permission, and display
+ * bridge used by the Electrobun host process. Permission requests report
+ * configuration errors separately from user decisions so the renderer never
+ * presents a false denial.
  */
 
 #import <Cocoa/Cocoa.h>
@@ -12,6 +13,7 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreLocation/CoreLocation.h>
 #import <EventKit/EventKit.h>
+#import <objc/runtime.h>
 #import <UserNotifications/UserNotifications.h>
 #include <atomic>
 #include <math.h>
@@ -30,6 +32,119 @@ static NSString *const kElectrobunNativeDragRightEdgeIdentifier =
 	@"ElectrobunNativeDragRightEdge";
 static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	@"ElizaInactiveTrafficLightsOverlay";
+
+/**
+ * Keeps a transparent overlay window mouse-transparent outside the renderer's
+ * visible material while preserving an active drag that began inside it. A
+ * global monitor is required because an ignoresMouseEvents window stops
+ * receiving its own mouse-move events; the paired local monitor owns moves
+ * while the pointer is back over the interactive material.
+ */
+@interface ElizaWindowInteractiveMaterialController : NSObject
+@property(nonatomic, weak) NSWindow *window;
+@property(nonatomic) NSSize materialSize;
+@property(nonatomic) BOOL interactionPinned;
+@property(nonatomic, strong) id globalMonitor;
+@property(nonatomic, strong) id localMonitor;
+- (instancetype)initWithWindow:(NSWindow *)window;
+- (void)handleEvent:(NSEvent *)event;
+- (void)setMaterialWidth:(CGFloat)width height:(CGFloat)height;
+@end
+
+@implementation ElizaWindowInteractiveMaterialController
+
+- (instancetype)initWithWindow:(NSWindow *)window {
+	self = [super init];
+	if (self == nil) {
+		return nil;
+	}
+	_window = window;
+	_materialSize = window.contentView.bounds.size;
+	__weak ElizaWindowInteractiveMaterialController *weakSelf = self;
+	NSEventMask mask = NSEventMaskMouseMoved | NSEventMaskLeftMouseDown |
+		NSEventMaskLeftMouseUp | NSEventMaskLeftMouseDragged |
+		NSEventMaskRightMouseDown | NSEventMaskRightMouseUp |
+		NSEventMaskRightMouseDragged | NSEventMaskOtherMouseDown |
+		NSEventMaskOtherMouseUp | NSEventMaskOtherMouseDragged;
+	_globalMonitor = [NSEvent addGlobalMonitorForEventsMatchingMask:mask
+										 handler:^(NSEvent *event) {
+		[weakSelf handleEvent:event];
+	}];
+	_localMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:mask
+									 handler:^NSEvent *(NSEvent *event) {
+		[weakSelf handleEvent:event];
+		return event;
+	}];
+	return self;
+}
+
+- (void)dealloc {
+	if (_globalMonitor != nil) {
+		[NSEvent removeMonitor:_globalMonitor];
+	}
+	if (_localMonitor != nil) {
+		[NSEvent removeMonitor:_localMonitor];
+	}
+}
+
+- (BOOL)containsScreenPoint:(NSPoint)screenPoint {
+	NSWindow *window = self.window;
+	NSView *contentView = window.contentView;
+	if (window == nil || contentView == nil) {
+		return NO;
+	}
+	NSPoint windowPoint = [window convertPointFromScreen:screenPoint];
+	NSPoint contentPoint = [contentView convertPoint:windowPoint fromView:nil];
+	NSRect bounds = contentView.bounds;
+	CGFloat width = MIN(MAX(0.0, self.materialSize.width), bounds.size.width);
+	CGFloat height = MIN(MAX(0.0, self.materialSize.height), bounds.size.height);
+	NSRect materialRect = NSMakeRect(
+		NSMidX(bounds) - width / 2.0,
+		[contentView isFlipped] ? NSMaxY(bounds) - height : NSMinY(bounds),
+		width,
+		height);
+	return NSPointInRect(contentPoint, materialRect);
+}
+
+- (void)applyForScreenPoint:(NSPoint)screenPoint {
+	NSWindow *window = self.window;
+	if (window == nil) {
+		return;
+	}
+	BOOL interactive = self.interactionPinned || [self containsScreenPoint:screenPoint];
+	if (window.ignoresMouseEvents == interactive) {
+		[window setIgnoresMouseEvents:!interactive];
+	}
+}
+
+- (void)handleEvent:(NSEvent *)event {
+	BOOL inside = [self containsScreenPoint:[NSEvent mouseLocation]];
+	switch (event.type) {
+		case NSEventTypeLeftMouseDown:
+		case NSEventTypeRightMouseDown:
+		case NSEventTypeOtherMouseDown:
+			self.interactionPinned = inside;
+			break;
+		case NSEventTypeLeftMouseUp:
+		case NSEventTypeRightMouseUp:
+		case NSEventTypeOtherMouseUp:
+			self.interactionPinned = NO;
+			break;
+		default:
+			break;
+	}
+	[self applyForScreenPoint:[NSEvent mouseLocation]];
+}
+
+- (void)setMaterialWidth:(CGFloat)width height:(CGFloat)height {
+	self.materialSize = NSMakeSize(width, height);
+	[self applyForScreenPoint:[NSEvent mouseLocation]];
+}
+
+@end
+
+static const void *kElizaWindowInteractiveMaterialControllerKey =
+	&kElizaWindowInteractiveMaterialControllerKey;
 
 static NSMutableArray<NSURL *> *elizaSecurityScopedUrls(void) {
 	static NSMutableArray<NSURL *> *urls = nil;
@@ -63,6 +178,26 @@ static NSString *elizaNSStringFromCString(const char *value) {
 	}
 	NSString *string = [NSString stringWithUTF8String:value];
 	return string == nil ? @"" : string;
+}
+
+extern "C" bool elizaClipboardWriteText(const char *value) {
+	if (value == nullptr) {
+		return false;
+	}
+
+	__block BOOL success = NO;
+	void (^writePasteboard)(void) = ^{
+		NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+		[pasteboard clearContents];
+		success = [pasteboard setString:elizaNSStringFromCString(value)
+								  forType:NSPasteboardTypeString];
+	};
+	if ([NSThread isMainThread]) {
+		writePasteboard();
+	} else {
+		dispatch_sync(dispatch_get_main_queue(), writePasteboard);
+	}
+	return success;
 }
 
 static NSDictionary *elizaJsonError(NSString *code, NSString *message) {
@@ -2299,6 +2434,63 @@ extern "C" bool enableWindowVibrancy(void *windowPtr) {
 		}
 
 		[window invalidateShadow];
+		success = YES;
+	});
+
+	return success;
+}
+
+extern "C" bool configureWindowTitlebar(void *windowPtr) {
+	if (windowPtr == nullptr) {
+		return false;
+	}
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+
+		[window setTitlebarAppearsTransparent:YES];
+		[window setTitleVisibility:NSWindowTitleHidden];
+		[window setStyleMask:([window styleMask] | NSWindowStyleMaskFullSizeContentView)];
+		success = YES;
+	});
+
+	return success;
+}
+
+/**
+ * Constrains mouse interaction to bottom-centered visible material while a
+ * transparent overlay keeps a larger stable animation envelope. The monitor
+ * follows the pointer across applications and pins interaction for the
+ * duration of a drag that began inside the material.
+ */
+extern "C" bool setWindowInteractiveMaterialSize(void *windowPtr, double width,
+													 double height) {
+	if (windowPtr == nullptr || !isfinite(width) || !isfinite(height) ||
+		width <= 0.0 || height <= 0.0) {
+		return false;
+	}
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+		ElizaWindowInteractiveMaterialController *controller =
+			objc_getAssociatedObject(
+				window, kElizaWindowInteractiveMaterialControllerKey);
+		if (controller == nil) {
+			controller = [[ElizaWindowInteractiveMaterialController alloc]
+				initWithWindow:window];
+			objc_setAssociatedObject(
+				window, kElizaWindowInteractiveMaterialControllerKey, controller,
+				OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		}
+		[controller setMaterialWidth:(CGFloat)width height:(CGFloat)height];
 		success = YES;
 	});
 

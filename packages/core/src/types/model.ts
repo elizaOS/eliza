@@ -1673,6 +1673,13 @@ export interface ModelRegistrationMetadata {
 	 * the runtime streaming gate; absence means "unknown / do not assume".
 	 */
 	streamable?: boolean;
+	/**
+	 * This registration selects another concrete model registration instead of
+	 * serving inference itself. Capability/readiness observers must not count a
+	 * routing proxy as usable unless at least one non-proxy registration can
+	 * serve a text slot; the proxy may be installed before any provider exists.
+	 */
+	routingProxy?: boolean;
 }
 
 /**

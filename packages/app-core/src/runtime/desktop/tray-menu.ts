@@ -119,32 +119,23 @@ export function buildTrayViewItems(): DesktopTrayMenuItem[] {
 
 export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
   {
-    id: "tray-open-chat",
-    label: "Open Messages",
-    labelKey: "desktop.tray.openChat",
+    id: "tray-show-window",
+    label: "Show Pill",
   },
   {
-    id: "tray-open-plugins",
-    label: "Open Plugins",
-    labelKey: "desktop.tray.openPlugins",
+    id: "tray-hide-window",
+    label: "Hide Pill",
   },
+  { id: "tray-sep-pill", type: "separator" },
   {
     id: "tray-open-desktop-workspace",
-    label: "Open Desktop Workspace",
+    label: "Open Workspace",
     labelKey: "desktop.tray.openDesktopWorkspace",
   },
   {
     id: "tray-open-voice-controls",
     label: "Open Voice Controls",
     labelKey: "desktop.tray.openVoiceControls",
-  },
-  // "Windows" submenu (#10716): open any desktop-eligible builtin view in its own
-  // window from the tray, not just switch the main-window tab.
-  {
-    id: "tray-views",
-    label: "Windows",
-    labelKey: "desktop.tray.views",
-    submenu: buildTrayViewItems(),
   },
   // Desktop-native notification-center entry (#10706): the tray counterpart of
   // the Desktop → Notifications app-menu item. Opens the center in place
@@ -154,34 +145,13 @@ export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
     label: "Notifications",
     labelKey: "desktop.tray.notifications",
   },
-  { id: "tray-sep-0", type: "separator" },
-  {
-    id: "tray-toggle-lifecycle",
-    label: "Start/Stop Agent",
-    labelKey: "desktop.tray.toggleLifecycle",
-  },
+  { id: "tray-sep-primary", type: "separator" },
   {
     id: "tray-restart",
     label: "Restart Agent",
     labelKey: "desktop.tray.restartAgent",
   },
-  {
-    id: "tray-notify",
-    label: "Send Test Notification",
-    labelKey: "desktop.tray.sendTestNotification",
-  },
-  { id: "tray-sep-1", type: "separator" },
-  {
-    id: "tray-show-window",
-    label: "Show Window",
-    labelKey: "desktop.tray.showWindow",
-  },
-  {
-    id: "tray-hide-window",
-    label: "Hide Window",
-    labelKey: "desktop.tray.hideWindow",
-  },
-  { id: "tray-sep-2", type: "separator" },
+  { id: "tray-sep-quit", type: "separator" },
   { id: "quit", label: "Quit", labelKey: "desktop.tray.quit" },
 ] as const;
 
@@ -206,22 +176,6 @@ export function buildLocalizedTrayMenu(
 }
 
 export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
-  {
-    id: "tray-open-chat",
-    entryPoint: "tray",
-    label: "Open Messages",
-    expectedAction: "Show and focus the main window, then switch to chat.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "tray-open-plugins",
-    entryPoint: "tray",
-    label: "Open Plugins",
-    expectedAction: "Show and focus the main window, then switch to plugins.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
   {
     id: "tray-open-desktop-workspace",
     entryPoint: "tray",
@@ -250,14 +204,6 @@ export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     coverage: "automated",
   },
   {
-    id: "tray-toggle-lifecycle",
-    entryPoint: "tray",
-    label: "Start/Stop Agent",
-    expectedAction: "Start a stopped agent or stop a running agent.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
     id: "tray-restart",
     entryPoint: "tray",
     label: "Restart Agent",
@@ -266,26 +212,18 @@ export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     coverage: "automated",
   },
   {
-    id: "tray-notify",
-    entryPoint: "tray",
-    label: "Send Test Notification",
-    expectedAction: "Emit a desktop notification from the renderer.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
     id: "tray-show-window",
     entryPoint: "tray",
-    label: "Show Window",
-    expectedAction: "Show and focus the main desktop window.",
+    label: "Show Pill",
+    expectedAction: "Show and focus the detached desktop pill.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },
   {
     id: "tray-hide-window",
     entryPoint: "tray",
-    label: "Hide Window",
-    expectedAction: "Hide the main desktop window.",
+    label: "Hide Pill",
+    expectedAction: "Hide the detached desktop pill.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },

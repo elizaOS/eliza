@@ -383,6 +383,49 @@ describe("ChatOverlay", () => {
     expect(onWindowExpandedChange).toHaveBeenLastCalledWith(false);
   });
 
+  it("admits semantic pill activation without duplicating physical pointer taps", async () => {
+    const onRequestedOpenChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="pill"
+        requestedOpen={false}
+        onRequestedOpenChange={onRequestedOpenChange}
+      />,
+    );
+
+    const pill = screen.getByTestId("chat-pill");
+    fireEvent.click(pill, { detail: 1 });
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "pill",
+    );
+
+    fireEvent.click(pill, { detail: 0 });
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "collapsed",
+      );
+    });
+    expect(onRequestedOpenChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("admits semantic grabber activation without duplicating physical pointer taps", async () => {
+    render(<ChatOverlay controller={makeController()} initialMode="input" />);
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.click(grabber, { detail: 1 });
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "collapsed",
+    );
+
+    fireEvent.click(grabber, { detail: 0 });
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "half",
+      );
+    });
+  });
+
   it("shows the mic and no send button when the draft is empty", () => {
     render(<ChatOverlay controller={makeController()} />);
     expect(screen.getByLabelText("talk")).toBeTruthy();
@@ -1525,6 +1568,7 @@ describe("ChatOverlay", () => {
       fireEvent.pointerUp(grabber, { clientY: 500, pointerId: 1 });
 
       expect(sheet.getAttribute("data-detent")).toBe("pill");
+      expect(sheet.getAttribute("data-collapse-phase")).toBeNull();
     } finally {
       now.mockRestore();
     }
@@ -4337,6 +4381,30 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     fireEvent.pointerUp(grabber, { clientY: 0, pointerId: 7 });
   }
 
+  it("caps the detached macOS pill at inset-full instead of edge-to-edge", () => {
+    const { controller } = makeSwipeController();
+    render(
+      <ChatOverlay
+        controller={controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const now = vi.spyOn(performance, "now");
+    now.mockReturnValue(1_000);
+    fireEvent.wheel(sheet, { deltaY: 100 });
+    now.mockReturnValue(2_000);
+    fireEvent.wheel(sheet, { deltaY: 100 });
+    now.mockReturnValue(3_000);
+    fireEvent.wheel(sheet, { deltaY: 100 });
+
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-chat-state")).not.toBe("MAXIMIZED");
+    expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
+  });
+
   it("a big upward over-pull of the grabber maximizes to full-bleed", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
@@ -4531,6 +4599,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     render(
       <ChatOverlay
         controller={controller}
+        initialMode="pill"
         onWindowSizeClassChange={onWindowSizeClassChange}
       />,
     );
@@ -4542,6 +4611,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(sheet.getAttribute("data-maximized")).toBeNull();
     expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(sheet.getAttribute("data-collapse-phase")).toBe("sheet-to-input");
     expect(screen.getByTestId("chat-thread")).toBeTruthy();
     expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("sheet");
   });
@@ -5056,6 +5126,23 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     fireEvent.click(bubbleFor("read me aloud"));
     fireEvent.click(screen.getByTestId("thread-line-speak"));
     expect(speak).toHaveBeenCalledWith("read me aloud");
+  });
+
+  it("surfaces a real TTS failure instead of leaving Play silently stuck", () => {
+    openThreadWith({
+      messages: [
+        { id: "a", role: "assistant", content: "read me aloud", createdAt: 1 },
+      ],
+      ttsError: {
+        engine: "local-inference",
+        message: "TTS request failed with 502",
+        atMs: 1,
+      },
+    });
+
+    const alert = screen.getByTestId("chat-overlay-tts-error");
+    expect(alert.textContent).toContain("Audio unavailable");
+    expect(alert.getAttribute("title")).toContain("502");
   });
 
   it("Play toggles to Stop once THIS message is the one playing", () => {

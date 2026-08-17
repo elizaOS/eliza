@@ -1,6 +1,7 @@
 /** Exercises desktop window behavior with deterministic app-core test fixtures. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopManager, resetDesktopManagerForTesting } from "./desktop";
+import { setWindowInteractiveMaterialSize } from "./mac-window-effects";
 
 vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
@@ -17,6 +18,7 @@ vi.mock("./mac-window-effects", () => ({
   createSecurityScopedBookmark: vi.fn(() => null),
   enableVibrancy: vi.fn(() => false),
   setWindowShadow: vi.fn(() => false),
+  setWindowInteractiveMaterialSize: vi.fn(() => true),
   isAppActive: vi.fn(() => false),
   isKeyWindow: vi.fn(() => false),
   makeKeyAndOrderFront: vi.fn(),
@@ -401,6 +403,8 @@ describe("DesktopManager main window controls", () => {
 
   it("expands and collapses the managed bottom bar against the work area", async () => {
     const { manager, window } = createManagerWithWindow();
+    const nativeWindowPtr = { id: "native-window" };
+    Object.assign(window, { ptr: nativeWindowPtr });
     manager.enableBottomBarReanchor();
 
     await manager.setBottomBarExpanded({ expanded: true });
@@ -414,6 +418,12 @@ describe("DesktopManager main window controls", () => {
 
     await manager.setBottomBarSize({ width: 420.2, height: 210.1 });
     expect(window.setFrame).toHaveBeenLastCalledWith(340, 540, 420, 210);
+    await manager.setBottomBarInteractiveSize({ width: 380.1, height: 180.1 });
+    expect(setWindowInteractiveMaterialSize).toHaveBeenLastCalledWith(
+      nativeWindowPtr,
+      380,
+      180,
+    );
     await manager.dispose();
   });
 

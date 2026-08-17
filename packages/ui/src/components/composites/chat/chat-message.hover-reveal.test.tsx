@@ -194,12 +194,13 @@ describe("ChatMessage desktop hover chrome", () => {
     expect(actions.parentElement?.className).toBe(restingContentClass);
   });
 
-  it("does not pin a fine-pointer action rail after bubble click and pointer leave", () => {
+  it("keeps a glass action lane interactive across WebKit's descendant mouseleave", () => {
+    const onCopy = vi.fn();
     render(
       <ChatMessage
         appearance="glass"
         message={makeMessage({ role: "user", text: "Pointer draft" })}
-        onCopy={vi.fn()}
+        onCopy={onCopy}
         onEdit={vi.fn()}
         onReply={vi.fn()}
       />,
@@ -232,7 +233,9 @@ describe("ChatMessage desktop hover chrome", () => {
     expect(actions.getAttribute("aria-hidden")).toBe("false");
 
     fireEvent.mouseLeave(message);
-    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    expect(onCopy).toHaveBeenCalledWith("Pointer draft");
     selection.removeAllRanges();
   });
 

@@ -103,6 +103,7 @@ import {
   makeKeyAndOrderFront,
   orderOut,
   pollFnMonitor,
+  setWindowInteractiveMaterialSize,
   startAccessingSecurityScopedBookmark,
   startFnMonitor,
   stopAccessingSecurityScopedBookmarks,
@@ -378,6 +379,9 @@ export class DesktopManager {
   private bottomBarWorkArea: ScreenWorkArea | null = null;
   private bottomBarPoller: ReturnType<typeof setInterval> | null = null;
   private bottomBarSize = resolveBottomBarFrameSize({ expanded: false });
+  private bottomBarInteractiveSize = resolveBottomBarFrameSize({
+    expanded: false,
+  });
 
   // Callback to open the settings window (set by index.ts)
   private openSettingsCallback: ((tabHint?: string) => void) | null = null;
@@ -1558,7 +1562,43 @@ X-GNOME-Autostart-enabled=true
     this.bottomBarSize = normalizeBottomBarMaterialSize(size);
     const frame = computeBottomBarFrame(workArea, this.bottomBarSize);
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    this.applyBottomBarInteractiveMaterial();
     this.bottomBarWorkArea = workArea;
+  }
+
+  /**
+   * Keep the renderer's stable transparent animation envelope while letting
+   * clicks outside its bottom-centered visible material reach other apps.
+   */
+  async setBottomBarInteractiveSize(size: {
+    width: number;
+    height: number;
+  }): Promise<void> {
+    if (!this.bottomBarReanchorEnabled) return;
+    this.bottomBarInteractiveSize = normalizeBottomBarMaterialSize(size);
+    this.applyBottomBarInteractiveMaterial();
+  }
+
+  private applyBottomBarInteractiveMaterial(): void {
+    if (process.platform !== "darwin") return;
+    const win = this.mainWindow;
+    if (!win) return;
+    const ptr = (win as typeof win & { ptr?: unknown }).ptr;
+    if (!ptr) {
+      throw new Error(
+        "[Desktop] bottom-bar native window pointer is unavailable",
+      );
+    }
+    const applied = setWindowInteractiveMaterialSize(
+      ptr as Parameters<typeof setWindowInteractiveMaterialSize>[0],
+      this.bottomBarInteractiveSize.width,
+      this.bottomBarInteractiveSize.height,
+    );
+    if (!applied) {
+      throw new Error(
+        "[Desktop] failed to apply bottom-bar interactive material bounds",
+      );
+    }
   }
 
   private readPrimaryWorkArea(): ScreenWorkArea | null {
@@ -1592,6 +1632,7 @@ X-GNOME-Autostart-enabled=true
     }
     const frame = computeBottomBarFrame(nextWorkArea, this.bottomBarSize);
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    this.applyBottomBarInteractiveMaterial();
     this.bottomBarWorkArea = nextWorkArea;
   }
 

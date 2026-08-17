@@ -60,7 +60,7 @@ export interface CreateManagedWindowOptions {
   url: string;
   preload: string;
   frame: ManagedWindowFrame;
-  titleBarStyle: "default";
+  titleBarStyle: "default" | "hiddenInset";
   transparent: boolean;
 }
 
@@ -77,6 +77,9 @@ interface SurfaceWindowManagerOptions {
   injectApiBase: (window: ManagedWindowLike) => void;
   onWindowFocused?: (window: ManagedWindowLike) => void;
   onRegistryChanged?: () => void;
+  onDashboardVisibilityChanged?: (visible: boolean) => void;
+  /** Native chrome applied to every managed full window on this platform. */
+  titleBarStyle?: CreateManagedWindowOptions["titleBarStyle"];
   /**
    * Optional per-slug bounds persistence. When supplied, slug-keyed
    * window launches restore the user's last position+size and save
@@ -189,6 +192,8 @@ export class SurfaceWindowManager {
   private readonly injectApiBaseFn: SurfaceWindowManagerOptions["injectApiBase"];
   private readonly onWindowFocused?: SurfaceWindowManagerOptions["onWindowFocused"];
   private readonly onRegistryChanged?: SurfaceWindowManagerOptions["onRegistryChanged"];
+  private readonly onDashboardVisibilityChanged?: SurfaceWindowManagerOptions["onDashboardVisibilityChanged"];
+  private readonly titleBarStyle: CreateManagedWindowOptions["titleBarStyle"];
   private readonly boundsStore?: BoundsStore;
   private readonly windows = new Map<string, ManagedWindowRecord>();
   private readonly pendingSurfaceWindows = new Map<
@@ -205,6 +210,8 @@ export class SurfaceWindowManager {
     this.injectApiBaseFn = options.injectApiBase;
     this.onWindowFocused = options.onWindowFocused;
     this.onRegistryChanged = options.onRegistryChanged;
+    this.onDashboardVisibilityChanged = options.onDashboardVisibilityChanged;
+    this.titleBarStyle = options.titleBarStyle ?? "default";
     this.boundsStore = options.boundsStore;
   }
 
@@ -416,14 +423,26 @@ export class SurfaceWindowManager {
       slug && this.boundsStore ? this.boundsStore.load(slug) : null;
     const frame = savedFrame ?? SURFACE_FRAMES[surface];
 
-    const window = this.createWindowFn({
-      title,
-      url,
-      preload,
-      frame,
-      titleBarStyle: "default",
-      transparent: false,
-    });
+    if (surface === "dashboard") {
+      this.onDashboardVisibilityChanged?.(true);
+    }
+
+    let window: ManagedWindowLike;
+    try {
+      window = this.createWindowFn({
+        title,
+        url,
+        preload,
+        frame,
+        titleBarStyle: this.titleBarStyle,
+        transparent: false,
+      });
+    } catch (error) {
+      if (surface === "dashboard") {
+        this.onDashboardVisibilityChanged?.(false);
+      }
+      throw error;
+    }
     if (alwaysOnTop) {
       window.setAlwaysOnTop(true);
     }
@@ -449,6 +468,9 @@ export class SurfaceWindowManager {
     }, 0);
     window.on("close", () => {
       this.windows.delete(id);
+      if (surface === "dashboard") {
+        this.onDashboardVisibilityChanged?.(false);
+      }
       this.notifyRegistryChanged();
     });
     window.on("focus", () => {

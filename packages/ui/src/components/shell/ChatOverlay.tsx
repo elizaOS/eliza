@@ -6,6 +6,7 @@ import { logger } from "@elizaos/logger";
 import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
+  AlertTriangle,
   AudioLines,
   FileText,
   Film,
@@ -968,6 +969,14 @@ function SheetGrabber({
       aria-label={open ? "drag down to close chat" : "drag up to open chat"}
       data-testid="chat-sheet-grabber"
       data-open={open ? "true" : "false"}
+      // Keep physical taps on the pointer-gesture path, but honor semantic
+      // button activation from macOS Accessibility, which emits detail=0 with
+      // no pointer sequence.
+      onClick={(event) => {
+        if (event.detail !== 0) return;
+        if (open) onClose();
+        else onOpen();
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -1068,12 +1077,13 @@ function PillHandle({
       variant="ghost"
       data-testid="chat-pill"
       aria-label="open chat"
-      // No onClick: the pull-gesture binding is the single tap authority (a tap
-      // routes through onPointerUp → onTap → openFromPill), matching the
-      // SheetGrabber. A native onClick would ALSO fire on every tap, opening the
-      // pill twice in one gesture (double haptic + a stale focus-suppress flag
-      // that swallowed the next focus→expand). Keyboard activation still routes
-      // through onKeyDown below.
+      // Pointer taps stay owned by the pull gesture's pointerup so one gesture
+      // cannot open twice. macOS Accessibility invokes AXPress as a synthetic
+      // click with detail=0 and no pointer sequence, so admit only that semantic
+      // activation here; physical mouse/touch clicks have a positive detail.
+      onClick={(event) => {
+        if (event.detail === 0) onOpen();
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " " || e.key === "ArrowUp") {
           e.preventDefault();
@@ -1270,6 +1280,7 @@ export function ChatOverlay({
     stopSpeaking,
     speaking,
   } = controller;
+  const ttsError = controller.ttsError ?? null;
   const realtimeVoice = controller.realtimeVoice;
   const realtimeVoiceComposerVisible = Boolean(
     realtimeVoice?.enabled &&
@@ -1361,6 +1372,9 @@ export function ChatOverlay({
     if (wasSpeakingRef.current && !speaking) setPlayingMessageId(null);
     wasSpeakingRef.current = speaking;
   }, [speaking]);
+  React.useEffect(() => {
+    if (ttsError) setPlayingMessageId(null);
+  }, [ttsError]);
 
   // Play an assistant message aloud from its reveal row (#10713). Toggling: a tap
   // on the message currently playing stops it; any other tap speaks that message
@@ -1594,7 +1608,13 @@ export function ChatOverlay({
   // Invariant: only true while at FULL (sheetOpen && expanded && !pilled); every
   // leave-full transition resets it. Pinned sessions start here: first-run opens
   // edge-to-edge full-screen, then its falling edge collapses to half.
-  const [maximized, setMaximized] = React.useState(pinnedOpen);
+  // The detached macOS pill is a companion to the full Workspace, not a second
+  // fullscreen app. Its upper endpoint is the inset FULL detent; only embedded
+  // app/mobile surfaces own edge-to-edge chat.
+  const fullBleedAllowed = !desktopOverlayHost;
+  const [maximized, setMaximized] = React.useState(
+    pinnedOpen && fullBleedAllowed,
+  );
   // Live mirror for threshold commits and reversals that can occur in one
   // pointer event before React has flushed the maximized state update.
   const maximizedRef = React.useRef(maximized);
@@ -1649,6 +1669,12 @@ export function ChatOverlay({
   const openProgress = useMotionValue(pilled ? 0 : 1);
   const morphExpandedRef = React.useRef(!pilled);
   const [morphExpanded, setMorphExpanded] = React.useState(!pilled);
+  // A sheet cannot shrink its height and its pill scale at the same time: that
+  // diagonal collapse visually skips the input endpoint and makes the panel
+  // appear to be cut away. The committed close therefore holds the input shape
+  // until the transcript reaches zero, then lets the ordinary pill morph run.
+  const pillCollapseStagingRef = React.useRef(false);
+  const [pillCollapseStaging, setPillCollapseStaging] = React.useState(false);
   // Imperative animations triggered from gesture callbacks are outside React's
   // effect cleanup, so keep one owner per motion value and stop stale springs
   // before starting another.
@@ -3024,7 +3050,8 @@ export function ChatOverlay({
   // FULL-SCREEN derived gate: maximized only takes effect AT the full detent, so
   // a stale flag can never leak into half/collapsed/pill. Drives the edge-to-edge
   // panel styles + a zero top margin.
-  const fullBleed = maximized && expanded && sheetOpen && !pilled;
+  const fullBleed =
+    fullBleedAllowed && maximized && expanded && sheetOpen && !pilled;
   // Only the panel MAX-HEIGHT stays full-screen-sized for the whole restore drag,
   // so the height can track the finger without the max-height clamping it shorter
   // on the first frame (a vertical pop). Every other property (side inset, bottom
@@ -3117,11 +3144,14 @@ export function ChatOverlay({
     ...layoutInput,
     fullBleed: false,
   });
-  const { panelMaxH: fullPanelMaxH } = resolveChatPanelLayout({
+  const { panelMaxH: fullBleedPanelMaxH } = resolveChatPanelLayout({
     ...layoutInput,
     fullBleed: true,
   });
-  const fullscreenSnapH = viewportH * FULLSCREEN_SNAP_VH;
+  const fullPanelMaxH = fullBleedAllowed ? fullBleedPanelMaxH : insetPanelMaxH;
+  const fullscreenSnapH = fullBleedAllowed
+    ? viewportH * FULLSCREEN_SNAP_VH
+    : Number.POSITIVE_INFINITY;
   // Use the frame (not just `maximized`) so the max-height stays full for the
   // whole restore drag — otherwise frame 1 clamps the panel to the inset height
   // and it pops shorter before the finger has moved.
@@ -3193,6 +3223,10 @@ export function ChatOverlay({
       !sheetOpen &&
       dragPreviewVisibleRef.current
     ) {
+      if (pillCollapseStagingRef.current) {
+        pillCollapseStagingRef.current = false;
+        setPillCollapseStaging(false);
+      }
       setDragPreviewMounted(false);
     }
   });
@@ -3530,7 +3564,7 @@ export function ChatOverlay({
   // (draggingRef gates this so it never fights the gesture).
   React.useEffect(() => {
     if (draggingRef.current) return;
-    const open = pilled ? 0 : 1;
+    const open = pilled && !pillCollapseStaging ? 0 : 1;
     if (reduce) {
       stopOpenProgressAnimation();
       openProgress.set(open);
@@ -3540,6 +3574,7 @@ export function ChatOverlay({
     return stopOpenProgressAnimation;
   }, [
     pilled,
+    pillCollapseStaging,
     reduce,
     openProgress,
     animateOpenProgress,
@@ -3597,7 +3632,10 @@ export function ChatOverlay({
   // openProgress → 0 and the detent effect springs the thread height → 0.
   const collapseToPill = React.useCallback(() => {
     draggingRef.current = false;
-    setDragPreviewMounted(!reduce && threadHeight.get() > 1);
+    const stageAtInput = !reduce && threadHeight.get() > 1;
+    pillCollapseStagingRef.current = stageAtInput;
+    setPillCollapseStaging(stageAtInput);
+    setDragPreviewMounted(stageAtInput);
     setFreeH(null);
     setMaximized(false);
     setMode("pill");
@@ -3651,6 +3689,7 @@ export function ChatOverlay({
   // called from the pull-gesture release path (maybeMaximizeOnRelease) once the
   // peak visible panel height clears the same 90% line.
   const maximizeFromPull = React.useCallback(() => {
+    if (!fullBleedAllowed) return;
     // Snap the morph fully open BEFORE flipping to full-bleed so no in-flight
     // pill-open spring can leak a sub-1 scale into the maximized frame (top gap).
     draggingRef.current = false;
@@ -3683,6 +3722,7 @@ export function ChatOverlay({
     animateThreadHeight,
     animateFullBleedTo,
     overpullCapT,
+    fullBleedAllowed,
   ]);
 
   // Restore OUT of full-bleed back to the inset FULL-detent overlay (#13531).
@@ -3875,7 +3915,7 @@ export function ChatOverlay({
     if (firstRunOpen) {
       setFreeH(null);
       setMode("full");
-      setMaximized(true);
+      setMaximized(fullBleedAllowed);
       return;
     }
     if (was || releaseFirstRunToHalf) {
@@ -3887,6 +3927,7 @@ export function ChatOverlay({
     goToDetent,
     onFirstRunReleaseHandled,
     releaseFirstRunToHalf,
+    fullBleedAllowed,
   ]);
 
   // First-run backdrop. While onboarding pins the sheet FULL, a neutral scrim
@@ -4753,6 +4794,8 @@ export function ChatOverlay({
   // openProgress → 1 directly so the open never depends on that effect's timing.
   const openFromPill = React.useCallback(() => {
     draggingRef.current = false;
+    pillCollapseStagingRef.current = false;
+    setPillCollapseStaging(false);
     // A pill tap steps ONE state up the continuum: it forms the bare input bar,
     // nothing more. It must NOT jump to a thread detent and must NOT raise the
     // keyboard — revealing the thread (grabber tap) and focusing the composer
@@ -5159,6 +5202,7 @@ export function ChatOverlay({
   // traversed the whole viewport. That legacy long-haul intent still fills the
   // screen on release; ordinary window drags use the visible 90% line.
   const maybeMaximizeOnRelease = React.useCallback((): boolean => {
+    if (!fullBleedAllowed) return false;
     if (pinnedOpen) return false;
     if (maximizeReversedRef.current) return false;
     // A real keyboard blocks the release-time maximize too (mirrors the mid-drag
@@ -5176,6 +5220,7 @@ export function ChatOverlay({
     }
     return false;
   }, [
+    fullBleedAllowed,
     pinnedOpen,
     keyboardBlocksMaximize,
     viewportH,
@@ -5186,6 +5231,10 @@ export function ChatOverlay({
 
   const pullBinding: PullGestureBinding = usePullGesture({
     preventTouchCompatibilityEvents: true,
+    // The detached macOS NSWindow grows upward from the bottom edge as a pull
+    // reveals the sheet. Client coordinates jump when that native frame moves;
+    // screen coordinates keep the held pointer and the continuum 1:1.
+    coordinateSpace: desktopOverlayHost ? "screen" : "client",
     onStart: resetPullPeak,
     onDrag: onDragOffset,
     onDragReset: settleDrag,
@@ -5813,6 +5862,9 @@ export function ChatOverlay({
           data-detent={detentLabel}
           data-maximized={fullBleed ? "true" : undefined}
           data-revealed={threadPresented ? "true" : "false"}
+          data-collapse-phase={
+            pillCollapseStaging ? "sheet-to-input" : undefined
+          }
           data-chat-state={chatState}
           data-header-shown={headerVisible ? "true" : "false"}
           // The active conversation id + its position in the most-recent-first
@@ -6399,6 +6451,20 @@ export function ChatOverlay({
                 (or a credit/retry state is live), so this is inert in the common
                 case. Full chat-column width, styled to sit in the sheet. */}
             <AgentProvisioningWidget spanClassName="relative z-10 mx-auto w-full max-w-3xl shrink-0 px-3 pt-2" />
+            {ttsError ? (
+              <div
+                role="alert"
+                data-testid="chat-overlay-tts-error"
+                title={ttsError.message}
+                className="pointer-events-none relative z-10 mx-auto flex w-full max-w-3xl shrink-0 items-center gap-1.5 px-4 pt-2 text-xs text-danger"
+              >
+                <AlertTriangle
+                  className="h-3.5 w-3.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <span className="truncate">Audio unavailable</span>
+              </div>
+            ) : null}
             {/* Pending attachments share the sheet's pull binding so tile and
                 gap pixels remain one continuous drag surface. Their remove
                 controls sit below the grabber's narrow top hit band and stop

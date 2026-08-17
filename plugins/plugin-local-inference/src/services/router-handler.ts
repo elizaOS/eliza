@@ -61,7 +61,11 @@
  * panel (`prefer-local` ↔ `manual` + explicit `preferredProvider`).
  */
 
-import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import type {
+	AgentRuntime,
+	IAgentRuntime,
+	ModelRegistrationMetadata,
+} from "@elizaos/core";
 import {
 	logger,
 	ModelType,
@@ -512,7 +516,7 @@ export function installRouterHandler(
 			handler: AnyHandler,
 			provider: string,
 			priority?: number,
-			metadata?: { streamable?: boolean },
+			metadata?: ModelRegistrationMetadata,
 		) => void;
 	};
 	if (typeof rt.registerModel !== "function") return;
@@ -527,7 +531,7 @@ export function installRouterHandler(
 			makeRouterHandler(slot),
 			ROUTER_PROVIDER,
 			ROUTER_PRIORITY,
-			{ streamable: true },
+			{ streamable: true, routingProxy: true },
 		);
 	}
 }

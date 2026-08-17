@@ -15,18 +15,36 @@ const trayRuntimePath = fileURLToPath(
 );
 
 describe("desktop tray menu — Notifications entry (#10706)", () => {
-  it("exposes desktop views under a native Windows submenu and keeps Quit", () => {
-    const windows = DESKTOP_TRAY_MENU_ITEMS.find(
-      (entry) => entry.id === "tray-views",
-    );
-    expect(windows?.label).toBe("Windows");
-    expect(windows?.submenu?.map((entry) => entry.id)).toContain(
-      "tray-open-view-chat",
+  it("keeps the native menu focused on pill, Workspace, voice, notifications, restart, and Quit", () => {
+    expect(
+      DESKTOP_TRAY_MENU_ITEMS.filter((item) => item.type !== "separator").map(
+        (item) => item.id,
+      ),
+    ).toEqual([
+      "tray-show-window",
+      "tray-hide-window",
+      "tray-open-desktop-workspace",
+      "tray-open-voice-controls",
+      "tray-open-notifications",
+      "tray-restart",
+      "quit",
+    ]);
+    expect(DESKTOP_TRAY_MENU_ITEMS).not.toContainEqual(
+      expect.objectContaining({ id: "tray-views" }),
     );
     expect(DESKTOP_TRAY_MENU_ITEMS.at(-1)).toMatchObject({
       id: "quit",
       label: "Quit",
     });
+  });
+
+  it("uses the existing native visibility actions for the detached pill", () => {
+    expect(DESKTOP_TRAY_MENU_ITEMS).toContainEqual(
+      expect.objectContaining({ id: "tray-show-window", label: "Show Pill" }),
+    );
+    expect(DESKTOP_TRAY_MENU_ITEMS).toContainEqual(
+      expect.objectContaining({ id: "tray-hide-window", label: "Hide Pill" }),
+    );
   });
 
   it("carries a tray-open-notifications item (tray counterpart of Desktop → Notifications)", () => {

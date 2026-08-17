@@ -85,46 +85,48 @@ describe("resolveConversationGreetingText persona selection", () => {
   const makeRuntime = (name: string) =>
     ({ character: { name, postExamples: [] } }) as unknown as AgentRuntime;
 
-  // The greeting is picked at random from the resolved preset's postExamples.
-  // Sweep Math.random across every index so the full reachable greeting set is
-  // observable — Eliza and Chen share a couple of lines, so a single draw could
-  // mask a persona swap.
-  const collectGreetings = (
+  const greetingFor = (
     runtimeName: string,
     uiConfig: { presetId?: string; avatarIndex?: number },
-  ): Set<string> => {
-    const greetings = new Set<string>();
-    for (let step = 0; step < 32; step += 1) {
-      vi.spyOn(Math, "random").mockReturnValue(step / 32);
-      greetings.add(
-        resolveConversationGreetingText(makeRuntime(runtimeName), "en", {
-          assistant: { name: runtimeName },
-          ...uiConfig,
-        }),
-      );
-      vi.restoreAllMocks();
-    }
-    return greetings;
-  };
+  ): string =>
+    resolveConversationGreetingText(makeRuntime(runtimeName), "en", {
+      assistant: { name: runtimeName },
+      ...uiConfig,
+    });
 
   it("greets a default-Eliza config (presetId eliza + shared avatarIndex) as Eliza, not Chen", () => {
     const eliza = resolveStylePresetById("eliza");
     expect(eliza).toBeDefined();
-    const greetings = collectGreetings("Eliza", {
+    const greeting = greetingFor("Eliza", {
       presetId: "eliza",
       avatarIndex: eliza?.avatarIndex,
     });
-    expect(greetings).toEqual(new Set(eliza?.postExamples));
+    expect(greeting).toBe(eliza?.catchphrase);
+    expect(eliza?.postExamples).not.toContain(greeting);
   });
 
   it("keeps Chen's greeting for a Chen config sharing the same avatarIndex", () => {
     const chen = resolveStylePresetById("chen");
     expect(chen).toBeDefined();
-    const greetings = collectGreetings("Chen", {
+    const greeting = greetingFor("Chen", {
       presetId: "chen",
       avatarIndex: chen?.avatarIndex,
     });
-    expect(greetings).toEqual(new Set(chen?.postExamples));
+    expect(greeting).toBe(chen?.catchphrase);
+    expect(chen?.postExamples).not.toContain(greeting);
+  });
+
+  it("never promotes a custom character post example into a chat greeting", () => {
+    const runtime = {
+      character: {
+        name: "Custom",
+        postExamples: ["You need to close 40 tabs."],
+      },
+    } as unknown as AgentRuntime;
+
+    expect(resolveConversationGreetingText(runtime, "en")).toBe(
+      "Hey, I'm Custom. What can I help you with?",
+    );
   });
 });
 

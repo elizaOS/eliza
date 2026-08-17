@@ -95,6 +95,7 @@ import {
 import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
+  configureTitlebar,
   disableBackForwardNavigationGestures,
   setNativeDragRegion,
   setTrafficLightsPosition,
@@ -2722,6 +2723,8 @@ async function main(): Promise<void> {
   // RPC built up front via createDesktopRpc, baked into the BrowserWindow
   // constructor, then "wired" post-hoc by wireSettingsRpcAfterCreate.
   const surfaceRpcs = new WeakMap<ManagedWindowLike, ElizaDesktopRpc>();
+  const detachedChatOwnsMainWindow =
+    resolveDesktopShellWindowPresentation().mode === "bottom-bar";
 
   surfaceWindowManager = new SurfaceWindowManager({
     createWindow: (options) => {
@@ -2730,6 +2733,15 @@ async function main(): Promise<void> {
         ...options,
         rpc,
       }) as BrowserWindow & ManagedWindowLike;
+      if (
+        process.platform === "darwin" &&
+        options.titleBarStyle === "hiddenInset"
+      ) {
+        const ptr = (window as { ptr?: unknown }).ptr;
+        if (ptr) {
+          configureTitlebar(ptr as Parameters<typeof configureTitlebar>[0]);
+        }
+      }
       surfaceRpcs.set(window, rpc);
       // Drop this window's relay endpoint when it closes so a churned detached
       // surface does not leak (#16442).
@@ -2738,6 +2750,9 @@ async function main(): Promise<void> {
     },
     resolveRendererUrl,
     readPreload: () => readResolvedPreloadScript(import.meta.dir),
+    // macOS places traffic lights over the app surface instead of painting a
+    // separate gray title slab. Other platforms retain their native frame.
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     wireRpc: (window) => {
       const rpc = surfaceRpcs.get(window);
       if (!rpc) {
@@ -2752,6 +2767,19 @@ async function main(): Promise<void> {
       injectApiBase(window as BrowserWindow & ManagedWindowLike),
     onWindowFocused: (window) => {
       lastFocusedWindow = window;
+    },
+    onDashboardVisibilityChanged: (visible) => {
+      if (!detachedChatOwnsMainWindow) return;
+      const operation = visible
+        ? getDesktopManager().hideWindow()
+        : getDesktopManager().showWindow();
+      // error-policy:J7 window arbitration must not terminate the native host;
+      // the next Workspace lifecycle event retries the desired ownership.
+      void operation.catch((error) => {
+        logger.error(
+          `[surface-windows] Failed to ${visible ? "hide" : "restore"} the detached chat surface: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
     },
     onRegistryChanged: () => {
       sendManagedWindowsChanged();

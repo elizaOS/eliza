@@ -148,9 +148,17 @@ export function createChatOverlayWindowSizeCoordinator(
   };
 }
 
-/** Applies measured material size without duplicating native display geometry. */
-export function useChatOverlayWindowSize(
+type ChatOverlaySizeRpcMethod =
+  | "desktopSetBottomBarSize"
+  | "desktopSetBottomBarInteractiveSize";
+type ChatOverlaySizeIpcChannel =
+  | "desktop:setBottomBarSize"
+  | "desktop:setBottomBarInteractiveSize";
+
+function useChatOverlayNativeMaterialSize(
   onFailure: (error: unknown) => void,
+  rpcMethod: ChatOverlaySizeRpcMethod,
+  ipcChannel: ChatOverlaySizeIpcChannel,
 ): (size: ChatOverlayMaterialSize) => void {
   const onFailureRef = useRef(onFailure);
   useEffect(() => {
@@ -162,14 +170,14 @@ export function useChatOverlayWindowSize(
       createChatOverlayWindowSizeCoordinator({
         setBottomBarSize: async (size) => {
           await invokeDesktopBridgeRequest<void>({
-            rpcMethod: "desktopSetBottomBarSize",
-            ipcChannel: "desktop:setBottomBarSize",
+            rpcMethod,
+            ipcChannel,
             params: size,
           });
         },
         onFailure: (error) => onFailureRef.current(error),
       }),
-    [],
+    [ipcChannel, rpcMethod],
   );
 
   useEffect(() => () => coordinator.cancel(), [coordinator]);
@@ -180,5 +188,27 @@ export function useChatOverlayWindowSize(
       coordinator.schedule(size);
     },
     [coordinator],
+  );
+}
+
+/** Applies measured material size without duplicating native display geometry. */
+export function useChatOverlayWindowSize(
+  onFailure: (error: unknown) => void,
+): (size: ChatOverlayMaterialSize) => void {
+  return useChatOverlayNativeMaterialSize(
+    onFailure,
+    "desktopSetBottomBarSize",
+    "desktop:setBottomBarSize",
+  );
+}
+
+/** Publishes the visible material separately from the stable window envelope. */
+export function useChatOverlayWindowInteractiveSize(
+  onFailure: (error: unknown) => void,
+): (size: ChatOverlayMaterialSize) => void {
+  return useChatOverlayNativeMaterialSize(
+    onFailure,
+    "desktopSetBottomBarInteractiveSize",
+    "desktop:setBottomBarInteractiveSize",
   );
 }

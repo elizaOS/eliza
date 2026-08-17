@@ -134,14 +134,17 @@ describe("eliza preset failure templates", () => {
     expect(templates.rateLimitedReply?.toLowerCase()).not.toMatch(/credits/);
   });
 
-  it("keeps the no-provider reply actionable with real env var names", () => {
+  it("keeps the no-provider reply actionable without exposing deployment keys", () => {
     const text = elizaDefinition?.templates?.noModelProviderReply ?? "";
+    expect(text).toMatch(/settings/i);
+    expect(text).toMatch(/provider|eliza cloud/i);
     for (const envKey of [
       "ANTHROPIC_API_KEY",
       "OPENAI_API_KEY",
       "OPENROUTER_API_KEY",
+      "ELIZAOS_CLOUD_API_KEY",
     ]) {
-      expect(text).toContain(envKey);
+      expect(text).not.toContain(envKey);
     }
   });
 

@@ -85,6 +85,7 @@ import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
   type VoiceContinuousStatus,
+  type VoiceTtsError,
 } from "../../voice/voice-chat-types";
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import type { ServerControlFrame } from "../../voice/voice-session-protocol";
@@ -213,6 +214,8 @@ export interface ShellController {
   needsAudioUnlock: boolean;
   /** Resume audio output in response to a user gesture (enable sound). */
   unlockAudio: () => void;
+  /** Configured TTS failed; manual Play must never fail without visible state. */
+  ttsError?: VoiceTtsError | null;
   /** True while the hands-free voice conversation loop is active — the mic
    *  re-opens automatically after each spoken reply. Toggled by a tap on the mic. */
   handsFree: boolean;
@@ -2706,6 +2709,7 @@ export function useShellController(): ShellController {
         realtimeVoice.needsUnlock) ||
       voiceOutput.needsAudioUnlock,
     unlockAudio: unlockVoiceAudio,
+    ttsError: voiceOutput.ttsError,
     clearConversation,
     openSettings,
     navigateHome,

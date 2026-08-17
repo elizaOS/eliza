@@ -48,6 +48,13 @@ function makeRuntime(modelKeys: string[]): AgentRuntime {
   const wired = new Set(modelKeys);
   return {
     getModel: (key: string) => (wired.has(key) ? () => undefined : undefined),
+    getModelRegistrations: () =>
+      modelKeys.map((modelType, index) => ({
+        modelType,
+        provider: "test-provider",
+        priority: 0,
+        registrationOrder: index + 1,
+      })),
   } as unknown as AgentRuntime;
 }
 
@@ -126,6 +133,7 @@ describe("computeCanRespond — WS status broadcast contract", () => {
       getModel: () => {
         throw new Error("runtime probe exploded");
       },
+      getModelRegistrations: () => [],
     } as unknown as AgentRuntime;
     expect(computeCanRespond(throwingRuntime, "running")).toBe(false);
   });

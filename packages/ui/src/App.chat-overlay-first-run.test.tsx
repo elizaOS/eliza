@@ -22,7 +22,7 @@
  *    chrome-free, so plain web `?shellMode=chat-overlay` loads are unaffected.
  */
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,6 +34,35 @@ const appState = vi.hoisted(() => ({
 
 const notificationMock = vi.hoisted(() => ({
   init: vi.fn(async () => undefined),
+}));
+
+const desktopBridgeMock = vi.hoisted(() => ({
+  request: vi.fn(
+    async (_request: {
+      rpcMethod?: string;
+      params?: { width?: number; height?: number };
+    }) => ({ id: "window-1" }),
+  ),
+}));
+
+const overlayHarness = vi.hoisted(() => ({
+  materialSize: undefined as
+    | ((size: { width: number; height: number }) => void)
+    | undefined,
+  sizeClass: undefined as
+    | ((sizeClass: "resting" | "input" | "sheet") => void)
+    | undefined,
+}));
+
+const shellControllerMock = vi.hoisted(() => ({
+  authGate: { gated: false },
+  cancelRecording: vi.fn(),
+  close: vi.fn(),
+  isOpen: false,
+  recording: false,
+  requestSignIn: vi.fn(),
+  startRecording: vi.fn(),
+  stopRecording: vi.fn(),
 }));
 
 vi.mock("./state/notifications/notification-store", () => ({
@@ -67,10 +96,26 @@ vi.mock("@capacitor/keyboard", () => ({
 
 vi.mock("./bridge/electrobun-rpc", () => ({
   getElectrobunRendererRpc: vi.fn(() => undefined),
-  invokeDesktopBridgeRequest: vi.fn(async () => ({ id: "window-1" })),
+  invokeDesktopBridgeRequest: desktopBridgeMock.request,
   subscribeDesktopBridgeEvent: vi.fn(() => vi.fn()),
   openDesktopAppWindow: vi.fn(async () => ({ id: "window-1" })),
   openDesktopLauncherWindow: vi.fn(async () => ({ id: "launcher-1" })),
+}));
+
+vi.mock("./components/shell/ChatOverlay", () => ({
+  ChatOverlay: (props: {
+    onWindowMaterialSizeChange?: (size: {
+      width: number;
+      height: number;
+    }) => void;
+    onWindowSizeClassChange?: (
+      sizeClass: "resting" | "input" | "sheet",
+    ) => void;
+  }) => {
+    overlayHarness.materialSize = props.onWindowMaterialSizeChange;
+    overlayHarness.sizeClass = props.onWindowSizeClassChange;
+    return <div data-testid="chat-overlay" />;
+  },
 }));
 
 vi.mock("./bridge/electrobun-runtime", () => ({
@@ -196,7 +241,21 @@ vi.mock("./components/shell/ShellControllerContext", () => ({
   ShellControllerProvider: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="shell-controller-provider">{children}</div>
   ),
-  useShellControllerContext: () => null,
+}));
+
+vi.mock("./components/shell/ShellControllerContext.hooks", () => ({
+  useShellControllerContext: () => shellControllerMock,
+}));
+
+vi.mock("./hooks/useRole", () => ({
+  useRole: () => ({ atLeast: () => true, isOwner: true }),
+}));
+
+vi.mock("./chat/useSlashCommandController", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("./chat/useSlashCommandController")
+  >()),
+  useSlashCommandController: () => ({}),
 }));
 
 vi.mock("./components/shell/StartupScreen", () => ({
@@ -284,6 +343,9 @@ describe("App chat-overlay first-run composition", () => {
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
     conductorMock.mount.mockClear();
     notificationMock.init.mockClear();
+    desktopBridgeMock.request.mockClear();
+    overlayHarness.materialSize = undefined;
+    overlayHarness.sizeClass = undefined;
   });
 
   afterEach(() => {
@@ -309,6 +371,51 @@ describe("App chat-overlay first-run composition", () => {
         '[data-testid="first-run-conductor-mount"]',
       ),
     ).not.toBeNull();
+  });
+
+  it("keeps the sheet envelope while the native hit region follows measured material", async () => {
+    render(<App />);
+    await waitFor(() =>
+      expect(overlayHarness.sizeClass).toBeTypeOf("function"),
+    );
+
+    act(() => overlayHarness.sizeClass?.("input"));
+    await waitFor(() =>
+      expect(desktopBridgeMock.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rpcMethod: "desktopSetBottomBarSize",
+          params: expect.objectContaining({ height: 56 }),
+        }),
+      ),
+    );
+    const staleInputMeasurement = overlayHarness.materialSize;
+    desktopBridgeMock.request.mockClear();
+
+    act(() => overlayHarness.sizeClass?.("sheet"));
+    await waitFor(() =>
+      expect(desktopBridgeMock.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rpcMethod: "desktopSetBottomBarSize",
+          params: { width: 600, height: 820 },
+        }),
+      ),
+    );
+    desktopBridgeMock.request.mockClear();
+
+    act(() => staleInputMeasurement?.({ width: 576, height: 56 }));
+    await waitFor(() =>
+      expect(desktopBridgeMock.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rpcMethod: "desktopSetBottomBarInteractiveSize",
+          params: { width: 576, height: 56 },
+        }),
+      ),
+    );
+    expect(
+      desktopBridgeMock.request.mock.calls.some(
+        ([request]) => request.rpcMethod === "desktopSetBottomBarSize",
+      ),
+    ).toBe(false);
   });
 
   it("bypasses the StartupScreen gate and renders no app chrome during first-run", () => {

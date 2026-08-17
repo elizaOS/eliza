@@ -18,6 +18,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   getSwarmCoordinatorService,
   hasTextGenerationHandler,
+  isTextGenerationModelType,
 } from "@elizaos/core";
 // Pure env detector lives in shared so status can report managed hosting mode
 // without loading the full cloud plugin graph (which may fail in lean test
@@ -470,7 +471,23 @@ export function computeCanRespond(
     return false;
   }
   try {
-    return hasTextGenerationHandler(runtime);
+    if (!hasTextGenerationHandler(runtime)) {
+      return false;
+    }
+
+    // The local-inference routing layer deliberately registers before any
+    // concrete provider is available. Its handler can therefore exist while
+    // every call still ends in NoModelProviderConfiguredError. Registration
+    // metadata distinguishes that dispatch proxy from handlers that can
+    // actually serve a text slot, keeping readiness truthful without coupling
+    // core/agent health to a provider name.
+    return runtime
+      .getModelRegistrations()
+      .some(
+        (registration) =>
+          isTextGenerationModelType(registration.modelType) &&
+          registration.metadata?.routingProxy !== true,
+      );
   } catch {
     return false;
   }

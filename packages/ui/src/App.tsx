@@ -103,6 +103,16 @@ import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
+import {
+  CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+  CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+  type ChatOverlayMaterialSize,
+  type ChatOverlayWindowSizeClass,
+  readChatOverlayAuthSize,
+  readChatOverlayStageSize,
+  useChatOverlayWindowInteractiveSize,
+  useChatOverlayWindowSize,
+} from "./components/shell/chat-overlay-window-bounds";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
@@ -318,17 +328,124 @@ function ChatOverlayShell() {
   // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
-  const overlayOpen = controller?.isOpen ?? false;
-  // Escape collapses the overlay first — while it is open, AssistantOverlay's
-  // own Escape handler closes it. Once already collapsed, Escape hides the
-  // desktop window entirely (#12184) so the pill dismisses to the background
-  // like a summoned panel. Desktop-only (web has no window to hide).
+  const [windowExpanded, setWindowExpanded] = useState(
+    controller?.isOpen ?? false,
+  );
+  // NSWindow geometry is not a compositor animation. Hold a stable envelope
+  // around each visual state while the renderer's springs move inside it.
+  const [windowSizeClass, setWindowSizeClass] =
+    useState<ChatOverlayWindowSizeClass>("resting");
+  const windowSizeClassRef = useRef<ChatOverlayWindowSizeClass>("resting");
+  const [stageSize] = useState(readChatOverlayStageSize);
+  const [authSize] = useState(readChatOverlayAuthSize);
+  const setActionNotice = useAppSelector((state) => state.setActionNotice);
+  const handleWindowBoundsFailure = useCallback((): void => {
+    if (windowExpanded) {
+      controller?.close();
+      setWindowExpanded(false);
+    }
+    setActionNotice(
+      "Desktop chat window resize failed. Close and reopen Eliza to retry.",
+      "error",
+      6_000,
+    );
+  }, [controller, setActionNotice, windowExpanded]);
+  const reportNativeWindowSize = useChatOverlayWindowSize(
+    handleWindowBoundsFailure,
+  );
+  const reportNativeInteractiveSize = useChatOverlayWindowInteractiveSize(
+    handleWindowBoundsFailure,
+  );
+  useEffect(() => {
+    if (controller?.authGate.gated) {
+      reportNativeWindowSize(authSize);
+      reportNativeInteractiveSize(authSize);
+      return;
+    }
+    if (windowSizeClass === "sheet") {
+      reportNativeWindowSize(stageSize);
+      return;
+    }
+    reportNativeWindowSize(
+      windowSizeClass === "input"
+        ? {
+            width: Math.max(
+              CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+              stageSize.width - 24,
+            ),
+            height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+          }
+        : {
+            width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+            height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+          },
+    );
+    if (windowSizeClass === "resting") {
+      reportNativeInteractiveSize({
+        width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+        height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+      });
+    }
+  }, [
+    authSize,
+    controller?.authGate.gated,
+    reportNativeWindowSize,
+    reportNativeInteractiveSize,
+    stageSize,
+    windowSizeClass,
+  ]);
+  const reportWindowMaterialSize = useCallback(
+    (size: ChatOverlayMaterialSize): void => {
+      reportNativeInteractiveSize(size);
+      if (
+        controller?.authGate.gated ||
+        windowSizeClassRef.current !== "input"
+      ) {
+        return;
+      }
+      const inputWidth = Math.max(
+        CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+        stageSize.width - 24,
+      );
+      if (size.width < inputWidth) return;
+      reportNativeWindowSize({
+        width: inputWidth,
+        height: Math.max(CHAT_OVERLAY_RESTING_WINDOW_HEIGHT, size.height),
+      });
+    },
+    [
+      controller?.authGate.gated,
+      reportNativeWindowSize,
+      reportNativeInteractiveSize,
+      stageSize.width,
+    ],
+  );
+  const handleWindowSizeClassChange = useCallback(
+    (sizeClass: ChatOverlayWindowSizeClass): void => {
+      // A material ResizeObserver callback can run in the same frame as a
+      // detent change. Update the measurement gate synchronously so an input
+      // frame cannot supersede the native sheet envelope while React commits.
+      windowSizeClassRef.current = sizeClass;
+      setWindowSizeClass(sizeClass);
+    },
+    [],
+  );
+  const handleRequestedOpenChange = useCallback(
+    (open: boolean): void => {
+      if (open) controller?.open();
+      else controller?.close();
+    },
+    [controller],
+  );
+  // The canonical overlay consumes the first Escape to return to its pill.
+  // Once the real presentation reports pill, a second Escape hides the native
+  // window so transparent pixels never remain above other applications.
   useEffect(() => {
     if (typeof document === "undefined" || !isElectrobunRuntime()) {
       return undefined;
     }
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape" || overlayOpen) return;
+      if (event.key !== "Escape" || windowExpanded) return;
       void invokeDesktopBridgeRequest<void>({
         rpcMethod: "desktopHideWindow",
         ipcChannel: "desktop:hideWindow",
@@ -336,15 +453,39 @@ function ChatOverlayShell() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [overlayOpen]);
+  }, [windowExpanded]);
   return (
     <>
       <GlassStyles />
       <div
         data-testid="chat-overlay-shell"
-        className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
+        className="pointer-events-none fixed bottom-0 left-1/2 bg-transparent"
+        style={{
+          width: stageSize.width,
+          height: stageSize.height,
+          transform: "translateX(-50%)",
+        }}
       >
-        <ShellFoundationMount useWebChatPanel />
+        {controller?.authGate.gated ? (
+          <div className="flex h-full w-full items-end justify-center">
+            <HomePill
+              phase={controller.phase}
+              signingIn={controller.signingIn}
+              onOpen={controller.requestSignIn}
+              onClose={controller.close}
+            />
+          </div>
+        ) : (
+          <ChatOverlayMount
+            initialMode="pill"
+            desktopOverlayHost
+            requestedOpen={controller?.isOpen}
+            onRequestedOpenChange={handleRequestedOpenChange}
+            onWindowExpandedChange={setWindowExpanded}
+            onWindowSizeClassChange={handleWindowSizeClassChange}
+            onWindowMaterialSizeChange={reportWindowMaterialSize}
+          />
+        )}
       </div>
     </>
   );

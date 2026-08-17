@@ -98,7 +98,7 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
       insufficientCreditsReply:
         "My model provider is out of credits, so I can't answer this one. Waiting won't fix it. Add credits or raise the quota, then send that again.",
       noModelProviderReply:
-        "I don't have a model provider set up yet, so I can't answer anything. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to Eliza Cloud (ELIZAOS_CLOUD_API_KEY), then try again.",
+        "Chat isn't connected to a model yet. Open Settings and choose a provider, or sign in to Eliza Cloud, then try again.",
       rateLimitedReply:
         "My model provider is throttling me right now. Give it a few seconds and send that again.",
       transientFailureReply:

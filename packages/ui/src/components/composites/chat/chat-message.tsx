@@ -697,6 +697,13 @@ export const ChatMessage = memo(function ChatMessage({
 
   const handleActionsMouseLeave = useCallback(
     (event: MouseEvent<HTMLElement>) => {
+      // The glass action lane is positioned in the row's reserved lower inset.
+      // WebKit can report the article as left while the pointer is crossing
+      // into that absolutely positioned descendant, which used to hide and
+      // inert the button before its click fired. Glass rows already have a
+      // document-level outside-pointer boundary, so that boundary—not hover
+      // geometry—owns dismissal.
+      if (glass) return;
       const activeElement = event.currentTarget.ownerDocument.activeElement;
       const keyboardFocusWithin =
         activeElement instanceof HTMLElement &&
@@ -706,7 +713,7 @@ export const ChatMessage = memo(function ChatMessage({
         setShowActions(false);
       }
     },
-    [],
+    [glass],
   );
 
   const handleActionsPointerMove = useCallback(

@@ -13,6 +13,7 @@ describe("installRouterHandler", () => {
 			modelType: string;
 			provider: string;
 			priority?: number;
+			metadata?: { streamable?: boolean; routingProxy?: boolean };
 		}> = [];
 		const runtime = {
 			registerModel: vi.fn(
@@ -21,8 +22,9 @@ describe("installRouterHandler", () => {
 					_handler: unknown,
 					provider: string,
 					priority?: number,
+					metadata?: { streamable?: boolean; routingProxy?: boolean },
 				) => {
-					registrations.push({ modelType, provider, priority });
+					registrations.push({ modelType, provider, priority, metadata });
 				},
 			),
 		} as unknown as AgentRuntime;
@@ -34,6 +36,7 @@ describe("installRouterHandler", () => {
 				expect.objectContaining({
 					modelType: ModelType.TEXT_SMALL,
 					provider: ROUTER_PROVIDER,
+					metadata: { streamable: true, routingProxy: true },
 				}),
 				expect.objectContaining({
 					modelType: ModelType.TEXT_LARGE,

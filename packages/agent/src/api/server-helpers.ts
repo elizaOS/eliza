@@ -307,18 +307,6 @@ export function resolveConversationGreetingText(
   lang: string,
   uiConfig?: ElizaConfig["ui"],
 ): string {
-  const pickRandom = (values: string[] | undefined): string => {
-    const choices = (values ?? [])
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-
-    if (choices.length === 0) {
-      return "";
-    }
-
-    return choices[Math.floor(Math.random() * choices.length)] ?? "";
-  };
-
   const normalizedLanguage = normalizeCharacterLanguage(lang);
   const characterName = runtime.character.name?.trim();
   const assistantName = uiConfig?.assistant?.name?.trim();
@@ -339,19 +327,14 @@ export function resolveConversationGreetingText(
     resolveStylePresetByName(assistantName, normalizedLanguage) ??
     resolveStylePresetByName(characterName, normalizedLanguage);
 
-  const presetGreeting = pickRandom(preset?.postExamples);
+  const presetGreeting = preset?.catchphrase.trim();
   if (presetGreeting) {
     return presetGreeting;
   }
 
-  const characterGreeting = pickRandom(runtime.character.postExamples);
-  if (characterGreeting) {
-    return characterGreeting;
-  }
-
-  // Last-resort default so the agent ALWAYS opens the conversation, even when no
-  // preset or character `postExamples` are configured (otherwise the greeting
-  // resolves to "" and the conversation starts empty).
+  // `postExamples` demonstrate how the character writes social posts; using
+  // one as an unsolicited chat opener leaks prompt material into the thread.
+  // A character without a built-in localized catchphrase gets a stable greeting.
   const name = assistantName || characterName;
   return name
     ? `Hey, I'm ${name}. What can I help you with?`
