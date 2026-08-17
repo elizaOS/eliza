@@ -9,6 +9,7 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import type { AppsService } from "@/lib/services/apps";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
@@ -35,7 +36,15 @@ const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
 const getById = mock(async (id: string) =>
   id === APP_ID ? { id: APP_ID, organization_id: ORG_A } : null,
 );
-const getRecentRequests = mock(async () => ({ requests: [], total: 0 }));
+type RecentRequestOptions = NonNullable<
+  Parameters<AppsService["getRecentRequests"]>[1]
+>;
+const getRecentRequests = mock(
+  async (_appId: string, _options: RecentRequestOptions) => ({
+    requests: [],
+    total: 0,
+  }),
+);
 const getTopVisitors = mock(async () => []);
 const getRequestsOverTime = mock(async () => []);
 const getRequestStats = mock(async () => ({}));
