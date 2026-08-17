@@ -54,6 +54,13 @@ describe("sliceToFitBudget", () => {
 	it("returns empty for a zero or negative budget", () => {
 		expect(sliceToFitBudget(["a"], byLength, 0)).toEqual([]);
 		expect(sliceToFitBudget(["a"], byLength, -10)).toEqual([]);
+		expect(sliceToFitBudget(["a", "b"], byLength, Number.NaN)).toEqual([]);
+		expect(
+			sliceToFitBudget(["a", "b"], byLength, Number.POSITIVE_INFINITY),
+		).toEqual([]);
+		expect(
+			sliceToFitBudget(["a", "b"], byLength, Number.NEGATIVE_INFINITY),
+		).toEqual([]);
 	});
 
 	it("treats a zero budget as no room even for a zero-cost item", () => {
@@ -62,10 +69,28 @@ describe("sliceToFitBudget", () => {
 		// wants nothing back, so the guard is load-bearing rather than cosmetic.
 		expect(sliceToFitBudget([""], byLength, 0)).toEqual([]);
 		expect(sliceToFitBudget([""], byLength, 0, { fromEnd: true })).toEqual([]);
+		expect(sliceToFitBudget([""], byLength, Number.NaN)).toEqual([]);
 	});
 
 	it("keeps zero-cost items when there is any budget at all", () => {
 		expect(sliceToFitBudget(["", "", "a"], byLength, 1)).toEqual(["", "", "a"]);
+	});
+
+	it("rejects invalid or negative estimator returns", () => {
+		const items = ["a", "b", "c"];
+		for (const invalidSize of [
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+			Number.NEGATIVE_INFINITY,
+			-10,
+		]) {
+			expect(() => sliceToFitBudget(items, () => invalidSize, 5)).toThrow(
+				RangeError,
+			);
+			expect(() =>
+				sliceToFitBudget(items, () => invalidSize, 5, { fromEnd: true }),
+			).toThrow("estimateChars must return a non-negative finite number");
+		}
 	});
 
 	describe("fromEnd", () => {
