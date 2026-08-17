@@ -134,8 +134,8 @@ type DocumentUploadBody = {
   filename: string;
   contentType?: unknown;
   metadata?: Record<string, unknown>;
-  roomId?: string;
-  worldId?: string;
+  roomId?: unknown;
+  worldId?: unknown;
   entityId?: string;
   scope?: string;
   scopedToEntityId?: string;
@@ -146,6 +146,15 @@ type ValidatedDocumentContentType = {
   essence: string;
   original: string;
 };
+
+type DocumentUploadLocation = {
+  roomId: UUID;
+  worldId: UUID;
+};
+
+type DocumentUploadLocationResult =
+  | { ok: true; value: DocumentUploadLocation }
+  | { ok: false; status: number; error: string };
 
 function validateDocumentContentType(
   contentType: unknown,
@@ -768,6 +777,91 @@ export async function handleDocumentsRoutes(
     error(res, "Authentication required", 401);
     return true;
   }
+  const uploadLocationActor = routeActor;
+
+  async function resolveUploadLocation(input: {
+    roomId?: unknown;
+    worldId?: unknown;
+  }): Promise<DocumentUploadLocationResult> {
+    const roomWasProvided = input.roomId !== undefined;
+    const worldWasProvided = input.worldId !== undefined;
+
+    if (!roomWasProvided && !worldWasProvided) {
+      return { ok: true, value: { roomId: agentId, worldId: agentId } };
+    }
+    if (!roomWasProvided) {
+      return {
+        ok: false,
+        status: 400,
+        error: "worldId requires a roomId so tenant scope can be verified",
+      };
+    }
+    if (!isUuidValue(input.roomId)) {
+      return { ok: false, status: 400, error: "roomId must be a valid UUID" };
+    }
+    let requestedWorldId: UUID | undefined;
+    if (worldWasProvided) {
+      if (!isUuidValue(input.worldId)) {
+        return {
+          ok: false,
+          status: 400,
+          error: "worldId must be a valid UUID",
+        };
+      }
+      requestedWorldId = input.worldId.trim() as UUID;
+    }
+
+    const roomId = input.roomId.trim() as UUID;
+    let room: Awaited<ReturnType<AgentRuntime["getRoom"]>>;
+    try {
+      room = await runtime.getRoom(roomId);
+    } catch (cause) {
+      // error-policy:J1 The HTTP boundary reports canonical-room lookup failure as unavailable.
+      runtime.reportError("documents.upload-location", cause, { roomId });
+      return {
+        ok: false,
+        status: 503,
+        error: "Document room lookup is unavailable",
+      };
+    }
+    if (!room) {
+      return { ok: false, status: 400, error: "roomId does not exist" };
+    }
+    if (!room.worldId) {
+      runtime.reportError(
+        "documents.upload-location",
+        new Error("Canonical document room has no worldId"),
+        { roomId },
+      );
+      return {
+        ok: false,
+        status: 503,
+        error: "Document room tenant scope is unavailable",
+      };
+    }
+
+    const worldId = room.worldId as UUID;
+    if (requestedWorldId && requestedWorldId !== worldId) {
+      return {
+        ok: false,
+        status: 403,
+        error: "worldId does not match the canonical room tenant",
+      };
+    }
+    if (
+      uploadLocationActor.role !== "OWNER" &&
+      uploadLocationActor.role !== "RUNTIME" &&
+      ctx.accessContext?.worldId !== worldId
+    ) {
+      return {
+        ok: false,
+        status: 403,
+        error: "Requester is not authorized for the room tenant",
+      };
+    }
+
+    return { ok: true, value: { roomId, worldId } };
+  }
 
   if (method === "GET" && pathname === "/api/documents/stats") {
     if (
@@ -1132,6 +1226,7 @@ export async function handleDocumentsRoutes(
     document: DocumentUploadBody,
     validatedContentType: ValidatedDocumentContentType,
     actor: RouteActor,
+    location: DocumentUploadLocation,
   ): Promise<{
     documentId: UUID;
     fragmentCount: number;
@@ -1200,12 +1295,7 @@ export async function handleDocumentsRoutes(
       throw new Error(uploadFilters.error);
     }
     const scopedToEntityId = uploadFilters.scopedToEntityId;
-    const roomId = isUuidValue(document.roomId)
-      ? (document.roomId.trim() as UUID)
-      : agentId;
-    const worldId = isUuidValue(document.worldId)
-      ? (document.worldId.trim() as UUID)
-      : agentId;
+    const { roomId, worldId } = location;
     const entityId =
       uploadFilters.scope === "user-private"
         ? (scopedToEntityId ?? actor.entityId)
@@ -1330,12 +1420,18 @@ export async function handleDocumentsRoutes(
       fragmentCount: number;
       warnings?: string[];
     };
+    const location = await resolveUploadLocation(body);
+    if (!location.ok) {
+      error(res, location.error, location.status);
+      return true;
+    }
     try {
       result = await addDocument(
         documentsService,
         body,
         contentType.value,
         routeActor,
+        location.value,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1459,11 +1555,22 @@ export async function handleDocumentsRoutes(
       };
 
       try {
+        const location = await resolveUploadLocation(normalizedDocument);
+        if (!location.ok) {
+          results.push({
+            index,
+            ok: false,
+            filename,
+            error: location.error,
+          });
+          continue;
+        }
         const uploadResult = await addDocument(
           documentsService,
           normalizedDocument,
           contentType,
           routeActor,
+          location.value,
         );
         results.push({
           index,
@@ -1515,6 +1622,12 @@ export async function handleDocumentsRoutes(
       return true;
     }
 
+    const location = await resolveUploadLocation(body);
+    if (!location.ok) {
+      error(res, location.error, location.status);
+      return true;
+    }
+
     let fetchedContent: Awaited<ReturnType<typeof fetchDocumentFromUrl>>;
     try {
       fetchedContent = await fetchDocumentFromUrl(urlToFetch, {
@@ -1533,12 +1646,7 @@ export async function handleDocumentsRoutes(
       return true;
     }
     const scopedToEntityId = uploadFilters.scopedToEntityId;
-    const roomId = isUuidValue(body.roomId)
-      ? (body.roomId.trim() as UUID)
-      : agentId;
-    const worldId = isUuidValue(body.worldId)
-      ? (body.worldId.trim() as UUID)
-      : agentId;
+    const { roomId, worldId } = location.value;
     const entityId =
       uploadFilters.scope === "user-private"
         ? (scopedToEntityId ?? routeActor.entityId)

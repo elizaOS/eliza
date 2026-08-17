@@ -28,6 +28,7 @@ import { creativeDraftAction } from "../src/actions/creative-draft.js";
 const AGENT_ID = "00000000-0000-4000-8000-000000000001" as UUID;
 const OWNER_ID = "00000000-0000-4000-8000-000000000002" as UUID;
 const ROOM_ID = "00000000-0000-4000-8000-000000000003" as UUID;
+const WORLD_ID = "00000000-0000-4000-8000-000000000007" as UUID;
 const DRAFT_DOCUMENT_ID = "00000000-0000-4000-8000-000000000004" as UUID;
 const OWNER_SOURCE_ID = "00000000-0000-4000-8000-000000000005" as UUID;
 
@@ -141,6 +142,7 @@ function harness(options: { transcript?: string } = {}) {
       name === "documents" ? documents : null,
     ),
     useModel,
+    getRoom: vi.fn(async () => ({ id: ROOM_ID, worldId: WORLD_ID })),
     reportError: vi.fn(),
   } as unknown as IAgentRuntime;
   return {
@@ -202,6 +204,8 @@ describe("CREATIVE_DRAFT persisted voice-memo workflow", () => {
     );
     expect(test.documents.addDocument).toHaveBeenCalledWith(
       expect.objectContaining({
+        roomId: ROOM_ID,
+        worldId: WORLD_ID,
         scope: "owner-private",
         scopedToEntityId: OWNER_ID,
         addedBy: OWNER_ID,
@@ -224,6 +228,38 @@ describe("CREATIVE_DRAFT persisted voice-memo workflow", () => {
     const prompt = test.useModel.mock.calls[0]?.[1] as { prompt: string };
     expect(prompt.prompt).toContain("They wasted six months");
     expect(prompt.prompt).toContain('"the point is"');
+  });
+
+  it("fails closed without persisting when canonical room lookup fails", async () => {
+    const test = harness({ transcript: "A usable transcript." });
+    const lookupFailure = new Error("database unavailable");
+    (test.runtime.getRoom as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      lookupFailure,
+    );
+
+    const result = await runAction(
+      test.runtime,
+      voiceMessage({
+        id: "voice-memo-room-failure",
+        url: "/api/media/voice-memo-room-failure.wav",
+        contentType: "audio",
+        mimeType: "audio/wav",
+      }),
+      {
+        action: "compose",
+        request: {
+          title: "Room Failure",
+          targetForm: "memo",
+          ownerAsk: "Draft this.",
+        },
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "CREATIVE_DRAFT_ROOM_LOOKUP_FAILED",
+    });
+    expect(test.documents.addDocument).not.toHaveBeenCalled();
   });
 
   it("reloads the persisted standing draft and updates it on a later revision turn", async () => {

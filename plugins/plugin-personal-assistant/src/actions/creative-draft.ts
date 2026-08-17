@@ -316,9 +316,17 @@ async function persistNewDraft(args: {
   const content = serializeDraft(args.draft);
   let resolvedWorldId = args.message.worldId as UUID | undefined;
   if (!resolvedWorldId) {
-    const room = await args.runtime
-      .getRoom(args.message.roomId as UUID)
-      .catch(() => null);
+    let room: Awaited<ReturnType<typeof args.runtime.getRoom>>;
+    try {
+      room = await args.runtime.getRoom(args.message.roomId as UUID);
+    } catch (cause) {
+      // error-policy:J2 Draft persistence requires canonical room scope; preserve the adapter failure.
+      throw new ElizaError("Creative draft room lookup failed", {
+        code: "CREATIVE_DRAFT_ROOM_LOOKUP_FAILED",
+        context: { roomId: args.message.roomId },
+        cause,
+      });
+    }
     if (!room?.worldId) {
       throw new ElizaError("Creative draft world resolution failed", {
         code: "CREATIVE_DRAFT_WORLD_MISSING",
