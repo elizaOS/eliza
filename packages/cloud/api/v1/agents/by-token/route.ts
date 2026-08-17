@@ -13,10 +13,20 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
+const TOKEN_LOOKUP_CHAIN = /^[a-z][a-z0-9_-]{0,49}$/;
+
+function parseTokenLookupChain(
+  raw: string | undefined,
+): string | undefined | null {
+  if (!raw) return undefined;
+  if (TOKEN_LOOKUP_CHAIN.test(raw)) return raw;
+  return null;
+}
+
 app.get("/", async (c) => {
   try {
     const address = c.req.query("address");
-    const chain = c.req.query("chain") || undefined;
+    const chain = parseTokenLookupChain(c.req.query("chain") || undefined);
 
     if (!address) {
       return c.json(
@@ -33,11 +43,12 @@ app.get("/", async (c) => {
         400,
       );
     }
-    if (chain && chain.length > 50) {
+    if (chain === null) {
       return c.json(
         {
           success: false,
-          error: "chain parameter exceeds maximum length (50)",
+          error:
+            "Invalid chain. Use a canonical lowercase token-rail id (e.g. solana, eth, ethereum, base, bsc).",
         },
         400,
       );
