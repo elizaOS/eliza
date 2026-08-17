@@ -34,23 +34,14 @@ jobs:
       - name: Install gitleaks (OSS binary — no license required)
         # gitleaks/gitleaks-action@v2 requires a paid license for org repos.
         # We download the OSS CLI directly so the scan remains free and
-        # honors our .gitleaks.toml allowlist + custom rules.
+        # honors our .gitleaks.toml allowlist + custom rules. Version and
+        # SHA256 are pinned in the shared installer
+        # (.github/scripts/install-gitleaks.sh); bump them there.
         run: |
           set -euo pipefail
-          GITLEAKS_VERSION=8.30.1
-          # SHA256-pinned like the actionlint installer
-          # (.github/scripts/install-workflow-linters.sh); update both together
-          # on version bumps.
-          GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
-          curl -sSL -o /tmp/gitleaks.tar.gz \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum --check -
-          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
-          # Install without sudo so this works on any runner (github-hosted or
-          # self-hosted, which has no passwordless sudo): write to a user-writable
-          # dir and add it to PATH for the run step, not `sudo install /usr/local/bin`.
-          mkdir -p "$HOME/.local/bin"
-          install -m 0755 /tmp/gitleaks "$HOME/.local/bin/gitleaks"
+          # The installer writes to a user-writable dir (no sudo) so this works
+          # on github-hosted and self-hosted runners alike.
+          ./.github/scripts/install-gitleaks.sh "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/gitleaks" version
 

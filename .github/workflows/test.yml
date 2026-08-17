@@ -1259,13 +1259,9 @@ jobs:
       - name: Install gitleaks
         run: |
           set -euo pipefail
-          GITLEAKS_VERSION=8.30.1
-          curl --fail --location --silent --show-error --retry 3 \
-            --output "$RUNNER_TEMP/gitleaks.tar.gz" \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
-          mkdir -p "$HOME/.local/bin"
-          install -m 0755 "$RUNNER_TEMP/gitleaks" "$HOME/.local/bin/gitleaks"
+          # Version and SHA256 are pinned in the shared installer
+          # (.github/scripts/install-gitleaks.sh); bump them there.
+          ./.github/scripts/install-gitleaks.sh "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Secret scan (gitleaks)
