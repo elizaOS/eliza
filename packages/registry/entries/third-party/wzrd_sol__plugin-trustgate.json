@@ -1,0 +1,18 @@
+{
+  "package": "@wzrd_sol/plugin-trustgate",
+  "repository": "github:twzrd-sol/twzrd-trust",
+  "kind": "plugin",
+  "description": "Buyer-side x402 reputation gate for elizaOS: free TWZRD ReadinessCard preflight before spend, opt-in canSpendSafely enforcement, and an optional facilitator onBeforeSettle hook. No keys or auto-spend.",
+  "homepage": "https://github.com/twzrd-sol/twzrd-trust/tree/main/plugin-trustgate",
+  "version": "0.3.4",
+  "directory": "plugin-trustgate",
+  "tags": [
+    "x402",
+    "trust",
+    "payments",
+    "solana",
+    "spend-guard",
+    "preflight",
+    "reputation"
+  ]
+}
