@@ -31,7 +31,27 @@ app.get("/", async (c) => {
       );
     }
 
-    const isPublic = c.req.query("public") === "1";
+    // Checkout-visibility identity, not leftover inbox-bool tax. Only the
+    // exact token `1` is the allowlisted unauthenticated DTO. `public=true`
+    // / `public=yes` previously fell through to the authenticated creator
+    // path. Missing/empty still means creator view. Garbage 400s before
+    // auth or either lookup.
+    const requestedPublic = c.req.query("public");
+    if (
+      requestedPublic !== undefined &&
+      requestedPublic !== "" &&
+      requestedPublic !== "1"
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "invalid_public",
+          message: 'public must be "1" for the checkout view.',
+        },
+        400,
+      );
+    }
+    const isPublic = requestedPublic === "1";
     const service = getPaymentRequestsService(c.env);
 
     if (isPublic) {
