@@ -56,6 +56,13 @@ describe("desktop experience contract — chat-first launch", () => {
     }
   });
 
+  it("presents the Linux chat pill over a transparent native window", () => {
+    const presentation = resolveDesktopShellWindowPresentation({}, [], "linux");
+    expect(presentation.mode).toBe("bottom-bar");
+    expect(presentation.titleBarStyle).toBe("hidden");
+    expect(presentation.transparent).toBe(true);
+  });
+
   it("keeps the full dashboard window opaque on macOS — transparency is the pill only (#12184)", () => {
     // A transparent full window over dark web content renders as a full-window
     // frosted-glass sheet; only the chromeless pill is transparent.

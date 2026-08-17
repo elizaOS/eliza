@@ -1457,6 +1457,17 @@ export type ElizaDesktopRPCSchema = {
         params: { expanded: boolean; chip?: boolean; hovered?: boolean };
         response: undefined;
       };
+      desktopSetBottomBarSurfaceState: {
+        params: {
+          state:
+            | "CLOSED"
+            | "INPUT"
+            | "OPEN_UNDER_HALF"
+            | "OPEN_HALF_OR_OVER"
+            | "MAXIMIZED";
+        };
+        response: undefined;
+      };
       desktopMinimizeWindow: { params: undefined; response: undefined };
       desktopUnminimizeWindow: { params: undefined; response: undefined };
       desktopMaximizeWindow: { params: undefined; response: undefined };

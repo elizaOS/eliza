@@ -82,6 +82,8 @@ describe("App standalone chat-overlay wiring", () => {
     expect(foundation).toContain("if (useWebChatPanel && shellIsOpen)");
     expect(foundation).toContain("<ChatOverlayMount");
     expect(foundation).toContain("onPilledChange={closeWebChatWhenPilled}");
+    expect(foundation).toContain("onStateChange={syncNativeSurfaceState}");
+    expect(foundation).toContain("setDesktopBottomBarSurfaceState(state)");
     expect(foundation).toContain(
       'expanded: shellIsOpen && shellHostDetent !== "input"',
     );

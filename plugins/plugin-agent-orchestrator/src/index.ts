@@ -63,6 +63,7 @@ export {
   stripToolTranscript,
 } from "./services/transcript-sanitizer.js";
 
+import { osCapabilityAction } from "./actions/os-capability.js";
 import {
   createTerminalUnsupportedTasksAction,
   tasksSandboxStubAction,
@@ -258,7 +259,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
     ],
     // Services manage ACPX subprocesses, workspaces, and sub-agent routing.
     services: orchestratorServices,
-    actions: orchestratorActions,
+    actions: [...orchestratorActions, osCapabilityAction],
     providers: orchestratorProviders,
     routes: codeExecutionAllowed ? (codingAgentRoutePlugin.routes ?? []) : [],
     responseHandlerEvaluators: codeExecutionAllowed
