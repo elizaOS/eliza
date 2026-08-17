@@ -544,74 +544,13 @@ jobs:
           terraform output -json railway_tunnel_dns > "$RUNNER_TEMP/railway-tunnel-dns.json"
           terraform output -json redirect_dns > "$RUNNER_TEMP/redirect-dns.json"
           terraform output -json legacy_certificate_packs > "$RUNNER_TEMP/legacy-certificate-packs.json"
-          node -e '
-            const fs = require("node:fs");
-            const domains = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            for (const [key, entry] of Object.entries(domains)) {
-              if (entry.status !== "active") throw new Error(`${key} domain is ${entry.status}, expected active`);
-              if (!entry.certificate_authority) throw new Error(`${key} has no issued certificate authority`);
-            }
-
-            const canonical = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-            const tunnel = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
-            const redirect = JSON.parse(fs.readFileSync(process.argv[4], "utf8"));
-            const legacyPacks = JSON.parse(fs.readFileSync(process.argv[5], "utf8"));
-
-            const requireProxiedRecords = (label, records) => {
-              const entries = Object.entries(records ?? {});
-              if (entries.length === 0) throw new Error(`${label} has no managed DNS records`);
-              for (const [key, record] of entries) {
-                if (!record.id) throw new Error(`${label}.${key} has no Cloudflare record id`);
-                if (record.proxied !== true) throw new Error(`${label}.${key} is not proxied`);
-              }
-            };
-            const requireActivePacks = (label, packs) => {
-              const entries = Object.entries(packs ?? {});
-              if (entries.length === 0) throw new Error(`${label} has no certificate generations`);
-              for (const [key, pack] of entries) {
-                if (pack.status !== "active") throw new Error(`${label}.${key} certificate is ${pack.status}, expected active`);
-              }
-            };
-            const requireDnsOnlyRecords = (label, records) => {
-              const entries = Object.entries(records ?? {});
-              if (entries.length === 0) throw new Error(`${label} has no managed DNS records`);
-              const requiredRoles = [
-                "apex-routing",
-                "apex-verification",
-                "wildcard-routing",
-                "wildcard-certificate",
-                "wildcard-verification",
-              ];
-              for (const [key, record] of entries) {
-                if (!record.id) throw new Error(`${label}.${key} has no Cloudflare record id`);
-                if (record.proxied !== false) throw new Error(`${label}.${key} must remain DNS-only`);
-                if (!['CNAME', 'TXT'].includes(record.type)) throw new Error(`${label}.${key} has unsupported type ${record.type}`);
-              }
-              for (const role of requiredRoles) {
-                const count = entries.filter(([, record]) => record.roles?.includes(role)).length;
-                if (count !== 1) throw new Error(`${label} must cover ${role} exactly once, found ${count}`);
-              }
-            };
-
-            requireProxiedRecords("canonical_edge.dns_records", canonical.dns_records);
-            requireProxiedRecords("canonical_edge.service_dns_records", canonical.service_dns_records);
-            requireActivePacks("canonical_edge.certificate_packs", canonical.certificate_packs);
-            requireDnsOnlyRecords("railway_tunnel_dns", tunnel);
-            requireProxiedRecords("redirect_dns.exact", redirect.exact);
-            requireProxiedRecords("redirect_dns.deep_wildcards", redirect.deep_wildcards);
-            requireActivePacks("legacy_certificate_packs.redirect", legacyPacks.redirect);
-            if (process.env.TF_VAR_environment === "staging") {
-              requireProxiedRecords("redirect_dns.staging_agent", redirect.staging_agent);
-              if (legacyPacks.staging_agent?.status !== "active") {
-                throw new Error(`legacy staging agent certificate is ${legacyPacks.staging_agent?.status ?? "missing"}, expected active`);
-              }
-            }
-          ' \
+          node "$GITHUB_WORKSPACE/packages/scripts/validate-terraform-pages-domain-state.mjs" \
             "$RUNNER_TEMP/pages-domains.json" \
             "$RUNNER_TEMP/canonical-edge.json" \
             "$RUNNER_TEMP/railway-tunnel-dns.json" \
             "$RUNNER_TEMP/redirect-dns.json" \
-            "$RUNNER_TEMP/legacy-certificate-packs.json"
+            "$RUNNER_TEMP/legacy-certificate-packs.json" \
+            "$TF_VAR_environment"
 
       - name: Verify additive canonical edge state
         if: inputs.component == 'pages-domains' && inputs.operation == 'apply' && inputs.plan_scope == 'canonical-edge-additive'
