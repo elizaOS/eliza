@@ -190,7 +190,7 @@ const searchCommand: SlashCommand = {
 
 			const results = filteredMemories.slice(0, limit).map((memory, index) => {
 				const text = memory.content?.text || "(no text)";
-				const truncated = text.length > 120 ? `${text.slice(0, 120)}...` : text;
+				const truncated = text.length > 120 ? `${text.slice(0, 117)}...` : text;
 				const date = memory.createdAt
 					? new Date(memory.createdAt).toLocaleDateString()
 					: "unknown date";
