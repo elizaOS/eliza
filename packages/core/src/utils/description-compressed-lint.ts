@@ -127,7 +127,9 @@ export function lintDescriptionCompressed(
 	const firstWordMatch = value.trim().match(/^([A-Za-z][A-Za-z0-9_-]*)/);
 	if (firstWordMatch) {
 		const firstWord = firstWordMatch[1];
-		if (NON_IMPERATIVE_LEADING_WORDS.has(firstWord)) {
+		const normalized =
+			firstWord.charAt(0).toUpperCase() + firstWord.slice(1).toLowerCase();
+		if (NON_IMPERATIVE_LEADING_WORDS.has(normalized)) {
 			violations.push(
 				`non-imperative: descriptionCompressed starts with "${firstWord}" — use an imperative verb (e.g. "Send", "Get", "List")`,
 			);
