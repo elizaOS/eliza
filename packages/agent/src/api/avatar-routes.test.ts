@@ -32,7 +32,10 @@ describe("handleAvatarRoutes percent-encoding", () => {
   });
 
   it("400s the same illegal encodings on HEAD", async () => {
-    const { handled, error, res } = await drive("/api/avatar/discord/%", "HEAD");
+    const { handled, error, res } = await drive(
+      "/api/avatar/discord/%",
+      "HEAD",
+    );
     expect(handled).toBe(true);
     expect(error).toHaveBeenCalledWith(res, "Invalid Discord avatar path", 400);
   });

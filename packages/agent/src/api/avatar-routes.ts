@@ -56,6 +56,8 @@ export async function handleAvatarRoutes(
     try {
       fileName = decodeURIComponent(encodedFileName);
     } catch {
+      // error-policy:J3 untrusted-input sanitizing — invalid percent escapes
+      // are a malformed path, not a server failure.
       error(res, "Invalid Discord avatar path", 400);
       return true;
     }
