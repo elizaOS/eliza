@@ -210,6 +210,7 @@ import {
   detectCheckSurfaces,
   mineCandidatePaths,
   probeMappedUrls,
+  readFsVerifiedContents,
 } from "./quick-app-evidence.js";
 import {
   readSmithersDurableRunLink,
@@ -2594,6 +2595,17 @@ export class OrchestratorTaskService extends Service {
         : {}),
       ...(fsVerifiedFiles.length > 0 ? { fsVerifiedFiles } : {}),
       ...(checkSurfaces ? { checkSurfaces } : {}),
+      ...(fsVerifiedFiles.length > 0 && reportingSession?.workdir
+        ? (() => {
+            const fsVerifiedFileContents = readFsVerifiedContents(
+              reportingSession.workdir,
+              fsVerifiedFiles,
+            );
+            return fsVerifiedFileContents.length > 0
+              ? { fsVerifiedFileContents }
+              : {};
+          })()
+        : {}),
       screenshots: [...new Set(screenshots)],
     };
   }
