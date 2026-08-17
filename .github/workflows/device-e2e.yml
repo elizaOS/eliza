@@ -55,9 +55,6 @@ jobs:
       # coverage against the host-run agent; the LOCAL arm64 route stays on
       # self-hosted device runners.
       ELIZA_ANDROID_BACKEND: "host"
-      # The bundle-owning runner starts, health-checks, logs, and tears down the
-      # pairing-disabled real host agent that global setup requires on :31337.
-      ELIZA_ANDROID_MANAGE_HOST_AGENT: "1"
       ELIZA_DEVICE_BUNDLE_ROOT: ${{ github.workspace }}/device-e2e-artifacts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -86,10 +83,14 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
-      # android-e2e.mjs owns the whole lane inside the emulator session. The
-      # explicit host probe set is limited to onboarding, route rendering, and
-      # the native-plugin bridge: local-agent, destructive lifecycle, launcher
-      # soak, and voice specs have separate hardware prerequisites.
+      # Build before launching QEMU. The full native/web build saturates the
+      # hosted runner for several minutes and made the emulator disappear before
+      # the route sweep on otherwise healthy exact-head APKs.
+      - name: Build exact-head Android APK
+        run: bun run --cwd packages/app build:android
+
+      # android-e2e.mjs owns install, exact renderer-stamp verification, host
+      # lifecycle, and the explicit onboarding/route/native-bridge probe set.
       - name: Android device-bundle run
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
@@ -98,7 +99,7 @@ jobs:
           ram-size: 6144M
           # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
-          script: node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android"
+          script: node packages/app/scripts/android-e2e.mjs --skip-build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android"
 
       - name: Upload Android device bundle
         if: always()

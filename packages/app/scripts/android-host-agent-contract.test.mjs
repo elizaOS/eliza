@@ -41,6 +41,14 @@ describe("Android device-e2e host-agent contract", () => {
     expect(workflow).toContain('ELIZA_ANDROID_MANAGE_HOST_AGENT: "1"');
   });
 
+  it("builds the exact APK before launching the resource-constrained emulator", () => {
+    expect(workflow).toContain("name: Build exact-head Android APK");
+    expect(workflow).toContain("bun run --cwd packages/app build:android");
+    expect(workflow).toContain(
+      "android-e2e.mjs --skip-build --skip-local-chat --no-emulator-boot",
+    );
+  });
+
   it("checks out the pinned native source required by the iOS simulator build", () => {
     expect(workflow).toContain(
       "git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp",
@@ -74,7 +82,9 @@ describe("Android device-e2e host-agent contract", () => {
 
   it("bounds the complete route sweep without selecting unrelated device suites", () => {
     expect(runner).toContain('"test/android/route-coverage.android.spec.ts"');
-    expect(runner).toContain('"test/android/console-sweep.android.spec.ts"');
+    expect(runner).not.toContain(
+      '"test/android/console-sweep.android.spec.ts"',
+    );
     expect(runner).toContain("{ timeoutMs: 20 * 60_000 }");
     expect(runner).not.toContain('"stage Android voice models"');
   });
