@@ -141,6 +141,7 @@ import {
   validateAndroidAppActionsXmlResource,
 } from "./mobile/android-manifest.mjs";
 import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
+import { assertIosHealthKitBuildAuthority } from "./mobile/ios-healthkit-authority.mjs";
 import {
   mergeIosInfoPlist,
   readIosApnsBuildFlag,
@@ -3698,6 +3699,15 @@ function overlayIos() {
   if (fs.existsSync(plistPath)) {
     let plist = fs.readFileSync(plistPath, "utf8");
     let dirty = false;
+    const healthKitEnabled = readIosHealthKitBuildFlag(
+      process.env.ELIZA_IOS_HEALTHKIT_ENABLED,
+    );
+    assertIosHealthKitBuildAuthority({
+      enabled: healthKitEnabled,
+      appId: APP.appId,
+      provisioningProfilePath:
+        process.env.MOBILE_SIGNALS_IOS_PROVISIONING_PROFILE,
+    });
     // UIBackgroundModes and BGTaskSchedulerPermittedIdentifiers are MERGED,
     // not force-set: the template Info.plist already declares the modes the
     // ElizaTasks plugin needs (`processing`, `remote-notification`) and the
@@ -3709,9 +3719,7 @@ function overlayIos() {
       appName: APP.appName,
       urlScheme: APP.urlScheme,
       apnsEnabled: readIosApnsBuildFlag(process.env.VITE_ELIZA_APNS_ENABLED),
-      healthKitEnabled: readIosHealthKitBuildFlag(
-        process.env.ELIZA_IOS_HEALTHKIT_ENABLED,
-      ),
+      healthKitEnabled,
     });
     if (nextPlist.changed) {
       plist = nextPlist.content;

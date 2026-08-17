@@ -72,8 +72,10 @@ await MobileSignals.stopMonitoring();
 
 HealthKit is disabled by default in local, unsigned, and Simulator builds. A
 signed build that includes the HealthKit capability must set the exact build
-flag `ELIZA_IOS_HEALTHKIT_ENABLED=1`; the canonical mobile build writes the
-matching `ELIZA_HEALTHKIT_ENABLED=1` marker into the final app `Info.plist`.
+flag `ELIZA_IOS_HEALTHKIT_ENABLED=1` and provide its profile through
+`MOBILE_SIGNALS_IOS_PROVISIONING_PROFILE`; the canonical mobile build verifies
+the app binding and required entitlements before writing the matching
+`ELIZA_HEALTHKIT_ENABLED=1` marker into the final app `Info.plist`.
 Any missing, disabled, or malformed marker fails closed before the plugin calls
 HealthKit authorization, status, query, or background-delivery APIs.
 
@@ -115,8 +117,8 @@ await MobileSignals.openSettings({ target: "usageAccess" });
 
 | Variable | Description |
 |---|---|
-| `ELIZA_IOS_HEALTHKIT_ENABLED` | Exact `"1"` enables HealthKit in a correctly signed iOS build; missing, empty, or `"0"` keeps it unavailable. Any other value fails the build. |
-| `MOBILE_SIGNALS_IOS_PROVISIONING_PROFILE` | Path to a `.mobileprovision` to inspect for Screen Time entitlements during `validate:ios-screen-time`. |
+| `ELIZA_IOS_HEALTHKIT_ENABLED` | Exact `"1"` enables HealthKit only after the canonical build verifies the app's provisioning profile; missing, empty, or `"0"` keeps it unavailable. Any other value fails the build. |
+| `MOBILE_SIGNALS_IOS_PROVISIONING_PROFILE` | Required when HealthKit is enabled; also inspected for Screen Time entitlements during `validate:ios-screen-time`. |
 | `MOBILE_SIGNALS_REQUIRE_IOS_PROVISIONING_PROFILE` | Set to `"1"` to fail validation when no provisioning profile is supplied. |
 
 ## Platform notes
