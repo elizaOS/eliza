@@ -87,6 +87,10 @@ const SHUTDOWN_DELAY_MS = 1_500;
 const MAX_RESTART_REASON_CHARS = 240;
 const MAX_SELF_STATUS_BRIEF_CHARS = 1200;
 const MAX_SELF_STATUS_FULL_CHARS = 8000;
+// Appended when self-status detail is truncated. Its length is reserved out of
+// the cap before slicing so the returned string never exceeds maxChars — the
+// suffix is part of the budget, not added on top of it (issue #20762).
+const SELF_STATUS_TRUNCATION_SUFFIX = "\n…[self-status truncated]";
 
 const RESTART_REQUEST_TERMS = getValidationKeywordTerms(
   "action.restart.request",
@@ -225,10 +229,20 @@ async function selfStatusOp(
     detailLevel === "full"
       ? MAX_SELF_STATUS_FULL_CHARS
       : MAX_SELF_STATUS_BRIEF_CHARS;
-  const text =
-    rawText.length <= maxChars
-      ? rawText
-      : `${rawText.slice(0, maxChars)}\n…[self-status truncated]`;
+  const truncated = rawText.length > maxChars;
+  // Reserve the suffix out of the cap so the final string is <= maxChars. Guard
+  // the slice index against caps smaller than the suffix (never true for the
+  // configured caps, but keeps the bound honest for any future cap).
+  const bodyLimit = Math.max(
+    0,
+    maxChars - SELF_STATUS_TRUNCATION_SUFFIX.length,
+  );
+  const text = truncated
+    ? `${rawText.slice(0, bodyLimit)}${SELF_STATUS_TRUNCATION_SUFFIX}`.slice(
+        0,
+        maxChars,
+      )
+    : rawText;
   return {
     success: true,
     text,
@@ -238,7 +252,7 @@ async function selfStatusOp(
       op: "self_status",
       module,
       detailLevel,
-      truncated: text.length < rawText.length,
+      truncated,
     },
   };
 }
