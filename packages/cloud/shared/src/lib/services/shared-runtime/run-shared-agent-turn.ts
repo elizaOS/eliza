@@ -627,11 +627,43 @@ export async function runSharedAgentTurnStream(
     const providerReader = result.fullStream.getReader();
     // error-policy:J5 cancel(reason) rejects the SDK's pending result
     // promises; the parts iterator below is the observed failure channel, so
-    // mark these handled here to keep a barge-in from surfacing its
-    // cancellation reason as an unhandled rejection on the event loop.
-    void Promise.resolve(result.text).catch(() => {});
-    void Promise.resolve(result.totalUsage).catch(() => {});
-    void Promise.resolve(result.finishReason).catch(() => {});
+    // mark every promise-typed result property handled here to keep a
+    // barge-in from surfacing its cancellation reason as unhandled
+    // rejections on the event loop. Stream-typed getters (fullStream,
+    // textStream, ...) are deliberately NOT touched — accessing them tees or
+    // locks the provider stream.
+    const settledResultProps = [
+      "content",
+      "text",
+      "reasoning",
+      "reasoningText",
+      "files",
+      "sources",
+      "toolCalls",
+      "staticToolCalls",
+      "dynamicToolCalls",
+      "staticToolResults",
+      "dynamicToolResults",
+      "toolResults",
+      "finishReason",
+      "rawFinishReason",
+      "usage",
+      "totalUsage",
+      "warnings",
+      "steps",
+      "request",
+      "response",
+      "providerMetadata",
+    ] as const;
+    for (const prop of settledResultProps) {
+      const pending = (result as unknown as Record<string, unknown>)[prop];
+      if (
+        pending &&
+        typeof (pending as PromiseLike<unknown>).then === "function"
+      ) {
+        void Promise.resolve(pending as PromiseLike<unknown>).catch(() => {});
+      }
+    }
     let providerStreamDone = false;
     let providerStreamCancelled = false;
     let providerCancelPromise: Promise<void> | null = null;
