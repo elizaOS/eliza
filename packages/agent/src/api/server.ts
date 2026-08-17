@@ -2569,7 +2569,6 @@ async function handleRequest(
         error,
         readJsonBody,
         readBody,
-        decodePathComponent,
         discoverSkills,
       })
     ) {
