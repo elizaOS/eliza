@@ -15,17 +15,45 @@ vi.mock("../services/app-package-modules.ts", () => ({
   importAppRouteModule: importAppRouteModuleMock,
 }));
 
+// Keep this focused dispatcher test independent of the broad server-helper
+// module graph while preserving the decoder's real response contract.
+vi.mock("./server-helpers.ts", () => ({
+  decodePathComponent(
+    raw: string,
+    res: http.ServerResponse,
+    fieldName: string,
+  ): string | null {
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "application/json");
+      res.end(
+        JSON.stringify({
+          error: `Invalid ${fieldName}: malformed URL encoding`,
+        }),
+      );
+      return null;
+    }
+  },
+}));
+
 import { handleAppPackageRoutes } from "./app-package-routes.ts";
 
 function createContext(pathname: string): {
   context: AppPackageRouteDispatchContext;
   error: ReturnType<typeof vi.fn>;
+  end: ReturnType<typeof vi.fn>;
   readJsonBody: ReturnType<typeof vi.fn>;
   req: http.IncomingMessage;
   res: http.ServerResponse;
 } {
   const req = {} as http.IncomingMessage;
-  const res = {} as http.ServerResponse;
+  const end = vi.fn();
+  const res = {
+    setHeader: vi.fn(),
+    end,
+  } as unknown as http.ServerResponse;
   const error = vi.fn();
   const readJsonBody = vi.fn(async () => ({ ok: true }));
   const context = {
@@ -40,7 +68,7 @@ function createContext(pathname: string): {
     readJsonBody,
   } as unknown as AppPackageRouteDispatchContext;
 
-  return { context, error, readJsonBody, req, res };
+  return { context, error, end, readJsonBody, req, res };
 }
 
 describe("dynamic app-package route dispatch", () => {
@@ -51,18 +79,23 @@ describe("dynamic app-package route dispatch", () => {
   it.each(["%", "%2", "%ZZ", "%E0%A4"])(
     "handles malformed app slug encoding %s as a 400",
     async (encodedSlug) => {
-      const { context, error, res } = createContext(
+      const { context, end, error, res } = createContext(
         `/api/apps/${encodedSlug}/run`,
       );
 
       await expect(handleAppPackageRoutes(context)).resolves.toBe(true);
 
-      expect(error).toHaveBeenCalledOnce();
-      expect(error).toHaveBeenCalledWith(
-        res,
-        "Invalid app slug: malformed URL encoding",
-        400,
+      expect(res.statusCode).toBe(400);
+      expect(res.setHeader).toHaveBeenCalledWith(
+        "Content-Type",
+        "application/json",
       );
+      expect(end).toHaveBeenCalledWith(
+        JSON.stringify({
+          error: "Invalid app slug: malformed URL encoding",
+        }),
+      );
+      expect(error).not.toHaveBeenCalled();
       expect(importAppRouteModuleMock).not.toHaveBeenCalled();
     },
   );
