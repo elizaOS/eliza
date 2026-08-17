@@ -71,17 +71,20 @@ app.get("/", async (c) => {
     // Voice Studio inactive-row identity, not leftover tax on cloneType
     // (#21047). includeInactive=TRUE used to silently hide soft-deleted
     // voices instead of 400.
-    const requestedInactive = c.req.query("includeInactive");
+    const inactiveValues = c.req.queries("includeInactive") ?? [];
+    const requestedInactive = inactiveValues[0];
     if (
-      requestedInactive != null &&
-      requestedInactive !== "" &&
-      requestedInactive !== "true" &&
-      requestedInactive !== "false"
+      inactiveValues.length > 1 ||
+      (requestedInactive != null &&
+        requestedInactive !== "" &&
+        requestedInactive !== "true" &&
+        requestedInactive !== "false")
     ) {
       return c.json(
         {
           error: "Invalid includeInactive",
-          message: 'includeInactive must be "true" or "false".',
+          message:
+            'includeInactive must be specified at most once as "true" or "false".',
         },
         400,
       );

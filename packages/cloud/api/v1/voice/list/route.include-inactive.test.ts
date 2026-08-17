@@ -92,10 +92,7 @@ describe("GET /api/v1/voice/list includeInactive identity", () => {
 
   test("accepts includeInactive=true as the full Voice Studio catalog", async () => {
     listByOrganization.mockResolvedValueOnce({
-      voices: [
-        voiceRow("instant", true),
-        voiceRow("professional", false),
-      ],
+      voices: [voiceRow("instant", true), voiceRow("professional", false)],
       total: 2,
       limit: 50,
       offset: 0,
@@ -118,6 +115,24 @@ describe("GET /api/v1/voice/list includeInactive identity", () => {
       expect(response.status).toBe(400);
       const body = (await response.json()) as { error: string };
       expect(body.error).toBe("Invalid includeInactive");
+      expect(listByOrganization).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([
+    "?includeInactive=false&includeInactive=true",
+    "?includeInactive=true&includeInactive=false",
+    "?includeInactive=true&includeInactive=true",
+    "?includeInactive=&includeInactive=false",
+  ])(
+    "rejects ambiguous duplicate query %s before repository access",
+    async (query) => {
+      const response = await listVoices(query);
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: "Invalid includeInactive",
+      });
       expect(listByOrganization).not.toHaveBeenCalled();
     },
   );
