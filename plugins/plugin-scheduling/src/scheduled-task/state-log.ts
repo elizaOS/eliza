@@ -5,8 +5,8 @@
  * `GET /api/lifeops/scheduled-tasks/:id/history` endpoint reads from
  * this log. Default 90-day retention with a nightly rollup pass that folds
  * expired entries into a daily-summary row per task per transition kind.
- * The one `scheduled` creation receipt stays raw for the task's lifetime so
- * idempotent request replay retains the same durable proof identity.
+ * Creation receipts and receipt-keyed lifecycle commits stay raw for the
+ * task's lifetime so an idempotent replay retains its durable proof identity.
  */
 
 import type {
@@ -42,6 +42,9 @@ export function createInMemoryScheduledTaskLogStore(): ScheduledTaskLogStore {
   const rows: ScheduledTaskLogEntry[] = [];
   return {
     async append(entry) {
+      if (rows.some((row) => row.logId === entry.logId)) {
+        throw new Error(`Scheduled task log ${entry.logId} already exists`);
+      }
       rows.push({ ...entry });
     },
     async list({ agentId, taskId, sinceIso, untilIso, excludeRollups, limit }) {
@@ -62,6 +65,7 @@ export function createInMemoryScheduledTaskLogStore(): ScheduledTaskLogStore {
           r.agentId === agentId &&
           !r.rolledUp &&
           r.transition !== "scheduled" &&
+          typeof r.detail?.receiptKey !== "string" &&
           r.occurredAtIso < olderThanIso,
       );
       if (expired.length === 0) {
