@@ -129,9 +129,13 @@ function verifyTelegramInitData(
     return { ok: false, reason: "telegram_bad_signature" };
   }
 
-  const authDateSeconds = Number(params.get("auth_date"));
-  if (!Number.isFinite(authDateSeconds) || authDateSeconds <= 0) {
-    return { ok: false, reason: "telegram_missing_auth_date" };
+  const authDateSeconds = parseTelegramAuthDateSeconds(params.get("auth_date"));
+  if (authDateSeconds === null) {
+    const raw = params.get("auth_date");
+    if (raw === null || raw === "") {
+      return { ok: false, reason: "telegram_missing_auth_date" };
+    }
+    return { ok: false, reason: "telegram_invalid_auth_date" };
   }
   if (now - authDateSeconds * 1000 > TELEGRAM_INITDATA_MAX_AGE_MS) {
     return { ok: false, reason: "telegram_stale_auth_date" };
@@ -142,6 +146,16 @@ function verifyTelegramInitData(
     return { ok: false, reason: "telegram_missing_user" };
   }
   return { ok: true, userId };
+}
+
+function parseTelegramAuthDateSeconds(raw: string | null): number | null {
+  if (raw === null || raw === "") return null;
+  // Canonical positive unix seconds only. Number("1.7e9") === 1700000000
+  // used to pass the stale-replay window as a real auth_date.
+  if (!/^[1-9]\d*$/.test(raw)) return null;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return null;
+  return parsed;
 }
 
 function parseTelegramUserId(userField: string | null): string | null {
