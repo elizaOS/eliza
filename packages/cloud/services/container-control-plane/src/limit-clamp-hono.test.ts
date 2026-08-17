@@ -1,19 +1,11 @@
 /**
- * Hono `app.request` coverage for strict limit clamp on
- * `GET|POST /api/v1/cron/process-provisioning-jobs?limit=` — container-control-plane.
- *
- * Proves the handler uses `parseClampedLimit(..., 5, 25)` (strict `/^\d+$/` + isSafeInteger)
- * instead of the weak `Number(query ?? "5")` + Math clamp that accepted `1e4 → 10000 → 25`,
- * `5.5 → 5.5`, `0 → 1`, etc.
- *
- * Mutation-proof: if the file is reverted to `Number(c.req.query("limit") ?? "5")`
- * or an override `if (raw==="1e4") batchSize=25` is inserted after parseClampedLimit,
- * these `batchSize` assertions fail (expected fallback 5, got 25 / 5.5).
+ * Exercises the authenticated provisioning-job limit contract through the Hono app.
+ * A deterministic service replacement captures the exact batch size sent downstream.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { app } from "./index";
 import { provisioningJobService } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
+import { app } from "./index";
 
 const TOKEN = "limit-clamp-hono-token";
 const HEADER = "x-container-control-plane-token";
@@ -48,10 +40,13 @@ async function getBatchSize(query: string): Promise<number> {
     headers: { [HEADER]: TOKEN },
   });
   expect(res.status).toBe(200);
-  const body = (await res.json()) as { success: boolean; data: { batchSize: number } };
+  const body = (await res.json()) as {
+    success: boolean;
+    data: { batchSize: number };
+  };
   expect(body.success).toBe(true);
   expect(typeof body.data.batchSize).toBe("number");
-  // also verify the service was called with the same batchSize the handler echoed
+  // The response and delegated service input must describe the same batch.
   expect(capturedBatchSize).toBe(body.data.batchSize);
   return body.data.batchSize;
 }
@@ -69,15 +64,15 @@ describe("container-control-plane limit clamp via app.request", () => {
     expect(await getBatchSize("?limit=25")).toBe(25);
   });
 
-  test("scientific notation 1e4 → rejected to fallback 5 (old Number → 10000 → 25)", async () => {
+  test("scientific notation falls back to 5", async () => {
     expect(await getBatchSize("?limit=1e4")).toBe(5);
   });
 
-  test("decimal 5.5 → rejected to fallback 5 (old Number → 5.5)", async () => {
+  test("decimal input falls back to 5", async () => {
     expect(await getBatchSize("?limit=5.5")).toBe(5);
   });
 
-  test("zero → rejected to fallback 5 (old Math.max(1,0) → 1)", async () => {
+  test("zero falls back to 5", async () => {
     expect(await getBatchSize("?limit=0")).toBe(5);
   });
 
