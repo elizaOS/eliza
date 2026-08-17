@@ -25,20 +25,46 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * Tunables via query string: `?intervalMs=<n>&max=<n>` (snapshots),
  * `?deletionMinAgeMs=<n>&deletionMax=<n>` (deletion recovery).
  */
+function parseCronPositiveInt(
+  raw: string | null,
+): number | undefined | "invalid" {
+  if (raw === null || raw === "") return undefined;
+  if (!/^[1-9]\d*$/.test(raw)) return "invalid";
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return "invalid";
+  return parsed;
+}
+
 async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
   const authError = verifyCronSecret(c.req.raw, "[Agent Backups]", env);
   if (authError) return authError;
 
   const url = new URL(c.req.url);
-  const intervalMs = Number(url.searchParams.get("intervalMs"));
-  const max = Number(url.searchParams.get("max"));
-  const deletionMinAgeMs = Number(url.searchParams.get("deletionMinAgeMs"));
-  const deletionMax = Number(url.searchParams.get("deletionMax"));
+  const intervalMs = parseCronPositiveInt(url.searchParams.get("intervalMs"));
+  const max = parseCronPositiveInt(url.searchParams.get("max"));
+  const deletionMinAgeMs = parseCronPositiveInt(
+    url.searchParams.get("deletionMinAgeMs"),
+  );
+  const deletionMax = parseCronPositiveInt(url.searchParams.get("deletionMax"));
+  if (
+    intervalMs === "invalid" ||
+    max === "invalid" ||
+    deletionMinAgeMs === "invalid" ||
+    deletionMax === "invalid"
+  ) {
+    return c.json(
+      {
+        success: false,
+        error:
+          "intervalMs, max, deletionMinAgeMs, and deletionMax must be canonical positive integers",
+      },
+      400,
+    );
+  }
 
   const result = await provisioningJobService.enqueueScheduledBackups({
-    minIntervalMs:
-      Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : undefined,
-    maxAgents: Number.isFinite(max) && max > 0 ? max : undefined,
+    minIntervalMs: intervalMs,
+    maxAgents: max,
   });
 
   // Recover stuck `deletion_failed` sandboxes on the same tick. Conservative,
@@ -50,14 +76,9 @@ async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
   > | null = null;
   try {
     deletionRecovery = await provisioningJobService.reEnqueueFailedDeletions({
-      minAgeMs:
-        Number.isFinite(deletionMinAgeMs) && deletionMinAgeMs > 0
-          ? deletionMinAgeMs
-          : undefined,
+      minAgeMs: deletionMinAgeMs,
       maxAgents:
-        Number.isFinite(deletionMax) && deletionMax > 0
-          ? Math.min(deletionMax, 50)
-          : undefined,
+        typeof deletionMax === "number" ? Math.min(deletionMax, 50) : undefined,
     });
   } catch (error) {
     logger.error("[Agent Backups] deletion-recovery sweep failed", {
