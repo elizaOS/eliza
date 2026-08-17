@@ -34,9 +34,9 @@ export const REPLY_CONTEXT_WINDOW_RADIUS = 3;
 /** Mirror of the RECENT_MESSAGES lookback ceiling, for the dedupe window. */
 const MAX_RECENT_MESSAGES_LOOKBACK = 50;
 /** Bound on the always-rendered replied-to snippet line. */
-const MAX_REPLY_TARGET_SNIPPET_CHARS = 300;
+export const MAX_REPLY_TARGET_SNIPPET_CHARS = 300;
 /** Bound on each surrounding turn's rendered text. */
-const MAX_REPLY_WINDOW_MESSAGE_CHARS = 1000;
+export const MAX_REPLY_WINDOW_MESSAGE_CHARS = 1000;
 
 const EMPTY_RESULT: ProviderResult = {
 	data: { replyTargetMessage: null, replyContextMessages: [] },
@@ -48,22 +48,22 @@ function memoryText(memory: Memory): string {
 	return typeof memory.content.text === "string" ? memory.content.text : "";
 }
 
-function truncateSingleLine(text: string, maxChars: number): string {
+export function truncateSingleLine(text: string, maxChars: number): string {
 	const collapsed = text.replace(/\s+/g, " ").trim();
 	return collapsed.length > maxChars
-		? `${collapsed.slice(0, maxChars)}…`
+		? `${collapsed.slice(0, maxChars - 1)}…`
 		: collapsed;
 }
 
 /** Cap a window turn's text so one giant pasted message can't blow up the prompt. */
-function withBoundedText(memory: Memory): Memory {
+export function withBoundedText(memory: Memory): Memory {
 	const text = memoryText(memory);
 	if (text.length <= MAX_REPLY_WINDOW_MESSAGE_CHARS) return memory;
 	return {
 		...memory,
 		content: {
 			...memory.content,
-			text: `${text.slice(0, MAX_REPLY_WINDOW_MESSAGE_CHARS)}…`,
+			text: `${text.slice(0, MAX_REPLY_WINDOW_MESSAGE_CHARS - 1)}…`,
 		},
 	};
 }
