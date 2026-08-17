@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { escapeRegExp, escapeXmlText } from "./escape.mjs";
 import {
   ensurePlistArrayStrings,
+  ensurePlistTrueBool,
   insertBeforeRootPlistDictClose,
   removePbxListEntries,
   replaceIosAppGroupPlaceholders,
@@ -56,6 +57,21 @@ describe("replaceOrInsertPlistString", () => {
     expect(out).toContain("<string>NewValue</string>");
   });
 
+  it("inserts a missing string at the plist root rather than a nested dictionary", () => {
+    const nested = PLIST.replace(
+      "\t<key>CFBundleName</key>",
+      "\t<key>CFBundleIcons</key>\n\t<dict>\n\t\t<key>CFBundlePrimaryIcon</key>\n\t\t<dict>\n\t\t</dict>\n\t</dict>\n\t<key>CFBundleName</key>",
+    );
+    const out = replaceOrInsertPlistString(nested, "NewKey", "NewValue");
+
+    expect(out.indexOf("<key>NewKey</key>")).toBeGreaterThan(
+      out.lastIndexOf("\t</dict>"),
+    );
+    expect(out).toMatch(
+      /<\/dict>\n\t<key>CFBundleName<\/key>[\s\S]*<key>NewKey<\/key>/,
+    );
+  });
+
   it("escapes the inserted value", () => {
     const out = replaceOrInsertPlistString(PLIST, "CFBundleName", "A & B");
     expect(out).toContain("<string>A &amp; B</string>");
@@ -66,6 +82,20 @@ describe("replaceOrInsertPlistString", () => {
     expect(() =>
       replaceOrInsertPlistString(malformed, "CFBundleName", "Eliza"),
     ).toThrow(/CFBundleName must be a string/);
+  });
+});
+
+describe("ensurePlistTrueBool", () => {
+  it("inserts a missing boolean at the plist root rather than a nested dictionary", () => {
+    const nested = PLIST.replace(
+      "\t<key>CFBundleName</key>",
+      "\t<key>Inner</key>\n\t<dict>\n\t</dict>\n\t<key>CFBundleName</key>",
+    );
+    const out = ensurePlistTrueBool(nested, "RootFlag");
+
+    expect(out).toMatch(
+      /<\/dict>\n\t<key>CFBundleName<\/key>[\s\S]*<key>RootFlag<\/key>/,
+    );
   });
 });
 

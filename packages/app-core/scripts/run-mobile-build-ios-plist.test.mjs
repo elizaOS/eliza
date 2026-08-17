@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 import {
   ensurePlistArrayStrings,
   IOS_APNS_ENABLED_KEY,
+  IOS_HEALTHKIT_ENABLED_KEY,
   mergeIosInfoPlist,
   readIosApnsBuildFlag,
+  readIosHealthKitBuildFlag,
   replaceOrInsertPlistString,
   resolveIosPermissionKeys,
 } from "./mobile/ios-plist.mjs";
@@ -13,6 +15,20 @@ import {
 const minimalPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
 <dict>
+</dict>
+</plist>`;
+
+const nestedPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+\t<key>CFBundleIcons</key>
+\t<dict>
+\t\t<key>CFBundlePrimaryIcon</key>
+\t\t<dict>
+\t\t\t<key>CFBundleIconName</key>
+\t\t\t<string>AppIcon</string>
+\t\t</dict>
+\t</dict>
 </dict>
 </plist>`;
 
@@ -48,6 +64,37 @@ describe("iOS Info.plist overlay helpers", () => {
     expect(merged.content).toMatch(
       new RegExp(`<key>${IOS_APNS_ENABLED_KEY}</key>\\s*<string>0</string>`),
     );
+    expect(merged.content).toMatch(
+      new RegExp(
+        `<key>${IOS_HEALTHKIT_ENABLED_KEY}</key>\\s*<string>0</string>`,
+      ),
+    );
+  });
+
+  it("keeps every missing overlay key out of nested plist dictionaries", () => {
+    const merged = mergeIosInfoPlist(nestedPlist, {
+      appName: "Eliza",
+      urlScheme: "eliza",
+      healthKitEnabled: true,
+    }).content;
+    const firstRootOverlayKey = merged.indexOf(
+      "<key>NSCameraUsageDescription</key>",
+    );
+    const nestedIconSection = merged.slice(0, firstRootOverlayKey);
+
+    expect(firstRootOverlayKey).toBeGreaterThan(
+      merged.indexOf("<key>CFBundleIconName</key>"),
+    );
+    expect(nestedIconSection).toContain("<key>CFBundleIconName</key>");
+    expect(nestedIconSection).not.toContain("UsageDescription");
+    expect(nestedIconSection).not.toContain("NSSupportsLiveActivities");
+    expect(nestedIconSection).not.toContain(IOS_APNS_ENABLED_KEY);
+    expect(nestedIconSection).not.toContain(IOS_HEALTHKIT_ENABLED_KEY);
+    expect(merged).toMatch(
+      new RegExp(
+        `<key>${IOS_HEALTHKIT_ENABLED_KEY}</key>\\s*<string>1</string>\\s*</dict>\\s*</plist>$`,
+      ),
+    );
   });
 
   it("writes the native APNs gate from the canonical build option", () => {
@@ -78,6 +125,44 @@ describe("iOS Info.plist overlay helpers", () => {
     expect(readIosApnsBuildFlag("1")).toBe(true);
     expect(() => readIosApnsBuildFlag(" 1 ")).toThrow(/must be "0" or "1"/);
     expect(() => readIosApnsBuildFlag("true")).toThrow(/must be "0" or "1"/);
+  });
+
+  it("writes HealthKit availability only from the exact native build flag", () => {
+    const enabled = mergeIosInfoPlist(minimalPlist, {
+      appName: "Eliza",
+      urlScheme: "eliza",
+      healthKitEnabled: true,
+    });
+
+    expect(enabled.content).toMatch(
+      new RegExp(
+        `<key>${IOS_HEALTHKIT_ENABLED_KEY}</key>\\s*<string>1</string>`,
+      ),
+    );
+    expect(
+      mergeIosInfoPlist(enabled.content, {
+        appName: "Eliza",
+        urlScheme: "eliza",
+        healthKitEnabled: false,
+      }).content,
+    ).toMatch(
+      new RegExp(
+        `<key>${IOS_HEALTHKIT_ENABLED_KEY}</key>\\s*<string>0</string>`,
+      ),
+    );
+  });
+
+  it("accepts only the exact HealthKit build flag", () => {
+    expect(readIosHealthKitBuildFlag(undefined)).toBe(false);
+    expect(readIosHealthKitBuildFlag("")).toBe(false);
+    expect(readIosHealthKitBuildFlag("0")).toBe(false);
+    expect(readIosHealthKitBuildFlag("1")).toBe(true);
+    expect(() => readIosHealthKitBuildFlag(" 1 ")).toThrow(
+      /must be "0" or "1"/,
+    );
+    expect(() => readIosHealthKitBuildFlag("true")).toThrow(
+      /must be "0" or "1"/,
+    );
   });
 
   it("is idempotent after the first merge", () => {
