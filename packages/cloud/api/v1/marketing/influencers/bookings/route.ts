@@ -27,8 +27,29 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    // Party identity, not leftover X connectionRole tax. The prior ternary
+    // mapped every non-"influencer" token — including INFLUENCER, advertiser
+    // typos, and 1e2 — onto the advertiser org list. Missing/empty still
+    // defaults to advertiser (this route's documented default). Garbage 400s
+    // before either booking list.
+    const requestedAs = c.req.query("as");
+    if (
+      requestedAs !== undefined &&
+      requestedAs !== "" &&
+      requestedAs !== "influencer" &&
+      requestedAs !== "advertiser"
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "invalid_as",
+          message: 'as must be "influencer" or "advertiser".',
+        },
+        400,
+      );
+    }
     const bookings =
-      c.req.query("as") === "influencer"
+      requestedAs === "influencer"
         ? await influencerMarketplaceService.listBookingsForInfluencer(user.id)
         : await influencerMarketplaceService.listBookingsForOrg(
             user.organization_id,
