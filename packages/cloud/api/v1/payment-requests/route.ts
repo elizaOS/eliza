@@ -65,9 +65,46 @@ const ListQuerySchema = z.object({
   status: StatusSchema.optional(),
   provider: ProviderSchema.optional(),
   agentId: z.string().min(1).max(256).optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
 });
+
+const MAX_PAYMENT_REQUESTS_LIMIT = 200;
+
+class PaymentRequestsLimitError extends Error {
+  constructor(message = "Invalid limit") {
+    super(message);
+    this.name = "PaymentRequestsLimitError";
+  }
+}
+
+/**
+ * GET /api/v1/payment-requests `limit` is list-page size identity,
+ * leftover tax after files / gallery explore. Stock develop used
+ * z.coerce.number(), which treated `1e2` / `007` / `0x10` as a page
+ * size instead of a 400. offset / status / provider / agentId stay
+ * untouched. Missing / empty still means no explicit limit. Exact
+ * integers clamp at 200.
+ */
+function parsePaymentRequestsLimitQuery(
+  searchParams: URLSearchParams,
+): number | undefined {
+  const requested = searchParams.getAll("limit");
+  if (requested.length > 1) {
+    throw new PaymentRequestsLimitError();
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return undefined;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new PaymentRequestsLimitError();
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new PaymentRequestsLimitError();
+  }
+  return Math.min(parsed, MAX_PAYMENT_REQUESTS_LIMIT);
+}
 
 const app = new Hono<AppEnv>();
 
@@ -155,11 +192,20 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
+    let limit: number | undefined;
+    try {
+      limit = parsePaymentRequestsLimitQuery(new URL(c.req.url).searchParams);
+    } catch (limitError) {
+      if (limitError instanceof PaymentRequestsLimitError) {
+        return c.json({ error: limitError.message }, 400);
+      }
+      throw limitError;
+    }
+
     const parsed = ListQuerySchema.safeParse({
       status: c.req.query("status"),
       provider: c.req.query("provider"),
       agentId: c.req.query("agentId"),
-      limit: c.req.query("limit"),
       offset: c.req.query("offset"),
     });
     if (!parsed.success) {
@@ -178,7 +224,7 @@ app.get("/", async (c) => {
       status: parsed.data.status,
       provider: parsed.data.provider,
       agentId: parsed.data.agentId,
-      limit: parsed.data.limit,
+      limit,
       offset: parsed.data.offset,
     });
 

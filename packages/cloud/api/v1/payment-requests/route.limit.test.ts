@@ -1,0 +1,102 @@
+/**
+ * GET /api/v1/payment-requests `limit` is list-page size identity,
+ * leftover tax after files / gallery explore. Stock develop used
+ * z.coerce.number(), which treated `1e2` / `007` / `0x10` as a page
+ * size instead of a 400. offset / status / provider / agentId stay
+ * untouched.
+ */
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { Hono } from "hono";
+
+const list = mock(async () => []);
+
+mock.module("@/lib/auth/workers-hono-auth", () => ({
+  requireUserOrApiKeyWithOrg: async () => ({
+    id: "user-1",
+    organization_id: "org-1",
+  }),
+}));
+mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
+  RateLimitPresets: { STANDARD: {} },
+  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+}));
+mock.module("@/lib/api/cloud-worker-errors", () => ({
+  failureResponse: (_c: unknown, error: unknown) => {
+    throw error;
+  },
+}));
+mock.module("@/lib/utils/logger", () => ({
+  logger: { warn: () => undefined, info: () => undefined, error: () => undefined },
+}));
+mock.module("@/lib/services/payment-requests-default", () => ({
+  getPaymentRequestsService: () => ({ list }),
+}));
+
+const { default: route } = await import("./route");
+const app = new Hono().route("/", route);
+
+describe("GET /api/v1/payment-requests limit identity", () => {
+  beforeEach(() => {
+    list.mockClear();
+  });
+
+  test.each(["", "?limit=", "?limit"])(
+    "accepts %s as no caller-supplied list page size",
+    async (query) => {
+      const response = await app.request(`/${query}`);
+      expect(response.status).toBe(200);
+      expect(list).toHaveBeenCalledTimes(1);
+      expect(list).toHaveBeenCalledWith(
+        "org-1",
+        expect.objectContaining({ limit: undefined }),
+      );
+    },
+  );
+
+  test("accepts limit=10 as an exact payment-requests page size", async () => {
+    const response = await app.request("/?limit=10");
+    expect(response.status).toBe(200);
+    expect(list).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ limit: 10 }),
+    );
+  });
+
+  test("caps a canonical oversize limit at 200", async () => {
+    const response = await app.request("/?limit=201");
+    expect(response.status).toBe(200);
+    expect(list).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ limit: 200 }),
+    );
+  });
+
+  test.each(["1e2", "12px", "007", "0", "abc", "-1", "50abc", " 10", "10 ", "0x10"])(
+    "rejects prefix-coerced limit=%s before payment-requests list",
+    async (token) => {
+      const response = await app.request(
+        `/?limit=${encodeURIComponent(token)}`,
+      );
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: string };
+      expect(body.error).toBe("Invalid limit");
+      expect(list).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([
+    "?limit=10&limit=10",
+    "?limit=10&limit=20",
+    "?limit=&limit=10",
+    "?limit=foo&limit=10",
+  ])(
+    "rejects duplicate limit values in %s before payment-requests list",
+    async (query) => {
+      const response = await app.request(`/${query}`);
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: string };
+      expect(body.error).toBe("Invalid limit");
+      expect(list).not.toHaveBeenCalled();
+    },
+  );
+});
