@@ -188,6 +188,9 @@ function createReminderProbeRunner(
     async apply() {
       throw new Error("The Workerd reminder probe does not mutate tasks");
     },
+    async applyWithResult() {
+      throw new Error("The Workerd reminder probe does not mutate tasks");
+    },
     async pipeline() {
       return [];
     },

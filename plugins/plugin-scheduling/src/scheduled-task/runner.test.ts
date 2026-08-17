@@ -386,6 +386,37 @@ describe("ScheduledTaskRunner — every verb", () => {
     ).toBe(-1);
   });
 
+  it("replays one receipt-keyed snooze without moving its committed fire time", async () => {
+    const h = makeHarness("2026-05-09T12:00:00.000Z");
+    const task = await h.runner.schedule(baseInput());
+    const first = await h.runner.applyWithResult(
+      task.taskId,
+      "snooze",
+      { minutes: 30 },
+      { idempotencyKey: "message-1:snooze" },
+    );
+    h.setNow("2026-05-09T13:00:00.000Z");
+    const replay = await h.runner.applyWithResult(
+      task.taskId,
+      "snooze",
+      { minutes: 30 },
+      { idempotencyKey: "message-1:snooze" },
+    );
+
+    expect(first.replayed).toBe(false);
+    expect(replay.replayed).toBe(true);
+    expect(replay.commit.logId).toBe(first.commit.logId);
+    expect(replay.task.state.firedAt).toBe("2026-05-09T12:30:00.000Z");
+    const logs = await h.logStore.list({
+      agentId: "test-agent",
+      taskId: task.taskId,
+      excludeRollups: true,
+    });
+    expect(logs.filter((entry) => entry.transition === "snoozed")).toEqual([
+      expect.objectContaining({ logId: first.commit.logId }),
+    ]);
+  });
+
   it("skip moves to skipped and fires pipeline.onSkip children", async () => {
     const h = makeHarness();
     const child: Parameters<ScheduledTaskRunnerHandle["schedule"]>[0] =
