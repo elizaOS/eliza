@@ -1054,6 +1054,24 @@ export class SubAgentRouter extends Service {
         type: "task_complete_progress",
         lineageKey: respawnLineageKey(session, origin),
       }).state;
+      // A completion that is a VERIFY RE-ENGAGE response must not reach the
+      // user: each auto-verify correction prompt makes the session run another
+      // turn ending in task_complete, and relaying every one produced 4
+      // contradictory "done"/"failed"/"stuck" messages for a single request
+      // (live: tide-lines, 6 bot messages for one prompt). The task-service
+      // event bridge subscribes to AcpService independently, so verification
+      // still consumes this event; only the user-facing post is suppressed.
+      // Keyed on autoVerifyAttempts (persisted BEFORE each correction prompt),
+      // so the FIRST completion always relays regardless of subscriber order,
+      // and lookup failure fails open (relay as before).
+      const suppressReason = await this.verifyChurnSuppression(sessionId);
+      if (suppressReason) {
+        this.log("info", "suppressing verify-churn completion relay", {
+          sessionId,
+          reason: suppressReason,
+        });
+        return;
+      }
     }
 
     // The ACP session/prompt stopReason for a task_complete tells us whether the
@@ -1920,6 +1938,63 @@ export class SubAgentRouter extends Service {
 
   /** Per-room memo of resolved connector sources (FIFO-bounded). */
   private readonly roomSourceMemo = new Map<string, string>();
+
+  /**
+   * Whether this session's task_complete is verify-churn that must not relay
+   * to the user: the durable task is mid-validation with at least one
+   * re-engage already issued (`autoVerifyAttempts >= 1`), or already parked
+   * with the escalation notice sent. Returns the suppress reason, or null to
+   * relay. Every failure path returns null — an unreadable task store must
+   * never silence a genuine completion.
+   */
+  private async verifyChurnSuppression(
+    sessionId: string,
+  ): Promise<string | null> {
+    try {
+      const tasks = this.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as
+        | {
+            listTasks?: (filter?: Record<string, unknown>) => Promise<
+              Array<{
+                id: string;
+                status: string;
+                latestSessionId: string | null;
+              }>
+            >;
+            getTask?: (id: string) => Promise<{
+              task: {
+                status: string;
+                metadata?: Record<string, unknown>;
+              };
+            } | null>;
+          }
+        | undefined;
+      if (!tasks?.listTasks || !tasks.getTask) return null;
+      const row = (await tasks.listTasks({})).find(
+        (t) => t.latestSessionId === sessionId,
+      );
+      if (!row) return null;
+      const doc = await tasks.getTask(row.id);
+      if (!doc) return null;
+      const attempts = Number(doc.task.metadata?.autoVerifyAttempts) || 0;
+      if (doc.task.status === "validating" && attempts >= 1) {
+        return `re-engage response (attempt ${attempts}, task validating)`;
+      }
+      if (
+        doc.task.status === "waiting_on_user" &&
+        doc.task.metadata?.verifyEscalationNotifiedAt
+      ) {
+        return "task already parked and escalation notice delivered";
+      }
+      return null;
+    } catch (err) {
+      // error-policy:J7 churn gating is advisory; an unreadable task store must not suppress a real completion
+      this.log("debug", "verify-churn lookup failed; relaying", {
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }
 
   /**
    * Resolve the source a delivery should actually use. A real connector source
