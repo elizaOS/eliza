@@ -2225,9 +2225,9 @@ export function useShellController(): ShellController {
     handsFree && loadContinuousChatMode() === "always-on";
   // The Settings → Voice "Wake word" toggle gates this listening loop. Read the
   // persisted pref synchronously each render (same direct-read pattern as
-  // loadContinuousChatMode above); it defaults ON so wake stays available unless
-  // the user turns it off. A disabled pref makes useWakeListenWindow inert (no
-  // native subscription, no mic effect).
+  // loadContinuousChatMode above). It is opt-in because enabling this loop keeps
+  // a background microphone entry path available; without current consent the
+  // hook stays inert (no native subscription, no mic effect).
   const wakeWordEnabled = loadWakeWordEnabled();
   useWakeListenWindow({
     enabled: wakeWordEnabled && !authGate.gated,

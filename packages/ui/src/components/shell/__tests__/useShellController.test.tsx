@@ -1937,7 +1937,6 @@ describe("useShellController — mic capture-failure notice", () => {
   });
 });
 
-// ── FIX 3: the Settings wake-word toggle actually gates wake listening ────────
 describe("useShellController — wake-word enablement", () => {
   afterEach(() => {
     try {
@@ -1945,19 +1944,25 @@ describe("useShellController — wake-word enablement", () => {
     } catch {}
   });
 
-  it("enables wake listening by default (no stored pref)", () => {
-    renderHook(() => useShellController());
-    expect(wakeListenMock.lastEnabled).toBe(true);
-  });
-
-  it("disables wake listening when the persisted pref is off", () => {
-    window.localStorage.setItem("eliza:voice:wake-word-enabled", "false");
+  it("keeps wake listening off by default until the user opts in", () => {
     renderHook(() => useShellController());
     expect(wakeListenMock.lastEnabled).toBe(false);
   });
 
-  it("re-enables wake listening when the pref is on", () => {
+  it("ignores the former implicit-on preference after consent versioning", () => {
     window.localStorage.setItem("eliza:voice:wake-word-enabled", "true");
+    renderHook(() => useShellController());
+    expect(wakeListenMock.lastEnabled).toBe(false);
+  });
+
+  it("keeps wake listening off when the current consent is off", () => {
+    window.localStorage.setItem("eliza:voice:wake-word-enabled:v2", "false");
+    renderHook(() => useShellController());
+    expect(wakeListenMock.lastEnabled).toBe(false);
+  });
+
+  it("enables wake listening after explicit current consent", () => {
+    window.localStorage.setItem("eliza:voice:wake-word-enabled:v2", "true");
     renderHook(() => useShellController());
     expect(wakeListenMock.lastEnabled).toBe(true);
   });
