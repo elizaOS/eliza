@@ -81,6 +81,12 @@ describe("describeUserReference", () => {
 		expect(describeUserReference(123 as unknown as string, FALLBACK)).toBe(
 			FALLBACK,
 		);
+		expect(
+			describeUserReference(
+				undefined as unknown as string,
+				undefined as unknown as string,
+			),
+		).toBe("target");
 	});
 });
 
