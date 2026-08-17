@@ -41,6 +41,14 @@ export const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MEMORY_SEARCH_SCAN_LIMIT = 2_000;
+/**
+ * Warm-corpus reuse window for the hash-memory search cache. Module-local
+ * writes (remember/delete/patch) invalidate explicitly and a row-count check
+ * runs before every reuse, so the TTL only bounds staleness from
+ * out-of-band *edits* that change text without changing the row count.
+ */
+const MEMORY_SEARCH_CACHE_TTL_MS = 10_000;
+const MEMORY_SEARCH_CACHE_MAX_ENTRIES = 4;
 const MEMORY_SEARCH_DEFAULT_LIMIT = 10;
 const MEMORY_SEARCH_MAX_LIMIT = 50;
 const QUICK_CONTEXT_DEFAULT_LIMIT = 8;
@@ -144,6 +152,20 @@ export function rankByKeyword<T>(
     items.map((item) => ({ content: getText(item) })),
     { stemming: true },
   );
+  return rankWithIndex(query, items, bm25);
+}
+
+/**
+ * Same ranking contract as {@link rankByKeyword} but against a prebuilt BM25
+ * index whose docs correspond 1:1 (by array index) with `items`. This is the
+ * shared scoring tail, so cached and cold paths cannot drift.
+ */
+function rankWithIndex<T>(
+  query: string,
+  items: T[],
+  bm25: BM25,
+): Array<{ item: T; score: number }> {
+  if (items.length === 0) return [];
   const results = bm25.search(query, items.length);
   if (results.length === 0) return items.map((item) => ({ item, score: 0 }));
   const firstScore = results[0]?.score;
@@ -177,21 +199,77 @@ export function matchesKeyword(text: string, query: string): boolean {
     .some((term) => normalizedText.includes(term));
 }
 
-async function searchMemoryNotes(
+type MemorySearchCandidate = { id: UUID; text: string; createdAt: number };
+
+type MemorySearchCorpus = {
+  candidates: MemorySearchCandidate[];
+  /** BM25 index whose doc order matches `candidates` by array index. */
+  bm25: BM25;
+  /** Room message-row count observed when this corpus was built. */
+  rowCount: number;
+  builtAt: number;
+};
+
+/**
+ * Per-(agentId, roomId) corpus + BM25 index cache for the hash-memory search
+ * endpoints. Building this per request was the whole latency story: a full
+ * `getMemories` scan (up to {@link MEMORY_SEARCH_SCAN_LIMIT} rows, some
+ * multi-KB) plus a fresh BM25 tokenize/index pass cost ~2s+ at ~2k rows while
+ * the actual query scoring is sub-millisecond.
+ *
+ * Freshness model (memories can be written outside this module, e.g. normal
+ * chat writes to the "messages" table):
+ *  - explicit invalidation on every mutation routed through this module
+ *    (remember / DELETE / PATCH);
+ *  - a cheap COUNT check before every reuse catches out-of-band creates and
+ *    deletes immediately;
+ *  - a short TTL ({@link MEMORY_SEARCH_CACHE_TTL_MS}) bounds staleness from
+ *    count-preserving out-of-band edits.
+ */
+const memorySearchCorpusCache = new Map<string, MemorySearchCorpus>();
+
+export function invalidateMemorySearchCache(): void {
+  memorySearchCorpusCache.clear();
+}
+
+async function countRoomMessages(
   runtime: AgentRuntime,
   roomId: UUID,
-  query: string,
-  limit: number,
-): Promise<MemorySearchHit[]> {
-  const memories = await runtime.getMemories({
-    roomId,
-    tableName: "messages",
-    limit: MEMORY_SEARCH_SCAN_LIMIT,
-    includeEmbedding: false, // only reads content.text
-  });
+): Promise<number | null> {
+  if (typeof runtime.countMemories !== "function") return null;
+  try {
+    return await runtime.countMemories({ roomId, tableName: "messages" });
+  } catch {
+    // A failing COUNT must not take down search; treat as unknown so the
+    // caller falls back to a full rebuild.
+    return null;
+  }
+}
 
-  // Gather hash-memory candidates first, then BM25-rank them as a corpus.
-  const candidates: Array<{ id: UUID; text: string; createdAt: number }> = [];
+async function getMemorySearchCorpus(
+  runtime: AgentRuntime,
+  roomId: UUID,
+): Promise<MemorySearchCorpus> {
+  const key = `${runtime.agentId}:${roomId}`;
+  const cached = memorySearchCorpusCache.get(key);
+  if (cached && Date.now() - cached.builtAt <= MEMORY_SEARCH_CACHE_TTL_MS) {
+    const rowCount = await countRoomMessages(runtime, roomId);
+    if (rowCount !== null && rowCount === cached.rowCount) return cached;
+  }
+
+  const [memories, countedRows] = await Promise.all([
+    runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      limit: MEMORY_SEARCH_SCAN_LIMIT,
+      includeEmbedding: false, // only reads content.text
+    }),
+    countRoomMessages(runtime, roomId),
+  ]);
+
+  // Gather hash-memory candidates first; the BM25 corpus is built once here
+  // and reused across queries until invalidation.
+  const candidates: MemorySearchCandidate[] = [];
   for (const memory of memories) {
     const text = (
       memory.content as { text?: string } | undefined
@@ -207,10 +285,48 @@ async function searchMemoryNotes(
     });
   }
 
-  const hits: MemorySearchHit[] = rankByKeyword(
-    query,
+  const corpus: MemorySearchCorpus = {
     candidates,
-    (c) => c.text,
+    bm25: new BM25(
+      candidates.map((c) => ({ content: c.text })),
+      { stemming: true },
+    ),
+    rowCount: countedRows ?? memories.length,
+    builtAt: Date.now(),
+  };
+
+  if (countedRows !== null) {
+    memorySearchCorpusCache.set(key, corpus);
+    // Bounded: this endpoint is effectively single-room per agent, so the map
+    // should hold one live entry; the cap only guards against key churn.
+    if (memorySearchCorpusCache.size > MEMORY_SEARCH_CACHE_MAX_ENTRIES) {
+      let oldestKey: string | undefined;
+      let oldestBuiltAt = Number.POSITIVE_INFINITY;
+      for (const [entryKey, entry] of memorySearchCorpusCache) {
+        if (entry.builtAt < oldestBuiltAt) {
+          oldestBuiltAt = entry.builtAt;
+          oldestKey = entryKey;
+        }
+      }
+      if (oldestKey !== undefined) memorySearchCorpusCache.delete(oldestKey);
+    }
+  }
+
+  return corpus;
+}
+
+async function searchMemoryNotes(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  query: string,
+  limit: number,
+): Promise<MemorySearchHit[]> {
+  const corpus = await getMemorySearchCorpus(runtime, roomId);
+
+  const hits: MemorySearchHit[] = rankWithIndex(
+    query,
+    corpus.candidates,
+    corpus.bm25,
   )
     .filter(({ score }) => score > 0)
     .map(({ item, score }) => ({
@@ -495,6 +611,7 @@ export async function handleMemoryRoutes(
       },
     });
     await runtime.createMemory(message, "messages");
+    invalidateMemorySearchCache();
     json(res, {
       ok: true,
       id: message.id,
@@ -751,6 +868,7 @@ export async function handleMemoryRoutes(
 
     if (method === "DELETE") {
       await runtime.deleteMemory(memoryId);
+      invalidateMemorySearchCache();
       json(res, { deleted: true, id: memoryId });
       return true;
     }
@@ -793,6 +911,7 @@ export async function handleMemoryRoutes(
       content: nextContent,
       embedding,
     });
+    invalidateMemorySearchCache();
 
     const updated = await runtime.getMemoryById(memoryId);
     json(res, { updated: true, id: memoryId, memory: updated });
