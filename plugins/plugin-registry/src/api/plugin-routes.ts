@@ -56,6 +56,17 @@ function optionalPluginListId(npmName: string): string {
   return npmName.replace("@elizaos/plugin-", "");
 }
 
+function decodePluginId(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 leftover tax after app-plugins-routes path decode.
+    // Malformed percent-encoding is invalid client input, not a plugin-manager
+    // outage. GET /api/plugins stays untouched.
+    return null;
+  }
+}
+
 const ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID: Partial<
   Record<AdvancedCapabilityPluginId, string>
 > = {
@@ -1303,7 +1314,11 @@ export async function handlePluginRoutes(
   const pluginTestMatch =
     method === "POST" && pathname.match(/^\/api\/plugins\/([^/]+)\/test$/);
   if (pluginTestMatch) {
-    const pluginId = decodeURIComponent(pluginTestMatch[1]);
+    const pluginId = decodePluginId(pluginTestMatch[1]);
+    if (pluginId === null) {
+      error(res, "Invalid plugin id: malformed URL encoding", 400);
+      return true;
+    }
     const startMs = Date.now();
 
     try {
@@ -1760,9 +1775,13 @@ export async function handlePluginRoutes(
 
   // ── POST /api/plugins/:id/eject ─────────────────────────────────────────
   if (method === "POST" && pathname.match(/^\/api\/plugins\/[^/]+\/eject$/)) {
-    const pluginName = decodeURIComponent(
+    const pluginName = decodePluginId(
       pathname.slice("/api/plugins/".length, pathname.length - "/eject".length),
     );
+    if (pluginName === null) {
+      error(res, "Invalid plugin id: malformed URL encoding", 400);
+      return true;
+    }
     try {
       const previousConfig = structuredClone(state.config);
       const previousResolvedPlugins = state.runtime
@@ -1816,9 +1835,13 @@ export async function handlePluginRoutes(
 
   // ── POST /api/plugins/:id/sync ──────────────────────────────────────────
   if (method === "POST" && pathname.match(/^\/api\/plugins\/[^/]+\/sync$/)) {
-    const pluginName = decodeURIComponent(
+    const pluginName = decodePluginId(
       pathname.slice("/api/plugins/".length, pathname.length - "/sync".length),
     );
+    if (pluginName === null) {
+      error(res, "Invalid plugin id: malformed URL encoding", 400);
+      return true;
+    }
     try {
       const previousConfig = structuredClone(state.config);
       const previousResolvedPlugins = state.runtime
@@ -1874,12 +1897,16 @@ export async function handlePluginRoutes(
     method === "POST" &&
     pathname.match(/^\/api\/plugins\/[^/]+\/reinject$/)
   ) {
-    const pluginName = decodeURIComponent(
+    const pluginName = decodePluginId(
       pathname.slice(
         "/api/plugins/".length,
         pathname.length - "/reinject".length,
       ),
     );
+    if (pluginName === null) {
+      error(res, "Invalid plugin id: malformed URL encoding", 400);
+      return true;
+    }
     try {
       const previousConfig = structuredClone(state.config);
       const previousResolvedPlugins = state.runtime
