@@ -66,6 +66,7 @@ function activeSessionNames(sessions: readonly SessionInfo[]): string[] {
 }
 
 const DEFAULT_OUTPUT_LINES = 100;
+const MAX_OUTPUT_LINES = 2_000;
 
 /**
  * Untrusted `?lines=` for GET /api/coding-agents/:id/output.
@@ -76,7 +77,13 @@ function parseOutputLines(raw: string | null): number | null {
   if (raw === null || raw === "") return DEFAULT_OUTPUT_LINES;
   if (!/^[1-9]\d*$/.test(raw)) return null;
   const parsed = Number(raw);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed <= 0 ||
+    parsed > MAX_OUTPUT_LINES
+  ) {
+    return null;
+  }
   return parsed;
 }
 
@@ -836,7 +843,11 @@ export async function handleAgentRoutes(
     );
     const lines = parseOutputLines(url.searchParams.get("lines"));
     if (lines === null) {
-      sendError(res, "lines must be a positive integer", 400);
+      sendError(
+        res,
+        `lines must be an integer from 1 to ${MAX_OUTPUT_LINES}`,
+        400,
+      );
       return true;
     }
 

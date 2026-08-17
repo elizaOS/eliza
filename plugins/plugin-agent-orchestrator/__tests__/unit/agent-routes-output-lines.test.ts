@@ -103,7 +103,18 @@ describe("GET /api/coding-agents/:id/output lines query", () => {
     expect(getSessionOutput).toHaveBeenCalledWith("sess-1", 50);
   });
 
-  it.each(["1e2", "12px", "007", "0", "-1", "0x10", "abc", "50abc"])(
+  it.each([
+    "1e2",
+    "12px",
+    "007",
+    "0",
+    "-1",
+    "0x10",
+    "abc",
+    "50abc",
+    "2001",
+    "9007199254740991",
+  ])(
     "rejects prefix-coerced or junk lines=%s with 400 before getSessionOutput",
     async (token) => {
       const getSessionOutput = vi.fn().mockResolvedValue("must-not-run");
@@ -114,8 +125,21 @@ describe("GET /api/coding-agents/:id/output lines query", () => {
 
       expect(result.handled).toBe(true);
       expect(result.status).toBe(400);
-      expect(result.body).toEqual({ error: "lines must be a positive integer" });
+      expect(result.body).toEqual({
+        error: "lines must be an integer from 1 to 2000",
+      });
       expect(getSessionOutput).not.toHaveBeenCalled();
     },
   );
+
+  it("accepts the full retained 2000-line buffer", async () => {
+    const getSessionOutput = vi.fn().mockResolvedValue("full buffer");
+    const result = await getOutput(
+      "/api/coding-agents/sess-1/output?lines=2000",
+      getSessionOutput,
+    );
+
+    expect(result.status).toBe(200);
+    expect(getSessionOutput).toHaveBeenCalledWith("sess-1", 2_000);
+  });
 });
