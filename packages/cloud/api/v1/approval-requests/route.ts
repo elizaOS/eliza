@@ -54,12 +54,53 @@ const CreateApprovalRequestSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+const MAX_APPROVAL_REQUESTS_LIMIT = 200;
+
+class ApprovalRequestsLimitError extends Error {
+  constructor(message = "Invalid limit") {
+    super(message);
+    this.name = "ApprovalRequestsLimitError";
+  }
+}
+
+/**
+ * GET /api/v1/approval-requests `limit` is collection page-size identity,
+ * leftover tax after approval-request `public` (#21135) and approvals
+ * `state` (#20899). Stock develop used z.coerce.number(), which treated
+ * `1e2` / `007` / `0x10` as a page size instead of a 400. offset /
+ * status / challengeKind stay untouched. Missing / empty still means
+ * the service default (no limit). Exact integers above 200 stay 400.
+ */
+function parseApprovalRequestsLimitQuery(
+  searchParams: URLSearchParams,
+): number | undefined {
+  const requested = searchParams.getAll("limit");
+  if (requested.length > 1) {
+    throw new ApprovalRequestsLimitError();
+  }
+  const raw = requested[0];
+  if (raw == null || raw === "") {
+    return undefined;
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new ApprovalRequestsLimitError();
+  }
+  const parsed = Number(raw);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 1 ||
+    parsed > MAX_APPROVAL_REQUESTS_LIMIT
+  ) {
+    throw new ApprovalRequestsLimitError();
+  }
+  return parsed;
+}
+
 const ListQuerySchema = z.object({
   status: StatusSchema.optional(),
   challengeKind: ChallengeKindSchema.optional(),
   agentId: z.string().min(1).max(256).optional(),
   expectedSignerIdentityId: z.string().min(1).max(256).optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
 });
 
@@ -122,12 +163,23 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
+    let limit: number | undefined;
+    try {
+      limit = parseApprovalRequestsLimitQuery(
+        new URL(c.req.url, "http://localhost").searchParams,
+      );
+    } catch (limitError) {
+      if (limitError instanceof ApprovalRequestsLimitError) {
+        return c.json({ success: false, error: limitError.message }, 400);
+      }
+      throw limitError;
+    }
+
     const parsed = ListQuerySchema.safeParse({
       status: c.req.query("status"),
       challengeKind: c.req.query("challengeKind"),
       agentId: c.req.query("agentId"),
       expectedSignerIdentityId: c.req.query("expectedSignerIdentityId"),
-      limit: c.req.query("limit"),
       offset: c.req.query("offset"),
     });
     if (!parsed.success) {
@@ -147,7 +199,7 @@ app.get("/", async (c) => {
       challengeKind: parsed.data.challengeKind,
       agentId: parsed.data.agentId,
       expectedSignerIdentityId: parsed.data.expectedSignerIdentityId,
-      limit: parsed.data.limit,
+      limit,
       offset: parsed.data.offset,
     });
 
