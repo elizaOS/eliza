@@ -16,9 +16,12 @@ export function sliceToFitBudget<T>(
 	targetChars: number,
 	options?: { fromEnd?: boolean },
 ): T[] {
-	if (items.length === 0) return [];
+	if (!Array.isArray(items) || items.length === 0) return [];
 	// Zero, negative, or non-finite budget means no room - return empty array
 	if (!Number.isFinite(targetChars) || targetChars <= 0) return [];
+	if (typeof estimateChars !== "function") {
+		throw new TypeError("estimateChars must be a function");
+	}
 
 	const fromEnd = options?.fromEnd ?? false;
 	let total = 0;
