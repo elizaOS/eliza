@@ -18,7 +18,7 @@ export function isPlainObject(
 		return true; // Object.create(null)
 	}
 
-	if (proto.constructor === Object) {
+	if (proto === Object.prototype || proto.constructor === Object) {
 		return true;
 	}
 
