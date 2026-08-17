@@ -40,20 +40,23 @@ function makeStore(ctx: LifeOpsRouteContext): EntityStore | null {
   );
 }
 
-function parseEntityLimit(raw: string | null):
-  | { ok: true; limit?: number }
-  | { ok: false; message: string } {
+function parseEntityLimit(
+  raw: string | null,
+): { ok: true; limit?: number } | { ok: false; message: string } {
   if (raw === null || raw.trim() === "") {
     return { ok: true };
   }
   const trimmed = raw.trim();
-  // Same helper shape as merged #20546 / #20817. `/^\d+$/` used to accept
-  // `007` as 7, and non-digit tokens silently dropped the limit so the
-  // knowledge-graph list dumped every entity.
+  // Prefix coercion or leading zeros can turn a malformed paging request into
+  // an unintended unbounded knowledge-graph response.
   if (!/^[1-9]\d*$/.test(trimmed)) {
     return { ok: false, message: "limit must be a positive integer" };
   }
-  return { ok: true, limit: Number.parseInt(trimmed, 10) };
+  const limit = Number(trimmed);
+  if (!Number.isSafeInteger(limit)) {
+    return { ok: false, message: "limit must be a positive integer" };
+  }
+  return { ok: true, limit };
 }
 
 function parseEntityFilter(

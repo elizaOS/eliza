@@ -7,11 +7,11 @@ import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleEntityRoutes } from "./entities.js";
+import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
 const kg = vi.hoisted(() => {
-  const list = vi.fn(async (filter: unknown) => {
+  const list = vi.fn(async (_filter: unknown) => {
     return [{ entityId: "e1" }, { entityId: "e2" }];
   });
   return { list };
@@ -31,7 +31,10 @@ interface CapturedResponse {
   ended: boolean;
 }
 
-function buildCtx(search = ""): { ctx: LifeOpsRouteContext; res: CapturedResponse } {
+function buildCtx(search = ""): {
+  ctx: LifeOpsRouteContext;
+  res: CapturedResponse;
+} {
   const res: CapturedResponse = { ended: false };
   const socket = new Socket();
   Object.defineProperty(socket, "remoteAddress", {
@@ -120,16 +123,22 @@ describe("GET /api/lifeops/entities limit query", () => {
     expect(kg.list).toHaveBeenCalledWith({ type: "person", limit: 2 });
   });
 
-  it.each(["1e2", "12px", "007", "0", "abc", "-1", "50abc"])(
-    "rejects limit=%s with 400 before store.list",
-    async (limit) => {
-      const { ctx, res } = buildCtx(`?limit=${encodeURIComponent(limit)}`);
-      await handleEntityRoutes(ctx);
-      expect(res.statusCode).toBe(400);
-      expect(JSON.parse(res.body ?? "")).toEqual({
-        error: "limit must be a positive integer",
-      });
-      expect(kg.list).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    "1e2",
+    "12px",
+    "007",
+    "0",
+    "abc",
+    "-1",
+    "50abc",
+    "9007199254740992",
+  ])("rejects limit=%s with 400 before store.list", async (limit) => {
+    const { ctx, res } = buildCtx(`?limit=${encodeURIComponent(limit)}`);
+    await handleEntityRoutes(ctx);
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body ?? "")).toEqual({
+      error: "limit must be a positive integer",
+    });
+    expect(kg.list).not.toHaveBeenCalled();
+  });
 });
