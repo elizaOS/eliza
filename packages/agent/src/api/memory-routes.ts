@@ -660,9 +660,16 @@ export async function handleMemoryRoutes(
   }
 
   if (method === "GET" && pathname.startsWith("/api/memories/by-entity/")) {
-    const primaryEntityId = decodeURIComponent(
-      pathname.slice("/api/memories/by-entity/".length),
-    );
+    let primaryEntityId: string;
+    try {
+      primaryEntityId = decodeURIComponent(
+        pathname.slice("/api/memories/by-entity/".length),
+      );
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      error(res, "Invalid entity identifier encoding.", 400);
+      return true;
+    }
     if (!primaryEntityId) {
       error(res, "Missing entity identifier.", 400);
       return true;
@@ -724,7 +731,14 @@ export async function handleMemoryRoutes(
 
   const memoryIdMatch = /^\/api\/memories\/([^/]+)$/.exec(pathname);
   if (memoryIdMatch && (method === "DELETE" || method === "PATCH")) {
-    const rawId = decodeURIComponent(memoryIdMatch[1] ?? "");
+    let rawId: string;
+    try {
+      rawId = decodeURIComponent(memoryIdMatch[1] ?? "");
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      error(res, "Invalid memory id.", 400);
+      return true;
+    }
     if (!UUID_REGEX.test(rawId)) {
       error(res, "Invalid memory id.", 400);
       return true;

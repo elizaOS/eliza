@@ -227,4 +227,98 @@ describe("GET /api/relationships/graph scope identity", () => {
     });
     expect(json).toHaveBeenCalledWith({}, { data: snapshot }, 200);
   });
+
+  it("rejects malformed percent-encoding on POST /api/relationships/candidates/:id/accept with 400", async () => {
+    const error = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot: vi.fn(),
+        getPersonDetail: vi.fn(),
+        getCandidateMerges: vi.fn(),
+        acceptMerge: vi.fn(),
+        rejectMerge: vi.fn(),
+      }),
+    };
+
+    const handled = await handleRelationshipsRoutes({
+      req: { url: "/api/relationships/candidates/%/accept" } as never,
+      res: {} as never,
+      method: "POST",
+      pathname: "/api/relationships/candidates/%/accept",
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      expect.anything(),
+      "Invalid candidate id encoding.",
+      400,
+    );
+  });
+
+  it("rejects malformed percent-encoding on POST /api/relationships/people/:id/link with 400", async () => {
+    const error = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot: vi.fn(),
+        getPersonDetail: vi.fn(),
+        getCandidateMerges: vi.fn(),
+        acceptMerge: vi.fn(),
+        rejectMerge: vi.fn(),
+        proposeMerge: vi.fn(),
+      }),
+    };
+
+    const handled = await handleRelationshipsRoutes({
+      req: { url: "/api/relationships/people/%/link" } as never,
+      res: {} as never,
+      method: "POST",
+      pathname: "/api/relationships/people/%/link",
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      expect.anything(),
+      "Invalid source entity id encoding.",
+      400,
+    );
+  });
+
+  it("rejects malformed percent-encoding on GET /api/relationships/people/:id with 400", async () => {
+    const error = vi.fn();
+    const runtime = {
+      getService: () => ({
+        getGraphSnapshot: vi.fn(),
+        getPersonDetail: vi.fn(),
+        getCandidateMerges: vi.fn(),
+        acceptMerge: vi.fn(),
+        rejectMerge: vi.fn(),
+      }),
+    };
+
+    const handled = await handleRelationshipsRoutes({
+      req: { url: "/api/relationships/people/%" } as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/relationships/people/%",
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(),
+      runtime: runtime as never,
+    });
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      expect.anything(),
+      "Invalid relationships person identifier encoding.",
+      400,
+    );
+  });
 });
