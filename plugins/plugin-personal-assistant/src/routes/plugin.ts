@@ -13,6 +13,7 @@
 import type http from "node:http";
 import { TLSSocket } from "node:tls";
 import { handleConnectorAccountRoutes } from "@elizaos/agent/api/connector-account-routes";
+import { decodePathComponent } from "@elizaos/agent/api/server-helpers";
 import {
   ensureRouteAuthorized,
   ensureSessionForRequest,
@@ -55,19 +56,6 @@ function json(res: http.ServerResponse, data: unknown, status = 200): void {
 
 function error(res: http.ServerResponse, message: string, status = 400): void {
   httpSendJsonError(res, message, status);
-}
-
-function httpDecodePathComponent(
-  raw: string,
-  res: http.ServerResponse,
-  fieldName: string,
-): string | null {
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    httpSendJsonError(res, `Invalid ${fieldName}: malformed URL encoding`, 400);
-    return null;
-  }
 }
 
 function firstHeaderValue(value: string | string[] | undefined): string | null {
@@ -204,7 +192,7 @@ function buildLifeOpsContext(
     json,
     error,
     readJsonBody: httpReadJsonBody,
-    decodePathComponent: httpDecodePathComponent,
+    decodePathComponent,
   };
 }
 

@@ -167,13 +167,18 @@ export async function handleEntityRoutes(
     /^\/api\/lifeops\/entities\/([^/]+)\/identities$/,
   );
   if (method === "POST" && identitiesMatch) {
-    const store = makeStore(ctx);
-    if (!store) return true;
-    const entityId = decodeURIComponent(identitiesMatch[1] ?? "");
+    const entityId = ctx.decodePathComponent(
+      identitiesMatch[1] ?? "",
+      res,
+      "entity id",
+    );
+    if (entityId === null) return true;
     if (!entityId) {
       ctx.error(res, "entity id required", 400);
       return true;
     }
+    const store = makeStore(ctx);
+    if (!store) return true;
     const body = await readJsonBody<{
       platform?: unknown;
       handle?: unknown;
@@ -212,13 +217,18 @@ export async function handleEntityRoutes(
   // PATCH /api/lifeops/entities/:id
   const patchMatch = pathname.match(/^\/api\/lifeops\/entities\/([^/]+)$/);
   if (method === "PATCH" && patchMatch) {
-    const store = makeStore(ctx);
-    if (!store) return true;
-    const entityId = decodeURIComponent(patchMatch[1] ?? "");
+    const entityId = ctx.decodePathComponent(
+      patchMatch[1] ?? "",
+      res,
+      "entity id",
+    );
+    if (entityId === null) return true;
     if (!entityId) {
       ctx.error(res, "entity id required", 400);
       return true;
     }
+    const store = makeStore(ctx);
+    if (!store) return true;
     const existing = await store.get(entityId);
     if (!existing) {
       ctx.error(res, "entity not found", 404);
@@ -245,13 +255,18 @@ export async function handleEntityRoutes(
   // GET /api/lifeops/entities/:id
   const getOneMatch = pathname.match(/^\/api\/lifeops\/entities\/([^/]+)$/);
   if (method === "GET" && getOneMatch) {
-    const store = makeStore(ctx);
-    if (!store) return true;
-    const entityId = decodeURIComponent(getOneMatch[1] ?? "");
+    const entityId = ctx.decodePathComponent(
+      getOneMatch[1] ?? "",
+      res,
+      "entity id",
+    );
+    if (entityId === null) return true;
     if (!entityId) {
       ctx.error(res, "entity id required", 400);
       return true;
     }
+    const store = makeStore(ctx);
+    if (!store) return true;
     const entity = await store.get(entityId);
     if (!entity) {
       ctx.error(res, "entity not found", 404);

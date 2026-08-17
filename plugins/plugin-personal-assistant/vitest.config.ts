@@ -82,6 +82,9 @@ const agentSourceJsToTsPlugin = {
     if (source === "@elizaos/agent/api/connector-account-routes") {
       return path.join(agentSourceRoot, "api", "connector-account-routes.ts");
     }
+    if (source === "@elizaos/agent/api/server-helpers") {
+      return path.join(agentSourceRoot, "api", "server-helpers.ts");
+    }
     if (source === "@elizaos/ui") {
       return path.join(lifeopsTestStubsRoot, "ui.ts");
     }
@@ -273,6 +276,10 @@ export default defineConfig({
           "api",
           "connector-account-routes.ts",
         ),
+      },
+      {
+        find: /^@elizaos\/agent\/api\/server-helpers$/,
+        replacement: path.join(agentSourceRoot, "api", "server-helpers.ts"),
       },
       {
         find: /^@elizaos\/app-core\/platform\/native-library-policy$/,
