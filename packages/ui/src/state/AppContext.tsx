@@ -183,7 +183,7 @@ function AppProviderInner({
   }, [brandTheme, uiTheme]);
 
   // ── Lifecycle state (consolidated from 20+ useState hooks) ──
-  const lifecycle = useLifecycleState();
+  const lifecycle = useLifecycleState(brandingOverride?.cloudOnly);
 
   const {
     state: {
