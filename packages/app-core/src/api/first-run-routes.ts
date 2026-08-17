@@ -12,6 +12,9 @@
  * completion state is on disk, the handler fires the single-flight runtime
  * boot; cloud/remote targets deliberately leave the process runtime-less.
  *
+ * Untrusted request JSON is parsed before any persist: syntax errors and
+ * non-object bodies return 400 and never report `{ ok: true }`.
+ *
  * A defensive delayed resave (`scheduleCloudApiKeyResave`) re-writes
  * `cloud.apiKey` if a concurrent config write clobbers it — a best-effort
  * workaround for an unreproduced upstream race, logged at warn on failure.
@@ -209,16 +212,26 @@ export async function handleFirstRunRoute(
     });
     return true;
   }
-  const rawBody = Buffer.concat(chunks);
+  const rawBody = Buffer.concat(chunks).toString("utf8").trim();
+  let parsed: unknown;
+  try {
+    parsed = rawBody === "" ? undefined : JSON.parse(rawBody);
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — malformed first-run JSON is
+    // an explicit 400, never a fabricated onboarding success.
+    sendJsonResponse(res, 400, { error: "Invalid JSON body" });
+    return true;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    sendJsonResponse(res, 400, { error: "Invalid JSON body" });
+    return true;
+  }
+  const body = parsed as Record<string, unknown>;
 
   let capturedCloudApiKey: string | undefined;
   let committedRuntimeTarget: DeploymentTargetRuntime | undefined;
 
   try {
-    const body = JSON.parse(rawBody.toString("utf8")) as Record<
-      string,
-      unknown
-    >;
     if (hasDeprecatedFirstRunRequestFields(body)) {
       sendJsonResponse(res, 400, {
         error:
@@ -296,8 +309,13 @@ export async function handleFirstRunRoute(
         `[api] Failed to persist first-run state: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-  } catch {
-    // JSON parse failed — let upstream handle the error
+  } catch (err) {
+    // error-policy:J4 onboarding helpers failed after a valid JSON object;
+    // config-save errors are already warned above. Keep the historical 200
+    // ack for a parseable body so the client can poll /api/first-run/status.
+    logger.warn(
+      `[api] First-run helper failed after valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   sendJsonResponse(res, 200, { ok: true });
