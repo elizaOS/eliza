@@ -1403,6 +1403,14 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 				2048,
 			),
 		).toBe(true);
+		for (const finishReason of ["max_completion_tokens", "stop_length"]) {
+			expect(
+				evaluatorHitCompletionLimit(
+					{ finishReason, usage: { completionTokens: 10 } },
+					2048,
+				),
+			).toBe(true);
+		}
 		expect(
 			evaluatorHitCompletionLimit(
 				{ finishReason: "stop", usage: { completionTokens: 2048 } },

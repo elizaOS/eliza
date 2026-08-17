@@ -77,6 +77,7 @@ export class AutonomyService extends Service {
 	protected autonomousRoomId: UUID;
 	protected autonomousWorldId: UUID;
 	private isThinking = false;
+	private warnedInvalidAutonomyModelSize = false;
 	protected autonomyEntityId: UUID; // Dedicated entity ID for autonomy prompts (not the agent's ID)
 	private releaseInternalActorRegistration?: () => void;
 	private autonomyCompactionStats = {
@@ -103,13 +104,24 @@ export class AutonomyService extends Service {
 	 */
 	private resolveConfiguredIntervalMs(): number | null {
 		const raw = this.runtime.getSetting("AUTONOMY_INTERVAL_MS");
+		if (raw === null || raw === undefined || raw === "") return null;
 		const value =
 			typeof raw === "number"
 				? raw
 				: typeof raw === "string" && raw.trim().length > 0
 					? Number(raw.trim())
 					: Number.NaN;
-		if (!Number.isFinite(value) || value <= 0) return null;
+		if (!Number.isFinite(value) || value <= 0) {
+			this.runtime.logger.warn(
+				{
+					src: "autonomy",
+					agentId: this.runtime.agentId,
+					setting: "AUTONOMY_INTERVAL_MS",
+				},
+				"Ignoring invalid AUTONOMY_INTERVAL_MS; using the 30000ms default",
+			);
+			return null;
+		}
 		return Math.min(600_000, Math.max(5_000, Math.floor(value)));
 	}
 
@@ -122,8 +134,21 @@ export class AutonomyService extends Service {
 	 */
 	private resolveAutonomyModelSize(): "small" | "large" {
 		const raw = this.runtime.getSetting("AUTONOMY_MODEL_SIZE");
-		if (typeof raw === "string" && raw.trim().toLowerCase() === "small") {
-			return "small";
+		if (raw === null || raw === undefined || raw === "") return "large";
+		if (typeof raw === "string") {
+			const normalized = raw.trim().toLowerCase();
+			if (normalized === "small" || normalized === "large") return normalized;
+		}
+		if (!this.warnedInvalidAutonomyModelSize) {
+			this.warnedInvalidAutonomyModelSize = true;
+			this.runtime.logger.warn(
+				{
+					src: "autonomy",
+					agentId: this.runtime.agentId,
+					setting: "AUTONOMY_MODEL_SIZE",
+				},
+				"Ignoring invalid AUTONOMY_MODEL_SIZE; using the large model tier",
+			);
 		}
 		return "large";
 	}

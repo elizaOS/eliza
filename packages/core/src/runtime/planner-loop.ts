@@ -10,6 +10,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { promotedParentRoutingHint } from "../actions/promote-subactions";
+import { readSubaction } from "../actions/subaction-dispatch";
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
@@ -4192,9 +4193,10 @@ export function isMemoryRecallSearchCall(toolCall: PlannerToolCall): boolean {
 	const name = toolCall.name.trim().toUpperCase();
 	if (name === "MEMORY_SEARCH" || name === "SEARCH_KNOWLEDGE") return true;
 	if (name === "MEMORY") {
-		const params = (toolCall.params ?? {}) as Record<string, unknown>;
-		const op = params.action ?? params.op ?? params.subaction;
-		return typeof op === "string" && op.trim().toLowerCase() === "search";
+		return (
+			readSubaction(toolCall.params, { allowed: ["search"] as const }) ===
+			"search"
+		);
 	}
 	return false;
 }
@@ -4256,7 +4258,12 @@ export function partitionMemorySearchBudget(
 		// (schema rejection, backend error) put no results in context, so a
 		// same-query retry with corrected arguments is legitimate — it competes
 		// only against the round budget, never the dedup gate.
-		if (step.result.success !== true) continue;
+		if (
+			step.result.success !== true ||
+			!successfulRecallResultHasContent(step.result)
+		) {
+			continue;
+		}
 		const key = normalizedRecallQueryKey(step.toolCall);
 		if (key)
 			executedQueryKeys.add(`${step.toolCall.name.toUpperCase()} ${key}`);
@@ -4285,6 +4292,30 @@ export function partitionMemorySearchBudget(
 		allowed.push(call);
 	}
 	return { allowed, skippedOverBudget, skippedNearDuplicate };
+}
+
+/**
+ * Whether a successful recall result contains an actual match worth deduping.
+ * Search handlers commonly return `success: true` for an empty, valid search;
+ * those misses must leave room for an order-sensitive semantic rephrase.
+ */
+function successfulRecallResultHasContent(result: PlannerToolResult): boolean {
+	const data = result.data;
+	if (data) {
+		for (const key of ["count", "matchCount", "total"] as const) {
+			const count = data[key];
+			if (typeof count === "number" && Number.isFinite(count)) {
+				return count > 0;
+			}
+		}
+		for (const key of ["items", "matches", "results", "memories"] as const) {
+			const items = data[key];
+			if (Array.isArray(items)) return items.length > 0;
+		}
+	}
+	return [result.userFacingText, result.summary, result.text].some(
+		(value) => typeof value === "string" && value.trim().length > 0,
+	);
 }
 
 /**
